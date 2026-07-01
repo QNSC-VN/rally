@@ -108,6 +108,15 @@ jobs:
           build-target: api
           cache-scope: api
 
+      - name: Scan API image for critical CVEs
+        uses: aquasecurity/trivy-action@0.37.0
+        with:
+          image-ref: '${{ steps.aws.outputs.ecr-registry }}/rally-api:${{ env.IMAGE_TAG }}'
+          format: table
+          exit-code: '1'
+          severity: CRITICAL
+          ignore-unfixed: true
+
       - name: Attest API image (SLSA provenance)
         uses: QNSC-VN/qnsc-ci/actions/attest-image@v1.0.5
         with:
@@ -125,6 +134,15 @@ jobs:
           build-target: worker
           cache-scope: worker
 
+      - name: Scan Worker image for critical CVEs
+        uses: aquasecurity/trivy-action@0.37.0
+        with:
+          image-ref: '${{ steps.aws.outputs.ecr-registry }}/rally-worker:${{ env.IMAGE_TAG }}'
+          format: table
+          exit-code: '1'
+          severity: CRITICAL
+          ignore-unfixed: true
+
       - name: Attest Worker image (SLSA provenance)
         uses: QNSC-VN/qnsc-ci/actions/attest-image@v1.0.5
         with:
@@ -141,6 +159,15 @@ jobs:
           extra-tags: latest
           build-target: migrator
           cache-scope: migrator
+
+      - name: Scan Migrator image for critical CVEs
+        uses: aquasecurity/trivy-action@0.37.0
+        with:
+          image-ref: '${{ steps.aws.outputs.ecr-registry }}/rally-migrator:${{ env.IMAGE_TAG }}'
+          format: table
+          exit-code: '1'
+          severity: CRITICAL
+          ignore-unfixed: true
 
       - name: Attest Migrator image (SLSA provenance)
         uses: QNSC-VN/qnsc-ci/actions/attest-image@v1.0.5
@@ -268,8 +295,9 @@ jobs:
       - name: Verify API deployment
         run: |
           echo "Waiting for ECS service to reach steady state…"
-          # aws ecs wait polls DescribeServices every 15 s, up to 40 attempts (10 min).
-          aws ecs wait services-stable \
+          # Default: 40 polls × 15s = 10 min. Override to 120 polls × 15s = 30 min
+          # to match the job timeout-minutes: 30 and handle slow image pulls.
+          AWS_MAX_ATTEMPTS=120 aws ecs wait services-stable \
             --cluster "${{ vars.ECS_CLUSTER }}" \
             --services "${{ vars.ECS_API_SERVICE }}" \
             --region "${{ vars.AWS_REGION }}"
