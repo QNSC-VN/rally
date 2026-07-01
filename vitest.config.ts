@@ -23,11 +23,12 @@ export default defineConfig({
       DATABASE_URL: 'postgresql://test:test@localhost:5432/test',
       REDIS_URL: 'redis://localhost:6379',
       REDIS_KEY_PREFIX: 'test:',
-      // Minimal Ed25519-shaped placeholder keys (never used for real signing)
+      // EC P-256 (ES256) test-only placeholder keys — never used for real signing.
+      // Must match algorithm: 'ES256' in platform.module.ts.
       JWT_PRIVATE_KEY:
-        '-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VdBCIEIBSJkYHQlqDKH4oPkMNdTQUbxv3J3Y5uO6qCc2N+TLOM\n-----END PRIVATE KEY-----',
+        '-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQguroUP5ujCG9PaA7F\n+53M+ZEtNeuIunGs3mI6EEuD5qKhRANCAASZgAZjNEMAVYuVFiV1KfKFDRLVoJki\nokvGm4Kv+GReUvPaxoZPolxDcDmmdUfVHKrRxNbN7Kw8/x1o+2BibAO+\n-----END PRIVATE KEY-----',
       JWT_PUBLIC_KEY:
-        '-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VdAyEAMNRQ3BqfMpDXBqPEkIjPv2FW9r5R9c3N5t6lFHfr3ZA=\n-----END PUBLIC KEY-----',
+        '-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEmYAGYzRDAFWLlRYldSnyhQ0S1aCZ\nIqJLxpuCr/hkXlLz2saGT6JcQ3A5pnVH1Ryq0cTWzeysPP8daPtgYmwDvg==\n-----END PUBLIC KEY-----',
       JWT_ACCESS_EXPIRY: '15m',
       JWT_REFRESH_EXPIRY: '30d',
       JWT_ISSUER: 'rally-test',

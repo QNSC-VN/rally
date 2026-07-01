@@ -83,14 +83,15 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}
 
-      # Generate a fresh ephemeral Ed25519 keypair for tests.
+      # Generate a fresh ephemeral EC P-256 keypair for tests (matches ES256 in platform.module.ts).
       # No stored secret needed — keys are test-only, discarded after the run.
       - name: Generate CI JWT keypair
         id: jwt
         run: |
           node - << 'EOF'
           const { generateKeyPairSync } = require('crypto');
-          const { privateKey, publicKey } = generateKeyPairSync('ed25519', {
+          const { privateKey, publicKey } = generateKeyPairSync('ec', {
+            namedCurve: 'P-256',
             privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
             publicKeyEncoding:  { type: 'spki',  format: 'pem' },
           });
@@ -224,7 +225,8 @@ jobs:
         run: |
           node - << 'EOF'
           const { generateKeyPairSync } = require('crypto');
-          const { privateKey, publicKey } = generateKeyPairSync('ed25519', {
+          const { privateKey, publicKey } = generateKeyPairSync('ec', {
+            namedCurve: 'P-256',
             privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
             publicKeyEncoding:  { type: 'spki',  format: 'pem' },
           });
