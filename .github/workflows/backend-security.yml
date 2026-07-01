@@ -134,6 +134,7 @@ jobs:
 
       - name: Upload Trivy SARIF to GitHub Security
         if: always() # upload even if scan failed
+        continue-on-error: true # requires GitHub Advanced Security (free plan: no-op)
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-results.sarif
@@ -171,6 +172,7 @@ jobs:
         run: pnpm build:api
 
       - name: Perform CodeQL analysis
+        continue-on-error: true # requires GitHub Advanced Security (free plan: no-op)
         uses: github/codeql-action/analyze@v3
         with:
           category: codeql-typescript

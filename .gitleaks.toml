@@ -1,0 +1,18 @@
+title = "rally gitleaks config"
+
+[allowlist]
+description = "Allowlist for known false-positives in test and dev files"
+
+# Test JWT key pairs committed for unit-test isolation (vitest.config.ts).
+# These placeholder keys are never used outside the local test runner.
+paths = [
+  '''vitest\.config\.ts''',
+]
+
+# Hardcoded dev/CI service credentials that are intentionally public.
+# postgres/postgres is the standard docker-compose convention for ephemeral
+# CI containers and is not a real credential.
+[[rules.allowlists]]
+description   = "docker-compose + CI postgres dev credentials"
+regexTarget   = "line"
+regexes       = ['''POSTGRES_PASSWORD:\s*postgres''']
