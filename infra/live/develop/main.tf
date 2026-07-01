@@ -54,24 +54,22 @@ locals {
 
 # ── Networking ────────────────────────────────────────────────────────────────
 module "network" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/network?ref=network-v1.0.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/network?ref=network-v1.1.2"
 
   name   = local.name
   region = local.region
   azs    = local.azs
 
-  enable_interface_endpoints = false # dev: NAT already covers egress — save ~$22/mo
+  enable_interface_endpoints = false # dev: NAT covers egress — save ~$22/mo
 
   vpc_cidr             = "10.10.0.0/16"
   public_subnet_cidrs  = ["10.10.0.0/24", "10.10.1.0/24", "10.10.2.0/24"]
   private_subnet_cidrs = ["10.10.10.0/24", "10.10.11.0/24", "10.10.12.0/24"]
   data_subnet_cidrs    = ["10.10.20.0/24", "10.10.21.0/24", "10.10.22.0/24"]
 
-
-  multi_az_nat             = false   # single NAT in staging (cost optimisation)
-  app_port                 = 3000
-  enable_flow_logs         = true
-  flow_log_retention_days  = 30
+  nat_type             = "instance" # dev: fck-nat t4g.nano ~$3/mo vs NAT GW ~$33/mo
+  app_port             = 3000
+  enable_flow_logs     = false # dev: no compliance requirement — save ~$4/mo
 
   tags = { Environment = local.env }
 }
@@ -102,7 +100,7 @@ module "rds" {
   security_group_id = module.network.sg_rds_id
   kms_key_arn       = local.kms_key_arn
 
-  instance_class          = "db.t4g.medium"
+  instance_class          = "db.t4g.micro"
   allocated_storage_gb    = 20
   max_allocated_storage_gb = 100
   multi_az                = false
@@ -206,7 +204,7 @@ module "ecs_cluster" {
 
 # ── ECS Service — API ─────────────────────────────────────────────────────────
 module "api" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v1.0.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v1.1.0"
 
   service_name  = "api"
   cluster_name  = module.ecs_cluster.cluster_name
@@ -221,9 +219,11 @@ module "api" {
   subnet_ids        = module.network.private_subnet_ids
   security_group_id = module.network.sg_app_id
 
-  desired_count = 1
-  min_count     = 1
-  max_count     = 3
+  desired_count      = 1
+  min_count          = 1
+  max_count          = 3
+  use_spot           = true # Fargate Spot: saves ~70% on compute in dev
+  log_retention_days = 7    # dev: 7 days sufficient for debugging
 
   attach_alb       = true
   alb_listener_arn = aws_lb_listener.https.arn
@@ -280,7 +280,7 @@ module "api" {
 
 # ── ECS Service — Worker ──────────────────────────────────────────────────────
 module "worker" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v1.0.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v1.1.0"
 
   service_name  = "worker"
   cluster_name  = module.ecs_cluster.cluster_name
@@ -295,9 +295,11 @@ module "worker" {
   subnet_ids        = module.network.private_subnet_ids
   security_group_id = module.network.sg_app_id
 
-  desired_count = 1
-  min_count     = 1
-  max_count     = 2
+  desired_count      = 1
+  min_count          = 1
+  max_count          = 2
+  use_spot           = true # Fargate Spot: saves ~70% on compute in dev
+  log_retention_days = 7    # dev: 7 days sufficient for debugging
 
   attach_alb = false
 
@@ -381,7 +383,7 @@ resource "aws_s3_bucket_cors_configuration" "attachments" {
 # ── WAF ───────────────────────────────────────────────────────────────────────
 resource "aws_cloudwatch_log_group" "migrator" {
   name              = "/ecs/${local.name}/migrator"
-  retention_in_days = 30
+  retention_in_days = 7 # dev: keep only 7 days (migrator is a one-shot task)
   tags              = { Environment = local.env, Service = "migrator" }
 }
 
@@ -443,14 +445,10 @@ module "waf" {
 #   2. Pass its ARN as web_acm_cert_arn in your tfvars
 #   3. After apply: set S3_BUCKET + CLOUDFRONT_ID as GitHub env vars for rally-web
 module "cdn" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/cdn?ref=cdn-v1.0.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/cdn?ref=cdn-v1.0.1"
 
-  name         = "rally-web-develop"
-  acm_cert_arn = var.web_acm_cert_arn
-  # Custom alias deferred: the CNAME was held by the just-deleted old distribution
-  # (CloudFront alias release lags) + no DNS points here yet in dev. Restore
-  # ["rally-dev.qnsc.vn"] once DNS is configured and the alias lock clears.
-  aliases     = ["rally-dev.qnsc.vn"]
+  name        = "rally-web-develop"
+  aliases     = [] # dev: use raw *.cloudfront.net URL; add alias + cert after DNS is set up
   price_class = "PriceClass_100" # develop: US/EU PoPs only — cheaper than PriceClass_200
 
   tags = { Environment = local.env, Service = "web" }
