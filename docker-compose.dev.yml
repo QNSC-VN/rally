@@ -1,0 +1,60 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: rally-postgres
+    environment:
+      POSTGRES_DB: rally_dev
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    container_name: rally-valkey
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'valkey-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # LocalStack for AWS services (SQS/SNS/S3/Secrets) in dev.
+  # Replaces real AWS for local development — no AWS account needed.
+  # Production AWS resources live in the rally-infra repo (Terraform).
+  localstack:
+    image: localstack/localstack:4
+    container_name: rally-localstack
+    environment:
+      AWS_DEFAULT_REGION: ap-southeast-1
+      PERSISTENCE: 1
+      # Standard fake credentials — required by AWS SDK v3 even against LocalStack
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+    ports:
+      - '4566:4566'
+    volumes:
+      - localstack_data:/var/lib/localstack
+      # Init hook: runs automatically when LocalStack is ready.
+      # Creates SNS topic, SQS queues, DLQs, and SNS→SQS subscriptions.
+      # Mirrors how db/init/ bootstraps Postgres on first start.
+      - ./scripts/localstack:/etc/localstack/init/ready.d:ro
+    healthcheck:
+      test: ['CMD', 'awslocal', 'sqs', 'list-queues']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+volumes:
+  postgres_data:
+  localstack_data:

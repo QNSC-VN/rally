@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rally</title>
+
+    <!-- Security: prevent search-engine indexing of this internal app -->
+    <meta name="robots" content="noindex, nofollow" />
+
+    <!-- Security: referrer policy — don't leak URL to third-party resources -->
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+
+    <!-- Security: Content Security Policy (tightened at CDN/server for prod; meta tag as baseline) -->
+    <!-- NOTE: frame-ancestors and X-Frame-Options MUST be set as HTTP headers — not meta tags.    -->
+    <!-- In production, configure these at the reverse-proxy / CDN layer.                          -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="
+        default-src 'self';
+        script-src 'self' 'unsafe-inline';
+        style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+        font-src 'self' https://fonts.gstatic.com data:;
+        img-src 'self' data: blob:;
+        connect-src 'self'
+          http://localhost:3000
+          https://*.qnsc.vn
+          https://login.microsoftonline.com
+          https://login.microsoft.com
+          https://graph.microsoft.com;
+        worker-src blob:;
+        base-uri 'self';
+        form-action 'self' https://login.microsoftonline.com;
+      "
+    />
+
+    <!-- Branding: theme color for browser chrome -->
+    <meta name="theme-color" content="#1d3f73" />
+
+    <!-- Performance: preconnect to API origin -->
+    <link rel="preconnect" href="http://localhost:3000" />
+  </head>
+  <body>
+    <!-- Accessibility: skip-to-content landmark (styled via globals.css) -->
+    <a href="#main-content" class="skip-nav">Skip to main content</a>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,22 @@
+{
+  "title": "Work Items",
+  "types": {
+    "feature": "Feature",
+    "story": "Story",
+    "task": "Task",
+    "defect": "Defect"
+  },
+  "status": {
+    "defined": "Defined",
+    "inProgress": "In Progress",
+    "completed": "Completed",
+    "accepted": "Accepted",
+    "blocked": "Blocked"
+  },
+  "priority": {
+    "critical": "Critical",
+    "high": "High",
+    "normal": "Normal",
+    "low": "Low"
+  }
+}

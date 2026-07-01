@@ -1,0 +1,150 @@
+# =============================================================================
+# CI — fast quality gates on every PR and push to main/develop
+# Gate: lint → typecheck → unit tests → build → pr-title
+# Security scans (Trivy, CodeQL) live in security.yml — independently runnable.
+# =============================================================================
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '22'
+  PNPM_VERSION: '10.33.2'
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # 1. Lint + typecheck (fast gate — no deps needed)
+  # ─────────────────────────────────────────────────────────────────────────
+  quality:
+    name: Lint & typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 2. Unit tests (no DB — pure component/hook/util tests)
+  # ─────────────────────────────────────────────────────────────────────────
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      has_tests: ${{ steps.detect.outputs.has_tests }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+
+      - name: Detect unit tests
+        id: detect
+        shell: bash
+        run: |
+          if find src -type f \( -name '*.test.ts' -o -name '*.test.tsx' -o -name '*.spec.ts' -o -name '*.spec.tsx' \) | grep -q .; then
+            echo "has_tests=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_tests=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Unit tests (with coverage)
+        if: steps.detect.outputs.has_tests == 'true'
+        run: pnpm test:cov
+
+      - name: Skip empty test suite
+        if: steps.detect.outputs.has_tests != 'true'
+        run: echo "No unit test files found. Skipping Vitest coverage job."
+
+      - name: Upload coverage
+        if: always() && steps.detect.outputs.has_tests == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/
+          retention-days: 7
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 3. Vite build — verifies the production bundle compiles cleanly.
+  #    Publishes the dist as an artifact for the deploy job to consume.
+  # ─────────────────────────────────────────────────────────────────────────
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [quality, test]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+
+      - name: Build
+        run: pnpm build
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ github.sha }}
+          path: dist/
+          retention-days: 3
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 4. PR title — enforce Conventional Commits format on PR titles.
+  #    Required because release-please derives CHANGELOG from PR titles.
+  # ─────────────────────────────────────────────────────────────────────────
+  pr-title:
+    name: PR title (conventional commits)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    timeout-minutes: 5
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            chore
+            docs
+            style
+            refactor
+            perf
+            security
+            test
+            build
+            ci
+            deps
+            revert
+          requireScope: false
+          subjectPattern: ^(?![A-Z]).+$
+          subjectPatternError: |
+            The subject "{subject}" must start with a lowercase letter.
+
+  # Security scans (Trivy, CodeQL) → security.yml

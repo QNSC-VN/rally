@@ -1,0 +1,87 @@
+# =============================================================================
+# Docker Build Context — rally-api
+# =============================================================================
+# Keep this file tight: every byte sent to the daemon slows "docker build".
+# Rule: only source files and config needed to BUILD should reach the daemon.
+# Runtime artefacts (dist/, node_modules/) are generated inside the container.
+# =============================================================================
+
+# ── Installed packages (re-installed inside container) ───────────────────────
+node_modules
+.pnpm-store
+
+# ── Compiled output (generated inside container) ─────────────────────────────
+dist
+
+# ── Secrets — NEVER in an image ──────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+.env.development
+.env.test
+.env.production
+# .env.example is intentionally NOT excluded (useful reference, no secrets)
+
+# ── Git internals ─────────────────────────────────────────────────────────────
+.git
+.gitattributes
+.husky
+
+# ── IDE / editor artefacts ───────────────────────────────────────────────────
+.vscode
+.idea
+.cursor
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── Test files and coverage ───────────────────────────────────────────────────
+coverage
+.nyc_output
+*.spec.ts
+*.test.ts
+test
+__tests__
+
+# ── Documentation (not needed at runtime) ────────────────────────────────────
+*.md
+docs
+
+# ── CI / CD configs ───────────────────────────────────────────────────────────
+.github
+.gitlab-ci.yml
+.circleci
+
+# ── Docker files themselves ───────────────────────────────────────────────────
+Dockerfile*
+.dockerignore
+docker-compose*.yml
+
+# ── Logs and temp files ───────────────────────────────────────────────────────
+logs
+*.log
+.tmp
+.temp
+*.pid
+*.seed
+*.pid.lock
+.agent-logs
+
+# ── TypeScript build info (re-generated during build) ────────────────────────
+*.tsbuildinfo
+
+# ── Dev-only tooling configs (linting, formatting) ───────────────────────────
+.eslintcache
+.prettierignore
+.editorconfig
+
+# ── Lock files for other package managers ────────────────────────────────────
+package-lock.json
+yarn.lock
+
+# ── Misc ─────────────────────────────────────────────────────────────────────
+.cache
+.turbo
+scripts/

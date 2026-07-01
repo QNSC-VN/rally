@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json.schemastore.org/nest-cli",
+  "collection": "@nestjs/schematics",
+  "sourceRoot": "apps/api/src",
+  "monorepo": true,
+  "root": "apps/api",
+  "compilerOptions": {
+    "deleteOutDir": true,
+    "webpack": false,
+    "tsConfigPath": "apps/api/tsconfig.app.json",
+    "plugins": [
+      {
+        "name": "@nestjs/swagger",
+        "options": { "introspectComments": true }
+      }
+    ]
+  },
+  "projects": {
+    "api": {
+      "type": "application",
+      "root": "apps/api",
+      "entryFile": "main",
+      "sourceRoot": "apps/api/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/api/tsconfig.app.json",
+        "plugins": [
+          {
+            "name": "@nestjs/swagger",
+            "options": { "introspectComments": true }
+          }
+        ]
+      }
+    },
+    "worker": {
+      "type": "application",
+      "root": "apps/worker",
+      "entryFile": "main",
+      "sourceRoot": "apps/worker/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/worker/tsconfig.app.json"
+      }
+    },
+    "shared-kernel": {
+      "type": "library",
+      "root": "libs/shared-kernel",
+      "entryFile": "index",
+      "sourceRoot": "libs/shared-kernel/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/shared-kernel/tsconfig.lib.json"
+      }
+    },
+    "platform": {
+      "type": "library",
+      "root": "libs/platform",
+      "entryFile": "index",
+      "sourceRoot": "libs/platform/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/platform/tsconfig.lib.json"
+      }
+    },
+    "contracts": {
+      "type": "library",
+      "root": "libs/contracts",
+      "entryFile": "index",
+      "sourceRoot": "libs/contracts/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/contracts/tsconfig.lib.json"
+      }
+    }
+  }
+}

@@ -1,0 +1,117 @@
+name: OpenTofu Apply
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "live/**"
+      - "modules/**"
+      - ".github/workflows/apply.yml"
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  TOFU_VERSION: "1.9.1"
+  AWS_REGION: ap-southeast-1
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Shared (ECR + OIDC) — runs only when _shared/ or modules/ changed
+  # ─────────────────────────────────────────────────────────────────────────────
+  apply-shared:
+    runs-on: ubuntu-latest
+    environment: shared
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683   # v4.2.2
+
+      - uses: QNSC-VN/qnsc-ci/actions/setup-tofu-aws@v1
+        with:
+          role-arn: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/rally-github-infra-apply
+          aws-region: ${{ env.AWS_REGION }}
+          tofu-version: ${{ env.TOFU_VERSION }}
+
+      - name: tofu init
+        working-directory: live/_shared
+        run: tofu init -input=false
+
+      - name: tofu validate
+        working-directory: live/_shared
+        run: tofu validate
+
+      - name: tofu apply
+        working-directory: live/_shared
+        run: tofu apply -input=false -auto-approve
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Develop — auto-approve on every push to main
+  # ─────────────────────────────────────────────────────────────────────────────
+  apply-develop:
+    needs: apply-shared
+    runs-on: ubuntu-latest
+    environment: develop   # no approval gate
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683   # v4.2.2
+
+      - uses: QNSC-VN/qnsc-ci/actions/setup-tofu-aws@v1
+        with:
+          role-arn: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/rally-github-infra-apply
+          aws-region: ${{ env.AWS_REGION }}
+          tofu-version: ${{ env.TOFU_VERSION }}
+
+      - name: tofu init
+        working-directory: live/develop
+        run: tofu init -input=false
+
+      - name: tofu validate
+        working-directory: live/develop
+        run: tofu validate
+
+      - name: tofu apply
+        working-directory: live/develop
+        run: tofu apply -input=false -auto-approve
+        env:
+          TF_VAR_acm_cert_arn:       ${{ secrets.ACM_CERT_ARN_DEVELOP }}
+          TF_VAR_web_acm_cert_arn:   ${{ secrets.WEB_ACM_CERT_ARN_DEVELOP }}
+          TF_VAR_entra_tenant_id:    ${{ vars.ENTRA_TENANT_ID }}
+          TF_VAR_entra_client_id:    ${{ vars.ENTRA_CLIENT_ID }}
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Production — requires manual approval via GitHub Environment
+  # ─────────────────────────────────────────────────────────────────────────────
+  apply-prod:
+    needs: apply-develop
+    runs-on: ubuntu-latest
+    environment: production   # ← configure approval reviewers in GitHub Settings
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683   # v4.2.2
+
+      - uses: QNSC-VN/qnsc-ci/actions/setup-tofu-aws@v1
+        with:
+          role-arn: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/rally-github-infra-apply
+          aws-region: ${{ env.AWS_REGION }}
+          tofu-version: ${{ env.TOFU_VERSION }}
+
+      - name: tofu init
+        working-directory: live/prod
+        run: tofu init -input=false
+
+      - name: tofu validate
+        working-directory: live/prod
+        run: tofu validate
+
+      - name: tofu apply
+        working-directory: live/prod
+        run: tofu apply -input=false -auto-approve
+        env:
+          TF_VAR_acm_cert_arn:       ${{ secrets.ACM_CERT_ARN_PROD }}
+          TF_VAR_web_acm_cert_arn:   ${{ secrets.WEB_ACM_CERT_ARN_PROD }}
+          TF_VAR_entra_tenant_id:    ${{ vars.ENTRA_TENANT_ID }}
+          TF_VAR_entra_client_id:    ${{ vars.ENTRA_CLIENT_ID }}

@@ -1,0 +1,71 @@
+# =============================================================================
+# .gitattributes — rally-api
+# =============================================================================
+# 1. Normalise line endings: always LF in the repo, checkout as-is on Linux/Mac,
+#    convert CRLF→LF on Windows (prevents "changed 1000 files" noise on Windows
+#    contributors and broken shell scripts in Docker).
+# 2. Mark binary / generated files so git diff is clean and merges don't mangle
+#    them.
+# 3. Linguist overrides so GitHub's language bar reflects the actual codebase
+#    (test files, generated SQL, lock files don't count against TypeScript).
+# =============================================================================
+
+# ── Default: normalise all text files to LF ──────────────────────────────────
+*           text=auto eol=lf
+
+# ── Explicitly text — always LF ──────────────────────────────────────────────
+*.ts        text eol=lf
+*.tsx       text eol=lf
+*.js        text eol=lf
+*.mjs       text eol=lf
+*.cjs       text eol=lf
+*.json      text eol=lf
+*.jsonc     text eol=lf
+*.yaml      text eol=lf
+*.yml       text eol=lf
+*.toml      text eol=lf
+*.sql       text eol=lf
+*.md        text eol=lf
+*.mdx       text eol=lf
+*.html      text eol=lf
+*.css       text eol=lf
+*.sh        text eol=lf
+*.env       text eol=lf
+*.env.*     text eol=lf
+Dockerfile* text eol=lf
+Makefile    text eol=lf
+.gitignore  text eol=lf
+.npmrc      text eol=lf
+.nvmrc      text eol=lf
+
+# ── Binaries — never diff or merge ───────────────────────────────────────────
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.webp      binary
+*.ico       binary
+*.svg       binary
+*.woff      binary
+*.woff2     binary
+*.ttf       binary
+*.otf       binary
+*.eot       binary
+*.pdf       binary
+*.zip       binary
+*.tar.gz    binary
+*.tgz       binary
+
+# ── Lock files — show as-is in diffs (no merge driver needed) ─────────────────
+pnpm-lock.yaml          text eol=lf -diff
+package-lock.json       text eol=lf -diff
+yarn.lock               text eol=lf -diff
+
+# ── Generated migration SQL — committed intentionally, mark as generated ──────
+db/migrations/*.sql     text eol=lf linguist-generated=true
+
+# ── Linguist: exclude from language stats ─────────────────────────────────────
+*.spec.ts               linguist-detectable=false
+*.test.ts               linguist-detectable=false
+pnpm-lock.yaml          linguist-generated=true
+dist/**                 linguist-generated=true

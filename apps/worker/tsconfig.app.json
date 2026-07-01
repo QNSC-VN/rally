@@ -1,0 +1,34 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../../dist/apps/worker",
+    "rootDir": "../../",
+    "declaration": false
+  },
+  "include": [
+    "src/**/*",
+    "../../libs/shared-kernel/src/**/*",
+    "../../libs/platform/src/**/*",
+    "../../libs/contracts/src/**/*",
+    "../../libs/modules/identity/src/**/*",
+    "../../libs/modules/tenancy/src/**/*",
+    "../../libs/modules/access/src/**/*",
+    "../../libs/modules/projects/src/**/*",
+    "../../libs/modules/work-items/src/**/*",
+    "../../libs/modules/workflow/src/**/*",
+    "../../libs/modules/planning/src/**/*",
+    "../../libs/modules/releases/src/**/*",
+    "../../libs/modules/collaboration/src/**/*",
+    "../../libs/modules/notifications/src/**/*",
+    "../../libs/modules/audit/src/**/*",
+    "../../libs/modules/reporting/src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.spec.ts",
+    "**/*.test.ts",
+    "../../libs/**/*.spec.ts",
+    "../../libs/**/*.test.ts"
+  ]
+}

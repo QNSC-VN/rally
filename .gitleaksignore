@@ -1,0 +1,20 @@
+# .gitleaksignore — fingerprints of known false-positive findings.
+#
+# Each line is a gitleaks fingerprint (<commit>:<file>:<rule>:<line>).
+# Fingerprints are commit-scoped: they suppress only the exact finding in
+# that commit, so a real secret added later would still be caught.
+#
+# ─── Test fixture: CI workflow CSRF placeholder ───────────────────────────────
+# "ci-test-csrf-secret-min-32-characters-ok" — a dummy value that satisfies the
+# CSRF_SECRET minimum-length validation in CI jobs.  Not a real secret.
+91a2de1359029487a3f7a4fb10c7acf8d17cf002:.github/workflows/ci.yml:generic-api-key:131
+91a2de1359029487a3f7a4fb10c7acf8d17cf002:.github/workflows/ci.yml:generic-api-key:146
+91a2de1359029487a3f7a4fb10c7acf8d17cf002:.github/workflows/ci.yml:generic-api-key:287
+
+# ─── Test fixture: dummy Ed25519 JWT key ──────────────────────────────────────
+# MC4CAQAwBQYDK2Vd… — a minimal Ed25519-shaped PEM block used as JWT_PRIVATE_KEY
+# in unit-test env vars.  Explicitly documented in vitest.config.ts:
+#   "Minimal Ed25519-shaped placeholder keys (never used for real signing)"
+3cb388afa2d645ec5caa1cf8cd0c6402867df9db:test/global-setup.ts:private-key:8
+3cb388afa2d645ec5caa1cf8cd0c6402867df9db:test/setup.ts:private-key:8
+3cb388afa2d645ec5caa1cf8cd0c6402867df9db:vitest.config.ts:private-key:28

@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+
+# TypeScript compiled artifacts that can leak outside dist/ during monorepo builds.
+# All source is .ts; .js/.js.map in libs/ and db/ are never hand-written.
+libs/**/*.js
+libs/**/*.js.map
+db/**/*.js
+db/**/*.js.map
+
+# Environment — NEVER commit secrets
+# Catch all .env variants; .env.example is the only safe-to-commit file.
+.env*
+!.env.example
+
+# Drizzle — migration SQL files ARE committed (version-controlled DDL)
+
+# Logs
+*.log
+logs/
+.agent-logs/
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/settings.json
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Test output
+junit.xml
+
+# TypeScript / build caches
+*.tsbuildinfo
+.swc/
+
+# Terraform / OpenTofu (infra/)
+**/.terraform/
+**/.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfplan

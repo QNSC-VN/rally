@@ -1,0 +1,1004 @@
+/**
+ * Work Item Detail Page — P1-WI-DETAIL / P1-TASK
+ *
+ * Route: /item/$itemKey
+ * Story/Defect: 3 tabs — Details | Tasks | Revision History
+ * Task:         2 tabs — Details | Revision History
+ * Sidebar differs by type (task shows time fields + Work Product link).
+ */
+import { useState, useCallback } from 'react'
+import { useParams, useNavigate, Link } from '@tanstack/react-router'
+import {
+  Bell,
+  BellOff,
+  ChevronLeft,
+  History,
+  ListChecks,
+  MoreHorizontal,
+  PanelRightClose,
+  PanelRightOpen,
+  Plus,
+  Users,
+} from 'lucide-react'
+import {
+  useTasks,
+  useTaskTotals,
+  useActivityLog,
+  useUpdateWorkItem,
+  useWorkItem,
+  useWatchers,
+  useToggleWatch,
+  type WorkItem,
+} from '@/features/work-items/api'
+import { useReleases } from '@/features/releases/api'
+import { useProjectStatuses } from '@/features/projects/api'
+import { useProjectTeams, useProjectMembers } from '@/features/teams/api'
+import { useSprints } from '@/features/sprints/api'
+import { useAuthStore } from '@/shared/lib/stores/auth.store'
+import { TypeBadge } from '@/entities/work-item/ui/badges'
+import { AddTaskModal } from '@/features/work-items/ui/add-task-modal'
+import { RichTextEditor } from '@/shared/ui/rich-text-editor'
+import { AttachmentBlock } from '@/features/collaboration/ui/attachment-block'
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+type DetailTab = 'details' | 'tasks' | 'history'
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label
+        className="mb-1.5 block text-[10px] font-semibold tracking-widest uppercase"
+        style={{ color: '#64748b' }}
+      >
+        {label}
+      </label>
+      {children}
+    </div>
+  )
+}
+
+const fieldCls =
+  'w-full text-[12px] px-3 py-2 rounded bg-white focus:outline-none transition-colors'
+const fieldStyle = { border: '1px solid #d7dde7', color: '#1a2234' }
+
+// ── Task state badge ──────────────────────────────────────────────────────────
+
+function TaskStateBadge({ state }: { state: string }) {
+  const map: Record<string, { bg: string; text: string; border: string; dot: string }> = {
+    defined: { bg: '#eef3fb', text: '#2558a6', border: '#bdd0ef', dot: '#2558a6' },
+    in_progress: { bg: '#fef5e4', text: '#8a5808', border: '#f5d899', dot: '#e59f0c' },
+    completed: { bg: '#eef6f0', text: '#1e6930', border: '#a8d5b3', dot: '#2a8c3f' },
+    accepted: { bg: '#eaf0fb', text: '#1d3f73', border: '#99b8e0', dot: '#1d3f73' },
+    released: { bg: '#f3effd', text: '#7c3aed', border: '#d0c6f5', dot: '#7c3aed' },
+    idea: { bg: '#f3f4f6', text: '#6b7280', border: '#d1d5db', dot: '#9ca3af' },
+  }
+  const cfg = map[state.toLowerCase()] ?? map.idea
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-sm px-2 py-px text-[11px] font-medium whitespace-nowrap"
+      style={{ backgroundColor: cfg.bg, color: cfg.text, border: `1px solid ${cfg.border}` }}
+    >
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: cfg.dot }} />
+      {state}
+    </span>
+  )
+}
+
+// ── Details tab ───────────────────────────────────────────────────────────────
+
+function DetailsTab({
+  item,
+  onUpdate,
+  readOnly,
+}: {
+  item: WorkItem
+  onUpdate: (patch: Partial<WorkItem>) => void
+  readOnly: boolean
+}) {
+  const isTask = item.type === 'task'
+
+  const handleSave = useCallback(
+    (field: 'description' | 'notes' | 'releaseNotes') => (html: string) => {
+      onUpdate({ [field]: html || null })
+    },
+    [onUpdate],
+  )
+
+  return (
+    <div className="w-full space-y-5">
+      <h2 className="text-[20px] font-semibold" style={{ color: '#273449' }}>
+        Details
+      </h2>
+
+      <RichTextEditor
+        title="Description"
+        value={item.description}
+        minHeight={120}
+        readOnly={readOnly}
+        onSave={handleSave('description')}
+      />
+
+      <AttachmentBlock workItemId={item.id} readOnly={readOnly} />
+
+      <RichTextEditor
+        title="Notes"
+        value={item.notes}
+        minHeight={80}
+        readOnly={readOnly}
+        onSave={handleSave('notes')}
+      />
+
+      {/* Release Notes — Story/Defect only */}
+      {!isTask && (
+        <RichTextEditor
+          title="Release Notes"
+          value={item.releaseNotes}
+          minHeight={80}
+          readOnly={readOnly}
+          onSave={handleSave('releaseNotes')}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Tasks tab ─────────────────────────────────────────────────────────────────
+
+const TASK_GRID = '44px 72px 1fr 140px 170px 60px 60px 80px'
+
+function TasksTab({ workItemId }: { workItemId: string }) {
+  const { data: tasks = [], isLoading } = useTasks(workItemId)
+  const { data: totals } = useTaskTotals(workItemId)
+  const [showAdd, setShowAdd] = useState(false)
+  const navigate = useNavigate()
+
+  function openTask(task: WorkItem) {
+    void navigate({ to: '/item/$itemKey', params: { itemKey: task.itemKey } })
+  }
+
+  return (
+    <div className="w-full">
+      {/* Header */}
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <h2 className="text-[20px] font-semibold" style={{ color: '#273449' }}>
+            Tasks
+          </h2>
+          <p className="mt-1 text-[11px]" style={{ color: '#64748b' }}>
+            Break this work item into trackable delivery tasks.
+          </p>
+        </div>
+        <button
+          onClick={() => setShowAdd(true)}
+          className="flex items-center gap-1.5 rounded px-3 py-2 text-[11px] font-semibold text-white"
+          style={{ backgroundColor: '#1d3f73' }}
+          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#163259')}
+          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#1d3f73')}
+        >
+          <Plus size={13} />
+          Add Task
+        </button>
+      </div>
+
+      {isLoading ? (
+        <div className="flex h-20 items-center justify-center">
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded bg-white" style={{ border: '1px solid #dde2ea' }}>
+          <div style={{ minWidth: 900 }}>
+            {/* Header row */}
+            <div
+              className="grid h-10 items-center"
+              style={{
+                gridTemplateColumns: TASK_GRID,
+                backgroundColor: 'white',
+                borderBottom: '2px solid #9fb4d1',
+              }}
+            >
+              {['', 'ID', 'Name', 'State', 'Owner', 'To Do', 'Actuals', 'Estimate'].map(
+                (col, i) => (
+                  <span
+                    key={i}
+                    className="flex h-full items-center px-3 text-[12px] font-semibold"
+                    style={{
+                      color: '#1f2937',
+                      borderRight: i < 7 ? '1px dashed #8c99ad' : undefined,
+                    }}
+                  >
+                    {col}
+                  </span>
+                ),
+              )}
+            </div>
+
+            {/* Totals row */}
+            {totals && (
+              <div
+                className="grid h-8 items-center text-[12px] font-semibold"
+                style={{
+                  gridTemplateColumns: TASK_GRID,
+                  backgroundColor: '#f3f6fa',
+                  borderBottom: '1px solid #d7dde7',
+                  color: '#1f2937',
+                }}
+              >
+                <span />
+                <span className="px-3">Totals</span>
+                <span />
+                <span />
+                <span />
+                <span className="px-3 text-right font-mono">{totals.todoHours ?? 0}h</span>
+                <span className="px-3 text-right font-mono">{totals.actualHours ?? 0}h</span>
+                <span className="px-3 text-right font-mono">{totals.estimateHours ?? 0}h</span>
+              </div>
+            )}
+
+            {/* Empty */}
+            {tasks.length === 0 && (
+              <div className="flex h-20 items-center justify-center">
+                <p className="text-sm" style={{ color: '#8c94a6' }}>
+                  No tasks yet.{' '}
+                  <button
+                    onClick={() => setShowAdd(true)}
+                    className="font-medium"
+                    style={{ color: '#2558a6' }}
+                  >
+                    Add one
+                  </button>
+                </p>
+              </div>
+            )}
+
+            {/* Task rows */}
+            {tasks.map((task) => (
+              <div
+                key={task.id}
+                className="grid min-h-10 cursor-pointer items-center text-[12px] hover:bg-[#f7f8fa]"
+                style={{
+                  gridTemplateColumns: TASK_GRID,
+                  borderBottom: '1px solid #edf0f4',
+                  color: '#334155',
+                }}
+                onClick={() => openTask(task)}
+              >
+                <div className="flex items-center justify-center">
+                  <input
+                    type="checkbox"
+                    aria-label={`Select task ${task.itemKey}`}
+                    className="h-4 w-4 rounded"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </div>
+                <span
+                  className="px-3 font-mono text-[11px] hover:underline"
+                  style={{ color: '#2558a6' }}
+                >
+                  {task.itemKey}
+                </span>
+                <span className="truncate px-3 font-medium">{task.title}</span>
+                <span className="px-3">
+                  <TaskStateBadge state={task.scheduleState} />
+                </span>
+                <span className="truncate px-3" style={{ color: '#5c6478' }}>
+                  {/* assigneeName from API expansion (future) */}
+                  {'—'}
+                </span>
+                <span className="px-3 text-right font-mono">
+                  {task.todoHours != null ? `${task.todoHours}h` : '—'}
+                </span>
+                <span className="px-3 text-right font-mono">
+                  {task.actualHours != null ? `${task.actualHours}h` : '—'}
+                </span>
+                <span className="px-3 text-right font-mono">
+                  {task.estimateHours != null ? `${task.estimateHours}h` : '—'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {showAdd && <AddTaskModal workItemId={workItemId} onClose={() => setShowAdd(false)} />}
+    </div>
+  )
+}
+
+// ── Revision History tab ──────────────────────────────────────────────────────
+
+function HistoryTab({ workItemId }: { workItemId: string }) {
+  const { data: logs = [], isLoading } = useActivityLog(workItemId)
+
+  if (isLoading) {
+    return (
+      <div className="flex h-20 items-center justify-center">
+        <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="w-full space-y-5">
+      <div>
+        <h2 className="text-[20px] font-semibold" style={{ color: '#273449' }}>
+          Revision History
+        </h2>
+        <p className="mt-1 text-[12px]" style={{ color: '#64748b' }}>
+          Activity log for field changes, task updates, and work item creation.
+        </p>
+      </div>
+
+      <section className="overflow-hidden rounded bg-white" style={{ border: '1px solid #dde2ea' }}>
+        <div
+          className="grid px-4 py-2 text-[10px] font-semibold tracking-wider uppercase"
+          style={{
+            gridTemplateColumns: '160px 180px 160px 1fr',
+            color: '#64748b',
+            backgroundColor: '#f8fafc',
+            borderBottom: '1px solid #dde2ea',
+          }}
+        >
+          <span>Time</span>
+          <span>Actor</span>
+          <span>Action</span>
+          <span>Details</span>
+        </div>
+
+        {logs.length === 0 && (
+          <div className="px-4 py-6 text-center text-sm" style={{ color: '#8c94a6' }}>
+            No activity recorded yet.
+          </div>
+        )}
+
+        {logs.map((log) => {
+          const actorName =
+            (log as typeof log & { actorName?: string | null }).actorName ?? log.actorId ?? '—'
+          const actorInitials = actorName
+            .split(' ')
+            .slice(0, 2)
+            .map((n: string) => n[0]?.toUpperCase())
+            .join('')
+          return (
+            <div
+              key={log.id}
+              className="grid items-start px-4 py-3 text-[12px]"
+              style={{
+                gridTemplateColumns: '160px 180px 160px 1fr',
+                borderBottom: '1px solid #edf0f4',
+                color: '#334155',
+              }}
+            >
+              <span className="font-mono text-[11px]" style={{ color: '#64748b' }}>
+                {new Date(log.createdAt).toLocaleString()}
+              </span>
+              <span className="flex min-w-0 items-center gap-2">
+                <span
+                  className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[8px] font-bold"
+                  style={{ backgroundColor: '#e5ebf4', color: '#1d3f73' }}
+                >
+                  {actorInitials}
+                </span>
+                <span className="truncate">{actorName}</span>
+              </span>
+              <span className="font-semibold" style={{ color: '#273449' }}>
+                {log.action}
+              </span>
+              <span style={{ color: '#5c6478' }}>
+                {(log as typeof log & { detail?: string }).detail ?? '—'}
+              </span>
+            </div>
+          )
+        })}
+      </section>
+    </div>
+  )
+}
+
+// ── Sidebar (Details tab) ─────────────────────────────────────────────────────
+
+interface SidebarProps {
+  item: WorkItem
+  onUpdate: (patch: Partial<WorkItem>) => void
+  updating: boolean
+  readOnly: boolean
+  collapsed?: boolean
+  onToggleCollapse?: () => void
+}
+
+function DetailSidebar({
+  item,
+  onUpdate,
+  updating,
+  readOnly,
+  collapsed = false,
+  onToggleCollapse,
+}: SidebarProps) {
+  const { data: teams = [] } = useProjectTeams(item.projectId)
+  const { data: members = [] } = useProjectMembers(item.projectId)
+  const { data: releases = [] } = useReleases(item.projectId)
+  const { data: sprints = [] } = useSprints(item.projectId)
+  const { data: statuses = [] } = useProjectStatuses(item.projectId)
+  const { data: parentItem } = useWorkItem(
+    item.type === 'task' ? (item.parentId ?? undefined) : undefined,
+  )
+  const isTask = item.type === 'task'
+  const disabled = updating || readOnly
+
+  const SCHEDULE_STATES = [
+    { value: 'idea', label: 'Idea' },
+    { value: 'defined', label: 'Defined' },
+    { value: 'in_progress', label: 'In Progress' },
+    { value: 'completed', label: 'Completed' },
+    { value: 'accepted', label: 'Accepted' },
+    { value: 'released', label: 'Released' },
+  ]
+  const PRIORITIES = [
+    { value: 'none', label: '—' },
+    { value: 'low', label: 'Low' },
+    { value: 'normal', label: 'Normal' },
+    { value: 'high', label: 'High' },
+    { value: 'urgent', label: 'Urgent' },
+  ]
+
+  // When collapsed, render nothing — the page-level "re-open" tab handles visibility
+  if (collapsed) return null
+
+  return (
+    <aside
+      className="w-[300px] shrink-0 overflow-y-auto bg-white"
+      style={{ borderLeft: '1px solid #d7dde7' }}
+    >
+      {/* Collapse toggle header */}
+      <div
+        className="sticky top-0 z-10 flex items-center justify-between bg-white px-3 py-2"
+        style={{ borderBottom: '1px solid #e7ebf0' }}
+      >
+        <span
+          className="text-[11px] font-semibold tracking-wide uppercase"
+          style={{ color: '#6b7280' }}
+        >
+          Details
+        </span>
+        <button
+          onClick={onToggleCollapse}
+          title="Hide sidebar"
+          className="rounded p-1 transition-colors hover:bg-[#f3f5f8]"
+        >
+          <PanelRightClose size={14} style={{ color: '#6b7280' }} />
+        </button>
+      </div>
+
+      <div className="space-y-4 p-5">
+        {/* Schedule State */}
+        <Field label="Schedule State">
+          <select
+            value={item.scheduleState ?? ''}
+            onChange={(e) =>
+              onUpdate({ scheduleState: e.target.value as WorkItem['scheduleState'] })
+            }
+            disabled={disabled}
+            className={fieldCls}
+            style={fieldStyle}
+          >
+            {SCHEDULE_STATES.map(({ value, label }) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        {/* Flow State (workflow status — project-specific Kanban column) */}
+        <Field label="Flow State">
+          <select
+            value={item.statusId ?? ''}
+            onChange={(e) => onUpdate({ statusId: e.target.value })}
+            disabled={disabled}
+            className={fieldCls}
+            style={fieldStyle}
+          >
+            {statuses.length === 0 && (
+              <option value={item.statusId ?? ''}>{item.statusId ?? 'Unknown'}</option>
+            )}
+            {statuses.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        {/* Owner */}
+        <Field label="Owner">
+          <select
+            value={item.assigneeId ?? ''}
+            onChange={(e) => onUpdate({ assigneeId: e.target.value || null })}
+            disabled={disabled}
+            className={fieldCls}
+            style={fieldStyle}
+          >
+            <option value="">Unassigned</option>
+            {members.map((m) => (
+              <option key={m.userId} value={m.userId}>
+                {m.displayName ?? m.email ?? m.userId}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        {/* Team */}
+        <Field label="Team">
+          <select
+            value={item.teamId ?? ''}
+            onChange={(e) => onUpdate({ teamId: e.target.value || null })}
+            disabled={disabled}
+            className={fieldCls}
+            style={fieldStyle}
+          >
+            <option value="">No team</option>
+            {teams.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        {/* Priority — Defect only */}
+        {item.type === 'defect' && (
+          <Field label="Priority">
+            <select
+              value={item.priority ?? 'none'}
+              onChange={(e) => onUpdate({ priority: e.target.value as WorkItem['priority'] })}
+              disabled={disabled}
+              className={fieldCls}
+              style={fieldStyle}
+            >
+              {PRIORITIES.map(({ value, label }) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
+
+        {/* Task: Work Product (parent link) */}
+        {isTask && item.parentId && (
+          <Field label="Work Product">
+            <Link
+              to={'/item/$itemKey'}
+              params={{ itemKey: parentItem?.itemKey ?? item.parentId }}
+              className="block truncate rounded px-3 py-2 text-[12px] hover:bg-slate-50"
+              style={{ border: '1px solid #d7dde7', color: '#2558a6' }}
+            >
+              {parentItem?.itemKey ?? item.parentId}
+            </Link>
+          </Field>
+        )}
+
+        {/* Task: time fields */}
+        {isTask && (
+          <>
+            <Field label="Estimate (h)">
+              <input
+                type="number"
+                min={0}
+                step={0.5}
+                value={item.estimateHours ?? ''}
+                onChange={(e) =>
+                  onUpdate({ estimateHours: e.target.value ? Number(e.target.value) : null })
+                }
+                disabled={disabled}
+                className={fieldCls}
+                style={fieldStyle}
+              />
+            </Field>
+            <Field label="To Do (h)">
+              <input
+                type="number"
+                min={0}
+                step={0.5}
+                value={item.todoHours ?? ''}
+                onChange={(e) =>
+                  onUpdate({ todoHours: e.target.value ? Number(e.target.value) : null })
+                }
+                disabled={disabled}
+                className={fieldCls}
+                style={fieldStyle}
+              />
+            </Field>
+            <Field label="Actual (h)">
+              <input
+                type="number"
+                min={0}
+                step={0.5}
+                value={item.actualHours ?? ''}
+                onChange={(e) =>
+                  onUpdate({ actualHours: e.target.value ? Number(e.target.value) : null })
+                }
+                disabled={disabled}
+                className={fieldCls}
+                style={fieldStyle}
+              />
+            </Field>
+          </>
+        )}
+
+        {/* Story/Defect: Plan Estimate */}
+        {!isTask && (
+          <Field label="Plan Estimate (pts)">
+            <input
+              type="number"
+              min={0}
+              value={item.storyPoints ?? ''}
+              onChange={(e) =>
+                onUpdate({ storyPoints: e.target.value ? Number(e.target.value) : null })
+              }
+              disabled={disabled}
+              className={fieldCls}
+              style={fieldStyle}
+            />
+          </Field>
+        )}
+
+        {/* Story/Defect: Iteration + Release */}
+        {!isTask && (
+          <>
+            <Field label="Iteration">
+              <select
+                value={item.iterationId ?? ''}
+                onChange={(e) => onUpdate({ iterationId: e.target.value || null })}
+                disabled={disabled}
+                className={fieldCls}
+                style={fieldStyle}
+              >
+                <option value="">No iteration</option>
+                {sprints.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Release">
+              <select
+                value={item.releaseId ?? ''}
+                onChange={(e) => onUpdate({ releaseId: e.target.value || null })}
+                disabled={disabled}
+                className={fieldCls}
+                style={fieldStyle}
+              >
+                <option value="">No release</option>
+                {releases.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </>
+        )}
+
+        {/* Blocked flag */}
+        {item.isBlocked && (
+          <div
+            className="flex items-start gap-2 rounded p-2 text-[11px]"
+            style={{ backgroundColor: '#fef2f2', border: '1px solid #fcc5c0', color: '#b91c1c' }}
+          >
+            <span className="font-semibold">Blocked:</span>
+            <span>{item.blockedReason ?? 'Reason not provided.'}</span>
+          </div>
+        )}
+
+        {/* Read-only notice */}
+        {readOnly && (
+          <div
+            className="rounded px-3 py-2 text-[10px]"
+            style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', color: '#64748b' }}
+          >
+            You have read-only access to this item.
+          </div>
+        )}
+      </div>
+      {/* end p-5 space-y-4 */}
+    </aside>
+  )
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+
+export function WorkItemDetailPage() {
+  const { itemKey } = useParams({ from: '/auth/item/$itemKey' })
+  const navigate = useNavigate()
+  const [activeTab, setActiveTab] = useState<DetailTab>('details')
+
+  // P1-10: sidebar collapse — persisted in localStorage so preference survives navigation
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('wi-sidebar-collapsed') === '1'
+    } catch {
+      return false
+    }
+  })
+  const toggleSidebar = useCallback(() => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev
+      try {
+        localStorage.setItem('wi-sidebar-collapsed', next ? '1' : '0')
+      } catch {
+        /* noop */
+      }
+      return next
+    })
+  }, [])
+
+  const { data: itemByKey, isLoading: loadingKey } = useWorkItemByKey(itemKey)
+
+  const updateMutation = useUpdateWorkItem(itemByKey?.id ?? '')
+  const [updateError, setUpdateError] = useState<string | null>(null)
+
+  // P1-11: work item is read-only when the user lacks work_item:edit permission.
+  // BA spec: all active roles (non-Viewer) can update any work item.
+  const readOnly = !useAuthStore((s) => s.hasPermission('work_item:edit'))
+  const currentUserId = useAuthStore((s) => s.user?.id)
+
+  // P1-23: watchers
+  const { data: watchers = [] } = useWatchers(itemByKey?.id)
+  const toggleWatch = useToggleWatch(itemByKey?.id)
+  const isWatching = watchers.some((w) => w.userId === currentUserId)
+
+  const patchItem = useCallback(
+    async (patch: Record<string, unknown>) => {
+      if (!itemByKey) return
+      try {
+        setUpdateError(null)
+        await updateMutation.mutateAsync(patch)
+      } catch (e) {
+        setUpdateError(e instanceof Error ? e.message : 'Update failed.')
+      }
+    },
+    [itemByKey, updateMutation],
+  )
+
+  if (loadingKey) {
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    )
+  }
+
+  if (!itemByKey) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-3">
+        <p className="text-sm font-medium" style={{ color: '#5c6478' }}>
+          Work item "{itemKey}" not found.
+        </p>
+        <button
+          onClick={() => void navigate({ to: '/backlog' })}
+          className="text-xs font-medium"
+          style={{ color: '#2558a6' }}
+        >
+          ← Back to Backlog
+        </button>
+      </div>
+    )
+  }
+
+  const item = itemByKey
+  const isTask = item.type === 'task'
+  const taskCount = (item as WorkItem & { _count?: { tasks: number } })._count?.tasks ?? 0
+
+  type TabDef = { id: DetailTab; icon: React.ReactNode; label: string }
+  const tabs: TabDef[] = [
+    {
+      id: 'details',
+      icon: (
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.75"
+        >
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
+          <line x1="16" y1="13" x2="8" y2="13" />
+          <line x1="16" y1="17" x2="8" y2="17" />
+          <polyline points="10 9 9 9 8 9" />
+        </svg>
+      ),
+      label: 'Details',
+    },
+    ...(!isTask
+      ? [
+          {
+            id: 'tasks' as DetailTab,
+            icon: (
+              <span className="flex items-center gap-1.5">
+                <ListChecks size={19} />
+                {taskCount > 0 && (
+                  <span className="text-[10px] font-semibold tabular-nums">{taskCount}</span>
+                )}
+              </span>
+            ),
+            label: 'Tasks',
+          },
+        ]
+      : []),
+    {
+      id: 'history',
+      icon: <History size={19} />,
+      label: 'Revision History',
+    },
+  ]
+
+  return (
+    <div className="flex flex-1 flex-col overflow-hidden bg-white">
+      {/* Header bar */}
+      <div className="shrink-0 text-white" style={{ backgroundColor: '#173f78' }}>
+        {/* Title row */}
+        <div
+          className="flex h-12 items-center gap-3 px-4"
+          style={{ borderBottom: '1px solid rgba(255,255,255,.18)' }}
+        >
+          <button
+            aria-label="Back"
+            onClick={() => void navigate({ to: '/backlog' })}
+            className="rounded p-1.5 hover:bg-white/10"
+          >
+            <ChevronLeft size={18} />
+          </button>
+          <TypeBadge type={item.type} />
+          <span className="font-mono text-[13px] font-semibold text-white">{item.itemKey}</span>
+          <span className="h-5 w-px bg-white/25" />
+          <h1 className="truncate text-[15px] font-semibold">{item.title}</h1>
+          <div className="flex-1" />
+
+          {/* Watcher count badge */}
+          {watchers.length > 0 && (
+            <div
+              className="flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium"
+              style={{ backgroundColor: 'rgba(255,255,255,0.12)', color: '#d7e4f7' }}
+              title={`${watchers.length} watcher${watchers.length !== 1 ? 's' : ''}`}
+            >
+              <Users size={12} />
+              <span>{watchers.length}</span>
+            </div>
+          )}
+
+          {/* Watch / Unwatch button */}
+          <button
+            aria-label={isWatching ? 'Unwatch this item' : 'Watch this item'}
+            title={
+              isWatching
+                ? 'Unwatch — stop receiving notifications'
+                : 'Watch — get notified on changes'
+            }
+            onClick={() => void toggleWatch.mutate(isWatching)}
+            disabled={toggleWatch.isPending}
+            className="flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[11px] font-medium transition-colors"
+            style={{
+              backgroundColor: isWatching ? 'rgba(255,255,255,0.18)' : 'transparent',
+              color: isWatching ? 'white' : '#d7e4f7',
+              border: '1px solid',
+              borderColor: isWatching ? 'rgba(255,255,255,0.3)' : 'transparent',
+            }}
+          >
+            {isWatching ? <BellOff size={14} /> : <Bell size={14} />}
+            <span>{isWatching ? 'Watching' : 'Watch'}</span>
+          </button>
+
+          <button aria-label="More actions" className="rounded p-1.5 hover:bg-white/10">
+            <MoreHorizontal size={17} />
+          </button>
+        </div>
+
+        {/* Tab row */}
+        <div className="flex h-16 items-stretch gap-2 px-5">
+          {tabs.map(({ id, icon, label }) => (
+            <button
+              key={id}
+              onClick={() => setActiveTab(id)}
+              className="flex flex-col items-center justify-center gap-1 px-4 text-[11px] font-medium"
+              style={{
+                backgroundColor: activeTab === id ? '#2f6fc5' : 'transparent',
+                color: activeTab === id ? 'white' : '#d7e4f7',
+              }}
+            >
+              <span className="flex h-5 items-center justify-center">{icon}</span>
+              <span>{label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Content area */}
+      <div className="flex min-h-0 flex-1" style={{ backgroundColor: '#e7ebf0' }}>
+        {/* Main content */}
+        <main className="flex-1 overflow-y-auto p-6" style={{ backgroundColor: '#f3f5f8' }}>
+          {updateError && (
+            <div
+              className="mb-4 rounded px-3 py-2 text-[11px]"
+              style={{ backgroundColor: '#fef2f2', border: '1px solid #fcc5c0', color: '#b91c1c' }}
+            >
+              {updateError}
+            </div>
+          )}
+
+          {activeTab === 'details' && (
+            <DetailsTab
+              item={item}
+              onUpdate={(patch) => void patchItem(patch as Record<string, unknown>)}
+              readOnly={readOnly}
+            />
+          )}
+          {activeTab === 'tasks' && !isTask && <TasksTab workItemId={item.id} />}
+          {activeTab === 'history' && <HistoryTab workItemId={item.id} />}
+        </main>
+
+        {/* Sidebar — only on details tab */}
+        {activeTab === 'details' && (
+          <DetailSidebar
+            item={item}
+            onUpdate={(patch) => void patchItem(patch as Record<string, unknown>)}
+            updating={updateMutation.isPending}
+            readOnly={readOnly}
+            collapsed={sidebarCollapsed}
+            onToggleCollapse={toggleSidebar}
+          />
+        )}
+        {/* Collapsed sidebar tab — re-open handle when sidebar is hidden */}
+        {activeTab === 'details' && sidebarCollapsed && (
+          <button
+            onClick={toggleSidebar}
+            title="Show sidebar"
+            className="flex w-6 shrink-0 items-center justify-center transition-colors hover:bg-[#e0e4ea]"
+            style={{ borderLeft: '1px solid #d7dde7', backgroundColor: '#f3f5f8' }}
+          >
+            <PanelRightOpen size={14} style={{ color: '#6b7280' }} />
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── useWorkItemByKey hook ─────────────────────────────────────────────────────
+// The API provides GET /v1/work-items?projectId&q=itemKey lookup.
+// We use a lightweight search to resolve the work item from the route key.
+
+import { useQuery } from '@tanstack/react-query'
+import { apiClient } from '@/shared/api/http-client'
+import { apiErrorMessage } from '@/shared/api/api-error'
+import { useAppContext } from '@/shared/lib/stores/app-context.store'
+
+function useWorkItemByKey(itemKey: string) {
+  const { project } = useAppContext()
+  const projectId = project?.projectId
+  return useQuery({
+    queryKey: ['work-item-by-key', itemKey, projectId],
+    queryFn: async (): Promise<WorkItem | null> => {
+      if (!projectId) return null
+      const { data, error, response } = await apiClient.GET('/v1/work-items', {
+        params: {
+          query: { projectId, q: itemKey, limit: 5 } as {
+            projectId: string
+            q?: string
+            limit?: number
+          },
+        },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      const items = (data as { data?: WorkItem[] } | undefined)?.data ?? []
+      return items.find((i) => i.itemKey === itemKey) ?? null
+    },
+    enabled: !!itemKey && !!projectId,
+    staleTime: 15_000,
+  })
+}

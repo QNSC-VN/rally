@@ -1,0 +1,820 @@
+import { useState } from 'react'
+import {
+  AlertTriangle,
+  Archive,
+  Edit3,
+  FolderKanban,
+  Loader2,
+  MoreHorizontal,
+  Plus,
+  RotateCcw,
+  Search,
+  User,
+  Users,
+  UsersRound,
+  X,
+} from 'lucide-react'
+import { toast } from 'sonner'
+import { BRAND } from '@/shared/config/brand'
+import { useAppContext } from '@/shared/lib/stores/app-context.store'
+import { useAuthStore } from '@/shared/lib/stores/auth.store'
+import { useProjects, useUpdateProject, useCreateProject } from '@/features/projects/api'
+import type { Project } from '@/features/projects/api'
+
+/** Extract a human-readable message from an API error response. */
+function parseApiError(err: unknown): string {
+  if (err instanceof Error) return err.message
+  return 'An unexpected error occurred'
+}
+
+// ── Archive Confirmation modal ───────────────────────────────────────────────
+// BA SRS UC-PRJ-03: UI must warn about impact and require confirming project key.
+
+function ArchiveConfirmModal({
+  project,
+  onConfirm,
+  onClose,
+  isPending,
+}: {
+  project: Project
+  onConfirm: () => void
+  onClose: () => void
+  isPending: boolean
+}) {
+  const [typed, setTyped] = useState('')
+  const confirmed = typed.trim().toUpperCase() === project.key.toUpperCase()
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}
+    >
+      <div
+        className="w-[440px] overflow-hidden rounded-lg bg-white shadow-2xl"
+        style={{ border: `1px solid ${BRAND.border}` }}
+      >
+        {/* Header */}
+        <div
+          className="flex items-center gap-3 px-5 py-4"
+          style={{
+            backgroundColor: BRAND.dangerBg,
+            borderBottom: `1px solid ${BRAND.dangerBorder}`,
+          }}
+        >
+          <AlertTriangle size={18} style={{ color: BRAND.danger, flexShrink: 0 }} />
+          <div>
+            <p className="text-[13px] font-semibold" style={{ color: BRAND.danger }}>
+              Archive project
+            </p>
+            <p className="text-[11px]" style={{ color: '#7f1d1d' }}>
+              This project will become read-only. Work items and sprints will still be visible.
+            </p>
+          </div>
+        </div>
+
+        <div className="p-5">
+          {/* Impact summary */}
+          <div
+            className="mb-4 rounded p-3 text-[11px]"
+            style={{
+              backgroundColor: BRAND.surfaceSubtle,
+              border: `1px solid ${BRAND.borderSubtle}`,
+            }}
+          >
+            <p className="font-semibold" style={{ color: BRAND.textPrimary }}>
+              What will happen:
+            </p>
+            <ul className="mt-1.5 space-y-0.5" style={{ color: BRAND.textSecondary }}>
+              <li>
+                · Project status changes to <strong>Archived</strong>
+              </li>
+              <li>· No new work items, sprints, or releases can be created</li>
+              <li>· Existing data remains accessible in read-only mode</li>
+              <li>· The project will be hidden from the Active filter</li>
+            </ul>
+          </div>
+
+          {/* Key confirmation */}
+          <label
+            className="mb-1.5 block text-[11px] font-semibold"
+            style={{ color: BRAND.textSecondary }}
+          >
+            Type{' '}
+            <span className="font-mono font-bold" style={{ color: BRAND.textPrimary }}>
+              {project.key}
+            </span>{' '}
+            to confirm
+          </label>
+          <input
+            autoFocus
+            type="text"
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            placeholder={project.key}
+            className="w-full rounded px-3 py-2 font-mono text-[12px] focus:ring-1 focus:outline-none"
+            style={{
+              border: `1px solid ${confirmed ? BRAND.dangerBorder : BRAND.border}`,
+              color: BRAND.textPrimary,
+            }}
+          />
+
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded px-3.5 py-1.5 text-[11px] font-medium"
+              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={onConfirm}
+              disabled={!confirmed || isPending}
+              className="flex items-center gap-1.5 rounded px-3.5 py-1.5 text-[11px] font-semibold text-white disabled:opacity-50"
+              style={{ backgroundColor: BRAND.danger }}
+            >
+              {isPending && <Loader2 size={12} className="animate-spin" />}
+              Archive project
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Status badge ──────────────────────────────────────────────────────────────
+
+function ProjectStatusBadge({ status }: { status: 'active' | 'archived' }) {
+  const active = status === 'active'
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] font-semibold"
+      style={{
+        color: active ? BRAND.success : '#64748b',
+        backgroundColor: active ? BRAND.successBg : '#f1f5f9',
+        border: `1px solid ${active ? BRAND.successBorder : BRAND.border}`,
+      }}
+    >
+      <span
+        className="h-1.5 w-1.5 rounded-full"
+        style={{ backgroundColor: active ? '#2a8c3f' : '#94a3b8' }}
+      />
+      {active ? 'Active' : 'Archived'}
+    </span>
+  )
+}
+
+// ── Edit Project modal ───────────────────────────────────────────────────────
+
+function EditProjectModal({
+  project,
+  workspaceId,
+  onClose,
+}: {
+  project: Project
+  workspaceId: string
+  onClose: () => void
+}) {
+  const [name, setName] = useState(project.name)
+  const [desc, setDesc] = useState(project.description ?? '')
+  const { mutateAsync, isPending } = useUpdateProject(workspaceId)
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!name.trim()) return
+    try {
+      await mutateAsync({
+        id: project.id,
+        input: { name: name.trim(), description: desc.trim() || undefined },
+      })
+      toast.success(`Project "${name}" updated`)
+      onClose()
+    } catch (err) {
+      const msg = parseApiError(err)
+      toast.error(msg)
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}
+    >
+      <div
+        className="w-[440px] overflow-hidden rounded-lg bg-white shadow-2xl"
+        style={{ border: `1px solid ${BRAND.border}` }}
+      >
+        <div
+          className="flex items-center justify-between px-5 py-3.5"
+          style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
+        >
+          <div>
+            <h2 className="text-[13px] font-semibold" style={{ color: BRAND.textPrimary }}>
+              Edit Project
+            </h2>
+            <p className="text-[10px]" style={{ color: BRAND.textMuted }}>
+              Key: <span className="font-mono font-semibold">{project.key}</span> · immutable
+            </p>
+          </div>
+          <button onClick={onClose} className="rounded p-0.5 hover:bg-[#f4f6f9]" aria-label="Close">
+            <X size={16} style={{ color: BRAND.textMuted }} />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-4 p-5">
+          <div>
+            <label
+              className="mb-1 block text-[11px] font-semibold"
+              style={{ color: BRAND.textSecondary }}
+            >
+              Project Name <span style={{ color: BRAND.danger }}>*</span>
+            </label>
+            <input
+              autoFocus
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              className="w-full rounded px-3 py-2 text-[12px] focus:ring-1 focus:outline-none"
+              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textPrimary }}
+            />
+          </div>
+          <div>
+            <label
+              className="mb-1 block text-[11px] font-semibold"
+              style={{ color: BRAND.textSecondary }}
+            >
+              Description
+            </label>
+            <textarea
+              value={desc}
+              onChange={(e) => setDesc(e.target.value)}
+              rows={3}
+              className="w-full resize-none rounded px-3 py-2 text-[12px] focus:ring-1 focus:outline-none"
+              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textPrimary }}
+            />
+          </div>
+          {/* Project Lead — read-only display; member picker deferred to Members screen */}
+          <div>
+            <label
+              className="mb-1 block text-[11px] font-semibold"
+              style={{ color: BRAND.textSecondary }}
+            >
+              Project Lead
+            </label>
+            <div
+              className="flex items-center gap-2 rounded px-3 py-2 text-[12px]"
+              style={{
+                border: `1px solid ${BRAND.border}`,
+                backgroundColor: BRAND.surfaceHover,
+                color: BRAND.textSecondary,
+              }}
+            >
+              <User size={12} style={{ color: BRAND.textMuted, flexShrink: 0 }} />
+              <span className="truncate">{project.leadName ?? '—'}</span>
+            </div>
+            <p className="mt-0.5 text-[10px]" style={{ color: BRAND.textMuted }}>
+              Change via Project Members screen
+            </p>
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded px-3.5 py-1.5 text-[11px] font-medium"
+              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isPending || !name.trim()}
+              className="flex items-center gap-1.5 rounded px-3.5 py-1.5 text-[11px] font-semibold text-white disabled:opacity-60"
+              style={{ backgroundColor: BRAND.primary }}
+            >
+              {isPending && <Loader2 size={12} className="animate-spin" />}
+              Save Changes
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ── New Project modal ─────────────────────────────────────────────────────────
+
+function NewProjectModal({ workspaceId, onClose }: { workspaceId: string; onClose: () => void }) {
+  const [name, setName] = useState('')
+  const [key, setKey] = useState('')
+  const [desc, setDesc] = useState('')
+  const { mutateAsync, isPending } = useCreateProject()
+  const { user } = useAuthStore()
+
+  const autoKey = (n: string) =>
+    n
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, '')
+      .slice(0, 4)
+
+  function handleNameChange(v: string) {
+    setName(v)
+    if (!key || key === autoKey(name)) {
+      setKey(autoKey(v))
+    }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    const trimmedKey = key.trim().toUpperCase()
+    if (!name.trim() || !trimmedKey) return
+    if (trimmedKey.length < 2) {
+      toast.error('Project key must be at least 2 characters')
+      return
+    }
+    try {
+      await mutateAsync({
+        workspaceId,
+        name: name.trim(),
+        key: trimmedKey,
+        description: desc.trim() || undefined,
+        leadId: user?.id,
+      })
+      toast.success(`Project "${name}" created`)
+      onClose()
+    } catch (err) {
+      const msg = parseApiError(err)
+      toast.error(msg)
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}
+    >
+      <div
+        className="w-[440px] overflow-hidden rounded-lg bg-white shadow-2xl"
+        style={{ border: `1px solid ${BRAND.border}` }}
+      >
+        <div
+          className="flex items-center justify-between px-5 py-3.5"
+          style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
+        >
+          <h2 className="text-[13px] font-semibold" style={{ color: BRAND.textPrimary }}>
+            New Project
+          </h2>
+          <button onClick={onClose} className="rounded p-0.5 hover:bg-[#f4f6f9]" aria-label="Close">
+            <X size={16} style={{ color: BRAND.textMuted }} />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-4 p-5">
+          <div>
+            <label
+              className="mb-1 block text-[11px] font-semibold"
+              style={{ color: BRAND.textSecondary }}
+            >
+              Project Name <span style={{ color: BRAND.danger }}>*</span>
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => handleNameChange(e.target.value)}
+              placeholder="e.g. NX Platform"
+              required
+              className="w-full rounded px-3 py-2 text-[12px] focus:ring-1 focus:outline-none"
+              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textPrimary }}
+            />
+          </div>
+          <div>
+            <label
+              className="mb-1 block text-[11px] font-semibold"
+              style={{ color: BRAND.textSecondary }}
+            >
+              Key <span style={{ color: BRAND.danger }}>*</span>
+              <span className="ml-1 font-normal" style={{ color: BRAND.textMuted }}>
+                (2–6 uppercase letters)
+              </span>
+            </label>
+            <input
+              type="text"
+              value={key}
+              onChange={(e) =>
+                setKey(
+                  e.target.value
+                    .toUpperCase()
+                    .replace(/[^A-Z0-9]/g, '')
+                    .slice(0, 6),
+                )
+              }
+              placeholder="NXP"
+              required
+              className="w-full rounded px-3 py-2 font-mono text-[12px] focus:ring-1 focus:outline-none"
+              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textPrimary }}
+            />
+          </div>
+          <div>
+            <label
+              className="mb-1 block text-[11px] font-semibold"
+              style={{ color: BRAND.textSecondary }}
+            >
+              Project Lead <span style={{ color: BRAND.danger }}>*</span>
+            </label>
+            <div
+              className="flex items-center gap-2 rounded px-3 py-2"
+              style={{ border: `1px solid ${BRAND.border}`, backgroundColor: BRAND.surfaceHover }}
+            >
+              <User size={13} style={{ color: BRAND.textMuted }} />
+              <span className="text-[12px]" style={{ color: BRAND.textPrimary }}>
+                {user?.displayName ?? '—'}
+              </span>
+              <span className="ml-1 text-[10px]" style={{ color: BRAND.textMuted }}>
+                (you)
+              </span>
+            </div>
+          </div>
+          <div>
+            <label
+              className="mb-1 block text-[11px] font-semibold"
+              style={{ color: BRAND.textSecondary }}
+            >
+              Description
+            </label>
+            <textarea
+              value={desc}
+              onChange={(e) => setDesc(e.target.value)}
+              placeholder="Brief description of this project…"
+              rows={3}
+              className="w-full resize-none rounded px-3 py-2 text-[12px] focus:ring-1 focus:outline-none"
+              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textPrimary }}
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded px-3.5 py-1.5 text-[11px] font-medium"
+              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isPending || !name.trim() || !key.trim()}
+              className="flex items-center gap-1.5 rounded px-3.5 py-1.5 text-[11px] font-semibold text-white disabled:opacity-60"
+              style={{ backgroundColor: BRAND.primary }}
+            >
+              {isPending && <Loader2 size={12} className="animate-spin" />}
+              Create Project
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ── Page ─────────────────────────────────────────────────────────────────────
+
+export function ProjectsPage() {
+  const { workspace } = useAppContext()
+  const workspaceId = workspace?.workspaceId
+  const { user: currentUser } = useAuthStore()
+
+  const { data: projects = [], isLoading } = useProjects(workspaceId)
+  const updateProject = useUpdateProject(workspaceId)
+
+  const [search, setSearch] = useState('')
+  const [filter, setFilter] = useState<'All' | 'active' | 'archived'>('active')
+  const [openMenu, setOpenMenu] = useState<string | null>(null)
+  const [showNewModal, setShowNewModal] = useState(false)
+  const [editingProject, setEditingProject] = useState<Project | null>(null)
+  const [archivingProject, setArchivingProject] = useState<Project | null>(null)
+
+  const filtered = projects.filter(
+    (p) =>
+      (filter === 'All' || p.status === filter) &&
+      (p.name.toLowerCase().includes(search.toLowerCase()) ||
+        p.key.toLowerCase().includes(search.toLowerCase())),
+  )
+
+  async function toggleArchive(project: Project) {
+    if (project.status === 'active') {
+      // Archive requires confirmation (BA SRS UC-PRJ-03)
+      setArchivingProject(project)
+      setOpenMenu(null)
+      return
+    }
+    // Restore doesn't need confirmation
+    try {
+      await updateProject.mutateAsync({ id: project.id, input: { status: 'active' } })
+      toast.success(`"${project.name}" restored`)
+    } catch (err) {
+      const msg = parseApiError(err)
+      toast.error(msg)
+    }
+    setOpenMenu(null)
+  }
+
+  async function confirmArchive() {
+    if (!archivingProject) return
+    try {
+      await updateProject.mutateAsync({ id: archivingProject.id, input: { status: 'archived' } })
+      toast.success(`"${archivingProject.name}" archived`)
+      setArchivingProject(null)
+    } catch (err) {
+      const msg = parseApiError(err)
+      toast.error(msg)
+    }
+  }
+
+  const activeCount = projects.filter((p) => p.status === 'active').length
+
+  return (
+    <div className="flex flex-1 flex-col" style={{ backgroundColor: BRAND.pageBg }}>
+      {showNewModal && workspaceId && (
+        <NewProjectModal workspaceId={workspaceId} onClose={() => setShowNewModal(false)} />
+      )}
+      {editingProject && workspaceId && (
+        <EditProjectModal
+          project={editingProject}
+          workspaceId={workspaceId}
+          onClose={() => setEditingProject(null)}
+        />
+      )}
+      {archivingProject && (
+        <ArchiveConfirmModal
+          project={archivingProject}
+          onConfirm={() => void confirmArchive()}
+          onClose={() => setArchivingProject(null)}
+          isPending={updateProject.isPending}
+        />
+      )}
+
+      {/* Header */}
+      <div
+        className="flex shrink-0 items-center justify-between bg-white px-6 py-3"
+        style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
+      >
+        <div>
+          <h1 className="text-[14px] font-semibold" style={{ color: BRAND.textPrimary }}>
+            Projects
+          </h1>
+          <p className="text-[11px]" style={{ color: BRAND.textMuted }}>
+            {workspace?.workspaceName ?? 'Workspace'} · {activeCount} active{' '}
+            {activeCount === 1 ? 'project' : 'projects'}
+          </p>
+        </div>
+        <button
+          onClick={() => setShowNewModal(true)}
+          className="flex items-center gap-1.5 rounded px-3 py-1.5 text-[11px] font-semibold text-white transition-opacity hover:opacity-90"
+          style={{ backgroundColor: BRAND.primary }}
+        >
+          <Plus size={13} />
+          New Project
+        </button>
+      </div>
+
+      {/* Toolbar */}
+      <div
+        className="flex shrink-0 items-center gap-3 bg-white px-6 py-2"
+        style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
+      >
+        {/* Search */}
+        <div className="relative">
+          <Search
+            size={13}
+            className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2"
+            style={{ color: BRAND.textMuted }}
+          />
+          <input
+            type="search"
+            placeholder="Search projects…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-52 rounded py-1.5 pr-3 pl-8 text-[11px] focus:ring-1 focus:outline-none"
+            style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textPrimary }}
+          />
+        </div>
+
+        {/* Status filter tabs */}
+        <div className="flex items-center gap-1">
+          {(['All', 'active', 'archived'] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setFilter(tab)}
+              className="rounded px-2.5 py-1 text-[11px] font-medium capitalize transition-colors"
+              style={{
+                backgroundColor: filter === tab ? BRAND.primaryLighter : 'transparent',
+                color: filter === tab ? BRAND.primary : BRAND.textSecondary,
+              }}
+            >
+              {tab === 'All' ? 'All' : tab === 'active' ? 'Active' : 'Archived'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="p-4">
+        <div
+          className="overflow-hidden rounded bg-white"
+          style={{ border: `1px solid ${BRAND.borderSubtle}` }}
+        >
+          {/* Table header */}
+          <div
+            className="flex h-7 items-center gap-3 px-4 select-none"
+            style={{
+              backgroundColor: BRAND.surfaceHover,
+              borderBottom: `1px solid ${BRAND.borderSubtle}`,
+            }}
+          >
+            {(
+              [
+                ['w-16 shrink-0', 'Key'],
+                ['flex-1 min-w-0', 'Project Name'],
+                ['w-20 shrink-0', 'Status'],
+                ['w-28 shrink-0', 'Lead'],
+                ['w-16 shrink-0', 'Members'],
+                ['w-16 shrink-0', 'Teams'],
+                ['w-36 shrink-0', 'Last Updated'],
+                ['w-8 shrink-0', ''],
+              ] as [string, string][]
+            ).map(([cls, label]) => (
+              <div
+                key={label}
+                className={`${cls} text-[9px] font-semibold tracking-widest uppercase`}
+                style={{ color: BRAND.textMuted }}
+              >
+                {label}
+              </div>
+            ))}
+          </div>
+
+          {/* Loading state */}
+          {isLoading && (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 size={22} className="animate-spin" style={{ color: BRAND.textMuted }} />
+            </div>
+          )}
+
+          {/* Empty state */}
+          {!isLoading && filtered.length === 0 && (
+            <div
+              className="flex flex-col items-center justify-center py-16"
+              style={{ color: BRAND.textMuted }}
+            >
+              <FolderKanban size={32} strokeWidth={1.25} className="mb-3 opacity-40" />
+              <p className="text-[13px] font-medium" style={{ color: BRAND.textSecondary }}>
+                No projects found
+              </p>
+              <p className="mt-1 text-[11px]">Try adjusting your search or filter.</p>
+            </div>
+          )}
+
+          {/* Rows */}
+          {!isLoading &&
+            filtered.map((project) => (
+              <div
+                key={project.id}
+                className="relative flex h-12 cursor-default items-center gap-3 px-4 transition-colors hover:bg-[#f7f8fa]"
+                style={{
+                  borderBottom: `1px solid ${BRAND.borderInner}`,
+                  opacity: project.status === 'archived' ? 0.7 : 1,
+                }}
+              >
+                {/* Key */}
+                <div className="w-16 shrink-0">
+                  <span
+                    className="inline-flex h-5 items-center rounded-sm px-1.5 font-mono text-[10px] font-semibold"
+                    style={{ backgroundColor: '#e5ebf4', color: BRAND.primary }}
+                  >
+                    {project.key}
+                  </span>
+                </div>
+
+                {/* Name + desc */}
+                <div className="min-w-0 flex-1">
+                  <div
+                    className="truncate text-[12px] font-semibold"
+                    style={{ color: BRAND.textPrimary }}
+                  >
+                    {project.name}
+                  </div>
+                  {project.description && (
+                    <div className="truncate text-[10px]" style={{ color: BRAND.textMuted }}>
+                      {project.description}
+                    </div>
+                  )}
+                </div>
+
+                {/* Status */}
+                <div className="w-20 shrink-0">
+                  <ProjectStatusBadge status={project.status} />
+                </div>
+
+                {/* Lead */}
+                <div
+                  className="flex w-28 shrink-0 items-center gap-1.5 text-[11px]"
+                  style={{ color: BRAND.textSecondary }}
+                >
+                  {project.leadId ? (
+                    <>
+                      <User size={11} style={{ color: BRAND.textMuted }} />
+                      <span className="truncate">
+                        {project.leadName ??
+                          (project.leadId === currentUser?.id ? currentUser.displayName : '—')}
+                      </span>
+                    </>
+                  ) : (
+                    <span style={{ color: BRAND.textMuted }}>—</span>
+                  )}
+                </div>
+
+                {/* Members */}
+                <div className="w-16 shrink-0 text-[11px]" style={{ color: BRAND.textSecondary }}>
+                  {project.memberCount > 0 ? (
+                    <span className="inline-flex items-center gap-1">
+                      <Users size={11} style={{ color: BRAND.textMuted }} />
+                      {project.memberCount}
+                    </span>
+                  ) : (
+                    <span style={{ color: BRAND.textMuted }}>—</span>
+                  )}
+                </div>
+
+                {/* Teams */}
+                <div className="w-16 shrink-0 text-[11px]" style={{ color: BRAND.textSecondary }}>
+                  {project.teamCount > 0 ? (
+                    <span className="inline-flex items-center gap-1">
+                      <UsersRound size={11} style={{ color: BRAND.textMuted }} />
+                      {project.teamCount}
+                    </span>
+                  ) : (
+                    <span style={{ color: BRAND.textMuted }}>—</span>
+                  )}
+                </div>
+
+                {/* Updated */}
+                <div className="w-36 shrink-0 text-[11px]" style={{ color: BRAND.textSecondary }}>
+                  {new Date(project.updatedAt).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                  })}
+                </div>
+
+                {/* Row actions */}
+                <div className="relative w-8 shrink-0">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setOpenMenu(openMenu === project.id ? null : project.id)
+                    }}
+                    className="flex h-6 w-6 items-center justify-center rounded hover:bg-[#e5ebf4]"
+                    style={{ color: BRAND.textMuted }}
+                    aria-label="Project actions"
+                  >
+                    <MoreHorizontal size={14} />
+                  </button>
+
+                  {openMenu === project.id && (
+                    <div
+                      className="absolute top-7 right-0 z-20 w-44 overflow-hidden rounded bg-white py-1 shadow-lg"
+                      style={{ border: `1px solid ${BRAND.border}` }}
+                    >
+                      <button
+                        className="flex w-full items-center gap-2 px-3 py-2 text-[11px] hover:bg-[#f4f6f9]"
+                        style={{ color: BRAND.textPrimary }}
+                        onClick={() => {
+                          setEditingProject(project)
+                          setOpenMenu(null)
+                        }}
+                      >
+                        <Edit3 size={12} style={{ color: BRAND.textSecondary }} />
+                        Edit project
+                      </button>
+                      <button
+                        className="flex w-full items-center gap-2 px-3 py-2 text-[11px] hover:bg-[#f4f6f9]"
+                        style={{
+                          color: project.status === 'active' ? BRAND.danger : BRAND.textPrimary,
+                        }}
+                        onClick={() => void toggleArchive(project)}
+                      >
+                        {project.status === 'active' ? (
+                          <Archive size={12} style={{ color: BRAND.danger }} />
+                        ) : (
+                          <RotateCcw size={12} style={{ color: BRAND.textSecondary }} />
+                        )}
+                        {project.status === 'active' ? 'Archive project' : 'Restore project'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+        </div>
+      </div>
+    </div>
+  )
+}

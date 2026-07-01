@@ -1,0 +1,176 @@
+# =============================================================================
+# Security — container CVE scan + SAST
+#
+# Runs on every PR and every push to main (same cadence as CI), plus a weekly
+# scheduled run to catch newly disclosed CVEs even without a code push.
+#
+# Kept separate from ci.yml so it can be:
+#   • Independently re-run (no need to re-run unit tests to re-scan)
+#   • Independently disabled (rename to security.yml.disabled)
+#   • Independently required (branch protection can gate on just this check)
+#
+# Both jobs report findings to GitHub Security → Code Scanning dashboard.
+# =============================================================================
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 4 * * 1" # weekly Monday 04:00 UTC — catch new CVEs between pushes
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22"
+  PNPM_VERSION: "10.33.2"
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # 0. Gitleaks — scan repo history for committed secrets.
+  #    Cheap, AWS-free, and a good fit for the shared gitops action.
+  # ─────────────────────────────────────────────────────────────────────────
+  secrets:
+    name: Secret scan (Gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Gitleaks CLI (MIT licence — free for org repos).
+      # The paid licence applies only to the gitleaks/gitleaks-action wrapper,
+      # NOT to the CLI binary itself.  Running the CLI directly avoids the
+      # licence requirement while keeping pattern-based scanning that flags
+      # secrets regardless of whether they have been rotated (unlike --only-verified).
+      - name: Install Gitleaks
+        env:
+          GITLEAKS_VERSION: "8.21.2"
+        run: |
+          curl -sSfL \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C /usr/local/bin gitleaks
+          gitleaks version
+
+      - name: Scan git history for secrets
+        run: gitleaks detect --source . --log-opts="--all" --no-banner --exit-code 1
+
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: critical
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 1. Trivy — scan the built Docker image for OS + library CVEs.
+  #    Blocks on CRITICAL severity. HIGH is reported but non-blocking until
+  #    a fix is available (to avoid blocking on upstream supply chain issues).
+  # ─────────────────────────────────────────────────────────────────────────
+  trivy:
+    name: Container security scan (Trivy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      security-events: write # upload SARIF to GitHub Security tab
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build API image for scanning
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: api
+          push: false
+          load: true
+          tags: rally-api:scan
+          cache-from: type=gha,scope=api # reuses cache from CI build job if available
+
+      # Two-pass scan: CRITICAL blocks the build; HIGH is reported only.
+      # ignore-unfixed: true — skip CVEs with no upstream fix (supply chain noise).
+      - name: Scan image (CRITICAL — blocks build)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: rally-api:scan
+          format: table
+          severity: CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+
+      - name: Scan image (HIGH — report only)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: rally-api:scan
+          format: sarif
+          output: trivy-results.sarif
+          severity: HIGH
+          exit-code: "0"
+          ignore-unfixed: true
+
+      - name: Upload Trivy SARIF to GitHub Security
+        if: always() # upload even if scan failed
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-container
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 2. CodeQL — static application security testing (SAST).
+  #    Scans TypeScript source for injection, path traversal, prototype
+  #    pollution, and other OWASP Top 10 patterns.
+  # ─────────────────────────────────────────────────────────────────────────
+  codeql:
+    name: CodeQL SAST
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialise CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          queries: security-and-quality
+
+      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+
+      - name: Build for CodeQL
+        run: pnpm build:api
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: codeql-typescript

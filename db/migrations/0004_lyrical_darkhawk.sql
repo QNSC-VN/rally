@@ -1,0 +1,1 @@
+CREATE INDEX "ix_auth_sessions_active_user" ON "identity"."auth_sessions" USING btree ("user_id") WHERE is_revoked = false;

@@ -1,0 +1,335 @@
+# =============================================================================
+# CI — fast quality gates on every PR and push to main
+# Gate: lint → typecheck → unit tests → e2e tests → docker build → openapi diff
+# Security scans (Trivy, CodeQL) live in security.yml — independently runnable.
+# =============================================================================
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '22'
+  PNPM_VERSION: '10.33.2'
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # 1. Lint + typecheck (fast gate — no DB needed)
+  # ─────────────────────────────────────────────────────────────────────────
+  quality:
+    name: Lint & typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: npx tsc -p tsconfig.build.json --noEmit
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 2. Unit + e2e tests (needs Postgres + Redis)
+  # ─────────────────────────────────────────────────────────────────────────
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rally_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+
+      # Generate a fresh ephemeral Ed25519 keypair for tests.
+      # No stored secret needed — keys are test-only, discarded after the run.
+      - name: Generate CI JWT keypair
+        id: jwt
+        run: |
+          node - << 'EOF'
+          const { generateKeyPairSync } = require('crypto');
+          const { privateKey, publicKey } = generateKeyPairSync('ed25519', {
+            privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+            publicKeyEncoding:  { type: 'spki',  format: 'pem' },
+          });
+          const b64 = (s) => Buffer.from(s).toString('base64');
+          const fs  = require('fs');
+          fs.appendFileSync(process.env.GITHUB_ENV,
+            `CI_JWT_PRIVATE_KEY=${b64(privateKey)}\nCI_JWT_PUBLIC_KEY=${b64(publicKey)}\n`);
+          EOF
+
+      - name: Run migrations
+        run: pnpm db:migrate
+        env:
+          DATABASE_MIGRATION_URL: postgresql://postgres:postgres@localhost:5432/rally_test?sslmode=disable
+
+      - name: Unit tests (with coverage)
+        run: pnpm test:cov
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rally_test?sslmode=disable
+          REDIS_URL: redis://localhost:6379
+          JWT_PRIVATE_KEY: ${{ env.CI_JWT_PRIVATE_KEY }}
+          JWT_PUBLIC_KEY: ${{ env.CI_JWT_PUBLIC_KEY }}
+          JWT_ISSUER: rally-api
+          JWT_AUDIENCE: rally-web
+          JWT_ACCESS_EXPIRY: 15m
+          JWT_REFRESH_EXPIRY: 30d
+          CSRF_SECRET: ci-test-csrf-secret-min-32-characters-ok
+
+      - name: E2E tests
+        run: pnpm test:e2e
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rally_test?sslmode=disable
+          DATABASE_MIGRATION_URL: postgresql://postgres:postgres@localhost:5432/rally_test?sslmode=disable
+          REDIS_URL: redis://localhost:6379
+          JWT_PRIVATE_KEY: ${{ env.CI_JWT_PRIVATE_KEY }}
+          JWT_PUBLIC_KEY: ${{ env.CI_JWT_PUBLIC_KEY }}
+          JWT_ISSUER: rally-api
+          JWT_AUDIENCE: rally-web
+          JWT_ACCESS_EXPIRY: 15m
+          JWT_REFRESH_EXPIRY: 30d
+          CSRF_SECRET: ci-test-csrf-secret-min-32-characters-ok
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/
+          retention-days: 7
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 3. Docker build validation (BuildKit cache, no push)
+  #    Runs after tests to avoid wasting compute on broken code.
+  # ─────────────────────────────────────────────────────────────────────────
+  build:
+    name: Docker build
+    runs-on: ubuntu-latest
+    needs: [quality, test]
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Build all three targets — fail fast if any stage breaks.
+      - name: Build api image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: api
+          push: false
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+
+      - name: Build migrator image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: migrator
+          push: false
+          cache-from: type=gha,scope=migrator
+          cache-to: type=gha,mode=max,scope=migrator
+
+      - name: Build worker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: worker
+          push: false
+          cache-from: type=gha,scope=worker
+          cache-to: type=gha,mode=max,scope=worker
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 4. OpenAPI spec — generate and check for breaking changes on PRs.
+  #    Publishes the spec as an artifact so the FE repo can download it.
+  # ─────────────────────────────────────────────────────────────────────────
+  openapi:
+    name: OpenAPI contract
+    runs-on: ubuntu-latest
+    needs: [quality]
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rally_openapi
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Fetch full history so we can compare against the base branch
+          fetch-depth: 0
+
+      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+
+      - name: Generate ephemeral JWT keys
+        run: |
+          node - << 'EOF'
+          const { generateKeyPairSync } = require('crypto');
+          const { privateKey, publicKey } = generateKeyPairSync('ed25519', {
+            privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+            publicKeyEncoding:  { type: 'spki',  format: 'pem' },
+          });
+          const b64 = (s) => Buffer.from(s).toString('base64');
+          const fs  = require('fs');
+          fs.appendFileSync(process.env.GITHUB_ENV,
+            `CI_JWT_PRIVATE_KEY=${b64(privateKey)}\nCI_JWT_PUBLIC_KEY=${b64(publicKey)}\n`);
+          EOF
+
+      - name: Run migrations
+        run: pnpm db:migrate
+        env:
+          DATABASE_MIGRATION_URL: postgresql://postgres:postgres@localhost:5432/rally_openapi?sslmode=disable
+
+      - name: Build app
+        run: pnpm build:api
+
+      - name: Start API and capture OpenAPI spec
+        run: |
+          node dist/apps/api/apps/api/src/main.js &
+          API_PID=$!
+          echo "API_PID=$API_PID" >> "$GITHUB_ENV"
+          # Wait for the API to be ready (up to 30s)
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3000/v1/healthz > /dev/null 2>&1; then
+              echo "API ready after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+          curl -sf http://localhost:3000/api/docs-json -o openapi.json
+          kill $API_PID 2>/dev/null || true
+        env:
+          NODE_ENV: development
+          PORT: 3000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rally_openapi?sslmode=disable
+          REDIS_URL: redis://localhost:6379
+          JWT_PRIVATE_KEY: ${{ env.CI_JWT_PRIVATE_KEY }}
+          JWT_PUBLIC_KEY: ${{ env.CI_JWT_PUBLIC_KEY }}
+          JWT_ISSUER: rally-api
+          JWT_AUDIENCE: rally-web
+          JWT_ACCESS_EXPIRY: 15m
+          JWT_REFRESH_EXPIRY: 30d
+          CSRF_SECRET: ci-test-csrf-secret-min-32-characters-ok
+          OTEL_ENABLED: 'false'
+          RESILIENCE_ENABLED: 'false'
+
+      - name: Upload OpenAPI spec artifact
+        uses: QNSC-VN/qnsc-ci/actions/publish-openapi-spec@v1.0.0
+        with:
+          spec-path: openapi.json
+          artifact-name: openapi-spec-${{ github.sha }}
+          retention-days: "30"
+
+      # On PRs: download the base-branch spec and diff for breaking changes.
+      - name: Download base spec
+        if: github.event_name == 'pull_request'
+        uses: dawidd6/action-download-artifact@v6
+        continue-on-error: true   # first PR has no base artifact yet
+        with:
+          workflow: ci.yml
+          branch: ${{ github.base_ref }}
+          name: openapi-spec-${{ github.event.pull_request.base.sha }}
+          path: base-spec/
+
+      - name: Breaking change check
+        if: github.event_name == 'pull_request'
+        uses: QNSC-VN/qnsc-ci/actions/validate-openapi-contract@v1.0.0
+        with:
+          current-spec-path: openapi.json
+          base-spec-path: base-spec/openapi.json
+          fail-on-breaking: "true"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 5. PR title lint — enforce Conventional Commits format on the PR title.
+  #    Release Please reads PR titles to generate changelogs, so this gate
+  #    ensures the title is machine-readable before the PR can merge.
+  # ─────────────────────────────────────────────────────────────────────────
+  pr-title:
+    name: PR title (conventional commits)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            chore
+            docs
+            style
+            refactor
+            perf
+            security
+            test
+            build
+            ci
+            deps
+            revert
+          # Require scope for security and feat changes — e.g. feat(auth): ...
+          requireScope: false
+          subjectPattern: ^(?![A-Z]).+$
+          subjectPatternError: |
+            The subject "{subject}" must start with a lowercase letter.
+
+  # Security scans (Trivy, CodeQL) → security.yml

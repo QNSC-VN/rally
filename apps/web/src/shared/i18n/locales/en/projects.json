@@ -1,0 +1,25 @@
+{
+  "title": "Projects",
+  "new": "New project",
+  "search": "Search projects...",
+  "empty": "No projects yet",
+  "emptyDesc": "Create your first project to get started.",
+  "status": {
+    "active": "Active",
+    "archived": "Archived"
+  },
+  "fields": {
+    "key": "Project key",
+    "name": "Project name",
+    "description": "Description",
+    "lead": "Project lead",
+    "teams": "Teams"
+  },
+  "actions": {
+    "archive": "Archive project",
+    "restore": "Restore project",
+    "edit": "Edit project",
+    "viewBacklog": "View backlog",
+    "viewBoard": "View board"
+  }
+}

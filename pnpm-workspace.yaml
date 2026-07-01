@@ -1,0 +1,6 @@
+# Rally monorepo — pnpm workspace.
+# The NestJS backend (apps/api, apps/worker, libs, db) is the ROOT package
+# (resolved via nest-cli.json + tsconfig paths, NestJS-monorepo style).
+# apps/web is a separate package (Vite SPA) and the only additional member.
+packages:
+  - "apps/web"

@@ -1,0 +1,170 @@
+# =============================================================================
+# Deploy — Build Vite bundle, sync to S3, invalidate CloudFront
+#
+# Triggers:
+#   develop → push to main (auto)
+#   prod    → push a semver tag  v*.*.*  (requires "production" environment
+#             approval in GitHub Settings → Environments → production)
+#
+# Authentication: GitHub OIDC → AWS IAM (no stored AWS keys).
+#
+# Prerequisites (GitHub environments "develop" and "production"):
+#   Repository secrets:
+#     AWS_ACCOUNT_ID           12-digit, no hyphens
+#     SLACK_DEPLOY_WEBHOOK     Slack / Discord incoming webhook (optional)
+#
+#   Environment variables:
+#     AWS_REGION               e.g. ap-southeast-1
+#     S3_BUCKET                e.g. rally-web-develop
+#     CLOUDFRONT_ID            CloudFront distribution ID
+#     VITE_API_URL             e.g. https://api-dev.yourdomain.com
+#     VITE_APP_ENV             development | production
+#     VITE_ENTRA_TENANT_ID     Azure AD tenant ID (or empty to disable SSO)
+#     VITE_ENTRA_CLIENT_ID     Azure AD client ID (or empty to disable SSO)
+#     APP_URL                  e.g. https://app-dev.yourdomain.com (for health)
+#
+#   Environment-scoped IAM roles (provisioned by rally-infra):
+#     rally-github-web-deploy-<env>   S3 sync + CloudFront invalidation
+# =============================================================================
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'   # semver only — no -rc suffix
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false   # never cancel a running deploy
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '22'
+  PNPM_VERSION: '10.33.2'
+  GITOPS_SHA: v1.0.2   # pin qnsc-ci
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # Resolve environment from the trigger.
+  # ─────────────────────────────────────────────────────────────────────────
+  context:
+    name: Resolve context
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      environment: ${{ steps.ctx.outputs.environment }}
+      asset_tag:   ${{ steps.ctx.outputs.asset_tag }}
+    steps:
+      - name: Determine env + tag
+        id: ctx
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            echo "environment=production" >> "$GITHUB_OUTPUT"
+            echo "asset_tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "environment=develop" >> "$GITHUB_OUTPUT"
+            echo "asset_tag=sha-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Build and deploy to S3 + CloudFront.
+  # ─────────────────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to ${{ needs.context.outputs.environment }}
+    runs-on: ubuntu-latest
+    needs: context
+    environment: ${{ needs.context.outputs.environment }}
+    timeout-minutes: 20
+    permissions:
+      id-token: write   # OIDC
+      contents: read
+
+    env:
+      ASSET_TAG:   ${{ needs.context.outputs.asset_tag }}
+      ENVIRONMENT: ${{ needs.context.outputs.environment }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1.0.2
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+
+      # ── Build Vite bundle ─────────────────────────────────────────────────
+      # All VITE_ vars are baked into the bundle at build time.
+      - name: Build
+        run: pnpm build
+        env:
+          VITE_API_URL:           ${{ vars.VITE_API_URL }}
+          VITE_APP_ENV:           ${{ vars.VITE_APP_ENV }}
+          VITE_ENTRA_TENANT_ID:   ${{ vars.VITE_ENTRA_TENANT_ID }}
+          VITE_ENTRA_CLIENT_ID:   ${{ vars.VITE_ENTRA_CLIENT_ID }}
+
+      # ── Configure AWS (OIDC) ──────────────────────────────────────────────
+      - name: Setup AWS OIDC
+        uses: QNSC-VN/qnsc-ci/actions/setup-aws-oidc@v1.0.2
+        with:
+          role-arn: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/rally-github-web-deploy-${{ env.ENVIRONMENT }}
+          region: ${{ vars.AWS_REGION }}
+
+      # ── Sync to S3 ────────────────────────────────────────────────────────
+      # Hashed assets get a 1-year immutable cache.
+      # index.html is never cached so users always load the latest entry point.
+      - name: Sync dist to S3
+        run: |
+          aws s3 sync dist/ s3://${{ vars.S3_BUCKET }}/ \
+            --delete \
+            --exclude "index.html" \
+            --cache-control "public, max-age=31536000, immutable" \
+            --region "${{ vars.AWS_REGION }}"
+
+          aws s3 cp dist/index.html s3://${{ vars.S3_BUCKET }}/index.html \
+            --cache-control "no-cache, no-store, must-revalidate" \
+            --content-type "text/html" \
+            --region "${{ vars.AWS_REGION }}"
+
+      # ── Invalidate CloudFront cache ───────────────────────────────────────
+      - name: Invalidate CloudFront cache
+        uses: QNSC-VN/qnsc-ci/actions/cloudfront-invalidate@v1.0.2
+        with:
+          distribution-id: ${{ vars.CLOUDFRONT_ID }}
+          region: us-east-1
+          wait: 'true'
+
+      # ── Health check — confirm the new version is serving ─────────────────
+      - name: Post-deploy health check
+        if: vars.APP_URL != ''
+        uses: QNSC-VN/qnsc-ci/actions/post-deploy-health-check@v1.0.2
+        with:
+          url: ${{ vars.APP_URL }}
+          expected-status: '200'
+          timeout-seconds: '60'
+
+      # ── Job summary ───────────────────────────────────────────────────────
+      - name: Deployment summary
+        if: always()
+        run: |
+          STATUS="${{ job.status }}"
+          echo "### Deploy $STATUS — $ENVIRONMENT" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Asset tag** | \`$ASSET_TAG\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **S3 bucket** | \`${{ vars.S3_BUCKET }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **CloudFront** | \`${{ vars.CLOUDFRONT_ID }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Actor** | ${{ github.actor }} |" >> "$GITHUB_STEP_SUMMARY"
+
+      # ── Notify Slack / Discord (always — even on failure) ─────────────────
+      - name: Notify deploy result
+        if: always()
+        uses: QNSC-VN/qnsc-ci/actions/notify-deploy@v1.0.2
+        with:
+          webhook-url: ${{ secrets.SLACK_DEPLOY_WEBHOOK }}
+          status: ${{ job.status == 'success' && 'success' || 'failure' }}
+          service: rally-web
+          environment: ${{ env.ENVIRONMENT }}
+          version: ${{ env.ASSET_TAG }}

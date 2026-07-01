@@ -1,0 +1,326 @@
+# =============================================================================
+# Deploy — Build, attest, migrate, then update ECS services
+#
+# Triggers:
+#   develop → push to main (auto)
+#   prod    → push a semver tag  v*.*.*  (requires "production" environment
+#             approval in GitHub Settings → Environments → production)
+#
+# Authentication: GitHub OIDC → AWS IAM (no stored AWS keys).
+#
+# Prerequisites (GitHub environments "develop" and "production"):
+#   Repository secrets:
+#     AWS_ACCOUNT_ID           12-digit, no hyphens
+#     SLACK_DEPLOY_WEBHOOK     Slack / Discord incoming webhook (optional)
+#
+#   Environment variables:
+#     AWS_REGION               e.g. ap-southeast-1
+#     ECS_CLUSTER              e.g. rally-develop
+#     ECS_API_SERVICE          e.g. api
+#     ECS_WORKER_SERVICE       e.g. worker
+#     ECS_MIGRATOR_TASK_DEF    e.g. rally-develop-migrator
+#     ECS_MIGRATOR_SUBNET      private subnet ID (comma-separated if multiple)
+#     ECS_MIGRATOR_SG          security group allowing outbound to RDS
+#     APP_URL                  e.g. https://api-dev.yourdomain.com (for health)
+#
+#   Environment-scoped IAM roles (provisioned by rally-infra):
+#     rally-github-ecr-push    build-push job (ECR push)
+#     rally-github-deploy-<env>  deploy job (ECS + task-def registration)
+# =============================================================================
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'   # semver only — no -rc suffix
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false   # never cancel a running deploy
+
+permissions:
+  contents: read
+
+env:
+  GITOPS_SHA: v1.0.5   # pin qnsc-ci to a known commit
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # Resolve environment and image tag from the trigger.
+  # ─────────────────────────────────────────────────────────────────────────
+  context:
+    name: Resolve context
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      environment: ${{ steps.ctx.outputs.environment }}
+      image_tag:   ${{ steps.ctx.outputs.image_tag }}
+    steps:
+      - name: Determine env + tag
+        id: ctx
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            echo "environment=production" >> "$GITHUB_OUTPUT"
+            echo "image_tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "environment=develop" >> "$GITHUB_OUTPUT"
+            echo "image_tag=sha-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Build all three images (api, worker, migrator), push to ECR, and attest.
+  # Runs before the environment gate so images are ready before approval.
+  # ─────────────────────────────────────────────────────────────────────────
+  build-push:
+    name: Build & push to ECR
+    runs-on: ubuntu-latest
+    needs: context
+    timeout-minutes: 45
+    permissions:
+      id-token: write       # OIDC — assume ECR push role
+      contents: read
+      attestations: write   # SLSA provenance attestation
+
+    env:
+      IMAGE_TAG: ${{ needs.context.outputs.image_tag }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup AWS OIDC + ECR login
+        id: aws
+        uses: QNSC-VN/qnsc-ci/actions/setup-aws-oidc@v1.0.5
+        with:
+          role-arn: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/rally-github-ecr-push
+          region: ${{ vars.AWS_REGION }}
+          ecr-login: 'true'
+
+      # ── Build & push API ──────────────────────────────────────────────────
+      - name: Build & push API image
+        id: build-api
+        uses: QNSC-VN/qnsc-ci/actions/build-push-ecr@v1.0.5
+        with:
+          ecr-registry: ${{ steps.aws.outputs.ecr-registry }}
+          image-name: rally-api
+          image-tag: ${{ env.IMAGE_TAG }}
+          extra-tags: latest
+          build-target: api
+          cache-scope: api
+
+      - name: Attest API image (SLSA provenance)
+        uses: QNSC-VN/qnsc-ci/actions/attest-image@v1.0.5
+        with:
+          image-ref: ${{ steps.aws.outputs.ecr-registry }}/rally-api@${{ steps.build-api.outputs.image-digest }}
+
+      # ── Build & push Worker ───────────────────────────────────────────────
+      - name: Build & push Worker image
+        id: build-worker
+        uses: QNSC-VN/qnsc-ci/actions/build-push-ecr@v1.0.5
+        with:
+          ecr-registry: ${{ steps.aws.outputs.ecr-registry }}
+          image-name: rally-worker
+          image-tag: ${{ env.IMAGE_TAG }}
+          extra-tags: latest
+          build-target: worker
+          cache-scope: worker
+
+      - name: Attest Worker image (SLSA provenance)
+        uses: QNSC-VN/qnsc-ci/actions/attest-image@v1.0.5
+        with:
+          image-ref: ${{ steps.aws.outputs.ecr-registry }}/rally-worker@${{ steps.build-worker.outputs.image-digest }}
+
+      # ── Build & push Migrator ─────────────────────────────────────────────
+      - name: Build & push Migrator image
+        id: build-migrator
+        uses: QNSC-VN/qnsc-ci/actions/build-push-ecr@v1.0.5
+        with:
+          ecr-registry: ${{ steps.aws.outputs.ecr-registry }}
+          image-name: rally-migrator
+          image-tag: ${{ env.IMAGE_TAG }}
+          extra-tags: latest
+          build-target: migrator
+          cache-scope: migrator
+
+      - name: Attest Migrator image (SLSA provenance)
+        uses: QNSC-VN/qnsc-ci/actions/attest-image@v1.0.5
+        with:
+          image-ref: ${{ steps.aws.outputs.ecr-registry }}/rally-migrator@${{ steps.build-migrator.outputs.image-digest }}
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Deploy to the resolved environment (gated by GitHub Environment rules).
+  # "production" has required manual reviewers — set in Settings → Environments.
+  # ─────────────────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy (${{ needs.context.outputs.environment }})
+    runs-on: ubuntu-latest
+    needs: [context, build-push]
+    environment: ${{ needs.context.outputs.environment }}
+    timeout-minutes: 30
+    permissions:
+      id-token: write   # OIDC — assume deploy role
+      contents: read
+
+    env:
+      IMAGE_TAG:   ${{ needs.context.outputs.image_tag }}
+      ENVIRONMENT: ${{ needs.context.outputs.environment }}
+      ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ vars.AWS_REGION }}.amazonaws.com
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup AWS OIDC (deploy role)
+        uses: QNSC-VN/qnsc-ci/actions/setup-aws-oidc@v1.0.5
+        with:
+          role-arn: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/rally-github-deploy-${{ env.ENVIRONMENT }}
+          region: ${{ vars.AWS_REGION }}
+
+      # ── Step 1: Update task definitions to use the exact SHA image tag ────
+      # This makes every deploy traceable to a specific commit in ECR.
+      - name: Update API task definition to ${{ env.IMAGE_TAG }}
+        id: api-taskdef
+        run: |
+          TASK_DEF_FAMILY="${{ vars.ECS_CLUSTER }}-${{ vars.ECS_API_SERVICE }}"
+          TASK_DEF=$(aws ecs describe-task-definition \
+            --task-definition "$TASK_DEF_FAMILY" \
+            --query 'taskDefinition' --output json)
+
+          NEW_DEF=$(echo "$TASK_DEF" | python3 -c "
+          import sys, json, os
+          td = json.load(sys.stdin)
+          tag = os.environ['IMAGE_TAG']
+          for c in td.get('containerDefinitions', []):
+              if c.get('name') == 'api':
+                  repo = c['image'].rsplit(':', 1)[0]
+                  c['image'] = f'{repo}:{tag}'
+          for f in ['taskDefinitionArn','revision','status','requiresAttributes',
+                    'placementConstraints','compatibilities','registeredAt','registeredBy']:
+              td.pop(f, None)
+          print(json.dumps(td))
+          ")
+
+          ARN=$(aws ecs register-task-definition \
+            --cli-input-json "$NEW_DEF" \
+            --query 'taskDefinition.taskDefinitionArn' --output text)
+          echo "arn=$ARN" >> "$GITHUB_OUTPUT"
+          echo "Registered: $ARN"
+
+      - name: Update Worker task definition to ${{ env.IMAGE_TAG }}
+        id: worker-taskdef
+        run: |
+          TASK_DEF_FAMILY="${{ vars.ECS_CLUSTER }}-${{ vars.ECS_WORKER_SERVICE }}"
+          TASK_DEF=$(aws ecs describe-task-definition \
+            --task-definition "$TASK_DEF_FAMILY" \
+            --query 'taskDefinition' --output json)
+
+          NEW_DEF=$(echo "$TASK_DEF" | python3 -c "
+          import sys, json, os
+          td = json.load(sys.stdin)
+          tag = os.environ['IMAGE_TAG']
+          for c in td.get('containerDefinitions', []):
+              if c.get('name') == 'worker':
+                  repo = c['image'].rsplit(':', 1)[0]
+                  c['image'] = f'{repo}:{tag}'
+          for f in ['taskDefinitionArn','revision','status','requiresAttributes',
+                    'placementConstraints','compatibilities','registeredAt','registeredBy']:
+              td.pop(f, None)
+          print(json.dumps(td))
+          ")
+
+          ARN=$(aws ecs register-task-definition \
+            --cli-input-json "$NEW_DEF" \
+            --query 'taskDefinition.taskDefinitionArn' --output text)
+          echo "arn=$ARN" >> "$GITHUB_OUTPUT"
+
+      # ── Step 2: Run migrations BEFORE any traffic shifts ─────────────────
+      - name: Run database migrations
+        uses: QNSC-VN/qnsc-ci/actions/run-db-migration@v1.0.5
+        with:
+          cluster: ${{ vars.ECS_CLUSTER }}
+          task-definition: ${{ vars.ECS_MIGRATOR_TASK_DEF }}
+          subnet-ids: ${{ vars.ECS_MIGRATOR_SUBNET }}
+          security-group-ids: ${{ vars.ECS_MIGRATOR_SG }}
+          region: ${{ vars.AWS_REGION }}
+          environment: ${{ env.ENVIRONMENT }}
+
+      # ── Step 3: Deploy API + Worker with updated task definitions ─────────
+      - name: Deploy API service
+        run: |
+          aws ecs update-service \
+            --cluster "${{ vars.ECS_CLUSTER }}" \
+            --service "${{ vars.ECS_API_SERVICE }}" \
+            --task-definition "${{ steps.api-taskdef.outputs.arn }}" \
+            --force-new-deployment \
+            --region "${{ vars.AWS_REGION }}"
+
+      - name: Deploy Worker service
+        run: |
+          aws ecs update-service \
+            --cluster "${{ vars.ECS_CLUSTER }}" \
+            --service "${{ vars.ECS_WORKER_SERVICE }}" \
+            --task-definition "${{ steps.worker-taskdef.outputs.arn }}" \
+            --force-new-deployment \
+            --region "${{ vars.AWS_REGION }}"
+
+      # ── Step 4: Wait for ECS service to stabilise, then verify image tag ────
+      # Uses `aws ecs wait services-stable` (DescribeServices only — no ListTasks
+      # needed) so this works within the deploy IAM role's existing permissions.
+      - name: Verify API deployment
+        run: |
+          echo "Waiting for ECS service to reach steady state…"
+          # aws ecs wait polls DescribeServices every 15 s, up to 40 attempts (10 min).
+          aws ecs wait services-stable \
+            --cluster "${{ vars.ECS_CLUSTER }}" \
+            --services "${{ vars.ECS_API_SERVICE }}" \
+            --region "${{ vars.AWS_REGION }}"
+          echo "✓ ECS service stable"
+
+          # Confirm the active task definition carries the expected image tag.
+          ACTIVE_TASKDEF=$(aws ecs describe-services \
+            --cluster "${{ vars.ECS_CLUSTER }}" \
+            --services "${{ vars.ECS_API_SERVICE }}" \
+            --region "${{ vars.AWS_REGION }}" \
+            --query 'services[0].taskDefinition' --output text)
+          ACTIVE_IMAGE=$(aws ecs describe-task-definition \
+            --task-definition "$ACTIVE_TASKDEF" \
+            --region "${{ vars.AWS_REGION }}" \
+            --query 'taskDefinition.containerDefinitions[0].image' --output text)
+          echo "Active task definition : $ACTIVE_TASKDEF"
+          echo "Active image           : $ACTIVE_IMAGE"
+          if ! echo "$ACTIVE_IMAGE" | grep -q "${{ env.IMAGE_TAG }}"; then
+            echo "ERROR: Expected image tag '${{ env.IMAGE_TAG }}' but active image is '$ACTIVE_IMAGE'"
+            exit 1
+          fi
+          echo "✓ Image tag verified: ${{ env.IMAGE_TAG }}"
+
+      # ── Step 5: Health check — confirm the new version serves traffic ─────
+      - name: Post-deploy health check
+        if: vars.APP_URL != ''
+        uses: QNSC-VN/qnsc-ci/actions/post-deploy-health-check@v1.0.5
+        with:
+          url: ${{ vars.APP_URL }}/v1/healthz
+          timeout-seconds: '120'
+
+      # ── Step 6: Job summary ───────────────────────────────────────────────
+      - name: Deployment summary
+        if: always()
+        run: |
+          STATUS="${{ job.status }}"
+          echo "### Deploy $STATUS — $ENVIRONMENT" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Image tag** | \`$IMAGE_TAG\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Commit** | \`${{ github.sha }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Actor** | ${{ github.actor }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **App URL** | \`${{ vars.APP_URL }}\` |" >> "$GITHUB_STEP_SUMMARY"
+
+      # ── Step 7: Notify Slack / Discord (always — even on failure) ─────────
+      - name: Notify deploy result
+        if: always()
+        uses: QNSC-VN/qnsc-ci/actions/notify-deploy@v1.0.5
+        with:
+          webhook-url: ${{ secrets.SLACK_DEPLOY_WEBHOOK }}
+          status: ${{ job.status == 'success' && 'success' || 'failure' }}
+          service: rally-api
+          environment: ${{ env.ENVIRONMENT }}
+          version: ${{ env.IMAGE_TAG }}
