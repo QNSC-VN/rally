@@ -3,7 +3,7 @@
 # Gate: lint → typecheck → unit tests → build → pr-title
 # Security scans (Trivy, CodeQL) live in security.yml — independently runnable.
 # =============================================================================
-name: CI
+name: CI — Web
 
 on:
   push:

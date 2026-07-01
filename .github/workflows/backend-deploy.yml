@@ -33,7 +33,7 @@
 #     rally-github-ecr-push        build-push job (ECR push + retag)
 #     rally-github-deploy-<env>    deploy job (ECS + task-def registration)
 # =============================================================================
-name: Deploy
+name: Deploy — Backend
 
 on:
   push:

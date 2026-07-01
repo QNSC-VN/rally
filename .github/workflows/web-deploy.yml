@@ -26,7 +26,7 @@
 #   Environment-scoped IAM roles (provisioned by rally-infra):
 #     rally-github-web-deploy-<env>   S3 sync + CloudFront invalidation
 # =============================================================================
-name: Deploy
+name: Deploy — Web
 
 on:
   push:
