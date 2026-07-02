@@ -12,7 +12,7 @@ on:
     branches: [main, develop]
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-web-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
