@@ -10,6 +10,7 @@
   "scripts": {
     "build:api": "nest build api",
     "build:worker": "nest build worker",
+    "build:migrator": "tsc --project tsconfig.migrator.json",
     "build": "pnpm build:api && pnpm build:worker",
     "build:web": "pnpm --filter rally-web build",
     "dev:web": "pnpm --filter rally-web dev",

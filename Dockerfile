@@ -85,6 +85,11 @@ RUN pnpm build:api
 # Worker tsconfig mirrors the API fix: libs included, no spec files
 RUN pnpm build:worker
 
+# Compile Migrator  →  dist/db/
+# Pre-compiling eliminates tsx (and its embedded esbuild Go binaries) from the
+# migrator runtime image, removing the CVE surface without .trivyignore suppression.
+RUN pnpm build:migrator
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 4 │ api  (default production target)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -176,11 +181,14 @@ ENV NODE_ENV=production
 
 WORKDIR /app
 
-# Migrator needs devDeps (tsx) + drizzle-orm + pg — reuse the full deps stage
-COPY --from=deps /app/node_modules ./node_modules
+# Production deps only — tsx and esbuild (with Go CVE binaries) are devDeps,
+# so they are absent here. This is the key CVE fix.
+COPY --from=prod-deps /app/node_modules ./node_modules
 
-# Migration script and raw SQL files
-COPY --from=builder /app/db ./db
+# Pre-compiled JS (dist/db/) from the builder stage.
+# Raw SQL migrations go into dist/db/migrations — matches __dirname in compiled migrate.js.
+COPY --from=builder /app/dist/db ./dist/db
+COPY --from=builder /app/db/migrations ./dist/db/migrations
 COPY --from=builder /app/package.json ./
 
 RUN addgroup --system --gid 1001 nodejs \
@@ -190,5 +198,5 @@ RUN addgroup --system --gid 1001 nodejs \
 USER migrator
 
 ENTRYPOINT ["/sbin/tini", "--"]
-# tsx runs db/migrate.ts; __dirname resolves to /app/db so migrations/ is found
-CMD ["node_modules/.bin/tsx", "db/migrate.ts"]
+# Plain node runs pre-compiled JS — no tsx, no esbuild, no Go binaries.
+CMD ["node", "dist/db/migrate.js"]

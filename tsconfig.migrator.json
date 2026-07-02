@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist/db",
+    "rootDir": "./db",
+    "declaration": false,
+    "sourceMap": false,
+    "tsBuildInfoFile": "./dist/db/.tsbuildinfo"
+  },
+  "include": ["db/**/*.ts"],
+  "exclude": ["node_modules", "dist", "db/_inspect*.ts"]
+}

@@ -1,7 +1,1 @@
-# CVEs in embedded Go binaries inside esbuild (a dev-time TypeScript transpiler
-# bundled in node_modules because the migrator image needs tsx to run db/migrate.ts).
-# These binaries are not the application code and do not handle production TLS.
-# TODO: eliminate tsx from the migrator runtime image by pre-compiling db/migrate.ts
-# in the builder stage so the migrator can use plain node instead.
-CVE-2025-68121
-CVE-2024-24790
+# No suppressions needed — migrator uses pre-compiled JS + prod-deps only (no tsx/esbuild).
