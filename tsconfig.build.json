@@ -3,5 +3,5 @@
   "compilerOptions": {
     "declaration": false
   },
-  "exclude": ["node_modules", "dist", "**/*spec.ts", "**/*.test.ts", "test/**/*"]
+  "exclude": ["node_modules", "dist", "**/*spec.ts", "**/*.test.ts", "test/**/*", "apps/web/**/*"]
 }
