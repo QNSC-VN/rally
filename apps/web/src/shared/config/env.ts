@@ -3,7 +3,8 @@
  * All `import.meta.env.*` access should go through here — never inline env reads.
  */
 export const ENV = {
-  API_BASE_URL: import.meta.env.VITE_API_URL ?? 'http://localhost:3000',
+  // Empty string → relative URLs; works in dev (Vite proxy handles /v1) and prod (CloudFront proxy handles /v1).
+  API_BASE_URL: import.meta.env.VITE_API_URL ?? '',
   APP_ENV: (import.meta.env.VITE_APP_ENV ?? 'development') as 'development' | 'staging' | 'production',
   IS_DEV: import.meta.env.DEV,
 

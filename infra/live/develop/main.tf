@@ -447,12 +447,16 @@ module "waf" {
 #   2. Pass its ARN as web_acm_cert_arn in your tfvars
 #   3. After apply: set S3_BUCKET + CLOUDFRONT_ID as GitHub env vars for rally-web
 module "cdn" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/cdn?ref=cdn-v1.0.1"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/cdn?ref=cdn-v1.0.2"
 
   name         = "rally-web-develop"
   aliases      = ["rally-dev.qnsc.vn"]
   acm_cert_arn = var.web_acm_cert_arn # *.qnsc.vn wildcard cert in us-east-1
   price_class  = "PriceClass_100" # develop: US/EU PoPs only — cheaper than PriceClass_200
+
+  # Proxy /v1/* → ALB so the SPA uses relative API paths (no CORS, no mixed-content).
+  # The web build sets VITE_API_URL="" which makes all fetch() calls relative.
+  api_origin_domain_name = aws_lb.this.dns_name
 
   tags = { Environment = local.env, Service = "web" }
 }
