@@ -23,7 +23,11 @@ if (!url) {
   process.exit(1);
 }
 
-const pool = new Pool({ connectionString: url, max: 1 });
+// RDS uses Amazon CA not trusted by Alpine — disable CA verify for VPC-internal traffic.
+const ssl = url.includes('sslmode=require') || url.includes('sslmode=verify')
+  ? { rejectUnauthorized: false }
+  : undefined;
+const pool = new Pool({ connectionString: url, max: 1, ...(ssl ? { ssl } : {}) });
 const db = drizzle(pool);
 
 async function run() {

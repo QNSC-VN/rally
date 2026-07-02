@@ -26,13 +26,21 @@ export class DrizzleProvider {
   private db: DrizzleDB;
 
   constructor(private readonly config: AppConfigService) {
+    const dbUrl = config.get('DATABASE_URL');
+    // RDS uses Amazon CA not trusted by Alpine — disable CA verify for VPC-internal traffic.
+    const ssl =
+      dbUrl.includes('sslmode=require') || dbUrl.includes('sslmode=verify')
+        ? { rejectUnauthorized: false }
+        : undefined;
+
     this.pool = new Pool({
-      connectionString: config.get('DATABASE_URL'),
+      connectionString: dbUrl,
       min: config.get('DATABASE_POOL_MIN'),
       max: config.get('DATABASE_POOL_MAX'),
       // Fail fast on idle connections to surface misconfiguration
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 5_000,
+      ...(ssl ? { ssl } : {}),
     });
 
     this.db = drizzle(this.pool, { schema, logger: config.get('LOG_SQL') });
