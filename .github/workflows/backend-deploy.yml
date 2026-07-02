@@ -145,6 +145,7 @@ jobs:
 
       - name: Attest API image (SLSA provenance)
         if: github.ref_type != 'tag'
+        continue-on-error: true # requires GitHub Advanced Security or public repo
         uses: QNSC-VN/qnsc-ci/actions/attest-image@v1.4
         with:
           image-ref: ${{ steps.aws.outputs.ecr-registry }}/rally-api@${{ steps.build-api.outputs.image-digest }}
@@ -173,6 +174,7 @@ jobs:
 
       - name: Attest Worker image (SLSA provenance)
         if: github.ref_type != 'tag'
+        continue-on-error: true # requires GitHub Advanced Security or public repo
         uses: QNSC-VN/qnsc-ci/actions/attest-image@v1.4
         with:
           image-ref: ${{ steps.aws.outputs.ecr-registry }}/rally-worker@${{ steps.build-worker.outputs.image-digest }}
@@ -201,6 +203,7 @@ jobs:
 
       - name: Attest Migrator image (SLSA provenance)
         if: github.ref_type != 'tag'
+        continue-on-error: true # requires GitHub Advanced Security or public repo
         uses: QNSC-VN/qnsc-ci/actions/attest-image@v1.4
         with:
           image-ref: ${{ steps.aws.outputs.ecr-registry }}/rally-migrator@${{ steps.build-migrator.outputs.image-digest }}
