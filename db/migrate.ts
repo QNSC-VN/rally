@@ -15,6 +15,7 @@ import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { Pool } from 'pg';
 import path from 'path';
 import { seed } from './seeds/seed';
+import { pgOptions } from './pg-ssl';
 
 const url = process.env['DATABASE_MIGRATION_URL'] ?? process.env['DATABASE_URL'];
 
@@ -23,22 +24,7 @@ if (!url) {
   process.exit(1);
 }
 
-// pg-connection-string maps sslmode=require to ssl.rejectUnauthorized=true (verify-full in v8+).
-// Alpine lacks the Amazon RDS CA so we strip sslmode from the URL and set ssl explicitly —
-// this avoids conflicting config and is safe for VPC-internal private-subnet connections.
-function buildPoolConnectionString(rawUrl: string): { connectionString: string; ssl?: { rejectUnauthorized: false } } {
-  const needsSsl = /sslmode=(require|verify)/.test(rawUrl);
-  if (!needsSsl) return { connectionString: rawUrl };
-  try {
-    const u = new URL(rawUrl);
-    u.searchParams.delete('sslmode');
-    return { connectionString: u.toString(), ssl: { rejectUnauthorized: false } };
-  } catch {
-    return { connectionString: rawUrl, ssl: { rejectUnauthorized: false } };
-  }
-}
-
-const pool = new Pool({ ...buildPoolConnectionString(url), max: 1 });
+const pool = new Pool({ ...pgOptions(url), max: 1 });
 const db = drizzle(pool);
 
 async function run() {

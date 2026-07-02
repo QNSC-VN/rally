@@ -3,6 +3,7 @@ import { Pool } from 'pg';
 import { Inject, Injectable } from '@nestjs/common';
 import { AppConfigService } from '../config/app-config.service';
 import * as schema from '../../../../db/schema';
+import { pgOptions } from '../../../../db/pg-ssl';
 
 export const DRIZZLE = Symbol('DRIZZLE');
 
@@ -25,27 +26,9 @@ export class DrizzleProvider {
   private pool: Pool;
   private db: DrizzleDB;
 
-  private static buildPgOptions(url: string): { connectionString: string; ssl?: { rejectUnauthorized: false } } {
-    const needsSsl = /sslmode=(require|verify)/.test(url);
-    if (!needsSsl) return { connectionString: url };
-    try {
-      const u = new URL(url);
-      u.searchParams.delete('sslmode');
-      return { connectionString: u.toString(), ssl: { rejectUnauthorized: false } };
-    } catch {
-      return { connectionString: url, ssl: { rejectUnauthorized: false } };
-    }
-  }
-
   constructor(private readonly config: AppConfigService) {
-    const dbUrl = config.get('DATABASE_URL');
-    // pg-connection-string maps sslmode=require to ssl.rejectUnauthorized=true (verify-full in v8+).
-    // Alpine lacks the Amazon RDS CA, so strip sslmode and set ssl explicitly to avoid
-    // conflicting config. Safe for VPC-internal private-subnet connections.
-    const pgOpts = DrizzleProvider.buildPgOptions(dbUrl);
-
     this.pool = new Pool({
-      ...pgOpts,
+      ...pgOptions(config.get('DATABASE_URL')),
       min: config.get('DATABASE_POOL_MIN'),
       max: config.get('DATABASE_POOL_MAX'),
       // Fail fast on idle connections to surface misconfiguration

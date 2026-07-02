@@ -17,6 +17,7 @@ try {
  */
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
+import { pgOptions } from '../pg-ssl';
 import { uuidv7 } from 'uuidv7';
 import * as argon2 from 'argon2';
 import { and, eq } from 'drizzle-orm';
@@ -377,7 +378,7 @@ export async function seed(connectionUrl?: string): Promise<void> {
   const url = connectionUrl ?? process.env['DATABASE_URL'];
   if (!url) throw new Error('DATABASE_URL or connectionUrl required');
 
-  const pool = new Pool({ connectionString: url, max: 1 });
+  const pool = new Pool({ ...pgOptions(url), max: 1 });
   db = drizzle(pool, { schema });
 
   try {
