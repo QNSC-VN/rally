@@ -447,9 +447,10 @@ module "waf" {
 module "cdn" {
   source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/cdn?ref=cdn-v1.0.1"
 
-  name        = "rally-web-develop"
-  aliases     = [] # dev: use raw *.cloudfront.net URL; add alias + cert after DNS is set up
-  price_class = "PriceClass_100" # develop: US/EU PoPs only — cheaper than PriceClass_200
+  name         = "rally-web-develop"
+  aliases      = ["rally-dev.qnsc.vn"]
+  acm_cert_arn = var.web_acm_cert_arn # *.qnsc.vn wildcard cert in us-east-1
+  price_class  = "PriceClass_100" # develop: US/EU PoPs only — cheaper than PriceClass_200
 
   tags = { Environment = local.env, Service = "web" }
 }
