@@ -23,11 +23,22 @@ if (!url) {
   process.exit(1);
 }
 
-// RDS uses Amazon CA not trusted by Alpine — disable CA verify for VPC-internal traffic.
-const ssl = url.includes('sslmode=require') || url.includes('sslmode=verify')
-  ? { rejectUnauthorized: false }
-  : undefined;
-const pool = new Pool({ connectionString: url, max: 1, ...(ssl ? { ssl } : {}) });
+// pg-connection-string maps sslmode=require to ssl.rejectUnauthorized=true (verify-full in v8+).
+// Alpine lacks the Amazon RDS CA so we strip sslmode from the URL and set ssl explicitly —
+// this avoids conflicting config and is safe for VPC-internal private-subnet connections.
+function buildPoolConnectionString(rawUrl: string): { connectionString: string; ssl?: { rejectUnauthorized: false } } {
+  const needsSsl = /sslmode=(require|verify)/.test(rawUrl);
+  if (!needsSsl) return { connectionString: rawUrl };
+  try {
+    const u = new URL(rawUrl);
+    u.searchParams.delete('sslmode');
+    return { connectionString: u.toString(), ssl: { rejectUnauthorized: false } };
+  } catch {
+    return { connectionString: rawUrl, ssl: { rejectUnauthorized: false } };
+  }
+}
+
+const pool = new Pool({ ...buildPoolConnectionString(url), max: 1 });
 const db = drizzle(pool);
 
 async function run() {

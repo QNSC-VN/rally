@@ -25,22 +25,32 @@ export class DrizzleProvider {
   private pool: Pool;
   private db: DrizzleDB;
 
+  private static buildPgOptions(url: string): { connectionString: string; ssl?: { rejectUnauthorized: false } } {
+    const needsSsl = /sslmode=(require|verify)/.test(url);
+    if (!needsSsl) return { connectionString: url };
+    try {
+      const u = new URL(url);
+      u.searchParams.delete('sslmode');
+      return { connectionString: u.toString(), ssl: { rejectUnauthorized: false } };
+    } catch {
+      return { connectionString: url, ssl: { rejectUnauthorized: false } };
+    }
+  }
+
   constructor(private readonly config: AppConfigService) {
     const dbUrl = config.get('DATABASE_URL');
-    // RDS uses Amazon CA not trusted by Alpine — disable CA verify for VPC-internal traffic.
-    const ssl =
-      dbUrl.includes('sslmode=require') || dbUrl.includes('sslmode=verify')
-        ? { rejectUnauthorized: false }
-        : undefined;
+    // pg-connection-string maps sslmode=require to ssl.rejectUnauthorized=true (verify-full in v8+).
+    // Alpine lacks the Amazon RDS CA, so strip sslmode and set ssl explicitly to avoid
+    // conflicting config. Safe for VPC-internal private-subnet connections.
+    const pgOpts = DrizzleProvider.buildPgOptions(dbUrl);
 
     this.pool = new Pool({
-      connectionString: dbUrl,
+      ...pgOpts,
       min: config.get('DATABASE_POOL_MIN'),
       max: config.get('DATABASE_POOL_MAX'),
       // Fail fast on idle connections to surface misconfiguration
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 5_000,
-      ...(ssl ? { ssl } : {}),
     });
 
     this.db = drizzle(this.pool, { schema, logger: config.get('LOG_SQL') });
