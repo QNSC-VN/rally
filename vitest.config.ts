@@ -37,7 +37,7 @@ export default defineConfig({
       CSRF_SECRET: 'test-csrf-secret-at-least-32-chars!!',
       PASSWORD_RESET_TOKEN_TTL_HOURS: '2',
       INVITATION_TTL_DAYS: '7',
-      LOG_LEVEL: 'silent',
+      LOG_LEVEL: 'error',
       OTEL_ENABLED: 'false',
       OTEL_SERVICE_NAME: 'rally-api-test',
       OTEL_WORKER_SERVICE_NAME: 'rally-worker-test',
