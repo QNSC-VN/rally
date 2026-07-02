@@ -27,15 +27,15 @@ jobs:
     steps:
       # GitHub App token lets Release Please open PRs and push tags that
       # trigger downstream workflows (GITHUB_TOKEN cannot trigger other workflows).
-      # Falls back to GITHUB_TOKEN when the App secrets are not yet configured.
+      # Falls back to github.token when RELEASE_BOT_APP_ID is not yet configured.
       - uses: actions/create-github-app-token@v1
         id: app-token
-        if: ${{ vars.RELEASE_BOT_APP_ID != '' && secrets.RELEASE_BOT_PRIVATE_KEY != '' }}
+        continue-on-error: true
         with:
           app-id: ${{ vars.RELEASE_BOT_APP_ID }}
           private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
 
       - uses: googleapis/release-please-action@v4
         with:
-          token: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token || github.token }}
           config-file: release-please-config.json
