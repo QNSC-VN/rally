@@ -255,6 +255,8 @@ module "api" {
     # Microsoft Entra SSO — set tenant/client IDs; leave empty to disable SSO
     { name = "ENTRA_TENANT_ID",        value = var.entra_tenant_id },
     { name = "ENTRA_CLIENT_ID",        value = var.entra_client_id },
+    # Comma-separated emails auto-granted workspace_admin on every SSO login
+    { name = "PLATFORM_ADMIN_EMAILS",  value = "nghiavt18@qnsc.vn,quangld@qnsc.vn,hieuvbm@qnsc.vn,anhntn@qnsc.vn" },
     # Messaging — SQS queue URLs injected at deploy time from module outputs
     { name = "SQS_NOTIFICATIONS_URL",  value = module.messaging.queue_urls["notifications"] },
     { name = "SQS_AUDIT_URL",          value = module.messaging.queue_urls["audit"] },
