@@ -22,3 +22,16 @@ export const IterationResponseSchema = z.object({
 });
 
 export class IterationResponseDto extends createZodDto(IterationResponseSchema) {}
+
+// ── Compact picker option (P2-IT-10) ──────────────────────────────────────────
+
+export const IterationOptionSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  iterationKey: z.string().nullable(),
+  startDate: z.string().nullable().describe('YYYY-MM-DD'),
+  endDate: z.string().nullable().describe('YYYY-MM-DD'),
+  state: z.enum(iterationStateEnum.enumValues),
+});
+
+export class IterationOptionDto extends createZodDto(IterationOptionSchema) {}

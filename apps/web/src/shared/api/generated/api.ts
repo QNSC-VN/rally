@@ -1185,6 +1185,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/iterations/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get assignable iterations for the work-item picker */
+        get: operations["IterationsController_getAssignmentOptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/iterations/{id}": {
         parameters: {
             query?: never;
@@ -2264,6 +2281,18 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        IterationOptionDto: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            iterationKey: string | null;
+            /** @description YYYY-MM-DD */
+            startDate: string | null;
+            /** @description YYYY-MM-DD */
+            endDate: string | null;
+            /** @enum {string} */
+            state: "planning" | "committed" | "accepted";
         };
         CreateIterationDto: {
             /** Format: uuid */
@@ -6644,6 +6673,49 @@ export interface operations {
             };
             /** @description Unprocessable — business rule violation */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    IterationsController_getAssignmentOptions: {
+        parameters: {
+            query: {
+                projectId: string;
+                teamId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IterationOptionDto"][];
+                };
+            };
+            /** @description Bad Request — validation error or malformed input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized — missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

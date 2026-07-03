@@ -63,3 +63,14 @@ export const AcceptIterationSchema = z.object({
 });
 
 export class AcceptIterationDto extends createZodDto(AcceptIterationSchema) {}
+
+// ── Assignment options query (P2-IT-10) ──────────────────────────────────
+
+export const IterationAssignmentOptionsQuerySchema = z.object({
+  projectId: z.string().uuid(),
+  teamId: z.string().uuid().optional(),
+});
+
+export class IterationAssignmentOptionsQueryDto extends createZodDto(
+  IterationAssignmentOptionsQuerySchema,
+) {}

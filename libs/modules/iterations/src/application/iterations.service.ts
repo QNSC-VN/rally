@@ -16,6 +16,7 @@ import {
 } from '../domain/ports/iteration.repository';
 import type {
   Iteration,
+  IterationOption,
   IterationFilters,
   UpdateIterationInput,
 } from '../domain/iteration.types';
@@ -87,6 +88,17 @@ export class IterationsService {
       'Iteration created',
     );
     return iteration;
+  }
+
+  // ── Assignment options (P2-IT-10) — lightweight picker feed ─────────────────
+
+  async getAssignmentOptions(
+    actor: JwtPayload,
+    projectId: string,
+    teamId?: string,
+  ): Promise<IterationOption[]> {
+    await this.projectsService.getProject(actor.tenantId, projectId);
+    return this.iterationRepo.listAssignmentOptions(projectId, actor.tenantId, teamId);
   }
 
   // ── Get ───────────────────────────────────────────────────────────────────

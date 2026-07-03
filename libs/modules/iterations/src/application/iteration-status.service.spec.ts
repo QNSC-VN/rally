@@ -171,5 +171,55 @@ describe('IterationStatusService', () => {
         'it-1',
       );
     });
+
+    it('creates project-scoped (no teamId) when iteration has no team', async () => {
+      iterationsService.getIteration.mockResolvedValue(
+        mockIteration({ projectId: 'proj-1', teamId: null }),
+      );
+      await service.createItemInIteration(actor, 'it-1', { type: 'defect', title: 'Bug' });
+      expect(workItemsService.createWorkItem).toHaveBeenCalledWith(
+        actor,
+        'proj-1',
+        'defect',
+        'Bug',
+        expect.objectContaining({ teamId: undefined }),
+      );
+    });
+
+    it('propagates bulkAssignIteration error (e.g. task type rejected downstream)', async () => {
+      const { PreconditionFailedException: PFE } = await import('@platform');
+      workItemsService.bulkAssignIteration.mockRejectedValue(
+        new PFE('WORK_ITEM_NOT_BACKLOG_TYPE', 'Only stories and defects allowed'),
+      );
+      iterationsService.getIteration.mockResolvedValue(mockIteration());
+      await expect(
+        service.createItemInIteration(actor, 'it-1', { type: 'task', title: 'T' }),
+      ).rejects.toBeInstanceOf(PFE);
+    });
+  });
+
+  describe('getStatus — work items list', () => {
+    it('passes filters and page args to statusRepo.listItems', async () => {
+      iterationsService.getIteration.mockResolvedValue(mockIteration());
+      const filters = { assigneeId: 'user-2' };
+      const args = { limit: 10, cursor: null };
+
+      await service.getStatus(actor, 'it-1', filters, args);
+
+      expect(statusRepo.listItems).toHaveBeenCalledWith('it-1', 'tenant-1', filters, args);
+    });
+
+    it('forwards the paged items list in the response', async () => {
+      iterationsService.getIteration.mockResolvedValue(mockIteration());
+      const page = {
+        data: [{ id: 'wi-1' }],
+        pageInfo: { nextCursor: null, hasNextPage: false, limit: 25 },
+      };
+      statusRepo.listItems.mockResolvedValue(page);
+
+      const res = await service.getStatus(actor, 'it-1', {}, { limit: 25, cursor: null });
+
+      expect(res.items).toEqual(page);
+    });
   });
 });

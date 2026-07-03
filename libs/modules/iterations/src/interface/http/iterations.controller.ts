@@ -27,8 +27,9 @@ import {
   CreateIterationDto,
   UpdateIterationDto,
   AcceptIterationDto,
+  IterationAssignmentOptionsQueryDto,
 } from './dto/iteration-request.dto';
-import { IterationResponseDto } from './dto/iteration-response.dto';
+import { IterationResponseDto, IterationOptionDto } from './dto/iteration-response.dto';
 import {
   IterationStatusQueryDto,
   CreateIterationItemDto,
@@ -37,9 +38,20 @@ import {
   IterationStatusResponseDto,
   CreateIterationItemResponseDto,
 } from './dto/iteration-status-response.dto';
-import type { Iteration } from '../../domain/iteration.types';
+import type { Iteration, IterationOption } from '../../domain/iteration.types';
 
-// ── Mapper ────────────────────────────────────────────────────────────────────
+// ── Mappers ────────────────────────────────────────────────────────────────────
+
+function toIterationOptionDto(o: IterationOption): IterationOptionDto {
+  return {
+    id: o.id,
+    name: o.name,
+    iterationKey: o.iterationKey,
+    startDate: o.startDate,
+    endDate: o.endDate,
+    state: o.state,
+  };
+}
 
 function toIterationDto(i: Iteration): IterationResponseDto {
   return {
@@ -117,6 +129,25 @@ export class IterationsController {
       plannedVelocity: dto.plannedVelocity,
     });
     return toIterationDto(iteration);
+  }
+
+  // ── Assignment options (P2-IT-10) — declared before :id to avoid route conflict ──
+
+  @Get('options')
+  @RequirePermission('iteration:view')
+  @ApiOperation({ summary: 'Get assignable iterations for the work-item picker' })
+  @ApiResponse({ status: 200, type: [IterationOptionDto] })
+  @ApiCommonErrors(400, 401, 404)
+  async getAssignmentOptions(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: IterationAssignmentOptionsQueryDto,
+  ): Promise<IterationOptionDto[]> {
+    const options = await this.iterationsService.getAssignmentOptions(
+      user,
+      query.projectId,
+      query.teamId,
+    );
+    return options.map(toIterationOptionDto);
   }
 
   @Get(':id')

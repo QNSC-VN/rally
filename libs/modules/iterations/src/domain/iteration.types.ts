@@ -49,6 +49,16 @@ export interface UpdateIterationInput {
   completedAt?: Date | null;
 }
 
+/** Compact projection used by the assignment-options picker endpoint. */
+export interface IterationOption {
+  id: string;
+  name: string;
+  iterationKey: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  state: IterationState;
+}
+
 /** Sort keys supported by the iteration list endpoint. */
 export type IterationSortBy =
   | 'name'

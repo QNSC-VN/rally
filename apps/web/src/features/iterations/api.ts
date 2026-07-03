@@ -19,12 +19,34 @@ export type IterationStatus = components['schemas']['IterationStatusResponseDto'
 export type IterationStatusItem = IterationStatus['items'][number]
 export type CreateIterationItemInput = components['schemas']['CreateIterationItemDto']
 
+export type IterationOption = components['schemas']['IterationOptionDto']
+
 export const iterationKeys = {
   all: ['iterations'] as const,
   list: (projectId: string) => ['iterations', projectId] as const,
+  options: (projectId: string, teamId?: string | null) =>
+    ['iteration-options', projectId, teamId ?? null] as const,
   detail: (id: string) => ['iteration', id] as const,
   status: (id: string, filters?: unknown) =>
     filters ? (['iteration-status', id, filters] as const) : (['iteration-status', id] as const),
+}
+
+// ── Assignment options (P2-IT-10) — compact picker feed ─────────────────────
+
+export function useIterationOptions(projectId: string | undefined, teamId?: string | null) {
+  return useQuery({
+    queryKey: iterationKeys.options(projectId ?? '', teamId),
+    queryFn: async () => {
+      if (!projectId) return []
+      const { data, error, response } = await apiClient.GET('/v1/iterations/options', {
+        params: { query: { projectId, teamId: teamId ?? undefined } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return (data ?? []) as IterationOption[]
+    },
+    enabled: !!projectId,
+    staleTime: 30_000,
+  })
 }
 
 // ── List ────────────────────────────────────────────────────────────────────

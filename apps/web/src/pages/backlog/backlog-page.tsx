@@ -24,7 +24,7 @@ import {
 } from '@/features/work-items/api'
 import { useReleases } from '@/features/releases/api'
 import { useProjectMembers } from '@/features/teams/api'
-import { useIterations } from '@/features/iterations/api'
+import { useIterationOptions } from '@/features/iterations/api'
 import { TypeBadge, ScheduleStateBadge, PriorityBadge } from '@/entities/work-item/ui/badges'
 import { CreateWorkItemModal } from '@/features/work-items/ui/create-work-item-modal'
 
@@ -171,7 +171,7 @@ const SCHEDULE_STATE_OPTS = [
 
 export function BacklogPage() {
   const navigate = useNavigate()
-  const { project } = useAppContext()
+  const { project, team } = useAppContext()
   const projectId = project?.projectId
 
   const canEdit = useAuthStore((s) => s.hasPermission('work_item:edit'))
@@ -191,7 +191,7 @@ export function BacklogPage() {
   // Reference lists for the P2.1 filters, inline selects and id→name lookups.
   const { data: members = [] } = useProjectMembers(projectId)
   const { data: releases = [] } = useReleases(projectId)
-  const { data: iterations = [] } = useIterations(projectId)
+  const { data: iterations = [] } = useIterationOptions(projectId, team)
 
   // Reset pagination on filter/project change
   useEffect(() => {

@@ -1,10 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, ilike, lt, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, lt, or, sql, type SQL } from 'drizzle-orm';
 import { InjectDrizzle, buildPageResult } from '@platform';
 import type { DrizzleDB, CursorPayload, PagedResult } from '@platform';
 import { iterations } from '../../../../../../db/schema/work';
 import type {
   Iteration,
+  IterationOption,
   CreateIterationInput,
   UpdateIterationInput,
   IterationFilters,
@@ -127,5 +128,33 @@ export class IterationDrizzleRepository implements IIterationRepository {
 
   async delete(id: string): Promise<void> {
     await this.db.delete(iterations).where(eq(iterations.id, id));
+  }
+
+  async listAssignmentOptions(
+    projectId: string,
+    tenantId: string,
+    teamId?: string,
+  ): Promise<IterationOption[]> {
+    const conditions: SQL[] = [
+      eq(iterations.projectId, projectId),
+      eq(iterations.tenantId, tenantId),
+      inArray(iterations.state, ['planning', 'committed']),
+    ];
+    if (teamId) conditions.push(eq(iterations.teamId, teamId));
+
+    const rows = await this.db
+      .select({
+        id: iterations.id,
+        name: iterations.name,
+        iterationKey: iterations.iterationKey,
+        startDate: iterations.startDate,
+        endDate: iterations.endDate,
+        state: iterations.state,
+      })
+      .from(iterations)
+      .where(and(...conditions))
+      .orderBy(desc(iterations.startDate), asc(iterations.name));
+
+    return rows;
   }
 }
