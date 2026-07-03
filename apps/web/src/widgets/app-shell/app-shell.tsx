@@ -20,7 +20,7 @@ import { Avatar } from '@/shared/ui/avatar'
 import { useWorkspaces } from '@/features/workspaces/api'
 import { useProjects } from '@/features/projects/api'
 import { useNotificationUnreadCount, useNotificationSse } from '@/features/notifications/api'
-import { cancelProactiveRefresh } from '@/shared/api/http-client'
+import { cancelProactiveRefresh, getAccessToken } from '@/shared/api/http-client'
 import { apiClient } from '@/shared/api/http-client'
 import { isFeatureEnabled } from '@/shared/config/feature-flags'
 import { queryClient } from '@/shared/api/query-client'
@@ -157,6 +157,18 @@ export function AppShell() {
   }, [projectId])
 
   async function handleSignOut() {
+    // Read authMethod from the JWT before clearAuth() nulls the in-memory token.
+    // isSsoConfigured is env-based (always true when SSO vars are set) so it
+    // cannot distinguish password sessions from SSO sessions — use the token claim.
+    let wasSSO = false
+    const token = getAccessToken()
+    if (token) {
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]!)) as { authMethod?: string }
+        wasSSO = payload.authMethod === 'sso'
+      } catch { /* malformed token — treat as password session */ }
+    }
+
     try {
       await apiClient.POST('/v1/auth/logout', {})
     } catch {
@@ -166,9 +178,9 @@ export function AppShell() {
     cancelProactiveRefresh()
     toast.success('Signed out')
 
-    // Terminate Microsoft session when SSO is configured (enterprise requirement)
-    const { isSsoConfigured } = await import('@/shared/config/env')
-    if (isSsoConfigured) {
+    // Only redirect to Microsoft to terminate the Entra session when the user
+    // actually signed in via SSO. Password-login users go straight to /login.
+    if (wasSSO) {
       // eslint-disable-next-line boundaries/dependencies
       const { msalLogoutRedirect } = await import('@/app/auth/msal')
       await msalLogoutRedirect(window.location.origin + '/login')
