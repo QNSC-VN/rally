@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
+import { IterationStatusService } from './iteration-status.service';
 import { IterationsService } from './iterations.service';
 import { WorkItemsService } from '@modules/work-items';
 import { ITERATION_STATUS_REPOSITORY } from '../domain/ports/iteration-status.repository';
@@ -36,6 +37,8 @@ const actor = {
   exp: 0,
   iss: 'rally',
   aud: 'rally-app',
+  permissions: [] as string[],
+  authMethod: 'password' as const,
 };
 
 const pageArgs = { limit: 25, cursor: null };

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
+import { WorkItemsService } from './work-items.service';
 import { WORK_ITEM_REPOSITORY } from '../domain/ports/work-item.repository';
 import { ACTIVITY_LOG_REPOSITORY } from '../domain/ports/activity-log.repository';
 import { TIME_LOG_REPOSITORY } from '../domain/ports/time-log.repository';
@@ -59,6 +60,8 @@ const mockActor = {
   exp: 0,
   iss: 'rally',
   aud: 'rally-app',
+  permissions: [] as string[],
+  authMethod: 'password' as const,
 };
 
 const mockStatus = (id: string, isDefault = false) => ({
@@ -211,7 +214,7 @@ describe('WorkItemsService', () => {
       );
 
       expect(projectsService.getProject).toHaveBeenCalledWith('tenant-1', 'proj-1');
-      expect(result.items).toHaveLength(1);
+      expect(result.data).toHaveLength(1);
     });
   });
 

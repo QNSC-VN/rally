@@ -24,7 +24,6 @@ import { AuditService } from '@modules/audit';
 
 const mockUser = (overrides: Partial<User> = {}): User => ({
   id: 'user-1',
-  tenantId: 'tenant-1',
   email: 'alice@example.com',
   displayName: 'Alice',
   avatarUrl: null,
@@ -331,6 +330,8 @@ describe('AuthService', () => {
         exp: Math.floor(Date.now() / 1000) + 840, // 14 min remaining
         iss: 'rally',
         aud: 'rally-app',
+        permissions: [] as string[],
+        authMethod: 'password' as const,
       };
 
       await service.logout(payload);
@@ -349,6 +350,8 @@ describe('AuthService', () => {
         exp: Math.floor(Date.now() / 1000) - 1, // already expired
         iss: 'rally',
         aud: 'rally-app',
+        permissions: [] as string[],
+        authMethod: 'password' as const,
       };
 
       await service.logout(payload);
@@ -371,6 +374,8 @@ describe('AuthService', () => {
         exp: Math.floor(Date.now() / 1000) + 840,
         iss: 'rally',
         aud: 'rally-app',
+        permissions: [] as string[],
+        authMethod: 'password' as const,
       };
 
       await service.logoutAll(payload);

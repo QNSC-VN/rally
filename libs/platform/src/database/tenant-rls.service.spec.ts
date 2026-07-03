@@ -1,16 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
+import { sql } from 'drizzle-orm';
+import { TenantRlsService } from './tenant-rls.service';
 import { DRIZZLE } from './drizzle.provider';
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
 const makeDb = () => {
-  const tx = {
+  type Tx = { execute: ReturnType<typeof vi.fn> };
+  const tx: Tx = {
     execute: vi.fn().mockResolvedValue(undefined),
   };
 
   return {
-    transaction: vi.fn().mockImplementation(async (fn: (tx: typeof tx) => unknown) => fn(tx)),
+    transaction: vi.fn().mockImplementation(async (fn: (tx: Tx) => unknown) => fn(tx)),
     _tx: tx,
   };
 };

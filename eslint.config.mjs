@@ -38,6 +38,8 @@ export default tseslint.config(
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-unsafe-argument': 'off',
       '@typescript-eslint/require-await': 'off',
+      // expect(mock.method).toHaveBeenCalled() is the standard Vitest assertion pattern
+      '@typescript-eslint/unbound-method': 'off',
     },
   },
 );
