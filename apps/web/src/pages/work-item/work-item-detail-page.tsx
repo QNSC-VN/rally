@@ -36,6 +36,18 @@ import { useProjectTeams, useProjectMembers } from '@/features/teams/api'
 import { useIterationOptions } from '@/features/iterations/api'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
+import {
+  ScheduleState,
+  SCHEDULE_STATE_VALUES,
+  SCHEDULE_STATE_LABEL,
+  SCHEDULE_STATE_CONFIG,
+  PRIORITY_VALUES,
+  WORK_ITEM_PRIORITY_CONFIG,
+} from '@/entities/work-item/model/types'
+import { BRAND } from '@/shared/config/brand'
+import { STORAGE_KEYS } from '@/shared/config/storage-keys'
+import { FormField } from '@/shared/ui/form-field'
+import { Input } from '@/shared/ui/input'
 import { AddTaskModal } from '@/features/work-items/ui/add-task-modal'
 import { RichTextEditor } from '@/shared/ui/rich-text-editor'
 import { AttachmentBlock } from '@/features/collaboration/ui/attachment-block'
@@ -46,43 +58,26 @@ type DetailTab = 'details' | 'tasks' | 'history'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <label
-        className="mb-1.5 block text-[10px] font-semibold tracking-widest uppercase"
-        style={{ color: '#64748b' }}
-      >
-        {label}
-      </label>
-      {children}
-    </div>
-  )
-}
-
+// Local Field removed — use shared <FormField> from @/shared/ui/form-field instead.
+// fieldCls kept for the native <select> elements in the sidebar that can't use <Input> directly.
 const fieldCls =
-  'w-full text-[12px] px-3 py-2 rounded bg-white focus:outline-none transition-colors'
-const fieldStyle = { border: '1px solid #d7dde7', color: '#1a2234' }
+  'w-full text-[12px] px-3 py-2 rounded bg-white outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50'
+const fieldStyle = { border: `1px solid ${BRAND.borderInput}`, color: BRAND.textPrimary }
 
 // ── Task state badge ──────────────────────────────────────────────────────────
 
 function TaskStateBadge({ state }: { state: string }) {
-  const map: Record<string, { bg: string; text: string; border: string; dot: string }> = {
-    defined: { bg: '#eef3fb', text: '#2558a6', border: '#bdd0ef', dot: '#2558a6' },
-    in_progress: { bg: '#fef5e4', text: '#8a5808', border: '#f5d899', dot: '#e59f0c' },
-    completed: { bg: '#eef6f0', text: '#1e6930', border: '#a8d5b3', dot: '#2a8c3f' },
-    accepted: { bg: '#eaf0fb', text: '#1d3f73', border: '#99b8e0', dot: '#1d3f73' },
-    released: { bg: '#f3effd', text: '#7c3aed', border: '#d0c6f5', dot: '#7c3aed' },
-    idea: { bg: '#f3f4f6', text: '#6b7280', border: '#d1d5db', dot: '#9ca3af' },
-  }
-  const cfg = map[state.toLowerCase()] ?? map.idea
+  const key = state.toLowerCase() as ScheduleState
+  const cfg = SCHEDULE_STATE_CONFIG[key] ?? SCHEDULE_STATE_CONFIG[ScheduleState.Idea]
+  const label = SCHEDULE_STATE_LABEL[key] ?? state
+  // Derive border and dot colors from the text color with opacity fallback
   return (
     <span
       className="inline-flex items-center gap-1 rounded-sm px-2 py-px text-[11px] font-medium whitespace-nowrap"
-      style={{ backgroundColor: cfg.bg, color: cfg.text, border: `1px solid ${cfg.border}` }}
+      style={{ backgroundColor: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}33` }}
     >
-      <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: cfg.dot }} />
-      {state}
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: cfg.color }} />
+      {label}
     </span>
   )
 }
@@ -427,21 +422,14 @@ function DetailSidebar({
   const isTask = item.type === 'task'
   const disabled = updating || readOnly
 
-  const SCHEDULE_STATES = [
-    { value: 'idea', label: 'Idea' },
-    { value: 'defined', label: 'Defined' },
-    { value: 'in_progress', label: 'In Progress' },
-    { value: 'completed', label: 'Completed' },
-    { value: 'accepted', label: 'Accepted' },
-    { value: 'released', label: 'Released' },
-  ]
-  const PRIORITIES = [
-    { value: 'none', label: '—' },
-    { value: 'low', label: 'Low' },
-    { value: 'normal', label: 'Normal' },
-    { value: 'high', label: 'High' },
-    { value: 'urgent', label: 'Urgent' },
-  ]
+  const SCHEDULE_STATES = SCHEDULE_STATE_VALUES.map((v) => ({
+    value: v,
+    label: SCHEDULE_STATE_LABEL[v],
+  }))
+  const PRIORITIES = PRIORITY_VALUES.map((v) => ({
+    value: v,
+    label: WORK_ITEM_PRIORITY_CONFIG[v].label,
+  }))
 
   // When collapsed, render nothing — the page-level "re-open" tab handles visibility
   if (collapsed) return null
@@ -473,7 +461,7 @@ function DetailSidebar({
 
       <div className="space-y-4 p-5">
         {/* Schedule State */}
-        <Field label="Schedule State">
+        <FormField label="Schedule State">
           <select
             value={item.scheduleState ?? ''}
             onChange={(e) =>
@@ -489,10 +477,10 @@ function DetailSidebar({
               </option>
             ))}
           </select>
-        </Field>
+        </FormField>
 
         {/* Flow State (workflow status — project-specific Kanban column) */}
-        <Field label="Flow State">
+        <FormField label="Flow State">
           <select
             value={item.statusId ?? ''}
             onChange={(e) => onUpdate({ statusId: e.target.value })}
@@ -509,10 +497,10 @@ function DetailSidebar({
               </option>
             ))}
           </select>
-        </Field>
+        </FormField>
 
         {/* Owner */}
-        <Field label="Owner">
+        <FormField label="Owner">
           <select
             value={item.assigneeId ?? ''}
             onChange={(e) => onUpdate({ assigneeId: e.target.value || null })}
@@ -527,10 +515,10 @@ function DetailSidebar({
               </option>
             ))}
           </select>
-        </Field>
+        </FormField>
 
         {/* Team */}
-        <Field label="Team">
+        <FormField label="Team">
           <select
             value={item.teamId ?? ''}
             onChange={(e) => onUpdate({ teamId: e.target.value || null })}
@@ -545,11 +533,11 @@ function DetailSidebar({
               </option>
             ))}
           </select>
-        </Field>
+        </FormField>
 
         {/* Priority — Defect only */}
         {item.type === 'defect' && (
-          <Field label="Priority">
+          <FormField label="Priority">
             <select
               value={item.priority ?? 'none'}
               onChange={(e) => onUpdate({ priority: e.target.value as WorkItem['priority'] })}
@@ -563,12 +551,12 @@ function DetailSidebar({
                 </option>
               ))}
             </select>
-          </Field>
+          </FormField>
         )}
 
         {/* Task: Work Product (parent link) */}
         {isTask && item.parentId && (
-          <Field label="Work Product">
+          <FormField label="Work Product">
             <Link
               to={'/item/$itemKey'}
               params={{ itemKey: parentItem?.itemKey ?? item.parentId }}
@@ -577,13 +565,13 @@ function DetailSidebar({
             >
               {parentItem?.itemKey ?? item.parentId}
             </Link>
-          </Field>
+          </FormField>
         )}
 
         {/* Task: time fields */}
         {isTask && (
           <>
-            <Field label="Estimate (h)">
+            <FormField label="Estimate (h)">
               <input
                 type="number"
                 min={0}
@@ -596,8 +584,8 @@ function DetailSidebar({
                 className={fieldCls}
                 style={fieldStyle}
               />
-            </Field>
-            <Field label="To Do (h)">
+            </FormField>
+            <FormField label="To Do (h)">
               <input
                 type="number"
                 min={0}
@@ -610,8 +598,8 @@ function DetailSidebar({
                 className={fieldCls}
                 style={fieldStyle}
               />
-            </Field>
-            <Field label="Actual (h)">
+            </FormField>
+            <FormField label="Actual (h)">
               <input
                 type="number"
                 min={0}
@@ -624,13 +612,13 @@ function DetailSidebar({
                 className={fieldCls}
                 style={fieldStyle}
               />
-            </Field>
+            </FormField>
           </>
         )}
 
         {/* Story/Defect: Plan Estimate */}
         {!isTask && (
-          <Field label="Plan Estimate (pts)">
+          <FormField label="Plan Estimate (pts)">
             <input
               type="number"
               min={0}
@@ -642,13 +630,13 @@ function DetailSidebar({
               className={fieldCls}
               style={fieldStyle}
             />
-          </Field>
+          </FormField>
         )}
 
         {/* Story/Defect: Iteration + Release */}
         {!isTask && (
           <>
-            <Field label="Iteration">
+            <FormField label="Iteration">
               <select
                 value={item.iterationId ?? ''}
                 onChange={(e) => onUpdate({ iterationId: e.target.value || null })}
@@ -663,8 +651,8 @@ function DetailSidebar({
                   </option>
                 ))}
               </select>
-            </Field>
-            <Field label="Release">
+            </FormField>
+            <FormField label="Release">
               <select
                 value={item.releaseId ?? ''}
                 onChange={(e) => onUpdate({ releaseId: e.target.value || null })}
@@ -679,7 +667,7 @@ function DetailSidebar({
                   </option>
                 ))}
               </select>
-            </Field>
+            </FormField>
           </>
         )}
 
@@ -719,7 +707,7 @@ export function WorkItemDetailPage() {
   // P1-10: sidebar collapse — persisted in localStorage so preference survives navigation
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     try {
-      return localStorage.getItem('wi-sidebar-collapsed') === '1'
+      return localStorage.getItem(STORAGE_KEYS.WI_SIDEBAR_COLLAPSED) === '1'
     } catch {
       return false
     }
@@ -728,7 +716,7 @@ export function WorkItemDetailPage() {
     setSidebarCollapsed((prev) => {
       const next = !prev
       try {
-        localStorage.setItem('wi-sidebar-collapsed', next ? '1' : '0')
+        localStorage.setItem(STORAGE_KEYS.WI_SIDEBAR_COLLAPSED, next ? '1' : '0')
       } catch {
         /* noop */
       }

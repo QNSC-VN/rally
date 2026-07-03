@@ -5,11 +5,15 @@
  * "Create" stays on backlog; "Create with details" navigates to the detail page.
  */
 import { useEffect, useRef, useState } from 'react'
-import { X } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { useCreateWorkItem, type WorkItem } from '@/features/work-items/api'
 import { useProjectTeams } from '@/features/teams/api'
 import { useProjectMembers } from '@/features/teams/api'
+import { BRAND } from '@/shared/config/brand'
 import { WORK_ITEM_TYPE_CONFIG } from '@/entities/work-item/model/types'
+import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
+import { FormField } from '@/shared/ui/form-field'
+import { Input } from '@/shared/ui/input'
 
 type CreatableType = 'story' | 'defect'
 
@@ -68,7 +72,6 @@ export function CreateWorkItemModal({ projectId, onClose, onCreated, onCreatedWi
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         void submit(false)
       }
-      if (e.key === 'Escape') onClose()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -79,233 +82,127 @@ export function CreateWorkItemModal({ projectId, onClose, onCreated, onCreatedWi
     { value: 'defect', label: 'Defect' },
   ]
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0"
-        style={{ backgroundColor: 'rgba(0,0,0,0.28)' }}
-        onClick={onClose}
-      />
+  const selectCls =
+    'w-full rounded border border-input bg-white px-3 py-2 text-[12px] text-foreground outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50'
 
-      {/* Dialog */}
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="create-wi-title"
-        className="relative bg-white rounded shadow-2xl flex flex-col overflow-hidden"
-        style={{ width: 520, maxHeight: '80vh', border: '1px solid #d4d8de' }}
-      >
-        {/* Header */}
-        <div
-          className="flex items-center justify-between px-5 py-3.5 shrink-0"
-          style={{ backgroundColor: '#f7f8fa', borderBottom: '1px solid #e2e6eb' }}
-        >
-          <div>
-            <p id="create-wi-title" className="text-[13px] font-semibold" style={{ color: '#1a2234' }}>
-              New Work Item
-            </p>
-            <p className="text-[11px]" style={{ color: '#8c94a6' }}>
-              {type === 'story' ? 'User Story' : 'Defect'}
-            </p>
+  return (
+    <AppModal
+      open
+      onClose={onClose}
+      title="New Work Item"
+      subtitle={type === 'story' ? 'User Story' : 'Defect'}
+      width={520}
+    >
+      <ModalBody className="space-y-4">
+        {/* Type selector */}
+        <FormField label="Type">
+          <div className="flex gap-2">
+            {TYPE_OPTIONS.map(({ value, label }) => {
+              const cfg = WORK_ITEM_TYPE_CONFIG[value]
+              const active = type === value
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setType(value)}
+                  className="flex-1 py-1.5 text-[11px] font-semibold rounded-sm transition-colors"
+                  style={{
+                    backgroundColor: active ? cfg.bg : 'transparent',
+                    color: active ? cfg.color : BRAND.textSecondary,
+                    border: `1px solid ${active ? cfg.color + '55' : BRAND.borderSubtle}`,
+                  }}
+                >
+                  {label}
+                </button>
+              )
+            })}
           </div>
+        </FormField>
+
+        {/* Title — intentionally larger font for primary field */}
+        <FormField label="Title" required htmlFor="wi-title" error={error ?? undefined}>
+          <Input
+            id="wi-title"
+            ref={titleRef}
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Enter a concise, descriptive title…"
+            className="text-[13px]"
+          />
+        </FormField>
+
+        {/* Team + Owner row */}
+        <div className="grid grid-cols-2 gap-4">
+          <FormField label="Team" htmlFor="wi-team">
+            <select id="wi-team" value={teamId} onChange={(e) => setTeamId(e.target.value)} className={selectCls}>
+              <option value="">No team</option>
+              {teams.map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          </FormField>
+          <FormField label="Owner" htmlFor="wi-owner">
+            <select id="wi-owner" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} className={selectCls}>
+              <option value="">Unassigned</option>
+              {members.map((m) => (
+                <option key={m.userId} value={m.userId}>
+                  {m.displayName ?? m.email ?? m.userId}
+                </option>
+              ))}
+            </select>
+          </FormField>
+        </div>
+
+        {/* Plan estimate */}
+        <FormField label="Plan Estimate (pts)" htmlFor="wi-estimate">
+          <Input
+            id="wi-estimate"
+            type="number"
+            min={0}
+            step={1}
+            value={storyPoints}
+            onChange={(e) => setStoryPoints(e.target.value)}
+            placeholder="0"
+          />
+        </FormField>
+      </ModalBody>
+
+      <ModalFooter className="justify-between">
+        <span className="text-[10px]" style={{ color: BRAND.textMuted }}>
+          Ctrl+Enter to save
+        </span>
+        <div className="flex gap-2">
           <button
+            type="button"
             onClick={onClose}
-            className="p-1 rounded"
-            style={{ color: '#8c94a6' }}
-            aria-label="Close"
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = '#edf0f4'
-              e.currentTarget.style.color = '#1a2234'
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'transparent'
-              e.currentTarget.style.color = '#8c94a6'
-            }}
+            disabled={submitting}
+            className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-[#f0f2f5] disabled:opacity-50"
+            style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
           >
-            <X size={15} />
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => void submit(true)}
+            disabled={submitting || !title.trim()}
+            className="rounded px-4 py-1.5 text-[11px] font-semibold transition-colors hover:opacity-90 disabled:opacity-50"
+            style={{ border: '1px solid #9fb5d5', color: BRAND.primary, backgroundColor: '#f5f8fc' }}
+          >
+            Create with details
+          </button>
+          <button
+            type="button"
+            onClick={() => void submit(false)}
+            disabled={submitting || !title.trim()}
+            className="flex items-center gap-1.5 rounded px-4 py-1.5 text-[11px] font-semibold text-white transition-colors hover:opacity-90 disabled:opacity-50"
+            style={{ backgroundColor: BRAND.primary }}
+          >
+            {submitting && <Loader2 size={11} className="animate-spin" />}
+            {submitting ? 'Creating…' : 'Create Item'}
           </button>
         </div>
-
-        {/* Body */}
-        <div className="overflow-y-auto flex-1 p-5 space-y-4">
-          {/* Type selector */}
-          <div>
-            <label
-              className="block text-[10px] font-semibold uppercase tracking-widest mb-2"
-              style={{ color: '#5c6478' }}
-            >
-              Type
-            </label>
-            <div className="flex gap-2">
-              {TYPE_OPTIONS.map(({ value, label }) => {
-                const cfg = WORK_ITEM_TYPE_CONFIG[value]
-                const active = type === value
-                return (
-                  <button
-                    key={value}
-                    onClick={() => setType(value)}
-                    className="flex-1 py-1.5 text-[11px] font-semibold rounded-sm transition-colors"
-                    style={{
-                      backgroundColor: active ? cfg.bg : 'transparent',
-                      color: active ? cfg.color : '#5c6478',
-                      border: `1px solid ${active ? cfg.color + '55' : '#dde2ea'}`,
-                    }}
-                  >
-                    {label}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Title */}
-          <div>
-            <label
-              htmlFor="wi-title"
-              className="block text-[10px] font-semibold uppercase tracking-widest mb-1.5"
-              style={{ color: '#5c6478' }}
-            >
-              Title <span style={{ color: '#dc2626' }}>*</span>
-            </label>
-            <input
-              id="wi-title"
-              ref={titleRef}
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Enter a concise, descriptive title…"
-              className="w-full text-[13px] px-3 py-2 rounded focus:outline-none"
-              style={{ border: '1px solid #dde2ea', color: '#1a2234' }}
-              onFocus={(e) => (e.currentTarget.style.borderColor = 'rgba(29,63,115,0.4)')}
-              onBlur={(e) => (e.currentTarget.style.borderColor = '#dde2ea')}
-            />
-          </div>
-
-          {/* Team + Owner row */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label
-                htmlFor="wi-team"
-                className="block text-[10px] font-semibold uppercase tracking-widest mb-1.5"
-                style={{ color: '#5c6478' }}
-              >
-                Team
-              </label>
-              <select
-                id="wi-team"
-                value={teamId}
-                onChange={(e) => setTeamId(e.target.value)}
-                className="w-full text-[12px] px-2.5 py-1.5 rounded focus:outline-none bg-white"
-                style={{ border: '1px solid #dde2ea', color: '#1a2234' }}
-              >
-                <option value="">No team</option>
-                {teams.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label
-                htmlFor="wi-owner"
-                className="block text-[10px] font-semibold uppercase tracking-widest mb-1.5"
-                style={{ color: '#5c6478' }}
-              >
-                Owner
-              </label>
-              <select
-                id="wi-owner"
-                value={assigneeId}
-                onChange={(e) => setAssigneeId(e.target.value)}
-                className="w-full text-[12px] px-2.5 py-1.5 rounded focus:outline-none bg-white"
-                style={{ border: '1px solid #dde2ea', color: '#1a2234' }}
-              >
-                <option value="">Unassigned</option>
-                {members.map((m) => (
-                  <option key={m.userId} value={m.userId}>
-                    {m.displayName ?? m.email ?? m.userId}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Plan estimate */}
-          <div>
-            <label
-              htmlFor="wi-estimate"
-              className="block text-[10px] font-semibold uppercase tracking-widest mb-1.5"
-              style={{ color: '#5c6478' }}
-            >
-              Plan Estimate (pts)
-            </label>
-            <input
-              id="wi-estimate"
-              type="number"
-              min={0}
-              step={1}
-              value={storyPoints}
-              onChange={(e) => setStoryPoints(e.target.value)}
-              placeholder="0"
-              className="w-full text-[12px] px-2.5 py-1.5 rounded focus:outline-none"
-              style={{ border: '1px solid #dde2ea', color: '#1a2234' }}
-              onFocus={(e) => (e.currentTarget.style.borderColor = 'rgba(29,63,115,0.4)')}
-              onBlur={(e) => (e.currentTarget.style.borderColor = '#dde2ea')}
-            />
-          </div>
-
-          {/* Error message */}
-          {error && (
-            <p className="text-[11px]" style={{ color: '#b91c1c' }}>
-              {error}
-            </p>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div
-          className="flex items-center justify-between px-5 py-3 shrink-0"
-          style={{ borderTop: '1px solid #e2e6eb', backgroundColor: '#f7f8fa' }}
-        >
-          <span className="text-[10px]" style={{ color: '#8c94a6' }}>
-            Ctrl+Enter to save
-          </span>
-          <div className="flex gap-2">
-            <button
-              onClick={onClose}
-              disabled={submitting}
-              className="px-3.5 py-1.5 text-[12px] font-medium rounded disabled:opacity-50"
-              style={{ border: '1px solid #dde2ea', color: '#5c6478' }}
-              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#edf0f4')}
-              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-            >
-              Cancel
-            </button>
-            <button
-              onClick={() => void submit(true)}
-              disabled={submitting || !title.trim()}
-              className="px-4 py-1.5 text-[12px] font-semibold rounded disabled:opacity-50"
-              style={{ border: '1px solid #9fb5d5', color: '#1d3f73', backgroundColor: '#f5f8fc' }}
-              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#e8eff8')}
-              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#f5f8fc')}
-            >
-              Create with details
-            </button>
-            <button
-              onClick={() => void submit(false)}
-              disabled={submitting || !title.trim()}
-              className="px-4 py-1.5 text-[12px] font-semibold text-white rounded disabled:opacity-50"
-              style={{ backgroundColor: '#1d3f73' }}
-              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#163259')}
-              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#1d3f73')}
-            >
-              {submitting ? 'Creating…' : 'Create Item'}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+      </ModalFooter>
+    </AppModal>
   )
 }

@@ -35,6 +35,14 @@ export const ProjectStatus = {
 } as const
 export type ProjectStatus = (typeof ProjectStatus)[keyof typeof ProjectStatus]
 
+// ── Derived arrays (DRY — do not duplicate these in pages/features) ───────────
+
+/** All schedule state values in display order. */
+export const SCHEDULE_STATE_VALUES = Object.values(ScheduleState) as ScheduleState[]
+
+/** All priority values in display order. */
+export const PRIORITY_VALUES = Object.values(WorkItemPriority) as WorkItemPriority[]
+
 // ── Style config maps ─────────────────────────────────────────────────────────
 
 export interface BadgeStyle {

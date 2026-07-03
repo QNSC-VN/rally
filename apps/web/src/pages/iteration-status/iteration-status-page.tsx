@@ -8,8 +8,11 @@
  */
 import { useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { ChevronDown, ChevronLeft, ChevronRight, Plus, Search } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, Loader2, Plus, Search } from 'lucide-react'
 import { BRAND } from '@/shared/config/brand'
+import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
+import { FormField } from '@/shared/ui/form-field'
+import { Input } from '@/shared/ui/input'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import {
@@ -22,9 +25,11 @@ import {
 import { useUpdateWorkItem } from '@/features/work-items/api'
 import { useProjectMembers } from '@/features/teams/api'
 import { ScheduleStateBadge } from '@/entities/work-item/ui/badges'
-import { SCHEDULE_STATE_LABEL, type ScheduleState } from '@/entities/work-item/model/types'
-
-const SCHEDULE_STATES = ['idea', 'defined', 'in_progress', 'completed', 'accepted', 'released'] as const
+import {
+  SCHEDULE_STATE_LABEL,
+  SCHEDULE_STATE_VALUES,
+  type ScheduleState,
+} from '@/entities/work-item/model/types'
 
 function fmtRange(it: Pick<Iteration, 'startDate' | 'endDate'>) {
   const s = it.startDate ?? '—'
@@ -41,6 +46,12 @@ export function IterationStatusPage() {
 
   const { data: iterations = [] } = useIterations(projectId)
   const { data: members = [] } = useProjectMembers(projectId)
+
+  // O(1) member lookup — avoids O(n×m) per-row array scan
+  const memberMap = useMemo(
+    () => new Map(members.map((m) => [m.userId, m])),
+    [members],
+  )
   // Explicit user choice; falls back to the first iteration until one is picked.
   const [chosenId, setChosenId] = useState<string | null>(null)
   const [selectorOpen, setSelectorOpen] = useState(false)
@@ -193,7 +204,7 @@ export function IterationStatusPage() {
 
         {!isLoading &&
           (status?.items ?? []).map((item) => (
-            <StatusRow key={item.id} item={item} iterations={iterations} members={members} selectedIterationId={selectedId!} canEdit={canEdit} onOpen={() => navigate({ to: '/item/$itemKey', params: { itemKey: item.itemKey } })} />
+            <StatusRow key={item.id} item={item} iterations={iterations} memberMap={memberMap} selectedIterationId={selectedId!} canEdit={canEdit} onOpen={() => navigate({ to: '/item/$itemKey', params: { itemKey: item.itemKey } })} />
           ))}
 
         {!isLoading && (status?.items?.length ?? 0) === 0 && (
@@ -256,23 +267,21 @@ function Metric({
 function StatusRow({
   item,
   iterations,
-  members,
+  memberMap,
   selectedIterationId,
   canEdit,
   onOpen,
 }: {
   item: IterationStatusItem
   iterations: Iteration[]
-  members: import('@/features/teams/api').ProjectMember[]
+  memberMap: Map<string, import('@/features/teams/api').ProjectMember>
   selectedIterationId: string
   canEdit: boolean
   onOpen: () => void
 }) {
   const update = useUpdateWorkItem(item.id)
-  const ownerName =
-    members.find((m) => m.userId === item.assigneeId)?.displayName ??
-    members.find((m) => m.userId === item.assigneeId)?.email ??
-    null
+  const member = item.assigneeId ? memberMap.get(item.assigneeId) : undefined
+  const ownerName = member?.displayName ?? member?.email ?? null
 
   return (
     <div className="flex items-center h-8 px-3 text-[11px]" style={{ borderBottom: `1px solid ${BRAND.borderInner}` }}>
@@ -297,7 +306,7 @@ function StatusRow({
             className="text-[11px] px-1 py-0.5 rounded bg-white focus:outline-none"
             style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textPrimary }}
           >
-            {SCHEDULE_STATES.map((s) => (
+            {SCHEDULE_STATE_VALUES.map((s) => (
               <option key={s} value={s}>
                 {SCHEDULE_STATE_LABEL[s as ScheduleState] ?? s}
               </option>
@@ -373,9 +382,6 @@ function AddItemModal({
   const [planEstimate, setPlanEstimate] = useState('')
   const [error, setError] = useState<string | null>(null)
 
-  const fieldCls = 'w-full text-[12px] px-2.5 py-1.5 rounded focus:outline-none bg-white'
-  const fieldStyle = { border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textPrimary }
-
   async function submit(openDetail = false) {
     setError(null)
     if (!title.trim()) {
@@ -399,69 +405,84 @@ function AddItemModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0" style={{ backgroundColor: 'rgba(0,0,0,0.28)' }} onClick={onClose} />
-      <div className="relative bg-white rounded shadow-2xl flex flex-col overflow-hidden" style={{ width: 460, border: `1px solid ${BRAND.border}` }}>
-        <div className="px-5 py-3.5" style={{ backgroundColor: BRAND.surfaceHover, borderBottom: `1px solid ${BRAND.borderSubtle}` }}>
-          <p className="text-[13px] font-semibold" style={{ color: BRAND.textPrimary }}>
-            Add Item to Iteration
-          </p>
-          <p className="text-[11px]" style={{ color: BRAND.textMuted }}>
-            {iteration.name} · {fmtRange(iteration)}
-          </p>
-        </div>
-        <div className="p-5 space-y-4">
-          <div>
-            <label className="block text-[10px] font-semibold uppercase tracking-widest mb-2" style={{ color: BRAND.textSecondary }}>
-              Type
-            </label>
-            <div className="flex gap-2">
-              {(['story', 'defect'] as const).map((o) => (
-                <button
-                  key={o}
-                  onClick={() => setType(o)}
-                  className="flex-1 py-1.5 text-[11px] font-semibold rounded-sm capitalize"
-                  style={{
-                    backgroundColor: type === o ? '#eef3fb' : 'transparent',
-                    color: type === o ? BRAND.primary : BRAND.textSecondary,
-                    border: `1px solid ${type === o ? '#bdd0ef' : BRAND.borderSubtle}`,
-                  }}
-                >
-                  {o}
-                </button>
-              ))}
-            </div>
+    <AppModal
+      open
+      onClose={onClose}
+      title="Add Item to Iteration"
+      subtitle={`${iteration.name} · ${fmtRange(iteration)}`}
+      width={460}
+    >
+      <ModalBody className="space-y-4">
+        {/* Type toggle */}
+        <FormField label="Type">
+          <div className="flex gap-2">
+            {(['story', 'defect'] as const).map((o) => (
+              <button
+                key={o}
+                type="button"
+                onClick={() => setType(o)}
+                className="flex-1 py-1.5 text-[11px] font-semibold rounded-sm capitalize transition-colors"
+                style={{
+                  backgroundColor: type === o ? '#eef3fb' : 'transparent',
+                  color: type === o ? BRAND.primary : BRAND.textSecondary,
+                  border: `1px solid ${type === o ? '#bdd0ef' : BRAND.borderSubtle}`,
+                }}
+              >
+                {o}
+              </button>
+            ))}
           </div>
-          <div>
-            <label className="block text-[10px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: BRAND.textSecondary }}>
-              Title <span style={{ color: BRAND.danger }}>*</span>
-            </label>
-            <input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Enter a concise work item title..." className={fieldCls} style={fieldStyle} />
-          </div>
-          <div>
-            <label className="block text-[10px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: BRAND.textSecondary }}>
-              Plan Estimate
-            </label>
-            <input type="number" min={0} value={planEstimate} onChange={(e) => setPlanEstimate(e.target.value)} placeholder="0" className={fieldCls} style={fieldStyle} />
-          </div>
-          {error && (
-            <p className="text-[11px]" style={{ color: BRAND.danger }}>
-              {error}
-            </p>
-          )}
-        </div>
-        <div className="flex items-center justify-end gap-2 px-5 py-3" style={{ borderTop: `1px solid ${BRAND.borderSubtle}`, backgroundColor: BRAND.surfaceHover }}>
-          <button onClick={onClose} className="px-3.5 py-1.5 text-[12px] font-medium rounded" style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}>
-            Cancel
-          </button>
-          <button disabled={create.isPending} onClick={() => submit(true)} className="px-4 py-1.5 text-[12px] font-semibold rounded" style={{ border: '1px solid #9fb5d5', color: BRAND.primary, backgroundColor: '#f5f8fc' }}>
-            Create with details
-          </button>
-          <button disabled={create.isPending} onClick={() => submit(false)} className="px-4 py-1.5 text-[12px] font-semibold text-white rounded" style={{ backgroundColor: BRAND.primary }}>
-            Create Item
-          </button>
-        </div>
-      </div>
-    </div>
+        </FormField>
+
+        <FormField label="Title" required error={error ?? undefined}>
+          <Input
+            autoFocus
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Enter a concise work item title..."
+          />
+        </FormField>
+
+        <FormField label="Plan Estimate">
+          <Input
+            type="number"
+            min={0}
+            value={planEstimate}
+            onChange={(e) => setPlanEstimate(e.target.value)}
+            placeholder="0"
+          />
+        </FormField>
+      </ModalBody>
+
+      <ModalFooter>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-[#f0f2f5]"
+          style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          disabled={create.isPending}
+          onClick={() => submit(true)}
+          className="rounded px-4 py-1.5 text-[11px] font-semibold transition-colors hover:opacity-90 disabled:opacity-50"
+          style={{ border: '1px solid #9fb5d5', color: BRAND.primary, backgroundColor: '#f5f8fc' }}
+        >
+          Create with details
+        </button>
+        <button
+          type="button"
+          disabled={create.isPending}
+          onClick={() => submit(false)}
+          className="flex items-center gap-1.5 rounded px-4 py-1.5 text-[11px] font-semibold text-white transition-colors hover:opacity-90 disabled:opacity-50"
+          style={{ backgroundColor: BRAND.primary }}
+        >
+          {create.isPending && <Loader2 size={11} className="animate-spin" />}
+          Create Item
+        </button>
+      </ModalFooter>
+    </AppModal>
   )
 }

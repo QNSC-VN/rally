@@ -6,8 +6,11 @@
  * right panel). State maps DB planning/committed/accepted ↔ UI Planning/Committed/Accepted.
  */
 import { useMemo, useState } from 'react'
-import { ChevronLeft, Filter, Plus, Search } from 'lucide-react'
+import { ChevronLeft, Filter, Loader2, Plus, Search } from 'lucide-react'
 import { BRAND } from '@/shared/config/brand'
+import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
+import { FormField } from '@/shared/ui/form-field'
+import { Input } from '@/shared/ui/input'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { useProjectTeams } from '@/features/teams/api'
@@ -330,7 +333,7 @@ function CreateIterationModal({
   const [state, setState] = useState<IterationState>('planning')
   const [error, setError] = useState<string | null>(null)
 
-  const fieldCls = 'w-full text-[12px] px-2.5 py-1.5 rounded focus:outline-none bg-white'
+  const fieldCls = 'w-full text-[12px] px-3 py-2 rounded bg-white focus:outline-none'
   const fieldStyle = { border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textPrimary }
 
   async function submit(openDetail: boolean) {
@@ -363,63 +366,72 @@ function CreateIterationModal({
     }
   }
 
+  const selectCls =
+    'w-full rounded border border-input bg-white px-3 py-2 text-[12px] text-foreground outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50'
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0" style={{ backgroundColor: 'rgba(0,0,0,0.28)' }} onClick={onClose} />
-      <div className="relative bg-white rounded shadow-2xl flex flex-col overflow-hidden" style={{ width: 480, border: `1px solid ${BRAND.border}` }}>
-        <div className="px-5 py-3.5" style={{ backgroundColor: BRAND.surfaceHover, borderBottom: `1px solid ${BRAND.borderSubtle}` }}>
-          <p className="text-[13px] font-semibold" style={{ color: BRAND.textPrimary }}>
-            New Iteration
-          </p>
+    <AppModal open onClose={onClose} title="New Iteration" width={480}>
+      <ModalBody className="space-y-4">
+        <FormField label="Name" required error={error ?? undefined}>
+          <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Enter iteration name..." />
+        </FormField>
+        <FormField label="Team">
+          <select value={teamId} onChange={(e) => setTeamId(e.target.value)} className={selectCls}>
+            <option value="">{team ? `Context: ${team}` : 'No team'}</option>
+            {teams.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        </FormField>
+        <div className="grid grid-cols-2 gap-4">
+          <FormField label="Start Date" required>
+            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+          </FormField>
+          <FormField label="End Date" required>
+            <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+          </FormField>
         </div>
-        <div className="p-5 space-y-4">
-          <Field label="Name" required>
-            <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Enter iteration name..." className={fieldCls} style={fieldStyle} />
-          </Field>
-          <Field label="Team">
-            <select value={teamId} onChange={(e) => setTeamId(e.target.value)} className={fieldCls} style={fieldStyle}>
-              <option value="">{team ? `Context: ${team}` : 'No team'}</option>
-              {teams.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Start Date" required>
-              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={fieldCls} style={fieldStyle} />
-            </Field>
-            <Field label="End Date" required>
-              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className={fieldCls} style={fieldStyle} />
-            </Field>
-          </div>
-          <Field label="State" required>
-            <select value={state} onChange={(e) => setState(e.target.value as IterationState)} className={fieldCls} style={fieldStyle}>
-              <option value="planning">Planning</option>
-              <option value="committed">Committed</option>
-              <option value="accepted">Accepted</option>
-            </select>
-          </Field>
-          {error && (
-            <p className="text-[11px]" style={{ color: BRAND.danger }}>
-              {error}
-            </p>
-          )}
-        </div>
-        <div className="flex items-center justify-end gap-2 px-5 py-3" style={{ borderTop: `1px solid ${BRAND.borderSubtle}`, backgroundColor: BRAND.surfaceHover }}>
-          <button onClick={onClose} className="px-3.5 py-1.5 text-[12px] font-medium rounded" style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}>
-            Cancel
-          </button>
-          <button disabled={create.isPending} onClick={() => submit(true)} className="px-4 py-1.5 text-[12px] font-semibold rounded" style={{ border: '1px solid #9fb5d5', color: BRAND.primary, backgroundColor: '#f5f8fc' }}>
-            Create with details
-          </button>
-          <button disabled={create.isPending} onClick={() => submit(false)} className="px-4 py-1.5 text-[12px] font-semibold text-white rounded" style={{ backgroundColor: BRAND.primary }}>
-            Create Iteration
-          </button>
-        </div>
-      </div>
-    </div>
+        <FormField label="State" required>
+          <select value={state} onChange={(e) => setState(e.target.value as IterationState)} className={selectCls}>
+            <option value="planning">Planning</option>
+            <option value="committed">Committed</option>
+            <option value="accepted">Accepted</option>
+          </select>
+        </FormField>
+      </ModalBody>
+
+      <ModalFooter>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-[#f0f2f5]"
+          style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          disabled={create.isPending}
+          onClick={() => submit(true)}
+          className="rounded px-4 py-1.5 text-[11px] font-semibold transition-colors hover:opacity-90 disabled:opacity-50"
+          style={{ border: '1px solid #9fb5d5', color: BRAND.primary, backgroundColor: '#f5f8fc' }}
+        >
+          Create with details
+        </button>
+        <button
+          type="button"
+          disabled={create.isPending}
+          onClick={() => submit(false)}
+          className="flex items-center gap-1.5 rounded px-4 py-1.5 text-[11px] font-semibold text-white transition-colors hover:opacity-90 disabled:opacity-50"
+          style={{ backgroundColor: BRAND.primary }}
+        >
+          {create.isPending && <Loader2 size={11} className="animate-spin" />}
+          Create Iteration
+        </button>
+      </ModalFooter>
+    </AppModal>
   )
 }
 
@@ -437,8 +449,11 @@ function IterationDetail({ id, canManage, onBack }: { id: string; canManage: boo
   const themeVal = theme ?? it?.theme ?? ''
   const notesVal = notes ?? it?.notes ?? ''
   const disabled = !canManage
-  const fieldCls = 'w-full text-[12px] px-3 py-2 rounded bg-white focus:outline-none'
-  const fieldStyle = { border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textPrimary }
+
+  const selectCls =
+    'w-full rounded border border-input bg-white px-3 py-2 text-[12px] text-foreground outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50'
+  const readonlyCls =
+    'w-full rounded border border-input bg-input-background px-3 py-2 text-[12px] text-foreground'
 
   function patch(body: Parameters<typeof update.mutateAsync>[0]) {
     void update.mutateAsync(body)
@@ -506,77 +521,54 @@ function IterationDetail({ id, canManage, onBack }: { id: string; canManage: boo
         </main>
 
         <aside className="w-[320px] shrink-0 overflow-y-auto p-5 space-y-4 bg-white" style={{ borderLeft: `1px solid ${BRAND.borderSubtle}` }}>
-          <Field label="Project">
-            <div className={fieldCls} style={{ ...fieldStyle, backgroundColor: BRAND.surfaceSubtle }}>
-              {project?.projectName ?? '—'}
-            </div>
-          </Field>
-          <Field label="Team">
-            <div className={fieldCls} style={{ ...fieldStyle, backgroundColor: BRAND.surfaceSubtle }}>
-              {teamName ?? 'No team'}
-            </div>
-          </Field>
-          <Field label="Start Date">
-            <input
+          <FormField label="Project">
+            <div className={readonlyCls}>{project?.projectName ?? '—'}</div>
+          </FormField>
+          <FormField label="Team">
+            <div className={readonlyCls}>{teamName ?? 'No team'}</div>
+          </FormField>
+          <FormField label="Start Date">
+            <Input
               type="date"
               defaultValue={it.startDate ?? ''}
               disabled={disabled}
               onBlur={(e) => patch({ startDate: e.target.value || null })}
-              className={fieldCls}
-              style={fieldStyle}
             />
-          </Field>
-          <Field label="End Date">
-            <input
+          </FormField>
+          <FormField label="End Date">
+            <Input
               type="date"
               defaultValue={it.endDate ?? ''}
               disabled={disabled}
               onBlur={(e) => patch({ endDate: e.target.value || null })}
-              className={fieldCls}
-              style={fieldStyle}
             />
-          </Field>
-          <Field label="State">
+          </FormField>
+          <FormField label="State">
             <select
               defaultValue={it.state}
               disabled={disabled}
               onChange={(e) => patch({ state: e.target.value as IterationState })}
-              className={fieldCls}
-              style={fieldStyle}
+              className={selectCls}
             >
               <option value="planning">Planning</option>
               <option value="committed">Committed</option>
               <option value="accepted">Accepted</option>
             </select>
-          </Field>
-          <Field label="Planned Velocity">
-            <input
+          </FormField>
+          <FormField label="Planned Velocity">
+            <Input
               type="number"
               min={0}
               defaultValue={it.plannedVelocity ?? ''}
               disabled={disabled}
               onBlur={(e) => patch({ plannedVelocity: e.target.value === '' ? null : Number(e.target.value) })}
               placeholder="0"
-              className={fieldCls}
-              style={fieldStyle}
             />
-          </Field>
+          </FormField>
         </aside>
       </div>
     </div>
   )
 }
 
-// ── Shared field ────────────────────────────────────────────────────────────
-
-function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
-  return (
-    <div>
-      <label className="block text-[10px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: BRAND.textSecondary }}>
-        {label}
-        {required && <span style={{ color: BRAND.danger }}> *</span>}
-      </label>
-      {children}
-    </div>
-  )
-}
+// (Field removed — use shared <FormField> from @/shared/ui/form-field instead)

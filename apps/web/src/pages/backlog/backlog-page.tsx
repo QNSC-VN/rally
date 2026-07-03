@@ -26,18 +26,15 @@ import { useReleases } from '@/features/releases/api'
 import { useProjectMembers } from '@/features/teams/api'
 import { useIterationOptions } from '@/features/iterations/api'
 import { TypeBadge, ScheduleStateBadge, PriorityBadge } from '@/entities/work-item/ui/badges'
-import { SCHEDULE_STATE_LABEL, type ScheduleState } from '@/entities/work-item/model/types'
+import {
+  SCHEDULE_STATE_LABEL,
+  SCHEDULE_STATE_VALUES,
+  PRIORITY_VALUES,
+  type ScheduleState,
+} from '@/entities/work-item/model/types'
+import { BRAND } from '@/shared/config/brand'
+import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { CreateWorkItemModal } from '@/features/work-items/ui/create-work-item-modal'
-
-const SCHEDULE_STATE_VALUES = [
-  'idea',
-  'defined',
-  'in_progress',
-  'completed',
-  'accepted',
-  'released',
-] as const
-const PRIORITY_VALUES = ['none', 'low', 'normal', 'high', 'urgent'] as const
 
 // ── Column definitions ─────────────────────────────────────────────────────────
 
@@ -79,11 +76,9 @@ const COLUMN_LABELS: Record<ColumnKey, string> = {
   iteration: 'Iteration',
 }
 
-const LS_WIDTHS_KEY = 'rally-backlog-col-widths'
-
 function loadSavedWidths(): Record<ColumnKey, number> {
   try {
-    const raw = localStorage.getItem(LS_WIDTHS_KEY)
+    const raw = localStorage.getItem(STORAGE_KEYS.BACKLOG_COLUMN_WIDTHS)
     if (!raw) return { ...DEFAULT_WIDTHS }
     return { ...DEFAULT_WIDTHS, ...JSON.parse(raw) } as Record<ColumnKey, number>
   } catch {
@@ -113,7 +108,7 @@ function ResizableHeader({
       className="relative flex h-full shrink-0 items-center text-[9px] font-semibold tracking-wider uppercase select-none"
       style={{
         width,
-        color: '#8c94a6',
+        color: BRAND.columnHeader,
         justifyContent:
           align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start',
       }}
@@ -167,14 +162,9 @@ function OwnerCell({ name }: { name?: string | null }) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 const SCHEDULE_STATE_OPTS = [
-  { value: '', label: 'All States' },
-  { value: 'idea', label: 'Idea' },
-  { value: 'defined', label: 'Defined' },
-  { value: 'in_progress', label: 'In Progress' },
-  { value: 'completed', label: 'Completed' },
-  { value: 'accepted', label: 'Accepted' },
-  { value: 'released', label: 'Released' },
-] as const
+  { value: '' as const, label: 'All States' },
+  ...SCHEDULE_STATE_VALUES.map((v) => ({ value: v, label: SCHEDULE_STATE_LABEL[v] })),
+]
 
 export function BacklogPage() {
   const navigate = useNavigate()
@@ -273,7 +263,7 @@ export function BacklogPage() {
         setColWidths((prev) => {
           const updated = { ...prev, [c]: next }
           try {
-            localStorage.setItem(LS_WIDTHS_KEY, JSON.stringify(updated))
+            localStorage.setItem(STORAGE_KEYS.BACKLOG_COLUMN_WIDTHS, JSON.stringify(updated))
           } catch {
             /* noop */
           }
@@ -761,7 +751,7 @@ interface BacklogRowProps {
 
 const inlineSelectCls =
   'w-full rounded bg-white px-1 py-0.5 text-[11px] focus:outline-none'
-const inlineSelectStyle = { border: '1px solid #dde2ea', color: '#1a2234' }
+const inlineSelectStyle = { border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textPrimary }
 
 function BacklogRow({
   item,
@@ -792,9 +782,10 @@ function BacklogRow({
     else setTitleDraft(item.title)
   }
 
-  const ownerName =
-    members.find((m) => m.userId === item.assigneeId)?.displayName ??
-    members.find((m) => m.userId === item.assigneeId)?.email
+  const ownerName = (() => {
+    const m = members.find((m) => m.userId === item.assigneeId)
+    return m?.displayName ?? m?.email
+  })()
 
   const stop = (e: React.MouseEvent) => e.stopPropagation()
 

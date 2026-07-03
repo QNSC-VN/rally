@@ -12,10 +12,13 @@ import {
   User,
   Users,
   UsersRound,
-  X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { BRAND } from '@/shared/config/brand'
+import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
+import { FormField } from '@/shared/ui/form-field'
+import { Input } from '@/shared/ui/input'
+import { Textarea } from '@/shared/ui/textarea'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { useProjects, useUpdateProject, useCreateProject } from '@/features/projects/api'
@@ -45,101 +48,80 @@ function ArchiveConfirmModal({
   const confirmed = typed.trim().toUpperCase() === project.key.toUpperCase()
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}
-    >
+    <AppModal open onClose={onClose} title="Archive project" width={440}>
+      {/* Danger header band */}
       <div
-        className="w-[440px] overflow-hidden rounded-lg bg-white shadow-2xl"
-        style={{ border: `1px solid ${BRAND.border}` }}
+        className="flex items-center gap-3 px-5 py-3"
+        style={{ backgroundColor: BRAND.dangerBg, borderBottom: `1px solid ${BRAND.dangerBorder}` }}
       >
-        {/* Header */}
+        <AlertTriangle size={16} style={{ color: BRAND.danger, flexShrink: 0 }} />
+        <p className="text-[11px]" style={{ color: '#7f1d1d' }}>
+          This project will become read-only. Work items and iterations will still be visible.
+        </p>
+      </div>
+
+      <ModalBody className="space-y-4">
+        {/* Impact summary */}
         <div
-          className="flex items-center gap-3 px-5 py-4"
-          style={{
-            backgroundColor: BRAND.dangerBg,
-            borderBottom: `1px solid ${BRAND.dangerBorder}`,
-          }}
+          className="rounded p-3 text-[11px]"
+          style={{ backgroundColor: BRAND.surfaceSubtle, border: `1px solid ${BRAND.borderSubtle}` }}
         >
-          <AlertTriangle size={18} style={{ color: BRAND.danger, flexShrink: 0 }} />
-          <div>
-            <p className="text-[13px] font-semibold" style={{ color: BRAND.danger }}>
-              Archive project
-            </p>
-            <p className="text-[11px]" style={{ color: '#7f1d1d' }}>
-              This project will become read-only. Work items and iterations will still be visible.
-            </p>
-          </div>
+          <p className="font-semibold" style={{ color: BRAND.textPrimary }}>
+            What will happen:
+          </p>
+          <ul className="mt-1.5 space-y-0.5" style={{ color: BRAND.textSecondary }}>
+            <li>· Project status changes to <strong>Archived</strong></li>
+            <li>· No new work items, iterations, or releases can be created</li>
+            <li>· Existing data remains accessible in read-only mode</li>
+            <li>· The project will be hidden from the Active filter</li>
+          </ul>
         </div>
 
-        <div className="p-5">
-          {/* Impact summary */}
-          <div
-            className="mb-4 rounded p-3 text-[11px]"
-            style={{
-              backgroundColor: BRAND.surfaceSubtle,
-              border: `1px solid ${BRAND.borderSubtle}`,
-            }}
-          >
-            <p className="font-semibold" style={{ color: BRAND.textPrimary }}>
-              What will happen:
-            </p>
-            <ul className="mt-1.5 space-y-0.5" style={{ color: BRAND.textSecondary }}>
-              <li>
-                · Project status changes to <strong>Archived</strong>
-              </li>
-              <li>· No new work items, iterations, or releases can be created</li>
-              <li>· Existing data remains accessible in read-only mode</li>
-              <li>· The project will be hidden from the Active filter</li>
-            </ul>
-          </div>
-
-          {/* Key confirmation */}
-          <label
-            className="mb-1.5 block text-[11px] font-semibold"
-            style={{ color: BRAND.textSecondary }}
-          >
-            Type{' '}
-            <span className="font-mono font-bold" style={{ color: BRAND.textPrimary }}>
-              {project.key}
-            </span>{' '}
-            to confirm
-          </label>
-          <input
+        {/* Key confirmation */}
+        <FormField
+          label={
+            <>
+              Type{' '}
+              <span className="font-mono font-bold" style={{ color: BRAND.textPrimary }}>
+                {project.key}
+              </span>{' '}
+              to confirm
+            </>
+          }
+        >
+          <Input
             autoFocus
             type="text"
             value={typed}
             onChange={(e) => setTyped(e.target.value)}
             placeholder={project.key}
-            className="w-full rounded px-3 py-2 font-mono text-[12px] focus:ring-1 focus:outline-none"
-            style={{
-              border: `1px solid ${confirmed ? BRAND.dangerBorder : BRAND.border}`,
-              color: BRAND.textPrimary,
-            }}
+            className="font-mono"
+            style={{ borderColor: confirmed ? BRAND.dangerBorder : undefined }}
           />
+        </FormField>
+      </ModalBody>
 
-          <div className="mt-4 flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded px-3.5 py-1.5 text-[11px] font-medium"
-              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
-            >
-              Cancel
-            </button>
-            <button
-              onClick={onConfirm}
-              disabled={!confirmed || isPending}
-              className="flex items-center gap-1.5 rounded px-3.5 py-1.5 text-[11px] font-semibold text-white disabled:opacity-50"
-              style={{ backgroundColor: BRAND.danger }}
-            >
-              {isPending && <Loader2 size={12} className="animate-spin" />}
-              Archive project
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+      <ModalFooter>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-[#f0f2f5]"
+          style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={onConfirm}
+          disabled={!confirmed || isPending}
+          className="flex items-center gap-1.5 rounded px-3.5 py-1.5 text-[11px] font-semibold text-white disabled:opacity-50"
+          style={{ backgroundColor: BRAND.danger }}
+        >
+          {isPending && <Loader2 size={12} className="animate-spin" />}
+          Archive project
+        </button>
+      </ModalFooter>
+    </AppModal>
   )
 }
 
@@ -197,108 +179,58 @@ function EditProjectModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}
+    <AppModal
+      open
+      onClose={onClose}
+      title="Edit Project"
+      subtitle={`Key: ${project.key} · immutable`}
+      width={440}
     >
-      <div
-        className="w-[440px] overflow-hidden rounded-lg bg-white shadow-2xl"
-        style={{ border: `1px solid ${BRAND.border}` }}
-      >
-        <div
-          className="flex items-center justify-between px-5 py-3.5"
-          style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
-        >
-          <div>
-            <h2 className="text-[13px] font-semibold" style={{ color: BRAND.textPrimary }}>
-              Edit Project
-            </h2>
-            <p className="text-[10px]" style={{ color: BRAND.textMuted }}>
-              Key: <span className="font-mono font-semibold">{project.key}</span> · immutable
-            </p>
-          </div>
-          <button onClick={onClose} className="rounded p-0.5 hover:bg-[#f4f6f9]" aria-label="Close">
-            <X size={16} style={{ color: BRAND.textMuted }} />
-          </button>
-        </div>
-        <form onSubmit={handleSubmit} className="space-y-4 p-5">
-          <div>
-            <label
-              className="mb-1 block text-[11px] font-semibold"
-              style={{ color: BRAND.textSecondary }}
-            >
-              Project Name <span style={{ color: BRAND.danger }}>*</span>
-            </label>
-            <input
+      <form onSubmit={handleSubmit}>
+        <ModalBody className="space-y-4">
+          <FormField label="Project Name" required>
+            <Input
               autoFocus
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
-              className="w-full rounded px-3 py-2 text-[12px] focus:ring-1 focus:outline-none"
-              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textPrimary }}
             />
-          </div>
-          <div>
-            <label
-              className="mb-1 block text-[11px] font-semibold"
-              style={{ color: BRAND.textSecondary }}
-            >
-              Description
-            </label>
-            <textarea
-              value={desc}
-              onChange={(e) => setDesc(e.target.value)}
-              rows={3}
-              className="w-full resize-none rounded px-3 py-2 text-[12px] focus:ring-1 focus:outline-none"
-              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textPrimary }}
-            />
-          </div>
-          {/* Project Lead — read-only display; member picker deferred to Members screen */}
-          <div>
-            <label
-              className="mb-1 block text-[11px] font-semibold"
-              style={{ color: BRAND.textSecondary }}
-            >
-              Project Lead
-            </label>
+          </FormField>
+          <FormField label="Description">
+            <Textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={3} />
+          </FormField>
+          <FormField label="Project Lead" hint="Change via Project Members screen">
             <div
-              className="flex items-center gap-2 rounded px-3 py-2 text-[12px]"
-              style={{
-                border: `1px solid ${BRAND.border}`,
-                backgroundColor: BRAND.surfaceHover,
-                color: BRAND.textSecondary,
-              }}
+              className="flex items-center gap-2 rounded border border-input bg-input-background px-3 py-2 text-[12px]"
+              style={{ color: BRAND.textSecondary }}
             >
               <User size={12} style={{ color: BRAND.textMuted, flexShrink: 0 }} />
               <span className="truncate">{project.leadName ?? '—'}</span>
             </div>
-            <p className="mt-0.5 text-[10px]" style={{ color: BRAND.textMuted }}>
-              Change via Project Members screen
-            </p>
-          </div>
-          <div className="flex justify-end gap-2 pt-1">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded px-3.5 py-1.5 text-[11px] font-medium"
-              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isPending || !name.trim()}
-              className="flex items-center gap-1.5 rounded px-3.5 py-1.5 text-[11px] font-semibold text-white disabled:opacity-60"
-              style={{ backgroundColor: BRAND.primary }}
-            >
-              {isPending && <Loader2 size={12} className="animate-spin" />}
-              Save Changes
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+          </FormField>
+        </ModalBody>
+        <ModalFooter>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-[#f0f2f5]"
+            style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={isPending || !name.trim()}
+            className="flex items-center gap-1.5 rounded px-3.5 py-1.5 text-[11px] font-semibold text-white disabled:opacity-60"
+            style={{ backgroundColor: BRAND.primary }}
+          >
+            {isPending && <Loader2 size={12} className="animate-spin" />}
+            Save Changes
+          </button>
+        </ModalFooter>
+      </form>
+    </AppModal>
   )
 }
 
@@ -349,54 +281,20 @@ function NewProjectModal({ workspaceId, onClose }: { workspaceId: string; onClos
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}
-    >
-      <div
-        className="w-[440px] overflow-hidden rounded-lg bg-white shadow-2xl"
-        style={{ border: `1px solid ${BRAND.border}` }}
-      >
-        <div
-          className="flex items-center justify-between px-5 py-3.5"
-          style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
-        >
-          <h2 className="text-[13px] font-semibold" style={{ color: BRAND.textPrimary }}>
-            New Project
-          </h2>
-          <button onClick={onClose} className="rounded p-0.5 hover:bg-[#f4f6f9]" aria-label="Close">
-            <X size={16} style={{ color: BRAND.textMuted }} />
-          </button>
-        </div>
-        <form onSubmit={handleSubmit} className="space-y-4 p-5">
-          <div>
-            <label
-              className="mb-1 block text-[11px] font-semibold"
-              style={{ color: BRAND.textSecondary }}
-            >
-              Project Name <span style={{ color: BRAND.danger }}>*</span>
-            </label>
-            <input
+    <AppModal open onClose={onClose} title="New Project" width={440}>
+      <form onSubmit={handleSubmit}>
+        <ModalBody className="space-y-4">
+          <FormField label="Project Name" required>
+            <Input
               type="text"
               value={name}
               onChange={(e) => handleNameChange(e.target.value)}
               placeholder="e.g. NX Platform"
               required
-              className="w-full rounded px-3 py-2 text-[12px] focus:ring-1 focus:outline-none"
-              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textPrimary }}
             />
-          </div>
-          <div>
-            <label
-              className="mb-1 block text-[11px] font-semibold"
-              style={{ color: BRAND.textSecondary }}
-            >
-              Key <span style={{ color: BRAND.danger }}>*</span>
-              <span className="ml-1 font-normal" style={{ color: BRAND.textMuted }}>
-                (2–6 uppercase letters)
-              </span>
-            </label>
-            <input
+          </FormField>
+          <FormField label="Key" required hint="2–6 uppercase letters">
+            <Input
               type="text"
               value={key}
               onChange={(e) =>
@@ -409,68 +307,51 @@ function NewProjectModal({ workspaceId, onClose }: { workspaceId: string; onClos
               }
               placeholder="NXP"
               required
-              className="w-full rounded px-3 py-2 font-mono text-[12px] focus:ring-1 focus:outline-none"
-              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textPrimary }}
+              className="font-mono"
             />
-          </div>
-          <div>
-            <label
-              className="mb-1 block text-[11px] font-semibold"
-              style={{ color: BRAND.textSecondary }}
-            >
-              Project Lead <span style={{ color: BRAND.danger }}>*</span>
-            </label>
+          </FormField>
+          <FormField label="Project Lead" required>
             <div
-              className="flex items-center gap-2 rounded px-3 py-2"
-              style={{ border: `1px solid ${BRAND.border}`, backgroundColor: BRAND.surfaceHover }}
+              className="flex items-center gap-2 rounded border border-input bg-input-background px-3 py-2"
+              style={{ color: BRAND.textPrimary }}
             >
               <User size={13} style={{ color: BRAND.textMuted }} />
-              <span className="text-[12px]" style={{ color: BRAND.textPrimary }}>
-                {user?.displayName ?? '—'}
-              </span>
+              <span className="text-[12px]">{user?.displayName ?? '—'}</span>
               <span className="ml-1 text-[10px]" style={{ color: BRAND.textMuted }}>
                 (you)
               </span>
             </div>
-          </div>
-          <div>
-            <label
-              className="mb-1 block text-[11px] font-semibold"
-              style={{ color: BRAND.textSecondary }}
-            >
-              Description
-            </label>
-            <textarea
+          </FormField>
+          <FormField label="Description">
+            <Textarea
               value={desc}
               onChange={(e) => setDesc(e.target.value)}
               placeholder="Brief description of this project…"
               rows={3}
-              className="w-full resize-none rounded px-3 py-2 text-[12px] focus:ring-1 focus:outline-none"
-              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textPrimary }}
             />
-          </div>
-          <div className="flex justify-end gap-2 pt-1">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded px-3.5 py-1.5 text-[11px] font-medium"
-              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isPending || !name.trim() || !key.trim()}
-              className="flex items-center gap-1.5 rounded px-3.5 py-1.5 text-[11px] font-semibold text-white disabled:opacity-60"
-              style={{ backgroundColor: BRAND.primary }}
-            >
-              {isPending && <Loader2 size={12} className="animate-spin" />}
-              Create Project
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+          </FormField>
+        </ModalBody>
+        <ModalFooter>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-[#f0f2f5]"
+            style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={isPending || !name.trim() || !key.trim()}
+            className="flex items-center gap-1.5 rounded px-3.5 py-1.5 text-[11px] font-semibold text-white disabled:opacity-60"
+            style={{ backgroundColor: BRAND.primary }}
+          >
+            {isPending && <Loader2 size={12} className="animate-spin" />}
+            Create Project
+          </button>
+        </ModalFooter>
+      </form>
+    </AppModal>
   )
 }
 
@@ -592,7 +473,7 @@ export function ProjectsPage() {
             placeholder="Search projects…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-52 rounded py-1.5 pr-3 pl-8 text-[11px] focus:ring-1 focus:outline-none"
+            className="w-52 rounded py-1.5 pr-3 pl-8 text-[11px] focus:outline-none"
             style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textPrimary }}
           />
         </div>
