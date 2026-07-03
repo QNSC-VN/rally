@@ -17,6 +17,9 @@
     "start:dev": "nest start api --watch",
     "start:dev:worker": "nest start worker --watch",
     "start:debug": "nest start api --debug --watch",
+    "start:prod": "node dist/apps/api/apps/api/src/main.js",
+    "start:prod:worker": "node dist/apps/worker/apps/worker/src/main.js",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint \"{apps/api,apps/worker,libs,db}/**/*.ts\"",
     "lint:fix": "eslint \"{apps/api,apps/worker,libs,db}/**/*.ts\" --fix",
     "test": "vitest run",
@@ -115,6 +118,7 @@
     "tsconfig-paths": "^4.2.0",
     "tsx": "^4.19.4",
     "typescript": "^6.0.3",
+    "typescript-eslint": "^8.62.1",
     "unplugin-swc": "^1.5.9",
     "vite-tsconfig-paths": "^6.1.1",
     "vitest": "^4.1.9"

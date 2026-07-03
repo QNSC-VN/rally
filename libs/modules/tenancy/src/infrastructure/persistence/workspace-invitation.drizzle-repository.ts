@@ -20,7 +20,7 @@ export class WorkspaceInvitationDrizzleRepository implements IWorkspaceInvitatio
       .from(workspaceInvitations)
       .where(eq(workspaceInvitations.tokenHash, tokenHash))
       .limit(1);
-    return (rows[0] as WorkspaceInvitation | undefined) ?? null;
+    return (rows[0]) ?? null;
   }
 
   async findById(id: string): Promise<WorkspaceInvitation | null> {
@@ -29,7 +29,7 @@ export class WorkspaceInvitationDrizzleRepository implements IWorkspaceInvitatio
       .from(workspaceInvitations)
       .where(eq(workspaceInvitations.id, id))
       .limit(1);
-    return (rows[0] as WorkspaceInvitation | undefined) ?? null;
+    return (rows[0]) ?? null;
   }
 
   async findPendingByEmail(
@@ -48,7 +48,7 @@ export class WorkspaceInvitationDrizzleRepository implements IWorkspaceInvitatio
         ),
       )
       .limit(1);
-    return (rows[0] as WorkspaceInvitation | undefined) ?? null;
+    return (rows[0]) ?? null;
   }
 
   async listByWorkspace(workspaceId: string): Promise<WorkspaceInvitation[]> {
@@ -57,7 +57,7 @@ export class WorkspaceInvitationDrizzleRepository implements IWorkspaceInvitatio
       .from(workspaceInvitations)
       .where(eq(workspaceInvitations.workspaceId, workspaceId))
       .orderBy(workspaceInvitations.createdAt);
-    return rows as WorkspaceInvitation[];
+    return rows;
   }
 
   async create(input: CreateInvitationInput, tx?: DbExecutor): Promise<WorkspaceInvitation> {
@@ -77,7 +77,7 @@ export class WorkspaceInvitationDrizzleRepository implements IWorkspaceInvitatio
         updatedAt: new Date(),
       })
       .returning();
-    return rows[0] as WorkspaceInvitation;
+    return rows[0];
   }
 
   async updateStatus(

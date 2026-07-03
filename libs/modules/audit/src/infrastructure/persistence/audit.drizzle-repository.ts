@@ -22,7 +22,7 @@ export class AuditDrizzleRepository implements IAuditRepository {
         resourceType: input.resourceType,
         resourceId: input.resourceId,
         projectId: input.projectId,
-        changes: input.changes as Record<string, unknown> | undefined,
+        changes: input.changes,
         metadata: input.metadata ?? {},
         ipAddress: input.ipAddress,
         userAgent: input.userAgent,

@@ -47,8 +47,8 @@ export class ResendEmailProvider implements IEmailProvider {
       throw new Error('MAIL_FROM_EMAIL must be set when EMAIL_PROVIDER=resend');
     }
     this.fromAddress = buildFromAddress(config);
-    this.replyTo = config.get('MAIL_REPLY_TO') as string | undefined;
-    this.appBaseUrl = config.get('APP_BASE_URL') as string;
+    this.replyTo = config.get('MAIL_REPLY_TO');
+    this.appBaseUrl = config.get('APP_BASE_URL');
   }
 
   async send(payload: EmailPayload): Promise<void> {

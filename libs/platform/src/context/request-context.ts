@@ -21,7 +21,7 @@ const als = requestContextStorage;
 @Injectable()
 export class RequestContextService {
   run<T>(context: RequestContext, fn: () => T): T {
-    return als.run(context, fn) as T;
+    return als.run(context, fn);
   }
 
   get(): RequestContext | undefined {

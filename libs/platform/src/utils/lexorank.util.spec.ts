@@ -68,7 +68,7 @@ describe('lexorank', () => {
     const ranks = evenlySpacedRanks(20);
     expect(ranks).toHaveLength(20);
     for (let i = 1; i < ranks.length; i += 1) {
-      expect(ranks[i]! > ranks[i - 1]!).toBe(true);
+      expect(ranks[i] > ranks[i - 1]).toBe(true);
     }
     expect(evenlySpacedRanks(0)).toEqual([]);
   });

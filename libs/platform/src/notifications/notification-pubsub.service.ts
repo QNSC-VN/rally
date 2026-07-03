@@ -61,7 +61,7 @@ export class NotificationPubSubService implements OnModuleInit, OnModuleDestroy 
   ) {}
 
   onModuleInit(): void {
-    const url = this.config.get('REDIS_URL') as string;
+    const url = this.config.get('REDIS_URL');
     this.subscriber = new Redis(url, {
       // No keyPrefix option — pub/sub channels are not key commands; we namespace
       // via ns() so every channel already includes the environment prefix.

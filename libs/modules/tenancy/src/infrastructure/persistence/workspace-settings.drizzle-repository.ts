@@ -16,7 +16,7 @@ export class WorkspaceSettingsDrizzleRepository implements IWorkspaceSettingsRep
       .from(workspaceSettings)
       .where(eq(workspaceSettings.workspaceId, workspaceId))
       .limit(1);
-    return (rows[0] as WorkspaceSettings | undefined) ?? null;
+    return (rows[0]) ?? null;
   }
 
   async upsert(
@@ -37,7 +37,7 @@ export class WorkspaceSettingsDrizzleRepository implements IWorkspaceSettingsRep
         })
         .where(eq(workspaceSettings.workspaceId, workspaceId))
         .returning();
-      return rows[0] as WorkspaceSettings;
+      return rows[0];
     }
 
     const rows = await this.db
@@ -50,6 +50,6 @@ export class WorkspaceSettingsDrizzleRepository implements IWorkspaceSettingsRep
         dateFormat: input.dateFormat ?? null,
       })
       .returning();
-    return rows[0] as WorkspaceSettings;
+    return rows[0];
   }
 }

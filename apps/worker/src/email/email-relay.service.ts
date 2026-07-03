@@ -49,7 +49,7 @@ export class EmailRelayService
   async onModuleInit(): Promise<void> {
     this.logger.log('Email relay started — polling email_outbox every 5s');
     this.unsubscribeRelayWake = await this.pubSub.subscribeEmailRelayWake(() => {
-      this.relay().catch((err) =>
+      this.relay().catch((err: unknown) =>
         this.logger.error({ err }, 'Email relay triggered by wake signal failed'),
       );
     });

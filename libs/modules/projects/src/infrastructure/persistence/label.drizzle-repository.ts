@@ -12,7 +12,7 @@ export class LabelDrizzleRepository implements ILabelRepository {
 
   async findById(id: string): Promise<Label | null> {
     const rows = await this.db.select().from(labels).where(eq(labels.id, id)).limit(1);
-    return (rows[0] as Label | undefined) ?? null;
+    return (rows[0]) ?? null;
   }
 
   async listByProject(projectId: string, tenantId: string): Promise<Label[]> {
@@ -21,7 +21,7 @@ export class LabelDrizzleRepository implements ILabelRepository {
       .from(labels)
       .where(and(eq(labels.projectId, projectId), eq(labels.tenantId, tenantId)))
       .orderBy(labels.name);
-    return rows as Label[];
+    return rows;
   }
 
   async create(input: CreateLabelInput): Promise<Label> {
@@ -35,7 +35,7 @@ export class LabelDrizzleRepository implements ILabelRepository {
         color: input.color ?? '#6b7280',
       })
       .returning();
-    return rows[0] as Label;
+    return rows[0];
   }
 
   async update(id: string, input: UpdateLabelInput): Promise<Label> {
@@ -48,7 +48,7 @@ export class LabelDrizzleRepository implements ILabelRepository {
       })
       .where(eq(labels.id, id))
       .returning();
-    return rows[0] as Label;
+    return rows[0];
   }
 
   async delete(id: string): Promise<void> {

@@ -12,7 +12,7 @@ export class CommentDrizzleRepository implements ICommentRepository {
 
   async findById(id: string): Promise<Comment | null> {
     const rows = await this.db.select().from(comments).where(eq(comments.id, id)).limit(1);
-    return (rows[0] as Comment | undefined) ?? null;
+    return (rows[0]) ?? null;
   }
 
   async listByWorkItem(workItemId: string, tenantId: string): Promise<Comment[]> {
@@ -26,7 +26,7 @@ export class CommentDrizzleRepository implements ICommentRepository {
           isNull(comments.deletedAt),
         ),
       );
-    return rows as Comment[];
+    return rows;
   }
 
   async create(input: CreateCommentInput): Promise<Comment> {
@@ -41,7 +41,7 @@ export class CommentDrizzleRepository implements ICommentRepository {
         parentId: input.parentId,
       })
       .returning();
-    return rows[0] as Comment;
+    return rows[0];
   }
 
   async update(id: string, body: string): Promise<Comment> {
@@ -50,7 +50,7 @@ export class CommentDrizzleRepository implements ICommentRepository {
       .set({ body, isEdited: true, editedAt: new Date(), updatedAt: new Date() })
       .where(eq(comments.id, id))
       .returning();
-    return rows[0] as Comment;
+    return rows[0];
   }
 
   async softDelete(id: string): Promise<void> {

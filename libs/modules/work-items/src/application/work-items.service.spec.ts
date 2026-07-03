@@ -1,5 +1,5 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
-import { WorkItemsService } from './work-items.service';
 import { WORK_ITEM_REPOSITORY } from '../domain/ports/work-item.repository';
 import { ACTIVITY_LOG_REPOSITORY } from '../domain/ports/activity-log.repository';
 import { TIME_LOG_REPOSITORY } from '../domain/ports/time-log.repository';

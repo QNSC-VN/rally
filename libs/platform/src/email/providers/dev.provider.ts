@@ -16,6 +16,7 @@ export class DevEmailProvider implements IEmailProvider {
 
   constructor(private readonly config: AppConfigService) {}
 
+  // eslint-disable-next-line @typescript-eslint/require-await
   async send(payload: EmailPayload): Promise<void> {
     const fields: Record<string, unknown> = {
       to: payload.to,

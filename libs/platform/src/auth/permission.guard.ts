@@ -21,13 +21,12 @@ export class PermissionGuard implements CanActivate {
 
   constructor(private readonly reflector: Reflector) {}
 
-  async canActivate(context: ExecutionContext): Promise<boolean> {
+  canActivate(context: ExecutionContext): boolean {
     const requiredPermission = this.reflector.getAllAndOverride<string | undefined>(
       PERMISSION_KEY,
       [context.getHandler(), context.getClass()],
     );
 
-    // No permission annotation on this endpoint → JWT auth is sufficient.
     if (!requiredPermission) return true;
 
     const request = context.switchToHttp().getRequest<{ user?: JwtPayload }>();

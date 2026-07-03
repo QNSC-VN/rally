@@ -16,7 +16,7 @@ export class RoleAssignmentDrizzleRepository implements IRoleAssignmentRepositor
       .from(userRoleAssignments)
       .where(eq(userRoleAssignments.id, id))
       .limit(1);
-    return (rows[0] as UserRoleAssignment | undefined) ?? null;
+    return (rows[0]) ?? null;
   }
 
   async findExisting(
@@ -40,7 +40,7 @@ export class RoleAssignmentDrizzleRepository implements IRoleAssignmentRepositor
       .from(userRoleAssignments)
       .where(and(...conditions))
       .limit(1);
-    return (rows[0] as UserRoleAssignment | undefined) ?? null;
+    return (rows[0]) ?? null;
   }
 
   async listForUser(tenantId: string, userId: string): Promise<UserRoleAssignment[]> {
@@ -50,7 +50,7 @@ export class RoleAssignmentDrizzleRepository implements IRoleAssignmentRepositor
       .where(
         and(eq(userRoleAssignments.tenantId, tenantId), eq(userRoleAssignments.userId, userId)),
       );
-    return rows as UserRoleAssignment[];
+    return rows;
   }
 
   async create(input: AssignRoleInput): Promise<UserRoleAssignment> {
@@ -66,7 +66,7 @@ export class RoleAssignmentDrizzleRepository implements IRoleAssignmentRepositor
         grantedBy: input.grantedBy,
       })
       .returning();
-    return rows[0] as UserRoleAssignment;
+    return rows[0];
   }
 
   async delete(id: string): Promise<void> {

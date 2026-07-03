@@ -19,8 +19,8 @@
 
 const ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyz';
 const BASE = ALPHABET.length; // 36
-const MIN_CHAR = ALPHABET[0]!; // '0'
-const MAX_CHAR = ALPHABET[BASE - 1]!; // 'z'
+const MIN_CHAR = ALPHABET[0]; // '0'
+const MAX_CHAR = ALPHABET[BASE - 1]; // 'z'
 
 /** Ranks longer than this suggest the neighbour gap is degenerate — rebalance. */
 export const RANK_REBALANCE_THRESHOLD = 48;
@@ -53,10 +53,10 @@ export function between(low: string | null, high: string | null): string {
 
   // Walk digit positions, carrying the constraint a < result < b.
   for (;;) {
-    const lo = i < a.length ? digit(a[i]!) : 0;
+    const lo = i < a.length ? digit(a[i]) : 0;
     // With no upper bound, treat the ceiling as BASE (one past 'z') so we can
     // pick a digit strictly above `lo` and terminate.
-    const hi = i < b.length ? digit(b[i]!) : BASE;
+    const hi = i < b.length ? digit(b[i]) : BASE;
 
     if (lo === hi) {
       // Digits equal here — copy and descend to the next position.
@@ -85,7 +85,7 @@ export function between(low: string | null, high: string | null): string {
 
 /** Initial rank when a list is empty (a comfortable midpoint). */
 export function initialRank(): string {
-  return ALPHABET[Math.floor(BASE / 2)]!; // 'i'
+  return ALPHABET[Math.floor(BASE / 2)]; // 'i'
 }
 
 /** True when a rank has grown long enough to warrant a project-scoped rebalance. */

@@ -22,7 +22,7 @@ export class TeamMemberDrizzleRepository implements ITeamMemberRepository {
         ),
       )
       .limit(1);
-    return (rows[0] as TeamMember | undefined) ?? null;
+    return (rows[0]) ?? null;
   }
 
   async listByTeam(teamId: string): Promise<TeamMember[]> {
@@ -31,7 +31,7 @@ export class TeamMemberDrizzleRepository implements ITeamMemberRepository {
       .from(teamMembers)
       .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.status, 'active')))
       .orderBy(teamMembers.joinedAt);
-    return rows as TeamMember[];
+    return rows;
   }
 
   async addMember(
@@ -51,7 +51,7 @@ export class TeamMemberDrizzleRepository implements ITeamMemberRepository {
         joinedAt: new Date(),
       })
       .returning();
-    return rows[0] as TeamMember;
+    return rows[0];
   }
 
   async removeMember(teamId: string, userId: string): Promise<void> {

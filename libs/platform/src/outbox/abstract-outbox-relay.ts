@@ -162,16 +162,16 @@ export abstract class AbstractOutboxRelay<TRow extends { id: string; attempts: n
       // Transaction committed — run post-commit tasks (fire-and-forget, non-critical).
       // Errors here do not affect outbox correctness; the row is already marked 'sent'.
       for (const task of postCommitTasks) {
-        task().catch((err) => this.logger.error({ err }, 'Post-commit task failed'));
+        task().catch((err: unknown) => this.logger.error({ err }, 'Post-commit task failed'));
       }
     } finally {
       this.isRelaying = false;
       // If a wake arrived while we were busy, schedule one more run immediately.
       if (this.wakeOnComplete) {
         this.wakeOnComplete = false;
-        setImmediate(() =>
-          this.relay().catch((err) => this.logger.error({ err }, 'Post-wake relay failed')),
-        );
+        setImmediate(() => {
+          void this.relay().catch((err: unknown) => this.logger.error({ err }, 'Post-wake relay failed'));
+        });
       }
     }
   }

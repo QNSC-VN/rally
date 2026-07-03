@@ -20,6 +20,7 @@ function changed(before: unknown, after: unknown): boolean {
   const a = before === undefined ? null : before;
   const b = after === undefined ? null : after;
   if (a === null && b === null) return false;
+  // eslint-disable-next-line @typescript-eslint/no-base-to-string
   return String(a) !== String(b);
 }
 

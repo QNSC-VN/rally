@@ -16,7 +16,7 @@ export class TimeLogDrizzleRepository implements ITimeLogRepository {
       .from(timeLogs)
       .where(and(eq(timeLogs.id, id), eq(timeLogs.tenantId, tenantId), isNull(timeLogs.deletedAt)))
       .limit(1);
-    return (rows[0] as TimeLog | undefined) ?? null;
+    return (rows[0]) ?? null;
   }
 
   async listByWorkItem(
@@ -41,7 +41,7 @@ export class TimeLogDrizzleRepository implements ITimeLogRepository {
       this.db.select({ cnt: count() }).from(timeLogs).where(condition),
     ]);
 
-    return { items: rows as TimeLog[], total: Number(cnt) };
+    return { items: rows, total: Number(cnt) };
   }
 
   async create(input: CreateTimeLogInput): Promise<TimeLog> {
@@ -57,7 +57,7 @@ export class TimeLogDrizzleRepository implements ITimeLogRepository {
         description: input.description ?? null,
       })
       .returning();
-    return rows[0] as TimeLog;
+    return rows[0];
   }
 
   async update(id: string, input: UpdateTimeLogInput): Promise<TimeLog> {
@@ -71,7 +71,7 @@ export class TimeLogDrizzleRepository implements ITimeLogRepository {
       })
       .where(eq(timeLogs.id, id))
       .returning();
-    return rows[0] as TimeLog;
+    return rows[0];
   }
 
   async softDelete(id: string): Promise<TimeLog> {
@@ -80,6 +80,6 @@ export class TimeLogDrizzleRepository implements ITimeLogRepository {
       .set({ deletedAt: new Date(), updatedAt: new Date() })
       .where(eq(timeLogs.id, id))
       .returning();
-    return rows[0] as TimeLog;
+    return rows[0];
   }
 }

@@ -61,7 +61,7 @@ export async function bootstrapApp(app: NestFastifyApplication): Promise<void> {
   });
 
   // URI versioning: /v1/...
-  app.setGlobalPrefix('v1');
+  app.setGlobalPrefix('v1', { exclude: ['healthz', 'readyz'] });
 
   // OpenAPI — only expose in non-prod
   if (isDev) {

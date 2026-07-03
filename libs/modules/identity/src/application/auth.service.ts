@@ -521,7 +521,7 @@ export class AuthService {
         ],
         audience: clientId,
       });
-      claims = result.payload as typeof claims;
+      claims = result.payload;
     } catch {
       throw new UnauthorizedException('SSO_TOKEN_INVALID', 'Entra ID token is invalid or expired');
     }
@@ -878,7 +878,7 @@ export class AuthService {
     if (!match) return 30 * 24 * 3600;
     const [, n, unit] = match;
     const multipliers: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400 };
-    return parseInt(n!, 10) * (multipliers[unit!] ?? 86400);
+    return parseInt(n, 10) * (multipliers[unit] ?? 86400);
   }
 
   /** Hash a password with argon2id (use once, at user creation / password reset). */

@@ -206,7 +206,7 @@ export class IterationsService {
         eq(workItems.tenantId, tenantId),
         isNull(workItems.deletedAt),
         ...(doneStatusIds.length === 1
-          ? [ne(workItems.statusId, doneStatusIds[0]!)]
+          ? [ne(workItems.statusId, doneStatusIds[0])]
           : [and(...doneStatusIds.map((sid) => ne(workItems.statusId, sid)))!]),
       ];
 

@@ -35,13 +35,13 @@ export class ConflictException extends DomainException {
 }
 
 export class PermissionDeniedException extends DomainException {
-  constructor(codeOrMessage: ErrorCode | string = 'PERMISSION_DENIED', message?: string) {
+  constructor(codeOrMessage: string = 'PERMISSION_DENIED', message?: string) {
     // Support both: new PermissionDeniedException('PROJECT_PERMISSION_DENIED', 'msg')
     // and legacy: new PermissionDeniedException('msg')
     const isCode = message !== undefined;
     super(
       isCode ? (codeOrMessage as ErrorCode) : 'PERMISSION_DENIED',
-      isCode ? message! : (codeOrMessage as string),
+      isCode ? message : (codeOrMessage),
       'PERMISSION_DENIED',
     );
   }

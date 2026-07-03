@@ -24,6 +24,6 @@ export class SsoConnectionDrizzleRepository implements ISsoConnectionRepository 
         ),
       )
       .limit(1);
-    return (rows[0] as SsoConnection | undefined) ?? null;
+    return (rows[0]) ?? null;
   }
 }

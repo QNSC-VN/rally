@@ -12,7 +12,7 @@ export class ReleaseDrizzleRepository implements IReleaseRepository {
 
   async findById(id: string): Promise<Release | null> {
     const rows = await this.db.select().from(releases).where(eq(releases.id, id)).limit(1);
-    return (rows[0] as Release | undefined) ?? null;
+    return (rows[0]) ?? null;
   }
 
   async listByProject(
@@ -48,7 +48,7 @@ export class ReleaseDrizzleRepository implements IReleaseRepository {
         targetDate: input.targetDate,
       })
       .returning();
-    return rows[0] as Release;
+    return rows[0];
   }
 
   async update(id: string, input: UpdateReleaseInput): Promise<Release> {
@@ -64,7 +64,7 @@ export class ReleaseDrizzleRepository implements IReleaseRepository {
       })
       .where(eq(releases.id, id))
       .returning();
-    return rows[0] as Release;
+    return rows[0];
   }
 
   async delete(id: string): Promise<void> {

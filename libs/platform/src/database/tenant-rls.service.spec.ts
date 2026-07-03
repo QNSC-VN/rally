@@ -1,5 +1,5 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
-import { TenantRlsService } from './tenant-rls.service';
 import { DRIZZLE } from './drizzle.provider';
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────

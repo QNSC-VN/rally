@@ -559,7 +559,7 @@ export class WorkItemsController {
   ): Promise<TimeLogResponseDto> {
     const log = await this.workItemsService.logTime(user, id, {
       loggedDate: dto.loggedDate,
-      hours: dto.hours as string,
+      hours: dto.hours,
       description: dto.description,
     });
     return toTimeLogDto(log);
@@ -579,7 +579,7 @@ export class WorkItemsController {
   ): Promise<TimeLogResponseDto> {
     const log = await this.workItemsService.updateTimeLog(user, id, logId, {
       loggedDate: dto.loggedDate,
-      hours: dto.hours as string | undefined,
+      hours: dto.hours,
       description: dto.description,
     });
     return toTimeLogDto(log);

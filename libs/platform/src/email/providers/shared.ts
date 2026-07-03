@@ -11,9 +11,7 @@ import type { EmailCategory } from '../email.provider';
  * Throws if neither is set (caught at module init, not at send time).
  */
 export function resolveFromEmail(config: AppConfigService): string {
-  const email = (config.get('MAIL_FROM_EMAIL') ?? config.get('SES_FROM_EMAIL')) as
-    | string
-    | undefined;
+  const email = (config.get('MAIL_FROM_EMAIL') ?? config.get('SES_FROM_EMAIL'));
   return email ?? '';
 }
 

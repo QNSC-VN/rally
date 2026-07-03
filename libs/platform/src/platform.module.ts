@@ -44,8 +44,7 @@ import { StorageService } from './storage/storage.service';
         publicKey: config.get('JWT_PUBLIC_KEY'),
         signOptions: {
           algorithm: 'ES256' as Algorithm,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          expiresIn: config.get('JWT_ACCESS_EXPIRY') as any,
+          expiresIn: config.get('JWT_ACCESS_EXPIRY'),
           issuer: config.get('JWT_ISSUER'),
           audience: config.get('JWT_AUDIENCE'),
         },

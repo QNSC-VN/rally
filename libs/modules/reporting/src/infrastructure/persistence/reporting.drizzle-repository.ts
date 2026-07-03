@@ -26,7 +26,7 @@ export class ReportingDrizzleRepository implements IReportingRepository {
     // physical column back onto the domain field.
     return rows.map((r) => {
       const { iterationId, ...rest } = r;
-      return { ...rest, sprintId: iterationId } as SprintSnapshot;
+      return { ...rest, sprintId: iterationId };
     });
   }
 

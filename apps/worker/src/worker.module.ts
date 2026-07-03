@@ -3,7 +3,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { LoggerModule } from 'nestjs-pino';
 import { trace, isSpanContextValid } from '@opentelemetry/api';
 import { requestContextStorage } from '@platform/context/request-context';
-import { ConfigService } from '@nestjs/config';
+import { AppConfigService } from '@platform/config';
 import { PlatformModule } from '@platform';
 import { AuditModule } from '@modules/audit';
 import { NotificationsModule } from '@modules/notifications';
@@ -23,20 +23,20 @@ import { NotificationRelayService } from './notifications/notification-relay.ser
 @Module({
   imports: [
     LoggerModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: (configService: ConfigService) => {
-        const isDev = configService.get<string>('NODE_ENV') !== 'production';
-        const prettyLogs = configService.get<boolean>('LOG_PRETTY') ?? isDev;
+      inject: [AppConfigService],
+      useFactory: (config: AppConfigService) => {
+        const isDev = config.get('NODE_ENV') !== 'production';
+        const prettyLogs = config.get('LOG_PRETTY') ?? isDev;
         return {
           pinoHttp: {
-            level: configService.get<string>('LOG_LEVEL') ?? 'info',
+            level: config.get('LOG_LEVEL'),
             transport: prettyLogs
               ? { target: 'pino-pretty', options: { colorize: true, singleLine: false } }
               : undefined,
             customProps: () => ({
               service: 'rally-worker',
-              env: configService.get<string>('NODE_ENV'),
-              version: configService.get<string>('SERVICE_VERSION'),
+              env: config.get('NODE_ENV'),
+              version: config.get('SERVICE_VERSION'),
             }),
             mixin: () => {
               const result: Record<string, unknown> = {};

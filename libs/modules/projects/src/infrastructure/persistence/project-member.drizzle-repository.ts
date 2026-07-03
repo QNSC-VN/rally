@@ -26,7 +26,7 @@ export class ProjectMemberDrizzleRepository implements IProjectMemberRepository 
         ),
       )
       .limit(1);
-    return (rows[0] as ProjectMember | undefined) ?? null;
+    return (rows[0]) ?? null;
   }
 
   async findMemberById(id: string): Promise<ProjectMember | null> {
@@ -35,7 +35,7 @@ export class ProjectMemberDrizzleRepository implements IProjectMemberRepository 
       .from(projectMembers)
       .where(eq(projectMembers.id, id))
       .limit(1);
-    return (rows[0] as ProjectMember | undefined) ?? null;
+    return (rows[0]) ?? null;
   }
 
   async listByProject(projectId: string): Promise<ProjectMember[]> {
@@ -44,7 +44,7 @@ export class ProjectMemberDrizzleRepository implements IProjectMemberRepository 
       .from(projectMembers)
       .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.status, 'active')))
       .orderBy(projectMembers.joinedAt);
-    return rows as ProjectMember[];
+    return rows;
   }
 
   async addMember(input: AddProjectMemberInput, tx?: DbExecutor): Promise<ProjectMember> {
@@ -61,7 +61,7 @@ export class ProjectMemberDrizzleRepository implements IProjectMemberRepository 
         updatedAt: new Date(),
       })
       .returning();
-    return rows[0] as ProjectMember;
+    return rows[0];
   }
 
   async updateMember(id: string, input: UpdateProjectMemberInput): Promise<ProjectMember> {
@@ -74,7 +74,7 @@ export class ProjectMemberDrizzleRepository implements IProjectMemberRepository 
       })
       .where(eq(projectMembers.id, id))
       .returning();
-    return rows[0] as ProjectMember;
+    return rows[0];
   }
 
   async removeMember(projectId: string, userId: string): Promise<void> {

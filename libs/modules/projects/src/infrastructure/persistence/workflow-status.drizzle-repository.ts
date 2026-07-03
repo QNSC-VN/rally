@@ -21,7 +21,7 @@ export class WorkflowStatusDrizzleRepository implements IWorkflowStatusRepositor
       .from(workflowStatuses)
       .where(eq(workflowStatuses.id, id))
       .limit(1);
-    return (rows[0] as WorkflowStatus | undefined) ?? null;
+    return (rows[0]) ?? null;
   }
 
   async listByProject(projectId: string): Promise<WorkflowStatus[]> {
@@ -30,7 +30,7 @@ export class WorkflowStatusDrizzleRepository implements IWorkflowStatusRepositor
       .from(workflowStatuses)
       .where(eq(workflowStatuses.projectId, projectId))
       .orderBy(asc(workflowStatuses.position));
-    return rows as WorkflowStatus[];
+    return rows;
   }
 
   async create(input: CreateWorkflowStatusInput, tx?: DbExecutor): Promise<WorkflowStatus> {
@@ -47,7 +47,7 @@ export class WorkflowStatusDrizzleRepository implements IWorkflowStatusRepositor
         isDefault: input.isDefault ?? false,
       })
       .returning();
-    return rows[0] as WorkflowStatus;
+    return rows[0];
   }
 
   async updatePositions(projectId: string, orderedIds: string[]): Promise<void> {
@@ -74,7 +74,7 @@ export class WorkflowStatusDrizzleRepository implements IWorkflowStatusRepositor
       .from(workflowStatuses)
       .where(and(eq(workflowStatuses.projectId, projectId), eq(workflowStatuses.isDefault, true)))
       .limit(1);
-    return (rows[0] as WorkflowStatus | undefined) ?? null;
+    return (rows[0]) ?? null;
   }
 
   async canTransition(
@@ -102,7 +102,7 @@ export class WorkflowStatusDrizzleRepository implements IWorkflowStatusRepositor
       .select()
       .from(workflowTransitions)
       .where(eq(workflowTransitions.projectId, projectId));
-    return rows as WorkflowTransition[];
+    return rows;
   }
 
   async findTransitionById(id: string): Promise<WorkflowTransition | null> {
@@ -111,7 +111,7 @@ export class WorkflowStatusDrizzleRepository implements IWorkflowStatusRepositor
       .from(workflowTransitions)
       .where(eq(workflowTransitions.id, id))
       .limit(1);
-    return (rows[0] as WorkflowTransition | undefined) ?? null;
+    return (rows[0]) ?? null;
   }
 
   async createTransition(input: CreateWorkflowTransitionInput): Promise<WorkflowTransition> {
@@ -126,7 +126,7 @@ export class WorkflowStatusDrizzleRepository implements IWorkflowStatusRepositor
         name: input.name ?? null,
       })
       .returning();
-    return rows[0] as WorkflowTransition;
+    return rows[0];
   }
 
   async deleteTransition(id: string): Promise<void> {
