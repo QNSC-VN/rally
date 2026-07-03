@@ -2,7 +2,13 @@ import { Injectable } from '@nestjs/common';
 import { and, eq, isNull, lt, or, ilike, inArray, sql, desc } from 'drizzle-orm';
 import { InjectDrizzle, buildPageResult } from '@platform';
 import type { DrizzleDB, DbExecutor, CursorPayload, PagedResult } from '@platform';
-import { workItems, workItemLabels, labels } from '../../../../../../db/schema/work';
+import {
+  workItems,
+  workItemLabels,
+  labels,
+  iterations,
+  releases,
+} from '../../../../../../db/schema/work';
 import type {
   WorkItem,
   CreateWorkItemInput,
@@ -10,7 +16,7 @@ import type {
   WorkItemFilters,
   TaskTotals,
 } from '../../domain/work-item.types';
-import { IWorkItemRepository } from '../../domain/ports/work-item.repository';
+import { IWorkItemRepository, IterationScope } from '../../domain/ports/work-item.repository';
 
 @Injectable()
 export class WorkItemDrizzleRepository implements IWorkItemRepository {
@@ -23,6 +29,84 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       .where(and(eq(workItems.id, id), isNull(workItems.deletedAt)))
       .limit(1);
     return (rows[0] as WorkItem | undefined) ?? null;
+  }
+
+  async findByIds(ids: string[], tenantId: string): Promise<WorkItem[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.db
+      .select()
+      .from(workItems)
+      .where(
+        and(
+          inArray(workItems.id, ids),
+          eq(workItems.tenantId, tenantId),
+          isNull(workItems.deletedAt),
+        ),
+      );
+    return rows as WorkItem[];
+  }
+
+  async findIterationScope(
+    iterationId: string,
+    tenantId: string,
+  ): Promise<IterationScope | null> {
+    const rows = await this.db
+      .select({ projectId: iterations.projectId, teamId: iterations.teamId })
+      .from(iterations)
+      .where(and(eq(iterations.id, iterationId), eq(iterations.tenantId, tenantId)))
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
+  async findReleaseProject(releaseId: string, tenantId: string): Promise<string | null> {
+    const rows = await this.db
+      .select({ projectId: releases.projectId })
+      .from(releases)
+      .where(and(eq(releases.id, releaseId), eq(releases.tenantId, tenantId)))
+      .limit(1);
+    return rows[0]?.projectId ?? null;
+  }
+
+  async assignIteration(
+    ids: string[],
+    iterationId: string | null,
+    tenantId: string,
+    updatedBy: string,
+    executor?: DbExecutor,
+  ): Promise<void> {
+    if (ids.length === 0) return;
+    const exec = executor ?? this.db;
+    await exec
+      .update(workItems)
+      .set({ iterationId, updatedBy, updatedAt: new Date() })
+      .where(
+        and(
+          inArray(workItems.id, ids),
+          eq(workItems.tenantId, tenantId),
+          isNull(workItems.deletedAt),
+        ),
+      );
+  }
+
+  async assignRelease(
+    ids: string[],
+    releaseId: string | null,
+    tenantId: string,
+    updatedBy: string,
+    executor?: DbExecutor,
+  ): Promise<void> {
+    if (ids.length === 0) return;
+    const exec = executor ?? this.db;
+    await exec
+      .update(workItems)
+      .set({ releaseId, updatedBy, updatedAt: new Date() })
+      .where(
+        and(
+          inArray(workItems.id, ids),
+          eq(workItems.tenantId, tenantId),
+          isNull(workItems.deletedAt),
+        ),
+      );
   }
 
   /** Shared filter builder for list/backlog queries. */

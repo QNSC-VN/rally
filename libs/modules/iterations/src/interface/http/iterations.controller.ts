@@ -1,0 +1,258 @@
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
+import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  Auth,
+  ApiCommonErrors,
+  ApiPagedResponse,
+  buildPageArgs,
+  RequirePermission,
+} from '@platform';
+import type { JwtPayload, PagedResult } from '@platform';
+import { CurrentUser } from '@modules/identity';
+import { IterationsService } from '../../application/iterations.service';
+import { IterationStatusService } from '../../application/iteration-status.service';
+import {
+  IterationQueryDto,
+  CreateIterationDto,
+  UpdateIterationDto,
+  AcceptIterationDto,
+} from './dto/iteration-request.dto';
+import { IterationResponseDto } from './dto/iteration-response.dto';
+import {
+  IterationStatusQueryDto,
+  CreateIterationItemDto,
+} from './dto/iteration-status-request.dto';
+import {
+  IterationStatusResponseDto,
+  CreateIterationItemResponseDto,
+} from './dto/iteration-status-response.dto';
+import type { Iteration } from '../../domain/iteration.types';
+
+// ── Mapper ────────────────────────────────────────────────────────────────────
+
+function toIterationDto(i: Iteration): IterationResponseDto {
+  return {
+    id: i.id,
+    tenantId: i.tenantId,
+    projectId: i.projectId,
+    teamId: i.teamId,
+    iterationKey: i.iterationKey,
+    name: i.name,
+    goal: i.goal,
+    theme: i.theme,
+    notes: i.notes,
+    state: i.state,
+    plannedVelocity: i.plannedVelocity,
+    startDate: i.startDate,
+    endDate: i.endDate,
+    completedAt: i.completedAt ? i.completedAt.toISOString() : null,
+    createdAt: i.createdAt.toISOString(),
+    updatedAt: i.updatedAt.toISOString(),
+  };
+}
+
+// ── Controller ────────────────────────────────────────────────────────────────
+
+@ApiTags('iterations')
+@Controller('iterations')
+@Auth()
+export class IterationsController {
+  constructor(
+    private readonly iterationsService: IterationsService,
+    private readonly iterationStatusService: IterationStatusService,
+  ) {}
+
+  @Get()
+  @RequirePermission('iteration:view')
+  @ApiOperation({ summary: 'List iterations for a project' })
+  @ApiPagedResponse(IterationResponseDto)
+  @ApiCommonErrors(400, 401, 404)
+  async listIterations(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: IterationQueryDto,
+  ): Promise<PagedResult<IterationResponseDto>> {
+    const args = buildPageArgs(query);
+    const page = await this.iterationsService.listIterations(
+      user,
+      query.projectId,
+      {
+        teamId: query.teamId,
+        state: query.state,
+        q: query.q,
+        sortBy: query.sortBy,
+        sortDirection: query.sortDirection,
+      },
+      args,
+    );
+    return { data: page.data.map(toIterationDto), pageInfo: page.pageInfo };
+  }
+
+  @Post()
+  @RequirePermission('iteration:manage')
+  @ApiOperation({ summary: 'Create an iteration' })
+  @ApiResponse({ status: 201, type: IterationResponseDto })
+  @ApiCommonErrors(400, 401, 404, 422)
+  async createIteration(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: CreateIterationDto,
+  ): Promise<IterationResponseDto> {
+    const iteration = await this.iterationsService.createIteration(user, dto.projectId, dto.name, {
+      teamId: dto.teamId,
+      goal: dto.goal,
+      theme: dto.theme,
+      notes: dto.notes,
+      startDate: dto.startDate ?? undefined,
+      endDate: dto.endDate ?? undefined,
+      plannedVelocity: dto.plannedVelocity,
+    });
+    return toIterationDto(iteration);
+  }
+
+  @Get(':id')
+  @RequirePermission('iteration:view')
+  @ApiOperation({ summary: 'Get iteration details' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: IterationResponseDto })
+  @ApiCommonErrors(401, 404)
+  async getIteration(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<IterationResponseDto> {
+    const iteration = await this.iterationsService.getIteration(user.tenantId, id);
+    return toIterationDto(iteration);
+  }
+
+  @Patch(':id')
+  @RequirePermission('iteration:manage')
+  @ApiOperation({ summary: 'Update iteration details' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: IterationResponseDto })
+  @ApiCommonErrors(400, 401, 404, 422)
+  async updateIteration(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateIterationDto,
+  ): Promise<IterationResponseDto> {
+    const iteration = await this.iterationsService.updateIteration(user.tenantId, id, dto);
+    return toIterationDto(iteration);
+  }
+
+  @Delete(':id')
+  @HttpCode(204)
+  @RequirePermission('iteration:manage')
+  @ApiOperation({ summary: 'Delete a planning-state iteration' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 204, description: 'Iteration deleted' })
+  @ApiCommonErrors(400, 401, 404)
+  async deleteIteration(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<void> {
+    await this.iterationsService.deleteIteration(user.tenantId, id);
+  }
+
+  @Post(':id/commit')
+  @RequirePermission('iteration:manage')
+  @ApiOperation({ summary: 'Commit an iteration (planning → committed)' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 201, type: IterationResponseDto })
+  @ApiCommonErrors(400, 401, 404, 409)
+  async commitIteration(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<IterationResponseDto> {
+    const iteration = await this.iterationsService.commitIteration(user.tenantId, id);
+    return toIterationDto(iteration);
+  }
+
+  @Post(':id/accept')
+  @RequirePermission('iteration:manage')
+  @ApiOperation({
+    summary: 'Accept an iteration (committed → accepted); moves unfinished items out',
+  })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiCommonErrors(400, 401, 404, 422)
+  async acceptIteration(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AcceptIterationDto,
+  ): Promise<IterationResponseDto> {
+    const iteration = await this.iterationsService.acceptIteration(user.tenantId, id, {
+      moveToIterationId: dto.moveToIterationId,
+    });
+    return toIterationDto(iteration);
+  }
+
+  // ── Iteration Status read-model (P2.3) ──────────────────────────────────────
+
+  @Get(':id/status')
+  @RequirePermission('iteration:view')
+  @ApiOperation({ summary: 'Get Iteration Status: metrics + assigned work items' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: IterationStatusResponseDto })
+  @ApiCommonErrors(400, 401, 404)
+  async getIterationStatus(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: IterationStatusQueryDto,
+  ): Promise<IterationStatusResponseDto> {
+    const args = buildPageArgs(query);
+    const result = await this.iterationStatusService.getStatus(
+      user,
+      id,
+      {
+        q: query.q,
+        type: query.type,
+        scheduleState: query.scheduleState,
+        isBlocked: query.isBlocked,
+        assigneeId: query.assigneeId,
+        sortBy: query.sortBy,
+        sortDirection: query.sortDirection,
+      },
+      args,
+    );
+    return {
+      iteration: {
+        id: result.iteration.id,
+        name: result.iteration.name,
+        iterationKey: result.iteration.iterationKey,
+        startDate: result.iteration.startDate,
+        endDate: result.iteration.endDate,
+        plannedVelocity: result.iteration.plannedVelocity,
+      },
+      metrics: result.metrics,
+      items: result.items.data,
+      pageInfo: result.items.pageInfo,
+    };
+  }
+
+  @Post(':id/work-items')
+  @RequirePermission('work_item:create')
+  @ApiOperation({ summary: 'Create a Story/Defect directly in the iteration' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 201, type: CreateIterationItemResponseDto })
+  @ApiCommonErrors(400, 401, 404, 422)
+  async createIterationItem(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateIterationItemDto,
+  ): Promise<CreateIterationItemResponseDto> {
+    return this.iterationStatusService.createItemInIteration(user, id, {
+      type: dto.type,
+      title: dto.title,
+      assigneeId: dto.assigneeId,
+      planEstimate: dto.planEstimate,
+    });
+  }
+}

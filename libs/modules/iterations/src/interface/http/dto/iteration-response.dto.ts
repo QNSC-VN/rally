@@ -1,14 +1,19 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
-import { sprintStatusEnum } from '../../../../../../../db/schema/enums';
+import { iterationStateEnum } from '../../../../../../../db/schema/enums';
 
-export const SprintResponseSchema = z.object({
+export const IterationResponseSchema = z.object({
   id: z.string().uuid(),
   tenantId: z.string().uuid(),
   projectId: z.string().uuid(),
+  teamId: z.string().uuid().nullable(),
+  iterationKey: z.string().nullable(),
   name: z.string(),
   goal: z.string().nullable(),
-  status: z.enum(sprintStatusEnum.enumValues),
+  theme: z.string().nullable(),
+  notes: z.string().nullable(),
+  state: z.enum(iterationStateEnum.enumValues),
+  plannedVelocity: z.number().int().nullable(),
   startDate: z.string().nullable().describe('YYYY-MM-DD'),
   endDate: z.string().nullable().describe('YYYY-MM-DD'),
   completedAt: z.string().datetime().nullable(),
@@ -16,4 +21,4 @@ export const SprintResponseSchema = z.object({
   updatedAt: z.string().datetime(),
 });
 
-export class SprintResponseDto extends createZodDto(SprintResponseSchema) {}
+export class IterationResponseDto extends createZodDto(IterationResponseSchema) {}

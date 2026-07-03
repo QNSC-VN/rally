@@ -14,9 +14,29 @@ import { useNavigate } from '@tanstack/react-router'
 import { ChevronLeft, ChevronRight, GripVertical, Plus, Search, X } from 'lucide-react'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
-import { useBacklog, type WorkItem } from '@/features/work-items/api'
+import {
+  useBacklog,
+  useUpdateWorkItem,
+  useBulkAssignRelease,
+  useBulkAssignIteration,
+  type WorkItem,
+  type UpdateWorkItemInput,
+} from '@/features/work-items/api'
+import { useReleases } from '@/features/releases/api'
+import { useProjectMembers } from '@/features/teams/api'
+import { useIterations } from '@/features/iterations/api'
 import { TypeBadge, ScheduleStateBadge, PriorityBadge } from '@/entities/work-item/ui/badges'
 import { CreateWorkItemModal } from '@/features/work-items/ui/create-work-item-modal'
+
+const SCHEDULE_STATE_VALUES = [
+  'idea',
+  'defined',
+  'in_progress',
+  'completed',
+  'accepted',
+  'released',
+] as const
+const PRIORITY_VALUES = ['none', 'low', 'normal', 'high', 'urgent'] as const
 
 // ── Column definitions ─────────────────────────────────────────────────────────
 
@@ -154,14 +174,24 @@ export function BacklogPage() {
   const { project } = useAppContext()
   const projectId = project?.projectId
 
+  const canEdit = useAuthStore((s) => s.hasPermission('work_item:edit'))
+
   // ── Filters ──────────────────────────────────────────────────────────────────
   const [search, setSearch] = useState('')
   const [filterType, setFilterType] = useState<'' | 'story' | 'defect'>('')
   const [filterState, setFilterState] = useState('')
+  const [filterOwner, setFilterOwner] = useState('')
+  const [filterRelease, setFilterRelease] = useState('')
+  const [filterIteration, setFilterIteration] = useState('')
   const [pageSize, setPageSize] = useState<number>(25)
   const [cursor, setCursor] = useState<string | undefined>(undefined)
   const [cursorHistory, setCursorHistory] = useState<string[]>([])
   const currentPage = cursorHistory.length + 1
+
+  // Reference lists for the P2.1 filters, inline selects and id→name lookups.
+  const { data: members = [] } = useProjectMembers(projectId)
+  const { data: releases = [] } = useReleases(projectId)
+  const { data: iterations = [] } = useIterations(projectId)
 
   // Reset pagination on filter/project change
   useEffect(() => {
@@ -170,11 +200,14 @@ export function BacklogPage() {
       setCursorHistory([])
     }, 0)
     return () => clearTimeout(id)
-  }, [search, filterType, filterState, pageSize, projectId])
+  }, [search, filterType, filterState, filterOwner, filterRelease, filterIteration, pageSize, projectId])
 
   const { data, isLoading, isError, error } = useBacklog(projectId, {
     type: filterType || undefined,
     scheduleState: filterState || undefined,
+    assigneeId: filterOwner || undefined,
+    releaseId: filterRelease || undefined,
+    iterationId: filterIteration || undefined,
     q: search || undefined,
     limit: pageSize,
     cursor,
@@ -277,6 +310,33 @@ export function BacklogPage() {
   // ── Create modal ─────────────────────────────────────────────────────────────
   const [showCreate, setShowCreate] = useState(false)
   const canCreate = useAuthStore((s) => s.hasPermission('work_item:create'))
+
+  // ── Bulk assignment (P2-BL-08) ────────────────────────────────────────────────
+  const bulkRelease = useBulkAssignRelease()
+  const bulkIteration = useBulkAssignIteration()
+  const [bulkError, setBulkError] = useState<string | null>(null)
+
+  async function assignReleaseToSelected(releaseId: string | null) {
+    if (!projectId || selectedIds.size === 0) return
+    setBulkError(null)
+    try {
+      await bulkRelease.mutateAsync({ projectId, itemIds: [...selectedIds], releaseId })
+      setSelectedIds(new Set())
+    } catch (e) {
+      setBulkError(e instanceof Error ? e.message : 'Bulk release assignment failed')
+    }
+  }
+
+  async function assignIterationToSelected(iterationId: string | null) {
+    if (!projectId || selectedIds.size === 0) return
+    setBulkError(null)
+    try {
+      await bulkIteration.mutateAsync({ projectId, itemIds: [...selectedIds], iterationId })
+      setSelectedIds(new Set())
+    } catch (e) {
+      setBulkError(e instanceof Error ? e.message : 'Bulk iteration assignment failed')
+    }
+  }
   // ── Table width ───────────────────────────────────────────────────────────────
   const totalColWidth = Object.values(colWidths).reduce((a, b) => a + b, 0)
   const tableWidth = 5 + 20 + 16 + 24 + 8 + totalColWidth // checkbox + grip + row# + gaps
@@ -365,6 +425,54 @@ export function BacklogPage() {
           ))}
         </select>
 
+        {/* Owner filter (P2-BL-06) */}
+        <select
+          value={filterOwner}
+          onChange={(e) => setFilterOwner(e.target.value)}
+          className="rounded bg-white px-2 py-1 text-[11px] focus:outline-none"
+          style={{ border: '1px solid #dde2ea', color: '#5c6478' }}
+          aria-label="Filter by owner"
+        >
+          <option value="">All Owners</option>
+          {members.map((m) => (
+            <option key={m.userId} value={m.userId}>
+              {m.displayName ?? m.email ?? m.userId}
+            </option>
+          ))}
+        </select>
+
+        {/* Release filter (P2-BL-06) */}
+        <select
+          value={filterRelease}
+          onChange={(e) => setFilterRelease(e.target.value)}
+          className="rounded bg-white px-2 py-1 text-[11px] focus:outline-none"
+          style={{ border: '1px solid #dde2ea', color: '#5c6478' }}
+          aria-label="Filter by release"
+        >
+          <option value="">All Releases</option>
+          {releases.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.name}
+            </option>
+          ))}
+        </select>
+
+        {/* Iteration filter (P2-BL-06) */}
+        <select
+          value={filterIteration}
+          onChange={(e) => setFilterIteration(e.target.value)}
+          className="rounded bg-white px-2 py-1 text-[11px] focus:outline-none"
+          style={{ border: '1px solid #dde2ea', color: '#5c6478' }}
+          aria-label="Filter by iteration"
+        >
+          <option value="">All Iterations</option>
+          {iterations.map((it) => (
+            <option key={it.id} value={it.id}>
+              {it.name}
+            </option>
+          ))}
+        </select>
+
         <div className="flex-1" />
 
         {/* Create Work Item button — right side of toolbar */}
@@ -386,7 +494,7 @@ export function BacklogPage() {
         </button>
       </div>
 
-      {/* Bulk action bar */}
+      {/* Bulk action bar (P2-BL-08) */}
       {selectedIds.size > 0 && (
         <div
           className="flex shrink-0 items-center gap-2 px-4 py-1.5"
@@ -395,9 +503,65 @@ export function BacklogPage() {
           <span className="mr-1 text-[11px] font-semibold" style={{ color: '#2558a6' }}>
             {selectedIds.size} selected
           </span>
+
+          {canEdit && (
+            <>
+              {/* Bulk assign Release */}
+              <select
+                value=""
+                disabled={bulkRelease.isPending}
+                onChange={(e) => {
+                  if (!e.target.value) return
+                  void assignReleaseToSelected(e.target.value === '__none__' ? null : e.target.value)
+                }}
+                className="rounded bg-white px-2 py-1 text-[11px] focus:outline-none disabled:opacity-50"
+                style={{ border: '1px solid #bdd0ef', color: '#2558a6' }}
+                aria-label="Assign release to selected"
+              >
+                <option value="">Assign Release…</option>
+                <option value="__none__">— Unschedule —</option>
+                {releases.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </select>
+
+              {/* Bulk assign Iteration */}
+              <select
+                value=""
+                disabled={bulkIteration.isPending}
+                onChange={(e) => {
+                  if (!e.target.value) return
+                  void assignIterationToSelected(e.target.value === '__none__' ? null : e.target.value)
+                }}
+                className="rounded bg-white px-2 py-1 text-[11px] focus:outline-none disabled:opacity-50"
+                style={{ border: '1px solid #bdd0ef', color: '#2558a6' }}
+                aria-label="Assign iteration to selected"
+              >
+                <option value="">Assign Iteration…</option>
+                <option value="__none__">— Unschedule —</option>
+                {iterations.map((it) => (
+                  <option key={it.id} value={it.id}>
+                    {it.name}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
+
+          {bulkError && (
+            <span className="text-[11px]" style={{ color: '#b91c1c' }}>
+              {bulkError}
+            </span>
+          )}
+
           <div className="flex-1" />
           <button
-            onClick={() => setSelectedIds(new Set())}
+            onClick={() => {
+              setSelectedIds(new Set())
+              setBulkError(null)
+            }}
             className="p-0.5"
             style={{ color: '#5c6478' }}
             aria-label="Clear selection"
@@ -482,115 +646,21 @@ export function BacklogPage() {
               {/* Rows */}
               {!isLoading &&
                 !isError &&
-                items.map((item, idx) => {
-                  const isSel = selectedIds.has(item.id)
-                  const rowNum = (currentPage - 1) * pageSize + idx + 1
-                  return (
-                    <div
-                      key={item.id}
-                      className="group flex h-8 cursor-pointer items-center gap-2 px-3 hover:bg-[#f7f8fa]"
-                      style={{
-                        width: tableWidth,
-                        minWidth: '100%',
-                        backgroundColor: isSel ? '#f3f6fb' : undefined,
-                        borderBottom: '1px solid #edf0f4',
-                      }}
-                      onClick={() => openItem(item)}
-                    >
-                      {/* Checkbox */}
-                      <div
-                        className="w-5 shrink-0"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          toggleSelect(item.id)
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isSel}
-                          onChange={() => toggleSelect(item.id)}
-                          onClick={(e) => e.stopPropagation()}
-                          className="h-3.5 w-3.5 rounded"
-                          style={{ accentColor: '#1d3f73' }}
-                          aria-label={`Select ${item.itemKey}`}
-                        />
-                      </div>
-
-                      {/* Grip handle */}
-                      <div className="w-4 shrink-0 opacity-0 group-hover:opacity-100">
-                        <GripVertical size={11} style={{ color: '#8c94a6' }} />
-                      </div>
-
-                      {/* Row number */}
-                      <div
-                        className="w-6 shrink-0 text-right font-mono text-[10px] tabular-nums"
-                        style={{ color: '#8c94a6' }}
-                      >
-                        {rowNum}
-                      </div>
-
-                      {/* Type badge */}
-                      <div className="shrink-0 overflow-hidden" style={{ width: colWidths.type }}>
-                        <TypeBadge type={item.type} />
-                      </div>
-
-                      {/* Item key (ID) */}
-                      <div
-                        className="shrink-0 overflow-hidden font-mono text-[10px] underline-offset-2 group-hover:underline"
-                        style={{ width: colWidths.id, color: '#2558a6' }}
-                      >
-                        {item.itemKey}
-                      </div>
-
-                      {/* Title */}
-                      <div className="min-w-0 shrink-0 pr-2" style={{ width: colWidths.name }}>
-                        <span
-                          className="block truncate text-[12px] font-medium"
-                          style={{ color: '#1a2234' }}
-                        >
-                          {item.title}
-                        </span>
-                      </div>
-
-                      {/* Schedule State */}
-                      <div
-                        className="shrink-0 overflow-hidden"
-                        style={{ width: colWidths.scheduleState }}
-                      >
-                        <ScheduleStateBadge state={item.scheduleState} />
-                      </div>
-
-                      {/* Priority — Defect only */}
-                      <div
-                        className="shrink-0 overflow-hidden"
-                        style={{ width: colWidths.priority }}
-                      >
-                        {item.type === 'defect' ? (
-                          <PriorityBadge priority={item.priority} />
-                        ) : (
-                          <span className="font-mono text-[10px]" style={{ color: '#a0a7b5' }}>
-                            —
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Estimate (story points) */}
-                      <div
-                        className="shrink-0 text-center font-mono text-[10px] font-semibold"
-                        style={{ width: colWidths.estimate, color: '#5c6478' }}
-                      >
-                        {item.storyPoints ?? '—'}
-                      </div>
-
-                      {/* Owner */}
-                      <div className="shrink-0 overflow-hidden" style={{ width: colWidths.owner }}>
-                        <OwnerCell
-                          name={(item as WorkItem & { assigneeName?: string }).assigneeName}
-                        />
-                      </div>
-                    </div>
-                  )
-                })}
+                items.map((item, idx) => (
+                  <BacklogRow
+                    key={item.id}
+                    item={item}
+                    rowNum={(currentPage - 1) * pageSize + idx + 1}
+                    selected={selectedIds.has(item.id)}
+                    onToggleSelect={() => toggleSelect(item.id)}
+                    onOpen={() => openItem(item)}
+                    colWidths={colWidths}
+                    tableWidth={tableWidth}
+                    canEdit={canEdit}
+                    members={members}
+                    iterations={iterations}
+                  />
+                ))}
             </div>
           </div>
 
@@ -659,6 +729,238 @@ export function BacklogPage() {
           }}
         />
       )}
+    </div>
+  )
+}
+
+// ── Backlog row with inline editing (P2-BL-07) ──────────────────────────────────
+//
+// Inline-edits Title, Schedule State, Priority (defects only), Plan Estimate and
+// Owner via PATCH /work-items/:id. Release/Iteration reassignment is handled by
+// the bulk bars (P2-BL-08) and the Work Item Detail panel, since the backlog
+// table does not surface Release/Iteration columns.
+
+interface BacklogRowProps {
+  item: WorkItem
+  rowNum: number
+  selected: boolean
+  onToggleSelect: () => void
+  onOpen: () => void
+  colWidths: Record<ColumnKey, number>
+  tableWidth: number
+  canEdit: boolean
+  members: Array<{ userId: string; displayName?: string; email?: string }>
+  iterations: Array<{ id: string; name: string }>
+}
+
+const inlineSelectCls =
+  'w-full rounded bg-white px-1 py-0.5 text-[11px] focus:outline-none'
+const inlineSelectStyle = { border: '1px solid #dde2ea', color: '#1a2234' }
+
+function BacklogRow({
+  item,
+  rowNum,
+  selected,
+  onToggleSelect,
+  onOpen,
+  colWidths,
+  canEdit,
+  members,
+}: BacklogRowProps) {
+  const update = useUpdateWorkItem(item.id)
+  const [editingTitle, setEditingTitle] = useState(false)
+  const [titleDraft, setTitleDraft] = useState(item.title)
+
+  // Fire a PATCH only when the value actually changed; errors surface via the
+  // mutation cache (the list re-reads the source of truth on invalidate).
+  function patch(body: Parameters<typeof update.mutate>[0]) {
+    update.mutate(body)
+  }
+
+  function commitTitle() {
+    setEditingTitle(false)
+    const next = titleDraft.trim()
+    if (next && next !== item.title) patch({ title: next })
+    else setTitleDraft(item.title)
+  }
+
+  const ownerName =
+    members.find((m) => m.userId === item.assigneeId)?.displayName ??
+    members.find((m) => m.userId === item.assigneeId)?.email
+
+  const stop = (e: React.MouseEvent) => e.stopPropagation()
+
+  return (
+    <div
+      className="group flex h-8 items-center gap-2 px-3 hover:bg-[#f7f8fa]"
+      style={{
+        minWidth: '100%',
+        backgroundColor: selected ? '#f3f6fb' : undefined,
+        borderBottom: '1px solid #edf0f4',
+      }}
+    >
+      {/* Checkbox */}
+      <div className="w-5 shrink-0" onClick={stop}>
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggleSelect}
+          className="h-3.5 w-3.5 rounded"
+          style={{ accentColor: '#1d3f73' }}
+          aria-label={`Select ${item.itemKey}`}
+        />
+      </div>
+
+      {/* Grip */}
+      <div className="w-4 shrink-0 opacity-0 group-hover:opacity-100">
+        <GripVertical size={11} style={{ color: '#8c94a6' }} />
+      </div>
+
+      {/* Row number */}
+      <div className="w-6 shrink-0 text-right font-mono text-[10px] tabular-nums" style={{ color: '#8c94a6' }}>
+        {rowNum}
+      </div>
+
+      {/* Type */}
+      <div className="shrink-0 overflow-hidden" style={{ width: colWidths.type }}>
+        <TypeBadge type={item.type} />
+      </div>
+
+      {/* ID — opens detail */}
+      <button
+        className="shrink-0 overflow-hidden text-left font-mono text-[10px] underline-offset-2 hover:underline"
+        style={{ width: colWidths.id, color: '#2558a6' }}
+        onClick={onOpen}
+      >
+        {item.itemKey}
+      </button>
+
+      {/* Title — inline edit */}
+      <div className="min-w-0 shrink-0 pr-2" style={{ width: colWidths.name }} onClick={stop}>
+        {editingTitle && canEdit ? (
+          <input
+            autoFocus
+            value={titleDraft}
+            onChange={(e) => setTitleDraft(e.target.value)}
+            onBlur={commitTitle}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitTitle()
+              if (e.key === 'Escape') {
+                setTitleDraft(item.title)
+                setEditingTitle(false)
+              }
+            }}
+            className="w-full rounded px-1 py-0.5 text-[12px] focus:outline-none"
+            style={{ border: '1px solid #9fb5d5', color: '#1a2234' }}
+          />
+        ) : (
+          <span
+            className="block truncate text-[12px] font-medium"
+            style={{ color: '#1a2234', cursor: canEdit ? 'text' : 'pointer' }}
+            onClick={() => (canEdit ? setEditingTitle(true) : onOpen())}
+            title={item.title}
+          >
+            {item.title}
+          </span>
+        )}
+      </div>
+
+      {/* Schedule State — inline select */}
+      <div className="shrink-0 overflow-hidden" style={{ width: colWidths.scheduleState }} onClick={stop}>
+        {canEdit ? (
+          <select
+            value={item.scheduleState}
+            onChange={(e) =>
+              patch({ scheduleState: e.target.value as UpdateWorkItemInput['scheduleState'] })
+            }
+            className={inlineSelectCls}
+            style={inlineSelectStyle}
+            aria-label="Schedule state"
+          >
+            {SCHEDULE_STATE_VALUES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <ScheduleStateBadge state={item.scheduleState} />
+        )}
+      </div>
+
+      {/* Priority — defects only */}
+      <div className="shrink-0 overflow-hidden" style={{ width: colWidths.priority }} onClick={stop}>
+        {item.type === 'defect' ? (
+          canEdit ? (
+            <select
+              value={item.priority}
+              onChange={(e) =>
+                patch({ priority: e.target.value as UpdateWorkItemInput['priority'] })
+              }
+              className={inlineSelectCls}
+              style={inlineSelectStyle}
+              aria-label="Priority"
+            >
+              {PRIORITY_VALUES.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <PriorityBadge priority={item.priority} />
+          )
+        ) : (
+          <span className="font-mono text-[10px]" style={{ color: '#a0a7b5' }}>
+            —
+          </span>
+        )}
+      </div>
+
+      {/* Plan Estimate — inline number */}
+      <div className="shrink-0 text-center" style={{ width: colWidths.estimate }} onClick={stop}>
+        {canEdit ? (
+          <input
+            type="number"
+            min={0}
+            defaultValue={item.storyPoints ?? ''}
+            onBlur={(e) => {
+              const raw = e.target.value
+              const next = raw === '' ? null : Number(raw)
+              if (next !== (item.storyPoints ?? null)) patch({ storyPoints: next })
+            }}
+            className="w-12 rounded px-1 py-0.5 text-center font-mono text-[10px] focus:outline-none"
+            style={{ border: '1px solid #dde2ea', color: '#5c6478' }}
+            aria-label="Plan estimate"
+          />
+        ) : (
+          <span className="font-mono text-[10px] font-semibold" style={{ color: '#5c6478' }}>
+            {item.storyPoints ?? '—'}
+          </span>
+        )}
+      </div>
+
+      {/* Owner — inline select */}
+      <div className="shrink-0 overflow-hidden" style={{ width: colWidths.owner }} onClick={stop}>
+        {canEdit ? (
+          <select
+            value={item.assigneeId ?? ''}
+            onChange={(e) => patch({ assigneeId: e.target.value || null })}
+            className={inlineSelectCls}
+            style={inlineSelectStyle}
+            aria-label="Owner"
+          >
+            <option value="">Unassigned</option>
+            {members.map((m) => (
+              <option key={m.userId} value={m.userId}>
+                {m.displayName ?? m.email ?? m.userId}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <OwnerCell name={ownerName} />
+        )}
+      </div>
     </div>
   )
 }

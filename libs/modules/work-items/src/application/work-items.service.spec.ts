@@ -78,6 +78,11 @@ const mockStatus = (id: string, isDefault = false) => ({
 
 const makeWorkItemRepo = () => ({
   findById: vi.fn(),
+  findByIds: vi.fn().mockResolvedValue([]),
+  findIterationScope: vi.fn().mockResolvedValue(null),
+  findReleaseProject: vi.fn().mockResolvedValue(null),
+  assignIteration: vi.fn().mockResolvedValue(undefined),
+  assignRelease: vi.fn().mockResolvedValue(undefined),
   listByProject: vi.fn(),
   listBacklog: vi.fn(),
   listTasksByParent: vi.fn(),
@@ -454,6 +459,198 @@ describe('WorkItemsService', () => {
           parentId: 'bad-parent',
         }),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // ── Phase 2: inline scope validation ─────────────────────────────────────
+
+  describe('inline assignment scope validation', () => {
+    it('rejects iteration from a different project', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ projectId: 'proj-1' }));
+      workItemRepo.findIterationScope.mockResolvedValue({ projectId: 'proj-2', teamId: null });
+      await expect(
+        service.updateWorkItem(mockActor, 'wi-1', { iterationId: 'it-x' }),
+      ).rejects.toThrow(PreconditionFailedException);
+    });
+
+    it('rejects a team-scoped iteration whose team differs from the item team', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ teamId: 'team-a' }));
+      workItemRepo.findIterationScope.mockResolvedValue({
+        projectId: 'proj-1',
+        teamId: 'team-b',
+      });
+      await expect(
+        service.updateWorkItem(mockActor, 'wi-1', { iterationId: 'it-x' }),
+      ).rejects.toThrow(PreconditionFailedException);
+    });
+
+    it('allows a team-agnostic iteration onto any team item', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ teamId: 'team-a' }));
+      workItemRepo.findIterationScope.mockResolvedValue({ projectId: 'proj-1', teamId: null });
+      workItemRepo.update.mockResolvedValue(mockWorkItem({ iterationId: 'it-x' }));
+      const res = await service.updateWorkItem(mockActor, 'wi-1', { iterationId: 'it-x' });
+      expect(res.iterationId).toBe('it-x');
+    });
+
+    it('rejects a release from another project', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ projectId: 'proj-1' }));
+      workItemRepo.findReleaseProject.mockResolvedValue('proj-2');
+      await expect(
+        service.updateWorkItem(mockActor, 'wi-1', { releaseId: 'rel-x' }),
+      ).rejects.toThrow(PreconditionFailedException);
+    });
+
+    it('rejects priority edits on stories', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ type: 'story' }));
+      await expect(
+        service.updateWorkItem(mockActor, 'wi-1', { priority: 'high' }),
+      ).rejects.toThrow(PreconditionFailedException);
+    });
+  });
+
+  // ── Phase 2: bulk assignment (all-or-nothing) ────────────────────────────
+
+  describe('bulkAssignIteration', () => {
+    it('fails the whole request if any item is missing', async () => {
+      workItemRepo.findByIds.mockResolvedValue([mockWorkItem({ id: 'a' })]); // asked for 2
+      await expect(
+        service.bulkAssignIteration(mockActor, 'proj-1', ['a', 'b'], 'it-1'),
+      ).rejects.toThrow(NotFoundException);
+      expect(workItemRepo.assignIteration).not.toHaveBeenCalled();
+    });
+
+    it('rejects non-story/defect items', async () => {
+      workItemRepo.findByIds.mockResolvedValue([
+        mockWorkItem({ id: 'a', type: 'story' }),
+        mockWorkItem({ id: 'b', type: 'task' }),
+      ]);
+      await expect(
+        service.bulkAssignIteration(mockActor, 'proj-1', ['a', 'b'], 'it-1'),
+      ).rejects.toThrow(PreconditionFailedException);
+      expect(workItemRepo.assignIteration).not.toHaveBeenCalled();
+    });
+
+    it('rejects if an item is out of the given project', async () => {
+      workItemRepo.findByIds.mockResolvedValue([
+        mockWorkItem({ id: 'a', projectId: 'proj-2' }),
+      ]);
+      await expect(
+        service.bulkAssignIteration(mockActor, 'proj-1', ['a'], null),
+      ).rejects.toThrow(PreconditionFailedException);
+    });
+
+    it('unassigns (null) without touching iteration scope lookup', async () => {
+      workItemRepo.findByIds.mockResolvedValue([mockWorkItem({ id: 'a', type: 'story' })]);
+      const n = await service.bulkAssignIteration(mockActor, 'proj-1', ['a'], null);
+      expect(n).toBe(1);
+      expect(workItemRepo.findIterationScope).not.toHaveBeenCalled();
+      expect(workItemRepo.assignIteration).toHaveBeenCalledWith(
+        ['a'],
+        null,
+        'tenant-1',
+        'user-1',
+        expect.anything(),
+      );
+    });
+
+    it('assigns a valid iteration to all items', async () => {
+      workItemRepo.findByIds.mockResolvedValue([
+        mockWorkItem({ id: 'a', type: 'story' }),
+        mockWorkItem({ id: 'b', type: 'defect' }),
+      ]);
+      workItemRepo.findIterationScope.mockResolvedValue({ projectId: 'proj-1', teamId: null });
+      const n = await service.bulkAssignIteration(mockActor, 'proj-1', ['a', 'b'], 'it-1');
+      expect(n).toBe(2);
+      expect(workItemRepo.assignIteration).toHaveBeenCalledWith(
+        ['a', 'b'],
+        'it-1',
+        'tenant-1',
+        'user-1',
+        expect.anything(),
+      );
+    });
+  });
+
+  describe('bulkAssignRelease', () => {
+    it('rejects a release from another project', async () => {
+      workItemRepo.findByIds.mockResolvedValue([mockWorkItem({ id: 'a' })]);
+      workItemRepo.findReleaseProject.mockResolvedValue('proj-2');
+      await expect(
+        service.bulkAssignRelease(mockActor, 'proj-1', ['a'], 'rel-1'),
+      ).rejects.toThrow(PreconditionFailedException);
+      expect(workItemRepo.assignRelease).not.toHaveBeenCalled();
+    });
+
+    it('assigns a valid release', async () => {
+      workItemRepo.findByIds.mockResolvedValue([mockWorkItem({ id: 'a' })]);
+      workItemRepo.findReleaseProject.mockResolvedValue('proj-1');
+      const n = await service.bulkAssignRelease(mockActor, 'proj-1', ['a'], 'rel-1');
+      expect(n).toBe(1);
+      expect(workItemRepo.assignRelease).toHaveBeenCalled();
+    });
+  });
+
+  // ── Phase 2: neighbour rank ──────────────────────────────────────────────
+
+  describe('rankWorkItem', () => {
+    it('computes a rank between two neighbours', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ id: 'wi-1', rank: 'zzz' }));
+      workItemRepo.findByIds.mockResolvedValue([
+        mockWorkItem({ id: 'before', rank: 'a' }),
+        mockWorkItem({ id: 'after', rank: 'c' }),
+      ]);
+      workItemRepo.update.mockImplementation((_id, input) =>
+        Promise.resolve(mockWorkItem({ id: 'wi-1', rank: input.rank })),
+      );
+      const res = await service.rankWorkItem(mockActor, 'wi-1', {
+        projectId: 'proj-1',
+        beforeId: 'before',
+        afterId: 'after',
+      });
+      expect(res.rank > 'a' && res.rank < 'c').toBe(true);
+    });
+
+    it('appends to the end when afterId is null', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ id: 'wi-1' }));
+      workItemRepo.findByIds.mockResolvedValue([mockWorkItem({ id: 'before', rank: 'm' })]);
+      workItemRepo.update.mockImplementation((_id, input) =>
+        Promise.resolve(mockWorkItem({ id: 'wi-1', rank: input.rank })),
+      );
+      const res = await service.rankWorkItem(mockActor, 'wi-1', {
+        projectId: 'proj-1',
+        beforeId: 'before',
+        afterId: null,
+      });
+      expect(res.rank > 'm').toBe(true);
+    });
+
+    it('rejects a neighbour from a different project', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ id: 'wi-1' }));
+      workItemRepo.findByIds.mockResolvedValue([
+        mockWorkItem({ id: 'before', projectId: 'proj-2', rank: 'a' }),
+      ]);
+      await expect(
+        service.rankWorkItem(mockActor, 'wi-1', {
+          projectId: 'proj-1',
+          beforeId: 'before',
+          afterId: null,
+        }),
+      ).rejects.toThrow(PreconditionFailedException);
+    });
+
+    it('rejects when neighbours are out of order (stale view)', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ id: 'wi-1' }));
+      workItemRepo.findByIds.mockResolvedValue([
+        mockWorkItem({ id: 'before', rank: 'c' }),
+        mockWorkItem({ id: 'after', rank: 'a' }),
+      ]);
+      await expect(
+        service.rankWorkItem(mockActor, 'wi-1', {
+          projectId: 'proj-1',
+          beforeId: 'before',
+          afterId: 'after',
+        }),
+      ).rejects.toThrow(PreconditionFailedException);
     });
   });
 });

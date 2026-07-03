@@ -67,7 +67,7 @@ function ArchiveConfirmModal({
               Archive project
             </p>
             <p className="text-[11px]" style={{ color: '#7f1d1d' }}>
-              This project will become read-only. Work items and sprints will still be visible.
+              This project will become read-only. Work items and iterations will still be visible.
             </p>
           </div>
         </div>
@@ -88,7 +88,7 @@ function ArchiveConfirmModal({
               <li>
                 · Project status changes to <strong>Archived</strong>
               </li>
-              <li>· No new work items, sprints, or releases can be created</li>
+              <li>· No new work items, iterations, or releases can be created</li>
               <li>· Existing data remains accessible in read-only mode</li>
               <li>· The project will be hidden from the Active filter</li>
             </ul>

@@ -33,7 +33,7 @@ import {
 import { useReleases } from '@/features/releases/api'
 import { useProjectStatuses } from '@/features/projects/api'
 import { useProjectTeams, useProjectMembers } from '@/features/teams/api'
-import { useSprints } from '@/features/sprints/api'
+import { useIterations } from '@/features/iterations/api'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { AddTaskModal } from '@/features/work-items/ui/add-task-modal'
@@ -419,7 +419,7 @@ function DetailSidebar({
   const { data: teams = [] } = useProjectTeams(item.projectId)
   const { data: members = [] } = useProjectMembers(item.projectId)
   const { data: releases = [] } = useReleases(item.projectId)
-  const { data: sprints = [] } = useSprints(item.projectId)
+  const { data: iterations = [] } = useIterations(item.projectId)
   const { data: statuses = [] } = useProjectStatuses(item.projectId)
   const { data: parentItem } = useWorkItem(
     item.type === 'task' ? (item.parentId ?? undefined) : undefined,
@@ -657,9 +657,9 @@ function DetailSidebar({
                 style={fieldStyle}
               >
                 <option value="">No iteration</option>
-                {sprints.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
+                {iterations.map((i) => (
+                  <option key={i.id} value={i.id}>
+                    {i.name}
                   </option>
                 ))}
               </select>

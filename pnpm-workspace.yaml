@@ -4,3 +4,23 @@
 # apps/web is a separate package (Vite SPA) and the only additional member.
 packages:
   - "apps/web"
+allowBuilds:
+  '@scarf/scarf': set this to true or false
+  '@swc/core': set this to true or false
+  argon2: set this to true or false
+  cpu-features: set this to true or false
+  esbuild: set this to true or false
+  msw: set this to true or false
+  protobufjs: set this to true or false
+  ssh2: set this to true or false
+  unrs-resolver: set this to true or false
+onlyBuiltDependencies:
+  - '@scarf/scarf'
+  - '@swc/core'
+  - argon2
+  - cpu-features
+  - esbuild
+  - msw
+  - protobufjs
+  - ssh2
+  - unrs-resolver

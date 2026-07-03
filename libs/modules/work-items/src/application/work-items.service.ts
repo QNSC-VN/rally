@@ -6,6 +6,7 @@ import {
   PreconditionFailedException,
   Span,
   UnitOfWork,
+  between,
 } from '@platform';
 import type { JwtPayload, CursorPayload, PagedResult, DbExecutor } from '@platform';
 import { ProjectsService } from '@modules/projects';
@@ -332,6 +333,23 @@ export class WorkItemsService {
       );
     }
 
+    // P2-BL-02: Story items have no editable priority in the backlog.
+    if (input.priority && input.priority !== 'none' && item.type === 'story') {
+      throw new PreconditionFailedException(
+        'WORK_ITEM_STORY_HAS_NO_PRIORITY',
+        'Priority is only editable on defects',
+      );
+    }
+
+    // P2-BL-02: assignment scope validation — iteration must share the work
+    // item's project/team; release must share its project. null unassigns.
+    if (input.iterationId) {
+      await this.assertIterationAssignable(actor.tenantId, item, input.iterationId);
+    }
+    if (input.releaseId) {
+      await this.assertReleaseAssignable(actor.tenantId, item.projectId, input.releaseId);
+    }
+
     const isTask = item.type === 'task';
     const entries = diffWorkItem(item, input, isTask);
 
@@ -382,7 +400,215 @@ export class WorkItemsService {
     await this.uow.run((tx) => this.workItemRepo.reorderItems(items, tenantId, tx));
   }
 
+  // ── Neighbour-based reorder (P2-BL-05) ────────────────────────────────────
+
+  /**
+   * Reorder a single backlog item between two neighbours by computing a
+   * LexoRank strictly between their ranks — a single-row UPDATE, no full
+   * re-numbering. `beforeId`/`afterId` are the items immediately above/below
+   * the target's new position (either may be null at a list boundary).
+   */
+  @Span('work-items.rank')
+  async rankWorkItem(
+    actor: JwtPayload,
+    id: string,
+    opts: { projectId: string; beforeId?: string | null; afterId?: string | null },
+  ): Promise<WorkItem> {
+    const item = await this.getWorkItem(actor.tenantId, id);
+    if (item.projectId !== opts.projectId) {
+      throw new PreconditionFailedException(
+        'WORK_ITEM_PARENT_SCOPE_MISMATCH',
+        'Work item does not belong to the given project',
+      );
+    }
+
+    // Resolve neighbour ranks; each neighbour must be in the same project/backlog.
+    const neighbourIds = [opts.beforeId, opts.afterId].filter(
+      (n): n is string => typeof n === 'string',
+    );
+    const neighbours = await this.workItemRepo.findByIds(neighbourIds, actor.tenantId);
+    const byId = new Map(neighbours.map((w) => [w.id, w]));
+
+    const rankOf = (nid: string | null | undefined): string | null => {
+      if (!nid) return null;
+      const n = byId.get(nid);
+      if (!n || n.projectId !== opts.projectId) {
+        throw new PreconditionFailedException(
+          'WORK_ITEM_PARENT_SCOPE_MISMATCH',
+          'Neighbour item is not in the same project backlog',
+        );
+      }
+      return n.rank;
+    };
+
+    const lowRank = rankOf(opts.beforeId);
+    const highRank = rankOf(opts.afterId);
+
+    let newRank: string;
+    try {
+      newRank = between(lowRank, highRank);
+    } catch {
+      // Neighbours out of order (stale client view) — reject rather than corrupt order.
+      throw new PreconditionFailedException(
+        'WORK_ITEM_RANK_CONFLICT',
+        'Backlog order changed; refresh and retry',
+      );
+    }
+
+    return this.uow.run((tx) =>
+      this.workItemRepo.update(id, { rank: newRank, updatedBy: actor.sub }, tx),
+    );
+  }
+
+  // ── Bulk assignment (P2-BL-03 / P2-BL-04) ─────────────────────────────────
+
+  /**
+   * Assign (or unassign, when releaseId is null) a release to many items in one
+   * all-or-nothing transaction. Every item must be in the given tenant/project;
+   * the release must belong to that project. Any violation fails the whole call.
+   */
+  @Span('work-items.bulk-release')
+  async bulkAssignRelease(
+    actor: JwtPayload,
+    projectId: string,
+    itemIds: string[],
+    releaseId: string | null,
+  ): Promise<number> {
+    const items = await this.loadBulkItems(actor.tenantId, projectId, itemIds);
+    if (releaseId) {
+      await this.assertReleaseAssignable(actor.tenantId, projectId, releaseId);
+    }
+    await this.uow.run((tx) =>
+      this.workItemRepo.assignRelease(
+        items.map((i) => i.id),
+        releaseId,
+        actor.tenantId,
+        actor.sub,
+        tx,
+      ),
+    );
+    this.logger.log({ projectId, count: items.length, releaseId }, 'Bulk release assigned');
+    return items.length;
+  }
+
+  /**
+   * Assign (or unassign, when iterationId is null) an iteration to many items in
+   * one all-or-nothing transaction. Every item must be a story/defect in the
+   * given tenant/project; the iteration must share that project and, when the
+   * iteration is team-scoped, the same team. Any violation fails the whole call.
+   */
+  @Span('work-items.bulk-iteration')
+  async bulkAssignIteration(
+    actor: JwtPayload,
+    projectId: string,
+    itemIds: string[],
+    iterationId: string | null,
+  ): Promise<number> {
+    const items = await this.loadBulkItems(actor.tenantId, projectId, itemIds);
+
+    // P2.1 scope: only stories and defects can be scheduled into an iteration.
+    const nonBacklog = items.find((i) => i.type !== 'story' && i.type !== 'defect');
+    if (nonBacklog) {
+      throw new PreconditionFailedException(
+        'WORK_ITEM_NOT_BACKLOG_TYPE',
+        'Only stories and defects can be assigned to an iteration',
+      );
+    }
+
+    if (iterationId) {
+      for (const item of items) {
+        await this.assertIterationAssignable(actor.tenantId, item, iterationId);
+      }
+    }
+
+    await this.uow.run((tx) =>
+      this.workItemRepo.assignIteration(
+        items.map((i) => i.id),
+        iterationId,
+        actor.tenantId,
+        actor.sub,
+        tx,
+      ),
+    );
+    this.logger.log({ projectId, count: items.length, iterationId }, 'Bulk iteration assigned');
+    return items.length;
+  }
+
   // ── Internal helpers ──────────────────────────────────────────────────────
+
+  /**
+   * Load and validate a set of item ids for a bulk operation: all must exist,
+   * be non-deleted, and belong to the given tenant/project. Fails the whole
+   * request (all-or-nothing) if any id is missing or out of scope.
+   */
+  private async loadBulkItems(
+    tenantId: string,
+    projectId: string,
+    itemIds: string[],
+  ): Promise<WorkItem[]> {
+    const ids = [...new Set(itemIds)];
+    if (ids.length === 0) {
+      throw new PreconditionFailedException('WORK_ITEM_EMPTY_SELECTION', 'No items selected');
+    }
+    const items = await this.workItemRepo.findByIds(ids, tenantId);
+    if (items.length !== ids.length) {
+      throw new NotFoundException('WORK_ITEM_NOT_FOUND', 'One or more work items were not found');
+    }
+    const outOfProject = items.find((i) => i.projectId !== projectId);
+    if (outOfProject) {
+      throw new PreconditionFailedException(
+        'WORK_ITEM_PARENT_SCOPE_MISMATCH',
+        'All items must belong to the same project',
+      );
+    }
+    return items;
+  }
+
+  /**
+   * An iteration is assignable to a work item when it exists in the same tenant,
+   * shares the item's project, and — if the iteration is team-scoped — shares
+   * the item's team. Team-agnostic iterations (teamId null) accept any team.
+   */
+  private async assertIterationAssignable(
+    tenantId: string,
+    item: WorkItem,
+    iterationId: string,
+  ): Promise<void> {
+    const scope = await this.workItemRepo.findIterationScope(iterationId, tenantId);
+    if (!scope) {
+      throw new NotFoundException('ITERATION_NOT_FOUND', 'Iteration not found');
+    }
+    if (scope.projectId !== item.projectId) {
+      throw new PreconditionFailedException(
+        'ITERATION_PROJECT_MISMATCH',
+        'Iteration must belong to the same project as the work item',
+      );
+    }
+    if (scope.teamId && item.teamId && scope.teamId !== item.teamId) {
+      throw new PreconditionFailedException(
+        'ITERATION_TEAM_MISMATCH',
+        'Iteration must belong to the same team as the work item',
+      );
+    }
+  }
+
+  /** A release is assignable when it exists in the same tenant and project. */
+  private async assertReleaseAssignable(
+    tenantId: string,
+    projectId: string,
+    releaseId: string,
+  ): Promise<void> {
+    const releaseProjectId = await this.workItemRepo.findReleaseProject(releaseId, tenantId);
+    if (!releaseProjectId) {
+      throw new NotFoundException('RELEASE_NOT_FOUND', 'Release not found');
+    }
+    if (releaseProjectId !== projectId) {
+      throw new PreconditionFailedException(
+        'RELEASE_PROJECT_MISMATCH',
+        'Release must belong to the same project as the work item',
+      );
+    }
+  }
 
   private async resolveStatusId(
     tenantId: string,

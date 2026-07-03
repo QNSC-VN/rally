@@ -158,6 +158,23 @@ const workItemDetailRoute = createRoute({
   ),
 })
 
+const timeboxesRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: '/timeboxes',
+  staticData: { breadcrumb: 'Timeboxes' },
+  component: lazyPage(() => import('@/pages/iterations/iterations-page'), 'IterationsPage'),
+})
+
+const iterationStatusRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: '/iteration-status',
+  staticData: { breadcrumb: 'Iteration Status' },
+  component: lazyPage(
+    () => import('@/pages/iteration-status/iteration-status-page'),
+    'IterationStatusPage',
+  ),
+})
+
 // ── Not found ─────────────────────────────────────────────────────────────────
 
 const notFoundRoute = createRoute({
@@ -179,6 +196,8 @@ const routeTree = rootRoute.addChildren([
     notificationsRoute,
     forbiddenRoute,
     backlogRoute,
+    timeboxesRoute,
+    iterationStatusRoute,
     workItemDetailRoute,
     notFoundRoute,
   ]),

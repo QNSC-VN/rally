@@ -100,7 +100,13 @@ export const workflowStatusCategoryEnum = pgEnum('workflow_status_category', [
   'done',
 ]);
 
-export const sprintStatusEnum = pgEnum('sprint_status', ['planned', 'active', 'completed']);
+// Rally Iteration State — a planning-maturity dimension on the timebox itself:
+// Planning (being shaped) → Committed (team committed) → Accepted (completed).
+export const iterationStateEnum = pgEnum('iteration_state', [
+  'planning',
+  'committed',
+  'accepted',
+]);
 
 export const releaseStatusEnum = pgEnum('release_status', ['planned', 'released', 'archived']);
 
@@ -136,7 +142,7 @@ export type WorkItemType = (typeof workItemTypeEnum.enumValues)[number];
 export type WorkItemPriority = (typeof workItemPriorityEnum.enumValues)[number];
 export type WorkItemScheduleState = (typeof workItemScheduleStateEnum.enumValues)[number];
 export type WorkflowStatusCategory = (typeof workflowStatusCategoryEnum.enumValues)[number];
-export type SprintStatus = (typeof sprintStatusEnum.enumValues)[number];
+export type IterationState = (typeof iterationStateEnum.enumValues)[number];
 export type ReleaseStatus = (typeof releaseStatusEnum.enumValues)[number];
 export type OutboxStatus = (typeof outboxStatusEnum.enumValues)[number];
 export type EmailJobStatus = (typeof emailJobStatusEnum.enumValues)[number];

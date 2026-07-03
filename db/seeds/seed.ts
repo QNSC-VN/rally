@@ -500,6 +500,8 @@ export async function seed(connectionUrl?: string): Promise<void> {
           'work_item:edit',
           'work_item:delete',
           'work_item:view',
+          'iteration:view',
+          'iteration:manage',
         ],
       },
       {
@@ -515,15 +517,21 @@ export async function seed(connectionUrl?: string): Promise<void> {
           'work_item:edit',
           'work_item:delete',
           'work_item:view',
+          'iteration:view',
+          'iteration:manage',
         ],
       },
       {
         slug: 'project_member',
         name: 'Project Member',
         // BA spec: Developer can update any work item (no "own-only" concept)
-        permissions: ['work_item:create', 'work_item:edit', 'work_item:view'],
+        permissions: ['work_item:create', 'work_item:edit', 'work_item:view', 'iteration:view'],
       },
-      { slug: 'project_viewer', name: 'Project Viewer', permissions: ['work_item:view'] },
+      {
+        slug: 'project_viewer',
+        name: 'Project Viewer',
+        permissions: ['work_item:view', 'iteration:view'],
+      },
       {
         slug: 'workspace_member',
         name: 'Workspace Member',
