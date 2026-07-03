@@ -430,6 +430,10 @@ resource "aws_ecs_task_definition" "migrator" {
       { name = "NODE_ENV",        value = "production" },
       { name = "AWS_REGION",      value = local.region },
       { name = "SEED_ON_DEPLOY",  value = "true" },
+      # Required by seed.ts to insert the SSO connection row that maps
+      # this Entra directory to the system tenant (acme).
+      # Without it, the ssoConnections insert is skipped and SSO login returns 401.
+      { name = "ENTRA_TENANT_ID", value = var.entra_tenant_id },
     ]
 
     secrets = [
