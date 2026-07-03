@@ -55,6 +55,7 @@ export class IterationStatusResponseDto extends createZodDto(IterationStatusResp
 
 export const CreateIterationItemResponseSchema = z.object({
   workItemId: z.string().uuid(),
+  itemKey: z.string(),
 });
 
 export class CreateIterationItemResponseDto extends createZodDto(CreateIterationItemResponseSchema) {}

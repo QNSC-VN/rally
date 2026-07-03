@@ -40,7 +40,7 @@ const PRIORITY_VALUES = ['none', 'low', 'normal', 'high', 'urgent'] as const
 
 // ── Column definitions ─────────────────────────────────────────────────────────
 
-type ColumnKey = 'type' | 'id' | 'name' | 'scheduleState' | 'priority' | 'estimate' | 'owner'
+type ColumnKey = 'type' | 'id' | 'name' | 'scheduleState' | 'priority' | 'estimate' | 'owner' | 'release' | 'iteration'
 
 const COLUMN_MINS: Record<ColumnKey, number> = {
   type: 60,
@@ -50,16 +50,20 @@ const COLUMN_MINS: Record<ColumnKey, number> = {
   priority: 80,
   estimate: 44,
   owner: 90,
+  release: 100,
+  iteration: 100,
 }
 
 const DEFAULT_WIDTHS: Record<ColumnKey, number> = {
   type: 72,
   id: 88,
-  name: 480,
+  name: 380,
   scheduleState: 136,
   priority: 96,
   estimate: 52,
   owner: 120,
+  release: 140,
+  iteration: 140,
 }
 
 const COLUMN_LABELS: Record<ColumnKey, string> = {
@@ -70,6 +74,8 @@ const COLUMN_LABELS: Record<ColumnKey, string> = {
   priority: 'Priority',
   estimate: 'Est.',
   owner: 'Owner',
+  release: 'Release',
+  iteration: 'Iteration',
 }
 
 const LS_WIDTHS_KEY = 'rally-backlog-col-widths'
@@ -360,6 +366,8 @@ export function BacklogPage() {
     'priority',
     'estimate',
     'owner',
+    'release',
+    'iteration',
   ]
 
   return (
@@ -658,6 +666,7 @@ export function BacklogPage() {
                     tableWidth={tableWidth}
                     canEdit={canEdit}
                     members={members}
+                    releases={releases}
                     iterations={iterations}
                   />
                 ))}
@@ -734,11 +743,6 @@ export function BacklogPage() {
 }
 
 // ── Backlog row with inline editing (P2-BL-07) ──────────────────────────────────
-//
-// Inline-edits Title, Schedule State, Priority (defects only), Plan Estimate and
-// Owner via PATCH /work-items/:id. Release/Iteration reassignment is handled by
-// the bulk bars (P2-BL-08) and the Work Item Detail panel, since the backlog
-// table does not surface Release/Iteration columns.
 
 interface BacklogRowProps {
   item: WorkItem
@@ -750,6 +754,7 @@ interface BacklogRowProps {
   tableWidth: number
   canEdit: boolean
   members: Array<{ userId: string; displayName?: string; email?: string }>
+  releases: Array<{ id: string; name: string }>
   iterations: Array<{ id: string; name: string }>
 }
 
@@ -766,6 +771,8 @@ function BacklogRow({
   colWidths,
   canEdit,
   members,
+  releases,
+  iterations,
 }: BacklogRowProps) {
   const update = useUpdateWorkItem(item.id)
   const [editingTitle, setEditingTitle] = useState(false)
@@ -959,6 +966,54 @@ function BacklogRow({
           </select>
         ) : (
           <OwnerCell name={ownerName} />
+        )}
+      </div>
+
+      {/* Release — inline select */}
+      <div className="shrink-0 overflow-hidden" style={{ width: colWidths.release }} onClick={stop}>
+        {canEdit ? (
+          <select
+            value={item.releaseId ?? ''}
+            onChange={(e) => patch({ releaseId: e.target.value || null })}
+            className={inlineSelectCls}
+            style={inlineSelectStyle}
+            aria-label="Release"
+          >
+            <option value="">—</option>
+            {releases.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <span className="truncate text-[11px]" style={{ color: item.releaseId ? '#1a2234' : '#a0a7b5' }}>
+            {releases.find((r) => r.id === item.releaseId)?.name ?? '—'}
+          </span>
+        )}
+      </div>
+
+      {/* Iteration — inline select */}
+      <div className="shrink-0 overflow-hidden" style={{ width: colWidths.iteration }} onClick={stop}>
+        {canEdit ? (
+          <select
+            value={item.iterationId ?? ''}
+            onChange={(e) => patch({ iterationId: e.target.value || null })}
+            className={inlineSelectCls}
+            style={inlineSelectStyle}
+            aria-label="Iteration"
+          >
+            <option value="">—</option>
+            {iterations.map((it) => (
+              <option key={it.id} value={it.id}>
+                {it.name}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <span className="truncate text-[11px]" style={{ color: item.iterationId ? '#1a2234' : '#a0a7b5' }}>
+            {iterations.find((it) => it.id === item.iterationId)?.name ?? '—'}
+          </span>
         )}
       </div>
     </div>

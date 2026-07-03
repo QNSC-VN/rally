@@ -92,7 +92,7 @@ export class IterationStatusService {
       assigneeId?: string;
       planEstimate?: number;
     },
-  ): Promise<{ workItemId: string }> {
+  ): Promise<{ workItemId: string; itemKey: string }> {
     const iteration = await this.iterationsService.getIteration(actor.tenantId, iterationId);
 
     const created = await this.workItemsService.createWorkItem(
@@ -116,6 +116,6 @@ export class IterationStatusService {
       iterationId,
     );
 
-    return { workItemId: created.id };
+    return { workItemId: created.id, itemKey: created.itemKey };
   }
 }

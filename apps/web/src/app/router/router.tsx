@@ -168,7 +168,7 @@ const timeboxesRoute = createRoute({
 const iterationStatusRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/iteration-status',
-  staticData: { breadcrumb: 'Iteration Status' },
+  staticData: { breadcrumb: 'Iteration' },
   component: lazyPage(
     () => import('@/pages/iteration-status/iteration-status-page'),
     'IterationStatusPage',

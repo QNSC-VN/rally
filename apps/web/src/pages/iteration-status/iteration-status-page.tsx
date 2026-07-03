@@ -20,7 +20,9 @@ import {
   type IterationStatusItem,
 } from '@/features/iterations/api'
 import { useUpdateWorkItem } from '@/features/work-items/api'
+import { useProjectMembers } from '@/features/teams/api'
 import { ScheduleStateBadge } from '@/entities/work-item/ui/badges'
+import { SCHEDULE_STATE_LABEL, type ScheduleState } from '@/entities/work-item/model/types'
 
 const SCHEDULE_STATES = ['idea', 'defined', 'in_progress', 'completed', 'accepted', 'released'] as const
 
@@ -38,6 +40,7 @@ export function IterationStatusPage() {
   const canCreate = useAuthStore((s) => s.hasPermission('work_item:create'))
 
   const { data: iterations = [] } = useIterations(projectId)
+  const { data: members = [] } = useProjectMembers(projectId)
   // Explicit user choice; falls back to the first iteration until one is picked.
   const [chosenId, setChosenId] = useState<string | null>(null)
   const [selectorOpen, setSelectorOpen] = useState(false)
@@ -169,14 +172,17 @@ export function IterationStatusPage() {
       {/* Work item list */}
       <div className="flex flex-col flex-1 overflow-auto" style={{ backgroundColor: BRAND.surface }}>
         <div className="sticky top-0 z-10 flex items-center h-8 px-3 select-none text-[11px] font-semibold" style={{ backgroundColor: BRAND.surfaceHover, borderBottom: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textMuted }}>
+          <div className="w-5 shrink-0" />{/* Selection */}
           <div className="w-16 shrink-0">ID</div>
           <div className="w-16 shrink-0">Type</div>
-          <div className="flex-1 min-w-[200px]">Name</div>
-          <div className="w-36 shrink-0">Schedule State</div>
-          <div className="w-40 shrink-0">Iteration</div>
-          <div className="w-16 shrink-0 text-right">Plan Est</div>
-          <div className="w-16 shrink-0 text-right">Task Est</div>
-          <div className="w-14 shrink-0 text-right">To Do</div>
+          <div className="flex-1 min-w-[180px]">Name</div>
+          <div className="w-32 shrink-0">Schedule State</div>
+          <div className="w-36 shrink-0">Iteration</div>
+          <div className="w-10 shrink-0 text-center">Blk</div>
+          <div className="w-14 shrink-0 text-right">Plan Est</div>
+          <div className="w-14 shrink-0 text-right">Task Est</div>
+          <div className="w-12 shrink-0 text-right">To Do</div>
+          <div className="w-24 shrink-0">Owner</div>
         </div>
 
         {isLoading && (
@@ -187,7 +193,7 @@ export function IterationStatusPage() {
 
         {!isLoading &&
           (status?.items ?? []).map((item) => (
-            <StatusRow key={item.id} item={item} iterations={iterations} selectedIterationId={selectedId!} canEdit={canEdit} onOpen={() => navigate({ to: '/item/$itemKey', params: { itemKey: item.itemKey } })} />
+            <StatusRow key={item.id} item={item} iterations={iterations} members={members} selectedIterationId={selectedId!} canEdit={canEdit} onOpen={() => navigate({ to: '/item/$itemKey', params: { itemKey: item.itemKey } })} />
           ))}
 
         {!isLoading && (status?.items?.length ?? 0) === 0 && (
@@ -250,40 +256,50 @@ function Metric({
 function StatusRow({
   item,
   iterations,
+  members,
   selectedIterationId,
   canEdit,
   onOpen,
 }: {
   item: IterationStatusItem
   iterations: Iteration[]
+  members: import('@/features/teams/api').ProjectMember[]
   selectedIterationId: string
   canEdit: boolean
   onOpen: () => void
 }) {
   const update = useUpdateWorkItem(item.id)
+  const ownerName =
+    members.find((m) => m.userId === item.assigneeId)?.displayName ??
+    members.find((m) => m.userId === item.assigneeId)?.email ??
+    null
 
   return (
     <div className="flex items-center h-8 px-3 text-[11px]" style={{ borderBottom: `1px solid ${BRAND.borderInner}` }}>
+      {/* Selection */}
+      <div className="w-5 shrink-0 flex items-center justify-center">
+        <input type="checkbox" className="rounded" style={{ accentColor: BRAND.primary }} />
+      </div>
       <button className="w-16 shrink-0 text-left font-mono truncate" style={{ color: BRAND.primaryLight }} onClick={onOpen}>
         {item.itemKey}
       </button>
       <div className="w-16 shrink-0 capitalize" style={{ color: BRAND.textSecondary }}>
         {item.type}
       </div>
-      <button className="flex-1 min-w-[200px] text-left truncate pr-2" style={{ color: BRAND.textPrimary }} onClick={onOpen}>
+      <button className="flex-1 min-w-[180px] text-left truncate pr-2" style={{ color: BRAND.textPrimary }} onClick={onOpen}>
         {item.title}
       </button>
-      <div className="w-36 shrink-0">
+      <div className="w-32 shrink-0">
         {canEdit ? (
           <select
             value={item.scheduleState}
-            onChange={(e) => update.mutate({ scheduleState: e.target.value as IterationStatusItem['scheduleState'] })}
+            onChange={(e) => update.mutate({ scheduleState: e.target.value as ScheduleState })}
             className="text-[11px] px-1 py-0.5 rounded bg-white focus:outline-none"
             style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textPrimary }}
           >
             {SCHEDULE_STATES.map((s) => (
               <option key={s} value={s}>
-                {s}
+                {SCHEDULE_STATE_LABEL[s as ScheduleState] ?? s}
               </option>
             ))}
           </select>
@@ -291,7 +307,7 @@ function StatusRow({
           <ScheduleStateBadge state={item.scheduleState} />
         )}
       </div>
-      <div className="w-40 shrink-0 pr-2">
+      <div className="w-36 shrink-0 pr-2">
         {canEdit ? (
           <select
             value={item.iterationId ?? ''}
@@ -312,14 +328,26 @@ function StatusRow({
           </span>
         )}
       </div>
-      <div className="w-16 shrink-0 text-right font-mono tabular-nums" style={{ color: BRAND.textSecondary }}>
-        {item.planEstimate ?? ''}
-      </div>
-      <div className="w-16 shrink-0 text-right font-mono tabular-nums" style={{ color: BRAND.textSecondary }}>
-        {item.taskEstimate || ''}
+      {/* Blocked */}
+      <div className="w-10 shrink-0 text-center">
+        {item.isBlocked && (
+          <span className="text-[10px] font-semibold px-1 py-px rounded" style={{ backgroundColor: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca' }}>
+            B
+          </span>
+        )}
       </div>
       <div className="w-14 shrink-0 text-right font-mono tabular-nums" style={{ color: BRAND.textSecondary }}>
+        {item.planEstimate ?? ''}
+      </div>
+      <div className="w-14 shrink-0 text-right font-mono tabular-nums" style={{ color: BRAND.textSecondary }}>
+        {item.taskEstimate || ''}
+      </div>
+      <div className="w-12 shrink-0 text-right font-mono tabular-nums" style={{ color: BRAND.textSecondary }}>
         {item.toDo || ''}
+      </div>
+      {/* Owner */}
+      <div className="w-24 shrink-0 truncate text-[11px]" style={{ color: BRAND.textSecondary }}>
+        {ownerName ?? <span style={{ color: BRAND.textMuted }}>Unassigned</span>}
       </div>
       {/* selectedIterationId kept for future "leaves list on reassign" refetch semantics */}
       <span hidden>{selectedIterationId}</span>
@@ -338,6 +366,7 @@ function AddItemModal({
   onClose: () => void
   onCreated: () => void
 }) {
+  const navigate = useNavigate()
   const create = useCreateIterationItem(iteration.id)
   const [type, setType] = useState<'story' | 'defect'>('story')
   const [title, setTitle] = useState('')
@@ -347,19 +376,23 @@ function AddItemModal({
   const fieldCls = 'w-full text-[12px] px-2.5 py-1.5 rounded focus:outline-none bg-white'
   const fieldStyle = { border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textPrimary }
 
-  async function submit() {
+  async function submit(openDetail = false) {
     setError(null)
     if (!title.trim()) {
       setError('Title is required')
       return
     }
     try {
-      await create.mutateAsync({
+      const result = await create.mutateAsync({
         type,
         title: title.trim(),
         planEstimate: planEstimate === '' ? undefined : Number(planEstimate),
       })
-      onCreated()
+      if (openDetail) {
+        void navigate({ to: '/item/$itemKey', params: { itemKey: result.itemKey } })
+      } else {
+        onCreated()
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to create item')
     }
@@ -421,7 +454,10 @@ function AddItemModal({
           <button onClick={onClose} className="px-3.5 py-1.5 text-[12px] font-medium rounded" style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}>
             Cancel
           </button>
-          <button disabled={create.isPending} onClick={submit} className="px-4 py-1.5 text-[12px] font-semibold text-white rounded" style={{ backgroundColor: BRAND.primary }}>
+          <button disabled={create.isPending} onClick={() => submit(true)} className="px-4 py-1.5 text-[12px] font-semibold rounded" style={{ border: '1px solid #9fb5d5', color: BRAND.primary, backgroundColor: '#f5f8fc' }}>
+            Create with details
+          </button>
+          <button disabled={create.isPending} onClick={() => submit(false)} className="px-4 py-1.5 text-[12px] font-semibold text-white rounded" style={{ backgroundColor: BRAND.primary }}>
             Create Item
           </button>
         </div>

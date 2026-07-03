@@ -327,6 +327,7 @@ function CreateIterationModal({
   const [teamId, setTeamId] = useState<string>('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
+  const [state, setState] = useState<IterationState>('planning')
   const [error, setError] = useState<string | null>(null)
 
   const fieldCls = 'w-full text-[12px] px-2.5 py-1.5 rounded focus:outline-none bg-white'
@@ -338,6 +339,14 @@ function CreateIterationModal({
       setError('Name is required')
       return
     }
+    if (!startDate) {
+      setError('Start Date is required')
+      return
+    }
+    if (!endDate) {
+      setError('End Date is required')
+      return
+    }
     try {
       const it = await create.mutateAsync({
         projectId,
@@ -345,6 +354,7 @@ function CreateIterationModal({
         teamId: teamId || undefined,
         startDate: startDate || undefined,
         endDate: endDate || undefined,
+        state,
       })
       if (openDetail) onCreated(it.id)
       else onClose()
@@ -377,13 +387,20 @@ function CreateIterationModal({
             </select>
           </Field>
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Start Date">
+            <Field label="Start Date" required>
               <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={fieldCls} style={fieldStyle} />
             </Field>
-            <Field label="End Date">
+            <Field label="End Date" required>
               <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className={fieldCls} style={fieldStyle} />
             </Field>
           </div>
+          <Field label="State" required>
+            <select value={state} onChange={(e) => setState(e.target.value as IterationState)} className={fieldCls} style={fieldStyle}>
+              <option value="planning">Planning</option>
+              <option value="committed">Committed</option>
+              <option value="accepted">Accepted</option>
+            </select>
+          </Field>
           {error && (
             <p className="text-[11px]" style={{ color: BRAND.danger }}>
               {error}
@@ -409,8 +426,11 @@ function CreateIterationModal({
 // ── Full-page detail ──────────────────────────────────────────────────────────
 
 function IterationDetail({ id, canManage, onBack }: { id: string; canManage: boolean; onBack: () => void }) {
+  const { project } = useAppContext()
   const { data: it, isLoading } = useIteration(id)
   const update = useUpdateIteration(id)
+  const { data: teams = [] } = useProjectTeams(it?.projectId)
+  const teamName = teams.find((t) => t.id === it?.teamId)?.name ?? null
   const [theme, setTheme] = useState<string | null>(null)
   const [notes, setNotes] = useState<string | null>(null)
 
@@ -486,6 +506,16 @@ function IterationDetail({ id, canManage, onBack }: { id: string; canManage: boo
         </main>
 
         <aside className="w-[320px] shrink-0 overflow-y-auto p-5 space-y-4 bg-white" style={{ borderLeft: `1px solid ${BRAND.borderSubtle}` }}>
+          <Field label="Project">
+            <div className={fieldCls} style={{ ...fieldStyle, backgroundColor: BRAND.surfaceSubtle }}>
+              {project?.projectName ?? '—'}
+            </div>
+          </Field>
+          <Field label="Team">
+            <div className={fieldCls} style={{ ...fieldStyle, backgroundColor: BRAND.surfaceSubtle }}>
+              {teamName ?? 'No team'}
+            </div>
+          </Field>
           <Field label="Start Date">
             <input
               type="date"

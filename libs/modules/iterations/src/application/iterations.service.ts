@@ -54,6 +54,7 @@ export class IterationsService {
       goal?: string;
       theme?: string;
       notes?: string;
+      state?: import('../domain/iteration.types').IterationState;
       startDate?: string;
       endDate?: string;
       plannedVelocity?: number;
@@ -78,6 +79,7 @@ export class IterationsService {
       goal: opts.goal,
       theme: opts.theme,
       notes: opts.notes,
+      state: opts.state,
       startDate: opts.startDate,
       endDate: opts.endDate,
       plannedVelocity: opts.plannedVelocity,

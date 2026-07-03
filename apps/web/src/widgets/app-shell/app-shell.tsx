@@ -73,7 +73,7 @@ const NAV_ITEMS: NavItem[] = [
     children: [
       {
         path: '/iteration-status',
-        label: 'Iteration Status',
+        label: 'Iteration',
         featureFlag: 'feature.iteration-status',
         permission: 'work_item:view',
       },
@@ -200,6 +200,22 @@ export function AppShell() {
     setNotifOpen(false)
   }
 
+  // Close all dropdowns on route change
+  useEffect(() => {
+    closeAll()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPath])
+
+  // Close all dropdowns on Escape key
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') closeAll()
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   function handleComingSoon(label: string) {
     closeAll()
     toast.info(`${label} · Coming soon`, {
@@ -227,6 +243,10 @@ export function AppShell() {
 
   return (
     <div className="flex min-h-svh flex-col">
+      {/* Backdrop to close open dropdowns when clicking outside */}
+      {(openMenu !== null || wsOpen || userOpen || notifOpen) && (
+        <div className="fixed inset-0 z-20" aria-hidden onClick={closeAll} />
+      )}
       {/* ── Top nav ─────────────────────────────────────────────────────────── */}
       <header
         className="relative z-30 flex h-10 shrink-0 items-center px-3"

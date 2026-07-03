@@ -29,6 +29,7 @@ export const CreateIterationSchema = z.object({
   goal: z.string().max(2000).optional(),
   theme: z.string().max(20000).optional(),
   notes: z.string().max(20000).optional(),
+  state: z.enum(iterationStateEnum.enumValues).optional(),
   startDate: ISO_DATE.optional(),
   endDate: ISO_DATE.optional(),
   plannedVelocity: z.number().int().min(0).optional(),

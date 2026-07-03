@@ -124,6 +124,7 @@ export class IterationsController {
       goal: dto.goal,
       theme: dto.theme,
       notes: dto.notes,
+      state: dto.state,
       startDate: dto.startDate ?? undefined,
       endDate: dto.endDate ?? undefined,
       plannedVelocity: dto.plannedVelocity,

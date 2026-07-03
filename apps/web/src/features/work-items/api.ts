@@ -190,6 +190,15 @@ export function useUpdateWorkItem(id: string) {
       qc.setQueryData(workItemKeys.detail(id), item)
       // Also update the work-item-by-key cache so WorkItemDetailPage reflects immediately
       qc.setQueriesData({ queryKey: ['work-item-by-key', item.itemKey] }, item)
+      // Optimistically update the item inside any cached backlog list so the
+      // inline-edit selects reflect the new value without waiting for the refetch.
+      qc.setQueriesData<{ data?: WorkItem[]; pageInfo?: unknown }>(
+        { queryKey: workItemKeys.backlog(item.projectId) },
+        (old) => {
+          if (!old?.data) return old
+          return { ...old, data: old.data.map((w) => (w.id === item.id ? item : w)) }
+        },
+      )
       void qc.invalidateQueries({ queryKey: workItemKeys.backlog(item.projectId) })
       void qc.invalidateQueries({ queryKey: workItemKeys.activity(id) })
     },

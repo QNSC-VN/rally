@@ -2303,6 +2303,8 @@ export interface components {
             goal?: string;
             theme?: string;
             notes?: string;
+            /** @enum {string} */
+            state?: "planning" | "committed" | "accepted";
             startDate?: string;
             endDate?: string;
             plannedVelocity?: number;
@@ -2377,6 +2379,7 @@ export interface components {
         CreateIterationItemResponseDto: {
             /** Format: uuid */
             workItemId: string;
+            itemKey: string;
         };
         ReleaseResponseDto: {
             /** Format: uuid */
