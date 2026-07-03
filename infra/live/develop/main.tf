@@ -195,6 +195,26 @@ resource "aws_lb_listener" "http_redirect" {
   }
 }
 
+# ── ALB HTTP listener rule — CloudFront → API proxy ───────────────────────────
+# CloudFront uses http-only to the ALB (avoids TLS cert hostname mismatch on the
+# raw ELB DNS name). This rule forwards /v1/* on port 80 to the API target group;
+# the listener's default action still redirects all other HTTP traffic to HTTPS.
+resource "aws_lb_listener_rule" "http_api_forward" {
+  listener_arn = aws_lb_listener.http_redirect.arn
+  priority     = 1
+
+  action {
+    type             = "forward"
+    target_group_arn = module.api.target_group_arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/v1/*"]
+    }
+  }
+}
+
 # ── ECS Cluster ───────────────────────────────────────────────────────────────
 module "ecs_cluster" {
   source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-cluster?ref=ecs-cluster-v1.0.0"
@@ -447,7 +467,7 @@ module "waf" {
 #   2. Pass its ARN as web_acm_cert_arn in your tfvars
 #   3. After apply: set S3_BUCKET + CLOUDFRONT_ID as GitHub env vars for rally-web
 module "cdn" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/cdn?ref=cdn-v1.0.2"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/cdn?ref=cdn-v1.0.3"
 
   name         = "rally-web-develop"
   aliases      = ["rally-dev.qnsc.vn"]
