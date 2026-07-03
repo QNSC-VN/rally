@@ -26,6 +26,7 @@ import { useReleases } from '@/features/releases/api'
 import { useProjectMembers } from '@/features/teams/api'
 import { useIterationOptions } from '@/features/iterations/api'
 import { TypeBadge, ScheduleStateBadge, PriorityBadge } from '@/entities/work-item/ui/badges'
+import { SCHEDULE_STATE_LABEL, type ScheduleState } from '@/entities/work-item/model/types'
 import { CreateWorkItemModal } from '@/features/work-items/ui/create-work-item-modal'
 
 const SCHEDULE_STATE_VALUES = [
@@ -886,7 +887,7 @@ function BacklogRow({
           >
             {SCHEDULE_STATE_VALUES.map((s) => (
               <option key={s} value={s}>
-                {s}
+                {SCHEDULE_STATE_LABEL[s as ScheduleState] ?? s}
               </option>
             ))}
           </select>
