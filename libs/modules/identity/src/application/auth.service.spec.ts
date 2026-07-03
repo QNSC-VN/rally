@@ -438,7 +438,7 @@ describe('AuthService', () => {
       await expect(service.changePassword('user-1', 'wrong-pass', 'new')).rejects.toMatchObject({
         code: 'AUTH_INVALID_CREDENTIALS',
         message: 'Current password is incorrect',
-        httpStatus: 400,
+        httpStatus: 412,
       });
     });
   });

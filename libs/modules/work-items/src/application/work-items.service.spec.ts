@@ -201,9 +201,8 @@ describe('WorkItemsService', () => {
   describe('listWorkItems', () => {
     it('validates project access and returns items', async () => {
       workItemRepo.listByProject.mockResolvedValue({
-        items: [mockWorkItem()],
-        nextCursor: null,
-        total: 1,
+        data: [mockWorkItem()],
+        pageInfo: { nextCursor: null, hasNextPage: false, limit: 20 },
       });
 
       const result = await service.listWorkItems(
