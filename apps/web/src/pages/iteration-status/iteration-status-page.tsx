@@ -10,6 +10,9 @@ import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
 import { ChevronDown, ChevronLeft, ChevronRight, Loader2, Plus, Search } from 'lucide-react'
+import { Spinner } from '@/shared/ui/spinner'
+import { SkeletonList } from '@/shared/ui/skeleton'
+import { NativeSelect } from '@/shared/ui/native-select'
 import { BRAND } from '@/shared/config/brand'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { FormField } from '@/shared/ui/form-field'
@@ -197,11 +200,7 @@ export function IterationStatusPage() {
           <div className="w-24 shrink-0">Owner</div>
         </div>
 
-        {isLoading && (
-          <div className="h-40 flex items-center justify-center text-[12px]" style={{ color: BRAND.textMuted }}>
-            Loading…
-          </div>
-        )}
+        {isLoading && <SkeletonList rows={10} cols={10} />}
 
         {!isLoading &&
           (status?.items ?? []).map((item) => (

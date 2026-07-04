@@ -48,6 +48,7 @@ async function requireAuth() {
 // ── Lazy component helper ─────────────────────────────────────────────────────
 // Each page is a separate chunk — only the shell is always loaded.
 import { lazy, Suspense } from 'react'
+import { PageSpinner } from '@/shared/ui/spinner'
 
 function lazyPage<T extends Record<string, React.ComponentType>>(
   factory: () => Promise<T>,
@@ -55,13 +56,7 @@ function lazyPage<T extends Record<string, React.ComponentType>>(
 ) {
   const Lazy = lazy(() => factory().then((m) => ({ default: m[key] as React.ComponentType })))
   return () => (
-    <Suspense
-      fallback={
-        <div className="flex min-h-svh items-center justify-center">
-          <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-        </div>
-      }
-    >
+    <Suspense fallback={<PageSpinner />}>
       <Lazy />
     </Suspense>
   )
@@ -206,6 +201,7 @@ const routeTree = rootRoute.addChildren([
 export const router = createRouter({
   routeTree,
   context: { queryClient: undefined! }, // injected in App.tsx
+  defaultPreload: 'intent', // prefetch route chunks + loaders on link hover
 })
 
 // Type-safe router registration

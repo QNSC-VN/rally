@@ -50,10 +50,13 @@ import { FormField } from '@/shared/ui/form-field'
 import { AddTaskModal } from '@/features/work-items/ui/add-task-modal'
 import { RichTextEditor } from '@/shared/ui/rich-text-editor'
 import { AttachmentBlock } from '@/features/collaboration/ui/attachment-block'
-import { toast } from 'sonner'
+import { Spinner } from '@/shared/ui/spinner'
+import { useSaveState } from '@/shared/lib/hooks/use-save-state'
+import { SaveIndicator } from '@/shared/ui/save-indicator'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+type SaveStatus = ReturnType<typeof useSaveState>['status']
 type DetailTab = 'details' | 'tasks' | 'history'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -178,7 +181,7 @@ function TasksTab({ workItemId }: { workItemId: string }) {
 
       {isLoading ? (
         <div className="flex h-20 items-center justify-center">
-          <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <Spinner />
         </div>
       ) : (
         <div className="overflow-x-auto rounded bg-white" style={{ border: '1px solid #dde2ea' }}>
@@ -308,7 +311,7 @@ function HistoryTab({ workItemId }: { workItemId: string }) {
   if (isLoading) {
     return (
       <div className="flex h-20 items-center justify-center">
-        <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <Spinner />
       </div>
     )
   }
@@ -399,6 +402,8 @@ interface SidebarProps {
   readOnly: boolean
   collapsed?: boolean
   onToggleCollapse?: () => void
+  saveStatus?: SaveStatus
+  saveErrorMsg?: string | null
 }
 
 function DetailSidebar({
@@ -408,6 +413,8 @@ function DetailSidebar({
   readOnly,
   collapsed = false,
   onToggleCollapse,
+  saveStatus,
+  saveErrorMsg,
 }: SidebarProps) {
   const { data: teams = [] } = useProjectTeams(item.projectId)
   const { data: members = [] } = useProjectMembers(item.projectId)
@@ -448,13 +455,16 @@ function DetailSidebar({
         >
           Details
         </span>
-        <button
-          onClick={onToggleCollapse}
-          title="Hide sidebar"
-          className="rounded p-1 transition-colors hover:bg-[#f3f5f8]"
-        >
-          <PanelRightClose size={14} style={{ color: '#6b7280' }} />
-        </button>
+        <div className="flex items-center gap-2">
+          {saveStatus && <SaveIndicator status={saveStatus} errorMsg={saveErrorMsg} />}
+          <button
+            onClick={onToggleCollapse}
+            title="Hide sidebar"
+            className="rounded p-1 transition-colors hover:bg-[#f3f5f8]"
+          >
+            <PanelRightClose size={14} style={{ color: '#6b7280' }} />
+          </button>
+        </div>
       </div>
 
       <div className="space-y-4 p-5">
@@ -725,6 +735,7 @@ export function WorkItemDetailPage() {
   const { data: itemByKey, isLoading: loadingKey } = useWorkItemByKey(itemKey)
 
   const updateMutation = useUpdateWorkItem(itemByKey?.id ?? '')
+  const { status: saveStatus, errorMsg: saveErrorMsg, wrap: wrapSave } = useSaveState()
 
   // P1-11: work item is read-only when the user lacks work_item:edit permission.
   // BA spec: all active roles (non-Viewer) can update any work item.
@@ -739,19 +750,17 @@ export function WorkItemDetailPage() {
   const patchItem = useCallback(
     async (patch: Record<string, unknown>) => {
       if (!itemByKey) return
-      try {
+      await wrapSave(async () => {
         await updateMutation.mutateAsync(patch)
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : 'Update failed')
-      }
+      })
     },
-    [itemByKey, updateMutation],
+    [itemByKey, updateMutation, wrapSave],
   )
 
   if (loadingKey) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <Spinner size="lg" />
       </div>
     )
   }
@@ -926,6 +935,8 @@ export function WorkItemDetailPage() {
             readOnly={readOnly}
             collapsed={sidebarCollapsed}
             onToggleCollapse={toggleSidebar}
+            saveStatus={saveStatus}
+            saveErrorMsg={saveErrorMsg}
           />
         )}
         {/* Collapsed sidebar tab — re-open handle when sidebar is hidden */}

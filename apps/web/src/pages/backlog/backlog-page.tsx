@@ -13,6 +13,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
 import { ChevronLeft, ChevronRight, GripVertical, Plus, Search, X } from 'lucide-react'
+import { Spinner } from '@/shared/ui/spinner'
+import { SkeletonList } from '@/shared/ui/skeleton'
+import { NativeSelect } from '@/shared/ui/native-select'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import {
@@ -605,11 +608,7 @@ export function BacklogPage() {
               </div>
 
               {/* Loading */}
-              {isLoading && (
-                <div className="flex h-32 items-center justify-center">
-                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                </div>
-              )}
+              {isLoading && <SkeletonList rows={10} cols={7} />}
 
               {/* Error */}
               {isError && !isLoading && (

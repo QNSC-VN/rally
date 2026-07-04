@@ -8,6 +8,9 @@
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { ChevronLeft, Filter, Loader2, Plus, Search } from 'lucide-react'
+import { Spinner } from '@/shared/ui/spinner'
+import { SkeletonList } from '@/shared/ui/skeleton'
+import { NativeSelect } from '@/shared/ui/native-select'
 import { BRAND } from '@/shared/config/brand'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { FormField } from '@/shared/ui/form-field'
@@ -230,11 +233,7 @@ export function IterationsPage() {
               })}
             </div>
 
-            {isLoading && (
-              <div className="h-40 flex items-center justify-center text-[12px]" style={{ color: BRAND.textMuted }}>
-                Loading…
-              </div>
-            )}
+            {isLoading && <SkeletonList rows={8} cols={6} />}
 
             {!isLoading &&
               pageRows.map((it) => (
@@ -460,8 +459,8 @@ function IterationDetail({ id, canManage, onBack }: { id: string; canManage: boo
 
   if (isLoading || !it) {
     return (
-      <div className="flex flex-1 items-center justify-center text-[13px]" style={{ color: BRAND.textMuted }}>
-        Loading…
+      <div className="flex h-40 items-center justify-center">
+        <Spinner />
       </div>
     )
   }
