@@ -50,6 +50,7 @@ import { FormField } from '@/shared/ui/form-field'
 import { AddTaskModal } from '@/features/work-items/ui/add-task-modal'
 import { RichTextEditor } from '@/shared/ui/rich-text-editor'
 import { AttachmentBlock } from '@/features/collaboration/ui/attachment-block'
+import { toast } from 'sonner'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -724,7 +725,6 @@ export function WorkItemDetailPage() {
   const { data: itemByKey, isLoading: loadingKey } = useWorkItemByKey(itemKey)
 
   const updateMutation = useUpdateWorkItem(itemByKey?.id ?? '')
-  const [updateError, setUpdateError] = useState<string | null>(null)
 
   // P1-11: work item is read-only when the user lacks work_item:edit permission.
   // BA spec: all active roles (non-Viewer) can update any work item.
@@ -740,10 +740,9 @@ export function WorkItemDetailPage() {
     async (patch: Record<string, unknown>) => {
       if (!itemByKey) return
       try {
-        setUpdateError(null)
         await updateMutation.mutateAsync(patch)
       } catch (e) {
-        setUpdateError(e instanceof Error ? e.message : 'Update failed.')
+        toast.error(e instanceof Error ? e.message : 'Update failed')
       }
     },
     [itemByKey, updateMutation],
@@ -907,15 +906,6 @@ export function WorkItemDetailPage() {
       <div className="flex min-h-0 flex-1" style={{ backgroundColor: '#e7ebf0' }}>
         {/* Main content */}
         <main className="flex-1 overflow-y-auto p-6" style={{ backgroundColor: '#f3f5f8' }}>
-          {updateError && (
-            <div
-              className="mb-4 rounded px-3 py-2 text-[11px]"
-              style={{ backgroundColor: '#fef2f2', border: '1px solid #fcc5c0', color: '#b91c1c' }}
-            >
-              {updateError}
-            </div>
-          )}
-
           {activeTab === 'details' && (
             <DetailsTab
               item={item}

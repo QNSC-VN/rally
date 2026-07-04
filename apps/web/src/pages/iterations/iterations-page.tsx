@@ -6,6 +6,7 @@
  * right panel). State maps DB planning/committed/accepted ↔ UI Planning/Committed/Accepted.
  */
 import { useMemo, useState } from 'react'
+import { toast } from 'sonner'
 import { ChevronLeft, Filter, Loader2, Plus, Search } from 'lucide-react'
 import { BRAND } from '@/shared/config/brand'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
@@ -357,10 +358,13 @@ function CreateIterationModal({
         endDate: endDate || undefined,
         state,
       })
+      toast.success(`Iteration "${it.name}" created`)
       if (openDetail) onCreated(it.id)
       else onClose()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to create iteration')
+      const msg = e instanceof Error ? e.message : 'Failed to create iteration'
+      setError(msg)
+      toast.error(msg)
     }
   }
 

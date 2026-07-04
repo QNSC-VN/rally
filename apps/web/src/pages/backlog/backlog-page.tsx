@@ -10,6 +10,7 @@
  *  - "Create Work Item" modal
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
 import { ChevronLeft, ChevronRight, GripVertical, Plus, Search, X } from 'lucide-react'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
@@ -716,7 +717,10 @@ export function BacklogPage() {
         <CreateWorkItemModal
           projectId={projectId}
           onClose={() => setShowCreate(false)}
-          onCreated={() => setShowCreate(false)}
+          onCreated={(item) => {
+            setShowCreate(false)
+            toast.success(`${item.type === 'defect' ? 'Defect' : 'Story'} "${item.title}" created`)
+          }}
           onCreatedWithDetails={(item) => {
             setShowCreate(false)
             void navigate({ to: '/item/$itemKey', params: { itemKey: item.itemKey } })

@@ -12,6 +12,7 @@
  */
 import { useRef, useCallback, useEffect, useState } from 'react'
 import DOMPurify from 'dompurify'
+import { Tooltip } from './tooltip'
 import {
   AlignLeft,
   Bold,
@@ -83,37 +84,38 @@ interface ToolButtonProps {
 
 function ToolButton({ label, disabled, active, onAction, children }: ToolButtonProps) {
   return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      disabled={disabled}
-      onMouseDown={(e) => {
-        // Prevent blur before execCommand
-        e.preventDefault()
-        if (!disabled) onAction()
-      }}
-      className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-sm transition-colors disabled:cursor-not-allowed"
-      style={{
-        color: active ? '#2558a6' : '#475569',
-        backgroundColor: active ? '#edf2fb' : 'transparent',
-        opacity: disabled ? 0.35 : 1,
-        cursor: disabled ? 'not-allowed' : 'pointer',
-      }}
-      onMouseEnter={(e) => {
-        if (!disabled)
-          (e.currentTarget as HTMLButtonElement).style.backgroundColor = active
-            ? '#dbeafe'
-            : '#edf2f7'
-      }}
-      onMouseLeave={(e) => {
-        ;(e.currentTarget as HTMLButtonElement).style.backgroundColor = active
-          ? '#edf2fb'
-          : 'transparent'
-      }}
-    >
-      {children}
-    </button>
+    <Tooltip content={label} delayDuration={800}>
+      <button
+        type="button"
+        aria-label={label}
+        disabled={disabled}
+        onMouseDown={(e) => {
+          // Prevent blur before execCommand
+          e.preventDefault()
+          if (!disabled) onAction()
+        }}
+        className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-sm transition-colors disabled:cursor-not-allowed"
+        style={{
+          color: active ? '#2558a6' : '#475569',
+          backgroundColor: active ? '#edf2fb' : 'transparent',
+          opacity: disabled ? 0.35 : 1,
+          cursor: disabled ? 'not-allowed' : 'pointer',
+        }}
+        onMouseEnter={(e) => {
+          if (!disabled)
+            (e.currentTarget as HTMLButtonElement).style.backgroundColor = active
+              ? '#dbeafe'
+              : '#edf2f7'
+        }}
+        onMouseLeave={(e) => {
+          ;(e.currentTarget as HTMLButtonElement).style.backgroundColor = active
+            ? '#edf2fb'
+            : 'transparent'
+        }}
+      >
+        {children}
+      </button>
+    </Tooltip>
   )
 }
 

@@ -7,6 +7,7 @@
  * the selected iteration. Sourced from /v1/iterations/:id/status.
  */
 import { useMemo, useState } from 'react'
+import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
 import { ChevronDown, ChevronLeft, ChevronRight, Loader2, Plus, Search } from 'lucide-react'
 import { BRAND } from '@/shared/config/brand'
@@ -394,13 +395,16 @@ function AddItemModal({
         title: title.trim(),
         planEstimate: planEstimate === '' ? undefined : Number(planEstimate),
       })
+      toast.success(`${type === 'defect' ? 'Defect' : 'Story'} "${title.trim()}" added to iteration`)
       if (openDetail) {
         void navigate({ to: '/item/$itemKey', params: { itemKey: result.itemKey } })
       } else {
         onCreated()
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to create item')
+      const msg = e instanceof Error ? e.message : 'Failed to create item'
+      setError(msg)
+      toast.error(msg)
     }
   }
 
