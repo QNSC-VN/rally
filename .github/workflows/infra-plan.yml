@@ -68,6 +68,9 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           tofu-version: ${{ env.TOFU_VERSION }}
 
+      - name: Configure git for public modules
+        run: git config --global url."https://github.com".insteadOf "https://github.com"
+
       - name: tofu init
         working-directory: ${{ matrix.workspace }}
         run: tofu init -input=false

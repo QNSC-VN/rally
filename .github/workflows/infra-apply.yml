@@ -35,19 +35,8 @@ jobs:
           tofu-version: ${{ env.TOFU_VERSION }}
 
 
-      - uses: actions/create-github-app-token@v1
-        id: app-token
-        continue-on-error: true
-        with:
-          app-id: ${{ vars.RELEASE_BOT_APP_ID }}
-          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-
-      - name: Configure git for private modules
-        run: |
-          TOKEN="${{ steps.app-token.outputs.token }}"
-          if [ -z "$TOKEN" ]; then TOKEN="${{ secrets.GITHUB_TOKEN }}"; fi
-          git config --global url."https://oauth2:${TOKEN}@github.com".insteadOf "https://github.com"
+      - name: Configure git for public modules
+        run: git config --global url."https://github.com".insteadOf "https://github.com"
 
       - name: tofu init
         working-directory: infra/live/_shared
@@ -80,19 +69,8 @@ jobs:
           tofu-version: ${{ env.TOFU_VERSION }}
 
 
-      - uses: actions/create-github-app-token@v1
-        id: app-token
-        continue-on-error: true
-        with:
-          app-id: ${{ vars.RELEASE_BOT_APP_ID }}
-          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-
-      - name: Configure git for private modules
-        run: |
-          TOKEN="${{ steps.app-token.outputs.token }}"
-          if [ -z "$TOKEN" ]; then TOKEN="${{ secrets.GITHUB_TOKEN }}"; fi
-          git config --global url."https://oauth2:${TOKEN}@github.com".insteadOf "https://github.com"
+      - name: Configure git for public modules
+        run: git config --global url."https://github.com".insteadOf "https://github.com"
 
       - name: tofu init
         working-directory: infra/live/develop
@@ -130,19 +108,8 @@ jobs:
           tofu-version: ${{ env.TOFU_VERSION }}
 
 
-      - uses: actions/create-github-app-token@v1
-        id: app-token
-        continue-on-error: true
-        with:
-          app-id: ${{ vars.RELEASE_BOT_APP_ID }}
-          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-
-      - name: Configure git for private modules
-        run: |
-          TOKEN="${{ steps.app-token.outputs.token }}"
-          if [ -z "$TOKEN" ]; then TOKEN="${{ secrets.GITHUB_TOKEN }}"; fi
-          git config --global url."https://oauth2:${TOKEN}@github.com".insteadOf "https://github.com"
+      - name: Configure git for public modules
+        run: git config --global url."https://github.com".insteadOf "https://github.com"
 
       - name: tofu init
         working-directory: infra/live/prod
