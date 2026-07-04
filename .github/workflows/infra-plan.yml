@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - "live/**"
+      - "infra/live/**"
       - "modules/**"
       - ".github/workflows/plan.yml"
 
@@ -32,7 +32,7 @@ jobs:
       - id: set
         run: |
           CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD \
-            | grep '^live/' \
+            | grep '^infra/live/' \
             | sed 's|/.*||' \
             | sort -u \
             | grep -v '^live$' \
@@ -42,7 +42,7 @@ jobs:
           MODULES_CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD \
             | grep '^modules/' | wc -l)
           if [ "$MODULES_CHANGED" -gt 0 ]; then
-            CHANGED='["live/_shared","live/develop","live/prod"]'
+            CHANGED='["infra/live/_shared","infra/live/develop","infra/live/prod"]'
           fi
           echo "workspaces=$CHANGED" >> $GITHUB_OUTPUT
 

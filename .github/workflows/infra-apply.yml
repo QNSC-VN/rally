@@ -4,8 +4,8 @@ on:
   push:
     branches: [main]
     paths:
-      - "live/**"
-      - "modules/**"
+      - "infra/live/**"
+      - "infra/modules/**"
       - ".github/workflows/apply.yml"
 
 permissions:
@@ -35,15 +35,15 @@ jobs:
           tofu-version: ${{ env.TOFU_VERSION }}
 
       - name: tofu init
-        working-directory: live/_shared
+        working-directory: infra/live/_shared
         run: tofu init -input=false
 
       - name: tofu validate
-        working-directory: live/_shared
+        working-directory: infra/live/_shared
         run: tofu validate
 
       - name: tofu apply
-        working-directory: live/_shared
+        working-directory: infra/live/_shared
         run: tofu apply -input=false -auto-approve
 
   # ─────────────────────────────────────────────────────────────────────────────
@@ -65,15 +65,15 @@ jobs:
           tofu-version: ${{ env.TOFU_VERSION }}
 
       - name: tofu init
-        working-directory: live/develop
+        working-directory: infra/live/develop
         run: tofu init -input=false
 
       - name: tofu validate
-        working-directory: live/develop
+        working-directory: infra/live/develop
         run: tofu validate
 
       - name: tofu apply
-        working-directory: live/develop
+        working-directory: infra/live/develop
         run: tofu apply -input=false -auto-approve
         env:
           TF_VAR_acm_cert_arn:       ${{ secrets.ACM_CERT_ARN_DEVELOP }}
@@ -100,15 +100,15 @@ jobs:
           tofu-version: ${{ env.TOFU_VERSION }}
 
       - name: tofu init
-        working-directory: live/prod
+        working-directory: infra/live/prod
         run: tofu init -input=false
 
       - name: tofu validate
-        working-directory: live/prod
+        working-directory: infra/live/prod
         run: tofu validate
 
       - name: tofu apply
-        working-directory: live/prod
+        working-directory: infra/live/prod
         run: tofu apply -input=false -auto-approve
         env:
           TF_VAR_acm_cert_arn:       ${{ secrets.ACM_CERT_ARN_PROD }}
