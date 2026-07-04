@@ -1,0 +1,35 @@
+# PR auto-labeler config — maps file path patterns to labels.
+# Used by the labeler workflow (labeler.yml).
+# Labels must exist in the repo before they can be applied.
+
+area/web:
+  - changed-files:
+    - any-glob-to-any-file: "apps/web/**"
+
+area/api:
+  - changed-files:
+    - any-glob-to-any-file: "apps/api/**"
+
+area/worker:
+  - changed-files:
+    - any-glob-to-any-file: "apps/worker/**"
+
+area/db:
+  - changed-files:
+    - any-glob-to-any-file: "db/**"
+
+area/infra:
+  - changed-files:
+    - any-glob-to-any-file:
+      - "infra/**"
+      - "deploy/**"
+      - "Dockerfile"
+      - "docker-compose*.yml"
+
+area/ci:
+  - changed-files:
+    - any-glob-to-any-file: ".github/**"
+
+area/contracts:
+  - changed-files:
+    - any-glob-to-any-file: "libs/contracts/**"
