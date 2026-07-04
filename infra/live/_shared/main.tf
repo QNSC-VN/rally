@@ -168,3 +168,31 @@ resource "aws_iam_role_policy" "web_deploy" {
     ]
   })
 }
+
+# ── RDS dev-cost-saver guard — develop deploy role only ──────────────────────
+# Allows the CI deploy job to detect + start a stopped RDS instance before
+# running migrations. Scoped to develop only; prod RDS is always-on and this
+# permission is intentionally absent from the production deploy role.
+data "aws_db_instance" "develop" {
+  db_instance_identifier = "rally-develop"
+}
+
+resource "aws_iam_role_policy" "deploy_rds_dev_guard" {
+  name = "rally-deploy-develop-rds-guard"
+  role = module.iam_oidc.deploy_role_arns["develop"]
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "RDSDevGuard"
+        Effect = "Allow"
+        Action = [
+          "rds:DescribeDBInstances",
+          "rds:StartDBInstance",
+        ]
+        Resource = data.aws_db_instance.develop.db_instance_arn
+      }
+    ]
+  })
+}
