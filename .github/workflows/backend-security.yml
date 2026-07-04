@@ -68,10 +68,11 @@ jobs:
 
   dependency-review:
     name: Dependency review
-    if: github.event_name == 'pull_request'
+    # Requires GitHub Advanced Security (paid) for private repos.
+    # Skipped until GHAS is purchased — enable by removing this condition.
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    continue-on-error: true  # requires GitHub Advanced Security on private repos
     permissions:
       contents: read
       pull-requests: read
