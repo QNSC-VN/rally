@@ -202,8 +202,8 @@ export function AppShell() {
 
   // Close all dropdowns on route change
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     closeAll()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPath])
 
   // Close all dropdowns on Escape key
@@ -213,7 +213,6 @@ export function AppShell() {
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   function handleComingSoon(label: string) {
