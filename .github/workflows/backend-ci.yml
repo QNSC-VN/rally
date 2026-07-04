@@ -17,6 +17,7 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read  # required by amannn/action-semantic-pull-request
 
 env:
   NODE_VERSION: '22'
