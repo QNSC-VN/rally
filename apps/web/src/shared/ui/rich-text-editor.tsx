@@ -12,6 +12,7 @@
  */
 import { useRef, useCallback, useEffect, useState } from 'react'
 import DOMPurify from 'dompurify'
+import { Tooltip } from './tooltip'
 import {
   AlignLeft,
   Bold,
@@ -83,37 +84,38 @@ interface ToolButtonProps {
 
 function ToolButton({ label, disabled, active, onAction, children }: ToolButtonProps) {
   return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      disabled={disabled}
-      onMouseDown={(e) => {
-        // Prevent blur before execCommand
-        e.preventDefault()
-        if (!disabled) onAction()
-      }}
-      className="flex h-7 w-7 items-center justify-center rounded-sm transition-colors"
-      style={{
-        color: active ? '#2558a6' : '#475569',
-        backgroundColor: active ? '#edf2fb' : 'transparent',
-        opacity: disabled ? 0.35 : 1,
-        cursor: disabled ? 'not-allowed' : 'pointer',
-      }}
-      onMouseEnter={(e) => {
-        if (!disabled)
-          (e.currentTarget as HTMLButtonElement).style.backgroundColor = active
-            ? '#dbeafe'
-            : '#edf2f7'
-      }}
-      onMouseLeave={(e) => {
-        ;(e.currentTarget as HTMLButtonElement).style.backgroundColor = active
-          ? '#edf2fb'
-          : 'transparent'
-      }}
-    >
-      {children}
-    </button>
+    <Tooltip content={label} delayDuration={800}>
+      <button
+        type="button"
+        aria-label={label}
+        disabled={disabled}
+        onMouseDown={(e) => {
+          // Prevent blur before execCommand
+          e.preventDefault()
+          if (!disabled) onAction()
+        }}
+        className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-sm transition-colors disabled:cursor-not-allowed"
+        style={{
+          color: active ? '#2558a6' : '#475569',
+          backgroundColor: active ? '#edf2fb' : 'transparent',
+          opacity: disabled ? 0.35 : 1,
+          cursor: disabled ? 'not-allowed' : 'pointer',
+        }}
+        onMouseEnter={(e) => {
+          if (!disabled)
+            (e.currentTarget as HTMLButtonElement).style.backgroundColor = active
+              ? '#dbeafe'
+              : '#edf2f7'
+        }}
+        onMouseLeave={(e) => {
+          ;(e.currentTarget as HTMLButtonElement).style.backgroundColor = active
+            ? '#edf2fb'
+            : 'transparent'
+        }}
+      >
+        {children}
+      </button>
+    </Tooltip>
   )
 }
 
@@ -148,6 +150,7 @@ export function RichTextEditor({
   const editorRef = useRef<HTMLDivElement>(null)
   const savedRef = useRef<string>('')
   const [expanded, setExpanded] = useState(false)
+  const [focused, setFocused] = useState(false)
 
   // Sync external value into editor (only when it changes externally)
   useEffect(() => {
@@ -166,6 +169,7 @@ export function RichTextEditor({
   }, [])
 
   const handleBlur = useCallback(() => {
+    setFocused(false)
     if (!editorRef.current || readOnly || !onSave) return
     const html = sanitize(editorRef.current.innerHTML)
     if (html !== savedRef.current) {
@@ -196,9 +200,10 @@ export function RichTextEditor({
 
   return (
     <section
-      className={`overflow-hidden rounded bg-white ${className}`}
+      className={`overflow-hidden rounded bg-white transition-[border-color,box-shadow] ${className}`}
       style={{
-        border: '1px solid #dde2ea',
+        border: focused ? '1px solid var(--ring)' : '1px solid #dde2ea',
+        boxShadow: focused ? '0 0 0 3px color-mix(in srgb, var(--ring) 50%, transparent)' : 'none',
         ...(expanded
           ? {
               position: 'fixed',
@@ -227,7 +232,7 @@ export function RichTextEditor({
             type="button"
             aria-label={expanded ? 'Collapse editor' : 'Expand editor'}
             onClick={() => setExpanded((v) => !v)}
-            className="rounded p-0.5 hover:bg-slate-200"
+            className="cursor-pointer rounded p-0.5 hover:bg-slate-200"
             style={{ color: '#64748b' }}
           >
             {expanded ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
@@ -312,6 +317,7 @@ export function RichTextEditor({
           ref={editorRef}
           contentEditable
           suppressContentEditableWarning
+          onFocus={() => setFocused(true)}
           onBlur={handleBlur}
           onKeyDown={handleKeyDown}
           className="prose prose-sm max-w-none px-4 py-3 text-[13px] leading-6 focus:outline-none"

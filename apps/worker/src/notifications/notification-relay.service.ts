@@ -73,7 +73,7 @@ export class NotificationRelayService
     config: AppConfigService,
   ) {
     super(db);
-    this.appUrl = (config.get('APP_BASE_URL') as string | undefined) ?? 'http://localhost:5173';
+    this.appUrl = (config.get('APP_BASE_URL')) ?? 'http://localhost:5173';
   }
 
   async onModuleInit(): Promise<void> {
@@ -81,7 +81,7 @@ export class NotificationRelayService
     // Subscribe to relay:wake signals published by the API after schedule().
     // This gives near-zero delivery latency; the 5s cron is the catch-all fallback.
     this.unsubscribeRelayWake = await this.pubSub.subscribeRelayWake(() => {
-      this.relay().catch((err) =>
+      this.relay().catch((err: unknown) =>
         this.logger.error({ err }, 'Relay triggered by wake signal failed'),
       );
     });

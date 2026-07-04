@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
-import { sprintDailySnapshots, sprints } from '../../../../../../db/schema/work';
+import { iterationDailySnapshots, iterations } from '../../../../../../db/schema/work';
 import type { SprintSnapshot, VelocityPoint } from '../../domain/reporting.types';
 import { IReportingRepository } from '../../domain/ports/reporting.repository';
 import { uuidv7 } from 'uuidv7';
@@ -14,15 +14,20 @@ export class ReportingDrizzleRepository implements IReportingRepository {
   async getSprintSnapshots(tenantId: string, sprintId: string): Promise<SprintSnapshot[]> {
     const rows = await this.db
       .select()
-      .from(sprintDailySnapshots)
+      .from(iterationDailySnapshots)
       .where(
         and(
-          eq(sprintDailySnapshots.tenantId, tenantId),
-          eq(sprintDailySnapshots.sprintId, sprintId),
+          eq(iterationDailySnapshots.tenantId, tenantId),
+          eq(iterationDailySnapshots.iterationId, sprintId),
         ),
       )
-      .orderBy(asc(sprintDailySnapshots.snapshotDate));
-    return rows as SprintSnapshot[];
+      .orderBy(asc(iterationDailySnapshots.snapshotDate));
+    // Reporting domain still speaks "sprintId" (Phase 5 rename); map the renamed
+    // physical column back onto the domain field.
+    return rows.map((r) => {
+      const { iterationId, ...rest } = r;
+      return { ...rest, sprintId: iterationId };
+    });
   }
 
   async getVelocity(
@@ -30,39 +35,39 @@ export class ReportingDrizzleRepository implements IReportingRepository {
     projectId: string,
     lastNSprints: number,
   ): Promise<VelocityPoint[]> {
-    // Get last N completed sprints for the project
+    // Get last N accepted iterations for the project (Rally: accepted = completed).
     const completedSprints = await this.db
       .select()
-      .from(sprints)
+      .from(iterations)
       .where(
         and(
-          eq(sprints.tenantId, tenantId),
-          eq(sprints.projectId, projectId),
-          eq(sprints.status, 'completed'),
+          eq(iterations.tenantId, tenantId),
+          eq(iterations.projectId, projectId),
+          eq(iterations.state, 'accepted'),
         ),
       )
-      .orderBy(desc(sprints.completedAt))
+      .orderBy(desc(iterations.completedAt))
       .limit(lastNSprints);
 
     if (!completedSprints.length) return [];
 
-    // Fetch the final snapshot for every sprint in ONE query (DISTINCT ON keeps
-    // the newest row per sprint), instead of N round trips — one per sprint.
+    // Fetch the final snapshot for every iteration in ONE query (DISTINCT ON keeps
+    // the newest row per iteration), instead of N round trips — one per iteration.
     const sprintIds = completedSprints.map((s) => s.id);
     const latestSnapshots = await this.db
-      .selectDistinctOn([sprintDailySnapshots.sprintId], {
-        sprintId: sprintDailySnapshots.sprintId,
-        completedPoints: sprintDailySnapshots.completedPoints,
-        completedItems: sprintDailySnapshots.completedItems,
+      .selectDistinctOn([iterationDailySnapshots.iterationId], {
+        sprintId: iterationDailySnapshots.iterationId,
+        completedPoints: iterationDailySnapshots.completedPoints,
+        completedItems: iterationDailySnapshots.completedItems,
       })
-      .from(sprintDailySnapshots)
+      .from(iterationDailySnapshots)
       .where(
         and(
-          eq(sprintDailySnapshots.tenantId, tenantId),
-          inArray(sprintDailySnapshots.sprintId, sprintIds),
+          eq(iterationDailySnapshots.tenantId, tenantId),
+          inArray(iterationDailySnapshots.iterationId, sprintIds),
         ),
       )
-      .orderBy(sprintDailySnapshots.sprintId, desc(sprintDailySnapshots.snapshotDate));
+      .orderBy(iterationDailySnapshots.iterationId, desc(iterationDailySnapshots.snapshotDate));
 
     const snapshotBySprintId = new Map(latestSnapshots.map((s) => [s.sprintId, s]));
 
@@ -82,11 +87,11 @@ export class ReportingDrizzleRepository implements IReportingRepository {
 
   async upsertSnapshot(snapshot: Omit<SprintSnapshot, 'id' | 'createdAt'>): Promise<void> {
     await this.db
-      .insert(sprintDailySnapshots)
+      .insert(iterationDailySnapshots)
       .values({
         id: uuidv7(),
         tenantId: snapshot.tenantId,
-        sprintId: snapshot.sprintId,
+        iterationId: snapshot.sprintId,
         snapshotDate: snapshot.snapshotDate,
         totalPoints: snapshot.totalPoints,
         completedPoints: snapshot.completedPoints,
@@ -95,7 +100,7 @@ export class ReportingDrizzleRepository implements IReportingRepository {
         completedItems: snapshot.completedItems,
       })
       .onConflictDoUpdate({
-        target: [sprintDailySnapshots.sprintId, sprintDailySnapshots.snapshotDate],
+        target: [iterationDailySnapshots.iterationId, iterationDailySnapshots.snapshotDate],
         set: {
           totalPoints: sql`excluded.total_points`,
           completedPoints: sql`excluded.completed_points`,

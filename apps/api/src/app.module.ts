@@ -1,7 +1,7 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
-import { ConfigService } from '@nestjs/config';
+import { AppConfigService } from '@platform/config';
 import { trace, isSpanContextValid } from '@opentelemetry/api';
 import { requestContextStorage } from '@platform/context/request-context';
 import { PlatformModule } from '@platform';
@@ -10,7 +10,7 @@ import { TenancyModule } from '@modules/tenancy';
 import { AccessModule } from '@modules/access';
 import { ProjectsModule } from '@modules/projects';
 import { WorkItemsModule } from '@modules/work-items';
-import { PlanningModule } from '@modules/planning';
+import { IterationsModule } from '@modules/iterations';
 import { ReleasesModule } from '@modules/releases';
 import { WorkflowModule } from '@modules/workflow';
 import { CollaborationModule } from '@modules/collaboration';
@@ -27,13 +27,13 @@ import { AsyncLocalStorageMiddleware } from '@platform/context/als.middleware';
   imports: [
     // Pino structured logging — autoLogging disabled; HttpLoggingInterceptor handles per-request logs
     LoggerModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: (configService: ConfigService) => {
-        const isDev = configService.get<string>('NODE_ENV') !== 'production';
-        const prettyLogs = configService.get<boolean>('LOG_PRETTY') ?? isDev;
+      inject: [AppConfigService],
+      useFactory: (config: AppConfigService) => {
+        const isDev = config.get('NODE_ENV') !== 'production';
+        const prettyLogs = config.get('LOG_PRETTY') ?? isDev;
         return {
           pinoHttp: {
-            level: configService.get<string>('LOG_LEVEL') ?? 'info',
+            level: config.get('LOG_LEVEL'),
             // pino-pretty for human-readable logs in dev; JSON in prod for log aggregators
             transport: prettyLogs
               ? { target: 'pino-pretty', options: { colorize: true, singleLine: false } }
@@ -53,8 +53,8 @@ import { AsyncLocalStorageMiddleware } from '@platform/context/als.middleware';
             autoLogging: false,
             customProps: () => ({
               service: 'rally-api',
-              env: configService.get<string>('NODE_ENV'),
-              version: configService.get<string>('SERVICE_VERSION'),
+              env: config.get('NODE_ENV'),
+              version: config.get('SERVICE_VERSION'),
             }),
             // mixin: called on every log write — injects active OTEL trace context
             // and ALS request context (tenantId, userId, correlationId) automatically.
@@ -95,7 +95,7 @@ import { AsyncLocalStorageMiddleware } from '@platform/context/als.middleware';
     AccessModule,
     ProjectsModule,
     WorkItemsModule,
-    PlanningModule,
+    IterationsModule,
     ReleasesModule,
     WorkflowModule,
     CollaborationModule,

@@ -1,3 +1,5 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Mocked } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
 import { TenancyService } from './tenancy.service';
 import { TENANT_REPOSITORY, ITenantRepository } from '../domain/ports/tenant.repository';
@@ -99,14 +101,15 @@ const mockInvitation = (o: Partial<WorkspaceInvitation> = {}): WorkspaceInvitati
 
 // ── Mock factories ────────────────────────────────────────────────────────────
 
-const makeTenantRepo = (): jest.Mocked<ITenantRepository> =>
+const makeTenantRepo = (): Mocked<ITenantRepository> =>
   ({
     findById: vi.fn(),
     findBySlug: vi.fn(),
     create: vi.fn(),
-  }) as unknown as jest.Mocked<ITenantRepository>;
+    createSubscription: vi.fn().mockResolvedValue(undefined),
+  });
 
-const makeWorkspaceRepo = (): jest.Mocked<IWorkspaceRepository> =>
+const makeWorkspaceRepo = (): Mocked<IWorkspaceRepository> =>
   ({
     findById: vi.fn(),
     findBySlug: vi.fn(),
@@ -114,18 +117,22 @@ const makeWorkspaceRepo = (): jest.Mocked<IWorkspaceRepository> =>
     create: vi.fn(),
     update: vi.fn(),
     softDelete: vi.fn().mockResolvedValue(undefined),
-  }) as unknown as jest.Mocked<IWorkspaceRepository>;
+  });
 
-const makeMemberRepo = (): jest.Mocked<IWorkspaceMemberRepository> =>
+const makeMemberRepo = (): Mocked<IWorkspaceMemberRepository> =>
   ({
     findMember: vi.fn(),
+    findMemberById: vi.fn(),
     listMembers: vi.fn(),
+    listMembersWithProfile: vi.fn(),
     addMember: vi.fn(),
     updateMember: vi.fn(),
     removeMember: vi.fn().mockResolvedValue(undefined),
-  }) as unknown as jest.Mocked<IWorkspaceMemberRepository>;
+    isMember: vi.fn().mockResolvedValue(false),
+    countActiveAdmins: vi.fn().mockResolvedValue(0),
+  });
 
-const makeInvitationRepo = (): jest.Mocked<IWorkspaceInvitationRepository> =>
+const makeInvitationRepo = (): Mocked<IWorkspaceInvitationRepository> =>
   ({
     findByTokenHash: vi.fn(),
     findById: vi.fn(),
@@ -134,13 +141,13 @@ const makeInvitationRepo = (): jest.Mocked<IWorkspaceInvitationRepository> =>
     create: vi.fn(),
     updateStatus: vi.fn().mockResolvedValue(undefined),
     cancelExistingForEmail: vi.fn().mockResolvedValue(undefined),
-  }) as unknown as jest.Mocked<IWorkspaceInvitationRepository>;
+  });
 
-const makeSettingsRepo = (): jest.Mocked<IWorkspaceSettingsRepository> =>
+const makeSettingsRepo = (): Mocked<IWorkspaceSettingsRepository> =>
   ({
     findByWorkspace: vi.fn(),
     upsert: vi.fn(),
-  }) as unknown as jest.Mocked<IWorkspaceSettingsRepository>;
+  });
 
 const makeConfig = () => ({
   get: vi.fn((key: string) => {
@@ -162,14 +169,14 @@ const makeUow = () => ({
   run: vi.fn((fn: (tx: unknown) => unknown) => fn({})),
 });
 
-const makeTenantDomainRepo = (): jest.Mocked<ITenantDomainRepository> => ({
+const makeTenantDomainRepo = (): Mocked<ITenantDomainRepository> => ({
   findByDomain: vi.fn().mockResolvedValue(null),
   create: vi
     .fn()
     .mockResolvedValue({ id: 'domain-1', domain: 'example.com', tenantId: 'tenant-1' }),
 });
 
-const makeTenantMemberRepo = (): jest.Mocked<ITenantMemberRepository> => ({
+const makeTenantMemberRepo = (): Mocked<ITenantMemberRepository> => ({
   findByUserId: vi.fn().mockResolvedValue([]),
   findByUserAndTenant: vi.fn().mockResolvedValue(null),
   create: vi.fn().mockResolvedValue(undefined),
@@ -279,6 +286,8 @@ describe('TenancyService', () => {
       exp: 0,
       iss: '',
       aud: '',
+      permissions: [] as string[],
+      authMethod: 'password' as const,
     };
 
     it('creates workspace when slug is available', async () => {

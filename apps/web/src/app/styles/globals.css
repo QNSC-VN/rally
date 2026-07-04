@@ -47,7 +47,7 @@
   /* Border / input */
   --border: rgba(0, 0, 0, 0.08);
   --border-strong: #d9dee7;
-  --input: transparent;
+  --input: #d7dde7;          /* form-control border — used by shadcn Input/Textarea */
   --input-background: #f4f6f9;
   --ring: #1d3f73;
 
@@ -110,7 +110,7 @@
   --destructive-foreground: #ffffff;
   --border: rgba(255, 255, 255, 0.08);
   --border-strong: #2a3a54;
-  --input: transparent;
+  --input: #2a3a54;          /* dark-mode form-control border */
   --input-background: #1a2234;
   --ring: #4a80d4;
   --sidebar: #0f1623;

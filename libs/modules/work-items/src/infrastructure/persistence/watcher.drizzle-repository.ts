@@ -17,7 +17,7 @@ export class WatcherDrizzleRepository implements IWatcherRepository {
       .where(
         and(eq(workItemWatchers.workItemId, workItemId), eq(workItemWatchers.tenantId, tenantId)),
       );
-    return rows as Watcher[];
+    return rows;
   }
 
   async isWatching(workItemId: string, userId: string): Promise<boolean> {

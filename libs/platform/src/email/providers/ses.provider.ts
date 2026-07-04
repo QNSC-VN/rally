@@ -31,7 +31,7 @@ export class SesEmailProvider implements IEmailProvider {
 
   constructor(private readonly config: AppConfigService) {
     this.fromAddress = buildFromAddress(config);
-    this.replyTo = config.get('MAIL_REPLY_TO') as string | undefined;
+    this.replyTo = config.get('MAIL_REPLY_TO');
 
     const endpoint = process.env['AWS_ENDPOINT_URL'];
     this.ses = new SESClient({

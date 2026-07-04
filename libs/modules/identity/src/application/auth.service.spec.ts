@@ -1,3 +1,4 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
@@ -23,7 +24,6 @@ import { AuditService } from '@modules/audit';
 
 const mockUser = (overrides: Partial<User> = {}): User => ({
   id: 'user-1',
-  tenantId: 'tenant-1',
   email: 'alice@example.com',
   displayName: 'Alice',
   avatarUrl: null,
@@ -330,6 +330,8 @@ describe('AuthService', () => {
         exp: Math.floor(Date.now() / 1000) + 840, // 14 min remaining
         iss: 'rally',
         aud: 'rally-app',
+        permissions: [] as string[],
+        authMethod: 'password' as const,
       };
 
       await service.logout(payload);
@@ -348,6 +350,8 @@ describe('AuthService', () => {
         exp: Math.floor(Date.now() / 1000) - 1, // already expired
         iss: 'rally',
         aud: 'rally-app',
+        permissions: [] as string[],
+        authMethod: 'password' as const,
       };
 
       await service.logout(payload);
@@ -370,6 +374,8 @@ describe('AuthService', () => {
         exp: Math.floor(Date.now() / 1000) + 840,
         iss: 'rally',
         aud: 'rally-app',
+        permissions: [] as string[],
+        authMethod: 'password' as const,
       };
 
       await service.logoutAll(payload);
@@ -432,7 +438,7 @@ describe('AuthService', () => {
       await expect(service.changePassword('user-1', 'wrong-pass', 'new')).rejects.toMatchObject({
         code: 'AUTH_INVALID_CREDENTIALS',
         message: 'Current password is incorrect',
-        httpStatus: 400,
+        httpStatus: 412,
       });
     });
   });

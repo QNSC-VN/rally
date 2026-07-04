@@ -49,7 +49,7 @@ export class UserDrizzleRepository implements IUserRepository {
         emailVerified: input.emailVerified ?? false,
       })
       .returning();
-    return row as User;
+    return row;
   }
 
   async updateLastLogin(id: string, tx?: DbExecutor): Promise<void> {
@@ -85,7 +85,7 @@ export class UserDrizzleRepository implements IUserRepository {
       })
       .where(eq(users.id, id))
       .returning();
-    return rows[0] as User;
+    return rows[0];
   }
 
   async createPasswordResetToken(
@@ -210,6 +210,6 @@ export class UserDrizzleRepository implements IUserRepository {
       providerEmail,
     });
 
-    return newUser!;
+    return newUser;
   }
 }

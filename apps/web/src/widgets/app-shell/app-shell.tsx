@@ -57,13 +57,27 @@ const NAV_ITEMS: NavItem[] = [
         featureFlag: 'feature.backlog',
         permission: 'work_item:view',
       },
+      {
+        path: '/timeboxes',
+        label: 'Timeboxes',
+        featureFlag: 'feature.timeboxes',
+        permission: 'iteration:view',
+      },
     ],
   },
   {
-    path: '/board',
+    path: '/iteration-status',
     label: 'Track',
-    featureFlag: 'feature.board',
+    featureFlag: 'feature.iteration-status',
     permission: 'work_item:view',
+    children: [
+      {
+        path: '/iteration-status',
+        label: 'Iteration',
+        featureFlag: 'feature.iteration-status',
+        permission: 'work_item:view',
+      },
+    ],
   },
   {
     path: '/quality',
@@ -109,7 +123,8 @@ export function AppShell() {
 
   const [wsOpen, setWsOpen] = useState(false)
   const [userOpen, setUserOpen] = useState(false)
-  const [planOpen, setPlanOpen] = useState(false)
+  // Which top-nav dropdown is open, keyed by nav label (Plan, Track, …). Only one at a time.
+  const [openMenu, setOpenMenu] = useState<string | null>(null)
   const [notifOpen, setNotifOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
 
@@ -193,9 +208,24 @@ export function AppShell() {
   function closeAll() {
     setWsOpen(false)
     setUserOpen(false)
-    setPlanOpen(false)
+    setOpenMenu(null)
     setNotifOpen(false)
   }
+
+  // Close all dropdowns on route change
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    closeAll()
+  }, [currentPath])
+
+  // Close all dropdowns on Escape key
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') closeAll()
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   function handleComingSoon(label: string) {
     closeAll()
@@ -224,6 +254,10 @@ export function AppShell() {
 
   return (
     <div className="flex min-h-svh flex-col">
+      {/* Backdrop to close open dropdowns when clicking outside */}
+      {(openMenu !== null || wsOpen || userOpen || notifOpen) && (
+        <div className="fixed inset-0 z-20" aria-hidden onClick={closeAll} />
+      )}
       {/* ── Top nav ─────────────────────────────────────────────────────────── */}
       <header
         className="relative z-30 flex h-10 shrink-0 items-center px-3"
@@ -242,7 +276,7 @@ export function AppShell() {
               onClick={() => {
                 setWsOpen((o) => !o)
                 setUserOpen(false)
-                setPlanOpen(false)
+                setOpenMenu(null)
               }}
               className="flex items-center gap-1.5 text-left text-white hover:opacity-90"
             >
@@ -451,7 +485,7 @@ export function AppShell() {
                   >
                     <Link
                       to={path}
-                      onClick={() => (comingSoon ? undefined : setPlanOpen(false))}
+                      onClick={() => (comingSoon ? undefined : setOpenMenu(null))}
                       className="flex items-center gap-1.5 py-1 pr-1 pl-2.5 text-[13px] font-medium"
                       style={{ color: isActive(path) ? '#ffffff' : 'rgba(255,255,255,0.72)' }}
                     >
@@ -472,7 +506,7 @@ export function AppShell() {
                       <button
                         aria-label={`Open ${label} submenu`}
                         onClick={() => {
-                          setPlanOpen((o) => !o)
+                          setOpenMenu((cur) => (cur === label ? null : label))
                           setWsOpen(false)
                           setUserOpen(false)
                         }}
@@ -483,7 +517,7 @@ export function AppShell() {
                       </button>
                     )}
                   </div>
-                  {!comingSoon && planOpen && (
+                  {!comingSoon && openMenu === label && (
                     <div
                       className="absolute top-full left-0 z-50 mt-1 w-44 rounded bg-white py-1 shadow-lg"
                       style={{ border: '1px solid #d9dee7' }}
@@ -524,7 +558,7 @@ export function AppShell() {
                           <Link
                             key={child.path}
                             to={child.path}
-                            onClick={() => setPlanOpen(false)}
+                            onClick={() => setOpenMenu(null)}
                             className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px]"
                             style={{
                               color: isActive(child.path) ? '#1d3f73' : '#1a2234',
@@ -614,7 +648,7 @@ export function AppShell() {
                 setNotifOpen((o) => !o)
                 setWsOpen(false)
                 setUserOpen(false)
-                setPlanOpen(false)
+                setOpenMenu(null)
               }}
               className="relative rounded p-1.5 transition-colors"
               style={{
@@ -662,7 +696,7 @@ export function AppShell() {
               onClick={() => {
                 setUserOpen((o) => !o)
                 setWsOpen(false)
-                setPlanOpen(false)
+                setOpenMenu(null)
               }}
               className="flex items-center gap-1.5 rounded px-1 py-0.5 hover:opacity-90"
               style={{ color: 'rgba(255,255,255,0.85)' }}

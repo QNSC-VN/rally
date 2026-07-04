@@ -140,6 +140,38 @@ export const ReorderWorkItemsSchema = z.object({
 
 export class ReorderWorkItemsDto extends createZodDto(ReorderWorkItemsSchema) {}
 
+// ── Neighbour rank (backlog reorder — P2-BL-05) ─────────────────────────────────
+
+export const RankWorkItemSchema = z.object({
+  projectId: z.string().uuid(),
+  /** Item immediately above the target's new position; null = top of backlog. */
+  beforeId: z.string().uuid().nullable().optional(),
+  /** Item immediately below the target's new position; null = bottom of backlog. */
+  afterId: z.string().uuid().nullable().optional(),
+});
+
+export class RankWorkItemDto extends createZodDto(RankWorkItemSchema) {}
+
+// ── Bulk assign release (P2-BL-03) ─────────────────────────────────────────────
+
+export const BulkAssignReleaseSchema = z.object({
+  projectId: z.string().uuid(),
+  itemIds: z.array(z.string().uuid()).min(1).max(500),
+  releaseId: z.string().uuid().nullable(),
+});
+
+export class BulkAssignReleaseDto extends createZodDto(BulkAssignReleaseSchema) {}
+
+// ── Bulk assign iteration (P2-BL-04) ────────────────────────────────────────────
+
+export const BulkAssignIterationSchema = z.object({
+  projectId: z.string().uuid(),
+  itemIds: z.array(z.string().uuid()).min(1).max(500),
+  iterationId: z.string().uuid().nullable(),
+});
+
+export class BulkAssignIterationDto extends createZodDto(BulkAssignIterationSchema) {}
+
 // ── Add label ─────────────────────────────────────────────────────────────────
 
 export const AddLabelSchema = z.object({

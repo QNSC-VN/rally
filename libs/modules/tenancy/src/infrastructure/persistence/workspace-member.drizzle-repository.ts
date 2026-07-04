@@ -25,7 +25,7 @@ export class WorkspaceMemberDrizzleRepository implements IWorkspaceMemberReposit
         and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, userId)),
       )
       .limit(1);
-    return (rows[0] as WorkspaceMember | undefined) ?? null;
+    return (rows[0]) ?? null;
   }
 
   async findMemberById(id: string): Promise<WorkspaceMember | null> {
@@ -34,7 +34,7 @@ export class WorkspaceMemberDrizzleRepository implements IWorkspaceMemberReposit
       .from(workspaceMembers)
       .where(eq(workspaceMembers.id, id))
       .limit(1);
-    return (rows[0] as WorkspaceMember | undefined) ?? null;
+    return (rows[0]) ?? null;
   }
 
   async listMembers(
@@ -119,7 +119,7 @@ export class WorkspaceMemberDrizzleRepository implements IWorkspaceMemberReposit
         updatedAt: new Date(),
       })
       .returning();
-    return rows[0] as WorkspaceMember;
+    return rows[0];
   }
 
   async updateMember(id: string, input: UpdateMemberInput): Promise<WorkspaceMember> {
@@ -132,7 +132,7 @@ export class WorkspaceMemberDrizzleRepository implements IWorkspaceMemberReposit
       })
       .where(eq(workspaceMembers.id, id))
       .returning();
-    return rows[0] as WorkspaceMember;
+    return rows[0];
   }
 
   async removeMember(workspaceId: string, userId: string): Promise<void> {

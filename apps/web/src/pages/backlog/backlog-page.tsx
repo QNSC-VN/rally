@@ -10,17 +10,38 @@
  *  - "Create Work Item" modal
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
 import { ChevronLeft, ChevronRight, GripVertical, Plus, Search, X } from 'lucide-react'
+import { SkeletonList } from '@/shared/ui/skeleton'
+import { InlineSelect } from '@/shared/ui/native-select'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
-import { useBacklog, type WorkItem } from '@/features/work-items/api'
+import {
+  useBacklog,
+  useUpdateWorkItem,
+  useBulkAssignRelease,
+  useBulkAssignIteration,
+  type WorkItem,
+  type UpdateWorkItemInput,
+} from '@/features/work-items/api'
+import { useReleases } from '@/features/releases/api'
+import { useProjectMembers } from '@/features/teams/api'
+import { useIterationOptions } from '@/features/iterations/api'
 import { TypeBadge, ScheduleStateBadge, PriorityBadge } from '@/entities/work-item/ui/badges'
+import {
+  SCHEDULE_STATE_LABEL,
+  SCHEDULE_STATE_VALUES,
+  PRIORITY_VALUES,
+  type ScheduleState,
+} from '@/entities/work-item/model/types'
+import { BRAND } from '@/shared/config/brand'
+import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { CreateWorkItemModal } from '@/features/work-items/ui/create-work-item-modal'
 
 // ── Column definitions ─────────────────────────────────────────────────────────
 
-type ColumnKey = 'type' | 'id' | 'name' | 'scheduleState' | 'priority' | 'estimate' | 'owner'
+type ColumnKey = 'type' | 'id' | 'name' | 'scheduleState' | 'priority' | 'estimate' | 'owner' | 'release' | 'iteration'
 
 const COLUMN_MINS: Record<ColumnKey, number> = {
   type: 60,
@@ -30,16 +51,20 @@ const COLUMN_MINS: Record<ColumnKey, number> = {
   priority: 80,
   estimate: 44,
   owner: 90,
+  release: 100,
+  iteration: 100,
 }
 
 const DEFAULT_WIDTHS: Record<ColumnKey, number> = {
   type: 72,
   id: 88,
-  name: 480,
+  name: 380,
   scheduleState: 136,
   priority: 96,
   estimate: 52,
   owner: 120,
+  release: 140,
+  iteration: 140,
 }
 
 const COLUMN_LABELS: Record<ColumnKey, string> = {
@@ -50,13 +75,13 @@ const COLUMN_LABELS: Record<ColumnKey, string> = {
   priority: 'Priority',
   estimate: 'Est.',
   owner: 'Owner',
+  release: 'Release',
+  iteration: 'Iteration',
 }
-
-const LS_WIDTHS_KEY = 'rally-backlog-col-widths'
 
 function loadSavedWidths(): Record<ColumnKey, number> {
   try {
-    const raw = localStorage.getItem(LS_WIDTHS_KEY)
+    const raw = localStorage.getItem(STORAGE_KEYS.BACKLOG_COLUMN_WIDTHS)
     if (!raw) return { ...DEFAULT_WIDTHS }
     return { ...DEFAULT_WIDTHS, ...JSON.parse(raw) } as Record<ColumnKey, number>
   } catch {
@@ -86,7 +111,7 @@ function ResizableHeader({
       className="relative flex h-full shrink-0 items-center text-[9px] font-semibold tracking-wider uppercase select-none"
       style={{
         width,
-        color: '#8c94a6',
+        color: BRAND.columnHeader,
         justifyContent:
           align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start',
       }}
@@ -140,28 +165,33 @@ function OwnerCell({ name }: { name?: string | null }) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 const SCHEDULE_STATE_OPTS = [
-  { value: '', label: 'All States' },
-  { value: 'idea', label: 'Idea' },
-  { value: 'defined', label: 'Defined' },
-  { value: 'in_progress', label: 'In Progress' },
-  { value: 'completed', label: 'Completed' },
-  { value: 'accepted', label: 'Accepted' },
-  { value: 'released', label: 'Released' },
-] as const
+  { value: '' as const, label: 'All States' },
+  ...SCHEDULE_STATE_VALUES.map((v) => ({ value: v, label: SCHEDULE_STATE_LABEL[v] })),
+]
 
 export function BacklogPage() {
   const navigate = useNavigate()
-  const { project } = useAppContext()
+  const { project, team } = useAppContext()
   const projectId = project?.projectId
+
+  const canEdit = useAuthStore((s) => s.hasPermission('work_item:edit'))
 
   // ── Filters ──────────────────────────────────────────────────────────────────
   const [search, setSearch] = useState('')
   const [filterType, setFilterType] = useState<'' | 'story' | 'defect'>('')
   const [filterState, setFilterState] = useState('')
+  const [filterOwner, setFilterOwner] = useState('')
+  const [filterRelease, setFilterRelease] = useState('')
+  const [filterIteration, setFilterIteration] = useState('')
   const [pageSize, setPageSize] = useState<number>(25)
   const [cursor, setCursor] = useState<string | undefined>(undefined)
   const [cursorHistory, setCursorHistory] = useState<string[]>([])
   const currentPage = cursorHistory.length + 1
+
+  // Reference lists for the P2.1 filters, inline selects and id→name lookups.
+  const { data: members = [] } = useProjectMembers(projectId)
+  const { data: releases = [] } = useReleases(projectId)
+  const { data: iterations = [] } = useIterationOptions(projectId, team)
 
   // Reset pagination on filter/project change
   useEffect(() => {
@@ -170,11 +200,14 @@ export function BacklogPage() {
       setCursorHistory([])
     }, 0)
     return () => clearTimeout(id)
-  }, [search, filterType, filterState, pageSize, projectId])
+  }, [search, filterType, filterState, filterOwner, filterRelease, filterIteration, pageSize, projectId])
 
   const { data, isLoading, isError, error } = useBacklog(projectId, {
     type: filterType || undefined,
     scheduleState: filterState || undefined,
+    assigneeId: filterOwner || undefined,
+    releaseId: filterRelease || undefined,
+    iterationId: filterIteration || undefined,
     q: search || undefined,
     limit: pageSize,
     cursor,
@@ -233,7 +266,7 @@ export function BacklogPage() {
         setColWidths((prev) => {
           const updated = { ...prev, [c]: next }
           try {
-            localStorage.setItem(LS_WIDTHS_KEY, JSON.stringify(updated))
+            localStorage.setItem(STORAGE_KEYS.BACKLOG_COLUMN_WIDTHS, JSON.stringify(updated))
           } catch {
             /* noop */
           }
@@ -277,6 +310,33 @@ export function BacklogPage() {
   // ── Create modal ─────────────────────────────────────────────────────────────
   const [showCreate, setShowCreate] = useState(false)
   const canCreate = useAuthStore((s) => s.hasPermission('work_item:create'))
+
+  // ── Bulk assignment (P2-BL-08) ────────────────────────────────────────────────
+  const bulkRelease = useBulkAssignRelease()
+  const bulkIteration = useBulkAssignIteration()
+  const [bulkError, setBulkError] = useState<string | null>(null)
+
+  async function assignReleaseToSelected(releaseId: string | null) {
+    if (!projectId || selectedIds.size === 0) return
+    setBulkError(null)
+    try {
+      await bulkRelease.mutateAsync({ projectId, itemIds: [...selectedIds], releaseId })
+      setSelectedIds(new Set())
+    } catch (e) {
+      setBulkError(e instanceof Error ? e.message : 'Bulk release assignment failed')
+    }
+  }
+
+  async function assignIterationToSelected(iterationId: string | null) {
+    if (!projectId || selectedIds.size === 0) return
+    setBulkError(null)
+    try {
+      await bulkIteration.mutateAsync({ projectId, itemIds: [...selectedIds], iterationId })
+      setSelectedIds(new Set())
+    } catch (e) {
+      setBulkError(e instanceof Error ? e.message : 'Bulk iteration assignment failed')
+    }
+  }
   // ── Table width ───────────────────────────────────────────────────────────────
   const totalColWidth = Object.values(colWidths).reduce((a, b) => a + b, 0)
   const tableWidth = 5 + 20 + 16 + 24 + 8 + totalColWidth // checkbox + grip + row# + gaps
@@ -300,6 +360,8 @@ export function BacklogPage() {
     'priority',
     'estimate',
     'owner',
+    'release',
+    'iteration',
   ]
 
   return (
@@ -338,32 +400,75 @@ export function BacklogPage() {
         </div>
 
         {/* Type filter */}
-        <select
+        <InlineSelect
           value={filterType}
           onChange={(e) => setFilterType(e.target.value as '' | 'story' | 'defect')}
-          className="rounded bg-white px-2 py-1 text-[11px] focus:outline-none"
-          style={{ border: '1px solid #dde2ea', color: '#5c6478' }}
           aria-label="Filter by type"
+          className="w-auto"
         >
           <option value="">All Types</option>
           <option value="story">Story</option>
           <option value="defect">Defect</option>
-        </select>
+        </InlineSelect>
 
         {/* Schedule State filter */}
-        <select
+        <InlineSelect
           value={filterState}
           onChange={(e) => setFilterState(e.target.value)}
-          className="rounded bg-white px-2 py-1 text-[11px] focus:outline-none"
-          style={{ border: '1px solid #dde2ea', color: '#5c6478' }}
           aria-label="Filter by schedule state"
+          className="w-auto"
         >
           {SCHEDULE_STATE_OPTS.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
             </option>
           ))}
-        </select>
+        </InlineSelect>
+
+        {/* Owner filter (P2-BL-06) */}
+        <InlineSelect
+          value={filterOwner}
+          onChange={(e) => setFilterOwner(e.target.value)}
+          aria-label="Filter by owner"
+          className="w-auto"
+        >
+          <option value="">All Owners</option>
+          {members.map((m) => (
+            <option key={m.userId} value={m.userId}>
+              {m.displayName ?? m.email ?? m.userId}
+            </option>
+          ))}
+        </InlineSelect>
+
+        {/* Release filter (P2-BL-06) */}
+        <InlineSelect
+          value={filterRelease}
+          onChange={(e) => setFilterRelease(e.target.value)}
+          aria-label="Filter by release"
+          className="w-auto"
+        >
+          <option value="">All Releases</option>
+          {releases.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.name}
+            </option>
+          ))}
+        </InlineSelect>
+
+        {/* Iteration filter (P2-BL-06) */}
+        <InlineSelect
+          value={filterIteration}
+          onChange={(e) => setFilterIteration(e.target.value)}
+          aria-label="Filter by iteration"
+          className="w-auto"
+        >
+          <option value="">All Iterations</option>
+          {iterations.map((it) => (
+            <option key={it.id} value={it.id}>
+              {it.name}
+            </option>
+          ))}
+        </InlineSelect>
 
         <div className="flex-1" />
 
@@ -372,21 +477,15 @@ export function BacklogPage() {
           onClick={() => setShowCreate(true)}
           disabled={!canCreate}
           title={!canCreate ? 'You do not have permission to create work items' : undefined}
-          className="flex items-center gap-1.5 rounded px-3 py-1 text-[11px] font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-          style={{ backgroundColor: '#1d3f73' }}
-          onMouseEnter={(e) => {
-            if (canCreate) e.currentTarget.style.backgroundColor = '#163259'
-          }}
-          onMouseLeave={(e) => {
-            if (canCreate) e.currentTarget.style.backgroundColor = '#1d3f73'
-          }}
+          className="flex items-center gap-1.5 rounded px-3 py-1 text-[11px] font-semibold text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          style={{ backgroundColor: BRAND.primary }}
         >
           <Plus size={12} />
           Create Work Item
         </button>
       </div>
 
-      {/* Bulk action bar */}
+      {/* Bulk action bar (P2-BL-08) */}
       {selectedIds.size > 0 && (
         <div
           className="flex shrink-0 items-center gap-2 px-4 py-1.5"
@@ -395,9 +494,63 @@ export function BacklogPage() {
           <span className="mr-1 text-[11px] font-semibold" style={{ color: '#2558a6' }}>
             {selectedIds.size} selected
           </span>
+
+          {canEdit && (
+            <>
+              {/* Bulk assign Release */}
+              <InlineSelect
+                value=""
+                disabled={bulkRelease.isPending}
+                onChange={(e) => {
+                  if (!e.target.value) return
+                  void assignReleaseToSelected(e.target.value === '__none__' ? null : e.target.value)
+                }}
+                className="w-auto"
+                aria-label="Assign release to selected"
+              >
+                <option value="">Assign Release…</option>
+                <option value="__none__">— Unschedule —</option>
+                {releases.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </InlineSelect>
+
+              {/* Bulk assign Iteration */}
+              <InlineSelect
+                value=""
+                disabled={bulkIteration.isPending}
+                onChange={(e) => {
+                  if (!e.target.value) return
+                  void assignIterationToSelected(e.target.value === '__none__' ? null : e.target.value)
+                }}
+                className="w-auto"
+                aria-label="Assign iteration to selected"
+              >
+                <option value="">Assign Iteration…</option>
+                <option value="__none__">— Unschedule —</option>
+                {iterations.map((it) => (
+                  <option key={it.id} value={it.id}>
+                    {it.name}
+                  </option>
+                ))}
+              </InlineSelect>
+            </>
+          )}
+
+          {bulkError && (
+            <span className="text-[11px]" style={{ color: '#b91c1c' }}>
+              {bulkError}
+            </span>
+          )}
+
           <div className="flex-1" />
           <button
-            onClick={() => setSelectedIds(new Set())}
+            onClick={() => {
+              setSelectedIds(new Set())
+              setBulkError(null)
+            }}
             className="p-0.5"
             style={{ color: '#5c6478' }}
             aria-label="Clear selection"
@@ -447,11 +600,7 @@ export function BacklogPage() {
               </div>
 
               {/* Loading */}
-              {isLoading && (
-                <div className="flex h-32 items-center justify-center">
-                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                </div>
-              )}
+              {isLoading && <SkeletonList rows={10} cols={7} />}
 
               {/* Error */}
               {isError && !isLoading && (
@@ -482,115 +631,22 @@ export function BacklogPage() {
               {/* Rows */}
               {!isLoading &&
                 !isError &&
-                items.map((item, idx) => {
-                  const isSel = selectedIds.has(item.id)
-                  const rowNum = (currentPage - 1) * pageSize + idx + 1
-                  return (
-                    <div
-                      key={item.id}
-                      className="group flex h-8 cursor-pointer items-center gap-2 px-3 hover:bg-[#f7f8fa]"
-                      style={{
-                        width: tableWidth,
-                        minWidth: '100%',
-                        backgroundColor: isSel ? '#f3f6fb' : undefined,
-                        borderBottom: '1px solid #edf0f4',
-                      }}
-                      onClick={() => openItem(item)}
-                    >
-                      {/* Checkbox */}
-                      <div
-                        className="w-5 shrink-0"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          toggleSelect(item.id)
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isSel}
-                          onChange={() => toggleSelect(item.id)}
-                          onClick={(e) => e.stopPropagation()}
-                          className="h-3.5 w-3.5 rounded"
-                          style={{ accentColor: '#1d3f73' }}
-                          aria-label={`Select ${item.itemKey}`}
-                        />
-                      </div>
-
-                      {/* Grip handle */}
-                      <div className="w-4 shrink-0 opacity-0 group-hover:opacity-100">
-                        <GripVertical size={11} style={{ color: '#8c94a6' }} />
-                      </div>
-
-                      {/* Row number */}
-                      <div
-                        className="w-6 shrink-0 text-right font-mono text-[10px] tabular-nums"
-                        style={{ color: '#8c94a6' }}
-                      >
-                        {rowNum}
-                      </div>
-
-                      {/* Type badge */}
-                      <div className="shrink-0 overflow-hidden" style={{ width: colWidths.type }}>
-                        <TypeBadge type={item.type} />
-                      </div>
-
-                      {/* Item key (ID) */}
-                      <div
-                        className="shrink-0 overflow-hidden font-mono text-[10px] underline-offset-2 group-hover:underline"
-                        style={{ width: colWidths.id, color: '#2558a6' }}
-                      >
-                        {item.itemKey}
-                      </div>
-
-                      {/* Title */}
-                      <div className="min-w-0 shrink-0 pr-2" style={{ width: colWidths.name }}>
-                        <span
-                          className="block truncate text-[12px] font-medium"
-                          style={{ color: '#1a2234' }}
-                        >
-                          {item.title}
-                        </span>
-                      </div>
-
-                      {/* Schedule State */}
-                      <div
-                        className="shrink-0 overflow-hidden"
-                        style={{ width: colWidths.scheduleState }}
-                      >
-                        <ScheduleStateBadge state={item.scheduleState} />
-                      </div>
-
-                      {/* Priority — Defect only */}
-                      <div
-                        className="shrink-0 overflow-hidden"
-                        style={{ width: colWidths.priority }}
-                      >
-                        {item.type === 'defect' ? (
-                          <PriorityBadge priority={item.priority} />
-                        ) : (
-                          <span className="font-mono text-[10px]" style={{ color: '#a0a7b5' }}>
-                            —
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Estimate (story points) */}
-                      <div
-                        className="shrink-0 text-center font-mono text-[10px] font-semibold"
-                        style={{ width: colWidths.estimate, color: '#5c6478' }}
-                      >
-                        {item.storyPoints ?? '—'}
-                      </div>
-
-                      {/* Owner */}
-                      <div className="shrink-0 overflow-hidden" style={{ width: colWidths.owner }}>
-                        <OwnerCell
-                          name={(item as WorkItem & { assigneeName?: string }).assigneeName}
-                        />
-                      </div>
-                    </div>
-                  )
-                })}
+                items.map((item, idx) => (
+                  <BacklogRow
+                    key={item.id}
+                    item={item}
+                    rowNum={(currentPage - 1) * pageSize + idx + 1}
+                    selected={selectedIds.has(item.id)}
+                    onToggleSelect={() => toggleSelect(item.id)}
+                    onOpen={() => openItem(item)}
+                    colWidths={colWidths}
+                    tableWidth={tableWidth}
+                    canEdit={canEdit}
+                    members={members}
+                    releases={releases}
+                    iterations={iterations}
+                  />
+                ))}
             </div>
           </div>
 
@@ -601,19 +657,18 @@ export function BacklogPage() {
           >
             <div className="flex items-center gap-2 text-[11px]" style={{ color: '#5c6478' }}>
               <span>Rows per page</span>
-              <select
+              <InlineSelect
                 aria-label="Rows per page"
                 value={pageSize}
                 onChange={(e) => setPageSize(Number(e.target.value))}
-                className="rounded bg-white px-2 py-1 focus:outline-none"
-                style={{ border: '1px solid #dde2ea', color: '#1a2234' }}
+                className="w-auto"
               >
                 {[10, 25, 50, 100].map((s) => (
                   <option key={s} value={s}>
                     {s}
                   </option>
                 ))}
-              </select>
+              </InlineSelect>
               <span style={{ color: '#8c94a6' }}>
                 {pageInfo
                   ? `${(currentPage - 1) * pageSize + 1}–${(currentPage - 1) * pageSize + items.length} ${pageInfo.total ? `of ${pageInfo.total}` : ''}`
@@ -652,13 +707,283 @@ export function BacklogPage() {
         <CreateWorkItemModal
           projectId={projectId}
           onClose={() => setShowCreate(false)}
-          onCreated={() => setShowCreate(false)}
+          onCreated={(item) => {
+            setShowCreate(false)
+            toast.success(`${item.type === 'defect' ? 'Defect' : 'Story'} "${item.title}" created`)
+          }}
           onCreatedWithDetails={(item) => {
             setShowCreate(false)
             void navigate({ to: '/item/$itemKey', params: { itemKey: item.itemKey } })
           }}
         />
       )}
+    </div>
+  )
+}
+
+// ── Backlog row with inline editing (P2-BL-07) ──────────────────────────────────
+
+interface BacklogRowProps {
+  item: WorkItem
+  rowNum: number
+  selected: boolean
+  onToggleSelect: () => void
+  onOpen: () => void
+  colWidths: Record<ColumnKey, number>
+  tableWidth: number
+  canEdit: boolean
+  members: Array<{ userId: string; displayName?: string; email?: string }>
+  releases: Array<{ id: string; name: string }>
+  iterations: Array<{ id: string; name: string }>
+}
+
+// inline table selects use <InlineSelect> component directly
+
+function BacklogRow({
+  item,
+  rowNum,
+  selected,
+  onToggleSelect,
+  onOpen,
+  colWidths,
+  canEdit,
+  members,
+  releases,
+  iterations,
+}: BacklogRowProps) {
+  const update = useUpdateWorkItem(item.id)
+  const [editingTitle, setEditingTitle] = useState(false)
+  const [titleDraft, setTitleDraft] = useState(item.title)
+
+  // Fire a PATCH only when the value actually changed; errors surface via the
+  // mutation cache (the list re-reads the source of truth on invalidate).
+  function patch(body: Parameters<typeof update.mutate>[0]) {
+    update.mutate(body)
+  }
+
+  function commitTitle() {
+    setEditingTitle(false)
+    const next = titleDraft.trim()
+    if (next && next !== item.title) patch({ title: next })
+    else setTitleDraft(item.title)
+  }
+
+  const ownerName = (() => {
+    const m = members.find((m) => m.userId === item.assigneeId)
+    return m?.displayName ?? m?.email
+  })()
+
+  const stop = (e: React.MouseEvent) => e.stopPropagation()
+
+  return (
+    <div
+      className="group flex h-8 items-center gap-2 px-3 hover:bg-[#f7f8fa]"
+      style={{
+        minWidth: '100%',
+        backgroundColor: selected ? '#f3f6fb' : undefined,
+        borderBottom: '1px solid #edf0f4',
+      }}
+    >
+      {/* Checkbox */}
+      <div className="w-5 shrink-0" onClick={stop}>
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggleSelect}
+          className="h-3.5 w-3.5 rounded"
+          style={{ accentColor: '#1d3f73' }}
+          aria-label={`Select ${item.itemKey}`}
+        />
+      </div>
+
+      {/* Grip */}
+      <div className="w-4 shrink-0 opacity-0 group-hover:opacity-100">
+        <GripVertical size={11} style={{ color: '#8c94a6' }} />
+      </div>
+
+      {/* Row number */}
+      <div className="w-6 shrink-0 text-right font-mono text-[10px] tabular-nums" style={{ color: '#8c94a6' }}>
+        {rowNum}
+      </div>
+
+      {/* Type */}
+      <div className="shrink-0 overflow-hidden" style={{ width: colWidths.type }}>
+        <TypeBadge type={item.type} />
+      </div>
+
+      {/* ID — opens detail */}
+      <button
+        className="shrink-0 overflow-hidden text-left font-mono text-[10px] underline-offset-2 hover:underline"
+        style={{ width: colWidths.id, color: '#2558a6' }}
+        onClick={onOpen}
+      >
+        {item.itemKey}
+      </button>
+
+      {/* Title — inline edit */}
+      <div className="min-w-0 shrink-0 pr-2" style={{ width: colWidths.name }} onClick={stop}>
+        {editingTitle && canEdit ? (
+          <input
+            autoFocus
+            value={titleDraft}
+            onChange={(e) => setTitleDraft(e.target.value)}
+            onBlur={commitTitle}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitTitle()
+              if (e.key === 'Escape') {
+                setTitleDraft(item.title)
+                setEditingTitle(false)
+              }
+            }}
+            className="w-full rounded px-1 py-0.5 text-[12px] focus:outline-none"
+            style={{ border: '1px solid #9fb5d5', color: '#1a2234' }}
+          />
+        ) : (
+          <span
+            className="block truncate text-[12px] font-medium"
+            style={{ color: '#1a2234', cursor: canEdit ? 'text' : 'pointer' }}
+            onClick={() => (canEdit ? setEditingTitle(true) : onOpen())}
+            title={item.title}
+          >
+            {item.title}
+          </span>
+        )}
+      </div>
+
+      {/* Schedule State — inline select */}
+      <div className="shrink-0 overflow-hidden" style={{ width: colWidths.scheduleState }} onClick={stop}>
+        {canEdit ? (
+          <InlineSelect
+            value={item.scheduleState}
+            onChange={(e) =>
+              patch({ scheduleState: e.target.value as UpdateWorkItemInput['scheduleState'] })
+            }
+            aria-label="Schedule state"
+          >
+            {SCHEDULE_STATE_VALUES.map((s) => (
+              <option key={s} value={s}>
+                {SCHEDULE_STATE_LABEL[s as ScheduleState] ?? s}
+              </option>
+            ))}
+          </InlineSelect>
+        ) : (
+          <ScheduleStateBadge state={item.scheduleState} />
+        )}
+      </div>
+
+      {/* Priority — defects only */}
+      <div className="shrink-0 overflow-hidden" style={{ width: colWidths.priority }} onClick={stop}>
+        {item.type === 'defect' ? (
+          canEdit ? (
+            <InlineSelect
+              value={item.priority}
+              onChange={(e) =>
+                patch({ priority: e.target.value as UpdateWorkItemInput['priority'] })
+              }
+              aria-label="Priority"
+            >
+              {PRIORITY_VALUES.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </InlineSelect>
+          ) : (
+            <PriorityBadge priority={item.priority} />
+          )
+        ) : (
+          <span className="font-mono text-[10px]" style={{ color: '#a0a7b5' }}>
+            —
+          </span>
+        )}
+      </div>
+
+      {/* Plan Estimate — inline number */}
+      <div className="shrink-0 text-center" style={{ width: colWidths.estimate }} onClick={stop}>
+        {canEdit ? (
+          <input
+            type="number"
+            min={0}
+            defaultValue={item.storyPoints ?? ''}
+            onBlur={(e) => {
+              const raw = e.target.value
+              const next = raw === '' ? null : Number(raw)
+              if (next !== (item.storyPoints ?? null)) patch({ storyPoints: next })
+            }}
+            className="w-12 rounded px-1 py-0.5 text-center font-mono text-[10px] focus:outline-none"
+            style={{ border: '1px solid #dde2ea', color: '#5c6478' }}
+            aria-label="Plan estimate"
+          />
+        ) : (
+          <span className="font-mono text-[10px] font-semibold" style={{ color: '#5c6478' }}>
+            {item.storyPoints ?? '—'}
+          </span>
+        )}
+      </div>
+
+      {/* Owner — inline select */}
+      <div className="shrink-0 overflow-hidden" style={{ width: colWidths.owner }} onClick={stop}>
+        {canEdit ? (
+          <InlineSelect
+            value={item.assigneeId ?? ''}
+            onChange={(e) => patch({ assigneeId: e.target.value || null })}
+            aria-label="Owner"
+          >
+            <option value="">Unassigned</option>
+            {members.map((m) => (
+              <option key={m.userId} value={m.userId}>
+                {m.displayName ?? m.email ?? m.userId}
+              </option>
+            ))}
+          </InlineSelect>
+        ) : (
+          <OwnerCell name={ownerName} />
+        )}
+      </div>
+
+      {/* Release — inline select */}
+      <div className="shrink-0 overflow-hidden" style={{ width: colWidths.release }} onClick={stop}>
+        {canEdit ? (
+          <InlineSelect
+            value={item.releaseId ?? ''}
+            onChange={(e) => patch({ releaseId: e.target.value || null })}
+            aria-label="Release"
+          >
+            <option value="">—</option>
+            {releases.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+              </option>
+            ))}
+          </InlineSelect>
+        ) : (
+          <span className="truncate text-[11px]" style={{ color: item.releaseId ? '#1a2234' : '#a0a7b5' }}>
+            {releases.find((r) => r.id === item.releaseId)?.name ?? '—'}
+          </span>
+        )}
+      </div>
+
+      {/* Iteration — inline select */}
+      <div className="shrink-0 overflow-hidden" style={{ width: colWidths.iteration }} onClick={stop}>
+        {canEdit ? (
+          <InlineSelect
+            value={item.iterationId ?? ''}
+            onChange={(e) => patch({ iterationId: e.target.value || null })}
+            aria-label="Iteration"
+          >
+            <option value="">—</option>
+            {iterations.map((it) => (
+              <option key={it.id} value={it.id}>
+                {it.name}
+              </option>
+            ))}
+          </InlineSelect>
+        ) : (
+          <span className="truncate text-[11px]" style={{ color: item.iterationId ? '#1a2234' : '#a0a7b5' }}>
+            {iterations.find((it) => it.id === item.iterationId)?.name ?? '—'}
+          </span>
+        )}
+      </div>
     </div>
   )
 }

@@ -1,3 +1,4 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ProjectsService } from './projects.service';
 import { PROJECT_REPOSITORY } from '../domain/ports/project.repository';
@@ -44,7 +45,6 @@ const mockStatus = (o: Partial<WorkflowStatus> = {}): WorkflowStatus => ({
   position: 0,
   isDefault: true,
   createdAt: now,
-  updatedAt: now,
   ...o,
 });
 
@@ -57,6 +57,8 @@ const mockActor = {
   exp: 0,
   iss: 'rally',
   aud: 'rally-app',
+  permissions: [] as string[],
+  authMethod: 'password' as const,
 };
 
 // ── Mock factories ────────────────────────────────────────────────────────────

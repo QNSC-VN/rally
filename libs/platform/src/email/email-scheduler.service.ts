@@ -26,13 +26,12 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectDrizzle } from '../database/drizzle.provider';
-import type { DrizzleDB } from '../database/drizzle.provider';
+import type { DrizzleDB, DbExecutor } from '../database/drizzle.provider';
 import { emailOutbox } from '../../../../db/schema/messaging';
 import type { EmailTemplateName, EmailTemplateVars } from './templates';
 import { NotificationPubSubService } from '../notifications/notification-pubsub.service';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyDb = { insert: (...args: any[]) => any };
+type AnyDb = DbExecutor;
 
 export interface ScheduleEmailOptions<K extends EmailTemplateName> {
   to: string;
@@ -59,13 +58,13 @@ export class EmailSchedulerService {
     options: ScheduleEmailOptions<K>,
     tx?: AnyDb,
   ): Promise<void> {
-    const db = (tx ?? this.db) as AnyDb;
+    const db = (tx ?? this.db);
     await db
       .insert(emailOutbox)
       .values({
         to: options.to,
         template: options.template,
-        vars: options.vars as Record<string, unknown>,
+        vars: options.vars,
         status: 'pending',
         ...(options.scheduledAt ? { scheduledAt: options.scheduledAt } : {}),
         ...(options.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),

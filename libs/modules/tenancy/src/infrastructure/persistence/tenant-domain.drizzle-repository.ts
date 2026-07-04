@@ -16,7 +16,7 @@ export class TenantDomainDrizzleRepository implements ITenantDomainRepository {
       .from(tenantDomains)
       .where(eq(tenantDomains.domain, domain.toLowerCase()))
       .limit(1);
-    return (rows[0] as TenantDomain | undefined) ?? null;
+    return (rows[0]) ?? null;
   }
 
   async create(input: CreateTenantDomainInput, tx?: DbExecutor): Promise<TenantDomain> {
@@ -31,6 +31,6 @@ export class TenantDomainDrizzleRepository implements ITenantDomainRepository {
         allowAutoJoin: input.allowAutoJoin ?? false,
       })
       .returning();
-    return row as TenantDomain;
+    return row;
   }
 }

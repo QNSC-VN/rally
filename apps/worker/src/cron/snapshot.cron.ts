@@ -19,7 +19,7 @@ import { sql } from 'drizzle-orm';
 import { InjectDrizzle, ValkeyService } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { ReportingService } from '@modules/reporting';
-import { sprints, workItems, workflowStatuses } from '../../../../db/schema/work';
+import { iterations, workItems, workflowStatuses } from '../../../../db/schema/work';
 
 @Injectable()
 export class SnapshotCronService {
@@ -54,12 +54,12 @@ export class SnapshotCronService {
     this.logger.log(`Taking daily sprint snapshots for ${today}`);
 
     const activeSprints = await this.db
-      .select({ id: sprints.id, tenantId: sprints.tenantId })
-      .from(sprints)
-      .where(eq(sprints.status, 'active'));
+      .select({ id: iterations.id, tenantId: iterations.tenantId })
+      .from(iterations)
+      .where(eq(iterations.state, 'committed'));
 
     if (!activeSprints.length) {
-      this.logger.debug('No active sprints — nothing to snapshot');
+      this.logger.debug('No committed iterations — nothing to snapshot');
       return;
     }
 

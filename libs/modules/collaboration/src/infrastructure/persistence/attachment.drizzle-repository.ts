@@ -12,7 +12,7 @@ export class AttachmentDrizzleRepository implements IAttachmentRepository {
 
   async findById(id: string): Promise<Attachment | null> {
     const rows = await this.db.select().from(attachments).where(eq(attachments.id, id)).limit(1);
-    return (rows[0] as Attachment | undefined) ?? null;
+    return (rows[0]) ?? null;
   }
 
   async listByWorkItem(workItemId: string, tenantId: string): Promise<Attachment[]> {
@@ -26,7 +26,7 @@ export class AttachmentDrizzleRepository implements IAttachmentRepository {
           isNull(attachments.deletedAt),
         ),
       );
-    return rows as Attachment[];
+    return rows;
   }
 
   async create(input: CreateAttachmentInput): Promise<Attachment> {
@@ -43,7 +43,7 @@ export class AttachmentDrizzleRepository implements IAttachmentRepository {
         storageKey: input.storageKey,
       })
       .returning();
-    return rows[0] as Attachment;
+    return rows[0];
   }
 
   async softDelete(id: string): Promise<void> {

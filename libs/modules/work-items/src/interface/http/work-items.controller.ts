@@ -31,6 +31,9 @@ import {
   ActivityQueryDto,
   MoveWorkItemDto,
   ReorderWorkItemsDto,
+  RankWorkItemDto,
+  BulkAssignReleaseDto,
+  BulkAssignIterationDto,
   AddLabelDto,
   CreateTimeLogDto,
   UpdateTimeLogDto,
@@ -262,6 +265,53 @@ export class WorkItemsController {
     return toWorkItemDto(item);
   }
 
+  // ── Bulk assign release / iteration (P2-BL-03 / P2-BL-04) ────────────────────
+  // Declared before @Patch(':id') so the static paths are not captured as an :id.
+
+  @Patch('bulk-release')
+  @RequirePermission('work_item:edit')
+  @ApiOperation({ summary: 'Bulk assign (or clear) a release on selected work items' })
+  @ApiResponse({
+    status: 200,
+    description: 'Number of items updated',
+    schema: { type: 'object', properties: { updated: { type: 'number' } } },
+  })
+  @ApiCommonErrors(400, 401, 404, 422)
+  async bulkAssignRelease(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: BulkAssignReleaseDto,
+  ): Promise<{ updated: number }> {
+    const updated = await this.workItemsService.bulkAssignRelease(
+      user,
+      dto.projectId,
+      dto.itemIds,
+      dto.releaseId,
+    );
+    return { updated };
+  }
+
+  @Patch('bulk-iteration')
+  @RequirePermission('work_item:edit')
+  @ApiOperation({ summary: 'Bulk assign (or clear) an iteration on selected work items' })
+  @ApiResponse({
+    status: 200,
+    description: 'Number of items updated',
+    schema: { type: 'object', properties: { updated: { type: 'number' } } },
+  })
+  @ApiCommonErrors(400, 401, 404, 422)
+  async bulkAssignIteration(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: BulkAssignIterationDto,
+  ): Promise<{ updated: number }> {
+    const updated = await this.workItemsService.bulkAssignIteration(
+      user,
+      dto.projectId,
+      dto.itemIds,
+      dto.iterationId,
+    );
+    return { updated };
+  }
+
   // ── Update ─────────────────────────────────────────────────────────────────
 
   @Patch(':id')
@@ -325,6 +375,27 @@ export class WorkItemsController {
     @Body() dto: ReorderWorkItemsDto,
   ): Promise<void> {
     await this.workItemsService.reorderWorkItems(user.tenantId, dto.items);
+  }
+
+  // ── Rank (neighbour-based single-item reorder — P2-BL-05) ─────────────────
+
+  @Patch(':id/rank')
+  @RequirePermission('work_item:edit')
+  @ApiOperation({ summary: 'Reorder a work item between two backlog neighbours' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: WorkItemResponseDto })
+  @ApiCommonErrors(400, 401, 404, 422)
+  async rankWorkItem(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RankWorkItemDto,
+  ): Promise<WorkItemResponseDto> {
+    const item = await this.workItemsService.rankWorkItem(user, id, {
+      projectId: dto.projectId,
+      beforeId: dto.beforeId,
+      afterId: dto.afterId,
+    });
+    return toWorkItemDto(item);
   }
 
   // ── Tasks (Tasks tab) ────────────────────────────────────────────────────────
@@ -488,7 +559,7 @@ export class WorkItemsController {
   ): Promise<TimeLogResponseDto> {
     const log = await this.workItemsService.logTime(user, id, {
       loggedDate: dto.loggedDate,
-      hours: dto.hours as string,
+      hours: dto.hours,
       description: dto.description,
     });
     return toTimeLogDto(log);
@@ -508,7 +579,7 @@ export class WorkItemsController {
   ): Promise<TimeLogResponseDto> {
     const log = await this.workItemsService.updateTimeLog(user, id, logId, {
       loggedDate: dto.loggedDate,
-      hours: dto.hours as string | undefined,
+      hours: dto.hours,
       description: dto.description,
     });
     return toTimeLogDto(log);

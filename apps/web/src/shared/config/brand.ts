@@ -15,16 +15,24 @@ export const BRAND = {
   surface: '#ffffff',
   surfaceHover: '#f7f8fa',
   surfaceSubtle: '#f4f6f9',
+  inputBg: '#f4f6f9',        // form control backgrounds
 
   // ── Text ────────────────────────────────────────────────────────────────────
   textPrimary: '#1a2234',
   textSecondary: '#5c6478',
   textMuted: '#8c94a6',
+  textDisabled: '#a0a7b5',   // placeholder / disabled text
+  columnHeader: '#8c94a6',   // table column header text
 
   // ── Borders ─────────────────────────────────────────────────────────────────
   border: '#d9dee7',
   borderSubtle: '#e2e6eb',
   borderInner: '#edf0f4',
+  borderInput: '#d7dde7',    // form control borders
+
+  // ── Avatar / initials ───────────────────────────────────────────────────────
+  avatarBg: '#e5ebf4',
+  avatarText: '#1d3f73',
 
   // ── Sidebar ─────────────────────────────────────────────────────────────────
   sidebar: '#162d56',

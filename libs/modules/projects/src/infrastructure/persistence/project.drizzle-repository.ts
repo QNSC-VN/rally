@@ -202,6 +202,6 @@ export class ProjectDrizzleRepository implements IProjectRepository {
       })
       .where(eq(projectCounters.projectId, projectId))
       .returning({ lastItemNumber: projectCounters.lastItemNumber });
-    return rows[0]!.lastItemNumber;
+    return rows[0].lastItemNumber;
   }
 }

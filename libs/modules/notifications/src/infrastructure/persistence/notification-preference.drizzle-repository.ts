@@ -23,7 +23,7 @@ export class NotificationPreferenceDrizzleRepository implements INotificationPre
           eq(notificationPreferences.userId, userId),
         ),
       );
-    return rows.map(this.mapRow);
+    return rows.map((r) => this.mapRow(r));
   }
 
   async findOne(
@@ -62,7 +62,7 @@ export class NotificationPreferenceDrizzleRepository implements INotificationPre
           inArray(notificationPreferences.type, [type, '*']),
         ),
       );
-    return rows.map(this.mapRow);
+    return rows.map((r) => this.mapRow(r));
   }
 
   async upsert(input: UpsertPreferenceInput): Promise<NotificationPreference> {

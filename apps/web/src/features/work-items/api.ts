@@ -29,6 +29,8 @@ export const workItemKeys = {
   backlog: (projectId: string, filters?: Record<string, unknown>) =>
     [...workItemKeys.all, 'backlog', projectId, filters] as const,
   detail: (id: string) => [...workItemKeys.all, 'detail', id] as const,
+  byKey: (itemKey: string, projectId?: string | null) =>
+    [...workItemKeys.all, 'by-key', itemKey, projectId ?? null] as const,
   tasks: (workItemId: string) => [...workItemKeys.all, 'tasks', workItemId] as const,
   taskTotals: (workItemId: string) => [...workItemKeys.all, 'task-totals', workItemId] as const,
   activity: (workItemId: string) => [...workItemKeys.all, 'activity', workItemId] as const,
@@ -189,7 +191,16 @@ export function useUpdateWorkItem(id: string) {
     onSuccess: (item) => {
       qc.setQueryData(workItemKeys.detail(id), item)
       // Also update the work-item-by-key cache so WorkItemDetailPage reflects immediately
-      qc.setQueriesData({ queryKey: ['work-item-by-key', item.itemKey] }, item)
+      qc.setQueriesData({ queryKey: workItemKeys.byKey(item.itemKey) }, item)
+      // Optimistically update the item inside any cached backlog list so the
+      // inline-edit selects reflect the new value without waiting for the refetch.
+      qc.setQueriesData<{ data?: WorkItem[]; pageInfo?: unknown }>(
+        { queryKey: workItemKeys.backlog(item.projectId) },
+        (old) => {
+          if (!old?.data) return old
+          return { ...old, data: old.data.map((w) => (w.id === item.id ? item : w)) }
+        },
+      )
       void qc.invalidateQueries({ queryKey: workItemKeys.backlog(item.projectId) })
       void qc.invalidateQueries({ queryKey: workItemKeys.activity(id) })
     },
@@ -323,9 +334,9 @@ export function useWorkItemCounts(projects: Array<{ id: string }>) {
   })
 }
 
-export function useActiveSprintsWorkItems(projectIds: string[], userId?: string) {
+export function useCommittedIterationsWorkItems(projectIds: string[], userId?: string) {
   return useQuery({
-    queryKey: ['work-items-active-sprints', projectIds.sort(), userId],
+    queryKey: ['work-items-committed-iterations', projectIds.sort(), userId],
     queryFn: async () => {
       if (projectIds.length === 0) return []
       const results = await Promise.all(
@@ -381,6 +392,64 @@ export function useToggleWatch(workItemId: string | undefined) {
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: workItemKeys.watchers(workItemId ?? '') })
+    },
+  })
+}
+
+// ── Bulk assignment + reorder (P2-BL-03/04/05) ──────────────────────────────────
+
+export type BulkAssignReleaseInput = components['schemas']['BulkAssignReleaseDto']
+export type BulkAssignIterationInput = components['schemas']['BulkAssignIterationDto']
+export type RankWorkItemInput = components['schemas']['RankWorkItemDto']
+
+export function useBulkAssignRelease() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: BulkAssignReleaseInput) => {
+      const { data, error, response } = await apiClient.PATCH('/v1/work-items/bulk-release', {
+        body: input,
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as { updated: number }
+    },
+    onSuccess: (_r, input) => {
+      void qc.invalidateQueries({ queryKey: workItemKeys.backlog(input.projectId) })
+      void qc.invalidateQueries({ queryKey: workItemKeys.list(input.projectId) })
+    },
+  })
+}
+
+export function useBulkAssignIteration() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: BulkAssignIterationInput) => {
+      const { data, error, response } = await apiClient.PATCH('/v1/work-items/bulk-iteration', {
+        body: input,
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as { updated: number }
+    },
+    onSuccess: (_r, input) => {
+      void qc.invalidateQueries({ queryKey: workItemKeys.backlog(input.projectId) })
+      void qc.invalidateQueries({ queryKey: workItemKeys.list(input.projectId) })
+      void qc.invalidateQueries({ queryKey: ['iteration-status'] })
+    },
+  })
+}
+
+export function useRankWorkItem(id: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: RankWorkItemInput) => {
+      const { data, error, response } = await apiClient.PATCH('/v1/work-items/{id}/rank', {
+        params: { path: { id } },
+        body: input,
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as WorkItem
+    },
+    onSuccess: (item) => {
+      void qc.invalidateQueries({ queryKey: workItemKeys.backlog(item.projectId) })
     },
   })
 }

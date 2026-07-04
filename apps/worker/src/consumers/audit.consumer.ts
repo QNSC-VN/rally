@@ -69,7 +69,7 @@ export class AuditConsumer implements OnModuleInit, OnModuleDestroy {
     }
 
     this.logger.log(`Audit consumer polling ${this.queueUrl}`);
-    this.startPolling().catch((err) =>
+    this.startPolling().catch((err: unknown) =>
       this.logger.error({ err }, 'Audit consumer polling loop crashed'),
     );
   }

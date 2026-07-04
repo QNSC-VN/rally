@@ -53,7 +53,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
     const userId =
       req.user?.sub ??
       createHash('sha256')
-        .update(`${req.ip ?? ''}:${(req.headers['user-agent'] as string | undefined) ?? ''}`)
+        .update(`${req.ip ?? ''}:${(req.headers['user-agent']) ?? ''}`)
         .digest('hex')
         .slice(0, 16);
     const redisKey = `idem:${userId}:${req.method}:${req.url}:${idempotencyKey}`;

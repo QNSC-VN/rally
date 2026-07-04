@@ -1,6 +1,6 @@
 /**
  * work schema — projects, work_items, workflow_statuses, workflow_transitions,
- *               sprints, releases, project_counters, sprint_daily_snapshots,
+ *               iterations, releases, project_counters, iteration_daily_snapshots,
  *               comments, attachments, custom_field_defs,
  *               time_logs, work_item_watchers
  * Canonical DDL: 05_Architecture/DATABASE_SCHEMA.md §9
@@ -35,7 +35,7 @@ import {
   workItemPriorityEnum,
   workItemScheduleStateEnum,
   workflowStatusCategoryEnum,
-  sprintStatusEnum,
+  iterationStateEnum,
   releaseStatusEnum,
   teamStatusEnum,
   teamMemberStatusEnum,
@@ -192,17 +192,25 @@ export const workflowTransitions = workSchema.table(
   }),
 );
 
-// ── sprints (iterations) ──────────────────────────────────────────────────
+// ── iterations (Rally timeboxes) ──────────────────────────────────────────
+// A date-bounded planning timebox scoped to a project (and optionally a team).
+// State follows the Rally vocabulary: planning → committed → accepted.
 
-export const sprints = workSchema.table(
-  'sprints',
+export const iterations = workSchema.table(
+  'iterations',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     tenantId: uuid('tenant_id').notNull(),
     projectId: uuid('project_id').notNull(),
+    teamId: uuid('team_id'),
+    iterationKey: varchar('iteration_key', { length: 30 }),
     name: varchar('name', { length: 255 }).notNull(),
+    // goal: short objective; theme: rich planning context/description.
     goal: text('goal'),
-    status: sprintStatusEnum('status').notNull().default('planned'),
+    theme: text('theme'),
+    notes: text('notes'),
+    state: iterationStateEnum('state').notNull().default('planning'),
+    plannedVelocity: integer('planned_velocity'),
     startDate: date('start_date'),
     endDate: date('end_date'),
     completedAt: timestamp('completed_at', { withTimezone: true }),
@@ -210,22 +218,24 @@ export const sprints = workSchema.table(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    tenantIdx: index('ix_sprints_tenant').on(t.tenantId),
-    projectIdx: index('ix_sprints_project').on(t.projectId),
-    activeIdx: index('ix_sprints_active')
-      .on(t.projectId, t.status)
-      .where(sql`status = 'active'`),
+    tenantIdx: index('ix_iterations_tenant').on(t.tenantId),
+    projectIdx: index('ix_iterations_project').on(t.projectId),
+    teamIdx: index('ix_iterations_team').on(t.teamId),
+    keyIdx: uniqueIndex('uq_iterations_key').on(t.projectId, t.iterationKey),
+    committedIdx: index('ix_iterations_committed')
+      .on(t.projectId, t.state)
+      .where(sql`state = 'committed'`),
   }),
 );
 
-// ── sprint_daily_snapshots (burndown / velocity read model) ───────────────
+// ── iteration_daily_snapshots (burndown / velocity read model) ────────────
 
-export const sprintDailySnapshots = workSchema.table(
-  'sprint_daily_snapshots',
+export const iterationDailySnapshots = workSchema.table(
+  'iteration_daily_snapshots',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     tenantId: uuid('tenant_id').notNull(),
-    sprintId: uuid('sprint_id').notNull(),
+    iterationId: uuid('iteration_id').notNull(),
     snapshotDate: date('snapshot_date').notNull(),
     totalPoints: integer('total_points').notNull().default(0),
     completedPoints: integer('completed_points').notNull().default(0),
@@ -235,9 +245,9 @@ export const sprintDailySnapshots = workSchema.table(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    tenantIdx: index('ix_sds_tenant').on(t.tenantId),
-    sprintIdx: index('ix_sds_sprint').on(t.sprintId),
-    uniqueDay: uniqueIndex('uq_sds_sprint_date').on(t.sprintId, t.snapshotDate),
+    tenantIdx: index('ix_ids_tenant').on(t.tenantId),
+    iterationIdx: index('ix_ids_iteration').on(t.iterationId),
+    uniqueDay: uniqueIndex('uq_ids_iteration_date').on(t.iterationId, t.snapshotDate),
   }),
 );
 

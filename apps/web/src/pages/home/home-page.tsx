@@ -12,7 +12,7 @@ import {
   useProjectStatuses,
 } from '@/features/projects/api'
 import { useWorkItems, useMyWorkItems, useWorkItemCounts } from '@/features/work-items/api'
-import { useSprints, useActiveSprintsCount } from '@/features/sprints/api'
+import { useIterations, useCommittedIterationsCount } from '@/features/iterations/api'
 
 // ── Type mapping helpers ───────────────────────────────────────────────────────
 
@@ -58,14 +58,14 @@ function ProjectHealthRow({
   currentUserDisplayName: string | undefined
 }) {
   const { data: workItems = [] } = useWorkItems({ projectId: project.id, limit: 100 })
-  const { data: sprints = [] } = useSprints(project.id)
+  const { data: iterations = [] } = useIterations(project.id)
   const { data: statuses = [] } = useProjectStatuses(project.id)
 
   const categoryMap = useMemo(
     () => Object.fromEntries(statuses.map((s) => [s.id, s.category])),
     [statuses],
   )
-  const activeSprint = sprints.find((s) => s.status === 'active')
+  const activeSprint = iterations.find((i) => i.state === 'committed')
   const done = workItems.filter((i) => categoryMap[i.statusId] === 'done').length
   const defects = workItems.filter(
     (i) => i.type === 'defect' && categoryMap[i.statusId] !== 'done',
@@ -204,7 +204,7 @@ export function HomePage() {
 
   const { data: counts = { total: 0, blocked: 0, defects: 0 } } =
     useWorkItemCounts(projectsForStats)
-  const { data: activeSprintsCount = 0 } = useActiveSprintsCount(projectsForStats)
+  const { data: activeSprintsCount = 0 } = useCommittedIterationsCount(projectsForStats)
   const { data: myItems = [] } = useMyWorkItems(projectsForMyWork, user?.id)
 
   const summaryMetrics = [

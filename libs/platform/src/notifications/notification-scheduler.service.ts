@@ -82,7 +82,7 @@ export class NotificationSchedulerService {
         recipientId,
         actorId,
         type: template as string,
-        vars: vars as Record<string, unknown>,
+        vars: vars,
         resourceId,
         scheduledAt: scheduledAt ?? new Date(),
         idempotencyKey,

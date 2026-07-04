@@ -22,7 +22,7 @@ export class ProjectTeamDrizzleRepository implements IProjectTeamRepository {
         ),
       )
       .limit(1);
-    return (rows[0] as ProjectTeamLink | undefined) ?? null;
+    return (rows[0]) ?? null;
   }
 
   async listByProject(projectId: string): Promise<ProjectTeamLink[]> {
@@ -31,7 +31,7 @@ export class ProjectTeamDrizzleRepository implements IProjectTeamRepository {
       .from(projectTeams)
       .where(and(eq(projectTeams.projectId, projectId), eq(projectTeams.status, 'active')))
       .orderBy(projectTeams.linkedAt);
-    return rows as ProjectTeamLink[];
+    return rows;
   }
 
   async linkTeam(
@@ -52,7 +52,7 @@ export class ProjectTeamDrizzleRepository implements IProjectTeamRepository {
         unlinkedAt: null,
       })
       .returning();
-    return rows[0] as ProjectTeamLink;
+    return rows[0];
   }
 
   async unlinkTeam(projectId: string, teamId: string): Promise<void> {

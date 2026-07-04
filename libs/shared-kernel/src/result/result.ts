@@ -33,7 +33,7 @@ export const Result = {
 
   mapError<T, E, F>(result: Result<T, E>, fn: (error: E) => F): Result<T, F> {
     if (!result.ok) return Result.fail(fn(result.error));
-    return result as Result<T, F>;
+    return result;
   },
 
   flatMap<T, U, E>(result: Result<T, E>, fn: (value: T) => Result<U, E>): Result<U, E> {

@@ -106,7 +106,7 @@ export class ResilienceService implements OnModuleDestroy {
 
     const startMs = Date.now();
     try {
-      const result = await entry.policy.execute(operation);
+      const result = await (entry.policy.execute(operation) as Promise<T>);
       this.successCounter.add(1, { 'operation.name': name });
       this.durationHistogram.record(Date.now() - startMs, { 'operation.name': name });
       return result;
@@ -157,7 +157,7 @@ export class ResilienceService implements OnModuleDestroy {
   ): ResilienceOptions {
     if (!optionsOrPreset) return RESILIENCE_DEFAULTS;
     if (typeof optionsOrPreset === 'string') {
-      return RESILIENCE_PRESETS[optionsOrPreset as ResiliencePreset] ?? RESILIENCE_DEFAULTS;
+      return RESILIENCE_PRESETS[optionsOrPreset] ?? RESILIENCE_DEFAULTS;
     }
     return optionsOrPreset;
   }
@@ -222,7 +222,7 @@ export class ResilienceService implements OnModuleDestroy {
     }
 
     if (policies.length === 1) {
-      return policies[0]!;
+      return policies[0];
     }
 
     // `wrap` composes policies: first in array is outermost

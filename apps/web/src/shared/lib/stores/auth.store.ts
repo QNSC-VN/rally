@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { devtools } from 'zustand/middleware'
 import { setAccessToken } from '@/shared/api/http-client'
 import { queryClient } from '@/shared/api/query-client'
 import { ENV } from '@/shared/config/env'
@@ -47,7 +48,7 @@ interface AuthState {
 
 const API = ENV.API_BASE_URL
 
-export const useAuthStore = create<AuthState>()((set, get) => ({
+export const useAuthStore = create<AuthState>()(devtools((set, get) => ({
   user: null,
   memberships: [],
   activeTenantId: null,
@@ -124,4 +125,4 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     if (action && user.permissions.includes(`${ns}:*`)) return true
     return false
   },
-}))
+}), { name: 'auth-store' }))

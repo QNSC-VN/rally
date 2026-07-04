@@ -12,7 +12,7 @@ export class TeamDrizzleRepository implements ITeamRepository {
 
   async findById(id: string): Promise<Team | null> {
     const rows = await this.db.select().from(teams).where(eq(teams.id, id)).limit(1);
-    return (rows[0] as Team | undefined) ?? null;
+    return (rows[0]) ?? null;
   }
 
   async findByKey(workspaceId: string, key: string): Promise<Team | null> {
@@ -21,7 +21,7 @@ export class TeamDrizzleRepository implements ITeamRepository {
       .from(teams)
       .where(and(eq(teams.workspaceId, workspaceId), eq(teams.key, key)))
       .limit(1);
-    return (rows[0] as Team | undefined) ?? null;
+    return (rows[0]) ?? null;
   }
 
   async listByWorkspace(workspaceId: string): Promise<Team[]> {
@@ -30,7 +30,7 @@ export class TeamDrizzleRepository implements ITeamRepository {
       .from(teams)
       .where(and(eq(teams.workspaceId, workspaceId), eq(teams.status, 'active')))
       .orderBy(teams.name);
-    return rows as Team[];
+    return rows;
   }
 
   async create(input: CreateTeamInput): Promise<Team> {
@@ -49,7 +49,7 @@ export class TeamDrizzleRepository implements ITeamRepository {
         updatedAt: new Date(),
       })
       .returning();
-    return rows[0] as Team;
+    return rows[0];
   }
 
   async update(id: string, input: UpdateTeamInput): Promise<Team> {
@@ -64,6 +64,6 @@ export class TeamDrizzleRepository implements ITeamRepository {
       })
       .where(eq(teams.id, id))
       .returning();
-    return rows[0] as Team;
+    return rows[0];
   }
 }

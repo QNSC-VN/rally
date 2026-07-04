@@ -56,7 +56,7 @@ export class TenantMemberDrizzleRepository implements ITenantMemberRepository {
       .where(and(eq(tenantMembers.userId, userId), eq(tenantMembers.tenantId, tenantId)))
       .limit(1);
 
-    return (rows[0] as TenantMember | undefined) ?? null;
+    return (rows[0]) ?? null;
   }
 
   async create(input: CreateTenantMemberInput, tx?: DbExecutor): Promise<void> {
