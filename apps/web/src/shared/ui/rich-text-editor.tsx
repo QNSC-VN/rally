@@ -93,7 +93,7 @@ function ToolButton({ label, disabled, active, onAction, children }: ToolButtonP
         e.preventDefault()
         if (!disabled) onAction()
       }}
-      className="flex h-7 w-7 items-center justify-center rounded-sm transition-colors"
+      className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-sm transition-colors disabled:cursor-not-allowed"
       style={{
         color: active ? '#2558a6' : '#475569',
         backgroundColor: active ? '#edf2fb' : 'transparent',
@@ -230,7 +230,7 @@ export function RichTextEditor({
             type="button"
             aria-label={expanded ? 'Collapse editor' : 'Expand editor'}
             onClick={() => setExpanded((v) => !v)}
-            className="rounded p-0.5 hover:bg-slate-200"
+            className="cursor-pointer rounded p-0.5 hover:bg-slate-200"
             style={{ color: '#64748b' }}
           >
             {expanded ? <Minimize2 size={13} /> : <Maximize2 size={13} />}

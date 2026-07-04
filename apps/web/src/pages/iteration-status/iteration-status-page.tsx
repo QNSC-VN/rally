@@ -93,7 +93,7 @@ export function IterationStatusPage() {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 text-[13px]" style={{ color: BRAND.textMuted }}>
         <span>No iterations in this project/team yet.</span>
-        <button onClick={() => navigate({ to: '/timeboxes' })} className="text-[12px] font-semibold" style={{ color: BRAND.primaryLight }}>
+        <button onClick={() => navigate({ to: '/timeboxes' })} className="cursor-pointer text-[12px] font-semibold hover:underline" style={{ color: BRAND.primaryLight }}>
           Go to Timeboxes →
         </button>
       </div>
@@ -111,11 +111,11 @@ export function IterationStatusPage() {
           Iteration
         </span>
         <div className="flex items-center rounded overflow-visible" style={{ border: '1px solid #bdd0ef', height: 28 }}>
-          <button disabled={selectedIndex <= 0} onClick={() => move(-1)} className="h-full px-2 flex items-center disabled:opacity-40" style={{ color: BRAND.primaryLight, borderRight: `1px solid ${BRAND.borderSubtle}` }}>
+          <button disabled={selectedIndex <= 0} onClick={() => move(-1)} className="h-full px-2 flex items-center cursor-pointer hover:bg-[#f0f4fb] disabled:cursor-not-allowed disabled:opacity-40" style={{ color: BRAND.primaryLight, borderRight: `1px solid ${BRAND.borderSubtle}` }}>
             <ChevronLeft size={14} />
           </button>
           <div className="relative h-full">
-            <button onClick={() => setSelectorOpen((o) => !o)} className="h-full flex items-center gap-3 px-3 text-left bg-white" style={{ minWidth: 280, color: BRAND.textPrimary }}>
+            <button onClick={() => setSelectorOpen((o) => !o)} className="h-full flex cursor-pointer items-center gap-3 px-3 text-left bg-white hover:bg-[#f7f9fc]" style={{ minWidth: 280, color: BRAND.textPrimary }}>
               <span className="text-[12px] font-semibold whitespace-nowrap">{selected?.name}</span>
               <span className="text-[11px] whitespace-nowrap" style={{ color: BRAND.textSecondary }}>
                 {selected && fmtRange(selected)}
@@ -145,7 +145,7 @@ export function IterationStatusPage() {
               </div>
             )}
           </div>
-          <button disabled={selectedIndex >= iterations.length - 1} onClick={() => move(1)} className="h-full px-2 flex items-center disabled:opacity-40" style={{ color: BRAND.primaryLight, borderLeft: `1px solid ${BRAND.borderSubtle}` }}>
+          <button disabled={selectedIndex >= iterations.length - 1} onClick={() => move(1)} className="h-full px-2 flex cursor-pointer items-center hover:bg-[#f0f4fb] disabled:cursor-not-allowed disabled:opacity-40" style={{ color: BRAND.primaryLight, borderLeft: `1px solid ${BRAND.borderSubtle}` }}>
             <ChevronRight size={14} />
           </button>
         </div>
@@ -174,7 +174,7 @@ export function IterationStatusPage() {
         </div>
         <div className="flex-1" />
         {canCreate && (
-          <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-3 py-1 text-[11px] font-semibold text-white rounded" style={{ backgroundColor: BRAND.primary }}>
+          <button onClick={() => setShowAdd(true)} className="flex cursor-pointer items-center gap-1.5 px-3 py-1 text-[11px] font-semibold text-white rounded transition-opacity hover:opacity-90" style={{ backgroundColor: BRAND.primary }}>
             <Plus size={12} /> Add Item
           </button>
         )}
@@ -289,13 +289,13 @@ function StatusRow({
       <div className="w-5 shrink-0 flex items-center justify-center">
         <input type="checkbox" className="rounded" style={{ accentColor: BRAND.primary }} />
       </div>
-      <button className="w-16 shrink-0 text-left font-mono truncate" style={{ color: BRAND.primaryLight }} onClick={onOpen}>
+      <button className="w-16 shrink-0 cursor-pointer text-left font-mono truncate hover:underline" style={{ color: BRAND.primaryLight }} onClick={onOpen}>
         {item.itemKey}
       </button>
       <div className="w-16 shrink-0 capitalize" style={{ color: BRAND.textSecondary }}>
         {item.type}
       </div>
-      <button className="flex-1 min-w-[180px] text-left truncate pr-2" style={{ color: BRAND.textPrimary }} onClick={onOpen}>
+      <button className="flex-1 min-w-[180px] cursor-pointer text-left truncate pr-2 hover:underline" style={{ color: BRAND.textPrimary }} onClick={onOpen}>
         {item.title}
       </button>
       <div className="w-32 shrink-0">

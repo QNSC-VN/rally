@@ -196,7 +196,7 @@ export function IterationsPage() {
               </select>
             </div>
             {stateFilter !== 'all' && (
-              <button onClick={() => setStateFilter('all')} className="px-2.5 py-1 text-[11px] rounded" style={{ color: BRAND.primaryLight }}>
+              <button onClick={() => setStateFilter('all')} className="cursor-pointer px-2.5 py-1 text-[11px] rounded hover:bg-[#f0f4fb]" style={{ color: BRAND.primaryLight }}>
                 Clear filters
               </button>
             )}
@@ -286,10 +286,10 @@ export function IterationsPage() {
             <span className="text-[11px] tabular-nums" style={{ color: BRAND.textSecondary }}>
               Page {activePage} of {totalPages}
             </span>
-            <button aria-label="Previous page" disabled={activePage === 1} onClick={() => setPage(activePage - 1)} className="p-1.5 rounded disabled:opacity-35" style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}>
+            <button aria-label="Previous page" disabled={activePage === 1} onClick={() => setPage(activePage - 1)} className="cursor-pointer p-1.5 rounded transition-colors hover:bg-[#f0f4fb] disabled:cursor-not-allowed disabled:opacity-35" style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}>
               <ChevronLeft size={13} />
             </button>
-            <button aria-label="Next page" disabled={activePage === totalPages} onClick={() => setPage(activePage + 1)} className="p-1.5 rounded disabled:opacity-35" style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}>
+            <button aria-label="Next page" disabled={activePage === totalPages} onClick={() => setPage(activePage + 1)} className="cursor-pointer p-1.5 rounded transition-colors hover:bg-[#f0f4fb] disabled:cursor-not-allowed disabled:opacity-35" style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}>
               <ChevronLeft size={13} className="rotate-180" />
             </button>
           </div>
