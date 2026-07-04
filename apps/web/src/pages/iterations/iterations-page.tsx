@@ -240,10 +240,8 @@ export function IterationsPage() {
                 <div
                   key={it.id}
                   onClick={() => setDetailId(it.id)}
-                  className="flex items-center h-8 px-3 cursor-pointer"
+                  className="flex items-center h-8 px-3 cursor-pointer transition-colors hover:bg-[#f4f6f9]"
                   style={{ width: tableWidth, minWidth: '100%', borderBottom: `1px solid ${BRAND.borderInner}` }}
-                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = BRAND.surfaceHover)}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
                 >
                   <div className="w-10 shrink-0 px-2 text-[10px] font-mono truncate" style={{ color: BRAND.textMuted }}>
                     {it.iterationKey ?? ''}
@@ -333,8 +331,8 @@ function CreateIterationModal({
   const [state, setState] = useState<IterationState>('planning')
   const [error, setError] = useState<string | null>(null)
 
-  const fieldCls = 'w-full text-[12px] px-3 py-2 rounded bg-white focus:outline-none'
-  const fieldStyle = { border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textPrimary }
+  const selectCls =
+    'w-full rounded border border-input bg-white px-3 py-2 text-[12px] text-foreground outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50'
 
   async function submit(openDetail: boolean) {
     setError(null)
@@ -365,9 +363,6 @@ function CreateIterationModal({
       setError(e instanceof Error ? e.message : 'Failed to create iteration')
     }
   }
-
-  const selectCls =
-    'w-full rounded border border-input bg-white px-3 py-2 text-[12px] text-foreground outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50'
 
   return (
     <AppModal open onClose={onClose} title="New Iteration" width={480}>

@@ -15,6 +15,8 @@ export const EnvSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   HOST: z.string().default('0.0.0.0'),
   CORS_ORIGINS: z.string().default('http://localhost:5173'),
+  /** Set to 'true' in local dev / CI to bypass all rate limiting. Never set in production. */
+  DISABLE_RATE_LIMIT: booleanish(false),
 
   // Database
   DATABASE_URL: z.string().url(),

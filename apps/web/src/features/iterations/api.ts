@@ -185,7 +185,7 @@ export function useCreateIterationItem(iterationId: string) {
         body: input,
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
-      return data as { workItemId: string }
+      return data as { workItemId: string; itemKey: string }
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: iterationKeys.status(iterationId) })

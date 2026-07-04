@@ -479,14 +479,8 @@ export function BacklogPage() {
           onClick={() => setShowCreate(true)}
           disabled={!canCreate}
           title={!canCreate ? 'You do not have permission to create work items' : undefined}
-          className="flex items-center gap-1.5 rounded px-3 py-1 text-[11px] font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-          style={{ backgroundColor: '#1d3f73' }}
-          onMouseEnter={(e) => {
-            if (canCreate) e.currentTarget.style.backgroundColor = '#163259'
-          }}
-          onMouseLeave={(e) => {
-            if (canCreate) e.currentTarget.style.backgroundColor = '#1d3f73'
-          }}
+          className="flex items-center gap-1.5 rounded px-3 py-1 text-[11px] font-semibold text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          style={{ backgroundColor: BRAND.primary }}
         >
           <Plus size={12} />
           Create Work Item

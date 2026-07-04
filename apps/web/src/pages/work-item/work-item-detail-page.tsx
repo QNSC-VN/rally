@@ -47,7 +47,6 @@ import {
 import { BRAND } from '@/shared/config/brand'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { FormField } from '@/shared/ui/form-field'
-import { Input } from '@/shared/ui/input'
 import { AddTaskModal } from '@/features/work-items/ui/add-task-modal'
 import { RichTextEditor } from '@/shared/ui/rich-text-editor'
 import { AttachmentBlock } from '@/features/collaboration/ui/attachment-block'
@@ -168,10 +167,8 @@ function TasksTab({ workItemId }: { workItemId: string }) {
         </div>
         <button
           onClick={() => setShowAdd(true)}
-          className="flex items-center gap-1.5 rounded px-3 py-2 text-[11px] font-semibold text-white"
-          style={{ backgroundColor: '#1d3f73' }}
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#163259')}
-          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#1d3f73')}
+          className="flex items-center gap-1.5 rounded px-3 py-2 text-[11px] font-semibold text-white transition-colors hover:opacity-90"
+          style={{ backgroundColor: BRAND.primary }}
         >
           <Plus size={13} />
           Add Task

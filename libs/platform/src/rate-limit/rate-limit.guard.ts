@@ -43,6 +43,8 @@ import {
 @Injectable()
 export class RateLimitGuard implements CanActivate {
   private readonly logger = new Logger(RateLimitGuard.name);
+  /** Skip all rate-limiting when DISABLE_RATE_LIMIT=true (dev / CI only). */
+  private readonly disabled = process.env['DISABLE_RATE_LIMIT'] === 'true';
 
   constructor(
     private readonly reflector: Reflector,
@@ -50,6 +52,9 @@ export class RateLimitGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    // ── Dev bypass: DISABLE_RATE_LIMIT=true ─────────────────────────────────
+    if (this.disabled) return true;
+
     // ── @SkipRateLimit() check ───────────────────────────────────────────────
     const skip = this.reflector.getAllAndOverride<boolean>(SKIP_RATE_LIMIT_KEY, [
       context.getHandler(),
