@@ -71,6 +71,7 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    continue-on-error: true  # requires GitHub Advanced Security on private repos
     permissions:
       contents: read
       pull-requests: read
