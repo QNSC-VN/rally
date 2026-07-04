@@ -179,7 +179,7 @@ data "aws_db_instance" "develop" {
 
 resource "aws_iam_role_policy" "deploy_rds_dev_guard" {
   name = "rally-deploy-develop-rds-guard"
-  role = module.iam_oidc.deploy_role_arns["develop"]
+  role = split("/", module.iam_oidc.deploy_role_arns["develop"])[1]
 
   policy = jsonencode({
     Version = "2012-10-17"
