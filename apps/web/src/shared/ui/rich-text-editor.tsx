@@ -148,6 +148,7 @@ export function RichTextEditor({
   const editorRef = useRef<HTMLDivElement>(null)
   const savedRef = useRef<string>('')
   const [expanded, setExpanded] = useState(false)
+  const [focused, setFocused] = useState(false)
 
   // Sync external value into editor (only when it changes externally)
   useEffect(() => {
@@ -166,6 +167,7 @@ export function RichTextEditor({
   }, [])
 
   const handleBlur = useCallback(() => {
+    setFocused(false)
     if (!editorRef.current || readOnly || !onSave) return
     const html = sanitize(editorRef.current.innerHTML)
     if (html !== savedRef.current) {
@@ -196,9 +198,10 @@ export function RichTextEditor({
 
   return (
     <section
-      className={`overflow-hidden rounded bg-white ${className}`}
+      className={`overflow-hidden rounded bg-white transition-[border-color,box-shadow] ${className}`}
       style={{
-        border: '1px solid #dde2ea',
+        border: focused ? '1px solid var(--ring)' : '1px solid #dde2ea',
+        boxShadow: focused ? '0 0 0 3px color-mix(in srgb, var(--ring) 50%, transparent)' : 'none',
         ...(expanded
           ? {
               position: 'fixed',
@@ -312,6 +315,7 @@ export function RichTextEditor({
           ref={editorRef}
           contentEditable
           suppressContentEditableWarning
+          onFocus={() => setFocused(true)}
           onBlur={handleBlur}
           onKeyDown={handleKeyDown}
           className="prose prose-sm max-w-none px-4 py-3 text-[13px] leading-6 focus:outline-none"
