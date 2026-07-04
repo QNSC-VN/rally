@@ -133,7 +133,7 @@ export function CreateWorkItemModal({ projectId, onClose, onCreated, onCreatedWi
         {/* Team + Owner row */}
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Team" htmlFor="wi-team">
-            <select id="wi-team" value={teamId} onChange={(e) => setTeamId(e.target.value)} className={selectCls}>
+            <NativeSelect id="wi-team" value={teamId} onChange={(e) => setTeamId(e.target.value)}>
               <option value="">No team</option>
               {teams.map((t) => (
                 <option key={t.id} value={t.id}>{t.name}</option>
@@ -141,7 +141,7 @@ export function CreateWorkItemModal({ projectId, onClose, onCreated, onCreatedWi
             </NativeSelect>
           </FormField>
           <FormField label="Owner" htmlFor="wi-owner">
-            <select id="wi-owner" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} className={selectCls}>
+            <NativeSelect id="wi-owner" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
               <option value="">Unassigned</option>
               {members.map((m) => (
                 <option key={m.userId} value={m.userId}>

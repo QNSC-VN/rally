@@ -86,11 +86,10 @@ export function AddTaskModal({ workItemId, onClose }: Props) {
           </FormField>
 
           <FormField label="Owner" htmlFor="task-owner">
-            <select
+            <NativeSelect
               id="task-owner"
               value={assigneeId}
               onChange={(e) => setAssigneeId(e.target.value)}
-              className="w-full rounded border border-input bg-white px-3 py-2 text-[12px] text-foreground outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
             >
               <option value="">Unassigned</option>
               {members.map((m) => (

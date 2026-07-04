@@ -190,14 +190,13 @@ export function IterationsPage() {
                   setStateFilter(e.target.value as 'all' | IterationState)
                   setPage(1)
                 }}
-                className="text-[11px] px-2 py-1 rounded bg-white focus:outline-none"
-                style={{ minWidth: 120, border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textPrimary }}
+                className="w-auto"
               >
                 <option value="all">All</option>
                 <option value="planning">Planning</option>
                 <option value="committed">Committed</option>
                 <option value="accepted">Accepted</option>
-              </NativeSelect>
+              </InlineSelect>
             </div>
             {stateFilter !== 'all' && (
               <button onClick={() => setStateFilter('all')} className="cursor-pointer px-2.5 py-1 text-[11px] rounded hover:bg-[#f0f4fb]" style={{ color: BRAND.primaryLight }}>
