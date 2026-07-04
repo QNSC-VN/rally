@@ -14,6 +14,7 @@ import { WORK_ITEM_TYPE_CONFIG } from '@/entities/work-item/model/types'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
+import { NativeSelect } from '@/shared/ui/native-select'
 
 type CreatableType = 'story' | 'defect'
 
@@ -82,9 +83,6 @@ export function CreateWorkItemModal({ projectId, onClose, onCreated, onCreatedWi
     { value: 'defect', label: 'Defect' },
   ]
 
-  const selectCls =
-    'w-full rounded border border-input bg-white px-3 py-2 text-[12px] text-foreground outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50'
-
   return (
     <AppModal
       open
@@ -140,7 +138,7 @@ export function CreateWorkItemModal({ projectId, onClose, onCreated, onCreatedWi
               {teams.map((t) => (
                 <option key={t.id} value={t.id}>{t.name}</option>
               ))}
-            </select>
+            </NativeSelect>
           </FormField>
           <FormField label="Owner" htmlFor="wi-owner">
             <select id="wi-owner" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} className={selectCls}>
@@ -150,7 +148,7 @@ export function CreateWorkItemModal({ projectId, onClose, onCreated, onCreatedWi
                   {m.displayName ?? m.email ?? m.userId}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </FormField>
         </div>
 

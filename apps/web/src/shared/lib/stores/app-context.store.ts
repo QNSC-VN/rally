@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { persist, devtools } from 'zustand/middleware'
 import { FEATURE_FLAGS, isFeatureEnabled } from '@/shared/config/feature-flags'
 
 export interface WorkspaceContext {
@@ -32,7 +32,7 @@ interface AppContextState {
   reset: () => void
 }
 
-export const useAppContext = create<AppContextState>()(
+export const useAppContext = create<AppContextState>()(devtools(
   persist(
     (set) => ({
       workspace: null,
@@ -60,4 +60,5 @@ export const useAppContext = create<AppContextState>()(
       }),
     },
   ),
-)
+  { name: 'app-context-store' },
+))

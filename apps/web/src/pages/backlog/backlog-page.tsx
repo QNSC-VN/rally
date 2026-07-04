@@ -15,7 +15,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { ChevronLeft, ChevronRight, GripVertical, Plus, Search, X } from 'lucide-react'
 import { Spinner } from '@/shared/ui/spinner'
 import { SkeletonList } from '@/shared/ui/skeleton'
-import { NativeSelect } from '@/shared/ui/native-select'
+import { NativeSelect, InlineSelect } from '@/shared/ui/native-select'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import {
@@ -401,40 +401,37 @@ export function BacklogPage() {
         </div>
 
         {/* Type filter */}
-        <select
+        <InlineSelect
           value={filterType}
           onChange={(e) => setFilterType(e.target.value as '' | 'story' | 'defect')}
-          className="rounded bg-white px-2 py-1 text-[11px] focus:outline-none"
-          style={{ border: '1px solid #dde2ea', color: '#5c6478' }}
           aria-label="Filter by type"
+          className="w-auto"
         >
           <option value="">All Types</option>
           <option value="story">Story</option>
           <option value="defect">Defect</option>
-        </select>
+        </InlineSelect>
 
         {/* Schedule State filter */}
-        <select
+        <InlineSelect
           value={filterState}
           onChange={(e) => setFilterState(e.target.value)}
-          className="rounded bg-white px-2 py-1 text-[11px] focus:outline-none"
-          style={{ border: '1px solid #dde2ea', color: '#5c6478' }}
           aria-label="Filter by schedule state"
+          className="w-auto"
         >
           {SCHEDULE_STATE_OPTS.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
             </option>
           ))}
-        </select>
+        </InlineSelect>
 
         {/* Owner filter (P2-BL-06) */}
-        <select
+        <InlineSelect
           value={filterOwner}
           onChange={(e) => setFilterOwner(e.target.value)}
-          className="rounded bg-white px-2 py-1 text-[11px] focus:outline-none"
-          style={{ border: '1px solid #dde2ea', color: '#5c6478' }}
           aria-label="Filter by owner"
+          className="w-auto"
         >
           <option value="">All Owners</option>
           {members.map((m) => (
@@ -442,15 +439,14 @@ export function BacklogPage() {
               {m.displayName ?? m.email ?? m.userId}
             </option>
           ))}
-        </select>
+        </InlineSelect>
 
         {/* Release filter (P2-BL-06) */}
-        <select
+        <InlineSelect
           value={filterRelease}
           onChange={(e) => setFilterRelease(e.target.value)}
-          className="rounded bg-white px-2 py-1 text-[11px] focus:outline-none"
-          style={{ border: '1px solid #dde2ea', color: '#5c6478' }}
           aria-label="Filter by release"
+          className="w-auto"
         >
           <option value="">All Releases</option>
           {releases.map((r) => (
@@ -458,15 +454,14 @@ export function BacklogPage() {
               {r.name}
             </option>
           ))}
-        </select>
+        </InlineSelect>
 
         {/* Iteration filter (P2-BL-06) */}
-        <select
+        <InlineSelect
           value={filterIteration}
           onChange={(e) => setFilterIteration(e.target.value)}
-          className="rounded bg-white px-2 py-1 text-[11px] focus:outline-none"
-          style={{ border: '1px solid #dde2ea', color: '#5c6478' }}
           aria-label="Filter by iteration"
+          className="w-auto"
         >
           <option value="">All Iterations</option>
           {iterations.map((it) => (
@@ -474,7 +469,7 @@ export function BacklogPage() {
               {it.name}
             </option>
           ))}
-        </select>
+        </InlineSelect>
 
         <div className="flex-1" />
 
@@ -504,15 +499,14 @@ export function BacklogPage() {
           {canEdit && (
             <>
               {/* Bulk assign Release */}
-              <select
+              <InlineSelect
                 value=""
                 disabled={bulkRelease.isPending}
                 onChange={(e) => {
                   if (!e.target.value) return
                   void assignReleaseToSelected(e.target.value === '__none__' ? null : e.target.value)
                 }}
-                className="rounded bg-white px-2 py-1 text-[11px] focus:outline-none disabled:opacity-50"
-                style={{ border: '1px solid #bdd0ef', color: '#2558a6' }}
+                className="w-auto"
                 aria-label="Assign release to selected"
               >
                 <option value="">Assign Release…</option>
@@ -522,18 +516,17 @@ export function BacklogPage() {
                     {r.name}
                   </option>
                 ))}
-              </select>
+              </InlineSelect>
 
               {/* Bulk assign Iteration */}
-              <select
+              <InlineSelect
                 value=""
                 disabled={bulkIteration.isPending}
                 onChange={(e) => {
                   if (!e.target.value) return
                   void assignIterationToSelected(e.target.value === '__none__' ? null : e.target.value)
                 }}
-                className="rounded bg-white px-2 py-1 text-[11px] focus:outline-none disabled:opacity-50"
-                style={{ border: '1px solid #bdd0ef', color: '#2558a6' }}
+                className="w-auto"
                 aria-label="Assign iteration to selected"
               >
                 <option value="">Assign Iteration…</option>
@@ -543,7 +536,7 @@ export function BacklogPage() {
                     {it.name}
                   </option>
                 ))}
-              </select>
+              </InlineSelect>
             </>
           )}
 
@@ -665,19 +658,18 @@ export function BacklogPage() {
           >
             <div className="flex items-center gap-2 text-[11px]" style={{ color: '#5c6478' }}>
               <span>Rows per page</span>
-              <select
+              <InlineSelect
                 aria-label="Rows per page"
                 value={pageSize}
                 onChange={(e) => setPageSize(Number(e.target.value))}
-                className="rounded bg-white px-2 py-1 focus:outline-none"
-                style={{ border: '1px solid #dde2ea', color: '#1a2234' }}
+                className="w-auto"
               >
                 {[10, 25, 50, 100].map((s) => (
                   <option key={s} value={s}>
                     {s}
                   </option>
                 ))}
-              </select>
+              </InlineSelect>
               <span style={{ color: '#8c94a6' }}>
                 {pageInfo
                   ? `${(currentPage - 1) * pageSize + 1}–${(currentPage - 1) * pageSize + items.length} ${pageInfo.total ? `of ${pageInfo.total}` : ''}`
@@ -746,9 +738,7 @@ interface BacklogRowProps {
   iterations: Array<{ id: string; name: string }>
 }
 
-const inlineSelectCls =
-  'w-full rounded bg-white px-1 py-0.5 text-[11px] focus:outline-none'
-const inlineSelectStyle = { border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textPrimary }
+// inline table selects use <InlineSelect> component directly
 
 function BacklogRow({
   item,
@@ -864,13 +854,11 @@ function BacklogRow({
       {/* Schedule State — inline select */}
       <div className="shrink-0 overflow-hidden" style={{ width: colWidths.scheduleState }} onClick={stop}>
         {canEdit ? (
-          <select
+          <InlineSelect
             value={item.scheduleState}
             onChange={(e) =>
               patch({ scheduleState: e.target.value as UpdateWorkItemInput['scheduleState'] })
             }
-            className={inlineSelectCls}
-            style={inlineSelectStyle}
             aria-label="Schedule state"
           >
             {SCHEDULE_STATE_VALUES.map((s) => (
@@ -878,7 +866,7 @@ function BacklogRow({
                 {SCHEDULE_STATE_LABEL[s as ScheduleState] ?? s}
               </option>
             ))}
-          </select>
+          </InlineSelect>
         ) : (
           <ScheduleStateBadge state={item.scheduleState} />
         )}
@@ -888,13 +876,11 @@ function BacklogRow({
       <div className="shrink-0 overflow-hidden" style={{ width: colWidths.priority }} onClick={stop}>
         {item.type === 'defect' ? (
           canEdit ? (
-            <select
+            <InlineSelect
               value={item.priority}
               onChange={(e) =>
                 patch({ priority: e.target.value as UpdateWorkItemInput['priority'] })
               }
-              className={inlineSelectCls}
-              style={inlineSelectStyle}
               aria-label="Priority"
             >
               {PRIORITY_VALUES.map((p) => (
@@ -902,7 +888,7 @@ function BacklogRow({
                   {p}
                 </option>
               ))}
-            </select>
+            </InlineSelect>
           ) : (
             <PriorityBadge priority={item.priority} />
           )
@@ -939,11 +925,9 @@ function BacklogRow({
       {/* Owner — inline select */}
       <div className="shrink-0 overflow-hidden" style={{ width: colWidths.owner }} onClick={stop}>
         {canEdit ? (
-          <select
+          <InlineSelect
             value={item.assigneeId ?? ''}
             onChange={(e) => patch({ assigneeId: e.target.value || null })}
-            className={inlineSelectCls}
-            style={inlineSelectStyle}
             aria-label="Owner"
           >
             <option value="">Unassigned</option>
@@ -952,7 +936,7 @@ function BacklogRow({
                 {m.displayName ?? m.email ?? m.userId}
               </option>
             ))}
-          </select>
+          </InlineSelect>
         ) : (
           <OwnerCell name={ownerName} />
         )}
@@ -961,11 +945,9 @@ function BacklogRow({
       {/* Release — inline select */}
       <div className="shrink-0 overflow-hidden" style={{ width: colWidths.release }} onClick={stop}>
         {canEdit ? (
-          <select
+          <InlineSelect
             value={item.releaseId ?? ''}
             onChange={(e) => patch({ releaseId: e.target.value || null })}
-            className={inlineSelectCls}
-            style={inlineSelectStyle}
             aria-label="Release"
           >
             <option value="">—</option>
@@ -974,7 +956,7 @@ function BacklogRow({
                 {r.name}
               </option>
             ))}
-          </select>
+          </InlineSelect>
         ) : (
           <span className="truncate text-[11px]" style={{ color: item.releaseId ? '#1a2234' : '#a0a7b5' }}>
             {releases.find((r) => r.id === item.releaseId)?.name ?? '—'}
@@ -985,11 +967,9 @@ function BacklogRow({
       {/* Iteration — inline select */}
       <div className="shrink-0 overflow-hidden" style={{ width: colWidths.iteration }} onClick={stop}>
         {canEdit ? (
-          <select
+          <InlineSelect
             value={item.iterationId ?? ''}
             onChange={(e) => patch({ iterationId: e.target.value || null })}
-            className={inlineSelectCls}
-            style={inlineSelectStyle}
             aria-label="Iteration"
           >
             <option value="">—</option>
@@ -998,7 +978,7 @@ function BacklogRow({
                 {it.name}
               </option>
             ))}
-          </select>
+          </InlineSelect>
         ) : (
           <span className="truncate text-[11px]" style={{ color: item.iterationId ? '#1a2234' : '#a0a7b5' }}>
             {iterations.find((it) => it.id === item.iterationId)?.name ?? '—'}

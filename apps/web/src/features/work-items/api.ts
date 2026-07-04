@@ -29,6 +29,8 @@ export const workItemKeys = {
   backlog: (projectId: string, filters?: Record<string, unknown>) =>
     [...workItemKeys.all, 'backlog', projectId, filters] as const,
   detail: (id: string) => [...workItemKeys.all, 'detail', id] as const,
+  byKey: (itemKey: string, projectId?: string | null) =>
+    [...workItemKeys.all, 'by-key', itemKey, projectId ?? null] as const,
   tasks: (workItemId: string) => [...workItemKeys.all, 'tasks', workItemId] as const,
   taskTotals: (workItemId: string) => [...workItemKeys.all, 'task-totals', workItemId] as const,
   activity: (workItemId: string) => [...workItemKeys.all, 'activity', workItemId] as const,
@@ -189,7 +191,7 @@ export function useUpdateWorkItem(id: string) {
     onSuccess: (item) => {
       qc.setQueryData(workItemKeys.detail(id), item)
       // Also update the work-item-by-key cache so WorkItemDetailPage reflects immediately
-      qc.setQueriesData({ queryKey: ['work-item-by-key', item.itemKey] }, item)
+      qc.setQueriesData({ queryKey: workItemKeys.byKey(item.itemKey) }, item)
       // Optimistically update the item inside any cached backlog list so the
       // inline-edit selects reflect the new value without waiting for the refetch.
       qc.setQueriesData<{ data?: WorkItem[]; pageInfo?: unknown }>(

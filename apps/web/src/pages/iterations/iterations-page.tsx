@@ -10,7 +10,7 @@ import { toast } from 'sonner'
 import { ChevronLeft, Filter, Loader2, Plus, Search } from 'lucide-react'
 import { Spinner } from '@/shared/ui/spinner'
 import { SkeletonList } from '@/shared/ui/skeleton'
-import { NativeSelect } from '@/shared/ui/native-select'
+import { NativeSelect, InlineSelect } from '@/shared/ui/native-select'
 import { BRAND } from '@/shared/config/brand'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { FormField } from '@/shared/ui/form-field'
@@ -183,7 +183,7 @@ export function IterationsPage() {
               <span className="text-[11px] font-semibold" style={{ color: BRAND.textSecondary }}>
                 State
               </span>
-              <select
+              <InlineSelect
                 value={stateFilter}
                 aria-label="Filter iterations by state"
                 onChange={(e) => {
@@ -197,7 +197,7 @@ export function IterationsPage() {
                 <option value="planning">Planning</option>
                 <option value="committed">Committed</option>
                 <option value="accepted">Accepted</option>
-              </select>
+              </NativeSelect>
             </div>
             {stateFilter !== 'all' && (
               <button onClick={() => setStateFilter('all')} className="cursor-pointer px-2.5 py-1 text-[11px] rounded hover:bg-[#f0f4fb]" style={{ color: BRAND.primaryLight }}>
@@ -331,9 +331,6 @@ function CreateIterationModal({
   const [state, setState] = useState<IterationState>('planning')
   const [error, setError] = useState<string | null>(null)
 
-  const selectCls =
-    'w-full rounded border border-input bg-white px-3 py-2 text-[12px] text-foreground outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50'
-
   async function submit(openDetail: boolean) {
     setError(null)
     if (!name.trim()) {
@@ -374,14 +371,14 @@ function CreateIterationModal({
           <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Enter iteration name..." />
         </FormField>
         <FormField label="Team">
-          <select value={teamId} onChange={(e) => setTeamId(e.target.value)} className={selectCls}>
+          <NativeSelect value={teamId} onChange={(e) => setTeamId(e.target.value)}>
             <option value="">{team ? `Context: ${team}` : 'No team'}</option>
             {teams.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.name}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </FormField>
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Start Date" required>
@@ -392,11 +389,11 @@ function CreateIterationModal({
           </FormField>
         </div>
         <FormField label="State" required>
-          <select value={state} onChange={(e) => setState(e.target.value as IterationState)} className={selectCls}>
+          <NativeSelect value={state} onChange={(e) => setState(e.target.value as IterationState)}>
             <option value="planning">Planning</option>
             <option value="committed">Committed</option>
             <option value="accepted">Accepted</option>
-          </select>
+          </NativeSelect>
         </FormField>
       </ModalBody>
 
@@ -447,9 +444,6 @@ function IterationDetail({ id, canManage, onBack }: { id: string; canManage: boo
   const themeVal = theme ?? it?.theme ?? ''
   const notesVal = notes ?? it?.notes ?? ''
   const disabled = !canManage
-
-  const selectCls =
-    'w-full rounded border border-input bg-white px-3 py-2 text-[12px] text-foreground outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50'
   const readonlyCls =
     'w-full rounded border border-input bg-input-background px-3 py-2 text-[12px] text-foreground'
 
@@ -542,16 +536,15 @@ function IterationDetail({ id, canManage, onBack }: { id: string; canManage: boo
             />
           </FormField>
           <FormField label="State">
-            <select
+            <NativeSelect
               defaultValue={it.state}
               disabled={disabled}
               onChange={(e) => patch({ state: e.target.value as IterationState })}
-              className={selectCls}
             >
               <option value="planning">Planning</option>
               <option value="committed">Committed</option>
               <option value="accepted">Accepted</option>
-            </select>
+            </NativeSelect>
           </FormField>
           <FormField label="Planned Velocity">
             <Input

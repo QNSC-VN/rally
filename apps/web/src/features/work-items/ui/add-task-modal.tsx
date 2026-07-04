@@ -11,6 +11,7 @@ import { BRAND } from '@/shared/config/brand'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
+import { NativeSelect } from '@/shared/ui/native-select'
 
 interface Props {
   workItemId: string
@@ -97,7 +98,7 @@ export function AddTaskModal({ workItemId, onClose }: Props) {
                   {m.displayName ?? m.email ?? m.userId}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </FormField>
         </div>
       </ModalBody>

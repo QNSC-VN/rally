@@ -12,7 +12,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { ChevronDown, ChevronLeft, ChevronRight, Loader2, Plus, Search } from 'lucide-react'
 import { Spinner } from '@/shared/ui/spinner'
 import { SkeletonList } from '@/shared/ui/skeleton'
-import { NativeSelect } from '@/shared/ui/native-select'
+import { NativeSelect, InlineSelect } from '@/shared/ui/native-select'
 import { BRAND } from '@/shared/config/brand'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { FormField } from '@/shared/ui/form-field'
@@ -300,7 +300,7 @@ function StatusRow({
       </button>
       <div className="w-32 shrink-0">
         {canEdit ? (
-          <select
+          <InlineSelect
             value={item.scheduleState}
             onChange={(e) => update.mutate({ scheduleState: e.target.value as ScheduleState })}
             className="text-[11px] px-1 py-0.5 rounded bg-white focus:outline-none"
@@ -311,14 +311,14 @@ function StatusRow({
                 {SCHEDULE_STATE_LABEL[s as ScheduleState] ?? s}
               </option>
             ))}
-          </select>
+          </InlineSelect>
         ) : (
           <ScheduleStateBadge state={item.scheduleState} />
         )}
       </div>
       <div className="w-36 shrink-0 pr-2">
         {canEdit ? (
-          <select
+          <InlineSelect
             value={item.iterationId ?? ''}
             onChange={(e) => update.mutate({ iterationId: e.target.value || null })}
             className="w-full text-[11px] px-1 py-0.5 rounded bg-white focus:outline-none"
@@ -330,7 +330,7 @@ function StatusRow({
                 {it.name}
               </option>
             ))}
-          </select>
+          </InlineSelect>
         ) : (
           <span style={{ color: BRAND.textSecondary }}>
             {iterations.find((i) => i.id === item.iterationId)?.name ?? '—'}

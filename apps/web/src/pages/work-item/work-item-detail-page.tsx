@@ -47,6 +47,7 @@ import {
 import { BRAND } from '@/shared/config/brand'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { FormField } from '@/shared/ui/form-field'
+import { NativeSelect } from '@/shared/ui/native-select'
 import { AddTaskModal } from '@/features/work-items/ui/add-task-modal'
 import { RichTextEditor } from '@/shared/ui/rich-text-editor'
 import { AttachmentBlock } from '@/features/collaboration/ui/attachment-block'
@@ -62,10 +63,7 @@ type DetailTab = 'details' | 'tasks' | 'history'
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 // Local Field removed — use shared <FormField> from @/shared/ui/form-field instead.
-// fieldCls kept for the native <select> elements in the sidebar that can't use <Input> directly.
-const fieldCls =
-  'w-full text-[12px] px-3 py-2 rounded bg-white outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50'
-const fieldStyle = { border: `1px solid ${BRAND.borderInput}`, color: BRAND.textPrimary }
+// Sidebar selects use shared <NativeSelect> from @/shared/ui/native-select.
 
 // ── Task state badge ──────────────────────────────────────────────────────────
 
@@ -470,32 +468,28 @@ function DetailSidebar({
       <div className="space-y-4 p-5">
         {/* Schedule State */}
         <FormField label="Schedule State">
-          <select
+          <NativeSelect
             value={item.scheduleState ?? ''}
             onChange={(e) =>
               onUpdate({ scheduleState: e.target.value as WorkItem['scheduleState'] })
             }
             disabled={disabled}
-            className={fieldCls}
-            style={fieldStyle}
-          >
+                      >
             {SCHEDULE_STATES.map(({ value, label }) => (
               <option key={value} value={value}>
                 {label}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </FormField>
 
         {/* Flow State (workflow status — project-specific Kanban column) */}
         <FormField label="Flow State">
-          <select
+          <NativeSelect
             value={item.statusId ?? ''}
             onChange={(e) => onUpdate({ statusId: e.target.value })}
             disabled={disabled}
-            className={fieldCls}
-            style={fieldStyle}
-          >
+                      >
             {statuses.length === 0 && (
               <option value={item.statusId ?? ''}>{item.statusId ?? 'Unknown'}</option>
             )}
@@ -504,61 +498,55 @@ function DetailSidebar({
                 {s.name}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </FormField>
 
         {/* Owner */}
         <FormField label="Owner">
-          <select
+          <NativeSelect
             value={item.assigneeId ?? ''}
             onChange={(e) => onUpdate({ assigneeId: e.target.value || null })}
             disabled={disabled}
-            className={fieldCls}
-            style={fieldStyle}
-          >
+                      >
             <option value="">Unassigned</option>
             {members.map((m) => (
               <option key={m.userId} value={m.userId}>
                 {m.displayName ?? m.email ?? m.userId}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </FormField>
 
         {/* Team */}
         <FormField label="Team">
-          <select
+          <NativeSelect
             value={item.teamId ?? ''}
             onChange={(e) => onUpdate({ teamId: e.target.value || null })}
             disabled={disabled}
-            className={fieldCls}
-            style={fieldStyle}
-          >
+                      >
             <option value="">No team</option>
             {teams.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.name}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </FormField>
 
         {/* Priority — Defect only */}
         {item.type === 'defect' && (
           <FormField label="Priority">
-            <select
+            <NativeSelect
               value={item.priority ?? 'none'}
               onChange={(e) => onUpdate({ priority: e.target.value as WorkItem['priority'] })}
               disabled={disabled}
-              className={fieldCls}
-              style={fieldStyle}
-            >
+                          >
               {PRIORITIES.map(({ value, label }) => (
                 <option key={value} value={value}>
                   {label}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </FormField>
         )}
 
@@ -589,9 +577,7 @@ function DetailSidebar({
                   onUpdate({ estimateHours: e.target.value ? Number(e.target.value) : null })
                 }
                 disabled={disabled}
-                className={fieldCls}
-                style={fieldStyle}
-              />
+                              />
             </FormField>
             <FormField label="To Do (h)">
               <input
@@ -603,9 +589,7 @@ function DetailSidebar({
                   onUpdate({ todoHours: e.target.value ? Number(e.target.value) : null })
                 }
                 disabled={disabled}
-                className={fieldCls}
-                style={fieldStyle}
-              />
+                              />
             </FormField>
             <FormField label="Actual (h)">
               <input
@@ -617,9 +601,7 @@ function DetailSidebar({
                   onUpdate({ actualHours: e.target.value ? Number(e.target.value) : null })
                 }
                 disabled={disabled}
-                className={fieldCls}
-                style={fieldStyle}
-              />
+                              />
             </FormField>
           </>
         )}
@@ -635,9 +617,7 @@ function DetailSidebar({
                 onUpdate({ storyPoints: e.target.value ? Number(e.target.value) : null })
               }
               disabled={disabled}
-              className={fieldCls}
-              style={fieldStyle}
-            />
+                          />
           </FormField>
         )}
 
@@ -645,36 +625,32 @@ function DetailSidebar({
         {!isTask && (
           <>
             <FormField label="Iteration">
-              <select
+              <NativeSelect
                 value={item.iterationId ?? ''}
                 onChange={(e) => onUpdate({ iterationId: e.target.value || null })}
                 disabled={disabled}
-                className={fieldCls}
-                style={fieldStyle}
-              >
+                              >
                 <option value="">No iteration</option>
                 {iterations.map((i) => (
                   <option key={i.id} value={i.id}>
                     {i.name}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </FormField>
             <FormField label="Release">
-              <select
+              <NativeSelect
                 value={item.releaseId ?? ''}
                 onChange={(e) => onUpdate({ releaseId: e.target.value || null })}
                 disabled={disabled}
-                className={fieldCls}
-                style={fieldStyle}
-              >
+                              >
                 <option value="">No release</option>
                 {releases.map((r) => (
                   <option key={r.id} value={r.id}>
                     {r.name}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </FormField>
           </>
         )}
@@ -963,12 +939,13 @@ import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
+import { workItemKeys } from '@/features/work-items/api'
 
 function useWorkItemByKey(itemKey: string) {
   const { project } = useAppContext()
   const projectId = project?.projectId
   return useQuery({
-    queryKey: ['work-item-by-key', itemKey, projectId],
+    queryKey: workItemKeys.byKey(itemKey, projectId),
     queryFn: async (): Promise<WorkItem | null> => {
       if (!projectId) return null
       const { data, error, response } = await apiClient.GET('/v1/work-items', {

@@ -27,6 +27,8 @@ export const iterationKeys = {
   options: (projectId: string, teamId?: string | null) =>
     ['iteration-options', projectId, teamId ?? null] as const,
   detail: (id: string) => ['iteration', id] as const,
+  committedCount: (projectIds: string[]) =>
+    ['iterations', 'committed-count', [...projectIds].sort()] as const,
   status: (id: string, filters?: unknown) =>
     filters ? (['iteration-status', id, filters] as const) : (['iteration-status', id] as const),
 }
@@ -70,7 +72,7 @@ export function useIterations(projectId: string | undefined, teamId?: string) {
 // Committed iterations count across all projects (the Rally "active" timebox).
 export function useCommittedIterationsCount(projects: Array<{ id: string }>) {
   return useQuery({
-    queryKey: ['committed-iterations-count', [...projects.map((p) => p.id)].sort()],
+    queryKey: iterationKeys.committedCount(projects.map((p) => p.id)),
     queryFn: async () => {
       if (projects.length === 0) return 0
       const allIterations = await Promise.all(
