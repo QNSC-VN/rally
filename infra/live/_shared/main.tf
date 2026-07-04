@@ -63,21 +63,21 @@ module "iam_oidc" {
   environments = {
     develop = {
       allowed_subjects = [
-        "repo:${local.github_org}/rally-api:ref:refs/heads/main",
-        "repo:${local.github_org}/rally-api:environment:develop"
+        "repo:${local.github_org}/rally:ref:refs/heads/main",
+        "repo:${local.github_org}/rally:environment:develop"
       ]
     }
     production = {
       allowed_subjects = [
-        "repo:${local.github_org}/rally-api:ref:refs/heads/main",
-        "repo:${local.github_org}/rally-api:ref:refs/tags/v*",
-        "repo:${local.github_org}/rally-api:environment:production"
+        "repo:${local.github_org}/rally:ref:refs/heads/main",
+        "repo:${local.github_org}/rally:ref:refs/tags/v*",
+        "repo:${local.github_org}/rally:environment:production"
       ]
     }
   }
 
-  app_repo_names         = ["rally-api"]
-  infra_repo_name        = "rally-infra"
+  app_repo_names         = ["rally"] # monorepo: was rally-api
+  infra_repo_name        = "rally"     # monorepo: infra lives in rally/infra/
   ecr_repository_pattern = "rally-*"
   ecs_passrole_pattern   = "rally-*" # shared ecs-service names roles <cluster>-<service>-task
   tags                   = { Layer = "shared" }
