@@ -84,22 +84,24 @@ module "iam_oidc" {
 }
 
 # ── GitHub OIDC — rally-web deploy roles ─────────────────────────────────────
-# Separate from the API roles: different repo, different permissions (S3+CF).
+# Separate from the API roles: different permissions (S3+CF), same monorepo.
 # Roles are environment-scoped for least-privilege S3 bucket access.
+# Bucket names keep the "rally-web-*" naming (unrelated to the repo split
+# below) — S3 bucket names are free-form and these are already live.
 locals {
   web_deploy_envs = {
     develop = {
       allowed_subjects = [
-        "repo:${local.github_org}/rally-web:ref:refs/heads/main",
-        "repo:${local.github_org}/rally-web:environment:develop",
+        "repo:${local.github_org}/rally:ref:refs/heads/main",
+        "repo:${local.github_org}/rally:environment:develop",
       ]
       s3_bucket = "rally-web-develop"
     }
     production = {
       allowed_subjects = [
-        "repo:${local.github_org}/rally-web:ref:refs/heads/main",
-        "repo:${local.github_org}/rally-web:ref:refs/tags/v*",
-        "repo:${local.github_org}/rally-web:environment:production",
+        "repo:${local.github_org}/rally:ref:refs/heads/main",
+        "repo:${local.github_org}/rally:ref:refs/tags/v*",
+        "repo:${local.github_org}/rally:environment:production",
       ]
       s3_bucket = "rally-web-prod"
     }
