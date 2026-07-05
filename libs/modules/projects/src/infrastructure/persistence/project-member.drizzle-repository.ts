@@ -58,7 +58,7 @@ export class ProjectMemberDrizzleRepository implements IProjectMemberRepository 
       .leftJoin(users, eq(projectMembers.userId, users.id))
       .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.status, 'active')))
       .orderBy(projectMembers.joinedAt);
-    return rows as ProjectMember[];
+    return rows;
   }
 
   async addMember(input: AddProjectMemberInput, tx?: DbExecutor): Promise<ProjectMember> {
