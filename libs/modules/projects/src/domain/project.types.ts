@@ -108,6 +108,10 @@ export interface ProjectMember {
   status: ProjectMemberStatus;
   joinedAt: Date;
   updatedAt: Date;
+  /** Joined from users table */
+  displayName?: string | null;
+  email?: string | null;
+  avatarUrl?: string | null;
 }
 
 export interface AddProjectMemberInput {

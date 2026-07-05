@@ -242,7 +242,7 @@ async function seedWorkItems() {
         id: NXP_STORY_2_ID,
         itemKey: 'NXP-2',
         type: 'story' as const,
-        title: 'Add Storybook 8 to component library',
+        title: 'Integrate Storybook 8 into shared UI library',
         statusId: nxp.todo,
         scheduleState: 'defined' as const,
         priority: 'normal' as const,
@@ -441,7 +441,7 @@ async function seedReleases() {
       projectId: nxpId,
       name: 'v2.0 — NX Platform Upgrade',
       description: 'Major upgrade to NX v21 + ESLint flat-config rollout.',
-      status: 'in_progress',
+      status: 'planned',
       targetDate: '2026-07-31',
     },
     {

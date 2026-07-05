@@ -3,6 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB, DbExecutor } from '@platform';
 import { projectMembers } from '../../../../../../db/schema/work';
+import { users } from '../../../../../../db/schema/identity';
 import type {
   ProjectMember,
   AddProjectMemberInput,
@@ -40,11 +41,24 @@ export class ProjectMemberDrizzleRepository implements IProjectMemberRepository 
 
   async listByProject(projectId: string): Promise<ProjectMember[]> {
     const rows = await this.db
-      .select()
+      .select({
+        id: projectMembers.id,
+        tenantId: projectMembers.tenantId,
+        projectId: projectMembers.projectId,
+        userId: projectMembers.userId,
+        roleId: projectMembers.roleId,
+        status: projectMembers.status,
+        joinedAt: projectMembers.joinedAt,
+        updatedAt: projectMembers.updatedAt,
+        displayName: users.displayName,
+        email: users.email,
+        avatarUrl: users.avatarUrl,
+      })
       .from(projectMembers)
+      .leftJoin(users, eq(projectMembers.userId, users.id))
       .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.status, 'active')))
       .orderBy(projectMembers.joinedAt);
-    return rows;
+    return rows as ProjectMember[];
   }
 
   async addMember(input: AddProjectMemberInput, tx?: DbExecutor): Promise<ProjectMember> {
