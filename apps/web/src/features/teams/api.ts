@@ -71,7 +71,7 @@ export function useProjectMembers(projectId: string | undefined) {
         params: { path: { id: projectId } },
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
-      return (data as { data: ProjectMember[] } | undefined)?.data ?? []
+      return (data as ProjectMember[] | undefined) ?? []
     },
     enabled: !!projectId,
     staleTime: 60_000,
