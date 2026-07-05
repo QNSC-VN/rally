@@ -39,6 +39,8 @@ import {
   releaseStatusEnum,
   teamStatusEnum,
   teamMemberStatusEnum,
+  attachmentStatusEnum,
+  activityEntityTypeEnum,
 } from './enums';
 
 export const workSchema = pgSchema('work');
@@ -311,7 +313,7 @@ export const attachments = workSchema.table(
     mimeType: varchar('mime_type', { length: 255 }).notNull(),
     sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull(),
     storageKey: varchar('storage_key', { length: 1000 }).notNull(), // S3 object key
-    status: varchar('status', { length: 20 }).notNull().default('pending'), // 'pending' | 'completed'
+    status: attachmentStatusEnum('status').notNull().default('pending'),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -461,7 +463,7 @@ export const activityLogs = workSchema.table(
     // Anchor row: parent work item id for both item and task activity, so the
     // item history can show task changes too. entityId is the concrete subject.
     workItemId: uuid('work_item_id').notNull(),
-    entityType: varchar('entity_type', { length: 30 }).notNull(), // 'work_item' | 'task' | 'attachment'
+    entityType: activityEntityTypeEnum('entity_type').notNull(),
     entityId: uuid('entity_id').notNull(),
     actorId: uuid('actor_id'), // null = system action
     action: varchar('action', { length: 60 }).notNull(), // e.g. 'work_item.assigned'

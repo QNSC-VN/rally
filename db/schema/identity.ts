@@ -63,7 +63,7 @@ export const authSessions = identitySchema.table(
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     /** Set for SSO sessions — used to re-derive authMethod on token refresh. */
-    ssoProvider: varchar('sso_provider', { length: 32 }),
+    ssoProvider: ssoProviderEnum('sso_provider'),
   },
   (t) => ({
     tenantIdx: index('ix_auth_sessions_tenant').on(t.tenantId),
@@ -90,7 +90,7 @@ export const ssoIdentities = identitySchema.table(
     tenantId: uuid('tenant_id').notNull(),
     userId: uuid('user_id').notNull(),
     /** Provider identifier — currently only 'entra' (Microsoft Entra ID). */
-    provider: varchar('provider', { length: 32 }).notNull(),
+    provider: ssoProviderEnum('provider').notNull(),
     /** Stable subject ID from the provider (Entra: `oid` claim). */
     providerSub: varchar('provider_sub', { length: 255 }).notNull(),
     /** Email address from the provider token at the time of linking. */

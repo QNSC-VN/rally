@@ -110,6 +110,14 @@ export const iterationStateEnum = pgEnum('iteration_state', [
 
 export const releaseStatusEnum = pgEnum('release_status', ['planned', 'released', 'archived']);
 
+export const attachmentStatusEnum = pgEnum('attachment_status', ['pending', 'completed']);
+
+export const activityEntityTypeEnum = pgEnum('activity_entity_type', [
+  'work_item',
+  'task',
+  'attachment',
+]);
+
 // ── messaging ──────────────────────────────────────────────────────────────
 
 export const outboxStatusEnum = pgEnum('outbox_status', ['pending', 'published', 'failed']);
