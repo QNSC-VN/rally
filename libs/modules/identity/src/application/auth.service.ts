@@ -117,13 +117,15 @@ export class AuthService {
     }
 
     // Auto-elevate platform admins to workspace_admin on every login.
-    // Idempotent — ensureDefaultRole is a no-op if the role is already assigned.
     const platformAdminEmails = (this.config.get('PLATFORM_ADMIN_EMAILS') ?? '')
       .split(',')
       .map((e) => e.trim())
       .filter(Boolean);
+    let updatedMemberships = memberships;
     if (platformAdminEmails.includes(user.email.toLowerCase())) {
-      await this.accessService.ensureDefaultRole(user.id, activeTenantId, SYSTEM_ROLE.WORKSPACE_ADMIN);
+      await this.accessService.elevateToWorkspaceAdmin(user.id, activeTenantId);
+      // Re-fetch so the response reflects the new role
+      updatedMemberships = await this.tenancyService.getMemberships(user.id);
     }
 
     const { permissions } = await this.accessService.getUserRoleAndPermissions(
@@ -234,7 +236,7 @@ export class AuthService {
         locale: user.locale,
         timezone: user.timezone,
       },
-      memberships,
+      memberships: updatedMemberships,
     };
   }
 
@@ -618,13 +620,12 @@ export class AuthService {
     }
 
     // Auto-elevate platform admins to workspace_admin on every SSO login.
-    // Idempotent — ensureDefaultRole is a no-op if the role is already assigned.
     const platformAdminEmails = (this.config.get('PLATFORM_ADMIN_EMAILS') ?? '')
       .split(',')
       .map((e) => e.trim())
       .filter(Boolean);
     if (platformAdminEmails.includes(user.email.toLowerCase())) {
-      await this.accessService.ensureDefaultRole(user.id, ssoTenantId, SYSTEM_ROLE.WORKSPACE_ADMIN);
+      await this.accessService.elevateToWorkspaceAdmin(user.id, ssoTenantId);
     }
 
     const sessionId = uuidv7();

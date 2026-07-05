@@ -31,7 +31,7 @@ export class TeamService {
     description?: string,
     leadId?: string,
   ): Promise<Team> {
-    const workspace = await this.workspaceRepo.findById(workspaceId);
+    const workspace = await this.workspaceRepo.findById(workspaceId, tenantId);
     if (!workspace) {
       throw new NotFoundException('WORKSPACE_NOT_FOUND', 'Workspace not found');
     }

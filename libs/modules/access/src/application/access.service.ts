@@ -119,7 +119,7 @@ export class AccessService {
   async ensureDefaultRole(
     userId: string,
     tenantId: string,
-    defaultRoleSlug = SYSTEM_ROLE.PROJECT_MEMBER,
+    defaultRoleSlug: string = SYSTEM_ROLE.PROJECT_MEMBER,
   ): Promise<void> {
     const existing = await this.assignmentRepo.listForUser(tenantId, userId)
     if (existing.length > 0) return // already has a role
@@ -142,6 +142,40 @@ export class AccessService {
     }
     await this.assignmentRepo.create(input)
     this.logger.log({ userId, roleSlug: defaultRole.slug }, 'Default role assigned to JIT-provisioned SSO user')
+  }
+
+  /**
+   * Forcibly assigns workspace_admin to a PLATFORM_ADMIN_EMAILS user.
+   * Replaces any existing role assignment for the user in this tenant.
+   * Idempotent: skips if workspace_admin is already assigned.
+   */
+  async elevateToWorkspaceAdmin(userId: string, tenantId: string): Promise<void> {
+    const roles = await this.roleRepo.listForTenant(tenantId)
+    const adminRole = roles.find((r) => r.slug === SYSTEM_ROLE.WORKSPACE_ADMIN)
+    if (!adminRole) {
+      this.logger.warn({ userId, tenantId }, 'workspace_admin role not found — cannot elevate')
+      return
+    }
+
+    const existing = await this.assignmentRepo.listForUser(tenantId, userId)
+    const alreadyAdmin = existing.some((a) => a.roleId === adminRole.id)
+    if (alreadyAdmin) return
+
+    // Revoke all current assignments before granting admin
+    for (const assignment of existing) {
+      await this.assignmentRepo.delete(assignment.id)
+    }
+
+    await this.assignmentRepo.create({
+      id: uuidv7(),
+      tenantId,
+      userId,
+      roleId: adminRole.id,
+      scopeType: 'workspace',
+      scopeId: undefined,
+      grantedBy: userId,
+    })
+    this.logger.log({ userId }, 'User elevated to workspace_admin via PLATFORM_ADMIN_EMAILS')
   }
 
   async getUserRoleAndPermissions(

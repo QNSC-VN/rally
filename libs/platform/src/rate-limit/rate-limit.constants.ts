@@ -42,6 +42,9 @@ export const RATE_LIMIT_TIERS = {
 
   /** Forgot-password: 3 req/hour — prevents email flooding */
   AUTH_FORGOT: { limit: 3, windowSeconds: 60 * 60 },
+
+  /** Password change: 5 req/15 min — prevents brute-force via repeated change attempts */
+  AUTH_PASSWORD_CHANGE: { limit: 5, windowSeconds: 15 * 60 },
 } as const;
 
 export type RateLimitTier = keyof typeof RATE_LIMIT_TIERS;

@@ -4,6 +4,9 @@ import { uuidv7 } from 'uuidv7';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB, DbExecutor } from '@platform';
 import { users, passwordResetTokens, ssoIdentities } from '../../../../../../db/schema/identity';
+import { ssoProviderEnum } from '../../../../../../db/schema/enums';
+
+type SsoProvider = (typeof ssoProviderEnum.enumValues)[number];
 import type { User, UserStatus, SsoIdentity } from '../../domain/user.types';
 import { IUserRepository } from '../../domain/ports/user.repository';
 
@@ -136,7 +139,7 @@ export class UserDrizzleRepository implements IUserRepository {
     const rows = await this.db
       .select()
       .from(ssoIdentities)
-      .where(and(eq(ssoIdentities.provider, provider), eq(ssoIdentities.providerSub, providerSub)))
+      .where(and(eq(ssoIdentities.provider, provider as SsoProvider), eq(ssoIdentities.providerSub, providerSub)))
       .limit(1);
     return rows[0] ?? null;
   }
@@ -180,7 +183,7 @@ export class UserDrizzleRepository implements IUserRepository {
         id: uuidv7(),
         tenantId,
         userId: existingUser.id,
-        provider,
+        provider: provider as SsoProvider,
         providerSub,
         providerEmail,
       });
@@ -205,7 +208,7 @@ export class UserDrizzleRepository implements IUserRepository {
       id: uuidv7(),
       tenantId,
       userId,
-      provider,
+      provider: provider as SsoProvider,
       providerSub,
       providerEmail,
     });

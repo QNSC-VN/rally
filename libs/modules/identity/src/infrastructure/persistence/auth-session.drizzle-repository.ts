@@ -3,7 +3,10 @@ import { eq } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB, DbExecutor } from '@platform';
 import { authSessions } from '../../../../../../db/schema/identity';
+import { ssoProviderEnum } from '../../../../../../db/schema/enums';
 import type { AuthSession, CreateSessionInput } from '../../domain/user.types';
+
+type SsoProvider = (typeof ssoProviderEnum.enumValues)[number];
 import { IAuthSessionRepository } from '../../domain/ports/auth-session.repository';
 
 @Injectable()
@@ -41,7 +44,7 @@ export class AuthSessionDrizzleRepository implements IAuthSessionRepository {
       familyId: input.familyId,
       ipAddress: input.ipAddress,
       expiresAt: input.expiresAt,
-      ssoProvider: input.ssoProvider ?? null,
+      ssoProvider: (input.ssoProvider as SsoProvider | undefined) ?? null,
       csrfToken: input.csrfToken ?? null,
     });
   }
