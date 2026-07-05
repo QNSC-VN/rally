@@ -175,8 +175,15 @@ resource "aws_iam_role_policy" "web_deploy" {
 # Allows the CI deploy job to detect + start a stopped RDS instance before
 # running migrations. Scoped to develop only; prod RDS is always-on and this
 # permission is intentionally absent from the production deploy role.
-data "aws_db_instance" "develop" {
-  db_instance_identifier = "rally-develop"
+#
+# The ARN is constructed directly (account_id + region + fixed identifier)
+# instead of via a `data "aws_db_instance"` lookup. A data-source lookup
+# fails hard whenever the instance doesn't exist yet or has been torn down
+# (e.g. a fresh deploy, or a full teardown+redeploy cycle) — this stack
+# would then be unable to apply/destroy independently of develop's RDS
+# lifecycle. An ARN string doesn't require the resource to exist.
+locals {
+  rally_develop_rds_arn = "arn:aws:rds:ap-southeast-1:${data.aws_caller_identity.current.account_id}:db:rally-develop"
 }
 
 resource "aws_iam_role_policy" "deploy_rds_dev_guard" {
@@ -193,7 +200,7 @@ resource "aws_iam_role_policy" "deploy_rds_dev_guard" {
           "rds:DescribeDBInstances",
           "rds:StartDBInstance",
         ]
-        Resource = data.aws_db_instance.develop.db_instance_arn
+        Resource = local.rally_develop_rds_arn
       }
     ]
   })
