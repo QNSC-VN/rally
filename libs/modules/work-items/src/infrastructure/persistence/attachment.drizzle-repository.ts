@@ -18,7 +18,7 @@ export class AttachmentDrizzleRepository implements IAttachmentRepository {
         and(eq(attachments.id, id), eq(attachments.tenantId, tenantId), isNull(attachments.deletedAt)),
       )
       .limit(1);
-    return (rows[0] as Attachment | undefined) ?? null;
+    return rows[0] ?? null;
   }
 
   async listByWorkItem(workItemId: string, tenantId: string): Promise<Attachment[]> {
@@ -34,7 +34,7 @@ export class AttachmentDrizzleRepository implements IAttachmentRepository {
         ),
       )
       .orderBy(attachments.createdAt);
-    return rows as Attachment[];
+    return rows;
   }
 
   async countByWorkItem(workItemId: string, tenantId: string): Promise<number> {
@@ -67,7 +67,7 @@ export class AttachmentDrizzleRepository implements IAttachmentRepository {
         status: 'pending',
       })
       .returning();
-    return rows[0] as unknown as Attachment;
+    return rows[0];
   }
 
   async confirm(id: string): Promise<Attachment> {
@@ -76,7 +76,7 @@ export class AttachmentDrizzleRepository implements IAttachmentRepository {
       .set({ status: 'completed' })
       .where(eq(attachments.id, id))
       .returning();
-    return rows[0] as unknown as Attachment;
+    return rows[0];
   }
 
   async softDelete(id: string): Promise<Attachment> {
@@ -85,6 +85,6 @@ export class AttachmentDrizzleRepository implements IAttachmentRepository {
       .set({ deletedAt: new Date() })
       .where(eq(attachments.id, id))
       .returning();
-    return rows[0] as unknown as Attachment;
+    return rows[0];
   }
 }
