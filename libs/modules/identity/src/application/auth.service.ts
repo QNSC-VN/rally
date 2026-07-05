@@ -110,6 +110,16 @@ export class AuthService {
       throw new UnauthorizedException('ACCOUNT_DEACTIVATED', 'No active tenant membership found');
     }
 
+    // Auto-elevate platform admins to workspace_admin on every login.
+    // Idempotent — ensureDefaultRole is a no-op if the role is already assigned.
+    const platformAdminEmails = (this.config.get('PLATFORM_ADMIN_EMAILS') ?? '')
+      .split(',')
+      .map((e) => e.trim())
+      .filter(Boolean);
+    if (platformAdminEmails.includes(user.email.toLowerCase())) {
+      await this.accessService.ensureDefaultRole(user.id, activeTenantId, 'workspace_admin');
+    }
+
     const { permissions } = await this.accessService.getUserRoleAndPermissions(
       user.id,
       activeTenantId,

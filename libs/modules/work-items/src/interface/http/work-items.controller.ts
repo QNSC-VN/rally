@@ -547,6 +547,7 @@ export class WorkItemsController {
   }
 
   @Post(':id/time-logs')
+  @RequirePermission('work_item:edit')
   @UseIdempotency()
   @ApiOperation({ summary: 'Log hours against a work item' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -566,6 +567,7 @@ export class WorkItemsController {
   }
 
   @Patch(':id/time-logs/:logId')
+  @RequirePermission('work_item:edit')
   @ApiOperation({ summary: 'Edit a time log entry (owner only)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiParam({ name: 'logId', type: 'string', format: 'uuid' })
@@ -586,6 +588,7 @@ export class WorkItemsController {
   }
 
   @Delete(':id/time-logs/:logId')
+  @RequirePermission('work_item:edit')
   @HttpCode(204)
   @ApiOperation({ summary: 'Delete a time log entry (owner or admin)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -616,6 +619,7 @@ export class WorkItemsController {
   }
 
   @Post(':id/watchers')
+  @RequirePermission('work_item:view')
   @HttpCode(204)
   @ApiOperation({ summary: 'Watch (follow) a work item' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -629,6 +633,7 @@ export class WorkItemsController {
   }
 
   @Delete(':id/watchers')
+  @RequirePermission('work_item:view')
   @HttpCode(204)
   @ApiOperation({ summary: 'Unwatch (unfollow) a work item' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -643,6 +648,7 @@ export class WorkItemsController {
   // ── Attachments ──────────────────────────────────────────────────────────
 
   @Post(':id/attachments/presign')
+  @RequirePermission('work_item:edit')
   @RateLimit('STRICT')
   @ApiOperation({ summary: 'Get presigned S3 PUT URL to upload an attachment' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -661,6 +667,7 @@ export class WorkItemsController {
   }
 
   @Post(':id/attachments/:aid/confirm')
+  @RequirePermission('work_item:edit')
   @HttpCode(200)
   @ApiOperation({ summary: 'Confirm file upload completed — activates the attachment' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -704,6 +711,7 @@ export class WorkItemsController {
   }
 
   @Delete(':id/attachments/:aid')
+  @RequirePermission('work_item:edit')
   @HttpCode(204)
   @ApiOperation({ summary: 'Delete an attachment (uploader or admin only)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })

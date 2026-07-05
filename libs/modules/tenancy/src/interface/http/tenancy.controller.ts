@@ -172,6 +172,7 @@ export class WorkspaceController {
   // MVP constraint: workspace provisioning is system-only (COMPANY-FR-010).
 
   @Post()
+  @RequirePermission('workspace:create')
   @ApiExcludeEndpoint()
   @ApiOperation({ summary: 'Create a new workspace' })
   @ApiResponse({ status: 201, type: WorkspaceResponseDto })

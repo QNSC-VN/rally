@@ -10,7 +10,7 @@ import {
   Post,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Auth, ApiCommonErrors } from '@platform';
+import { Auth, ApiCommonErrors, RequirePermission } from '@platform';
 import type { JwtPayload } from '@platform';
 import { CurrentUser } from '@modules/identity/interface/http/decorators/current-user.decorator';
 import { TeamService } from '../../application/team.service';
@@ -90,6 +90,7 @@ export class TeamController {
   }
 
   @Post('workspaces/:workspaceId/teams')
+  @RequirePermission('workspace:manage_teams')
   @ApiOperation({ summary: 'Create a team in a workspace' })
   @ApiParam({ name: 'workspaceId', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 201, schema: { type: 'object' } })
@@ -122,6 +123,7 @@ export class TeamController {
   }
 
   @Patch('teams/:id')
+  @RequirePermission('workspace:manage_teams')
   @ApiOperation({ summary: 'Update team' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, schema: { type: 'object' } })
@@ -147,6 +149,7 @@ export class TeamController {
   }
 
   @Post('teams/:id/members')
+  @RequirePermission('workspace:manage_teams')
   @ApiOperation({ summary: 'Add a user to a team' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 201, schema: { type: 'object' } })
@@ -161,6 +164,7 @@ export class TeamController {
   }
 
   @Delete('teams/:id/members/:userId')
+  @RequirePermission('workspace:manage_teams')
   @HttpCode(204)
   @ApiOperation({ summary: 'Remove a user from a team' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
