@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createZodDto } from 'nestjs-zod';
+import { PageQuerySchema } from '@platform';
 
 export const ListNotificationsSchema = z.object({
   unreadOnly: z
@@ -7,12 +8,6 @@ export const ListNotificationsSchema = z.object({
     .transform((v) => v === 'true')
     .optional()
     .default(() => false),
-  limit: z.coerce
-    .number()
-    .int()
-    .min(1)
-    .max(100)
-    .optional()
-    .default(() => 50),
+  limit: PageQuerySchema.shape.limit,
 });
 export class ListNotificationsDto extends createZodDto(ListNotificationsSchema) {}

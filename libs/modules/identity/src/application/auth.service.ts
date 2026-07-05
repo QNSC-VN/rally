@@ -19,6 +19,7 @@ import {
   InjectDrizzle,
 } from '@platform';
 import type { JwtPayload, DrizzleDB } from '@platform';
+import { SYSTEM_ROLE } from '@shared-kernel';
 import { AccessService } from '@modules/access';
 import { TenancyService } from '@modules/tenancy';
 import type { TenantMembership } from '@modules/tenancy';
@@ -33,6 +34,9 @@ import {
   SSO_CONNECTION_REPOSITORY,
 } from '../domain/ports/sso-connection.repository';
 import type { User } from '../domain/user.types';
+
+const SESSION_TTL_SECONDS = 24 * 60 * 60;       // 24 h
+const REMEMBER_ME_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
 
 export interface LoginResult {
   accessToken: string;
@@ -117,7 +121,7 @@ export class AuthService {
       .map((e) => e.trim())
       .filter(Boolean);
     if (platformAdminEmails.includes(user.email.toLowerCase())) {
-      await this.accessService.ensureDefaultRole(user.id, activeTenantId, 'workspace_admin');
+      await this.accessService.ensureDefaultRole(user.id, activeTenantId, SYSTEM_ROLE.WORKSPACE_ADMIN);
     }
 
     const { permissions } = await this.accessService.getUserRoleAndPermissions(
@@ -133,7 +137,7 @@ export class AuthService {
     const { refreshToken, tokenHash, familyId } = this.generateRefreshToken();
 
     // AUTH-FR: rememberMe = 30d session; not remembered = 24h session
-    const ttlSeconds = rememberMe ? this.refreshTtlSeconds() : 24 * 3600;
+    const ttlSeconds = rememberMe ? this.refreshTtlSeconds() : SESSION_TTL_SECONDS;
     const refreshExpiry = new Date();
     refreshExpiry.setSeconds(refreshExpiry.getSeconds() + ttlSeconds);
 
@@ -263,7 +267,7 @@ export class AuthService {
     if (autoJoin) {
       tenantId = autoJoin.tenantId;
       workspaceId = autoJoin.workspaceId;
-      roleSlug = 'project_member';
+      roleSlug = SYSTEM_ROLE.PROJECT_MEMBER;
     } else {
       const orgName =
         input.organizationName?.trim() || this.defaultOrgName(input.displayName, email);
@@ -276,7 +280,7 @@ export class AuthService {
       const { tenant, workspace } = await this.tenancyService.provisionTenant(orgName, claimDomain);
       tenantId = tenant.id;
       workspaceId = workspace.id;
-      roleSlug = 'workspace_admin';
+      roleSlug = SYSTEM_ROLE.WORKSPACE_ADMIN;
     }
 
     const user = await this.userRepo.create({
@@ -599,7 +603,7 @@ export class AuthService {
       .map((e) => e.trim())
       .filter(Boolean);
     if (platformAdminEmails.includes(user.email.toLowerCase())) {
-      await this.accessService.ensureDefaultRole(user.id, ssoTenantId, 'workspace_admin');
+      await this.accessService.ensureDefaultRole(user.id, ssoTenantId, SYSTEM_ROLE.WORKSPACE_ADMIN);
     }
 
     const sessionId = uuidv7();
@@ -885,7 +889,7 @@ export class AuthService {
   private refreshTtlSeconds(): number {
     const expiry = this.config.get('JWT_REFRESH_EXPIRY'); // e.g. '30d'
     const match = /^(\d+)([smhd])$/.exec(expiry);
-    if (!match) return 30 * 24 * 3600;
+    if (!match) return REMEMBER_ME_TTL_SECONDS;
     const [, n, unit] = match;
     const multipliers: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400 };
     return parseInt(n, 10) * (multipliers[unit] ?? 86400);

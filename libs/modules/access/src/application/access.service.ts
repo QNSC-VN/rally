@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
 import { NotFoundException, ConflictException } from '@platform';
+import { SYSTEM_ROLE } from '@shared-kernel';
 import type { JwtPayload } from '@platform';
 import { IRoleRepository, ROLE_REPOSITORY } from '../domain/ports/role.repository';
 import {
@@ -54,6 +55,7 @@ export class AccessService {
       roleId,
       scopeType,
       scopeId ?? null,
+      actor.tenantId,
     );
     if (existing) {
       throw new ConflictException(
@@ -81,8 +83,8 @@ export class AccessService {
   }
 
   async revokeRole(actor: JwtPayload, assignmentId: string): Promise<void> {
-    const assignment = await this.assignmentRepo.findById(assignmentId);
-    if (!assignment || assignment.tenantId !== actor.tenantId) {
+    const assignment = await this.assignmentRepo.findById(assignmentId, actor.tenantId);
+    if (!assignment) {
       throw new NotFoundException('ROLE_ASSIGNMENT_NOT_FOUND', 'Role assignment not found');
     }
     await this.assignmentRepo.delete(assignmentId);
@@ -97,6 +99,8 @@ export class AccessService {
     const roleIds = [...new Set(assignments.map((a) => a.roleId))];
     for (const roleId of roleIds) {
       const role = await this.roleRepo.findById(roleId);
+      const [reqNs] = permission.split(':');
+      if (role?.permissions.includes(`${reqNs}:*`)) return true;
       if (role?.permissions.includes(permission)) return true;
     }
     return false;
@@ -115,13 +119,13 @@ export class AccessService {
   async ensureDefaultRole(
     userId: string,
     tenantId: string,
-    defaultRoleSlug = 'project_member',
+    defaultRoleSlug = SYSTEM_ROLE.PROJECT_MEMBER,
   ): Promise<void> {
     const existing = await this.assignmentRepo.listForUser(tenantId, userId)
     if (existing.length > 0) return // already has a role
 
     const roles = await this.roleRepo.listForTenant(tenantId)
-    const defaultRole = roles.find((r) => r.slug === defaultRoleSlug) ?? roles.find((r) => r.slug === 'workspace_member')
+    const defaultRole = roles.find((r) => r.slug === defaultRoleSlug) ?? roles.find((r) => r.slug === SYSTEM_ROLE.WORKSPACE_MEMBER)
     if (!defaultRole) {
       this.logger.warn({ userId, tenantId }, 'No default role found for JIT-provisioned user')
       return
@@ -146,7 +150,7 @@ export class AccessService {
   ): Promise<{ role: string; permissions: string[] }> {
     const assignments = await this.assignmentRepo.listForUser(tenantId, userId);
     if (!assignments.length) {
-      return { role: 'workspace_member', permissions: ['workspace:view', 'project:view'] };
+      return { role: SYSTEM_ROLE.WORKSPACE_MEMBER, permissions: ['workspace:view', 'project:view'] };
     }
 
     // Prefer workspace-scope assignment (most representative of the user's primary role)
@@ -154,7 +158,7 @@ export class AccessService {
 
     const role = await this.roleRepo.findById(preferred.roleId);
     return {
-      role: role?.slug ?? 'workspace_member',
+      role: role?.slug ?? SYSTEM_ROLE.WORKSPACE_MEMBER,
       permissions: role?.permissions ?? ['workspace:view', 'project:view'],
     };
   }

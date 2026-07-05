@@ -29,6 +29,9 @@ import { CurrentUser } from './decorators/current-user.decorator';
 
 const REFRESH_COOKIE = 'refresh_token';
 
+const SESSION_TTL_SECONDS = 24 * 60 * 60;       // 24 h
+const REMEMBER_ME_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
+
 const COOKIE_BASE = {
   httpOnly: true,
   path: '/v1/auth',
@@ -89,7 +92,7 @@ export class AuthController {
     const result = await this.authService.login(dto.email, dto.password, req.ip, dto.rememberMe);
 
     // Cookie TTL mirrors the session TTL: 30d if remembered, 24h otherwise
-    const cookieMaxAge = dto.rememberMe ? 30 * 24 * 60 * 60 : 24 * 60 * 60;
+    const cookieMaxAge = dto.rememberMe ? REMEMBER_ME_TTL_SECONDS : SESSION_TTL_SECONDS;
     reply.setCookie(
       REFRESH_COOKIE,
       result.refreshToken,
@@ -131,7 +134,7 @@ export class AuthController {
     reply.setCookie(
       REFRESH_COOKIE,
       result.refreshToken,
-      this.buildRefreshCookieOptions(req, 24 * 60 * 60),
+      this.buildRefreshCookieOptions(req, SESSION_TTL_SECONDS),
     );
 
     return {
@@ -161,7 +164,7 @@ export class AuthController {
     reply.setCookie(
       REFRESH_COOKIE,
       result.refreshToken,
-      this.buildRefreshCookieOptions(req, 30 * 24 * 60 * 60),
+      this.buildRefreshCookieOptions(req, REMEMBER_ME_TTL_SECONDS),
     );
 
     return {
@@ -201,7 +204,7 @@ export class AuthController {
     reply.setCookie(
       REFRESH_COOKIE,
       result.refreshToken,
-      this.buildRefreshCookieOptions(req, 30 * 24 * 60 * 60),
+      this.buildRefreshCookieOptions(req, REMEMBER_ME_TTL_SECONDS),
     );
 
     return { accessToken: result.accessToken, expiresIn: result.expiresIn };
@@ -232,7 +235,7 @@ export class AuthController {
     reply.setCookie(
       REFRESH_COOKIE,
       result.refreshToken,
-      this.buildRefreshCookieOptions(req, 30 * 24 * 60 * 60),
+      this.buildRefreshCookieOptions(req, REMEMBER_ME_TTL_SECONDS),
     );
 
     return { accessToken: result.accessToken, expiresIn: result.expiresIn };
@@ -316,6 +319,7 @@ export class AuthController {
   // ── PATCH /auth/password ───────────────────────────────────────────────────
 
   @Patch('password')
+  @RateLimit('AUTH_PASSWORD_CHANGE')
   @Auth()
   @HttpCode(204)
   @ApiOperation({ summary: 'Change authenticated user password' })
