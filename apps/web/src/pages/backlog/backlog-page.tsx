@@ -14,7 +14,7 @@ import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
 import { ChevronLeft, ChevronRight, GripVertical, Plus, Search, X } from 'lucide-react'
 import { SkeletonList } from '@/shared/ui/skeleton'
-import { InlineSelect } from '@/shared/ui/native-select'
+import { InlineCellSelect, InlineSelect } from '@/shared/ui/native-select'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import {
@@ -58,12 +58,12 @@ const COLUMN_MINS: Record<ColumnKey, number> = {
 const DEFAULT_WIDTHS: Record<ColumnKey, number> = {
   type: 72,
   id: 88,
-  name: 380,
+  name: 260,
   scheduleState: 136,
   priority: 96,
   estimate: 52,
   owner: 120,
-  release: 140,
+  release: 160,
   iteration: 140,
 }
 
@@ -339,7 +339,9 @@ export function BacklogPage() {
   }
   // ── Table width ───────────────────────────────────────────────────────────────
   const totalColWidth = Object.values(colWidths).reduce((a, b) => a + b, 0)
-  const tableWidth = 5 + 20 + 16 + 24 + 8 + totalColWidth // checkbox + grip + row# + gaps
+  // Row layout: px-3 padding (24px) + checkbox w-5 (20px) + grip w-4 (16px) + row# w-6 (24px) +
+  // gap-2 between 12 flex items (11 × 8px = 88px) + column widths
+  const tableWidth = 24 + 20 + 16 + 24 + 88 + totalColWidth
 
   // ── Render ────────────────────────────────────────────────────────────────────
   if (!projectId) {
@@ -853,8 +855,9 @@ function BacklogRow({
       {/* Schedule State — inline select */}
       <div className="shrink-0 overflow-hidden" style={{ width: colWidths.scheduleState }} onClick={stop}>
         {canEdit ? (
-          <InlineSelect
+          <InlineCellSelect
             value={item.scheduleState}
+            displayValue={SCHEDULE_STATE_LABEL[item.scheduleState as ScheduleState] ?? item.scheduleState}
             onChange={(e) =>
               patch({ scheduleState: e.target.value as UpdateWorkItemInput['scheduleState'] })
             }
@@ -865,7 +868,7 @@ function BacklogRow({
                 {SCHEDULE_STATE_LABEL[s as ScheduleState] ?? s}
               </option>
             ))}
-          </InlineSelect>
+          </InlineCellSelect>
         ) : (
           <ScheduleStateBadge state={item.scheduleState} />
         )}
@@ -875,8 +878,9 @@ function BacklogRow({
       <div className="shrink-0 overflow-hidden" style={{ width: colWidths.priority }} onClick={stop}>
         {item.type === 'defect' ? (
           canEdit ? (
-            <InlineSelect
-              value={item.priority}
+            <InlineCellSelect
+              value={item.priority ?? ''}
+              displayValue={item.priority ?? '—'}
               onChange={(e) =>
                 patch({ priority: e.target.value as UpdateWorkItemInput['priority'] })
               }
@@ -887,7 +891,7 @@ function BacklogRow({
                   {p}
                 </option>
               ))}
-            </InlineSelect>
+            </InlineCellSelect>
           ) : (
             <PriorityBadge priority={item.priority} />
           )
@@ -924,8 +928,10 @@ function BacklogRow({
       {/* Owner — inline select */}
       <div className="shrink-0 overflow-hidden" style={{ width: colWidths.owner }} onClick={stop}>
         {canEdit ? (
-          <InlineSelect
+          <InlineCellSelect
             value={item.assigneeId ?? ''}
+            displayValue={ownerName ?? 'Unassigned'}
+            muted={!item.assigneeId}
             onChange={(e) => patch({ assigneeId: e.target.value || null })}
             aria-label="Owner"
           >
@@ -935,7 +941,7 @@ function BacklogRow({
                 {m.displayName ?? m.email ?? m.userId}
               </option>
             ))}
-          </InlineSelect>
+          </InlineCellSelect>
         ) : (
           <OwnerCell name={ownerName} />
         )}
@@ -944,8 +950,10 @@ function BacklogRow({
       {/* Release — inline select */}
       <div className="shrink-0 overflow-hidden" style={{ width: colWidths.release }} onClick={stop}>
         {canEdit ? (
-          <InlineSelect
+          <InlineCellSelect
             value={item.releaseId ?? ''}
+            displayValue={releases.find((r) => r.id === item.releaseId)?.name ?? '—'}
+            muted={!item.releaseId}
             onChange={(e) => patch({ releaseId: e.target.value || null })}
             aria-label="Release"
           >
@@ -955,7 +963,7 @@ function BacklogRow({
                 {r.name}
               </option>
             ))}
-          </InlineSelect>
+          </InlineCellSelect>
         ) : (
           <span className="truncate text-[11px]" style={{ color: item.releaseId ? '#1a2234' : '#a0a7b5' }}>
             {releases.find((r) => r.id === item.releaseId)?.name ?? '—'}
@@ -966,8 +974,10 @@ function BacklogRow({
       {/* Iteration — inline select */}
       <div className="shrink-0 overflow-hidden" style={{ width: colWidths.iteration }} onClick={stop}>
         {canEdit ? (
-          <InlineSelect
+          <InlineCellSelect
             value={item.iterationId ?? ''}
+            displayValue={iterations.find((it) => it.id === item.iterationId)?.name ?? '—'}
+            muted={!item.iterationId}
             onChange={(e) => patch({ iterationId: e.target.value || null })}
             aria-label="Iteration"
           >
@@ -977,7 +987,7 @@ function BacklogRow({
                 {it.name}
               </option>
             ))}
-          </InlineSelect>
+          </InlineCellSelect>
         ) : (
           <span className="truncate text-[11px]" style={{ color: item.iterationId ? '#1a2234' : '#a0a7b5' }}>
             {iterations.find((it) => it.id === item.iterationId)?.name ?? '—'}

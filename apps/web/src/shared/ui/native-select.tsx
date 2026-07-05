@@ -9,6 +9,7 @@
  *   </NativeSelect>
  */
 import { forwardRef } from 'react'
+import { ChevronDown } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
 
 export interface NativeSelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
@@ -56,3 +57,48 @@ export const InlineSelect = forwardRef<HTMLSelectElement, NativeSelectProps>(
   },
 )
 InlineSelect.displayName = 'InlineSelect'
+
+/**
+ * InlineCellSelect — Table-cell inline select with proper text truncation.
+ *
+ * Uses an overlay pattern: a visible <span> shows the truncated display value
+ * with ellipsis, while an invisible <select> sits on top to handle interaction.
+ * This ensures long option text always fits within the cell width in all browsers.
+ */
+export interface InlineCellSelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
+  displayValue: string
+  muted?: boolean
+}
+
+export const InlineCellSelect = forwardRef<HTMLSelectElement, InlineCellSelectProps>(
+  ({ className, children, displayValue, muted, ...props }, ref) => {
+    return (
+      <div
+        className={cn(
+          'relative flex w-full cursor-pointer items-center overflow-hidden rounded border border-transparent transition-colors',
+          'hover:border-input hover:bg-white',
+          props.disabled && 'cursor-not-allowed opacity-60',
+          className,
+        )}
+      >
+        <span className="pointer-events-none flex min-w-0 flex-1 items-center gap-0.5 px-1 py-0.5">
+          <span
+            className="min-w-0 flex-1 truncate text-[11px]"
+            style={{ color: muted ? '#a0a7b5' : 'inherit' }}
+          >
+            {displayValue}
+          </span>
+          <ChevronDown size={9} className="shrink-0" style={{ color: '#8c94a6' }} />
+        </span>
+        <select
+          ref={ref}
+          className="absolute inset-0 w-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
+          {...props}
+        >
+          {children}
+        </select>
+      </div>
+    )
+  },
+)
+InlineCellSelect.displayName = 'InlineCellSelect'
