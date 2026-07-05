@@ -91,7 +91,12 @@ export class AccessService {
     this.logger.log({ assignmentId, revokedBy: actor.sub }, 'Role revoked');
   }
 
-  /** Check if a user has a specific permission in any scope. Used by guards. */
+  /** Check if a user has a specific permission in any scope. Used by guards.
+   * Wildcard expansion: `workspace:*` matches any `workspace:<action>`.
+   * NOTE: assumes 2-segment permission strings (namespace:action). If 3-segment
+   * permissions are added in future, expand this to check prefix wildcards at
+   * each segment boundary (e.g. `workspace:admin:*` matches `workspace:admin:write`).
+   */
   async hasPermission(tenantId: string, userId: string, permission: string): Promise<boolean> {
     const assignments = await this.assignmentRepo.listForUser(tenantId, userId);
     if (!assignments.length) return false;
@@ -161,8 +166,10 @@ export class AccessService {
     const alreadyAdmin = existing.some((a) => a.roleId === adminRole.id)
     if (alreadyAdmin) return
 
-    // Revoke all current assignments before granting admin
-    for (const assignment of existing) {
+    // Revoke workspace-scoped assignments only — preserve project-level roles.
+    // workspace_admin has workspace:* so it supersedes them functionally,
+    // but keeping project assignments means a manual downgrade restores them.
+    for (const assignment of existing.filter((a) => a.scopeType === 'workspace')) {
       await this.assignmentRepo.delete(assignment.id)
     }
 
