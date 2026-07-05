@@ -86,7 +86,7 @@ jobs:
       ENVIRONMENT: ${{ needs.context.outputs.environment }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install dependencies
         uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1.5

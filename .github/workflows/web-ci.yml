@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1.0.0
         with:
@@ -56,7 +56,7 @@ jobs:
     outputs:
       has_tests: ${{ steps.detect.outputs.has_tests }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1.0.0
         with:
@@ -99,7 +99,7 @@ jobs:
     needs: [quality, test]
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1.0.0
         with:
