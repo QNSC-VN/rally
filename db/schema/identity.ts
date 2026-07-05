@@ -64,6 +64,8 @@ export const authSessions = identitySchema.table(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     /** Set for SSO sessions — used to re-derive authMethod on token refresh. */
     ssoProvider: ssoProviderEnum('sso_provider'),
+    /** Double-submit cookie CSRF protection — set for all sessions created after migration. */
+    csrfToken: varchar('csrf_token', { length: 64 }),
   },
   (t) => ({
     tenantIdx: index('ix_auth_sessions_tenant').on(t.tenantId),

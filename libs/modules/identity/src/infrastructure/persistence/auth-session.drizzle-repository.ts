@@ -16,7 +16,20 @@ export class AuthSessionDrizzleRepository implements IAuthSessionRepository {
       .from(authSessions)
       .where(eq(authSessions.tokenHash, hash))
       .limit(1);
-    return rows[0] ?? null;
+    if (!rows[0]) return null;
+    const row = rows[0];
+    return {
+      id: row.id,
+      tenantId: row.tenantId,
+      userId: row.userId,
+      tokenHash: row.tokenHash,
+      familyId: row.familyId,
+      isRevoked: row.isRevoked,
+      expiresAt: row.expiresAt,
+      createdAt: row.createdAt,
+      ssoProvider: row.ssoProvider ?? null,
+      csrfToken: row.csrfToken ?? null,
+    };
   }
 
   async create(input: CreateSessionInput, tx?: DbExecutor): Promise<void> {
@@ -29,6 +42,7 @@ export class AuthSessionDrizzleRepository implements IAuthSessionRepository {
       ipAddress: input.ipAddress,
       expiresAt: input.expiresAt,
       ssoProvider: input.ssoProvider ?? null,
+      csrfToken: input.csrfToken ?? null,
     });
   }
 

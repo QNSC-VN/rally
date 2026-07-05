@@ -42,6 +42,7 @@ export interface LoginResult {
   accessToken: string;
   refreshToken: string;
   expiresIn: number;
+  csrfToken: string;
   user: Pick<User, 'id' | 'email' | 'displayName' | 'avatarUrl' | 'locale' | 'timezone'>;
   /** All active tenant memberships, most-recently-active first. Drives the tenant switcher. */
   memberships: TenantMembership[];
@@ -51,6 +52,7 @@ export interface RefreshResult {
   accessToken: string;
   refreshToken: string;
   expiresIn: number;
+  csrfToken: string;
 }
 
 @Injectable()
@@ -141,6 +143,8 @@ export class AuthService {
     const refreshExpiry = new Date();
     refreshExpiry.setSeconds(refreshExpiry.getSeconds() + ttlSeconds);
 
+    const csrfToken = randomBytes(32).toString('hex');
+
     await this.rls.withTenantContext(activeTenantId, async (tx) => {
       await this.sessionRepo.create(
         {
@@ -151,6 +155,7 @@ export class AuthService {
           familyId,
           ipAddress,
           expiresAt: refreshExpiry,
+          csrfToken,
         },
         tx,
       );
@@ -220,6 +225,7 @@ export class AuthService {
       accessToken,
       refreshToken,
       expiresIn,
+      csrfToken,
       user: {
         id: user.id,
         email: user.email,
@@ -307,6 +313,8 @@ export class AuthService {
     const refreshExpiry = new Date();
     refreshExpiry.setSeconds(refreshExpiry.getSeconds() + this.refreshTtlSeconds());
 
+    const csrfToken = randomBytes(32).toString('hex');
+
     await this.rls.withTenantContext(tenantId, async (tx) => {
       await this.sessionRepo.create(
         {
@@ -317,6 +325,7 @@ export class AuthService {
           familyId,
           ipAddress,
           expiresAt: refreshExpiry,
+          csrfToken,
         },
         tx,
       );
@@ -344,6 +353,7 @@ export class AuthService {
       accessToken,
       refreshToken,
       expiresIn,
+      csrfToken,
       user: {
         id: user.id,
         email: user.email,
@@ -391,7 +401,7 @@ export class AuthService {
   // ---------------------------------------------------------------------------
 
   @Span('auth.refresh')
-  async refresh(rawRefreshToken: string, ipAddress?: string): Promise<RefreshResult> {
+  async refresh(rawRefreshToken: string, csrfToken: string | null, ipAddress?: string): Promise<RefreshResult> {
     const tokenHash = this.hashToken(rawRefreshToken);
     const session = await this.sessionRepo.findByTokenHash(tokenHash);
 
@@ -428,6 +438,14 @@ export class AuthService {
       throw new UnauthorizedException('USER_DEACTIVATED', 'User not found or deactivated');
     }
 
+    // Enforce CSRF check for sessions that have a token (all sessions post-migration).
+    // Sessions without csrf_token are pre-migration; allow once, new session gets a token.
+    if (session.csrfToken !== null) {
+      if (!csrfToken || csrfToken !== session.csrfToken) {
+        throw new UnauthorizedException('AUTH_TOKEN_INVALID', 'CSRF token mismatch');
+      }
+    }
+
     // Revoke old session and issue new tokens (rotation)
     const newSessionId = uuidv7();
     // Preserve the auth method across rotations so the frontend knows which
@@ -449,6 +467,8 @@ export class AuthService {
     const refreshExpiry = new Date();
     refreshExpiry.setSeconds(refreshExpiry.getSeconds() + this.refreshTtlSeconds());
 
+    const newCsrfToken = randomBytes(32).toString('hex');
+
     // Atomic token rotation: revoke old session and issue new in one tx.
     // If either write fails the whole rotation rolls back, so we never end up
     // with two live refresh tokens (token-reuse / privilege-escalation gap).
@@ -464,12 +484,13 @@ export class AuthService {
           ipAddress,
           expiresAt: refreshExpiry,
           ssoProvider: session.ssoProvider ?? undefined, // carry SSO provider forward
+          csrfToken: newCsrfToken,
         },
         tx,
       );
     });
 
-    return { accessToken, refreshToken: newRefreshToken, expiresIn };
+    return { accessToken, refreshToken: newRefreshToken, expiresIn, csrfToken: newCsrfToken };
   }
 
   // ---------------------------------------------------------------------------
@@ -623,6 +644,8 @@ export class AuthService {
     const refreshExpiry = new Date();
     refreshExpiry.setSeconds(refreshExpiry.getSeconds() + this.refreshTtlSeconds());
 
+    const csrfToken = randomBytes(32).toString('hex');
+
     await this.rls.withTenantContext(ssoTenantId, async (tx) => {
       await this.sessionRepo.create(
         {
@@ -634,6 +657,7 @@ export class AuthService {
           ipAddress,
           expiresAt: refreshExpiry,
           ssoProvider: 'entra',
+          csrfToken,
         },
         tx,
       );
@@ -663,6 +687,7 @@ export class AuthService {
       accessToken,
       refreshToken,
       expiresIn,
+      csrfToken,
       user: {
         id: user.id,
         email: user.email,
@@ -1093,6 +1118,8 @@ export class AuthService {
     const refreshExpiry = new Date();
     refreshExpiry.setSeconds(refreshExpiry.getSeconds() + this.refreshTtlSeconds());
 
+    const csrfToken = randomBytes(32).toString('hex');
+
     // Denylist old access token + revoke old session + create new session atomically.
     const now = Math.floor(Date.now() / 1000);
     const ttl = Math.max((payload.exp ?? 0) - now, 0);
@@ -1110,6 +1137,7 @@ export class AuthService {
             familyId,
             ipAddress,
             expiresAt: refreshExpiry,
+            csrfToken,
           },
           tx,
         );
@@ -1133,6 +1161,6 @@ export class AuthService {
       metadata: { fromTenantId: payload.tenantId, toTenantId: targetTenantId },
     });
 
-    return { accessToken, refreshToken, expiresIn };
+    return { accessToken, refreshToken, expiresIn, csrfToken };
   }
 }

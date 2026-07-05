@@ -28,6 +28,7 @@ import { AuthTokenResponseDto, UserProfileResponseDto } from './dto/auth-respons
 import { CurrentUser } from './decorators/current-user.decorator';
 
 const REFRESH_COOKIE = 'refresh_token';
+const CSRF_COOKIE = 'csrf_token';
 
 const SESSION_TTL_SECONDS = 24 * 60 * 60;       // 24 h
 const REMEMBER_ME_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
@@ -75,6 +76,12 @@ export class AuthController {
     } as const;
   }
 
+  private buildCsrfCookieOptions(req: FastifyRequest, maxAge: number) {
+    const opts = this.buildRefreshCookieOptions(req, maxAge);
+    // csrf_token must be JS-readable (httpOnly: false) and accessible site-wide (path: /)
+    return { ...opts, httpOnly: false, path: '/' };
+  }
+
   // ── POST /auth/login ───────────────────────────────────────────────────────
 
   @Post('login')
@@ -98,6 +105,7 @@ export class AuthController {
       result.refreshToken,
       this.buildRefreshCookieOptions(req, cookieMaxAge),
     );
+    reply.setCookie(CSRF_COOKIE, result.csrfToken, this.buildCsrfCookieOptions(req, cookieMaxAge));
 
     return {
       accessToken: result.accessToken,
@@ -136,6 +144,11 @@ export class AuthController {
       result.refreshToken,
       this.buildRefreshCookieOptions(req, SESSION_TTL_SECONDS),
     );
+    reply.setCookie(
+      CSRF_COOKIE,
+      result.csrfToken,
+      this.buildCsrfCookieOptions(req, SESSION_TTL_SECONDS),
+    );
 
     return {
       accessToken: result.accessToken,
@@ -165,6 +178,11 @@ export class AuthController {
       REFRESH_COOKIE,
       result.refreshToken,
       this.buildRefreshCookieOptions(req, REMEMBER_ME_TTL_SECONDS),
+    );
+    reply.setCookie(
+      CSRF_COOKIE,
+      result.csrfToken,
+      this.buildCsrfCookieOptions(req, REMEMBER_ME_TTL_SECONDS),
     );
 
     return {
@@ -199,12 +217,19 @@ export class AuthController {
       throw new UnauthorizedException('AUTH_TOKEN_INVALID', 'Refresh token missing');
     }
 
-    const result = await this.authService.refresh(token, req.ip);
+    const csrfHeader = req.headers['x-csrf-token'] as string | undefined ?? null;
+
+    const result = await this.authService.refresh(token, csrfHeader, req.ip);
 
     reply.setCookie(
       REFRESH_COOKIE,
       result.refreshToken,
       this.buildRefreshCookieOptions(req, REMEMBER_ME_TTL_SECONDS),
+    );
+    reply.setCookie(
+      CSRF_COOKIE,
+      result.csrfToken,
+      this.buildCsrfCookieOptions(req, 30 * 24 * 60 * 60),
     );
 
     return { accessToken: result.accessToken, expiresIn: result.expiresIn };
@@ -237,6 +262,11 @@ export class AuthController {
       result.refreshToken,
       this.buildRefreshCookieOptions(req, REMEMBER_ME_TTL_SECONDS),
     );
+    reply.setCookie(
+      CSRF_COOKIE,
+      result.csrfToken,
+      this.buildCsrfCookieOptions(req, REMEMBER_ME_TTL_SECONDS),
+    );
 
     return { accessToken: result.accessToken, expiresIn: result.expiresIn };
   }
@@ -253,6 +283,7 @@ export class AuthController {
   ): Promise<void> {
     await this.authService.logout(user);
     reply.clearCookie(REFRESH_COOKIE, { path: COOKIE_BASE.path });
+    reply.clearCookie(CSRF_COOKIE, { path: '/' });
   }
 
   // ── GET /auth/me ───────────────────────────────────────────────────────────
@@ -346,6 +377,7 @@ export class AuthController {
   ): Promise<void> {
     await this.authService.logoutAll(user);
     reply.clearCookie(REFRESH_COOKIE, { path: COOKIE_BASE.path });
+    reply.clearCookie(CSRF_COOKIE, { path: '/' });
   }
 
   // ── POST /auth/forgot-password ─────────────────────────────────────────────

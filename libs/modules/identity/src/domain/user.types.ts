@@ -33,6 +33,8 @@ export interface AuthSession {
   createdAt: Date;
   /** SSO provider if session was created via SSO; null for password sessions. */
   ssoProvider: string | null;
+  /** CSRF token for double-submit cookie protection; null for pre-migration sessions. */
+  csrfToken: string | null;
 }
 
 export interface CreateSessionInput {
@@ -45,6 +47,8 @@ export interface CreateSessionInput {
   expiresAt: Date;
   /** Set to 'entra' for SSO sessions; omit for password sessions. */
   ssoProvider?: string;
+  /** CSRF token for double-submit cookie protection. Omit for pre-migration / signup sessions. */
+  csrfToken?: string;
 }
 
 export interface PasswordResetToken {
