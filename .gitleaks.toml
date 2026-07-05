@@ -12,4 +12,9 @@ paths = [
 # postgres/postgres is the standard docker-compose convention for ephemeral CI containers.
 regexes = [
   '''POSTGRES_PASSWORD:\s*postgres''',
+  # ACM certificate ARNs — contain AWS account ID but are infrastructure references, not credentials.
+  '''arn:aws:acm:[a-z0-9-]+:074487692297:certificate/[0-9a-f-]+''',
+  # Entra (Azure AD) OAuth identifiers — tenant ID and client ID are public in OAuth flows.
+  '''entra_tenant_id\s*=\s*"dc0f2078-ac28-4ff2-b21a-d4b28df32361"''',
+  '''entra_client_id\s*=\s*"45fabceb-e51c-446b-894e-af4c4b7f30f8"''',
 ]
