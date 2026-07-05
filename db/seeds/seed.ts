@@ -23,7 +23,7 @@ import * as argon2 from 'argon2';
 import { and, eq } from 'drizzle-orm';
 import * as schema from '../schema';
 // Direct imports to avoid barrel tsx/CJS resolution edge cases at runtime.
-import { projectCounters, projectMembers, workItems } from '../schema/work';
+import { projectCounters, projectMembers, workItems, iterations, releases, teams, teamMembers } from '../schema/work';
 import { userRoleAssignments } from '../schema/access';
 import { ssoConnections } from '../schema/identity';
 // Inlined from libs/modules/projects/src/domain/project.constants.ts
@@ -55,6 +55,29 @@ const VIEWER_ID = '00000000-0000-7000-8000-000000000021';
 const NXP_STORY_1_ID = '00000000-0000-7000-8000-000000000030';
 const NXP_STORY_2_ID = '00000000-0000-7000-8000-000000000031';
 const MOB_STORY_1_ID = '00000000-0000-7000-8000-000000000032';
+
+// ── Phase 2 fixed IDs ────────────────────────────────────────────────────────
+const TEAM_ALPHA_ID  = '00000000-0000-7000-8000-000000000040';
+const TEAM_BETA_ID   = '00000000-0000-7000-8000-000000000041';
+
+// NXP releases
+const NXP_RELEASE_1_ID = '00000000-0000-7000-8000-000000000050';
+const NXP_RELEASE_2_ID = '00000000-0000-7000-8000-000000000051';
+
+// NXP iterations (Sprint 26.1 = committed, Sprint 26.2 = planning, Sprint 25.4 = accepted)
+const NXP_ITER_PREV_ID    = '00000000-0000-7000-8000-000000000060'; // accepted
+const NXP_ITER_CURRENT_ID = '00000000-0000-7000-8000-000000000061'; // committed ← active
+const NXP_ITER_NEXT_ID    = '00000000-0000-7000-8000-000000000062'; // planning
+
+// MOB iterations
+const MOB_ITER_CURRENT_ID = '00000000-0000-7000-8000-000000000063'; // committed
+
+// Additional NXP work items with richer data
+const NXP_STORY_7_ID  = '00000000-0000-7000-8000-000000000070';
+const NXP_STORY_8_ID  = '00000000-0000-7000-8000-000000000071';
+const NXP_STORY_9_ID  = '00000000-0000-7000-8000-000000000072';
+const NXP_STORY_10_ID = '00000000-0000-7000-8000-000000000073';
+const NXP_DEFECT_11_ID = '00000000-0000-7000-8000-000000000074';
 
 // ── Seed data constants ───────────────────────────────────────────────────────
 // Format: { id, key, name, description }
@@ -369,6 +392,342 @@ async function seedWorkItems() {
   console.log('✅  Work items seeded');
 }
 
+// ── Phase 2: Teams ───────────────────────────────────────────────────────────
+async function seedTeams() {
+  await db.insert(teams).values([
+    {
+      id: TEAM_ALPHA_ID,
+      tenantId: SYSTEM_TENANT_ID,
+      workspaceId: WORKSPACE_ID,
+      name: 'Team Alpha',
+      key: 'ALPHA',
+      description: 'Core platform team — owns NX Platform and DevOps projects.',
+      leadId: ADMIN_USER_ID,
+      status: 'active',
+    },
+    {
+      id: TEAM_BETA_ID,
+      tenantId: SYSTEM_TENANT_ID,
+      workspaceId: WORKSPACE_ID,
+      name: 'Team Beta',
+      key: 'BETA',
+      description: 'Product team — owns Mobile App and Partner Portal.',
+      leadId: DEVELOPER_ID,
+      status: 'active',
+    },
+  ]).onConflictDoNothing();
+
+  // Team members
+  await db.insert(teamMembers).values([
+    { id: '00000000-0000-7000-8000-000000000080', tenantId: SYSTEM_TENANT_ID, teamId: TEAM_ALPHA_ID, userId: ADMIN_USER_ID, status: 'active' },
+    { id: '00000000-0000-7000-8000-000000000081', tenantId: SYSTEM_TENANT_ID, teamId: TEAM_ALPHA_ID, userId: DEVELOPER_ID, status: 'active' },
+    { id: '00000000-0000-7000-8000-000000000082', tenantId: SYSTEM_TENANT_ID, teamId: TEAM_BETA_ID, userId: DEVELOPER_ID, status: 'active' },
+    { id: '00000000-0000-7000-8000-000000000083', tenantId: SYSTEM_TENANT_ID, teamId: TEAM_BETA_ID, userId: VIEWER_ID, status: 'active' },
+  ]).onConflictDoNothing();
+
+  console.log('✅  Teams seeded');
+}
+
+// ── Phase 1+2: Releases ──────────────────────────────────────────────────────
+async function seedReleases() {
+  const nxpId = SEED_PROJECTS[0].id;
+  const mobId = SEED_PROJECTS[1].id;
+
+  await db.insert(releases).values([
+    // NXP releases
+    {
+      id: NXP_RELEASE_1_ID,
+      tenantId: SYSTEM_TENANT_ID,
+      projectId: nxpId,
+      name: 'v2.0 — NX Platform Upgrade',
+      description: 'Major upgrade to NX v21 + ESLint flat-config rollout.',
+      status: 'in_progress',
+      targetDate: '2026-07-31',
+    },
+    {
+      id: NXP_RELEASE_2_ID,
+      tenantId: SYSTEM_TENANT_ID,
+      projectId: nxpId,
+      name: 'v2.1 — Storybook & DX',
+      description: 'Storybook 8 integration and developer experience improvements.',
+      status: 'planned',
+      targetDate: '2026-08-31',
+    },
+    // MOB release
+    {
+      id: '00000000-0000-7000-8000-000000000052',
+      tenantId: SYSTEM_TENANT_ID,
+      projectId: mobId,
+      name: 'v1.5 — Auth & Accessibility',
+      description: 'Biometric auth, dark mode, and accessibility fixes.',
+      status: 'planned',
+      targetDate: '2026-08-15',
+    },
+  ]).onConflictDoNothing();
+
+  console.log('✅  Releases seeded');
+}
+
+// ── Phase 2: Iterations ──────────────────────────────────────────────────────
+async function seedIterations() {
+  const nxpId = SEED_PROJECTS[0].id;
+  const mobId = SEED_PROJECTS[1].id;
+
+  await db.insert(iterations).values([
+    // ── NXP iterations (3 sprints — past / current / next) ──────────────────
+    {
+      id: NXP_ITER_PREV_ID,
+      tenantId: SYSTEM_TENANT_ID,
+      projectId: nxpId,
+      teamId: TEAM_ALPHA_ID,
+      iterationKey: 'IT-1',
+      name: 'Sprint 25.4',
+      goal: 'Complete legacy migration phase 1 and stabilise CI pipeline.',
+      theme: 'Stability & Foundation',
+      state: 'accepted',
+      plannedVelocity: 20,
+      startDate: '2026-06-02',
+      endDate: '2026-06-13',
+    },
+    {
+      id: NXP_ITER_CURRENT_ID,
+      tenantId: SYSTEM_TENANT_ID,
+      projectId: nxpId,
+      teamId: TEAM_ALPHA_ID,
+      iterationKey: 'IT-2',
+      name: 'Sprint 26.1',
+      goal: 'Ship NX v21 upgrade and ESLint flat-config across all apps.',
+      theme: 'NX Platform Modernisation',
+      notes: 'Carry-over: NXP-5 validation task still in-progress from last sprint.',
+      state: 'committed',
+      plannedVelocity: 21,
+      startDate: '2026-06-16',
+      endDate: '2026-06-27',
+    },
+    {
+      id: NXP_ITER_NEXT_ID,
+      tenantId: SYSTEM_TENANT_ID,
+      projectId: nxpId,
+      teamId: TEAM_ALPHA_ID,
+      iterationKey: 'IT-3',
+      name: 'Sprint 26.2',
+      goal: 'Storybook 8 integration and shared component library documentation.',
+      theme: 'Developer Experience',
+      state: 'planning',
+      plannedVelocity: 18,
+      startDate: '2026-06-30',
+      endDate: '2026-07-11',
+    },
+    // ── MOB iteration (current sprint) ──────────────────────────────────────
+    {
+      id: MOB_ITER_CURRENT_ID,
+      tenantId: SYSTEM_TENANT_ID,
+      projectId: mobId,
+      teamId: TEAM_BETA_ID,
+      iterationKey: 'IT-1',
+      name: 'Sprint 26.1',
+      goal: 'Biometric auth + dark mode groundwork.',
+      state: 'committed',
+      plannedVelocity: 13,
+      startDate: '2026-06-16',
+      endDate: '2026-06-27',
+    },
+  ]).onConflictDoNothing();
+
+  console.log('✅  Iterations seeded');
+}
+
+// ── Phase 1+2: Extended NXP work items (with releases + iterations) ──────────
+async function seedExtendedWorkItems() {
+  const nxpId = SEED_PROJECTS[0].id;
+  const mobId = SEED_PROJECTS[1].id;
+
+  // Get NXP status IDs
+  const nxpStatuses = await db
+    .select({ id: schema.workflowStatuses.id, category: schema.workflowStatuses.category })
+    .from(schema.workflowStatuses)
+    .where(eq(schema.workflowStatuses.projectId, nxpId));
+
+  const nxpTodo = nxpStatuses.find((s) => s.category === 'to_do')?.id;
+  const nxpInProgress = nxpStatuses.find((s) => s.category === 'in_progress')?.id;
+  const nxpDone = nxpStatuses.find((s) => s.category === 'done')?.id;
+
+  const mobStatuses = await db
+    .select({ id: schema.workflowStatuses.id, category: schema.workflowStatuses.category })
+    .from(schema.workflowStatuses)
+    .where(eq(schema.workflowStatuses.projectId, mobId));
+
+  const mobTodo = mobStatuses.find((s) => s.category === 'to_do')?.id;
+  const mobInProgress = mobStatuses.find((s) => s.category === 'in_progress')?.id;
+
+  if (!nxpTodo || !nxpInProgress || !nxpDone) return;
+
+  // NXP items: assigned to current sprint + release, varied states
+  const nxpExtended = [
+    // Iteration-assigned stories (Sprint 26.1 — committed)
+    {
+      id: NXP_STORY_7_ID,
+      itemKey: 'NXP-7',
+      type: 'story' as const,
+      title: 'Migrate all apps to ESLint flat-config',
+      statusId: nxpInProgress,
+      scheduleState: 'in_progress' as const,
+      priority: 'high' as const,
+      storyPoints: 5,
+      assigneeId: ADMIN_USER_ID,
+      iterationId: NXP_ITER_CURRENT_ID,
+      releaseId: NXP_RELEASE_1_ID,
+    },
+    {
+      id: NXP_STORY_8_ID,
+      itemKey: 'NXP-8',
+      type: 'story' as const,
+      title: 'Enforce strict TypeScript settings across workspace',
+      statusId: nxpTodo,
+      scheduleState: 'defined' as const,
+      priority: 'normal' as const,
+      storyPoints: 3,
+      assigneeId: DEVELOPER_ID,
+      iterationId: NXP_ITER_CURRENT_ID,
+      releaseId: NXP_RELEASE_1_ID,
+    },
+    {
+      id: NXP_STORY_9_ID,
+      itemKey: 'NXP-9',
+      type: 'story' as const,
+      title: 'Add Storybook 8 to component library',
+      statusId: nxpTodo,
+      scheduleState: 'defined' as const,
+      priority: 'normal' as const,
+      storyPoints: 8,
+      assigneeId: DEVELOPER_ID,
+      iterationId: NXP_ITER_NEXT_ID,
+      releaseId: NXP_RELEASE_2_ID,
+    },
+    // Accepted item (from previous sprint)
+    {
+      id: NXP_STORY_10_ID,
+      itemKey: 'NXP-10',
+      type: 'story' as const,
+      title: 'Setup shared tsconfig base with path aliases',
+      statusId: nxpDone,
+      scheduleState: 'accepted' as const,
+      priority: 'high' as const,
+      storyPoints: 3,
+      assigneeId: ADMIN_USER_ID,
+      iterationId: NXP_ITER_PREV_ID,
+      releaseId: NXP_RELEASE_1_ID,
+    },
+    // Defect in current sprint
+    {
+      id: NXP_DEFECT_11_ID,
+      itemKey: 'NXP-11',
+      type: 'defect' as const,
+      title: 'ESLint rule conflicts between root and app-level configs',
+      statusId: nxpInProgress,
+      scheduleState: 'in_progress' as const,
+      priority: 'urgent' as const,
+      assigneeId: ADMIN_USER_ID,
+      iterationId: NXP_ITER_CURRENT_ID,
+    },
+    // Backlog items (no iteration)
+    {
+      id: uuidv7(),
+      itemKey: 'NXP-12',
+      type: 'story' as const,
+      title: 'Automate dependency graph visualisation in CI',
+      statusId: nxpTodo,
+      scheduleState: 'defined' as const,
+      priority: 'low' as const,
+      storyPoints: 5,
+      assigneeId: DEVELOPER_ID,
+    },
+    {
+      id: uuidv7(),
+      itemKey: 'NXP-13',
+      type: 'story' as const,
+      title: 'Integrate Chromatic for visual regression testing',
+      statusId: nxpTodo,
+      scheduleState: 'defined' as const,
+      priority: 'normal' as const,
+      storyPoints: 5,
+      releaseId: NXP_RELEASE_2_ID,
+    },
+  ];
+
+  for (const item of nxpExtended) {
+    await db.insert(workItems).values({
+      ...item,
+      tenantId: SYSTEM_TENANT_ID,
+      projectId: nxpId,
+      createdBy: ADMIN_USER_ID,
+      rank: item.itemKey,
+    }).onConflictDoNothing();
+  }
+
+  // Update counter
+  await db.update(projectCounters)
+    .set({ lastItemNumber: 13 })
+    .where(eq(projectCounters.projectId, nxpId));
+
+  // MOB extended items (with iteration)
+  if (mobTodo && mobInProgress) {
+    const mobExtended = [
+      {
+        id: uuidv7(),
+        itemKey: 'MOB-5',
+        type: 'story' as const,
+        title: 'Implement Face ID login flow (iOS)',
+        statusId: mobInProgress,
+        scheduleState: 'in_progress' as const,
+        priority: 'high' as const,
+        storyPoints: 5,
+        assigneeId: DEVELOPER_ID,
+        iterationId: MOB_ITER_CURRENT_ID,
+      },
+      {
+        id: uuidv7(),
+        itemKey: 'MOB-6',
+        type: 'story' as const,
+        title: 'Dark mode — apply theme tokens to navigation screens',
+        statusId: mobTodo,
+        scheduleState: 'defined' as const,
+        priority: 'normal' as const,
+        storyPoints: 3,
+        assigneeId: DEVELOPER_ID,
+        iterationId: MOB_ITER_CURRENT_ID,
+      },
+      {
+        id: uuidv7(),
+        itemKey: 'MOB-7',
+        type: 'defect' as const,
+        title: 'Push notifications not delivered on iOS 18.1 background state',
+        statusId: mobTodo,
+        scheduleState: 'defined' as const,
+        priority: 'high' as const,
+        assigneeId: ADMIN_USER_ID,
+        iterationId: MOB_ITER_CURRENT_ID,
+      },
+    ];
+
+    for (const item of mobExtended) {
+      await db.insert(workItems).values({
+        ...item,
+        tenantId: SYSTEM_TENANT_ID,
+        projectId: mobId,
+        createdBy: ADMIN_USER_ID,
+        rank: item.itemKey,
+      }).onConflictDoNothing();
+    }
+
+    await db.update(projectCounters)
+      .set({ lastItemNumber: 7 })
+      .where(eq(projectCounters.projectId, mobId));
+  }
+
+  console.log('✅  Extended work items seeded (with releases + iterations)');
+}
+
 /**
  * Run all seed operations against the given database URL.
  * Exported so db/migrate.ts can call it when SEED_ON_DEPLOY=true.
@@ -649,6 +1008,18 @@ export async function seed(connectionUrl?: string): Promise<void> {
     // ── Work items ────────────────────────────────────────────────────────────
     await seedWorkItems();
 
+    // ── Phase 2: Teams ───────────────────────────────────────────────────────
+    await seedTeams();
+
+    // ── Phase 1+2: Releases ──────────────────────────────────────────────────
+    await seedReleases();
+
+    // ── Phase 2: Iterations ──────────────────────────────────────────────────
+    await seedIterations();
+
+    // ── Phase 1+2: Extended work items (releases + iterations assigned) ───────
+    await seedExtendedWorkItems();
+
     // ── SSO connection (dev) ──────────────────────────────────────────────────
     // Maps the configured Entra directory (`ENTRA_TENANT_ID`) to the acme tenant
     // so federated login resolves through the proper per-tenant SSO registry
@@ -671,7 +1042,7 @@ export async function seed(connectionUrl?: string): Promise<void> {
       console.log(`   ↳ SSO connection seeded for Entra tid ${entraTid} → acme tenant`);
     }
 
-    console.log(`✅  Seed complete — ${SEED_PROJECTS.length} projects, 3 users, work items seeded`);
+    console.log(`✅  Seed complete — ${SEED_PROJECTS.length} projects, 3 users, 2 teams, 4 iterations, 3 releases, work items seeded`);
   } finally {
     await pool.end();
   }
