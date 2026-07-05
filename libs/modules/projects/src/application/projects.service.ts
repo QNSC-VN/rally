@@ -149,7 +149,7 @@ export class ProjectsService {
   }
 
   async getProject(tenantId: string, projectId: string): Promise<Project> {
-    const project = await this.projectRepo.findById(projectId);
+    const project = await this.projectRepo.findById(projectId, tenantId);
     if (!project || project.deletedAt || project.tenantId !== tenantId) {
       throw new NotFoundException('PROJECT_NOT_FOUND', 'Project not found');
     }
@@ -195,12 +195,12 @@ export class ProjectsService {
       }
     }
 
-    return this.projectRepo.update(projectId, input);
+    return this.projectRepo.update(projectId, input, actor.tenantId);
   }
 
   async deleteProject(tenantId: string, projectId: string): Promise<void> {
     await this.getProject(tenantId, projectId);
-    await this.projectRepo.softDelete(projectId);
+    await this.projectRepo.softDelete(projectId, tenantId);
     this.logger.log({ projectId }, 'Project soft-deleted');
   }
 
@@ -269,7 +269,7 @@ export class ProjectsService {
         'Cannot create work items in an archived project.',
       );
     }
-    const seq = await this.projectRepo.incrementCounter(projectId);
+    const seq = await this.projectRepo.incrementCounter(projectId, tenantId);
     return `${project.key}-${seq}`;
   }
 

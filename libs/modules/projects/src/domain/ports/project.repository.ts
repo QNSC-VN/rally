@@ -9,7 +9,7 @@ import type {
 export const PROJECT_REPOSITORY = Symbol('PROJECT_REPOSITORY');
 
 export interface IProjectRepository {
-  findById(id: string): Promise<Project | null>;
+  findById(id: string, tenantId: string): Promise<Project | null>;
   findByKey(tenantId: string, key: string): Promise<Project | null>;
   listByWorkspace(
     workspaceId: string,
@@ -22,8 +22,8 @@ export interface IProjectRepository {
     args: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<ProjectWithStats>>;
   create(input: CreateProjectInput, tx?: DbExecutor): Promise<Project>;
-  update(id: string, input: UpdateProjectInput): Promise<Project>;
-  softDelete(id: string): Promise<void>;
+  update(id: string, input: UpdateProjectInput, tenantId: string): Promise<Project>;
+  softDelete(id: string, tenantId: string): Promise<void>;
   initCounter(projectId: string, tenantId: string, tx?: DbExecutor): Promise<void>;
-  incrementCounter(projectId: string): Promise<number>;
+  incrementCounter(projectId: string, tenantId: string): Promise<number>;
 }

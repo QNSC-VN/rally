@@ -22,11 +22,11 @@ import { IWorkItemRepository, IterationScope } from '../../domain/ports/work-ite
 export class WorkItemDrizzleRepository implements IWorkItemRepository {
   constructor(@InjectDrizzle() private readonly db: DrizzleDB) {}
 
-  async findById(id: string): Promise<WorkItem | null> {
+  async findById(id: string, tenantId: string): Promise<WorkItem | null> {
     const rows = await this.db
       .select()
       .from(workItems)
-      .where(and(eq(workItems.id, id), isNull(workItems.deletedAt)))
+      .where(and(eq(workItems.id, id), eq(workItems.tenantId, tenantId), isNull(workItems.deletedAt)))
       .limit(1);
     return (rows[0] as WorkItem | undefined) ?? null;
   }
@@ -265,7 +265,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     return rows[0] as WorkItem;
   }
 
-  async update(id: string, input: UpdateWorkItemInput, executor?: DbExecutor): Promise<WorkItem> {
+  async update(id: string, input: UpdateWorkItemInput, tenantId: string, executor?: DbExecutor): Promise<WorkItem> {
     const exec = executor ?? this.db;
     const rows = await exec
       .update(workItems)
@@ -297,17 +297,17 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         ...(input.updatedBy !== undefined && { updatedBy: input.updatedBy }),
         updatedAt: new Date(),
       })
-      .where(eq(workItems.id, id))
+      .where(and(eq(workItems.id, id), eq(workItems.tenantId, tenantId)))
       .returning();
     return rows[0] as WorkItem;
   }
 
-  async softDelete(id: string, executor?: DbExecutor): Promise<void> {
+  async softDelete(id: string, tenantId: string, executor?: DbExecutor): Promise<void> {
     const exec = executor ?? this.db;
     await exec
       .update(workItems)
       .set({ deletedAt: new Date(), updatedAt: new Date() })
-      .where(eq(workItems.id, id));
+      .where(and(eq(workItems.id, id), eq(workItems.tenantId, tenantId)));
   }
 
   async reorderItems(
@@ -330,11 +330,11 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     );
   }
 
-  async addLabel(workItemId: string, labelId: string): Promise<void> {
+  async addLabel(workItemId: string, labelId: string, _tenantId: string): Promise<void> {
     await this.db.insert(workItemLabels).values({ workItemId, labelId }).onConflictDoNothing();
   }
 
-  async removeLabel(workItemId: string, labelId: string): Promise<void> {
+  async removeLabel(workItemId: string, labelId: string, _tenantId: string): Promise<void> {
     await this.db
       .delete(workItemLabels)
       .where(and(eq(workItemLabels.workItemId, workItemId), eq(workItemLabels.labelId, labelId)));

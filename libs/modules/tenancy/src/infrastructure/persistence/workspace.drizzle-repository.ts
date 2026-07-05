@@ -14,8 +14,8 @@ import { IWorkspaceRepository } from '../../domain/ports/workspace.repository';
 export class WorkspaceDrizzleRepository implements IWorkspaceRepository {
   constructor(@InjectDrizzle() private readonly db: DrizzleDB) {}
 
-  async findById(id: string): Promise<Workspace | null> {
-    const rows = await this.db.select().from(workspaces).where(eq(workspaces.id, id)).limit(1);
+  async findById(id: string, tenantId: string): Promise<Workspace | null> {
+    const rows = await this.db.select().from(workspaces).where(and(eq(workspaces.id, id), eq(workspaces.tenantId, tenantId))).limit(1);
     return (rows[0] as Workspace | undefined) ?? null;
   }
 
@@ -69,7 +69,7 @@ export class WorkspaceDrizzleRepository implements IWorkspaceRepository {
     return rows[0] as Workspace;
   }
 
-  async update(id: string, input: UpdateWorkspaceInput): Promise<Workspace> {
+  async update(id: string, input: UpdateWorkspaceInput, tenantId: string): Promise<Workspace> {
     const rows = await this.db
       .update(workspaces)
       .set({
@@ -79,15 +79,15 @@ export class WorkspaceDrizzleRepository implements IWorkspaceRepository {
         ...(input.settings !== undefined && { settings: input.settings }),
         updatedAt: new Date(),
       })
-      .where(eq(workspaces.id, id))
+      .where(and(eq(workspaces.id, id), eq(workspaces.tenantId, tenantId)))
       .returning();
     return rows[0] as Workspace;
   }
 
-  async softDelete(id: string): Promise<void> {
+  async softDelete(id: string, tenantId: string): Promise<void> {
     await this.db
       .update(workspaces)
       .set({ deletedAt: new Date(), updatedAt: new Date() })
-      .where(eq(workspaces.id, id));
+      .where(and(eq(workspaces.id, id), eq(workspaces.tenantId, tenantId)));
   }
 }

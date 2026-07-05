@@ -342,7 +342,7 @@ describe('WorkItemsService', () => {
 
       await service.deleteWorkItem('tenant-1', 'wi-1');
 
-      expect(workItemRepo.softDelete).toHaveBeenCalledWith('wi-1');
+      expect(workItemRepo.softDelete).toHaveBeenCalledWith('wi-1', 'tenant-1');
     });
 
     it('throws when work item not found', async () => {
@@ -370,6 +370,7 @@ describe('WorkItemsService', () => {
       expect(workItemRepo.update).toHaveBeenCalledWith(
         'wi-1',
         expect.objectContaining({ statusId: 'status-done', updatedBy: 'user-1' }),
+        'tenant-1',
         expect.anything(),
       );
       expect(result.statusId).toBe('status-done');
@@ -411,7 +412,7 @@ describe('WorkItemsService', () => {
 
     it('addLabelToWorkItem adds label', async () => {
       await service.addLabelToWorkItem('tenant-1', 'wi-1', 'l1');
-      expect(workItemRepo.addLabel).toHaveBeenCalledWith('wi-1', 'l1');
+      expect(workItemRepo.addLabel).toHaveBeenCalledWith('wi-1', 'l1', 'tenant-1');
     });
 
     it('addLabelToWorkItem validates label belongs to project (P1-15)', async () => {
@@ -425,7 +426,7 @@ describe('WorkItemsService', () => {
 
     it('removeLabelFromWorkItem removes label', async () => {
       await service.removeLabelFromWorkItem('tenant-1', 'wi-1', 'l1');
-      expect(workItemRepo.removeLabel).toHaveBeenCalledWith('wi-1', 'l1');
+      expect(workItemRepo.removeLabel).toHaveBeenCalledWith('wi-1', 'l1', 'tenant-1');
     });
   });
 

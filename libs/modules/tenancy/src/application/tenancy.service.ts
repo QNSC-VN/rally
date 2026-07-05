@@ -257,7 +257,7 @@ export class TenancyService {
   }
 
   async getWorkspace(tenantId: string, workspaceId: string): Promise<Workspace> {
-    const workspace = await this.workspaceRepo.findById(workspaceId);
+    const workspace = await this.workspaceRepo.findById(workspaceId, tenantId);
     if (!workspace || workspace.deletedAt || workspace.tenantId !== tenantId) {
       throw new NotFoundException('WORKSPACE_NOT_FOUND', 'Workspace not found');
     }
@@ -275,12 +275,12 @@ export class TenancyService {
       throw new PreconditionFailedException('VALIDATION_FAILED', 'Workspace name cannot be empty');
     }
 
-    return this.workspaceRepo.update(workspace.id, input);
+    return this.workspaceRepo.update(workspace.id, input, tenantId);
   }
 
   async deleteWorkspace(tenantId: string, workspaceId: string): Promise<void> {
     await this.getWorkspace(tenantId, workspaceId);
-    await this.workspaceRepo.softDelete(workspaceId);
+    await this.workspaceRepo.softDelete(workspaceId, tenantId);
     this.logger.log({ workspaceId }, 'Workspace soft-deleted');
   }
 

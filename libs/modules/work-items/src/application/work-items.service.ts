@@ -278,7 +278,7 @@ export class WorkItemsService {
   // ── Get ───────────────────────────────────────────────────────────────────
 
   async getWorkItem(tenantId: string, id: string): Promise<WorkItem> {
-    const item = await this.workItemRepo.findById(id);
+    const item = await this.workItemRepo.findById(id, tenantId);
     if (!item || item.deletedAt || item.tenantId !== tenantId) {
       throw new NotFoundException('WORK_ITEM_NOT_FOUND', 'Work item not found');
     }
@@ -354,7 +354,7 @@ export class WorkItemsService {
     const entries = diffWorkItem(item, input, isTask);
 
     return this.uow.run(async (tx) => {
-      const updated = await this.workItemRepo.update(id, { ...input, updatedBy: actor.sub }, tx);
+      const updated = await this.workItemRepo.update(id, { ...input, updatedBy: actor.sub }, actor.tenantId, tx);
 
       // Build all diff entries then flush in ONE multi-row INSERT — avoids N
       // sequential round-trips for edits that touch multiple fields at once.
@@ -373,7 +373,7 @@ export class WorkItemsService {
   @Span('work-items.delete')
   async deleteWorkItem(tenantId: string, id: string): Promise<void> {
     await this.getWorkItem(tenantId, id);
-    await this.workItemRepo.softDelete(id);
+    await this.workItemRepo.softDelete(id, tenantId);
     this.logger.log({ workItemId: id }, 'Work item soft-deleted');
   }
 
@@ -456,7 +456,7 @@ export class WorkItemsService {
     }
 
     return this.uow.run((tx) =>
-      this.workItemRepo.update(id, { rank: newRank, updatedBy: actor.sub }, tx),
+      this.workItemRepo.update(id, { rank: newRank, updatedBy: actor.sub }, actor.tenantId, tx),
     );
   }
 
@@ -665,12 +665,12 @@ export class WorkItemsService {
     const item = await this.getWorkItem(tenantId, id);
     // P1-15: label must belong to the same project as the work item
     await this.projectsService.assertLabelBelongsToProject(item.projectId, labelId);
-    await this.workItemRepo.addLabel(id, labelId);
+    await this.workItemRepo.addLabel(id, labelId, tenantId);
   }
 
   async removeLabelFromWorkItem(tenantId: string, id: string, labelId: string): Promise<void> {
     await this.getWorkItem(tenantId, id);
-    await this.workItemRepo.removeLabel(id, labelId);
+    await this.workItemRepo.removeLabel(id, labelId, tenantId);
   }
 
   // ── Time Logging ──────────────────────────────────────────────────────────

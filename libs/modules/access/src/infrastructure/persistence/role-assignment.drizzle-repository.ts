@@ -10,11 +10,11 @@ import { IRoleAssignmentRepository } from '../../domain/ports/role-assignment.re
 export class RoleAssignmentDrizzleRepository implements IRoleAssignmentRepository {
   constructor(@InjectDrizzle() private readonly db: DrizzleDB) {}
 
-  async findById(id: string): Promise<UserRoleAssignment | null> {
+  async findById(id: string, tenantId: string): Promise<UserRoleAssignment | null> {
     const rows = await this.db
       .select()
       .from(userRoleAssignments)
-      .where(eq(userRoleAssignments.id, id))
+      .where(and(eq(userRoleAssignments.id, id), eq(userRoleAssignments.tenantId, tenantId)))
       .limit(1);
     return (rows[0]) ?? null;
   }
@@ -24,11 +24,13 @@ export class RoleAssignmentDrizzleRepository implements IRoleAssignmentRepositor
     roleId: string,
     scopeType: ScopeType,
     scopeId: string | null,
+    tenantId: string,
   ): Promise<UserRoleAssignment | null> {
     const conditions = [
       eq(userRoleAssignments.userId, userId),
       eq(userRoleAssignments.roleId, roleId),
       eq(userRoleAssignments.scopeType, scopeType),
+      eq(userRoleAssignments.tenantId, tenantId),
     ];
 
     if (scopeId !== null) {

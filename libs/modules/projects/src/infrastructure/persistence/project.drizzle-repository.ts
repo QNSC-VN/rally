@@ -21,8 +21,8 @@ import { IProjectRepository } from '../../domain/ports/project.repository';
 export class ProjectDrizzleRepository implements IProjectRepository {
   constructor(@InjectDrizzle() private readonly db: DrizzleDB) {}
 
-  async findById(id: string): Promise<Project | null> {
-    const rows = await this.db.select().from(projects).where(eq(projects.id, id)).limit(1);
+  async findById(id: string, tenantId: string): Promise<Project | null> {
+    const rows = await this.db.select().from(projects).where(and(eq(projects.id, id), eq(projects.tenantId, tenantId))).limit(1);
     return (rows[0] as Project | undefined) ?? null;
   }
 
@@ -163,7 +163,7 @@ export class ProjectDrizzleRepository implements IProjectRepository {
     return rows[0] as Project;
   }
 
-  async update(id: string, input: UpdateProjectInput): Promise<Project> {
+  async update(id: string, input: UpdateProjectInput, tenantId: string): Promise<Project> {
     const rows = await this.db
       .update(projects)
       .set({
@@ -174,16 +174,16 @@ export class ProjectDrizzleRepository implements IProjectRepository {
         ...(input.settings !== undefined && { settings: input.settings }),
         updatedAt: new Date(),
       })
-      .where(eq(projects.id, id))
+      .where(and(eq(projects.id, id), eq(projects.tenantId, tenantId)))
       .returning();
     return rows[0] as Project;
   }
 
-  async softDelete(id: string): Promise<void> {
+  async softDelete(id: string, tenantId: string): Promise<void> {
     await this.db
       .update(projects)
       .set({ deletedAt: new Date(), updatedAt: new Date() })
-      .where(eq(projects.id, id));
+      .where(and(eq(projects.id, id), eq(projects.tenantId, tenantId)));
   }
 
   async initCounter(projectId: string, tenantId: string, tx?: DbExecutor): Promise<void> {
@@ -193,14 +193,14 @@ export class ProjectDrizzleRepository implements IProjectRepository {
       .onConflictDoNothing();
   }
 
-  async incrementCounter(projectId: string): Promise<number> {
+  async incrementCounter(projectId: string, tenantId: string): Promise<number> {
     const rows = await this.db
       .update(projectCounters)
       .set({
         lastItemNumber: sql`${projectCounters.lastItemNumber} + 1`,
         updatedAt: new Date(),
       })
-      .where(eq(projectCounters.projectId, projectId))
+      .where(and(eq(projectCounters.projectId, projectId), eq(projectCounters.tenantId, tenantId)))
       .returning({ lastItemNumber: projectCounters.lastItemNumber });
     return rows[0].lastItemNumber;
   }

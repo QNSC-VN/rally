@@ -243,7 +243,7 @@ describe('ProjectsService', () => {
 
       await service.deleteProject('tenant-1', 'proj-1');
 
-      expect(projectRepo.softDelete).toHaveBeenCalledWith('proj-1');
+      expect(projectRepo.softDelete).toHaveBeenCalledWith('proj-1', 'tenant-1');
     });
   });
 

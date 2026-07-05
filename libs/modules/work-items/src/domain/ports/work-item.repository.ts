@@ -16,7 +16,7 @@ export interface IterationScope {
 }
 
 export interface IWorkItemRepository {
-  findById(id: string): Promise<WorkItem | null>;
+  findById(id: string, tenantId: string): Promise<WorkItem | null>;
   /** Non-deleted work items for the given ids, scoped to a tenant. */
   findByIds(ids: string[], tenantId: string): Promise<WorkItem[]>;
   /** Project/team scope of an iteration (any tenant guard is applied by caller). */
@@ -57,14 +57,14 @@ export interface IWorkItemRepository {
   /** Server-side aggregated totals for a parent's tasks (totals row). */
   getTaskTotals(parentId: string, tenantId: string): Promise<TaskTotals>;
   create(input: CreateWorkItemInput, executor?: DbExecutor): Promise<WorkItem>;
-  update(id: string, input: UpdateWorkItemInput, executor?: DbExecutor): Promise<WorkItem>;
-  softDelete(id: string, executor?: DbExecutor): Promise<void>;
+  update(id: string, input: UpdateWorkItemInput, tenantId: string, executor?: DbExecutor): Promise<WorkItem>;
+  softDelete(id: string, tenantId: string, executor?: DbExecutor): Promise<void>;
   reorderItems(
     items: Array<{ id: string; rank: string }>,
     tenantId: string,
     executor?: DbExecutor,
   ): Promise<void>;
-  addLabel(workItemId: string, labelId: string): Promise<void>;
-  removeLabel(workItemId: string, labelId: string): Promise<void>;
+  addLabel(workItemId: string, labelId: string, tenantId: string): Promise<void>;
+  removeLabel(workItemId: string, labelId: string, tenantId: string): Promise<void>;
   listLabels(workItemId: string): Promise<Array<{ id: string; name: string; color: string }>>;
 }
