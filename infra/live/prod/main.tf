@@ -59,7 +59,7 @@ locals {
 
 # ── Networking ────────────────────────────────────────────────────────────────
 module "network" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/network?ref=network-v1.0.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/network?ref=network-v1.1.2"
 
   name   = local.name
   region = local.region
@@ -225,7 +225,7 @@ module "ecs_cluster" {
 
 # ── ECS Service — API ─────────────────────────────────────────────────────────
 module "api" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v1.0.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v1.1.0"
 
   service_name  = "api"
   cluster_name  = module.ecs_cluster.cluster_name
@@ -276,7 +276,7 @@ module "api" {
 
 # ── ECS Service — Worker ──────────────────────────────────────────────────────
 module "worker" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v1.0.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v1.1.0"
 
   service_name  = "worker"
   cluster_name  = module.ecs_cluster.cluster_name
@@ -333,7 +333,7 @@ module "waf" {
 # ── CDN (S3 + CloudFront) — rally-web SPA ─────────────────────────────────────
 # PriceClass_All in prod — full global PoP coverage for enterprise users.
 module "cdn" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/cdn?ref=cdn-v1.0.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/cdn?ref=cdn-v1.0.3"
 
   name         = "rally-web-prod"
   acm_cert_arn = var.web_acm_cert_arn
