@@ -20,7 +20,7 @@ import { Pool } from 'pg';
 import { pgOptions } from '../pg-ssl';
 import { uuidv7 } from 'uuidv7';
 import * as argon2 from 'argon2';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import * as schema from '../schema';
 // Direct imports to avoid barrel tsx/CJS resolution edge cases at runtime.
 import { projectCounters, projectMembers, workItems, iterations, releases, teams, teamMembers } from '../schema/work';
@@ -315,7 +315,7 @@ async function seedWorkItems() {
     }
     await db
       .update(projectCounters)
-      .set({ lastItemNumber: nxpItems.length })
+      .set({ lastItemNumber: sql`GREATEST(${projectCounters.lastItemNumber}, ${nxpItems.length})` })
       .where(eq(projectCounters.projectId, nxpId));
   }
 
@@ -385,7 +385,7 @@ async function seedWorkItems() {
     }
     await db
       .update(projectCounters)
-      .set({ lastItemNumber: mobItems.length })
+      .set({ lastItemNumber: sql`GREATEST(${projectCounters.lastItemNumber}, ${mobItems.length})` })
       .where(eq(projectCounters.projectId, mobId));
   }
 
@@ -665,9 +665,9 @@ async function seedExtendedWorkItems() {
     }).onConflictDoNothing();
   }
 
-  // Update counter
+  // Update counter — use GREATEST so re-running seed never regresses below existing keys
   await db.update(projectCounters)
-    .set({ lastItemNumber: 13 })
+    .set({ lastItemNumber: sql`GREATEST(${projectCounters.lastItemNumber}, 13)` })
     .where(eq(projectCounters.projectId, nxpId));
 
   // MOB extended items (with iteration)
@@ -721,7 +721,7 @@ async function seedExtendedWorkItems() {
     }
 
     await db.update(projectCounters)
-      .set({ lastItemNumber: 7 })
+      .set({ lastItemNumber: sql`GREATEST(${projectCounters.lastItemNumber}, 7)` })
       .where(eq(projectCounters.projectId, mobId));
   }
 
@@ -913,6 +913,7 @@ export async function seed(connectionUrl?: string): Promise<void> {
           'work_item:view',
           'iteration:view',
           'iteration:manage',
+          'release:manage',
         ],
       },
       {
@@ -930,6 +931,7 @@ export async function seed(connectionUrl?: string): Promise<void> {
           'work_item:view',
           'iteration:view',
           'iteration:manage',
+          'release:manage',
         ],
       },
       {
