@@ -9,7 +9,7 @@
  *  - resizable columns (persisted in localStorage)
  *  - "Create Work Item" modal
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   DndContext,
   PointerSensor,
@@ -229,12 +229,18 @@ export function BacklogPage() {
     cursor,
   })
 
-  const items = data?.data ?? []
+  const items = useMemo(() => data?.data ?? [], [data])
   const pageInfo = data?.pageInfo
 
   // ── Drag-and-drop (rank reorder within current page) ──────────────────────────
+  // Local copy for optimistic reordering. Re-sync (during render, not in an
+  // effect) whenever the server data reference changes.
   const [localItems, setLocalItems] = useState<WorkItem[]>(items)
-  useEffect(() => { setLocalItems(items) }, [items])
+  const [syncedItems, setSyncedItems] = useState(items)
+  if (syncedItems !== items) {
+    setSyncedItems(items)
+    setLocalItems(items)
+  }
 
   const rankMutation = useRankAnyWorkItem()
   const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
