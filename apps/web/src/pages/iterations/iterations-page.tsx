@@ -330,7 +330,8 @@ function CreateIterationModal({
   const { data: teams = [] } = useProjectTeams(projectId)
   const create = useCreateIteration()
   const [name, setName] = useState('')
-  const [teamId, setTeamId] = useState<string>('')
+  // Auto-fill from the Team selected in the workspace context (falls back to "No team")
+  const [teamId, setTeamId] = useState<string>(team ?? '')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [state, setState] = useState<IterationState>('planning')
@@ -377,7 +378,7 @@ function CreateIterationModal({
         </FormField>
         <FormField label="Team">
           <NativeSelect value={teamId} onChange={(e) => setTeamId(e.target.value)}>
-            <option value="">{team ? `Context: ${team}` : 'No team'}</option>
+            <option value="">No team</option>
             {teams.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.name}

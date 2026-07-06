@@ -11,6 +11,7 @@ import {
   Search,
   Settings,
   User,
+  Users,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageErrorBoundary } from '@/shared/ui/error-boundary'
@@ -19,6 +20,7 @@ import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { Avatar } from '@/shared/ui/avatar'
 import { useWorkspaces } from '@/features/workspaces/api'
 import { useProjects } from '@/features/projects/api'
+import { useProjectTeams } from '@/features/teams/api'
 import { useNotificationUnreadCount, useNotificationSse } from '@/features/notifications/api'
 import { cancelProactiveRefresh, getAccessToken } from '@/shared/api/http-client'
 import { apiClient } from '@/shared/api/http-client'
@@ -115,7 +117,7 @@ export function AppShell() {
     switchTenant,
     isSwitchingTenant,
   } = useAuthStore()
-  const { workspace, project, setWorkspace, setProject } = useAppContext()
+  const { workspace, project, team, setWorkspace, setProject, setTeam } = useAppContext()
   const navigate = useNavigate()
   const routerState = useRouterState()
   const currentPath = routerState.location.pathname
@@ -148,6 +150,13 @@ export function AppShell() {
   const { data: workspaces } = useWorkspaces()
   const { data: activeProjects = [] } = useProjects(workspace?.workspaceId)
   const navProjects = activeProjects.filter((p) => p.status === 'active')
+
+  // Teams for the selected project — powers the context Team selector (SHELL-FR-006)
+  const { data: projectTeams = [] } = useProjectTeams(project?.projectId)
+  const activeTeams = projectTeams.filter((t) => t.status === 'active')
+  const selectedTeamName = team
+    ? (activeTeams.find((t) => t.id === team)?.name ?? 'All Teams')
+    : 'All Teams'
   useEffect(() => {
     if (!workspaces || workspaces.length === 0) return
     const first = workspaces[0]
@@ -290,7 +299,7 @@ export function AppShell() {
                   className="max-w-44 truncate text-[9px]"
                   style={{ color: 'rgba(255,255,255,0.55)' }}
                 >
-                  {project ? `${project.projectKey} · All Teams` : 'No project selected'}
+                  {project ? `${project.projectKey} · ${selectedTeamName}` : 'No project selected'}
                 </div>
               </div>
               <ChevronDown size={10} className="opacity-60" />
@@ -385,6 +394,7 @@ export function AppShell() {
                     onClick={() => {
                       if (!project) return
                       setProject(null)
+                      setTeam(null)
                       closeAll()
                     }}
                     disabled={!project}
@@ -424,6 +434,7 @@ export function AppShell() {
                           key={p.id}
                           onClick={() => {
                             setProject({ projectId: p.id, projectKey: p.key, projectName: p.name })
+                            setTeam(null)
                             closeAll()
                           }}
                           className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left hover:bg-[#f4f6f9]"
@@ -448,6 +459,65 @@ export function AppShell() {
                           )}
                         </button>
                       ))}
+                      <div className="my-1.5" style={{ borderTop: '1px solid #e2e6eb' }} />
+                    </>
+                  )}
+                  {/* Team list — scoped to the selected project (SHELL-FR-006) */}
+                  {project && (
+                    <>
+                      <div
+                        className="mb-1 text-[9px] font-semibold tracking-widest uppercase"
+                        style={{ color: '#8c94a6' }}
+                      >
+                        Team
+                      </div>
+                      <button
+                        onClick={() => {
+                          setTeam(null)
+                          closeAll()
+                        }}
+                        className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left hover:bg-[#f4f6f9]"
+                        style={{
+                          color: !team ? '#1d3f73' : '#1a2234',
+                          fontWeight: !team ? 600 : 400,
+                        }}
+                      >
+                        <Users size={12} className="shrink-0" style={{ color: '#5c6478' }} />
+                        <span className="truncate text-[11px]">All Teams</span>
+                        {!team && (
+                          <Check size={10} className="ml-auto shrink-0" style={{ color: '#1d3f73' }} />
+                        )}
+                      </button>
+                      {activeTeams.map((t) => (
+                        <button
+                          key={t.id}
+                          onClick={() => {
+                            setTeam(t.id)
+                            closeAll()
+                          }}
+                          className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left hover:bg-[#f4f6f9]"
+                          style={{
+                            color: team === t.id ? '#1d3f73' : '#1a2234',
+                            fontWeight: team === t.id ? 600 : 400,
+                          }}
+                        >
+                          <span
+                            className="inline-flex h-4 w-8 shrink-0 items-center justify-center rounded-sm font-mono text-[9px] font-bold"
+                            style={{ backgroundColor: '#eef0f4', color: '#5c6478' }}
+                          >
+                            {t.key}
+                          </span>
+                          <span className="truncate text-[11px]">{t.name}</span>
+                          {team === t.id && (
+                            <Check size={10} className="ml-auto shrink-0" style={{ color: '#1d3f73' }} />
+                          )}
+                        </button>
+                      ))}
+                      {activeTeams.length === 0 && (
+                        <div className="px-1.5 py-1 text-[10px]" style={{ color: '#9aa3b2' }}>
+                          No teams in this project yet
+                        </div>
+                      )}
                       <div className="my-1.5" style={{ borderTop: '1px solid #e2e6eb' }} />
                     </>
                   )}

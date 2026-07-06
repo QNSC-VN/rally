@@ -9,6 +9,7 @@ import { Loader2 } from 'lucide-react'
 import { useCreateWorkItem, type WorkItem } from '@/features/work-items/api'
 import { useProjectTeams } from '@/features/teams/api'
 import { useProjectMembers } from '@/features/teams/api'
+import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { BRAND } from '@/shared/config/brand'
 import { WORK_ITEM_TYPE_CONFIG } from '@/entities/work-item/model/types'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
@@ -26,9 +27,11 @@ interface Props {
 }
 
 export function CreateWorkItemModal({ projectId, onClose, onCreated, onCreatedWithDetails }: Props) {
+  const { team } = useAppContext()
   const [type, setType] = useState<CreatableType>('story')
   const [title, setTitle] = useState('')
-  const [teamId, setTeamId] = useState('')
+  // Auto-fill from the Team selected in the workspace context (falls back to "No team")
+  const [teamId, setTeamId] = useState(team ?? '')
   const [assigneeId, setAssigneeId] = useState('')
   const [storyPoints, setStoryPoints] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -40,7 +43,9 @@ export function CreateWorkItemModal({ projectId, onClose, onCreated, onCreatedWi
 
   const titleRef = useRef<HTMLInputElement>(null)
   const submitRef = useRef(submit)
-  submitRef.current = submit
+  useEffect(() => {
+    submitRef.current = submit
+  })
   useEffect(() => { titleRef.current?.focus() }, [])
 
   async function submit(withDetails: boolean) {

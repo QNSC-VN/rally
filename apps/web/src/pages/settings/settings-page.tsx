@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -27,6 +27,7 @@ import {
   Pencil,
   ChevronRight,
   ArrowLeft,
+  Archive,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { BRAND } from '@/shared/config/brand'
@@ -883,14 +884,14 @@ function WorkspaceSettingsTab() {
   const [name, setName] = useState(current?.name ?? workspace?.workspaceName ?? '')
   const [description, setDescription] = useState(current?.description ?? '')
 
-  // Sync form once when workspace data first loads (current?.id becomes defined).
-  // Using the id as dep avoids resetting mid-edit on background refetches.
-  useEffect(() => {
-    if (!current) return
+  // Sync form once when workspace data first loads (current.id becomes defined).
+  // Tracking the id (not the object) avoids resetting mid-edit on background refetches.
+  const [syncedId, setSyncedId] = useState(current?.id)
+  if (current && current.id !== syncedId) {
+    setSyncedId(current.id)
     setName(current.name)
     setDescription(current.description ?? '')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current?.id])
+  }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
@@ -949,14 +950,14 @@ function ProjectSettingsTab() {
   const [description, setDescription] = useState(current?.description ?? '')
 
   // Sync form when project data loads or the active project switches.
-  // Using current?.id avoids resetting mid-edit on background refetches
+  // Tracking current.id avoids resetting mid-edit on background refetches
   // while still resetting correctly when the user picks a different project.
-  useEffect(() => {
-    if (!current) return
+  const [syncedId, setSyncedId] = useState(current?.id)
+  if (current && current.id !== syncedId) {
+    setSyncedId(current.id)
     setName(current.name)
     setDescription(current.description ?? '')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current?.id])
+  }
 
   if (!activeProject) {
     return (
@@ -970,7 +971,7 @@ function ProjectSettingsTab() {
     e.preventDefault()
     if (!activeProject || !name.trim()) return
     try {
-      await update.mutateAsync({ id: activeProject.projectId, input: { name: name.trim(), description: description.trim() || null } })
+      await update.mutateAsync({ id: activeProject.projectId, input: { name: name.trim(), description: description.trim() || undefined } })
       setProject({ projectId: activeProject.projectId, projectKey: activeProject.projectKey, projectName: name.trim() })
       toast.success('Project settings saved')
     } catch (err) {
@@ -1101,13 +1102,19 @@ function CreateTeamModal({
 function EditTeamModal({ team, onClose }: { team: Team; onClose: () => void }) {
   const [name, setName] = useState(team.name)
   const [description, setDescription] = useState(team.description ?? '')
+  const [leadId, setLeadId] = useState(team.leadId ?? '')
   const update = useUpdateTeam(team.id)
+  const { data: members = [] } = useTeamMembers(team.id)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!name.trim()) return
     try {
-      await update.mutateAsync({ name: name.trim(), description: description.trim() || null })
+      await update.mutateAsync({
+        name: name.trim(),
+        description: description.trim() || null,
+        leadId: leadId || null,
+      })
       toast.success('Team updated')
       onClose()
     } catch (err) {
@@ -1121,6 +1128,21 @@ function EditTeamModal({ team, onClose }: { team: Team; onClose: () => void }) {
         <ModalBody className="space-y-4">
           <FormField label="Team name" required>
             <Input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+          </FormField>
+          <FormField label="Team lead">
+            <select
+              value={leadId}
+              onChange={(e) => setLeadId(e.target.value)}
+              className="w-full rounded-md border px-3 py-2 text-[13px] outline-none focus:ring-2"
+              style={{ borderColor: BRAND.border, backgroundColor: BRAND.surface, color: BRAND.textPrimary }}
+            >
+              <option value="">— No lead —</option>
+              {members.map((m) => (
+                <option key={m.userId} value={m.userId}>
+                  {m.displayName ?? m.email ?? m.userId}
+                </option>
+              ))}
+            </select>
           </FormField>
           <FormField label="Description">
             <Textarea
@@ -1233,6 +1255,7 @@ function AddMemberModal({ teamId, onClose }: { teamId: string; onClose: () => vo
 function TeamDetail({ team, onBack }: { team: Team; onBack: () => void }) {
   const { data: members = [], isLoading } = useTeamMembers(team.id)
   const remove = useRemoveTeamMember(team.id)
+  const update = useUpdateTeam(team.id)
   const [showEdit, setShowEdit] = useState(false)
   const [showAddMember, setShowAddMember] = useState(false)
 
@@ -1242,6 +1265,19 @@ function TeamDetail({ team, onBack }: { team: Team; onBack: () => void }) {
       toast.success('Member removed')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to remove member')
+    }
+  }
+
+  async function handleToggleStatus() {
+    const next = team.status === 'active' ? 'archived' : 'active'
+    if (next === 'archived' && !window.confirm(`Archive team "${team.name}"? It will be hidden from active team lists.`)) {
+      return
+    }
+    try {
+      await update.mutateAsync({ status: next })
+      toast.success(next === 'archived' ? 'Team archived' : 'Team restored')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update team status')
     }
   }
 
@@ -1277,6 +1313,15 @@ function TeamDetail({ team, onBack }: { team: Team; onBack: () => void }) {
           style={{ color: BRAND.textSecondary, border: `1px solid ${BRAND.border}` }}
         >
           <Pencil size={12} /> Edit
+        </button>
+        <button
+          onClick={() => { void handleToggleStatus() }}
+          disabled={update.isPending}
+          className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-medium transition-colors hover:bg-gray-100 disabled:opacity-60"
+          style={{ color: BRAND.textSecondary, border: `1px solid ${BRAND.border}` }}
+        >
+          {update.isPending ? <Loader2 size={12} className="animate-spin" /> : <Archive size={12} />}
+          {team.status === 'active' ? 'Archive' : 'Restore'}
         </button>
       </div>
 
