@@ -5,8 +5,8 @@ on:
     branches: [main]
     paths:
       - "infra/live/**"
-      - "infra/modules/**"
-      - ".github/workflows/apply.yml"
+      - ".github/workflows/infra-apply.yml"
+  workflow_dispatch:
 
 permissions:
   id-token: write
