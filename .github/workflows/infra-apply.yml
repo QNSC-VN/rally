@@ -95,10 +95,10 @@ jobs:
         run: tofu apply -input=false -auto-approve
         env:
           TF_VAR_acm_cert_arn:       ${{ vars.ACM_CERT_ARN_DEVELOP }}
-          TF_VAR_web_acm_cert_arn:   ${{ vars.WEB_ACM_CERT_ARN_DEVELOP }}
           TF_VAR_entra_tenant_id:    ${{ vars.ENTRA_TENANT_ID }}
           TF_VAR_entra_client_id:    ${{ vars.ENTRA_CLIENT_ID }}
           TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TF_VAR_cloudflare_account_id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       # Mint a short-lived installation token from the RELEASE_BOT GitHub App
       # (same app release.yml uses) so we never need a long-lived user PAT.
@@ -133,8 +133,7 @@ jobs:
           set_var ECS_MIGRATOR_TASK_DEF "$(tofu output -raw ecs_migrator_task_def)"
           set_var ECS_MIGRATOR_SUBNET   "$(tofu output -json private_subnet_ids | jq -r 'join(",")')"
           set_var ECS_MIGRATOR_SG       "$(tofu output -raw sg_app_id)"
-          set_var CLOUDFRONT_ID         "$(tofu output -raw web_cloudfront_id)"
-          set_var S3_BUCKET             "$(tofu output -raw web_s3_bucket)"
+          set_var PAGES_PROJECT         "$(tofu output -raw web_pages_project)"
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Production — only on a v*.*.* tag push, AND requires manual approval via the

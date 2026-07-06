@@ -1,30 +1,26 @@
 # =============================================================================
-# Deploy — Build Vite bundle, sync to S3, invalidate CloudFront
+# Deploy — Build Vite bundle, deploy to Cloudflare Pages
 #
 # Triggers:
 #   develop → push to main (auto)
 #   prod    → push a semver tag  v*.*.*  (requires "production" environment
 #             approval in GitHub Settings → Environments → production)
 #
-# Authentication: GitHub OIDC → AWS IAM (no stored AWS keys).
+# Authentication: Cloudflare API token (Pages: Edit).
 #
 # Prerequisites (GitHub environments "develop" and "production"):
 #   Repository secrets:
-#     AWS_ACCOUNT_ID           12-digit, no hyphens
+#     CLOUDFLARE_API_TOKEN     token with Pages: Edit on the account
+#     CLOUDFLARE_ACCOUNT_ID    Cloudflare account ID
 #     SLACK_DEPLOY_WEBHOOK     Slack / Discord incoming webhook (optional)
 #
 #   Environment variables:
-#     AWS_REGION               e.g. ap-southeast-1
-#     S3_BUCKET                e.g. rally-web-develop
-#     CLOUDFRONT_ID            CloudFront distribution ID
-#     VITE_API_URL             e.g. https://api-dev.yourdomain.com
+#     PAGES_PROJECT            Cloudflare Pages project name (e.g. rally-develop-web)
+#     VITE_API_URL             e.g. https://rally-api-dev.qnsc.vn
 #     VITE_APP_ENV             development | production
 #     VITE_ENTRA_TENANT_ID     Azure AD tenant ID (or empty to disable SSO)
 #     VITE_ENTRA_CLIENT_ID     Azure AD client ID (or empty to disable SSO)
-#     APP_URL                  e.g. https://app-dev.yourdomain.com (for health)
-#
-#   Environment-scoped IAM roles (provisioned by rally-infra):
-#     rally-github-web-deploy-<env>   S3 sync + CloudFront invalidation
+#     APP_URL                  e.g. https://rally-dev.qnsc.vn (for health)
 # =============================================================================
 name: Deploy — Web
 
@@ -104,36 +100,20 @@ jobs:
           VITE_ENTRA_TENANT_ID:   ${{ vars.VITE_ENTRA_TENANT_ID }}
           VITE_ENTRA_CLIENT_ID:   ${{ vars.VITE_ENTRA_CLIENT_ID }}
 
-      # ── Configure AWS (OIDC) ──────────────────────────────────────────────
-      - name: Setup AWS OIDC
-        uses: QNSC-VN/qnsc-ci/actions/setup-aws-oidc@v1.5
+      # ── Deploy to Cloudflare Pages ────────────────────────────────────────
+      # Zero-egress static hosting with native SPA routing. wrangler uploads the
+      # pre-built dist as a Pages deployment; --branch main marks it production.
+      # Cloudflare handles immutable-asset caching + index.html revalidation and
+      # serves the custom domain (rally-dev.qnsc.vn) with managed TLS.
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
         with:
-          role-arn: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/rally-github-web-deploy-${{ env.ENVIRONMENT }}
-          region: ${{ vars.AWS_REGION }}
-
-      # ── Sync to S3 ────────────────────────────────────────────────────────
-      # Hashed assets get a 1-year immutable cache.
-      # index.html is never cached so users always load the latest entry point.
-      - name: Sync dist to S3
-        run: |
-          aws s3 sync apps/web/dist/ s3://${{ vars.S3_BUCKET }}/ \
-            --delete \
-            --exclude "index.html" \
-            --cache-control "public, max-age=31536000, immutable" \
-            --region "${{ vars.AWS_REGION }}"
-
-          aws s3 cp apps/web/dist/index.html s3://${{ vars.S3_BUCKET }}/index.html \
-            --cache-control "no-cache, no-store, must-revalidate" \
-            --content-type "text/html" \
-            --region "${{ vars.AWS_REGION }}"
-
-      # ── Invalidate CloudFront cache ───────────────────────────────────────
-      - name: Invalidate CloudFront cache
-        uses: QNSC-VN/qnsc-ci/actions/cloudfront-invalidate@v1.5
-        with:
-          distribution-id: ${{ vars.CLOUDFRONT_ID }}
-          region: us-east-1
-          wait: 'true'
+          apiToken:  ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: >-
+            pages deploy apps/web/dist
+            --project-name=${{ vars.PAGES_PROJECT }}
+            --branch=main
 
       # ── Health check — confirm the new version is serving ─────────────────
       - name: Post-deploy health check
@@ -153,8 +133,7 @@ jobs:
           echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
           echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
           echo "| **Asset tag** | \`$ASSET_TAG\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **S3 bucket** | \`${{ vars.S3_BUCKET }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **CloudFront** | \`${{ vars.CLOUDFRONT_ID }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Pages project** | \`${{ vars.PAGES_PROJECT }}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| **Actor** | ${{ github.actor }} |" >> "$GITHUB_STEP_SUMMARY"
 
       # ── Notify Slack / Discord (always — even on failure) ─────────────────
