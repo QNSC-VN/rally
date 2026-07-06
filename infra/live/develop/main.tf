@@ -55,8 +55,14 @@ locals {
   kms_key_arn        = data.terraform_remote_state.shared.outputs.kms_key_arn
   cloudflare_zone_id = try(data.terraform_remote_state.shared.outputs.cloudflare_zone_id, "")
 
+  # Cloudflare IPv4 ranges — single source of truth in qnsc-infra bootstrap
+  # (read via _shared remote state), so a CF range change is one edit there.
+  # The API subdomain is Cloudflare-proxied (orange), so the ALB only ever sees
+  # Cloudflare edge IPs — ingress is locked to these below.
+  cloudflare_ipv4 = data.terraform_remote_state.shared.outputs.cloudflare_ipv4
+
   # ECR URLs derived from current AWS account — no hardcoded placeholder
-  ecr_base       = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${local.region}.amazonaws.com"
+  ecr_base         = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${local.region}.amazonaws.com"
   ecr_api_url      = "${local.ecr_base}/rally-api:latest"
   ecr_worker_url   = "${local.ecr_base}/rally-worker:latest"
   ecr_migrator_url = "${local.ecr_base}/rally-migrator:latest"
@@ -77,9 +83,10 @@ module "network" {
   private_subnet_cidrs = ["10.10.10.0/24", "10.10.11.0/24", "10.10.12.0/24"]
   data_subnet_cidrs    = ["10.10.20.0/24", "10.10.21.0/24", "10.10.22.0/24"]
 
-  nat_type             = "instance" # dev: fck-nat t4g.nano ~$3/mo vs NAT GW ~$33/mo
-  app_port             = 3000
-  enable_flow_logs     = false # dev: no compliance requirement — save ~$4/mo
+  nat_type          = "instance" # dev: fck-nat t4g.nano ~$3/mo vs NAT GW ~$33/mo
+  app_port          = 3000
+  enable_flow_logs  = false                 # dev: no compliance requirement — save ~$4/mo
+  alb_ingress_cidrs = local.cloudflare_ipv4 # lock ALB to Cloudflare orange-cloud proxy IPs (matches prod)
 
   tags = { Environment = local.env }
 }
@@ -115,13 +122,13 @@ module "rds" {
   security_group_id = module.network.sg_rds_id
   kms_key_arn       = local.kms_key_arn
 
-  instance_class          = "db.t4g.micro"
-  allocated_storage_gb    = 20
+  instance_class           = "db.t4g.micro"
+  allocated_storage_gb     = 20
   max_allocated_storage_gb = 100
-  multi_az                = false
-  deletion_protection     = false   # disable in staging for easy teardown
-  backup_retention_days   = 3
-  monitoring_interval     = 0       # disable Enhanced Monitoring in develop (saves CloudWatch cost)
+  multi_az                 = false
+  deletion_protection      = false # disable in staging for easy teardown
+  backup_retention_days    = 3
+  monitoring_interval      = 0 # disable Enhanced Monitoring in develop (saves CloudWatch cost)
 
   tags = { Environment = local.env, AutoStop = "true" }
 }
@@ -179,27 +186,6 @@ module "alb" {
   tags = { Environment = local.env }
 }
 
-# ── ALB HTTP listener rule — CloudFront → API proxy (develop-specific) ───────
-# CloudFront uses http-only to the ALB (avoids TLS cert hostname mismatch on the
-# raw ELB DNS name). This rule forwards /v1/* on port 80 to the API target group;
-# the listener's default action still redirects all other HTTP traffic to HTTPS.
-# Prod attaches the API to the HTTPS listener directly, so this rule is dev-only.
-resource "aws_lb_listener_rule" "http_api_forward" {
-  listener_arn = module.alb.http_listener_arn
-  priority     = 1
-
-  action {
-    type             = "forward"
-    target_group_arn = module.api.target_group_arn
-  }
-
-  condition {
-    path_pattern {
-      values = ["/v1/*"]
-    }
-  }
-}
-
 # ── ECS Cluster ───────────────────────────────────────────────────────────────
 module "ecs_cluster" {
   source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-cluster?ref=ecs-cluster-v1.0.0"
@@ -211,11 +197,11 @@ module "ecs_cluster" {
 module "api" {
   source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v1.1.0"
 
-  service_name  = "api"
-  cluster_name  = module.ecs_cluster.cluster_name
-  cluster_arn   = module.ecs_cluster.cluster_arn
-  region        = local.region
-  image_uri     = local.ecr_api_url
+  service_name = "api"
+  cluster_name = module.ecs_cluster.cluster_name
+  cluster_arn  = module.ecs_cluster.cluster_arn
+  region       = local.region
+  image_uri    = local.ecr_api_url
 
   cpu    = 512
   memory = 1024
@@ -230,53 +216,53 @@ module "api" {
   use_spot           = true # Fargate Spot: saves ~70% on compute in dev
   log_retention_days = 7    # dev: 7 days sufficient for debugging
 
-  attach_alb       = true
-  alb_listener_arn = module.alb.https_listener_arn
-  alb_priority     = 100
+  attach_alb        = true
+  alb_listener_arn  = module.alb.https_listener_arn
+  alb_priority      = 100
   alb_path_patterns = ["/*"]
   health_check_path = "/v1/healthz"
 
   secret_arns = values(module.secrets.secret_arns)
   kms_key_arn = local.kms_key_arn
   secrets = [
-    { name = "DATABASE_URL",    secret_arn = module.secrets.secret_arns["db-url"] },
-    { name = "REDIS_URL",       secret_arn = module.secrets.secret_arns["redis-url"] },
+    { name = "DATABASE_URL", secret_arn = module.secrets.secret_arns["db-url"] },
+    { name = "REDIS_URL", secret_arn = module.secrets.secret_arns["redis-url"] },
     { name = "JWT_PRIVATE_KEY", secret_arn = module.secrets.secret_arns["jwt-private"] },
-    { name = "JWT_PUBLIC_KEY",  secret_arn = module.secrets.secret_arns["jwt-public"] },
-    { name = "CSRF_SECRET",     secret_arn = module.secrets.secret_arns["csrf-secret"] },
+    { name = "JWT_PUBLIC_KEY", secret_arn = module.secrets.secret_arns["jwt-public"] },
+    { name = "CSRF_SECRET", secret_arn = module.secrets.secret_arns["csrf-secret"] },
   ]
 
   environment_vars = [
-    { name = "NODE_ENV",               value = "production" },
-    { name = "PORT",                   value = "3000" },
-    { name = "AWS_REGION",             value = local.region },
-    { name = "CORS_ORIGINS",           value = "https://rally-dev.qnsc.vn,https://${module.cdn.cloudfront_domain}" },
-    { name = "APP_BASE_URL",           value = "https://rally-dev.qnsc.vn" },
+    { name = "NODE_ENV", value = "production" },
+    { name = "PORT", value = "3000" },
+    { name = "AWS_REGION", value = local.region },
+    { name = "CORS_ORIGINS", value = "https://rally-dev.qnsc.vn,https://${module.cdn.cloudfront_domain}" },
+    { name = "APP_BASE_URL", value = "https://rally-dev.qnsc.vn" },
     # JWT config — defaults match app .env.example; override if needed
-    { name = "JWT_ISSUER",             value = "rally-api" },
-    { name = "JWT_AUDIENCE",           value = "rally-web" },
-    { name = "JWT_ACCESS_EXPIRY",      value = "15m" },
-    { name = "JWT_REFRESH_EXPIRY",     value = "30d" },
+    { name = "JWT_ISSUER", value = "rally-api" },
+    { name = "JWT_AUDIENCE", value = "rally-web" },
+    { name = "JWT_ACCESS_EXPIRY", value = "15m" },
+    { name = "JWT_REFRESH_EXPIRY", value = "30d" },
     # Microsoft Entra SSO — set tenant/client IDs; leave empty to disable SSO
-    { name = "ENTRA_TENANT_ID",        value = var.entra_tenant_id },
-    { name = "ENTRA_CLIENT_ID",        value = var.entra_client_id },
+    { name = "ENTRA_TENANT_ID", value = var.entra_tenant_id },
+    { name = "ENTRA_CLIENT_ID", value = var.entra_client_id },
     # Comma-separated emails auto-granted workspace_admin on every SSO login
-    { name = "PLATFORM_ADMIN_EMAILS",  value = "nghiavt18@qnsc.vn,quangld@qnsc.vn,hieuvbm@qnsc.vn,anhntn@qnsc.vn" },
+    { name = "PLATFORM_ADMIN_EMAILS", value = "nghiavt18@qnsc.vn,quangld@qnsc.vn,hieuvbm@qnsc.vn,anhntn@qnsc.vn" },
     # Messaging — SQS queue URLs injected at deploy time from module outputs
-    { name = "SQS_NOTIFICATIONS_URL",  value = module.messaging.queue_urls["notifications"] },
-    { name = "SQS_AUDIT_URL",          value = module.messaging.queue_urls["audit"] },
-    { name = "SQS_REPORTING_URL",      value = module.messaging.queue_urls["reporting"] },
-    { name = "SQS_SEARCH_URL",         value = module.messaging.queue_urls["search"] },
-    { name = "SNS_TOPIC_ARN",          value = module.messaging.topic_arns["domain-events"] },
+    { name = "SQS_NOTIFICATIONS_URL", value = module.messaging.queue_urls["notifications"] },
+    { name = "SQS_AUDIT_URL", value = module.messaging.queue_urls["audit"] },
+    { name = "SQS_REPORTING_URL", value = module.messaging.queue_urls["reporting"] },
+    { name = "SQS_SEARCH_URL", value = module.messaging.queue_urls["search"] },
+    { name = "SNS_TOPIC_ARN", value = module.messaging.topic_arns["domain-events"] },
     # S3 attachments bucket
-    { name = "S3_ATTACHMENTS_BUCKET",  value = aws_s3_bucket.attachments.bucket },
+    { name = "S3_ATTACHMENTS_BUCKET", value = aws_s3_bucket.attachments.bucket },
     # Email — SES in production
-    { name = "EMAIL_PROVIDER",         value = "ses" },
+    { name = "EMAIL_PROVIDER", value = "ses" },
     # Observability
-    { name = "LOG_LEVEL",              value = "info" },
-    { name = "LOG_PRETTY",             value = "false" },
-    { name = "OTEL_ENABLED",           value = "false" },
-    { name = "OTEL_SERVICE_NAME",      value = "rally-api" },
+    { name = "LOG_LEVEL", value = "info" },
+    { name = "LOG_PRETTY", value = "false" },
+    { name = "OTEL_ENABLED", value = "false" },
+    { name = "OTEL_SERVICE_NAME", value = "rally-api" },
   ]
 
   sqs_queue_arns = values(module.messaging.queue_arns)
@@ -289,11 +275,11 @@ module "api" {
 module "worker" {
   source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v1.1.0"
 
-  service_name  = "worker"
-  cluster_name  = module.ecs_cluster.cluster_name
-  cluster_arn   = module.ecs_cluster.cluster_arn
-  region        = local.region
-  image_uri     = local.ecr_worker_url
+  service_name = "worker"
+  cluster_name = module.ecs_cluster.cluster_name
+  cluster_arn  = module.ecs_cluster.cluster_arn
+  region       = local.region
+  image_uri    = local.ecr_worker_url
 
   cpu    = 256
   memory = 512
@@ -317,28 +303,28 @@ module "worker" {
   secret_arns = values(module.secrets.secret_arns)
   kms_key_arn = local.kms_key_arn
   secrets = [
-    { name = "DATABASE_URL",    secret_arn = module.secrets.secret_arns["db-url"] },
-    { name = "REDIS_URL",       secret_arn = module.secrets.secret_arns["redis-url"] },
+    { name = "DATABASE_URL", secret_arn = module.secrets.secret_arns["db-url"] },
+    { name = "REDIS_URL", secret_arn = module.secrets.secret_arns["redis-url"] },
     { name = "JWT_PRIVATE_KEY", secret_arn = module.secrets.secret_arns["jwt-private"] },
-    { name = "JWT_PUBLIC_KEY",  secret_arn = module.secrets.secret_arns["jwt-public"] },
+    { name = "JWT_PUBLIC_KEY", secret_arn = module.secrets.secret_arns["jwt-public"] },
     # Shared schema requires CSRF_SECRET even though the worker never uses it as middleware
-    { name = "CSRF_SECRET",     secret_arn = module.secrets.secret_arns["csrf-secret"] },
+    { name = "CSRF_SECRET", secret_arn = module.secrets.secret_arns["csrf-secret"] },
   ]
 
   environment_vars = [
-    { name = "NODE_ENV",              value = "production" },
-    { name = "AWS_REGION",            value = local.region },
+    { name = "NODE_ENV", value = "production" },
+    { name = "AWS_REGION", value = local.region },
     { name = "SQS_NOTIFICATIONS_URL", value = module.messaging.queue_urls["notifications"] },
-    { name = "SQS_AUDIT_URL",         value = module.messaging.queue_urls["audit"] },
-    { name = "SQS_REPORTING_URL",     value = module.messaging.queue_urls["reporting"] },
-    { name = "SQS_SEARCH_URL",        value = module.messaging.queue_urls["search"] },
-    { name = "SNS_TOPIC_ARN",         value = module.messaging.topic_arns["domain-events"] },
+    { name = "SQS_AUDIT_URL", value = module.messaging.queue_urls["audit"] },
+    { name = "SQS_REPORTING_URL", value = module.messaging.queue_urls["reporting"] },
+    { name = "SQS_SEARCH_URL", value = module.messaging.queue_urls["search"] },
+    { name = "SNS_TOPIC_ARN", value = module.messaging.topic_arns["domain-events"] },
     { name = "S3_ATTACHMENTS_BUCKET", value = aws_s3_bucket.attachments.bucket },
-    { name = "EMAIL_PROVIDER",        value = "ses" },
-    { name = "LOG_LEVEL",             value = "info" },
-    { name = "LOG_PRETTY",            value = "false" },
-    { name = "OTEL_ENABLED",          value = "false" },
-    { name = "OTEL_SERVICE_NAME",     value = "rally-worker" },
+    { name = "EMAIL_PROVIDER", value = "ses" },
+    { name = "LOG_LEVEL", value = "info" },
+    { name = "LOG_PRETTY", value = "false" },
+    { name = "OTEL_ENABLED", value = "false" },
+    { name = "OTEL_SERVICE_NAME", value = "rally-worker" },
   ]
 
   sqs_queue_arns = values(module.messaging.queue_arns)
@@ -393,11 +379,11 @@ resource "aws_s3_bucket_cors_configuration" "attachments" {
 module "migrator" {
   source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/oneshot-task?ref=oneshot-task-v1.0.0"
 
-  name           = "${local.name}-migrator"
-  container_name = "migrator"
-  image          = local.ecr_migrator_url
-  cpu            = 512
-  memory         = 1024
+  name               = "${local.name}-migrator"
+  container_name     = "migrator"
+  image              = local.ecr_migrator_url
+  cpu                = 512
+  memory             = 1024
   execution_role_arn = module.api.execution_role_arn
   task_role_arn      = module.api.task_role_arn
   region             = local.region
@@ -425,7 +411,7 @@ module "waf" {
   source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/waf?ref=waf-v1.0.1"
 
   name                = local.name
-  enabled             = false   # WAF skipped in develop — saves $5+/month per WebACL; enabled in prod
+  enabled             = false # WAF skipped in develop — saves $5+/month per WebACL; enabled in prod
   alb_arn             = module.alb.arn
   rate_limit_per_5min = 1000
 
@@ -443,11 +429,11 @@ module "cdn" {
   name         = "rally-web-develop"
   aliases      = ["rally-dev.qnsc.vn"]
   acm_cert_arn = var.web_acm_cert_arn # *.qnsc.vn wildcard cert in us-east-1
-  price_class  = "PriceClass_100" # develop: US/EU PoPs only — cheaper than PriceClass_200
+  price_class  = "PriceClass_100"     # develop: US/EU PoPs only — cheaper than PriceClass_200
 
-  # Proxy /v1/* → ALB so the SPA uses relative API paths (no CORS, no mixed-content).
-  # The web build sets VITE_API_URL="" which makes all fetch() calls relative.
-  api_origin_domain_name = module.alb.dns_name
+  # CloudFront serves the SPA only. The API has its own edge — the SPA calls
+  # https://rally-api-dev.qnsc.vn directly (VITE_API_URL), which is Cloudflare-
+  # proxied → ALB. Same-site under qnsc.vn, so cookies + CORS work cleanly.
 
   # Dev: allow the web bucket to be destroyed with SPA build artifacts still in
   # it (they're ephemeral and re-deployable) so teardown is clean.
@@ -470,8 +456,27 @@ module "dns_web" {
   name    = "rally-dev"
   type    = "CNAME"
   content = module.cdn.cloudfront_domain
-  proxied = false
+  proxied = false # web SPA served by CloudFront directly — no double-CDN
   comment = "rally-develop web SPA → CloudFront (managed by rally-infra develop)"
+}
+
+# ── DNS — rally-api-dev.qnsc.vn → ALB (Cloudflare-proxied edge) ──────────────
+# The API's public edge. Cloudflare-proxied (orange cloud) so the ALB is never
+# directly reachable — WAF/DDoS/TLS terminate at Cloudflare, and the ALB SG is
+# locked to cloudflare_ipv4 above. Cloudflare→origin runs in Full (strict) SSL
+# mode; the ALB HTTPS listener serves the *.qnsc.vn cert, which matches the SNI
+# rally-api-dev.qnsc.vn. The api ECS service already attaches its /* forward
+# rule to that HTTPS listener (see module.api.alb_listener_arn).
+module "dns_api" {
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/dns-record?ref=dns-record-v1.0.0"
+
+  enabled = local.cloudflare_zone_id != ""
+  zone_id = local.cloudflare_zone_id
+  name    = "rally-api-dev"
+  type    = "CNAME"
+  content = module.alb.dns_name
+  proxied = true # orange cloud: shield the ALB, edge WAF/DDoS at Cloudflare
+  comment = "rally-develop API → ALB via Cloudflare proxy (managed by rally-infra develop)"
 }
 
 # ── Dev cost saver: stop RDS + scale ECS to 0 off-hours ───────────────────────
