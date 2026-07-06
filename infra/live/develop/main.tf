@@ -164,58 +164,28 @@ module "messaging" {
   tags = { Environment = local.env }
 }
 
-# ── ALB ───────────────────────────────────────────────────────────────────────
-resource "aws_lb" "this" {
+# ── ALB (shared module: LB + HTTPS/HTTP listener pair) ───────────────────────
+module "alb" {
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/alb?ref=alb-v1.0.0"
+
   name               = local.name
-  internal           = false
-  load_balancer_type = "application"
-  security_groups    = [module.network.sg_alb_id]
-  subnets            = module.network.public_subnet_ids
+  security_group_ids = [module.network.sg_alb_id]
+  subnet_ids         = module.network.public_subnet_ids
+  certificate_arn    = var.acm_cert_arn
 
-  enable_deletion_protection = false
-  drop_invalid_header_fields = true
+  enable_deletion_protection = false # dev: easy teardown
+  # no access_logs_bucket in dev
 
-  tags = { Name = local.name, Environment = local.env }
+  tags = { Environment = local.env }
 }
 
-resource "aws_lb_listener" "https" {
-  load_balancer_arn = aws_lb.this.arn
-  port              = 443
-  protocol          = "HTTPS"
-  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
-  certificate_arn   = var.acm_cert_arn
-
-  default_action {
-    type = "fixed-response"
-    fixed_response {
-      content_type = "text/plain"
-      message_body = "Not found"
-      status_code  = "404"
-    }
-  }
-}
-
-resource "aws_lb_listener" "http_redirect" {
-  load_balancer_arn = aws_lb.this.arn
-  port              = 80
-  protocol          = "HTTP"
-
-  default_action {
-    type = "redirect"
-    redirect {
-      port        = "443"
-      protocol    = "HTTPS"
-      status_code = "HTTP_301"
-    }
-  }
-}
-
-# ── ALB HTTP listener rule — CloudFront → API proxy ───────────────────────────
+# ── ALB HTTP listener rule — CloudFront → API proxy (develop-specific) ───────
 # CloudFront uses http-only to the ALB (avoids TLS cert hostname mismatch on the
 # raw ELB DNS name). This rule forwards /v1/* on port 80 to the API target group;
 # the listener's default action still redirects all other HTTP traffic to HTTPS.
+# Prod attaches the API to the HTTPS listener directly, so this rule is dev-only.
 resource "aws_lb_listener_rule" "http_api_forward" {
-  listener_arn = aws_lb_listener.http_redirect.arn
+  listener_arn = module.alb.http_listener_arn
   priority     = 1
 
   action {
@@ -261,7 +231,7 @@ module "api" {
   log_retention_days = 7    # dev: 7 days sufficient for debugging
 
   attach_alb       = true
-  alb_listener_arn = aws_lb_listener.https.arn
+  alb_listener_arn = module.alb.https_listener_arn
   alb_priority     = 100
   alb_path_patterns = ["/*"]
   health_check_path = "/v1/healthz"
@@ -417,54 +387,36 @@ resource "aws_s3_bucket_cors_configuration" "attachments" {
   }
 }
 
-# ── WAF ───────────────────────────────────────────────────────────────────────
-resource "aws_cloudwatch_log_group" "migrator" {
-  name              = "/ecs/${local.name}/migrator"
-  retention_in_days = 7 # dev: keep only 7 days (migrator is a one-shot task)
-  tags              = { Environment = local.env, Service = "migrator" }
-}
+# ── Migrator (one-shot, run manually or via CI) ───────────────────────────────
+# Runs `pnpm migration:run` then exits. Never scheduled as a service; deploy
+# pipelines trigger it with: aws ecs run-task ...
+module "migrator" {
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/oneshot-task?ref=oneshot-task-v1.0.0"
 
-# ── ECS Task Definition — Migrator (one-shot, run manually or via CI) ─────────
-# This task runs `pnpm migration:run` then exits. It is never scheduled as a
-# service; deploy pipelines trigger it with: aws ecs run-task ...
-resource "aws_ecs_task_definition" "migrator" {
-  family                   = "${local.name}-migrator"
-  requires_compatibilities = ["FARGATE"]
-  network_mode             = "awsvpc"
-  cpu                      = 512
-  memory                   = 1024
-  execution_role_arn       = module.api.execution_role_arn
-  task_role_arn            = module.api.task_role_arn
+  name           = "${local.name}-migrator"
+  container_name = "migrator"
+  image          = local.ecr_migrator_url
+  cpu            = 512
+  memory         = 1024
+  execution_role_arn = module.api.execution_role_arn
+  task_role_arn      = module.api.task_role_arn
+  region             = local.region
+  log_retention_days = 7 # dev: keep only 7 days (migrator is a one-shot task)
 
-  container_definitions = jsonencode([{
-    name      = "migrator"
-    image     = local.ecr_migrator_url
-    essential = true
+  environment = {
+    NODE_ENV       = "production"
+    AWS_REGION     = local.region
+    SEED_ON_DEPLOY = "true"
+    # Required by seed.ts to insert the SSO connection row that maps
+    # this Entra directory to the system tenant (acme).
+    # Without it, the ssoConnections insert is skipped and SSO login returns 401.
+    ENTRA_TENANT_ID = var.entra_tenant_id
+  }
 
-    environment = [
-      { name = "NODE_ENV",        value = "production" },
-      { name = "AWS_REGION",      value = local.region },
-      { name = "SEED_ON_DEPLOY",  value = "true" },
-      # Required by seed.ts to insert the SSO connection row that maps
-      # this Entra directory to the system tenant (acme).
-      # Without it, the ssoConnections insert is skipped and SSO login returns 401.
-      { name = "ENTRA_TENANT_ID", value = var.entra_tenant_id },
-    ]
-
-    secrets = [
-      # The migrator uses the same DATABASE_URL (rallyadmin has full DDL rights)
-      { name = "DATABASE_URL", valueFrom = module.secrets.secret_arns["db-url"] },
-    ]
-
-    logConfiguration = {
-      logDriver = "awslogs"
-      options = {
-        "awslogs-group"         = aws_cloudwatch_log_group.migrator.name
-        "awslogs-region"        = local.region
-        "awslogs-stream-prefix" = "migrator"
-      }
-    }
-  }])
+  secrets = {
+    # The migrator uses the same DATABASE_URL (rallyadmin has full DDL rights)
+    DATABASE_URL = module.secrets.secret_arns["db-url"]
+  }
 
   tags = { Environment = local.env, Service = "migrator" }
 }
@@ -474,7 +426,7 @@ module "waf" {
 
   name                = local.name
   enabled             = false   # WAF skipped in develop — saves $5+/month per WebACL; enabled in prod
-  alb_arn             = aws_lb.this.arn
+  alb_arn             = module.alb.arn
   rate_limit_per_5min = 1000
 
   tags = { Environment = local.env }
@@ -495,7 +447,7 @@ module "cdn" {
 
   # Proxy /v1/* → ALB so the SPA uses relative API paths (no CORS, no mixed-content).
   # The web build sets VITE_API_URL="" which makes all fetch() calls relative.
-  api_origin_domain_name = aws_lb.this.dns_name
+  api_origin_domain_name = module.alb.dns_name
 
   # Dev: allow the web bucket to be destroyed with SPA build artifacts still in
   # it (they're ephemeral and re-deployable) so teardown is clean.

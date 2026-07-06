@@ -55,14 +55,9 @@ locals {
   ecr_api_url    = "${local.ecr_base}/rally-api:latest"
   ecr_worker_url = "${local.ecr_base}/rally-worker:latest"
 
-  # Cloudflare IPv4 ranges — https://cloudflare.com/ips-v4 (update if Cloudflare publishes new ranges)
-  cloudflare_ipv4 = [
-    "173.245.48.0/20", "103.21.244.0/22", "103.22.200.0/22",
-    "103.31.4.0/22",   "141.101.64.0/18", "108.162.192.0/18",
-    "190.93.240.0/20", "188.114.96.0/20", "197.234.240.0/22",
-    "198.41.128.0/17", "162.158.0.0/15",  "104.16.0.0/13",
-    "104.24.0.0/14",   "172.64.0.0/13",   "131.0.72.0/22",
-  ]
+  # Cloudflare IPv4 ranges — single source of truth in qnsc-infra bootstrap
+  # (read via _shared remote state), so a CF range change is one edit there.
+  cloudflare_ipv4 = data.terraform_remote_state.shared.outputs.cloudflare_ipv4
 }
 
 # ── Networking ────────────────────────────────────────────────────────────────
@@ -174,54 +169,22 @@ module "alb_logs" {
   tags        = { Environment = local.env }
 }
 
-resource "aws_lb" "this" {
+# ── ALB (shared module: LB + HTTPS/HTTP listener pair) ───────────────────────
+# Prod: deletion protection on + access logs to the alb_logs bucket. The API
+# attaches to the HTTPS listener directly (see module.api below), so no
+# separate /v1/* HTTP-forward rule (that's a develop-only CloudFront quirk).
+module "alb" {
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/alb?ref=alb-v1.0.0"
+
   name               = local.name
-  internal           = false
-  load_balancer_type = "application"
-  security_groups    = [module.network.sg_alb_id]
-  subnets            = module.network.public_subnet_ids
+  security_group_ids = [module.network.sg_alb_id]
+  subnet_ids         = module.network.public_subnet_ids
+  certificate_arn    = var.acm_cert_arn
 
   enable_deletion_protection = true
-  drop_invalid_header_fields = true
+  access_logs_bucket         = module.alb_logs.bucket_id
 
-  access_logs {
-    bucket  = module.alb_logs.bucket_id
-    enabled = true
-  }
-
-  tags = { Name = local.name, Environment = local.env }
-}
-
-resource "aws_lb_listener" "https" {
-  load_balancer_arn = aws_lb.this.arn
-  port              = 443
-  protocol          = "HTTPS"
-  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
-  certificate_arn   = var.acm_cert_arn
-
-  default_action {
-    type = "fixed-response"
-    fixed_response {
-      content_type = "text/plain"
-      message_body = "Not found"
-      status_code  = "404"
-    }
-  }
-}
-
-resource "aws_lb_listener" "http_redirect" {
-  load_balancer_arn = aws_lb.this.arn
-  port              = 80
-  protocol          = "HTTP"
-
-  default_action {
-    type = "redirect"
-    redirect {
-      port        = "443"
-      protocol    = "HTTPS"
-      status_code = "HTTP_301"
-    }
-  }
+  tags = { Environment = local.env }
 }
 
 # ── ECS Cluster ───────────────────────────────────────────────────────────────
@@ -253,7 +216,7 @@ module "api" {
   max_count     = 10
 
   attach_alb       = true
-  alb_listener_arn = aws_lb_listener.https.arn
+  alb_listener_arn = module.alb.https_listener_arn
   alb_priority     = 100
   alb_path_patterns = ["/*"]
   health_check_path = "/v1/healthz"
@@ -332,7 +295,7 @@ module "waf" {
   source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/waf?ref=waf-v1.0.1"
 
   name                = local.name
-  alb_arn             = aws_lb.this.arn
+  alb_arn             = module.alb.arn
   rate_limit_per_5min = 3000
 
   tags = { Environment = local.env }

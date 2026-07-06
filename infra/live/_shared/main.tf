@@ -53,8 +53,12 @@ module "ecr" {
 }
 
 # ── GitHub OIDC ───────────────────────────────────────────────────────────────
+# Owns ALL rally deploy roles: API (per-env), ECR push, infra plan/apply, AND
+# the web (SPA) deploy roles (previously hand-rolled below — now the module's
+# web_deploy_environments input). Web bucket names keep "rally-web-*" naming
+# (unrelated to the monorepo — S3 names are free-form and already live).
 module "iam_oidc" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/iam-oidc?ref=iam-oidc-v1.1.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/iam-oidc?ref=iam-oidc-v1.2.0"
 
   product           = "rally"
   github_org        = local.github_org
@@ -76,20 +80,7 @@ module "iam_oidc" {
     }
   }
 
-  app_repo_names         = ["rally"] # monorepo: was rally-api
-  infra_repo_name        = "rally"     # monorepo: infra lives in rally/infra/
-  ecr_repository_pattern = "rally-*"
-  ecs_passrole_pattern   = "rally-*" # shared ecs-service names roles <cluster>-<service>-task
-  tags                   = { Layer = "shared" }
-}
-
-# ── GitHub OIDC — rally-web deploy roles ─────────────────────────────────────
-# Separate from the API roles: different permissions (S3+CF), same monorepo.
-# Roles are environment-scoped for least-privilege S3 bucket access.
-# Bucket names keep the "rally-web-*" naming (unrelated to the repo split
-# below) — S3 bucket names are free-form and these are already live.
-locals {
-  web_deploy_envs = {
+  web_deploy_environments = {
     develop = {
       allowed_subjects = [
         "repo:${local.github_org}/rally:ref:refs/heads/main",
@@ -103,72 +94,15 @@ locals {
         "repo:${local.github_org}/rally:ref:refs/tags/v*",
         "repo:${local.github_org}/rally:environment:production",
       ]
-      s3_bucket = "qnsc-rally-web-prod" # "rally-web-prod" is a globally-unique S3 bucket name already claimed by another AWS account
+      s3_bucket = "qnsc-rally-web-prod" # "rally-web-prod" is globally claimed by another AWS account
     }
   }
-}
 
-resource "aws_iam_role" "web_deploy" {
-  for_each = local.web_deploy_envs
-
-  name        = "rally-github-web-deploy-${each.key}"
-  description = "Assumed by GitHub Actions to deploy rally-web to ${each.key}"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect    = "Allow"
-        Principal = { Federated = data.terraform_remote_state.platform.outputs.oidc_provider_arn }
-        Action    = "sts:AssumeRoleWithWebIdentity"
-        Condition = {
-          StringEquals = {
-            "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-          }
-          StringLike = {
-            "token.actions.githubusercontent.com:sub" = each.value.allowed_subjects
-          }
-        }
-      }
-    ]
-  })
-
-  tags = { Layer = "shared", Environment = each.key }
-}
-
-resource "aws_iam_role_policy" "web_deploy" {
-  for_each = local.web_deploy_envs
-
-  name = "rally-web-deploy-${each.key}"
-  role = aws_iam_role.web_deploy[each.key].id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      # S3 — sync dist/ to the environment's web bucket
-      {
-        Sid    = "S3Sync"
-        Effect = "Allow"
-        Action = [
-          "s3:PutObject",
-          "s3:DeleteObject",
-          "s3:GetObject",
-          "s3:ListBucket",
-        ]
-        Resource = [
-          "arn:aws:s3:::${each.value.s3_bucket}",
-          "arn:aws:s3:::${each.value.s3_bucket}/*",
-        ]
-      },
-      # CloudFront — invalidate cache after deploy
-      {
-        Sid      = "CloudFrontInvalidate"
-        Effect   = "Allow"
-        Action   = ["cloudfront:CreateInvalidation", "cloudfront:GetInvalidation"]
-        Resource = "arn:aws:cloudfront::${data.aws_caller_identity.current.account_id}:distribution/*"
-      },
-    ]
-  })
+  app_repo_names         = ["rally"] # monorepo: was rally-api
+  infra_repo_name        = "rally"     # monorepo: infra lives in rally/infra/
+  ecr_repository_pattern = "rally-*"
+  ecs_passrole_pattern   = "rally-*" # shared ecs-service names roles <cluster>-<service>-task
+  tags                   = { Layer = "shared" }
 }
 
 # ── RDS dev-cost-saver guard — develop deploy role only ──────────────────────
