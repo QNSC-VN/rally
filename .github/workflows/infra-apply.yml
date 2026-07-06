@@ -1,8 +1,19 @@
 name: OpenTofu Apply
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Infra apply, gated the same way as the app deploys (backend-deploy.yml):
+#   push to main       → apply _shared + develop  (auto)
+#   push a v*.*.* tag  → apply _shared + prod      (prod also gated by the
+#                        "production" GitHub Environment's required reviewer)
+#
+# Prod infra can NOT be applied by a normal merge to main — it only happens on
+# a deliberate semver tag, so an accidental push can never touch production.
+# ─────────────────────────────────────────────────────────────────────────────
 on:
   push:
     branches: [main]
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
     paths:
       - "infra/live/**"
       - ".github/workflows/infra-apply.yml"
@@ -18,7 +29,7 @@ env:
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────────
-  # Shared (ECR + OIDC) — runs only when _shared/ or modules/ changed
+  # Shared (ECR + OIDC roles) — always applies first (both branch and tag runs).
   # ─────────────────────────────────────────────────────────────────────────────
   apply-shared:
     runs-on: ubuntu-latest
@@ -33,7 +44,6 @@ jobs:
           role-arn: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/rally-github-infra-apply
           aws-region: ${{ env.AWS_REGION }}
           tofu-version: ${{ env.TOFU_VERSION }}
-
 
       - name: Configure git for public modules
         run: git config --global url."https://github.com".insteadOf "https://github.com"
@@ -51,10 +61,11 @@ jobs:
         run: tofu apply -input=false -auto-approve
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Develop — auto-approve on every push to main
+  # Develop — only on a branch push to main (NOT on tag pushes).
   # ─────────────────────────────────────────────────────────────────────────────
   apply-develop:
     needs: apply-shared
+    if: github.ref_type == 'branch'
     runs-on: ubuntu-latest
     environment: develop   # no approval gate
     timeout-minutes: 45
@@ -67,7 +78,6 @@ jobs:
           role-arn: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/rally-github-infra-apply
           aws-region: ${{ env.AWS_REGION }}
           tofu-version: ${{ env.TOFU_VERSION }}
-
 
       - name: Configure git for public modules
         run: git config --global url."https://github.com".insteadOf "https://github.com"
@@ -88,14 +98,17 @@ jobs:
           TF_VAR_web_acm_cert_arn:   ${{ vars.WEB_ACM_CERT_ARN_DEVELOP }}
           TF_VAR_entra_tenant_id:    ${{ vars.ENTRA_TENANT_ID }}
           TF_VAR_entra_client_id:    ${{ vars.ENTRA_CLIENT_ID }}
+          TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Production — requires manual approval via GitHub Environment
+  # Production — only on a v*.*.* tag push, AND requires manual approval via the
+  # "production" GitHub Environment (configure a required reviewer there).
   # ─────────────────────────────────────────────────────────────────────────────
   apply-prod:
-    needs: apply-develop
+    needs: apply-shared
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
-    environment: production   # ← configure approval reviewers in GitHub Settings
+    environment: production
     timeout-minutes: 45
 
     steps:
@@ -106,7 +119,6 @@ jobs:
           role-arn: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/rally-github-infra-apply
           aws-region: ${{ env.AWS_REGION }}
           tofu-version: ${{ env.TOFU_VERSION }}
-
 
       - name: Configure git for public modules
         run: git config --global url."https://github.com".insteadOf "https://github.com"
@@ -127,3 +139,5 @@ jobs:
           TF_VAR_web_acm_cert_arn:   ${{ secrets.WEB_ACM_CERT_ARN_PROD }}
           TF_VAR_entra_tenant_id:    ${{ vars.ENTRA_TENANT_ID }}
           TF_VAR_entra_client_id:    ${{ vars.ENTRA_CLIENT_ID }}
+          TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TF_VAR_web_domain:           ${{ vars.RALLY_WEB_DOMAIN_PROD }}

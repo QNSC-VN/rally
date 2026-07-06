@@ -1,6 +1,7 @@
 terraform {
   required_providers {
-    aws = { source = "hashicorp/aws", version = "~> 5.0" }
+    aws        = { source = "hashicorp/aws", version = "~> 5.0" }
+    cloudflare = { source = "cloudflare/cloudflare", version = "~> 4.0" }
   }
 
   backend "s3" {
@@ -23,6 +24,14 @@ provider "aws" {
   }
 }
 
+# Cloudflare provider — reads CLOUDFLARE_API_TOKEN from the environment
+# (TF_VAR_cloudflare_api_token or the CLOUDFLARE_API_TOKEN env var). DNS
+# records below are only created when cloudflare_zone_id is set, so this
+# stack still applies cleanly before the token/zone are configured.
+provider "cloudflare" {
+  api_token = var.cloudflare_api_token != "" ? var.cloudflare_api_token : null
+}
+
 data "aws_caller_identity" "current" {}
 
 # ── Read shared layer outputs (ECR URLs, KMS ARN, artifacts bucket) ───────────
@@ -43,7 +52,8 @@ locals {
   region = "ap-southeast-1"
   azs    = ["ap-southeast-1a", "ap-southeast-1b", "ap-southeast-1c"]
 
-  kms_key_arn = data.terraform_remote_state.shared.outputs.kms_key_arn
+  kms_key_arn        = data.terraform_remote_state.shared.outputs.kms_key_arn
+  cloudflare_zone_id = try(data.terraform_remote_state.shared.outputs.cloudflare_zone_id, "")
 
   # ECR URLs derived from current AWS account — no hardcoded placeholder
   ecr_base       = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${local.region}.amazonaws.com"
@@ -80,6 +90,11 @@ module "secrets" {
   prefix      = "rally/${local.env}"
   kms_key_arn = local.kms_key_arn
 
+  # Dev: delete secrets immediately on teardown (no 7-day recovery window) so a
+  # destroy+redeploy cycle doesn't hit "secret scheduled for deletion" on the
+  # recreate. Prod keeps the default recovery window for safety.
+  recovery_window_days = 0
+
   secret_names = {
     "db-url"      = "PostgreSQL connection URL for the app"
     "jwt-private" = "Ed25519 private key (PEM, base64-encoded)"
@@ -93,7 +108,7 @@ module "secrets" {
 
 # ── RDS PostgreSQL 17 ─────────────────────────────────────────────────────────
 module "rds" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/rds?ref=rds-v1.0.1"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/rds?ref=rds-v1.1.0"
 
   identifier        = local.name
   subnet_ids        = module.network.data_subnet_ids
@@ -471,7 +486,7 @@ module "waf" {
 #   2. Pass its ARN as web_acm_cert_arn in your tfvars
 #   3. After apply: set S3_BUCKET + CLOUDFRONT_ID as GitHub env vars for rally-web
 module "cdn" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/cdn?ref=cdn-v1.0.3"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/cdn?ref=cdn-v1.1.0"
 
   name         = "rally-web-develop"
   aliases      = ["rally-dev.qnsc.vn"]
@@ -482,7 +497,29 @@ module "cdn" {
   # The web build sets VITE_API_URL="" which makes all fetch() calls relative.
   api_origin_domain_name = aws_lb.this.dns_name
 
+  # Dev: allow the web bucket to be destroyed with SPA build artifacts still in
+  # it (they're ephemeral and re-deployable) so teardown is clean.
+  force_destroy = true
+
   tags = { Environment = local.env, Service = "web" }
+}
+
+# ── DNS — rally-dev.qnsc.vn → CloudFront (shared dns-record module) ──────────
+# Zone ID comes from qnsc-infra bootstrap (via _shared remote state), the same
+# single-source-of-truth pattern as kms_key_arn. Only the subdomain is
+# rally-specific. Created only when the zone ID is present, so the stack applies
+# cleanly before DNS is wired. Terraform owns the record lifecycle → teardown
+# removes it → no stale CNAME to collide with the CloudFront alias on rebuild.
+module "dns_web" {
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/dns-record?ref=dns-record-v1.0.0"
+
+  enabled = local.cloudflare_zone_id != ""
+  zone_id = local.cloudflare_zone_id
+  name    = "rally-dev"
+  type    = "CNAME"
+  content = module.cdn.cloudfront_domain
+  proxied = false
+  comment = "rally-develop web SPA → CloudFront (managed by rally-infra develop)"
 }
 
 # ── Dev cost saver: stop RDS + scale ECS to 0 off-hours ───────────────────────

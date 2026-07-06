@@ -44,7 +44,7 @@ data "terraform_remote_state" "platform" {
 
 # ── ECR Repositories ──────────────────────────────────────────────────────────
 module "ecr" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecr?ref=ecr-v1.0.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecr?ref=ecr-v1.1.0"
 
   repository_names     = ["rally-api", "rally-worker", "rally-migrator"]
   image_tag_mutability = "MUTABLE" # allows re-tagging :latest

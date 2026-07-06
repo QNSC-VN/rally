@@ -1,6 +1,7 @@
 terraform {
   required_providers {
-    aws = { source = "hashicorp/aws", version = "~> 5.0" }
+    aws        = { source = "hashicorp/aws", version = "~> 5.0" }
+    cloudflare = { source = "cloudflare/cloudflare", version = "~> 4.0" }
   }
 
   backend "s3" {
@@ -23,6 +24,12 @@ provider "aws" {
   }
 }
 
+# Cloudflare provider — see develop stack for rationale. DNS record created
+# only when cloudflare_zone_id is set, so this stack applies before DNS wiring.
+provider "cloudflare" {
+  api_token = var.cloudflare_api_token != "" ? var.cloudflare_api_token : null
+}
+
 data "aws_caller_identity" "current" {}
 
 # ── Read shared layer outputs (ECR URLs, KMS ARN, artifacts bucket) ─────────────
@@ -41,7 +48,8 @@ locals {
   region = "ap-southeast-1"
   azs    = ["ap-southeast-1a", "ap-southeast-1b", "ap-southeast-1c"]
 
-  kms_key_arn = data.terraform_remote_state.shared.outputs.kms_key_arn
+  kms_key_arn        = data.terraform_remote_state.shared.outputs.kms_key_arn
+  cloudflare_zone_id = try(data.terraform_remote_state.shared.outputs.cloudflare_zone_id, "")
 
   ecr_base       = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${local.region}.amazonaws.com"
   ecr_api_url    = "${local.ecr_base}/rally-api:latest"
@@ -99,7 +107,7 @@ module "secrets" {
 
 # ── RDS PostgreSQL 17 (Multi-AZ) ─────────────────────────────────────────────
 module "rds" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/rds?ref=rds-v1.0.1"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/rds?ref=rds-v1.1.0"
 
   identifier        = local.name
   subnet_ids        = module.network.data_subnet_ids
@@ -332,13 +340,31 @@ module "waf" {
 
 # ── CDN (S3 + CloudFront) — rally-web SPA ─────────────────────────────────────
 # PriceClass_All in prod — full global PoP coverage for enterprise users.
+# The custom domain (web_domain, e.g. "rally.qnsc.vn") is only wired when set —
+# prod's public hostname is a product decision, so it stays off until chosen.
 module "cdn" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/cdn?ref=cdn-v1.0.3"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/cdn?ref=cdn-v1.1.0"
 
   name         = "qnsc-rally-web-prod" # "rally-web-prod" is a globally-unique S3 bucket name already claimed by another AWS account
   acm_cert_arn = var.web_acm_cert_arn
-  aliases      = []   # set to ["app.rally.example.com"] once DNS is configured
+  aliases      = var.web_domain != "" ? [var.web_domain] : []
   price_class  = "PriceClass_All"
 
   tags = { Environment = local.env, Service = "web" }
+}
+
+# ── DNS — <web_domain> → CloudFront (shared dns-record module) ──────────────
+# Zone ID from qnsc-infra bootstrap (via _shared remote state). Created only
+# when BOTH the zone ID is present AND web_domain is set — prod's public
+# hostname isn't decided yet, so this stays off until web_domain is set.
+module "dns_web" {
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/dns-record?ref=dns-record-v1.0.0"
+
+  enabled = local.cloudflare_zone_id != "" && var.web_domain != ""
+  zone_id = local.cloudflare_zone_id
+  name    = var.web_domain
+  type    = "CNAME"
+  content = module.cdn.cloudfront_domain
+  proxied = false
+  comment = "rally-prod web SPA → CloudFront (managed by rally-infra prod)"
 }

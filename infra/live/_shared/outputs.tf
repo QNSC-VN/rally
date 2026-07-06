@@ -15,3 +15,7 @@ output "artifacts_bucket_name" {
   value       = data.terraform_remote_state.platform.outputs.artifacts_bucket_name
   description = "Shared artifacts bucket from qnsc-infra — use in publish-openapi-spec CI"
 }
+output "cloudflare_zone_id" {
+  value       = try(data.terraform_remote_state.platform.outputs.cloudflare_zone_id, "")
+  description = "Cloudflare Zone ID for qnsc.vn from qnsc-infra — env stacks pass to the dns-record module"
+}
