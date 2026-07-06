@@ -482,7 +482,7 @@ module "dns_api" {
 # ── Dev cost saver: stop RDS + scale ECS to 0 off-hours ───────────────────────
 # Acts on resources tagged AutoStop=true (rds, api, worker above).
 module "dev_scheduler" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/dev-scheduler?ref=dev-scheduler-v1.0.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/dev-scheduler?ref=dev-scheduler-v1.1.0"
   name   = local.name
   tags   = { Environment = local.env }
 }

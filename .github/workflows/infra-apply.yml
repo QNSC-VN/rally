@@ -69,6 +69,11 @@ jobs:
     runs-on: ubuntu-latest
     environment: develop   # no approval gate
     timeout-minutes: 45
+    env:
+      # Optional PAT (classic "repo" scope, or fine-grained with Variables:write
+      # on this repo) used only to sync infra IDs into the develop environment
+      # variables below. If unset, that step is skipped and vars stay manual.
+      GH_VARS_TOKEN: ${{ secrets.GH_VARS_TOKEN }}
 
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0   # v7.0.0
@@ -99,6 +104,28 @@ jobs:
           TF_VAR_entra_tenant_id:    ${{ vars.ENTRA_TENANT_ID }}
           TF_VAR_entra_client_id:    ${{ vars.ENTRA_CLIENT_ID }}
           TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      # Sync the infra IDs the deploy workflows read (backend-deploy.yml,
+      # web-deploy.yml) straight from Terraform outputs, so a rebuild that
+      # changes subnet/SG/CloudFront IDs can never leave the vars stale.
+      # Skipped automatically when GH_VARS_TOKEN isn't configured.
+      - name: Publish infra IDs to develop environment variables
+        if: ${{ env.GH_VARS_TOKEN != '' }}
+        working-directory: infra/live/develop
+        env:
+          GH_TOKEN: ${{ env.GH_VARS_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          set_var() { echo "  set ${1}"; gh variable set "$1" --env develop --repo "$REPO" --body "$2"; }
+          set_var ECS_CLUSTER           "$(tofu output -raw ecs_cluster_name)"
+          set_var ECS_API_SERVICE       "$(tofu output -raw ecs_api_service)"
+          set_var ECS_WORKER_SERVICE    "$(tofu output -raw ecs_worker_service)"
+          set_var ECS_MIGRATOR_TASK_DEF "$(tofu output -raw ecs_migrator_task_def)"
+          set_var ECS_MIGRATOR_SUBNET   "$(tofu output -json private_subnet_ids | jq -r 'join(",")')"
+          set_var ECS_MIGRATOR_SG       "$(tofu output -raw sg_app_id)"
+          set_var CLOUDFRONT_ID         "$(tofu output -raw web_cloudfront_id)"
+          set_var S3_BUCKET             "$(tofu output -raw web_s3_bucket)"
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Production — only on a v*.*.* tag push, AND requires manual approval via the
