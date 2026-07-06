@@ -87,7 +87,7 @@ export function useDeleteRelease(projectId: string) {
       if (error) throw new Error(apiErrorMessage(error, response.status))
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: releaseKeys.list(projectId) })
+      void qc.invalidateQueries({ queryKey: releaseKeys.all })
     },
   })
 }
@@ -103,8 +103,8 @@ export function useShipRelease(projectId: string) {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as Release
     },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: releaseKeys.list(projectId) })
+    onSuccess: (release) => {
+      void qc.invalidateQueries({ queryKey: releaseKeys.list(release.projectId) })
     },
   })
 }

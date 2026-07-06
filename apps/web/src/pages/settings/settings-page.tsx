@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -883,13 +883,14 @@ function WorkspaceSettingsTab() {
   const [name, setName] = useState(current?.name ?? workspace?.workspaceName ?? '')
   const [description, setDescription] = useState(current?.description ?? '')
 
-  // Sync form when workspace data loads
-  const [synced, setSynced] = useState(false)
-  if (current && !synced) {
+  // Sync form once when workspace data first loads (current?.id becomes defined).
+  // Using the id as dep avoids resetting mid-edit on background refetches.
+  useEffect(() => {
+    if (!current) return
     setName(current.name)
     setDescription(current.description ?? '')
-    setSynced(true)
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current?.id])
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
@@ -947,12 +948,15 @@ function ProjectSettingsTab() {
   const [name, setName] = useState(current?.name ?? activeProject?.projectName ?? '')
   const [description, setDescription] = useState(current?.description ?? '')
 
-  const [synced, setSynced] = useState(false)
-  if (current && !synced) {
+  // Sync form when project data loads or the active project switches.
+  // Using current?.id avoids resetting mid-edit on background refetches
+  // while still resetting correctly when the user picks a different project.
+  useEffect(() => {
+    if (!current) return
     setName(current.name)
     setDescription(current.description ?? '')
-    setSynced(true)
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current?.id])
 
   if (!activeProject) {
     return (
