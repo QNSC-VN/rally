@@ -6,7 +6,7 @@
  * Task:         2 tabs — Details | Revision History
  * Sidebar differs by type (task shows time fields + Work Product link).
  */
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { useParams, useNavigate, Link } from '@tanstack/react-router'
 import {
   Bell,
@@ -18,8 +18,10 @@ import {
   PanelRightClose,
   PanelRightOpen,
   Plus,
+  Trash2,
   Users,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import {
   useTasks,
   useTaskTotals,
@@ -28,6 +30,7 @@ import {
   useWorkItem,
   useWatchers,
   useToggleWatch,
+  useDeleteWorkItem,
   type WorkItem,
 } from '@/features/work-items/api'
 import { useReleases } from '@/features/releases/api'
@@ -687,6 +690,8 @@ export function WorkItemDetailPage() {
   const { itemKey } = useParams({ from: '/auth/item/$itemKey' })
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<DetailTab>('details')
+  const [moreOpen, setMoreOpen] = useState(false)
+  const moreRef = useRef<HTMLDivElement>(null)
 
   // P1-10: sidebar collapse — persisted in localStorage so preference survives navigation
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
@@ -711,6 +716,7 @@ export function WorkItemDetailPage() {
   const { data: itemByKey, isLoading: loadingKey } = useWorkItemByKey(itemKey)
 
   const updateMutation = useUpdateWorkItem(itemByKey?.id ?? '')
+  const deleteMutation = useDeleteWorkItem()
   const { status: saveStatus, errorMsg: saveErrorMsg, wrap: wrapSave } = useSaveState()
 
   // P1-11: work item is read-only when the user lacks work_item:edit permission.
@@ -732,6 +738,30 @@ export function WorkItemDetailPage() {
     },
     [itemByKey, updateMutation, wrapSave],
   )
+
+  useEffect(() => {
+    if (!moreOpen) return
+    function onClickOutside(e: MouseEvent) {
+      if (moreRef.current && !moreRef.current.contains(e.target as Node)) {
+        setMoreOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [moreOpen])
+
+  async function handleDelete() {
+    if (!itemByKey) return
+    if (!confirm(`Delete ${itemByKey.itemKey}? This cannot be undone.`)) return
+    setMoreOpen(false)
+    try {
+      await deleteMutation.mutateAsync({ id: itemByKey.id, projectId: itemByKey.projectId })
+      toast.success(`${itemByKey.itemKey} deleted`)
+      void navigate({ to: '/backlog' })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete work item')
+    }
+  }
 
   if (loadingKey) {
     return (
@@ -863,9 +893,33 @@ export function WorkItemDetailPage() {
             <span>{isWatching ? 'Watching' : 'Watch'}</span>
           </button>
 
-          <button aria-label="More actions" className="rounded p-1.5 hover:bg-white/10">
-            <MoreHorizontal size={17} />
-          </button>
+          <div ref={moreRef} className="relative">
+            <button
+              aria-label="More actions"
+              onClick={() => setMoreOpen((o) => !o)}
+              className="rounded p-1.5 hover:bg-white/10"
+            >
+              <MoreHorizontal size={17} />
+            </button>
+            {moreOpen && (
+              <div
+                className="absolute right-0 top-full z-50 mt-1 w-44 overflow-hidden rounded shadow-lg"
+                style={{ backgroundColor: 'white', border: '1px solid #d7dde7' }}
+              >
+                {!readOnly && (
+                  <button
+                    onClick={() => void handleDelete()}
+                    disabled={deleteMutation.isPending}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-[12px] transition-colors hover:bg-red-50 disabled:opacity-50"
+                    style={{ color: '#b91c1c' }}
+                  >
+                    <Trash2 size={13} />
+                    Delete work item
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Tab row */}

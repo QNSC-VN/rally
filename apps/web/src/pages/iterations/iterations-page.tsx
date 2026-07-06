@@ -72,7 +72,7 @@ export function IterationsPage() {
   const projectId = project?.projectId
   const canManage = useAuthStore((s) => s.hasPermission('iteration:manage'))
 
-  const { data: iterations = [], isLoading } = useIterations(projectId)
+  const { data: iterations = [], isLoading, isError } = useIterations(projectId)
 
   const [search, setSearch] = useState('')
   const [showFilters, setShowFilters] = useState(false)
@@ -234,7 +234,13 @@ export function IterationsPage() {
 
             {isLoading && <SkeletonList rows={8} cols={6} />}
 
-            {!isLoading &&
+            {!isLoading && isError && (
+              <div className="h-40 flex items-center justify-center text-[12px]" style={{ color: BRAND.danger }}>
+                Failed to load iterations. Please try again.
+              </div>
+            )}
+
+            {!isLoading && !isError &&
               pageRows.map((it) => (
                 <div
                   key={it.id}
@@ -266,7 +272,7 @@ export function IterationsPage() {
                 </div>
               ))}
 
-            {!isLoading && pageRows.length === 0 && (
+            {!isLoading && !isError && pageRows.length === 0 && (
               <div className="h-40 flex items-center justify-center text-[12px]" style={{ color: BRAND.textMuted }}>
                 No iterations found
               </div>

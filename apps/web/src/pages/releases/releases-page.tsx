@@ -5,7 +5,7 @@
  */
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Loader2, Plus, Search, Ship, Pencil, Trash2, X, PackageOpen } from 'lucide-react'
+import { AlertTriangle, Loader2, Plus, Search, Ship, Pencil, Trash2, X, PackageOpen } from 'lucide-react'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { BRAND } from '@/shared/config/brand'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
@@ -287,7 +287,7 @@ export function ReleasesPage() {
   const projectId = project?.projectId
   const canManage = useAuthStore((s) => s.hasPermission('release:manage'))
 
-  const { data: releases = [], isLoading } = useReleases(projectId)
+  const { data: releases = [], isLoading, isError } = useReleases(projectId)
   const shipRelease = useShipRelease(projectId ?? '')
   const deleteRelease = useDeleteRelease(projectId ?? '')
 
@@ -395,7 +395,16 @@ export function ReleasesPage() {
       <div className="flex-1 overflow-y-auto">
         {isLoading && <SkeletonList rows={8} cols={4} />}
 
-        {!isLoading && filtered.length === 0 && (
+        {!isLoading && isError && (
+          <div className="flex flex-col items-center justify-center gap-3 py-20">
+            <AlertTriangle size={28} style={{ color: BRAND.danger }} />
+            <p className="text-[13px] font-medium" style={{ color: BRAND.textSecondary }}>
+              Failed to load releases. Please try again.
+            </p>
+          </div>
+        )}
+
+        {!isLoading && !isError && filtered.length === 0 && (
           <div className="flex flex-col items-center justify-center gap-3 py-20">
             <PackageOpen size={32} style={{ color: BRAND.border }} />
             <p className="text-[13px] font-medium" style={{ color: BRAND.textSecondary }}>
@@ -413,7 +422,7 @@ export function ReleasesPage() {
           </div>
         )}
 
-        {!isLoading &&
+        {!isLoading && !isError &&
           filtered.map((release) => (
             <ReleaseRow
               key={release.id}

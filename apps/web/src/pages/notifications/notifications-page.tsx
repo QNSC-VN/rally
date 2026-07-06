@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Bell, CheckCheck, Circle, CircleDot } from 'lucide-react'
+import { AlertTriangle, Bell, CheckCheck, Circle, CircleDot } from 'lucide-react'
 import { toast } from 'sonner'
 import { BRAND } from '@/shared/config/brand'
 import {
@@ -20,7 +20,7 @@ function relativeTime(iso: string): string {
 
 export function NotificationsPage() {
   const [unreadOnly, setUnreadOnly] = useState(false)
-  const { data: notifications = [], isLoading } = useNotifications(unreadOnly)
+  const { data: notifications = [], isLoading, isError } = useNotifications(unreadOnly)
   const markRead = useMarkNotificationRead()
   const markAll = useMarkAllNotificationsRead()
 
@@ -94,6 +94,13 @@ export function NotificationsPage() {
               className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent"
               style={{ borderColor: BRAND.primary, borderTopColor: 'transparent' }}
             />
+          </div>
+        ) : isError ? (
+          <div className="flex flex-col items-center justify-center gap-3 py-20">
+            <AlertTriangle size={28} style={{ color: BRAND.danger }} />
+            <p className="text-[13px] font-medium" style={{ color: BRAND.textSecondary }}>
+              Failed to load notifications. Please try again.
+            </p>
           </div>
         ) : notifications.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-4 py-20">

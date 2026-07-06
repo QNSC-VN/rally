@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { Link } from '@tanstack/react-router'
 import { AlertTriangle, ArrowUpRight, Clock, Inbox } from 'lucide-react'
+import { toast } from 'sonner'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { BRAND } from '@/shared/config/brand'
@@ -208,11 +209,11 @@ export function HomePage() {
   const { data: myItems = [] } = useMyWorkItems(projectsForMyWork, user?.id)
 
   const summaryMetrics = [
-    { label: 'Active Projects', value: String(activeProjects.length), path: '/portfolio' },
+    { label: 'Active Projects', value: String(activeProjects.length), path: '/portfolio', comingSoon: true },
     { label: 'Open Work Items', value: String(counts.total), path: '/backlog' },
-    { label: 'Active Sprints', value: String(activeSprintsCount), path: '/board' },
+    { label: 'Active Sprints', value: String(activeSprintsCount), path: '/board', comingSoon: true },
     { label: 'Blocked Items', value: String(counts.blocked), path: '/backlog', alert: true },
-    { label: 'Open Defects', value: String(counts.defects), path: '/quality', alert: true },
+    { label: 'Open Defects', value: String(counts.defects), path: '/quality', alert: true, comingSoon: true },
     { label: 'Assigned to Me', value: String(myItems.length), path: '/' },
   ]
 
@@ -243,27 +244,46 @@ export function HomePage() {
         className="flex shrink-0 bg-white"
         style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
       >
-        {summaryMetrics.map((m, i) => (
-          <Link
-            key={m.label}
-            to={m.path as '/'}
-            className="flex flex-1 flex-col justify-center px-5 py-3 text-left transition-colors hover:bg-[#f7f8fa]"
-            style={{ borderLeft: i > 0 ? `1px solid ${BRAND.borderSubtle}` : undefined }}
-          >
-            <span
-              className="text-[9px] font-semibold tracking-widest uppercase"
-              style={{ color: BRAND.textMuted }}
+        {summaryMetrics.map((m, i) => {
+          const inner = (
+            <>
+              <span
+                className="text-[9px] font-semibold tracking-widest uppercase"
+                style={{ color: BRAND.textMuted }}
+              >
+                {m.label}
+              </span>
+              <span
+                className="text-[20px] leading-tight font-semibold"
+                style={{ color: m.alert ? BRAND.danger : BRAND.textPrimary }}
+              >
+                {m.value}
+              </span>
+            </>
+          )
+          const sharedStyle = { borderLeft: i > 0 ? `1px solid ${BRAND.borderSubtle}` : undefined }
+          const sharedClass = 'flex flex-1 flex-col justify-center px-5 py-3 text-left transition-colors hover:bg-[#f7f8fa]'
+          return m.comingSoon ? (
+            <button
+              key={m.label}
+              type="button"
+              onClick={() => toast.info(`${m.label} — coming soon`)}
+              className={sharedClass}
+              style={sharedStyle}
             >
-              {m.label}
-            </span>
-            <span
-              className="text-[20px] leading-tight font-semibold"
-              style={{ color: m.alert ? BRAND.danger : BRAND.textPrimary }}
+              {inner}
+            </button>
+          ) : (
+            <Link
+              key={m.label}
+              to={m.path as '/'}
+              className={sharedClass}
+              style={sharedStyle}
             >
-              {m.value}
-            </span>
-          </Link>
-        ))}
+              {inner}
+            </Link>
+          )
+        })}
       </div>
 
       {/* Body grid */}

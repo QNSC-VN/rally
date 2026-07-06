@@ -69,7 +69,7 @@ export function IterationStatusPage() {
       : (iterations[0]?.id ?? null)
   const setSelectedId = setChosenId
 
-  const { data: status, isLoading } = useIterationStatus(selectedId ?? undefined, {
+  const { data: status, isLoading, isError } = useIterationStatus(selectedId ?? undefined, {
     q: search.trim() || undefined,
   })
 
@@ -201,12 +201,18 @@ export function IterationStatusPage() {
 
         {isLoading && <SkeletonList rows={10} cols={10} />}
 
-        {!isLoading &&
+        {!isLoading && isError && (
+          <div className="h-40 flex items-center justify-center text-[12px]" style={{ color: '#b91c1c' }}>
+            Failed to load iteration status. Please try again.
+          </div>
+        )}
+
+        {!isLoading && !isError &&
           (status?.items ?? []).map((item) => (
             <StatusRow key={item.id} item={item} iterations={iterations} memberMap={memberMap} selectedIterationId={selectedId!} canEdit={canEdit} onOpen={() => navigate({ to: '/item/$itemKey', params: { itemKey: item.itemKey } })} />
           ))}
 
-        {!isLoading && (status?.items?.length ?? 0) === 0 && (
+        {!isLoading && !isError && (status?.items?.length ?? 0) === 0 && (
           <div className="h-40 flex items-center justify-center text-[12px]" style={{ color: BRAND.textMuted }}>
             No items assigned to this iteration
           </div>
