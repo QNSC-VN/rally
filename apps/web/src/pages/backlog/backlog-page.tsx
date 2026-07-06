@@ -10,6 +10,21 @@
  *  - "Create Work Item" modal
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
 import { ChevronLeft, ChevronRight, GripVertical, Plus, Search, X } from 'lucide-react'
@@ -20,6 +35,7 @@ import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import {
   useBacklog,
   useUpdateWorkItem,
+  useRankAnyWorkItem,
   useBulkAssignRelease,
   useBulkAssignIteration,
   type WorkItem,
@@ -215,6 +231,31 @@ export function BacklogPage() {
 
   const items = data?.data ?? []
   const pageInfo = data?.pageInfo
+
+  // ── Drag-and-drop (rank reorder within current page) ──────────────────────────
+  const [localItems, setLocalItems] = useState<WorkItem[]>(items)
+  useEffect(() => { setLocalItems(items) }, [items])
+
+  const rankMutation = useRankAnyWorkItem()
+  const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIndex = localItems.findIndex((it) => it.id === active.id)
+    const newIndex = localItems.findIndex((it) => it.id === over.id)
+    if (oldIndex === -1 || newIndex === -1) return
+    const reordered = arrayMove(localItems, oldIndex, newIndex)
+    setLocalItems(reordered)
+    const beforeId = newIndex > 0 ? reordered[newIndex - 1].id : null
+    const afterId = newIndex < reordered.length - 1 ? reordered[newIndex + 1].id : null
+    rankMutation.mutate({
+      id: active.id as string,
+      projectId: localItems[oldIndex].projectId,
+      beforeId: beforeId ?? undefined,
+      afterId: afterId ?? undefined,
+    })
+  }
 
   // ── Selection ─────────────────────────────────────────────────────────────────
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -631,24 +672,28 @@ export function BacklogPage() {
               )}
 
               {/* Rows */}
-              {!isLoading &&
-                !isError &&
-                items.map((item, idx) => (
-                  <BacklogRow
-                    key={item.id}
-                    item={item}
-                    rowNum={(currentPage - 1) * pageSize + idx + 1}
-                    selected={selectedIds.has(item.id)}
-                    onToggleSelect={() => toggleSelect(item.id)}
-                    onOpen={() => openItem(item)}
-                    colWidths={colWidths}
-                    tableWidth={tableWidth}
-                    canEdit={canEdit}
-                    members={members}
-                    releases={releases}
-                    iterations={iterations}
-                  />
-                ))}
+              {!isLoading && !isError && (
+                <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                  <SortableContext items={localItems.map((it) => it.id)} strategy={verticalListSortingStrategy}>
+                    {localItems.map((item, idx) => (
+                      <BacklogRow
+                        key={item.id}
+                        item={item}
+                        rowNum={(currentPage - 1) * pageSize + idx + 1}
+                        selected={selectedIds.has(item.id)}
+                        onToggleSelect={() => toggleSelect(item.id)}
+                        onOpen={() => openItem(item)}
+                        colWidths={colWidths}
+                        tableWidth={tableWidth}
+                        canEdit={canEdit}
+                        members={members}
+                        releases={releases}
+                        iterations={iterations}
+                      />
+                    ))}
+                  </SortableContext>
+                </DndContext>
+              )}
             </div>
           </div>
 
@@ -753,6 +798,7 @@ function BacklogRow({
   releases,
   iterations,
 }: BacklogRowProps) {
+  const { setNodeRef, setActivatorNodeRef, listeners, attributes, transform, transition, isDragging } = useSortable({ id: item.id })
   const update = useUpdateWorkItem(item.id)
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState(item.title)
@@ -779,12 +825,19 @@ function BacklogRow({
 
   return (
     <div
+      ref={setNodeRef}
       className="group flex h-8 items-center gap-2 px-3 hover:bg-[#f7f8fa]"
       style={{
         minWidth: '100%',
-        backgroundColor: selected ? '#f3f6fb' : undefined,
+        backgroundColor: isDragging ? '#edf2fb' : selected ? '#f3f6fb' : undefined,
         borderBottom: '1px solid #edf0f4',
+        opacity: isDragging ? 0.6 : 1,
+        transform: CSS.Transform.toString(transform),
+        transition,
+        zIndex: isDragging ? 1 : undefined,
+        position: isDragging ? 'relative' : undefined,
       }}
+      {...attributes}
     >
       {/* Checkbox */}
       <div className="w-5 shrink-0" onClick={stop}>
@@ -798,8 +851,12 @@ function BacklogRow({
         />
       </div>
 
-      {/* Grip */}
-      <div className="w-4 shrink-0 opacity-0 group-hover:opacity-100">
+      {/* Drag handle (visible on hover, activates drag) */}
+      <div
+        ref={setActivatorNodeRef}
+        className="w-4 shrink-0 cursor-grab opacity-0 group-hover:opacity-100 active:cursor-grabbing"
+        {...listeners}
+      >
         <GripVertical size={11} style={{ color: '#8c94a6' }} />
       </div>
 

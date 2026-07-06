@@ -728,6 +728,57 @@ async function seedExtendedWorkItems() {
   console.log('✅  Extended work items seeded (with releases + iterations)');
 }
 
+// ── Activity logs (Revision History) ─────────────────────────────────────────
+// Inserts realistic activity entries for fixed-ID work items so the
+// "Revision History" tab is not empty in demo / dev environments.
+async function seedActivityLogs() {
+  // Idempotency guard — skip if already seeded for NXP-1.
+  const existing = await db
+    .select({ id: schema.activityLogs.id })
+    .from(schema.activityLogs)
+    .where(eq(schema.activityLogs.workItemId, NXP_STORY_1_ID))
+    .limit(1);
+  if (existing.length > 0) return;
+
+  const NXP = SEED_PROJECTS[0].id;
+  const MOB = SEED_PROJECTS[1].id;
+  const T = SYSTEM_TENANT_ID;
+
+  type ActivityRow = typeof schema.activityLogs.$inferInsert;
+
+  const rows: ActivityRow[] = [
+    // NXP-1
+    { id: uuidv7(), tenantId: T, projectId: NXP, workItemId: NXP_STORY_1_ID, entityType: 'work_item', entityId: NXP_STORY_1_ID, actorId: ADMIN_USER_ID, action: 'work_item.created', changes: null, metadata: { title: 'Upgrade NX to v21 and apply migrations', type: 'story' } },
+    { id: uuidv7(), tenantId: T, projectId: NXP, workItemId: NXP_STORY_1_ID, entityType: 'work_item', entityId: NXP_STORY_1_ID, actorId: ADMIN_USER_ID, action: 'work_item.assigned', changes: { field: 'assigneeId', old: null, new: DEVELOPER_ID }, metadata: {} },
+    { id: uuidv7(), tenantId: T, projectId: NXP, workItemId: NXP_STORY_1_ID, entityType: 'work_item', entityId: NXP_STORY_1_ID, actorId: DEVELOPER_ID, action: 'work_item.schedule_state_changed', changes: { field: 'scheduleState', old: 'defined', new: 'in_progress' }, metadata: {} },
+    // NXP-2
+    { id: uuidv7(), tenantId: T, projectId: NXP, workItemId: NXP_STORY_2_ID, entityType: 'work_item', entityId: NXP_STORY_2_ID, actorId: ADMIN_USER_ID, action: 'work_item.created', changes: null, metadata: { title: 'Replace tslint with ESLint workspace-wide', type: 'story' } },
+    { id: uuidv7(), tenantId: T, projectId: NXP, workItemId: NXP_STORY_2_ID, entityType: 'work_item', entityId: NXP_STORY_2_ID, actorId: ADMIN_USER_ID, action: 'work_item.priority_changed', changes: { field: 'priority', old: 'normal', new: 'high' }, metadata: {} },
+    // MOB-1
+    { id: uuidv7(), tenantId: T, projectId: MOB, workItemId: MOB_STORY_1_ID, entityType: 'work_item', entityId: MOB_STORY_1_ID, actorId: ADMIN_USER_ID, action: 'work_item.created', changes: null, metadata: { title: 'Scaffold React Native project with Expo 51', type: 'story' } },
+    { id: uuidv7(), tenantId: T, projectId: MOB, workItemId: MOB_STORY_1_ID, entityType: 'work_item', entityId: MOB_STORY_1_ID, actorId: DEVELOPER_ID, action: 'work_item.assigned', changes: { field: 'assigneeId', old: null, new: DEVELOPER_ID }, metadata: {} },
+    // NXP-7
+    { id: uuidv7(), tenantId: T, projectId: NXP, workItemId: NXP_STORY_7_ID, entityType: 'work_item', entityId: NXP_STORY_7_ID, actorId: ADMIN_USER_ID, action: 'work_item.created', changes: null, metadata: { title: 'Migrate all apps to ESLint flat-config', type: 'story' } },
+    { id: uuidv7(), tenantId: T, projectId: NXP, workItemId: NXP_STORY_7_ID, entityType: 'work_item', entityId: NXP_STORY_7_ID, actorId: ADMIN_USER_ID, action: 'work_item.assigned', changes: { field: 'assigneeId', old: null, new: ADMIN_USER_ID }, metadata: {} },
+    { id: uuidv7(), tenantId: T, projectId: NXP, workItemId: NXP_STORY_7_ID, entityType: 'work_item', entityId: NXP_STORY_7_ID, actorId: ADMIN_USER_ID, action: 'work_item.flow_state_changed', changes: { field: 'statusId', old: null, new: 'in_progress' }, metadata: { statusName: 'In Progress' } },
+    // NXP-8
+    { id: uuidv7(), tenantId: T, projectId: NXP, workItemId: NXP_STORY_8_ID, entityType: 'work_item', entityId: NXP_STORY_8_ID, actorId: ADMIN_USER_ID, action: 'work_item.created', changes: null, metadata: { title: 'Enforce strict TypeScript settings across workspace', type: 'story' } },
+    { id: uuidv7(), tenantId: T, projectId: NXP, workItemId: NXP_STORY_8_ID, entityType: 'work_item', entityId: NXP_STORY_8_ID, actorId: ADMIN_USER_ID, action: 'work_item.assigned', changes: { field: 'assigneeId', old: null, new: DEVELOPER_ID }, metadata: {} },
+    // NXP-10 (accepted — show full lifecycle)
+    { id: uuidv7(), tenantId: T, projectId: NXP, workItemId: NXP_STORY_10_ID, entityType: 'work_item', entityId: NXP_STORY_10_ID, actorId: ADMIN_USER_ID, action: 'work_item.created', changes: null, metadata: { title: 'Setup shared tsconfig base with path aliases', type: 'story' } },
+    { id: uuidv7(), tenantId: T, projectId: NXP, workItemId: NXP_STORY_10_ID, entityType: 'work_item', entityId: NXP_STORY_10_ID, actorId: ADMIN_USER_ID, action: 'work_item.assigned', changes: { field: 'assigneeId', old: null, new: ADMIN_USER_ID }, metadata: {} },
+    { id: uuidv7(), tenantId: T, projectId: NXP, workItemId: NXP_STORY_10_ID, entityType: 'work_item', entityId: NXP_STORY_10_ID, actorId: ADMIN_USER_ID, action: 'work_item.schedule_state_changed', changes: { field: 'scheduleState', old: 'defined', new: 'in_progress' }, metadata: {} },
+    { id: uuidv7(), tenantId: T, projectId: NXP, workItemId: NXP_STORY_10_ID, entityType: 'work_item', entityId: NXP_STORY_10_ID, actorId: ADMIN_USER_ID, action: 'work_item.schedule_state_changed', changes: { field: 'scheduleState', old: 'in_progress', new: 'accepted' }, metadata: {} },
+    // NXP-11 (urgent defect)
+    { id: uuidv7(), tenantId: T, projectId: NXP, workItemId: NXP_DEFECT_11_ID, entityType: 'work_item', entityId: NXP_DEFECT_11_ID, actorId: DEVELOPER_ID, action: 'work_item.created', changes: null, metadata: { title: 'ESLint rule conflicts between root and app-level configs', type: 'defect' } },
+    { id: uuidv7(), tenantId: T, projectId: NXP, workItemId: NXP_DEFECT_11_ID, entityType: 'work_item', entityId: NXP_DEFECT_11_ID, actorId: ADMIN_USER_ID, action: 'work_item.priority_changed', changes: { field: 'priority', old: 'normal', new: 'urgent' }, metadata: {} },
+    { id: uuidv7(), tenantId: T, projectId: NXP, workItemId: NXP_DEFECT_11_ID, entityType: 'work_item', entityId: NXP_DEFECT_11_ID, actorId: ADMIN_USER_ID, action: 'work_item.assigned', changes: { field: 'assigneeId', old: null, new: ADMIN_USER_ID }, metadata: {} },
+  ];
+
+  await db.insert(schema.activityLogs).values(rows);
+  console.log(`✅  Activity logs seeded (${rows.length} entries)`);
+}
+
 /**
  * Run all seed operations against the given database URL.
  * Exported so db/migrate.ts can call it when SEED_ON_DEPLOY=true.
@@ -1019,6 +1070,9 @@ export async function seed(connectionUrl?: string): Promise<void> {
 
     // ── Phase 1+2: Extended work items (releases + iterations assigned) ───────
     await seedExtendedWorkItems();
+
+    // ── Revision history (activity logs for fixed-ID items) ──────────────────
+    await seedActivityLogs();
 
     // ── SSO connection (dev) ──────────────────────────────────────────────────
     // Maps the configured Entra directory (`ENTRA_TENANT_ID`) to the acme tenant

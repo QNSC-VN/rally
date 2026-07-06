@@ -454,3 +454,20 @@ export function useRankWorkItem(id: string) {
   })
 }
 
+export function useRankAnyWorkItem() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, ...input }: { id: string } & RankWorkItemInput) => {
+      const { data, error, response } = await apiClient.PATCH('/v1/work-items/{id}/rank', {
+        params: { path: { id } },
+        body: input as RankWorkItemInput,
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as WorkItem
+    },
+    onSuccess: (item) => {
+      void qc.invalidateQueries({ queryKey: workItemKeys.backlog(item.projectId) })
+    },
+  })
+}
+
