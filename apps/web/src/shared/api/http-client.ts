@@ -48,7 +48,7 @@ function getCsrfToken(): string | undefined {
   return document.cookie
     .split(';')
     .map((c) => c.trim())
-    .find((c) => c.startsWith('csrf-token='))
+    .find((c) => c.startsWith('csrf_token='))
     ?.split('=')[1]
 }
 
@@ -111,11 +111,15 @@ async function refreshAccessToken(): Promise<boolean> {
       }
 
       // Standard Rally refresh token rotation (password sessions + new-tab SSO fallback)
+      const csrfToken = getCsrfToken()
       const res = await fetch(`${BASE_URL}/v1/auth/refresh`, {
         method: 'POST',
         credentials: 'include',
         referrerPolicy: 'no-referrer',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(csrfToken ? { 'x-csrf-token': csrfToken } : {}),
+        },
       })
       if (!res.ok) return false
       const data = (await res.json()) as { accessToken: string; expiresIn?: number }

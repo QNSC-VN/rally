@@ -39,6 +39,8 @@ export function CreateWorkItemModal({ projectId, onClose, onCreated, onCreatedWi
   const { data: members = [] } = useProjectMembers(projectId)
 
   const titleRef = useRef<HTMLInputElement>(null)
+  const submitRef = useRef(submit)
+  submitRef.current = submit
   useEffect(() => { titleRef.current?.focus() }, [])
 
   async function submit(withDetails: boolean) {
@@ -71,12 +73,12 @@ export function CreateWorkItemModal({ projectId, onClose, onCreated, onCreatedWi
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        void submit(false)
+        void submitRef.current(false)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  })
+  }, [])
 
   const TYPE_OPTIONS: { value: CreatableType; label: string }[] = [
     { value: 'story', label: 'Story' },
