@@ -43,6 +43,7 @@ describe('IterationsService', () => {
     findById: ReturnType<typeof vi.fn>;
     findCommitted: ReturnType<typeof vi.fn>;
     listByProject: ReturnType<typeof vi.fn>;
+    listAssignmentOptions: ReturnType<typeof vi.fn>;
     nextKeyNumber: ReturnType<typeof vi.fn>;
     create: ReturnType<typeof vi.fn>;
     update: ReturnType<typeof vi.fn>;

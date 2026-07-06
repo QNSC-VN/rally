@@ -50,6 +50,7 @@ const mockSession = (overrides: Partial<AuthSession> = {}): AuthSession => ({
   expiresAt: new Date(Date.now() + 60 * 60 * 1000),
   createdAt: new Date(),
   ssoProvider: null,
+  csrfToken: null,
   ...overrides,
 });
 
@@ -281,7 +282,7 @@ describe('AuthService', () => {
       sessionRepo.findByTokenHash.mockResolvedValue(session);
       userRepo.findById.mockResolvedValue(user);
 
-      const result = await service.refresh('some-raw-token');
+      const result = await service.refresh('some-raw-token', null);
 
       expect(result.accessToken).toBe('mock-access-token');
       expect(result.refreshToken).toBeDefined();
@@ -291,14 +292,14 @@ describe('AuthService', () => {
 
     it('throws when token not found', async () => {
       sessionRepo.findByTokenHash.mockResolvedValue(null);
-      await expect(service.refresh('bad-token')).rejects.toThrow(UnauthorizedException);
+      await expect(service.refresh('bad-token', null)).rejects.toThrow(UnauthorizedException);
     });
 
     it('revokes family on token reuse and throws', async () => {
       const revokedSession = mockSession({ isRevoked: true });
       sessionRepo.findByTokenHash.mockResolvedValue(revokedSession);
 
-      await expect(service.refresh('reused-token')).rejects.toThrow(UnauthorizedException);
+      await expect(service.refresh('reused-token', null)).rejects.toThrow(UnauthorizedException);
       expect(sessionRepo.revokeFamily).toHaveBeenCalledWith(revokedSession.familyId);
     });
 
@@ -306,14 +307,14 @@ describe('AuthService', () => {
       const expiredSession = mockSession({ expiresAt: new Date(Date.now() - 1000) });
       sessionRepo.findByTokenHash.mockResolvedValue(expiredSession);
 
-      await expect(service.refresh('expired-token')).rejects.toThrow(UnauthorizedException);
+      await expect(service.refresh('expired-token', null)).rejects.toThrow(UnauthorizedException);
     });
 
     it('throws when user deleted', async () => {
       sessionRepo.findByTokenHash.mockResolvedValue(mockSession());
       userRepo.findById.mockResolvedValue({ ...mockUser(), deletedAt: new Date() });
 
-      await expect(service.refresh('token')).rejects.toThrow(UnauthorizedException);
+      await expect(service.refresh('token', null)).rejects.toThrow(UnauthorizedException);
     });
   });
 

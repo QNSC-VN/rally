@@ -48,5 +48,6 @@
       "@modules/reporting": ["./libs/modules/reporting/src/index"],
       "@modules/reporting/*": ["./libs/modules/reporting/src/*"]
     }
-  }
+  },
+  "exclude": ["node_modules", "dist", "apps/web"]
 }

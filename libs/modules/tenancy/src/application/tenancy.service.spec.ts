@@ -334,7 +334,7 @@ describe('TenancyService', () => {
     it('soft-deletes workspace', async () => {
       workspaceRepo.findById.mockResolvedValue(mockWorkspace());
       await service.deleteWorkspace('tenant-1', 'ws-1');
-      expect(workspaceRepo.softDelete).toHaveBeenCalledWith('ws-1');
+      expect(workspaceRepo.softDelete).toHaveBeenCalledWith('ws-1', 'tenant-1');
     });
   });
 
