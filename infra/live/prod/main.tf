@@ -335,7 +335,7 @@ module "waf" {
 module "cdn" {
   source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/cdn?ref=cdn-v1.0.3"
 
-  name         = "rally-web-prod"
+  name         = "qnsc-rally-web-prod" # "rally-web-prod" is a globally-unique S3 bucket name already claimed by another AWS account
   acm_cert_arn = var.web_acm_cert_arn
   aliases      = []   # set to ["app.rally.example.com"] once DNS is configured
   price_class  = "PriceClass_All"

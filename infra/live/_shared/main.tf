@@ -103,7 +103,7 @@ locals {
         "repo:${local.github_org}/rally:ref:refs/tags/v*",
         "repo:${local.github_org}/rally:environment:production",
       ]
-      s3_bucket = "rally-web-prod"
+      s3_bucket = "qnsc-rally-web-prod" # "rally-web-prod" is a globally-unique S3 bucket name already claimed by another AWS account
     }
   }
 }
