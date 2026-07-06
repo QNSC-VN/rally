@@ -255,7 +255,7 @@ module "api" {
     { name = "SQS_SEARCH_URL", value = module.messaging.queue_urls["search"] },
     { name = "SNS_TOPIC_ARN", value = module.messaging.topic_arns["domain-events"] },
     # S3 attachments bucket
-    { name = "S3_ATTACHMENTS_BUCKET", value = aws_s3_bucket.attachments.bucket },
+    { name = "S3_ATTACHMENTS_BUCKET", value = module.app_bucket.bucket },
     # Email — SES in production
     { name = "EMAIL_PROVIDER", value = "ses" },
     # Observability
@@ -319,7 +319,7 @@ module "worker" {
     { name = "SQS_REPORTING_URL", value = module.messaging.queue_urls["reporting"] },
     { name = "SQS_SEARCH_URL", value = module.messaging.queue_urls["search"] },
     { name = "SNS_TOPIC_ARN", value = module.messaging.topic_arns["domain-events"] },
-    { name = "S3_ATTACHMENTS_BUCKET", value = aws_s3_bucket.attachments.bucket },
+    { name = "S3_ATTACHMENTS_BUCKET", value = module.app_bucket.bucket },
     { name = "EMAIL_PROVIDER", value = "ses" },
     { name = "LOG_LEVEL", value = "info" },
     { name = "LOG_PRETTY", value = "false" },
@@ -334,42 +334,22 @@ module "worker" {
 }
 
 # ── S3 — Attachments bucket ───────────────────────────────────────────────────
-resource "aws_s3_bucket" "attachments" {
-  bucket = "${local.name}-attachments"
-  tags   = { Name = "${local.name}-attachments", Environment = local.env }
-}
+module "app_bucket" {
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/app-bucket?ref=app-bucket-v1.0.0"
 
-resource "aws_s3_bucket_public_access_block" "attachments" {
-  bucket                  = aws_s3_bucket.attachments.id
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
-}
+  name          = "${local.name}-attachments"
+  kms_key_arn   = local.kms_key_arn
+  force_destroy = true # dev: attachments are ephemeral, allow clean teardown
 
-resource "aws_s3_bucket_server_side_encryption_configuration" "attachments" {
-  bucket = aws_s3_bucket.attachments.id
-  rule {
-    apply_server_side_encryption_by_default {
-      sse_algorithm     = "aws:kms"
-      kms_master_key_id = local.kms_key_arn
-    }
-    bucket_key_enabled = true
-  }
-}
-
-resource "aws_s3_bucket_cors_configuration" "attachments" {
-  bucket = aws_s3_bucket.attachments.id
-  cors_rule {
+  cors_rules = [{
     allowed_headers = ["Content-Type", "Content-Disposition"]
     allowed_methods = ["PUT"]
-    allowed_origins = [
-      "https://rally-dev.qnsc.vn",
-      "http://localhost:5173",
-    ]
+    allowed_origins = ["https://rally-dev.qnsc.vn", "http://localhost:5173"]
     expose_headers  = ["ETag"]
     max_age_seconds = 3600
-  }
+  }]
+
+  tags = { Environment = local.env }
 }
 
 # ── Migrator (one-shot, run manually or via CI) ───────────────────────────────

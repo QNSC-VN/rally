@@ -10,7 +10,7 @@ output "rds_endpoint" { value = module.rds.endpoint }
 output "rds_master_secret_arn" { value = module.rds.master_secret_arn }
 output "cache_endpoint" { value = module.cache.endpoint }
 output "secret_arns" { value = module.secrets.secret_arns }
-output "attachments_bucket" { value = aws_s3_bucket.attachments.bucket }
+output "attachments_bucket" { value = module.app_bucket.bucket }
 
 # Networking — needed for ECS run-task (migrator) and GitHub env vars
 output "private_subnet_ids" { value = module.network.private_subnet_ids }
