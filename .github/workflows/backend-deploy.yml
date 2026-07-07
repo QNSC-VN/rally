@@ -27,7 +27,7 @@
 #     ECS_MIGRATOR_TASK_DEF    e.g. rally-develop-migrator
 #     ECS_MIGRATOR_SUBNET      private subnet ID (comma-separated if multiple)
 #     ECS_MIGRATOR_SG          security group allowing outbound to RDS
-#     APP_URL                  e.g. https://api-dev.yourdomain.com (for health)
+#     API_URL                  e.g. https://rally-api-dev.qnsc.vn (backend health check; /v1/healthz is appended)
 #
 #   Environment-scoped IAM roles (provisioned by rally-infra):
 #     rally-github-ecr-push        build-push job (ECR push + retag)
@@ -379,10 +379,10 @@ jobs:
 
       # ── Step 5: Health check ──────────────────────────────────────────────
       - name: Post-deploy health check
-        if: vars.APP_URL != ''
+        if: vars.API_URL != ''
         uses: QNSC-VN/qnsc-ci/actions/post-deploy-health-check@v1.4
         with:
-          url: ${{ vars.APP_URL }}/v1/healthz
+          url: ${{ vars.API_URL }}/v1/healthz
           timeout-seconds: '120'
 
       # ── Step 6: Job summary ───────────────────────────────────────────────
@@ -396,7 +396,7 @@ jobs:
           echo "| **Image tag** | \`$IMAGE_TAG\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| **Commit** | \`${{ github.sha }}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| **Actor** | ${{ github.actor }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **App URL** | \`${{ vars.APP_URL }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **API URL** | \`${{ vars.API_URL }}\` |" >> "$GITHUB_STEP_SUMMARY"
 
       # ── Step 7: Notify Slack / Discord ────────────────────────────────────
       - name: Notify deploy result
