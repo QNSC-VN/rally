@@ -236,7 +236,7 @@ module "api" {
     { name = "NODE_ENV", value = "production" },
     { name = "PORT", value = "3000" },
     { name = "AWS_REGION", value = local.region },
-    { name = "CORS_ORIGINS", value = "https://rally-dev.qnsc.vn,https://${module.cdn.cloudfront_domain}" },
+    { name = "CORS_ORIGINS", value = "https://rally-dev.qnsc.vn" },
     { name = "APP_BASE_URL", value = "https://rally-dev.qnsc.vn" },
     # JWT config — defaults match app .env.example; override if needed
     { name = "JWT_ISSUER", value = "rally-api" },
@@ -255,7 +255,7 @@ module "api" {
     { name = "SQS_SEARCH_URL", value = module.messaging.queue_urls["search"] },
     { name = "SNS_TOPIC_ARN", value = module.messaging.topic_arns["domain-events"] },
     # S3 attachments bucket
-    { name = "S3_ATTACHMENTS_BUCKET", value = aws_s3_bucket.attachments.bucket },
+    { name = "S3_ATTACHMENTS_BUCKET", value = module.app_bucket.bucket },
     # Email — SES in production
     { name = "EMAIL_PROVIDER", value = "ses" },
     # Observability
@@ -319,7 +319,7 @@ module "worker" {
     { name = "SQS_REPORTING_URL", value = module.messaging.queue_urls["reporting"] },
     { name = "SQS_SEARCH_URL", value = module.messaging.queue_urls["search"] },
     { name = "SNS_TOPIC_ARN", value = module.messaging.topic_arns["domain-events"] },
-    { name = "S3_ATTACHMENTS_BUCKET", value = aws_s3_bucket.attachments.bucket },
+    { name = "S3_ATTACHMENTS_BUCKET", value = module.app_bucket.bucket },
     { name = "EMAIL_PROVIDER", value = "ses" },
     { name = "LOG_LEVEL", value = "info" },
     { name = "LOG_PRETTY", value = "false" },
@@ -334,43 +334,22 @@ module "worker" {
 }
 
 # ── S3 — Attachments bucket ───────────────────────────────────────────────────
-resource "aws_s3_bucket" "attachments" {
-  bucket = "${local.name}-attachments"
-  tags   = { Name = "${local.name}-attachments", Environment = local.env }
-}
+module "app_bucket" {
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/app-bucket?ref=app-bucket-v1.0.0"
 
-resource "aws_s3_bucket_public_access_block" "attachments" {
-  bucket                  = aws_s3_bucket.attachments.id
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
-}
+  name          = "${local.name}-attachments"
+  kms_key_arn   = local.kms_key_arn
+  force_destroy = true # dev: attachments are ephemeral, allow clean teardown
 
-resource "aws_s3_bucket_server_side_encryption_configuration" "attachments" {
-  bucket = aws_s3_bucket.attachments.id
-  rule {
-    apply_server_side_encryption_by_default {
-      sse_algorithm     = "aws:kms"
-      kms_master_key_id = local.kms_key_arn
-    }
-    bucket_key_enabled = true
-  }
-}
-
-resource "aws_s3_bucket_cors_configuration" "attachments" {
-  bucket = aws_s3_bucket.attachments.id
-  cors_rule {
+  cors_rules = [{
     allowed_headers = ["Content-Type", "Content-Disposition"]
     allowed_methods = ["PUT"]
-    allowed_origins = [
-      "https://rally-dev.qnsc.vn",
-      "https://${module.cdn.cloudfront_domain}",
-      "http://localhost:5173",
-    ]
+    allowed_origins = ["https://rally-dev.qnsc.vn", "http://localhost:5173"]
     expose_headers  = ["ETag"]
     max_age_seconds = 3600
-  }
+  }]
+
+  tags = { Environment = local.env }
 }
 
 # ── Migrator (one-shot, run manually or via CI) ───────────────────────────────
@@ -418,46 +397,24 @@ module "waf" {
   tags = { Environment = local.env }
 }
 
-# ── CDN (S3 + CloudFront) — rally-web SPA ─────────────────────────────────────
-# Prerequisites:
-#   1. Create an ACM cert for the web domain in us-east-1 (CloudFront requirement)
-#   2. Pass its ARN as web_acm_cert_arn in your tfvars
-#   3. After apply: set S3_BUCKET + CLOUDFRONT_ID as GitHub env vars for rally-web
-module "cdn" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/cdn?ref=cdn-v1.1.0"
+# ── Web SPA — Cloudflare Pages (zero-egress, native SPA routing) ─────────────
+# Replaces the deprecated S3 + CloudFront (cdn) stack. Content is deployed from
+# CI with `wrangler pages deploy apps/web/dist`. The API has its own edge — the
+# SPA calls https://rally-api-dev.qnsc.vn directly (VITE_API_URL baked at build
+# time), which is Cloudflare-proxied → ALB. Same-site under qnsc.vn, so cookies
+# + CORS work cleanly. Pages provisions the project + custom domain + proxied
+# CNAME. Gated on cloudflare_account_id so the stack still applies before the
+# Cloudflare account is wired.
+module "web" {
+  count  = var.cloudflare_account_id != "" ? 1 : 0
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/pages-web?ref=pages-web-v1.0.0"
 
-  name         = "rally-web-develop"
-  aliases      = ["rally-dev.qnsc.vn"]
-  acm_cert_arn = var.web_acm_cert_arn # *.qnsc.vn wildcard cert in us-east-1
-  price_class  = "PriceClass_100"     # develop: US/EU PoPs only — cheaper than PriceClass_200
-
-  # CloudFront serves the SPA only. The API has its own edge — the SPA calls
-  # https://rally-api-dev.qnsc.vn directly (VITE_API_URL), which is Cloudflare-
-  # proxied → ALB. Same-site under qnsc.vn, so cookies + CORS work cleanly.
-
-  # Dev: allow the web bucket to be destroyed with SPA build artifacts still in
-  # it (they're ephemeral and re-deployable) so teardown is clean.
-  force_destroy = true
-
-  tags = { Environment = local.env, Service = "web" }
-}
-
-# ── DNS — rally-dev.qnsc.vn → CloudFront (shared dns-record module) ──────────
-# Zone ID comes from qnsc-infra bootstrap (via _shared remote state), the same
-# single-source-of-truth pattern as kms_key_arn. Only the subdomain is
-# rally-specific. Created only when the zone ID is present, so the stack applies
-# cleanly before DNS is wired. Terraform owns the record lifecycle → teardown
-# removes it → no stale CNAME to collide with the CloudFront alias on rebuild.
-module "dns_web" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/dns-record?ref=dns-record-v1.0.0"
-
-  enabled = local.cloudflare_zone_id != ""
-  zone_id = local.cloudflare_zone_id
-  name    = "rally-dev"
-  type    = "CNAME"
-  content = module.cdn.cloudfront_domain
-  proxied = false # web SPA served by CloudFront directly — no double-CDN
-  comment = "rally-develop web SPA → CloudFront (managed by rally-infra develop)"
+  account_id  = var.cloudflare_account_id
+  name        = "rally-develop-web"
+  zone_id     = local.cloudflare_zone_id
+  domain      = local.cloudflare_zone_id != "" ? "rally-dev.qnsc.vn" : ""
+  record_name = local.cloudflare_zone_id != "" ? "rally-dev" : ""
+  comment     = "rally-develop web SPA → Cloudflare Pages (managed by rally-infra develop)"
 }
 
 # ── DNS — rally-api-dev.qnsc.vn → ALB (Cloudflare-proxied edge) ──────────────

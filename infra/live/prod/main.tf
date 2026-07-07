@@ -73,11 +73,11 @@ module "network" {
   private_subnet_cidrs = ["10.20.10.0/24", "10.20.11.0/24", "10.20.12.0/24"]
   data_subnet_cidrs    = ["10.20.20.0/24", "10.20.21.0/24", "10.20.22.0/24"]
 
-  multi_az_nat            = false   # single NAT — saves $87/mo; outbound HA sacrificed, inbound HA (ALB) unaffected
+  multi_az_nat            = false # single NAT — saves $87/mo; outbound HA sacrificed, inbound HA (ALB) unaffected
   app_port                = 3000
   enable_flow_logs        = true
-  flow_log_retention_days = 90    # SOC 2 CC7.2 minimum
-  alb_ingress_cidrs       = local.cloudflare_ipv4  # lock ALB to Cloudflare orange-cloud proxy IPs
+  flow_log_retention_days = 90                    # SOC 2 CC7.2 minimum
+  alb_ingress_cidrs       = local.cloudflare_ipv4 # lock ALB to Cloudflare orange-cloud proxy IPs
 
   tags = { Environment = local.env }
 }
@@ -112,7 +112,7 @@ module "rds" {
   instance_class           = "db.t4g.large"
   allocated_storage_gb     = 100
   max_allocated_storage_gb = 500
-  multi_az                 = true   # HA in production
+  multi_az                 = true # HA in production
   deletion_protection      = true
   backup_retention_days    = 30
 
@@ -127,9 +127,9 @@ module "cache" {
   subnet_ids        = module.network.data_subnet_ids
   security_group_id = module.network.sg_cache_id
 
-  max_data_storage_gb      = 10
-  max_ecpu_per_second      = 10000
-  snapshot_retention_days  = 7
+  max_data_storage_gb     = 10
+  max_ecpu_per_second     = 10000
+  snapshot_retention_days = 7
 
   tags = { Environment = local.env }
 }
@@ -198,11 +198,11 @@ module "ecs_cluster" {
 module "api" {
   source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v1.1.0"
 
-  service_name  = "api"
-  cluster_name  = module.ecs_cluster.cluster_name
-  cluster_arn   = module.ecs_cluster.cluster_arn
-  region        = local.region
-  image_uri     = local.ecr_api_url
+  service_name = "api"
+  cluster_name = module.ecs_cluster.cluster_name
+  cluster_arn  = module.ecs_cluster.cluster_arn
+  region       = local.region
+  image_uri    = local.ecr_api_url
 
   cpu    = 1024
   memory = 2048
@@ -211,36 +211,36 @@ module "api" {
   subnet_ids        = module.network.private_subnet_ids
   security_group_id = module.network.sg_app_id
 
-  desired_count = 2   # at least 2 for HA
+  desired_count = 2 # at least 2 for HA
   min_count     = 2
   max_count     = 10
 
-  attach_alb       = true
-  alb_listener_arn = module.alb.https_listener_arn
-  alb_priority     = 100
+  attach_alb        = true
+  alb_listener_arn  = module.alb.https_listener_arn
+  alb_priority      = 100
   alb_path_patterns = ["/*"]
   health_check_path = "/v1/healthz"
 
   secret_arns = values(module.secrets.secret_arns)
   secrets = [
-    { name = "DATABASE_URL",    secret_arn = module.secrets.secret_arns["db-url"] },
-    { name = "REDIS_URL",       secret_arn = module.secrets.secret_arns["redis-url"] },
+    { name = "DATABASE_URL", secret_arn = module.secrets.secret_arns["db-url"] },
+    { name = "REDIS_URL", secret_arn = module.secrets.secret_arns["redis-url"] },
     { name = "JWT_PRIVATE_KEY", secret_arn = module.secrets.secret_arns["jwt-private"] },
-    { name = "JWT_PUBLIC_KEY",  secret_arn = module.secrets.secret_arns["jwt-public"] },
-    { name = "CSRF_SECRET",     secret_arn = module.secrets.secret_arns["csrf-secret"] },
+    { name = "JWT_PUBLIC_KEY", secret_arn = module.secrets.secret_arns["jwt-public"] },
+    { name = "CSRF_SECRET", secret_arn = module.secrets.secret_arns["csrf-secret"] },
   ]
 
   environment_vars = [
     { name = "NODE_ENV", value = "production" },
-    { name = "PORT",     value = "3000" },
+    { name = "PORT", value = "3000" },
   ]
 
   sqs_queue_arns = values(module.messaging.queue_arns)
   sns_topic_arns = values(module.messaging.topic_arns)
 
-  cpu_target_pct    = 60   # tighter target in prod
-  memory_target_pct = 70
-  log_retention_days = 90  # 90 days — SOC 2 minimum for prod logs
+  cpu_target_pct     = 60 # tighter target in prod
+  memory_target_pct  = 70
+  log_retention_days = 90 # 90 days — SOC 2 minimum for prod logs
 
   tags = { Environment = local.env, Service = "api" }
 }
@@ -249,11 +249,11 @@ module "api" {
 module "worker" {
   source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v1.1.0"
 
-  service_name  = "worker"
-  cluster_name  = module.ecs_cluster.cluster_name
-  cluster_arn   = module.ecs_cluster.cluster_arn
-  region        = local.region
-  image_uri     = local.ecr_worker_url
+  service_name = "worker"
+  cluster_name = module.ecs_cluster.cluster_name
+  cluster_arn  = module.ecs_cluster.cluster_arn
+  region       = local.region
+  image_uri    = local.ecr_worker_url
 
   cpu    = 512
   memory = 1024
@@ -273,18 +273,18 @@ module "worker" {
 
   secret_arns = values(module.secrets.secret_arns)
   secrets = [
-    { name = "DATABASE_URL",    secret_arn = module.secrets.secret_arns["db-url"] },
-    { name = "REDIS_URL",       secret_arn = module.secrets.secret_arns["redis-url"] },
+    { name = "DATABASE_URL", secret_arn = module.secrets.secret_arns["db-url"] },
+    { name = "REDIS_URL", secret_arn = module.secrets.secret_arns["redis-url"] },
     { name = "JWT_PRIVATE_KEY", secret_arn = module.secrets.secret_arns["jwt-private"] },
-    { name = "JWT_PUBLIC_KEY",  secret_arn = module.secrets.secret_arns["jwt-public"] },
+    { name = "JWT_PUBLIC_KEY", secret_arn = module.secrets.secret_arns["jwt-public"] },
   ]
 
   environment_vars = [
     { name = "NODE_ENV", value = "production" },
   ]
 
-  sqs_queue_arns    = values(module.messaging.queue_arns)
-  sns_topic_arns    = values(module.messaging.topic_arns)
+  sqs_queue_arns     = values(module.messaging.queue_arns)
+  sns_topic_arns     = values(module.messaging.topic_arns)
   log_retention_days = 90
 
   tags = { Environment = local.env, Service = "worker" }
@@ -301,33 +301,20 @@ module "waf" {
   tags = { Environment = local.env }
 }
 
-# ── CDN (S3 + CloudFront) — rally-web SPA ─────────────────────────────────────
-# PriceClass_All in prod — full global PoP coverage for enterprise users.
-# The custom domain (web_domain, e.g. "rally.qnsc.vn") is only wired when set —
-# prod's public hostname is a product decision, so it stays off until chosen.
-module "cdn" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/cdn?ref=cdn-v1.1.0"
+# ── Web SPA — Cloudflare Pages (zero-egress, native SPA routing) ─────────────
+# Consistent with rally develop + opshub. Cloudflare's global edge replaces the
+# CloudFront PriceClass_All coverage. The custom domain (web_domain, e.g.
+# "rally.qnsc.vn") is a prod product decision — the web module (Pages project +
+# custom domain + DNS) is created only when cloudflare_account_id AND web_domain
+# are both set, so prod applies cleanly before the public hostname is chosen.
+module "web" {
+  count  = var.cloudflare_account_id != "" && var.web_domain != "" ? 1 : 0
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/pages-web?ref=pages-web-v1.0.0"
 
-  name         = "qnsc-rally-web-prod" # "rally-web-prod" is a globally-unique S3 bucket name already claimed by another AWS account
-  acm_cert_arn = var.web_acm_cert_arn
-  aliases      = var.web_domain != "" ? [var.web_domain] : []
-  price_class  = "PriceClass_All"
-
-  tags = { Environment = local.env, Service = "web" }
-}
-
-# ── DNS — <web_domain> → CloudFront (shared dns-record module) ──────────────
-# Zone ID from qnsc-infra bootstrap (via _shared remote state). Created only
-# when BOTH the zone ID is present AND web_domain is set — prod's public
-# hostname isn't decided yet, so this stays off until web_domain is set.
-module "dns_web" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/dns-record?ref=dns-record-v1.0.0"
-
-  enabled = local.cloudflare_zone_id != "" && var.web_domain != ""
-  zone_id = local.cloudflare_zone_id
-  name    = var.web_domain
-  type    = "CNAME"
-  content = module.cdn.cloudfront_domain
-  proxied = false
-  comment = "rally-prod web SPA → CloudFront (managed by rally-infra prod)"
+  account_id  = var.cloudflare_account_id
+  name        = "rally-prod-web"
+  zone_id     = local.cloudflare_zone_id
+  domain      = var.web_domain
+  record_name = var.web_domain
+  comment     = "rally-prod web SPA → Cloudflare Pages (managed by rally-infra prod)"
 }
