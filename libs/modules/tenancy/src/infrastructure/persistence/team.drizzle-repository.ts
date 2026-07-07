@@ -10,25 +10,45 @@ import { ITeamRepository } from '../../domain/ports/team.repository';
 export class TeamDrizzleRepository implements ITeamRepository {
   constructor(@InjectDrizzle() private readonly db: DrizzleDB) {}
 
-  async findById(id: string): Promise<Team | null> {
-    const rows = await this.db.select().from(teams).where(eq(teams.id, id)).limit(1);
-    return (rows[0]) ?? null;
-  }
-
-  async findByKey(workspaceId: string, key: string): Promise<Team | null> {
+  // Every read carries an explicit tenant_id predicate. This is defence in
+  // depth that holds even when the query runs outside an RLS tenant context
+  // (e.g. a superuser connection in dev, where RLS is bypassed) — tenant
+  // isolation never depends on RLS + connection role alone.
+  async findById(id: string, tenantId: string): Promise<Team | null> {
     const rows = await this.db
       .select()
       .from(teams)
-      .where(and(eq(teams.workspaceId, workspaceId), eq(teams.key, key)))
+      .where(and(eq(teams.id, id), eq(teams.tenantId, tenantId)))
       .limit(1);
     return (rows[0]) ?? null;
   }
 
-  async listByWorkspace(workspaceId: string): Promise<Team[]> {
+  async findByKey(workspaceId: string, key: string, tenantId: string): Promise<Team | null> {
     const rows = await this.db
       .select()
       .from(teams)
-      .where(and(eq(teams.workspaceId, workspaceId), eq(teams.status, 'active')))
+      .where(
+        and(
+          eq(teams.workspaceId, workspaceId),
+          eq(teams.key, key),
+          eq(teams.tenantId, tenantId),
+        ),
+      )
+      .limit(1);
+    return (rows[0]) ?? null;
+  }
+
+  async listByWorkspace(workspaceId: string, tenantId: string): Promise<Team[]> {
+    const rows = await this.db
+      .select()
+      .from(teams)
+      .where(
+        and(
+          eq(teams.workspaceId, workspaceId),
+          eq(teams.tenantId, tenantId),
+          eq(teams.status, 'active'),
+        ),
+      )
       .orderBy(teams.name);
     return rows;
   }

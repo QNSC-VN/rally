@@ -12,7 +12,6 @@ import {
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
-  Auth,
   ApiCommonErrors,
   ApiPagedResponse,
   buildPageArgs,
@@ -20,6 +19,7 @@ import {
 } from '@platform';
 import type { JwtPayload, PagedResult } from '@platform';
 import { CurrentUser } from '@modules/identity';
+import { RequireProjectPermission, AuthProjectScoped } from '@modules/access';
 import { ProjectsService } from '../../application/projects.service';
 import {
   CreateProjectDto,
@@ -99,7 +99,10 @@ function toLabelDto(l: Label): LabelResponseDto {
 
 @ApiTags('projects')
 @Controller('projects')
-@Auth()
+// AuthProjectScoped bundles JwtAuth → Permission → ProjectPermission guards in
+// a guaranteed order. Flat @RequirePermission routes still work (the project
+// guard no-ops without @RequireProjectPermission metadata).
+@AuthProjectScoped()
 export class ProjectsController {
   constructor(private readonly projectsService: ProjectsService) {}
 
@@ -158,7 +161,7 @@ export class ProjectsController {
   // ── Update project ─────────────────────────────────────────────────────────
 
   @Patch(':id')
-  @RequirePermission('project:edit')
+  @RequireProjectPermission('project:edit')
   @ApiOperation({ summary: 'Update project' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: ProjectResponseDto })
@@ -175,7 +178,7 @@ export class ProjectsController {
   // ── Archive project ────────────────────────────────────────────────────────
 
   @Post(':id/archive')
-  @RequirePermission('project:archive')
+  @RequireProjectPermission('project:archive')
   @HttpCode(200)
   @ApiOperation({ summary: 'Archive a project (sets status to archived, becomes read-only)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -192,7 +195,7 @@ export class ProjectsController {
   // ── Restore project ────────────────────────────────────────────────────────
 
   @Post(':id/restore')
-  @RequirePermission('project:restore')
+  @RequireProjectPermission('project:restore')
   @HttpCode(200)
   @ApiOperation({ summary: 'Restore an archived project back to active' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -209,7 +212,7 @@ export class ProjectsController {
   // ── Delete project ─────────────────────────────────────────────────────────
 
   @Delete(':id')
-  @RequirePermission('project:delete')
+  @RequireProjectPermission('project:delete')
   @HttpCode(204)
   @ApiOperation({ summary: 'Delete project (soft delete)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -267,7 +270,7 @@ export class ProjectsController {
   }
 
   @Post(':id/labels')
-  @RequirePermission('project:edit')
+  @RequireProjectPermission('project:edit')
   @ApiOperation({ summary: 'Create a label for a project' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 201, type: LabelResponseDto })
@@ -282,7 +285,7 @@ export class ProjectsController {
   }
 
   @Patch(':id/labels/:labelId')
-  @RequirePermission('project:edit')
+  @RequireProjectPermission('project:edit')
   @ApiOperation({ summary: 'Update a label' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiParam({ name: 'labelId', type: 'string', format: 'uuid' })
@@ -300,7 +303,7 @@ export class ProjectsController {
 
   @Delete(':id/labels/:labelId')
   @HttpCode(204)
-  @RequirePermission('project:edit')
+  @RequireProjectPermission('project:edit')
   @ApiOperation({ summary: 'Delete a label' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiParam({ name: 'labelId', type: 'string', format: 'uuid' })
@@ -325,7 +328,7 @@ export class ProjectsController {
   }
 
   @Post(':id/teams')
-  @RequirePermission('project:edit')
+  @RequireProjectPermission('project:edit')
   @ApiOperation({ summary: 'Link a team to a project' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiCommonErrors(400, 401, 404, 409, 422)
@@ -339,7 +342,7 @@ export class ProjectsController {
 
   @Delete(':id/teams/:teamId')
   @HttpCode(204)
-  @RequirePermission('project:edit')
+  @RequireProjectPermission('project:edit')
   @ApiOperation({ summary: 'Unlink a team from a project' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiParam({ name: 'teamId', type: 'string', format: 'uuid' })
@@ -367,7 +370,7 @@ export class ProjectsController {
   }
 
   @Post(':id/members')
-  @RequirePermission('project:manage_members')
+  @RequireProjectPermission('project:manage_members')
   @ApiOperation({ summary: 'Add a member to a project' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiCommonErrors(400, 401, 404, 409, 422)
@@ -380,7 +383,7 @@ export class ProjectsController {
   }
 
   @Patch(':id/members/:memberId')
-  @RequirePermission('project:manage_members')
+  @RequireProjectPermission('project:manage_members')
   @ApiOperation({ summary: 'Update a project member role/status' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiParam({ name: 'memberId', type: 'string', format: 'uuid' })
@@ -396,7 +399,7 @@ export class ProjectsController {
 
   @Delete(':id/members/:userId')
   @HttpCode(204)
-  @RequirePermission('project:manage_members')
+  @RequireProjectPermission('project:manage_members')
   @ApiOperation({ summary: 'Remove a member from a project' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiParam({ name: 'userId', type: 'string', format: 'uuid' })

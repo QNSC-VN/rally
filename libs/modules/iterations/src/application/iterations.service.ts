@@ -9,6 +9,8 @@ import {
 } from '@platform';
 import type { JwtPayload, CursorPayload, PagedResult, DrizzleDB } from '@platform';
 import { ProjectsService } from '@modules/projects';
+import { AccessService } from '@modules/access';
+import { PERMISSION } from '@shared-kernel';
 import { workItems, workflowStatuses } from '../../../../../db/schema/work';
 import {
   IIterationRepository,
@@ -29,6 +31,7 @@ export class IterationsService {
     @Inject(ITERATION_REPOSITORY) private readonly iterationRepo: IIterationRepository,
     @InjectDrizzle() private readonly db: DrizzleDB,
     private readonly projectsService: ProjectsService,
+    private readonly accessService: AccessService,
   ) {}
 
   // ── List ──────────────────────────────────────────────────────────────────
@@ -116,15 +119,17 @@ export class IterationsService {
   // ── Update ────────────────────────────────────────────────────────────────
 
   async updateIteration(
-    tenantId: string,
+    actor: JwtPayload,
     id: string,
     input: UpdateIterationInput,
   ): Promise<Iteration> {
-    const current = await this.getIteration(tenantId, id);
+    const current = await this.getIteration(actor.tenantId, id);
+    // Per-project check against THIS iteration's project.
+    await this.accessService.assertProjectPermission(actor, current.projectId, PERMISSION.ITERATION_MANAGE);
 
     // Team must remain linked to the iteration's project.
     if (input.teamId) {
-      await this.assertTeamLinked(tenantId, current.projectId, input.teamId);
+      await this.assertTeamLinked(actor.tenantId, current.projectId, input.teamId);
     }
 
     // Validate the resulting date range (fall back to current values).
@@ -137,8 +142,9 @@ export class IterationsService {
 
   // ── Delete ────────────────────────────────────────────────────────────────
 
-  async deleteIteration(tenantId: string, id: string): Promise<void> {
-    const iteration = await this.getIteration(tenantId, id);
+  async deleteIteration(actor: JwtPayload, id: string): Promise<void> {
+    const iteration = await this.getIteration(actor.tenantId, id);
+    await this.accessService.assertProjectPermission(actor, iteration.projectId, PERMISSION.ITERATION_MANAGE);
     if (iteration.state !== 'planning') {
       throw new PreconditionFailedException(
         'ITERATION_NOT_PLANNING',
@@ -151,8 +157,9 @@ export class IterationsService {
 
   // ── Commit (planning → committed) ───────────────────────────────────────────
 
-  async commitIteration(tenantId: string, id: string): Promise<Iteration> {
-    const iteration = await this.getIteration(tenantId, id);
+  async commitIteration(actor: JwtPayload, id: string): Promise<Iteration> {
+    const iteration = await this.getIteration(actor.tenantId, id);
+    await this.accessService.assertProjectPermission(actor, iteration.projectId, PERMISSION.ITERATION_MANAGE);
 
     if (iteration.state !== 'planning') {
       throw new PreconditionFailedException(
@@ -177,11 +184,13 @@ export class IterationsService {
   // ── Accept (committed → accepted) — moves unfinished items out ──────────────
 
   async acceptIteration(
-    tenantId: string,
+    actor: JwtPayload,
     id: string,
     opts: { moveToIterationId?: string } = {},
   ): Promise<Iteration> {
+    const tenantId = actor.tenantId;
     const iteration = await this.getIteration(tenantId, id);
+    await this.accessService.assertProjectPermission(actor, iteration.projectId, PERMISSION.ITERATION_MANAGE);
 
     if (iteration.state !== 'committed') {
       throw new PreconditionFailedException(

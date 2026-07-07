@@ -19,8 +19,8 @@ export class TeamService {
     @Inject(WORKSPACE_REPOSITORY) private readonly workspaceRepo: IWorkspaceRepository,
   ) {}
 
-  async listTeams(workspaceId: string): Promise<Team[]> {
-    return this.teamRepo.listByWorkspace(workspaceId);
+  async listTeams(workspaceId: string, tenantId: string): Promise<Team[]> {
+    return this.teamRepo.listByWorkspace(workspaceId, tenantId);
   }
 
   async createTeam(
@@ -36,7 +36,7 @@ export class TeamService {
       throw new NotFoundException('WORKSPACE_NOT_FOUND', 'Workspace not found');
     }
 
-    const existing = await this.teamRepo.findByKey(workspaceId, key.toUpperCase());
+    const existing = await this.teamRepo.findByKey(workspaceId, key.toUpperCase(), tenantId);
     if (existing) {
       throw new ConflictException(
         'TEAM_KEY_TAKEN',
@@ -58,16 +58,17 @@ export class TeamService {
     return team;
   }
 
-  async getTeam(id: string, tenantId?: string): Promise<Team> {
-    const team = await this.teamRepo.findById(id);
-    // Return 404 for both "not found" and "wrong tenant" — avoids cross-tenant enumeration.
-    if (!team || (tenantId !== undefined && team.tenantId !== tenantId)) {
+  async getTeam(id: string, tenantId: string): Promise<Team> {
+    // findById already filters by tenant_id — a wrong-tenant id returns null,
+    // which we surface as 404 to avoid cross-tenant enumeration.
+    const team = await this.teamRepo.findById(id, tenantId);
+    if (!team) {
       throw new NotFoundException('TEAM_NOT_FOUND', 'Team not found');
     }
     return team;
   }
 
-  async updateTeam(id: string, input: UpdateTeamInput, tenantId?: string): Promise<Team> {
+  async updateTeam(id: string, input: UpdateTeamInput, tenantId: string): Promise<Team> {
     const team = await this.getTeam(id, tenantId);
 
     if (input.status === 'archived' && team.status === 'archived') {
@@ -77,13 +78,14 @@ export class TeamService {
     return this.teamRepo.update(id, input);
   }
 
-  async listTeamMembers(teamId: string, tenantId?: string): Promise<TeamMember[]> {
+  async listTeamMembers(teamId: string, tenantId: string): Promise<TeamMember[]> {
     await this.getTeam(teamId, tenantId);
     return this.teamMemberRepo.listByTeam(teamId);
   }
 
   async addTeamMember(teamId: string, userId: string, tenantId: string): Promise<TeamMember> {
-    await this.getTeam(teamId);
+    // Pass tenantId so a team from another tenant can't be targeted (was a gap).
+    await this.getTeam(teamId, tenantId);
 
     const existing = await this.teamMemberRepo.findMember(teamId, userId);
     if (existing) {
@@ -98,7 +100,7 @@ export class TeamService {
     return member;
   }
 
-  async removeTeamMember(teamId: string, userId: string, tenantId?: string): Promise<void> {
+  async removeTeamMember(teamId: string, userId: string, tenantId: string): Promise<void> {
     await this.getTeam(teamId, tenantId);
 
     const existing = await this.teamMemberRepo.findMember(teamId, userId);

@@ -9,9 +9,10 @@ import {
   Post,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Auth, ApiCommonErrors, RequirePermission } from '@platform';
+import { ApiCommonErrors } from '@platform';
 import type { JwtPayload } from '@platform';
 import { CurrentUser } from '@modules/identity';
+import { RequireProjectPermission, AuthProjectScoped } from '@modules/access';
 import {
   ProjectsService,
   WorkflowStatusResponseDto,
@@ -49,14 +50,16 @@ function toTransitionDto(t: WorkflowTransition): WorkflowTransitionResponseDto {
 
 @ApiTags('workflow')
 @Controller('projects/:projectId')
-@Auth()
+// Workflow statuses/transitions are project-owned: enforce per-project scope
+// with guards in a guaranteed order (JwtAuth → Permission → ProjectPermission).
+@AuthProjectScoped()
 export class WorkflowController {
   constructor(private readonly projectsService: ProjectsService) {}
 
   // ── Statuses ───────────────────────────────────────────────────────────────
 
   @Post('statuses')
-  @RequirePermission('project:edit')
+  @RequireProjectPermission('project:edit', 'param', 'projectId')
   @ApiOperation({ summary: 'Create a workflow status for a project' })
   @ApiParam({ name: 'projectId', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 201, type: WorkflowStatusResponseDto })
@@ -77,7 +80,7 @@ export class WorkflowController {
   }
 
   @Patch('statuses/reorder')
-  @RequirePermission('project:edit')
+  @RequireProjectPermission('project:edit', 'param', 'projectId')
   @ApiOperation({ summary: 'Reorder workflow statuses' })
   @ApiParam({ name: 'projectId', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 204, description: 'Statuses reordered' })
@@ -93,7 +96,7 @@ export class WorkflowController {
 
   @Delete('statuses/:statusId')
   @HttpCode(204)
-  @RequirePermission('project:edit')
+  @RequireProjectPermission('project:edit', 'param', 'projectId')
   @ApiOperation({ summary: 'Delete a workflow status' })
   @ApiParam({ name: 'projectId', type: 'string', format: 'uuid' })
   @ApiParam({ name: 'statusId', type: 'string', format: 'uuid' })
@@ -110,7 +113,7 @@ export class WorkflowController {
   // ── Transitions ────────────────────────────────────────────────────────────
 
   @Post('transitions')
-  @RequirePermission('project:edit')
+  @RequireProjectPermission('project:edit', 'param', 'projectId')
   @ApiOperation({ summary: 'Create a workflow transition rule' })
   @ApiParam({ name: 'projectId', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 201, type: WorkflowTransitionResponseDto })
@@ -130,7 +133,7 @@ export class WorkflowController {
 
   @Delete('transitions/:transitionId')
   @HttpCode(204)
-  @RequirePermission('project:edit')
+  @RequireProjectPermission('project:edit', 'param', 'projectId')
   @ApiOperation({ summary: 'Delete a workflow transition rule' })
   @ApiParam({ name: 'projectId', type: 'string', format: 'uuid' })
   @ApiParam({ name: 'transitionId', type: 'string', format: 'uuid' })

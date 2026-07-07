@@ -123,9 +123,21 @@ export class AuthService {
       .filter(Boolean);
     let updatedMemberships = memberships;
     if (platformAdminEmails.includes(user.email.toLowerCase())) {
-      await this.accessService.elevateToWorkspaceAdmin(user.id, activeTenantId);
+      const elevated = await this.accessService.elevateToWorkspaceAdmin(user.id, activeTenantId);
       // Re-fetch so the response reflects the new role
       updatedMemberships = await this.tenancyService.getMemberships(user.id);
+      if (elevated) {
+        void this.audit.record({
+          tenantId: activeTenantId,
+          actorId: user.id,
+          actorEmail: user.email,
+          action: 'access.role_elevated',
+          resourceType: 'user',
+          resourceId: user.id,
+          ipAddress,
+          metadata: { role: 'workspace_admin', via: 'PLATFORM_ADMIN_EMAILS' },
+        });
+      }
     }
 
     const { permissions } = await this.accessService.getUserRoleAndPermissions(
@@ -625,7 +637,19 @@ export class AuthService {
       .map((e) => e.trim())
       .filter(Boolean);
     if (platformAdminEmails.includes(user.email.toLowerCase())) {
-      await this.accessService.elevateToWorkspaceAdmin(user.id, ssoTenantId);
+      const elevated = await this.accessService.elevateToWorkspaceAdmin(user.id, ssoTenantId);
+      if (elevated) {
+        void this.audit.record({
+          tenantId: ssoTenantId,
+          actorId: user.id,
+          actorEmail: user.email,
+          action: 'access.role_elevated',
+          resourceType: 'user',
+          resourceId: user.id,
+          ipAddress,
+          metadata: { role: 'workspace_admin', via: 'PLATFORM_ADMIN_EMAILS', method: 'sso' },
+        });
+      }
     }
 
     const sessionId = uuidv7();

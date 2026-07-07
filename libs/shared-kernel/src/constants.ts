@@ -1,8 +1,5 @@
-export const SYSTEM_ROLE = {
-  WORKSPACE_ADMIN: 'workspace_admin',
-  PROJECT_ADMIN: 'project_admin',
-  PROJECT_MEMBER: 'project_member',
-  PROJECT_VIEWER: 'project_viewer',
-  WORKSPACE_MEMBER: 'workspace_member',
-  GUEST: 'guest',
-} as const;
+/**
+ * SYSTEM_ROLE re-exported from the canonical catalogue (db/permissions.catalog.ts)
+ * so the role slugs have a single source of truth shared with the DB seed.
+ */
+export { SYSTEM_ROLE, type SystemRoleSlug } from '../../../db/permissions.catalog';

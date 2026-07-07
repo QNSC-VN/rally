@@ -3,6 +3,8 @@ import { uuidv7 } from 'uuidv7';
 import { NotFoundException, PreconditionFailedException } from '@platform';
 import type { JwtPayload, CursorPayload, PagedResult } from '@platform';
 import { ProjectsService } from '@modules/projects';
+import { AccessService } from '@modules/access';
+import { PERMISSION } from '@shared-kernel';
 import { IReleaseRepository, RELEASE_REPOSITORY } from '../domain/ports/release.repository';
 import type { Release, UpdateReleaseInput } from '../domain/release.types';
 
@@ -13,6 +15,7 @@ export class ReleasesService {
   constructor(
     @Inject(RELEASE_REPOSITORY) private readonly releaseRepo: IReleaseRepository,
     private readonly projectsService: ProjectsService,
+    private readonly accessService: AccessService,
   ) {}
 
   // ── List ──────────────────────────────────────────────────────────────────
@@ -61,15 +64,18 @@ export class ReleasesService {
 
   // ── Update ────────────────────────────────────────────────────────────────
 
-  async updateRelease(tenantId: string, id: string, input: UpdateReleaseInput): Promise<Release> {
-    await this.getRelease(tenantId, id);
+  async updateRelease(actor: JwtPayload, id: string, input: UpdateReleaseInput): Promise<Release> {
+    const release = await this.getRelease(actor.tenantId, id);
+    // Per-project check: the caller must hold release:manage for THIS release's project.
+    await this.accessService.assertProjectPermission(actor, release.projectId, PERMISSION.RELEASE_MANAGE);
     return this.releaseRepo.update(id, input);
   }
 
   // ── Delete ────────────────────────────────────────────────────────────────
 
-  async deleteRelease(tenantId: string, id: string): Promise<void> {
-    const release = await this.getRelease(tenantId, id);
+  async deleteRelease(actor: JwtPayload, id: string): Promise<void> {
+    const release = await this.getRelease(actor.tenantId, id);
+    await this.accessService.assertProjectPermission(actor, release.projectId, PERMISSION.RELEASE_MANAGE);
     if (release.status === 'released') {
       throw new PreconditionFailedException(
         'RELEASE_NOT_FOUND',
@@ -82,8 +88,9 @@ export class ReleasesService {
 
   // ── Ship ─────────────────────────────────────────────────────────────────
 
-  async shipRelease(tenantId: string, id: string): Promise<Release> {
-    const release = await this.getRelease(tenantId, id);
+  async shipRelease(actor: JwtPayload, id: string): Promise<Release> {
+    const release = await this.getRelease(actor.tenantId, id);
+    await this.accessService.assertProjectPermission(actor, release.projectId, PERMISSION.RELEASE_MANAGE);
     if (release.status === 'released') {
       throw new PreconditionFailedException('RELEASE_NOT_FOUND', 'Release has already shipped');
     }

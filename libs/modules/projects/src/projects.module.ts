@@ -12,9 +12,10 @@ import { LABEL_REPOSITORY } from './domain/ports/label.repository';
 import { PROJECT_TEAM_REPOSITORY } from './domain/ports/project-team.repository';
 import { PROJECT_MEMBER_REPOSITORY } from './domain/ports/project-member.repository';
 import { TenancyModule } from '@modules/tenancy';
+import { AccessModule } from '@modules/access';
 
 @Module({
-  imports: [TenancyModule],
+  imports: [TenancyModule, AccessModule],
   controllers: [ProjectsController],
   providers: [
     ProjectsService,

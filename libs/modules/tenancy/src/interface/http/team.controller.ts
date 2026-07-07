@@ -84,8 +84,11 @@ export class TeamController {
   @ApiParam({ name: 'workspaceId', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, schema: { type: 'array', items: { type: 'object' } } })
   @ApiCommonErrors(401, 404)
-  async listTeams(@Param('workspaceId', ParseUUIDPipe) workspaceId: string) {
-    const teams = await this.teamService.listTeams(workspaceId);
+  async listTeams(
+    @CurrentUser() user: JwtPayload,
+    @Param('workspaceId', ParseUUIDPipe) workspaceId: string,
+  ) {
+    const teams = await this.teamService.listTeams(workspaceId, user.tenantId);
     return teams.map(toTeamDto);
   }
 

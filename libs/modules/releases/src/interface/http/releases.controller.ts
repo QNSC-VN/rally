@@ -12,14 +12,13 @@ import {
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
-  Auth,
   ApiCommonErrors,
   ApiPagedResponse,
   buildPageArgs,
-  RequirePermission,
 } from '@platform';
 import type { JwtPayload, PagedResult } from '@platform';
 import { CurrentUser } from '@modules/identity';
+import { RequireProjectPermission, AuthProjectScoped } from '@modules/access';
 import { ReleasesService } from '../../application/releases.service';
 import { ReleaseQueryDto, CreateReleaseDto, UpdateReleaseDto } from './dto/release-request.dto';
 import { ReleaseResponseDto } from './dto/release-response.dto';
@@ -42,7 +41,10 @@ function toReleaseDto(r: Release): ReleaseResponseDto {
 
 @ApiTags('releases')
 @Controller('releases')
-@Auth()
+// Releases are project-owned. Create checks the project in the body via the
+// guard; update/delete/ship check per-project in the service (project known
+// only after loading the release). Guards run in a guaranteed order.
+@AuthProjectScoped()
 export class ReleasesController {
   constructor(private readonly releasesService: ReleasesService) {}
 
@@ -60,7 +62,7 @@ export class ReleasesController {
   }
 
   @Post()
-  @RequirePermission('release:manage')
+  @RequireProjectPermission('release:manage', 'body', 'projectId')
   @ApiOperation({ summary: 'Create a release' })
   @ApiResponse({ status: 201, type: ReleaseResponseDto })
   @ApiCommonErrors(400, 401, 404, 422)
@@ -89,45 +91,42 @@ export class ReleasesController {
   }
 
   @Patch(':id')
-  @RequirePermission('release:manage')
   @ApiOperation({ summary: 'Update release details' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: ReleaseResponseDto })
-  @ApiCommonErrors(400, 401, 404, 422)
+  @ApiCommonErrors(400, 401, 403, 404, 422)
   async updateRelease(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateReleaseDto,
   ): Promise<ReleaseResponseDto> {
-    const release = await this.releasesService.updateRelease(user.tenantId, id, dto);
+    const release = await this.releasesService.updateRelease(user, id, dto);
     return toReleaseDto(release);
   }
 
   @Delete(':id')
   @HttpCode(204)
-  @RequirePermission('release:manage')
   @ApiOperation({ summary: 'Delete a planned release' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 204, description: 'Release deleted' })
-  @ApiCommonErrors(400, 401, 404)
+  @ApiCommonErrors(400, 401, 403, 404)
   async deleteRelease(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<void> {
-    await this.releasesService.deleteRelease(user.tenantId, id);
+    await this.releasesService.deleteRelease(user, id);
   }
 
   @Post(':id/ship')
-  @RequirePermission('release:manage')
   @ApiOperation({ summary: 'Mark a release as shipped' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 201, type: ReleaseResponseDto })
-  @ApiCommonErrors(400, 401, 404)
+  @ApiCommonErrors(400, 401, 403, 404)
   async shipRelease(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<ReleaseResponseDto> {
-    const release = await this.releasesService.shipRelease(user.tenantId, id);
+    const release = await this.releasesService.shipRelease(user, id);
     return toReleaseDto(release);
   }
 }

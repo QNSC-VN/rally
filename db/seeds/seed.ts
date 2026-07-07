@@ -26,6 +26,7 @@ import * as schema from '../schema';
 import { projectCounters, projectMembers, workItems, iterations, releases, teams, teamMembers } from '../schema/work';
 import { userRoleAssignments } from '../schema/access';
 import { ssoConnections } from '../schema/identity';
+import { ROLE_PERMISSIONS, ROLE_NAMES, type SystemRoleSlug } from '../permissions.catalog';
 // Inlined from libs/modules/projects/src/domain/project.constants.ts
 // so the migrator Docker image (which doesn't include libs/) can run this seed.
 const DEFAULT_WORKFLOW_STATUSES = [
@@ -895,76 +896,25 @@ export async function seed(connectionUrl?: string): Promise<void> {
       .onConflictDoNothing();
 
     // ── System roles ─────────────────────────────────────────────────────────
-    const ROLES = [
-      {
-        slug: 'workspace_admin',
-        name: 'Workspace Admin',
-        permissions: [
-          'workspace:*',
-          'project:view',
-          'project:create',
-          'project:edit',
-          'project:archive',
-          'project:restore',
-          'project:delete',
-          'work_item:create',
-          'work_item:edit',
-          'work_item:delete',
-          'work_item:view',
-          'iteration:view',
-          'iteration:manage',
-          'release:manage',
-        ],
-      },
-      {
-        slug: 'project_admin',
-        name: 'Project Admin',
-        permissions: [
-          'project:view',
-          'project:create',
-          'project:edit',
-          'project:archive',
-          'project:restore',
-          'work_item:create',
-          'work_item:edit',
-          'work_item:delete',
-          'work_item:view',
-          'iteration:view',
-          'iteration:manage',
-          'release:manage',
-        ],
-      },
-      {
-        slug: 'project_member',
-        name: 'Project Member',
-        // BA spec: Developer can update any work item (no "own-only" concept)
-        permissions: ['work_item:create', 'work_item:edit', 'work_item:view', 'iteration:view'],
-      },
-      {
-        slug: 'project_viewer',
-        name: 'Project Viewer',
-        permissions: ['work_item:view', 'iteration:view'],
-      },
-      {
-        slug: 'workspace_member',
-        name: 'Workspace Member',
-        permissions: ['workspace:view', 'project:view'],
-      },
-      { slug: 'guest', name: 'Guest', permissions: ['work_item:view:public'] },
-    ];
-
-    for (const role of ROLES) {
+    // Roles + their permission grants come from the canonical catalogue
+    // (db/permissions.catalog.ts) — the same source the backend @RequirePermission
+    // decorators and the frontend gating derive their codes from. onConflictDoUpdate
+    // means re-seeding an existing DB backfills any newly-granted permissions.
+    const roleSlugs = Object.keys(ROLE_PERMISSIONS) as SystemRoleSlug[];
+    for (const slug of roleSlugs) {
+      const permissions = ROLE_PERMISSIONS[slug];
+      const name = ROLE_NAMES[slug];
       await db
         .insert(schema.systemRoles)
         .values({
-          name: role.name,
-          slug: role.slug,
+          name,
+          slug,
           isSystem: true,
-          permissions: role.permissions,
+          permissions,
         })
         .onConflictDoUpdate({
           target: schema.systemRoles.slug,
-          set: { permissions: role.permissions, name: role.name },
+          set: { permissions, name },
         });
     }
 

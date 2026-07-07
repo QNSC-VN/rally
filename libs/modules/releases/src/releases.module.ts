@@ -1,12 +1,13 @@
 import { Module } from '@nestjs/common';
 import { ProjectsModule } from '@modules/projects';
+import { AccessModule } from '@modules/access';
 import { ReleasesService } from './application/releases.service';
 import { ReleasesController } from './interface/http/releases.controller';
 import { ReleaseDrizzleRepository } from './infrastructure/persistence/release.drizzle-repository';
 import { RELEASE_REPOSITORY } from './domain/ports/release.repository';
 
 @Module({
-  imports: [ProjectsModule],
+  imports: [ProjectsModule, AccessModule],
   controllers: [ReleasesController],
   providers: [ReleasesService, { provide: RELEASE_REPOSITORY, useClass: ReleaseDrizzleRepository }],
   exports: [ReleasesService],

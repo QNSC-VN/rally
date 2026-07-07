@@ -12,7 +12,6 @@ import {
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
-  Auth,
   ApiCommonErrors,
   ApiPagedResponse,
   buildPageArgs,
@@ -20,6 +19,7 @@ import {
 } from '@platform';
 import type { JwtPayload, PagedResult } from '@platform';
 import { CurrentUser } from '@modules/identity';
+import { RequireProjectPermission, AuthProjectScoped } from '@modules/access';
 import { IterationsService } from '../../application/iterations.service';
 import { IterationStatusService } from '../../application/iteration-status.service';
 import {
@@ -78,7 +78,11 @@ function toIterationDto(i: Iteration): IterationResponseDto {
 
 @ApiTags('iterations')
 @Controller('iterations')
-@Auth()
+// Iterations are project-owned. Create checks the project in the body via the
+// guard; update/delete/commit/accept check per-project in the service (project
+// known only after loading the iteration). Reads use flat iteration:view.
+// Guards run in a guaranteed order (JwtAuth → Permission → ProjectPermission).
+@AuthProjectScoped()
 export class IterationsController {
   constructor(
     private readonly iterationsService: IterationsService,
@@ -111,7 +115,7 @@ export class IterationsController {
   }
 
   @Post()
-  @RequirePermission('iteration:manage')
+  @RequireProjectPermission('iteration:manage', 'body', 'projectId')
   @ApiOperation({ summary: 'Create an iteration' })
   @ApiResponse({ status: 201, type: IterationResponseDto })
   @ApiCommonErrors(400, 401, 404, 422)
@@ -166,61 +170,57 @@ export class IterationsController {
   }
 
   @Patch(':id')
-  @RequirePermission('iteration:manage')
   @ApiOperation({ summary: 'Update iteration details' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: IterationResponseDto })
-  @ApiCommonErrors(400, 401, 404, 422)
+  @ApiCommonErrors(400, 401, 403, 404, 422)
   async updateIteration(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateIterationDto,
   ): Promise<IterationResponseDto> {
-    const iteration = await this.iterationsService.updateIteration(user.tenantId, id, dto);
+    const iteration = await this.iterationsService.updateIteration(user, id, dto);
     return toIterationDto(iteration);
   }
 
   @Delete(':id')
   @HttpCode(204)
-  @RequirePermission('iteration:manage')
   @ApiOperation({ summary: 'Delete a planning-state iteration' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 204, description: 'Iteration deleted' })
-  @ApiCommonErrors(400, 401, 404)
+  @ApiCommonErrors(400, 401, 403, 404)
   async deleteIteration(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<void> {
-    await this.iterationsService.deleteIteration(user.tenantId, id);
+    await this.iterationsService.deleteIteration(user, id);
   }
 
   @Post(':id/commit')
-  @RequirePermission('iteration:manage')
   @ApiOperation({ summary: 'Commit an iteration (planning → committed)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 201, type: IterationResponseDto })
-  @ApiCommonErrors(400, 401, 404, 409)
+  @ApiCommonErrors(400, 401, 403, 404, 409)
   async commitIteration(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<IterationResponseDto> {
-    const iteration = await this.iterationsService.commitIteration(user.tenantId, id);
+    const iteration = await this.iterationsService.commitIteration(user, id);
     return toIterationDto(iteration);
   }
 
   @Post(':id/accept')
-  @RequirePermission('iteration:manage')
   @ApiOperation({
     summary: 'Accept an iteration (committed → accepted); moves unfinished items out',
   })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
-  @ApiCommonErrors(400, 401, 404, 422)
+  @ApiCommonErrors(400, 401, 403, 404, 422)
   async acceptIteration(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: AcceptIterationDto,
   ): Promise<IterationResponseDto> {
-    const iteration = await this.iterationsService.acceptIteration(user.tenantId, id, {
+    const iteration = await this.iterationsService.acceptIteration(user, id, {
       moveToIterationId: dto.moveToIterationId,
     });
     return toIterationDto(iteration);

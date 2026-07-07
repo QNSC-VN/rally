@@ -9,6 +9,7 @@ import { ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from './jwt.guard';
 import { PermissionGuard } from './permission.guard';
 import type { JwtPayload } from './jwt.strategy';
+import type { Permission } from '@shared-kernel';
 
 export const IS_PUBLIC_KEY = 'isPublic';
 export const PERMISSION_KEY = 'requiredPermission';
@@ -17,7 +18,7 @@ export const PERMISSION_KEY = 'requiredPermission';
 export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);
 
 /** Require a specific permission code (RBAC check via PermissionGuard). */
-export const RequirePermission = (permission: string) => SetMetadata(PERMISSION_KEY, permission);
+export const RequirePermission = (permission: Permission) => SetMetadata(PERMISSION_KEY, permission);
 
 /**
  * Extract the authenticated user's JWT payload from the request.
@@ -58,7 +59,7 @@ export const ApiCommonErrors = (...codes: HttpErrorCode[]) =>
   );
 
 /** Apply JWT auth + permission guard + Swagger bearer annotation in one decorator. */
-export const Auth = (permission?: string) =>
+export const Auth = (permission?: Permission) =>
   applyDecorators(
     ...[
       UseGuards(JwtAuthGuard, PermissionGuard),
