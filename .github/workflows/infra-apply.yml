@@ -99,6 +99,10 @@ jobs:
           TF_VAR_entra_client_id:    ${{ vars.ENTRA_CLIENT_ID }}
           TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           TF_VAR_cloudflare_account_id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # Deployment mode (non-sensitive). Unset repo var => 'saas' via TF default.
+          TF_VAR_deployment_mode:      ${{ vars.RALLY_DEPLOYMENT_MODE_DEVELOP }}
+          TF_VAR_single_tenant_name:   ${{ vars.RALLY_SINGLE_TENANT_NAME_DEVELOP }}
+          TF_VAR_single_tenant_slug:   ${{ vars.RALLY_SINGLE_TENANT_SLUG_DEVELOP }}
 
       # Mint a short-lived installation token from the RELEASE_BOT GitHub App
       # (same app release.yml uses) so we never need a long-lived user PAT.

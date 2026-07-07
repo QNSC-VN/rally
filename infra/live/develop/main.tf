@@ -55,6 +55,11 @@ locals {
   kms_key_arn        = data.terraform_remote_state.shared.outputs.kms_key_arn
   cloudflare_zone_id = try(data.terraform_remote_state.shared.outputs.cloudflare_zone_id, "")
 
+  # Deployment mode — coalesce empty (unset GitHub repo var) → app defaults.
+  deployment_mode    = var.deployment_mode != "" ? var.deployment_mode : "saas"
+  single_tenant_name = var.single_tenant_name != "" ? var.single_tenant_name : "Default Organization"
+  single_tenant_slug = var.single_tenant_slug != "" ? var.single_tenant_slug : "default"
+
   # Cloudflare IPv4 ranges — single source of truth in qnsc-infra bootstrap
   # (read via _shared remote state), so a CF range change is one edit there.
   # The API subdomain is Cloudflare-proxied (orange), so the ALB only ever sees
@@ -249,8 +254,11 @@ module "api" {
     # Comma-separated emails auto-granted workspace_admin on every SSO login
     { name = "PLATFORM_ADMIN_EMAILS", value = "nghiavt18@qnsc.vn,quangld@qnsc.vn,hieuvbm@qnsc.vn,anhntn@qnsc.vn" },
     # Deployment mode — 'saas' = multi-tenant (self-serve signup on); 'single' =
-    # packaged per customer (one tenant, signup off). Dev is shared/multi-tenant.
-    { name = "DEPLOYMENT_MODE", value = "saas" },
+    # packaged per customer (one tenant, signup off). Dev is normally 'saas';
+    # set via the RALLY_*_DEVELOP repo vars, empty falls back to 'saas'.
+    { name = "DEPLOYMENT_MODE", value = local.deployment_mode },
+    { name = "SINGLE_TENANT_NAME", value = local.single_tenant_name },
+    { name = "SINGLE_TENANT_SLUG", value = local.single_tenant_slug },
     # Messaging — SQS queue URLs injected at deploy time from module outputs
     { name = "SQS_NOTIFICATIONS_URL", value = module.messaging.queue_urls["notifications"] },
     { name = "SQS_AUDIT_URL", value = module.messaging.queue_urls["audit"] },
