@@ -26,7 +26,7 @@ import * as schema from '../schema';
 import { projectCounters, projectMembers, workItems, iterations, releases, teams, teamMembers } from '../schema/work';
 import { userRoleAssignments } from '../schema/access';
 import { ssoConnections } from '../schema/identity';
-import { ROLE_PERMISSIONS, ROLE_NAMES, type SystemRoleSlug } from '../permissions.catalog';
+import { ROLE_PERMISSIONS, ROLE_NAMES, SYSTEM_ROLE, type SystemRoleSlug } from '../permissions.catalog';
 // Inlined from libs/modules/projects/src/domain/project.constants.ts
 // so the migrator Docker image (which doesn't include libs/) can run this seed.
 const DEFAULT_WORKFLOW_STATUSES = [
@@ -52,6 +52,13 @@ const ADMIN_USER_ID = '00000000-0000-7000-8000-000000000002';
 const WORKSPACE_ID = '00000000-0000-7000-8000-000000000003';
 const DEVELOPER_ID = '00000000-0000-7000-8000-000000000020';
 const VIEWER_ID = '00000000-0000-7000-8000-000000000021';
+
+// RBAC/PBAC demo users — one per otherwise-uncovered system role, plus a
+// project-scoped "lead" that proves per-project (PBAC) differentiation.
+const PROJECT_ADMIN_ID = '00000000-0000-7000-8000-000000000022';
+const WORKSPACE_MEMBER_ID = '00000000-0000-7000-8000-000000000023';
+const GUEST_ID = '00000000-0000-7000-8000-000000000024';
+const PROJECT_LEAD_ID = '00000000-0000-7000-8000-000000000025';
 
 const NXP_STORY_1_ID = '00000000-0000-7000-8000-000000000030';
 const NXP_STORY_2_ID = '00000000-0000-7000-8000-000000000031';
@@ -1008,6 +1015,9 @@ export async function seed(connectionUrl?: string): Promise<void> {
       })
       .onConflictDoNothing();
 
+    // ── RBAC/PBAC demo users (role coverage + per-project scoping) ───────────
+    await seedRbacDemoUsers();
+
     // ── Work items ────────────────────────────────────────────────────────────
     await seedWorkItems();
 
@@ -1032,6 +1042,15 @@ export async function seed(connectionUrl?: string): Promise<void> {
     // instead of the dev-only ENTRA_DEFAULT_TENANT_ID fallback.
     const entraTid = process.env['ENTRA_TENANT_ID'];
     if (entraTid) {
+      // Restrict JIT provisioning to the corporate domain(s). Empty list = any
+      // directory user could self-provision; default to qnsc.vn so only company
+      // accounts can auto-create. Overridable via SSO_ALLOWED_EMAIL_DOMAINS
+      // (comma-separated). NOTE: this only gates NEW users — already-linked SSO
+      // identities skip the domain check on subsequent logins.
+      const ssoAllowedDomains = (process.env['SSO_ALLOWED_EMAIL_DOMAINS'] ?? 'qnsc.vn')
+        .split(',')
+        .map((d) => d.trim().toLowerCase())
+        .filter(Boolean);
       await db
         .insert(ssoConnections)
         .values({
@@ -1040,18 +1059,139 @@ export async function seed(connectionUrl?: string): Promise<void> {
           provider: 'entra',
           externalTenantId: entraTid,
           defaultRoleSlug: 'project_member',
-          allowedEmailDomains: [],
+          allowedEmailDomains: ssoAllowedDomains,
           jitEnabled: true,
           status: 'active',
         })
-        .onConflictDoNothing();
-      console.log(`   ↳ SSO connection seeded for Entra tid ${entraTid} → acme tenant`);
+        // Reconcile config on every seed so allow-list / default-role / JIT
+        // changes take effect on the existing connection. onConflictDoNothing
+        // would freeze whatever was written on first provision.
+        .onConflictDoUpdate({
+          target: [ssoConnections.provider, ssoConnections.externalTenantId],
+          set: {
+            tenantId: SYSTEM_TENANT_ID,
+            workspaceId: WORKSPACE_ID,
+            defaultRoleSlug: 'project_member',
+            allowedEmailDomains: ssoAllowedDomains,
+            jitEnabled: true,
+            status: 'active',
+            updatedAt: new Date(),
+          },
+        });
+      console.log(
+        `   ↳ SSO connection reconciled for Entra tid ${entraTid} → acme tenant ` +
+          `(domains: ${ssoAllowedDomains.join(', ') || 'any'})`,
+      );
     }
 
-    console.log(`✅  Seed complete — ${SEED_PROJECTS.length} projects, 3 users, 2 teams, 4 iterations, 3 releases, work items seeded`);
+    console.log(`✅  Seed complete — ${SEED_PROJECTS.length} projects, 7 users, 2 teams, 4 iterations, 3 releases, work items seeded`);
   } finally {
     await pool.end();
   }
+}
+
+// ── RBAC/PBAC demo users ─────────────────────────────────────────────────────
+// The 3 primary users (admin/dev/viewer) only cover workspace_admin,
+// project_member and project_viewer. This seeds one user for each remaining
+// system role so the FE can exercise every role state, plus a PROJECT-scoped
+// "lead" that proves per-project (PBAC) resolution: project_admin on NXP,
+// project_viewer on MOB, and only baseline (workspace_member fallback) elsewhere.
+//
+// Business note: the implemented catalogue roles are workspace_admin /
+// project_admin / project_member / project_viewer / workspace_member / guest.
+// The early UI mockup used Project Manager / Product Owner / Tester instead; the
+// catalogue (db/permissions.catalog.ts) is the current source of truth. If BA
+// re-scopes roles, update the catalogue + these demo assignments together.
+//
+// Idempotent (fixed UUIDs + onConflictDoNothing). All four share one dev
+// password so they are easy to log in as; the admin/dev/viewer keep their own.
+async function seedRbacDemoUsers(): Promise<void> {
+  const demoHash = await argon2.hash('Demo@Rally2026!', { type: argon2.argon2id });
+
+  const demoUsers = [
+    { id: PROJECT_ADMIN_ID, email: 'projectadmin@acme.dev', displayName: 'Carol ProjectAdmin' },
+    { id: WORKSPACE_MEMBER_ID, email: 'member@acme.dev', displayName: 'Dave Member' },
+    { id: GUEST_ID, email: 'guest@acme.dev', displayName: 'Eve Guest' },
+    { id: PROJECT_LEAD_ID, email: 'lead@acme.dev', displayName: 'Frank Lead' },
+  ];
+
+  await db
+    .insert(schema.users)
+    .values(
+      demoUsers.map((u) => ({
+        id: u.id,
+        email: u.email,
+        displayName: u.displayName,
+        emailVerified: true,
+        locale: 'en',
+        timezone: 'Asia/Ho_Chi_Minh',
+        passwordHash: demoHash,
+      })),
+    )
+    .onConflictDoNothing();
+
+  await db
+    .insert(schema.tenantMembers)
+    .values(demoUsers.map((u) => ({ tenantId: SYSTEM_TENANT_ID, userId: u.id })))
+    .onConflictDoNothing();
+
+  await db
+    .insert(schema.workspaceMembers)
+    .values(
+      demoUsers.map((u) => ({ tenantId: SYSTEM_TENANT_ID, workspaceId: WORKSPACE_ID, userId: u.id })),
+    )
+    .onConflictDoNothing();
+
+  // role slug → id (roles were seeded earlier in seed())
+  const roleRows = await db
+    .select({ id: schema.systemRoles.id, slug: schema.systemRoles.slug })
+    .from(schema.systemRoles);
+  const roleIdBySlug = new Map(roleRows.map((r) => [r.slug, r.id]));
+
+  const assign = async (
+    userId: string,
+    slug: SystemRoleSlug,
+    scopeType: 'workspace' | 'project',
+    scopeId: string,
+  ): Promise<void> => {
+    const roleId = roleIdBySlug.get(slug);
+    if (!roleId) return;
+    await db
+      .insert(userRoleAssignments)
+      .values({
+        tenantId: SYSTEM_TENANT_ID,
+        userId,
+        roleId,
+        scopeType,
+        scopeId,
+        grantedBy: ADMIN_USER_ID,
+      })
+      .onConflictDoNothing();
+  };
+
+  // Workspace-wide roles → land in the JWT baseline for these users.
+  await assign(PROJECT_ADMIN_ID, SYSTEM_ROLE.PROJECT_ADMIN, 'workspace', WORKSPACE_ID);
+  await assign(WORKSPACE_MEMBER_ID, SYSTEM_ROLE.WORKSPACE_MEMBER, 'workspace', WORKSPACE_ID);
+  await assign(GUEST_ID, SYSTEM_ROLE.GUEST, 'workspace', WORKSPACE_ID);
+
+  // PBAC: Frank has NO workspace/global role — only project-scoped grants,
+  // resolved per-request by getProjectPermissions(). project_admin on NXP,
+  // project_viewer on MOB; every other project falls back to baseline only.
+  const NXP_ID = SEED_PROJECTS[0].id;
+  const MOB_ID = SEED_PROJECTS[1].id;
+  await assign(PROJECT_LEAD_ID, SYSTEM_ROLE.PROJECT_ADMIN, 'project', NXP_ID);
+  await assign(PROJECT_LEAD_ID, SYSTEM_ROLE.PROJECT_VIEWER, 'project', MOB_ID);
+
+  // Make Frank an actual member of both projects (realism + assignee validity).
+  await db
+    .insert(projectMembers)
+    .values([
+      { id: uuidv7(), tenantId: SYSTEM_TENANT_ID, projectId: NXP_ID, userId: PROJECT_LEAD_ID, status: 'active' },
+      { id: uuidv7(), tenantId: SYSTEM_TENANT_ID, projectId: MOB_ID, userId: PROJECT_LEAD_ID, status: 'active' },
+    ])
+    .onConflictDoNothing();
+
+  console.log('✅  RBAC/PBAC demo users seeded (project_admin, workspace_member, guest, PBAC lead)');
 }
 
 // Run directly: pnpm db:seed
