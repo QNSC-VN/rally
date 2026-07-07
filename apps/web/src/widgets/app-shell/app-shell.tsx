@@ -11,6 +11,7 @@ import {
   Search,
   Settings,
   User,
+  Users,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageErrorBoundary } from '@/shared/ui/error-boundary'
@@ -19,6 +20,7 @@ import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { Avatar } from '@/shared/ui/avatar'
 import { useWorkspaces } from '@/features/workspaces/api'
 import { useProjects } from '@/features/projects/api'
+import { useWorkspaceTeams } from '@/features/teams/api'
 import { useNotificationUnreadCount, useNotificationSse } from '@/features/notifications/api'
 import { cancelProactiveRefresh, getAccessToken } from '@/shared/api/http-client'
 import { apiClient } from '@/shared/api/http-client'
@@ -115,7 +117,7 @@ export function AppShell() {
     switchTenant,
     isSwitchingTenant,
   } = useAuthStore()
-  const { workspace, project, setWorkspace, setProject } = useAppContext()
+  const { workspace, project, team, setWorkspace, setProject, setTeam } = useAppContext()
   const navigate = useNavigate()
   const routerState = useRouterState()
   const currentPath = routerState.location.pathname
@@ -127,6 +129,7 @@ export function AppShell() {
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   const [notifOpen, setNotifOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [expandedProjectIds, setExpandedProjectIds] = useState<Set<string>>(new Set())
 
   const { data: unreadCount = 0 } = useNotificationUnreadCount()
 
@@ -147,6 +150,7 @@ export function AppShell() {
   // Bootstrap workspace context from API — always sync name/slug in case they changed
   const { data: workspaces } = useWorkspaces()
   const { data: activeProjects = [] } = useProjects(workspace?.workspaceId)
+  const { data: workspaceTeams = [] } = useWorkspaceTeams(workspace?.workspaceId)
   const navProjects = activeProjects.filter((p) => p.status === 'active')
   useEffect(() => {
     if (!workspaces || workspaces.length === 0) return
@@ -165,10 +169,21 @@ export function AppShell() {
 
   // SHELL-FR-005: Invalidate all project-scoped queries when the project context changes
   const projectId = project?.projectId
+  const teamId = team?.teamId
   useEffect(() => {
     if (projectId) {
       void queryClient.invalidateQueries()
     }
+  }, [projectId, teamId])
+
+  useEffect(() => {
+    if (!projectId) return
+    setExpandedProjectIds((prev) => {
+      if (prev.has(projectId)) return prev
+      const next = new Set(prev)
+      next.add(projectId)
+      return next
+    })
   }, [projectId])
 
   async function handleSignOut() {
@@ -290,7 +305,7 @@ export function AppShell() {
                   className="max-w-44 truncate text-[9px]"
                   style={{ color: 'rgba(255,255,255,0.55)' }}
                 >
-                  {project ? `${project.projectKey} · All Teams` : 'No project selected'}
+                  {project ? `${project.projectKey} · ${team?.teamName ?? 'All Teams'}` : 'No project selected'}
                 </div>
               </div>
               <ChevronDown size={10} className="opacity-60" />
@@ -385,6 +400,7 @@ export function AppShell() {
                     onClick={() => {
                       if (!project) return
                       setProject(null)
+                      setTeam(null)
                       closeAll()
                     }}
                     disabled={!project}
@@ -419,35 +435,87 @@ export function AppShell() {
                       >
                         Projects
                       </div>
-                      {navProjects.map((p) => (
-                        <button
-                          key={p.id}
-                          onClick={() => {
-                            setProject({ projectId: p.id, projectKey: p.key, projectName: p.name })
-                            closeAll()
-                          }}
-                          className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left hover:bg-[#f4f6f9]"
-                          style={{
-                            color: project?.projectId === p.id ? '#1d3f73' : '#1a2234',
-                            fontWeight: project?.projectId === p.id ? 600 : 400,
-                          }}
-                        >
-                          <span
-                            className="inline-flex h-4 w-8 shrink-0 items-center justify-center rounded-sm font-mono text-[9px] font-bold"
-                            style={{ backgroundColor: '#e5ebf4', color: '#1d3f73' }}
-                          >
-                            {p.key}
-                          </span>
-                          <span className="truncate text-[11px]">{p.name}</span>
-                          {project?.projectId === p.id && (
-                            <Check
-                              size={10}
-                              className="ml-auto shrink-0"
-                              style={{ color: '#1d3f73' }}
-                            />
-                          )}
-                        </button>
-                      ))}
+                      {navProjects.map((p) => {
+                        const selectedProject = project?.projectId === p.id
+                        const expanded = expandedProjectIds.has(p.id)
+                        return (
+                          <div key={p.id} className="mb-1">
+                            <button
+                              onClick={() => {
+                                setProject({ projectId: p.id, projectKey: p.key, projectName: p.name })
+                                setTeam(null)
+                                setExpandedProjectIds((prev) => {
+                                  const next = new Set(prev)
+                                  if (next.has(p.id)) next.delete(p.id)
+                                  else next.add(p.id)
+                                  return next
+                                })
+                              }}
+                              className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left hover:bg-[#f4f6f9]"
+                              style={{
+                                color: selectedProject && !team ? '#1d3f73' : '#1a2234',
+                                fontWeight: selectedProject && !team ? 600 : 400,
+                              }}
+                            >
+                              <ChevronRight
+                                size={10}
+                                className={expanded ? 'shrink-0 rotate-90 transition-transform' : 'shrink-0 transition-transform'}
+                                style={{ color: '#8c94a6' }}
+                              />
+                              <span
+                                className="inline-flex h-4 w-8 shrink-0 items-center justify-center rounded-sm font-mono text-[9px] font-bold"
+                                style={{ backgroundColor: '#e5ebf4', color: '#1d3f73' }}
+                              >
+                                {p.key}
+                              </span>
+                              <span className="truncate text-[11px]">{p.name}</span>
+                              <span className="ml-auto text-[9px]" style={{ color: '#8c94a6' }}>
+                                All Teams
+                              </span>
+                              {selectedProject && !team && (
+                                <Check
+                                  size={10}
+                                  className="shrink-0"
+                                  style={{ color: '#1d3f73' }}
+                                />
+                              )}
+                            </button>
+                            {expanded && workspaceTeams.map((t) => {
+                              const selectedTeam = selectedProject && team?.teamId === t.id
+                              return (
+                                <button
+                                  key={`${p.id}-${t.id}`}
+                                  onClick={() => {
+                                    setProject({ projectId: p.id, projectKey: p.key, projectName: p.name })
+                                    setTeam({ teamId: t.id, teamName: t.name, teamKey: t.key ?? null })
+                                    setExpandedProjectIds((prev) => {
+                                      const next = new Set(prev)
+                                      next.add(p.id)
+                                      return next
+                                    })
+                                    closeAll()
+                                  }}
+                                  className="ml-10 flex w-[calc(100%-2.5rem)] items-center gap-2 rounded px-1.5 py-1 text-left hover:bg-[#f4f6f9]"
+                                  style={{
+                                    color: selectedTeam ? '#1d3f73' : '#5c6478',
+                                    fontWeight: selectedTeam ? 600 : 400,
+                                  }}
+                                >
+                                  <Users size={11} className="shrink-0" />
+                                  <span className="truncate text-[10px]">{t.name}</span>
+                                  {selectedTeam && (
+                                    <Check
+                                      size={10}
+                                      className="ml-auto shrink-0"
+                                      style={{ color: '#1d3f73' }}
+                                    />
+                                  )}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        )
+                      })}
                       <div className="my-1.5" style={{ borderTop: '1px solid #e2e6eb' }} />
                     </>
                   )}
@@ -457,7 +525,7 @@ export function AppShell() {
                     className="flex items-center gap-2 hover:underline"
                   >
                     <Settings size={12} />
-                    Manage projects
+                    Manage
                   </Link>
                 </div>
               </div>

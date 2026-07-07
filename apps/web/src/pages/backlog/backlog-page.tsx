@@ -12,7 +12,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
-import { ChevronLeft, ChevronRight, GripVertical, Plus, Search, X } from 'lucide-react'
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  Filter,
+  Plus,
+  Search,
+  X,
+} from 'lucide-react'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { InlineCellSelect, InlineSelect } from '@/shared/ui/native-select'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
@@ -22,6 +34,7 @@ import {
   useUpdateWorkItem,
   useBulkAssignRelease,
   useBulkAssignIteration,
+  useRankWorkItemMutation,
   type WorkItem,
   type UpdateWorkItemInput,
 } from '@/features/work-items/api'
@@ -41,9 +54,13 @@ import { CreateWorkItemModal } from '@/features/work-items/ui/create-work-item-m
 
 // ── Column definitions ─────────────────────────────────────────────────────────
 
-type ColumnKey = 'type' | 'id' | 'name' | 'scheduleState' | 'priority' | 'estimate' | 'owner' | 'release' | 'iteration'
+type ColumnKey = 'rank' | 'type' | 'id' | 'name' | 'scheduleState' | 'priority' | 'estimate' | 'owner' | 'release' | 'iteration'
+type BacklogFilterColumn = 'id' | 'name' | 'type' | 'priority' | 'estimate' | 'owner' | 'scheduleState' | 'iteration' | 'release'
+type BacklogFilters = Partial<Record<BacklogFilterColumn, string>>
+type BacklogSort = { column: ColumnKey; direction: 'asc' | 'desc' }
 
 const COLUMN_MINS: Record<ColumnKey, number> = {
+  rank: 48,
   type: 60,
   id: 64,
   name: 180,
@@ -56,9 +73,10 @@ const COLUMN_MINS: Record<ColumnKey, number> = {
 }
 
 const DEFAULT_WIDTHS: Record<ColumnKey, number> = {
+  rank: 56,
   type: 72,
   id: 88,
-  name: 260,
+  name: 360,
   scheduleState: 136,
   priority: 96,
   estimate: 52,
@@ -68,6 +86,7 @@ const DEFAULT_WIDTHS: Record<ColumnKey, number> = {
 }
 
 const COLUMN_LABELS: Record<ColumnKey, string> = {
+  rank: 'Rank',
   type: 'Type',
   id: 'ID',
   name: 'Name',
@@ -78,6 +97,18 @@ const COLUMN_LABELS: Record<ColumnKey, string> = {
   release: 'Release',
   iteration: 'Iteration',
 }
+
+const BACKLOG_FILTER_COLUMNS: Array<{ key: BacklogFilterColumn; label: string; mode: 'search' | 'select' }> = [
+  { key: 'id', label: 'ID', mode: 'search' },
+  { key: 'name', label: 'Name', mode: 'search' },
+  { key: 'type', label: 'Type', mode: 'select' },
+  { key: 'priority', label: 'Priority', mode: 'select' },
+  { key: 'estimate', label: 'Est', mode: 'search' },
+  { key: 'owner', label: 'Owner', mode: 'select' },
+  { key: 'scheduleState', label: 'Schedule State', mode: 'select' },
+  { key: 'iteration', label: 'Iteration', mode: 'select' },
+  { key: 'release', label: 'Release', mode: 'select' },
+]
 
 function loadSavedWidths(): Record<ColumnKey, number> {
   try {
@@ -97,6 +128,8 @@ interface ResizableHeaderProps {
   width: number
   align?: 'left' | 'center' | 'right'
   onResizeStart: (col: ColumnKey, e: React.MouseEvent) => void
+  sort: BacklogSort | null
+  onSort: (col: ColumnKey) => void
 }
 
 function ResizableHeader({
@@ -105,18 +138,42 @@ function ResizableHeader({
   width,
   align = 'left',
   onResizeStart,
+  sort,
+  onSort,
 }: ResizableHeaderProps) {
+  const isSorted = sort?.column === column
+  const SortIcon = isSorted ? (sort.direction === 'asc' ? ArrowUp : ArrowDown) : ArrowUpDown
+  const tooltip = isSorted
+    ? sort.direction === 'asc'
+      ? 'Sorted ascending'
+      : 'Sorted descending'
+    : 'Sort'
   return (
     <div
-      className="relative flex h-full shrink-0 items-center text-[9px] font-semibold tracking-wider uppercase select-none"
+      className="relative flex h-full shrink-0 items-center text-[11px] font-semibold uppercase select-none"
       style={{
         width,
-        color: BRAND.columnHeader,
+        color: isSorted ? BRAND.primary : BRAND.columnHeader,
         justifyContent:
           align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start',
       }}
     >
-      {label}
+      <button
+        type="button"
+        title={tooltip}
+        aria-label={`Sort ${label}: ${tooltip}`}
+        onClick={() => onSort(column)}
+        className="flex h-full min-w-0 items-center gap-1 rounded-sm focus:outline-none"
+        style={{
+          width: 'calc(100% - 8px)',
+          color: isSorted ? BRAND.primary : BRAND.columnHeader,
+          justifyContent:
+            align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start',
+        }}
+      >
+        <span className="truncate">{label}</span>
+        <SortIcon size={10} className="shrink-0" />
+      </button>
       <div
         role="separator"
         aria-label={`Resize ${label}`}
@@ -169,10 +226,50 @@ const SCHEDULE_STATE_OPTS = [
   ...SCHEDULE_STATE_VALUES.map((v) => ({ value: v, label: SCHEDULE_STATE_LABEL[v] })),
 ]
 
+function compareSortValues(a: string | number, b: string | number) {
+  if (typeof a === 'number' && typeof b === 'number') return a - b
+  return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' })
+}
+
+function getSortValue(
+  item: WorkItem,
+  column: ColumnKey,
+  rowNum: number,
+  members: Array<{ userId: string; displayName?: string; email?: string }>,
+  releases: Array<{ id: string; name: string }>,
+  iterations: Array<{ id: string; name: string }>,
+) {
+  switch (column) {
+    case 'rank':
+      return item.rank ? Number(item.rank) || rowNum : rowNum
+    case 'type':
+      return item.type
+    case 'id':
+      return Number(item.itemKey.replace(/\D/g, '')) || item.itemKey
+    case 'name':
+      return item.title.toLowerCase()
+    case 'scheduleState':
+      return SCHEDULE_STATE_LABEL[item.scheduleState as ScheduleState] ?? item.scheduleState
+    case 'priority':
+      return item.priority ?? ''
+    case 'estimate':
+      return item.storyPoints ?? 0
+    case 'owner': {
+      const member = members.find((m) => m.userId === item.assigneeId)
+      return (member?.displayName ?? member?.email ?? '').toLowerCase()
+    }
+    case 'release':
+      return (releases.find((r) => r.id === item.releaseId)?.name ?? '').toLowerCase()
+    case 'iteration':
+      return (iterations.find((it) => it.id === item.iterationId)?.name ?? '').toLowerCase()
+  }
+}
+
 export function BacklogPage() {
   const navigate = useNavigate()
   const { project, team } = useAppContext()
   const projectId = project?.projectId
+  const teamId = team?.teamId
 
   const canEdit = useAuthStore((s) => s.hasPermission('work_item:edit'))
 
@@ -183,6 +280,12 @@ export function BacklogPage() {
   const [filterOwner, setFilterOwner] = useState('')
   const [filterRelease, setFilterRelease] = useState('')
   const [filterIteration, setFilterIteration] = useState('')
+  const [showFilters, setShowFilters] = useState(false)
+  const [filters, setFilters] = useState<BacklogFilters>({})
+  const [showManageFilters, setShowManageFilters] = useState(false)
+  const [filterColumnSearch, setFilterColumnSearch] = useState('')
+  const [pendingFilterColumns, setPendingFilterColumns] = useState<Set<BacklogFilterColumn>>(new Set())
+  const [sort, setSort] = useState<BacklogSort | null>(null)
   const [pageSize, setPageSize] = useState<number>(25)
   const [cursor, setCursor] = useState<string | undefined>(undefined)
   const [cursorHistory, setCursorHistory] = useState<string[]>([])
@@ -191,7 +294,98 @@ export function BacklogPage() {
   // Reference lists for the P2.1 filters, inline selects and id→name lookups.
   const { data: members = [] } = useProjectMembers(projectId)
   const { data: releases = [] } = useReleases(projectId)
-  const { data: iterations = [] } = useIterationOptions(projectId, team)
+  const { data: iterations = [] } = useIterationOptions(projectId, teamId)
+
+  const activeFilterColumns = BACKLOG_FILTER_COLUMNS.filter((column) => filters[column.key] !== undefined)
+  const activeFilterCount = activeFilterColumns.length
+  const availableFilterColumns = BACKLOG_FILTER_COLUMNS.filter((column) =>
+    column.label.toLowerCase().includes(filterColumnSearch.toLowerCase()),
+  )
+
+  function openManageFilters() {
+    setShowFilters(true)
+    setPendingFilterColumns(new Set(activeFilterColumns.map((column) => column.key)))
+    setShowManageFilters(true)
+  }
+
+  function togglePendingFilterColumn(column: BacklogFilterColumn) {
+    setPendingFilterColumns((previous) => {
+      const next = new Set(previous)
+      if (next.has(column)) next.delete(column)
+      else next.add(column)
+      return next
+    })
+  }
+
+  function applyManagedFilters() {
+    setFilters((previous) => {
+      const next: BacklogFilters = {}
+      pendingFilterColumns.forEach((column) => {
+        next[column] = previous[column] ?? ''
+      })
+      return next
+    })
+    setShowManageFilters(false)
+  }
+
+  function updateManagedFilter(column: BacklogFilterColumn, value: string) {
+    setFilters((previous) => ({ ...previous, [column]: value }))
+    if (column === 'type') setFilterType(value === 'story' || value === 'defect' ? value : '')
+    if (column === 'scheduleState') setFilterState(value)
+    if (column === 'owner') setFilterOwner(value)
+    if (column === 'release') setFilterRelease(value)
+    if (column === 'iteration') setFilterIteration(value)
+  }
+
+  function removeManagedFilter(column: BacklogFilterColumn) {
+    setFilters((previous) => {
+      const next = { ...previous }
+      delete next[column]
+      return next
+    })
+    if (column === 'type') setFilterType('')
+    if (column === 'scheduleState') setFilterState('')
+    if (column === 'owner') setFilterOwner('')
+    if (column === 'release') setFilterRelease('')
+    if (column === 'iteration') setFilterIteration('')
+  }
+
+  function getFilterSelectOptions(column: BacklogFilterColumn) {
+    switch (column) {
+      case 'type':
+        return [
+          { value: '', label: 'All' },
+          { value: 'story', label: 'Story' },
+          { value: 'defect', label: 'Defect' },
+        ]
+      case 'priority':
+        return [{ value: '', label: 'All' }, ...PRIORITY_VALUES.map((value) => ({ value, label: value }))]
+      case 'owner':
+        return [
+          { value: '', label: 'All' },
+          ...members.map((member) => ({
+            value: member.userId,
+            label: member.displayName ?? member.email ?? member.userId,
+          })),
+        ]
+      case 'scheduleState':
+        return SCHEDULE_STATE_OPTS.map((option) => ({ value: option.value, label: option.label }))
+      case 'iteration':
+        return [{ value: '', label: 'All' }, ...iterations.map((iteration) => ({ value: iteration.id, label: iteration.name }))]
+      case 'release':
+        return [{ value: '', label: 'All' }, ...releases.map((release) => ({ value: release.id, label: release.name }))]
+      default:
+        return []
+    }
+  }
+
+  function toggleSort(column: ColumnKey) {
+    setSort((previous) =>
+      previous?.column === column
+        ? { column, direction: previous.direction === 'asc' ? 'desc' : 'asc' }
+        : { column, direction: ['id', 'priority', 'estimate'].includes(column) ? 'desc' : 'asc' },
+    )
+  }
 
   // Reset pagination on filter/project change
   useEffect(() => {
@@ -200,7 +394,7 @@ export function BacklogPage() {
       setCursorHistory([])
     }, 0)
     return () => clearTimeout(id)
-  }, [search, filterType, filterState, filterOwner, filterRelease, filterIteration, pageSize, projectId])
+  }, [search, filterType, filterState, filterOwner, filterRelease, filterIteration, pageSize, projectId, teamId])
 
   const { data, isLoading, isError, error } = useBacklog(projectId, {
     type: filterType || undefined,
@@ -208,6 +402,7 @@ export function BacklogPage() {
     assigneeId: filterOwner || undefined,
     releaseId: filterRelease || undefined,
     iterationId: filterIteration || undefined,
+    teamId: teamId || undefined,
     q: search || undefined,
     limit: pageSize,
     cursor,
@@ -215,6 +410,18 @@ export function BacklogPage() {
 
   const items = data?.data ?? []
   const pageInfo = data?.pageInfo
+  const rankWorkItem = useRankWorkItemMutation()
+  const displayItems = sort
+    ? [...items].sort((a, b) => {
+        const aRow = items.indexOf(a) + 1
+        const bRow = items.indexOf(b) + 1
+        const result = compareSortValues(
+          getSortValue(a, sort.column, aRow, members, releases, iterations),
+          getSortValue(b, sort.column, bRow, members, releases, iterations),
+        )
+        return sort.direction === 'asc' ? result : -result
+      })
+    : items
 
   // ── Selection ─────────────────────────────────────────────────────────────────
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -338,10 +545,34 @@ export function BacklogPage() {
     }
   }
   // ── Table width ───────────────────────────────────────────────────────────────
+  async function moveBacklogItem(item: WorkItem, direction: -1 | 1) {
+    if (!projectId) return
+    if (sort && (sort.column !== 'rank' || sort.direction !== 'asc')) {
+      toast.warning('Clear sort or sort Rank ascending before reordering.')
+      return
+    }
+    const currentIndex = displayItems.findIndex((candidate) => candidate.id === item.id)
+    const nextIndex = currentIndex + direction
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= displayItems.length) return
+
+    const nextOrder = displayItems.filter((candidate) => candidate.id !== item.id)
+    nextOrder.splice(nextIndex, 0, item)
+    const beforeId = nextOrder[nextIndex - 1]?.id
+    const afterId = nextOrder[nextIndex + 1]?.id
+
+    try {
+      await rankWorkItem.mutateAsync({
+        id: item.id,
+        input: { projectId, beforeId, afterId },
+      })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to reorder work item')
+    }
+  }
+
   const totalColWidth = Object.values(colWidths).reduce((a, b) => a + b, 0)
-  // Row layout: px-3 padding (24px) + checkbox w-5 (20px) + grip w-4 (16px) + row# w-6 (24px) +
-  // gap-2 between 12 flex items (11 × 8px = 88px) + column widths
-  const tableWidth = 24 + 20 + 16 + 24 + 88 + totalColWidth
+  // Row layout: padding + checkbox + rank controls + flex gaps + column widths.
+  const tableWidth = 24 + 20 + 16 + 88 + totalColWidth
 
   // ── Render ────────────────────────────────────────────────────────────────────
   if (!projectId) {
@@ -355,6 +586,7 @@ export function BacklogPage() {
   }
 
   const COLUMNS: ColumnKey[] = [
+    'rank',
     'type',
     'id',
     'name',
@@ -377,6 +609,9 @@ export function BacklogPage() {
         <h2 className="mr-1 shrink-0 text-[13px] font-semibold" style={{ color: '#1a2234' }}>
           Backlog
         </h2>
+        <span className="rounded-sm px-1.5 py-0.5 text-[10px] font-medium" style={{ backgroundColor: '#eef3fb', color: BRAND.primary }}>
+          {project?.projectKey} · {team?.teamName ?? 'All Teams'}
+        </span>
         <div className="h-4 w-px shrink-0" style={{ backgroundColor: '#dde2ea' }} />
 
         {/* Search */}
@@ -401,76 +636,19 @@ export function BacklogPage() {
           />
         </div>
 
-        {/* Type filter */}
-        <InlineSelect
-          value={filterType}
-          onChange={(e) => setFilterType(e.target.value as '' | 'story' | 'defect')}
-          aria-label="Filter by type"
-          className="w-auto"
+        <button
+          onClick={() => setShowFilters((previous) => !previous)}
+          className="flex items-center gap-1.5 rounded px-3 py-1 text-[11px] font-semibold"
+          style={{
+            border: '1px solid #bdd0ef',
+            color: BRAND.primaryLight,
+            backgroundColor: showFilters || activeFilterCount > 0 ? '#edf2fb' : '#fff',
+          }}
         >
-          <option value="">All Types</option>
-          <option value="story">Story</option>
-          <option value="defect">Defect</option>
-        </InlineSelect>
-
-        {/* Schedule State filter */}
-        <InlineSelect
-          value={filterState}
-          onChange={(e) => setFilterState(e.target.value)}
-          aria-label="Filter by schedule state"
-          className="w-auto"
-        >
-          {SCHEDULE_STATE_OPTS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </InlineSelect>
-
-        {/* Owner filter (P2-BL-06) */}
-        <InlineSelect
-          value={filterOwner}
-          onChange={(e) => setFilterOwner(e.target.value)}
-          aria-label="Filter by owner"
-          className="w-auto"
-        >
-          <option value="">All Owners</option>
-          {members.map((m) => (
-            <option key={m.userId} value={m.userId}>
-              {m.displayName ?? m.email ?? m.userId}
-            </option>
-          ))}
-        </InlineSelect>
-
-        {/* Release filter (P2-BL-06) */}
-        <InlineSelect
-          value={filterRelease}
-          onChange={(e) => setFilterRelease(e.target.value)}
-          aria-label="Filter by release"
-          className="w-auto"
-        >
-          <option value="">All Releases</option>
-          {releases.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.name}
-            </option>
-          ))}
-        </InlineSelect>
-
-        {/* Iteration filter (P2-BL-06) */}
-        <InlineSelect
-          value={filterIteration}
-          onChange={(e) => setFilterIteration(e.target.value)}
-          aria-label="Filter by iteration"
-          className="w-auto"
-        >
-          <option value="">All Iterations</option>
-          {iterations.map((it) => (
-            <option key={it.id} value={it.id}>
-              {it.name}
-            </option>
-          ))}
-        </InlineSelect>
+          <Filter size={12} />
+          {showFilters ? 'Hide filter' : 'Show filter'}
+          {activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+        </button>
 
         <div className="flex-1" />
 
@@ -486,6 +664,183 @@ export function BacklogPage() {
           Create Work Item
         </button>
       </div>
+
+      {showFilters && (
+        <div
+          className="shrink-0 px-4 py-3"
+          style={{ backgroundColor: '#f5f8fc', borderBottom: '1px solid #cfdced' }}
+        >
+          <div className="relative flex items-start gap-2">
+            <div className="relative shrink-0">
+              <button
+                onClick={openManageFilters}
+                className="flex items-center gap-1.5 rounded px-3 py-1 text-[11px] font-semibold text-white"
+                style={{ backgroundColor: '#4b74d9', border: '1px solid #3d66c8' }}
+              >
+                <Filter size={12} /> Manage filters
+              </button>
+              {showManageFilters && (
+                <div
+                  className="absolute top-[34px] left-0 z-30 w-[330px] rounded bg-white shadow-xl"
+                  style={{ border: '1px solid #cfd6e3' }}
+                >
+                  <div
+                    className="flex items-center justify-between px-4 py-3"
+                    style={{ borderBottom: '1px solid #edf0f4' }}
+                  >
+                    <p className="text-[14px] font-semibold" style={{ color: '#3a4254' }}>
+                      Manage Filters
+                    </p>
+                    <button
+                      aria-label="Close manage filters"
+                      onClick={() => setShowManageFilters(false)}
+                      className="rounded p-1"
+                      style={{ color: BRAND.primaryLight }}
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                  <div className="px-4 pt-3">
+                    <div className="relative">
+                      <Search
+                        size={13}
+                        className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2"
+                        style={{ color: '#5c6478' }}
+                      />
+                      <input
+                        value={filterColumnSearch}
+                        onChange={(event) => setFilterColumnSearch(event.target.value)}
+                        placeholder="Search"
+                        className="w-full rounded py-2 pr-3 pl-8 text-[12px] focus:outline-none"
+                        style={{ border: '1px solid #6aa0ff', color: '#1a2234' }}
+                      />
+                    </div>
+                  </div>
+                  <div className="max-h-[250px] overflow-y-auto px-4 py-3">
+                    <p className="mb-2 text-[11px] font-semibold uppercase" style={{ color: '#1a2234' }}>
+                      Selected
+                    </p>
+                    {BACKLOG_FILTER_COLUMNS.filter((column) => pendingFilterColumns.has(column.key)).length === 0 ? (
+                      <p className="mb-3 text-[11px]" style={{ color: '#8c94a6' }}>
+                        No columns selected
+                      </p>
+                    ) : (
+                      BACKLOG_FILTER_COLUMNS.filter((column) => pendingFilterColumns.has(column.key)).map((column) => (
+                        <label key={column.key} className="flex items-center gap-2 py-1.5 text-[12px]" style={{ color: '#1a2234' }}>
+                          <input
+                            type="checkbox"
+                            checked
+                            onChange={() => togglePendingFilterColumn(column.key)}
+                            className="h-3.5 w-3.5 rounded"
+                            style={{ accentColor: '#4b74d9' }}
+                          />
+                          {column.label}
+                        </label>
+                      ))
+                    )}
+                    <p className="mt-2 mb-2 text-[11px] font-semibold uppercase" style={{ color: '#1a2234' }}>
+                      Available
+                    </p>
+                    {availableFilterColumns
+                      .filter((column) => !pendingFilterColumns.has(column.key))
+                      .map((column) => (
+                        <label key={column.key} className="flex items-center gap-2 py-1.5 text-[12px]" style={{ color: '#3a4254' }}>
+                          <input
+                            type="checkbox"
+                            checked={false}
+                            onChange={() => togglePendingFilterColumn(column.key)}
+                            className="h-3.5 w-3.5 rounded"
+                            style={{ accentColor: '#4b74d9' }}
+                          />
+                          {column.label}
+                        </label>
+                      ))}
+                  </div>
+                  <div
+                    className="flex items-center justify-end gap-2 px-4 py-3"
+                    style={{ borderTop: '1px solid #edf0f4' }}
+                  >
+                    <button onClick={() => setShowManageFilters(false)} className="rounded px-3 py-1.5 text-[12px]" style={{ color: BRAND.primaryLight }}>
+                      Cancel
+                    </button>
+                    <button
+                      onClick={applyManagedFilters}
+                      className="rounded px-4 py-1.5 text-[12px] font-semibold text-white"
+                      style={{ backgroundColor: '#4b74d9' }}
+                    >
+                      Apply
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+            {activeFilterCount > 0 && (
+              <button onClick={() => {
+                setFilters({})
+                setFilterType('')
+                setFilterState('')
+                setFilterOwner('')
+                setFilterRelease('')
+                setFilterIteration('')
+              }} className="rounded px-2.5 py-1 text-[11px]" style={{ color: BRAND.primaryLight }}>
+                Clear filters
+              </button>
+            )}
+          </div>
+          {activeFilterCount === 0 ? (
+            <div
+              className="mt-2 rounded bg-white px-3 py-2 text-[11px]"
+              style={{ color: '#8c94a6', border: '1px dashed #cfd6e3' }}
+            >
+              No filters selected. Use Manage filters to choose columns.
+            </div>
+          ) : (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {activeFilterColumns.map((columnMeta) => {
+                const filterValue = filters[columnMeta.key] ?? ''
+                return (
+                  <div key={columnMeta.key} className="flex items-center gap-1.5 rounded bg-white px-2 py-1.5" style={{ border: '1px solid #dde2ea' }}>
+                    <span className="text-[11px] font-semibold" style={{ color: '#3a4254' }}>
+                      {columnMeta.label}
+                    </span>
+                    {columnMeta.mode === 'search' ? (
+                      <div className="relative">
+                        <Search size={11} className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2" style={{ color: '#8c94a6' }} />
+                        <input
+                          aria-label={`${columnMeta.label} filter value`}
+                          type={columnMeta.key === 'estimate' ? 'number' : 'text'}
+                          value={filterValue}
+                          onChange={(event) => updateManagedFilter(columnMeta.key, event.target.value)}
+                          placeholder={`Filter ${columnMeta.label}`}
+                          className="rounded py-1 pr-2 pl-6 text-[11px] focus:outline-none"
+                          style={{ width: columnMeta.key === 'name' ? 220 : 128, border: '1px solid #dde2ea', color: '#1a2234' }}
+                        />
+                      </div>
+                    ) : (
+                      <select
+                        aria-label={`${columnMeta.label} filter value`}
+                        value={filterValue}
+                        onChange={(event) => updateManagedFilter(columnMeta.key, event.target.value)}
+                        className="rounded bg-white px-2 py-1 text-[11px] focus:outline-none"
+                        style={{ minWidth: 132, border: '1px solid #dde2ea', color: '#1a2234' }}
+                      >
+                        {getFilterSelectOptions(columnMeta.key).map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    <button aria-label={`Remove ${columnMeta.label} filter`} onClick={() => removeManagedFilter(columnMeta.key)} className="rounded p-1" style={{ color: '#8c94a6' }}>
+                      <X size={12} />
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Bulk action bar (P2-BL-08) */}
       {selectedIds.size > 0 && (
@@ -583,20 +938,16 @@ export function BacklogPage() {
                   />
                 </div>
                 <div className="w-4 shrink-0" />
-                <div
-                  className="w-6 shrink-0 text-right text-[9px] font-semibold tracking-wider uppercase"
-                  style={{ color: '#8c94a6' }}
-                >
-                  #
-                </div>
                 {COLUMNS.map((col) => (
                   <ResizableHeader
                     key={col}
                     column={col}
                     label={COLUMN_LABELS[col]}
                     width={colWidths[col]}
-                    align={col === 'estimate' ? 'center' : 'left'}
+                    align={col === 'estimate' || col === 'rank' ? 'center' : 'left'}
                     onResizeStart={startResize}
+                    sort={sort}
+                    onSort={toggleSort}
                   />
                 ))}
               </div>
@@ -633,7 +984,7 @@ export function BacklogPage() {
               {/* Rows */}
               {!isLoading &&
                 !isError &&
-                items.map((item, idx) => (
+                displayItems.map((item, idx) => (
                   <BacklogRow
                     key={item.id}
                     item={item}
@@ -644,6 +995,11 @@ export function BacklogPage() {
                     colWidths={colWidths}
                     tableWidth={tableWidth}
                     canEdit={canEdit}
+                    canMoveUp={idx > 0}
+                    canMoveDown={idx < displayItems.length - 1}
+                    isMoving={rankWorkItem.isPending}
+                    onMoveUp={() => void moveBacklogItem(item, -1)}
+                    onMoveDown={() => void moveBacklogItem(item, 1)}
                     members={members}
                     releases={releases}
                     iterations={iterations}
@@ -708,6 +1064,8 @@ export function BacklogPage() {
       {showCreate && (
         <CreateWorkItemModal
           projectId={projectId}
+          defaultTeamId={teamId ?? null}
+          defaultTeamName={team?.teamName ?? null}
           onClose={() => setShowCreate(false)}
           onCreated={(item) => {
             setShowCreate(false)
@@ -734,6 +1092,11 @@ interface BacklogRowProps {
   colWidths: Record<ColumnKey, number>
   tableWidth: number
   canEdit: boolean
+  canMoveUp: boolean
+  canMoveDown: boolean
+  isMoving: boolean
+  onMoveUp: () => void
+  onMoveDown: () => void
   members: Array<{ userId: string; displayName?: string; email?: string }>
   releases: Array<{ id: string; name: string }>
   iterations: Array<{ id: string; name: string }>
@@ -749,6 +1112,11 @@ function BacklogRow({
   onOpen,
   colWidths,
   canEdit,
+  canMoveUp,
+  canMoveDown,
+  isMoving,
+  onMoveUp,
+  onMoveDown,
   members,
   releases,
   iterations,
@@ -798,14 +1166,33 @@ function BacklogRow({
         />
       </div>
 
-      {/* Grip */}
-      <div className="w-4 shrink-0 opacity-0 group-hover:opacity-100">
-        <GripVertical size={11} style={{ color: '#8c94a6' }} />
+      {/* Rank move controls */}
+      <div className="flex w-4 shrink-0 flex-col opacity-0 group-hover:opacity-100" onClick={stop}>
+        <button
+          aria-label="Move item up"
+          onClick={onMoveUp}
+          disabled={!canEdit || !canMoveUp || isMoving}
+          className="h-3 disabled:opacity-30"
+          style={{ color: '#8c94a6' }}
+          type="button"
+        >
+          <ChevronUp size={10} />
+        </button>
+        <button
+          aria-label="Move item down"
+          onClick={onMoveDown}
+          disabled={!canEdit || !canMoveDown || isMoving}
+          className="h-3 disabled:opacity-30"
+          style={{ color: '#8c94a6' }}
+          type="button"
+        >
+          <ChevronDown size={10} />
+        </button>
       </div>
 
-      {/* Row number */}
-      <div className="w-6 shrink-0 text-right font-mono text-[10px] tabular-nums" style={{ color: '#8c94a6' }}>
-        {rowNum}
+      {/* Rank */}
+      <div className="shrink-0 text-center font-mono text-[10px] tabular-nums" style={{ width: colWidths.rank, color: '#8c94a6' }}>
+        {item.rank ? Number(item.rank) || rowNum : rowNum}
       </div>
 
       {/* Type */}

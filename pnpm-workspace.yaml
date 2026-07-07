@@ -5,15 +5,15 @@
 packages:
   - "apps/web"
 allowBuilds:
-  '@scarf/scarf': set this to true or false
-  '@swc/core': set this to true or false
-  argon2: set this to true or false
-  cpu-features: set this to true or false
-  esbuild: set this to true or false
-  msw: set this to true or false
-  protobufjs: set this to true or false
-  ssh2: set this to true or false
-  unrs-resolver: set this to true or false
+  '@scarf/scarf': true
+  '@swc/core': true
+  argon2: true
+  cpu-features: true
+  esbuild: true
+  msw: true
+  protobufjs: true
+  ssh2: true
+  unrs-resolver: true
 onlyBuiltDependencies:
   - '@scarf/scarf'
   - '@swc/core'

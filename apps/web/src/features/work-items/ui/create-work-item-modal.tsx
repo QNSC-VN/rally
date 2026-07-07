@@ -20,15 +20,24 @@ type CreatableType = 'story' | 'defect'
 
 interface Props {
   projectId: string
+  defaultTeamId?: string | null
+  defaultTeamName?: string | null
   onClose: () => void
   onCreated?: (item: WorkItem) => void
   onCreatedWithDetails?: (item: WorkItem) => void
 }
 
-export function CreateWorkItemModal({ projectId, onClose, onCreated, onCreatedWithDetails }: Props) {
+export function CreateWorkItemModal({
+  projectId,
+  defaultTeamId,
+  defaultTeamName,
+  onClose,
+  onCreated,
+  onCreatedWithDetails,
+}: Props) {
   const [type, setType] = useState<CreatableType>('story')
   const [title, setTitle] = useState('')
-  const [teamId, setTeamId] = useState('')
+  const [teamId, setTeamId] = useState(defaultTeamId ?? '')
   const [assigneeId, setAssigneeId] = useState('')
   const [storyPoints, setStoryPoints] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -37,9 +46,15 @@ export function CreateWorkItemModal({ projectId, onClose, onCreated, onCreatedWi
   const createMutation = useCreateWorkItem()
   const { data: teams = [] } = useProjectTeams(projectId)
   const { data: members = [] } = useProjectMembers(projectId)
+  const teamOptions = defaultTeamId && !teams.some((t) => t.id === defaultTeamId)
+    ? [{ id: defaultTeamId, name: defaultTeamName ?? 'Context team' }, ...teams]
+    : teams
 
   const titleRef = useRef<HTMLInputElement>(null)
   useEffect(() => { titleRef.current?.focus() }, [])
+  useEffect(() => {
+    setTeamId(defaultTeamId ?? '')
+  }, [defaultTeamId])
 
   async function submit(withDetails: boolean) {
     if (!title.trim()) { setError('Title is required.'); return }
@@ -135,7 +150,7 @@ export function CreateWorkItemModal({ projectId, onClose, onCreated, onCreatedWi
           <FormField label="Team" htmlFor="wi-team">
             <NativeSelect id="wi-team" value={teamId} onChange={(e) => setTeamId(e.target.value)}>
               <option value="">No team</option>
-              {teams.map((t) => (
+              {teamOptions.map((t) => (
                 <option key={t.id} value={t.id}>{t.name}</option>
               ))}
             </NativeSelect>

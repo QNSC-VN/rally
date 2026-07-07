@@ -51,28 +51,51 @@ function StateBadge({ state }: { state: IterationState }) {
   )
 }
 
+function stateFromLabel(label: string): IterationState {
+  return (
+    (Object.entries(STATE_LABEL).find(([, value]) => value === label)?.[0] as IterationState | undefined) ??
+    'planning'
+  )
+}
+
 // ── Columns ───────────────────────────────────────────────────────────────────
 
-type SortKey = 'name' | 'theme' | 'startDate' | 'endDate' | 'state' | 'plannedVelocity'
+type SortKey = 'name' | 'theme' | 'startDate' | 'endDate' | 'project' | 'state' | 'plannedVelocity' | 'taskEstimate'
+type TimeboxRow = {
+  id: string
+  name: string
+  theme: string
+  startDate: string
+  endDate: string
+  project: string
+  plannedVelocity: number | ''
+  taskEstimate: number | ''
+  state: string
+  sourceId?: string
+}
 const COLUMNS: Array<{ key: SortKey; label: string; width: number; align?: 'right' }> = [
   { key: 'name', label: 'Name', width: 220 },
   { key: 'theme', label: 'Theme', width: 260 },
   { key: 'startDate', label: 'Start Date', width: 130 },
   { key: 'endDate', label: 'End Date', width: 130 },
+  { key: 'project', label: 'Project', width: 180 },
   { key: 'plannedVelocity', label: 'Planned Velocity', width: 130, align: 'right' },
+  { key: 'taskEstimate', label: 'Task Estimate', width: 110, align: 'right' },
   { key: 'state', label: 'State', width: 120 },
 ]
 
 const PAGE_SIZE = 25
+const Mockup_TASK_ESTIMATES = [14, 11, 8, 5]
 
 // ── Page ────────────────────────────────────────────────────────────────────
 
 export function IterationsPage() {
-  const { project } = useAppContext()
+  const { project, team } = useAppContext()
   const projectId = project?.projectId
+  const teamId = team?.teamId
   const canManage = useAuthStore((s) => s.hasPermission('iteration:manage'))
 
-  const { data: iterations = [], isLoading } = useIterations(projectId)
+  const { data: iterations = [], isLoading } = useIterations(projectId, teamId)
 
   const [search, setSearch] = useState('')
   const [showFilters, setShowFilters] = useState(false)
@@ -85,15 +108,30 @@ export function IterationsPage() {
   const [showCreate, setShowCreate] = useState(false)
   const [detailId, setDetailId] = useState<string | null>(null)
 
+  const listRows = useMemo<TimeboxRow[]>(() => {
+    return iterations.map((it, index) => ({
+      id: it.iterationKey ?? it.id,
+      sourceId: it.id,
+      name: it.name,
+      theme: it.theme ?? '',
+      startDate: it.startDate ?? '',
+      endDate: it.endDate ?? '',
+      project: project?.projectName ?? project?.projectKey ?? '',
+      plannedVelocity: it.plannedVelocity ?? '',
+      taskEstimate: Mockup_TASK_ESTIMATES[index % Mockup_TASK_ESTIMATES.length],
+      state: STATE_LABEL[it.state],
+    }))
+  }, [iterations, project?.projectKey, project?.projectName])
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    const rows = iterations.filter((it) => {
+    const rows = listRows.filter((it) => {
       const matchesQ =
         !q ||
-        [it.name, it.theme ?? '', it.iterationKey ?? ''].some((v) =>
+        [it.name, it.theme, it.project, it.state, it.id].some((v) =>
           v.toLowerCase().includes(q),
         )
-      const matchesState = stateFilter === 'all' || it.state === stateFilter
+      const matchesState = stateFilter === 'all' || it.state === STATE_LABEL[stateFilter]
       return matchesQ && matchesState
     })
     const sorted = [...rows].sort((a, b) => {
@@ -106,7 +144,7 @@ export function IterationsPage() {
       return sort.dir === 'asc' ? r : -r
     })
     return sorted
-  }, [iterations, search, stateFilter, sort])
+  }, [listRows, search, stateFilter, sort])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const activePage = Math.min(page, totalPages)
@@ -141,6 +179,9 @@ export function IterationsPage() {
           <h2 className="text-[13px] font-semibold" style={{ color: BRAND.textPrimary }}>
             Timeboxes
           </h2>
+          <span className="rounded-sm px-1.5 py-0.5 text-[10px] font-medium" style={{ backgroundColor: '#eef3fb', color: BRAND.primary }}>
+            {project?.projectKey} · {team?.teamName ?? 'All Teams'}
+          </span>
           {canManage && (
             <button
               onClick={() => setShowCreate(true)}
@@ -238,12 +279,12 @@ export function IterationsPage() {
               pageRows.map((it) => (
                 <div
                   key={it.id}
-                  onClick={() => setDetailId(it.id)}
+                  onClick={() => it.sourceId && setDetailId(it.sourceId)}
                   className="flex items-center h-8 px-3 cursor-pointer transition-colors hover:bg-[#f4f6f9]"
                   style={{ width: tableWidth, minWidth: '100%', borderBottom: `1px solid ${BRAND.borderInner}` }}
                 >
                   <div className="w-10 shrink-0 px-2 text-[10px] font-mono truncate" style={{ color: BRAND.textMuted }}>
-                    {it.iterationKey ?? ''}
+                    {it.id}
                   </div>
                   <div className="shrink-0 px-2 text-[11px] font-medium truncate" style={{ width: COLUMNS[0].width, color: BRAND.textPrimary }}>
                     {it.name}
@@ -257,11 +298,17 @@ export function IterationsPage() {
                   <div className="shrink-0 px-2 text-[11px] truncate" style={{ width: COLUMNS[3].width, color: BRAND.textSecondary }}>
                     {it.endDate ?? ''}
                   </div>
-                  <div className="shrink-0 px-2 text-right text-[11px] font-mono tabular-nums" style={{ width: COLUMNS[4].width, color: BRAND.textSecondary }}>
+                  <div className="shrink-0 px-2 text-[11px] truncate" style={{ width: COLUMNS[4].width, color: BRAND.textSecondary }}>
+                    {it.project}
+                  </div>
+                  <div className="shrink-0 px-2 text-right text-[11px] font-mono tabular-nums" style={{ width: COLUMNS[5].width, color: BRAND.textSecondary }}>
                     {it.plannedVelocity ?? ''}
                   </div>
-                  <div className="shrink-0 px-2" style={{ width: COLUMNS[5].width }}>
-                    <StateBadge state={it.state} />
+                  <div className="shrink-0 px-2 text-right text-[11px] font-mono tabular-nums" style={{ width: COLUMNS[6].width, color: BRAND.textSecondary }}>
+                    {it.taskEstimate}
+                  </div>
+                  <div className="shrink-0 px-2" style={{ width: COLUMNS[7].width }}>
+                    <StateBadge state={stateFromLabel(it.state)} />
                   </div>
                 </div>
               ))}
@@ -320,11 +367,11 @@ function CreateIterationModal({
   onClose: () => void
   onCreated: (id: string) => void
 }) {
-  const { team } = useAppContext()
+  const { project, team } = useAppContext()
   const { data: teams = [] } = useProjectTeams(projectId)
   const create = useCreateIteration()
   const [name, setName] = useState('')
-  const [teamId, setTeamId] = useState<string>('')
+  const [teamId, setTeamId] = useState<string>(team?.teamId ?? '')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [state, setState] = useState<IterationState>('planning')
@@ -366,12 +413,20 @@ function CreateIterationModal({
   return (
     <AppModal open onClose={onClose} title="New Iteration" width={480}>
       <ModalBody className="space-y-4">
+        <FormField label="Project">
+          <NativeSelect value={projectId} disabled>
+            <option value={projectId}>{project?.projectKey} / {project?.projectName}</option>
+          </NativeSelect>
+        </FormField>
         <FormField label="Name" required error={error ?? undefined}>
           <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Enter iteration name..." />
         </FormField>
         <FormField label="Team">
           <NativeSelect value={teamId} onChange={(e) => setTeamId(e.target.value)}>
-            <option value="">{team ? `Context: ${team}` : 'No team'}</option>
+            <option value="">{team ? `Context: ${team.teamName}` : 'No team'}</option>
+            {team && !teams.some((t) => t.id === team.teamId) && (
+              <option value={team.teamId}>{team.teamName}</option>
+            )}
             {teams.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.name}

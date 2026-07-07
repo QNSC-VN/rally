@@ -215,7 +215,7 @@ export function LoginPage() {
             <Layers size={19} />
           </div>
           <div>
-            <div className="text-[16px] font-semibold tracking-tight">Mini Rally</div>
+            <div className="text-[16px] font-semibold tracking-tight">Rally</div>
             <div className="text-[10px]" style={{ color: 'rgba(255,255,255,0.55)' }}>
               Work Management Platform
             </div>
@@ -262,7 +262,7 @@ export function LoginPage() {
         </div>
 
         <div className="relative text-[10px]" style={{ color: 'rgba(255,255,255,0.45)' }}>
-          © 2026 Mini Rally · Internal workspace
+          © 2026 Rally · Internal workspace
         </div>
       </section>
 
@@ -279,7 +279,7 @@ export function LoginPage() {
             </div>
             <div>
               <div className="text-[14px] font-semibold" style={{ color: '#1a2234' }}>
-                Mini Rally
+                Rally
               </div>
               <div className="text-[9px]" style={{ color: '#8c94a6' }}>
                 Work Management Platform
@@ -306,7 +306,7 @@ export function LoginPage() {
                     className="text-[21px] font-semibold tracking-tight"
                     style={{ color: '#1a2234' }}
                   >
-                    Sign in to Mini Rally
+                    Sign in to Rally
                   </h2>
                 </div>
                 <div
@@ -513,7 +513,7 @@ export function LoginPage() {
           <p className="mt-5 text-center text-[10px]" style={{ color: '#8c94a6' }}>
             Need access?{' '}
             <a
-              href="mailto:admin@minirallyapp.com"
+              href="mailto:admin@rallyapp.com"
               className="font-medium"
               style={{ color: '#2558a6' }}
             >

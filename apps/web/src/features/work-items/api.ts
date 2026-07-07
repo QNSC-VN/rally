@@ -450,7 +450,27 @@ export function useRankWorkItem(id: string) {
     },
     onSuccess: (item) => {
       void qc.invalidateQueries({ queryKey: workItemKeys.backlog(item.projectId) })
+      void qc.invalidateQueries({ queryKey: workItemKeys.list(item.projectId) })
+      void qc.invalidateQueries({ queryKey: ['iteration-status'] })
     },
   })
 }
 
+export function useRankWorkItemMutation() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, input }: { id: string; input: RankWorkItemInput }) => {
+      const { data, error, response } = await apiClient.PATCH('/v1/work-items/{id}/rank', {
+        params: { path: { id } },
+        body: input,
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as WorkItem
+    },
+    onSuccess: (item) => {
+      void qc.invalidateQueries({ queryKey: workItemKeys.backlog(item.projectId) })
+      void qc.invalidateQueries({ queryKey: workItemKeys.list(item.projectId) })
+      void qc.invalidateQueries({ queryKey: ['iteration-status'] })
+    },
+  })
+}
