@@ -28,7 +28,7 @@ jobs:
       # GitHub App token lets Release Please open PRs and push tags that
       # trigger downstream workflows (GITHUB_TOKEN cannot trigger other workflows).
       # Falls back to github.token when RELEASE_BOT_APP_ID is not yet configured.
-      - uses: actions/create-github-app-token@v1
+      - uses: actions/create-github-app-token@v3
         id: app-token
         continue-on-error: true
         with:
