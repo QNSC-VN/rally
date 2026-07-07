@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
 import { createHash, randomBytes } from 'node:crypto';
 import { uuidv7 } from 'uuidv7';
 import {
@@ -52,8 +52,47 @@ import type {
 } from '../domain/tenancy.types';
 
 @Injectable()
-export class TenancyService {
+export class TenancyService implements OnApplicationBootstrap {
   private readonly logger = new Logger(TenancyService.name);
+
+  /**
+   * In single-tenant deployments, make sure the one configured tenant +
+   * workspace exists before serving traffic. Idempotent: does nothing in saas
+   * mode or if the tenant already exists, so it's safe on every boot.
+   */
+  async onApplicationBootstrap(): Promise<void> {
+    if (!this.config.isSingleTenant()) return;
+    try {
+      await this.ensureSingleTenant();
+    } catch (err) {
+      // Don't crash the app if the DB isn't reachable yet at boot — log loudly.
+      this.logger.error({ err }, 'Failed to ensure single tenant on bootstrap');
+    }
+  }
+
+  /** Create the configured single tenant + 'main' workspace if absent. */
+  async ensureSingleTenant(): Promise<Tenant> {
+    const slug = this.config.get('SINGLE_TENANT_SLUG');
+    const name = this.config.get('SINGLE_TENANT_NAME');
+
+    const existing = await this.tenantRepo.findBySlug(slug);
+    if (existing) {
+      this.logger.log({ tenantId: existing.id, slug }, 'Single tenant already present');
+      return existing;
+    }
+
+    const tenantId = uuidv7();
+    return this.rls.withTenantContext(tenantId, async (tx) => {
+      const tenant = await this.tenantRepo.create({ id: tenantId, slug, name }, tx);
+      await this.workspaceRepo.create(
+        { id: uuidv7(), tenantId: tenant.id, slug: 'main', name },
+        tx,
+      );
+      await this.tenantRepo.createSubscription(tenant.id, 'free', 'active', tx);
+      this.logger.log({ tenantId: tenant.id, slug }, 'Single tenant provisioned on bootstrap');
+      return tenant;
+    });
+  }
 
   constructor(
     @Inject(TENANT_REPOSITORY) private readonly tenantRepo: ITenantRepository,
@@ -199,6 +238,11 @@ export class TenancyService {
       throw new UnauthorizedException('TENANT_SUSPENDED', 'Tenant is suspended');
     }
     return tenant;
+  }
+
+  /** Look up a tenant by slug. Returns null if none (does not throw). */
+  async findTenantBySlug(slug: string): Promise<Tenant | null> {
+    return this.tenantRepo.findBySlug(slug);
   }
 
   // ── Workspaces ──────────────────────────────────────────────────────────────

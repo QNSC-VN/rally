@@ -261,6 +261,16 @@ export class AuthService {
     input: { email: string; password: string; displayName: string; organizationName?: string },
     ipAddress?: string,
   ): Promise<LoginResult> {
+    // Single-tenant deployments are packaged for one customer: there is no
+    // self-serve signup and no new-tenant provisioning. Users are onboarded via
+    // SSO (mapped to the one tenant) or admin invitation.
+    if (this.config.isSingleTenant()) {
+      throw new PreconditionFailedException(
+        'SIGNUP_DISABLED',
+        'Self-serve signup is disabled on this instance. Please sign in with your organization account or ask an administrator for an invitation.',
+      );
+    }
+
     const email = input.email.toLowerCase().trim();
     const domain = email.slice(email.lastIndexOf('@') + 1);
 
@@ -779,6 +789,20 @@ export class AuthService {
         }
         connectionTenantId = connection.tenantId;
         defaultRoleSlug = connection.defaultRoleSlug;
+      }
+    }
+
+    // Single-tenant deployments have exactly one tenant. Any SSO user who
+    // passes IdP verification belongs to it, so resolve to that tenant when no
+    // explicit sso_connection row matched. (A connection row still wins above,
+    // so per-domain allow-lists / JIT toggles keep working if configured.)
+    if (!connectionTenantId && this.config.isSingleTenant()) {
+      const single = await this.tenancyService.findTenantBySlug(
+        this.config.get('SINGLE_TENANT_SLUG'),
+      );
+      if (single) {
+        connectionTenantId = single.id;
+        defaultRoleSlug = SYSTEM_ROLE.PROJECT_MEMBER;
       }
     }
 
