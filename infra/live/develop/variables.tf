@@ -13,13 +13,6 @@ variable "cloudflare_account_id" {
   EOT
 }
 
-# DEPRECATED: web now serves via Cloudflare Pages (no CloudFront ACM cert).
-# Retained only so existing CI env (TF_VAR_web_acm_cert_arn) doesn't error;
-# remove after the Pages migration is fully rolled out.
-variable "web_acm_cert_arn" {
-  type        = string
-  description = "ACM certificate ARN for CloudFront (MUST be in us-east-1)"
-}
 
 variable "entra_tenant_id" {
   type        = string
