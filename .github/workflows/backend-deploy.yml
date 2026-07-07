@@ -370,30 +370,12 @@ jobs:
 
       # ── Step 4: Wait for ECS to stabilise, verify image tag ──────────────
       - name: Verify API deployment
-        run: |
-          echo "Waiting for ECS service to reach steady state…"
-          AWS_MAX_ATTEMPTS=120 aws ecs wait services-stable \
-            --cluster "${{ vars.ECS_CLUSTER }}" \
-            --services "${{ vars.ECS_API_SERVICE }}" \
-            --region "${{ vars.AWS_REGION }}"
-          echo "✓ ECS service stable"
-
-          ACTIVE_TASKDEF=$(aws ecs describe-services \
-            --cluster "${{ vars.ECS_CLUSTER }}" \
-            --services "${{ vars.ECS_API_SERVICE }}" \
-            --region "${{ vars.AWS_REGION }}" \
-            --query 'services[0].taskDefinition' --output text)
-          ACTIVE_IMAGE=$(aws ecs describe-task-definition \
-            --task-definition "$ACTIVE_TASKDEF" \
-            --region "${{ vars.AWS_REGION }}" \
-            --query 'taskDefinition.containerDefinitions[0].image' --output text)
-          echo "Active task definition : $ACTIVE_TASKDEF"
-          echo "Active image           : $ACTIVE_IMAGE"
-          if ! echo "$ACTIVE_IMAGE" | grep -q "${{ env.IMAGE_TAG }}"; then
-            echo "ERROR: Expected image tag '${{ env.IMAGE_TAG }}' but active image is '$ACTIVE_IMAGE'"
-            exit 1
-          fi
-          echo "✓ Image tag verified: ${{ env.IMAGE_TAG }}"
+        uses: QNSC-VN/qnsc-ci/actions/verify-ecs-deploy@v1.4
+        with:
+          cluster:   ${{ vars.ECS_CLUSTER }}
+          service:   ${{ vars.ECS_API_SERVICE }}
+          image-tag: ${{ env.IMAGE_TAG }}
+          region:    ${{ vars.AWS_REGION }}
 
       # ── Step 5: Health check ──────────────────────────────────────────────
       - name: Post-deploy health check
