@@ -292,51 +292,66 @@ jobs:
             --query 'taskDefinition.taskDefinitionArn' --output text)
           echo "arn=$ARN" >> "$GITHUB_OUTPUT"
 
-      # ── Step 2: Ensure RDS is available before running migrations ───────
-      # Dev environment has a cost-saver scheduler (stop 20:00, start 08:00 ICT).
-      # A deploy triggered while RDS is stopped would time out. This step starts
-      # the instance if stopped and waits up to 8 min for it to become available.
-      # On prod (Multi-AZ) this is a fast no-op — Multi-AZ RDS cannot be stopped.
-      - name: Ensure RDS is available (dev cost-saver guard)
+      # ── Step 2: Wake the dev environment (RDS + ECS) before migrations ────
+      # The dev cost-saver scheduler stops RDS and scales ECS services to 0 at
+      # 20:00 ICT (restores at 08:00 ICT). A deploy that runs while the env is
+      # asleep would otherwise (a) time out on the DB and (b) start zero tasks,
+      # so the verify step would never see the new image. This step starts RDS
+      # (waits up to 8 min) and scales any service at desiredCount=0 back to 1.
+      # On prod this is a no-op: RDS is Multi-AZ (never stopped) and services
+      # are never scaled to 0.
+      - name: Ensure dev environment is awake (RDS + ECS)
         if: env.ENVIRONMENT == 'develop'
         env:
           AWS_REGION: ${{ vars.AWS_REGION }}
           RDS_IDENTIFIER: ${{ vars.RDS_INSTANCE_ID }}
+          ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+          ECS_API_SERVICE: ${{ vars.ECS_API_SERVICE }}
+          ECS_WORKER_SERVICE: ${{ vars.ECS_WORKER_SERVICE }}
         run: |
-          STATUS=$(aws rds describe-db-instances \
-            --db-instance-identifier "$RDS_IDENTIFIER" \
-            --region "$AWS_REGION" \
-            --query 'DBInstances[0].DBInstanceStatus' \
-            --output text 2>/dev/null || echo "not-found")
+          # ── RDS: start if the cost-saver stopped it, then wait for available ──
+          ensure_rds() {
+            local status
+            status=$(aws rds describe-db-instances \
+              --db-instance-identifier "$RDS_IDENTIFIER" --region "$AWS_REGION" \
+              --query 'DBInstances[0].DBInstanceStatus' --output text 2>/dev/null || echo "not-found")
+            echo "RDS status: $status"
+            [ "$status" = "available" ] && return 0
+            if [ "$status" = "stopped" ]; then
+              echo "RDS is stopped — starting it now..."
+              aws rds start-db-instance \
+                --db-instance-identifier "$RDS_IDENTIFIER" --region "$AWS_REGION" >/dev/null \
+                || echo "::warning::start-db-instance failed; will keep polling in case another actor started it"
+            fi
+            echo "Waiting for RDS to become available (timeout: 8 min)..."
+            for i in $(seq 1 32); do
+              sleep 15
+              status=$(aws rds describe-db-instances \
+                --db-instance-identifier "$RDS_IDENTIFIER" --region "$AWS_REGION" \
+                --query 'DBInstances[0].DBInstanceStatus' --output text 2>/dev/null || echo "unknown")
+              echo "  [${i}/32] RDS: $status"
+              [ "$status" = "available" ] && { echo "RDS is available."; return 0; }
+            done
+            echo "Timed out waiting for RDS after 8 minutes."
+            return 1
+          }
+          ensure_rds
 
-          echo "RDS status: $STATUS"
-
-          if [ "$STATUS" = "stopped" ]; then
-            echo "RDS is stopped — starting it now..."
-            aws rds start-db-instance \
-              --db-instance-identifier "$RDS_IDENTIFIER" \
-              --region "$AWS_REGION" > /dev/null
-          elif [ "$STATUS" = "available" ]; then
-            echo "RDS already available — proceeding."
-            exit 0
-          fi
-
-          echo "Waiting for RDS to become available (timeout: 8 min)..."
-          for i in $(seq 1 32); do
-            sleep 15
-            STATUS=$(aws rds describe-db-instances \
-              --db-instance-identifier "$RDS_IDENTIFIER" \
-              --region "$AWS_REGION" \
-              --query 'DBInstances[0].DBInstanceStatus' \
-              --output text)
-            echo "  [${i}/32] Status: $STATUS"
-            if [ "$STATUS" = "available" ]; then
-              echo "RDS is available."
-              exit 0
+          # ── ECS: restore any service the cost-saver scaled to 0, otherwise the
+          #    deploy starts no tasks and the verify step times out. ──
+          for SVC in "$ECS_API_SERVICE" "$ECS_WORKER_SERVICE"; do
+            [ -z "$SVC" ] && continue
+            desired=$(aws ecs describe-services \
+              --cluster "$ECS_CLUSTER" --services "$SVC" --region "$AWS_REGION" \
+              --query 'services[0].desiredCount' --output text 2>/dev/null || echo "0")
+            if [ "$desired" = "0" ]; then
+              echo "ECS $SVC is scaled to 0 (cost-saver) — scaling up to 1"
+              aws ecs update-service --cluster "$ECS_CLUSTER" --service "$SVC" \
+                --desired-count 1 --region "$AWS_REGION" >/dev/null
+            else
+              echo "ECS $SVC desiredCount=$desired — no scale-up needed"
             fi
           done
-          echo "Timed out waiting for RDS after 8 minutes."
-          exit 1
 
       # ── Step 3: Run migrations BEFORE any traffic shifts ─────────────────
       - name: Run database migrations

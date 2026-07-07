@@ -99,7 +99,7 @@ module "iam_oidc" {
   }
 
   app_repo_names         = ["rally"] # monorepo: was rally-api
-  infra_repo_name        = "rally"     # monorepo: infra lives in rally/infra/
+  infra_repo_name        = "rally"   # monorepo: infra lives in rally/infra/
   ecr_repository_pattern = "rally-*"
   ecs_passrole_pattern   = "rally-*" # shared ecs-service names roles <cluster>-<service>-task
   tags                   = { Layer = "shared" }
@@ -135,6 +135,32 @@ resource "aws_iam_role_policy" "deploy_rds_dev_guard" {
           "rds:StartDBInstance",
         ]
         Resource = local.rally_develop_rds_arn
+      }
+    ]
+  })
+}
+
+# ── ECS deploy verification — both deploy roles ────────────────────────────
+# verify-ecs-deploy enumerates running tasks (aws ecs list-tasks) to confirm the
+# new image tag is live after a deploy. Without ecs:ListTasks the call is denied,
+# the action swallows the error, and verification always times out. The baseline
+# iam-oidc module (main / next release) grants this, but this stack still pins
+# iam-oidc-v1.2.0 — adopting the newer module also changes the infra-apply OIDC
+# trust, so we grant it here (both envs) until that bump is done deliberately.
+resource "aws_iam_role_policy" "deploy_ecs_verify" {
+  for_each = toset(["develop", "production"])
+
+  name = "rally-deploy-${each.key}-ecs-verify"
+  role = split("/", module.iam_oidc.deploy_role_arns[each.key])[1]
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "ECSVerifyListTasks"
+        Effect   = "Allow"
+        Action   = ["ecs:ListTasks"]
+        Resource = "*"
       }
     ]
   })
