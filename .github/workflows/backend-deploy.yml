@@ -236,7 +236,7 @@ jobs:
           role-arn: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/rally-github-deploy-${{ env.ENVIRONMENT }}
           region: ${{ vars.AWS_REGION }}
 
-      # ── Step 1: Update task definitions to use the exact image tag ────────
+      # ── Step 1: Update task definitions to pin the exact image tag ────────
       - name: Update API task definition to ${{ env.IMAGE_TAG }}
         id: api-taskdef
         run: |
@@ -349,7 +349,7 @@ jobs:
           region: ${{ vars.AWS_REGION }}
           environment: ${{ env.ENVIRONMENT }}
 
-      # ── Step 3: Deploy API + Worker with updated task definitions ─────────
+      # ── Step 4: Deploy API + Worker with pinned task definitions ──────────
       - name: Deploy API service
         run: |
           aws ecs update-service \
@@ -368,7 +368,7 @@ jobs:
             --force-new-deployment \
             --region "${{ vars.AWS_REGION }}"
 
-      # ── Step 4: Wait for ECS to stabilise, verify image tag ──────────────
+      # ── Step 5: Verify API is running the expected image tag ──────────────
       - name: Verify API deployment
         uses: QNSC-VN/qnsc-ci/actions/verify-ecs-deploy@v1.4
         with:
@@ -377,7 +377,7 @@ jobs:
           image-tag: ${{ env.IMAGE_TAG }}
           region:    ${{ vars.AWS_REGION }}
 
-      # ── Step 5: Health check ──────────────────────────────────────────────
+      # ── Step 6: Health check ──────────────────────────────────────────────
       - name: Post-deploy health check
         if: vars.API_URL != ''
         uses: QNSC-VN/qnsc-ci/actions/post-deploy-health-check@v1.4
@@ -385,7 +385,7 @@ jobs:
           url: ${{ vars.API_URL }}/v1/healthz
           timeout-seconds: '120'
 
-      # ── Step 6: Job summary ───────────────────────────────────────────────
+      # ── Step 7: Job summary ───────────────────────────────────────────────
       - name: Deployment summary
         if: always()
         run: |
@@ -398,7 +398,7 @@ jobs:
           echo "| **Actor** | ${{ github.actor }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| **API URL** | \`${{ vars.API_URL }}\` |" >> "$GITHUB_STEP_SUMMARY"
 
-      # ── Step 7: Notify Slack / Discord ────────────────────────────────────
+      # ── Step 8: Notify Slack / Discord ────────────────────────────────────
       - name: Notify deploy result
         if: always()
         uses: QNSC-VN/qnsc-ci/actions/notify-deploy@v1.4
