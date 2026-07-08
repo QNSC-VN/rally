@@ -81,7 +81,8 @@ jobs:
           tofu plan -input=false -lock=false -no-color -out=tfplan 2>&1 | tee plan.txt
           echo "exitcode=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
         env:
-          TF_VAR_acm_cert_arn: ${{ secrets.ACM_CERT_ARN }}
+          TF_VAR_acm_cert_arn:         ${{ secrets.ACM_CERT_ARN }}
+          TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
       - name: Post plan to PR
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3   # v9.0.0
