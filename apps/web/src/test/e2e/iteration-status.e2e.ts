@@ -32,10 +32,10 @@ test.describe('P2.3 Iteration Status', () => {
     await page.getByPlaceholder('Enter a concise work item title...').fill(title)
     await page.getByRole('button', { name: 'Create Item' }).click()
 
-    // Assert on the success toast — it fires only after the API create succeeds,
-    // so it proves the end-to-end create flow (auth → permission → persist). This
-    // is more reliable than scanning the list, whose async refetch + row
-    // truncation can race the assertion.
-    await expect(page.getByText(/added to iteration/i)).toBeVisible({ timeout: 15_000 })
+    // On success the modal closes (onCreated); on failure it stays open with an
+    // inline error. Asserting the modal is gone is the stable end-to-end success
+    // signal — the success toast auto-dismisses too fast to assert reliably, and
+    // the list refetch/row-truncation races a title match.
+    await expect(page.getByText('Add Item to Iteration')).toBeHidden({ timeout: 15_000 })
   })
 })
