@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
 import { NotFoundException, ConflictException, PermissionDeniedException } from '@platform';
-import { SYSTEM_ROLE, PERMISSION, type Permission } from '@shared-kernel';
+import { SYSTEM_ROLE, PERMISSION, permissionGrants, type Permission } from '@shared-kernel';
 import type { JwtPayload } from '@platform';
 import { IRoleRepository, ROLE_REPOSITORY } from '../domain/ports/role.repository';
 import {
@@ -268,10 +268,10 @@ export class AccessService {
     required: Permission,
   ): Promise<void> {
     // Fast path: a tenant-wide grant in the JWT covers every project.
-    if (this.matchesPermission(user.permissions, required)) return;
+    if (permissionGrants(user.permissions, required)) return;
 
     const effective = await this.getProjectPermissions(user.sub, user.tenantId, projectId);
-    if (this.matchesPermission(effective, required)) return;
+    if (permissionGrants(effective, required)) return;
 
     throw new PermissionDeniedException(
       'PROJECT_PERMISSION_DENIED',
@@ -280,10 +280,4 @@ export class AccessService {
   }
 
   /** Wildcard-aware membership check: workspace:* / ns:* / exact match. */
-  private matchesPermission(permissions: string[] | undefined, required: Permission): boolean {
-    if (!permissions?.length) return false;
-    if (permissions.includes('workspace:*') || permissions.includes(required)) return true;
-    const [ns] = required.split(':');
-    return !!ns && permissions.includes(`${ns}:*`);
-  }
 }

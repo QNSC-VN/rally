@@ -6,6 +6,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { permissionGrants } from '@shared-kernel';
 import { PERMISSION_KEY } from './decorators';
 import type { JwtPayload } from './jwt.strategy';
 
@@ -37,10 +38,9 @@ export class PermissionGuard implements CanActivate {
       throw new ForbiddenException('Insufficient permissions');
     }
 
-    // Workspace wildcard grants everything.
-    if (user.permissions.includes('workspace:*')) return true;
-
-    if (!user.permissions.includes(requiredPermission)) {
+    // Shared wildcard-aware check (workspace:* / ns:* / exact) — one source of
+    // truth for the semantics across every guard and service.
+    if (!permissionGrants(user.permissions, requiredPermission)) {
       this.logger.warn(
         { userId: user.sub, requiredPermission },
         'PermissionGuard: access denied',

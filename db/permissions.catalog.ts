@@ -62,6 +62,27 @@ export type Permission = (typeof PERMISSION)[keyof typeof PERMISSION];
 export type SystemRoleSlug = (typeof SYSTEM_ROLE)[keyof typeof SYSTEM_ROLE];
 
 /**
+ * The one wildcard-aware permission check, shared by every guard and service so
+ * the semantics can't drift. A caller holding `permissions` is granted `required`
+ * when any of these is true:
+ *   - `workspace:*`  — the global wildcard grants everything
+ *   - an exact match of `required`
+ *   - `ns:*`         — the namespace wildcard (e.g. `work_item:*` grants
+ *                      `work_item:edit`)
+ */
+export function permissionGrants(
+  permissions: readonly string[] | undefined,
+  required: string,
+): boolean {
+  if (!permissions?.length) return false;
+  if (permissions.includes(PERMISSION.WORKSPACE_ALL) || permissions.includes(required)) {
+    return true;
+  }
+  const ns = required.split(':')[0];
+  return !!ns && permissions.includes(`${ns}:*`);
+}
+
+/**
  * Role → permission grants. Authoritative definition consumed by the DB seed.
  * `workspace_admin` also carries `workspace:*`, so it implicitly grants
  * everything; the explicit management codes are still listed so the catalogue

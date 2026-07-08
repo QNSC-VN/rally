@@ -12,7 +12,7 @@ import { Reflector } from '@nestjs/core';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard, PermissionGuard } from '@platform';
 import type { JwtPayload } from '@platform';
-import type { Permission } from '@shared-kernel';
+import { permissionGrants, type Permission } from '@shared-kernel';
 import { AccessService } from '../../application/access.service';
 
 export const PROJECT_PERMISSION_KEY = 'requiredProjectPermission';
@@ -87,7 +87,7 @@ export class ProjectPermissionGuard implements CanActivate {
 
     // Fast path: a tenant-wide grant already in the JWT covers every project,
     // so there's no need to hit the DB for a project-scope lookup.
-    if (this.hasFlat(user.permissions, meta.permission)) return true;
+    if (permissionGrants(user.permissions, meta.permission)) return true;
 
     const projectId = this.extractProjectId(request, meta);
     if (!projectId) {
@@ -104,21 +104,13 @@ export class ProjectPermissionGuard implements CanActivate {
       projectId,
     );
 
-    if (this.hasFlat(effective, meta.permission)) return true;
+    if (permissionGrants(effective, meta.permission)) return true;
 
     this.logger.warn(
       { userId: user.sub, projectId, permission: meta.permission },
       'ProjectPermissionGuard: access denied',
     );
     throw new ForbiddenException('Insufficient permissions');
-  }
-
-  /** Wildcard-aware membership check (workspace:* / ns:* / exact). */
-  private hasFlat(permissions: string[] | undefined, required: Permission): boolean {
-    if (!permissions?.length) return false;
-    if (permissions.includes('workspace:*') || permissions.includes(required)) return true;
-    const [ns] = required.split(':');
-    return !!ns && permissions.includes(`${ns}:*`);
   }
 
   private extractProjectId(

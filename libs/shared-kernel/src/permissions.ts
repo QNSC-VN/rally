@@ -10,6 +10,7 @@ export {
   PERMISSION,
   ROLE_PERMISSIONS,
   ROLE_NAMES,
+  permissionGrants,
   type Permission,
   type SystemRoleSlug,
 } from '../../../db/permissions.catalog';
