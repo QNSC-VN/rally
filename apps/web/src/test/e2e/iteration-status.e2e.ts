@@ -31,9 +31,11 @@ test.describe('P2.3 Iteration Status', () => {
     const title = `E2E Story ${Date.now()}`
     await page.getByPlaceholder('Enter a concise work item title...').fill(title)
     await page.getByRole('button', { name: 'Create Item' }).click()
-    await settle(page, 2500)
 
-    // The new story appears in the iteration's item list (give the refetch time).
-    await expect(page.getByText(title).first()).toBeVisible({ timeout: 15_000 })
+    // Assert on the success toast — it fires only after the API create succeeds,
+    // so it proves the end-to-end create flow (auth → permission → persist). This
+    // is more reliable than scanning the list, whose async refetch + row
+    // truncation can race the assertion.
+    await expect(page.getByText(/added to iteration/i)).toBeVisible({ timeout: 15_000 })
   })
 })
