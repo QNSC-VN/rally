@@ -1054,7 +1054,7 @@ export async function seed(connectionUrl?: string): Promise<void> {
     // ── SSO connection (dev) ──────────────────────────────────────────────────
     // Maps the configured Entra directory (`ENTRA_TENANT_ID`) to the acme tenant
     // so federated login resolves through the proper per-tenant SSO registry
-    // instead of the dev-only ENTRA_DEFAULT_TENANT_ID fallback.
+    // (the primary tenant-resolution mechanism — see resolveAndProvisionSsoUser).
     const entraTid = process.env['ENTRA_TENANT_ID'];
     if (entraTid) {
       // Restrict JIT provisioning to the corporate domain(s). Empty list = any

@@ -109,11 +109,6 @@ export const EnvSchema = z.object({
   // Leave unset (default) to disable SSO and use email/password only.
   ENTRA_TENANT_ID: z.string().optional(),
   ENTRA_CLIENT_ID: z.string().optional(),
-  /**
-   * Rally tenant UUID to use for JIT-provisioned SSO users whose email doesn't
-   * match any existing Rally user. Required for SSO in fresh/greenfield installs.
-   */
-  ENTRA_DEFAULT_TENANT_ID: z.string().uuid().optional(),
 
   // ── Break-glass super admin ────────────────────────────────────────────────
   /**

@@ -740,15 +740,15 @@ export class AuthService {
    * them if needed. This is the enterprise tenant-resolution chain, evaluated in
    * priority order so that the most authoritative signal wins:
    *
-   *   1. Existing user by email     → merge the Entra identity into their tenant.
-   *   2. SSO connection by Entra tid → provision into the mapped tenant, subject
+   *   1. SSO connection by Entra tid → provision into the mapped tenant, subject
    *                                    to the connection's domain allow-list and
    *                                    JIT toggle. This is the primary mechanism.
-   *   3. Dev-only env fallback       → ENTRA_DEFAULT_TENANT_ID, NON-production only.
-   *   4. Otherwise                   → 403; the user must be invited by an admin.
+   *   2. Single-tenant fallback       → in DEPLOYMENT_MODE=single, resolve to the
+   *                                    one configured tenant (SINGLE_TENANT_SLUG).
+   *   3. Otherwise                   → 403; the user must be invited by an admin.
    *
-   * The insecure "silently drop everyone into the default tenant" behaviour is
-   * gone: in production an unmapped IdP is rejected rather than leaking access.
+   * An unmapped IdP is rejected rather than silently dropped into a default
+   * tenant — so a directory the operator hasn't explicitly mapped can't leak in.
    */
   private async resolveAndProvisionSsoUser(input: {
     oid: string;
@@ -803,18 +803,6 @@ export class AuthService {
       if (single) {
         connectionTenantId = single.id;
         defaultRoleSlug = SYSTEM_ROLE.PROJECT_MEMBER;
-      }
-    }
-
-    // Dev-only fallback — never trusted in production.
-    if (!connectionTenantId) {
-      const fallback = this.config.get('ENTRA_DEFAULT_TENANT_ID' as never) as string | undefined;
-      if (fallback && process.env['NODE_ENV'] !== 'production') {
-        this.logger.warn(
-          { email, externalTenantId },
-          'SSO user provisioned via ENTRA_DEFAULT_TENANT_ID dev fallback — configure an sso_connection for production',
-        );
-        connectionTenantId = fallback;
       }
     }
 
