@@ -8,6 +8,13 @@ name: OpenTofu Apply
 #
 # Prod infra can NOT be applied by a normal merge to main — it only happens on
 # a deliberate semver tag, so an accidental push can never touch production.
+#
+# PREREQUISITE (Option A shared runtime): the platform shared-runtime stacks in
+# qnsc-infra — runtime-dev (for develop) and runtime-prod (for prod) — own the
+# shared VPC/NAT/ALB (+ prod cache/WAF) and MUST be applied before this product
+# stack. develop/prod consume them via terraform_remote_state, so a product
+# apply fails if the runtime state doesn't exist yet. The platform pipeline
+# applies runtime first.
 # ─────────────────────────────────────────────────────────────────────────────
 on:
   push:
