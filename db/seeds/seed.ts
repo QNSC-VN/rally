@@ -23,7 +23,7 @@ import * as argon2 from 'argon2';
 import { and, eq, sql } from 'drizzle-orm';
 import * as schema from '../schema';
 // Direct imports to avoid barrel tsx/CJS resolution edge cases at runtime.
-import { projectCounters, projectMembers, workItems, iterations, releases, teams, teamMembers } from '../schema/work';
+import { projectCounters, projectMembers, projectTeams, workItems, iterations, releases, teams, teamMembers } from '../schema/work';
 import { userRoleAssignments } from '../schema/access';
 import { ssoConnections } from '../schema/identity';
 import { ROLE_PERMISSIONS, ROLE_NAMES, SYSTEM_ROLE, type SystemRoleSlug } from '../permissions.catalog';
@@ -431,6 +431,21 @@ async function seedTeams() {
     { id: '00000000-0000-7000-8000-000000000081', tenantId: SYSTEM_TENANT_ID, teamId: TEAM_ALPHA_ID, userId: DEVELOPER_ID, status: 'active' },
     { id: '00000000-0000-7000-8000-000000000082', tenantId: SYSTEM_TENANT_ID, teamId: TEAM_BETA_ID, userId: DEVELOPER_ID, status: 'active' },
     { id: '00000000-0000-7000-8000-000000000083', tenantId: SYSTEM_TENANT_ID, teamId: TEAM_BETA_ID, userId: VIEWER_ID, status: 'active' },
+  ]).onConflictDoNothing();
+
+  // Link teams to their projects (project_teams). Iterations carry a team_id and
+  // creating a work item into an iteration validates the team is linked to the
+  // project (assertTeamLinked) — without these links, "Add Item" fails with
+  // "Team is not linked to this project". Alpha → NXP/OPS, Beta → MOB/PRT.
+  const NXP = SEED_PROJECTS[0].id; // NX Platform
+  const MOB = SEED_PROJECTS[1].id; // Mobile App
+  const OPS = SEED_PROJECTS[2].id; // DevOps & Infrastructure
+  const PRT = SEED_PROJECTS[4].id; // Partner Portal
+  await db.insert(projectTeams).values([
+    { id: '00000000-0000-7000-8000-000000000090', tenantId: SYSTEM_TENANT_ID, projectId: NXP, teamId: TEAM_ALPHA_ID, status: 'active' },
+    { id: '00000000-0000-7000-8000-000000000091', tenantId: SYSTEM_TENANT_ID, projectId: OPS, teamId: TEAM_ALPHA_ID, status: 'active' },
+    { id: '00000000-0000-7000-8000-000000000092', tenantId: SYSTEM_TENANT_ID, projectId: MOB, teamId: TEAM_BETA_ID, status: 'active' },
+    { id: '00000000-0000-7000-8000-000000000093', tenantId: SYSTEM_TENANT_ID, projectId: PRT, teamId: TEAM_BETA_ID, status: 'active' },
   ]).onConflictDoNothing();
 
   console.log('✅  Teams seeded');
