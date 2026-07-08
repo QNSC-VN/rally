@@ -75,7 +75,10 @@ jobs:
         id: plan
         working-directory: ${{ matrix.workspace }}
         run: |
-          tofu plan -input=false -no-color -out=tfplan 2>&1 | tee plan.txt
+          # The infra-plan OIDC role is read-only and has no DynamoDB write
+          # permission, so it cannot acquire the state lock. Plan never mutates
+          # state, so run lock-free (apply still locks via the admin apply role).
+          tofu plan -input=false -lock=false -no-color -out=tfplan 2>&1 | tee plan.txt
           echo "exitcode=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
         env:
           TF_VAR_acm_cert_arn: ${{ secrets.ACM_CERT_ARN }}
