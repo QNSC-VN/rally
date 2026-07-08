@@ -71,29 +71,30 @@ locals {
   ecr_api_url      = "${local.ecr_base}/rally-api:latest"
   ecr_worker_url   = "${local.ecr_base}/rally-worker:latest"
   ecr_migrator_url = "${local.ecr_base}/rally-migrator:latest"
+
+  # Dev cache: a Valkey sidecar per task (localhost:6379) instead of a shared
+  # ElastiCache node — $0 in dev. Each task gets its own in-task instance
+  # (accepted dev tradeoff); prod uses the shared runtime-prod cache node.
+  valkey_sidecar = {
+    name         = "valkey"
+    image        = "valkey/valkey:8-alpine"
+    essential    = false
+    portMappings = [{ containerPort = 6379, protocol = "tcp" }]
+    environment  = []
+  }
 }
 
-# ── Networking ────────────────────────────────────────────────────────────────
-module "network" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/network?ref=network-v1.1.2"
-
-  name   = local.name
-  region = local.region
-  azs    = local.azs
-
-  enable_interface_endpoints = false # dev: NAT covers egress — save ~$22/mo
-
-  vpc_cidr             = "10.10.0.0/16"
-  public_subnet_cidrs  = ["10.10.0.0/24", "10.10.1.0/24", "10.10.2.0/24"]
-  private_subnet_cidrs = ["10.10.10.0/24", "10.10.11.0/24", "10.10.12.0/24"]
-  data_subnet_cidrs    = ["10.10.20.0/24", "10.10.21.0/24", "10.10.22.0/24"]
-
-  nat_type          = "instance" # dev: fck-nat t4g.nano ~$3/mo vs NAT GW ~$33/mo
-  app_port          = 3000
-  enable_flow_logs  = false                 # dev: no compliance requirement — save ~$4/mo
-  alb_ingress_cidrs = local.cloudflare_ipv4 # lock ALB to Cloudflare orange-cloud proxy IPs (matches prod)
-
-  tags = { Environment = local.env }
+# ── Shared runtime layer (VPC + NAT + ALB) ────────────────────────────────────
+# Option A: the VPC/NAT/ALB now live once per env in qnsc-infra/live/runtime-dev
+# and are shared by every product. This stack consumes them via remote state
+# instead of creating its own. RDS + Fargate stay per-product below.
+data "terraform_remote_state" "runtime" {
+  backend = "s3"
+  config = {
+    bucket = "qnsc-tofu-state"
+    key    = "platform/runtime-dev/terraform.tfstate"
+    region = "ap-southeast-1"
+  }
 }
 
 # ── Secrets (scaffolding only — fill values in Secrets Manager console) ───────
@@ -112,7 +113,6 @@ module "secrets" {
     "jwt-private" = "Ed25519 private key (PEM, base64-encoded)"
     "jwt-public"  = "Ed25519 public key (PEM, base64-encoded)"
     "csrf-secret" = "CSRF token signing secret"
-    "redis-url"   = "Redis/Valkey connection URL"
   }
 
   tags = { Environment = local.env }
@@ -123,8 +123,8 @@ module "rds" {
   source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/rds?ref=rds-v1.1.0"
 
   identifier        = local.name
-  subnet_ids        = module.network.data_subnet_ids
-  security_group_id = module.network.sg_rds_id
+  subnet_ids        = data.terraform_remote_state.runtime.outputs.data_subnet_ids
+  security_group_id = data.terraform_remote_state.runtime.outputs.sg_rds_id
   kms_key_arn       = local.kms_key_arn
 
   instance_class           = "db.t4g.micro"
@@ -138,18 +138,9 @@ module "rds" {
   tags = { Environment = local.env, AutoStop = "true" }
 }
 
-# ── ElastiCache Valkey ────────────────────────────────────────────────────────
-module "cache" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/cache?ref=cache-v1.0.0"
-
-  name              = local.name
-  subnet_ids        = module.network.data_subnet_ids
-  security_group_id = module.network.sg_cache_id
-
-  mode = "node" # dev: single small node (~$11/mo) vs serverless ~$90 floor
-
-  tags = { Environment = local.env }
-}
+# ── Cache ─────────────────────────────────────────────────────────────────────
+# Dev has no ElastiCache node — each Fargate task runs a Valkey sidecar at
+# localhost:6379 (see local.valkey_sidecar, wired into module.api/worker).
 
 # ── Messaging (SQS + SNS) ─────────────────────────────────────────────────────
 module "messaging" {
@@ -176,20 +167,9 @@ module "messaging" {
   tags = { Environment = local.env }
 }
 
-# ── ALB (shared module: LB + HTTPS/HTTP listener pair) ───────────────────────
-module "alb" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/alb?ref=alb-v1.0.0"
-
-  name               = local.name
-  security_group_ids = [module.network.sg_alb_id]
-  subnet_ids         = module.network.public_subnet_ids
-  certificate_arn    = var.acm_cert_arn
-
-  enable_deletion_protection = false # dev: easy teardown
-  # no access_logs_bucket in dev
-
-  tags = { Environment = local.env }
-}
+# ── ALB ───────────────────────────────────────────────────────────────────────
+# The ALB is shared and lives in runtime-dev. module.api attaches a host-header
+# listener rule (rally-api-dev.qnsc.vn, priority 100) to its HTTPS listener.
 
 # ── ECS Cluster ───────────────────────────────────────────────────────────────
 module "ecs_cluster" {
@@ -200,7 +180,7 @@ module "ecs_cluster" {
 
 # ── ECS Service — API ─────────────────────────────────────────────────────────
 module "api" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v1.1.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v1.2.0"
 
   service_name = "api"
   cluster_name = module.ecs_cluster.cluster_name
@@ -211,9 +191,9 @@ module "api" {
   cpu    = 512
   memory = 1024
 
-  vpc_id            = module.network.vpc_id
-  subnet_ids        = module.network.private_subnet_ids
-  security_group_id = module.network.sg_app_id
+  vpc_id            = data.terraform_remote_state.runtime.outputs.vpc_id
+  subnet_ids        = data.terraform_remote_state.runtime.outputs.private_subnet_ids
+  security_group_id = data.terraform_remote_state.runtime.outputs.sg_app_id
 
   desired_count      = 1
   min_count          = 1
@@ -222,16 +202,19 @@ module "api" {
   log_retention_days = 7    # dev: 7 days sufficient for debugging
 
   attach_alb        = true
-  alb_listener_arn  = module.alb.https_listener_arn
+  alb_listener_arn  = data.terraform_remote_state.runtime.outputs.https_listener_arn
   alb_priority      = 100
   alb_path_patterns = ["/*"]
+  alb_host_headers  = ["rally-api-dev.qnsc.vn"] # host-based routing on the shared ALB
   health_check_path = "/v1/healthz"
+
+  # Dev Valkey sidecar (localhost:6379) — replaces the ElastiCache node.
+  additional_containers = [local.valkey_sidecar]
 
   secret_arns = values(module.secrets.secret_arns)
   kms_key_arn = local.kms_key_arn
   secrets = [
     { name = "DATABASE_URL", secret_arn = module.secrets.secret_arns["db-url"] },
-    { name = "REDIS_URL", secret_arn = module.secrets.secret_arns["redis-url"] },
     { name = "JWT_PRIVATE_KEY", secret_arn = module.secrets.secret_arns["jwt-private"] },
     { name = "JWT_PUBLIC_KEY", secret_arn = module.secrets.secret_arns["jwt-public"] },
     { name = "CSRF_SECRET", secret_arn = module.secrets.secret_arns["csrf-secret"] },
@@ -240,6 +223,7 @@ module "api" {
   environment_vars = [
     { name = "NODE_ENV", value = "production" },
     { name = "PORT", value = "3000" },
+    { name = "REDIS_URL", value = "redis://localhost:6379" }, # dev: Valkey sidecar
     { name = "AWS_REGION", value = local.region },
     { name = "CORS_ORIGINS", value = "https://rally-dev.qnsc.vn" },
     { name = "APP_BASE_URL", value = "https://rally-dev.qnsc.vn" },
@@ -284,7 +268,7 @@ module "api" {
 
 # ── ECS Service — Worker ──────────────────────────────────────────────────────
 module "worker" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v1.1.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v1.2.0"
 
   service_name = "worker"
   cluster_name = module.ecs_cluster.cluster_name
@@ -295,9 +279,9 @@ module "worker" {
   cpu    = 256
   memory = 512
 
-  vpc_id            = module.network.vpc_id
-  subnet_ids        = module.network.private_subnet_ids
-  security_group_id = module.network.sg_app_id
+  vpc_id            = data.terraform_remote_state.runtime.outputs.vpc_id
+  subnet_ids        = data.terraform_remote_state.runtime.outputs.private_subnet_ids
+  security_group_id = data.terraform_remote_state.runtime.outputs.sg_app_id
 
   desired_count      = 1
   min_count          = 1
@@ -311,11 +295,13 @@ module "worker" {
   health_check_command = "pgrep -x node || exit 1"
   container_port       = 3001
 
+  # Dev Valkey sidecar (localhost:6379) — worker has its own in-task cache.
+  additional_containers = [local.valkey_sidecar]
+
   secret_arns = values(module.secrets.secret_arns)
   kms_key_arn = local.kms_key_arn
   secrets = [
     { name = "DATABASE_URL", secret_arn = module.secrets.secret_arns["db-url"] },
-    { name = "REDIS_URL", secret_arn = module.secrets.secret_arns["redis-url"] },
     { name = "JWT_PRIVATE_KEY", secret_arn = module.secrets.secret_arns["jwt-private"] },
     { name = "JWT_PUBLIC_KEY", secret_arn = module.secrets.secret_arns["jwt-public"] },
     # Shared schema requires CSRF_SECRET even though the worker never uses it as middleware
@@ -324,6 +310,7 @@ module "worker" {
 
   environment_vars = [
     { name = "NODE_ENV", value = "production" },
+    { name = "REDIS_URL", value = "redis://localhost:6379" }, # dev: Valkey sidecar
     { name = "AWS_REGION", value = local.region },
     { name = "SQS_NOTIFICATIONS_URL", value = module.messaging.queue_urls["notifications"] },
     { name = "SQS_AUDIT_URL", value = module.messaging.queue_urls["audit"] },
@@ -397,16 +384,8 @@ module "migrator" {
   tags = { Environment = local.env, Service = "migrator" }
 }
 
-module "waf" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/waf?ref=waf-v1.0.1"
-
-  name                = local.name
-  enabled             = false # WAF skipped in develop — saves $5+/month per WebACL; enabled in prod
-  alb_arn             = module.alb.arn
-  rate_limit_per_5min = 1000
-
-  tags = { Environment = local.env }
-}
+# ── WAF: not used in dev. In prod the WebACL lives in runtime-prod and is
+# associated with the shared ALB there. ───────────────────────────────────────
 
 # ── Web SPA — Cloudflare Pages (zero-egress, native SPA routing) ─────────────
 # Replaces the deprecated S3 + CloudFront (cdn) stack. Content is deployed from
@@ -442,7 +421,7 @@ module "dns_api" {
   zone_id = local.cloudflare_zone_id
   name    = "rally-api-dev"
   type    = "CNAME"
-  content = module.alb.dns_name
+  content = data.terraform_remote_state.runtime.outputs.alb_dns_name
   proxied = true # orange cloud: shield the ALB, edge WAF/DDoS at Cloudflare
   comment = "rally-develop API → ALB via Cloudflare proxy (managed by rally-infra develop)"
 }
