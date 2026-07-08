@@ -1,9 +1,10 @@
 # =============================================================================
-# Release Please — auto-creates a "chore(release): vX.Y.Z" PR on every
-# main push, then auto-tags when that PR is merged.
-# The tag triggers backend-deploy.yml (prod deploy with approval gate).
+# Create Release — thin caller over the shared reusable release-please workflow.
+# Logic lives in QNSC-VN/qnsc-ci/.github/workflows/release-please.yml.
+# The release-please-config.json stays product-local (this repo's root).
 #
-# Requires: RELEASE_BOT_APP_ID (org var) + RELEASE_BOT_PRIVATE_KEY (org secret).
+# Requires: RELEASE_BOT_APP_ID (var) + RELEASE_BOT_PRIVATE_KEY (secret).
+# On merge of the release PR, the vX.Y.Z tag triggers the prod deploy.
 # =============================================================================
 name: Create Release
 
@@ -20,22 +21,6 @@ permissions:
   pull-requests: write
 
 jobs:
-  release-please:
-    name: Release Please
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      # GitHub App token lets Release Please open PRs and push tags that
-      # trigger downstream workflows (GITHUB_TOKEN cannot trigger other workflows).
-      # Falls back to github.token when RELEASE_BOT_APP_ID is not yet configured.
-      - uses: actions/create-github-app-token@v3
-        id: app-token
-        continue-on-error: true
-        with:
-          app-id: ${{ vars.RELEASE_BOT_APP_ID }}
-          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
-
-      - uses: googleapis/release-please-action@v5
-        with:
-          token: ${{ steps.app-token.outputs.token || github.token }}
-          config-file: release-please-config.json
+  release:
+    uses: QNSC-VN/qnsc-ci/.github/workflows/release-please.yml@v1
+    secrets: inherit

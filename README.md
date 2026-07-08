@@ -11,7 +11,7 @@ rally/
 ├── apps/
 │   ├── api/       # NestJS 11 (Fastify) HTTP API — ECS Fargate service
 │   ├── worker/    # NestJS background/queue worker — ECS Fargate service
-│   └── web/       # React 19 + Vite SPA — S3 + CloudFront (pnpm workspace member)
+│   └── web/       # React 19 + Vite SPA — Cloudflare Pages (pnpm workspace member)
 ├── libs/          # shared backend libs (shared-kernel, platform, contracts, 12 domain modules)
 │                  #   ↳ this is the design's "packages/" role, using the NestJS `libs/` convention
 ├── db/            # Drizzle schema + migrations + seeds
