@@ -71,7 +71,7 @@ function getAuthMethodFromToken(): 'sso' | 'password' | null {
   }
 }
 
-async function refreshAccessToken(): Promise<boolean> {
+export async function refreshAccessToken(): Promise<boolean> {
   if (_refreshPromise) return _refreshPromise
   _refreshPromise = (async () => {
     try {
