@@ -276,10 +276,20 @@ export class AuthService {
       const membershipsEarly = await this.workspaceService.getMemberships(user.id);
       ssoWorkspaceId = membershipsEarly[0]?.workspaceId ?? '';
       if (!ssoWorkspaceId) {
-        throw new UnauthorizedException(
-          'ACCOUNT_DEACTIVATED',
-          'No active workspace membership found',
-        );
+        // Identity exists but the user has no workspace membership (e.g. a prior
+        // partial provision linked the SSO identity without enrolling the user).
+        // Re-run JIT provisioning via the SSO connection to self-heal rather than
+        // hard-failing — resolveAndProvisionSsoUser is idempotent (it upserts the
+        // identity and enrolls only if no membership exists) and still enforces
+        // the connection's active/domain/JIT guards.
+        const reprovisioned = await this.resolveAndProvisionSsoUser({
+          oid,
+          email: normalizedEmail,
+          displayName,
+          externalTenantId,
+        });
+        user = reprovisioned.user;
+        ssoWorkspaceId = reprovisioned.workspaceId;
       }
     } else {
       const provisioned = await this.resolveAndProvisionSsoUser({
