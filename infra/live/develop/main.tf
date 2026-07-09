@@ -110,8 +110,8 @@ module "secrets" {
 
   secret_names = {
     "db-url"      = "PostgreSQL connection URL for the app"
-    "jwt-private" = "Ed25519 private key (PEM, base64-encoded)"
-    "jwt-public"  = "Ed25519 public key (PEM, base64-encoded)"
+    "jwt-private" = "EC P-256 (ES256) private key (PEM, base64-encoded)"
+    "jwt-public"  = "EC P-256 (ES256) public key (PEM, base64-encoded)"
     "csrf-secret" = "CSRF token signing secret"
   }
 
@@ -415,7 +415,7 @@ module "web" {
 # rally-api-dev.qnsc.vn. The api ECS service already attaches its /* forward
 # rule to that HTTPS listener (see module.api.alb_listener_arn).
 module "dns_api" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/dns-record?ref=dns-record-v1.0.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/dns-record?ref=dns-record-v1.1.0"
 
   enabled = local.cloudflare_zone_id != ""
   zone_id = local.cloudflare_zone_id
