@@ -51,11 +51,6 @@ locals {
   kms_key_arn        = data.terraform_remote_state.shared.outputs.kms_key_arn
   cloudflare_zone_id = try(data.terraform_remote_state.shared.outputs.cloudflare_zone_id, "")
 
-  # Deployment mode — coalesce empty (unset GitHub repo var) → app defaults.
-  deployment_mode    = var.deployment_mode != "" ? var.deployment_mode : "saas"
-  single_tenant_name = var.single_tenant_name != "" ? var.single_tenant_name : "Default Organization"
-  single_tenant_slug = var.single_tenant_slug != "" ? var.single_tenant_slug : "default"
-
   ecr_base       = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${local.region}.amazonaws.com"
   ecr_api_url    = "${local.ecr_base}/rally-api:${var.image_tag}"
   ecr_worker_url = "${local.ecr_base}/rally-worker:${var.image_tag}"
@@ -220,11 +215,6 @@ module "api" {
     { name = "NODE_ENV", value = "production" },
     { name = "PORT", value = "3000" },
     { name = "REDIS_URL", value = local.redis_url }, # shared (lean) or per-product (ha) cache
-    # Deployment mode — set per customer. 'saas' (default) = multi-tenant;
-    # 'single' = one tenant, self-serve signup disabled.
-    { name = "DEPLOYMENT_MODE", value = local.deployment_mode },
-    { name = "SINGLE_TENANT_NAME", value = local.single_tenant_name },
-    { name = "SINGLE_TENANT_SLUG", value = local.single_tenant_slug },
   ]
 
   sqs_queue_arns = values(module.messaging.queue_arns)

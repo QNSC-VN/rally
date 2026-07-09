@@ -37,32 +37,3 @@ variable "cloudflare_api_token" {
     bootstrap via _shared remote state (one source of truth, like kms_key_arn).
   EOT
 }
-
-# Empty-string is treated as "unset" (an unset GitHub Actions `vars.*` renders as
-# ""), falling back to the saas default — so develop applies cleanly without the
-# repo variables configured.
-variable "deployment_mode" {
-  type    = string
-  default = ""
-  validation {
-    condition     = contains(["", "saas", "single"], var.deployment_mode)
-    error_message = "deployment_mode must be 'saas' or 'single'."
-  }
-  description = <<-EOT
-    'saas'   = one deployment serves many tenants; self-serve signup on. (default)
-    'single' = packaged for one customer; exactly one tenant, signup off.
-    Develop is the shared multi-tenant dev environment — normally 'saas'.
-  EOT
-}
-
-variable "single_tenant_name" {
-  type        = string
-  default     = ""
-  description = "single mode only: display name of the one tenant."
-}
-
-variable "single_tenant_slug" {
-  type        = string
-  default     = ""
-  description = "single mode only: url-safe slug of the one tenant."
-}

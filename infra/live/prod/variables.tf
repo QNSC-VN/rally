@@ -48,33 +48,3 @@ variable "web_domain" {
     record are both skipped while empty, so prod applies cleanly without it.
   EOT
 }
-
-# Empty-string is treated as "unset" (an unset GitHub Actions `vars.*` renders as
-# ""), falling back to the saas default. This keeps prod applying cleanly when
-# the repo variables aren't configured.
-variable "deployment_mode" {
-  type    = string
-  default = ""
-  validation {
-    condition     = contains(["", "saas", "single"], var.deployment_mode)
-    error_message = "deployment_mode must be 'saas' or 'single'."
-  }
-  description = <<-EOT
-    'saas'   = one deployment serves many tenants; self-serve signup on. (default)
-    'single' = packaged for one customer; exactly one tenant, signup off, SSO
-               maps the customer IdP to that tenant. Set per customer deploy.
-    When 'single', also set single_tenant_name / single_tenant_slug.
-  EOT
-}
-
-variable "single_tenant_name" {
-  type        = string
-  default     = ""
-  description = "single mode only: display name of the one tenant."
-}
-
-variable "single_tenant_slug" {
-  type        = string
-  default     = ""
-  description = "single mode only: url-safe slug of the one tenant."
-}
