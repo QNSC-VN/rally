@@ -6,20 +6,20 @@ try {
 }
 
 /**
- * Seed script — creates the default workspace, break-glass admin user,
- * system roles + permission catalogue, default workflow for dev/test,
+ * Seed script — creates the default workspace, platform-admin user (passwordless,
+ * SSO-only), system roles + permission catalogue, default workflow for dev/test,
  * and sample projects that mirror the real business flow:
  *   project → counter → lead-as-project-member → workflow statuses
  *
  * Run standalone : pnpm db:seed
  * Called by      : db/migrate.ts when SEED_ON_DEPLOY=true (develop env only)
- * Idempotent — safe to run multiple times. Refuses to run in production.
+ * Idempotent — safe to run multiple times. Refuses to run in production unless
+ * SEED_ON_DEPLOY=true (develop runs with NODE_ENV=production but opts in).
  */
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import { pgOptions } from '../pg-ssl';
 import { uuidv7 } from 'uuidv7';
-import * as argon2 from 'argon2';
 import { and, eq, sql } from 'drizzle-orm';
 import * as schema from '../schema';
 // Direct imports to avoid barrel tsx/CJS resolution edge cases at runtime.
@@ -1101,14 +1101,8 @@ async function seedActivityLogs() {
  * Safe to call multiple times — all inserts use onConflictDoNothing.
  */
 export async function seed(connectionUrl?: string): Promise<void> {
-  // Safety net: refuse to seed a production database unless a deploy has
-  // explicitly opted in via SEED_ON_DEPLOY=true. Every deployed environment —
-  // including develop — runs with NODE_ENV=production, so NODE_ENV alone cannot
-  // distinguish "real prod" from an intended develop seed. The develop migrator
-  // sets SEED_ON_DEPLOY=true to provision the breakglass account, dev workspace
-  // and SSO connection; production has no migrator task and never sets the flag,
-  // so it stays protected. A stray `pnpm db:seed` against prod (NODE_ENV=production,
-  // no flag) is still blocked.
+  // Develop runs with NODE_ENV=production but legitimately opts into seeding via
+  // SEED_ON_DEPLOY=true. Only a real production deploy (no SEED_ON_DEPLOY) is blocked.
   if (process.env['NODE_ENV'] === 'production' && process.env['SEED_ON_DEPLOY'] !== 'true') {
     throw new Error('Seed script must not run in production (NODE_ENV=production).');
   }
@@ -1133,20 +1127,19 @@ export async function seed(connectionUrl?: string): Promise<void> {
       .onConflictDoNothing();
 
     // ── Admin user ───────────────────────────────────────────────────────────
-    // Break-glass credentials are injected via env — never hardcoded in git.
-    const breakglassEmail = process.env['BREAKGLASS_EMAIL'] ?? 'admin@acme.dev';
-    const breakglassPassword = process.env['BREAKGLASS_PASSWORD'] ?? 'Admin@Rally2026!';
-    const passwordHash = await argon2.hash(breakglassPassword, { type: argon2.argon2id });
+    // SSO-only: no password. The platform-admin email is seeded so the first
+    // Entra SSO login merges into this row (upsertBySsoIdentity matches by email)
+    // and PLATFORM_ADMIN_EMAILS auto-elevates it to workspace_admin.
+    const adminEmail = process.env['ADMIN_EMAIL'] ?? 'admin@acme.dev';
     await db
       .insert(schema.users)
       .values({
         id: ADMIN_USER_ID,
-        email: breakglassEmail,
+        email: adminEmail,
         displayName: 'Admin User',
         emailVerified: true,
         locale: 'en',
         timezone: 'Asia/Ho_Chi_Minh',
-        passwordHash,
       })
       .onConflictDoNothing();
 
@@ -1160,8 +1153,7 @@ export async function seed(connectionUrl?: string): Promise<void> {
       .onConflictDoNothing();
 
     // ── Additional users: developer + viewer ─────────────────────────────────
-    const devHash = await argon2.hash('Dev@Rally2026!', { type: argon2.argon2id });
-    const viewerHash = await argon2.hash('Viewer@Rally2026!', { type: argon2.argon2id });
+    // SSO-only: passwordless. Sign in via Entra; roles are assigned below.
     await db
       .insert(schema.users)
       .values([
@@ -1172,7 +1164,6 @@ export async function seed(connectionUrl?: string): Promise<void> {
           emailVerified: true,
           locale: 'en',
           timezone: 'Asia/Ho_Chi_Minh',
-          passwordHash: devHash,
         },
         {
           id: VIEWER_ID,
@@ -1181,7 +1172,6 @@ export async function seed(connectionUrl?: string): Promise<void> {
           emailVerified: true,
           locale: 'en',
           timezone: 'Asia/Ho_Chi_Minh',
-          passwordHash: viewerHash,
         },
       ])
       .onConflictDoNothing();
@@ -1385,11 +1375,9 @@ export async function seed(connectionUrl?: string): Promise<void> {
 // catalogue (db/permissions.catalog.ts) is the current source of truth. If BA
 // re-scopes roles, update the catalogue + these demo assignments together.
 //
-// Idempotent (fixed UUIDs + onConflictDoNothing). All four share one dev
-// password so they are easy to log in as; the admin/dev/viewer keep their own.
+// Idempotent (fixed UUIDs + onConflictDoNothing). All are passwordless — sign in
+// via Entra SSO; the seeded email lets the first SSO login merge into these rows.
 async function seedRbacDemoUsers(): Promise<void> {
-  const demoHash = await argon2.hash('Demo@Rally2026!', { type: argon2.argon2id });
-
   const demoUsers = [
     { id: PROJECT_ADMIN_ID, email: 'projectadmin@acme.dev', displayName: 'Carol ProjectAdmin' },
     { id: WORKSPACE_MEMBER_ID, email: 'member@acme.dev', displayName: 'Dave Member' },
@@ -1407,7 +1395,6 @@ async function seedRbacDemoUsers(): Promise<void> {
         emailVerified: true,
         locale: 'en',
         timezone: 'Asia/Ho_Chi_Minh',
-        passwordHash: demoHash,
       })),
     )
     .onConflictDoNothing();

@@ -15,10 +15,7 @@ import {
   Shield,
   FileText,
   Lock,
-  Eye,
-  EyeOff,
   LogOut,
-  Check,
   Loader2,
   Mail,
   X,
@@ -79,18 +76,48 @@ const SIDEBAR: SettingsGroup[] = [
   {
     group: 'Project',
     items: [
-      { key: 'project', label: 'Project Settings', icon: SlidersHorizontal, requires: PERMISSION.PROJECT_EDIT },
-      { key: 'workflow', label: 'Workflow Status', icon: Activity, requires: PERMISSION.PROJECT_EDIT },
+      {
+        key: 'project',
+        label: 'Project Settings',
+        icon: SlidersHorizontal,
+        requires: PERMISSION.PROJECT_EDIT,
+      },
+      {
+        key: 'workflow',
+        label: 'Workflow Status',
+        icon: Activity,
+        requires: PERMISSION.PROJECT_EDIT,
+      },
       { key: 'labels', label: 'Labels', icon: Tag, requires: PERMISSION.PROJECT_EDIT },
     ],
   },
   {
     group: 'Workspace',
     items: [
-      { key: 'workspace', label: 'Workspace Settings', icon: Globe, requires: PERMISSION.WORKSPACE_VIEW },
-      { key: 'members', label: 'User Management', icon: Users, requires: PERMISSION.WORKSPACE_MANAGE_MEMBERS },
-      { key: 'teams', label: 'Teams', icon: UsersRound, requires: PERMISSION.WORKSPACE_MANAGE_TEAMS },
-      { key: 'roles', label: 'Roles & Permissions', icon: Shield, requires: PERMISSION.WORKSPACE_MANAGE_MEMBERS },
+      {
+        key: 'workspace',
+        label: 'Workspace Settings',
+        icon: Globe,
+        requires: PERMISSION.WORKSPACE_VIEW,
+      },
+      {
+        key: 'members',
+        label: 'User Management',
+        icon: Users,
+        requires: PERMISSION.WORKSPACE_MANAGE_MEMBERS,
+      },
+      {
+        key: 'teams',
+        label: 'Teams',
+        icon: UsersRound,
+        requires: PERMISSION.WORKSPACE_MANAGE_TEAMS,
+      },
+      {
+        key: 'roles',
+        label: 'Roles & Permissions',
+        icon: Shield,
+        requires: PERMISSION.WORKSPACE_MANAGE_MEMBERS,
+      },
       { key: 'audit', label: 'Audit Log', icon: FileText, requires: PERMISSION.WORKSPACE_ALL },
     ],
   },
@@ -106,37 +133,11 @@ const profileSchema = z.object({
 })
 type ProfileForm = z.infer<typeof profileSchema>
 
-// ── Password form schema ──────────────────────────────────────────────────────
-
-const PASSWORD_RULES = z
-  .string()
-  .min(8, 'At least 8 characters')
-  .max(128)
-  .regex(/[A-Z]/, 'Must include an uppercase letter')
-  .regex(/[0-9]/, 'Must include a number')
-  .regex(/[^A-Za-z0-9]/, 'Must include a special character')
-
-const passwordSchema = z
-  .object({
-    currentPassword: z.string().min(1, 'Current password is required'),
-    newPassword: PASSWORD_RULES,
-    confirmPassword: z.string().min(1, 'Please confirm your password'),
-  })
-  .refine((d) => d.newPassword === d.confirmPassword, {
-    message: 'Passwords do not match',
-    path: ['confirmPassword'],
-  })
-type PasswordForm = z.infer<typeof passwordSchema>
-
 // ── Profile tab ───────────────────────────────────────────────────────────────
 
 function ProfileTab() {
   const { user, setUser } = useAuthStore()
   const navigate = useNavigate()
-  const [showCurrent, setShowCurrent] = useState(false)
-  const [showNew, setShowNew] = useState(false)
-  const [showConfirm, setShowConfirm] = useState(false)
-  const [passwordSaved, setPasswordSaved] = useState(false)
 
   const profile = useForm<ProfileForm>({
     resolver: zodResolver(profileSchema),
@@ -146,11 +147,6 @@ function ProfileTab() {
       locale: user?.locale ?? 'en',
       timezone: user?.timezone ?? 'UTC',
     },
-  })
-
-  const password = useForm<PasswordForm>({
-    resolver: zodResolver(passwordSchema),
-    defaultValues: { currentPassword: '', newPassword: '', confirmPassword: '' },
   })
 
   async function onSaveProfile(data: ProfileForm) {
@@ -195,25 +191,6 @@ function ProfileTab() {
       toast.success('Profile updated')
     } catch {
       profile.setError('root', { message: 'Network error — please try again.' })
-    }
-  }
-
-  async function onChangePassword(data: PasswordForm) {
-    try {
-      const body = { currentPassword: data.currentPassword, newPassword: data.newPassword }
-      const { error, response } = await apiClient.PATCH('/v1/auth/password', {
-        body,
-      })
-      if (error) {
-        password.setError('root', { message: apiErrorMessage(error, response.status) })
-        return
-      }
-      password.reset()
-      setPasswordSaved(true)
-      setTimeout(() => setPasswordSaved(false), 3000)
-      toast.success('Password changed')
-    } catch {
-      password.setError('root', { message: 'Network error — please try again.' })
     }
   }
 
@@ -315,66 +292,18 @@ function ProfileTab() {
 
       <Divider />
 
-      {/* ── Change password ── */}
+      {/* ── Password & security ── */}
       <section>
         <h3
-          className="mb-4 text-[12px] font-semibold tracking-wide uppercase"
+          className="mb-2 text-[12px] font-semibold tracking-wide uppercase"
           style={{ color: BRAND.textMuted }}
         >
-          Change Password
+          Password &amp; Security
         </h3>
-        <form
-          onSubmit={password.handleSubmit(onChangePassword)}
-          className="flex max-w-md flex-col gap-4"
-        >
-          <Field
-            label="Current Password"
-            error={password.formState.errors.currentPassword?.message}
-          >
-            <PasswordInput
-              show={showCurrent}
-              onToggle={() => setShowCurrent(!showCurrent)}
-              {...password.register('currentPassword')}
-            />
-          </Field>
-          <Field label="New Password" error={password.formState.errors.newPassword?.message}>
-            <PasswordInput
-              show={showNew}
-              onToggle={() => setShowNew(!showNew)}
-              {...password.register('newPassword')}
-            />
-          </Field>
-          <Field
-            label="Confirm New Password"
-            error={password.formState.errors.confirmPassword?.message}
-          >
-            <PasswordInput
-              show={showConfirm}
-              onToggle={() => setShowConfirm(!showConfirm)}
-              {...password.register('confirmPassword')}
-            />
-          </Field>
-          {password.formState.errors.root && (
-            <p className="text-[12px]" style={{ color: BRAND.danger }}>
-              {password.formState.errors.root.message}
-            </p>
-          )}
-          <div>
-            <button
-              type="submit"
-              disabled={password.formState.isSubmitting}
-              className="flex items-center gap-2 rounded-md px-4 py-2 text-[13px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-              style={{ backgroundColor: BRAND.primary }}
-            >
-              {password.formState.isSubmitting ? (
-                <Loader2 size={13} className="animate-spin" />
-              ) : passwordSaved ? (
-                <Check size={13} />
-              ) : null}
-              {passwordSaved ? 'Password changed!' : 'Change password'}
-            </button>
-          </div>
-        </form>
+        <p className="max-w-md text-[12px]" style={{ color: BRAND.textSecondary }}>
+          Your password and multi-factor authentication are managed by your organisation through
+          Microsoft. Sign in with your organisational account to update security settings.
+        </p>
       </section>
 
       <Divider />
@@ -447,35 +376,6 @@ function Field({
 function Divider() {
   return <hr style={{ borderColor: BRAND.borderSubtle }} />
 }
-
-import { forwardRef } from 'react'
-const PasswordInput = forwardRef<
-  HTMLInputElement,
-  React.InputHTMLAttributes<HTMLInputElement> & { show: boolean; onToggle: () => void }
->(({ show, onToggle, ...props }, ref) => (
-  <div className="relative">
-    <input
-      ref={ref}
-      type={show ? 'text' : 'password'}
-      className="w-full rounded-md px-3 py-2 pr-9 text-[13px] focus:outline-none"
-      style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textPrimary }}
-      {...props}
-    />
-    <button
-      type="button"
-      onClick={onToggle}
-      className="absolute top-1/2 right-2.5 -translate-y-1/2"
-      tabIndex={-1}
-    >
-      {show ? (
-        <EyeOff size={14} style={{ color: BRAND.textMuted }} />
-      ) : (
-        <Eye size={14} style={{ color: BRAND.textMuted }} />
-      )}
-    </button>
-  </div>
-))
-PasswordInput.displayName = 'PasswordInput'
 
 // ── Invite form schema ─────────────────────────────────────────────────────────
 
@@ -914,7 +814,11 @@ function WorkspaceSettingsTab() {
         name: name.trim(),
         description: description.trim() || null,
       })
-      setWorkspace({ workspaceId, workspaceSlug: workspace?.workspaceSlug ?? '', workspaceName: updated.name })
+      setWorkspace({
+        workspaceId,
+        workspaceSlug: workspace?.workspaceSlug ?? '',
+        workspaceName: updated.name,
+      })
       toast.success('Workspace settings saved')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to save')
@@ -922,7 +826,12 @@ function WorkspaceSettingsTab() {
   }
 
   return (
-    <form onSubmit={(e) => { void handleSave(e) }} className="max-w-lg space-y-5">
+    <form
+      onSubmit={(e) => {
+        void handleSave(e)
+      }}
+      className="max-w-lg space-y-5"
+    >
       <FormField label="Workspace name" required>
         <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Acme Corp" />
       </FormField>
@@ -984,8 +893,15 @@ function ProjectSettingsTab() {
     e.preventDefault()
     if (!activeProject || !name.trim()) return
     try {
-      await update.mutateAsync({ id: activeProject.projectId, input: { name: name.trim(), description: description.trim() || undefined } })
-      setProject({ projectId: activeProject.projectId, projectKey: activeProject.projectKey, projectName: name.trim() })
+      await update.mutateAsync({
+        id: activeProject.projectId,
+        input: { name: name.trim(), description: description.trim() || undefined },
+      })
+      setProject({
+        projectId: activeProject.projectId,
+        projectKey: activeProject.projectKey,
+        projectName: name.trim(),
+      })
       toast.success('Project settings saved')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to save')
@@ -993,9 +909,24 @@ function ProjectSettingsTab() {
   }
 
   return (
-    <form onSubmit={(e) => { void handleSave(e) }} className="max-w-lg space-y-5">
-      <div className="mb-2 rounded-md px-3 py-2 text-[12px]" style={{ backgroundColor: BRAND.surface, border: `1px solid ${BRAND.border}`, color: BRAND.textMuted }}>
-        Project: <span className="font-semibold" style={{ color: BRAND.textPrimary }}>{activeProject.projectKey} — {activeProject.projectName}</span>
+    <form
+      onSubmit={(e) => {
+        void handleSave(e)
+      }}
+      className="max-w-lg space-y-5"
+    >
+      <div
+        className="mb-2 rounded-md px-3 py-2 text-[12px]"
+        style={{
+          backgroundColor: BRAND.surface,
+          border: `1px solid ${BRAND.border}`,
+          color: BRAND.textMuted,
+        }}
+      >
+        Project:{' '}
+        <span className="font-semibold" style={{ color: BRAND.textPrimary }}>
+          {activeProject.projectKey} — {activeProject.projectName}
+        </span>
       </div>
       <FormField label="Project name" required>
         <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Project name" />
@@ -1025,13 +956,7 @@ function ProjectSettingsTab() {
 
 // ── Teams tab ─────────────────────────────────────────────────────────────────
 
-function CreateTeamModal({
-  workspaceId,
-  onClose,
-}: {
-  workspaceId: string
-  onClose: () => void
-}) {
+function CreateTeamModal({ workspaceId, onClose }: { workspaceId: string; onClose: () => void }) {
   const [name, setName] = useState('')
   const [key, setKey] = useState('')
   const [description, setDescription] = useState('')
@@ -1049,7 +974,12 @@ function CreateTeamModal({
     e.preventDefault()
     if (!name.trim() || !key.trim()) return
     try {
-      await create.mutateAsync({ workspaceId, name: name.trim(), key: key.trim(), description: description.trim() || undefined })
+      await create.mutateAsync({
+        workspaceId,
+        name: name.trim(),
+        key: key.trim(),
+        description: description.trim() || undefined,
+      })
       toast.success(`Team "${name}" created`)
       onClose()
     } catch (err) {
@@ -1059,7 +989,11 @@ function CreateTeamModal({
 
   return (
     <AppModal open onClose={onClose} title="New Team" width={440}>
-      <form onSubmit={(e) => { void handleSubmit(e) }}>
+      <form
+        onSubmit={(e) => {
+          void handleSubmit(e)
+        }}
+      >
         <ModalBody className="space-y-4">
           <FormField label="Team name" required>
             <Input
@@ -1075,7 +1009,14 @@ function CreateTeamModal({
           <FormField label="Key" required hint="Short alphanumeric identifier (max 8 chars)">
             <Input
               value={key}
-              onChange={(e) => setKey(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8))}
+              onChange={(e) =>
+                setKey(
+                  e.target.value
+                    .toUpperCase()
+                    .replace(/[^A-Z0-9]/g, '')
+                    .slice(0, 8),
+                )
+              }
               placeholder="PLAT"
             />
           </FormField>
@@ -1137,7 +1078,11 @@ function EditTeamModal({ team, onClose }: { team: Team; onClose: () => void }) {
 
   return (
     <AppModal open onClose={onClose} title={`Edit ${team.name}`} width={440}>
-      <form onSubmit={(e) => { void handleSubmit(e) }}>
+      <form
+        onSubmit={(e) => {
+          void handleSubmit(e)
+        }}
+      >
         <ModalBody className="space-y-4">
           <FormField label="Team name" required>
             <Input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
@@ -1147,7 +1092,11 @@ function EditTeamModal({ team, onClose }: { team: Team; onClose: () => void }) {
               value={leadId}
               onChange={(e) => setLeadId(e.target.value)}
               className="w-full rounded-md border px-3 py-2 text-[13px] outline-none focus:ring-2"
-              style={{ borderColor: BRAND.border, backgroundColor: BRAND.surface, color: BRAND.textPrimary }}
+              style={{
+                borderColor: BRAND.border,
+                backgroundColor: BRAND.surface,
+                color: BRAND.textPrimary,
+              }}
             >
               <option value="">— No lead —</option>
               {members.map((m) => (
@@ -1175,7 +1124,12 @@ function EditTeamModal({ team, onClose }: { team: Team; onClose: () => void }) {
             {update.isPending ? <Loader2 size={12} className="animate-spin" /> : null}
             Save
           </button>
-          <button type="button" onClick={onClose} className="rounded-md px-4 py-2 text-[13px] font-medium" style={{ color: BRAND.textSecondary, border: `1px solid ${BRAND.border}` }}>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md px-4 py-2 text-[13px] font-medium"
+            style={{ color: BRAND.textSecondary, border: `1px solid ${BRAND.border}` }}
+          >
             Cancel
           </button>
         </ModalFooter>
@@ -1199,7 +1153,11 @@ function AddMemberModal({ teamId, onClose }: { teamId: string; onClose: () => vo
         params: { path: { id: workspaceId } },
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
-      return ((data as { data?: unknown[] })?.data ?? []) as Array<{ userId: string; displayName?: string; email?: string }>
+      return ((data as { data?: unknown[] })?.data ?? []) as Array<{
+        userId: string
+        displayName?: string
+        email?: string
+      }>
     },
     enabled: !!workspaceId,
     staleTime: 30_000,
@@ -1222,7 +1180,11 @@ function AddMemberModal({ teamId, onClose }: { teamId: string; onClose: () => vo
 
   return (
     <AppModal open onClose={onClose} title="Add team member" width={400}>
-      <form onSubmit={(e) => { void handleAdd(e) }}>
+      <form
+        onSubmit={(e) => {
+          void handleAdd(e)
+        }}
+      >
         <ModalBody className="space-y-4">
           {available.length === 0 ? (
             <p className="text-[13px]" style={{ color: BRAND.textMuted }}>
@@ -1234,7 +1196,11 @@ function AddMemberModal({ teamId, onClose }: { teamId: string; onClose: () => vo
                 value={selectedUserId}
                 onChange={(e) => setSelectedUserId(e.target.value)}
                 className="w-full rounded-md border px-3 py-2 text-[13px] outline-none focus:ring-2"
-                style={{ borderColor: BRAND.border, backgroundColor: BRAND.surface, color: BRAND.textPrimary }}
+                style={{
+                  borderColor: BRAND.border,
+                  backgroundColor: BRAND.surface,
+                  color: BRAND.textPrimary,
+                }}
               >
                 <option value="">— Select a member —</option>
                 {available.map((m) => (
@@ -1253,10 +1219,19 @@ function AddMemberModal({ teamId, onClose }: { teamId: string; onClose: () => vo
             className="flex items-center gap-2 rounded-md px-4 py-2 text-[13px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
             style={{ backgroundColor: BRAND.primary }}
           >
-            {addMember.isPending ? <Loader2 size={12} className="animate-spin" /> : <UserPlus size={13} />}
+            {addMember.isPending ? (
+              <Loader2 size={12} className="animate-spin" />
+            ) : (
+              <UserPlus size={13} />
+            )}
             Add to team
           </button>
-          <button type="button" onClick={onClose} className="rounded-md px-4 py-2 text-[13px] font-medium" style={{ color: BRAND.textSecondary, border: `1px solid ${BRAND.border}` }}>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md px-4 py-2 text-[13px] font-medium"
+            style={{ color: BRAND.textSecondary, border: `1px solid ${BRAND.border}` }}
+          >
             Cancel
           </button>
         </ModalFooter>
@@ -1283,7 +1258,10 @@ function TeamDetail({ team, onBack }: { team: Team; onBack: () => void }) {
 
   async function handleToggleStatus() {
     const next = team.status === 'active' ? 'archived' : 'active'
-    if (next === 'archived' && !window.confirm(`Archive team "${team.name}"? It will be hidden from active team lists.`)) {
+    if (
+      next === 'archived' &&
+      !window.confirm(`Archive team "${team.name}"? It will be hidden from active team lists.`)
+    ) {
       return
     }
     try {
@@ -1310,8 +1288,12 @@ function TeamDetail({ team, onBack }: { team: Team; onBack: () => void }) {
           {team.name}
         </span>
         <span
-          className="rounded px-1.5 py-0.5 text-[11px] font-mono font-medium"
-          style={{ backgroundColor: BRAND.surface, border: `1px solid ${BRAND.border}`, color: BRAND.textMuted }}
+          className="rounded px-1.5 py-0.5 font-mono text-[11px] font-medium"
+          style={{
+            backgroundColor: BRAND.surface,
+            border: `1px solid ${BRAND.border}`,
+            color: BRAND.textMuted,
+          }}
         >
           {team.key}
         </span>
@@ -1328,12 +1310,18 @@ function TeamDetail({ team, onBack }: { team: Team; onBack: () => void }) {
           <Pencil size={12} /> Edit
         </button>
         <button
-          onClick={() => { void handleToggleStatus() }}
+          onClick={() => {
+            void handleToggleStatus()
+          }}
           disabled={update.isPending}
           className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-medium transition-colors hover:bg-gray-100 disabled:opacity-60"
           style={{ color: BRAND.textSecondary, border: `1px solid ${BRAND.border}` }}
         >
-          {update.isPending ? <Loader2 size={12} className="animate-spin" /> : <Archive size={12} />}
+          {update.isPending ? (
+            <Loader2 size={12} className="animate-spin" />
+          ) : (
+            <Archive size={12} />
+          )}
           {team.status === 'active' ? 'Archive' : 'Restore'}
         </button>
       </div>
@@ -1345,7 +1333,7 @@ function TeamDetail({ team, onBack }: { team: Team; onBack: () => void }) {
       )}
 
       {/* Members section */}
-      <div className="flex items-center justify-between mb-3">
+      <div className="mb-3 flex items-center justify-between">
         <h3 className="text-[13px] font-semibold" style={{ color: BRAND.textPrimary }}>
           Members ({members.length})
         </h3>
@@ -1363,11 +1351,16 @@ function TeamDetail({ team, onBack }: { team: Team; onBack: () => void }) {
           <Loader2 size={18} className="animate-spin" style={{ color: BRAND.textMuted }} />
         </div>
       ) : members.length === 0 ? (
-        <div className="rounded-lg py-10 text-center" style={{ border: `1px dashed ${BRAND.border}` }}>
-          <p className="text-[13px]" style={{ color: BRAND.textMuted }}>No members yet. Add someone to get started.</p>
+        <div
+          className="rounded-lg py-10 text-center"
+          style={{ border: `1px dashed ${BRAND.border}` }}
+        >
+          <p className="text-[13px]" style={{ color: BRAND.textMuted }}>
+            No members yet. Add someone to get started.
+          </p>
         </div>
       ) : (
-        <div className="rounded-lg overflow-hidden" style={{ border: `1px solid ${BRAND.border}` }}>
+        <div className="overflow-hidden rounded-lg" style={{ border: `1px solid ${BRAND.border}` }}>
           {members.map((member, idx) => (
             <div
               key={member.id}
@@ -1376,20 +1369,32 @@ function TeamDetail({ team, onBack }: { team: Team; onBack: () => void }) {
                 borderTop: idx > 0 ? `1px solid ${BRAND.border}` : undefined,
               }}
             >
-              <div className="flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-semibold text-white" style={{ backgroundColor: BRAND.primary }}>
+              <div
+                className="flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-semibold text-white"
+                style={{ backgroundColor: BRAND.primary }}
+              >
                 {(member.displayName ?? member.userId).charAt(0).toUpperCase()}
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-medium truncate" style={{ color: BRAND.textPrimary }}>
+              <div className="min-w-0 flex-1">
+                <p
+                  className="truncate text-[13px] font-medium"
+                  style={{ color: BRAND.textPrimary }}
+                >
                   {member.displayName ?? member.userId}
                 </p>
                 {member.email && (
-                  <p className="text-[11px] truncate" style={{ color: BRAND.textMuted }}>{member.email}</p>
+                  <p className="truncate text-[11px]" style={{ color: BRAND.textMuted }}>
+                    {member.email}
+                  </p>
                 )}
               </div>
-              <span className="text-[11px] capitalize" style={{ color: BRAND.textMuted }}>{member.status}</span>
+              <span className="text-[11px] capitalize" style={{ color: BRAND.textMuted }}>
+                {member.status}
+              </span>
               <button
-                onClick={() => { void handleRemoveMember(member.userId) }}
+                onClick={() => {
+                  void handleRemoveMember(member.userId)
+                }}
                 disabled={remove.isPending}
                 className="ml-2 rounded p-1 transition-colors hover:bg-red-50 hover:text-red-600"
                 style={{ color: BRAND.textMuted }}
@@ -1440,13 +1445,20 @@ function TeamsTab() {
           <Loader2 size={20} className="animate-spin" style={{ color: BRAND.textMuted }} />
         </div>
       ) : teams.length === 0 ? (
-        <div className="rounded-lg py-16 text-center" style={{ border: `1px dashed ${BRAND.border}` }}>
+        <div
+          className="rounded-lg py-16 text-center"
+          style={{ border: `1px dashed ${BRAND.border}` }}
+        >
           <UsersRound size={28} className="mx-auto mb-3" style={{ color: BRAND.border }} />
-          <p className="text-[13px] font-medium" style={{ color: BRAND.textSecondary }}>No teams yet</p>
-          <p className="mt-1 text-[12px]" style={{ color: BRAND.textMuted }}>Create a team to group members and assign work items.</p>
+          <p className="text-[13px] font-medium" style={{ color: BRAND.textSecondary }}>
+            No teams yet
+          </p>
+          <p className="mt-1 text-[12px]" style={{ color: BRAND.textMuted }}>
+            Create a team to group members and assign work items.
+          </p>
         </div>
       ) : (
-        <div className="rounded-lg overflow-hidden" style={{ border: `1px solid ${BRAND.border}` }}>
+        <div className="overflow-hidden rounded-lg" style={{ border: `1px solid ${BRAND.border}` }}>
           {teams.map((team, idx) => (
             <button
               key={team.id}
@@ -1456,13 +1468,20 @@ function TeamsTab() {
                 borderTop: idx > 0 ? `1px solid ${BRAND.border}` : undefined,
               }}
             >
-              <div className="flex h-8 w-8 items-center justify-center rounded-md text-[12px] font-bold text-white" style={{ backgroundColor: BRAND.primary }}>
+              <div
+                className="flex h-8 w-8 items-center justify-center rounded-md text-[12px] font-bold text-white"
+                style={{ backgroundColor: BRAND.primary }}
+              >
                 {team.key.slice(0, 2)}
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-semibold" style={{ color: BRAND.textPrimary }}>{team.name}</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-[13px] font-semibold" style={{ color: BRAND.textPrimary }}>
+                  {team.name}
+                </p>
                 {team.description && (
-                  <p className="text-[12px] truncate" style={{ color: BRAND.textMuted }}>{team.description}</p>
+                  <p className="truncate text-[12px]" style={{ color: BRAND.textMuted }}>
+                    {team.description}
+                  </p>
                 )}
               </div>
               <span

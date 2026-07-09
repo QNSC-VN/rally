@@ -10,7 +10,6 @@ export interface User {
   email: string;
   displayName: string;
   avatarUrl: string | null;
-  passwordHash: string | null;
   status: UserStatus;
   emailVerified: boolean;
   locale: string;
@@ -49,15 +48,6 @@ export interface CreateSessionInput {
   ssoProvider?: string;
   /** CSRF token for double-submit cookie protection. Omit for pre-migration / signup sessions. */
   csrfToken?: string;
-}
-
-export interface PasswordResetToken {
-  id: string;
-  userId: string;
-  tokenHash: string;
-  expiresAt: Date;
-  usedAt: Date | null;
-  createdAt: Date;
 }
 
 export interface SsoIdentity {

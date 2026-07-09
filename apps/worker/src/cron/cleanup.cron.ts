@@ -4,9 +4,8 @@
  * Runs daily at 01:00 UTC (stagger from snapshot cron at 00:00).
  * Purges:
  *   1. identity.auth_sessions that are revoked and expired >N days ago
- *   2. identity.password_reset_tokens that expired >1 day ago
- *   3. workspace.workspace_invitations that are still 'pending' but expired >N days ago
- *   4. work.attachments that are still 'pending' (never confirmed) older than 24 h
+ *   2. workspace.workspace_invitations that are still 'pending' but expired >N days ago
+ *   3. work.attachments that are still 'pending' (never confirmed) older than 24 h
  *      — hard-deletes the DB row then best-effort deletes the S3 object
  *
  * N is configured via SESSION_CLEANUP_OLDER_THAN_DAYS (default 7).
@@ -61,19 +60,7 @@ export class CleanupCronService {
       'Purged stale auth sessions',
     );
 
-    // 2. Used / expired password reset tokens (>1 day past expiry)
-    const prtResult = await this.db.execute(
-      sql`
-        DELETE FROM identity.password_reset_tokens
-        WHERE expires_at < NOW() - INTERVAL '1 day'
-      `,
-    );
-    this.logger.log(
-      { deleted: (prtResult as { rowCount?: number }).rowCount },
-      'Purged expired password reset tokens',
-    );
-
-    // 3. Expired pending invitations
+    // 2. Expired pending invitations
     const invResult = await this.db.execute(
       sql`
         UPDATE workspace.workspace_invitations
@@ -87,7 +74,7 @@ export class CleanupCronService {
       'Expired stale workspace invitations',
     );
 
-    // 4. Orphan attachments — pending rows older than 24 h (client presigned but
+    // 3. Orphan attachments — pending rows older than 24 h (client presigned but
     //    never called /confirm). Hard-delete from DB first, then best-effort
     //    remove the S3 objects so abandoned uploads don't accumulate.
     const orphanRows = await this.db.execute<{ id: string; storage_key: string }>(
@@ -99,11 +86,14 @@ export class CleanupCronService {
         RETURNING id, storage_key
       `,
     );
-    const orphans = (orphanRows as unknown as { rows: { id: string; storage_key: string }[] }).rows ?? [];
+    const orphans =
+      (orphanRows as unknown as { rows: { id: string; storage_key: string }[] }).rows ?? [];
 
     if (orphans.length > 0) {
       // Fire S3 deletes in parallel — failures are logged inside deleteObject, never thrown.
-      await Promise.allSettled(orphans.map((row) => this.storageService.deleteObject(row.storage_key)));
+      await Promise.allSettled(
+        orphans.map((row) => this.storageService.deleteObject(row.storage_key)),
+      );
       this.logger.log({ deleted: orphans.length }, 'Purged orphan pending attachments');
     }
   }
