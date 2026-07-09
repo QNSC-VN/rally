@@ -71,68 +71,89 @@ function getAuthMethodFromToken(): 'sso' | 'password' | null {
   }
 }
 
+/**
+ * Cross-tab refresh coordination via the Web Locks API. Serializes refreshes
+ * across every tab so two tabs can never rotate the same single-use refresh
+ * cookie concurrently — which the server would treat as token theft and revoke
+ * the whole family. Falls back to a plain call where Web Locks is unavailable
+ * (older browsers / insecure contexts).
+ */
+function withRefreshLock(fn: () => Promise<boolean>): Promise<boolean> {
+  const locks = (globalThis.navigator as Navigator | undefined)?.locks
+  if (locks?.request) {
+    return locks.request('rally-auth-refresh', { mode: 'exclusive' }, fn)
+  }
+  return fn()
+}
+
 export async function refreshAccessToken(): Promise<boolean> {
   if (_refreshPromise) return _refreshPromise
   _refreshPromise = (async () => {
     try {
-      // Enterprise SSO path: re-validate with Microsoft Entra on every refresh
-      // cycle. This enforces Entra deprovisioning within one access-token TTL
-      // (default 15 min) rather than the full 30-day Rally refresh window.
-      const ssoFn = getSsoRefresh()
-      if (getAuthMethodFromToken() === 'sso' && ssoFn) {
-        const ssoResult = await ssoFn()
-
-        if (ssoResult === 'interaction_required') {
-          // Entra deliberately revoked the session (user deprovisioned, MFA
-          // policy change, conditional-access block). Do NOT fall back to
-          // Rally refresh — the session must be invalidated immediately.
-          setAccessToken(null)
-          return false
-        }
-
-        if (ssoResult !== null) {
-          // Fresh Entra id_token — exchange for a new Rally session
-          const res = await fetch(`${BASE_URL}/v1/auth/sso`, {
-            method: 'POST',
-            credentials: 'include',
-            referrerPolicy: 'no-referrer',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ idToken: ssoResult.idToken }),
-          })
-          if (!res.ok) return false
-          const data = (await res.json()) as { accessToken: string; expiresIn?: number }
-          setAccessToken(data.accessToken)
-          if (data.expiresIn) scheduleProactiveRefresh(data.expiresIn)
-          return true
-        }
-        // ssoResult === null: no MSAL accounts in sessionStorage (new tab or
-        // MSAL cache cleared). Fall through to Rally cookie refresh so the
-        // user isn't unexpectedly logged out just for opening a new tab.
-      }
-
-      // Standard Rally refresh token rotation (password sessions + new-tab SSO fallback)
-      const csrfToken = getCsrfToken()
-      const res = await fetch(`${BASE_URL}/v1/auth/refresh`, {
-        method: 'POST',
-        credentials: 'include',
-        referrerPolicy: 'no-referrer',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(csrfToken ? { 'x-csrf-token': csrfToken } : {}),
-        },
-      })
-      if (!res.ok) return false
-      const data = (await res.json()) as { accessToken: string; expiresIn?: number }
-      setAccessToken(data.accessToken)
-      if (data.expiresIn) scheduleProactiveRefresh(data.expiresIn)
-      return true
-    } catch {
-      return false
+      return await withRefreshLock(doRefreshOnce)
     } finally {
       _refreshPromise = null
     }
   })()
   return _refreshPromise
+}
+
+async function doRefreshOnce(): Promise<boolean> {
+  try {
+    // Enterprise SSO path: re-validate with Microsoft Entra on every refresh
+    // cycle. This enforces Entra deprovisioning within one access-token TTL
+    // (default 15 min) rather than the full 30-day Rally refresh window.
+    const ssoFn = getSsoRefresh()
+    if (getAuthMethodFromToken() === 'sso' && ssoFn) {
+      const ssoResult = await ssoFn()
+
+      if (ssoResult === 'interaction_required') {
+        // Entra deliberately revoked the session (user deprovisioned, MFA
+        // policy change, conditional-access block). Do NOT fall back to
+        // Rally refresh — the session must be invalidated immediately.
+        setAccessToken(null)
+        return false
+      }
+
+      if (ssoResult !== null) {
+        // Fresh Entra id_token — exchange for a new Rally session
+        const res = await fetch(`${BASE_URL}/v1/auth/sso`, {
+          method: 'POST',
+          credentials: 'include',
+          referrerPolicy: 'no-referrer',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken: ssoResult.idToken }),
+        })
+        if (!res.ok) return false
+        const data = (await res.json()) as { accessToken: string; expiresIn?: number }
+        setAccessToken(data.accessToken)
+        if (data.expiresIn) scheduleProactiveRefresh(data.expiresIn)
+        return true
+      }
+      // ssoResult === null: no MSAL accounts in sessionStorage (new tab or
+      // MSAL cache cleared). Fall through to Rally cookie refresh so the
+      // user isn't unexpectedly logged out just for opening a new tab.
+    }
+
+    // Standard Rally refresh token rotation (password sessions + new-tab SSO fallback)
+    const csrfToken = getCsrfToken()
+    const res = await fetch(`${BASE_URL}/v1/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+      referrerPolicy: 'no-referrer',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(csrfToken ? { 'x-csrf-token': csrfToken } : {}),
+      },
+    })
+    if (!res.ok) return false
+    const data = (await res.json()) as { accessToken: string; expiresIn?: number }
+    setAccessToken(data.accessToken)
+    if (data.expiresIn) scheduleProactiveRefresh(data.expiresIn)
+    return true
+  } catch {
+    return false
+  }
 }
 
 // ── Base client ──────────────────────────────────────────────────────────────

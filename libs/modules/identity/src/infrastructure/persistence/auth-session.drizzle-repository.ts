@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB, DbExecutor } from '@platform';
 import { authSessions } from '../../../../../../db/schema/identity';
@@ -54,6 +54,18 @@ export class AuthSessionDrizzleRepository implements IAuthSessionRepository {
       .update(authSessions)
       .set({ isRevoked: true })
       .where(eq(authSessions.id, id));
+  }
+
+  async revokeByIdIfActive(id: string, tx?: DbExecutor): Promise<boolean> {
+    // Conditional update = optimistic compare-and-swap. Only the request that
+    // observes is_revoked=false flips it and gets a row back; concurrent racers
+    // get zero rows and must not create a competing session.
+    const rows = await (tx ?? this.db)
+      .update(authSessions)
+      .set({ isRevoked: true })
+      .where(and(eq(authSessions.id, id), eq(authSessions.isRevoked, false)))
+      .returning({ id: authSessions.id });
+    return rows.length > 0;
   }
 
   async revokeFamily(familyId: string, tx?: DbExecutor): Promise<void> {

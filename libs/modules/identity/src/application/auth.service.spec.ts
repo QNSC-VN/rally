@@ -60,6 +60,7 @@ const makeSessionRepo = () => ({
   findByTokenHash: vi.fn(),
   create: vi.fn().mockResolvedValue(undefined),
   revokeById: vi.fn().mockResolvedValue(undefined),
+  revokeByIdIfActive: vi.fn().mockResolvedValue(true),
   revokeFamily: vi.fn().mockResolvedValue(undefined),
   revokeAllForUser: vi.fn().mockResolvedValue(undefined),
 });
@@ -67,6 +68,8 @@ const makeSessionRepo = () => ({
 const makeValkey = () => ({
   denylistToken: vi.fn().mockResolvedValue(undefined),
   isTokenDenied: vi.fn().mockResolvedValue(false),
+  storeRotationGrace: vi.fn().mockResolvedValue(undefined),
+  getRotationGrace: vi.fn().mockResolvedValue(null),
 });
 
 const makeConfig = (overrides: Record<string, unknown> = {}) => ({
@@ -190,8 +193,9 @@ describe('AuthService', () => {
 
       expect(result.accessToken).toBe('mock-access-token');
       expect(result.refreshToken).toBeDefined();
-      expect(sessionRepo.revokeById).toHaveBeenCalledWith(session.id, expect.anything());
+      expect(sessionRepo.revokeByIdIfActive).toHaveBeenCalledWith(session.id, expect.anything());
       expect(sessionRepo.create).toHaveBeenCalledOnce();
+      expect(valkey.storeRotationGrace).toHaveBeenCalledOnce();
     });
 
     it('throws when token not found', async () => {
@@ -205,6 +209,49 @@ describe('AuthService', () => {
 
       await expect(service.refresh('reused-token', null)).rejects.toThrow(UnauthorizedException);
       expect(sessionRepo.revokeFamily).toHaveBeenCalledWith(revokedSession.familyId);
+    });
+
+    it('replays cached successor tokens on benign reuse within the grace window', async () => {
+      const cached = {
+        accessToken: 'cached-access',
+        refreshToken: 'cached-refresh',
+        expiresIn: 900,
+        csrfToken: 'cached-csrf',
+      };
+      sessionRepo.findByTokenHash.mockResolvedValue(mockSession({ isRevoked: true }));
+      valkey.getRotationGrace.mockResolvedValue(JSON.stringify(cached));
+
+      const result = await service.refresh('replayed-token', null);
+
+      expect(result).toEqual(cached);
+      expect(sessionRepo.revokeFamily).not.toHaveBeenCalled();
+    });
+
+    it('does not revoke the family when the grace lookup fails (cache outage)', async () => {
+      sessionRepo.findByTokenHash.mockResolvedValue(mockSession({ isRevoked: true }));
+      valkey.getRotationGrace.mockRejectedValue(new Error('valkey down'));
+
+      await expect(service.refresh('token', null)).rejects.toThrow(UnauthorizedException);
+      expect(sessionRepo.revokeFamily).not.toHaveBeenCalled();
+    });
+
+    it('replays the winner result when it loses the atomic rotation race', async () => {
+      const cached = {
+        accessToken: 'winner-access',
+        refreshToken: 'winner-refresh',
+        expiresIn: 900,
+        csrfToken: 'winner-csrf',
+      };
+      sessionRepo.findByTokenHash.mockResolvedValue(mockSession());
+      userRepo.findById.mockResolvedValue(mockUser());
+      sessionRepo.revokeByIdIfActive.mockResolvedValue(false); // lost the CAS
+      valkey.getRotationGrace.mockResolvedValue(JSON.stringify(cached));
+
+      const result = await service.refresh('token', null);
+
+      expect(result).toEqual(cached);
+      expect(sessionRepo.create).not.toHaveBeenCalled();
+      expect(sessionRepo.revokeFamily).not.toHaveBeenCalled();
     });
 
     it('throws on expired token', async () => {
