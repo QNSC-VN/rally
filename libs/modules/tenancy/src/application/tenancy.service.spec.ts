@@ -87,7 +87,7 @@ const makeWorkspaceRepo = (): Mocked<IWorkspaceRepository> =>
     create: vi.fn(),
     update: vi.fn(),
     softDelete: vi.fn().mockResolvedValue(undefined),
-  }) as unknown as Mocked<IWorkspaceRepository>;
+  });
 
 const makeMemberRepo = (): Mocked<IWorkspaceMemberRepository> =>
   ({
@@ -103,7 +103,7 @@ const makeMemberRepo = (): Mocked<IWorkspaceMemberRepository> =>
     touchLastActive: vi.fn().mockResolvedValue(undefined),
     countActiveAdmins: vi.fn().mockResolvedValue(2),
     isActiveAdmin: vi.fn().mockResolvedValue(false),
-  }) as unknown as Mocked<IWorkspaceMemberRepository>;
+  });
 
 const makeInvitationRepo = (): Mocked<IWorkspaceInvitationRepository> =>
   ({
@@ -114,13 +114,13 @@ const makeInvitationRepo = (): Mocked<IWorkspaceInvitationRepository> =>
     create: vi.fn(),
     updateStatus: vi.fn().mockResolvedValue(undefined),
     cancelExistingForEmail: vi.fn().mockResolvedValue(undefined),
-  }) as unknown as Mocked<IWorkspaceInvitationRepository>;
+  });
 
 const makeSettingsRepo = (): Mocked<IWorkspaceSettingsRepository> =>
   ({
     findByWorkspace: vi.fn(),
     upsert: vi.fn(),
-  }) as unknown as Mocked<IWorkspaceSettingsRepository>;
+  });
 
 const makeConfig = () => ({
   get: vi.fn((key: string) => {
