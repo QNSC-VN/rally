@@ -82,7 +82,7 @@ jobs:
       ENVIRONMENT: ${{ needs.context.outputs.environment }}
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
 
       - name: Install dependencies
         uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1
@@ -106,7 +106,7 @@ jobs:
       # Cloudflare handles immutable-asset caching + index.html revalidation and
       # serves the custom domain (rally-dev.qnsc.vn) with managed TLS.
       - name: Deploy to Cloudflare Pages
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd  # v3
         with:
           apiToken:  ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

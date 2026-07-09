@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: apexskier/github-release-commenter@v1
+      - uses: apexskier/github-release-commenter@e7813a9625eabd79a875b4bc4046cfcae377ab34  # v1
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           comment-template: |
