@@ -57,8 +57,8 @@ locals {
   single_tenant_slug = var.single_tenant_slug != "" ? var.single_tenant_slug : "default"
 
   ecr_base       = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${local.region}.amazonaws.com"
-  ecr_api_url    = "${local.ecr_base}/rally-api:latest"
-  ecr_worker_url = "${local.ecr_base}/rally-worker:latest"
+  ecr_api_url    = "${local.ecr_base}/rally-api:${var.image_tag}"
+  ecr_worker_url = "${local.ecr_base}/rally-worker:${var.image_tag}"
 
   # Cloudflare IPv4 ranges — single source of truth in qnsc-infra bootstrap
   # (read via _shared remote state), so a CF range change is one edit there.

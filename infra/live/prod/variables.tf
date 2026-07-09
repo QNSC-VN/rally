@@ -3,6 +3,12 @@ variable "acm_cert_arn" {
   description = "ACM certificate ARN for the production ALB HTTPS listener (ap-southeast-1)"
 }
 
+variable "image_tag" {
+  type        = string
+  default     = "latest"
+  description = "Container image tag to deploy for api & worker. CI overrides this with the release sha to pin prod images; defaults to 'latest' for a bare apply."
+}
+
 variable "prod_tier" {
   type        = string
   default     = "lean"
