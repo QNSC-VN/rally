@@ -4,6 +4,23 @@
  */
 
 export interface paths {
+    "/v1/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Public runtime config for the frontend (no secrets) */
+        get: operations["HealthController_publicConfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/healthz": {
         parameters: {
             query?: never;
@@ -64,7 +81,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Self-serve signup — create or join a tenant by email domain */
+        /** Self-serve signup — create or join a workspace by email domain */
         post: operations["AuthController_signup"];
         delete?: never;
         options?: never;
@@ -106,7 +123,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/auth/switch-tenant": {
+    "/v1/auth/switch-workspace": {
         parameters: {
             query?: never;
             header?: never;
@@ -115,8 +132,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Switch active tenant and re-issue tokens */
-        post: operations["AuthController_switchTenant"];
+        /** Switch active workspace and re-issue tokens */
+        post: operations["AuthController_switchWorkspace"];
         delete?: never;
         options?: never;
         head?: never;
@@ -250,7 +267,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List all roles available to the tenant */
+        /** List all roles available to the workspace */
         get: operations["AccessController_listRoles"];
         put?: never;
         post?: never;
@@ -311,23 +328,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/tenants/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get tenant details */
-        get: operations["TenantController_getTenant"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/workspaces": {
         parameters: {
             query?: never;
@@ -335,7 +335,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List workspaces for the authenticated tenant */
+        /** List workspaces the authenticated user belongs to */
         get: operations["WorkspaceController_listWorkspaces"];
         put?: never;
         post?: never;
@@ -1603,7 +1603,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Query audit logs for the tenant */
+        /** Query audit logs for the workspace */
         get: operations["AuditController_list"];
         put?: never;
         post?: never;
@@ -1671,9 +1671,9 @@ export interface components {
                 timezone: string;
             };
             memberships: {
-                tenantId: string;
-                tenantName: string;
-                tenantSlug: string;
+                workspaceId: string;
+                name: string;
+                slug: string;
                 lastActiveAt: string | null;
                 roleSlug: string | null;
                 roleName: string | null;
@@ -1689,9 +1689,9 @@ export interface components {
         SsoLoginDto: {
             idToken: string;
         };
-        SwitchTenantDto: {
+        SwitchWorkspaceDto: {
             /** Format: uuid */
-            tenantId: string;
+            workspaceId: string;
         };
         UserProfileResponseDto: {
             id: string;
@@ -1708,9 +1708,9 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
             memberships: {
-                tenantId: string;
-                tenantName: string;
-                tenantSlug: string;
+                workspaceId: string;
+                name: string;
+                slug: string;
                 lastActiveAt: string | null;
                 roleSlug: string | null;
                 roleName: string | null;
@@ -1737,7 +1737,7 @@ export interface components {
         RoleResponseDto: {
             /** Format: uuid */
             id: string;
-            tenantId: string | null;
+            workspaceId: string | null;
             name: string;
             slug: string;
             description: string | null;
@@ -1750,7 +1750,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             /** Format: uuid */
-            tenantId: string;
+            workspaceId: string;
             /** Format: uuid */
             userId: string;
             /** Format: uuid */
@@ -1771,27 +1771,9 @@ export interface components {
             /** Format: uuid */
             scopeId?: string;
         };
-        TenantResponseDto: {
-            /** Format: uuid */
-            id: string;
-            slug: string;
-            name: string;
-            /** @description Tenant status: active | suspended | deleted */
-            status: string;
-            plan: string;
-            settings: {
-                [key: string]: unknown;
-            };
-            /** Format: date-time */
-            createdAt: string;
-            /** Format: date-time */
-            updatedAt: string;
-        };
         WorkspaceResponseDto: {
             /** Format: uuid */
             id: string;
-            /** Format: uuid */
-            tenantId: string;
             slug: string;
             name: string;
             description: string | null;
@@ -1920,8 +1902,6 @@ export interface components {
             /** Format: uuid */
             id: string;
             /** Format: uuid */
-            tenantId: string;
-            /** Format: uuid */
             workspaceId: string;
             /** @description Unique short project key e.g. PROJ */
             key: string;
@@ -1950,8 +1930,6 @@ export interface components {
             description?: string;
             /** Format: uuid */
             leadId?: string;
-            /** Format: uuid */
-            workspaceId: string;
         };
         UpdateProjectDto: {
             name?: string;
@@ -2016,7 +1994,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             /** Format: uuid */
-            tenantId: string;
+            workspaceId: string;
             /** Format: uuid */
             projectId: string;
             /** @description Sequential key e.g. PROJ-42 */
@@ -2260,7 +2238,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             /** Format: uuid */
-            tenantId: string;
+            workspaceId: string;
             /** Format: uuid */
             projectId: string;
             teamId: string | null;
@@ -2282,18 +2260,6 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
-        IterationOptionDto: {
-            /** Format: uuid */
-            id: string;
-            name: string;
-            iterationKey: string | null;
-            /** @description YYYY-MM-DD */
-            startDate: string | null;
-            /** @description YYYY-MM-DD */
-            endDate: string | null;
-            /** @enum {string} */
-            state: "planning" | "committed" | "accepted";
-        };
         CreateIterationDto: {
             /** Format: uuid */
             projectId: string;
@@ -2308,6 +2274,18 @@ export interface components {
             startDate?: string;
             endDate?: string;
             plannedVelocity?: number;
+        };
+        IterationOptionDto: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            iterationKey: string | null;
+            /** @description YYYY-MM-DD */
+            startDate: string | null;
+            /** @description YYYY-MM-DD */
+            endDate: string | null;
+            /** @enum {string} */
+            state: "planning" | "committed" | "accepted";
         };
         UpdateIterationDto: {
             name?: string;
@@ -2385,7 +2363,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             /** Format: uuid */
-            tenantId: string;
+            workspaceId: string;
             /** Format: uuid */
             projectId: string;
             name: string;
@@ -2498,6 +2476,30 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    HealthController_publicConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @example true */
+                        workspaceCreationOpen?: boolean;
+                        /** @example true */
+                        ssoEnabled?: boolean;
+                    };
+                };
+            };
+        };
+    };
     HealthController_healthz: {
         parameters: {
             query?: never;
@@ -2827,7 +2829,7 @@ export interface operations {
             };
         };
     };
-    AuthController_switchTenant: {
+    AuthController_switchWorkspace: {
         parameters: {
             query?: never;
             header?: never;
@@ -2836,7 +2838,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SwitchTenantDto"];
+                "application/json": components["schemas"]["SwitchWorkspaceDto"];
             };
         };
         responses: {
@@ -3005,6 +3007,13 @@ export interface operations {
             };
             /** @description Unprocessable — business rule violation */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too Many Requests — rate limit exceeded. Check Retry-After header. */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3299,48 +3308,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-            /** @description Unauthorized — missing or invalid authentication */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden — insufficient permissions */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    TenantController_getTenant: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TenantResponseDto"];
-                };
             };
             /** @description Unauthorized — missing or invalid authentication */
             401: {
@@ -4316,11 +4283,10 @@ export interface operations {
     };
     ProjectsController_listProjects: {
         parameters: {
-            query: {
+            query?: {
                 limit?: number;
                 cursor?: string;
                 sort?: string;
-                workspaceId: string;
             };
             header?: never;
             path?: never;
@@ -6793,6 +6759,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Forbidden — insufficient permissions */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Not Found */
             404: {
                 headers: {
@@ -6834,6 +6807,13 @@ export interface operations {
             };
             /** @description Unauthorized — missing or invalid authentication */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden — insufficient permissions */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6888,6 +6868,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Forbidden — insufficient permissions */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Not Found */
             404: {
                 headers: {
@@ -6936,6 +6923,13 @@ export interface operations {
             };
             /** @description Unauthorized — missing or invalid authentication */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden — insufficient permissions */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7236,6 +7230,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Forbidden — insufficient permissions */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Not Found */
             404: {
                 headers: {
@@ -7277,6 +7278,13 @@ export interface operations {
             };
             /** @description Unauthorized — missing or invalid authentication */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden — insufficient permissions */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7326,6 +7334,13 @@ export interface operations {
             };
             /** @description Unauthorized — missing or invalid authentication */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden — insufficient permissions */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
