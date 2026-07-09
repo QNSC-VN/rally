@@ -136,9 +136,8 @@ jobs:
       # Rotating refresh tokens can't be shared across test contexts, so each
       # spec logs in fresh — disable rate limiting so that never 429s.
       DISABLE_RATE_LIMIT: 'true'
-      # The seed's break-glass admin password the e2e helper logs in with.
-      BREAKGLASS_EMAIL: admin@acme.dev
-      BREAKGLASS_PASSWORD: DevAdminPass123!
+      # Rally is SSO-only; the E2E helper signs in via the passwordless
+      # dev-login endpoint (seeded accounts, non-production only).
       NODE_ENV: test
 
     steps:

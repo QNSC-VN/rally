@@ -20,16 +20,11 @@ import type { EmailCategory } from '../email.provider';
 
 // ── Template name registry ───────────────────────────────────────────────────
 
-export type EmailTemplateName = 'password-reset' | 'workspace-invitation' | 'notification';
+export type EmailTemplateName = 'workspace-invitation' | 'notification';
 
-// ── Per-template variable shapes (type-safe) ─────────────────────────────────
+// ── Per-template variable shapes (type-safe) ─────────────────────────────
 
 export interface EmailTemplateVars {
-  'password-reset': {
-    resetUrl: string;
-    expiresInHours: string; // e.g. "1"
-    recipientEmail: string;
-  };
   'workspace-invitation': {
     inviteUrl: string;
     workspaceName: string;
@@ -117,78 +112,6 @@ function layout(title: string, preheader: string, bodyHtml: string): string {
   </table>
 </body>
 </html>`;
-}
-
-// ── Template: password-reset ──────────────────────────────────────────────────
-
-function passwordReset(vars: EmailTemplateVars['password-reset']): RenderedEmail {
-  const subject = 'Reset your Mini Rally password';
-
-  const bodyHtml = `
-    <!-- Header -->
-    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="border-bottom:1px solid #edf0f4;">
-      <tr><td style="padding:28px 32px 24px;">
-        <p style="margin:0 0 4px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#8c94a6;">Account recovery</p>
-        <h1 style="margin:0;font-size:20px;font-weight:600;color:#1a2234;line-height:1.3;">Reset your password</h1>
-      </td></tr>
-    </table>
-    <!-- Body -->
-    <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
-      <tr><td style="padding:28px 32px;">
-        <p style="margin:0 0 20px;font-size:13px;line-height:1.7;color:#3d4451;">
-          We received a request to reset the password for your Mini Rally account
-          (<strong style="color:#1a2234;">${vars.recipientEmail}</strong>).
-        </p>
-        <p style="margin:0 0 24px;font-size:13px;line-height:1.7;color:#3d4451;">
-          Click the button below to set a new password. This link expires in
-          <strong style="color:#1a2234;">${vars.expiresInHours} hour${vars.expiresInHours === '1' ? '' : 's'}</strong>.
-        </p>
-        <!-- CTA button -->
-        <table cellpadding="0" cellspacing="0" role="presentation">
-          <tr><td style="border-radius:6px;background:#1d3f73;">
-            <a href="${vars.resetUrl}"
-               style="display:inline-block;padding:11px 28px;font-size:13px;font-weight:600;color:#fff;text-decoration:none;border-radius:6px;line-height:1;">
-              Reset password
-            </a>
-          </td></tr>
-        </table>
-        <!-- Fallback URL -->
-        <p style="margin:20px 0 0;font-size:11px;color:#8c94a6;">
-          Or copy this link into your browser:<br/>
-          <a href="${vars.resetUrl}" style="color:#2558a6;word-break:break-all;">${vars.resetUrl}</a>
-        </p>
-        <!-- Security note -->
-        <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin-top:24px;border-top:1px solid #edf0f4;">
-          <tr><td style="padding-top:18px;">
-            <p style="margin:0;font-size:11px;line-height:1.6;color:#8c94a6;">
-              If you did not request this, you can safely ignore this email — your password will not change.
-              For security questions, contact your workspace administrator.
-            </p>
-          </td></tr>
-        </table>
-      </td></tr>
-    </table>`;
-
-  const html = layout(
-    subject,
-    `Reset your password — link expires in ${vars.expiresInHours}h`,
-    bodyHtml,
-  );
-
-  const text = [
-    'Reset your Mini Rally password',
-    '',
-    `We received a request to reset the password for ${vars.recipientEmail}.`,
-    '',
-    `Click the link below to set a new password (valid for ${vars.expiresInHours} hour${vars.expiresInHours === '1' ? '' : 's'}):`,
-    vars.resetUrl,
-    '',
-    'If you did not request this, you can safely ignore this email.',
-    '',
-    '— Mini Rally',
-  ].join('\n');
-
-  return { subject, html, text, category: 'transactional' as const };
 }
 
 // ── Template: workspace-invitation ───────────────────────────────────────────
@@ -298,7 +221,6 @@ function notification(vars: EmailTemplateVars['notification']): RenderedEmail {
 const TEMPLATES: {
   [K in EmailTemplateName]: (vars: EmailTemplateVars[K]) => RenderedEmail;
 } = {
-  'password-reset': passwordReset,
   'workspace-invitation': workspaceInvitation,
   notification: notification,
 };

@@ -33,10 +33,10 @@ async function run() {
     await migrate(db, { migrationsFolder: path.join(__dirname, 'migrations') });
     console.log('✅  Migrations applied');
 
-    // In develop/staging, seed fixture data on every deploy so the breakglass
-    // account and dev workspace always exist with the configured credentials.
-    // Never set SEED_ON_DEPLOY=true in production — data is provisioned through
-    // normal workspace sign-up flows there.
+    // In develop/staging, seed fixture data on every deploy so the RBAC
+    // catalogue and dev workspace always exist. Users authenticate via Entra
+    // SSO (JIT-provisioned on first login); admins are elevated through
+    // PLATFORM_ADMIN_EMAILS. Never set SEED_ON_DEPLOY=true in production.
     if (process.env['SEED_ON_DEPLOY'] === 'true') {
       console.log('SEED_ON_DEPLOY=true — running seed...');
       // Seed uses DATABASE_URL (app role), not the migration URL (admin role).

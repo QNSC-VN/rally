@@ -69,24 +69,6 @@ const loginRoute = createRoute({
   component: lazyPage(() => import('@/pages/login/login-page'), 'LoginPage'),
 })
 
-const forgotPasswordRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/forgot-password',
-  component: lazyPage(
-    () => import('@/pages/forgot-password/forgot-password-page'),
-    'ForgotPasswordPage',
-  ),
-})
-
-const resetPasswordRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/reset-password',
-  component: lazyPage(
-    () => import('@/pages/reset-password/reset-password-page'),
-    'ResetPasswordPage',
-  ),
-})
-
 // ── Authenticated layout route ────────────────────────────────────────────────
 const authRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -189,8 +171,6 @@ const notFoundRoute = createRoute({
 // ── Route tree ────────────────────────────────────────────────────────────────
 const routeTree = rootRoute.addChildren([
   loginRoute,
-  forgotPasswordRoute,
-  resetPasswordRoute,
   authRoute.addChildren([
     homeRoute,
     projectsRoute,

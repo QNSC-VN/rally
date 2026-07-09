@@ -96,29 +96,15 @@ export const EnvSchema = z.object({
   RESILIENCE_ENABLED: booleanish(true),
 
   // TTL knobs — defaults match SRS but allow ops to tune without code change
-  PASSWORD_RESET_TOKEN_TTL_HOURS: z.coerce.number().int().positive().default(1),
   INVITATION_TTL_DAYS: z.coerce.number().int().positive().default(7),
   SESSION_CLEANUP_OLDER_THAN_DAYS: z.coerce.number().int().positive().default(7),
 
   // SSO — Microsoft Entra ID (Azure AD) OpenID Connect
-  // When both vars are set, the /v1/auth/sso endpoint becomes active.
-  // Leave unset (default) to disable SSO and use email/password only.
+  // Rally is SSO-only: when both vars are set, the /v1/auth/sso endpoint is the
+  // sole authentication path. Both must be configured in every deployed env.
   ENTRA_TENANT_ID: z.string().optional(),
   ENTRA_CLIENT_ID: z.string().optional(),
 
-  // ── Break-glass super admin ────────────────────────────────────────────────
-  /**
-   * Email of the dedicated password-based break-glass account.
-   * In production: inject via Secrets Manager / ECS task definition.
-   * Every login fires a high-severity audit record + email alert.
-   */
-  BREAKGLASS_EMAIL: z.string().email().default('admin@acme.dev'),
-  /**
-   * Password for the break-glass account. Inject via Secrets Manager in deployed
-   * environments — never hardcode. Not required at runtime (only the migrator/seed
-   * uses it), but validated here so a misconfigured deployment fails fast at startup.
-   */
-  BREAKGLASS_PASSWORD: z.string().min(12).optional(),
   /**
    * Comma-separated SSO (Entra) emails auto-granted workspace_admin on first login.
    * Example: "nghiavt@qnsc.vn,quangld@qnsc.vn"

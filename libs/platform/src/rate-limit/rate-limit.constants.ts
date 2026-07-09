@@ -10,7 +10,6 @@
  *  STRICT        — sensitive writes (project delete, member removal, etc.)
  *  AUTH_LOGIN    — brute-force prevention on credential submission
  *  AUTH_REFRESH  — token rotation endpoint
- *  AUTH_FORGOT   — email-sending endpoint (expensive, easy to abuse)
  */
 
 export const RATE_LIMIT_METADATA_KEY = 'rally:rate_limit:tier';
@@ -39,12 +38,6 @@ export const RATE_LIMIT_TIERS = {
    * Falls back to IP when no cookie is present (unauthenticated probe).
    */
   AUTH_REFRESH: { limit: 30, windowSeconds: 60, keyBy: 'refreshToken' as const },
-
-  /** Forgot-password: 3 req/hour — prevents email flooding */
-  AUTH_FORGOT: { limit: 3, windowSeconds: 60 * 60 },
-
-  /** Password change: 5 req/15 min — prevents brute-force via repeated change attempts */
-  AUTH_PASSWORD_CHANGE: { limit: 5, windowSeconds: 15 * 60 },
 } as const;
 
 export type RateLimitTier = keyof typeof RATE_LIMIT_TIERS;
