@@ -54,7 +54,7 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0   # v7.0.0
 
-      - uses: QNSC-VN/qnsc-ci/actions/setup-tofu-aws@v1.5
+      - uses: QNSC-VN/qnsc-ci/actions/setup-tofu-aws@v1
         with:
           role-arn: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/rally-github-infra-plan
           aws-region: ${{ env.AWS_REGION }}

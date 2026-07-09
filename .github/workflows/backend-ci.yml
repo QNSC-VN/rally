@@ -35,7 +35,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1.0.0
+      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1
         with:
           node-version: ${{ env.NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}
@@ -80,7 +80,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1.0.0
+      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1
         with:
           node-version: ${{ env.NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}
@@ -218,7 +218,7 @@ jobs:
           # Fetch full history so we can compare against the base branch
           fetch-depth: 0
 
-      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1.0.0
+      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1
         with:
           node-version: ${{ env.NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}
@@ -277,7 +277,7 @@ jobs:
           RESILIENCE_ENABLED: 'false'
 
       - name: Upload OpenAPI spec artifact
-        uses: QNSC-VN/qnsc-ci/actions/publish-openapi-spec@v1.0.0
+        uses: QNSC-VN/qnsc-ci/actions/publish-openapi-spec@v1
         with:
           spec-path: openapi.json
           artifact-name: openapi-spec-${{ github.sha }}
@@ -296,7 +296,7 @@ jobs:
 
       - name: Breaking change check
         if: github.event_name == 'pull_request'
-        uses: QNSC-VN/qnsc-ci/actions/validate-openapi-contract@v1.0.0
+        uses: QNSC-VN/qnsc-ci/actions/validate-openapi-contract@v1
         with:
           current-spec-path: openapi.json
           base-spec-path: base-spec/openapi.json

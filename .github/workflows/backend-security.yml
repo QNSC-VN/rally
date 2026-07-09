@@ -52,7 +52,7 @@ jobs:
       # Shared Gitleaks CLI action (QNSC-VN/qnsc-ci) — one implementation reused
       # across all repos (opshub uses the same), so pattern/config fixes land
       # once. Pattern-based scan flags secrets regardless of rotation.
-      - uses: QNSC-VN/qnsc-ci/actions/scan-secrets@v1.6
+      - uses: QNSC-VN/qnsc-ci/actions/scan-secrets@v1
         with:
           fail-on-leak: "true"
 
@@ -154,7 +154,7 @@ jobs:
           languages: javascript-typescript
           queries: security-and-quality
 
-      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1.0.0
+      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1
         with:
           node-version: ${{ env.NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}
