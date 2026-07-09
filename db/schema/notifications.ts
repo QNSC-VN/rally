@@ -20,7 +20,7 @@ export const inAppNotifications = notificationsSchema.table(
   'in_app_notifications',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    tenantId: uuid('tenant_id').notNull(),
+    workspaceId: uuid('workspace_id').notNull(),
     recipientId: uuid('recipient_id').notNull(),
     actorId: uuid('actor_id'), // who triggered the notification
     type: varchar('type', { length: 100 }).notNull(), // e.g. 'work_item.assigned'
@@ -36,7 +36,7 @@ export const inAppNotifications = notificationsSchema.table(
     sourceEventId: uuid('source_event_id'),
   },
   (t) => ({
-    recipientIdx: index('ix_ian_recipient').on(t.tenantId, t.recipientId, t.isRead),
+    recipientIdx: index('ix_ian_recipient').on(t.workspaceId, t.recipientId, t.isRead),
     createdIdx: index('ix_ian_created').on(t.recipientId, t.createdAt),
     resourceIdx: index('ix_ian_resource').on(t.resourceType, t.resourceId),
     sourceEventIdx: uniqueIndex('uq_ian_source_event_id').on(t.sourceEventId),
@@ -59,7 +59,7 @@ export const notificationPreferences = notificationsSchema.table(
   'notification_preferences',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    tenantId: uuid('tenant_id').notNull(),
+    workspaceId: uuid('workspace_id').notNull(),
     userId: uuid('user_id').notNull(),
     /** Dot-namespaced event type or '*' for wildcard (master switch). */
     type: varchar('type', { length: 100 }).notNull(),
@@ -70,7 +70,7 @@ export const notificationPreferences = notificationsSchema.table(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    /** Primary lookup key: one row per (tenant, user, type). */
-    userTypeIdx: uniqueIndex('uq_notif_pref_user_type').on(t.tenantId, t.userId, t.type),
+    /** Primary lookup key: one row per (workspace, user, type). */
+    userTypeIdx: uniqueIndex('uq_notif_pref_user_type').on(t.workspaceId, t.userId, t.type),
   }),
 );

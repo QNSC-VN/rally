@@ -1,24 +1,3 @@
-# =============================================================================
-# CODEOWNERS — auto-request reviews based on changed paths.
-# Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
-# =============================================================================
-
-# Default — catch-all
-*                               @Nghia-VanTrong
-
-# Frontend
-apps/web/                       @Nghia-VanTrong
-libs/contracts/                 @Nghia-VanTrong
-
-# Backend
-apps/api/                       @Nghia-VanTrong
-apps/worker/                    @Nghia-VanTrong
-db/                             @Nghia-VanTrong
-libs/                           @Nghia-VanTrong
-
-# Infrastructure & CI — requires explicit review
-.github/                        @Nghia-VanTrong
-deploy/                         @Nghia-VanTrong
-infra/                          @Nghia-VanTrong
-Dockerfile                      @Nghia-VanTrong
-docker-compose*.yml             @Nghia-VanTrong
+# Default owner for everything in this repo.
+# Enforced via the main-protection ruleset (require_code_owner_review).
+* @Nghia-VanTrong

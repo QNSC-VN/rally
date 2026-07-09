@@ -12,12 +12,11 @@ import {
   NotFoundException,
   AppConfigService,
   EmailSchedulerService,
-  TenantRlsService,
 } from '@platform';
 import { DRIZZLE } from '@platform';
 import { ValkeyService } from '@platform';
 import { AccessService } from '@modules/access';
-import { TenancyService } from '@modules/tenancy';
+import { WorkspaceService } from '@modules/workspace';
 import { AuditService } from '@modules/audit';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -42,7 +41,7 @@ const mockUser = (overrides: Partial<User> = {}): User => ({
 
 const mockSession = (overrides: Partial<AuthSession> = {}): AuthSession => ({
   id: 'session-1',
-  tenantId: 'tenant-1',
+  workspaceId: 'ws-1',
   userId: 'user-1',
   tokenHash: 'hash-1',
   familyId: 'family-1',
@@ -104,12 +103,6 @@ const makeEmailScheduler = () => ({
   schedule: vi.fn().mockResolvedValue(undefined),
 });
 
-// Executes the wrapped unit of work immediately with a stub transaction, so the
-// repository mocks receive a (truthy) tx argument just like production.
-const makeRls = () => ({
-  withTenantContext: vi.fn((_tenantId: string, fn: (tx: unknown) => unknown) => fn({})),
-});
-
 const makeJwt = () => ({
   sign: vi.fn().mockReturnValue('mock-access-token'),
 });
@@ -133,33 +126,28 @@ const makeAuditService = () => ({
 
 const makeSsoConnectionRepo = () => ({
   findByExternalTenantId: vi.fn().mockResolvedValue(null),
-  findByTenantId: vi.fn().mockResolvedValue(null),
   create: vi.fn().mockResolvedValue(undefined),
   update: vi.fn().mockResolvedValue(undefined),
 });
 
-const makeTenancyService = () => ({
+const makeWorkspaceService = () => ({
   getMemberships: vi
     .fn()
     .mockResolvedValue([
       {
-        tenantId: 'tenant-1',
-        tenantName: 'Test',
-        tenantSlug: 'test',
+        workspaceId: 'ws-1',
+        name: 'Test',
+        slug: 'test',
         lastActiveAt: null,
         roleSlug: 'workspace_admin',
         roleName: 'Workspace Admin',
       },
     ]),
-  getTenantMember: vi.fn().mockResolvedValue({ status: 'active' }),
-  touchTenantMembership: vi.fn().mockResolvedValue(undefined),
-  tenantMemberCreate: vi.fn().mockResolvedValue(undefined),
+  getMembership: vi.fn().mockResolvedValue({ status: 'active' }),
+  touchMembership: vi.fn().mockResolvedValue(undefined),
   enrollMember: vi.fn().mockResolvedValue(undefined),
-  findAutoJoinTarget: vi.fn().mockResolvedValue(null),
-  isDomainClaimed: vi.fn().mockResolvedValue(false),
-  provisionTenant: vi
-    .fn()
-    .mockResolvedValue({ tenant: { id: 'tenant-1' }, workspace: { id: 'ws-1' } }),
+  provisionWorkspace: vi.fn().mockResolvedValue({ id: 'workspace-1' }),
+  ensureDefaultWorkspace: vi.fn().mockResolvedValue(undefined),
 });
 
 const makeDrizzle = () => ({
@@ -176,9 +164,9 @@ describe('AuthService', () => {
   let config: ReturnType<typeof makeConfig>;
   let emailScheduler: ReturnType<typeof makeEmailScheduler>;
   let auditService: ReturnType<typeof makeAuditService>;
-  let rls: ReturnType<typeof makeRls>;
   let jwt: ReturnType<typeof makeJwt>;
   let accessService: ReturnType<typeof makeAccessService>;
+  let workspaceService: ReturnType<typeof makeWorkspaceService>;
 
   beforeEach(async () => {
     userRepo = makeUserRepo();
@@ -186,10 +174,10 @@ describe('AuthService', () => {
     valkey = makeValkey();
     config = makeConfig();
     emailScheduler = makeEmailScheduler();
-    rls = makeRls();
     jwt = makeJwt();
     accessService = makeAccessService();
     auditService = makeAuditService();
+    workspaceService = makeWorkspaceService();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -202,9 +190,8 @@ describe('AuthService', () => {
         { provide: ValkeyService, useValue: valkey },
         { provide: AppConfigService, useValue: config },
         { provide: EmailSchedulerService, useValue: emailScheduler },
-        { provide: TenantRlsService, useValue: rls },
         { provide: AccessService, useValue: accessService },
-        { provide: TenancyService, useValue: makeTenancyService() },
+        { provide: WorkspaceService, useValue: workspaceService },
         { provide: AuditService, useValue: auditService },
       ],
     }).compile();
@@ -326,7 +313,7 @@ describe('AuthService', () => {
         sub: 'user-1',
         jti: 'jti-1',
         sessionId: 'session-1',
-        tenantId: 'tenant-1',
+        workspaceId: 'ws-1',
         iat: Math.floor(Date.now() / 1000) - 60,
         exp: Math.floor(Date.now() / 1000) + 840, // 14 min remaining
         iss: 'rally',
@@ -346,7 +333,7 @@ describe('AuthService', () => {
         sub: 'user-1',
         jti: 'jti-expired',
         sessionId: 'session-1',
-        tenantId: 'tenant-1',
+        workspaceId: 'ws-1',
         iat: Math.floor(Date.now() / 1000) - 1000,
         exp: Math.floor(Date.now() / 1000) - 1, // already expired
         iss: 'rally',
@@ -370,7 +357,7 @@ describe('AuthService', () => {
         sub: 'user-1',
         jti: 'jti-1',
         sessionId: 'session-1',
-        tenantId: 'tenant-1',
+        workspaceId: 'ws-1',
         iat: Math.floor(Date.now() / 1000) - 60,
         exp: Math.floor(Date.now() / 1000) + 840,
         iss: 'rally',
@@ -578,6 +565,107 @@ describe('AuthService', () => {
       await expect(service.resetPassword('expired-token', 'new-pass')).rejects.toThrow(
         UnauthorizedException,
       );
+    });
+  });
+
+  // ── membership resolution (login) ──────────────────────────────────────────
+
+  describe('login membership resolution', () => {
+    let user: User;
+
+    beforeEach(async () => {
+      const hash = await argon2.hash('correct-password', { type: argon2.argon2id });
+      user = mockUser({ passwordHash: hash });
+      userRepo.findByEmail.mockResolvedValue(user);
+    });
+
+    it('binds the session to the most-recently-active workspace', async () => {
+      workspaceService.getMemberships.mockResolvedValue([
+        {
+          workspaceId: 'workspace-recent',
+          name: 'Recent',
+          slug: 'recent',
+          lastActiveAt: new Date(),
+          roleSlug: 'workspace_admin',
+          roleName: 'Workspace Admin',
+        },
+        {
+          workspaceId: 'workspace-old',
+          name: 'Old',
+          slug: 'old',
+          lastActiveAt: null,
+          roleSlug: 'member',
+          roleName: 'Member',
+        },
+      ]);
+
+      await service.login('alice@example.com', 'correct-password');
+
+      expect(sessionRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ workspaceId: 'workspace-recent' }),
+        expect.anything(),
+      );
+      expect(workspaceService.touchMembership).toHaveBeenCalledWith(user.id, 'workspace-recent');
+    });
+
+    it('throws ACCOUNT_DEACTIVATED when the user has no active membership', async () => {
+      workspaceService.getMemberships.mockResolvedValue([]);
+
+      await expect(service.login('alice@example.com', 'correct-password')).rejects.toThrow(
+        UnauthorizedException,
+      );
+      expect(sessionRepo.create).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── switchWorkspace ──────────────────────────────────────────────────────────
+
+  describe('switchWorkspace', () => {
+    const makePayload = () => ({
+      sub: 'user-1',
+      jti: 'jti-1',
+      sessionId: 'session-1',
+      workspaceId: 'workspace-from',
+      iat: Math.floor(Date.now() / 1000) - 60,
+      exp: Math.floor(Date.now() / 1000) + 840,
+      iss: 'rally',
+      aud: 'rally-app',
+      permissions: [] as string[],
+      authMethod: 'password' as const,
+    });
+
+    it('rotates the session to the target workspace for an active member', async () => {
+      workspaceService.getMembership.mockResolvedValue({ status: 'active' });
+      userRepo.findById.mockResolvedValue(mockUser());
+
+      const result = await service.switchWorkspace(makePayload(), 'workspace-to');
+
+      expect(result.accessToken).toBe('mock-access-token');
+      expect(workspaceService.getMembership).toHaveBeenCalledWith('user-1', 'workspace-to');
+      expect(sessionRepo.revokeById).toHaveBeenCalledWith('session-1', expect.anything());
+      expect(sessionRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ workspaceId: 'workspace-to' }),
+        expect.anything(),
+      );
+      expect(workspaceService.touchMembership).toHaveBeenCalledWith('user-1', 'workspace-to');
+    });
+
+    it('throws WORKSPACE_ACCESS_DENIED when caller is not a member', async () => {
+      workspaceService.getMembership.mockResolvedValue(null);
+
+      await expect(service.switchWorkspace(makePayload(), 'workspace-to')).rejects.toThrow(
+        UnauthorizedException,
+      );
+      expect(sessionRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('throws WORKSPACE_ACCESS_DENIED when the membership is not active', async () => {
+      workspaceService.getMembership.mockResolvedValue({ status: 'suspended' });
+
+      await expect(service.switchWorkspace(makePayload(), 'workspace-to')).rejects.toThrow(
+        UnauthorizedException,
+      );
+      expect(sessionRepo.create).not.toHaveBeenCalled();
     });
   });
 

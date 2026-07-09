@@ -34,9 +34,9 @@ async function run() {
     console.log('✅  Migrations applied');
 
     // In develop/staging, seed fixture data on every deploy so the breakglass
-    // account and dev tenant always exist with the configured credentials.
+    // account and dev workspace always exist with the configured credentials.
     // Never set SEED_ON_DEPLOY=true in production — data is provisioned through
-    // normal tenant sign-up flows there.
+    // normal workspace sign-up flows there.
     if (process.env['SEED_ON_DEPLOY'] === 'true') {
       console.log('SEED_ON_DEPLOY=true — running seed...');
       // Seed uses DATABASE_URL (app role), not the migration URL (admin role).

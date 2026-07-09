@@ -22,7 +22,7 @@ import {
   IProjectMemberRepository,
   PROJECT_MEMBER_REPOSITORY,
 } from '../domain/ports/project-member.repository';
-import { IWorkspaceMemberRepository, WORKSPACE_MEMBER_REPOSITORY } from '@modules/tenancy';
+import { IWorkspaceMemberRepository, WORKSPACE_MEMBER_REPOSITORY } from '@modules/workspace';
 import type {
   Project,
   ProjectWithStats,
@@ -57,15 +57,13 @@ export class ProjectsService {
 
   async listProjects(
     actor: JwtPayload,
-    workspaceId: string,
     args: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<ProjectWithStats>> {
-    return this.projectRepo.listByWorkspaceWithStats(workspaceId, actor.tenantId, args);
+    return this.projectRepo.listByWorkspaceWithStats(actor.workspaceId, args);
   }
 
   async createProject(
     actor: JwtPayload,
-    workspaceId: string,
     key: string,
     name: string,
     description?: string,
@@ -73,7 +71,7 @@ export class ProjectsService {
   ): Promise<Project> {
     const normalizedKey = key.toUpperCase().trim();
 
-    const existing = await this.projectRepo.findByKey(actor.tenantId, normalizedKey);
+    const existing = await this.projectRepo.findByKey(actor.workspaceId, normalizedKey);
     if (existing) {
       throw new ConflictException(
         'PROJECT_KEY_TAKEN',
@@ -85,7 +83,7 @@ export class ProjectsService {
     const resolvedLeadId = leadId ?? actor.sub;
 
     // PRJ-FR-006: validate that the resolved lead is an active workspace member
-    const lead = await this.workspaceMemberRepo.findMember(workspaceId, resolvedLeadId);
+    const lead = await this.workspaceMemberRepo.findMember(actor.workspaceId, resolvedLeadId);
     if (!lead || lead.status !== 'active') {
       throw new PreconditionFailedException(
         'PROJECT_LEAD_NOT_MEMBER',
@@ -102,8 +100,7 @@ export class ProjectsService {
       const created = await this.projectRepo.create(
         {
           id: projectId,
-          tenantId: actor.tenantId,
-          workspaceId,
+          workspaceId: actor.workspaceId,
           key: normalizedKey,
           name,
           description,
@@ -112,11 +109,11 @@ export class ProjectsService {
         tx,
       );
 
-      await this.projectRepo.initCounter(projectId, actor.tenantId, tx);
+      await this.projectRepo.initCounter(projectId, actor.workspaceId, tx);
       await this.projectMemberRepo.addMember(
         {
           id: uuidv7(),
-          tenantId: actor.tenantId,
+          workspaceId: actor.workspaceId,
           projectId,
           userId: resolvedLeadId,
         },
@@ -126,7 +123,7 @@ export class ProjectsService {
         await this.statusRepo.create(
           {
             id: uuidv7(),
-            tenantId: actor.tenantId,
+            workspaceId: actor.workspaceId,
             projectId,
             name: s.name,
             category: s.category,
@@ -148,9 +145,9 @@ export class ProjectsService {
     return project;
   }
 
-  async getProject(tenantId: string, projectId: string): Promise<Project> {
-    const project = await this.projectRepo.findById(projectId, tenantId);
-    if (!project || project.deletedAt || project.tenantId !== tenantId) {
+  async getProject(workspaceId: string, projectId: string): Promise<Project> {
+    const project = await this.projectRepo.findById(projectId, workspaceId);
+    if (!project || project.deletedAt || project.workspaceId !== workspaceId) {
       throw new NotFoundException('PROJECT_NOT_FOUND', 'Project not found');
     }
     return project;
@@ -161,7 +158,7 @@ export class ProjectsService {
     projectId: string,
     input: UpdateProjectInput,
   ): Promise<Project> {
-    const project = await this.getProject(actor.tenantId, projectId);
+    const project = await this.getProject(actor.workspaceId, projectId);
 
     // PRJ-FR-010: archived projects are read-only; only a status restore is allowed
     if (project.status === 'archived' && input.status !== 'active') {
@@ -195,24 +192,24 @@ export class ProjectsService {
       }
     }
 
-    return this.projectRepo.update(projectId, input, actor.tenantId);
+    return this.projectRepo.update(projectId, input, actor.workspaceId);
   }
 
-  async deleteProject(tenantId: string, projectId: string): Promise<void> {
-    await this.getProject(tenantId, projectId);
-    await this.projectRepo.softDelete(projectId, tenantId);
+  async deleteProject(workspaceId: string, projectId: string): Promise<void> {
+    await this.getProject(workspaceId, projectId);
+    await this.projectRepo.softDelete(projectId, workspaceId);
     this.logger.log({ projectId }, 'Project soft-deleted');
   }
 
   // ── Workflow statuses ─────────────────────────────────────────────────────
 
-  async listStatuses(tenantId: string, projectId: string): Promise<WorkflowStatus[]> {
-    await this.getProject(tenantId, projectId);
+  async listStatuses(workspaceId: string, projectId: string): Promise<WorkflowStatus[]> {
+    await this.getProject(workspaceId, projectId);
     return this.statusRepo.listByProject(projectId);
   }
 
-  async listTransitions(tenantId: string, projectId: string): Promise<WorkflowTransition[]> {
-    await this.getProject(tenantId, projectId);
+  async listTransitions(workspaceId: string, projectId: string): Promise<WorkflowTransition[]> {
+    await this.getProject(workspaceId, projectId);
     return this.statusRepo.listTransitions(projectId);
   }
 
@@ -260,8 +257,8 @@ export class ProjectsService {
   }
 
   /** Used by work-items to generate the next sequential item key (e.g. "PROJ-42"). */
-  async generateItemKey(tenantId: string, projectId: string): Promise<string> {
-    const project = await this.getProject(tenantId, projectId);
+  async generateItemKey(workspaceId: string, projectId: string): Promise<string> {
+    const project = await this.getProject(workspaceId, projectId);
     // PRJ-FR-010: archived projects are read-only; block new work item creation
     if (project.status === 'archived') {
       throw new PreconditionFailedException(
@@ -269,22 +266,22 @@ export class ProjectsService {
         'Cannot create work items in an archived project.',
       );
     }
-    const seq = await this.projectRepo.incrementCounter(projectId, tenantId);
+    const seq = await this.projectRepo.incrementCounter(projectId, workspaceId);
     return `${project.key}-${seq}`;
   }
 
   // ── Workflow status mutations ──────────────────────────────────────────────
 
   async createStatus(
-    tenantId: string,
+    workspaceId: string,
     projectId: string,
-    input: Omit<CreateWorkflowStatusInput, 'id' | 'tenantId' | 'projectId'>,
+    input: Omit<CreateWorkflowStatusInput, 'id' | 'workspaceId' | 'projectId'>,
   ): Promise<WorkflowStatus> {
-    await this.getProject(tenantId, projectId);
+    await this.getProject(workspaceId, projectId);
     const statuses = await this.statusRepo.listByProject(projectId);
     return this.statusRepo.create({
       id: uuidv7(),
-      tenantId,
+      workspaceId,
       projectId,
       name: input.name,
       category: input.category,
@@ -294,8 +291,8 @@ export class ProjectsService {
     });
   }
 
-  async deleteStatus(tenantId: string, projectId: string, statusId: string): Promise<void> {
-    await this.getProject(tenantId, projectId);
+  async deleteStatus(workspaceId: string, projectId: string, statusId: string): Promise<void> {
+    await this.getProject(workspaceId, projectId);
     const status = await this.statusRepo.findById(statusId);
     if (!status || status.projectId !== projectId) {
       throw new NotFoundException('WORKFLOW_STATUS_NOT_FOUND', 'Workflow status not found');
@@ -303,22 +300,22 @@ export class ProjectsService {
     await this.statusRepo.delete(statusId);
   }
 
-  async reorderStatuses(tenantId: string, projectId: string, orderedIds: string[]): Promise<void> {
-    await this.getProject(tenantId, projectId);
+  async reorderStatuses(workspaceId: string, projectId: string, orderedIds: string[]): Promise<void> {
+    await this.getProject(workspaceId, projectId);
     await this.statusRepo.updatePositions(projectId, orderedIds);
   }
 
   // ── Workflow transition mutations ─────────────────────────────────────────
 
   async createTransition(
-    tenantId: string,
+    workspaceId: string,
     projectId: string,
-    input: Omit<CreateWorkflowTransitionInput, 'id' | 'tenantId' | 'projectId'>,
+    input: Omit<CreateWorkflowTransitionInput, 'id' | 'workspaceId' | 'projectId'>,
   ): Promise<WorkflowTransition> {
-    await this.getProject(tenantId, projectId);
+    await this.getProject(workspaceId, projectId);
     return this.statusRepo.createTransition({
       id: uuidv7(),
-      tenantId,
+      workspaceId,
       projectId,
       fromStatusId: input.fromStatusId,
       toStatusId: input.toStatusId,
@@ -326,8 +323,8 @@ export class ProjectsService {
     });
   }
 
-  async deleteTransition(tenantId: string, projectId: string, transitionId: string): Promise<void> {
-    await this.getProject(tenantId, projectId);
+  async deleteTransition(workspaceId: string, projectId: string, transitionId: string): Promise<void> {
+    await this.getProject(workspaceId, projectId);
     const transition = await this.statusRepo.findTransitionById(transitionId);
     if (!transition || transition.projectId !== projectId) {
       throw new NotFoundException('WORKFLOW_STATUS_NOT_FOUND', 'Workflow transition not found');
@@ -337,39 +334,39 @@ export class ProjectsService {
 
   // ── Labels ────────────────────────────────────────────────────────────────
 
-  async listLabels(tenantId: string, projectId: string): Promise<Label[]> {
-    await this.getProject(tenantId, projectId);
-    return this.labelRepo.listByProject(projectId, tenantId);
+  async listLabels(workspaceId: string, projectId: string): Promise<Label[]> {
+    await this.getProject(workspaceId, projectId);
+    return this.labelRepo.listByProject(projectId, workspaceId);
   }
 
   async createLabel(
-    tenantId: string,
+    workspaceId: string,
     projectId: string,
     name: string,
     color?: string,
   ): Promise<Label> {
-    await this.getProject(tenantId, projectId);
-    return this.labelRepo.create({ id: uuidv7(), tenantId, projectId, name, color });
+    await this.getProject(workspaceId, projectId);
+    return this.labelRepo.create({ id: uuidv7(), workspaceId, projectId, name, color });
   }
 
   async updateLabel(
-    tenantId: string,
+    workspaceId: string,
     projectId: string,
     labelId: string,
     input: { name?: string; color?: string },
   ): Promise<Label> {
-    await this.getProject(tenantId, projectId);
+    await this.getProject(workspaceId, projectId);
     const label = await this.labelRepo.findById(labelId);
-    if (!label || label.projectId !== projectId || label.tenantId !== tenantId) {
+    if (!label || label.projectId !== projectId || label.workspaceId !== workspaceId) {
       throw new NotFoundException('LABEL_NOT_FOUND', 'Label not found');
     }
     return this.labelRepo.update(labelId, input);
   }
 
-  async deleteLabel(tenantId: string, projectId: string, labelId: string): Promise<void> {
-    await this.getProject(tenantId, projectId);
+  async deleteLabel(workspaceId: string, projectId: string, labelId: string): Promise<void> {
+    await this.getProject(workspaceId, projectId);
     const label = await this.labelRepo.findById(labelId);
-    if (!label || label.projectId !== projectId || label.tenantId !== tenantId) {
+    if (!label || label.projectId !== projectId || label.workspaceId !== workspaceId) {
       throw new NotFoundException('LABEL_NOT_FOUND', 'Label not found');
     }
     await this.labelRepo.delete(labelId);
@@ -378,13 +375,13 @@ export class ProjectsService {
 
   // ── Project Teams ─────────────────────────────────────────────────────────
 
-  async listProjectTeams(tenantId: string, projectId: string): Promise<ProjectTeamLink[]> {
-    await this.getProject(tenantId, projectId);
+  async listProjectTeams(workspaceId: string, projectId: string): Promise<ProjectTeamLink[]> {
+    await this.getProject(workspaceId, projectId);
     return this.projectTeamRepo.listByProject(projectId);
   }
 
-  async linkTeam(tenantId: string, projectId: string, teamId: string): Promise<ProjectTeamLink> {
-    await this.getProject(tenantId, projectId);
+  async linkTeam(workspaceId: string, projectId: string, teamId: string): Promise<ProjectTeamLink> {
+    await this.getProject(workspaceId, projectId);
 
     const existing = await this.projectTeamRepo.findLink(projectId, teamId);
     if (existing) {
@@ -394,13 +391,13 @@ export class ProjectsService {
       );
     }
 
-    const link = await this.projectTeamRepo.linkTeam(uuidv7(), tenantId, projectId, teamId);
+    const link = await this.projectTeamRepo.linkTeam(uuidv7(), workspaceId, projectId, teamId);
     this.logger.log({ projectId, teamId }, 'Team linked to project');
     return link;
   }
 
-  async unlinkTeam(tenantId: string, projectId: string, teamId: string): Promise<void> {
-    await this.getProject(tenantId, projectId);
+  async unlinkTeam(workspaceId: string, projectId: string, teamId: string): Promise<void> {
+    await this.getProject(workspaceId, projectId);
 
     const existing = await this.projectTeamRepo.findLink(projectId, teamId);
     if (!existing) {
@@ -416,18 +413,18 @@ export class ProjectsService {
 
   // ── Project Members ───────────────────────────────────────────────────────
 
-  async listProjectMembers(tenantId: string, projectId: string): Promise<ProjectMember[]> {
-    await this.getProject(tenantId, projectId);
+  async listProjectMembers(workspaceId: string, projectId: string): Promise<ProjectMember[]> {
+    await this.getProject(workspaceId, projectId);
     return this.projectMemberRepo.listByProject(projectId);
   }
 
   async addProjectMember(
-    tenantId: string,
+    workspaceId: string,
     projectId: string,
     userId: string,
     roleId?: string,
   ): Promise<ProjectMember> {
-    await this.getProject(tenantId, projectId);
+    await this.getProject(workspaceId, projectId);
 
     const existing = await this.projectMemberRepo.findMember(projectId, userId);
     if (existing) {
@@ -439,7 +436,7 @@ export class ProjectsService {
 
     const member = await this.projectMemberRepo.addMember({
       id: uuidv7(),
-      tenantId,
+      workspaceId,
       projectId,
       userId,
       roleId,
@@ -449,12 +446,12 @@ export class ProjectsService {
   }
 
   async updateProjectMember(
-    tenantId: string,
+    workspaceId: string,
     projectId: string,
     memberId: string,
     input: UpdateProjectMemberInput,
   ): Promise<ProjectMember> {
-    await this.getProject(tenantId, projectId);
+    await this.getProject(workspaceId, projectId);
 
     const member = await this.projectMemberRepo.findMemberById(memberId);
     if (!member || member.projectId !== projectId) {
@@ -464,8 +461,8 @@ export class ProjectsService {
     return this.projectMemberRepo.updateMember(memberId, input);
   }
 
-  async removeProjectMember(tenantId: string, projectId: string, userId: string): Promise<void> {
-    await this.getProject(tenantId, projectId);
+  async removeProjectMember(workspaceId: string, projectId: string, userId: string): Promise<void> {
+    await this.getProject(workspaceId, projectId);
 
     const existing = await this.projectMemberRepo.findMember(projectId, userId);
     if (!existing) {

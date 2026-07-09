@@ -26,11 +26,11 @@ export const OTEL_METRICS = {
     MOVED_TOTAL: 'work_items.moved.total',
   },
 
-  // Tenancy domain
-  TENANCY: {
-    WORKSPACE_CREATED_TOTAL: 'tenancy.workspace.created.total',
-    MEMBER_INVITED_TOTAL: 'tenancy.member.invited.total',
-    MEMBER_JOINED_TOTAL: 'tenancy.member.joined.total',
+  // Workspace domain
+  WORKSPACE: {
+    WORKSPACE_CREATED_TOTAL: 'workspace.workspace.created.total',
+    MEMBER_INVITED_TOTAL: 'workspace.member.invited.total',
+    MEMBER_JOINED_TOTAL: 'workspace.member.joined.total',
   },
 
   // Outbox relay
@@ -59,7 +59,7 @@ export const OTEL_METRICS = {
 
 export const OTEL_ATTRIBUTES = {
   // Identity
-  TENANT_ID: 'app.tenant.id',
+  WORKSPACE_ID: 'app.workspace.id',
   USER_ID: 'app.user.id',
   SESSION_ID: 'app.session.id',
   CORRELATION_ID: 'app.correlation.id',
@@ -71,7 +71,6 @@ export const OTEL_ATTRIBUTES = {
 
   // Domain
   WORK_ITEM_ID: 'app.work_item.id',
-  WORKSPACE_ID: 'app.workspace.id',
   PROJECT_ID: 'app.project.id',
 
   // Outbox

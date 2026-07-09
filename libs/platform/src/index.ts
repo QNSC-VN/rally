@@ -11,7 +11,6 @@ export * from './auth/index';
 export * from './rate-limit/index';
 export * from './outbox/index';
 export * from './email/index';
-export * from './database/tenant-rls.service';
 export * from './pipes/index';
 export * from './utils/index';
 export * from './observability/index';

@@ -3,7 +3,7 @@ export type { ScopeType };
 
 export interface SystemRole {
   id: string;
-  tenantId: string | null; // null = global system role
+  workspaceId: string | null; // null = global system role
   name: string;
   slug: string;
   description: string | null;
@@ -14,7 +14,7 @@ export interface SystemRole {
 
 export interface UserRoleAssignment {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   userId: string;
   roleId: string;
   scopeType: ScopeType;
@@ -25,7 +25,7 @@ export interface UserRoleAssignment {
 
 export interface AssignRoleInput {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   userId: string;
   roleId: string;
   scopeType: ScopeType;

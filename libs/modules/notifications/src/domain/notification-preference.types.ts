@@ -11,7 +11,7 @@
  */
 export interface NotificationPreference {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   userId: string;
   /** Event type key or '*' for the wildcard master switch. */
   type: string;
@@ -21,7 +21,7 @@ export interface NotificationPreference {
 }
 
 export interface UpsertPreferenceInput {
-  tenantId: string;
+  workspaceId: string;
   userId: string;
   type: string;
   inApp?: boolean;

@@ -9,6 +9,8 @@ import {
 } from '@platform';
 import type { JwtPayload, CursorPayload, PagedResult, DrizzleDB } from '@platform';
 import { ProjectsService } from '@modules/projects';
+import { AccessService } from '@modules/access';
+import { PERMISSION } from '@shared-kernel';
 import { workItems, workflowStatuses } from '../../../../../db/schema/work';
 import {
   IIterationRepository,
@@ -29,6 +31,7 @@ export class IterationsService {
     @Inject(ITERATION_REPOSITORY) private readonly iterationRepo: IIterationRepository,
     @InjectDrizzle() private readonly db: DrizzleDB,
     private readonly projectsService: ProjectsService,
+    private readonly accessService: AccessService,
   ) {}
 
   // ── List ──────────────────────────────────────────────────────────────────
@@ -39,8 +42,8 @@ export class IterationsService {
     filters: IterationFilters,
     args: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<Iteration>> {
-    await this.projectsService.getProject(actor.tenantId, projectId);
-    return this.iterationRepo.listByProject(projectId, actor.tenantId, filters, args);
+    await this.projectsService.getProject(actor.workspaceId, projectId);
+    return this.iterationRepo.listByProject(projectId, actor.workspaceId, filters, args);
   }
 
   // ── Create ────────────────────────────────────────────────────────────────
@@ -60,18 +63,18 @@ export class IterationsService {
       plannedVelocity?: number;
     } = {},
   ): Promise<Iteration> {
-    await this.projectsService.getProject(actor.tenantId, projectId);
+    await this.projectsService.getProject(actor.workspaceId, projectId);
 
     if (opts.teamId) {
-      await this.assertTeamLinked(actor.tenantId, projectId, opts.teamId);
+      await this.assertTeamLinked(actor.workspaceId, projectId, opts.teamId);
     }
     this.assertDateRange(opts.startDate, opts.endDate);
 
-    const keyNumber = await this.iterationRepo.nextKeyNumber(projectId, actor.tenantId);
+    const keyNumber = await this.iterationRepo.nextKeyNumber(projectId, actor.workspaceId);
 
     const iteration = await this.iterationRepo.create({
       id: uuidv7(),
-      tenantId: actor.tenantId,
+      workspaceId: actor.workspaceId,
       projectId,
       teamId: opts.teamId ?? null,
       iterationKey: `IT-${keyNumber}`,
@@ -99,15 +102,15 @@ export class IterationsService {
     projectId: string,
     teamId?: string,
   ): Promise<IterationOption[]> {
-    await this.projectsService.getProject(actor.tenantId, projectId);
-    return this.iterationRepo.listAssignmentOptions(projectId, actor.tenantId, teamId);
+    await this.projectsService.getProject(actor.workspaceId, projectId);
+    return this.iterationRepo.listAssignmentOptions(projectId, actor.workspaceId, teamId);
   }
 
   // ── Get ───────────────────────────────────────────────────────────────────
 
-  async getIteration(tenantId: string, id: string): Promise<Iteration> {
+  async getIteration(workspaceId: string, id: string): Promise<Iteration> {
     const iteration = await this.iterationRepo.findById(id);
-    if (!iteration || iteration.tenantId !== tenantId) {
+    if (!iteration || iteration.workspaceId !== workspaceId) {
       throw new NotFoundException('ITERATION_NOT_FOUND', 'Iteration not found');
     }
     return iteration;
@@ -116,15 +119,17 @@ export class IterationsService {
   // ── Update ────────────────────────────────────────────────────────────────
 
   async updateIteration(
-    tenantId: string,
+    actor: JwtPayload,
     id: string,
     input: UpdateIterationInput,
   ): Promise<Iteration> {
-    const current = await this.getIteration(tenantId, id);
+    const current = await this.getIteration(actor.workspaceId, id);
+    // Per-project check against THIS iteration's project.
+    await this.accessService.assertProjectPermission(actor, current.projectId, PERMISSION.ITERATION_MANAGE);
 
     // Team must remain linked to the iteration's project.
     if (input.teamId) {
-      await this.assertTeamLinked(tenantId, current.projectId, input.teamId);
+      await this.assertTeamLinked(actor.workspaceId, current.projectId, input.teamId);
     }
 
     // Validate the resulting date range (fall back to current values).
@@ -137,8 +142,9 @@ export class IterationsService {
 
   // ── Delete ────────────────────────────────────────────────────────────────
 
-  async deleteIteration(tenantId: string, id: string): Promise<void> {
-    const iteration = await this.getIteration(tenantId, id);
+  async deleteIteration(actor: JwtPayload, id: string): Promise<void> {
+    const iteration = await this.getIteration(actor.workspaceId, id);
+    await this.accessService.assertProjectPermission(actor, iteration.projectId, PERMISSION.ITERATION_MANAGE);
     if (iteration.state !== 'planning') {
       throw new PreconditionFailedException(
         'ITERATION_NOT_PLANNING',
@@ -151,8 +157,9 @@ export class IterationsService {
 
   // ── Commit (planning → committed) ───────────────────────────────────────────
 
-  async commitIteration(tenantId: string, id: string): Promise<Iteration> {
-    const iteration = await this.getIteration(tenantId, id);
+  async commitIteration(actor: JwtPayload, id: string): Promise<Iteration> {
+    const iteration = await this.getIteration(actor.workspaceId, id);
+    await this.accessService.assertProjectPermission(actor, iteration.projectId, PERMISSION.ITERATION_MANAGE);
 
     if (iteration.state !== 'planning') {
       throw new PreconditionFailedException(
@@ -177,11 +184,13 @@ export class IterationsService {
   // ── Accept (committed → accepted) — moves unfinished items out ──────────────
 
   async acceptIteration(
-    tenantId: string,
+    actor: JwtPayload,
     id: string,
     opts: { moveToIterationId?: string } = {},
   ): Promise<Iteration> {
-    const iteration = await this.getIteration(tenantId, id);
+    const workspaceId = actor.workspaceId;
+    const iteration = await this.getIteration(workspaceId, id);
+    await this.accessService.assertProjectPermission(actor, iteration.projectId, PERMISSION.ITERATION_MANAGE);
 
     if (iteration.state !== 'committed') {
       throw new PreconditionFailedException(
@@ -192,7 +201,7 @@ export class IterationsService {
 
     // Validate the carry-over target belongs to the same project.
     if (opts.moveToIterationId) {
-      const target = await this.getIteration(tenantId, opts.moveToIterationId);
+      const target = await this.getIteration(workspaceId, opts.moveToIterationId);
       if (target.projectId !== iteration.projectId) {
         throw new PreconditionFailedException(
           'ITERATION_PROJECT_MISMATCH',
@@ -217,7 +226,7 @@ export class IterationsService {
     if (doneStatusIds.length > 0) {
       const whereConditions = [
         eq(workItems.iterationId, id),
-        eq(workItems.tenantId, tenantId),
+        eq(workItems.workspaceId, workspaceId),
         isNull(workItems.deletedAt),
         ...(doneStatusIds.length === 1
           ? [ne(workItems.statusId, doneStatusIds[0])]
@@ -256,11 +265,11 @@ export class IterationsService {
   }
 
   private async assertTeamLinked(
-    tenantId: string,
+    workspaceId: string,
     projectId: string,
     teamId: string,
   ): Promise<void> {
-    const links = await this.projectsService.listProjectTeams(tenantId, projectId);
+    const links = await this.projectsService.listProjectTeams(workspaceId, projectId);
     const linked = links.some((l) => l.teamId === teamId && l.status === 'active');
     if (!linked) {
       throw new PreconditionFailedException(

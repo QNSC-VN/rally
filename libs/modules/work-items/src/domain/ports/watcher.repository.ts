@@ -3,12 +3,12 @@ import type { Watcher } from '../watcher.types';
 export const WATCHER_REPOSITORY = Symbol('WATCHER_REPOSITORY');
 
 export interface IWatcherRepository {
-  listByWorkItem(workItemId: string, tenantId: string): Promise<Watcher[]>;
+  listByWorkItem(workItemId: string, workspaceId: string): Promise<Watcher[]>;
 
   isWatching(workItemId: string, userId: string): Promise<boolean>;
 
   /** No-op (idempotent) if the user is already watching. */
-  watch(workItemId: string, userId: string, tenantId: string): Promise<void>;
+  watch(workItemId: string, userId: string, workspaceId: string): Promise<void>;
 
   /** No-op (idempotent) if the user is not watching. */
   unwatch(workItemId: string, userId: string): Promise<void>;
@@ -17,7 +17,7 @@ export interface IWatcherRepository {
   watchMany(
     workItemId: string,
     userIds: string[],
-    tenantId: string,
+    workspaceId: string,
   ): Promise<void>;
 
   /** Returns user IDs of all watchers — used for notification fan-out. */

@@ -7,7 +7,7 @@ export interface IProjectTeamRepository {
   listByProject(projectId: string): Promise<ProjectTeamLink[]>;
   linkTeam(
     id: string,
-    tenantId: string,
+    workspaceId: string,
     projectId: string,
     teamId: string,
   ): Promise<ProjectTeamLink>;

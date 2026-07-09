@@ -4,7 +4,7 @@ export const LABEL_REPOSITORY = Symbol('LABEL_REPOSITORY');
 
 export interface ILabelRepository {
   findById(id: string): Promise<Label | null>;
-  listByProject(projectId: string, tenantId: string): Promise<Label[]>;
+  listByProject(projectId: string, workspaceId: string): Promise<Label[]>;
   create(input: CreateLabelInput): Promise<Label>;
   update(id: string, input: UpdateLabelInput): Promise<Label>;
   delete(id: string): Promise<void>;

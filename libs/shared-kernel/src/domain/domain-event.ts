@@ -3,7 +3,7 @@ import { generateId } from '../ids/uuid';
 /**
  * Base DomainEvent interface.
  * All events are versioned contracts — payload shape must not change silently.
- * Carry tenant context for downstream consumer routing + RLS.
+ * Carry workspace context for downstream consumer routing.
  */
 export interface DomainEvent {
   readonly eventId: string;
@@ -12,7 +12,7 @@ export interface DomainEvent {
   readonly occurredAt: Date;
   readonly aggregateType: string;
   readonly aggregateId: string;
-  readonly tenantId: string;
+  readonly workspaceId: string;
   readonly payload: Record<string, unknown>;
 }
 
@@ -25,7 +25,7 @@ export abstract class BaseDomainEvent implements DomainEvent {
     readonly version: number,
     readonly aggregateType: string,
     readonly aggregateId: string,
-    readonly tenantId: string,
+    readonly workspaceId: string,
     readonly payload: Record<string, unknown>,
   ) {
     this.eventId = generateId();

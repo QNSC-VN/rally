@@ -32,13 +32,13 @@ export class IterationDrizzleRepository implements IIterationRepository {
 
   async listByProject(
     projectId: string,
-    tenantId: string,
+    workspaceId: string,
     filters: IterationFilters,
     { limit, cursor }: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<Iteration>> {
     const conditions: SQL[] = [
       eq(iterations.projectId, projectId),
-      eq(iterations.tenantId, tenantId),
+      eq(iterations.workspaceId, workspaceId),
     ];
 
     if (filters.teamId) conditions.push(eq(iterations.teamId, filters.teamId));
@@ -73,13 +73,13 @@ export class IterationDrizzleRepository implements IIterationRepository {
     return buildPageResult(rows as Iteration[], limit, (i) => [i.createdAt.toISOString()]);
   }
 
-  async nextKeyNumber(projectId: string, tenantId: string): Promise<number> {
+  async nextKeyNumber(projectId: string, workspaceId: string): Promise<number> {
     // Count existing iterations for the project; next number = count + 1.
     // Uniqueness is enforced by uq_iterations_key; on collision the caller retries.
     const rows = await this.db
       .select({ n: sql<number>`count(*)::int` })
       .from(iterations)
-      .where(and(eq(iterations.projectId, projectId), eq(iterations.tenantId, tenantId)));
+      .where(and(eq(iterations.projectId, projectId), eq(iterations.workspaceId, workspaceId)));
     return (rows[0]?.n ?? 0) + 1;
   }
 
@@ -88,7 +88,7 @@ export class IterationDrizzleRepository implements IIterationRepository {
       .insert(iterations)
       .values({
         id: input.id,
-        tenantId: input.tenantId,
+        workspaceId: input.workspaceId,
         projectId: input.projectId,
         teamId: input.teamId ?? null,
         iterationKey: input.iterationKey ?? null,
@@ -132,12 +132,12 @@ export class IterationDrizzleRepository implements IIterationRepository {
 
   async listAssignmentOptions(
     projectId: string,
-    tenantId: string,
+    workspaceId: string,
     teamId?: string,
   ): Promise<IterationOption[]> {
     const conditions: SQL[] = [
       eq(iterations.projectId, projectId),
-      eq(iterations.tenantId, tenantId),
+      eq(iterations.workspaceId, workspaceId),
       inArray(iterations.state, ['planning', 'committed']),
     ];
     if (teamId) conditions.push(eq(iterations.teamId, teamId));

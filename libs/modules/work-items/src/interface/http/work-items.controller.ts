@@ -65,7 +65,7 @@ function numOrNull(v: string | null): number | null {
 function toWorkItemDto(w: WorkItem): WorkItemResponseDto {
   return {
     id: w.id,
-    tenantId: w.tenantId,
+    workspaceId: w.workspaceId,
     projectId: w.projectId,
     itemKey: w.itemKey,
     type: w.type,
@@ -261,7 +261,7 @@ export class WorkItemsController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<WorkItemResponseDto> {
-    const item = await this.workItemsService.getWorkItem(user.tenantId, id);
+    const item = await this.workItemsService.getWorkItem(user.workspaceId, id);
     return toWorkItemDto(item);
   }
 
@@ -342,7 +342,7 @@ export class WorkItemsController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<void> {
-    await this.workItemsService.deleteWorkItem(user.tenantId, id);
+    await this.workItemsService.deleteWorkItem(user.workspaceId, id);
   }
 
   // ── Move (board transition) ────────────────────────────────────────────────
@@ -374,7 +374,7 @@ export class WorkItemsController {
     @CurrentUser() user: JwtPayload,
     @Body() dto: ReorderWorkItemsDto,
   ): Promise<void> {
-    await this.workItemsService.reorderWorkItems(user.tenantId, dto.items);
+    await this.workItemsService.reorderWorkItems(user.workspaceId, dto.items);
   }
 
   // ── Rank (neighbour-based single-item reorder — P2-BL-05) ─────────────────
@@ -409,7 +409,7 @@ export class WorkItemsController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<WorkItemResponseDto[]> {
-    const tasks = await this.workItemsService.listTasks(user.tenantId, id);
+    const tasks = await this.workItemsService.listTasks(user.workspaceId, id);
     return tasks.map(toWorkItemDto);
   }
 
@@ -422,7 +422,7 @@ export class WorkItemsController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<TaskTotalsResponseDto> {
-    return this.workItemsService.getTaskTotals(user.tenantId, id);
+    return this.workItemsService.getTaskTotals(user.workspaceId, id);
   }
 
   @Post(':id/tasks')
@@ -461,7 +461,7 @@ export class WorkItemsController {
     @Query() query: ActivityQueryDto,
   ): Promise<{ data: ActivityResponseDto[]; total: number; page: number; pageSize: number }> {
     const { page, pageSize } = query;
-    const result = await this.workItemsService.getActivity(user.tenantId, id, {
+    const result = await this.workItemsService.getActivity(user.workspaceId, id, {
       limit: pageSize,
       offset: (page - 1) * pageSize,
     });
@@ -493,7 +493,7 @@ export class WorkItemsController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<Array<{ id: string; name: string; color: string }>> {
-    return this.workItemsService.getWorkItemLabels(user.tenantId, id);
+    return this.workItemsService.getWorkItemLabels(user.workspaceId, id);
   }
 
   @Post(':id/labels')
@@ -508,7 +508,7 @@ export class WorkItemsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: AddLabelDto,
   ): Promise<void> {
-    await this.workItemsService.addLabelToWorkItem(user.tenantId, id, dto.labelId);
+    await this.workItemsService.addLabelToWorkItem(user.workspaceId, id, dto.labelId);
   }
 
   @Delete(':id/labels/:labelId')
@@ -524,7 +524,7 @@ export class WorkItemsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Param('labelId', ParseUUIDPipe) labelId: string,
   ): Promise<void> {
-    await this.workItemsService.removeLabelFromWorkItem(user.tenantId, id, labelId);
+    await this.workItemsService.removeLabelFromWorkItem(user.workspaceId, id, labelId);
   }
 
   // ── Time Logs ───────────────────────────────────────────────────────────────
@@ -539,7 +539,7 @@ export class WorkItemsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Query() query: TimeLogQueryDto,
   ): Promise<{ items: TimeLogResponseDto[]; total: number }> {
-    const result = await this.workItemsService.listTimeLogs(user.tenantId, id, {
+    const result = await this.workItemsService.listTimeLogs(user.workspaceId, id, {
       page: query.page,
       pageSize: query.pageSize,
     });
@@ -614,7 +614,7 @@ export class WorkItemsController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<WatcherResponseDto[]> {
-    const watchers = await this.workItemsService.listWatchers(user.tenantId, id);
+    const watchers = await this.workItemsService.listWatchers(user.workspaceId, id);
     return watchers.map(toWatcherDto);
   }
 
@@ -692,7 +692,7 @@ export class WorkItemsController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<AttachmentResponseDto[]> {
-    const items = await this.workItemsService.listAttachments(user.tenantId, id);
+    const items = await this.workItemsService.listAttachments(user.workspaceId, id);
     return items.map(toAttachmentDto);
   }
 
@@ -707,7 +707,7 @@ export class WorkItemsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Param('aid', ParseUUIDPipe) aid: string,
   ): Promise<DownloadUrlResponseDto> {
-    return this.workItemsService.getAttachmentDownloadUrl(user.tenantId, id, aid);
+    return this.workItemsService.getAttachmentDownloadUrl(user.workspaceId, id, aid);
   }
 
   @Delete(':id/attachments/:aid')

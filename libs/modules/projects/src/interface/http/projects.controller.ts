@@ -12,7 +12,6 @@ import {
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
-  Auth,
   ApiCommonErrors,
   ApiPagedResponse,
   buildPageArgs,
@@ -20,6 +19,7 @@ import {
 } from '@platform';
 import type { JwtPayload, PagedResult } from '@platform';
 import { CurrentUser } from '@modules/identity';
+import { RequireProjectPermission, AuthProjectScoped } from '@modules/access';
 import { ProjectsService } from '../../application/projects.service';
 import {
   CreateProjectDto,
@@ -45,7 +45,6 @@ function toProjectDto(
 ): ProjectResponseDto {
   return {
     id: p.id,
-    tenantId: p.tenantId,
     workspaceId: p.workspaceId,
     key: p.key,
     name: p.name,
@@ -99,7 +98,10 @@ function toLabelDto(l: Label): LabelResponseDto {
 
 @ApiTags('projects')
 @Controller('projects')
-@Auth()
+// AuthProjectScoped bundles JwtAuth → Permission → ProjectPermission guards in
+// a guaranteed order. Flat @RequirePermission routes still work (the project
+// guard no-ops without @RequireProjectPermission metadata).
+@AuthProjectScoped()
 export class ProjectsController {
   constructor(private readonly projectsService: ProjectsService) {}
 
@@ -114,7 +116,7 @@ export class ProjectsController {
     @Query() query: ProjectQueryDto,
   ): Promise<PagedResult<ProjectResponseDto>> {
     const args = buildPageArgs(query);
-    const page = await this.projectsService.listProjects(user, query.workspaceId, args);
+    const page = await this.projectsService.listProjects(user, args);
     return { data: page.data.map(toProjectDto), pageInfo: page.pageInfo };
   }
 
@@ -131,7 +133,6 @@ export class ProjectsController {
   ): Promise<ProjectResponseDto> {
     const project = await this.projectsService.createProject(
       user,
-      dto.workspaceId,
       dto.key,
       dto.name,
       dto.description,
@@ -151,14 +152,14 @@ export class ProjectsController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<ProjectResponseDto> {
-    const project = await this.projectsService.getProject(user.tenantId, id);
+    const project = await this.projectsService.getProject(user.workspaceId, id);
     return toProjectDto(project);
   }
 
   // ── Update project ─────────────────────────────────────────────────────────
 
   @Patch(':id')
-  @RequirePermission('project:edit')
+  @RequireProjectPermission('project:edit')
   @ApiOperation({ summary: 'Update project' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: ProjectResponseDto })
@@ -175,7 +176,7 @@ export class ProjectsController {
   // ── Archive project ────────────────────────────────────────────────────────
 
   @Post(':id/archive')
-  @RequirePermission('project:archive')
+  @RequireProjectPermission('project:archive')
   @HttpCode(200)
   @ApiOperation({ summary: 'Archive a project (sets status to archived, becomes read-only)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -192,7 +193,7 @@ export class ProjectsController {
   // ── Restore project ────────────────────────────────────────────────────────
 
   @Post(':id/restore')
-  @RequirePermission('project:restore')
+  @RequireProjectPermission('project:restore')
   @HttpCode(200)
   @ApiOperation({ summary: 'Restore an archived project back to active' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -209,7 +210,7 @@ export class ProjectsController {
   // ── Delete project ─────────────────────────────────────────────────────────
 
   @Delete(':id')
-  @RequirePermission('project:delete')
+  @RequireProjectPermission('project:delete')
   @HttpCode(204)
   @ApiOperation({ summary: 'Delete project (soft delete)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -219,7 +220,7 @@ export class ProjectsController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<void> {
-    await this.projectsService.deleteProject(user.tenantId, id);
+    await this.projectsService.deleteProject(user.workspaceId, id);
   }
 
   // ── Workflow statuses ──────────────────────────────────────────────────────
@@ -233,7 +234,7 @@ export class ProjectsController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<WorkflowStatusResponseDto[]> {
-    const statuses = await this.projectsService.listStatuses(user.tenantId, id);
+    const statuses = await this.projectsService.listStatuses(user.workspaceId, id);
     return statuses.map(toStatusDto);
   }
 
@@ -248,7 +249,7 @@ export class ProjectsController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<WorkflowTransitionResponseDto[]> {
-    const transitions = await this.projectsService.listTransitions(user.tenantId, id);
+    const transitions = await this.projectsService.listTransitions(user.workspaceId, id);
     return transitions.map(toTransitionDto);
   }
   // ── Labels ──────────────────────────────────────────────────────────────
@@ -262,12 +263,12 @@ export class ProjectsController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<LabelResponseDto[]> {
-    const labelList = await this.projectsService.listLabels(user.tenantId, id);
+    const labelList = await this.projectsService.listLabels(user.workspaceId, id);
     return labelList.map(toLabelDto);
   }
 
   @Post(':id/labels')
-  @RequirePermission('project:edit')
+  @RequireProjectPermission('project:edit')
   @ApiOperation({ summary: 'Create a label for a project' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 201, type: LabelResponseDto })
@@ -277,12 +278,12 @@ export class ProjectsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CreateLabelDto,
   ): Promise<LabelResponseDto> {
-    const label = await this.projectsService.createLabel(user.tenantId, id, dto.name, dto.color);
+    const label = await this.projectsService.createLabel(user.workspaceId, id, dto.name, dto.color);
     return toLabelDto(label);
   }
 
   @Patch(':id/labels/:labelId')
-  @RequirePermission('project:edit')
+  @RequireProjectPermission('project:edit')
   @ApiOperation({ summary: 'Update a label' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiParam({ name: 'labelId', type: 'string', format: 'uuid' })
@@ -294,13 +295,13 @@ export class ProjectsController {
     @Param('labelId', ParseUUIDPipe) labelId: string,
     @Body() dto: UpdateLabelDto,
   ): Promise<LabelResponseDto> {
-    const label = await this.projectsService.updateLabel(user.tenantId, id, labelId, dto);
+    const label = await this.projectsService.updateLabel(user.workspaceId, id, labelId, dto);
     return toLabelDto(label);
   }
 
   @Delete(':id/labels/:labelId')
   @HttpCode(204)
-  @RequirePermission('project:edit')
+  @RequireProjectPermission('project:edit')
   @ApiOperation({ summary: 'Delete a label' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiParam({ name: 'labelId', type: 'string', format: 'uuid' })
@@ -311,7 +312,7 @@ export class ProjectsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Param('labelId', ParseUUIDPipe) labelId: string,
   ): Promise<void> {
-    await this.projectsService.deleteLabel(user.tenantId, id, labelId);
+    await this.projectsService.deleteLabel(user.workspaceId, id, labelId);
   }
 
   // ── Project Teams ─────────────────────────────────────────────────────────
@@ -321,11 +322,11 @@ export class ProjectsController {
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiCommonErrors(401, 404)
   async listProjectTeams(@CurrentUser() user: JwtPayload, @Param('id', ParseUUIDPipe) id: string) {
-    return this.projectsService.listProjectTeams(user.tenantId, id);
+    return this.projectsService.listProjectTeams(user.workspaceId, id);
   }
 
   @Post(':id/teams')
-  @RequirePermission('project:edit')
+  @RequireProjectPermission('project:edit')
   @ApiOperation({ summary: 'Link a team to a project' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiCommonErrors(400, 401, 404, 409, 422)
@@ -334,12 +335,12 @@ export class ProjectsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: { teamId: string },
   ) {
-    return this.projectsService.linkTeam(user.tenantId, id, dto.teamId);
+    return this.projectsService.linkTeam(user.workspaceId, id, dto.teamId);
   }
 
   @Delete(':id/teams/:teamId')
   @HttpCode(204)
-  @RequirePermission('project:edit')
+  @RequireProjectPermission('project:edit')
   @ApiOperation({ summary: 'Unlink a team from a project' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiParam({ name: 'teamId', type: 'string', format: 'uuid' })
@@ -350,7 +351,7 @@ export class ProjectsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Param('teamId', ParseUUIDPipe) teamId: string,
   ): Promise<void> {
-    await this.projectsService.unlinkTeam(user.tenantId, id, teamId);
+    await this.projectsService.unlinkTeam(user.workspaceId, id, teamId);
   }
 
   // ── Project Members ───────────────────────────────────────────────────────
@@ -363,11 +364,11 @@ export class ProjectsController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    return this.projectsService.listProjectMembers(user.tenantId, id);
+    return this.projectsService.listProjectMembers(user.workspaceId, id);
   }
 
   @Post(':id/members')
-  @RequirePermission('project:manage_members')
+  @RequireProjectPermission('project:manage_members')
   @ApiOperation({ summary: 'Add a member to a project' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiCommonErrors(400, 401, 404, 409, 422)
@@ -376,11 +377,11 @@ export class ProjectsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: { userId: string; roleId?: string },
   ) {
-    return this.projectsService.addProjectMember(user.tenantId, id, dto.userId, dto.roleId);
+    return this.projectsService.addProjectMember(user.workspaceId, id, dto.userId, dto.roleId);
   }
 
   @Patch(':id/members/:memberId')
-  @RequirePermission('project:manage_members')
+  @RequireProjectPermission('project:manage_members')
   @ApiOperation({ summary: 'Update a project member role/status' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiParam({ name: 'memberId', type: 'string', format: 'uuid' })
@@ -391,12 +392,12 @@ export class ProjectsController {
     @Param('memberId', ParseUUIDPipe) memberId: string,
     @Body() dto: UpdateProjectMemberDto,
   ) {
-    return this.projectsService.updateProjectMember(user.tenantId, id, memberId, dto);
+    return this.projectsService.updateProjectMember(user.workspaceId, id, memberId, dto);
   }
 
   @Delete(':id/members/:userId')
   @HttpCode(204)
-  @RequirePermission('project:manage_members')
+  @RequireProjectPermission('project:manage_members')
   @ApiOperation({ summary: 'Remove a member from a project' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiParam({ name: 'userId', type: 'string', format: 'uuid' })
@@ -407,6 +408,6 @@ export class ProjectsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Param('userId', ParseUUIDPipe) userId: string,
   ): Promise<void> {
-    await this.projectsService.removeProjectMember(user.tenantId, id, userId);
+    await this.projectsService.removeProjectMember(user.workspaceId, id, userId);
   }
 }

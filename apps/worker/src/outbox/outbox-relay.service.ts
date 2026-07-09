@@ -27,7 +27,7 @@ type OutboxEventRow = {
   eventType: string;
   aggregateType: string;
   aggregateId: string;
-  tenantId: string;
+  workspaceId: string;
   payload: unknown;
   occurredAt: Date;
   attempts: number;
@@ -87,7 +87,7 @@ export class OutboxRelayService
         eventType: outboxEvents.eventType,
         aggregateType: outboxEvents.aggregateType,
         aggregateId: outboxEvents.aggregateId,
-        tenantId: outboxEvents.tenantId,
+        workspaceId: outboxEvents.workspaceId,
         payload: outboxEvents.payload,
         occurredAt: outboxEvents.occurredAt,
         attempts: outboxEvents.attempts,
@@ -115,7 +115,7 @@ export class OutboxRelayService
             eventType: row.eventType,
             aggregateType: row.aggregateType,
             aggregateId: row.aggregateId,
-            tenantId: row.tenantId,
+            workspaceId: row.workspaceId,
             payload: row.payload,
             occurredAt: row.occurredAt,
           }),
@@ -128,9 +128,9 @@ export class OutboxRelayService
               DataType: 'String',
               StringValue: row.aggregateType,
             },
-            tenantId: {
+            workspaceId: {
               DataType: 'String',
-              StringValue: row.tenantId,
+              StringValue: row.workspaceId,
             },
           },
         }),

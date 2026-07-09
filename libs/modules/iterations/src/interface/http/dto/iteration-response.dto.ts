@@ -4,7 +4,7 @@ import { iterationStateEnum } from '../../../../../../../db/schema/enums';
 
 export const IterationResponseSchema = z.object({
   id: z.string().uuid(),
-  tenantId: z.string().uuid(),
+  workspaceId: z.string().uuid(),
   projectId: z.string().uuid(),
   teamId: z.string().uuid().nullable(),
   iterationKey: z.string().nullable(),

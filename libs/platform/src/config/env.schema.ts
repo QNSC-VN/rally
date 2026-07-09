@@ -95,10 +95,6 @@ export const EnvSchema = z.object({
   // Resilience
   RESILIENCE_ENABLED: booleanish(true),
 
-  // Rate limiting (per-user sliding window)
-  RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
-  RATE_LIMIT_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
-
   // TTL knobs — defaults match SRS but allow ops to tune without code change
   PASSWORD_RESET_TOKEN_TTL_HOURS: z.coerce.number().int().positive().default(1),
   INVITATION_TTL_DAYS: z.coerce.number().int().positive().default(7),
@@ -109,11 +105,6 @@ export const EnvSchema = z.object({
   // Leave unset (default) to disable SSO and use email/password only.
   ENTRA_TENANT_ID: z.string().optional(),
   ENTRA_CLIENT_ID: z.string().optional(),
-  /**
-   * Rally tenant UUID to use for JIT-provisioned SSO users whose email doesn't
-   * match any existing Rally user. Required for SSO in fresh/greenfield installs.
-   */
-  ENTRA_DEFAULT_TENANT_ID: z.string().uuid().optional(),
 
   // ── Break-glass super admin ────────────────────────────────────────────────
   /**

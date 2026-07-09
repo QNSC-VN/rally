@@ -13,6 +13,16 @@ const BASE = ENV.API_BASE_URL
 
 let _bootstrapPromise: Promise<void> | null = null
 
+/** Read the double-submit CSRF token from the readable cookie (same as http-client). */
+function getCsrfToken(): string | null {
+  return (
+    document.cookie
+      .split('; ')
+      .find((c) => c.startsWith('csrf_token='))
+      ?.split('=')[1] ?? null
+  )
+}
+
 export function bootstrapAuth(): Promise<void> {
   if (_bootstrapPromise) return _bootstrapPromise
   _bootstrapPromise = _run()
@@ -24,10 +34,16 @@ async function _run(): Promise<void> {
   setLoading(true)
   try {
     // ── Step 1: Try to restore session from httpOnly refresh-token cookie ─────
+    // The refresh endpoint enforces the double-submit CSRF check, so send the
+    // csrf_token cookie value as the x-csrf-token header (same as http-client).
+    // Without it the cold-start session restore 401s and the user is bounced to
+    // login even with a valid refresh cookie.
+    const csrf = getCsrfToken()
     const refreshRes = await fetch(`${BASE}/v1/auth/refresh`, {
       method: 'POST',
       credentials: 'include',
       referrerPolicy: 'no-referrer',
+      headers: csrf ? { 'x-csrf-token': csrf } : undefined,
     })
 
     if (refreshRes.ok) {
@@ -100,9 +116,9 @@ async function _finalizeSession(accessToken: string, expiresIn?: number): Promis
     createdAt: string
     updatedAt: string
     memberships: {
-      tenantId: string
-      tenantName: string
-      tenantSlug: string
+      workspaceId: string
+      name: string
+      slug: string
       lastActiveAt: string | null
       roleSlug: string | null
       roleName: string | null

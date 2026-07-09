@@ -31,6 +31,8 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { BRAND } from '@/shared/config/brand'
+import { PERMISSION, type Permission } from '@/shared/config/permissions'
+import type { ComponentType } from 'react'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
@@ -55,30 +57,41 @@ import { Textarea } from '@/shared/ui/textarea'
 
 // ── Tab config (mirrors mockup SettingsPage.tsx) ──────────────────────────────
 
-const SIDEBAR = [
+// `requires`: the permission the tab's underlying API actually enforces, so FE
+// gating and backend authorization agree. null = always available. Codes come
+// from the shared catalogue (mirrored in shared/config/permissions.ts).
+type SettingsTab = {
+  key: string
+  label: string
+  icon: ComponentType<{ size?: number | string; style?: React.CSSProperties }>
+  requires: Permission | null
+}
+type SettingsGroup = { group: string; items: SettingsTab[] }
+
+const SIDEBAR: SettingsGroup[] = [
   {
     group: 'Personal',
     items: [
-      { key: 'profile', label: 'Profile & Account', icon: UserCheck, gated: false },
-      { key: 'notifications', label: 'Notification Preferences', icon: Bell, gated: false },
+      { key: 'profile', label: 'Profile & Account', icon: UserCheck, requires: null },
+      { key: 'notifications', label: 'Notification Preferences', icon: Bell, requires: null },
     ],
   },
   {
     group: 'Project',
     items: [
-      { key: 'project', label: 'Project Settings', icon: SlidersHorizontal, gated: true },
-      { key: 'workflow', label: 'Workflow Status', icon: Activity, gated: true },
-      { key: 'labels', label: 'Labels', icon: Tag, gated: true },
+      { key: 'project', label: 'Project Settings', icon: SlidersHorizontal, requires: PERMISSION.PROJECT_EDIT },
+      { key: 'workflow', label: 'Workflow Status', icon: Activity, requires: PERMISSION.PROJECT_EDIT },
+      { key: 'labels', label: 'Labels', icon: Tag, requires: PERMISSION.PROJECT_EDIT },
     ],
   },
   {
     group: 'Workspace',
     items: [
-      { key: 'workspace', label: 'Workspace Settings', icon: Globe, gated: true },
-      { key: 'members', label: 'User Management', icon: Users, gated: true },
-      { key: 'teams', label: 'Teams', icon: UsersRound, gated: true },
-      { key: 'roles', label: 'Roles & Permissions', icon: Shield, gated: true },
-      { key: 'audit', label: 'Audit Log', icon: FileText, gated: true },
+      { key: 'workspace', label: 'Workspace Settings', icon: Globe, requires: PERMISSION.WORKSPACE_VIEW },
+      { key: 'members', label: 'User Management', icon: Users, requires: PERMISSION.WORKSPACE_MANAGE_MEMBERS },
+      { key: 'teams', label: 'Teams', icon: UsersRound, requires: PERMISSION.WORKSPACE_MANAGE_TEAMS },
+      { key: 'roles', label: 'Roles & Permissions', icon: Shield, requires: PERMISSION.WORKSPACE_MANAGE_MEMBERS },
+      { key: 'audit', label: 'Audit Log', icon: FileText, requires: PERMISSION.WORKSPACE_ALL },
     ],
   },
 ]
@@ -1491,9 +1504,9 @@ function ComingSoonTab({ label }: { label: string }) {
 export function SettingsPage() {
   const [activeTab, setActiveTab] = useState('profile')
   const { hasPermission } = useAuthStore()
-  // Workspace admins (workspace:*) can navigate to gated tabs (shows Coming Soon)
-  // Non-admins see gated tabs as locked
-  const isAdmin = hasPermission('workspace:*')
+  // Each tab is gated on the exact permission its API enforces, so what the FE
+  // shows matches what the backend allows. hasPermission handles the workspace:*
+  // and namespace wildcards, so an admin still sees everything.
 
   const allItems = SIDEBAR.flatMap((g) => g.items)
   const activeLabel = allItems.find((i) => i.key === activeTab)?.label ?? 'Settings'
@@ -1516,8 +1529,8 @@ export function SettingsPage() {
             {group.items.map((item) => {
               const Icon = item.icon
               const isActive = activeTab === item.key
-              // Gated items: admin can click (gets coming-soon), non-admin is locked
-              const locked = item.gated && !isAdmin
+              // Locked when the tab requires a permission the user doesn't hold.
+              const locked = item.requires !== null && !hasPermission(item.requires)
               const clickable = !locked
               return (
                 <button

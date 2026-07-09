@@ -146,13 +146,25 @@ function DetailsTab({
 
 // ── Tasks tab ─────────────────────────────────────────────────────────────────
 
-const TASK_GRID = '44px 72px 1fr 140px 170px 60px 60px 80px'
+// TASK-FR-003: columns Rank, ID, Name, State, Owner, Project, Teams, To Do, Actuals, Estimate.
+const TASK_GRID = '44px 56px 72px 1fr 130px 150px 110px 120px 60px 60px 80px'
+const TASK_COLS = ['', 'Rank', 'ID', 'Name', 'State', 'Owner', 'Project', 'Teams', 'To Do', 'Actuals', 'Estimate']
 
-function TasksTab({ workItemId }: { workItemId: string }) {
+function TasksTab({ workItemId, projectId }: { workItemId: string; projectId: string }) {
   const { data: tasks = [], isLoading } = useTasks(workItemId)
   const { data: totals } = useTaskTotals(workItemId)
+  // Tasks inherit their parent's project; team/owner names are resolved for display.
+  const { data: teams = [] } = useProjectTeams(projectId)
+  const { data: members = [] } = useProjectMembers(projectId)
+  const { project } = useAppContext()
+  const projectLabel = project?.projectKey ?? project?.projectName ?? '—'
   const [showAdd, setShowAdd] = useState(false)
   const navigate = useNavigate()
+
+  const teamName = (id?: string | null) =>
+    id ? (teams.find((t) => t.id === id)?.name ?? '—') : '—'
+  const ownerName = (id?: string | null) =>
+    id ? (members.find((m) => m.userId === id)?.displayName ?? '—') : '—'
 
   function openTask(task: WorkItem) {
     void navigate({ to: '/item/$itemKey', params: { itemKey: task.itemKey } })
@@ -186,7 +198,7 @@ function TasksTab({ workItemId }: { workItemId: string }) {
         </div>
       ) : (
         <div className="overflow-x-auto rounded bg-white" style={{ border: '1px solid #dde2ea' }}>
-          <div style={{ minWidth: 900 }}>
+          <div style={{ minWidth: 1180 }}>
             {/* Header row */}
             <div
               className="grid h-10 items-center"
@@ -196,20 +208,18 @@ function TasksTab({ workItemId }: { workItemId: string }) {
                 borderBottom: '2px solid #9fb4d1',
               }}
             >
-              {['', 'ID', 'Name', 'State', 'Owner', 'To Do', 'Actuals', 'Estimate'].map(
-                (col, i) => (
-                  <span
-                    key={i}
-                    className="flex h-full items-center px-3 text-[12px] font-semibold"
-                    style={{
-                      color: '#1f2937',
-                      borderRight: i < 7 ? '1px dashed #8c99ad' : undefined,
-                    }}
-                  >
-                    {col}
-                  </span>
-                ),
-              )}
+              {TASK_COLS.map((col, i) => (
+                <span
+                  key={i}
+                  className="flex h-full items-center px-3 text-[12px] font-semibold"
+                  style={{
+                    color: '#1f2937',
+                    borderRight: i < TASK_COLS.length - 1 ? '1px dashed #8c99ad' : undefined,
+                  }}
+                >
+                  {col}
+                </span>
+              ))}
             </div>
 
             {/* Totals row */}
@@ -224,7 +234,10 @@ function TasksTab({ workItemId }: { workItemId: string }) {
                 }}
               >
                 <span />
+                <span />
                 <span className="px-3">Totals</span>
+                <span />
+                <span />
                 <span />
                 <span />
                 <span />
@@ -270,6 +283,9 @@ function TasksTab({ workItemId }: { workItemId: string }) {
                     onClick={(e) => e.stopPropagation()}
                   />
                 </div>
+                <span className="px-3 font-mono text-[11px]" style={{ color: '#5c6478' }}>
+                  {task.rank ?? '—'}
+                </span>
                 <span
                   className="px-3 font-mono text-[11px] hover:underline"
                   style={{ color: '#2558a6' }}
@@ -281,8 +297,13 @@ function TasksTab({ workItemId }: { workItemId: string }) {
                   <TaskStateBadge state={task.scheduleState} />
                 </span>
                 <span className="truncate px-3" style={{ color: '#5c6478' }}>
-                  {/* assigneeName from API expansion (future) */}
-                  {'—'}
+                  {ownerName(task.assigneeId)}
+                </span>
+                <span className="truncate px-3" style={{ color: '#5c6478' }}>
+                  {projectLabel}
+                </span>
+                <span className="truncate px-3" style={{ color: '#5c6478' }}>
+                  {teamName(task.teamId)}
                 </span>
                 <span className="px-3 text-right font-mono">
                   {task.todoHours != null ? `${task.todoHours}h` : '—'}
@@ -952,7 +973,9 @@ export function WorkItemDetailPage() {
               readOnly={readOnly}
             />
           )}
-          {activeTab === 'tasks' && !isTask && <TasksTab workItemId={item.id} />}
+          {activeTab === 'tasks' && !isTask && (
+            <TasksTab workItemId={item.id} projectId={item.projectId} />
+          )}
           {activeTab === 'history' && <HistoryTab workItemId={item.id} />}
         </main>
 

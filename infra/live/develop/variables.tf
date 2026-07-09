@@ -3,10 +3,16 @@ variable "acm_cert_arn" {
   description = "ACM certificate ARN for the ALB HTTPS listener (ap-southeast-1)"
 }
 
-variable "web_acm_cert_arn" {
+variable "cloudflare_account_id" {
   type        = string
-  description = "ACM certificate ARN for CloudFront (MUST be in us-east-1)"
+  default     = ""
+  description = <<-EOT
+    Cloudflare account ID that owns the Pages project (account-level input, not
+    a secret). Pass via TF_VAR_cloudflare_account_id in CI. Leave empty to skip
+    the web module while the Cloudflare account is not yet wired.
+  EOT
 }
+
 
 variable "entra_tenant_id" {
   type        = string

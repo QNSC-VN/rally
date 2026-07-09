@@ -4,12 +4,12 @@ import { setAccessToken } from '@/shared/api/http-client'
 import { queryClient } from '@/shared/api/query-client'
 import { ENV } from '@/shared/config/env'
 
-export interface TenantMembership {
-  tenantId: string
-  tenantName: string
-  tenantSlug: string
+export interface WorkspaceMembership {
+  workspaceId: string
+  name: string
+  slug: string
   lastActiveAt: string | null
-  /** User's primary role slug in this tenant, e.g. 'workspace_admin'. Null when no assignment exists. */
+  /** User's primary role slug in this workspace, e.g. 'workspace_admin'. Null when no assignment exists. */
   roleSlug: string | null
   /** Human-readable role name, e.g. 'Workspace Admin'. */
   roleName: string | null
@@ -31,16 +31,16 @@ export interface AuthUser {
 
 interface AuthState {
   user: AuthUser | null
-  memberships: TenantMembership[]
-  activeTenantId: string | null
+  memberships: WorkspaceMembership[]
+  activeWorkspaceId: string | null
   isAuthenticated: boolean
   isLoading: boolean
-  isSwitchingTenant: boolean
+  isSwitchingWorkspace: boolean
 
-  setUser: (user: AuthUser, accessToken: string, memberships?: TenantMembership[]) => void
+  setUser: (user: AuthUser, accessToken: string, memberships?: WorkspaceMembership[]) => void
   clearAuth: () => void
   setLoading: (loading: boolean) => void
-  switchTenant: (tenantId: string) => Promise<void>
+  switchWorkspace: (workspaceId: string) => Promise<void>
 
   /** True if the user has the given permission code in their current role. */
   hasPermission: (code: string) => boolean
@@ -51,15 +51,15 @@ const API = ENV.API_BASE_URL
 export const useAuthStore = create<AuthState>()(devtools((set, get) => ({
   user: null,
   memberships: [],
-  activeTenantId: null,
+  activeWorkspaceId: null,
   isAuthenticated: false,
   isLoading: true,
-  isSwitchingTenant: false,
+  isSwitchingWorkspace: false,
 
   setUser: (user, accessToken, memberships = []) => {
     setAccessToken(accessToken)
-    const activeTenantId = memberships[0]?.tenantId ?? null
-    set({ user, memberships, activeTenantId, isAuthenticated: true, isLoading: false })
+    const activeWorkspaceId = memberships[0]?.workspaceId ?? null
+    set({ user, memberships, activeWorkspaceId, isAuthenticated: true, isLoading: false })
   },
 
   clearAuth: () => {
@@ -67,7 +67,7 @@ export const useAuthStore = create<AuthState>()(devtools((set, get) => ({
     set({
       user: null,
       memberships: [],
-      activeTenantId: null,
+      activeWorkspaceId: null,
       isAuthenticated: false,
       isLoading: false,
     })
@@ -75,14 +75,14 @@ export const useAuthStore = create<AuthState>()(devtools((set, get) => ({
 
   setLoading: (isLoading) => set({ isLoading }),
 
-  switchTenant: async (tenantId: string) => {
-    const { activeTenantId } = get()
-    if (tenantId === activeTenantId) return
+  switchWorkspace: async (workspaceId: string) => {
+    const { activeWorkspaceId } = get()
+    if (workspaceId === activeWorkspaceId) return
 
-    set({ isSwitchingTenant: true })
+    set({ isSwitchingWorkspace: true })
     try {
       const { getAccessToken, scheduleProactiveRefresh } = await import('@/shared/api/http-client')
-      const res = await fetch(`${API}/v1/auth/switch-tenant`, {
+      const res = await fetch(`${API}/v1/auth/switch-workspace`, {
         method: 'POST',
         credentials: 'include',
         referrerPolicy: 'no-referrer',
@@ -90,7 +90,7 @@ export const useAuthStore = create<AuthState>()(devtools((set, get) => ({
           'Content-Type': 'application/json',
           Authorization: `Bearer ${getAccessToken()}`,
         },
-        body: JSON.stringify({ tenantId }),
+        body: JSON.stringify({ workspaceId }),
       })
 
       if (!res.ok) throw new Error('Switch failed')
@@ -104,15 +104,15 @@ export const useAuthStore = create<AuthState>()(devtools((set, get) => ({
       if (expiresIn) scheduleProactiveRefresh(expiresIn)
       queryClient.clear()
 
-      // Re-order memberships so switched tenant is first
+      // Re-order memberships so switched workspace is first
       const { memberships } = get()
       const reordered = [
-        ...memberships.filter((m) => m.tenantId === tenantId),
-        ...memberships.filter((m) => m.tenantId !== tenantId),
+        ...memberships.filter((m) => m.workspaceId === workspaceId),
+        ...memberships.filter((m) => m.workspaceId !== workspaceId),
       ]
-      set({ activeTenantId: tenantId, memberships: reordered })
+      set({ activeWorkspaceId: workspaceId, memberships: reordered })
     } finally {
-      set({ isSwitchingTenant: false })
+      set({ isSwitchingWorkspace: false })
     }
   },
 

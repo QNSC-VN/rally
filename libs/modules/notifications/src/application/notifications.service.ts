@@ -21,7 +21,7 @@ export class NotificationsService {
     unreadOnly: boolean,
     limit = 50,
   ): Promise<Notification[]> {
-    return this.notificationRepo.listForRecipient(actor.tenantId, actor.sub, unreadOnly, limit);
+    return this.notificationRepo.listForRecipient(actor.workspaceId, actor.sub, unreadOnly, limit);
   }
 
   async markRead(actor: JwtPayload, notificationId: string): Promise<void> {
@@ -33,11 +33,11 @@ export class NotificationsService {
   }
 
   async markAllRead(actor: JwtPayload): Promise<void> {
-    await this.notificationRepo.markAllRead(actor.tenantId, actor.sub);
+    await this.notificationRepo.markAllRead(actor.workspaceId, actor.sub);
   }
 
   async getUnreadCount(actor: JwtPayload): Promise<number> {
-    return this.notificationRepo.countUnread(actor.tenantId, actor.sub);
+    return this.notificationRepo.countUnread(actor.workspaceId, actor.sub);
   }
 
   /**
@@ -46,7 +46,7 @@ export class NotificationsService {
    * `Last-Event-ID` to replay events missed during the disconnected gap.
    */
   async listMissed(actor: JwtPayload, afterId: string, limit = 30): Promise<Notification[]> {
-    return this.notificationRepo.listSince(actor.tenantId, actor.sub, afterId, limit);
+    return this.notificationRepo.listSince(actor.workspaceId, actor.sub, afterId, limit);
   }
 
   /** Internal use — called by other services / event handlers to emit notifications. */

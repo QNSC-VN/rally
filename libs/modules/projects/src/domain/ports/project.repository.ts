@@ -9,21 +9,19 @@ import type {
 export const PROJECT_REPOSITORY = Symbol('PROJECT_REPOSITORY');
 
 export interface IProjectRepository {
-  findById(id: string, tenantId: string): Promise<Project | null>;
-  findByKey(tenantId: string, key: string): Promise<Project | null>;
+  findById(id: string, workspaceId: string): Promise<Project | null>;
+  findByKey(workspaceId: string, key: string): Promise<Project | null>;
   listByWorkspace(
     workspaceId: string,
-    tenantId: string,
     args: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<Project>>;
   listByWorkspaceWithStats(
     workspaceId: string,
-    tenantId: string,
     args: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<ProjectWithStats>>;
   create(input: CreateProjectInput, tx?: DbExecutor): Promise<Project>;
-  update(id: string, input: UpdateProjectInput, tenantId: string): Promise<Project>;
-  softDelete(id: string, tenantId: string): Promise<void>;
-  initCounter(projectId: string, tenantId: string, tx?: DbExecutor): Promise<void>;
-  incrementCounter(projectId: string, tenantId: string): Promise<number>;
+  update(id: string, input: UpdateProjectInput, workspaceId: string): Promise<Project>;
+  softDelete(id: string, workspaceId: string): Promise<void>;
+  initCounter(projectId: string, workspaceId: string, tx?: DbExecutor): Promise<void>;
+  incrementCounter(projectId: string, workspaceId: string): Promise<number>;
 }

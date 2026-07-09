@@ -10,23 +10,23 @@ import type { ITimeLogRepository } from '../../domain/ports/time-log.repository'
 export class TimeLogDrizzleRepository implements ITimeLogRepository {
   constructor(@InjectDrizzle() private readonly db: DrizzleDB) {}
 
-  async findById(id: string, tenantId: string): Promise<TimeLog | null> {
+  async findById(id: string, workspaceId: string): Promise<TimeLog | null> {
     const rows = await this.db
       .select()
       .from(timeLogs)
-      .where(and(eq(timeLogs.id, id), eq(timeLogs.tenantId, tenantId), isNull(timeLogs.deletedAt)))
+      .where(and(eq(timeLogs.id, id), eq(timeLogs.workspaceId, workspaceId), isNull(timeLogs.deletedAt)))
       .limit(1);
     return (rows[0]) ?? null;
   }
 
   async listByWorkItem(
     workItemId: string,
-    tenantId: string,
+    workspaceId: string,
     { limit, offset }: { limit: number; offset: number },
   ): Promise<{ items: TimeLog[]; total: number }> {
     const condition = and(
       eq(timeLogs.workItemId, workItemId),
-      eq(timeLogs.tenantId, tenantId),
+      eq(timeLogs.workspaceId, workspaceId),
       isNull(timeLogs.deletedAt),
     );
 
@@ -49,7 +49,7 @@ export class TimeLogDrizzleRepository implements ITimeLogRepository {
       .insert(timeLogs)
       .values({
         id: input.id,
-        tenantId: input.tenantId,
+        workspaceId: input.workspaceId,
         workItemId: input.workItemId,
         userId: input.userId,
         loggedDate: input.loggedDate,

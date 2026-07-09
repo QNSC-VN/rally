@@ -45,7 +45,7 @@ import { users } from '../../../../db/schema/identity';
 
 type NotificationOutboxRow = {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   recipientId: string;
   actorId: string | null;
   type: string;
@@ -104,7 +104,7 @@ export class NotificationRelayService
     return tx
       .select({
         id: notificationOutbox.id,
-        tenantId: notificationOutbox.tenantId,
+        workspaceId: notificationOutbox.workspaceId,
         recipientId: notificationOutbox.recipientId,
         actorId: notificationOutbox.actorId,
         type: notificationOutbox.type,
@@ -139,7 +139,7 @@ export class NotificationRelayService
   protected async processRow(row: NotificationOutboxRow): Promise<PostCommitTask | void> {
     // Skip in-app delivery if user has opted out (preference check uses pool connection,
     // outside the FOR UPDATE SKIP LOCKED transaction — eventual consistency is acceptable).
-    const inAppEnabled = await this.prefs.isInAppEnabled(row.tenantId, row.recipientId, row.type);
+    const inAppEnabled = await this.prefs.isInAppEnabled(row.workspaceId, row.recipientId, row.type);
     if (!inAppEnabled) {
       this.logger.debug(
         { recipientId: row.recipientId, type: row.type },
@@ -154,7 +154,7 @@ export class NotificationRelayService
     );
 
     const notification = await this.notificationsService.send({
-      tenantId: row.tenantId,
+      workspaceId: row.workspaceId,
       recipientId: row.recipientId,
       actorId: row.actorId ?? undefined,
       type: row.type,
@@ -170,7 +170,7 @@ export class NotificationRelayService
     if (!notification) return; // deduplicated — no post-commit work needed
 
     // Check email preference outside the transaction (acceptable eventual consistency).
-    const emailEnabled = await this.prefs.isEmailEnabled(row.tenantId, row.recipientId, row.type);
+    const emailEnabled = await this.prefs.isEmailEnabled(row.workspaceId, row.recipientId, row.type);
 
     return async () => {
       // 1. SSE real-time push via Valkey.

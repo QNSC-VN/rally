@@ -7,7 +7,7 @@ export type { WorkItemType, WorkItemPriority, WorkItemScheduleState };
 
 export interface WorkItem {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   projectId: string;
   itemKey: string;
   type: WorkItemType;
@@ -56,7 +56,7 @@ export interface WorkItemFilters {
 
 export interface CreateWorkItemInput {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   projectId: string;
   itemKey: string;
   type: WorkItemType;

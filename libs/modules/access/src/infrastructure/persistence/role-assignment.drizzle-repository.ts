@@ -10,11 +10,11 @@ import { IRoleAssignmentRepository } from '../../domain/ports/role-assignment.re
 export class RoleAssignmentDrizzleRepository implements IRoleAssignmentRepository {
   constructor(@InjectDrizzle() private readonly db: DrizzleDB) {}
 
-  async findById(id: string, tenantId: string): Promise<UserRoleAssignment | null> {
+  async findById(id: string, workspaceId: string): Promise<UserRoleAssignment | null> {
     const rows = await this.db
       .select()
       .from(userRoleAssignments)
-      .where(and(eq(userRoleAssignments.id, id), eq(userRoleAssignments.tenantId, tenantId)))
+      .where(and(eq(userRoleAssignments.id, id), eq(userRoleAssignments.workspaceId, workspaceId)))
       .limit(1);
     return (rows[0]) ?? null;
   }
@@ -24,13 +24,13 @@ export class RoleAssignmentDrizzleRepository implements IRoleAssignmentRepositor
     roleId: string,
     scopeType: ScopeType,
     scopeId: string | null,
-    tenantId: string,
+    workspaceId: string,
   ): Promise<UserRoleAssignment | null> {
     const conditions = [
       eq(userRoleAssignments.userId, userId),
       eq(userRoleAssignments.roleId, roleId),
       eq(userRoleAssignments.scopeType, scopeType),
-      eq(userRoleAssignments.tenantId, tenantId),
+      eq(userRoleAssignments.workspaceId, workspaceId),
     ];
 
     if (scopeId !== null) {
@@ -45,12 +45,12 @@ export class RoleAssignmentDrizzleRepository implements IRoleAssignmentRepositor
     return (rows[0]) ?? null;
   }
 
-  async listForUser(tenantId: string, userId: string): Promise<UserRoleAssignment[]> {
+  async listForUser(workspaceId: string, userId: string): Promise<UserRoleAssignment[]> {
     const rows = await this.db
       .select()
       .from(userRoleAssignments)
       .where(
-        and(eq(userRoleAssignments.tenantId, tenantId), eq(userRoleAssignments.userId, userId)),
+        and(eq(userRoleAssignments.workspaceId, workspaceId), eq(userRoleAssignments.userId, userId)),
       );
     return rows;
   }
@@ -60,7 +60,7 @@ export class RoleAssignmentDrizzleRepository implements IRoleAssignmentRepositor
       .insert(userRoleAssignments)
       .values({
         id: input.id,
-        tenantId: input.tenantId,
+        workspaceId: input.workspaceId,
         userId: input.userId,
         roleId: input.roleId,
         scopeType: input.scopeType,

@@ -1,6 +1,6 @@
 export interface Label {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   projectId: string;
   name: string;
   color: string;
@@ -10,7 +10,7 @@ export interface Label {
 
 export interface CreateLabelInput {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   projectId: string;
   name: string;
   color?: string;

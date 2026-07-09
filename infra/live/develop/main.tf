@@ -1,4 +1,5 @@
 terraform {
+  required_version = ">= 1.9"
   required_providers {
     aws        = { source = "hashicorp/aws", version = "~> 5.0" }
     cloudflare = { source = "cloudflare/cloudflare", version = "~> 4.0" }
@@ -66,29 +67,30 @@ locals {
   ecr_api_url      = "${local.ecr_base}/rally-api:latest"
   ecr_worker_url   = "${local.ecr_base}/rally-worker:latest"
   ecr_migrator_url = "${local.ecr_base}/rally-migrator:latest"
+
+  # Dev cache: a Valkey sidecar per task (localhost:6379) instead of a shared
+  # ElastiCache node — $0 in dev. Each task gets its own in-task instance
+  # (accepted dev tradeoff); prod uses the shared runtime-prod cache node.
+  valkey_sidecar = {
+    name         = "valkey"
+    image        = "valkey/valkey:8-alpine"
+    essential    = false
+    portMappings = [{ containerPort = 6379, protocol = "tcp" }]
+    environment  = []
+  }
 }
 
-# ── Networking ────────────────────────────────────────────────────────────────
-module "network" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/network?ref=network-v1.1.2"
-
-  name   = local.name
-  region = local.region
-  azs    = local.azs
-
-  enable_interface_endpoints = false # dev: NAT covers egress — save ~$22/mo
-
-  vpc_cidr             = "10.10.0.0/16"
-  public_subnet_cidrs  = ["10.10.0.0/24", "10.10.1.0/24", "10.10.2.0/24"]
-  private_subnet_cidrs = ["10.10.10.0/24", "10.10.11.0/24", "10.10.12.0/24"]
-  data_subnet_cidrs    = ["10.10.20.0/24", "10.10.21.0/24", "10.10.22.0/24"]
-
-  nat_type          = "instance" # dev: fck-nat t4g.nano ~$3/mo vs NAT GW ~$33/mo
-  app_port          = 3000
-  enable_flow_logs  = false                 # dev: no compliance requirement — save ~$4/mo
-  alb_ingress_cidrs = local.cloudflare_ipv4 # lock ALB to Cloudflare orange-cloud proxy IPs (matches prod)
-
-  tags = { Environment = local.env }
+# ── Shared runtime layer (VPC + NAT + ALB) ────────────────────────────────────
+# Option A: the VPC/NAT/ALB now live once per env in qnsc-infra/live/runtime-dev
+# and are shared by every product. This stack consumes them via remote state
+# instead of creating its own. RDS + Fargate stay per-product below.
+data "terraform_remote_state" "runtime" {
+  backend = "s3"
+  config = {
+    bucket = "qnsc-tofu-state"
+    key    = "platform/runtime-dev/terraform.tfstate"
+    region = "ap-southeast-1"
+  }
 }
 
 # ── Secrets (scaffolding only — fill values in Secrets Manager console) ───────
@@ -104,10 +106,9 @@ module "secrets" {
 
   secret_names = {
     "db-url"      = "PostgreSQL connection URL for the app"
-    "jwt-private" = "Ed25519 private key (PEM, base64-encoded)"
-    "jwt-public"  = "Ed25519 public key (PEM, base64-encoded)"
+    "jwt-private" = "EC P-256 (ES256) private key (PEM, base64-encoded)"
+    "jwt-public"  = "EC P-256 (ES256) public key (PEM, base64-encoded)"
     "csrf-secret" = "CSRF token signing secret"
-    "redis-url"   = "Redis/Valkey connection URL"
   }
 
   tags = { Environment = local.env }
@@ -118,8 +119,8 @@ module "rds" {
   source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/rds?ref=rds-v1.1.0"
 
   identifier        = local.name
-  subnet_ids        = module.network.data_subnet_ids
-  security_group_id = module.network.sg_rds_id
+  subnet_ids        = data.terraform_remote_state.runtime.outputs.data_subnet_ids
+  security_group_id = data.terraform_remote_state.runtime.outputs.sg_rds_id
   kms_key_arn       = local.kms_key_arn
 
   instance_class           = "db.t4g.micro"
@@ -133,18 +134,9 @@ module "rds" {
   tags = { Environment = local.env, AutoStop = "true" }
 }
 
-# ── ElastiCache Valkey ────────────────────────────────────────────────────────
-module "cache" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/cache?ref=cache-v1.0.0"
-
-  name              = local.name
-  subnet_ids        = module.network.data_subnet_ids
-  security_group_id = module.network.sg_cache_id
-
-  mode = "node" # dev: single small node (~$11/mo) vs serverless ~$90 floor
-
-  tags = { Environment = local.env }
-}
+# ── Cache ─────────────────────────────────────────────────────────────────────
+# Dev has no ElastiCache node — each Fargate task runs a Valkey sidecar at
+# localhost:6379 (see local.valkey_sidecar, wired into module.api/worker).
 
 # ── Messaging (SQS + SNS) ─────────────────────────────────────────────────────
 module "messaging" {
@@ -171,20 +163,9 @@ module "messaging" {
   tags = { Environment = local.env }
 }
 
-# ── ALB (shared module: LB + HTTPS/HTTP listener pair) ───────────────────────
-module "alb" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/alb?ref=alb-v1.0.0"
-
-  name               = local.name
-  security_group_ids = [module.network.sg_alb_id]
-  subnet_ids         = module.network.public_subnet_ids
-  certificate_arn    = var.acm_cert_arn
-
-  enable_deletion_protection = false # dev: easy teardown
-  # no access_logs_bucket in dev
-
-  tags = { Environment = local.env }
-}
+# ── ALB ───────────────────────────────────────────────────────────────────────
+# The ALB is shared and lives in runtime-dev. module.api attaches a host-header
+# listener rule (rally-api-dev.qnsc.vn, priority 100) to its HTTPS listener.
 
 # ── ECS Cluster ───────────────────────────────────────────────────────────────
 module "ecs_cluster" {
@@ -195,7 +176,7 @@ module "ecs_cluster" {
 
 # ── ECS Service — API ─────────────────────────────────────────────────────────
 module "api" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v1.1.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v1.3.0"
 
   service_name = "api"
   cluster_name = module.ecs_cluster.cluster_name
@@ -206,9 +187,9 @@ module "api" {
   cpu    = 512
   memory = 1024
 
-  vpc_id            = module.network.vpc_id
-  subnet_ids        = module.network.private_subnet_ids
-  security_group_id = module.network.sg_app_id
+  vpc_id            = data.terraform_remote_state.runtime.outputs.vpc_id
+  subnet_ids        = data.terraform_remote_state.runtime.outputs.private_subnet_ids
+  security_group_id = data.terraform_remote_state.runtime.outputs.sg_app_id
 
   desired_count      = 1
   min_count          = 1
@@ -217,16 +198,19 @@ module "api" {
   log_retention_days = 7    # dev: 7 days sufficient for debugging
 
   attach_alb        = true
-  alb_listener_arn  = module.alb.https_listener_arn
+  alb_listener_arn  = data.terraform_remote_state.runtime.outputs.https_listener_arn
   alb_priority      = 100
   alb_path_patterns = ["/*"]
+  alb_host_headers  = ["rally-api-dev.qnsc.vn"] # host-based routing on the shared ALB
   health_check_path = "/v1/healthz"
+
+  # Dev Valkey sidecar (localhost:6379) — replaces the ElastiCache node.
+  additional_containers = [local.valkey_sidecar]
 
   secret_arns = values(module.secrets.secret_arns)
   kms_key_arn = local.kms_key_arn
   secrets = [
     { name = "DATABASE_URL", secret_arn = module.secrets.secret_arns["db-url"] },
-    { name = "REDIS_URL", secret_arn = module.secrets.secret_arns["redis-url"] },
     { name = "JWT_PRIVATE_KEY", secret_arn = module.secrets.secret_arns["jwt-private"] },
     { name = "JWT_PUBLIC_KEY", secret_arn = module.secrets.secret_arns["jwt-public"] },
     { name = "CSRF_SECRET", secret_arn = module.secrets.secret_arns["csrf-secret"] },
@@ -235,8 +219,9 @@ module "api" {
   environment_vars = [
     { name = "NODE_ENV", value = "production" },
     { name = "PORT", value = "3000" },
+    { name = "REDIS_URL", value = "redis://localhost:6379" }, # dev: Valkey sidecar
     { name = "AWS_REGION", value = local.region },
-    { name = "CORS_ORIGINS", value = "https://rally-dev.qnsc.vn,https://${module.cdn.cloudfront_domain}" },
+    { name = "CORS_ORIGINS", value = "https://rally-dev.qnsc.vn" },
     { name = "APP_BASE_URL", value = "https://rally-dev.qnsc.vn" },
     # JWT config — defaults match app .env.example; override if needed
     { name = "JWT_ISSUER", value = "rally-api" },
@@ -255,7 +240,7 @@ module "api" {
     { name = "SQS_SEARCH_URL", value = module.messaging.queue_urls["search"] },
     { name = "SNS_TOPIC_ARN", value = module.messaging.topic_arns["domain-events"] },
     # S3 attachments bucket
-    { name = "S3_ATTACHMENTS_BUCKET", value = aws_s3_bucket.attachments.bucket },
+    { name = "S3_ATTACHMENTS_BUCKET", value = module.app_bucket.bucket },
     # Email — SES in production
     { name = "EMAIL_PROVIDER", value = "ses" },
     # Observability
@@ -273,7 +258,7 @@ module "api" {
 
 # ── ECS Service — Worker ──────────────────────────────────────────────────────
 module "worker" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v1.1.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v1.3.0"
 
   service_name = "worker"
   cluster_name = module.ecs_cluster.cluster_name
@@ -284,9 +269,9 @@ module "worker" {
   cpu    = 256
   memory = 512
 
-  vpc_id            = module.network.vpc_id
-  subnet_ids        = module.network.private_subnet_ids
-  security_group_id = module.network.sg_app_id
+  vpc_id            = data.terraform_remote_state.runtime.outputs.vpc_id
+  subnet_ids        = data.terraform_remote_state.runtime.outputs.private_subnet_ids
+  security_group_id = data.terraform_remote_state.runtime.outputs.sg_app_id
 
   desired_count      = 1
   min_count          = 1
@@ -300,11 +285,13 @@ module "worker" {
   health_check_command = "pgrep -x node || exit 1"
   container_port       = 3001
 
+  # Dev Valkey sidecar (localhost:6379) — worker has its own in-task cache.
+  additional_containers = [local.valkey_sidecar]
+
   secret_arns = values(module.secrets.secret_arns)
   kms_key_arn = local.kms_key_arn
   secrets = [
     { name = "DATABASE_URL", secret_arn = module.secrets.secret_arns["db-url"] },
-    { name = "REDIS_URL", secret_arn = module.secrets.secret_arns["redis-url"] },
     { name = "JWT_PRIVATE_KEY", secret_arn = module.secrets.secret_arns["jwt-private"] },
     { name = "JWT_PUBLIC_KEY", secret_arn = module.secrets.secret_arns["jwt-public"] },
     # Shared schema requires CSRF_SECRET even though the worker never uses it as middleware
@@ -313,13 +300,14 @@ module "worker" {
 
   environment_vars = [
     { name = "NODE_ENV", value = "production" },
+    { name = "REDIS_URL", value = "redis://localhost:6379" }, # dev: Valkey sidecar
     { name = "AWS_REGION", value = local.region },
     { name = "SQS_NOTIFICATIONS_URL", value = module.messaging.queue_urls["notifications"] },
     { name = "SQS_AUDIT_URL", value = module.messaging.queue_urls["audit"] },
     { name = "SQS_REPORTING_URL", value = module.messaging.queue_urls["reporting"] },
     { name = "SQS_SEARCH_URL", value = module.messaging.queue_urls["search"] },
     { name = "SNS_TOPIC_ARN", value = module.messaging.topic_arns["domain-events"] },
-    { name = "S3_ATTACHMENTS_BUCKET", value = aws_s3_bucket.attachments.bucket },
+    { name = "S3_ATTACHMENTS_BUCKET", value = module.app_bucket.bucket },
     { name = "EMAIL_PROVIDER", value = "ses" },
     { name = "LOG_LEVEL", value = "info" },
     { name = "LOG_PRETTY", value = "false" },
@@ -334,43 +322,22 @@ module "worker" {
 }
 
 # ── S3 — Attachments bucket ───────────────────────────────────────────────────
-resource "aws_s3_bucket" "attachments" {
-  bucket = "${local.name}-attachments"
-  tags   = { Name = "${local.name}-attachments", Environment = local.env }
-}
+module "app_bucket" {
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/app-bucket?ref=app-bucket-v1.0.0"
 
-resource "aws_s3_bucket_public_access_block" "attachments" {
-  bucket                  = aws_s3_bucket.attachments.id
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
-}
+  name          = "${local.name}-attachments"
+  kms_key_arn   = local.kms_key_arn
+  force_destroy = true # dev: attachments are ephemeral, allow clean teardown
 
-resource "aws_s3_bucket_server_side_encryption_configuration" "attachments" {
-  bucket = aws_s3_bucket.attachments.id
-  rule {
-    apply_server_side_encryption_by_default {
-      sse_algorithm     = "aws:kms"
-      kms_master_key_id = local.kms_key_arn
-    }
-    bucket_key_enabled = true
-  }
-}
-
-resource "aws_s3_bucket_cors_configuration" "attachments" {
-  bucket = aws_s3_bucket.attachments.id
-  cors_rule {
+  cors_rules = [{
     allowed_headers = ["Content-Type", "Content-Disposition"]
     allowed_methods = ["PUT"]
-    allowed_origins = [
-      "https://rally-dev.qnsc.vn",
-      "https://${module.cdn.cloudfront_domain}",
-      "http://localhost:5173",
-    ]
+    allowed_origins = ["https://rally-dev.qnsc.vn", "http://localhost:5173"]
     expose_headers  = ["ETag"]
     max_age_seconds = 3600
-  }
+  }]
+
+  tags = { Environment = local.env }
 }
 
 # ── Migrator (one-shot, run manually or via CI) ───────────────────────────────
@@ -407,57 +374,27 @@ module "migrator" {
   tags = { Environment = local.env, Service = "migrator" }
 }
 
-module "waf" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/waf?ref=waf-v1.0.1"
+# ── WAF: not used in dev. In prod the WebACL lives in runtime-prod and is
+# associated with the shared ALB there. ───────────────────────────────────────
 
-  name                = local.name
-  enabled             = false # WAF skipped in develop — saves $5+/month per WebACL; enabled in prod
-  alb_arn             = module.alb.arn
-  rate_limit_per_5min = 1000
+# ── Web SPA — Cloudflare Pages (zero-egress, native SPA routing) ─────────────
+# Replaces the deprecated S3 + CloudFront (cdn) stack. Content is deployed from
+# CI with `wrangler pages deploy apps/web/dist`. The API has its own edge — the
+# SPA calls https://rally-api-dev.qnsc.vn directly (VITE_API_URL baked at build
+# time), which is Cloudflare-proxied → ALB. Same-site under qnsc.vn, so cookies
+# + CORS work cleanly. Pages provisions the project + custom domain + proxied
+# CNAME. Gated on cloudflare_account_id so the stack still applies before the
+# Cloudflare account is wired.
+module "web" {
+  count  = var.cloudflare_account_id != "" ? 1 : 0
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/pages-web?ref=pages-web-v1.0.0"
 
-  tags = { Environment = local.env }
-}
-
-# ── CDN (S3 + CloudFront) — rally-web SPA ─────────────────────────────────────
-# Prerequisites:
-#   1. Create an ACM cert for the web domain in us-east-1 (CloudFront requirement)
-#   2. Pass its ARN as web_acm_cert_arn in your tfvars
-#   3. After apply: set S3_BUCKET + CLOUDFRONT_ID as GitHub env vars for rally-web
-module "cdn" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/cdn?ref=cdn-v1.1.0"
-
-  name         = "rally-web-develop"
-  aliases      = ["rally-dev.qnsc.vn"]
-  acm_cert_arn = var.web_acm_cert_arn # *.qnsc.vn wildcard cert in us-east-1
-  price_class  = "PriceClass_100"     # develop: US/EU PoPs only — cheaper than PriceClass_200
-
-  # CloudFront serves the SPA only. The API has its own edge — the SPA calls
-  # https://rally-api-dev.qnsc.vn directly (VITE_API_URL), which is Cloudflare-
-  # proxied → ALB. Same-site under qnsc.vn, so cookies + CORS work cleanly.
-
-  # Dev: allow the web bucket to be destroyed with SPA build artifacts still in
-  # it (they're ephemeral and re-deployable) so teardown is clean.
-  force_destroy = true
-
-  tags = { Environment = local.env, Service = "web" }
-}
-
-# ── DNS — rally-dev.qnsc.vn → CloudFront (shared dns-record module) ──────────
-# Zone ID comes from qnsc-infra bootstrap (via _shared remote state), the same
-# single-source-of-truth pattern as kms_key_arn. Only the subdomain is
-# rally-specific. Created only when the zone ID is present, so the stack applies
-# cleanly before DNS is wired. Terraform owns the record lifecycle → teardown
-# removes it → no stale CNAME to collide with the CloudFront alias on rebuild.
-module "dns_web" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/dns-record?ref=dns-record-v1.0.0"
-
-  enabled = local.cloudflare_zone_id != ""
-  zone_id = local.cloudflare_zone_id
-  name    = "rally-dev"
-  type    = "CNAME"
-  content = module.cdn.cloudfront_domain
-  proxied = false # web SPA served by CloudFront directly — no double-CDN
-  comment = "rally-develop web SPA → CloudFront (managed by rally-infra develop)"
+  account_id  = var.cloudflare_account_id
+  name        = "rally-develop-web"
+  zone_id     = local.cloudflare_zone_id
+  domain      = local.cloudflare_zone_id != "" ? "rally-dev.qnsc.vn" : ""
+  record_name = local.cloudflare_zone_id != "" ? "rally-dev" : ""
+  comment     = "rally-develop web SPA → Cloudflare Pages (managed by rally-infra develop)"
 }
 
 # ── DNS — rally-api-dev.qnsc.vn → ALB (Cloudflare-proxied edge) ──────────────
@@ -468,13 +405,13 @@ module "dns_web" {
 # rally-api-dev.qnsc.vn. The api ECS service already attaches its /* forward
 # rule to that HTTPS listener (see module.api.alb_listener_arn).
 module "dns_api" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/dns-record?ref=dns-record-v1.0.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/dns-record?ref=dns-record-v1.1.0"
 
   enabled = local.cloudflare_zone_id != ""
   zone_id = local.cloudflare_zone_id
   name    = "rally-api-dev"
   type    = "CNAME"
-  content = module.alb.dns_name
+  content = data.terraform_remote_state.runtime.outputs.alb_dns_name
   proxied = true # orange cloud: shield the ALB, edge WAF/DDoS at Cloudflare
   comment = "rally-develop API → ALB via Cloudflare proxy (managed by rally-infra develop)"
 }
@@ -482,7 +419,7 @@ module "dns_api" {
 # ── Dev cost saver: stop RDS + scale ECS to 0 off-hours ───────────────────────
 # Acts on resources tagged AutoStop=true (rds, api, worker above).
 module "dev_scheduler" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/dev-scheduler?ref=dev-scheduler-v1.0.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/dev-scheduler?ref=dev-scheduler-v1.1.0"
   name   = local.name
   tags   = { Environment = local.env }
 }

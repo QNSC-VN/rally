@@ -1,6 +1,6 @@
 export interface SprintSnapshot {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   sprintId: string;
   snapshotDate: string; // YYYY-MM-DD
   totalPoints: number;
