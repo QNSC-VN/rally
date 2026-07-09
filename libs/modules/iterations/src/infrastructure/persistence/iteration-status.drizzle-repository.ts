@@ -16,7 +16,7 @@ import {
 export class IterationStatusDrizzleRepository implements IIterationStatusRepository {
   constructor(@InjectDrizzle() private readonly db: DrizzleDB) {}
 
-  async getMetrics(iterationId: string, tenantId: string): Promise<RawIterationMetrics> {
+  async getMetrics(iterationId: string, workspaceId: string): Promise<RawIterationMetrics> {
     // Single pass over the iteration's non-deleted items. story_points is a
     // nullable integer; sums coalesce to 0. 'accepted' uses the schedule_state
     // maturity dimension per SRS §8.
@@ -31,7 +31,7 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
       .where(
         and(
           eq(workItems.iterationId, iterationId),
-          eq(workItems.tenantId, tenantId),
+          eq(workItems.workspaceId, workspaceId),
           isNull(workItems.deletedAt),
         ),
       );
@@ -47,7 +47,7 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
 
   async listItems(
     iterationId: string,
-    tenantId: string,
+    workspaceId: string,
     filters: IterationStatusFilters,
     { limit, cursor }: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<IterationStatusItem>> {
@@ -55,7 +55,7 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
     // iteration. Tasks roll up into their parent's Task Est / To Do columns.
     const conditions: SQL[] = [
       eq(workItems.iterationId, iterationId),
-      eq(workItems.tenantId, tenantId),
+      eq(workItems.workspaceId, workspaceId),
       isNull(workItems.deletedAt),
       inArray(workItems.type, ['story', 'defect']),
     ];

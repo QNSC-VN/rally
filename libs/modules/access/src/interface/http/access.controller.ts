@@ -20,7 +20,7 @@ import type { SystemRole, UserRoleAssignment } from '../../domain/access.types';
 function toRoleDto(r: SystemRole): RoleResponseDto {
   return {
     id: r.id,
-    tenantId: r.tenantId,
+    workspaceId: r.workspaceId,
     name: r.name,
     slug: r.slug,
     description: r.description,
@@ -33,7 +33,7 @@ function toRoleDto(r: SystemRole): RoleResponseDto {
 function toAssignmentDto(a: UserRoleAssignment): RoleAssignmentResponseDto {
   return {
     id: a.id,
-    tenantId: a.tenantId,
+    workspaceId: a.workspaceId,
     userId: a.userId,
     roleId: a.roleId,
     scopeType: a.scopeType,
@@ -56,7 +56,7 @@ export class AccessController {
   @ApiResponse({ status: 200, type: [RoleResponseDto] })
   @ApiCommonErrors(401)
   async listRoles(@CurrentUser() user: JwtPayload): Promise<RoleResponseDto[]> {
-    const roles = await this.accessService.listRoles(user.tenantId);
+    const roles = await this.accessService.listRoles(user.workspaceId);
     return roles.map(toRoleDto);
   }
 
@@ -71,7 +71,7 @@ export class AccessController {
     @CurrentUser() user: JwtPayload,
     @Param('userId', ParseUUIDPipe) userId: string,
   ): Promise<RoleAssignmentResponseDto[]> {
-    const assignments = await this.accessService.getUserAssignments(user.tenantId, userId);
+    const assignments = await this.accessService.getUserAssignments(user.workspaceId, userId);
     return assignments.map(toAssignmentDto);
   }
 

@@ -1,6 +1,6 @@
 export interface Attachment {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   workItemId: string;
   uploadedBy: string;
   filename: string;
@@ -14,7 +14,7 @@ export interface Attachment {
 
 export interface CreateAttachmentInput {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   workItemId: string;
   uploadedBy: string;
   filename: string;

@@ -30,6 +30,6 @@ export class AuditService {
     limit = 50,
     offset = 0,
   ): Promise<PagedResult<AuditLog>> {
-    return this.auditRepo.listForTenant(actor.tenantId, filters, { limit, offset });
+    return this.auditRepo.listForWorkspace(actor.workspaceId, filters, { limit, offset });
   }
 }

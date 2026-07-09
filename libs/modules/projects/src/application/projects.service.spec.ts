@@ -21,8 +21,7 @@ const now = new Date('2024-06-01');
 
 const mockProject = (o: Partial<Project> = {}): Project => ({
   id: 'proj-1',
-  tenantId: 'tenant-1',
-  workspaceId: 'ws-1',
+  workspaceId: 'tenant-1',
   key: 'PROJ',
   name: 'Test Project',
   description: null,
@@ -37,7 +36,7 @@ const mockProject = (o: Partial<Project> = {}): Project => ({
 
 const mockStatus = (o: Partial<WorkflowStatus> = {}): WorkflowStatus => ({
   id: 'status-1',
-  tenantId: 'tenant-1',
+  workspaceId: 'tenant-1',
   projectId: 'proj-1',
   name: 'To Do',
   category: 'to_do',
@@ -50,7 +49,7 @@ const mockStatus = (o: Partial<WorkflowStatus> = {}): WorkflowStatus => ({
 
 const mockActor = {
   sub: 'user-1',
-  tenantId: 'tenant-1',
+  workspaceId: 'tenant-1',
   sessionId: 's1',
   jti: 'j1',
   iat: 0,
@@ -166,7 +165,7 @@ describe('ProjectsService', () => {
       projectRepo.create.mockResolvedValue(mockProject());
       statusRepo.create.mockResolvedValue(mockStatus());
 
-      const result = await service.createProject(mockActor, 'ws-1', 'proj', 'Test Project');
+      const result = await service.createProject(mockActor, 'proj', 'Test Project');
 
       expect(result.key).toBe('PROJ');
       expect(projectRepo.create).toHaveBeenCalledWith(
@@ -181,7 +180,7 @@ describe('ProjectsService', () => {
       projectRepo.create.mockResolvedValue(mockProject({ key: 'MYKEY' }));
       statusRepo.create.mockResolvedValue(mockStatus());
 
-      await service.createProject(mockActor, 'ws-1', 'mykey', 'My Project');
+      await service.createProject(mockActor, 'mykey', 'My Project');
 
       expect(projectRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({ key: 'MYKEY' }),
@@ -192,7 +191,7 @@ describe('ProjectsService', () => {
     it('throws ConflictException when key is already taken', async () => {
       projectRepo.findByKey.mockResolvedValue(mockProject());
 
-      await expect(service.createProject(mockActor, 'ws-1', 'PROJ', 'Duplicate')).rejects.toThrow(
+      await expect(service.createProject(mockActor, 'PROJ', 'Duplicate')).rejects.toThrow(
         ConflictException,
       );
     });
@@ -213,7 +212,7 @@ describe('ProjectsService', () => {
     });
 
     it('throws NotFoundException when tenant mismatch', async () => {
-      projectRepo.findById.mockResolvedValue(mockProject({ tenantId: 'other-tenant' }));
+      projectRepo.findById.mockResolvedValue(mockProject({ workspaceId: 'other-tenant' }));
       await expect(service.getProject('tenant-1', 'proj-1')).rejects.toThrow(NotFoundException);
     });
 

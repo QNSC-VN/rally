@@ -25,8 +25,8 @@ export class ReleasesService {
     projectId: string,
     args: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<Release>> {
-    await this.projectsService.getProject(actor.tenantId, projectId);
-    return this.releaseRepo.listByProject(projectId, actor.tenantId, args);
+    await this.projectsService.getProject(actor.workspaceId, projectId);
+    return this.releaseRepo.listByProject(projectId, actor.workspaceId, args);
   }
 
   // ── Create ────────────────────────────────────────────────────────────────
@@ -37,11 +37,11 @@ export class ReleasesService {
     name: string,
     opts: { description?: string; targetDate?: string } = {},
   ): Promise<Release> {
-    await this.projectsService.getProject(actor.tenantId, projectId);
+    await this.projectsService.getProject(actor.workspaceId, projectId);
 
     const release = await this.releaseRepo.create({
       id: uuidv7(),
-      tenantId: actor.tenantId,
+      workspaceId: actor.workspaceId,
       projectId,
       name,
       description: opts.description,
@@ -54,9 +54,9 @@ export class ReleasesService {
 
   // ── Get ───────────────────────────────────────────────────────────────────
 
-  async getRelease(tenantId: string, id: string): Promise<Release> {
+  async getRelease(workspaceId: string, id: string): Promise<Release> {
     const release = await this.releaseRepo.findById(id);
-    if (!release || release.tenantId !== tenantId) {
+    if (!release || release.workspaceId !== workspaceId) {
       throw new NotFoundException('RELEASE_NOT_FOUND', 'Release not found');
     }
     return release;
@@ -65,7 +65,7 @@ export class ReleasesService {
   // ── Update ────────────────────────────────────────────────────────────────
 
   async updateRelease(actor: JwtPayload, id: string, input: UpdateReleaseInput): Promise<Release> {
-    const release = await this.getRelease(actor.tenantId, id);
+    const release = await this.getRelease(actor.workspaceId, id);
     // Per-project check: the caller must hold release:manage for THIS release's project.
     await this.accessService.assertProjectPermission(actor, release.projectId, PERMISSION.RELEASE_MANAGE);
     return this.releaseRepo.update(id, input);
@@ -74,7 +74,7 @@ export class ReleasesService {
   // ── Delete ────────────────────────────────────────────────────────────────
 
   async deleteRelease(actor: JwtPayload, id: string): Promise<void> {
-    const release = await this.getRelease(actor.tenantId, id);
+    const release = await this.getRelease(actor.workspaceId, id);
     await this.accessService.assertProjectPermission(actor, release.projectId, PERMISSION.RELEASE_MANAGE);
     if (release.status === 'released') {
       throw new PreconditionFailedException(
@@ -89,7 +89,7 @@ export class ReleasesService {
   // ── Ship ─────────────────────────────────────────────────────────────────
 
   async shipRelease(actor: JwtPayload, id: string): Promise<Release> {
-    const release = await this.getRelease(actor.tenantId, id);
+    const release = await this.getRelease(actor.workspaceId, id);
     await this.accessService.assertProjectPermission(actor, release.projectId, PERMISSION.RELEASE_MANAGE);
     if (release.status === 'released') {
       throw new PreconditionFailedException('RELEASE_NOT_FOUND', 'Release has already shipped');

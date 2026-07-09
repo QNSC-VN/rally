@@ -18,7 +18,7 @@ const now = new Date('2024-06-01');
 
 const mockIteration = (o: Partial<Iteration> = {}): Iteration => ({
   id: 'it-1',
-  tenantId: 'tenant-1',
+  workspaceId: 'tenant-1',
   projectId: 'proj-1',
   teamId: null,
   iterationKey: 'IT-1',
@@ -36,7 +36,7 @@ const mockIteration = (o: Partial<Iteration> = {}): Iteration => ({
   ...o,
 });
 
-const actor = { sub: 'user-1', tenantId: 'tenant-1' } as never;
+const actor = { sub: 'user-1', workspaceId: 'tenant-1' } as never;
 
 describe('IterationsService', () => {
   let service: IterationsService;
@@ -192,7 +192,7 @@ describe('IterationsService', () => {
 
   describe('getIteration', () => {
     it('throws when not found or cross-tenant', async () => {
-      repo.findById.mockResolvedValue(mockIteration({ tenantId: 'other' }));
+      repo.findById.mockResolvedValue(mockIteration({ workspaceId: 'other' }));
       await expect(service.getIteration('tenant-1', 'it-1')).rejects.toBeInstanceOf(
         NotFoundException,
       );

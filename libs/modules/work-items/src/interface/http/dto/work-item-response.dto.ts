@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 export const WorkItemResponseSchema = z.object({
   id: z.string().uuid(),
-  tenantId: z.string().uuid(),
+  workspaceId: z.string().uuid(),
   projectId: z.string().uuid(),
   itemKey: z.string().describe('Sequential key e.g. PROJ-42'),
   type: z.string(),

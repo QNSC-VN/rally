@@ -100,7 +100,7 @@ export class ProjectPermissionGuard implements CanActivate {
 
     const effective = await this.accessService.getProjectPermissions(
       user.sub,
-      user.tenantId,
+      user.workspaceId,
       projectId,
     );
 

@@ -17,7 +17,7 @@ const now = new Date('2024-06-01');
 
 const mockWorkItem = (o: Partial<WorkItem> = {}): WorkItem => ({
   id: 'wi-1',
-  tenantId: 'tenant-1',
+  workspaceId: 'tenant-1',
   projectId: 'proj-1',
   itemKey: 'PROJ-1',
   type: 'story',
@@ -53,7 +53,7 @@ const mockWorkItem = (o: Partial<WorkItem> = {}): WorkItem => ({
 
 const mockActor = {
   sub: 'user-1',
-  tenantId: 'tenant-1',
+  workspaceId: 'tenant-1',
   sessionId: 's1',
   jti: 'j1',
   iat: 0,
@@ -66,7 +66,7 @@ const mockActor = {
 
 const mockStatus = (id: string, isDefault = false) => ({
   id,
-  tenantId: 'tenant-1',
+  workspaceId: 'tenant-1',
   projectId: 'proj-1',
   name: id,
   category: 'todo' as const,
@@ -110,7 +110,7 @@ const makeUnitOfWork = () => ({
 });
 
 const makeProjectsService = () => ({
-  getProject: vi.fn().mockResolvedValue({ id: 'proj-1', tenantId: 'tenant-1' }),
+  getProject: vi.fn().mockResolvedValue({ id: 'proj-1', workspaceId: 'tenant-1' }),
   listStatuses: vi
     .fn()
     .mockResolvedValue([mockStatus('status-todo', true), mockStatus('status-done')]),
@@ -230,7 +230,7 @@ describe('WorkItemsService', () => {
       expect(result.statusId).toBe('status-todo');
       expect(result.itemKey).toBe('PROJ-42');
       expect(workItemRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ statusId: 'status-todo', tenantId: 'tenant-1' }),
+        expect.objectContaining({ statusId: 'status-todo', workspaceId: 'tenant-1' }),
         expect.anything(),
       );
     });
@@ -290,7 +290,7 @@ describe('WorkItemsService', () => {
     });
 
     it('throws NotFoundException when tenant mismatch', async () => {
-      workItemRepo.findById.mockResolvedValue(mockWorkItem({ tenantId: 'other-tenant' }));
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ workspaceId: 'other-tenant' }));
       await expect(service.getWorkItem('tenant-1', 'wi-1')).rejects.toThrow(NotFoundException);
     });
 

@@ -97,7 +97,7 @@ export class WorkItemsService {
   ): CreateActivityLogInput {
     return {
       id: uuidv7(),
-      tenantId: item.tenantId,
+      workspaceId: item.workspaceId,
       projectId: item.projectId,
       // Anchor task entries to the parent so the item history shows them too.
       workItemId: entityType === 'task' ? (item.parentId ?? item.id) : item.id,
@@ -134,8 +134,8 @@ export class WorkItemsService {
     filters: WorkItemFilters,
     args: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<WorkItem>> {
-    await this.projectsService.getProject(actor.tenantId, projectId);
-    return this.workItemRepo.listByProject(projectId, actor.tenantId, filters, args);
+    await this.projectsService.getProject(actor.workspaceId, projectId);
+    return this.workItemRepo.listByProject(projectId, actor.workspaceId, filters, args);
   }
 
   /** Backlog list — story + defect only, server-side filter/search/pagination. */
@@ -145,8 +145,8 @@ export class WorkItemsService {
     filters: WorkItemFilters,
     args: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<WorkItem>> {
-    await this.projectsService.getProject(actor.tenantId, projectId);
-    return this.workItemRepo.listBacklog(projectId, actor.tenantId, filters, args);
+    await this.projectsService.getProject(actor.workspaceId, projectId);
+    return this.workItemRepo.listBacklog(projectId, actor.workspaceId, filters, args);
   }
 
   // ── Create ────────────────────────────────────────────────────────────────
@@ -159,7 +159,7 @@ export class WorkItemsService {
     title: string,
     opts: CreateWorkItemOpts = {},
   ): Promise<WorkItem> {
-    const project = await this.projectsService.getProject(actor.tenantId, projectId);
+    const project = await this.projectsService.getProject(actor.workspaceId, projectId);
 
     // P1-15: assignee must be an active workspace member
     if (opts.assigneeId) {
@@ -168,7 +168,7 @@ export class WorkItemsService {
 
     // P1-15: parentId must belong to the same project
     if (opts.parentId) {
-      const parent = await this.getWorkItem(actor.tenantId, opts.parentId);
+      const parent = await this.getWorkItem(actor.workspaceId, opts.parentId);
       if (parent.projectId !== projectId) {
         throw new PreconditionFailedException(
           'WORK_ITEM_PARENT_SCOPE_MISMATCH',
@@ -177,20 +177,20 @@ export class WorkItemsService {
       }
     }
 
-    const statusId = await this.resolveStatusId(actor.tenantId, projectId, opts.statusId);
+    const statusId = await this.resolveStatusId(actor.workspaceId, projectId, opts.statusId);
     if (opts.teamId) {
-      await this.assertTeamLinked(actor.tenantId, projectId, opts.teamId);
+      await this.assertTeamLinked(actor.workspaceId, projectId, opts.teamId);
     }
 
     // item_key reservation is atomic (advisory-locked counter). A failed insert
     // after this point only leaves a numbering gap, which is acceptable.
-    const itemKey = await this.projectsService.generateItemKey(actor.tenantId, projectId);
+    const itemKey = await this.projectsService.generateItemKey(actor.workspaceId, projectId);
 
     const workItem = await this.uow.run(async (tx) => {
       const created = await this.workItemRepo.create(
         {
           id: uuidv7(),
-          tenantId: actor.tenantId,
+          workspaceId: actor.workspaceId,
           projectId,
           itemKey,
           type,
@@ -242,7 +242,7 @@ export class WorkItemsService {
     if (workItem.assigneeId && workItem.assigneeId !== actor.sub) {
       autoWatchers.push(workItem.assigneeId);
     }
-    this.watcherRepo.watchMany(workItem.id, autoWatchers, actor.tenantId)
+    this.watcherRepo.watchMany(workItem.id, autoWatchers, actor.workspaceId)
       .catch((err: unknown) => {
         this.logger.warn(
           { err, workItemId: workItem.id, watchers: autoWatchers },
@@ -261,7 +261,7 @@ export class WorkItemsService {
     title: string,
     opts: Omit<CreateWorkItemOpts, 'parentId'> = {},
   ): Promise<WorkItem> {
-    const parent = await this.getWorkItem(actor.tenantId, parentId);
+    const parent = await this.getWorkItem(actor.workspaceId, parentId);
     if (parent.type === 'task') {
       throw new PreconditionFailedException(
         'WORK_ITEM_INVALID_PARENT_TYPE',
@@ -277,9 +277,9 @@ export class WorkItemsService {
 
   // ── Get ───────────────────────────────────────────────────────────────────
 
-  async getWorkItem(tenantId: string, id: string): Promise<WorkItem> {
-    const item = await this.workItemRepo.findById(id, tenantId);
-    if (!item || item.deletedAt || item.tenantId !== tenantId) {
+  async getWorkItem(workspaceId: string, id: string): Promise<WorkItem> {
+    const item = await this.workItemRepo.findById(id, workspaceId);
+    if (!item || item.deletedAt || item.workspaceId !== workspaceId) {
       throw new NotFoundException('WORK_ITEM_NOT_FOUND', 'Work item not found');
     }
     return item;
@@ -287,25 +287,25 @@ export class WorkItemsService {
 
   // ── Tasks (list + totals) ───────────────────────────────────────────────────
 
-  async listTasks(tenantId: string, parentId: string): Promise<WorkItem[]> {
-    await this.getWorkItem(tenantId, parentId);
-    return this.workItemRepo.listTasksByParent(parentId, tenantId);
+  async listTasks(workspaceId: string, parentId: string): Promise<WorkItem[]> {
+    await this.getWorkItem(workspaceId, parentId);
+    return this.workItemRepo.listTasksByParent(parentId, workspaceId);
   }
 
-  async getTaskTotals(tenantId: string, parentId: string): Promise<TaskTotals> {
-    await this.getWorkItem(tenantId, parentId);
-    return this.workItemRepo.getTaskTotals(parentId, tenantId);
+  async getTaskTotals(workspaceId: string, parentId: string): Promise<TaskTotals> {
+    await this.getWorkItem(workspaceId, parentId);
+    return this.workItemRepo.getTaskTotals(parentId, workspaceId);
   }
 
   // ── Activity (Revision History) ──────────────────────────────────────────────
 
   async getActivity(
-    tenantId: string,
+    workspaceId: string,
     workItemId: string,
     args: { limit: number; offset: number },
   ): Promise<{ items: ActivityLog[]; total: number }> {
-    await this.getWorkItem(tenantId, workItemId);
-    return this.activityRepo.listByWorkItem(workItemId, tenantId, args);
+    await this.getWorkItem(workspaceId, workItemId);
+    return this.activityRepo.listByWorkItem(workItemId, workspaceId, args);
   }
 
   // ── Update ────────────────────────────────────────────────────────────────
@@ -316,11 +316,11 @@ export class WorkItemsService {
     id: string,
     input: UpdateWorkItemInput,
   ): Promise<WorkItem> {
-    const item = await this.getWorkItem(actor.tenantId, id);
+    const item = await this.getWorkItem(actor.workspaceId, id);
 
     // P1-15: validate new assignee is an active workspace member
     if (input.assigneeId && input.assigneeId !== item.assigneeId) {
-      const project = await this.projectsService.getProject(actor.tenantId, item.projectId);
+      const project = await this.projectsService.getProject(actor.workspaceId, item.projectId);
       await this.projectsService.assertWorkspaceMember(project.workspaceId, input.assigneeId);
     }
 
@@ -344,17 +344,17 @@ export class WorkItemsService {
     // P2-BL-02: assignment scope validation — iteration must share the work
     // item's project/team; release must share its project. null unassigns.
     if (input.iterationId) {
-      await this.assertIterationAssignable(actor.tenantId, item, input.iterationId);
+      await this.assertIterationAssignable(actor.workspaceId, item, input.iterationId);
     }
     if (input.releaseId) {
-      await this.assertReleaseAssignable(actor.tenantId, item.projectId, input.releaseId);
+      await this.assertReleaseAssignable(actor.workspaceId, item.projectId, input.releaseId);
     }
 
     const isTask = item.type === 'task';
     const entries = diffWorkItem(item, input, isTask);
 
     return this.uow.run(async (tx) => {
-      const updated = await this.workItemRepo.update(id, { ...input, updatedBy: actor.sub }, actor.tenantId, tx);
+      const updated = await this.workItemRepo.update(id, { ...input, updatedBy: actor.sub }, actor.workspaceId, tx);
 
       // Build all diff entries then flush in ONE multi-row INSERT — avoids N
       // sequential round-trips for edits that touch multiple fields at once.
@@ -371,9 +371,9 @@ export class WorkItemsService {
   // ── Delete ────────────────────────────────────────────────────────────────
 
   @Span('work-items.delete')
-  async deleteWorkItem(tenantId: string, id: string): Promise<void> {
-    await this.getWorkItem(tenantId, id);
-    await this.workItemRepo.softDelete(id, tenantId);
+  async deleteWorkItem(workspaceId: string, id: string): Promise<void> {
+    await this.getWorkItem(workspaceId, id);
+    await this.workItemRepo.softDelete(id, workspaceId);
     this.logger.log({ workItemId: id }, 'Work item soft-deleted');
   }
 
@@ -387,17 +387,17 @@ export class WorkItemsService {
   // ── Reorder (backlog drag-and-drop) ───────────────────────────────────────
 
   async reorderWorkItems(
-    tenantId: string,
+    workspaceId: string,
     items: Array<{ id: string; rank: string }>,
   ): Promise<void> {
     if (items.length === 0) return;
     // Validate all items belong to this tenant before updating
-    const existing = await Promise.all(items.map(({ id }) => this.getWorkItem(tenantId, id)));
-    if (existing.some((w) => w.tenantId !== tenantId)) {
+    const existing = await Promise.all(items.map(({ id }) => this.getWorkItem(workspaceId, id)));
+    if (existing.some((w) => w.workspaceId !== workspaceId)) {
       throw new Error('Tenant mismatch');
     }
     // Wrap in UoW so all rank UPDATEs are one atomic transaction with RLS active.
-    await this.uow.run((tx) => this.workItemRepo.reorderItems(items, tenantId, tx));
+    await this.uow.run((tx) => this.workItemRepo.reorderItems(items, workspaceId, tx));
   }
 
   // ── Neighbour-based reorder (P2-BL-05) ────────────────────────────────────
@@ -414,7 +414,7 @@ export class WorkItemsService {
     id: string,
     opts: { projectId: string; beforeId?: string | null; afterId?: string | null },
   ): Promise<WorkItem> {
-    const item = await this.getWorkItem(actor.tenantId, id);
+    const item = await this.getWorkItem(actor.workspaceId, id);
     if (item.projectId !== opts.projectId) {
       throw new PreconditionFailedException(
         'WORK_ITEM_PARENT_SCOPE_MISMATCH',
@@ -426,7 +426,7 @@ export class WorkItemsService {
     const neighbourIds = [opts.beforeId, opts.afterId].filter(
       (n): n is string => typeof n === 'string',
     );
-    const neighbours = await this.workItemRepo.findByIds(neighbourIds, actor.tenantId);
+    const neighbours = await this.workItemRepo.findByIds(neighbourIds, actor.workspaceId);
     const byId = new Map(neighbours.map((w) => [w.id, w]));
 
     const rankOf = (nid: string | null | undefined): string | null => {
@@ -456,7 +456,7 @@ export class WorkItemsService {
     }
 
     return this.uow.run((tx) =>
-      this.workItemRepo.update(id, { rank: newRank, updatedBy: actor.sub }, actor.tenantId, tx),
+      this.workItemRepo.update(id, { rank: newRank, updatedBy: actor.sub }, actor.workspaceId, tx),
     );
   }
 
@@ -474,15 +474,15 @@ export class WorkItemsService {
     itemIds: string[],
     releaseId: string | null,
   ): Promise<number> {
-    const items = await this.loadBulkItems(actor.tenantId, projectId, itemIds);
+    const items = await this.loadBulkItems(actor.workspaceId, projectId, itemIds);
     if (releaseId) {
-      await this.assertReleaseAssignable(actor.tenantId, projectId, releaseId);
+      await this.assertReleaseAssignable(actor.workspaceId, projectId, releaseId);
     }
     await this.uow.run((tx) =>
       this.workItemRepo.assignRelease(
         items.map((i) => i.id),
         releaseId,
-        actor.tenantId,
+        actor.workspaceId,
         actor.sub,
         tx,
       ),
@@ -504,7 +504,7 @@ export class WorkItemsService {
     itemIds: string[],
     iterationId: string | null,
   ): Promise<number> {
-    const items = await this.loadBulkItems(actor.tenantId, projectId, itemIds);
+    const items = await this.loadBulkItems(actor.workspaceId, projectId, itemIds);
 
     // P2.1 scope: only stories and defects can be scheduled into an iteration.
     const nonBacklog = items.find((i) => i.type !== 'story' && i.type !== 'defect');
@@ -517,7 +517,7 @@ export class WorkItemsService {
 
     if (iterationId) {
       for (const item of items) {
-        await this.assertIterationAssignable(actor.tenantId, item, iterationId);
+        await this.assertIterationAssignable(actor.workspaceId, item, iterationId);
       }
     }
 
@@ -525,7 +525,7 @@ export class WorkItemsService {
       this.workItemRepo.assignIteration(
         items.map((i) => i.id),
         iterationId,
-        actor.tenantId,
+        actor.workspaceId,
         actor.sub,
         tx,
       ),
@@ -542,7 +542,7 @@ export class WorkItemsService {
    * request (all-or-nothing) if any id is missing or out of scope.
    */
   private async loadBulkItems(
-    tenantId: string,
+    workspaceId: string,
     projectId: string,
     itemIds: string[],
   ): Promise<WorkItem[]> {
@@ -550,7 +550,7 @@ export class WorkItemsService {
     if (ids.length === 0) {
       throw new PreconditionFailedException('WORK_ITEM_EMPTY_SELECTION', 'No items selected');
     }
-    const items = await this.workItemRepo.findByIds(ids, tenantId);
+    const items = await this.workItemRepo.findByIds(ids, workspaceId);
     if (items.length !== ids.length) {
       throw new NotFoundException('WORK_ITEM_NOT_FOUND', 'One or more work items were not found');
     }
@@ -570,11 +570,11 @@ export class WorkItemsService {
    * the item's team. Team-agnostic iterations (teamId null) accept any team.
    */
   private async assertIterationAssignable(
-    tenantId: string,
+    workspaceId: string,
     item: WorkItem,
     iterationId: string,
   ): Promise<void> {
-    const scope = await this.workItemRepo.findIterationScope(iterationId, tenantId);
+    const scope = await this.workItemRepo.findIterationScope(iterationId, workspaceId);
     if (!scope) {
       throw new NotFoundException('ITERATION_NOT_FOUND', 'Iteration not found');
     }
@@ -594,11 +594,11 @@ export class WorkItemsService {
 
   /** A release is assignable when it exists in the same tenant and project. */
   private async assertReleaseAssignable(
-    tenantId: string,
+    workspaceId: string,
     projectId: string,
     releaseId: string,
   ): Promise<void> {
-    const releaseProjectId = await this.workItemRepo.findReleaseProject(releaseId, tenantId);
+    const releaseProjectId = await this.workItemRepo.findReleaseProject(releaseId, workspaceId);
     if (!releaseProjectId) {
       throw new NotFoundException('RELEASE_NOT_FOUND', 'Release not found');
     }
@@ -611,11 +611,11 @@ export class WorkItemsService {
   }
 
   private async resolveStatusId(
-    tenantId: string,
+    workspaceId: string,
     projectId: string,
     requested?: string,
   ): Promise<string> {
-    const statuses = await this.projectsService.listStatuses(tenantId, projectId);
+    const statuses = await this.projectsService.listStatuses(workspaceId, projectId);
     if (requested) {
       const found = statuses.find((s) => s.id === requested);
       if (!found) {
@@ -637,11 +637,11 @@ export class WorkItemsService {
   }
 
   private async assertTeamLinked(
-    tenantId: string,
+    workspaceId: string,
     projectId: string,
     teamId: string,
   ): Promise<void> {
-    const links = await this.projectsService.listProjectTeams(tenantId, projectId);
+    const links = await this.projectsService.listProjectTeams(workspaceId, projectId);
     const linked = links.some((l) => l.teamId === teamId && l.status === 'active');
     if (!linked) {
       throw new PreconditionFailedException(
@@ -654,35 +654,35 @@ export class WorkItemsService {
   // ── Labels ────────────────────────────────────────────────────────────────
 
   async getWorkItemLabels(
-    tenantId: string,
+    workspaceId: string,
     id: string,
   ): Promise<Array<{ id: string; name: string; color: string }>> {
-    await this.getWorkItem(tenantId, id);
+    await this.getWorkItem(workspaceId, id);
     return this.workItemRepo.listLabels(id);
   }
 
-  async addLabelToWorkItem(tenantId: string, id: string, labelId: string): Promise<void> {
-    const item = await this.getWorkItem(tenantId, id);
+  async addLabelToWorkItem(workspaceId: string, id: string, labelId: string): Promise<void> {
+    const item = await this.getWorkItem(workspaceId, id);
     // P1-15: label must belong to the same project as the work item
     await this.projectsService.assertLabelBelongsToProject(item.projectId, labelId);
-    await this.workItemRepo.addLabel(id, labelId, tenantId);
+    await this.workItemRepo.addLabel(id, labelId, workspaceId);
   }
 
-  async removeLabelFromWorkItem(tenantId: string, id: string, labelId: string): Promise<void> {
-    await this.getWorkItem(tenantId, id);
-    await this.workItemRepo.removeLabel(id, labelId, tenantId);
+  async removeLabelFromWorkItem(workspaceId: string, id: string, labelId: string): Promise<void> {
+    await this.getWorkItem(workspaceId, id);
+    await this.workItemRepo.removeLabel(id, labelId, workspaceId);
   }
 
   // ── Time Logging ──────────────────────────────────────────────────────────
 
   @Span('work-items.list-time-logs')
   async listTimeLogs(
-    tenantId: string,
+    workspaceId: string,
     workItemId: string,
     args: { page: number; pageSize: number },
   ): Promise<{ items: TimeLog[]; total: number }> {
-    await this.getWorkItem(tenantId, workItemId);
-    return this.timeLogRepo.listByWorkItem(workItemId, tenantId, {
+    await this.getWorkItem(workspaceId, workItemId);
+    return this.timeLogRepo.listByWorkItem(workItemId, workspaceId, {
       limit: args.pageSize,
       offset: (args.page - 1) * args.pageSize,
     });
@@ -694,10 +694,10 @@ export class WorkItemsService {
     workItemId: string,
     input: { loggedDate: string; hours: string; description?: string },
   ): Promise<TimeLog> {
-    await this.getWorkItem(actor.tenantId, workItemId);
+    await this.getWorkItem(actor.workspaceId, workItemId);
     const log = await this.timeLogRepo.create({
       id: uuidv7(),
-      tenantId: actor.tenantId,
+      workspaceId: actor.workspaceId,
       workItemId,
       userId: actor.sub,
       loggedDate: input.loggedDate,
@@ -705,7 +705,7 @@ export class WorkItemsService {
       description: input.description,
     });
     // Auto-watch the user who logs time so they receive future notifications.
-    this.watcherRepo.watch(workItemId, actor.sub, actor.tenantId)
+    this.watcherRepo.watch(workItemId, actor.sub, actor.workspaceId)
       .catch((err: unknown) => {
         this.logger.warn({ err, workItemId }, 'Auto-watch on time-log failed — proceeding');
       });
@@ -720,8 +720,8 @@ export class WorkItemsService {
     logId: string,
     input: { loggedDate?: string; hours?: string; description?: string | null },
   ): Promise<TimeLog> {
-    await this.getWorkItem(actor.tenantId, workItemId);
-    const log = await this.timeLogRepo.findById(logId, actor.tenantId);
+    await this.getWorkItem(actor.workspaceId, workItemId);
+    const log = await this.timeLogRepo.findById(logId, actor.workspaceId);
     if (!log || log.workItemId !== workItemId) {
       throw new NotFoundException('TIME_LOG_NOT_FOUND', 'Time log entry not found');
     }
@@ -737,8 +737,8 @@ export class WorkItemsService {
 
   @Span('work-items.delete-time-log')
   async deleteTimeLog(actor: JwtPayload, workItemId: string, logId: string): Promise<void> {
-    await this.getWorkItem(actor.tenantId, workItemId);
-    const log = await this.timeLogRepo.findById(logId, actor.tenantId);
+    await this.getWorkItem(actor.workspaceId, workItemId);
+    const log = await this.timeLogRepo.findById(logId, actor.workspaceId);
     if (!log || log.workItemId !== workItemId) {
       throw new NotFoundException('TIME_LOG_NOT_FOUND', 'Time log entry not found');
     }
@@ -757,20 +757,20 @@ export class WorkItemsService {
   // ── Watchers ──────────────────────────────────────────────────────────────
 
   @Span('work-items.list-watchers')
-  async listWatchers(tenantId: string, workItemId: string): Promise<Watcher[]> {
-    await this.getWorkItem(tenantId, workItemId);
-    return this.watcherRepo.listByWorkItem(workItemId, tenantId);
+  async listWatchers(workspaceId: string, workItemId: string): Promise<Watcher[]> {
+    await this.getWorkItem(workspaceId, workItemId);
+    return this.watcherRepo.listByWorkItem(workItemId, workspaceId);
   }
 
   @Span('work-items.watch')
   async watch(actor: JwtPayload, workItemId: string): Promise<void> {
-    await this.getWorkItem(actor.tenantId, workItemId);
-    await this.watcherRepo.watch(workItemId, actor.sub, actor.tenantId);
+    await this.getWorkItem(actor.workspaceId, workItemId);
+    await this.watcherRepo.watch(workItemId, actor.sub, actor.workspaceId);
   }
 
   @Span('work-items.unwatch')
   async unwatch(actor: JwtPayload, workItemId: string): Promise<void> {
-    await this.getWorkItem(actor.tenantId, workItemId);
+    await this.getWorkItem(actor.workspaceId, workItemId);
     await this.watcherRepo.unwatch(workItemId, actor.sub);
   }
 
@@ -782,7 +782,7 @@ export class WorkItemsService {
     workItemId: string,
     input: { filename: string; mimeType: string; sizeBytes: number },
   ): Promise<{ attachmentId: string; uploadUrl: string }> {
-    await this.getWorkItem(actor.tenantId, workItemId);
+    await this.getWorkItem(actor.workspaceId, workItemId);
 
     if (!ATTACHMENT_ALLOWED_MIME_TYPES.has(input.mimeType)) {
       throw new PreconditionFailedException(
@@ -798,7 +798,7 @@ export class WorkItemsService {
       );
     }
 
-    const current = await this.attachmentRepo.countByWorkItem(workItemId, actor.tenantId);
+    const current = await this.attachmentRepo.countByWorkItem(workItemId, actor.workspaceId);
     if (current >= ATTACHMENT_MAX_PER_WORK_ITEM) {
       throw new PreconditionFailedException(
         'ATTACHMENT_LIMIT_EXCEEDED',
@@ -808,11 +808,11 @@ export class WorkItemsService {
 
     const id = uuidv7();
     const ext = input.filename.includes('.') ? `.${input.filename.split('.').pop()}` : '';
-    const storageKey = `${actor.tenantId}/${workItemId}/${id}${ext}`;
+    const storageKey = `${actor.workspaceId}/${workItemId}/${id}${ext}`;
 
     await this.attachmentRepo.create({
       id,
-      tenantId: actor.tenantId,
+      workspaceId: actor.workspaceId,
       workItemId,
       uploadedBy: actor.sub,
       filename: input.filename,
@@ -831,9 +831,9 @@ export class WorkItemsService {
     workItemId: string,
     attachmentId: string,
   ): Promise<Attachment> {
-    const item = await this.getWorkItem(actor.tenantId, workItemId);
+    const item = await this.getWorkItem(actor.workspaceId, workItemId);
 
-    const attachment = await this.attachmentRepo.findById(attachmentId, actor.tenantId);
+    const attachment = await this.attachmentRepo.findById(attachmentId, actor.workspaceId);
     if (!attachment || attachment.workItemId !== workItemId) {
       throw new NotFoundException('ATTACHMENT_NOT_FOUND', 'Attachment not found');
     }
@@ -867,7 +867,7 @@ export class WorkItemsService {
     const confirmed = await this.attachmentRepo.confirm(attachmentId);
     void this.activityRepo.append({
       id: uuidv7(),
-      tenantId: actor.tenantId,
+      workspaceId: actor.workspaceId,
       projectId: item.projectId,
       workItemId,
       entityType: 'attachment',
@@ -882,20 +882,20 @@ export class WorkItemsService {
   }
 
   @Span('work-items.list-attachments')
-  async listAttachments(tenantId: string, workItemId: string): Promise<Attachment[]> {
-    await this.getWorkItem(tenantId, workItemId);
-    return this.attachmentRepo.listByWorkItem(workItemId, tenantId);
+  async listAttachments(workspaceId: string, workItemId: string): Promise<Attachment[]> {
+    await this.getWorkItem(workspaceId, workItemId);
+    return this.attachmentRepo.listByWorkItem(workItemId, workspaceId);
   }
 
   @Span('work-items.get-attachment-download-url')
   async getAttachmentDownloadUrl(
-    tenantId: string,
+    workspaceId: string,
     workItemId: string,
     attachmentId: string,
   ): Promise<{ downloadUrl: string }> {
-    await this.getWorkItem(tenantId, workItemId);
+    await this.getWorkItem(workspaceId, workItemId);
 
-    const attachment = await this.attachmentRepo.findById(attachmentId, tenantId);
+    const attachment = await this.attachmentRepo.findById(attachmentId, workspaceId);
     if (!attachment || attachment.workItemId !== workItemId || attachment.status !== 'completed') {
       throw new NotFoundException('ATTACHMENT_NOT_FOUND', 'Attachment not found');
     }
@@ -906,9 +906,9 @@ export class WorkItemsService {
 
   @Span('work-items.delete-attachment')
   async deleteAttachment(actor: JwtPayload, workItemId: string, attachmentId: string): Promise<void> {
-    const item = await this.getWorkItem(actor.tenantId, workItemId);
+    const item = await this.getWorkItem(actor.workspaceId, workItemId);
 
-    const attachment = await this.attachmentRepo.findById(attachmentId, actor.tenantId);
+    const attachment = await this.attachmentRepo.findById(attachmentId, actor.workspaceId);
     if (!attachment || attachment.workItemId !== workItemId) {
       throw new NotFoundException('ATTACHMENT_NOT_FOUND', 'Attachment not found');
     }
@@ -927,7 +927,7 @@ export class WorkItemsService {
 
     void this.activityRepo.append({
       id: uuidv7(),
-      tenantId: actor.tenantId,
+      workspaceId: actor.workspaceId,
       projectId: item.projectId,
       workItemId,
       entityType: 'attachment',

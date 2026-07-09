@@ -10,7 +10,7 @@ const now = new Date('2024-06-01');
 
 const mockIteration = (o: Partial<Iteration> = {}): Iteration => ({
   id: 'it-1',
-  tenantId: 'tenant-1',
+  workspaceId: 'tenant-1',
   projectId: 'proj-1',
   teamId: null,
   iterationKey: 'IT-1',
@@ -30,7 +30,7 @@ const mockIteration = (o: Partial<Iteration> = {}): Iteration => ({
 
 const actor = {
   sub: 'user-1',
-  tenantId: 'tenant-1',
+  workspaceId: 'tenant-1',
   sessionId: 's1',
   jti: 'j1',
   iat: 0,

@@ -15,19 +15,19 @@ export class RoleDrizzleRepository implements IRoleRepository {
     return rows[0] ? this.toRole(rows[0]) : null;
   }
 
-  async listForTenant(tenantId: string): Promise<SystemRole[]> {
-    // Return global system roles (tenantId IS NULL) + tenant-specific roles
+  async listForWorkspace(workspaceId: string): Promise<SystemRole[]> {
+    // Return global system roles (workspaceId IS NULL) + tenant-specific roles
     const rows = await this.db
       .select()
       .from(systemRoles)
-      .where(or(isNull(systemRoles.tenantId), eq(systemRoles.tenantId, tenantId)));
+      .where(or(isNull(systemRoles.workspaceId), eq(systemRoles.workspaceId, workspaceId)));
     return rows.map((r) => this.toRole(r));
   }
 
   private toRole(row: typeof systemRoles.$inferSelect): SystemRole {
     return {
       id: row.id,
-      tenantId: row.tenantId,
+      workspaceId: row.workspaceId,
       name: row.name,
       slug: row.slug,
       description: row.description,

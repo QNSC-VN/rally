@@ -10,12 +10,12 @@ import type { IWatcherRepository } from '../../domain/ports/watcher.repository';
 export class WatcherDrizzleRepository implements IWatcherRepository {
   constructor(@InjectDrizzle() private readonly db: DrizzleDB) {}
 
-  async listByWorkItem(workItemId: string, tenantId: string): Promise<Watcher[]> {
+  async listByWorkItem(workItemId: string, workspaceId: string): Promise<Watcher[]> {
     const rows = await this.db
       .select()
       .from(workItemWatchers)
       .where(
-        and(eq(workItemWatchers.workItemId, workItemId), eq(workItemWatchers.tenantId, tenantId)),
+        and(eq(workItemWatchers.workItemId, workItemId), eq(workItemWatchers.workspaceId, workspaceId)),
       );
     return rows;
   }
@@ -29,10 +29,10 @@ export class WatcherDrizzleRepository implements IWatcherRepository {
     return rows.length > 0;
   }
 
-  async watch(workItemId: string, userId: string, tenantId: string): Promise<void> {
+  async watch(workItemId: string, userId: string, workspaceId: string): Promise<void> {
     await this.db
       .insert(workItemWatchers)
-      .values({ workItemId, userId, tenantId })
+      .values({ workItemId, userId, workspaceId })
       .onConflictDoNothing();
   }
 
@@ -42,11 +42,11 @@ export class WatcherDrizzleRepository implements IWatcherRepository {
       .where(and(eq(workItemWatchers.workItemId, workItemId), eq(workItemWatchers.userId, userId)));
   }
 
-  async watchMany(workItemId: string, userIds: string[], tenantId: string): Promise<void> {
+  async watchMany(workItemId: string, userIds: string[], workspaceId: string): Promise<void> {
     if (userIds.length === 0) return;
     await this.db
       .insert(workItemWatchers)
-      .values(userIds.map((userId) => ({ workItemId, userId, tenantId })))
+      .values(userIds.map((userId) => ({ workItemId, userId, workspaceId })))
       .onConflictDoNothing();
   }
 

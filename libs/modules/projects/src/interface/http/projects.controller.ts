@@ -45,7 +45,6 @@ function toProjectDto(
 ): ProjectResponseDto {
   return {
     id: p.id,
-    tenantId: p.tenantId,
     workspaceId: p.workspaceId,
     key: p.key,
     name: p.name,
@@ -117,7 +116,7 @@ export class ProjectsController {
     @Query() query: ProjectQueryDto,
   ): Promise<PagedResult<ProjectResponseDto>> {
     const args = buildPageArgs(query);
-    const page = await this.projectsService.listProjects(user, query.workspaceId, args);
+    const page = await this.projectsService.listProjects(user, args);
     return { data: page.data.map(toProjectDto), pageInfo: page.pageInfo };
   }
 
@@ -134,7 +133,6 @@ export class ProjectsController {
   ): Promise<ProjectResponseDto> {
     const project = await this.projectsService.createProject(
       user,
-      dto.workspaceId,
       dto.key,
       dto.name,
       dto.description,
@@ -154,7 +152,7 @@ export class ProjectsController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<ProjectResponseDto> {
-    const project = await this.projectsService.getProject(user.tenantId, id);
+    const project = await this.projectsService.getProject(user.workspaceId, id);
     return toProjectDto(project);
   }
 
@@ -222,7 +220,7 @@ export class ProjectsController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<void> {
-    await this.projectsService.deleteProject(user.tenantId, id);
+    await this.projectsService.deleteProject(user.workspaceId, id);
   }
 
   // ── Workflow statuses ──────────────────────────────────────────────────────
@@ -236,7 +234,7 @@ export class ProjectsController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<WorkflowStatusResponseDto[]> {
-    const statuses = await this.projectsService.listStatuses(user.tenantId, id);
+    const statuses = await this.projectsService.listStatuses(user.workspaceId, id);
     return statuses.map(toStatusDto);
   }
 
@@ -251,7 +249,7 @@ export class ProjectsController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<WorkflowTransitionResponseDto[]> {
-    const transitions = await this.projectsService.listTransitions(user.tenantId, id);
+    const transitions = await this.projectsService.listTransitions(user.workspaceId, id);
     return transitions.map(toTransitionDto);
   }
   // ── Labels ──────────────────────────────────────────────────────────────
@@ -265,7 +263,7 @@ export class ProjectsController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<LabelResponseDto[]> {
-    const labelList = await this.projectsService.listLabels(user.tenantId, id);
+    const labelList = await this.projectsService.listLabels(user.workspaceId, id);
     return labelList.map(toLabelDto);
   }
 
@@ -280,7 +278,7 @@ export class ProjectsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CreateLabelDto,
   ): Promise<LabelResponseDto> {
-    const label = await this.projectsService.createLabel(user.tenantId, id, dto.name, dto.color);
+    const label = await this.projectsService.createLabel(user.workspaceId, id, dto.name, dto.color);
     return toLabelDto(label);
   }
 
@@ -297,7 +295,7 @@ export class ProjectsController {
     @Param('labelId', ParseUUIDPipe) labelId: string,
     @Body() dto: UpdateLabelDto,
   ): Promise<LabelResponseDto> {
-    const label = await this.projectsService.updateLabel(user.tenantId, id, labelId, dto);
+    const label = await this.projectsService.updateLabel(user.workspaceId, id, labelId, dto);
     return toLabelDto(label);
   }
 
@@ -314,7 +312,7 @@ export class ProjectsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Param('labelId', ParseUUIDPipe) labelId: string,
   ): Promise<void> {
-    await this.projectsService.deleteLabel(user.tenantId, id, labelId);
+    await this.projectsService.deleteLabel(user.workspaceId, id, labelId);
   }
 
   // ── Project Teams ─────────────────────────────────────────────────────────
@@ -324,7 +322,7 @@ export class ProjectsController {
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiCommonErrors(401, 404)
   async listProjectTeams(@CurrentUser() user: JwtPayload, @Param('id', ParseUUIDPipe) id: string) {
-    return this.projectsService.listProjectTeams(user.tenantId, id);
+    return this.projectsService.listProjectTeams(user.workspaceId, id);
   }
 
   @Post(':id/teams')
@@ -337,7 +335,7 @@ export class ProjectsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: { teamId: string },
   ) {
-    return this.projectsService.linkTeam(user.tenantId, id, dto.teamId);
+    return this.projectsService.linkTeam(user.workspaceId, id, dto.teamId);
   }
 
   @Delete(':id/teams/:teamId')
@@ -353,7 +351,7 @@ export class ProjectsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Param('teamId', ParseUUIDPipe) teamId: string,
   ): Promise<void> {
-    await this.projectsService.unlinkTeam(user.tenantId, id, teamId);
+    await this.projectsService.unlinkTeam(user.workspaceId, id, teamId);
   }
 
   // ── Project Members ───────────────────────────────────────────────────────
@@ -366,7 +364,7 @@ export class ProjectsController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    return this.projectsService.listProjectMembers(user.tenantId, id);
+    return this.projectsService.listProjectMembers(user.workspaceId, id);
   }
 
   @Post(':id/members')
@@ -379,7 +377,7 @@ export class ProjectsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: { userId: string; roleId?: string },
   ) {
-    return this.projectsService.addProjectMember(user.tenantId, id, dto.userId, dto.roleId);
+    return this.projectsService.addProjectMember(user.workspaceId, id, dto.userId, dto.roleId);
   }
 
   @Patch(':id/members/:memberId')
@@ -394,7 +392,7 @@ export class ProjectsController {
     @Param('memberId', ParseUUIDPipe) memberId: string,
     @Body() dto: UpdateProjectMemberDto,
   ) {
-    return this.projectsService.updateProjectMember(user.tenantId, id, memberId, dto);
+    return this.projectsService.updateProjectMember(user.workspaceId, id, memberId, dto);
   }
 
   @Delete(':id/members/:userId')
@@ -410,6 +408,6 @@ export class ProjectsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Param('userId', ParseUUIDPipe) userId: string,
   ): Promise<void> {
-    await this.projectsService.removeProjectMember(user.tenantId, id, userId);
+    await this.projectsService.removeProjectMember(user.workspaceId, id, userId);
   }
 }

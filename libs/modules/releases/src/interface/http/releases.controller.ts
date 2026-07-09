@@ -27,7 +27,7 @@ import type { Release } from '../../domain/release.types';
 function toReleaseDto(r: Release): ReleaseResponseDto {
   return {
     id: r.id,
-    tenantId: r.tenantId,
+    workspaceId: r.workspaceId,
     projectId: r.projectId,
     name: r.name,
     description: r.description,
@@ -86,7 +86,7 @@ export class ReleasesController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<ReleaseResponseDto> {
-    const release = await this.releasesService.getRelease(user.tenantId, id);
+    const release = await this.releasesService.getRelease(user.workspaceId, id);
     return toReleaseDto(release);
   }
 

@@ -15,7 +15,7 @@ export class AuditDrizzleRepository implements IAuditRepository {
       .insert(auditLogs)
       .values({
         id: input.id,
-        tenantId: input.tenantId,
+        workspaceId: input.workspaceId,
         actorId: input.actorId,
         actorEmail: input.actorEmail,
         action: input.action,
@@ -33,12 +33,12 @@ export class AuditDrizzleRepository implements IAuditRepository {
       .onConflictDoNothing({ target: auditLogs.sourceEventId });
   }
 
-  async listForTenant(
-    tenantId: string,
+  async listForWorkspace(
+    workspaceId: string,
     filters: AuditFilters,
     args: { limit: number; offset: number },
   ): Promise<PagedResult<AuditLog>> {
-    const conditions = [eq(auditLogs.tenantId, tenantId)];
+    const conditions = [eq(auditLogs.workspaceId, workspaceId)];
     if (filters.actorId) conditions.push(eq(auditLogs.actorId, filters.actorId));
     if (filters.resourceType) conditions.push(eq(auditLogs.resourceType, filters.resourceType));
     if (filters.resourceId) conditions.push(eq(auditLogs.resourceId, filters.resourceId));

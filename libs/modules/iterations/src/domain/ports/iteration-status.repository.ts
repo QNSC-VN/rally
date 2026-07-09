@@ -19,11 +19,11 @@ export type RawIterationMetrics = Pick<
 
 export interface IIterationStatusRepository {
   /** Aggregate metrics across all non-deleted items assigned to the iteration. */
-  getMetrics(iterationId: string, tenantId: string): Promise<RawIterationMetrics>;
+  getMetrics(iterationId: string, workspaceId: string): Promise<RawIterationMetrics>;
   /** Paginated story/defect list assigned to the iteration, with task rollups. */
   listItems(
     iterationId: string,
-    tenantId: string,
+    workspaceId: string,
     filters: IterationStatusFilters,
     args: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<IterationStatusItem>>;

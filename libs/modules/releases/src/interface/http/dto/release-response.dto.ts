@@ -4,7 +4,7 @@ import { releaseStatusEnum } from '../../../../../../../db/schema/enums';
 
 export const ReleaseResponseSchema = z.object({
   id: z.string().uuid(),
-  tenantId: z.string().uuid(),
+  workspaceId: z.string().uuid(),
   projectId: z.string().uuid(),
   name: z.string(),
   description: z.string().nullable(),

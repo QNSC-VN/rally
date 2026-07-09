@@ -1,6 +1,6 @@
 export interface Comment {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   workItemId: string;
   authorId: string;
   body: string;
@@ -14,7 +14,7 @@ export interface Comment {
 
 export interface CreateCommentInput {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   workItemId: string;
   authorId: string;
   body: string;
@@ -23,7 +23,7 @@ export interface CreateCommentInput {
 
 export interface Attachment {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   workItemId: string;
   uploadedBy: string;
   filename: string;
@@ -36,7 +36,7 @@ export interface Attachment {
 
 export interface CreateAttachmentInput {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   workItemId: string;
   uploadedBy: string;
   filename: string;

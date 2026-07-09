@@ -53,11 +53,11 @@ export class IterationStatusService {
     args: { limit: number; cursor: CursorPayload | null },
   ): Promise<IterationStatusResult> {
     // Validates existence + tenant ownership (throws ITERATION_NOT_FOUND).
-    const iteration = await this.iterationsService.getIteration(actor.tenantId, iterationId);
+    const iteration = await this.iterationsService.getIteration(actor.workspaceId, iterationId);
 
     const [raw, items] = await Promise.all([
-      this.statusRepo.getMetrics(iterationId, actor.tenantId),
-      this.statusRepo.listItems(iterationId, actor.tenantId, filters, args),
+      this.statusRepo.getMetrics(iterationId, actor.workspaceId),
+      this.statusRepo.listItems(iterationId, actor.workspaceId, filters, args),
     ]);
 
     const plannedVelocity = iteration.plannedVelocity ?? 0;
@@ -93,7 +93,7 @@ export class IterationStatusService {
       planEstimate?: number;
     },
   ): Promise<{ workItemId: string; itemKey: string }> {
-    const iteration = await this.iterationsService.getIteration(actor.tenantId, iterationId);
+    const iteration = await this.iterationsService.getIteration(actor.workspaceId, iterationId);
 
     const created = await this.workItemsService.createWorkItem(
       actor,

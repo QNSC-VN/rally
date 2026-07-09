@@ -38,7 +38,7 @@ export class WorkflowStatusDrizzleRepository implements IWorkflowStatusRepositor
       .insert(workflowStatuses)
       .values({
         id: input.id,
-        tenantId: input.tenantId,
+        workspaceId: input.workspaceId,
         projectId: input.projectId,
         name: input.name,
         category: input.category,
@@ -119,7 +119,7 @@ export class WorkflowStatusDrizzleRepository implements IWorkflowStatusRepositor
       .insert(workflowTransitions)
       .values({
         id: input.id,
-        tenantId: input.tenantId,
+        workspaceId: input.workspaceId,
         projectId: input.projectId,
         fromStatusId: input.fromStatusId ?? null,
         toStatusId: input.toStatusId,

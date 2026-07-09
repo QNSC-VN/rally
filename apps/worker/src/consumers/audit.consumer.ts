@@ -12,7 +12,7 @@
  *   "eventType": "WORK_ITEM_CREATED",
  *   "aggregateType": "WORK_ITEM",
  *   "aggregateId": "<uuid>",
- *   "tenantId": "<uuid>",
+ *   "workspaceId": "<uuid>",
  *   "payload": {
  *     "actorId": "<uuid>",
  *     "actorEmail": "user@example.com",
@@ -35,7 +35,7 @@ interface DomainEventMessage {
   eventType: string;
   aggregateType: string;
   aggregateId: string;
-  tenantId: string;
+  workspaceId: string;
   payload: Record<string, unknown>;
   occurredAt: string;
 }
@@ -126,7 +126,7 @@ export class AuditConsumer implements OnModuleInit, OnModuleDestroy {
 
     try {
       await this.auditService.record({
-        tenantId: event.tenantId,
+        workspaceId: event.workspaceId,
         action: event.eventType,
         resourceType: event.aggregateType,
         resourceId: event.aggregateId,

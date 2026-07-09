@@ -16,8 +16,8 @@ export interface AuditFilters {
 export interface IAuditRepository {
   /** Idempotent — silently no-ops when sourceEventId already exists. */
   create(input: CreateAuditLogInput): Promise<void>;
-  listForTenant(
-    tenantId: string,
+  listForWorkspace(
+    workspaceId: string,
     filters: AuditFilters,
     args: { limit: number; offset: number },
   ): Promise<PagedResult<AuditLog>>;

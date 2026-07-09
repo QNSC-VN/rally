@@ -16,7 +16,7 @@ const USER = 'user-1';
 
 const role = (slug: string, permissions: string[]): SystemRole => ({
   id: `role-${slug}`,
-  tenantId: null,
+  workspaceId: null,
   name: slug,
   slug,
   description: null,
@@ -31,7 +31,7 @@ const assignment = (
   scopeId: string | null = null,
 ): UserRoleAssignment => ({
   id: `a-${roleId}-${scopeType}-${scopeId ?? 'none'}`,
-  tenantId: TENANT,
+  workspaceId: TENANT,
   userId: USER,
   roleId,
   scopeType,
@@ -51,7 +51,7 @@ describe('AccessService — scope-aware permission resolution', () => {
         AccessService,
         {
           provide: ROLE_REPOSITORY,
-          useValue: { findById: vi.fn(), listForTenant: vi.fn() },
+          useValue: { findById: vi.fn(), listForWorkspace: vi.fn() },
         },
         {
           provide: ROLE_ASSIGNMENT_REPOSITORY,
@@ -153,7 +153,7 @@ describe('AccessService — scope-aware permission resolution', () => {
 
   describe('assertProjectPermission', () => {
     const actor = (permissions: string[]) =>
-      ({ sub: USER, tenantId: TENANT, permissions }) as never;
+      ({ sub: USER, workspaceId: TENANT, permissions }) as never;
 
     it('passes immediately on a JWT wildcard, without a DB lookup', async () => {
       await expect(

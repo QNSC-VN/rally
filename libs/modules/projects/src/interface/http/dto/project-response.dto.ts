@@ -7,7 +7,6 @@ import {
 
 export const ProjectResponseSchema = z.object({
   id: z.string().uuid(),
-  tenantId: z.string().uuid(),
   workspaceId: z.string().uuid(),
   key: z.string().max(10).describe('Unique short project key e.g. PROJ'),
   name: z.string(),
