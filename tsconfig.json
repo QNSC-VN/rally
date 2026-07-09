@@ -46,7 +46,9 @@
       "@modules/audit": ["./libs/modules/audit/src/index"],
       "@modules/audit/*": ["./libs/modules/audit/src/*"],
       "@modules/reporting": ["./libs/modules/reporting/src/index"],
-      "@modules/reporting/*": ["./libs/modules/reporting/src/*"]
+      "@modules/reporting/*": ["./libs/modules/reporting/src/*"],
+      "@modules/team-status": ["./libs/modules/team-status/src/index"],
+      "@modules/team-status/*": ["./libs/modules/team-status/src/*"]
     }
   },
   "exclude": ["node_modules", "dist", "apps/web"]

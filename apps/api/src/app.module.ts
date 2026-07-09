@@ -17,6 +17,7 @@ import { CollaborationModule } from '@modules/collaboration';
 import { NotificationsModule } from '@modules/notifications';
 import { AuditModule } from '@modules/audit';
 import { ReportingModule } from '@modules/reporting';
+import { TeamStatusModule } from '@modules/team-status';
 import { GlobalExceptionFilter } from '@platform/http/global-exception.filter';
 import { HttpLoggingInterceptor } from '@platform/http/http-logging.interceptor';
 import { ZodValidationPipe } from 'nestjs-zod';
@@ -102,6 +103,7 @@ import { AsyncLocalStorageMiddleware } from '@platform/context/als.middleware';
     NotificationsModule,
     AuditModule,
     ReportingModule,
+    TeamStatusModule,
   ],
   providers: [
     // Global exception filter → stable RFC-9457-style error envelope

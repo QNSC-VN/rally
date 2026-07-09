@@ -523,3 +523,29 @@ export const workItemWatchers = workSchema.table(
     tenantIdx: index('ix_wiw_tenant').on(t.tenantId),
   }),
 );
+
+// ── member_capacity (P3.1 Team Status) ──────────────────────────────────
+// Per-member capacity (hours) scoped to Project/Team/Iteration.
+// Unique key on (project_id, team_id, iteration_id, user_id).
+
+export const memberCapacity = workSchema.table(
+  'member_capacity',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    projectId: uuid('project_id').notNull(),
+    teamId: uuid('team_id').notNull(),
+    iterationId: uuid('iteration_id').notNull(),
+    userId: uuid('user_id').notNull(),
+    capacityHours: numeric('capacity_hours', { precision: 8, scale: 2 }).notNull().default('0'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    uniqueKey: uniqueIndex('uq_member_capacity')
+      .on(t.projectId, t.teamId, t.iterationId, t.userId),
+    tenantIdx: index('ix_mc_tenant').on(t.tenantId),
+    iterationIdx: index('ix_mc_iteration').on(t.iterationId),
+    userIdx: index('ix_mc_user').on(t.userId),
+  }),
+);

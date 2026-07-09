@@ -53,6 +53,10 @@ export const PERMISSION = {
 
   // ── release namespace ──────────────────────────────────────────────────────
   RELEASE_MANAGE: 'release:manage',
+
+  // ── team-status namespace (P3.1) ────────────────────────────────────────────
+  TEAM_STATUS_VIEW: 'team_status:view',
+  TEAM_STATUS_EDIT: 'team_status:edit',
 } as const;
 
 /** Union of every valid permission code. */
@@ -109,6 +113,8 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
     PERMISSION.ITERATION_VIEW,
     PERMISSION.ITERATION_MANAGE,
     PERMISSION.RELEASE_MANAGE,
+    PERMISSION.TEAM_STATUS_VIEW,
+    PERMISSION.TEAM_STATUS_EDIT,
   ],
   [SYSTEM_ROLE.PROJECT_ADMIN]: [
     PERMISSION.PROJECT_VIEW,
@@ -124,6 +130,8 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
     PERMISSION.ITERATION_VIEW,
     PERMISSION.ITERATION_MANAGE,
     PERMISSION.RELEASE_MANAGE,
+    PERMISSION.TEAM_STATUS_VIEW,
+    PERMISSION.TEAM_STATUS_EDIT,
   ],
   [SYSTEM_ROLE.PROJECT_MEMBER]: [
     // project:view lets a member see the projects (and teams) they belong to —
@@ -134,11 +142,13 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
     PERMISSION.WORK_ITEM_EDIT,
     PERMISSION.WORK_ITEM_VIEW,
     PERMISSION.ITERATION_VIEW,
+    PERMISSION.TEAM_STATUS_VIEW,
   ],
   [SYSTEM_ROLE.PROJECT_VIEWER]: [
     PERMISSION.PROJECT_VIEW,
     PERMISSION.WORK_ITEM_VIEW,
     PERMISSION.ITERATION_VIEW,
+    PERMISSION.TEAM_STATUS_VIEW,
   ],
   [SYSTEM_ROLE.WORKSPACE_MEMBER]: [PERMISSION.WORKSPACE_VIEW, PERMISSION.PROJECT_VIEW],
   [SYSTEM_ROLE.GUEST]: [PERMISSION.WORK_ITEM_VIEW_PUBLIC],
