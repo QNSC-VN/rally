@@ -65,7 +65,7 @@ export function useRelease(id: string | undefined) {
         params: { path: { id } },
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
-      return data as Release
+      return data as unknown as Release
     },
     enabled: !!id,
     staleTime: 30_000,
@@ -92,7 +92,7 @@ export function useCreateRelease() {
         body: body as never,
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
-      return data as Release
+      return data as unknown as Release
     },
     onSuccess: (release) => {
       void qc.invalidateQueries({ queryKey: releaseKeys.list(release.projectId) })
@@ -122,7 +122,7 @@ export function useUpdateRelease(id: string, projectId: string) {
         body: body as never,
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
-      return data as Release
+      return data as unknown as Release
     },
     onSuccess: () => {
       qc.setQueryData(releaseKeys.detail(id), undefined)
@@ -149,6 +149,7 @@ export function useDeleteRelease(projectId: string) {
 
 // Inline edit helper — optimistic update for a single field.
 export function useInlineReleaseField(id: string, projectId: string, field: keyof UpdateReleaseInput) {
+  const qc = useQueryClient()
   return useMutation({
     mutationFn: async (value: unknown) => {
       const patch: UpdateReleaseInput = { [field]: value }
@@ -157,7 +158,7 @@ export function useInlineReleaseField(id: string, projectId: string, field: keyo
         body: patch as never,
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
-      return data as Release
+      return data as unknown as Release
     },
     onSuccess: () => {
       qc.setQueryData(releaseKeys.detail(id), undefined)
