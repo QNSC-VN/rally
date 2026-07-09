@@ -59,7 +59,7 @@ export const OTEL_METRICS = {
 
 export const OTEL_ATTRIBUTES = {
   // Identity
-  TENANT_ID: 'app.tenant.id',
+  WORKSPACE_ID: 'app.workspace.id',
   USER_ID: 'app.user.id',
   SESSION_ID: 'app.session.id',
   CORRELATION_ID: 'app.correlation.id',

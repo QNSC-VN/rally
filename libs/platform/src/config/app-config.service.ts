@@ -13,9 +13,4 @@ export class AppConfigService {
   get<K extends keyof Env>(key: K): Env[K] {
     return this.config.get(key, { infer: true });
   }
-
-  /** True when packaged for a single customer (one tenant, no self-serve signup). */
-  isSingleTenant(): boolean {
-    return this.get('DEPLOYMENT_MODE') === 'single';
-  }
 }

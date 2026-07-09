@@ -57,7 +57,7 @@ import { AsyncLocalStorageMiddleware } from '@platform/context/als.middleware';
               version: config.get('SERVICE_VERSION'),
             }),
             // mixin: called on every log write — injects active OTEL trace context
-            // and ALS request context (tenantId, userId, correlationId) automatically.
+            // and ALS request context (workspaceId, userId, correlationId) automatically.
             mixin: () => {
               const result: Record<string, unknown> = {};
 
@@ -71,10 +71,10 @@ import { AsyncLocalStorageMiddleware } from '@platform/context/als.middleware';
                 }
               }
 
-              // Request context: tenantId / userId / correlationId from ALS
+              // Request context: workspaceId / userId / correlationId from ALS
               const reqCtx = requestContextStorage.getStore();
               if (reqCtx) {
-                if (reqCtx.tenantId) result['tenantId'] = reqCtx.tenantId;
+                if (reqCtx.workspaceId) result['workspaceId'] = reqCtx.workspaceId;
                 if (reqCtx.userId) result['userId'] = reqCtx.userId;
                 if (reqCtx.correlationId) result['correlationId'] = reqCtx.correlationId;
               }
