@@ -116,9 +116,9 @@ async function _finalizeSession(accessToken: string, expiresIn?: number): Promis
     createdAt: string
     updatedAt: string
     memberships: {
-      tenantId: string
-      tenantName: string
-      tenantSlug: string
+      workspaceId: string
+      name: string
+      slug: string
       lastActiveAt: string | null
       roleSlug: string | null
       roleName: string | null
