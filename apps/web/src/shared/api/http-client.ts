@@ -135,16 +135,16 @@ async function doRefreshOnce(): Promise<boolean> {
       // user isn't unexpectedly logged out just for opening a new tab.
     }
 
-    // Standard Rally refresh token rotation (password sessions + new-tab SSO fallback)
+    // Standard Rally refresh token rotation (password sessions + new-tab SSO fallback).
+    // No request body — do NOT send `Content-Type: application/json`, or Fastify
+    // rejects the empty body with `FST_ERR_CTP_EMPTY_JSON_BODY` (400) and the
+    // cold-start session restore bounces the user back to login.
     const csrfToken = getCsrfToken()
     const res = await fetch(`${BASE_URL}/v1/auth/refresh`, {
       method: 'POST',
       credentials: 'include',
       referrerPolicy: 'no-referrer',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(csrfToken ? { 'x-csrf-token': csrfToken } : {}),
-      },
+      headers: csrfToken ? { 'x-csrf-token': csrfToken } : undefined,
     })
     if (!res.ok) return false
     const data = (await res.json()) as { accessToken: string; expiresIn?: number }
