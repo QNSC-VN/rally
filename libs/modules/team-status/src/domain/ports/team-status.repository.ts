@@ -1,5 +1,4 @@
 import type {
-  TeamStatusResponse,
   RawTeamStatusTaskRow,
 } from '../team-status.types';
 

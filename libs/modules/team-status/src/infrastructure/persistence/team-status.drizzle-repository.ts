@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { and, eq, isNull, asc, sql, inArray } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
-import { workItems, releases, memberCapacity } from '../../../../../../db/schema/work';
+import { workItems, memberCapacity } from '../../../../../../db/schema/work';
 import { users } from '../../../../../../db/schema/identity';
 import type { RawTeamStatusTaskRow } from '../../domain/team-status.types';
 import { ITeamStatusRepository } from '../../domain/ports/team-status.repository';
