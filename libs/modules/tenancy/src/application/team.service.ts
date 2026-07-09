@@ -57,8 +57,8 @@ export class TeamService {
   }
 
   async getTeam(id: string, workspaceId: string): Promise<Team> {
-    // findById already filters by workspace_id — a wrong-tenant id returns null,
-    // which we surface as 404 to avoid cross-tenant enumeration.
+    // findById already filters by workspace_id — a wrong-workspace id returns null,
+    // which we surface as 404 to avoid cross-workspace enumeration.
     const team = await this.teamRepo.findById(id, workspaceId);
     if (!team) {
       throw new NotFoundException('TEAM_NOT_FOUND', 'Team not found');
@@ -82,7 +82,7 @@ export class TeamService {
   }
 
   async addTeamMember(teamId: string, userId: string, workspaceId: string): Promise<TeamMember> {
-    // Pass workspaceId so a team from another tenant can't be targeted (was a gap).
+    // Pass workspaceId so a team from another workspace can't be targeted (was a gap).
     await this.getTeam(teamId, workspaceId);
 
     const existing = await this.teamMemberRepo.findMember(teamId, userId);

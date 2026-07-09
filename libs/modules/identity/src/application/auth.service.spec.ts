@@ -41,7 +41,7 @@ const mockUser = (overrides: Partial<User> = {}): User => ({
 
 const mockSession = (overrides: Partial<AuthSession> = {}): AuthSession => ({
   id: 'session-1',
-  workspaceId: 'tenant-1',
+  workspaceId: 'ws-1',
   userId: 'user-1',
   tokenHash: 'hash-1',
   familyId: 'family-1',
@@ -126,7 +126,6 @@ const makeAuditService = () => ({
 
 const makeSsoConnectionRepo = () => ({
   findByExternalTenantId: vi.fn().mockResolvedValue(null),
-  findByTenantId: vi.fn().mockResolvedValue(null),
   create: vi.fn().mockResolvedValue(undefined),
   update: vi.fn().mockResolvedValue(undefined),
 });
@@ -136,7 +135,7 @@ const makeTenancyService = () => ({
     .fn()
     .mockResolvedValue([
       {
-        workspaceId: 'tenant-1',
+        workspaceId: 'ws-1',
         name: 'Test',
         slug: 'test',
         lastActiveAt: null,
@@ -314,7 +313,7 @@ describe('AuthService', () => {
         sub: 'user-1',
         jti: 'jti-1',
         sessionId: 'session-1',
-        workspaceId: 'tenant-1',
+        workspaceId: 'ws-1',
         iat: Math.floor(Date.now() / 1000) - 60,
         exp: Math.floor(Date.now() / 1000) + 840, // 14 min remaining
         iss: 'rally',
@@ -334,7 +333,7 @@ describe('AuthService', () => {
         sub: 'user-1',
         jti: 'jti-expired',
         sessionId: 'session-1',
-        workspaceId: 'tenant-1',
+        workspaceId: 'ws-1',
         iat: Math.floor(Date.now() / 1000) - 1000,
         exp: Math.floor(Date.now() / 1000) - 1, // already expired
         iss: 'rally',
@@ -358,7 +357,7 @@ describe('AuthService', () => {
         sub: 'user-1',
         jti: 'jti-1',
         sessionId: 'session-1',
-        workspaceId: 'tenant-1',
+        workspaceId: 'ws-1',
         iat: Math.floor(Date.now() / 1000) - 60,
         exp: Math.floor(Date.now() / 1000) + 840,
         iss: 'rally',

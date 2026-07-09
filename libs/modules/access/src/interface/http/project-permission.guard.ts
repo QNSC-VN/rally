@@ -29,9 +29,9 @@ interface ProjectPermissionMeta {
 /**
  * Require a permission that is resolved PER PROJECT.
  *
- * Unlike @RequirePermission (which checks the flat, tenant-wide permissions
+ * Unlike @RequirePermission (which checks the flat, workspace-wide permissions
  * baked into the JWT), this resolves the caller's effective permissions for a
- * specific project at request time — unioning their tenant-wide baseline with
+ * specific project at request time — unioning their workspace-wide baseline with
  * any role scoped to that project. Use it wherever a user may be admin of one
  * project but only a viewer of another.
  *
@@ -85,7 +85,7 @@ export class ProjectPermissionGuard implements CanActivate {
       throw new ForbiddenException('Insufficient permissions');
     }
 
-    // Fast path: a tenant-wide grant already in the JWT covers every project,
+    // Fast path: a workspace-wide grant already in the JWT covers every project,
     // so there's no need to hit the DB for a project-scope lookup.
     if (permissionGrants(user.permissions, meta.permission)) return true;
 

@@ -10,7 +10,7 @@ const now = new Date('2024-06-01');
 
 const mockIteration = (o: Partial<Iteration> = {}): Iteration => ({
   id: 'it-1',
-  workspaceId: 'tenant-1',
+  workspaceId: 'ws-1',
   projectId: 'proj-1',
   teamId: null,
   iterationKey: 'IT-1',
@@ -30,7 +30,7 @@ const mockIteration = (o: Partial<Iteration> = {}): Iteration => ({
 
 const actor = {
   sub: 'user-1',
-  workspaceId: 'tenant-1',
+  workspaceId: 'ws-1',
   sessionId: 's1',
   jti: 'j1',
   iat: 0,
@@ -206,7 +206,7 @@ describe('IterationStatusService', () => {
 
       await service.getStatus(actor, 'it-1', filters, args);
 
-      expect(statusRepo.listItems).toHaveBeenCalledWith('it-1', 'tenant-1', filters, args);
+      expect(statusRepo.listItems).toHaveBeenCalledWith('it-1', 'ws-1', filters, args);
     });
 
     it('forwards the paged items list in the response', async () => {

@@ -117,7 +117,7 @@ import { AsyncLocalStorageMiddleware } from '@platform/context/als.middleware';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
-    // AsyncLocalStorage middleware — sets correlationId + tenant/user stubs for every request
+    // AsyncLocalStorage middleware — sets correlationId + workspace/user stubs for every request
     consumer.apply(AsyncLocalStorageMiddleware).forRoutes('*path');
   }
 }

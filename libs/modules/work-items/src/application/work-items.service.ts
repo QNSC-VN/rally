@@ -391,7 +391,7 @@ export class WorkItemsService {
     items: Array<{ id: string; rank: string }>,
   ): Promise<void> {
     if (items.length === 0) return;
-    // Validate all items belong to this tenant before updating
+    // Validate all items belong to this workspace before updating
     const existing = await Promise.all(items.map(({ id }) => this.getWorkItem(workspaceId, id)));
     if (existing.some((w) => w.workspaceId !== workspaceId)) {
       throw new Error('Workspace mismatch');
@@ -464,7 +464,7 @@ export class WorkItemsService {
 
   /**
    * Assign (or unassign, when releaseId is null) a release to many items in one
-   * all-or-nothing transaction. Every item must be in the given tenant/project;
+   * all-or-nothing transaction. Every item must be in the given workspace/project;
    * the release must belong to that project. Any violation fails the whole call.
    */
   @Span('work-items.bulk-release')
@@ -494,7 +494,7 @@ export class WorkItemsService {
   /**
    * Assign (or unassign, when iterationId is null) an iteration to many items in
    * one all-or-nothing transaction. Every item must be a story/defect in the
-   * given tenant/project; the iteration must share that project and, when the
+   * given workspace/project; the iteration must share that project and, when the
    * iteration is team-scoped, the same team. Any violation fails the whole call.
    */
   @Span('work-items.bulk-iteration')
@@ -538,7 +538,7 @@ export class WorkItemsService {
 
   /**
    * Load and validate a set of item ids for a bulk operation: all must exist,
-   * be non-deleted, and belong to the given tenant/project. Fails the whole
+   * be non-deleted, and belong to the given workspace/project. Fails the whole
    * request (all-or-nothing) if any id is missing or out of scope.
    */
   private async loadBulkItems(
@@ -565,7 +565,7 @@ export class WorkItemsService {
   }
 
   /**
-   * An iteration is assignable to a work item when it exists in the same tenant,
+   * An iteration is assignable to a work item when it exists in the same workspace,
    * shares the item's project, and — if the iteration is team-scoped — shares
    * the item's team. Team-agnostic iterations (teamId null) accept any team.
    */
@@ -592,7 +592,7 @@ export class WorkItemsService {
     }
   }
 
-  /** A release is assignable when it exists in the same tenant and project. */
+  /** A release is assignable when it exists in the same workspace and project. */
   private async assertReleaseAssignable(
     workspaceId: string,
     projectId: string,

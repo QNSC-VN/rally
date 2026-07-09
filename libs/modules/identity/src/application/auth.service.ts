@@ -176,7 +176,7 @@ export class AuthService {
 
     this.logger.log({ userId: user.id, jti, sessionId }, 'User logged in');
 
-    // Fire-and-forget: touch last-active for the tenant switcher + audit trail
+    // Fire-and-forget: touch last-active for the workspace switcher + audit trail
     void this.tenancyService.touchMembership(user.id, activeWorkspaceId);
     void this.audit.record({
       workspaceId: activeWorkspaceId,
@@ -251,7 +251,7 @@ export class AuthService {
   }
 
   // ---------------------------------------------------------------------------
-  // Sign up (self-serve) — creates or joins a tenant by email domain
+  // Sign up (self-serve) — creates or joins a workspace by email domain
   // ---------------------------------------------------------------------------
 
   @Span('auth.signup')
@@ -279,7 +279,7 @@ export class AuthService {
     });
 
     // Provision a fresh workspace for the signer and make them its admin. There
-    // is no cross-tenant auto-join: every self-serve signup gets its own root
+    // is no cross-workspace auto-join: every self-serve signup gets its own root
     // workspace.
     const orgName =
       input.organizationName?.trim() || this.defaultOrgName(input.displayName, email);
@@ -532,7 +532,7 @@ export class AuthService {
             ? claims.upn
             : null;
     const displayName = typeof claims.name === 'string' ? claims.name : (email ?? 'Unknown');
-    // Entra `tid` — the IdP directory id used to resolve the Rally tenant.
+    // Entra `tid` — the IdP directory id used to resolve the Rally workspace.
     const externalTenantId = typeof claims.tid === 'string' ? claims.tid : null;
 
     if (!oid || !email) {
@@ -544,7 +544,7 @@ export class AuthService {
 
     const normalizedEmail = email.toLowerCase().trim();
 
-    // Look up existing SSO identity first (fast path — avoids tenant lookup)
+    // Look up existing SSO identity first (fast path — avoids workspace lookup)
     const existingIdentity = await this.userRepo.findSsoIdentity('entra', oid);
 
     let user: User;
@@ -692,7 +692,7 @@ export class AuthService {
     const { oid, email, displayName, externalTenantId } = input;
 
     // Determine the Rally workspaceId from the SSO connection first, so we always
-    // have an explicit tenant regardless of whether the user pre-exists.
+    // have an explicit workspace regardless of whether the user pre-exists.
     let connectionWorkspaceId: string | null = null;
     let defaultRoleSlug: string | undefined;
 
@@ -1009,7 +1009,7 @@ export class AuthService {
     // session together. A partial failure here would otherwise leave old
     // refresh tokens valid after a password reset (session-hijacking gap).
     // Uses a superuser (RLS-bypassing) transaction so sessions are revoked
-    // across ALL tenants, not just the user's most-recent active tenant.
+    // across ALL workspaces, not just the user's most-recent active workspace.
     await this.db.transaction(async (tx) => {
       await this.userRepo.updatePasswordHash(record.userId, newHash, tx);
       await this.userRepo.markPasswordResetTokenUsed(record.id, tx);
@@ -1049,7 +1049,7 @@ export class AuthService {
     );
 
     const newSessionId = uuidv7();
-    // Preserve authMethod across tenant switches
+    // Preserve authMethod across workspace switches
     const switchAuthMethod: 'password' | 'sso' = payload.authMethod ?? 'password';
     const { accessToken, jti, expiresIn } = this.signAccessToken(
       user,

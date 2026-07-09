@@ -9,7 +9,7 @@ export const ITERATION_STATUS_REPOSITORY = Symbol('ITERATION_STATUS_REPOSITORY')
 
 /**
  * Read-model over `work_items` for the Iteration Status screen. All queries are
- * scoped to a single iteration and tenant; nothing here mutates work items.
+ * scoped to a single iteration and workspace; nothing here mutates work items.
  */
 /** Metrics computed directly from work items (before iteration-derived fields). */
 export type RawIterationMetrics = Pick<

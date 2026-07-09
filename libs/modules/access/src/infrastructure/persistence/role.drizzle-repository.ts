@@ -16,7 +16,7 @@ export class RoleDrizzleRepository implements IRoleRepository {
   }
 
   async listForWorkspace(workspaceId: string): Promise<SystemRole[]> {
-    // Return global system roles (workspaceId IS NULL) + tenant-specific roles
+    // Return global system roles (workspaceId IS NULL) + workspace-specific roles
     const rows = await this.db
       .select()
       .from(systemRoles)

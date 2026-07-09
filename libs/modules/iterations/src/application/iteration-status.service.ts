@@ -52,7 +52,7 @@ export class IterationStatusService {
     filters: IterationStatusFilters,
     args: { limit: number; cursor: CursorPayload | null },
   ): Promise<IterationStatusResult> {
-    // Validates existence + tenant ownership (throws ITERATION_NOT_FOUND).
+    // Validates existence + workspace ownership (throws ITERATION_NOT_FOUND).
     const iteration = await this.iterationsService.getIteration(actor.workspaceId, iterationId);
 
     const [raw, items] = await Promise.all([

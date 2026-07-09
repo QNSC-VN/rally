@@ -17,11 +17,11 @@ export interface IterationScope {
 
 export interface IWorkItemRepository {
   findById(id: string, workspaceId: string): Promise<WorkItem | null>;
-  /** Non-deleted work items for the given ids, scoped to a tenant. */
+  /** Non-deleted work items for the given ids, scoped to a workspace. */
   findByIds(ids: string[], workspaceId: string): Promise<WorkItem[]>;
-  /** Project/team scope of an iteration (any tenant guard is applied by caller). */
+  /** Project/team scope of an iteration (any workspace guard is applied by caller). */
   findIterationScope(iterationId: string, workspaceId: string): Promise<IterationScope | null>;
-  /** Project id owning a release, or null if not found for this tenant. */
+  /** Project id owning a release, or null if not found for this workspace. */
   findReleaseProject(releaseId: string, workspaceId: string): Promise<string | null>;
   /** Bulk-assign iteration (null unassigns) to the given ids. All-or-nothing via caller UoW. */
   assignIteration(

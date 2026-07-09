@@ -72,8 +72,8 @@ export interface SsoIdentity {
 
 /**
  * Maps an external identity provider (Entra `tid`, SAML/OIDC issuer) to a single
- * Rally tenant. Resolved during SSO login to route a federated user into the
- * correct tenant without relying on an insecure global default.
+ * Rally workspace. Resolved during SSO login to route a federated user into the
+ * correct workspace without relying on an insecure global default.
  */
 export interface SsoConnection {
   id: string;

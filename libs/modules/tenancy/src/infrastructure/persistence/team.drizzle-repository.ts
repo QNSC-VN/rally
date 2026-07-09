@@ -11,8 +11,8 @@ export class TeamDrizzleRepository implements ITeamRepository {
   constructor(@InjectDrizzle() private readonly db: DrizzleDB) {}
 
   // Every read carries an explicit workspace_id predicate. This is defence in
-  // depth that holds even when the query runs outside an RLS tenant context
-  // (e.g. a superuser connection in dev, where RLS is bypassed) — tenant
+  // depth that holds even when the query runs outside an RLS workspace context
+  // (e.g. a superuser connection in dev, where RLS is bypassed) — workspace
   // isolation never depends on RLS + connection role alone.
   async findById(id: string, workspaceId: string): Promise<Team | null> {
     const rows = await this.db

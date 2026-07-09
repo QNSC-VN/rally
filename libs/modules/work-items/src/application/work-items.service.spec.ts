@@ -17,7 +17,7 @@ const now = new Date('2024-06-01');
 
 const mockWorkItem = (o: Partial<WorkItem> = {}): WorkItem => ({
   id: 'wi-1',
-  workspaceId: 'tenant-1',
+  workspaceId: 'ws-1',
   projectId: 'proj-1',
   itemKey: 'PROJ-1',
   type: 'story',
@@ -53,7 +53,7 @@ const mockWorkItem = (o: Partial<WorkItem> = {}): WorkItem => ({
 
 const mockActor = {
   sub: 'user-1',
-  workspaceId: 'tenant-1',
+  workspaceId: 'ws-1',
   sessionId: 's1',
   jti: 'j1',
   iat: 0,
@@ -66,7 +66,7 @@ const mockActor = {
 
 const mockStatus = (id: string, isDefault = false) => ({
   id,
-  workspaceId: 'tenant-1',
+  workspaceId: 'ws-1',
   projectId: 'proj-1',
   name: id,
   category: 'todo' as const,
@@ -110,7 +110,7 @@ const makeUnitOfWork = () => ({
 });
 
 const makeProjectsService = () => ({
-  getProject: vi.fn().mockResolvedValue({ id: 'proj-1', workspaceId: 'tenant-1' }),
+  getProject: vi.fn().mockResolvedValue({ id: 'proj-1', workspaceId: 'ws-1' }),
   listStatuses: vi
     .fn()
     .mockResolvedValue([mockStatus('status-todo', true), mockStatus('status-done')]),
@@ -212,7 +212,7 @@ describe('WorkItemsService', () => {
         { limit: 20, cursor: null },
       );
 
-      expect(projectsService.getProject).toHaveBeenCalledWith('tenant-1', 'proj-1');
+      expect(projectsService.getProject).toHaveBeenCalledWith('ws-1', 'proj-1');
       expect(result.data).toHaveLength(1);
     });
   });
@@ -230,7 +230,7 @@ describe('WorkItemsService', () => {
       expect(result.statusId).toBe('status-todo');
       expect(result.itemKey).toBe('PROJ-42');
       expect(workItemRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ statusId: 'status-todo', workspaceId: 'tenant-1' }),
+        expect.objectContaining({ statusId: 'status-todo', workspaceId: 'ws-1' }),
         expect.anything(),
       );
     });
@@ -278,25 +278,25 @@ describe('WorkItemsService', () => {
   // ── getWorkItem ────────────────────────────────────────────────────────────
 
   describe('getWorkItem', () => {
-    it('returns work item when found and belongs to tenant', async () => {
+    it('returns work item when found and belongs to workspace', async () => {
       workItemRepo.findById.mockResolvedValue(mockWorkItem());
-      const result = await service.getWorkItem('tenant-1', 'wi-1');
+      const result = await service.getWorkItem('ws-1', 'wi-1');
       expect(result.title).toBe('Test story');
     });
 
     it('throws NotFoundException when not found', async () => {
       workItemRepo.findById.mockResolvedValue(null);
-      await expect(service.getWorkItem('tenant-1', 'missing')).rejects.toThrow(NotFoundException);
+      await expect(service.getWorkItem('ws-1', 'missing')).rejects.toThrow(NotFoundException);
     });
 
-    it('throws NotFoundException when tenant mismatch', async () => {
-      workItemRepo.findById.mockResolvedValue(mockWorkItem({ workspaceId: 'other-tenant' }));
-      await expect(service.getWorkItem('tenant-1', 'wi-1')).rejects.toThrow(NotFoundException);
+    it('throws NotFoundException when workspace mismatch', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ workspaceId: 'other-ws' }));
+      await expect(service.getWorkItem('ws-1', 'wi-1')).rejects.toThrow(NotFoundException);
     });
 
     it('throws NotFoundException for soft-deleted item', async () => {
       workItemRepo.findById.mockResolvedValue(mockWorkItem({ deletedAt: now }));
-      await expect(service.getWorkItem('tenant-1', 'wi-1')).rejects.toThrow(NotFoundException);
+      await expect(service.getWorkItem('ws-1', 'wi-1')).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -340,14 +340,14 @@ describe('WorkItemsService', () => {
     it('soft-deletes the work item', async () => {
       workItemRepo.findById.mockResolvedValue(mockWorkItem());
 
-      await service.deleteWorkItem('tenant-1', 'wi-1');
+      await service.deleteWorkItem('ws-1', 'wi-1');
 
-      expect(workItemRepo.softDelete).toHaveBeenCalledWith('wi-1', 'tenant-1');
+      expect(workItemRepo.softDelete).toHaveBeenCalledWith('wi-1', 'ws-1');
     });
 
     it('throws when work item not found', async () => {
       workItemRepo.findById.mockResolvedValue(null);
-      await expect(service.deleteWorkItem('tenant-1', 'missing')).rejects.toThrow(
+      await expect(service.deleteWorkItem('ws-1', 'missing')).rejects.toThrow(
         NotFoundException,
       );
     });
@@ -370,7 +370,7 @@ describe('WorkItemsService', () => {
       expect(workItemRepo.update).toHaveBeenCalledWith(
         'wi-1',
         expect.objectContaining({ statusId: 'status-done', updatedBy: 'user-1' }),
-        'tenant-1',
+        'ws-1',
         expect.anything(),
       );
       expect(result.statusId).toBe('status-done');
@@ -381,16 +381,16 @@ describe('WorkItemsService', () => {
 
   describe('reorderWorkItems', () => {
     it('skips when items array is empty', async () => {
-      await service.reorderWorkItems('tenant-1', []);
+      await service.reorderWorkItems('ws-1', []);
       expect(workItemRepo.reorderItems).not.toHaveBeenCalled();
     });
 
-    it('validates each item belongs to tenant before reordering', async () => {
+    it('validates each item belongs to workspace before reordering', async () => {
       workItemRepo.findById.mockResolvedValue(mockWorkItem());
-      await service.reorderWorkItems('tenant-1', [{ id: 'wi-1', rank: 'b1' }]);
+      await service.reorderWorkItems('ws-1', [{ id: 'wi-1', rank: 'b1' }]);
       expect(workItemRepo.reorderItems).toHaveBeenCalledWith(
         [{ id: 'wi-1', rank: 'b1' }],
-        'tenant-1',
+        'ws-1',
         expect.anything(),
       );
     });
@@ -405,28 +405,28 @@ describe('WorkItemsService', () => {
 
     it('getWorkItemLabels returns labels for work item', async () => {
       workItemRepo.listLabels.mockResolvedValue([{ id: 'l1', name: 'bug', color: '#f00' }]);
-      const result = await service.getWorkItemLabels('tenant-1', 'wi-1');
+      const result = await service.getWorkItemLabels('ws-1', 'wi-1');
       expect(result).toHaveLength(1);
       expect(result[0].name).toBe('bug');
     });
 
     it('addLabelToWorkItem adds label', async () => {
-      await service.addLabelToWorkItem('tenant-1', 'wi-1', 'l1');
-      expect(workItemRepo.addLabel).toHaveBeenCalledWith('wi-1', 'l1', 'tenant-1');
+      await service.addLabelToWorkItem('ws-1', 'wi-1', 'l1');
+      expect(workItemRepo.addLabel).toHaveBeenCalledWith('wi-1', 'l1', 'ws-1');
     });
 
     it('addLabelToWorkItem validates label belongs to project (P1-15)', async () => {
       projectsService.assertLabelBelongsToProject.mockRejectedValueOnce(
         new Error('LABEL_NOT_IN_PROJECT'),
       );
-      await expect(service.addLabelToWorkItem('tenant-1', 'wi-1', 'bad-label')).rejects.toThrow(
+      await expect(service.addLabelToWorkItem('ws-1', 'wi-1', 'bad-label')).rejects.toThrow(
         'LABEL_NOT_IN_PROJECT',
       );
     });
 
     it('removeLabelFromWorkItem removes label', async () => {
-      await service.removeLabelFromWorkItem('tenant-1', 'wi-1', 'l1');
-      expect(workItemRepo.removeLabel).toHaveBeenCalledWith('wi-1', 'l1', 'tenant-1');
+      await service.removeLabelFromWorkItem('ws-1', 'wi-1', 'l1');
+      expect(workItemRepo.removeLabel).toHaveBeenCalledWith('wi-1', 'l1', 'ws-1');
     });
   });
 
@@ -550,7 +550,7 @@ describe('WorkItemsService', () => {
       expect(workItemRepo.assignIteration).toHaveBeenCalledWith(
         ['a'],
         null,
-        'tenant-1',
+        'ws-1',
         'user-1',
         expect.anything(),
       );
@@ -567,7 +567,7 @@ describe('WorkItemsService', () => {
       expect(workItemRepo.assignIteration).toHaveBeenCalledWith(
         ['a', 'b'],
         'it-1',
-        'tenant-1',
+        'ws-1',
         'user-1',
         expect.anything(),
       );

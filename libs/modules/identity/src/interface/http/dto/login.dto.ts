@@ -26,7 +26,7 @@ export const SignupSchema = z.object({
   email: z.string().email('Must be a valid email address'),
   password: PASSWORD_RULES,
   displayName: z.string().min(1, 'Name is required').max(255).trim(),
-  /** Optional org name — used when this signup creates a brand-new tenant. */
+  /** Optional org name — used when this signup creates a brand-new workspace. */
   organizationName: z.string().min(1).max(255).trim().optional(),
 });
 

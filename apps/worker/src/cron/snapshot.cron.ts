@@ -1,12 +1,12 @@
 /**
  * SnapshotCronService — daily cron that materialises sprint burndown data.
  *
- * Runs at midnight UTC every day. Finds all active sprints across all tenants
+ * Runs at midnight UTC every day. Finds all active sprints across all workspaces
  * and upserts a sprint_daily_snapshots row so burndown charts always have
  * today's data point even if no HTTP request is made.
  *
  * Design:
- * - Injects DrizzleDB directly to query cross-tenant active sprints without
+ * - Injects DrizzleDB directly to query cross-workspace active sprints without
  *   needing a JwtPayload actor (this is an internal scheduled operation).
  * - Aggregates work item counts using a single JOIN query per sprint.
  * - Delegates the upsert to ReportingService.upsertSnapshot() which reuses

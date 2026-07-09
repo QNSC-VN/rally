@@ -319,7 +319,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     const exec = executor ?? this.db;
     // Single transaction — caller (service) wraps this in uow.run() for
     // atomicity + RLS activation. The workspace_id guard here is belt-and-
-    // suspenders: even if called outside UoW it cannot write across tenants.
+    // suspenders: even if called outside UoW it cannot write across workspaces.
     await Promise.all(
       items.map(({ id, rank }) =>
         exec

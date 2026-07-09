@@ -44,7 +44,7 @@ export class AccessService {
     scopeType: ScopeType,
     scopeId?: string,
   ): Promise<UserRoleAssignment> {
-    // Validate role exists and is accessible for this tenant
+    // Validate role exists and is accessible for this workspace
     const role = await this.roleRepo.findById(roleId);
     if (!role || (role.workspaceId !== null && role.workspaceId !== actor.workspaceId)) {
       throw new NotFoundException('ROLE_NOT_FOUND', 'Role not found');
@@ -113,7 +113,7 @@ export class AccessService {
 
   /**
    * Resolve the primary role + effective permissions for a user.
-   * Workspace-scoped assignments take precedence over tenant/project scope.
+   * Workspace-scoped assignments take precedence over workspace/project scope.
    * Falls back to 'workspace_member' defaults when the user has no assignments.
    */
   /**
@@ -151,7 +151,7 @@ export class AccessService {
 
   /**
    * Forcibly assigns workspace_admin to a PLATFORM_ADMIN_EMAILS user.
-   * Replaces any existing role assignment for the user in this tenant.
+   * Replaces any existing role assignment for the user in this workspace.
    * Idempotent: skips if workspace_admin is already assigned.
    */
   async elevateToWorkspaceAdmin(userId: string, workspaceId: string): Promise<boolean> {
@@ -188,8 +188,8 @@ export class AccessService {
 
   /**
    * The user's BASELINE permissions — the union of every global- and
-   * workspace-scoped role they hold in this tenant. This is what gets embedded
-   * in the JWT: it's tenant-wide and stable for the token's lifetime.
+   * workspace-scoped role they hold in this workspace. This is what gets embedded
+   * in the JWT: it's workspace-wide and stable for the token's lifetime.
    *
    * Project-scoped assignments are deliberately NOT included here — they're
    * resolved per-request by getProjectPermissions() so the token stays small
@@ -231,7 +231,7 @@ export class AccessService {
   }
 
   /**
-   * Effective permissions for a specific PROJECT: the user's tenant-wide
+   * Effective permissions for a specific PROJECT: the user's workspace-wide
    * baseline (global + workspace) unioned with any role they hold that is
    * scoped to exactly this project. Used by ProjectPermissionGuard at request
    * time so "admin of Project X, viewer of Project Y" is actually enforced.
@@ -267,7 +267,7 @@ export class AccessService {
     projectId: string,
     required: Permission,
   ): Promise<void> {
-    // Fast path: a tenant-wide grant in the JWT covers every project.
+    // Fast path: a workspace-wide grant in the JWT covers every project.
     if (permissionGrants(user.permissions, required)) return;
 
     const effective = await this.getProjectPermissions(user.sub, user.workspaceId, projectId);
