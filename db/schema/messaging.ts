@@ -26,7 +26,7 @@ export const outboxEvents = messagingSchema.table(
     version: integer('version').notNull().default(1),
     aggregateType: varchar('aggregate_type', { length: 100 }).notNull(),
     aggregateId: uuid('aggregate_id').notNull(),
-    tenantId: uuid('tenant_id').notNull(),
+    workspaceId: uuid('workspace_id').notNull(),
     payload: jsonb('payload').notNull(),
     occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
     status: outboxStatusEnum('status').notNull().default('pending'),
@@ -41,7 +41,7 @@ export const outboxEvents = messagingSchema.table(
     statusIdx: index('ix_outbox_status')
       .on(t.status, t.createdAt)
       .where(sql`status = 'pending'`),
-    tenantIdx: index('ix_outbox_tenant').on(t.tenantId),
+    workspaceIdx: index('ix_outbox_workspace').on(t.workspaceId),
     eventIdIdx: index('ix_outbox_event_id').on(t.eventId),
   }),
 );
@@ -94,7 +94,7 @@ export const emailOutbox = messagingSchema.table(
      * Used by EmailRelayService to check notification_preferences.
      */
     recipientId: uuid('recipient_id'),
-    tenantId: uuid('tenant_id'),
+    workspaceId: uuid('workspace_id'),
   },
   (t) => ({
     statusIdx: index('ix_email_outbox_status')
@@ -122,7 +122,7 @@ export const notificationOutbox = messagingSchema.table(
   'notification_outbox',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    tenantId: uuid('tenant_id').notNull(),
+    workspaceId: uuid('workspace_id').notNull(),
     recipientId: uuid('recipient_id').notNull(),
     actorId: uuid('actor_id'),
     type: varchar('type', { length: 100 }).notNull(),

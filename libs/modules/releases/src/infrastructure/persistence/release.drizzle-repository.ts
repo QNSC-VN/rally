@@ -17,10 +17,10 @@ export class ReleaseDrizzleRepository implements IReleaseRepository {
 
   async listByProject(
     projectId: string,
-    tenantId: string,
+    workspaceId: string,
     { limit, cursor }: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<Release>> {
-    const conditions = [eq(releases.projectId, projectId), eq(releases.tenantId, tenantId)];
+    const conditions = [eq(releases.projectId, projectId), eq(releases.workspaceId, workspaceId)];
 
     if (cursor) {
       conditions.push(lt(releases.createdAt, new Date(cursor.k[0] as string)));
@@ -41,7 +41,7 @@ export class ReleaseDrizzleRepository implements IReleaseRepository {
       .insert(releases)
       .values({
         id: input.id,
-        tenantId: input.tenantId,
+        workspaceId: input.workspaceId,
         projectId: input.projectId,
         name: input.name,
         description: input.description,

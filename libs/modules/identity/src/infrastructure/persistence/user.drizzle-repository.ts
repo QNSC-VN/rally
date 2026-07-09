@@ -149,7 +149,6 @@ export class UserDrizzleRepository implements IUserRepository {
     providerSub: string,
     providerEmail: string,
     displayName: string,
-    tenantId: string,
     tx?: DbExecutor,
   ): Promise<User> {
     const executor = tx ?? this.db;
@@ -178,10 +177,9 @@ export class UserDrizzleRepository implements IUserRepository {
       .then((r) => r[0] ?? null);
 
     if (existingUser) {
-      // Link the SSO identity to the existing user (tenantId = SSO connection's tenant)
+      // Link the SSO identity to the existing user (account merge for pre-invited users)
       await executor.insert(ssoIdentities).values({
         id: uuidv7(),
-        tenantId,
         userId: existingUser.id,
         provider: provider as SsoProvider,
         providerSub,
@@ -190,7 +188,7 @@ export class UserDrizzleRepository implements IUserRepository {
       return existingUser;
     }
 
-    // 3. JIT provision: create new user + sso_identity in the specified tenant
+    // 3. JIT provision: create new user + sso_identity
     const userId = uuidv7();
     const [newUser] = await executor
       .insert(users)
@@ -206,7 +204,6 @@ export class UserDrizzleRepository implements IUserRepository {
 
     await executor.insert(ssoIdentities).values({
       id: uuidv7(),
-      tenantId,
       userId,
       provider: provider as SsoProvider,
       providerSub,

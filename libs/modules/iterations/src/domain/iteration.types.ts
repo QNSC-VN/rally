@@ -3,7 +3,7 @@ export type { IterationState };
 
 export interface Iteration {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   projectId: string;
   teamId: string | null;
   iterationKey: string | null;
@@ -22,7 +22,7 @@ export interface Iteration {
 
 export interface CreateIterationInput {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   projectId: string;
   teamId?: string | null;
   iterationKey?: string | null;

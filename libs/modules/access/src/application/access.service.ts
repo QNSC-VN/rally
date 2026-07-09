@@ -27,14 +27,14 @@ export class AccessService {
 
   // ── Roles ─────────────────────────────────────────────────────────────────
 
-  async listRoles(tenantId: string): Promise<SystemRole[]> {
-    return this.roleRepo.listForTenant(tenantId);
+  async listRoles(workspaceId: string): Promise<SystemRole[]> {
+    return this.roleRepo.listForWorkspace(workspaceId);
   }
 
   // ── Assignments ───────────────────────────────────────────────────────────
 
-  async getUserAssignments(tenantId: string, userId: string): Promise<UserRoleAssignment[]> {
-    return this.assignmentRepo.listForUser(tenantId, userId);
+  async getUserAssignments(workspaceId: string, userId: string): Promise<UserRoleAssignment[]> {
+    return this.assignmentRepo.listForUser(workspaceId, userId);
   }
 
   async assignRole(
@@ -44,9 +44,9 @@ export class AccessService {
     scopeType: ScopeType,
     scopeId?: string,
   ): Promise<UserRoleAssignment> {
-    // Validate role exists and is accessible for this tenant
+    // Validate role exists and is accessible for this workspace
     const role = await this.roleRepo.findById(roleId);
-    if (!role || (role.tenantId !== null && role.tenantId !== actor.tenantId)) {
+    if (!role || (role.workspaceId !== null && role.workspaceId !== actor.workspaceId)) {
       throw new NotFoundException('ROLE_NOT_FOUND', 'Role not found');
     }
 
@@ -55,7 +55,7 @@ export class AccessService {
       roleId,
       scopeType,
       scopeId ?? null,
-      actor.tenantId,
+      actor.workspaceId,
     );
     if (existing) {
       throw new ConflictException(
@@ -66,7 +66,7 @@ export class AccessService {
 
     const input: AssignRoleInput = {
       id: uuidv7(),
-      tenantId: actor.tenantId,
+      workspaceId: actor.workspaceId,
       userId,
       roleId,
       scopeType,
@@ -83,7 +83,7 @@ export class AccessService {
   }
 
   async revokeRole(actor: JwtPayload, assignmentId: string): Promise<void> {
-    const assignment = await this.assignmentRepo.findById(assignmentId, actor.tenantId);
+    const assignment = await this.assignmentRepo.findById(assignmentId, actor.workspaceId);
     if (!assignment) {
       throw new NotFoundException('ROLE_ASSIGNMENT_NOT_FOUND', 'Role assignment not found');
     }
@@ -97,8 +97,8 @@ export class AccessService {
    * permissions are added in future, expand this to check prefix wildcards at
    * each segment boundary (e.g. `workspace:admin:*` matches `workspace:admin:write`).
    */
-  async hasPermission(tenantId: string, userId: string, permission: string): Promise<boolean> {
-    const assignments = await this.assignmentRepo.listForUser(tenantId, userId);
+  async hasPermission(workspaceId: string, userId: string, permission: string): Promise<boolean> {
+    const assignments = await this.assignmentRepo.listForUser(workspaceId, userId);
     if (!assignments.length) return false;
 
     const roleIds = [...new Set(assignments.map((a) => a.roleId))];
@@ -113,7 +113,7 @@ export class AccessService {
 
   /**
    * Resolve the primary role + effective permissions for a user.
-   * Workspace-scoped assignments take precedence over tenant/project scope.
+   * Workspace-scoped assignments take precedence over workspace/project scope.
    * Falls back to 'workspace_member' defaults when the user has no assignments.
    */
   /**
@@ -123,22 +123,22 @@ export class AccessService {
    */
   async ensureDefaultRole(
     userId: string,
-    tenantId: string,
+    workspaceId: string,
     defaultRoleSlug: string = SYSTEM_ROLE.PROJECT_MEMBER,
   ): Promise<void> {
-    const existing = await this.assignmentRepo.listForUser(tenantId, userId)
+    const existing = await this.assignmentRepo.listForUser(workspaceId, userId)
     if (existing.length > 0) return // already has a role
 
-    const roles = await this.roleRepo.listForTenant(tenantId)
+    const roles = await this.roleRepo.listForWorkspace(workspaceId)
     const defaultRole = roles.find((r) => r.slug === defaultRoleSlug) ?? roles.find((r) => r.slug === SYSTEM_ROLE.WORKSPACE_MEMBER)
     if (!defaultRole) {
-      this.logger.warn({ userId, tenantId }, 'No default role found for JIT-provisioned user')
+      this.logger.warn({ userId, workspaceId }, 'No default role found for JIT-provisioned user')
       return
     }
 
     const input: AssignRoleInput = {
       id: uuidv7(),
-      tenantId,
+      workspaceId,
       userId,
       roleId: defaultRole.id,
       scopeType: 'workspace',
@@ -151,18 +151,18 @@ export class AccessService {
 
   /**
    * Forcibly assigns workspace_admin to a PLATFORM_ADMIN_EMAILS user.
-   * Replaces any existing role assignment for the user in this tenant.
+   * Replaces any existing role assignment for the user in this workspace.
    * Idempotent: skips if workspace_admin is already assigned.
    */
-  async elevateToWorkspaceAdmin(userId: string, tenantId: string): Promise<boolean> {
-    const roles = await this.roleRepo.listForTenant(tenantId)
+  async elevateToWorkspaceAdmin(userId: string, workspaceId: string): Promise<boolean> {
+    const roles = await this.roleRepo.listForWorkspace(workspaceId)
     const adminRole = roles.find((r) => r.slug === SYSTEM_ROLE.WORKSPACE_ADMIN)
     if (!adminRole) {
-      this.logger.warn({ userId, tenantId }, 'workspace_admin role not found — cannot elevate')
+      this.logger.warn({ userId, workspaceId }, 'workspace_admin role not found — cannot elevate')
       return false
     }
 
-    const existing = await this.assignmentRepo.listForUser(tenantId, userId)
+    const existing = await this.assignmentRepo.listForUser(workspaceId, userId)
     const alreadyAdmin = existing.some((a) => a.roleId === adminRole.id)
     if (alreadyAdmin) return false
 
@@ -175,7 +175,7 @@ export class AccessService {
 
     await this.assignmentRepo.create({
       id: uuidv7(),
-      tenantId,
+      workspaceId,
       userId,
       roleId: adminRole.id,
       scopeType: 'workspace',
@@ -188,8 +188,8 @@ export class AccessService {
 
   /**
    * The user's BASELINE permissions — the union of every global- and
-   * workspace-scoped role they hold in this tenant. This is what gets embedded
-   * in the JWT: it's tenant-wide and stable for the token's lifetime.
+   * workspace-scoped role they hold in this workspace. This is what gets embedded
+   * in the JWT: it's workspace-wide and stable for the token's lifetime.
    *
    * Project-scoped assignments are deliberately NOT included here — they're
    * resolved per-request by getProjectPermissions() so the token stays small
@@ -200,9 +200,9 @@ export class AccessService {
    */
   async getUserRoleAndPermissions(
     userId: string,
-    tenantId: string,
+    workspaceId: string,
   ): Promise<{ role: string; permissions: string[] }> {
-    const assignments = await this.assignmentRepo.listForUser(tenantId, userId);
+    const assignments = await this.assignmentRepo.listForUser(workspaceId, userId);
     const baseline = assignments.filter(
       (a) => a.scopeType === 'global' || a.scopeType === 'workspace',
     );
@@ -231,17 +231,17 @@ export class AccessService {
   }
 
   /**
-   * Effective permissions for a specific PROJECT: the user's tenant-wide
+   * Effective permissions for a specific PROJECT: the user's workspace-wide
    * baseline (global + workspace) unioned with any role they hold that is
    * scoped to exactly this project. Used by ProjectPermissionGuard at request
    * time so "admin of Project X, viewer of Project Y" is actually enforced.
    */
   async getProjectPermissions(
     userId: string,
-    tenantId: string,
+    workspaceId: string,
     projectId: string,
   ): Promise<string[]> {
-    const assignments = await this.assignmentRepo.listForUser(tenantId, userId);
+    const assignments = await this.assignmentRepo.listForUser(workspaceId, userId);
     const relevant = assignments.filter(
       (a) =>
         a.scopeType === 'global' ||
@@ -267,10 +267,10 @@ export class AccessService {
     projectId: string,
     required: Permission,
   ): Promise<void> {
-    // Fast path: a tenant-wide grant in the JWT covers every project.
+    // Fast path: a workspace-wide grant in the JWT covers every project.
     if (permissionGrants(user.permissions, required)) return;
 
-    const effective = await this.getProjectPermissions(user.sub, user.tenantId, projectId);
+    const effective = await this.getProjectPermissions(user.sub, user.workspaceId, projectId);
     if (permissionGrants(effective, required)) return;
 
     throw new PermissionDeniedException(

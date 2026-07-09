@@ -13,7 +13,6 @@ import {
   PreconditionFailedException,
   Span,
   EmailSchedulerService,
-  TenantRlsService,
   addHours,
   parseDurationToSeconds,
   InjectDrizzle,
@@ -21,8 +20,8 @@ import {
 import type { JwtPayload, DrizzleDB } from '@platform';
 import { SYSTEM_ROLE } from '@shared-kernel';
 import { AccessService } from '@modules/access';
-import { TenancyService } from '@modules/tenancy';
-import type { TenantMembership } from '@modules/tenancy';
+import { WorkspaceService } from '@modules/workspace';
+import type { WorkspaceMembership } from '@modules/workspace';
 import { AuditService } from '@modules/audit';
 import { IUserRepository, USER_REPOSITORY } from '../domain/ports/user.repository';
 import {
@@ -44,8 +43,8 @@ export interface LoginResult {
   expiresIn: number;
   csrfToken: string;
   user: Pick<User, 'id' | 'email' | 'displayName' | 'avatarUrl' | 'locale' | 'timezone'>;
-  /** All active tenant memberships, most-recently-active first. Drives the tenant switcher. */
-  memberships: TenantMembership[];
+  /** All active workspace memberships, most-recently-active first. Drives the workspace switcher. */
+  memberships: WorkspaceMembership[];
 }
 
 export interface RefreshResult {
@@ -68,9 +67,8 @@ export class AuthService {
     private readonly valkey: ValkeyService,
     private readonly config: AppConfigService,
     private readonly emailScheduler: EmailSchedulerService,
-    private readonly rls: TenantRlsService,
     private readonly accessService: AccessService,
-    private readonly tenancyService: TenancyService,
+    private readonly workspaceService: WorkspaceService,
     private readonly audit: AuditService,
   ) {}
 
@@ -109,11 +107,11 @@ export class AuthService {
     }
 
     const sessionId = uuidv7();
-    // Load keycards — pick the most-recently-active tenant.
-    const memberships = await this.tenancyService.getMemberships(user.id);
-    const activeTenantId = memberships[0]?.tenantId;
-    if (!activeTenantId) {
-      throw new UnauthorizedException('ACCOUNT_DEACTIVATED', 'No active tenant membership found');
+    // Load keycards — pick the most-recently-active workspace.
+    const memberships = await this.workspaceService.getMemberships(user.id);
+    const activeWorkspaceId = memberships[0]?.workspaceId;
+    if (!activeWorkspaceId) {
+      throw new UnauthorizedException('ACCOUNT_DEACTIVATED', 'No active workspace membership found');
     }
 
     // Auto-elevate platform admins to workspace_admin on every login.
@@ -123,12 +121,12 @@ export class AuthService {
       .filter(Boolean);
     let updatedMemberships = memberships;
     if (platformAdminEmails.includes(user.email.toLowerCase())) {
-      const elevated = await this.accessService.elevateToWorkspaceAdmin(user.id, activeTenantId);
+      const elevated = await this.accessService.elevateToWorkspaceAdmin(user.id, activeWorkspaceId);
       // Re-fetch so the response reflects the new role
-      updatedMemberships = await this.tenancyService.getMemberships(user.id);
+      updatedMemberships = await this.workspaceService.getMemberships(user.id);
       if (elevated) {
         void this.audit.record({
-          tenantId: activeTenantId,
+          workspaceId: activeWorkspaceId,
           actorId: user.id,
           actorEmail: user.email,
           action: 'access.role_elevated',
@@ -142,13 +140,13 @@ export class AuthService {
 
     const { permissions } = await this.accessService.getUserRoleAndPermissions(
       user.id,
-      activeTenantId,
+      activeWorkspaceId,
     );
     const { accessToken, jti, expiresIn } = this.signAccessToken(
       user,
       sessionId,
       permissions,
-      activeTenantId,
+      activeWorkspaceId,
     );
     const { refreshToken, tokenHash, familyId } = this.generateRefreshToken();
 
@@ -159,11 +157,11 @@ export class AuthService {
 
     const csrfToken = randomBytes(32).toString('hex');
 
-    await this.rls.withTenantContext(activeTenantId, async (tx) => {
+    await this.db.transaction(async (tx) => {
       await this.sessionRepo.create(
         {
           id: sessionId,
-          tenantId: activeTenantId,
+          workspaceId: activeWorkspaceId,
           userId: user.id,
           tokenHash,
           familyId,
@@ -178,10 +176,10 @@ export class AuthService {
 
     this.logger.log({ userId: user.id, jti, sessionId }, 'User logged in');
 
-    // Fire-and-forget: touch last-active for the tenant switcher + audit trail
-    void this.tenancyService.touchTenantMembership(user.id, activeTenantId);
+    // Fire-and-forget: touch last-active for the workspace switcher + audit trail
+    void this.workspaceService.touchMembership(user.id, activeWorkspaceId);
     void this.audit.record({
-      tenantId: activeTenantId,
+      workspaceId: activeWorkspaceId,
       actorId: user.id,
       actorEmail: user.email,
       action: 'auth.login',
@@ -200,7 +198,7 @@ export class AuthService {
         'SECURITY: Break-glass account login detected',
       );
       void this.audit.record({
-        tenantId: activeTenantId,
+        workspaceId: activeWorkspaceId,
         actorId: user.id,
         actorEmail: user.email,
         action: 'auth.breakglass_login',
@@ -216,7 +214,7 @@ export class AuthService {
       const baseUrl = this.config.get('APP_BASE_URL');
       for (const adminEmail of adminEmails) {
         const alertKey = this.hashToken(`breakglass-alert:${sessionId}:${adminEmail}`);
-        void this.rls.withTenantContext(activeTenantId, async (tx) => {
+        void this.db.transaction(async (tx) => {
           await this.emailScheduler.schedule(
             {
               to: adminEmail,
@@ -253,7 +251,7 @@ export class AuthService {
   }
 
   // ---------------------------------------------------------------------------
-  // Sign up (self-serve) — creates or joins a tenant by email domain
+  // Sign up (self-serve) — creates or joins a workspace by email domain
   // ---------------------------------------------------------------------------
 
   @Span('auth.signup')
@@ -261,20 +259,9 @@ export class AuthService {
     input: { email: string; password: string; displayName: string; organizationName?: string },
     ipAddress?: string,
   ): Promise<LoginResult> {
-    // Single-tenant deployments are packaged for one customer: there is no
-    // self-serve signup and no new-tenant provisioning. Users are onboarded via
-    // SSO (mapped to the one tenant) or admin invitation.
-    if (this.config.isSingleTenant()) {
-      throw new PreconditionFailedException(
-        'SIGNUP_DISABLED',
-        'Self-serve signup is disabled on this instance. Please sign in with your organization account or ask an administrator for an invitation.',
-      );
-    }
-
     const email = input.email.toLowerCase().trim();
-    const domain = email.slice(email.lastIndexOf('@') + 1);
 
-    // Email is globally unique — one email maps to exactly one account/tenant.
+    // Email is globally unique — one email maps to exactly one account.
     const existing = await this.userRepo.findByEmail(email);
     if (existing) {
       throw new ConflictException(
@@ -285,53 +272,30 @@ export class AuthService {
 
     const passwordHash = await AuthService.hashPassword(input.password);
 
-    // Domain-aware tenant resolution:
-    //   1. verified + auto-join domain → join that existing tenant as a member
-    //   2. otherwise                    → provision a NEW tenant; signer = admin
-    const autoJoin = await this.tenancyService.findAutoJoinTarget(domain);
-
-    let tenantId: string;
-    let workspaceId: string;
-    let roleSlug: string;
-
-    if (autoJoin) {
-      tenantId = autoJoin.tenantId;
-      workspaceId = autoJoin.workspaceId;
-      roleSlug = SYSTEM_ROLE.PROJECT_MEMBER;
-    } else {
-      const orgName =
-        input.organizationName?.trim() || this.defaultOrgName(input.displayName, email);
-      // Only claim corporate domains — never public providers (gmail, etc.).
-      // Also skip if the domain is already owned by another tenant (avoid unique constraint crash).
-      const alreadyClaimed =
-        !AuthService.isPublicEmailDomain(domain) &&
-        (await this.tenancyService.isDomainClaimed(domain));
-      const claimDomain = AuthService.isPublicEmailDomain(domain) || alreadyClaimed ? null : domain;
-      const { tenant, workspace } = await this.tenancyService.provisionTenant(orgName, claimDomain);
-      tenantId = tenant.id;
-      workspaceId = workspace.id;
-      roleSlug = SYSTEM_ROLE.WORKSPACE_ADMIN;
-    }
-
     const user = await this.userRepo.create({
       email,
       displayName: input.displayName,
       passwordHash,
     });
 
-    // Enroll as workspace member + grant the resolved role.
-    await this.tenancyService.enrollMember(tenantId, workspaceId, user.id);
-    await this.accessService.ensureDefaultRole(user.id, tenantId, roleSlug);
+    // Provision a fresh workspace for the signer and make them its admin. There
+    // is no cross-workspace auto-join: every self-serve signup gets its own root
+    // workspace.
+    const orgName =
+      input.organizationName?.trim() || this.defaultOrgName(input.displayName, email);
+    const workspace = await this.workspaceService.provisionWorkspace(orgName, user.id);
+    const workspaceId = workspace.id;
+    await this.accessService.ensureDefaultRole(user.id, workspaceId, SYSTEM_ROLE.WORKSPACE_ADMIN);
 
     // Issue a login session (mirrors login()).
     const sessionId = uuidv7();
-    const memberships = await this.tenancyService.getMemberships(user.id);
-    const { permissions } = await this.accessService.getUserRoleAndPermissions(user.id, tenantId);
+    const memberships = await this.workspaceService.getMemberships(user.id);
+    const { permissions } = await this.accessService.getUserRoleAndPermissions(user.id, workspaceId);
     const { accessToken, jti, expiresIn } = this.signAccessToken(
       user,
       sessionId,
       permissions,
-      tenantId,
+      workspaceId,
     );
     const { refreshToken, tokenHash, familyId } = this.generateRefreshToken();
     const refreshExpiry = new Date();
@@ -339,11 +303,11 @@ export class AuthService {
 
     const csrfToken = randomBytes(32).toString('hex');
 
-    await this.rls.withTenantContext(tenantId, async (tx) => {
+    await this.db.transaction(async (tx) => {
       await this.sessionRepo.create(
         {
           id: sessionId,
-          tenantId,
+          workspaceId,
           userId: user.id,
           tokenHash,
           familyId,
@@ -356,21 +320,18 @@ export class AuthService {
       await this.userRepo.updateLastLogin(user.id, tx);
     });
 
-    this.logger.log(
-      { userId: user.id, tenantId, jti, sessionId, mode: autoJoin ? 'join' : 'new-tenant' },
-      'User signed up',
-    );
+    this.logger.log({ userId: user.id, workspaceId, jti, sessionId }, 'User signed up');
 
-    void this.tenancyService.touchTenantMembership(user.id, tenantId);
+    void this.workspaceService.touchMembership(user.id, workspaceId);
     void this.audit.record({
-      tenantId,
+      workspaceId,
       actorId: user.id,
       actorEmail: user.email,
       action: 'auth.signup',
       resourceType: 'user',
       resourceId: user.id,
       ipAddress,
-      metadata: { mode: autoJoin ? 'join' : 'new-tenant' },
+      metadata: { mode: 'new-workspace' },
     });
 
     return {
@@ -395,31 +356,6 @@ export class AuthService {
     return `${first}'s Workspace`;
   }
 
-  /** Common free/public email providers that must never be claimed as a tenant domain. */
-  private static readonly PUBLIC_EMAIL_DOMAINS = new Set([
-    'gmail.com',
-    'googlemail.com',
-    'outlook.com',
-    'hotmail.com',
-    'live.com',
-    'yahoo.com',
-    'ymail.com',
-    'icloud.com',
-    'me.com',
-    'aol.com',
-    'proton.me',
-    'protonmail.com',
-    'gmx.com',
-    'mail.com',
-    'zoho.com',
-    'yandex.com',
-    'qq.com',
-  ]);
-
-  private static isPublicEmailDomain(domain: string): boolean {
-    return AuthService.PUBLIC_EMAIL_DOMAINS.has(domain.toLowerCase());
-  }
-
   // ---------------------------------------------------------------------------
   // Refresh
   // ---------------------------------------------------------------------------
@@ -442,7 +378,7 @@ export class AuthService {
       );
       // Audit trail for security incident detection (SOC 2 CC6.8)
       void this.audit.record({
-        tenantId: session.tenantId,
+        workspaceId: session.workspaceId,
         actorId: session.userId,
         action: 'auth.token_theft_detected',
         resourceType: 'session',
@@ -477,13 +413,13 @@ export class AuthService {
     const authMethod: 'password' | 'sso' = session.ssoProvider ? 'sso' : 'password';
     const { permissions } = await this.accessService.getUserRoleAndPermissions(
       user.id,
-      session.tenantId,
+      session.workspaceId,
     );
     const { accessToken, expiresIn } = this.signAccessToken(
       user,
       newSessionId,
       permissions,
-      session.tenantId,
+      session.workspaceId,
       authMethod,
     );
     const { refreshToken: newRefreshToken, tokenHash: newHash } = this.generateRefreshToken();
@@ -496,12 +432,12 @@ export class AuthService {
     // Atomic token rotation: revoke old session and issue new in one tx.
     // If either write fails the whole rotation rolls back, so we never end up
     // with two live refresh tokens (token-reuse / privilege-escalation gap).
-    await this.rls.withTenantContext(session.tenantId, async (tx) => {
+    await this.db.transaction(async (tx) => {
       await this.sessionRepo.revokeById(session.id, tx);
       await this.sessionRepo.create(
         {
           id: newSessionId,
-          tenantId: session.tenantId,
+          workspaceId: session.workspaceId,
           userId: user.id,
           tokenHash: newHash,
           familyId: session.familyId, // preserve family for revocation chain
@@ -536,7 +472,7 @@ export class AuthService {
     this.logger.log({ userId: payload.sub, jti: payload.jti }, 'User logged out');
 
     void this.audit.record({
-      tenantId: payload.tenantId,
+      workspaceId: payload.workspaceId,
       actorId: payload.sub,
       action: 'auth.logout',
       resourceType: 'session',
@@ -551,16 +487,16 @@ export class AuthService {
 
   @Span('auth.ssoLogin')
   async ssoLogin(idToken: string, ipAddress?: string): Promise<LoginResult> {
-    const tenantId = this.config.get('ENTRA_TENANT_ID');
+    const workspaceId = this.config.get('ENTRA_TENANT_ID');
     const clientId = this.config.get('ENTRA_CLIENT_ID');
 
-    if (!tenantId || !clientId) {
+    if (!workspaceId || !clientId) {
       throw new UnauthorizedException('SSO_NOT_CONFIGURED', 'SSO is not configured on this server');
     }
 
     // Verify the Entra ID token signature and claims using Microsoft's JWKS
     const JWKS = createRemoteJWKSet(
-      new URL(`https://login.microsoftonline.com/${tenantId}/discovery/v2.0/keys`),
+      new URL(`https://login.microsoftonline.com/${workspaceId}/discovery/v2.0/keys`),
     );
 
     let claims: {
@@ -575,8 +511,8 @@ export class AuthService {
     try {
       const result = await jwtVerify(idToken, JWKS, {
         issuer: [
-          `https://login.microsoftonline.com/${tenantId}/v2.0`,
-          `https://sts.windows.net/${tenantId}/`,
+          `https://login.microsoftonline.com/${workspaceId}/v2.0`,
+          `https://sts.windows.net/${workspaceId}/`,
         ],
         audience: clientId,
       });
@@ -596,7 +532,7 @@ export class AuthService {
             ? claims.upn
             : null;
     const displayName = typeof claims.name === 'string' ? claims.name : (email ?? 'Unknown');
-    // Entra `tid` — the IdP directory id used to resolve the Rally tenant.
+    // Entra `tid` — the IdP directory id used to resolve the Rally workspace.
     const externalTenantId = typeof claims.tid === 'string' ? claims.tid : null;
 
     if (!oid || !email) {
@@ -608,11 +544,11 @@ export class AuthService {
 
     const normalizedEmail = email.toLowerCase().trim();
 
-    // Look up existing SSO identity first (fast path — avoids tenant lookup)
+    // Look up existing SSO identity first (fast path — avoids workspace lookup)
     const existingIdentity = await this.userRepo.findSsoIdentity('entra', oid);
 
     let user: User;
-    let ssoTenantId: string;
+    let ssoWorkspaceId: string;
     if (existingIdentity) {
       const found = await this.userRepo.findById(existingIdentity.userId);
       if (
@@ -624,11 +560,11 @@ export class AuthService {
         throw new UnauthorizedException('USER_DEACTIVATED', 'Account is not active');
       }
       user = found;
-      // Determine active tenant from memberships (most-recently-active first).
-      const membershipsEarly = await this.tenancyService.getMemberships(user.id);
-      ssoTenantId = membershipsEarly[0]?.tenantId ?? '';
-      if (!ssoTenantId) {
-        throw new UnauthorizedException('ACCOUNT_DEACTIVATED', 'No active tenant membership found');
+      // Determine active workspace from memberships (most-recently-active first).
+      const membershipsEarly = await this.workspaceService.getMemberships(user.id);
+      ssoWorkspaceId = membershipsEarly[0]?.workspaceId ?? '';
+      if (!ssoWorkspaceId) {
+        throw new UnauthorizedException('ACCOUNT_DEACTIVATED', 'No active workspace membership found');
       }
     } else {
       const provisioned = await this.resolveAndProvisionSsoUser({
@@ -638,7 +574,7 @@ export class AuthService {
         externalTenantId,
       });
       user = provisioned.user;
-      ssoTenantId = provisioned.tenantId;
+      ssoWorkspaceId = provisioned.workspaceId;
     }
 
     // Auto-elevate platform admins to workspace_admin on every SSO login.
@@ -647,10 +583,10 @@ export class AuthService {
       .map((e) => e.trim())
       .filter(Boolean);
     if (platformAdminEmails.includes(user.email.toLowerCase())) {
-      const elevated = await this.accessService.elevateToWorkspaceAdmin(user.id, ssoTenantId);
+      const elevated = await this.accessService.elevateToWorkspaceAdmin(user.id, ssoWorkspaceId);
       if (elevated) {
         void this.audit.record({
-          tenantId: ssoTenantId,
+          workspaceId: ssoWorkspaceId,
           actorId: user.id,
           actorEmail: user.email,
           action: 'access.role_elevated',
@@ -665,13 +601,13 @@ export class AuthService {
     const sessionId = uuidv7();
     const { permissions } = await this.accessService.getUserRoleAndPermissions(
       user.id,
-      ssoTenantId,
+      ssoWorkspaceId,
     );
     const { accessToken, jti, expiresIn } = this.signAccessToken(
       user,
       sessionId,
       permissions,
-      ssoTenantId,
+      ssoWorkspaceId,
       'sso',
     );
     const { refreshToken, tokenHash, familyId } = this.generateRefreshToken();
@@ -681,11 +617,11 @@ export class AuthService {
 
     const csrfToken = randomBytes(32).toString('hex');
 
-    await this.rls.withTenantContext(ssoTenantId, async (tx) => {
+    await this.db.transaction(async (tx) => {
       await this.sessionRepo.create(
         {
           id: sessionId,
-          tenantId: ssoTenantId,
+          workspaceId: ssoWorkspaceId,
           userId: user.id,
           tokenHash,
           familyId,
@@ -705,7 +641,7 @@ export class AuthService {
     );
 
     void this.audit.record({
-      tenantId: ssoTenantId,
+      workspaceId: ssoWorkspaceId,
       actorId: user.id,
       actorEmail: user.email,
       action: 'auth.login.sso',
@@ -715,8 +651,8 @@ export class AuthService {
       metadata: { provider: 'entra', oid },
     });
 
-    const memberships = await this.tenancyService.getMemberships(user.id);
-    void this.tenancyService.touchTenantMembership(user.id, ssoTenantId);
+    const memberships = await this.workspaceService.getMemberships(user.id);
+    void this.workspaceService.touchMembership(user.id, ssoWorkspaceId);
 
     return {
       accessToken,
@@ -736,31 +672,28 @@ export class AuthService {
   }
 
   /**
-   * Resolve which Rally tenant a federated (SSO) user belongs to and provision
-   * them if needed. This is the enterprise tenant-resolution chain, evaluated in
-   * priority order so that the most authoritative signal wins:
+   * Resolve which Rally workspace a federated (SSO) user belongs to and provision
+   * them if needed. Resolution is driven entirely by the SSO connection:
    *
-   *   1. SSO connection by Entra tid → provision into the mapped tenant, subject
+   *   1. SSO connection by Entra tid → provision into the mapped workspace, subject
    *                                    to the connection's domain allow-list and
    *                                    JIT toggle. This is the primary mechanism.
-   *   2. Single-tenant fallback       → in DEPLOYMENT_MODE=single, resolve to the
-   *                                    one configured tenant (SINGLE_TENANT_SLUG).
-   *   3. Otherwise                   → 403; the user must be invited by an admin.
+   *   2. Otherwise                   → 403; the user must be invited by an admin.
    *
    * An unmapped IdP is rejected rather than silently dropped into a default
-   * tenant — so a directory the operator hasn't explicitly mapped can't leak in.
+   * workspace — so a directory the operator hasn't explicitly mapped can't leak in.
    */
   private async resolveAndProvisionSsoUser(input: {
     oid: string;
     email: string;
     displayName: string;
     externalTenantId: string | null;
-  }): Promise<{ user: User; tenantId: string }> {
+  }): Promise<{ user: User; workspaceId: string }> {
     const { oid, email, displayName, externalTenantId } = input;
 
-    // Determine the Rally tenantId from the SSO connection first, so we always
-    // have an explicit tenant regardless of whether the user pre-exists.
-    let connectionTenantId: string | null = null;
+    // Determine the Rally workspaceId from the SSO connection first, so we always
+    // have an explicit workspace regardless of whether the user pre-exists.
+    let connectionWorkspaceId: string | null = null;
     let defaultRoleSlug: string | undefined;
 
     if (externalTenantId) {
@@ -787,52 +720,32 @@ export class AuthService {
             'Automatic account creation is disabled. Please ask your administrator for an invitation.',
           );
         }
-        connectionTenantId = connection.tenantId;
+        connectionWorkspaceId = connection.workspaceId;
         defaultRoleSlug = connection.defaultRoleSlug;
       }
     }
 
-    // Single-tenant deployments have exactly one tenant. Any SSO user who
-    // passes IdP verification belongs to it, so resolve to that tenant when no
-    // explicit sso_connection row matched. (A connection row still wins above,
-    // so per-domain allow-lists / JIT toggles keep working if configured.)
-    if (!connectionTenantId && this.config.isSingleTenant()) {
-      const single = await this.tenancyService.findTenantBySlug(
-        this.config.get('SINGLE_TENANT_SLUG'),
-      );
-      if (single) {
-        connectionTenantId = single.id;
-        defaultRoleSlug = SYSTEM_ROLE.PROJECT_MEMBER;
-      }
-    }
-
-    if (!connectionTenantId) {
+    if (!connectionWorkspaceId) {
       throw new UnauthorizedException(
         'SSO_NO_ACCESS',
         'No Rally workspace is configured for your organization. Please ask your administrator for an invitation.',
       );
     }
 
-    const tenantId = connectionTenantId;
+    const workspaceId = connectionWorkspaceId;
 
-    // Upsert the user + SSO identity link. tenant_id on sso_identities is set
-    // to the SSO connection's tenant. The users table no longer has tenant_id.
-    const user = await this.userRepo.upsertBySsoIdentity(
-      'entra',
-      oid,
-      email,
-      displayName,
-      tenantId,
-    );
+    // Upsert the user + SSO identity link. The SSO identity is install-global;
+    // workspace membership is handled separately below.
+    const user = await this.userRepo.upsertBySsoIdentity('entra', oid, email, displayName);
 
-    // Ensure keycard exists for this user in the SSO connection's tenant.
-    await this.tenancyService.tenantMemberCreate(uuidv7(), tenantId, user.id);
+    // Ensure the user is an active member of the SSO connection's workspace.
+    await this.workspaceService.enrollMember(workspaceId, user.id);
 
     if (defaultRoleSlug) {
-      await this.accessService.ensureDefaultRole(user.id, tenantId, defaultRoleSlug);
+      await this.accessService.ensureDefaultRole(user.id, workspaceId, defaultRoleSlug);
     }
 
-    return { user, tenantId };
+    return { user, workspaceId };
   }
 
   /** Returns true when the email's domain is permitted (empty list = any). */
@@ -912,7 +825,7 @@ export class AuthService {
     user: User,
     sessionId: string,
     permissions: string[],
-    tenantId: string,
+    workspaceId: string,
     authMethod: 'password' | 'sso' = 'password',
   ): { accessToken: string; jti: string; expiresIn: number } {
     const jti = uuidv7();
@@ -922,7 +835,7 @@ export class AuthService {
 
     const payload: Omit<JwtPayload, 'iat' | 'exp' | 'iss' | 'aud'> = {
       sub: user.id,
-      tenantId,
+      workspaceId,
       sessionId,
       jti,
       permissions,
@@ -1010,12 +923,7 @@ export class AuthService {
     // A new forgot-password submit generates a new token → new hash → new key,
     // which is intentional (user requested a fresh token).
     const emailKey = this.hashToken(`password-reset:${tokenHash}`);
-    const [firstMembership] = await this.tenancyService.getMemberships(user.id);
-    const pwResetTenantId = firstMembership?.tenantId;
-    if (!pwResetTenantId) {
-      throw new NotFoundException('USER_NOT_FOUND', 'User has no active tenant membership');
-    }
-    await this.rls.withTenantContext(pwResetTenantId, async (tx) => {
+    await this.db.transaction(async (tx) => {
       await this.userRepo.createPasswordResetToken(user.id, tokenHash, expiresAt, tx);
       await this.emailScheduler.schedule(
         {
@@ -1032,9 +940,9 @@ export class AuthService {
       );
     });
 
-    // In non-production: surface the reset URL so developers can test the flow
+    // In development only: surface the reset URL so developers can test the flow
     // without a real email provider (AUTH-FR-007 still holds — email is not leaked)
-    if (this.config.get('NODE_ENV') !== 'production') {
+    if (this.config.get('NODE_ENV') === 'development') {
       return { devResetUrl: resetUrl };
     }
     return {};
@@ -1101,7 +1009,7 @@ export class AuthService {
     // session together. A partial failure here would otherwise leave old
     // refresh tokens valid after a password reset (session-hijacking gap).
     // Uses a superuser (RLS-bypassing) transaction so sessions are revoked
-    // across ALL tenants, not just the user's most-recent active tenant.
+    // across ALL workspaces, not just the user's most-recent active workspace.
     await this.db.transaction(async (tx) => {
       await this.userRepo.updatePasswordHash(record.userId, newHash, tx);
       await this.userRepo.markPasswordResetTokenUsed(record.id, tx);
@@ -1112,21 +1020,21 @@ export class AuthService {
   }
 
   // ---------------------------------------------------------------------------
-  // Switch tenant
+  // Switch workspace
   // ---------------------------------------------------------------------------
 
-  @Span('auth.switchTenant')
-  async switchTenant(
+  @Span('auth.switchWorkspace')
+  async switchWorkspace(
     payload: JwtPayload,
-    targetTenantId: string,
+    targetWorkspaceId: string,
     ipAddress?: string,
   ): Promise<RefreshResult> {
-    // Verify the caller has an active keycard for the target tenant.
-    const keycard = await this.tenancyService.getTenantMember(payload.sub, targetTenantId);
+    // Verify the caller has an active membership for the target workspace.
+    const keycard = await this.workspaceService.getMembership(payload.sub, targetWorkspaceId);
     if (!keycard || keycard.status !== 'active') {
       throw new UnauthorizedException(
-        'TENANT_ACCESS_DENIED',
-        'You are not a member of this tenant',
+        'WORKSPACE_ACCESS_DENIED',
+        'You are not a member of this workspace',
       );
     }
 
@@ -1137,17 +1045,17 @@ export class AuthService {
 
     const { permissions } = await this.accessService.getUserRoleAndPermissions(
       user.id,
-      targetTenantId,
+      targetWorkspaceId,
     );
 
     const newSessionId = uuidv7();
-    // Preserve authMethod across tenant switches
+    // Preserve authMethod across workspace switches
     const switchAuthMethod: 'password' | 'sso' = payload.authMethod ?? 'password';
     const { accessToken, jti, expiresIn } = this.signAccessToken(
       user,
       newSessionId,
       permissions,
-      targetTenantId,
+      targetWorkspaceId,
       switchAuthMethod,
     );
     const { refreshToken, tokenHash, familyId } = this.generateRefreshToken();
@@ -1163,12 +1071,12 @@ export class AuthService {
 
     await Promise.all([
       ttl > 0 ? this.valkey.denylistToken(payload.jti, ttl) : Promise.resolve(),
-      this.rls.withTenantContext(targetTenantId, async (tx) => {
+      this.db.transaction(async (tx) => {
         await this.sessionRepo.revokeById(payload.sessionId, tx);
         await this.sessionRepo.create(
           {
             id: newSessionId,
-            tenantId: targetTenantId,
+            workspaceId: targetWorkspaceId,
             userId: user.id,
             tokenHash,
             familyId,
@@ -1182,20 +1090,20 @@ export class AuthService {
     ]);
 
     this.logger.log(
-      { userId: user.id, jti, sessionId: newSessionId, targetTenantId },
-      'Tenant switched',
+      { userId: user.id, jti, sessionId: newSessionId, targetWorkspaceId },
+      'Workspace switched',
     );
 
-    void this.tenancyService.touchTenantMembership(user.id, targetTenantId);
+    void this.workspaceService.touchMembership(user.id, targetWorkspaceId);
     void this.audit.record({
-      tenantId: targetTenantId,
+      workspaceId: targetWorkspaceId,
       actorId: user.id,
       actorEmail: user.email,
-      action: 'auth.switch_tenant',
+      action: 'auth.switch_workspace',
       resourceType: 'session',
       resourceId: newSessionId,
       ipAddress,
-      metadata: { fromTenantId: payload.tenantId, toTenantId: targetTenantId },
+      metadata: { fromWorkspaceId: payload.workspaceId, toWorkspaceId: targetWorkspaceId },
     });
 
     return { accessToken, refreshToken, expiresIn, csrfToken };

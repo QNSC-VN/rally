@@ -10,7 +10,6 @@ import { apiErrorMessage } from '@/shared/api/api-error'
 
 export interface Team {
   id: string
-  tenantId?: string
   workspaceId: string
   name: string
   key: string

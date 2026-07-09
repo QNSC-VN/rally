@@ -15,7 +15,7 @@ export interface IIterationRepository {
   findCommitted(projectId: string): Promise<Iteration | null>;
   listByProject(
     projectId: string,
-    tenantId: string,
+    workspaceId: string,
     filters: IterationFilters,
     args: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<Iteration>>;
@@ -25,11 +25,11 @@ export interface IIterationRepository {
    */
   listAssignmentOptions(
     projectId: string,
-    tenantId: string,
+    workspaceId: string,
     teamId?: string,
   ): Promise<IterationOption[]>;
   /** Next per-project iteration number (drives the IT-<n> display key). */
-  nextKeyNumber(projectId: string, tenantId: string): Promise<number>;
+  nextKeyNumber(projectId: string, workspaceId: string): Promise<number>;
   create(input: CreateIterationInput): Promise<Iteration>;
   update(id: string, input: UpdateIterationInput): Promise<Iteration>;
   delete(id: string): Promise<void>;

@@ -27,7 +27,7 @@ type EmailOutboxRow = {
   idempotencyKey: string | null;
   /** Set for notification emails; null for transactional (password-reset, invitations). */
   recipientId: string | null;
-  tenantId: string | null;
+  workspaceId: string | null;
 };
 
 @Injectable()
@@ -77,7 +77,7 @@ export class EmailRelayService
         attempts: emailOutbox.attempts,
         idempotencyKey: emailOutbox.idempotencyKey,
         recipientId: emailOutbox.recipientId,
-        tenantId: emailOutbox.tenantId,
+        workspaceId: emailOutbox.workspaceId,
       })
       .from(emailOutbox)
       .where(
@@ -95,9 +95,9 @@ export class EmailRelayService
   protected async processRow(row: EmailOutboxRow): Promise<PostCommitTask | void> {
     // If this email is linked to an internal user, check their email preference.
     // Transactional emails (password reset, invitations) have no recipientId and always send.
-    if (row.recipientId && row.tenantId) {
+    if (row.recipientId && row.workspaceId) {
       const emailEnabled = await this.prefs.isEmailEnabled(
-        row.tenantId,
+        row.workspaceId,
         row.recipientId,
         row.template,
       );

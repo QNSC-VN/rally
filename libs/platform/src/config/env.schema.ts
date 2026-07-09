@@ -124,26 +124,6 @@ export const EnvSchema = z.object({
    * Example: "nghiavt@qnsc.vn,quangld@qnsc.vn"
    */
   PLATFORM_ADMIN_EMAILS: z.string().default(''),
-
-  // ── Deployment mode ─────────────────────────────────────────────────────────
-  /**
-   * How this deployment is delivered:
-   *   'saas'   — one deployment serves many customer tenants. Self-serve signup
-   *              provisions new tenants; the tenant switcher is on. (default)
-   *   'single' — packaged per customer: exactly ONE tenant. Self-serve signup and
-   *              new-tenant provisioning are disabled; SSO maps the customer's IdP
-   *              to that one tenant. The multi-tenant data model is unchanged — this
-   *              is a multi-tenant app running with N=1, so a later flip to 'saas'
-   *              is a config change, not a migration.
-   */
-  DEPLOYMENT_MODE: z.enum(['saas', 'single']).default('saas'),
-  /** single mode only: display name of the one tenant to ensure on boot. */
-  SINGLE_TENANT_NAME: z.string().default('Default Organization'),
-  /** single mode only: slug of the one tenant (lowercase, url-safe). */
-  SINGLE_TENANT_SLUG: z
-    .string()
-    .regex(/^[a-z0-9-]+$/, 'SINGLE_TENANT_SLUG must be lowercase alphanumeric/hyphen')
-    .default('default'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

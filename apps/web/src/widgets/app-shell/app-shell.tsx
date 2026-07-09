@@ -113,9 +113,9 @@ export function AppShell() {
     hasPermission,
     clearAuth,
     memberships,
-    activeTenantId,
-    switchTenant,
-    isSwitchingTenant,
+    activeWorkspaceId,
+    switchWorkspace,
+    isSwitchingWorkspace,
   } = useAuthStore()
   const { workspace, project, team, setWorkspace, setProject, setTeam } = useAppContext()
   const navigate = useNavigate()
@@ -291,7 +291,7 @@ export function AppShell() {
             >
               <div className="leading-tight">
                 <div className="text-[13px] font-semibold">
-                  {memberships.find((m) => m.tenantId === activeTenantId)?.tenantName ??
+                  {memberships.find((m) => m.workspaceId === activeWorkspaceId)?.name ??
                     workspace?.workspaceName ??
                     'Select organization'}
                 </div>
@@ -332,7 +332,7 @@ export function AppShell() {
                       className="truncate text-[13px] font-semibold"
                       style={{ color: '#1a2234' }}
                     >
-                      {memberships.find((m) => m.tenantId === activeTenantId)?.tenantName ??
+                      {memberships.find((m) => m.workspaceId === activeWorkspaceId)?.name ??
                         workspace?.workspaceName ??
                         '—'}
                     </div>
@@ -345,7 +345,7 @@ export function AppShell() {
                   </span>
                 </div>
 
-                {/* Switch organization — only when user has multiple tenants */}
+                {/* Switch organization — only when user has multiple workspaces */}
                 {memberships.length > 1 && (
                   <div className="px-3 pt-2 pb-1" style={{ borderBottom: '1px solid #e2e6eb' }}>
                     <div
@@ -355,13 +355,13 @@ export function AppShell() {
                       Switch Organization
                     </div>
                     {memberships
-                      .filter((m) => m.tenantId !== activeTenantId)
+                      .filter((m) => m.workspaceId !== activeWorkspaceId)
                       .map((m) => (
                         <button
-                          key={m.tenantId}
-                          disabled={isSwitchingTenant}
+                          key={m.workspaceId}
+                          disabled={isSwitchingWorkspace}
                           onClick={async () => {
-                            await switchTenant(m.tenantId)
+                            await switchWorkspace(m.workspaceId)
                             closeAll()
                             window.location.reload()
                           }}
@@ -371,11 +371,11 @@ export function AppShell() {
                             className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[9px] font-bold"
                             style={{ backgroundColor: '#e5ebf4', color: '#1d3f73' }}
                           >
-                            {m.tenantName[0].toUpperCase()}
+                            {m.name[0].toUpperCase()}
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="truncate text-[12px]" style={{ color: '#1a2234' }}>
-                              {m.tenantName}
+                              {m.name}
                             </div>
                             {m.roleName && (
                               <div className="text-[10px]" style={{ color: '#8c94a6' }}>
@@ -547,46 +547,47 @@ export function AppShell() {
               return (
                 // Plan dropdown
                 <div key={label} className="relative">
-                  <div
-                    className="flex items-center rounded transition-colors"
+                  <button
+                    aria-haspopup="menu"
+                    aria-expanded={openMenu === label}
+                    onClick={() => {
+                      if (comingSoon) {
+                        handleComingSoon(label)
+                        return
+                      }
+                      // Toggle dropdown — never auto-navigate. User picks a child.
+                      setOpenMenu((cur) => (cur === label ? null : label))
+                      setWsOpen(false)
+                      setUserOpen(false)
+                    }}
+                    className="flex items-center gap-1.5 rounded py-1 pr-2 pl-2.5 text-[13px] font-medium transition-colors"
                     style={{
                       backgroundColor: isActive(path) ? 'rgba(255,255,255,0.16)' : 'transparent',
+                      color: isActive(path) ? '#ffffff' : 'rgba(255,255,255,0.72)',
                     }}
                   >
-                    <Link
-                      to={path}
-                      onClick={() => (comingSoon ? undefined : setOpenMenu(null))}
-                      className="flex items-center gap-1.5 py-1 pr-1 pl-2.5 text-[13px] font-medium"
-                      style={{ color: isActive(path) ? '#ffffff' : 'rgba(255,255,255,0.72)' }}
-                    >
-                      {label}
-                      {comingSoon && (
-                        <span
-                          className="ml-0.5 rounded-sm px-1 py-px text-[8px] font-semibold tracking-wide uppercase"
-                          style={{
-                            backgroundColor: 'rgba(255,255,255,0.12)',
-                            color: 'rgba(255,255,255,0.5)',
-                          }}
-                        >
-                          Soon
-                        </span>
-                      )}
-                    </Link>
-                    {!comingSoon && (
-                      <button
-                        aria-label={`Open ${label} submenu`}
-                        onClick={() => {
-                          setOpenMenu((cur) => (cur === label ? null : label))
-                          setWsOpen(false)
-                          setUserOpen(false)
+                    {label}
+                    {comingSoon ? (
+                      <span
+                        className="ml-0.5 rounded-sm px-1 py-px text-[8px] font-semibold tracking-wide uppercase"
+                        style={{
+                          backgroundColor: 'rgba(255,255,255,0.12)',
+                          color: 'rgba(255,255,255,0.5)',
                         }}
-                        className="py-1 pr-2"
-                        style={{ color: isActive(path) ? '#ffffff' : 'rgba(255,255,255,0.55)' }}
                       >
-                        <ChevronDown size={9} />
-                      </button>
+                        Soon
+                      </span>
+                    ) : (
+                      <ChevronDown
+                        size={9}
+                        style={{
+                          color: isActive(path) ? '#ffffff' : 'rgba(255,255,255,0.55)',
+                          transform: openMenu === label ? 'rotate(180deg)' : 'none',
+                          transition: 'transform 0.15s',
+                        }}
+                      />
                     )}
-                  </div>
+                  </button>
                   {!comingSoon && openMenu === label && (
                     <div
                       className="absolute top-full left-0 z-50 mt-1 w-44 rounded bg-white py-1 shadow-lg"

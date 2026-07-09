@@ -5,7 +5,7 @@ export const NOTIFICATION_REPOSITORY = Symbol('NOTIFICATION_REPOSITORY');
 export interface INotificationRepository {
   findById(id: string): Promise<Notification | null>;
   listForRecipient(
-    tenantId: string,
+    workspaceId: string,
     recipientId: string,
     unreadOnly: boolean,
     limit: number,
@@ -17,14 +17,14 @@ export interface INotificationRepository {
    * UUIDv7 encodes a 48-bit millisecond timestamp in the high bits.
    */
   listSince(
-    tenantId: string,
+    workspaceId: string,
     recipientId: string,
     afterId: string,
     limit: number,
   ): Promise<Notification[]>;
   /** Idempotent — returns null when sourceEventId already exists (deduplicated). */
   create(input: CreateNotificationInput): Promise<Notification | null>;
-  countUnread(tenantId: string, recipientId: string): Promise<number>;
+  countUnread(workspaceId: string, recipientId: string): Promise<number>;
   markRead(id: string): Promise<void>;
-  markAllRead(tenantId: string, recipientId: string): Promise<void>;
+  markAllRead(workspaceId: string, recipientId: string): Promise<void>;
 }

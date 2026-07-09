@@ -11,13 +11,13 @@ import { uuidv7 } from 'uuidv7';
 export class ReportingDrizzleRepository implements IReportingRepository {
   constructor(@InjectDrizzle() private readonly db: DrizzleDB) {}
 
-  async getSprintSnapshots(tenantId: string, sprintId: string): Promise<SprintSnapshot[]> {
+  async getSprintSnapshots(workspaceId: string, sprintId: string): Promise<SprintSnapshot[]> {
     const rows = await this.db
       .select()
       .from(iterationDailySnapshots)
       .where(
         and(
-          eq(iterationDailySnapshots.tenantId, tenantId),
+          eq(iterationDailySnapshots.workspaceId, workspaceId),
           eq(iterationDailySnapshots.iterationId, sprintId),
         ),
       )
@@ -31,7 +31,7 @@ export class ReportingDrizzleRepository implements IReportingRepository {
   }
 
   async getVelocity(
-    tenantId: string,
+    workspaceId: string,
     projectId: string,
     lastNSprints: number,
   ): Promise<VelocityPoint[]> {
@@ -41,7 +41,7 @@ export class ReportingDrizzleRepository implements IReportingRepository {
       .from(iterations)
       .where(
         and(
-          eq(iterations.tenantId, tenantId),
+          eq(iterations.workspaceId, workspaceId),
           eq(iterations.projectId, projectId),
           eq(iterations.state, 'accepted'),
         ),
@@ -63,7 +63,7 @@ export class ReportingDrizzleRepository implements IReportingRepository {
       .from(iterationDailySnapshots)
       .where(
         and(
-          eq(iterationDailySnapshots.tenantId, tenantId),
+          eq(iterationDailySnapshots.workspaceId, workspaceId),
           inArray(iterationDailySnapshots.iterationId, sprintIds),
         ),
       )
@@ -90,7 +90,7 @@ export class ReportingDrizzleRepository implements IReportingRepository {
       .insert(iterationDailySnapshots)
       .values({
         id: uuidv7(),
-        tenantId: snapshot.tenantId,
+        workspaceId: snapshot.workspaceId,
         iterationId: snapshot.sprintId,
         snapshotDate: snapshot.snapshotDate,
         totalPoints: snapshot.totalPoints,

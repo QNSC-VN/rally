@@ -5,7 +5,7 @@ import { RequestContextService } from './request-context';
 /**
  * Seeds AsyncLocalStorage context on every inbound request.
  * Sets correlationId from inbound header or generates a new one.
- * tenantId/userId remain undefined until JwtAuthGuard populates them post-auth.
+ * workspaceId/userId remain undefined until JwtAuthGuard populates them post-auth.
  */
 @Injectable()
 export class AsyncLocalStorageMiddleware implements NestMiddleware {
@@ -25,7 +25,7 @@ export class AsyncLocalStorageMiddleware implements NestMiddleware {
 
     this.ctx.run(
       {
-        tenantId: undefined,
+        workspaceId: undefined,
         userId: undefined,
         sessionId: undefined,
         correlationId,

@@ -30,16 +30,16 @@ describe('useAuthStore', () => {
   })
 
   describe('setUser / clearAuth', () => {
-    it('setUser marks authenticated and picks the first membership tenant', () => {
+    it('setUser marks authenticated and picks the first membership workspace', () => {
       useAuthStore
         .getState()
         .setUser(makeUser([]), 'token-abc', [
-          { tenantId: 't1', tenantName: 'Acme', tenantSlug: 'acme', lastActiveAt: null, roleSlug: null, roleName: null },
+          { workspaceId: 't1', name: 'Acme', slug: 'acme', lastActiveAt: null, roleSlug: null, roleName: null },
         ])
       const s = useAuthStore.getState()
       expect(s.isAuthenticated).toBe(true)
       expect(s.isLoading).toBe(false)
-      expect(s.activeTenantId).toBe('t1')
+      expect(s.activeWorkspaceId).toBe('t1')
     })
 
     it('clearAuth resets to an unauthenticated state', () => {
@@ -48,7 +48,7 @@ describe('useAuthStore', () => {
       const s = useAuthStore.getState()
       expect(s.isAuthenticated).toBe(false)
       expect(s.user).toBeNull()
-      expect(s.activeTenantId).toBeNull()
+      expect(s.activeWorkspaceId).toBeNull()
     })
   })
 

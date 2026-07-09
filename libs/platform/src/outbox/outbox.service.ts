@@ -32,7 +32,7 @@ export class OutboxService {
       version: e.version,
       aggregateType: e.aggregateType,
       aggregateId: e.aggregateId,
-      tenantId: e.tenantId,
+      workspaceId: e.workspaceId,
       payload: e.payload,
       occurredAt: e.occurredAt,
       status: 'pending' as const,

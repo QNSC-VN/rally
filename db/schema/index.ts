@@ -9,8 +9,8 @@
 // ── shared enums (must be first — tables import from here) ────────────────
 export * from './enums';
 
-// ── tenancy schema ─────────────────────────────────────────────────────────
-export * from './tenancy';
+// ── workspace schema ─────────────────────────────────────────────────────────
+export * from './workspace';
 
 // ── identity schema ────────────────────────────────────────────────────────
 export * from './identity';

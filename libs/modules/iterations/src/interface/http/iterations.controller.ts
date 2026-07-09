@@ -56,7 +56,7 @@ function toIterationOptionDto(o: IterationOption): IterationOptionDto {
 function toIterationDto(i: Iteration): IterationResponseDto {
   return {
     id: i.id,
-    tenantId: i.tenantId,
+    workspaceId: i.workspaceId,
     projectId: i.projectId,
     teamId: i.teamId,
     iterationKey: i.iterationKey,
@@ -165,7 +165,7 @@ export class IterationsController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<IterationResponseDto> {
-    const iteration = await this.iterationsService.getIteration(user.tenantId, id);
+    const iteration = await this.iterationsService.getIteration(user.workspaceId, id);
     return toIterationDto(iteration);
   }
 

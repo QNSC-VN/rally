@@ -6,7 +6,7 @@ import { ValkeyService } from '../cache/valkey.service';
 /**
  * JWT auth guard.
  * Verifies the Bearer access token, then populates request context with
- * tenantId / userId / sessionId so UoW + RLS work correctly downstream.
+ * workspaceId / userId / sessionId so downstream scoping works correctly.
  * Also checks the access-token denylist in Valkey (set on logout).
  *
  * Pair with @Public() decorator to opt-out individual routes.
@@ -56,7 +56,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     return true;
   }
 
-  handleRequest<TUser extends { sub: string; tenantId: string; sessionId: string }>(
+  handleRequest<TUser extends { sub: string; workspaceId: string; sessionId: string }>(
     err: Error | null,
     user: TUser | false,
   ): TUser {
@@ -72,7 +72,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     }
 
     // Populate AsyncLocalStorage context after successful token verification
-    this.ctx.setAuthContext(user.tenantId, user.sub, user.sessionId);
+    this.ctx.setAuthContext(user.workspaceId, user.sub, user.sessionId);
 
     return user;
   }

@@ -15,11 +15,11 @@ export class LabelDrizzleRepository implements ILabelRepository {
     return (rows[0]) ?? null;
   }
 
-  async listByProject(projectId: string, tenantId: string): Promise<Label[]> {
+  async listByProject(projectId: string, workspaceId: string): Promise<Label[]> {
     const rows = await this.db
       .select()
       .from(labels)
-      .where(and(eq(labels.projectId, projectId), eq(labels.tenantId, tenantId)))
+      .where(and(eq(labels.projectId, projectId), eq(labels.workspaceId, workspaceId)))
       .orderBy(labels.name);
     return rows;
   }
@@ -29,7 +29,7 @@ export class LabelDrizzleRepository implements ILabelRepository {
       .insert(labels)
       .values({
         id: input.id,
-        tenantId: input.tenantId,
+        workspaceId: input.workspaceId,
         projectId: input.projectId,
         name: input.name,
         color: input.color ?? '#6b7280',

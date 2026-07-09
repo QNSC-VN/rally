@@ -29,27 +29,27 @@ export class NotificationPreferencesService {
     private readonly repo: INotificationPreferenceRepository,
   ) {}
 
-  listPreferences(tenantId: string, userId: string): Promise<NotificationPreference[]> {
-    return this.repo.listForUser(tenantId, userId);
+  listPreferences(workspaceId: string, userId: string): Promise<NotificationPreference[]> {
+    return this.repo.listForUser(workspaceId, userId);
   }
 
   upsert(input: UpsertPreferenceInput): Promise<NotificationPreference> {
     return this.repo.upsert(input);
   }
 
-  async reset(tenantId: string, userId: string, type: string): Promise<void> {
-    await this.repo.delete(tenantId, userId, type);
+  async reset(workspaceId: string, userId: string, type: string): Promise<void> {
+    await this.repo.delete(workspaceId, userId, type);
   }
 
   /**
-   * Resolve whether a channel is enabled for the given (tenantId, userId, type).
+   * Resolve whether a channel is enabled for the given (workspaceId, userId, type).
    *
    * Used by relay services to decide whether to deliver a notification/email.
    * Reads from the DB directly (not cached) so preference changes take effect
    * on the next relay tick without requiring a service restart.
    */
   async isEnabled(
-    tenantId: string,
+    workspaceId: string,
     userId: string,
     type: string,
     channel: NotificationChannel,
@@ -58,7 +58,7 @@ export class NotificationPreferencesService {
       channel === 'in_app' ? 'inApp' : 'email';
 
     // Single query fetches both the specific-type row and the wildcard row.
-    const rows = await this.repo.findForCheck(tenantId, userId, type);
+    const rows = await this.repo.findForCheck(workspaceId, userId, type);
     const specific = rows.find((r) => r.type === type);
     if (specific) return specific[field];
 
@@ -69,12 +69,12 @@ export class NotificationPreferencesService {
   }
 
   /** Convenience: is in-app delivery enabled? */
-  isInAppEnabled(tenantId: string, userId: string, type: string): Promise<boolean> {
-    return this.isEnabled(tenantId, userId, type, 'in_app');
+  isInAppEnabled(workspaceId: string, userId: string, type: string): Promise<boolean> {
+    return this.isEnabled(workspaceId, userId, type, 'in_app');
   }
 
   /** Convenience: is email delivery enabled? */
-  isEmailEnabled(tenantId: string, userId: string, type: string): Promise<boolean> {
-    return this.isEnabled(tenantId, userId, type, 'email');
+  isEmailEnabled(workspaceId: string, userId: string, type: string): Promise<boolean> {
+    return this.isEnabled(workspaceId, userId, type, 'email');
   }
 }

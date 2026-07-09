@@ -8,7 +8,6 @@ export type { WorkflowStatusCategory, ProjectStatus, ProjectTeamStatus, ProjectM
 
 export interface Project {
   id: string;
-  tenantId: string;
   workspaceId: string;
   key: string;
   name: string;
@@ -23,7 +22,7 @@ export interface Project {
 
 export interface WorkflowStatus {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   projectId: string;
   name: string;
   category: WorkflowStatusCategory;
@@ -35,7 +34,7 @@ export interface WorkflowStatus {
 
 export interface WorkflowTransition {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   projectId: string;
   fromStatusId: string | null;
   toStatusId: string;
@@ -46,7 +45,6 @@ export interface WorkflowTransition {
 
 export interface CreateProjectInput {
   id: string;
-  tenantId: string;
   workspaceId: string;
   key: string;
   name: string;
@@ -71,7 +69,7 @@ export interface ProjectWithStats extends Project {
 
 export interface CreateWorkflowStatusInput {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   projectId: string;
   name: string;
   category: WorkflowStatusCategory;
@@ -82,7 +80,7 @@ export interface CreateWorkflowStatusInput {
 
 export interface CreateWorkflowTransitionInput {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   projectId: string;
   fromStatusId?: string | null;
   toStatusId: string;
@@ -91,7 +89,7 @@ export interface CreateWorkflowTransitionInput {
 
 export interface ProjectTeamLink {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   projectId: string;
   teamId: string;
   status: ProjectTeamStatus;
@@ -101,7 +99,7 @@ export interface ProjectTeamLink {
 
 export interface ProjectMember {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   projectId: string;
   userId: string;
   roleId: string | null;
@@ -116,7 +114,7 @@ export interface ProjectMember {
 
 export interface AddProjectMemberInput {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   projectId: string;
   userId: string;
   roleId?: string;

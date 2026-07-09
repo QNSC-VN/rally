@@ -14,7 +14,6 @@ export const CreateProjectSchema = z.object({
   name: z.string().min(1).max(255).trim(),
   description: z.string().max(2000).trim().optional(),
   leadId: z.string().uuid().optional(),
-  workspaceId: z.string().uuid(),
 });
 
 export class CreateProjectDto extends createZodDto(CreateProjectSchema) {}
@@ -33,9 +32,7 @@ export class UpdateProjectDto extends createZodDto(UpdateProjectSchema) {}
 
 // ── Pagination query ─────────────────────────────────────────────────────────
 
-export const ProjectQuerySchema = PageQuerySchema.extend({
-  workspaceId: z.string().uuid(),
-});
+export const ProjectQuerySchema = PageQuerySchema;
 
 export class ProjectQueryDto extends createZodDto(ProjectQuerySchema) {}
 

@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from 'async_hooks';
 import { Injectable } from '@nestjs/common';
 
 export interface RequestContext {
-  tenantId: string | undefined;
+  workspaceId: string | undefined;
   userId: string | undefined;
   sessionId: string | undefined;
   correlationId: string;
@@ -34,8 +34,8 @@ export class RequestContextService {
     return ctx;
   }
 
-  getTenantId(): string | undefined {
-    return als.getStore()?.tenantId;
+  getWorkspaceId(): string | undefined {
+    return als.getStore()?.workspaceId;
   }
 
   getUserId(): string | undefined {
@@ -46,11 +46,11 @@ export class RequestContextService {
     return als.getStore()?.correlationId;
   }
 
-  /** Mutate tenant + user once populated from JWT in JwtAuthGuard */
-  setAuthContext(tenantId: string, userId: string, sessionId: string): void {
+  /** Mutate workspace + user once populated from JWT in JwtAuthGuard */
+  setAuthContext(workspaceId: string | undefined, userId: string, sessionId: string): void {
     const ctx = als.getStore();
     if (ctx) {
-      ctx.tenantId = tenantId;
+      ctx.workspaceId = workspaceId;
       ctx.userId = userId;
       ctx.sessionId = sessionId;
     }

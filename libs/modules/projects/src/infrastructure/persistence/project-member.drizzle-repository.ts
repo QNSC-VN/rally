@@ -43,7 +43,7 @@ export class ProjectMemberDrizzleRepository implements IProjectMemberRepository 
     const rows = await this.db
       .select({
         id: projectMembers.id,
-        tenantId: projectMembers.tenantId,
+        workspaceId: projectMembers.workspaceId,
         projectId: projectMembers.projectId,
         userId: projectMembers.userId,
         roleId: projectMembers.roleId,
@@ -66,7 +66,7 @@ export class ProjectMemberDrizzleRepository implements IProjectMemberRepository 
       .insert(projectMembers)
       .values({
         id: input.id,
-        tenantId: input.tenantId,
+        workspaceId: input.workspaceId,
         projectId: input.projectId,
         userId: input.userId,
         roleId: input.roleId ?? null,

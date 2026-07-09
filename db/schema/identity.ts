@@ -53,7 +53,7 @@ export const authSessions = identitySchema.table(
   'auth_sessions',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    tenantId: uuid('tenant_id').notNull(),
+    workspaceId: uuid('workspace_id').notNull(), // active workspace for this session
     userId: uuid('user_id').notNull(),
     tokenHash: text('token_hash').notNull(),
     familyId: uuid('family_id').notNull(),
@@ -68,7 +68,7 @@ export const authSessions = identitySchema.table(
     csrfToken: varchar('csrf_token', { length: 64 }),
   },
   (t) => ({
-    tenantIdx: index('ix_auth_sessions_tenant').on(t.tenantId),
+    workspaceIdx: index('ix_auth_sessions_workspace').on(t.workspaceId),
     tokenHashIdx: uniqueIndex('uq_auth_sessions_token_hash').on(t.tokenHash),
     userIdx: index('ix_auth_sessions_user').on(t.userId),
     familyIdx: index('ix_auth_sessions_family').on(t.familyId),
@@ -89,7 +89,6 @@ export const ssoIdentities = identitySchema.table(
   'sso_identities',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    tenantId: uuid('tenant_id').notNull(),
     userId: uuid('user_id').notNull(),
     /** Provider identifier — currently only 'entra' (Microsoft Entra ID). */
     provider: ssoProviderEnum('provider').notNull(),
@@ -109,20 +108,17 @@ export const ssoIdentities = identitySchema.table(
 
 // ── sso_connections ──────────────────────────────────────────────────────────
 // Maps an external identity provider (identified by its directory/tenant id or
-// issuer) to a single Rally tenant. This is the authoritative, enterprise-grade
-// mechanism for resolving which tenant a federated user belongs to — the same
-// model used by Okta/WorkOS/Rally: the IdP is the unit of trust, not the email.
+// issuer) to this install. SSO is install-global — one identity provider for the
+// whole install — so a connection is not bound to a workspace for routing.
 //
 // During SSO login the Entra `tid` claim is matched against `external_tenant_id`
-// to deterministically route the user into the correct tenant. Domain allow-list
-// and a JIT toggle give tenant admins control over auto-provisioning.
+// to validate the connection. A default workspace, domain allow-list and a JIT
+// toggle give admins control over auto-provisioning.
 
 export const ssoConnections = identitySchema.table(
   'sso_connections',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    /** Rally tenant this IdP connection provisions users into. */
-    tenantId: uuid('tenant_id').notNull(),
     /** Default workspace JIT-provisioned users join. */
     workspaceId: uuid('workspace_id').notNull(),
     /** Federation protocol/provider. */
@@ -144,12 +140,11 @@ export const ssoConnections = identitySchema.table(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    // One IdP directory maps to exactly one Rally tenant per provider.
+    // One IdP directory maps to exactly one connection per provider (install-global).
     providerExternalIdx: uniqueIndex('uq_sso_connections_provider_external').on(
       t.provider,
       t.externalTenantId,
     ),
-    tenantIdx: index('ix_sso_connections_tenant').on(t.tenantId),
   }),
 );
 

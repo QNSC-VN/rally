@@ -11,12 +11,12 @@ import type { SystemRole, UserRoleAssignment, ScopeType } from '../domain/access
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
-const TENANT = 'tenant-1';
+const WORKSPACE = 'ws-1';
 const USER = 'user-1';
 
 const role = (slug: string, permissions: string[]): SystemRole => ({
   id: `role-${slug}`,
-  tenantId: null,
+  workspaceId: null,
   name: slug,
   slug,
   description: null,
@@ -31,7 +31,7 @@ const assignment = (
   scopeId: string | null = null,
 ): UserRoleAssignment => ({
   id: `a-${roleId}-${scopeType}-${scopeId ?? 'none'}`,
-  tenantId: TENANT,
+  workspaceId: WORKSPACE,
   userId: USER,
   roleId,
   scopeType,
@@ -51,7 +51,7 @@ describe('AccessService — scope-aware permission resolution', () => {
         AccessService,
         {
           provide: ROLE_REPOSITORY,
-          useValue: { findById: vi.fn(), listForTenant: vi.fn() },
+          useValue: { findById: vi.fn(), listForWorkspace: vi.fn() },
         },
         {
           provide: ROLE_ASSIGNMENT_REPOSITORY,
@@ -74,7 +74,7 @@ describe('AccessService — scope-aware permission resolution', () => {
   describe('getUserRoleAndPermissions (JWT baseline)', () => {
     it('falls back to workspace_member view perms when the user has no assignments', async () => {
       assignmentRepo.listForUser.mockResolvedValue([]);
-      const result = await service.getUserRoleAndPermissions(USER, TENANT);
+      const result = await service.getUserRoleAndPermissions(USER, WORKSPACE);
       expect(result.role).toBe('workspace_member');
       expect(result.permissions).toEqual(['workspace:view', 'project:view']);
     });
@@ -90,7 +90,7 @@ describe('AccessService — scope-aware permission resolution', () => {
         id === member.id ? member : id === globalRole.id ? globalRole : null,
       );
 
-      const result = await service.getUserRoleAndPermissions(USER, TENANT);
+      const result = await service.getUserRoleAndPermissions(USER, WORKSPACE);
       // deduped union of both roles
       expect(new Set(result.permissions)).toEqual(
         new Set(['work_item:edit', 'project:view', 'audit:view']),
@@ -110,8 +110,8 @@ describe('AccessService — scope-aware permission resolution', () => {
         id === workspaceRole.id ? workspaceRole : id === projectRole.id ? projectRole : null,
       );
 
-      const result = await service.getUserRoleAndPermissions(USER, TENANT);
-      // project-scoped project:edit must NOT leak into the tenant-wide baseline
+      const result = await service.getUserRoleAndPermissions(USER, WORKSPACE);
+      // project-scoped project:edit must NOT leak into the workspace-wide baseline
       expect(result.permissions).toEqual(['work_item:view']);
     });
   });
@@ -128,7 +128,7 @@ describe('AccessService — scope-aware permission resolution', () => {
         id === workspaceRole.id ? workspaceRole : id === projectRole.id ? projectRole : null,
       );
 
-      const perms = await service.getProjectPermissions(USER, TENANT, 'proj-9');
+      const perms = await service.getProjectPermissions(USER, WORKSPACE, 'proj-9');
       expect(new Set(perms)).toEqual(
         new Set(['work_item:view', 'project:view', 'project:edit', 'project:manage_members']),
       );
@@ -145,7 +145,7 @@ describe('AccessService — scope-aware permission resolution', () => {
         id === workspaceRole.id ? workspaceRole : id === projectRole.id ? projectRole : null,
       );
 
-      const perms = await service.getProjectPermissions(USER, TENANT, 'proj-9');
+      const perms = await service.getProjectPermissions(USER, WORKSPACE, 'proj-9');
       // project:edit belongs to a different project — must not apply here
       expect(perms).toEqual(['work_item:view']);
     });
@@ -153,7 +153,7 @@ describe('AccessService — scope-aware permission resolution', () => {
 
   describe('assertProjectPermission', () => {
     const actor = (permissions: string[]) =>
-      ({ sub: USER, tenantId: TENANT, permissions }) as never;
+      ({ sub: USER, workspaceId: WORKSPACE, permissions }) as never;
 
     it('passes immediately on a JWT wildcard, without a DB lookup', async () => {
       await expect(

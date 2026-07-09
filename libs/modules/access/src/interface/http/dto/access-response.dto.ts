@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 export const RoleResponseSchema = z.object({
   id: z.string().uuid(),
-  tenantId: z.string().uuid().nullable(),
+  workspaceId: z.string().uuid().nullable(),
   name: z.string(),
   slug: z.string(),
   description: z.string().nullable(),
@@ -16,7 +16,7 @@ export class RoleResponseDto extends createZodDto(RoleResponseSchema) {}
 
 export const RoleAssignmentResponseSchema = z.object({
   id: z.string().uuid(),
-  tenantId: z.string().uuid(),
+  workspaceId: z.string().uuid(),
   userId: z.string().uuid(),
   roleId: z.string().uuid(),
   scopeType: z.string(),

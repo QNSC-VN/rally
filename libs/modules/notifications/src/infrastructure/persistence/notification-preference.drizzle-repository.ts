@@ -13,13 +13,13 @@ import type {
 export class NotificationPreferenceDrizzleRepository implements INotificationPreferenceRepository {
   constructor(@InjectDrizzle() private readonly db: DrizzleDB) {}
 
-  async listForUser(tenantId: string, userId: string): Promise<NotificationPreference[]> {
+  async listForUser(workspaceId: string, userId: string): Promise<NotificationPreference[]> {
     const rows = await this.db
       .select()
       .from(notificationPreferences)
       .where(
         and(
-          eq(notificationPreferences.tenantId, tenantId),
+          eq(notificationPreferences.workspaceId, workspaceId),
           eq(notificationPreferences.userId, userId),
         ),
       );
@@ -27,7 +27,7 @@ export class NotificationPreferenceDrizzleRepository implements INotificationPre
   }
 
   async findOne(
-    tenantId: string,
+    workspaceId: string,
     userId: string,
     type: string,
   ): Promise<NotificationPreference | null> {
@@ -36,7 +36,7 @@ export class NotificationPreferenceDrizzleRepository implements INotificationPre
       .from(notificationPreferences)
       .where(
         and(
-          eq(notificationPreferences.tenantId, tenantId),
+          eq(notificationPreferences.workspaceId, workspaceId),
           eq(notificationPreferences.userId, userId),
           eq(notificationPreferences.type, type),
         ),
@@ -46,7 +46,7 @@ export class NotificationPreferenceDrizzleRepository implements INotificationPre
   }
 
   async findForCheck(
-    tenantId: string,
+    workspaceId: string,
     userId: string,
     type: string,
   ): Promise<NotificationPreference[]> {
@@ -57,7 +57,7 @@ export class NotificationPreferenceDrizzleRepository implements INotificationPre
       .from(notificationPreferences)
       .where(
         and(
-          eq(notificationPreferences.tenantId, tenantId),
+          eq(notificationPreferences.workspaceId, workspaceId),
           eq(notificationPreferences.userId, userId),
           inArray(notificationPreferences.type, [type, '*']),
         ),
@@ -69,7 +69,7 @@ export class NotificationPreferenceDrizzleRepository implements INotificationPre
     const [row] = await this.db
       .insert(notificationPreferences)
       .values({
-        tenantId: input.tenantId,
+        workspaceId: input.workspaceId,
         userId: input.userId,
         type: input.type,
         inApp: input.inApp ?? true,
@@ -78,7 +78,7 @@ export class NotificationPreferenceDrizzleRepository implements INotificationPre
       })
       .onConflictDoUpdate({
         target: [
-          notificationPreferences.tenantId,
+          notificationPreferences.workspaceId,
           notificationPreferences.userId,
           notificationPreferences.type,
         ],
@@ -92,12 +92,12 @@ export class NotificationPreferenceDrizzleRepository implements INotificationPre
     return this.mapRow(row);
   }
 
-  async delete(tenantId: string, userId: string, type: string): Promise<void> {
+  async delete(workspaceId: string, userId: string, type: string): Promise<void> {
     await this.db
       .delete(notificationPreferences)
       .where(
         and(
-          eq(notificationPreferences.tenantId, tenantId),
+          eq(notificationPreferences.workspaceId, workspaceId),
           eq(notificationPreferences.userId, userId),
           eq(notificationPreferences.type, type),
         ),
@@ -107,7 +107,7 @@ export class NotificationPreferenceDrizzleRepository implements INotificationPre
   private mapRow(row: typeof notificationPreferences.$inferSelect): NotificationPreference {
     return {
       id: row.id,
-      tenantId: row.tenantId,
+      workspaceId: row.workspaceId,
       userId: row.userId,
       type: row.type,
       inApp: row.inApp,

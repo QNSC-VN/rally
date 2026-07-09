@@ -36,7 +36,7 @@ export class ProjectTeamDrizzleRepository implements IProjectTeamRepository {
 
   async linkTeam(
     id: string,
-    tenantId: string,
+    workspaceId: string,
     projectId: string,
     teamId: string,
   ): Promise<ProjectTeamLink> {
@@ -44,7 +44,7 @@ export class ProjectTeamDrizzleRepository implements IProjectTeamRepository {
       .insert(projectTeams)
       .values({
         id,
-        tenantId,
+        workspaceId,
         projectId,
         teamId,
         status: 'active',

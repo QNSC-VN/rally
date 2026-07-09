@@ -18,7 +18,7 @@ const now = new Date('2024-06-01');
 
 const mockIteration = (o: Partial<Iteration> = {}): Iteration => ({
   id: 'it-1',
-  tenantId: 'tenant-1',
+  workspaceId: 'ws-1',
   projectId: 'proj-1',
   teamId: null,
   iterationKey: 'IT-1',
@@ -36,7 +36,7 @@ const mockIteration = (o: Partial<Iteration> = {}): Iteration => ({
   ...o,
 });
 
-const actor = { sub: 'user-1', tenantId: 'tenant-1' } as never;
+const actor = { sub: 'user-1', workspaceId: 'ws-1' } as never;
 
 describe('IterationsService', () => {
   let service: IterationsService;
@@ -90,8 +90,8 @@ describe('IterationsService', () => {
 
       const result = await service.getAssignmentOptions(actor, 'proj-1', 'team-1');
 
-      expect(projects.getProject).toHaveBeenCalledWith('tenant-1', 'proj-1');
-      expect(repo.listAssignmentOptions).toHaveBeenCalledWith('proj-1', 'tenant-1', 'team-1');
+      expect(projects.getProject).toHaveBeenCalledWith('ws-1', 'proj-1');
+      expect(repo.listAssignmentOptions).toHaveBeenCalledWith('proj-1', 'ws-1', 'team-1');
       expect(result).toEqual(opts);
     });
 
@@ -105,7 +105,7 @@ describe('IterationsService', () => {
 
     it('omits teamId from repo call when not provided', async () => {
       await service.getAssignmentOptions(actor, 'proj-1');
-      expect(repo.listAssignmentOptions).toHaveBeenCalledWith('proj-1', 'tenant-1', undefined);
+      expect(repo.listAssignmentOptions).toHaveBeenCalledWith('proj-1', 'ws-1', undefined);
     });
   });
 
@@ -116,7 +116,7 @@ describe('IterationsService', () => {
         pageInfo: { nextCursor: null, hasNextPage: false, limit: 25 },
       });
       await service.listIterations(actor, 'proj-1', {}, { limit: 25, cursor: null });
-      expect(projects.getProject).toHaveBeenCalledWith('tenant-1', 'proj-1');
+      expect(projects.getProject).toHaveBeenCalledWith('ws-1', 'proj-1');
     });
 
     it('propagates project-not-found to the caller', async () => {
@@ -191,9 +191,9 @@ describe('IterationsService', () => {
   });
 
   describe('getIteration', () => {
-    it('throws when not found or cross-tenant', async () => {
-      repo.findById.mockResolvedValue(mockIteration({ tenantId: 'other' }));
-      await expect(service.getIteration('tenant-1', 'it-1')).rejects.toBeInstanceOf(
+    it('throws when not found or cross-workspace', async () => {
+      repo.findById.mockResolvedValue(mockIteration({ workspaceId: 'other' }));
+      await expect(service.getIteration('ws-1', 'it-1')).rejects.toBeInstanceOf(
         NotFoundException,
       );
     });

@@ -15,14 +15,14 @@ export class AttachmentDrizzleRepository implements IAttachmentRepository {
     return (rows[0]) ?? null;
   }
 
-  async listByWorkItem(workItemId: string, tenantId: string): Promise<Attachment[]> {
+  async listByWorkItem(workItemId: string, workspaceId: string): Promise<Attachment[]> {
     const rows = await this.db
       .select()
       .from(attachments)
       .where(
         and(
           eq(attachments.workItemId, workItemId),
-          eq(attachments.tenantId, tenantId),
+          eq(attachments.workspaceId, workspaceId),
           isNull(attachments.deletedAt),
         ),
       );
@@ -34,7 +34,7 @@ export class AttachmentDrizzleRepository implements IAttachmentRepository {
       .insert(attachments)
       .values({
         id: input.id,
-        tenantId: input.tenantId,
+        workspaceId: input.workspaceId,
         workItemId: input.workItemId,
         uploadedBy: input.uploadedBy,
         filename: input.filename,

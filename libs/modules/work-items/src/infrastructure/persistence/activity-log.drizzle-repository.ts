@@ -21,7 +21,7 @@ export class ActivityLogDrizzleRepository implements IActivityLogRepository {
     await exec.insert(activityLogs).values(
       inputs.map((input) => ({
         id: input.id,
-        tenantId: input.tenantId,
+        workspaceId: input.workspaceId,
         projectId: input.projectId,
         workItemId: input.workItemId,
         entityType: input.entityType,
@@ -36,16 +36,16 @@ export class ActivityLogDrizzleRepository implements IActivityLogRepository {
 
   async listByWorkItem(
     workItemId: string,
-    tenantId: string,
+    workspaceId: string,
     { limit, offset }: { limit: number; offset: number },
   ): Promise<{ items: ActivityLog[]; total: number }> {
-    const where = and(eq(activityLogs.workItemId, workItemId), eq(activityLogs.tenantId, tenantId));
+    const where = and(eq(activityLogs.workItemId, workItemId), eq(activityLogs.workspaceId, workspaceId));
 
     const [rows, totalRows] = await Promise.all([
       this.db
         .select({
           id: activityLogs.id,
-          tenantId: activityLogs.tenantId,
+          workspaceId: activityLogs.workspaceId,
           projectId: activityLogs.projectId,
           workItemId: activityLogs.workItemId,
           entityType: activityLogs.entityType,

@@ -20,9 +20,8 @@ export class HealthController {
   ) {}
 
   /**
-   * Public runtime config the frontend needs before login — e.g. whether this
-   * is a single-tenant instance (hide signup / org switcher) and whether SSO is
-   * available. Contains no secrets.
+   * Public runtime config the frontend needs before login — e.g. whether
+   * workspace creation is open and whether SSO is available. Contains no secrets.
    */
   @Get('config')
   @Public()
@@ -32,18 +31,15 @@ export class HealthController {
     status: 200,
     schema: {
       properties: {
-        deploymentMode: { type: 'string', example: 'saas' },
-        signupEnabled: { type: 'boolean', example: true },
+        workspaceCreationOpen: { type: 'boolean', example: true },
         ssoEnabled: { type: 'boolean', example: true },
       },
     },
   })
   publicConfig() {
-    const singleTenant = this.config.isSingleTenant();
     return {
-      deploymentMode: this.config.get('DEPLOYMENT_MODE'),
-      // Self-serve signup is only available in saas mode.
-      signupEnabled: !singleTenant,
+      // Any authenticated user can create a workspace and becomes its admin.
+      workspaceCreationOpen: true,
       // SSO is available when an Entra app is configured.
       ssoEnabled: Boolean(this.config.get('ENTRA_TENANT_ID') && this.config.get('ENTRA_CLIENT_ID')),
     };

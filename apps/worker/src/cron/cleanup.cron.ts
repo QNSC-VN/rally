@@ -5,7 +5,7 @@
  * Purges:
  *   1. identity.auth_sessions that are revoked and expired >N days ago
  *   2. identity.password_reset_tokens that expired >1 day ago
- *   3. tenancy.workspace_invitations that are still 'pending' but expired >N days ago
+ *   3. workspace.workspace_invitations that are still 'pending' but expired >N days ago
  *   4. work.attachments that are still 'pending' (never confirmed) older than 24 h
  *      — hard-deletes the DB row then best-effort deletes the S3 object
  *
@@ -76,7 +76,7 @@ export class CleanupCronService {
     // 3. Expired pending invitations
     const invResult = await this.db.execute(
       sql`
-        UPDATE tenancy.workspace_invitations
+        UPDATE workspace.workspace_invitations
         SET status = 'expired', updated_at = NOW()
         WHERE status = 'pending'
           AND expires_at < NOW()

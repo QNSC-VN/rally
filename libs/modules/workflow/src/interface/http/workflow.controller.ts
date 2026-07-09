@@ -69,7 +69,7 @@ export class WorkflowController {
     @Param('projectId', ParseUUIDPipe) projectId: string,
     @Body() dto: CreateWorkflowStatusDto,
   ): Promise<WorkflowStatusResponseDto> {
-    const status = await this.projectsService.createStatus(user.tenantId, projectId, {
+    const status = await this.projectsService.createStatus(user.workspaceId, projectId, {
       name: dto.name,
       category: dto.category,
       color: dto.color,
@@ -91,7 +91,7 @@ export class WorkflowController {
     @Param('projectId', ParseUUIDPipe) projectId: string,
     @Body() dto: ReorderStatusesDto,
   ): Promise<void> {
-    await this.projectsService.reorderStatuses(user.tenantId, projectId, dto.orderedIds);
+    await this.projectsService.reorderStatuses(user.workspaceId, projectId, dto.orderedIds);
   }
 
   @Delete('statuses/:statusId')
@@ -107,7 +107,7 @@ export class WorkflowController {
     @Param('projectId', ParseUUIDPipe) projectId: string,
     @Param('statusId', ParseUUIDPipe) statusId: string,
   ): Promise<void> {
-    await this.projectsService.deleteStatus(user.tenantId, projectId, statusId);
+    await this.projectsService.deleteStatus(user.workspaceId, projectId, statusId);
   }
 
   // ── Transitions ────────────────────────────────────────────────────────────
@@ -123,7 +123,7 @@ export class WorkflowController {
     @Param('projectId', ParseUUIDPipe) projectId: string,
     @Body() dto: CreateWorkflowTransitionDto,
   ): Promise<WorkflowTransitionResponseDto> {
-    const transition = await this.projectsService.createTransition(user.tenantId, projectId, {
+    const transition = await this.projectsService.createTransition(user.workspaceId, projectId, {
       fromStatusId: dto.fromStatusId,
       toStatusId: dto.toStatusId,
       name: dto.name,
@@ -144,6 +144,6 @@ export class WorkflowController {
     @Param('projectId', ParseUUIDPipe) projectId: string,
     @Param('transitionId', ParseUUIDPipe) transitionId: string,
   ): Promise<void> {
-    await this.projectsService.deleteTransition(user.tenantId, projectId, transitionId);
+    await this.projectsService.deleteTransition(user.workspaceId, projectId, transitionId);
   }
 }

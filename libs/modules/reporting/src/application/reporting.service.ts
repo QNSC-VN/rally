@@ -13,7 +13,7 @@ export class ReportingService {
   constructor(@Inject(REPORTING_REPOSITORY) private readonly reportingRepo: IReportingRepository) {}
 
   async getSprintBurndown(actor: JwtPayload, sprintId: string): Promise<SprintBurndownReport> {
-    const snapshots = await this.reportingRepo.getSprintSnapshots(actor.tenantId, sprintId);
+    const snapshots = await this.reportingRepo.getSprintSnapshots(actor.workspaceId, sprintId);
 
     return {
       sprintId,
@@ -32,7 +32,7 @@ export class ReportingService {
     projectId: string,
     lastNSprints = VELOCITY_DEFAULT_SPRINTS,
   ): Promise<VelocityReport> {
-    const sprints = await this.reportingRepo.getVelocity(actor.tenantId, projectId, lastNSprints);
+    const sprints = await this.reportingRepo.getVelocity(actor.workspaceId, projectId, lastNSprints);
     return { projectId, sprints };
   }
 
