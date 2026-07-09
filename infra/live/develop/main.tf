@@ -131,7 +131,7 @@ module "rds" {
   backup_retention_days    = 3
   monitoring_interval      = 0 # disable Enhanced Monitoring in develop (saves CloudWatch cost)
 
-  tags = { Environment = local.env, AutoStop = "true" }
+  tags = { Environment = local.env }
 }
 
 # ── Cache ─────────────────────────────────────────────────────────────────────
@@ -253,7 +253,7 @@ module "api" {
   sqs_queue_arns = values(module.messaging.queue_arns)
   sns_topic_arns = values(module.messaging.topic_arns)
 
-  tags = { Environment = local.env, Service = "api", AutoStop = "true" }
+  tags = { Environment = local.env, Service = "api" }
 }
 
 # ── ECS Service — Worker ──────────────────────────────────────────────────────
@@ -318,7 +318,7 @@ module "worker" {
   sqs_queue_arns = values(module.messaging.queue_arns)
   sns_topic_arns = values(module.messaging.topic_arns)
 
-  tags = { Environment = local.env, Service = "worker", AutoStop = "true" }
+  tags = { Environment = local.env, Service = "worker" }
 }
 
 # ── S3 — Attachments bucket ───────────────────────────────────────────────────
@@ -414,13 +414,5 @@ module "dns_api" {
   content = data.terraform_remote_state.runtime.outputs.alb_dns_name
   proxied = true # orange cloud: shield the ALB, edge WAF/DDoS at Cloudflare
   comment = "rally-develop API → ALB via Cloudflare proxy (managed by rally-infra develop)"
-}
-
-# ── Dev cost saver: stop RDS + scale ECS to 0 off-hours ───────────────────────
-# Acts on resources tagged AutoStop=true (rds, api, worker above).
-module "dev_scheduler" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/dev-scheduler?ref=dev-scheduler-v1.1.0"
-  name   = local.name
-  tags   = { Environment = local.env }
 }
 
