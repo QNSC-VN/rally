@@ -58,7 +58,7 @@ export class ReleasesService {
       theme: opts.theme,
       startDate: opts.startDate,
       releaseDate: opts.releaseDate,
-      status: (opts.state as Release['status']) ?? 'planning',
+      status: opts.state as Release['status'] ?? 'planning',
     });
 
     this.logger.log({ releaseId: release.id, projectId, userId: actor.sub }, 'Release created');

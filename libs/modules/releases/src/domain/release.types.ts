@@ -30,7 +30,7 @@ export interface CreateReleaseInput {
   theme?: string;
   startDate?: string;
   releaseDate?: string;
-  state?: ReleaseStatus;
+  status?: ReleaseStatus;
 }
 
 export interface UpdateReleaseInput {
