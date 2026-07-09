@@ -92,7 +92,7 @@ export class ReleasesController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<ReleaseResponseDto> {
-    const release = await this.releasesService.getReleaseDetail(user.tenantId, id);
+    const release = await this.releasesService.getReleaseDetail(user, id);
     return toReleaseDto(release);
   }
 

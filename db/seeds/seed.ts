@@ -464,7 +464,7 @@ async function seedReleases() {
       projectId: nxpId,
       name: 'v2.0 — NX Platform Upgrade',
       description: 'Major upgrade to NX v21 + ESLint flat-config rollout.',
-      status: 'planned',
+      status: 'planning',
       targetDate: '2026-07-31',
     },
     {
@@ -473,7 +473,7 @@ async function seedReleases() {
       projectId: nxpId,
       name: 'v2.1 — Storybook & DX',
       description: 'Storybook 8 integration and developer experience improvements.',
-      status: 'planned',
+      status: 'planning',
       targetDate: '2026-08-31',
     },
     // MOB release
@@ -483,7 +483,7 @@ async function seedReleases() {
       projectId: mobId,
       name: 'v1.5 — Auth & Accessibility',
       description: 'Biometric auth, dark mode, and accessibility fixes.',
-      status: 'planned',
+      status: 'planning',
       targetDate: '2026-08-15',
     },
   ]).onConflictDoNothing();
