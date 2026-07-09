@@ -14,7 +14,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { Pool } from 'pg';
 import path from 'path';
-import { seed } from './seeds/seed';
+import { seed, seedSystemRoles, seedTenantBootstrap } from './seeds/seed';
 import { pgOptions } from './pg-ssl';
 
 const url = process.env['DATABASE_MIGRATION_URL'] ?? process.env['DATABASE_URL'];
@@ -33,15 +33,28 @@ async function run() {
     await migrate(db, { migrationsFolder: path.join(__dirname, 'migrations') });
     console.log('✅  Migrations applied');
 
-    // In develop/staging, seed fixture data on every deploy so the RBAC
-    // catalogue and dev workspace always exist. Users authenticate via Entra
-    // SSO (JIT-provisioned on first login); admins are elevated through
-    // PLATFORM_ADMIN_EMAILS. Never set SEED_ON_DEPLOY=true in production.
+    // Seed uses DATABASE_URL (app role), not the migration URL (admin role).
+    // Falls back to migration URL if DATABASE_URL is not set separately.
+    const seedUrl = process.env['DATABASE_URL'] ?? url;
+
+    // Reference data — the RBAC role catalogue — is required for authz to work
+    // (JIT SSO provisioning assigns these role slugs). It contains no demo
+    // fixtures, so it runs on EVERY deploy in EVERY environment, including real
+    // production. Idempotent.
+    console.log('Seeding system role catalogue...');
+    await seedSystemRoles(seedUrl);
+
+    // Tenant bootstrap — the primary workspace + Entra SSO connection. Prod-safe
+    // config (no demo fixtures): required for real users to JIT-provision and for
+    // PLATFORM_ADMIN_EMAILS elevation on first login. Runs in EVERY environment.
+    console.log('Seeding tenant bootstrap (workspace + SSO connection)...');
+    await seedTenantBootstrap(seedUrl);
+
+    // Demo fixtures (demo users, projects, work items, teams, releases) are for
+    // develop/staging/E2E only. Gate on SEED_ON_DEPLOY and NEVER set it in
+    // production — real prod runs only the two prod-safe steps above.
     if (process.env['SEED_ON_DEPLOY'] === 'true') {
-      console.log('SEED_ON_DEPLOY=true — running seed...');
-      // Seed uses DATABASE_URL (app role), not the migration URL (admin role).
-      // Falls back to migration URL if DATABASE_URL is not set separately.
-      const seedUrl = process.env['DATABASE_URL'] ?? url;
+      console.log('SEED_ON_DEPLOY=true — running demo seed...');
       await seed(seedUrl);
     }
   } catch (err) {
