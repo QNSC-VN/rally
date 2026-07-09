@@ -12,7 +12,7 @@ export class ReleaseDrizzleRepository implements IReleaseRepository {
 
   async findById(id: string): Promise<Release | null> {
     const rows = await this.db.select().from(releases).where(eq(releases.id, id)).limit(1);
-    return (rows[0]) ?? null;
+    return (rows[0] as unknown as Release) ?? null;
   }
 
   async listByProject(
@@ -33,7 +33,7 @@ export class ReleaseDrizzleRepository implements IReleaseRepository {
       .orderBy(releases.createdAt)
       .limit(limit + 1);
 
-    return buildPageResult(rows as Release[], limit, (r) => [r.createdAt.toISOString()]);
+    return buildPageResult(rows as unknown as Release[], limit, (r) => [r.createdAt.toISOString()]);
   }
 
   async create(input: CreateReleaseInput): Promise<Release> {
@@ -45,26 +45,36 @@ export class ReleaseDrizzleRepository implements IReleaseRepository {
         projectId: input.projectId,
         name: input.name,
         description: input.description,
-        targetDate: input.targetDate,
+        theme: input.theme,
+        startDate: input.startDate,
+        releaseDate: input.releaseDate,
+        status: input.status ?? 'planning',
       })
       .returning();
-    return rows[0];
+    return rows[0] as unknown as Release;
   }
 
   async update(id: string, input: UpdateReleaseInput): Promise<Release> {
+    const set: Record<string, unknown> = { updatedAt: new Date() };
+
+    if (input.name !== undefined) set.name = input.name;
+    if (input.description !== undefined) set.description = input.description;
+    if (input.theme !== undefined) set.theme = input.theme;
+    if (input.notes !== undefined) set.notes = input.notes;
+    if (input.startDate !== undefined) set.startDate = input.startDate;
+    if (input.releaseDate !== undefined) set.releaseDate = input.releaseDate;
+    if (input.plannedVelocity !== undefined) set.plannedVelocity = input.plannedVelocity;
+    if (input.planEstimate !== undefined) set.planEstimate = String(input.planEstimate);
+    if (input.version !== undefined) set.version = input.version;
+    if (input.status !== undefined) set.status = input.status;
+    if (input.releasedAt !== undefined) set.releasedAt = input.releasedAt;
+
     const rows = await this.db
       .update(releases)
-      .set({
-        ...(input.name !== undefined && { name: input.name }),
-        ...(input.description !== undefined && { description: input.description }),
-        ...(input.targetDate !== undefined && { targetDate: input.targetDate }),
-        ...(input.status !== undefined && { status: input.status }),
-        ...(input.releasedAt !== undefined && { releasedAt: input.releasedAt }),
-        updatedAt: new Date(),
-      })
+      .set(set)
       .where(eq(releases.id, id))
       .returning();
-    return rows[0];
+    return rows[0] as unknown as Release;
   }
 
   async delete(id: string): Promise<void> {

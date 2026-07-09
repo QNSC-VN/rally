@@ -31,8 +31,14 @@ function toReleaseDto(r: Release): ReleaseResponseDto {
     projectId: r.projectId,
     name: r.name,
     description: r.description,
+    theme: r.theme,
+    notes: (r as any).notes ?? null,
     status: r.status,
-    targetDate: r.targetDate,
+    startDate: r.startDate,
+    releaseDate: r.releaseDate,
+    plannedVelocity: r.plannedVelocity,
+    planEstimate: r.planEstimate ? Number(r.planEstimate) : null,
+    version: (r as any).version ?? null,
     releasedAt: r.releasedAt ? r.releasedAt.toISOString() : null,
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
@@ -41,9 +47,6 @@ function toReleaseDto(r: Release): ReleaseResponseDto {
 
 @ApiTags('releases')
 @Controller('releases')
-// Releases are project-owned. Create checks the project in the body via the
-// guard; update/delete/ship check per-project in the service (project known
-// only after loading the release). Guards run in a guaranteed order.
 @AuthProjectScoped()
 export class ReleasesController {
   constructor(private readonly releasesService: ReleasesService) {}
@@ -72,7 +75,10 @@ export class ReleasesController {
   ): Promise<ReleaseResponseDto> {
     const release = await this.releasesService.createRelease(user, dto.projectId, dto.name, {
       description: dto.description,
-      targetDate: dto.targetDate ?? undefined,
+      theme: dto.theme,
+      startDate: dto.startDate ?? undefined,
+      releaseDate: dto.releaseDate ?? undefined,
+      state: dto.state,
     });
     return toReleaseDto(release);
   }
@@ -86,7 +92,7 @@ export class ReleasesController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<ReleaseResponseDto> {
-    const release = await this.releasesService.getRelease(user.tenantId, id);
+    const release = await this.releasesService.getReleaseDetail(user.tenantId, id);
     return toReleaseDto(release);
   }
 
@@ -115,18 +121,5 @@ export class ReleasesController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<void> {
     await this.releasesService.deleteRelease(user, id);
-  }
-
-  @Post(':id/ship')
-  @ApiOperation({ summary: 'Mark a release as shipped' })
-  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
-  @ApiResponse({ status: 201, type: ReleaseResponseDto })
-  @ApiCommonErrors(400, 401, 403, 404)
-  async shipRelease(
-    @CurrentUser() user: JwtPayload,
-    @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<ReleaseResponseDto> {
-    const release = await this.releasesService.shipRelease(user, id);
-    return toReleaseDto(release);
   }
 }

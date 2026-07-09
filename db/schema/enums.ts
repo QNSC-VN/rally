@@ -108,7 +108,7 @@ export const iterationStateEnum = pgEnum('iteration_state', [
   'accepted',
 ]);
 
-export const releaseStatusEnum = pgEnum('release_status', ['planned', 'released', 'archived']);
+export const releaseStatusEnum = pgEnum('release_status', ['planning', 'active', 'accepted']);
 
 export const attachmentStatusEnum = pgEnum('attachment_status', ['pending', 'completed']);
 

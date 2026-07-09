@@ -7,8 +7,15 @@ export interface Release {
   projectId: string;
   name: string;
   description: string | null;
+  theme: string | null;
+  notes: string | null;
   status: ReleaseStatus;
-  targetDate: string | null; // YYYY-MM-DD
+  startDate: string | null; // YYYY-MM-DD
+  releaseDate: string | null; // YYYY-MM-DD
+  targetDate: string | null; // YYYY-MM-DD (legacy)
+  plannedVelocity: number | null;
+  planEstimate: number | null;
+  version: string | null;
   releasedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -20,13 +27,22 @@ export interface CreateReleaseInput {
   projectId: string;
   name: string;
   description?: string;
-  targetDate?: string;
+  theme?: string;
+  startDate?: string;
+  releaseDate?: string;
+  state?: ReleaseStatus;
 }
 
 export interface UpdateReleaseInput {
   name?: string;
   description?: string | null;
-  targetDate?: string | null;
+  theme?: string | null;
+  notes?: string | null;
+  startDate?: string | null;
+  releaseDate?: string | null;
+  plannedVelocity?: number | null;
+  planEstimate?: number | null;
+  version?: string | null;
   status?: ReleaseStatus;
   releasedAt?: Date | null;
 }

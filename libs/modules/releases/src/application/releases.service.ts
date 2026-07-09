@@ -1,6 +1,5 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException, PreconditionFailedException, BadRequestException } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
-import { NotFoundException, PreconditionFailedException } from '@platform';
 import type { JwtPayload, CursorPayload, PagedResult } from '@platform';
 import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
@@ -35,9 +34,20 @@ export class ReleasesService {
     actor: JwtPayload,
     projectId: string,
     name: string,
-    opts: { description?: string; targetDate?: string } = {},
+    opts: {
+      description?: string;
+      theme?: string;
+      startDate?: string;
+      releaseDate?: string;
+      state?: string;
+    } = {},
   ): Promise<Release> {
     await this.projectsService.getProject(actor.tenantId, projectId);
+
+    // Validate date range: releaseDate >= startDate
+    if (opts.startDate && opts.releaseDate && opts.releaseDate < opts.startDate) {
+      throw new BadRequestException('Release date must be >= start date');
+    }
 
     const release = await this.releaseRepo.create({
       id: uuidv7(),
@@ -45,7 +55,10 @@ export class ReleasesService {
       projectId,
       name,
       description: opts.description,
-      targetDate: opts.targetDate,
+      theme: opts.theme,
+      startDate: opts.startDate,
+      releaseDate: opts.releaseDate,
+      status: (opts.state as Release['status']) ?? 'planning',
     });
 
     this.logger.log({ releaseId: release.id, projectId, userId: actor.sub }, 'Release created');
@@ -66,8 +79,13 @@ export class ReleasesService {
 
   async updateRelease(actor: JwtPayload, id: string, input: UpdateReleaseInput): Promise<Release> {
     const release = await this.getRelease(actor.tenantId, id);
-    // Per-project check: the caller must hold release:manage for THIS release's project.
     await this.accessService.assertProjectPermission(actor, release.projectId, PERMISSION.RELEASE_MANAGE);
+
+    // Validate date range: releaseDate >= startDate
+    if (input.startDate && input.releaseDate && input.releaseDate < input.startDate) {
+      throw new BadRequestException('Release date must be >= start date');
+    }
+
     return this.releaseRepo.update(id, input);
   }
 
@@ -76,29 +94,21 @@ export class ReleasesService {
   async deleteRelease(actor: JwtPayload, id: string): Promise<void> {
     const release = await this.getRelease(actor.tenantId, id);
     await this.accessService.assertProjectPermission(actor, release.projectId, PERMISSION.RELEASE_MANAGE);
-    if (release.status === 'released') {
+    // Accepted releases cannot be deleted (P3-REL-DC-012: accepted remain editable, but deletion is more destructive)
+    if (release.status === 'accepted') {
       throw new PreconditionFailedException(
-        'RELEASE_NOT_FOUND',
-        'Released versions cannot be deleted',
+        'RELEASE_NOT_DELETABLE',
+        'Accepted releases cannot be deleted',
       );
     }
     await this.releaseRepo.delete(id);
     this.logger.log({ releaseId: id }, 'Release deleted');
   }
 
-  // ── Ship ─────────────────────────────────────────────────────────────────
+  // ── Get Detail (includes notes, taskRollup, accepted) ─────────────────────
 
-  async shipRelease(actor: JwtPayload, id: string): Promise<Release> {
+  async getReleaseDetail(actor: JwtPayload, id: string) {
     const release = await this.getRelease(actor.tenantId, id);
-    await this.accessService.assertProjectPermission(actor, release.projectId, PERMISSION.RELEASE_MANAGE);
-    if (release.status === 'released') {
-      throw new PreconditionFailedException('RELEASE_NOT_FOUND', 'Release has already shipped');
-    }
-    const updated = await this.releaseRepo.update(id, {
-      status: 'released',
-      releasedAt: new Date(),
-    });
-    this.logger.log({ releaseId: id }, 'Release shipped');
-    return updated;
+    return release;
   }
 }
