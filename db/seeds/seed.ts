@@ -1096,7 +1096,158 @@ async function seedActivityLogs() {
 }
 
 /**
- * Run all seed operations against the given database URL.
+ * Seed the RBAC role catalogue (system_roles) into the given db handle.
+ *
+ * This is REFERENCE data — not demo fixtures. The backend @RequirePermission
+ * decorators and the frontend gating derive their codes from the same catalogue
+ * (db/permissions.catalog.ts), and JIT SSO provisioning assigns these role slugs
+ * on first login. It must therefore exist in EVERY environment (dev, staging AND
+ * production), independent of SEED_ON_DEPLOY. Idempotent: onConflictDoUpdate
+ * backfills newly-granted permissions on re-run.
+ */
+async function seedSystemRolesInto(
+  database: ReturnType<typeof drizzle<typeof schema>>,
+): Promise<void> {
+  const roleSlugs = Object.keys(ROLE_PERMISSIONS) as SystemRoleSlug[];
+  for (const slug of roleSlugs) {
+    const permissions = ROLE_PERMISSIONS[slug];
+    const name = ROLE_NAMES[slug];
+    await database
+      .insert(schema.systemRoles)
+      .values({
+        name,
+        slug,
+        isSystem: true,
+        permissions,
+      })
+      .onConflictDoUpdate({
+        target: schema.systemRoles.slug,
+        set: { permissions, name },
+      });
+  }
+  console.log(`✅  System roles catalogue seeded (${roleSlugs.length} roles)`);
+}
+
+/**
+ * Standalone entrypoint that seeds ONLY the reference role catalogue.
+ * Safe to run on every deploy in every environment — including real production —
+ * because it contains no demo fixtures (no workspace, users, projects, etc.).
+ * Exported so db/migrate.ts can run it unconditionally after migrations.
+ */
+export async function seedSystemRoles(connectionUrl?: string): Promise<void> {
+  const url = connectionUrl ?? process.env['DATABASE_URL'];
+  if (!url) throw new Error('DATABASE_URL or connectionUrl required');
+
+  const pool = new Pool({ ...pgOptions(url), max: 1 });
+  const database = drizzle(pool, { schema });
+  try {
+    await seedSystemRolesInto(database);
+  } finally {
+    await pool.end();
+  }
+}
+
+/**
+ * Bootstrap the primary tenant — the workspace and its Entra SSO connection —
+ * into the given db handle. This is prod-safe CONFIG (no demo fixtures): it is
+ * what lets real users JIT-provision and lets a PLATFORM_ADMIN_EMAILS admin be
+ * elevated on first SSO login. Driven entirely by env so the same routine runs
+ * identically in dev, staging and production:
+ *   BOOTSTRAP_WORKSPACE_NAME  — display name (default "ACME Corp")
+ *   BOOTSTRAP_WORKSPACE_SLUG  — url slug     (default "main")
+ *   ENTRA_TENANT_ID           — Entra directory to federate (skips SSO if unset)
+ *   SSO_ALLOWED_EMAIL_DOMAINS — comma-separated JIT allow-list (default "qnsc.vn")
+ * Idempotent: workspace + connection use onConflictDoUpdate so config edits
+ * reconcile on every run.
+ */
+async function seedTenantBootstrapInto(
+  database: ReturnType<typeof drizzle<typeof schema>>,
+): Promise<void> {
+  const workspaceName = process.env['BOOTSTRAP_WORKSPACE_NAME'] ?? 'ACME Corp';
+  const workspaceSlug = process.env['BOOTSTRAP_WORKSPACE_SLUG'] ?? 'main';
+
+  await database
+    .insert(schema.workspaces)
+    .values({ id: WORKSPACE_ID, slug: workspaceSlug, name: workspaceName })
+    .onConflictDoUpdate({
+      target: schema.workspaces.id,
+      set: { name: workspaceName },
+    });
+
+  const entraTid = process.env['ENTRA_TENANT_ID'];
+  if (!entraTid) {
+    console.log(
+      `\u2705  Tenant bootstrap: workspace "${workspaceName}" ensured ` +
+        `(no ENTRA_TENANT_ID \u2014 SSO connection skipped, dev-login only)`,
+    );
+    return;
+  }
+
+  // Restrict JIT provisioning to the corporate domain(s). Empty list = any
+  // directory user could self-provision; default to qnsc.vn so only company
+  // accounts auto-create. NOTE: only gates NEW users \u2014 already-linked SSO
+  // identities skip the domain check on subsequent logins.
+  const ssoAllowedDomains = (process.env['SSO_ALLOWED_EMAIL_DOMAINS'] ?? 'qnsc.vn')
+    .split(',')
+    .map((d) => d.trim().toLowerCase())
+    .filter(Boolean);
+
+  await database
+    .insert(ssoConnections)
+    .values({
+      workspaceId: WORKSPACE_ID,
+      provider: 'entra',
+      externalTenantId: entraTid,
+      defaultRoleSlug: 'project_member',
+      allowedEmailDomains: ssoAllowedDomains,
+      jitEnabled: true,
+      status: 'active',
+    })
+    // Reconcile config on every run so allow-list / default-role / JIT changes
+    // take effect on the existing connection.
+    .onConflictDoUpdate({
+      target: [ssoConnections.provider, ssoConnections.externalTenantId],
+      set: {
+        workspaceId: WORKSPACE_ID,
+        defaultRoleSlug: 'project_member',
+        allowedEmailDomains: ssoAllowedDomains,
+        jitEnabled: true,
+        status: 'active',
+        updatedAt: new Date(),
+      },
+    });
+
+  console.log(
+    `\u2705  Tenant bootstrap: workspace "${workspaceName}" + Entra SSO connection ` +
+      `reconciled (tid ${entraTid}, domains: ${ssoAllowedDomains.join(', ') || 'any'})`,
+  );
+}
+
+/**
+ * Standalone entrypoint that bootstraps ONLY the primary tenant (workspace + SSO
+ * connection). Prod-safe — contains no demo fixtures. Exported so db/migrate.ts
+ * can run it on real production deploys.
+ */
+export async function seedTenantBootstrap(connectionUrl?: string): Promise<void> {
+  const url = connectionUrl ?? process.env['DATABASE_URL'];
+  if (!url) throw new Error('DATABASE_URL or connectionUrl required');
+
+  const pool = new Pool({ ...pgOptions(url), max: 1 });
+  const database = drizzle(pool, { schema });
+  try {
+    await seedTenantBootstrapInto(database);
+  } finally {
+    await pool.end();
+  }
+}
+
+/**
+ * Run all DEMO seed operations against the given database URL: the sample `acme`
+ * workspace, demo users, projects, work items, teams, releases, iterations and a
+ * dev SSO connection. These are FIXTURES for dev/staging/E2E only — never real
+ * production. The reference role catalogue (seedSystemRoles) is invoked first so
+ * role assignments resolve; that part is prod-safe, the rest is not.
+ *
  * Exported so db/migrate.ts can call it when SEED_ON_DEPLOY=true.
  * Safe to call multiple times — all inserts use onConflictDoNothing.
  */
@@ -1116,15 +1267,10 @@ export async function seed(connectionUrl?: string): Promise<void> {
   try {
     console.log('Seeding...');
 
-    // ── Workspace (root) ──────────────────────────────────────────────────────
-    await db
-      .insert(schema.workspaces)
-      .values({
-        id: WORKSPACE_ID,
-        slug: 'main',
-        name: 'ACME Corp',
-      })
-      .onConflictDoNothing();
+    // ── Workspace + SSO connection (shared prod-safe bootstrap) ───────────────
+    // The primary workspace and its Entra SSO connection are created by the same
+    // prod-safe routine used on real deploys, so dev and prod resolve identically.
+    await seedTenantBootstrapInto(db);
 
     // ── Admin user ───────────────────────────────────────────────────────────
     // SSO-only: no password. The platform-admin email is seeded so the first
@@ -1185,27 +1331,9 @@ export async function seed(connectionUrl?: string): Promise<void> {
       .onConflictDoNothing();
 
     // ── System roles ─────────────────────────────────────────────────────────
-    // Roles + their permission grants come from the canonical catalogue
-    // (db/permissions.catalog.ts) — the same source the backend @RequirePermission
-    // decorators and the frontend gating derive their codes from. onConflictDoUpdate
-    // means re-seeding an existing DB backfills any newly-granted permissions.
-    const roleSlugs = Object.keys(ROLE_PERMISSIONS) as SystemRoleSlug[];
-    for (const slug of roleSlugs) {
-      const permissions = ROLE_PERMISSIONS[slug];
-      const name = ROLE_NAMES[slug];
-      await db
-        .insert(schema.systemRoles)
-        .values({
-          name,
-          slug,
-          isSystem: true,
-          permissions,
-        })
-        .onConflictDoUpdate({
-          target: schema.systemRoles.slug,
-          set: { permissions, name },
-        });
-    }
+    // Reference catalogue (roles + permission grants). Shared with the prod-safe
+    // standalone entrypoint so dev seeds and production deploys stay in lock-step.
+    await seedSystemRolesInto(db);
 
     // ── Admin user role assignment (workspace_admin for the default workspace) ──
     const adminRoleRow = await db
@@ -1307,52 +1435,6 @@ export async function seed(connectionUrl?: string): Promise<void> {
 
     // ── Revision history (activity logs for fixed-ID items) ──────────────────
     await seedActivityLogs();
-
-    // ── SSO connection (dev) ──────────────────────────────────────────────────
-    // Maps the configured Entra directory (`ENTRA_TENANT_ID`) to the acme tenant
-    // so federated login resolves through the proper per-workspace SSO registry
-    // (the primary workspace-resolution mechanism — see resolveAndProvisionSsoUser).
-    const entraTid = process.env['ENTRA_TENANT_ID'];
-    if (entraTid) {
-      // Restrict JIT provisioning to the corporate domain(s). Empty list = any
-      // directory user could self-provision; default to qnsc.vn so only company
-      // accounts can auto-create. Overridable via SSO_ALLOWED_EMAIL_DOMAINS
-      // (comma-separated). NOTE: this only gates NEW users — already-linked SSO
-      // identities skip the domain check on subsequent logins.
-      const ssoAllowedDomains = (process.env['SSO_ALLOWED_EMAIL_DOMAINS'] ?? 'qnsc.vn')
-        .split(',')
-        .map((d) => d.trim().toLowerCase())
-        .filter(Boolean);
-      await db
-        .insert(ssoConnections)
-        .values({
-          workspaceId: WORKSPACE_ID,
-          provider: 'entra',
-          externalTenantId: entraTid,
-          defaultRoleSlug: 'project_member',
-          allowedEmailDomains: ssoAllowedDomains,
-          jitEnabled: true,
-          status: 'active',
-        })
-        // Reconcile config on every seed so allow-list / default-role / JIT
-        // changes take effect on the existing connection. onConflictDoNothing
-        // would freeze whatever was written on first provision.
-        .onConflictDoUpdate({
-          target: [ssoConnections.provider, ssoConnections.externalTenantId],
-          set: {
-            workspaceId: WORKSPACE_ID,
-            defaultRoleSlug: 'project_member',
-            allowedEmailDomains: ssoAllowedDomains,
-            jitEnabled: true,
-            status: 'active',
-            updatedAt: new Date(),
-          },
-        });
-      console.log(
-        `   ↳ SSO connection reconciled for Entra tid ${entraTid} → acme workspace ` +
-          `(domains: ${ssoAllowedDomains.join(', ') || 'any'})`,
-      );
-    }
 
     console.log(
       `✅  Seed complete — ${SEED_PROJECTS.length} projects, 7 users, 2 teams, 4 iterations, 3 releases, work items seeded`,

@@ -26,9 +26,26 @@ import {
   ISsoConnectionRepository,
   SSO_CONNECTION_REPOSITORY,
 } from '../domain/ports/sso-connection.repository';
-import type { User } from '../domain/user.types';
+import type { User, AuthSession } from '../domain/user.types';
 
 const REMEMBER_ME_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
+
+/**
+ * How long a successful refresh-token rotation result is cached (keyed by the
+ * consumed token's hash) so a benign concurrent/retried reuse — multiple tabs,
+ * a retried request after a lost response, React StrictMode — can replay the
+ * same successor tokens instead of tripping single-use theft detection. Kept
+ * short so a genuinely stolen, long-dormant token is still caught.
+ */
+const REFRESH_ROTATION_GRACE_SECONDS = 30;
+
+/**
+ * Internal signal used to roll back a rotation transaction when the atomic
+ * compare-and-swap revoke is lost to a concurrent refresh.
+ */
+class RotationLostError extends Error {}
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 export interface LoginResult {
   accessToken: string;
@@ -81,23 +98,13 @@ export class AuthService {
       throw new UnauthorizedException('AUTH_TOKEN_INVALID', 'Refresh token not found');
     }
 
-    // Token reuse detected — revoke entire family (session hijacking prevention)
+    // The token has already been rotated. This is not automatically theft —
+    // multiple tabs, a retried request after a lost response, or React
+    // StrictMode can all legitimately replay a single-use token. Replay the
+    // cached successor tokens when the reuse is benign; escalate to family
+    // revocation only when we are confident it is malicious.
     if (session.isRevoked) {
-      await this.sessionRepo.revokeFamily(session.familyId);
-      this.logger.warn(
-        { sessionId: session.id, familyId: session.familyId },
-        'Refresh token reuse detected — revoking entire family',
-      );
-      // Audit trail for security incident detection (SOC 2 CC6.8)
-      void this.audit.record({
-        workspaceId: session.workspaceId,
-        actorId: session.userId,
-        action: 'auth.token_theft_detected',
-        resourceType: 'session',
-        resourceId: session.familyId,
-        metadata: { familyId: session.familyId },
-      });
-      throw new UnauthorizedException('AUTH_REFRESH_TOKEN_REUSE', 'Refresh token has been revoked');
+      return this.replayOrDetectTheft(tokenHash, session, csrfToken, { concurrentLoss: false });
     }
 
     if (session.expiresAt < new Date()) {
@@ -141,28 +148,140 @@ export class AuthService {
 
     const newCsrfToken = randomBytes(32).toString('hex');
 
-    // Atomic token rotation: revoke old session and issue new in one tx.
-    // If either write fails the whole rotation rolls back, so we never end up
-    // with two live refresh tokens (token-reuse / privilege-escalation gap).
-    await this.db.transaction(async (tx) => {
-      await this.sessionRepo.revokeById(session.id, tx);
-      await this.sessionRepo.create(
-        {
-          id: newSessionId,
-          workspaceId: session.workspaceId,
-          userId: user.id,
-          tokenHash: newHash,
-          familyId: session.familyId, // preserve family for revocation chain
-          ipAddress,
-          expiresAt: refreshExpiry,
-          ssoProvider: session.ssoProvider ?? undefined, // carry SSO provider forward
-          csrfToken: newCsrfToken,
-        },
-        tx,
-      );
-    });
+    const result: RefreshResult = {
+      accessToken,
+      refreshToken: newRefreshToken,
+      expiresIn,
+      csrfToken: newCsrfToken,
+    };
 
-    return { accessToken, refreshToken: newRefreshToken, expiresIn, csrfToken: newCsrfToken };
+    // Atomic single-use rotation (compare-and-swap): only one concurrent
+    // request may flip is_revoked false→true for this session. The loser must
+    // NOT create a second live session (that would defeat single-use) — it
+    // replays the winner's cached result instead. Wrapped in a tx so the revoke
+    // and the new-session insert commit together or not at all.
+    let rotationWon = true;
+    try {
+      await this.db.transaction(async (tx) => {
+        const won = await this.sessionRepo.revokeByIdIfActive(session.id, tx);
+        if (!won) {
+          rotationWon = false;
+          throw new RotationLostError();
+        }
+        await this.sessionRepo.create(
+          {
+            id: newSessionId,
+            workspaceId: session.workspaceId,
+            userId: user.id,
+            tokenHash: newHash,
+            familyId: session.familyId, // preserve family for revocation chain
+            ipAddress,
+            expiresAt: refreshExpiry,
+            ssoProvider: session.ssoProvider ?? undefined, // carry SSO provider forward
+            csrfToken: newCsrfToken,
+          },
+          tx,
+        );
+      });
+    } catch (err) {
+      if (!(err instanceof RotationLostError)) throw err;
+    }
+
+    if (!rotationWon) {
+      // A concurrent refresh rotated first — replay its result idempotently
+      // rather than issuing a competing session or flagging false theft.
+      return this.replayOrDetectTheft(tokenHash, session, csrfToken, { concurrentLoss: true });
+    }
+
+    // Cache the rotation result under the consumed token's hash so a benign
+    // concurrent/retried reuse replays these exact tokens. Best-effort: a cache
+    // write failure must not fail the refresh itself.
+    try {
+      await this.valkey.storeRotationGrace(
+        tokenHash,
+        JSON.stringify(result),
+        REFRESH_ROTATION_GRACE_SECONDS,
+      );
+    } catch (err) {
+      this.logger.warn({ err, sessionId: session.id }, 'Failed to cache rotation grace entry');
+    }
+
+    return result;
+  }
+
+  /**
+   * Handle a refresh whose token has already been rotated. Returns the cached
+   * successor tokens when the reuse is benign (within the grace window), or
+   * escalates to family revocation (theft) only when we are confident the reuse
+   * is malicious.
+   *
+   * @param concurrentLoss `true` when we lost the atomic rotation CAS (so a
+   *   sibling request definitely rotated first — never theft); `false` when the
+   *   token was already revoked when we read it (benign replay *or* theft).
+   */
+  private async replayOrDetectTheft(
+    tokenHash: string,
+    session: AuthSession,
+    csrfToken: string | null,
+    { concurrentLoss }: { concurrentLoss: boolean },
+  ): Promise<RefreshResult> {
+    // CSRF still applies to the replayed response (the revoked session carries
+    // the CSRF token the benign client is replaying with).
+    if (session.csrfToken !== null && (!csrfToken || csrfToken !== session.csrfToken)) {
+      throw new UnauthorizedException('AUTH_TOKEN_INVALID', 'CSRF token mismatch');
+    }
+
+    let cached: string | null;
+    try {
+      // A concurrent winner may not have written its grace entry yet, so poll
+      // briefly on the CAS-loss path. A sequential replay needs no polling — the
+      // entry, if any, is already present.
+      cached = await this.waitForGrace(tokenHash, concurrentLoss ? 6 : 1);
+    } catch (err) {
+      // Cache unavailable — we cannot prove theft, so fail safe WITHOUT nuking
+      // the family (a Valkey blip must never mass-logout every session).
+      this.logger.warn({ err, familyId: session.familyId }, 'Rotation grace lookup failed');
+      throw new UnauthorizedException('AUTH_TOKEN_INVALID', 'Session refresh unavailable, retry');
+    }
+
+    if (cached) {
+      return JSON.parse(cached) as RefreshResult;
+    }
+
+    if (concurrentLoss) {
+      // We KNOW a sibling request rotated this session (we lost the CAS), so
+      // this is not theft even though the grace entry is missing/expired. Ask
+      // the client to retry with the freshly-set cookie instead of revoking.
+      throw new UnauthorizedException('AUTH_TOKEN_INVALID', 'Refresh rotated concurrently, retry');
+    }
+
+    // Genuine reuse of a token rotated outside the grace window → treat as
+    // session theft and revoke the entire family (session hijacking prevention).
+    await this.sessionRepo.revokeFamily(session.familyId);
+    this.logger.warn(
+      { sessionId: session.id, familyId: session.familyId },
+      'Refresh token reuse detected — revoking entire family',
+    );
+    // Audit trail for security incident detection (SOC 2 CC6.8)
+    void this.audit.record({
+      workspaceId: session.workspaceId,
+      actorId: session.userId,
+      action: 'auth.token_theft_detected',
+      resourceType: 'session',
+      resourceId: session.familyId,
+      metadata: { familyId: session.familyId },
+    });
+    throw new UnauthorizedException('AUTH_REFRESH_TOKEN_REUSE', 'Refresh token has been revoked');
+  }
+
+  /** Poll the rotation grace cache up to `tries` times (25ms apart). */
+  private async waitForGrace(tokenHash: string, tries: number): Promise<string | null> {
+    for (let attempt = 0; attempt < tries; attempt++) {
+      const value = await this.valkey.getRotationGrace(tokenHash);
+      if (value) return value;
+      if (attempt < tries - 1) await sleep(25);
+    }
+    return null;
   }
 
   // ---------------------------------------------------------------------------
@@ -276,10 +395,20 @@ export class AuthService {
       const membershipsEarly = await this.workspaceService.getMemberships(user.id);
       ssoWorkspaceId = membershipsEarly[0]?.workspaceId ?? '';
       if (!ssoWorkspaceId) {
-        throw new UnauthorizedException(
-          'ACCOUNT_DEACTIVATED',
-          'No active workspace membership found',
-        );
+        // Identity exists but the user has no workspace membership (e.g. a prior
+        // partial provision linked the SSO identity without enrolling the user).
+        // Re-run JIT provisioning via the SSO connection to self-heal rather than
+        // hard-failing — resolveAndProvisionSsoUser is idempotent (it upserts the
+        // identity and enrolls only if no membership exists) and still enforces
+        // the connection's active/domain/JIT guards.
+        const reprovisioned = await this.resolveAndProvisionSsoUser({
+          oid,
+          email: normalizedEmail,
+          displayName,
+          externalTenantId,
+        });
+        user = reprovisioned.user;
+        ssoWorkspaceId = reprovisioned.workspaceId;
       }
     } else {
       const provisioned = await this.resolveAndProvisionSsoUser({

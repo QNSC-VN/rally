@@ -6,22 +6,17 @@
  * Must be awaited before the router guard evaluates `isAuthenticated`.
  */
 import { ENV, isSsoConfigured } from '@/shared/config/env'
-import { setAccessToken, scheduleProactiveRefresh } from '@/shared/api/http-client'
+import {
+  setAccessToken,
+  scheduleProactiveRefresh,
+  refreshAccessToken,
+  getAccessToken,
+} from '@/shared/api/http-client'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 
 const BASE = ENV.API_BASE_URL
 
 let _bootstrapPromise: Promise<void> | null = null
-
-/** Read the double-submit CSRF token from the readable cookie (same as http-client). */
-function getCsrfToken(): string | null {
-  return (
-    document.cookie
-      .split('; ')
-      .find((c) => c.startsWith('csrf_token='))
-      ?.split('=')[1] ?? null
-  )
-}
 
 export function bootstrapAuth(): Promise<void> {
   if (_bootstrapPromise) return _bootstrapPromise
@@ -34,25 +29,23 @@ async function _run(): Promise<void> {
   setLoading(true)
   try {
     // ── Step 1: Try to restore session from httpOnly refresh-token cookie ─────
-    // The refresh endpoint enforces the double-submit CSRF check, so send the
-    // csrf_token cookie value as the x-csrf-token header (same as http-client).
-    // Without it the cold-start session restore 401s and the user is bounced to
-    // login even with a valid refresh cookie.
-    const csrf = getCsrfToken()
-    const refreshRes = await fetch(`${BASE}/v1/auth/refresh`, {
-      method: 'POST',
-      credentials: 'include',
-      referrerPolicy: 'no-referrer',
-      headers: csrf ? { 'x-csrf-token': csrf } : undefined,
-    })
-
-    if (refreshRes.ok) {
-      const { accessToken, expiresIn } = (await refreshRes.json()) as {
-        accessToken: string
-        expiresIn?: number
+    // Delegate to the http-client single-flight refresh instead of issuing our
+    // own fetch. The refresh cookie is single-use with rotation + theft
+    // detection: if this cold-start refresh and a request-triggered
+    // refreshAccessToken() both fire with the same cookie, the server rotates
+    // on the first and treats the second as token reuse — revoking the entire
+    // token family and forcing a re-login. Sharing one in-flight promise makes
+    // that race impossible. On cold start there is no access token yet, so
+    // refreshAccessToken() takes the standard Rally cookie-refresh path (it also
+    // sends the double-submit x-csrf-token header and schedules proactive
+    // refresh internally).
+    const refreshed = await refreshAccessToken()
+    if (refreshed) {
+      const accessToken = getAccessToken()
+      if (accessToken) {
+        await _finalizeSession(accessToken)
+        return
       }
-      await _finalizeSession(accessToken, expiresIn)
-      return
     }
 
     // ── Step 2: Check for in-progress MSAL redirect (SSO) ────────────────────

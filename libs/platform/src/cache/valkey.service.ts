@@ -44,6 +44,26 @@ export class ValkeyService implements OnModuleInit, OnModuleDestroy {
     return val !== null;
   }
 
+  // ── Refresh-token rotation grace window ──────────────────────────────────────
+  //
+  // Enables idempotent single-use refresh-token rotation. The result of a
+  // successful rotation is cached briefly under the *consumed* token's hash so
+  // that a benign concurrent/retried reuse (multiple tabs, a retried request
+  // after a lost response, React StrictMode) can replay the same successor
+  // tokens instead of tripping theft detection.
+
+  async storeRotationGrace(
+    consumedTokenHash: string,
+    payload: string,
+    ttlSeconds: number,
+  ): Promise<void> {
+    await this.client.set(`refresh:grace:${consumedTokenHash}`, payload, 'EX', ttlSeconds);
+  }
+
+  async getRotationGrace(consumedTokenHash: string): Promise<string | null> {
+    return this.client.get(`refresh:grace:${consumedTokenHash}`);
+  }
+
   // ── Rate-limit token bucket (sliding window) ─────────────────────────────────
 
   /**
