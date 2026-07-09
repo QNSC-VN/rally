@@ -14,7 +14,6 @@ import {
   ChevronRight,
   ChevronDown as ArrowDown,
   ChevronRight as ArrowRight,
-  Loader2,
 } from 'lucide-react'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { InlineSelect } from '@/shared/ui/native-select'
