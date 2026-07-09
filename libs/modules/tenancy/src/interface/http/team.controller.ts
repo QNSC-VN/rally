@@ -10,7 +10,7 @@ import {
   Post,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Auth, ApiCommonErrors, RequirePermission } from '@platform';
+import { Auth, ApiCommonErrors, RequirePermission, NotFoundException } from '@platform';
 import type { JwtPayload } from '@platform';
 import { CurrentUser } from '@modules/identity/interface/http/decorators/current-user.decorator';
 import { TeamService } from '../../application/team.service';
@@ -88,7 +88,10 @@ export class TeamController {
     @CurrentUser() user: JwtPayload,
     @Param('workspaceId', ParseUUIDPipe) workspaceId: string,
   ) {
-    const teams = await this.teamService.listTeams(workspaceId, user.tenantId);
+    if (workspaceId !== user.workspaceId) {
+      throw new NotFoundException('WORKSPACE_NOT_FOUND', 'Workspace not found');
+    }
+    const teams = await this.teamService.listTeams(workspaceId);
     return teams.map(toTeamDto);
   }
 
@@ -103,8 +106,10 @@ export class TeamController {
     @Param('workspaceId', ParseUUIDPipe) workspaceId: string,
     @Body() dto: CreateTeamDto,
   ) {
+    if (workspaceId !== user.workspaceId) {
+      throw new NotFoundException('WORKSPACE_NOT_FOUND', 'Workspace not found');
+    }
     const team = await this.teamService.createTeam(
-      user.tenantId,
       workspaceId,
       dto.name,
       dto.key,
@@ -121,7 +126,7 @@ export class TeamController {
   @ApiResponse({ status: 200, schema: { type: 'object' } })
   @ApiCommonErrors(401, 404)
   async getTeam(@CurrentUser() user: JwtPayload, @Param('id', ParseUUIDPipe) id: string) {
-    const team = await this.teamService.getTeam(id, user.tenantId);
+    const team = await this.teamService.getTeam(id, user.workspaceId);
     return toTeamDto(team);
   }
 
@@ -136,7 +141,7 @@ export class TeamController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateTeamDto,
   ) {
-    const team = await this.teamService.updateTeam(id, dto, user.tenantId);
+    const team = await this.teamService.updateTeam(id, dto, user.workspaceId);
     return toTeamDto(team);
   }
 
@@ -147,7 +152,7 @@ export class TeamController {
   @ApiResponse({ status: 200, schema: { type: 'array', items: { type: 'object' } } })
   @ApiCommonErrors(401, 404)
   async listTeamMembers(@CurrentUser() user: JwtPayload, @Param('id', ParseUUIDPipe) id: string) {
-    const members = await this.teamService.listTeamMembers(id, user.tenantId);
+    const members = await this.teamService.listTeamMembers(id, user.workspaceId);
     return members.map(toTeamMemberDto);
   }
 
@@ -162,7 +167,7 @@ export class TeamController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: AddTeamMemberDto,
   ) {
-    const member = await this.teamService.addTeamMember(id, dto.userId, user.tenantId);
+    const member = await this.teamService.addTeamMember(id, dto.userId, user.workspaceId);
     return toTeamMemberDto(member);
   }
 
@@ -179,6 +184,6 @@ export class TeamController {
     @Param('id', ParseUUIDPipe) id: string,
     @Param('userId', ParseUUIDPipe) userId: string,
   ) {
-    await this.teamService.removeTeamMember(id, userId, user.tenantId);
+    await this.teamService.removeTeamMember(id, userId, user.workspaceId);
   }
 }

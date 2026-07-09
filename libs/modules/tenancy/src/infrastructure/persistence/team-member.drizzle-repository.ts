@@ -36,7 +36,7 @@ export class TeamMemberDrizzleRepository implements ITeamMemberRepository {
 
   async addMember(
     id: string,
-    tenantId: string,
+    workspaceId: string,
     teamId: string,
     userId: string,
   ): Promise<TeamMember> {
@@ -44,7 +44,7 @@ export class TeamMemberDrizzleRepository implements ITeamMemberRepository {
       .insert(teamMembers)
       .values({
         id,
-        tenantId,
+        workspaceId,
         teamId,
         userId,
         status: 'active',

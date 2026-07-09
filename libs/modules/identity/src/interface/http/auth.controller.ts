@@ -22,7 +22,7 @@ import {
   ForgotPasswordDto,
   ResetPasswordDto,
   SsoLoginDto,
-  SwitchTenantDto,
+  SwitchWorkspaceDto,
 } from './dto/login.dto';
 import { AuthTokenResponseDto, UserProfileResponseDto } from './dto/auth-response.dto';
 import { CurrentUser } from './decorators/current-user.decorator';
@@ -121,7 +121,7 @@ export class AuthController {
   @Public()
   @RateLimit('AUTH_LOGIN')
   @HttpCode(201)
-  @ApiOperation({ summary: 'Self-serve signup — create or join a tenant by email domain' })
+  @ApiOperation({ summary: 'Self-serve signup — create or join a workspace by email domain' })
   @ApiResponse({ status: 201, type: AuthTokenResponseDto })
   @ApiCommonErrors(400, 409, 422)
   async signup(
@@ -237,25 +237,25 @@ export class AuthController {
 
   // ── POST /auth/logout ──────────────────────────────────────────────────────
 
-  // ── POST /auth/switch-tenant ───────────────────────────────────────────────
+  // ── POST /auth/switch-workspace ────────────────────────────────────────────
 
-  @Post('switch-tenant')
+  @Post('switch-workspace')
   @Auth()
   @HttpCode(200)
   @RateLimit('AUTH_REFRESH')
-  @ApiOperation({ summary: 'Switch active tenant and re-issue tokens' })
+  @ApiOperation({ summary: 'Switch active workspace and re-issue tokens' })
   @ApiResponse({
     status: 200,
     schema: { properties: { accessToken: { type: 'string' }, expiresIn: { type: 'number' } } },
   })
   @ApiCommonErrors(401, 403)
-  async switchTenant(
-    @Body() dto: SwitchTenantDto,
+  async switchWorkspace(
+    @Body() dto: SwitchWorkspaceDto,
     @CurrentUser() user: JwtPayload,
     @Req() req: FastifyRequest,
     @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<Omit<AuthTokenResponseDto, 'user' | 'memberships'>> {
-    const result = await this.authService.switchTenant(user, dto.tenantId, req.ip);
+    const result = await this.authService.switchWorkspace(user, dto.workspaceId, req.ip);
 
     reply.setCookie(
       REFRESH_COOKIE,
@@ -296,7 +296,7 @@ export class AuthController {
   async getMe(@CurrentUser() user: JwtPayload): Promise<UserProfileResponseDto> {
     const [profile, { role, permissions }, memberships] = await Promise.all([
       this.authService.getMe(user.sub),
-      this.accessService.getUserRoleAndPermissions(user.sub, user.tenantId),
+      this.accessService.getUserRoleAndPermissions(user.sub, user.workspaceId),
       this.tenancyService.getMemberships(user.sub),
     ]);
     return {
@@ -328,7 +328,7 @@ export class AuthController {
   ): Promise<UserProfileResponseDto> {
     const [profile, { role, permissions }, memberships] = await Promise.all([
       this.authService.updateProfile(user.sub, dto),
-      this.accessService.getUserRoleAndPermissions(user.sub, user.tenantId),
+      this.accessService.getUserRoleAndPermissions(user.sub, user.workspaceId),
       this.tenancyService.getMemberships(user.sub),
     ]);
     return {

@@ -29,7 +29,7 @@ export class AuditController {
   constructor(private readonly auditService: AuditService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Query audit logs for the tenant' })
+  @ApiOperation({ summary: 'Query audit logs for the workspace' })
   @ApiPagedResponse(AuditLogResponseDto)
   @ApiCommonErrors(401, 422)
   async list(

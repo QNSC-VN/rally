@@ -6,7 +6,6 @@ export interface IWorkspaceSettingsRepository {
   findByWorkspace(workspaceId: string): Promise<WorkspaceSettings | null>;
   upsert(
     workspaceId: string,
-    tenantId: string,
     input: UpdateWorkspaceSettingsInput,
   ): Promise<WorkspaceSettings>;
 }

@@ -394,7 +394,7 @@ export class WorkItemsService {
     // Validate all items belong to this tenant before updating
     const existing = await Promise.all(items.map(({ id }) => this.getWorkItem(workspaceId, id)));
     if (existing.some((w) => w.workspaceId !== workspaceId)) {
-      throw new Error('Tenant mismatch');
+      throw new Error('Workspace mismatch');
     }
     // Wrap in UoW so all rank UPDATEs are one atomic transaction with RLS active.
     await this.uow.run((tx) => this.workItemRepo.reorderItems(items, workspaceId, tx));

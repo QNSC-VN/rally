@@ -42,7 +42,6 @@ import {
   UpdateWorkspaceSettingsDto,
 } from './dto/tenancy-request.dto';
 import {
-  TenantResponseDto,
   WorkspaceResponseDto,
   MemberResponseDto,
   MemberWithProfileResponseDto,
@@ -50,7 +49,6 @@ import {
   WorkspaceSettingsResponseDto,
 } from './dto/tenancy-response.dto';
 import type {
-  Tenant,
   Workspace,
   WorkspaceMember,
   WorkspaceInvitation,
@@ -59,23 +57,9 @@ import type {
 
 // ── Mappers ──────────────────────────────────────────────────────────────────
 
-function toTenantDto(t: Tenant): TenantResponseDto {
-  return {
-    id: t.id,
-    slug: t.slug,
-    name: t.name,
-    status: t.status,
-    plan: t.plan,
-    settings: t.settings,
-    createdAt: t.createdAt.toISOString(),
-    updatedAt: t.updatedAt.toISOString(),
-  };
-}
-
 function toWorkspaceDto(w: Workspace): WorkspaceResponseDto {
   return {
     id: w.id,
-    tenantId: w.tenantId,
     slug: w.slug,
     name: w.name,
     description: w.description,
@@ -125,38 +109,27 @@ function toSettingsDto(s: WorkspaceSettings): WorkspaceSettingsResponseDto {
 
 // ── Controllers ──────────────────────────────────────────────────────────────
 
-@ApiTags('tenants')
-@Controller('tenants')
-@Auth()
-export class TenantController {
-  constructor(private readonly tenancyService: TenancyService) {}
-
-  @Get(':id')
-  @ApiOperation({ summary: 'Get tenant details' })
-  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
-  @ApiResponse({ status: 200, type: TenantResponseDto })
-  @ApiCommonErrors(401, 403, 404)
-  async getTenant(
-    @CurrentUser() user: JwtPayload,
-    @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<TenantResponseDto> {
-    // Tenants are strictly owned — a user may only read their own tenant.
-    if (id !== user.tenantId) throw new NotFoundException('TENANT_NOT_FOUND', 'Tenant not found');
-    const tenant = await this.tenancyService.getTenant(id);
-    return toTenantDto(tenant);
-  }
-}
-
 @ApiTags('workspaces')
 @Controller('workspaces')
 @Auth()
 export class WorkspaceController {
   constructor(private readonly tenancyService: TenancyService) {}
 
+  /**
+   * Guard: workspace-scoped routes operate strictly on the caller's active
+   * workspace. A path id that isn't the active workspace is treated as
+   * not-found so we never leak the existence of other workspaces.
+   */
+  private assertActive(user: JwtPayload, id: string): void {
+    if (id !== user.workspaceId) {
+      throw new NotFoundException('WORKSPACE_NOT_FOUND', 'Workspace not found');
+    }
+  }
+
   // ── List workspaces ────────────────────────────────────────────────────────
 
   @Get()
-  @ApiOperation({ summary: 'List workspaces for the authenticated tenant' })
+  @ApiOperation({ summary: 'List workspaces the authenticated user belongs to' })
   @ApiPagedResponse(WorkspaceResponseDto)
   @ApiCommonErrors(401)
   async listWorkspaces(
@@ -164,7 +137,7 @@ export class WorkspaceController {
     @Query() query: PageQueryDto,
   ): Promise<PagedResult<WorkspaceResponseDto>> {
     const args = buildPageArgs(query);
-    const page = await this.tenancyService.listWorkspaces(user.tenantId, args);
+    const page = await this.tenancyService.listWorkspacesForUser(user.sub, args);
     return { data: page.data.map(toWorkspaceDto), pageInfo: page.pageInfo };
   }
 
@@ -202,7 +175,8 @@ export class WorkspaceController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<WorkspaceResponseDto> {
-    const workspace = await this.tenancyService.getWorkspace(user.tenantId, id);
+    this.assertActive(user, id);
+    const workspace = await this.tenancyService.getWorkspace(id);
     return toWorkspaceDto(workspace);
   }
 
@@ -219,7 +193,8 @@ export class WorkspaceController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateWorkspaceDto,
   ): Promise<WorkspaceResponseDto> {
-    const workspace = await this.tenancyService.updateWorkspace(user.tenantId, id, dto);
+    this.assertActive(user, id);
+    const workspace = await this.tenancyService.updateWorkspace(id, dto);
     return toWorkspaceDto(workspace);
   }
 
@@ -238,7 +213,8 @@ export class WorkspaceController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<void> {
-    await this.tenancyService.deleteWorkspace(user.tenantId, id);
+    this.assertActive(user, id);
+    await this.tenancyService.deleteWorkspace(id);
   }
 
   // ── List members ───────────────────────────────────────────────────────────
@@ -253,8 +229,9 @@ export class WorkspaceController {
     @Param('id', ParseUUIDPipe) id: string,
     @Query() query: PageQueryDto,
   ): Promise<PagedResult<MemberResponseDto>> {
+    this.assertActive(user, id);
     const args = buildPageArgs(query);
-    const page = await this.tenancyService.listMembers(user.tenantId, id, args);
+    const page = await this.tenancyService.listMembers(id, args);
     return { data: page.data.map(toMemberDto), pageInfo: page.pageInfo };
   }
 
@@ -269,7 +246,8 @@ export class WorkspaceController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<MemberWithProfileResponseDto[]> {
-    return this.tenancyService.listMembersWithProfile(user.tenantId, id) as unknown as Promise<
+    this.assertActive(user, id);
+    return this.tenancyService.listMembersWithProfile(id) as unknown as Promise<
       MemberWithProfileResponseDto[]
     >;
   }
@@ -287,7 +265,8 @@ export class WorkspaceController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: AddMemberDto,
   ): Promise<MemberResponseDto> {
-    const member = await this.tenancyService.addMember(user.tenantId, id, dto.userId, user.sub);
+    this.assertActive(user, id);
+    const member = await this.tenancyService.addMember(id, dto.userId, user.sub);
     return toMemberDto(member);
   }
 
@@ -306,8 +285,8 @@ export class WorkspaceController {
     @Param('memberId', ParseUUIDPipe) memberId: string,
     @Body() dto: UpdateMemberDto,
   ): Promise<MemberResponseDto> {
+    this.assertActive(user, id);
     const member = await this.tenancyService.updateMember(
-      user.tenantId,
       id,
       memberId,
       dto,
@@ -331,7 +310,8 @@ export class WorkspaceController {
     @Param('id', ParseUUIDPipe) id: string,
     @Param('userId', ParseUUIDPipe) userId: string,
   ): Promise<void> {
-    await this.tenancyService.removeMember(user.tenantId, id, userId, user.sub);
+    this.assertActive(user, id);
+    await this.tenancyService.removeMember(id, userId, user.sub);
   }
 
   // ── Invite member ──────────────────────────────────────────────────────────
@@ -349,8 +329,8 @@ export class WorkspaceController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: InviteMemberDto,
   ): Promise<InvitationResponseDto> {
+    this.assertActive(user, id);
     const invitation = await this.tenancyService.inviteMember(
-      user.tenantId,
       id,
       dto.email,
       dto.roleId,
@@ -370,7 +350,8 @@ export class WorkspaceController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<InvitationResponseDto[]> {
-    const invitations = await this.tenancyService.listInvitations(user.tenantId, id);
+    this.assertActive(user, id);
+    const invitations = await this.tenancyService.listInvitations(id);
     return invitations.map(toInvitationDto);
   }
 
@@ -389,7 +370,8 @@ export class WorkspaceController {
     @Param('id', ParseUUIDPipe) id: string,
     @Param('invitationId', ParseUUIDPipe) invitationId: string,
   ): Promise<void> {
-    await this.tenancyService.cancelInvitation(user.tenantId, id, invitationId, user.sub);
+    this.assertActive(user, id);
+    await this.tenancyService.cancelInvitation(id, invitationId, user.sub);
   }
 
   // ── Workspace settings ─────────────────────────────────────────────────────
@@ -403,7 +385,8 @@ export class WorkspaceController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<WorkspaceSettingsResponseDto> {
-    const settings = await this.tenancyService.getSettings(user.tenantId, id);
+    this.assertActive(user, id);
+    const settings = await this.tenancyService.getSettings(id);
     return toSettingsDto(settings);
   }
 
@@ -418,7 +401,8 @@ export class WorkspaceController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateWorkspaceSettingsDto,
   ): Promise<WorkspaceSettingsResponseDto> {
-    const settings = await this.tenancyService.updateSettings(user.tenantId, id, dto);
+    this.assertActive(user, id);
+    const settings = await this.tenancyService.updateSettings(id, dto);
     return toSettingsDto(settings);
   }
 }

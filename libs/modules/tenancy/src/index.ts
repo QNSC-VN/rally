@@ -1,6 +1,5 @@
 export * from './tenancy.module';
 export * from './domain/tenancy.types';
-export * from './domain/ports/tenant.repository';
 export * from './domain/ports/workspace.repository';
 export * from './domain/ports/workspace-member.repository';
 export * from './application/tenancy.service';

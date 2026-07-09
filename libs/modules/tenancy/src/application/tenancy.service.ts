@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { createHash, randomBytes } from 'node:crypto';
 import { uuidv7 } from 'uuidv7';
 import {
@@ -10,11 +10,9 @@ import {
   Span,
   EmailSchedulerService,
   UnitOfWork,
-  TenantRlsService,
   addDays,
 } from '@platform';
 import type { JwtPayload, CursorPayload, PagedResult } from '@platform';
-import { ITenantRepository, TENANT_REPOSITORY } from '../domain/ports/tenant.repository';
 import { IWorkspaceRepository, WORKSPACE_REPOSITORY } from '../domain/ports/workspace.repository';
 import {
   IWorkspaceMemberRepository,
@@ -28,194 +26,99 @@ import {
   IWorkspaceSettingsRepository,
   WORKSPACE_SETTINGS_REPOSITORY,
 } from '../domain/ports/workspace-settings.repository';
-import {
-  ITenantDomainRepository,
-  TENANT_DOMAIN_REPOSITORY,
-} from '../domain/ports/tenant-domain.repository';
-import {
-  ITenantMemberRepository,
-  TENANT_MEMBER_REPOSITORY,
-} from '../domain/ports/tenant-member.repository';
 import type {
-  Tenant,
   Workspace,
   WorkspaceMember,
   WorkspaceMemberWithProfile,
+  WorkspaceMembership,
   WorkspaceInvitation,
   WorkspaceSettings,
   UpdateWorkspaceInput,
   UpdateMemberInput,
   UpdateWorkspaceSettingsInput,
-  ProvisionedTenant,
-  AutoJoinTarget,
-  TenantMembership,
 } from '../domain/tenancy.types';
 
 @Injectable()
-export class TenancyService implements OnApplicationBootstrap {
+export class TenancyService {
   private readonly logger = new Logger(TenancyService.name);
 
-  /**
-   * In single-tenant deployments, make sure the one configured tenant +
-   * workspace exists before serving traffic. Idempotent: does nothing in saas
-   * mode or if the tenant already exists, so it's safe on every boot.
-   */
-  async onApplicationBootstrap(): Promise<void> {
-    if (!this.config.isSingleTenant()) return;
-    try {
-      await this.ensureSingleTenant();
-    } catch (err) {
-      // Don't crash the app if the DB isn't reachable yet at boot — log loudly.
-      this.logger.error({ err }, 'Failed to ensure single tenant on bootstrap');
-    }
-  }
-
-  /** Create the configured single tenant + 'main' workspace if absent. */
-  async ensureSingleTenant(): Promise<Tenant> {
-    const slug = this.config.get('SINGLE_TENANT_SLUG');
-    const name = this.config.get('SINGLE_TENANT_NAME');
-
-    const existing = await this.tenantRepo.findBySlug(slug);
-    if (existing) {
-      this.logger.log({ tenantId: existing.id, slug }, 'Single tenant already present');
-      return existing;
-    }
-
-    const tenantId = uuidv7();
-    return this.rls.withTenantContext(tenantId, async (tx) => {
-      const tenant = await this.tenantRepo.create({ id: tenantId, slug, name }, tx);
-      await this.workspaceRepo.create(
-        { id: uuidv7(), tenantId: tenant.id, slug: 'main', name },
-        tx,
-      );
-      await this.tenantRepo.createSubscription(tenant.id, 'free', 'active', tx);
-      this.logger.log({ tenantId: tenant.id, slug }, 'Single tenant provisioned on bootstrap');
-      return tenant;
-    });
-  }
-
   constructor(
-    @Inject(TENANT_REPOSITORY) private readonly tenantRepo: ITenantRepository,
     @Inject(WORKSPACE_REPOSITORY) private readonly workspaceRepo: IWorkspaceRepository,
     @Inject(WORKSPACE_MEMBER_REPOSITORY) private readonly memberRepo: IWorkspaceMemberRepository,
     @Inject(WORKSPACE_INVITATION_REPOSITORY)
     private readonly invitationRepo: IWorkspaceInvitationRepository,
     @Inject(WORKSPACE_SETTINGS_REPOSITORY)
     private readonly settingsRepo: IWorkspaceSettingsRepository,
-    @Inject(TENANT_DOMAIN_REPOSITORY)
-    private readonly tenantDomainRepo: ITenantDomainRepository,
-    @Inject(TENANT_MEMBER_REPOSITORY)
-    private readonly tenantMemberRepo: ITenantMemberRepository,
     private readonly config: AppConfigService,
     private readonly emailScheduler: EmailSchedulerService,
     private readonly uow: UnitOfWork,
-    private readonly rls: TenantRlsService,
   ) {}
 
-  // ── Self-serve provisioning (signup) ─────────────────────────────────────────
+  // ── Bootstrap ─────────────────────────────────────────────────────────────
 
   /**
-   * Provision a brand-new tenant for self-serve signup: tenant + default
-   * workspace + trial subscription, all atomically. When a corporate email
-   * domain is supplied, an UNVERIFIED domain claim is recorded so an admin can
-   * later verify it and enable auto-join (the enterprise domain-capture seam).
+   * Ensure at least one workspace exists so a freshly-migrated install has a
+   * root to log into. Idempotent: does nothing once any workspace exists.
    */
-  @Span('tenancy.provisionTenant')
-  async provisionTenant(orgName: string, primaryDomain: string | null): Promise<ProvisionedTenant> {
-    const tenantId = uuidv7();
-    const slug = `${this.slugify(orgName)}-${randomBytes(3).toString('hex')}`.slice(0, 63);
+  @Span('tenancy.ensureDefaultWorkspace')
+  async ensureDefaultWorkspace(): Promise<Workspace | null> {
+    const existing = await this.workspaceRepo.count();
+    if (existing > 0) return null;
 
-    // A brand-new tenant has no pre-existing request context, so we run the
-    // provisioning writes inside the NEW tenant's own RLS context — every row
-    // created here belongs to this tenant, satisfying the RLS policies.
-    return this.rls.withTenantContext(tenantId, async (tx) => {
-      const tenant = await this.tenantRepo.create({ id: tenantId, slug, name: orgName }, tx);
+    const workspace = await this.workspaceRepo.create({
+      id: uuidv7(),
+      slug: 'default',
+      name: 'Default Workspace',
+    });
+    this.logger.log({ workspaceId: workspace.id }, 'Default workspace provisioned on bootstrap');
+    return workspace;
+  }
 
-      const workspace = await this.workspaceRepo.create(
-        { id: uuidv7(), tenantId: tenant.id, slug: 'main', name: orgName },
-        tx,
-      );
+  // ── Membership (login/switch) ───────────────────────────────────────────────
 
-      // Trial subscription — payment later flips this to active via billing webhook.
-      await this.tenantRepo.createSubscription(tenant.id, 'free', 'trialing', tx);
+  /**
+   * All active workspace memberships for a user, most-recently-active first.
+   * Used at login to resolve the active workspace and populate the switcher.
+   */
+  async getMemberships(userId: string): Promise<WorkspaceMembership[]> {
+    return this.memberRepo.findMembershipsForUser(userId);
+  }
 
-      if (primaryDomain) {
-        await this.tenantDomainRepo.create(
-          { id: uuidv7(), tenantId: tenant.id, domain: primaryDomain, verified: null, allowAutoJoin: false },
-          tx,
-        );
-      }
+  /** Return the membership record for a user+workspace pair, or null. */
+  async getMembership(userId: string, workspaceId: string): Promise<WorkspaceMember | null> {
+    return this.memberRepo.findMember(workspaceId, userId);
+  }
 
-      this.logger.log({ tenantId: tenant.id, slug, primaryDomain }, 'Tenant provisioned via signup');
-      return { tenant, workspace };
+  /**
+   * Stamp last_active_at on a user's membership so next login auto-selects the
+   * workspace they were most recently active in (Linear-style switcher).
+   */
+  async touchMembership(userId: string, workspaceId: string): Promise<void> {
+    await this.memberRepo.touchLastActive(userId, workspaceId);
+  }
+
+  /** Enroll a user as an active member of a workspace (idempotent). */
+  async enrollMember(workspaceId: string, userId: string, roleId?: string): Promise<void> {
+    const existing = await this.memberRepo.findMember(workspaceId, userId);
+    if (existing) return;
+    await this.memberRepo.addMember({ id: uuidv7(), workspaceId, userId, roleId });
+  }
+
+  /**
+   * Provision a fresh root workspace and enroll the creator as its first member.
+   * Used for administrative bootstrap and (optionally) first-user signup.
+   */
+  @Span('tenancy.provisionWorkspace')
+  async provisionWorkspace(name: string, creatorUserId: string): Promise<Workspace> {
+    const slug = `${this.slugify(name)}-${randomBytes(3).toString('hex')}`.slice(0, 63);
+    return this.uow.run(async (tx) => {
+      const workspace = await this.workspaceRepo.create({ id: uuidv7(), slug, name }, tx);
+      await this.memberRepo.addMember({ id: uuidv7(), workspaceId: workspace.id, userId: creatorUserId }, tx);
+      this.logger.log({ workspaceId: workspace.id, creatorUserId }, 'Workspace provisioned');
+      return workspace;
     });
   }
 
-  /**
-   * Resolve the tenant/workspace a signup should auto-join based on a verified,
-   * auto-join-enabled domain claim. Returns null when no such claim exists, in
-   * which case the caller provisions a fresh tenant instead.
-   */
-  /** Returns true if the domain is already claimed by any tenant (auto-join or not). */
-  async isDomainClaimed(domain: string): Promise<boolean> {
-    const claim = await this.tenantDomainRepo.findByDomain(domain.toLowerCase());
-    return claim !== null;
-  }
-
-  async findAutoJoinTarget(domain: string): Promise<AutoJoinTarget | null> {
-    const claim = await this.tenantDomainRepo.findByDomain(domain.toLowerCase());
-    if (!claim || !claim.verified || !claim.allowAutoJoin) return null;
-
-    const workspaces = await this.workspaceRepo.listByTenant(claim.tenantId, {
-      limit: 1,
-      cursor: null,
-    });
-    const workspace = workspaces.data[0];
-    if (!workspace) return null;
-
-    return { tenantId: claim.tenantId, workspaceId: workspace.id };
-  }
-
-  /** Enroll a user as an active member of a workspace (used during signup). */
-  async enrollMember(
-    tenantId: string,
-    workspaceId: string,
-    userId: string,
-    roleId?: string,
-  ): Promise<void> {
-    // Ensure the tenant-level keycard exists first (idempotent — safe to call
-    // even if provisionTenant already inserted one for the founding user).
-    await this.tenantMemberRepo.create({ id: uuidv7(), tenantId, userId });
-    await this.memberRepo.addMember({ id: uuidv7(), tenantId, workspaceId, userId, roleId });
-  }
-
-  /**
-   * Return all active tenant memberships for a user, most-recently-active first.
-   * Used at login to resolve the active tenant and populate the switcher list.
-   */
-  async getMemberships(userId: string): Promise<TenantMembership[]> {
-    return this.tenantMemberRepo.findByUserId(userId);
-  }
-
-  /** Return a single tenant membership (keycard) for a user+tenant pair. */
-  async getTenantMember(userId: string, tenantId: string) {
-    return this.tenantMemberRepo.findByUserAndTenant(userId, tenantId);
-  }
-
-  /** Idempotently create a tenant_members keycard for a user. */
-  async tenantMemberCreate(id: string, tenantId: string, userId: string): Promise<void> {
-    await this.tenantMemberRepo.create({ id, tenantId, userId });
-  }
-
-  /**
-   * Stamp last_active_at on a user's keycard so that next login auto-selects
-   * the tenant they were most recently active in (Linear-style switcher).
-   */
-  async touchTenantMembership(userId: string, tenantId: string): Promise<void> {
-    await this.tenantMemberRepo.touchLastActive(userId, tenantId);
-  }
-
-  /** Slugify an org name into a URL-safe tenant slug fragment. */
   private slugify(name: string): string {
     return (
       name
@@ -223,35 +126,17 @@ export class TenancyService implements OnApplicationBootstrap {
         .normalize('NFKD')
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '')
-        .slice(0, 40) || 'org'
+        .slice(0, 40) || 'workspace'
     );
-  }
-
-  // ── Tenant ──────────────────────────────────────────────────────────────────
-
-  async getTenant(tenantId: string): Promise<Tenant> {
-    const tenant = await this.tenantRepo.findById(tenantId);
-    if (!tenant || tenant.deletedAt) {
-      throw new NotFoundException('TENANT_NOT_FOUND', 'Tenant not found');
-    }
-    if (tenant.status === 'suspended') {
-      throw new UnauthorizedException('TENANT_SUSPENDED', 'Tenant is suspended');
-    }
-    return tenant;
-  }
-
-  /** Look up a tenant by slug. Returns null if none (does not throw). */
-  async findTenantBySlug(slug: string): Promise<Tenant | null> {
-    return this.tenantRepo.findBySlug(slug);
   }
 
   // ── Workspaces ──────────────────────────────────────────────────────────────
 
-  async listWorkspaces(
-    tenantId: string,
+  async listWorkspacesForUser(
+    userId: string,
     args: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<Workspace>> {
-    return this.workspaceRepo.listByTenant(tenantId, args);
+    return this.workspaceRepo.listForUser(userId, args);
   }
 
   @Span('tenancy.createWorkspace')
@@ -262,37 +147,19 @@ export class TenancyService implements OnApplicationBootstrap {
     description?: string,
     avatarUrl?: string,
   ): Promise<Workspace> {
-    const existing = await this.workspaceRepo.findBySlug(actor.tenantId, slug);
+    const existing = await this.workspaceRepo.findBySlug(slug);
     if (existing) {
       throw new ConflictException('WORKSPACE_SLUG_TAKEN', `Slug "${slug}" is already taken`);
     }
 
-    // Atomic: create the workspace and enroll the creator as admin together.
-    // A partial failure here would otherwise orphan a workspace its own creator
-    // cannot access.
+    // Atomic: create the workspace and enroll the creator together. A partial
+    // failure would otherwise orphan a workspace its own creator cannot access.
     const workspace = await this.uow.run(async (tx) => {
       const ws = await this.workspaceRepo.create(
-        {
-          id: uuidv7(),
-          tenantId: actor.tenantId,
-          slug,
-          name,
-          description,
-          avatarUrl,
-        },
+        { id: uuidv7(), slug, name, description, avatarUrl },
         tx,
       );
-
-      await this.memberRepo.addMember(
-        {
-          id: uuidv7(),
-          tenantId: actor.tenantId,
-          workspaceId: ws.id,
-          userId: actor.sub,
-        },
-        tx,
-      );
-
+      await this.memberRepo.addMember({ id: uuidv7(), workspaceId: ws.id, userId: actor.sub }, tx);
       return ws;
     });
 
@@ -300,61 +167,54 @@ export class TenancyService implements OnApplicationBootstrap {
     return workspace;
   }
 
-  async getWorkspace(tenantId: string, workspaceId: string): Promise<Workspace> {
-    const workspace = await this.workspaceRepo.findById(workspaceId, tenantId);
-    if (!workspace || workspace.deletedAt || workspace.tenantId !== tenantId) {
+  async getWorkspace(workspaceId: string): Promise<Workspace> {
+    const workspace = await this.workspaceRepo.findById(workspaceId);
+    if (!workspace || workspace.deletedAt) {
       throw new NotFoundException('WORKSPACE_NOT_FOUND', 'Workspace not found');
+    }
+    if (workspace.status === 'archived') {
+      throw new UnauthorizedException('WORKSPACE_ARCHIVED', 'Workspace is archived');
     }
     return workspace;
   }
 
   async updateWorkspace(
-    tenantId: string,
     workspaceId: string,
     input: UpdateWorkspaceInput,
   ): Promise<Workspace> {
-    const workspace = await this.getWorkspace(tenantId, workspaceId);
+    await this.getWorkspace(workspaceId);
 
     if (input.name !== undefined && input.name.trim().length === 0) {
       throw new PreconditionFailedException('VALIDATION_FAILED', 'Workspace name cannot be empty');
     }
 
-    return this.workspaceRepo.update(workspace.id, input, tenantId);
+    return this.workspaceRepo.update(workspaceId, input);
   }
 
-  async deleteWorkspace(tenantId: string, workspaceId: string): Promise<void> {
-    await this.getWorkspace(tenantId, workspaceId);
-    await this.workspaceRepo.softDelete(workspaceId, tenantId);
+  async deleteWorkspace(workspaceId: string): Promise<void> {
+    await this.getWorkspace(workspaceId);
+    await this.workspaceRepo.softDelete(workspaceId);
     this.logger.log({ workspaceId }, 'Workspace soft-deleted');
   }
 
   // ── Members ──────────────────────────────────────────────────────────────────
 
   async listMembers(
-    tenantId: string,
     workspaceId: string,
     args: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<WorkspaceMember>> {
-    await this.getWorkspace(tenantId, workspaceId);
+    await this.getWorkspace(workspaceId);
     return this.memberRepo.listMembers(workspaceId, args);
   }
 
-  async listMembersWithProfile(
-    tenantId: string,
-    workspaceId: string,
-  ): Promise<WorkspaceMemberWithProfile[]> {
-    await this.getWorkspace(tenantId, workspaceId);
+  async listMembersWithProfile(workspaceId: string): Promise<WorkspaceMemberWithProfile[]> {
+    await this.getWorkspace(workspaceId);
     return this.memberRepo.listMembersWithProfile(workspaceId);
   }
 
   @Span('tenancy.addMember')
-  async addMember(
-    tenantId: string,
-    workspaceId: string,
-    userId: string,
-    actorId: string,
-  ): Promise<WorkspaceMember> {
-    await this.getWorkspace(tenantId, workspaceId);
+  async addMember(workspaceId: string, userId: string, actorId: string): Promise<WorkspaceMember> {
+    await this.getWorkspace(workspaceId);
 
     const existing = await this.memberRepo.findMember(workspaceId, userId);
     if (existing) {
@@ -366,7 +226,6 @@ export class TenancyService implements OnApplicationBootstrap {
 
     const member = await this.memberRepo.addMember({
       id: uuidv7(),
-      tenantId,
       workspaceId,
       userId,
       roleId: undefined,
@@ -377,30 +236,30 @@ export class TenancyService implements OnApplicationBootstrap {
   }
 
   async updateMember(
-    tenantId: string,
     workspaceId: string,
     memberId: string,
     input: UpdateMemberInput,
     actorId: string,
   ): Promise<WorkspaceMember> {
-    await this.getWorkspace(tenantId, workspaceId);
+    await this.getWorkspace(workspaceId);
 
     const member = await this.memberRepo.findMemberById(memberId);
     if (!member || member.workspaceId !== workspaceId) {
-      throw new NotFoundException(
-        'WORKSPACE_MEMBER_NOT_FOUND',
-        'Member not found in this workspace',
-      );
+      throw new NotFoundException('WORKSPACE_MEMBER_NOT_FOUND', 'Member not found in this workspace');
     }
 
-    // Sole-admin invariant: cannot suspend/remove/demote the last active admin
-    if ((input.status === 'suspended' || input.status === 'removed') && member.roleId === 'admin') {
-      const adminCount = await this.memberRepo.countActiveAdmins(workspaceId);
-      if (adminCount <= 1) {
-        throw new PreconditionFailedException(
-          'SOLE_ADMIN_VIOLATION',
-          'Cannot suspend or remove the last workspace admin',
-        );
+    // Sole-admin invariant: cannot suspend/remove the last active admin. Admin
+    // status is derived from the authoritative role-assignment tables.
+    if (input.status === 'suspended' || input.status === 'removed') {
+      const isAdmin = await this.memberRepo.isActiveAdmin(workspaceId, member.userId);
+      if (isAdmin) {
+        const adminCount = await this.memberRepo.countActiveAdmins(workspaceId);
+        if (adminCount <= 1) {
+          throw new PreconditionFailedException(
+            'SOLE_ADMIN_VIOLATION',
+            'Cannot suspend or remove the last workspace admin',
+          );
+        }
       }
     }
 
@@ -409,20 +268,23 @@ export class TenancyService implements OnApplicationBootstrap {
     return updated;
   }
 
-  async removeMember(
-    tenantId: string,
-    workspaceId: string,
-    userId: string,
-    actorId: string,
-  ): Promise<void> {
-    await this.getWorkspace(tenantId, workspaceId);
+  async removeMember(workspaceId: string, userId: string, actorId: string): Promise<void> {
+    await this.getWorkspace(workspaceId);
 
     const existing = await this.memberRepo.findMember(workspaceId, userId);
     if (!existing) {
-      throw new NotFoundException(
-        'WORKSPACE_MEMBER_NOT_FOUND',
-        'Member not found in this workspace',
-      );
+      throw new NotFoundException('WORKSPACE_MEMBER_NOT_FOUND', 'Member not found in this workspace');
+    }
+
+    const isAdmin = await this.memberRepo.isActiveAdmin(workspaceId, userId);
+    if (isAdmin) {
+      const adminCount = await this.memberRepo.countActiveAdmins(workspaceId);
+      if (adminCount <= 1) {
+        throw new PreconditionFailedException(
+          'SOLE_ADMIN_VIOLATION',
+          'Cannot remove the last workspace admin',
+        );
+      }
     }
 
     await this.memberRepo.removeMember(workspaceId, userId);
@@ -430,14 +292,15 @@ export class TenancyService implements OnApplicationBootstrap {
   }
 
   // ── Invitations ─────────────────────────────────────────────────────────────
-  @Span('tenancy.inviteMember') async inviteMember(
-    tenantId: string,
+
+  @Span('tenancy.inviteMember')
+  async inviteMember(
     workspaceId: string,
     email: string,
     roleId: string | undefined,
     actorId: string,
   ): Promise<WorkspaceInvitation> {
-    const workspace = await this.getWorkspace(tenantId, workspaceId);
+    const workspace = await this.getWorkspace(workspaceId);
 
     const normalizedEmail = email.toLowerCase().trim();
     const rawToken = randomBytes(32).toString('base64url');
@@ -449,19 +312,14 @@ export class TenancyService implements OnApplicationBootstrap {
     const inviteUrl = `${baseUrl}/accept-invitation?token=${rawToken}`;
 
     // Atomic: rotate any prior pending invite, create the new one, and enqueue
-    // the email in ONE transaction. Either the invitee gets a row AND an email,
-    // or nothing is persisted — no dangling invites without a delivery, and no
-    // emails pointing at a rolled-back invitation.
-    // idempotencyKey = invitation.id: retrying this HTTP request skips the
-    // duplicate email_outbox insert.
+    // the email in ONE transaction. idempotencyKey = invitation.id so retrying
+    // the request skips the duplicate email_outbox insert.
     const invitation = await this.uow.run(async (tx) => {
-      // Rotate on resend (COMPANY-FR-005): cancel any existing pending invite
       await this.invitationRepo.cancelExistingForEmail(workspaceId, normalizedEmail, tx);
 
       const inv = await this.invitationRepo.create(
         {
           id: uuidv7(),
-          tenantId,
           workspaceId,
           email: normalizedEmail,
           roleId,
@@ -493,18 +351,17 @@ export class TenancyService implements OnApplicationBootstrap {
     return invitation;
   }
 
-  async listInvitations(tenantId: string, workspaceId: string): Promise<WorkspaceInvitation[]> {
-    await this.getWorkspace(tenantId, workspaceId);
+  async listInvitations(workspaceId: string): Promise<WorkspaceInvitation[]> {
+    await this.getWorkspace(workspaceId);
     return this.invitationRepo.listByWorkspace(workspaceId);
   }
 
   async cancelInvitation(
-    tenantId: string,
     workspaceId: string,
     invitationId: string,
     actorId: string,
   ): Promise<void> {
-    await this.getWorkspace(tenantId, workspaceId);
+    await this.getWorkspace(workspaceId);
 
     const invitation = await this.invitationRepo.findById(invitationId);
     if (!invitation || invitation.workspaceId !== workspaceId) {
@@ -512,10 +369,7 @@ export class TenancyService implements OnApplicationBootstrap {
     }
 
     if (invitation.status !== 'pending') {
-      throw new PreconditionFailedException(
-        'INVITATION_NOT_PENDING',
-        'Invitation is no longer pending',
-      );
+      throw new PreconditionFailedException('INVITATION_NOT_PENDING', 'Invitation is no longer pending');
     }
 
     await this.invitationRepo.updateStatus(invitationId, 'cancelled');
@@ -546,23 +400,12 @@ export class TenancyService implements OnApplicationBootstrap {
 
     // Atomic: enroll the member (if not already one) and mark the invitation
     // accepted together. A partial failure would otherwise let the same
-    // invitation be redeemed twice. Tenant context is the invitation's tenant,
-    // which is the tenant of every row written here.
-    await this.rls.withTenantContext(invitation.tenantId, async (tx) => {
-      // 1. Ensure the keycard exists — this is what fixes the "ghost member"
-      //    bug where a user from tenant A accepts an invite from tenant B.
-      //    Once this row exists, the updated RLS on identity.users lets tenant B
-      //    see their profile row through the membership-based policy.
-      await this.tenantMemberRepo.create(
-        { id: uuidv7(), tenantId: invitation.tenantId, userId: acceptingUserId },
-        tx,
-      );
-
+    // invitation be redeemed twice.
+    await this.uow.run(async (tx) => {
       if (!existing) {
         await this.memberRepo.addMember(
           {
             id: uuidv7(),
-            tenantId: invitation.tenantId,
             workspaceId: invitation.workspaceId,
             userId: acceptingUserId,
             roleId: invitation.roleId ?? undefined,
@@ -579,15 +422,13 @@ export class TenancyService implements OnApplicationBootstrap {
 
   // ── Settings ─────────────────────────────────────────────────────────────────
 
-  async getSettings(tenantId: string, workspaceId: string): Promise<WorkspaceSettings> {
-    await this.getWorkspace(tenantId, workspaceId);
+  async getSettings(workspaceId: string): Promise<WorkspaceSettings> {
+    await this.getWorkspace(workspaceId);
     const settings = await this.settingsRepo.findByWorkspace(workspaceId);
     if (!settings) {
-      // Return defaults if not configured
       return {
         id: '',
         workspaceId,
-        tenantId,
         timezone: null,
         defaultLocale: null,
         dateFormat: null,
@@ -599,11 +440,10 @@ export class TenancyService implements OnApplicationBootstrap {
   }
 
   async updateSettings(
-    tenantId: string,
     workspaceId: string,
     input: UpdateWorkspaceSettingsInput,
   ): Promise<WorkspaceSettings> {
-    await this.getWorkspace(tenantId, workspaceId);
-    return this.settingsRepo.upsert(workspaceId, tenantId, input);
+    await this.getWorkspace(workspaceId);
+    return this.settingsRepo.upsert(workspaceId, input);
   }
 }

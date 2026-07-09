@@ -12,7 +12,6 @@ import {
   NotFoundException,
   AppConfigService,
   EmailSchedulerService,
-  TenantRlsService,
 } from '@platform';
 import { DRIZZLE } from '@platform';
 import { ValkeyService } from '@platform';
@@ -42,7 +41,7 @@ const mockUser = (overrides: Partial<User> = {}): User => ({
 
 const mockSession = (overrides: Partial<AuthSession> = {}): AuthSession => ({
   id: 'session-1',
-  tenantId: 'tenant-1',
+  workspaceId: 'tenant-1',
   userId: 'user-1',
   tokenHash: 'hash-1',
   familyId: 'family-1',
@@ -104,12 +103,6 @@ const makeEmailScheduler = () => ({
   schedule: vi.fn().mockResolvedValue(undefined),
 });
 
-// Executes the wrapped unit of work immediately with a stub transaction, so the
-// repository mocks receive a (truthy) tx argument just like production.
-const makeRls = () => ({
-  withTenantContext: vi.fn((_tenantId: string, fn: (tx: unknown) => unknown) => fn({})),
-});
-
 const makeJwt = () => ({
   sign: vi.fn().mockReturnValue('mock-access-token'),
 });
@@ -143,23 +136,19 @@ const makeTenancyService = () => ({
     .fn()
     .mockResolvedValue([
       {
-        tenantId: 'tenant-1',
-        tenantName: 'Test',
-        tenantSlug: 'test',
+        workspaceId: 'tenant-1',
+        name: 'Test',
+        slug: 'test',
         lastActiveAt: null,
         roleSlug: 'workspace_admin',
         roleName: 'Workspace Admin',
       },
     ]),
-  getTenantMember: vi.fn().mockResolvedValue({ status: 'active' }),
-  touchTenantMembership: vi.fn().mockResolvedValue(undefined),
-  tenantMemberCreate: vi.fn().mockResolvedValue(undefined),
+  getMembership: vi.fn().mockResolvedValue({ status: 'active' }),
+  touchMembership: vi.fn().mockResolvedValue(undefined),
   enrollMember: vi.fn().mockResolvedValue(undefined),
-  findAutoJoinTarget: vi.fn().mockResolvedValue(null),
-  isDomainClaimed: vi.fn().mockResolvedValue(false),
-  provisionTenant: vi
-    .fn()
-    .mockResolvedValue({ tenant: { id: 'tenant-1' }, workspace: { id: 'ws-1' } }),
+  provisionWorkspace: vi.fn().mockResolvedValue({ id: 'workspace-1' }),
+  ensureDefaultWorkspace: vi.fn().mockResolvedValue(undefined),
 });
 
 const makeDrizzle = () => ({
@@ -176,7 +165,6 @@ describe('AuthService', () => {
   let config: ReturnType<typeof makeConfig>;
   let emailScheduler: ReturnType<typeof makeEmailScheduler>;
   let auditService: ReturnType<typeof makeAuditService>;
-  let rls: ReturnType<typeof makeRls>;
   let jwt: ReturnType<typeof makeJwt>;
   let accessService: ReturnType<typeof makeAccessService>;
 
@@ -186,7 +174,6 @@ describe('AuthService', () => {
     valkey = makeValkey();
     config = makeConfig();
     emailScheduler = makeEmailScheduler();
-    rls = makeRls();
     jwt = makeJwt();
     accessService = makeAccessService();
     auditService = makeAuditService();
@@ -202,7 +189,6 @@ describe('AuthService', () => {
         { provide: ValkeyService, useValue: valkey },
         { provide: AppConfigService, useValue: config },
         { provide: EmailSchedulerService, useValue: emailScheduler },
-        { provide: TenantRlsService, useValue: rls },
         { provide: AccessService, useValue: accessService },
         { provide: TenancyService, useValue: makeTenancyService() },
         { provide: AuditService, useValue: auditService },
@@ -326,7 +312,7 @@ describe('AuthService', () => {
         sub: 'user-1',
         jti: 'jti-1',
         sessionId: 'session-1',
-        tenantId: 'tenant-1',
+        workspaceId: 'tenant-1',
         iat: Math.floor(Date.now() / 1000) - 60,
         exp: Math.floor(Date.now() / 1000) + 840, // 14 min remaining
         iss: 'rally',
@@ -346,7 +332,7 @@ describe('AuthService', () => {
         sub: 'user-1',
         jti: 'jti-expired',
         sessionId: 'session-1',
-        tenantId: 'tenant-1',
+        workspaceId: 'tenant-1',
         iat: Math.floor(Date.now() / 1000) - 1000,
         exp: Math.floor(Date.now() / 1000) - 1, // already expired
         iss: 'rally',
@@ -370,7 +356,7 @@ describe('AuthService', () => {
         sub: 'user-1',
         jti: 'jti-1',
         sessionId: 'session-1',
-        tenantId: 'tenant-1',
+        workspaceId: 'tenant-1',
         iat: Math.floor(Date.now() / 1000) - 60,
         exp: Math.floor(Date.now() / 1000) + 840,
         iss: 'rally',

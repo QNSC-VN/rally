@@ -3,7 +3,6 @@ export type { TeamStatus, TeamMemberStatus };
 
 export interface Team {
   id: string;
-  tenantId: string;
   workspaceId: string;
   name: string;
   key: string;
@@ -16,7 +15,7 @@ export interface Team {
 
 export interface TeamMember {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   teamId: string;
   userId: string;
   status: TeamMemberStatus;
@@ -25,7 +24,6 @@ export interface TeamMember {
 
 export interface CreateTeamInput {
   id: string;
-  tenantId: string;
   workspaceId: string;
   name: string;
   key: string;

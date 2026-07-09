@@ -65,7 +65,6 @@ export class WorkspaceInvitationDrizzleRepository implements IWorkspaceInvitatio
       .insert(workspaceInvitations)
       .values({
         id: input.id,
-        tenantId: input.tenantId,
         workspaceId: input.workspaceId,
         email: input.email,
         roleId: input.roleId ?? null,

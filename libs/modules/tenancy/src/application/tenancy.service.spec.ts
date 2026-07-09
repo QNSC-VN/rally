@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mocked } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
 import { TenancyService } from './tenancy.service';
-import { TENANT_REPOSITORY, ITenantRepository } from '../domain/ports/tenant.repository';
 import { WORKSPACE_REPOSITORY, IWorkspaceRepository } from '../domain/ports/workspace.repository';
 import {
   WORKSPACE_MEMBER_REPOSITORY,
@@ -16,16 +15,7 @@ import {
   WORKSPACE_SETTINGS_REPOSITORY,
   IWorkspaceSettingsRepository,
 } from '../domain/ports/workspace-settings.repository';
-import {
-  TENANT_DOMAIN_REPOSITORY,
-  ITenantDomainRepository,
-} from '../domain/ports/tenant-domain.repository';
-import {
-  TENANT_MEMBER_REPOSITORY,
-  ITenantMemberRepository,
-} from '../domain/ports/tenant-member.repository';
 import type {
-  Tenant,
   Workspace,
   WorkspaceMember,
   WorkspaceInvitation,
@@ -33,36 +23,23 @@ import type {
 import {
   NotFoundException,
   ConflictException,
+  PreconditionFailedException,
   AppConfigService,
   EmailSchedulerService,
   UnitOfWork,
-  TenantRlsService,
 } from '@platform';
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
 const now = new Date('2024-06-01');
 
-const mockTenant = (o: Partial<Tenant> = {}): Tenant => ({
-  id: 'tenant-1',
-  slug: 'acme',
-  name: 'Acme Corp',
-  status: 'active',
-  plan: 'free',
-  settings: {},
-  createdAt: now,
-  updatedAt: now,
-  deletedAt: null,
-  ...o,
-});
-
 const mockWorkspace = (o: Partial<Workspace> = {}): Workspace => ({
   id: 'ws-1',
-  tenantId: 'tenant-1',
   slug: 'main',
   name: 'Main',
   description: null,
   avatarUrl: null,
+  status: 'active',
   settings: {},
   createdAt: now,
   updatedAt: now,
@@ -72,11 +49,11 @@ const mockWorkspace = (o: Partial<Workspace> = {}): Workspace => ({
 
 const mockMember = (o: Partial<WorkspaceMember> = {}): WorkspaceMember => ({
   id: 'member-1',
-  tenantId: 'tenant-1',
   workspaceId: 'ws-1',
   userId: 'user-1',
   roleId: null,
   status: 'active',
+  lastActiveAt: now,
   joinedAt: now,
   updatedAt: now,
   createdAt: now,
@@ -85,7 +62,6 @@ const mockMember = (o: Partial<WorkspaceMember> = {}): WorkspaceMember => ({
 
 const mockInvitation = (o: Partial<WorkspaceInvitation> = {}): WorkspaceInvitation => ({
   id: 'inv-1',
-  tenantId: 'tenant-1',
   workspaceId: 'ws-1',
   email: 'bob@example.com',
   roleId: null,
@@ -101,53 +77,50 @@ const mockInvitation = (o: Partial<WorkspaceInvitation> = {}): WorkspaceInvitati
 
 // ── Mock factories ────────────────────────────────────────────────────────────
 
-const makeTenantRepo = (): Mocked<ITenantRepository> =>
-  ({
-    findById: vi.fn(),
-    findBySlug: vi.fn(),
-    create: vi.fn(),
-    createSubscription: vi.fn().mockResolvedValue(undefined),
-  });
-
 const makeWorkspaceRepo = (): Mocked<IWorkspaceRepository> =>
   ({
     findById: vi.fn(),
     findBySlug: vi.fn(),
-    listByTenant: vi.fn(),
+    listForUser: vi.fn(),
+    listAll: vi.fn().mockResolvedValue([]),
+    count: vi.fn().mockResolvedValue(0),
     create: vi.fn(),
     update: vi.fn(),
     softDelete: vi.fn().mockResolvedValue(undefined),
-  });
+  }) as unknown as Mocked<IWorkspaceRepository>;
 
 const makeMemberRepo = (): Mocked<IWorkspaceMemberRepository> =>
   ({
     findMember: vi.fn(),
     findMemberById: vi.fn(),
+    findMembershipsForUser: vi.fn().mockResolvedValue([]),
     listMembers: vi.fn(),
-    listMembersWithProfile: vi.fn(),
+    listMembersWithProfile: vi.fn().mockResolvedValue([]),
     addMember: vi.fn(),
     updateMember: vi.fn(),
     removeMember: vi.fn().mockResolvedValue(undefined),
     isMember: vi.fn().mockResolvedValue(false),
-    countActiveAdmins: vi.fn().mockResolvedValue(0),
-  });
+    touchLastActive: vi.fn().mockResolvedValue(undefined),
+    countActiveAdmins: vi.fn().mockResolvedValue(2),
+    isActiveAdmin: vi.fn().mockResolvedValue(false),
+  }) as unknown as Mocked<IWorkspaceMemberRepository>;
 
 const makeInvitationRepo = (): Mocked<IWorkspaceInvitationRepository> =>
   ({
     findByTokenHash: vi.fn(),
     findById: vi.fn(),
     findPendingByEmail: vi.fn(),
-    listByWorkspace: vi.fn(),
+    listByWorkspace: vi.fn().mockResolvedValue([]),
     create: vi.fn(),
     updateStatus: vi.fn().mockResolvedValue(undefined),
     cancelExistingForEmail: vi.fn().mockResolvedValue(undefined),
-  });
+  }) as unknown as Mocked<IWorkspaceInvitationRepository>;
 
 const makeSettingsRepo = (): Mocked<IWorkspaceSettingsRepository> =>
   ({
     findByWorkspace: vi.fn(),
     upsert: vi.fn(),
-  });
+  }) as unknown as Mocked<IWorkspaceSettingsRepository>;
 
 const makeConfig = () => ({
   get: vi.fn((key: string) => {
@@ -169,117 +142,125 @@ const makeUow = () => ({
   run: vi.fn((fn: (tx: unknown) => unknown) => fn({})),
 });
 
-const makeTenantDomainRepo = (): Mocked<ITenantDomainRepository> => ({
-  findByDomain: vi.fn().mockResolvedValue(null),
-  create: vi
-    .fn()
-    .mockResolvedValue({ id: 'domain-1', domain: 'example.com', tenantId: 'tenant-1' }),
-});
-
-const makeTenantMemberRepo = (): Mocked<ITenantMemberRepository> => ({
-  findByUserId: vi.fn().mockResolvedValue([]),
-  findByUserAndTenant: vi.fn().mockResolvedValue(null),
-  create: vi.fn().mockResolvedValue(undefined),
-  touchLastActive: vi.fn().mockResolvedValue(undefined),
-});
-
-const makeRls = () => ({
-  withTenantContext: vi.fn((_tenantId: string, fn: (tx: unknown) => unknown) => fn({})),
-});
-
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe('TenancyService', () => {
   let service: TenancyService;
-  let tenantRepo: ReturnType<typeof makeTenantRepo>;
   let workspaceRepo: ReturnType<typeof makeWorkspaceRepo>;
   let memberRepo: ReturnType<typeof makeMemberRepo>;
   let invitationRepo: ReturnType<typeof makeInvitationRepo>;
   let settingsRepo: ReturnType<typeof makeSettingsRepo>;
-  let tenantDomainRepo: ReturnType<typeof makeTenantDomainRepo>;
-  let tenantMemberRepo: ReturnType<typeof makeTenantMemberRepo>;
   let emailScheduler: ReturnType<typeof makeEmailScheduler>;
-  let uow: ReturnType<typeof makeUow>;
-  let rls: ReturnType<typeof makeRls>;
 
   beforeEach(async () => {
-    tenantRepo = makeTenantRepo();
     workspaceRepo = makeWorkspaceRepo();
     memberRepo = makeMemberRepo();
     invitationRepo = makeInvitationRepo();
     settingsRepo = makeSettingsRepo();
-    tenantDomainRepo = makeTenantDomainRepo();
-    tenantMemberRepo = makeTenantMemberRepo();
     emailScheduler = makeEmailScheduler();
-    uow = makeUow();
-    rls = makeRls();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TenancyService,
-        { provide: TENANT_REPOSITORY, useValue: tenantRepo },
         { provide: WORKSPACE_REPOSITORY, useValue: workspaceRepo },
         { provide: WORKSPACE_MEMBER_REPOSITORY, useValue: memberRepo },
         { provide: WORKSPACE_INVITATION_REPOSITORY, useValue: invitationRepo },
         { provide: WORKSPACE_SETTINGS_REPOSITORY, useValue: settingsRepo },
-        { provide: TENANT_DOMAIN_REPOSITORY, useValue: tenantDomainRepo },
-        { provide: TENANT_MEMBER_REPOSITORY, useValue: tenantMemberRepo },
         { provide: AppConfigService, useValue: makeConfig() },
         { provide: EmailSchedulerService, useValue: emailScheduler },
-        { provide: UnitOfWork, useValue: uow },
-        { provide: TenantRlsService, useValue: rls },
+        { provide: UnitOfWork, useValue: makeUow() },
       ],
     }).compile();
 
     service = module.get(TenancyService);
   });
 
-  // ── getTenant ──────────────────────────────────────────────────────────────
+  // ── ensureDefaultWorkspace ───────────────────────────────────────────────────
 
-  describe('getTenant', () => {
-    it('returns tenant when found', async () => {
-      tenantRepo.findById.mockResolvedValue(mockTenant());
-      const result = await service.getTenant('tenant-1');
-      expect(result.slug).toBe('acme');
+  describe('ensureDefaultWorkspace', () => {
+    it('creates a default workspace when none exist', async () => {
+      workspaceRepo.count.mockResolvedValue(0);
+      workspaceRepo.create.mockResolvedValue(mockWorkspace({ slug: 'default' }));
+
+      const result = await service.ensureDefaultWorkspace();
+
+      expect(result?.slug).toBe('default');
+      expect(workspaceRepo.create).toHaveBeenCalledOnce();
     });
 
-    it('throws NotFoundException when not found', async () => {
-      tenantRepo.findById.mockResolvedValue(null);
-      await expect(service.getTenant('missing')).rejects.toThrow(NotFoundException);
-    });
+    it('does nothing when a workspace already exists (idempotent)', async () => {
+      workspaceRepo.count.mockResolvedValue(1);
 
-    it('throws NotFoundException when deleted', async () => {
-      tenantRepo.findById.mockResolvedValue(mockTenant({ deletedAt: now }));
-      await expect(service.getTenant('tenant-1')).rejects.toThrow(NotFoundException);
+      const result = await service.ensureDefaultWorkspace();
+
+      expect(result).toBeNull();
+      expect(workspaceRepo.create).not.toHaveBeenCalled();
     });
   });
 
-  // ── getWorkspace ───────────────────────────────────────────────────────────
+  // ── getMembership / touch / enroll ───────────────────────────────────────────
+
+  describe('membership helpers', () => {
+    it('getMemberships delegates to the member repo', async () => {
+      memberRepo.findMembershipsForUser.mockResolvedValue([]);
+      await service.getMemberships('user-1');
+      expect(memberRepo.findMembershipsForUser).toHaveBeenCalledWith('user-1');
+    });
+
+    it('enrollMember adds a member when not already enrolled', async () => {
+      memberRepo.findMember.mockResolvedValue(null);
+      await service.enrollMember('ws-1', 'user-2');
+      expect(memberRepo.addMember).toHaveBeenCalledOnce();
+    });
+
+    it('enrollMember is a no-op when already a member', async () => {
+      memberRepo.findMember.mockResolvedValue(mockMember());
+      await service.enrollMember('ws-1', 'user-1');
+      expect(memberRepo.addMember).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── provisionWorkspace ───────────────────────────────────────────────────────
+
+  describe('provisionWorkspace', () => {
+    it('creates a workspace and enrolls the creator', async () => {
+      workspaceRepo.create.mockResolvedValue(mockWorkspace());
+      memberRepo.addMember.mockResolvedValue(mockMember());
+
+      const result = await service.provisionWorkspace('Acme', 'user-1');
+
+      expect(result.id).toBe('ws-1');
+      expect(workspaceRepo.create).toHaveBeenCalledOnce();
+      expect(memberRepo.addMember).toHaveBeenCalledOnce();
+    });
+  });
+
+  // ── getWorkspace ─────────────────────────────────────────────────────────────
 
   describe('getWorkspace', () => {
-    it('returns workspace when found and belongs to tenant', async () => {
+    it('returns the workspace when found', async () => {
       workspaceRepo.findById.mockResolvedValue(mockWorkspace());
-      const result = await service.getWorkspace('tenant-1', 'ws-1');
+      const result = await service.getWorkspace('ws-1');
       expect(result.name).toBe('Main');
     });
 
     it('throws NotFoundException when not found', async () => {
       workspaceRepo.findById.mockResolvedValue(null);
-      await expect(service.getWorkspace('tenant-1', 'missing')).rejects.toThrow(NotFoundException);
+      await expect(service.getWorkspace('missing')).rejects.toThrow(NotFoundException);
     });
 
-    it('throws NotFoundException when workspace belongs to different tenant', async () => {
-      workspaceRepo.findById.mockResolvedValue(mockWorkspace({ tenantId: 'other-tenant' }));
-      await expect(service.getWorkspace('tenant-1', 'ws-1')).rejects.toThrow(NotFoundException);
+    it('throws NotFoundException when soft-deleted', async () => {
+      workspaceRepo.findById.mockResolvedValue(mockWorkspace({ deletedAt: now }));
+      await expect(service.getWorkspace('ws-1')).rejects.toThrow(NotFoundException);
     });
   });
 
-  // ── createWorkspace ────────────────────────────────────────────────────────
+  // ── createWorkspace ──────────────────────────────────────────────────────────
 
   describe('createWorkspace', () => {
     const actor = {
       sub: 'user-1',
-      tenantId: 'tenant-1',
+      workspaceId: 'ws-1',
       sessionId: 's1',
       jti: 'j1',
       iat: 0,
@@ -309,36 +290,34 @@ describe('TenancyService', () => {
     });
   });
 
-  // ── updateWorkspace ────────────────────────────────────────────────────────
+  // ── updateWorkspace ──────────────────────────────────────────────────────────
 
   describe('updateWorkspace', () => {
     it('updates workspace', async () => {
       workspaceRepo.findById.mockResolvedValue(mockWorkspace());
       workspaceRepo.update.mockResolvedValue(mockWorkspace({ name: 'Updated' }));
 
-      const result = await service.updateWorkspace('tenant-1', 'ws-1', { name: 'Updated' });
+      const result = await service.updateWorkspace('ws-1', { name: 'Updated' });
       expect(result.name).toBe('Updated');
     });
 
     it('throws when workspace not found', async () => {
       workspaceRepo.findById.mockResolvedValue(null);
-      await expect(service.updateWorkspace('tenant-1', 'missing', {})).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(service.updateWorkspace('missing', {})).rejects.toThrow(NotFoundException);
     });
   });
 
-  // ── deleteWorkspace ────────────────────────────────────────────────────────
+  // ── deleteWorkspace ──────────────────────────────────────────────────────────
 
   describe('deleteWorkspace', () => {
     it('soft-deletes workspace', async () => {
       workspaceRepo.findById.mockResolvedValue(mockWorkspace());
-      await service.deleteWorkspace('tenant-1', 'ws-1');
-      expect(workspaceRepo.softDelete).toHaveBeenCalledWith('ws-1', 'tenant-1');
+      await service.deleteWorkspace('ws-1');
+      expect(workspaceRepo.softDelete).toHaveBeenCalledWith('ws-1');
     });
   });
 
-  // ── addMember ──────────────────────────────────────────────────────────────
+  // ── addMember ────────────────────────────────────────────────────────────────
 
   describe('addMember', () => {
     it('adds member when not already a member', async () => {
@@ -346,7 +325,7 @@ describe('TenancyService', () => {
       memberRepo.findMember.mockResolvedValue(null);
       memberRepo.addMember.mockResolvedValue(mockMember());
 
-      const result = await service.addMember('tenant-1', 'ws-1', 'user-2', 'actor-1');
+      const result = await service.addMember('ws-1', 'user-2', 'actor-1');
       expect(result.userId).toBe('user-1');
     });
 
@@ -354,20 +333,53 @@ describe('TenancyService', () => {
       workspaceRepo.findById.mockResolvedValue(mockWorkspace());
       memberRepo.findMember.mockResolvedValue(mockMember());
 
-      await expect(service.addMember('tenant-1', 'ws-1', 'user-1', 'actor-1')).rejects.toThrow(
+      await expect(service.addMember('ws-1', 'user-1', 'actor-1')).rejects.toThrow(
         ConflictException,
       );
     });
   });
 
-  // ── removeMember ──────────────────────────────────────────────────────────
+  // ── updateMember ─────────────────────────────────────────────────────────────
+
+  describe('updateMember', () => {
+    it('updates member status', async () => {
+      workspaceRepo.findById.mockResolvedValue(mockWorkspace());
+      memberRepo.findMemberById.mockResolvedValue(mockMember());
+      memberRepo.updateMember.mockResolvedValue(mockMember({ status: 'suspended' }));
+
+      const result = await service.updateMember('ws-1', 'member-1', { status: 'suspended' }, 'actor-1');
+      expect(result.status).toBe('suspended');
+    });
+
+    it('throws SOLE_ADMIN_VIOLATION when suspending the last admin', async () => {
+      workspaceRepo.findById.mockResolvedValue(mockWorkspace());
+      memberRepo.findMemberById.mockResolvedValue(mockMember());
+      memberRepo.isActiveAdmin.mockResolvedValue(true);
+      memberRepo.countActiveAdmins.mockResolvedValue(1);
+
+      await expect(
+        service.updateMember('ws-1', 'member-1', { status: 'suspended' }, 'actor-1'),
+      ).rejects.toThrow(PreconditionFailedException);
+    });
+
+    it('throws NotFoundException when member not in workspace', async () => {
+      workspaceRepo.findById.mockResolvedValue(mockWorkspace());
+      memberRepo.findMemberById.mockResolvedValue(mockMember({ workspaceId: 'other' }));
+
+      await expect(
+        service.updateMember('ws-1', 'member-1', { status: 'suspended' }, 'actor-1'),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // ── removeMember ─────────────────────────────────────────────────────────────
 
   describe('removeMember', () => {
     it('removes member', async () => {
       workspaceRepo.findById.mockResolvedValue(mockWorkspace());
       memberRepo.findMember.mockResolvedValue(mockMember());
 
-      await service.removeMember('tenant-1', 'ws-1', 'user-1', 'actor-1');
+      await service.removeMember('ws-1', 'user-1', 'actor-1');
       expect(memberRepo.removeMember).toHaveBeenCalledWith('ws-1', 'user-1');
     });
 
@@ -375,26 +387,31 @@ describe('TenancyService', () => {
       workspaceRepo.findById.mockResolvedValue(mockWorkspace());
       memberRepo.findMember.mockResolvedValue(null);
 
-      await expect(service.removeMember('tenant-1', 'ws-1', 'user-99', 'actor-1')).rejects.toThrow(
+      await expect(service.removeMember('ws-1', 'user-99', 'actor-1')).rejects.toThrow(
         NotFoundException,
+      );
+    });
+
+    it('throws SOLE_ADMIN_VIOLATION when removing the last admin', async () => {
+      workspaceRepo.findById.mockResolvedValue(mockWorkspace());
+      memberRepo.findMember.mockResolvedValue(mockMember());
+      memberRepo.isActiveAdmin.mockResolvedValue(true);
+      memberRepo.countActiveAdmins.mockResolvedValue(1);
+
+      await expect(service.removeMember('ws-1', 'user-1', 'actor-1')).rejects.toThrow(
+        PreconditionFailedException,
       );
     });
   });
 
-  // ── inviteMember ───────────────────────────────────────────────────────────
+  // ── inviteMember ─────────────────────────────────────────────────────────────
 
   describe('inviteMember', () => {
     it('creates invitation and sends email', async () => {
       workspaceRepo.findById.mockResolvedValue(mockWorkspace());
       invitationRepo.create.mockResolvedValue(mockInvitation());
 
-      const result = await service.inviteMember(
-        'tenant-1',
-        'ws-1',
-        'bob@example.com',
-        undefined,
-        'actor-1',
-      );
+      const result = await service.inviteMember('ws-1', 'bob@example.com', undefined, 'actor-1');
 
       expect(result.email).toBe('bob@example.com');
       expect(invitationRepo.cancelExistingForEmail).toHaveBeenCalledWith(
@@ -420,7 +437,7 @@ describe('TenancyService', () => {
       workspaceRepo.findById.mockResolvedValue(mockWorkspace());
       invitationRepo.create.mockResolvedValue(mockInvitation({ email: 'bob@example.com' }));
 
-      await service.inviteMember('tenant-1', 'ws-1', 'BOB@Example.com', undefined, 'actor-1');
+      await service.inviteMember('ws-1', 'BOB@Example.com', undefined, 'actor-1');
 
       expect(invitationRepo.cancelExistingForEmail).toHaveBeenCalledWith(
         'ws-1',
@@ -430,14 +447,14 @@ describe('TenancyService', () => {
     });
   });
 
-  // ── cancelInvitation ───────────────────────────────────────────────────────
+  // ── cancelInvitation ─────────────────────────────────────────────────────────
 
   describe('cancelInvitation', () => {
     it('cancels pending invitation', async () => {
       workspaceRepo.findById.mockResolvedValue(mockWorkspace());
       invitationRepo.findById.mockResolvedValue(mockInvitation());
 
-      await service.cancelInvitation('tenant-1', 'ws-1', 'inv-1', 'actor-1');
+      await service.cancelInvitation('ws-1', 'inv-1', 'actor-1');
 
       expect(invitationRepo.updateStatus).toHaveBeenCalledWith('inv-1', 'cancelled');
     });
@@ -446,18 +463,17 @@ describe('TenancyService', () => {
       workspaceRepo.findById.mockResolvedValue(mockWorkspace());
       invitationRepo.findById.mockResolvedValue(null);
 
-      await expect(
-        service.cancelInvitation('tenant-1', 'ws-1', 'inv-missing', 'actor-1'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.cancelInvitation('ws-1', 'inv-missing', 'actor-1')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
-  // ── acceptInvitation ───────────────────────────────────────────────────────
+  // ── acceptInvitation ─────────────────────────────────────────────────────────
 
   describe('acceptInvitation', () => {
     it('accepts pending invitation and adds member', async () => {
       invitationRepo.findByTokenHash.mockResolvedValue(mockInvitation({ status: 'pending' }));
-      workspaceRepo.findById.mockResolvedValue(mockWorkspace());
       memberRepo.findMember.mockResolvedValue(null);
       memberRepo.addMember.mockResolvedValue(mockMember());
 

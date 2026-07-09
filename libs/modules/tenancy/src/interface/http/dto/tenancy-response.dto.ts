@@ -1,22 +1,8 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
-export const TenantResponseSchema = z.object({
-  id: z.string().uuid(),
-  slug: z.string(),
-  name: z.string(),
-  status: z.string().describe('Tenant status: active | suspended | deleted'),
-  plan: z.string(),
-  settings: z.record(z.string(), z.unknown()),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-});
-
-export class TenantResponseDto extends createZodDto(TenantResponseSchema) {}
-
 export const WorkspaceResponseSchema = z.object({
   id: z.string().uuid(),
-  tenantId: z.string().uuid(),
   slug: z.string(),
   name: z.string(),
   description: z.string().nullable(),

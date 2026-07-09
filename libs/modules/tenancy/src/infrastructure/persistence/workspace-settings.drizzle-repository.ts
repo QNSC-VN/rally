@@ -21,7 +21,6 @@ export class WorkspaceSettingsDrizzleRepository implements IWorkspaceSettingsRep
 
   async upsert(
     workspaceId: string,
-    tenantId: string,
     input: UpdateWorkspaceSettingsInput,
   ): Promise<WorkspaceSettings> {
     const existing = await this.findByWorkspace(workspaceId);
@@ -44,7 +43,6 @@ export class WorkspaceSettingsDrizzleRepository implements IWorkspaceSettingsRep
       .insert(workspaceSettings)
       .values({
         workspaceId,
-        tenantId,
         timezone: input.timezone ?? 'UTC',
         defaultLocale: input.defaultLocale ?? 'en',
         dateFormat: input.dateFormat ?? null,

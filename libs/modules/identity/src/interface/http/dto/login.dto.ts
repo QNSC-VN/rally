@@ -76,10 +76,10 @@ export const SsoLoginSchema = z.object({
 
 export class SsoLoginDto extends createZodDto(SsoLoginSchema) {}
 
-// ── Switch tenant ────────────────────────────────────────────────────────────
+// ── Switch workspace ─────────────────────────────────────────────────────────
 
-export const SwitchTenantSchema = z.object({
-  tenantId: z.string().uuid('tenantId must be a valid UUID'),
+export const SwitchWorkspaceSchema = z.object({
+  workspaceId: z.string().uuid('workspaceId must be a valid UUID'),
 });
 
-export class SwitchTenantDto extends createZodDto(SwitchTenantSchema) {}
+export class SwitchWorkspaceDto extends createZodDto(SwitchWorkspaceSchema) {}

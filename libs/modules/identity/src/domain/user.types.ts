@@ -24,7 +24,7 @@ export interface User {
 
 export interface AuthSession {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   userId: string;
   tokenHash: string;
   familyId: string;
@@ -39,7 +39,7 @@ export interface AuthSession {
 
 export interface CreateSessionInput {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   userId: string;
   tokenHash: string;
   familyId: string;
@@ -62,7 +62,6 @@ export interface PasswordResetToken {
 
 export interface SsoIdentity {
   id: string;
-  tenantId: string;
   userId: string;
   provider: string;
   providerSub: string;
@@ -78,7 +77,6 @@ export interface SsoIdentity {
  */
 export interface SsoConnection {
   id: string;
-  tenantId: string;
   workspaceId: string;
   provider: string;
   externalTenantId: string;

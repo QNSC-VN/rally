@@ -52,7 +52,7 @@ export class AccessController {
   // ── Roles ──────────────────────────────────────────────────────────────────
 
   @Get('roles')
-  @ApiOperation({ summary: 'List all roles available to the tenant' })
+  @ApiOperation({ summary: 'List all roles available to the workspace' })
   @ApiResponse({ status: 200, type: [RoleResponseDto] })
   @ApiCommonErrors(401)
   async listRoles(@CurrentUser() user: JwtPayload): Promise<RoleResponseDto[]> {

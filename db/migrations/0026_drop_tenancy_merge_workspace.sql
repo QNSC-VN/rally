@@ -114,9 +114,8 @@ ALTER INDEX "messaging"."ix_outbox_tenant" RENAME TO "ix_outbox_workspace";
 ALTER TABLE "messaging"."email_outbox" RENAME COLUMN "tenant_id" TO "workspace_id";
 ALTER TABLE "messaging"."notification_outbox" RENAME COLUMN "tenant_id" TO "workspace_id";
 
--- ── identity.auth_sessions — active workspace, nullable until selected ───────
+-- ── identity.auth_sessions — active workspace for the session ───────────────
 ALTER TABLE "identity"."auth_sessions" RENAME COLUMN "tenant_id" TO "workspace_id";
-ALTER TABLE "identity"."auth_sessions" ALTER COLUMN "workspace_id" DROP NOT NULL;
 ALTER INDEX "identity"."ix_auth_sessions_tenant" RENAME TO "ix_auth_sessions_workspace";
 
 -- ── identity SSO — install-global, drop tenant linkage ──────────────────────

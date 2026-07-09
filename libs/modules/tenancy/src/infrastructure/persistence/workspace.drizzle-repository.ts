@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq, isNull, lt } from 'drizzle-orm';
+import { and, count, desc, eq, isNull, lt } from 'drizzle-orm';
 import { InjectDrizzle, buildPageResult } from '@platform';
 import type { DrizzleDB, DbExecutor, CursorPayload, PagedResult } from '@platform';
-import { workspaces } from '../../../../../../db/schema/tenancy';
+import { workspaces, workspaceMembers } from '../../../../../../db/schema/tenancy';
 import type {
   Workspace,
   CreateWorkspaceInput,
@@ -14,44 +14,64 @@ import { IWorkspaceRepository } from '../../domain/ports/workspace.repository';
 export class WorkspaceDrizzleRepository implements IWorkspaceRepository {
   constructor(@InjectDrizzle() private readonly db: DrizzleDB) {}
 
-  async findById(id: string, tenantId: string): Promise<Workspace | null> {
-    const rows = await this.db.select().from(workspaces).where(and(eq(workspaces.id, id), eq(workspaces.tenantId, tenantId))).limit(1);
+  async findById(id: string): Promise<Workspace | null> {
+    const rows = await this.db.select().from(workspaces).where(eq(workspaces.id, id)).limit(1);
     return (rows[0] as Workspace | undefined) ?? null;
   }
 
-  async findBySlug(tenantId: string, slug: string): Promise<Workspace | null> {
+  async findBySlug(slug: string): Promise<Workspace | null> {
     const rows = await this.db
       .select()
       .from(workspaces)
-      .where(
-        and(
-          eq(workspaces.tenantId, tenantId),
-          eq(workspaces.slug, slug),
-          isNull(workspaces.deletedAt),
-        ),
-      )
+      .where(and(eq(workspaces.slug, slug), isNull(workspaces.deletedAt)))
       .limit(1);
     return (rows[0] as Workspace | undefined) ?? null;
   }
 
-  async listByTenant(
-    tenantId: string,
+  async listForUser(
+    userId: string,
     { limit, cursor }: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<Workspace>> {
-    const conditions = [eq(workspaces.tenantId, tenantId), isNull(workspaces.deletedAt)];
+    const conditions = [
+      eq(workspaceMembers.userId, userId),
+      eq(workspaceMembers.status, 'active'),
+      isNull(workspaces.deletedAt),
+    ];
 
     if (cursor) {
       conditions.push(lt(workspaces.createdAt, new Date(cursor.k[0] as string)));
     }
 
     const rows = await this.db
-      .select()
-      .from(workspaces)
+      .select({ ws: workspaces })
+      .from(workspaceMembers)
+      .innerJoin(workspaces, eq(workspaces.id, workspaceMembers.workspaceId))
       .where(and(...conditions))
-      .orderBy(workspaces.createdAt)
+      .orderBy(desc(workspaces.createdAt))
       .limit(limit + 1);
 
-    return buildPageResult(rows as Workspace[], limit, (w) => [w.createdAt.toISOString()]);
+    return buildPageResult(
+      rows.map((r) => r.ws as Workspace),
+      limit,
+      (w) => [w.createdAt.toISOString()],
+    );
+  }
+
+  async listAll(): Promise<Workspace[]> {
+    const rows = await this.db
+      .select()
+      .from(workspaces)
+      .where(isNull(workspaces.deletedAt))
+      .orderBy(workspaces.createdAt);
+    return rows as Workspace[];
+  }
+
+  async count(): Promise<number> {
+    const rows = await this.db
+      .select({ cnt: count() })
+      .from(workspaces)
+      .where(isNull(workspaces.deletedAt));
+    return Number(rows[0]?.cnt ?? 0);
   }
 
   async create(input: CreateWorkspaceInput, tx?: DbExecutor): Promise<Workspace> {
@@ -59,7 +79,6 @@ export class WorkspaceDrizzleRepository implements IWorkspaceRepository {
       .insert(workspaces)
       .values({
         id: input.id,
-        tenantId: input.tenantId,
         slug: input.slug,
         name: input.name,
         description: input.description,
@@ -69,7 +88,7 @@ export class WorkspaceDrizzleRepository implements IWorkspaceRepository {
     return rows[0] as Workspace;
   }
 
-  async update(id: string, input: UpdateWorkspaceInput, tenantId: string): Promise<Workspace> {
+  async update(id: string, input: UpdateWorkspaceInput): Promise<Workspace> {
     const rows = await this.db
       .update(workspaces)
       .set({
@@ -79,15 +98,15 @@ export class WorkspaceDrizzleRepository implements IWorkspaceRepository {
         ...(input.settings !== undefined && { settings: input.settings }),
         updatedAt: new Date(),
       })
-      .where(and(eq(workspaces.id, id), eq(workspaces.tenantId, tenantId)))
+      .where(eq(workspaces.id, id))
       .returning();
     return rows[0] as Workspace;
   }
 
-  async softDelete(id: string, tenantId: string): Promise<void> {
+  async softDelete(id: string): Promise<void> {
     await this.db
       .update(workspaces)
       .set({ deletedAt: new Date(), updatedAt: new Date() })
-      .where(and(eq(workspaces.id, id), eq(workspaces.tenantId, tenantId)));
+      .where(eq(workspaces.id, id));
   }
 }

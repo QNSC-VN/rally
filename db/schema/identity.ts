@@ -53,7 +53,7 @@ export const authSessions = identitySchema.table(
   'auth_sessions',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    workspaceId: uuid('workspace_id'), // active workspace; null until user selects one
+    workspaceId: uuid('workspace_id').notNull(), // active workspace for this session
     userId: uuid('user_id').notNull(),
     tokenHash: text('token_hash').notNull(),
     familyId: uuid('family_id').notNull(),

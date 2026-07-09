@@ -71,7 +71,6 @@ export const OTEL_ATTRIBUTES = {
 
   // Domain
   WORK_ITEM_ID: 'app.work_item.id',
-  WORKSPACE_ID: 'app.workspace.id',
   PROJECT_ID: 'app.project.id',
 
   // Outbox

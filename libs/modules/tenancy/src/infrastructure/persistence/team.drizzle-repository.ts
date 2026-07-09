@@ -10,45 +10,33 @@ import { ITeamRepository } from '../../domain/ports/team.repository';
 export class TeamDrizzleRepository implements ITeamRepository {
   constructor(@InjectDrizzle() private readonly db: DrizzleDB) {}
 
-  // Every read carries an explicit tenant_id predicate. This is defence in
+  // Every read carries an explicit workspace_id predicate. This is defence in
   // depth that holds even when the query runs outside an RLS tenant context
   // (e.g. a superuser connection in dev, where RLS is bypassed) — tenant
   // isolation never depends on RLS + connection role alone.
-  async findById(id: string, tenantId: string): Promise<Team | null> {
+  async findById(id: string, workspaceId: string): Promise<Team | null> {
     const rows = await this.db
       .select()
       .from(teams)
-      .where(and(eq(teams.id, id), eq(teams.tenantId, tenantId)))
+      .where(and(eq(teams.id, id), eq(teams.workspaceId, workspaceId)))
       .limit(1);
     return (rows[0]) ?? null;
   }
 
-  async findByKey(workspaceId: string, key: string, tenantId: string): Promise<Team | null> {
+  async findByKey(workspaceId: string, key: string): Promise<Team | null> {
     const rows = await this.db
       .select()
       .from(teams)
-      .where(
-        and(
-          eq(teams.workspaceId, workspaceId),
-          eq(teams.key, key),
-          eq(teams.tenantId, tenantId),
-        ),
-      )
+      .where(and(eq(teams.workspaceId, workspaceId), eq(teams.key, key)))
       .limit(1);
     return (rows[0]) ?? null;
   }
 
-  async listByWorkspace(workspaceId: string, tenantId: string): Promise<Team[]> {
+  async listByWorkspace(workspaceId: string): Promise<Team[]> {
     const rows = await this.db
       .select()
       .from(teams)
-      .where(
-        and(
-          eq(teams.workspaceId, workspaceId),
-          eq(teams.tenantId, tenantId),
-          eq(teams.status, 'active'),
-        ),
-      )
+      .where(and(eq(teams.workspaceId, workspaceId), eq(teams.status, 'active')))
       .orderBy(teams.name);
     return rows;
   }
@@ -58,7 +46,6 @@ export class TeamDrizzleRepository implements ITeamRepository {
       .insert(teams)
       .values({
         id: input.id,
-        tenantId: input.tenantId,
         workspaceId: input.workspaceId,
         name: input.name,
         key: input.key.toUpperCase(),

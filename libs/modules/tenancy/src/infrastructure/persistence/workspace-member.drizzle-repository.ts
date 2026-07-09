@@ -1,13 +1,14 @@
 import { Injectable } from '@nestjs/common';
-import { and, count, eq, lt } from 'drizzle-orm';
+import { and, count, desc, eq, lt } from 'drizzle-orm';
 import { InjectDrizzle, buildPageResult } from '@platform';
 import type { DrizzleDB, DbExecutor, CursorPayload, PagedResult } from '@platform';
-import { workspaceMembers } from '../../../../../../db/schema/tenancy';
+import { workspaces, workspaceMembers } from '../../../../../../db/schema/tenancy';
 import { users } from '../../../../../../db/schema/identity';
 import { systemRoles, userRoleAssignments } from '../../../../../../db/schema/access';
 import type {
   WorkspaceMember,
   WorkspaceMemberWithProfile,
+  WorkspaceMembership,
   AddMemberInput,
   UpdateMemberInput,
 } from '../../domain/tenancy.types';
@@ -35,6 +36,41 @@ export class WorkspaceMemberDrizzleRepository implements IWorkspaceMemberReposit
       .where(eq(workspaceMembers.id, id))
       .limit(1);
     return (rows[0]) ?? null;
+  }
+
+  /** Active workspace memberships for a user, most-recently-active first (login switcher). */
+  async findMembershipsForUser(userId: string): Promise<WorkspaceMembership[]> {
+    const rows = await this.db
+      .select({
+        workspaceId: workspaceMembers.workspaceId,
+        name: workspaces.name,
+        slug: workspaces.slug,
+        lastActiveAt: workspaceMembers.lastActiveAt,
+        roleSlug: systemRoles.slug,
+        roleName: systemRoles.name,
+      })
+      .from(workspaceMembers)
+      .innerJoin(workspaces, eq(workspaces.id, workspaceMembers.workspaceId))
+      .leftJoin(
+        userRoleAssignments,
+        and(
+          eq(userRoleAssignments.userId, workspaceMembers.userId),
+          eq(userRoleAssignments.workspaceId, workspaceMembers.workspaceId),
+          eq(userRoleAssignments.scopeType, 'workspace'),
+        ),
+      )
+      .leftJoin(systemRoles, eq(systemRoles.id, userRoleAssignments.roleId))
+      .where(and(eq(workspaceMembers.userId, userId), eq(workspaceMembers.status, 'active')))
+      .orderBy(desc(workspaceMembers.lastActiveAt));
+
+    return rows.map((r) => ({
+      workspaceId: r.workspaceId,
+      name: r.name,
+      slug: r.slug,
+      lastActiveAt: r.lastActiveAt ? r.lastActiveAt.toISOString() : null,
+      roleSlug: r.roleSlug ?? null,
+      roleName: r.roleName ?? null,
+    }));
   }
 
   async listMembers(
@@ -110,7 +146,6 @@ export class WorkspaceMemberDrizzleRepository implements IWorkspaceMemberReposit
       .insert(workspaceMembers)
       .values({
         id: input.id,
-        tenantId: input.tenantId,
         workspaceId: input.workspaceId,
         userId: input.userId,
         roleId: input.roleId ?? null,
@@ -149,18 +184,65 @@ export class WorkspaceMemberDrizzleRepository implements IWorkspaceMemberReposit
     return result !== null && result.status === 'active';
   }
 
+  async touchLastActive(userId: string, workspaceId: string): Promise<void> {
+    await this.db
+      .update(workspaceMembers)
+      .set({ lastActiveAt: new Date(), updatedAt: new Date() })
+      .where(
+        and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, userId)),
+      );
+  }
+
   async countActiveAdmins(workspaceId: string): Promise<number> {
-    // roleId === 'admin' is a simplification; real implementation may join roles table
+    // Count users holding the workspace-scoped 'admin' system role via the
+    // authoritative role-assignment tables (not the denormalised members.roleId).
     const rows = await this.db
       .select({ cnt: count() })
       .from(workspaceMembers)
+      .innerJoin(
+        userRoleAssignments,
+        and(
+          eq(userRoleAssignments.userId, workspaceMembers.userId),
+          eq(userRoleAssignments.workspaceId, workspaceMembers.workspaceId),
+          eq(userRoleAssignments.scopeType, 'workspace'),
+        ),
+      )
+      .innerJoin(
+        systemRoles,
+        and(eq(systemRoles.id, userRoleAssignments.roleId), eq(systemRoles.slug, 'workspace_admin')),
+      )
       .where(
         and(
           eq(workspaceMembers.workspaceId, workspaceId),
-          eq(workspaceMembers.roleId, 'admin'),
           eq(workspaceMembers.status, 'active'),
         ),
       );
     return Number(rows[0]?.cnt ?? 0);
+  }
+
+  async isActiveAdmin(workspaceId: string, userId: string): Promise<boolean> {
+    const rows = await this.db
+      .select({ cnt: count() })
+      .from(workspaceMembers)
+      .innerJoin(
+        userRoleAssignments,
+        and(
+          eq(userRoleAssignments.userId, workspaceMembers.userId),
+          eq(userRoleAssignments.workspaceId, workspaceMembers.workspaceId),
+          eq(userRoleAssignments.scopeType, 'workspace'),
+        ),
+      )
+      .innerJoin(
+        systemRoles,
+        and(eq(systemRoles.id, userRoleAssignments.roleId), eq(systemRoles.slug, 'workspace_admin')),
+      )
+      .where(
+        and(
+          eq(workspaceMembers.workspaceId, workspaceId),
+          eq(workspaceMembers.userId, userId),
+          eq(workspaceMembers.status, 'active'),
+        ),
+      );
+    return Number(rows[0]?.cnt ?? 0) > 0;
   }
 }
