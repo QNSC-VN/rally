@@ -98,8 +98,8 @@ module "secrets" {
 
   secret_names = {
     "db-url"      = "PostgreSQL connection URL for the app"
-    "jwt-private" = "Ed25519 private key (PEM, base64-encoded)"
-    "jwt-public"  = "Ed25519 public key (PEM, base64-encoded)"
+    "jwt-private" = "EC P-256 (ES256) private key (PEM, base64-encoded)"
+    "jwt-public"  = "EC P-256 (ES256) public key (PEM, base64-encoded)"
     "csrf-secret" = "CSRF token signing secret"
   }
 
