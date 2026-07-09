@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq, gt, isNull } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB, DbExecutor } from '@platform';
-import { users, passwordResetTokens, ssoIdentities } from '../../../../../../db/schema/identity';
+import { users, ssoIdentities } from '../../../../../../db/schema/identity';
 import { ssoProviderEnum } from '../../../../../../db/schema/enums';
 
 type SsoProvider = (typeof ssoProviderEnum.enumValues)[number];
@@ -32,38 +32,8 @@ export class UserDrizzleRepository implements IUserRepository {
     return rows[0] ?? null;
   }
 
-  async create(
-    input: {
-      email: string;
-      displayName: string;
-      passwordHash: string;
-      emailVerified?: boolean;
-    },
-    tx?: DbExecutor,
-  ): Promise<User> {
-    const [row] = await (tx ?? this.db)
-      .insert(users)
-      .values({
-        id: uuidv7(),
-        email: input.email.toLowerCase().trim(),
-        displayName: input.displayName,
-        passwordHash: input.passwordHash,
-        status: 'active',
-        emailVerified: input.emailVerified ?? false,
-      })
-      .returning();
-    return row;
-  }
-
   async updateLastLogin(id: string, tx?: DbExecutor): Promise<void> {
     await (tx ?? this.db).update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, id));
-  }
-
-  async updatePasswordHash(id: string, passwordHash: string, tx?: DbExecutor): Promise<void> {
-    await (tx ?? this.db)
-      .update(users)
-      .set({ passwordHash, updatedAt: new Date() })
-      .where(eq(users.id, id));
   }
 
   async updateStatus(id: string, status: UserStatus, tx?: DbExecutor): Promise<void> {
@@ -91,55 +61,18 @@ export class UserDrizzleRepository implements IUserRepository {
     return rows[0];
   }
 
-  async createPasswordResetToken(
-    id: string,
-    tokenHash: string,
-    expiresAt: Date,
-    tx?: DbExecutor,
-  ): Promise<void> {
-    await (tx ?? this.db).insert(passwordResetTokens).values({
-      id: uuidv7(),
-      userId: id,
-      tokenHash,
-      expiresAt,
-    });
-  }
-
-  async findPasswordResetToken(
-    tokenHash: string,
-  ): Promise<{ id: string; userId: string; usedAt: Date | null; expiresAt: Date } | null> {
-    const rows = await this.db
-      .select({
-        id: passwordResetTokens.id,
-        userId: passwordResetTokens.userId,
-        usedAt: passwordResetTokens.usedAt,
-        expiresAt: passwordResetTokens.expiresAt,
-      })
-      .from(passwordResetTokens)
-      .where(
-        and(
-          eq(passwordResetTokens.tokenHash, tokenHash),
-          gt(passwordResetTokens.expiresAt, new Date()),
-        ),
-      )
-      .limit(1);
-    return rows[0] ?? null;
-  }
-
-  async markPasswordResetTokenUsed(id: string, tx?: DbExecutor): Promise<void> {
-    await (tx ?? this.db)
-      .update(passwordResetTokens)
-      .set({ usedAt: new Date() })
-      .where(eq(passwordResetTokens.id, id));
-  }
-
   // ── SSO ─────────────────────────────────────────────────────────────────────
 
   async findSsoIdentity(provider: string, providerSub: string): Promise<SsoIdentity | null> {
     const rows = await this.db
       .select()
       .from(ssoIdentities)
-      .where(and(eq(ssoIdentities.provider, provider as SsoProvider), eq(ssoIdentities.providerSub, providerSub)))
+      .where(
+        and(
+          eq(ssoIdentities.provider, provider as SsoProvider),
+          eq(ssoIdentities.providerSub, providerSub),
+        ),
+      )
       .limit(1);
     return rows[0] ?? null;
   }
@@ -198,7 +131,6 @@ export class UserDrizzleRepository implements IUserRepository {
         displayName,
         status: 'active',
         emailVerified: true, // Entra ID has already verified the email
-        passwordHash: null,
       })
       .returning();
 

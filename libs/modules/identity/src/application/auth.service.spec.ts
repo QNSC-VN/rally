@@ -1,18 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
-import * as argon2 from 'argon2';
 import { AuthService } from './auth.service';
 import { USER_REPOSITORY } from '../domain/ports/user.repository';
 import { AUTH_SESSION_REPOSITORY } from '../domain/ports/auth-session.repository';
 import { SSO_CONNECTION_REPOSITORY } from '../domain/ports/sso-connection.repository';
 import type { User, AuthSession } from '../domain/user.types';
-import {
-  UnauthorizedException,
-  NotFoundException,
-  AppConfigService,
-  EmailSchedulerService,
-} from '@platform';
+import { UnauthorizedException, NotFoundException, AppConfigService } from '@platform';
 import { DRIZZLE } from '@platform';
 import { ValkeyService } from '@platform';
 import { AccessService } from '@modules/access';
@@ -26,7 +20,6 @@ const mockUser = (overrides: Partial<User> = {}): User => ({
   email: 'alice@example.com',
   displayName: 'Alice',
   avatarUrl: null,
-  passwordHash: null,
   status: 'active',
   emailVerified: true,
   locale: 'en',
@@ -59,12 +52,8 @@ const makeUserRepo = () => ({
   findByEmail: vi.fn(),
   findById: vi.fn(),
   updateLastLogin: vi.fn().mockResolvedValue(undefined),
-  updatePasswordHash: vi.fn().mockResolvedValue(undefined),
   updateStatus: vi.fn().mockResolvedValue(undefined),
   updateProfile: vi.fn(),
-  createPasswordResetToken: vi.fn().mockResolvedValue(undefined),
-  findPasswordResetToken: vi.fn(),
-  markPasswordResetTokenUsed: vi.fn().mockResolvedValue(undefined),
 });
 
 const makeSessionRepo = () => ({
@@ -89,18 +78,12 @@ const makeConfig = (overrides: Record<string, unknown> = {}) => ({
       JWT_REFRESH_EXPIRY: '30d',
       JWT_ISSUER: 'rally',
       JWT_AUDIENCE: 'rally-app',
-      PASSWORD_RESET_TOKEN_TTL_HOURS: 2,
       APP_BASE_URL: 'http://localhost:5173',
-      BREAKGLASS_EMAIL: 'breakglass@test.internal',
       PLATFORM_ADMIN_EMAILS: '',
       ...overrides,
     };
     return defaults[key];
   }),
-});
-
-const makeEmailScheduler = () => ({
-  schedule: vi.fn().mockResolvedValue(undefined),
 });
 
 const makeJwt = () => ({
@@ -131,18 +114,16 @@ const makeSsoConnectionRepo = () => ({
 });
 
 const makeWorkspaceService = () => ({
-  getMemberships: vi
-    .fn()
-    .mockResolvedValue([
-      {
-        workspaceId: 'ws-1',
-        name: 'Test',
-        slug: 'test',
-        lastActiveAt: null,
-        roleSlug: 'workspace_admin',
-        roleName: 'Workspace Admin',
-      },
-    ]),
+  getMemberships: vi.fn().mockResolvedValue([
+    {
+      workspaceId: 'ws-1',
+      name: 'Test',
+      slug: 'test',
+      lastActiveAt: null,
+      roleSlug: 'workspace_admin',
+      roleName: 'Workspace Admin',
+    },
+  ]),
   getMembership: vi.fn().mockResolvedValue({ status: 'active' }),
   touchMembership: vi.fn().mockResolvedValue(undefined),
   enrollMember: vi.fn().mockResolvedValue(undefined),
@@ -162,7 +143,6 @@ describe('AuthService', () => {
   let sessionRepo: ReturnType<typeof makeSessionRepo>;
   let valkey: ReturnType<typeof makeValkey>;
   let config: ReturnType<typeof makeConfig>;
-  let emailScheduler: ReturnType<typeof makeEmailScheduler>;
   let auditService: ReturnType<typeof makeAuditService>;
   let jwt: ReturnType<typeof makeJwt>;
   let accessService: ReturnType<typeof makeAccessService>;
@@ -173,7 +153,6 @@ describe('AuthService', () => {
     sessionRepo = makeSessionRepo();
     valkey = makeValkey();
     config = makeConfig();
-    emailScheduler = makeEmailScheduler();
     jwt = makeJwt();
     accessService = makeAccessService();
     auditService = makeAuditService();
@@ -189,7 +168,6 @@ describe('AuthService', () => {
         { provide: JwtService, useValue: jwt },
         { provide: ValkeyService, useValue: valkey },
         { provide: AppConfigService, useValue: config },
-        { provide: EmailSchedulerService, useValue: emailScheduler },
         { provide: AccessService, useValue: accessService },
         { provide: WorkspaceService, useValue: workspaceService },
         { provide: AuditService, useValue: auditService },
@@ -197,67 +175,6 @@ describe('AuthService', () => {
     }).compile();
 
     service = module.get(AuthService);
-  });
-
-  // ── login ──────────────────────────────────────────────────────────────────
-
-  describe('login', () => {
-    let user: User;
-
-    beforeEach(async () => {
-      const hash = await argon2.hash('correct-password', { type: argon2.argon2id });
-      user = mockUser({ passwordHash: hash });
-      userRepo.findByEmail.mockResolvedValue(user);
-    });
-
-    it('returns tokens + user on valid credentials', async () => {
-      const result = await service.login('alice@example.com', 'correct-password');
-
-      expect(result.accessToken).toBe('mock-access-token');
-      expect(result.refreshToken).toBeDefined();
-      expect(result.user.email).toBe('alice@example.com');
-      expect(sessionRepo.create).toHaveBeenCalledOnce();
-      expect(userRepo.updateLastLogin).toHaveBeenCalledWith(user.id, expect.anything());
-    });
-
-    it('normalises email to lowercase', async () => {
-      await service.login('ALICE@Example.com', 'correct-password');
-      expect(userRepo.findByEmail).toHaveBeenCalledWith('alice@example.com');
-    });
-
-    it('throws UnauthorizedException on wrong password', async () => {
-      await expect(service.login('alice@example.com', 'wrong')).rejects.toThrow(
-        UnauthorizedException,
-      );
-    });
-
-    it('throws UnauthorizedException when user not found (and does constant-time work)', async () => {
-      userRepo.findByEmail.mockResolvedValue(null);
-      await expect(service.login('nobody@example.com', 'any')).rejects.toThrow(
-        UnauthorizedException,
-      );
-    });
-
-    it('throws UnauthorizedException for suspended user', async () => {
-      userRepo.findByEmail.mockResolvedValue({ ...user, status: 'suspended' });
-      await expect(service.login('alice@example.com', 'correct-password')).rejects.toThrow(
-        UnauthorizedException,
-      );
-    });
-
-    it('throws UnauthorizedException for deleted user', async () => {
-      userRepo.findByEmail.mockResolvedValue({ ...user, deletedAt: new Date() });
-      await expect(service.login('alice@example.com', 'correct-password')).rejects.toThrow(
-        UnauthorizedException,
-      );
-    });
-
-    it('throws UnauthorizedException for invited user', async () => {
-      userRepo.findByEmail.mockResolvedValue({ ...user, status: 'invited' });
-      await expect(service.login('alice@example.com', 'correct-password')).rejects.toThrow(
-        UnauthorizedException,
-      );
-    });
   });
 
   // ── refresh ────────────────────────────────────────────────────────────────
@@ -395,42 +312,6 @@ describe('AuthService', () => {
     });
   });
 
-  // ── changePassword ─────────────────────────────────────────────────────────
-
-  describe('changePassword', () => {
-    it('updates password hash on success', async () => {
-      const hash = await argon2.hash('old-pass', { type: argon2.argon2id });
-      userRepo.findById.mockResolvedValue(mockUser({ passwordHash: hash }));
-
-      await service.changePassword('user-1', 'old-pass', 'new-pass-secure');
-
-      expect(userRepo.updatePasswordHash).toHaveBeenCalledWith('user-1', expect.any(String));
-    });
-
-    it('throws when user not found', async () => {
-      userRepo.findById.mockResolvedValue(null);
-      await expect(service.changePassword('x', 'old', 'new')).rejects.toThrow(NotFoundException);
-    });
-
-    it('throws when no password set (OAuth account)', async () => {
-      userRepo.findById.mockResolvedValue(mockUser({ passwordHash: null }));
-      await expect(service.changePassword('user-1', 'old', 'new')).rejects.toThrow(
-        UnauthorizedException,
-      );
-    });
-
-    it('throws on wrong current password', async () => {
-      const hash = await argon2.hash('correct-pass', { type: argon2.argon2id });
-      userRepo.findById.mockResolvedValue(mockUser({ passwordHash: hash }));
-
-      await expect(service.changePassword('user-1', 'wrong-pass', 'new')).rejects.toMatchObject({
-        code: 'AUTH_INVALID_CREDENTIALS',
-        message: 'Current password is incorrect',
-        httpStatus: 412,
-      });
-    });
-  });
-
   // ── updateProfile ──────────────────────────────────────────────────────────
 
   describe('updateProfile', () => {
@@ -447,174 +328,6 @@ describe('AuthService', () => {
     it('throws NotFoundException when user not found', async () => {
       userRepo.findById.mockResolvedValue(null);
       await expect(service.updateProfile('x', {})).rejects.toThrow(NotFoundException);
-    });
-  });
-
-  // ── forgotPassword ─────────────────────────────────────────────────────────
-
-  describe('forgotPassword', () => {
-    it('creates reset token and sends email for active user', async () => {
-      const user = mockUser({ status: 'active' });
-      userRepo.findByEmail.mockResolvedValue(user);
-
-      await service.forgotPassword('alice@example.com');
-
-      expect(userRepo.createPasswordResetToken).toHaveBeenCalledWith(
-        'user-1',
-        expect.any(String),
-        expect.any(Date),
-        expect.anything(),
-      );
-      expect(emailScheduler.schedule).toHaveBeenCalledWith(
-        expect.objectContaining({
-          to: 'alice@example.com',
-          template: 'password-reset',
-          vars: expect.objectContaining({
-            resetUrl: expect.stringContaining('/reset-password?token='),
-          }),
-        }),
-        expect.anything(),
-      );
-    });
-
-    it('silently does nothing when user not found (user enumeration prevention)', async () => {
-      userRepo.findByEmail.mockResolvedValue(null);
-      await expect(service.forgotPassword('nobody@example.com')).resolves.toEqual({});
-      expect(emailScheduler.schedule).not.toHaveBeenCalled();
-    });
-
-    it('silently does nothing for deleted user', async () => {
-      userRepo.findByEmail.mockResolvedValue(mockUser({ deletedAt: new Date() }));
-      await expect(service.forgotPassword('alice@example.com')).resolves.toEqual({});
-      expect(emailScheduler.schedule).not.toHaveBeenCalled();
-    });
-
-    it('silently does nothing for non-active user', async () => {
-      userRepo.findByEmail.mockResolvedValue(mockUser({ status: 'suspended' }));
-      await expect(service.forgotPassword('alice@example.com')).resolves.toEqual({});
-      expect(emailScheduler.schedule).not.toHaveBeenCalled();
-    });
-
-    it('uses APP_BASE_URL from config to build reset URL', async () => {
-      userRepo.findByEmail.mockResolvedValue(mockUser({ status: 'active' }));
-      await service.forgotPassword('alice@example.com');
-
-      expect(emailScheduler.schedule).toHaveBeenCalledWith(
-        expect.objectContaining({
-          vars: expect.objectContaining({
-            resetUrl: expect.stringContaining('http://localhost:5173'),
-          }),
-        }),
-        expect.anything(),
-      );
-    });
-  });
-
-  // ── resetPassword ──────────────────────────────────────────────────────────
-
-  describe('resetPassword', () => {
-    const makeResetToken = () => ({
-      id: 'reset-token-id',
-      userId: 'user-1',
-      tokenHash: 'hash',
-      expiresAt: new Date(Date.now() + 3600_000),
-      usedAt: null,
-      createdAt: new Date(),
-    });
-
-    it('updates password and revokes all sessions on success', async () => {
-      userRepo.findPasswordResetToken.mockResolvedValue(makeResetToken());
-      userRepo.findById.mockResolvedValue(mockUser());
-
-      await service.resetPassword('raw-token', 'new-secure-password');
-
-      expect(userRepo.updatePasswordHash).toHaveBeenCalledWith(
-        'user-1',
-        expect.any(String),
-        expect.anything(),
-      );
-      expect(userRepo.markPasswordResetTokenUsed).toHaveBeenCalledWith(
-        'reset-token-id',
-        expect.anything(),
-      );
-      expect(sessionRepo.revokeAllForUser).toHaveBeenCalledWith('user-1', expect.anything());
-    });
-
-    it('throws when token not found', async () => {
-      userRepo.findPasswordResetToken.mockResolvedValue(null);
-      await expect(service.resetPassword('bad-token', 'new-pass')).rejects.toThrow(
-        UnauthorizedException,
-      );
-    });
-
-    it('throws when token already used', async () => {
-      userRepo.findPasswordResetToken.mockResolvedValue({
-        ...makeResetToken(),
-        usedAt: new Date(),
-      });
-      await expect(service.resetPassword('used-token', 'new-pass')).rejects.toThrow(
-        UnauthorizedException,
-      );
-    });
-
-    it('throws when token expired', async () => {
-      userRepo.findPasswordResetToken.mockResolvedValue({
-        ...makeResetToken(),
-        expiresAt: new Date(Date.now() - 1000),
-      });
-      await expect(service.resetPassword('expired-token', 'new-pass')).rejects.toThrow(
-        UnauthorizedException,
-      );
-    });
-  });
-
-  // ── membership resolution (login) ──────────────────────────────────────────
-
-  describe('login membership resolution', () => {
-    let user: User;
-
-    beforeEach(async () => {
-      const hash = await argon2.hash('correct-password', { type: argon2.argon2id });
-      user = mockUser({ passwordHash: hash });
-      userRepo.findByEmail.mockResolvedValue(user);
-    });
-
-    it('binds the session to the most-recently-active workspace', async () => {
-      workspaceService.getMemberships.mockResolvedValue([
-        {
-          workspaceId: 'workspace-recent',
-          name: 'Recent',
-          slug: 'recent',
-          lastActiveAt: new Date(),
-          roleSlug: 'workspace_admin',
-          roleName: 'Workspace Admin',
-        },
-        {
-          workspaceId: 'workspace-old',
-          name: 'Old',
-          slug: 'old',
-          lastActiveAt: null,
-          roleSlug: 'member',
-          roleName: 'Member',
-        },
-      ]);
-
-      await service.login('alice@example.com', 'correct-password');
-
-      expect(sessionRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ workspaceId: 'workspace-recent' }),
-        expect.anything(),
-      );
-      expect(workspaceService.touchMembership).toHaveBeenCalledWith(user.id, 'workspace-recent');
-    });
-
-    it('throws ACCOUNT_DEACTIVATED when the user has no active membership', async () => {
-      workspaceService.getMemberships.mockResolvedValue([]);
-
-      await expect(service.login('alice@example.com', 'correct-password')).rejects.toThrow(
-        UnauthorizedException,
-      );
-      expect(sessionRepo.create).not.toHaveBeenCalled();
     });
   });
 
@@ -666,15 +379,6 @@ describe('AuthService', () => {
         UnauthorizedException,
       );
       expect(sessionRepo.create).not.toHaveBeenCalled();
-    });
-  });
-
-  // ── hashPassword (static) ──────────────────────────────────────────────────
-
-  describe('hashPassword', () => {
-    it('produces a valid argon2id hash', async () => {
-      const hash = await AuthService.hashPassword('secret');
-      expect(await argon2.verify(hash, 'secret')).toBe(true);
     });
   });
 });

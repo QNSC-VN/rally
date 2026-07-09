@@ -1,41 +1,6 @@
 import { useState } from 'react'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { z } from 'zod'
-import { Link, useNavigate, useSearch } from '@tanstack/react-router'
-import {
-  Layers,
-  ShieldCheck,
-  Check,
-  Mail,
-  LockKeyhole,
-  Eye,
-  EyeOff,
-  AlertCircle,
-  ChevronDown,
-  ChevronUp,
-} from 'lucide-react'
-import { toast } from 'sonner'
-import { useAuthStore } from '@/shared/lib/stores/auth.store'
-import { scheduleProactiveRefresh, setAccessToken } from '@/shared/api/http-client'
-import { ENV, isSsoConfigured } from '@/shared/config/env'
-
-const schema = z.object({
-  email: z.string().email('Enter a valid email address'),
-  password: z.string().min(1, 'Password is required'),
-})
-
-type LoginForm = z.infer<typeof schema>
-
-const API = ENV.API_BASE_URL
-
-/** Guard against open-redirect: only allow same-origin relative paths. */
-function safeReturnTo(raw: string | undefined): string {
-  if (!raw) return '/'
-  const decoded = decodeURIComponent(raw)
-  if (!decoded.startsWith('/') || decoded.startsWith('//')) return '/'
-  return decoded
-}
+import { Layers, ShieldCheck, Check, AlertCircle } from 'lucide-react'
+import { isSsoConfigured } from '@/shared/config/env'
 
 // ── Microsoft logo SVG (official 4-square mark) ────────────────────────────
 function MicrosoftLogo() {
@@ -56,24 +21,8 @@ function MicrosoftLogo() {
 }
 
 export function LoginPage() {
-  const [showPassword, setShowPassword] = useState(false)
-  const [showEmailForm, setShowEmailForm] = useState(!isSsoConfigured)
   const [ssoLoading, setSsoLoading] = useState(false)
   const [ssoError, setSsoError] = useState<string | null>(null)
-  const { setUser } = useAuthStore()
-  const navigate = useNavigate()
-  const search = useSearch({ strict: false }) as Record<string, string | undefined>
-  const returnTo = safeReturnTo(search.returnTo)
-
-  const {
-    register,
-    handleSubmit,
-    setError,
-    formState: { errors, isSubmitting },
-  } = useForm<LoginForm>({
-    resolver: zodResolver(schema),
-    defaultValues: { email: '', password: '' },
-  })
 
   // ── SSO handler ───────────────────────────────────────────────────────────
   async function handleSsoLogin() {
@@ -87,100 +36,6 @@ export function LoginPage() {
     } catch {
       setSsoError('Could not initiate sign-in. Please try again.')
       setSsoLoading(false)
-    }
-  }
-
-  async function onSubmit(data: LoginForm) {
-    try {
-      const res = await fetch(`${API}/v1/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        referrerPolicy: 'no-referrer',
-        body: JSON.stringify({ email: data.email, password: data.password, rememberMe: false }),
-      })
-
-      if (res.status === 401 || res.status === 403) {
-        setError('root', { message: 'Email or password is incorrect.' })
-        return
-      }
-
-      if (res.status === 429) {
-        setError('root', {
-          message: 'Too many login attempts. Please wait a moment and try again.',
-        })
-        return
-      }
-
-      if (!res.ok) {
-        setError('root', { message: 'An error occurred. Please try again.' })
-        return
-      }
-
-      const body = (await res.json()) as {
-        accessToken: string
-        expiresIn: number
-        user: {
-          id: string
-          email: string
-          displayName: string
-          avatarUrl?: string | null
-          locale: string
-          timezone: string
-        }
-        memberships: {
-          workspaceId: string
-          name: string
-          slug: string
-          lastActiveAt: string | null
-          roleSlug: string | null
-          roleName: string | null
-        }[]
-      }
-
-      setAccessToken(body.accessToken)
-      scheduleProactiveRefresh(body.expiresIn)
-
-      const meRes = await fetch(`${API}/v1/auth/me`, {
-        credentials: 'include',
-        referrerPolicy: 'no-referrer',
-        headers: { Authorization: `Bearer ${body.accessToken}` },
-      })
-      const fullUser = meRes.ok
-        ? ((await meRes.json()) as {
-            id: string
-            email: string
-            displayName: string
-            avatarUrl?: string | null
-            locale: string
-            timezone: string
-            role: string
-            permissions: string[]
-            emailVerified: boolean
-            createdAt: string
-            updatedAt: string
-            memberships: typeof body.memberships
-          })
-        : {
-            ...body.user,
-            role: '',
-            permissions: [],
-            emailVerified: false,
-            createdAt: '',
-            updatedAt: '',
-            memberships: body.memberships,
-          }
-
-      setUser(
-        { ...fullUser, permissions: fullUser.permissions ?? [] },
-        body.accessToken,
-        fullUser.memberships ?? body.memberships,
-      )
-      scheduleProactiveRefresh(body.expiresIn)
-      toast.success(`Welcome back, ${body.user.displayName}`)
-      await navigate({ to: returnTo as '/' })
-    } catch {
-      setError('root', { message: 'Network error — check your connection.' })
     }
   }
 
@@ -324,8 +179,8 @@ export function LoginPage() {
             </div>
 
             <div className="px-7 py-6">
-              {/* ── SSO section ──────────────────────────────────────────── */}
-              {isSsoConfigured && (
+              {/* ── SSO sign-in ──────────────────────────────────────────── */}
+              {isSsoConfigured ? (
                 <>
                   {ssoError && (
                     <div
@@ -371,141 +226,11 @@ export function LoginPage() {
                     )}
                     {ssoLoading ? 'Redirecting to Microsoft…' : 'Sign in with Microsoft'}
                   </button>
-
-                  <div className="my-5 flex items-center gap-3">
-                    <div className="h-px flex-1" style={{ backgroundColor: '#edf0f4' }} />
-                    <span
-                      className="text-[10px] font-medium tracking-widest uppercase"
-                      style={{ color: '#b0b8cc' }}
-                    >
-                      or
-                    </span>
-                    <div className="h-px flex-1" style={{ backgroundColor: '#edf0f4' }} />
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setShowEmailForm((v) => !v)}
-                    className="flex w-full items-center justify-between rounded px-3 py-2 text-[11px] font-medium transition-colors"
-                    style={{ color: '#5c6478', backgroundColor: '#f8f9fb' }}
-                  >
-                    <span>Sign in with email &amp; password</span>
-                    {showEmailForm ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                  </button>
                 </>
-              )}
-
-              {/* ── Email / password form ─────────────────────────────────── */}
-              {showEmailForm && (
-                <form
-                  onSubmit={handleSubmit(onSubmit)}
-                  className={isSsoConfigured ? 'mt-4' : ''}
-                  noValidate
-                >
-                  {errors.root && (
-                    <div
-                      role="alert"
-                      className="mb-4 flex items-start gap-2 rounded px-3 py-2.5 text-[11px]"
-                      style={{
-                        color: '#b91c1c',
-                        backgroundColor: '#fef2f2',
-                        border: '1px solid #f0c7c1',
-                      }}
-                    >
-                      <AlertCircle size={14} className="mt-px shrink-0" />
-                      {errors.root.message}
-                    </div>
-                  )}
-
-                  <label
-                    className="mb-1.5 block text-[10px] font-semibold tracking-widest uppercase"
-                    style={{ color: '#5c6478' }}
-                    htmlFor="email"
-                  >
-                    Email address
-                  </label>
-                  <div className="relative mb-1">
-                    <Mail
-                      size={14}
-                      className="absolute top-1/2 left-3 -translate-y-1/2"
-                      style={{ color: '#8c94a6' }}
-                    />
-                    <input
-                      id="email"
-                      type="email"
-                      autoComplete="username"
-                      {...register('email')}
-                      className="w-full rounded py-2.5 pr-3 pl-9 text-[12px] focus:ring-2 focus:outline-none"
-                      style={{
-                        border: errors.email ? '1px solid #e2534a' : '1px solid #d9dee7',
-                        color: '#1a2234',
-                      }}
-                    />
-                  </div>
-                  {errors.email && (
-                    <p className="mb-3 text-[11px]" style={{ color: '#b91c1c' }}>
-                      {errors.email.message}
-                    </p>
-                  )}
-
-                  <div className="mt-4 mb-1.5 flex items-center justify-between">
-                    <label
-                      className="text-[10px] font-semibold tracking-widest uppercase"
-                      style={{ color: '#5c6478' }}
-                      htmlFor="password"
-                    >
-                      Password
-                    </label>
-                    <Link
-                      to="/forgot-password"
-                      className="text-[10px] font-medium"
-                      style={{ color: '#2558a6' }}
-                    >
-                      Forgot password?
-                    </Link>
-                  </div>
-                  <div className="relative mb-1">
-                    <LockKeyhole
-                      size={14}
-                      className="absolute top-1/2 left-3 -translate-y-1/2"
-                      style={{ color: '#8c94a6' }}
-                    />
-                    <input
-                      id="password"
-                      type={showPassword ? 'text' : 'password'}
-                      autoComplete="current-password"
-                      {...register('password')}
-                      className="w-full rounded py-2.5 pr-10 pl-9 text-[12px] focus:ring-2 focus:outline-none"
-                      style={{
-                        border: errors.password ? '1px solid #e2534a' : '1px solid #d9dee7',
-                        color: '#1a2234',
-                      }}
-                    />
-                    <button
-                      type="button"
-                      aria-label={showPassword ? 'Hide password' : 'Show password'}
-                      onClick={() => setShowPassword((v) => !v)}
-                      className="absolute top-1/2 right-2.5 -translate-y-1/2 p-1"
-                      style={{ color: '#8c94a6' }}
-                    >
-                      {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
-                    </button>
-                  </div>
-                  {errors.password && (
-                    <p className="mb-3 text-[11px]" style={{ color: '#b91c1c' }}>
-                      {errors.password.message}
-                    </p>
-                  )}
-
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="mt-5 w-full rounded py-2.5 text-[13px] font-semibold text-white transition-opacity disabled:opacity-60"
-                    style={{ backgroundColor: '#1d3f73' }}
-                  >
-                    {isSubmitting ? 'Signing in…' : 'Sign in'}
-                  </button>
-                </form>
+              ) : (
+                <p className="text-[12px]" style={{ color: '#5c6478' }}>
+                  Single sign-on is not configured for this environment. Contact your administrator.
+                </p>
               )}
             </div>
           </div>

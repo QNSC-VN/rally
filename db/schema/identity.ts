@@ -27,7 +27,6 @@ export const users = identitySchema.table(
     email: varchar('email', { length: 320 }).notNull(),
     displayName: varchar('display_name', { length: 255 }).notNull(),
     avatarUrl: varchar('avatar_url', { length: 2048 }),
-    passwordHash: text('password_hash'),
     status: userStatusEnum('status').notNull().default('active'),
     emailVerified: boolean('email_verified').notNull().default(false),
     mfaEnabled: boolean('mfa_enabled').notNull().default(false),
@@ -145,23 +144,5 @@ export const ssoConnections = identitySchema.table(
       t.provider,
       t.externalTenantId,
     ),
-  }),
-);
-
-// ── password_reset_tokens ────────────────────────────────────────────────
-
-export const passwordResetTokens = identitySchema.table(
-  'password_reset_tokens',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    userId: uuid('user_id').notNull(),
-    tokenHash: text('token_hash').notNull(),
-    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-    usedAt: timestamp('used_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    tokenHashIdx: uniqueIndex('uq_prt_token_hash').on(t.tokenHash),
-    userIdx: index('ix_prt_user').on(t.userId),
   }),
 );
