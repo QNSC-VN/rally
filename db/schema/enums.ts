@@ -15,26 +15,12 @@ export const userStatusEnum = pgEnum('user_status', ['invited', 'active', 'inact
 /** External SSO/IdP providers supported for federated login. */
 export const ssoProviderEnum = pgEnum('sso_provider', ['entra', 'saml', 'google', 'okta']);
 
-/** Lifecycle state of a tenant's SSO connection. */
+/** Lifecycle state of an SSO connection. */
 export const ssoConnectionStatusEnum = pgEnum('sso_connection_status', ['active', 'disabled']);
 
 // ── tenancy ────────────────────────────────────────────────────────────────
 
-export const tenantStatusEnum = pgEnum('tenant_status', ['active', 'suspended', 'deleted']);
-
-export const subscriptionPlanEnum = pgEnum('subscription_plan', [
-  'free',
-  'starter',
-  'pro',
-  'enterprise',
-]);
-
-export const subscriptionStatusEnum = pgEnum('subscription_status', [
-  'active',
-  'trialing',
-  'past_due',
-  'canceled',
-]);
+export const workspaceStatusEnum = pgEnum('workspace_status', ['active', 'archived']);
 
 export const workspaceMemberStatusEnum = pgEnum('workspace_member_status', [
   'active',
@@ -135,9 +121,7 @@ export const notificationJobStatusEnum = pgEnum('notification_job_status', [
 // ── TypeScript types (derived — never drift from DB) ──────────────────────
 
 export type UserStatus = (typeof userStatusEnum.enumValues)[number];
-export type TenantStatus = (typeof tenantStatusEnum.enumValues)[number];
-export type SubscriptionPlan = (typeof subscriptionPlanEnum.enumValues)[number];
-export type SubscriptionStatus = (typeof subscriptionStatusEnum.enumValues)[number];
+export type WorkspaceStatus = (typeof workspaceStatusEnum.enumValues)[number];
 export type WorkspaceMemberStatus = (typeof workspaceMemberStatusEnum.enumValues)[number];
 export type InvitationStatus = (typeof invitationStatusEnum.enumValues)[number];
 export type TeamStatus = (typeof teamStatusEnum.enumValues)[number];

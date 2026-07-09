@@ -10,7 +10,7 @@ export const auditLogs = auditSchema.table(
   'audit_logs',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    tenantId: uuid('tenant_id').notNull(),
+    workspaceId: uuid('workspace_id').notNull(),
     actorId: uuid('actor_id'), // null = system action
     actorEmail: varchar('actor_email', { length: 255 }),
     action: varchar('action', { length: 100 }).notNull(), // e.g. 'work_item.created'
@@ -28,8 +28,8 @@ export const auditLogs = auditSchema.table(
     sourceEventId: uuid('source_event_id'),
   },
   (t) => ({
-    tenantIdx: index('ix_audit_tenant').on(t.tenantId, t.occurredAt),
-    actorIdx: index('ix_audit_actor').on(t.tenantId, t.actorId),
+    workspaceIdx: index('ix_audit_workspace').on(t.workspaceId, t.occurredAt),
+    actorIdx: index('ix_audit_actor').on(t.workspaceId, t.actorId),
     resourceIdx: index('ix_audit_resource').on(t.resourceType, t.resourceId),
     projectIdx: index('ix_audit_project').on(t.projectId, t.occurredAt),
     // Partial-equivalent: Postgres allows multiple NULLs in a unique index,

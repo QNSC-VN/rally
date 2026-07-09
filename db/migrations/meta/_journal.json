@@ -176,6 +176,20 @@
       "when": 1783000002000,
       "tag": "0024_auth_session_csrf_token",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1783000003000,
+      "tag": "0025_drop_rls_tenant_isolation",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1783000004000,
+      "tag": "0026_drop_tenancy_merge_workspace",
+      "breakpoints": true
     }
   ]
 }

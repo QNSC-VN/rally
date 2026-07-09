@@ -21,7 +21,7 @@ export const systemRoles = accessSchema.table(
   'system_roles',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    tenantId: uuid('tenant_id'), // NULL = global system role
+    workspaceId: uuid('workspace_id'), // NULL = global system role
     name: varchar('name', { length: 100 }).notNull(),
     slug: varchar('slug', { length: 100 }).notNull(),
     description: text('description'),
@@ -31,7 +31,7 @@ export const systemRoles = accessSchema.table(
   },
   (t) => ({
     slugIdx: uniqueIndex('uq_system_roles_slug').on(t.slug),
-    tenantIdx: index('ix_system_roles_tenant').on(t.tenantId),
+    workspaceIdx: index('ix_system_roles_workspace').on(t.workspaceId),
   }),
 );
 
@@ -39,7 +39,7 @@ export const userRoleAssignments = accessSchema.table(
   'user_role_assignments',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    tenantId: uuid('tenant_id').notNull(),
+    workspaceId: uuid('workspace_id').notNull(),
     userId: uuid('user_id').notNull(),
     roleId: uuid('role_id').notNull(),
     scopeType: scopeTypeEnum('scope_type').notNull(),
@@ -48,7 +48,7 @@ export const userRoleAssignments = accessSchema.table(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    tenantIdx: index('ix_ura_tenant').on(t.tenantId),
+    workspaceIdx: index('ix_ura_workspace').on(t.workspaceId),
     userIdx: index('ix_ura_user').on(t.userId),
     uniqueAssignment: uniqueIndex('uq_ura_user_role_scope').on(
       t.userId,
