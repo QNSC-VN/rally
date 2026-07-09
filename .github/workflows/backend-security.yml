@@ -45,7 +45,7 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
         with:
           fetch-depth: 0
 
@@ -67,10 +67,10 @@ jobs:
       pull-requests: read
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
 
       - name: Review dependency changes
-        uses: actions/dependency-review-action@v4
+        uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48  # v4
         with:
           fail-on-severity: critical
 
@@ -88,12 +88,12 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
 
-      - uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4
 
       - name: Build API image for scanning
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a  # v7
         with:
           context: .
           target: api
@@ -105,7 +105,7 @@ jobs:
       # Two-pass scan: CRITICAL blocks the build; HIGH is reported only.
       # ignore-unfixed: true — skip CVEs with no upstream fix (supply chain noise).
       - name: Scan image (CRITICAL — blocks build)
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           image-ref: rally-api:scan
           format: table
@@ -114,7 +114,7 @@ jobs:
           ignore-unfixed: true
 
       - name: Scan image (HIGH — report only)
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           image-ref: rally-api:scan
           format: sarif
@@ -126,7 +126,7 @@ jobs:
       - name: Upload Trivy SARIF to GitHub Security
         if: always() # upload even if scan failed
         continue-on-error: true # requires GitHub Advanced Security (free plan: no-op)
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@99df26d4f13ea111d4ec1a7dddef6063f76b97e9  # v4
         with:
           sarif_file: trivy-results.sarif
           category: trivy-container
@@ -146,10 +146,10 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
 
       - name: Initialise CodeQL
-        uses: github/codeql-action/init@v4
+        uses: github/codeql-action/init@99df26d4f13ea111d4ec1a7dddef6063f76b97e9  # v4
         with:
           languages: javascript-typescript
           queries: security-and-quality
@@ -164,6 +164,6 @@ jobs:
 
       - name: Perform CodeQL analysis
         continue-on-error: true # requires GitHub Advanced Security (free plan: no-op)
-        uses: github/codeql-action/analyze@v4
+        uses: github/codeql-action/analyze@99df26d4f13ea111d4ec1a7dddef6063f76b97e9  # v4
         with:
           category: codeql-typescript
