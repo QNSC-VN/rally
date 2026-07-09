@@ -23,10 +23,24 @@ import * as argon2 from 'argon2';
 import { and, eq, sql } from 'drizzle-orm';
 import * as schema from '../schema';
 // Direct imports to avoid barrel tsx/CJS resolution edge cases at runtime.
-import { projectCounters, projectMembers, projectTeams, workItems, iterations, releases, teams, teamMembers } from '../schema/work';
+import {
+  projectCounters,
+  projectMembers,
+  projectTeams,
+  workItems,
+  iterations,
+  releases,
+  teams,
+  teamMembers,
+} from '../schema/work';
 import { userRoleAssignments } from '../schema/access';
 import { ssoConnections } from '../schema/identity';
-import { ROLE_PERMISSIONS, ROLE_NAMES, SYSTEM_ROLE, type SystemRoleSlug } from '../permissions.catalog';
+import {
+  ROLE_PERMISSIONS,
+  ROLE_NAMES,
+  SYSTEM_ROLE,
+  type SystemRoleSlug,
+} from '../permissions.catalog';
 // Inlined from libs/modules/projects/src/domain/project.constants.ts
 // so the migrator Docker image (which doesn't include libs/) can run this seed.
 const DEFAULT_WORKFLOW_STATUSES = [
@@ -64,25 +78,25 @@ const NXP_STORY_2_ID = '00000000-0000-7000-8000-000000000031';
 const MOB_STORY_1_ID = '00000000-0000-7000-8000-000000000032';
 
 // ── Phase 2 fixed IDs ────────────────────────────────────────────────────────
-const TEAM_ALPHA_ID  = '00000000-0000-7000-8000-000000000040';
-const TEAM_BETA_ID   = '00000000-0000-7000-8000-000000000041';
+const TEAM_ALPHA_ID = '00000000-0000-7000-8000-000000000040';
+const TEAM_BETA_ID = '00000000-0000-7000-8000-000000000041';
 
 // NXP releases
 const NXP_RELEASE_1_ID = '00000000-0000-7000-8000-000000000050';
 const NXP_RELEASE_2_ID = '00000000-0000-7000-8000-000000000051';
 
 // NXP iterations (Sprint 26.1 = committed, Sprint 26.2 = planning, Sprint 25.4 = accepted)
-const NXP_ITER_PREV_ID    = '00000000-0000-7000-8000-000000000060'; // accepted
+const NXP_ITER_PREV_ID = '00000000-0000-7000-8000-000000000060'; // accepted
 const NXP_ITER_CURRENT_ID = '00000000-0000-7000-8000-000000000061'; // committed ← active
-const NXP_ITER_NEXT_ID    = '00000000-0000-7000-8000-000000000062'; // planning
+const NXP_ITER_NEXT_ID = '00000000-0000-7000-8000-000000000062'; // planning
 
 // MOB iterations
 const MOB_ITER_CURRENT_ID = '00000000-0000-7000-8000-000000000063'; // committed
 
 // Additional NXP work items with richer data
-const NXP_STORY_7_ID  = '00000000-0000-7000-8000-000000000070';
-const NXP_STORY_8_ID  = '00000000-0000-7000-8000-000000000071';
-const NXP_STORY_9_ID  = '00000000-0000-7000-8000-000000000072';
+const NXP_STORY_7_ID = '00000000-0000-7000-8000-000000000070';
+const NXP_STORY_8_ID = '00000000-0000-7000-8000-000000000071';
+const NXP_STORY_9_ID = '00000000-0000-7000-8000-000000000072';
 const NXP_STORY_10_ID = '00000000-0000-7000-8000-000000000073';
 const NXP_DEFECT_11_ID = '00000000-0000-7000-8000-000000000074';
 
@@ -400,34 +414,64 @@ async function seedWorkItems() {
 
 // ── Phase 2: Teams ───────────────────────────────────────────────────────────
 async function seedTeams() {
-  await db.insert(teams).values([
-    {
-      id: TEAM_ALPHA_ID,
-      workspaceId: WORKSPACE_ID,
-      name: 'Team Alpha',
-      key: 'ALPHA',
-      description: 'Core platform team — owns NX Platform and DevOps projects.',
-      leadId: ADMIN_USER_ID,
-      status: 'active',
-    },
-    {
-      id: TEAM_BETA_ID,
-      workspaceId: WORKSPACE_ID,
-      name: 'Team Beta',
-      key: 'BETA',
-      description: 'Product team — owns Mobile App and Partner Portal.',
-      leadId: DEVELOPER_ID,
-      status: 'active',
-    },
-  ]).onConflictDoNothing();
+  await db
+    .insert(teams)
+    .values([
+      {
+        id: TEAM_ALPHA_ID,
+        workspaceId: WORKSPACE_ID,
+        name: 'Team Alpha',
+        key: 'ALPHA',
+        description: 'Core platform team — owns NX Platform and DevOps projects.',
+        leadId: ADMIN_USER_ID,
+        status: 'active',
+      },
+      {
+        id: TEAM_BETA_ID,
+        workspaceId: WORKSPACE_ID,
+        name: 'Team Beta',
+        key: 'BETA',
+        description: 'Product team — owns Mobile App and Partner Portal.',
+        leadId: DEVELOPER_ID,
+        status: 'active',
+      },
+    ])
+    .onConflictDoNothing();
 
   // Team members
-  await db.insert(teamMembers).values([
-    { id: '00000000-0000-7000-8000-000000000080', workspaceId: WORKSPACE_ID, teamId: TEAM_ALPHA_ID, userId: ADMIN_USER_ID, status: 'active' },
-    { id: '00000000-0000-7000-8000-000000000081', workspaceId: WORKSPACE_ID, teamId: TEAM_ALPHA_ID, userId: DEVELOPER_ID, status: 'active' },
-    { id: '00000000-0000-7000-8000-000000000082', workspaceId: WORKSPACE_ID, teamId: TEAM_BETA_ID, userId: DEVELOPER_ID, status: 'active' },
-    { id: '00000000-0000-7000-8000-000000000083', workspaceId: WORKSPACE_ID, teamId: TEAM_BETA_ID, userId: VIEWER_ID, status: 'active' },
-  ]).onConflictDoNothing();
+  await db
+    .insert(teamMembers)
+    .values([
+      {
+        id: '00000000-0000-7000-8000-000000000080',
+        workspaceId: WORKSPACE_ID,
+        teamId: TEAM_ALPHA_ID,
+        userId: ADMIN_USER_ID,
+        status: 'active',
+      },
+      {
+        id: '00000000-0000-7000-8000-000000000081',
+        workspaceId: WORKSPACE_ID,
+        teamId: TEAM_ALPHA_ID,
+        userId: DEVELOPER_ID,
+        status: 'active',
+      },
+      {
+        id: '00000000-0000-7000-8000-000000000082',
+        workspaceId: WORKSPACE_ID,
+        teamId: TEAM_BETA_ID,
+        userId: DEVELOPER_ID,
+        status: 'active',
+      },
+      {
+        id: '00000000-0000-7000-8000-000000000083',
+        workspaceId: WORKSPACE_ID,
+        teamId: TEAM_BETA_ID,
+        userId: VIEWER_ID,
+        status: 'active',
+      },
+    ])
+    .onConflictDoNothing();
 
   // Link teams to their projects (project_teams). Iterations carry a team_id and
   // creating a work item into an iteration validates the team is linked to the
@@ -437,12 +481,39 @@ async function seedTeams() {
   const MOB = SEED_PROJECTS[1].id; // Mobile App
   const OPS = SEED_PROJECTS[2].id; // DevOps & Infrastructure
   const PRT = SEED_PROJECTS[4].id; // Partner Portal
-  await db.insert(projectTeams).values([
-    { id: '00000000-0000-7000-8000-000000000090', workspaceId: WORKSPACE_ID, projectId: NXP, teamId: TEAM_ALPHA_ID, status: 'active' },
-    { id: '00000000-0000-7000-8000-000000000091', workspaceId: WORKSPACE_ID, projectId: OPS, teamId: TEAM_ALPHA_ID, status: 'active' },
-    { id: '00000000-0000-7000-8000-000000000092', workspaceId: WORKSPACE_ID, projectId: MOB, teamId: TEAM_BETA_ID, status: 'active' },
-    { id: '00000000-0000-7000-8000-000000000093', workspaceId: WORKSPACE_ID, projectId: PRT, teamId: TEAM_BETA_ID, status: 'active' },
-  ]).onConflictDoNothing();
+  await db
+    .insert(projectTeams)
+    .values([
+      {
+        id: '00000000-0000-7000-8000-000000000090',
+        workspaceId: WORKSPACE_ID,
+        projectId: NXP,
+        teamId: TEAM_ALPHA_ID,
+        status: 'active',
+      },
+      {
+        id: '00000000-0000-7000-8000-000000000091',
+        workspaceId: WORKSPACE_ID,
+        projectId: OPS,
+        teamId: TEAM_ALPHA_ID,
+        status: 'active',
+      },
+      {
+        id: '00000000-0000-7000-8000-000000000092',
+        workspaceId: WORKSPACE_ID,
+        projectId: MOB,
+        teamId: TEAM_BETA_ID,
+        status: 'active',
+      },
+      {
+        id: '00000000-0000-7000-8000-000000000093',
+        workspaceId: WORKSPACE_ID,
+        projectId: PRT,
+        teamId: TEAM_BETA_ID,
+        status: 'active',
+      },
+    ])
+    .onConflictDoNothing();
 
   console.log('✅  Teams seeded');
 }
@@ -452,37 +523,40 @@ async function seedReleases() {
   const nxpId = SEED_PROJECTS[0].id;
   const mobId = SEED_PROJECTS[1].id;
 
-  await db.insert(releases).values([
-    // NXP releases
-    {
-      id: NXP_RELEASE_1_ID,
-      workspaceId: WORKSPACE_ID,
-      projectId: nxpId,
-      name: 'v2.0 — NX Platform Upgrade',
-      description: 'Major upgrade to NX v21 + ESLint flat-config rollout.',
-      status: 'planned',
-      targetDate: '2026-07-31',
-    },
-    {
-      id: NXP_RELEASE_2_ID,
-      workspaceId: WORKSPACE_ID,
-      projectId: nxpId,
-      name: 'v2.1 — Storybook & DX',
-      description: 'Storybook 8 integration and developer experience improvements.',
-      status: 'planned',
-      targetDate: '2026-08-31',
-    },
-    // MOB release
-    {
-      id: '00000000-0000-7000-8000-000000000052',
-      workspaceId: WORKSPACE_ID,
-      projectId: mobId,
-      name: 'v1.5 — Auth & Accessibility',
-      description: 'Biometric auth, dark mode, and accessibility fixes.',
-      status: 'planned',
-      targetDate: '2026-08-15',
-    },
-  ]).onConflictDoNothing();
+  await db
+    .insert(releases)
+    .values([
+      // NXP releases
+      {
+        id: NXP_RELEASE_1_ID,
+        workspaceId: WORKSPACE_ID,
+        projectId: nxpId,
+        name: 'v2.0 — NX Platform Upgrade',
+        description: 'Major upgrade to NX v21 + ESLint flat-config rollout.',
+        status: 'planned',
+        targetDate: '2026-07-31',
+      },
+      {
+        id: NXP_RELEASE_2_ID,
+        workspaceId: WORKSPACE_ID,
+        projectId: nxpId,
+        name: 'v2.1 — Storybook & DX',
+        description: 'Storybook 8 integration and developer experience improvements.',
+        status: 'planned',
+        targetDate: '2026-08-31',
+      },
+      // MOB release
+      {
+        id: '00000000-0000-7000-8000-000000000052',
+        workspaceId: WORKSPACE_ID,
+        projectId: mobId,
+        name: 'v1.5 — Auth & Accessibility',
+        description: 'Biometric auth, dark mode, and accessibility fixes.',
+        status: 'planned',
+        targetDate: '2026-08-15',
+      },
+    ])
+    .onConflictDoNothing();
 
   console.log('✅  Releases seeded');
 }
@@ -492,66 +566,69 @@ async function seedIterations() {
   const nxpId = SEED_PROJECTS[0].id;
   const mobId = SEED_PROJECTS[1].id;
 
-  await db.insert(iterations).values([
-    // ── NXP iterations (3 sprints — past / current / next) ──────────────────
-    {
-      id: NXP_ITER_PREV_ID,
-      workspaceId: WORKSPACE_ID,
-      projectId: nxpId,
-      teamId: TEAM_ALPHA_ID,
-      iterationKey: 'IT-1',
-      name: 'Sprint 25.4',
-      goal: 'Complete legacy migration phase 1 and stabilise CI pipeline.',
-      theme: 'Stability & Foundation',
-      state: 'accepted',
-      plannedVelocity: 20,
-      startDate: '2026-06-02',
-      endDate: '2026-06-13',
-    },
-    {
-      id: NXP_ITER_CURRENT_ID,
-      workspaceId: WORKSPACE_ID,
-      projectId: nxpId,
-      teamId: TEAM_ALPHA_ID,
-      iterationKey: 'IT-2',
-      name: 'Sprint 26.1',
-      goal: 'Ship NX v21 upgrade and ESLint flat-config across all apps.',
-      theme: 'NX Platform Modernisation',
-      notes: 'Carry-over: NXP-5 validation task still in-progress from last sprint.',
-      state: 'committed',
-      plannedVelocity: 21,
-      startDate: '2026-06-16',
-      endDate: '2026-06-27',
-    },
-    {
-      id: NXP_ITER_NEXT_ID,
-      workspaceId: WORKSPACE_ID,
-      projectId: nxpId,
-      teamId: TEAM_ALPHA_ID,
-      iterationKey: 'IT-3',
-      name: 'Sprint 26.2',
-      goal: 'Storybook 8 integration and shared component library documentation.',
-      theme: 'Developer Experience',
-      state: 'planning',
-      plannedVelocity: 18,
-      startDate: '2026-06-30',
-      endDate: '2026-07-11',
-    },
-    // ── MOB iteration (current sprint) ──────────────────────────────────────
-    {
-      id: MOB_ITER_CURRENT_ID,
-      workspaceId: WORKSPACE_ID,
-      projectId: mobId,
-      teamId: TEAM_BETA_ID,
-      iterationKey: 'IT-1',
-      name: 'Sprint 26.1',
-      goal: 'Biometric auth + dark mode groundwork.',
-      state: 'committed',
-      plannedVelocity: 13,
-      startDate: '2026-06-16',
-      endDate: '2026-06-27',
-    },
-  ]).onConflictDoNothing();
+  await db
+    .insert(iterations)
+    .values([
+      // ── NXP iterations (3 sprints — past / current / next) ──────────────────
+      {
+        id: NXP_ITER_PREV_ID,
+        workspaceId: WORKSPACE_ID,
+        projectId: nxpId,
+        teamId: TEAM_ALPHA_ID,
+        iterationKey: 'IT-1',
+        name: 'Sprint 25.4',
+        goal: 'Complete legacy migration phase 1 and stabilise CI pipeline.',
+        theme: 'Stability & Foundation',
+        state: 'accepted',
+        plannedVelocity: 20,
+        startDate: '2026-06-02',
+        endDate: '2026-06-13',
+      },
+      {
+        id: NXP_ITER_CURRENT_ID,
+        workspaceId: WORKSPACE_ID,
+        projectId: nxpId,
+        teamId: TEAM_ALPHA_ID,
+        iterationKey: 'IT-2',
+        name: 'Sprint 26.1',
+        goal: 'Ship NX v21 upgrade and ESLint flat-config across all apps.',
+        theme: 'NX Platform Modernisation',
+        notes: 'Carry-over: NXP-5 validation task still in-progress from last sprint.',
+        state: 'committed',
+        plannedVelocity: 21,
+        startDate: '2026-06-16',
+        endDate: '2026-06-27',
+      },
+      {
+        id: NXP_ITER_NEXT_ID,
+        workspaceId: WORKSPACE_ID,
+        projectId: nxpId,
+        teamId: TEAM_ALPHA_ID,
+        iterationKey: 'IT-3',
+        name: 'Sprint 26.2',
+        goal: 'Storybook 8 integration and shared component library documentation.',
+        theme: 'Developer Experience',
+        state: 'planning',
+        plannedVelocity: 18,
+        startDate: '2026-06-30',
+        endDate: '2026-07-11',
+      },
+      // ── MOB iteration (current sprint) ──────────────────────────────────────
+      {
+        id: MOB_ITER_CURRENT_ID,
+        workspaceId: WORKSPACE_ID,
+        projectId: mobId,
+        teamId: TEAM_BETA_ID,
+        iterationKey: 'IT-1',
+        name: 'Sprint 26.1',
+        goal: 'Biometric auth + dark mode groundwork.',
+        state: 'committed',
+        plannedVelocity: 13,
+        startDate: '2026-06-16',
+        endDate: '2026-06-27',
+      },
+    ])
+    .onConflictDoNothing();
 
   console.log('✅  Iterations seeded');
 }
@@ -675,17 +752,21 @@ async function seedExtendedWorkItems() {
   ];
 
   for (const item of nxpExtended) {
-    await db.insert(workItems).values({
-      ...item,
-      workspaceId: WORKSPACE_ID,
-      projectId: nxpId,
-      createdBy: ADMIN_USER_ID,
-      rank: item.itemKey,
-    }).onConflictDoNothing();
+    await db
+      .insert(workItems)
+      .values({
+        ...item,
+        workspaceId: WORKSPACE_ID,
+        projectId: nxpId,
+        createdBy: ADMIN_USER_ID,
+        rank: item.itemKey,
+      })
+      .onConflictDoNothing();
   }
 
   // Update counter — use GREATEST so re-running seed never regresses below existing keys
-  await db.update(projectCounters)
+  await db
+    .update(projectCounters)
     .set({ lastItemNumber: sql`GREATEST(${projectCounters.lastItemNumber}, 13)` })
     .where(eq(projectCounters.projectId, nxpId));
 
@@ -730,16 +811,20 @@ async function seedExtendedWorkItems() {
     ];
 
     for (const item of mobExtended) {
-      await db.insert(workItems).values({
-        ...item,
-        workspaceId: WORKSPACE_ID,
-        projectId: mobId,
-        createdBy: ADMIN_USER_ID,
-        rank: item.itemKey,
-      }).onConflictDoNothing();
+      await db
+        .insert(workItems)
+        .values({
+          ...item,
+          workspaceId: WORKSPACE_ID,
+          projectId: mobId,
+          createdBy: ADMIN_USER_ID,
+          rank: item.itemKey,
+        })
+        .onConflictDoNothing();
     }
 
-    await db.update(projectCounters)
+    await db
+      .update(projectCounters)
       .set({ lastItemNumber: sql`GREATEST(${projectCounters.lastItemNumber}, 7)` })
       .where(eq(projectCounters.projectId, mobId));
   }
@@ -767,31 +852,243 @@ async function seedActivityLogs() {
 
   const rows: ActivityRow[] = [
     // NXP-1
-    { id: uuidv7(), workspaceId: W, projectId: NXP, workItemId: NXP_STORY_1_ID, entityType: 'work_item', entityId: NXP_STORY_1_ID, actorId: ADMIN_USER_ID, action: 'work_item.created', changes: null, metadata: { title: 'Upgrade NX to v21 and apply migrations', type: 'story' } },
-    { id: uuidv7(), workspaceId: W, projectId: NXP, workItemId: NXP_STORY_1_ID, entityType: 'work_item', entityId: NXP_STORY_1_ID, actorId: ADMIN_USER_ID, action: 'work_item.assigned', changes: { field: 'assigneeId', old: null, new: DEVELOPER_ID }, metadata: {} },
-    { id: uuidv7(), workspaceId: W, projectId: NXP, workItemId: NXP_STORY_1_ID, entityType: 'work_item', entityId: NXP_STORY_1_ID, actorId: DEVELOPER_ID, action: 'work_item.schedule_state_changed', changes: { field: 'scheduleState', old: 'defined', new: 'in_progress' }, metadata: {} },
+    {
+      id: uuidv7(),
+      workspaceId: W,
+      projectId: NXP,
+      workItemId: NXP_STORY_1_ID,
+      entityType: 'work_item',
+      entityId: NXP_STORY_1_ID,
+      actorId: ADMIN_USER_ID,
+      action: 'work_item.created',
+      changes: null,
+      metadata: { title: 'Upgrade NX to v21 and apply migrations', type: 'story' },
+    },
+    {
+      id: uuidv7(),
+      workspaceId: W,
+      projectId: NXP,
+      workItemId: NXP_STORY_1_ID,
+      entityType: 'work_item',
+      entityId: NXP_STORY_1_ID,
+      actorId: ADMIN_USER_ID,
+      action: 'work_item.assigned',
+      changes: { field: 'assigneeId', old: null, new: DEVELOPER_ID },
+      metadata: {},
+    },
+    {
+      id: uuidv7(),
+      workspaceId: W,
+      projectId: NXP,
+      workItemId: NXP_STORY_1_ID,
+      entityType: 'work_item',
+      entityId: NXP_STORY_1_ID,
+      actorId: DEVELOPER_ID,
+      action: 'work_item.schedule_state_changed',
+      changes: { field: 'scheduleState', old: 'defined', new: 'in_progress' },
+      metadata: {},
+    },
     // NXP-2
-    { id: uuidv7(), workspaceId: W, projectId: NXP, workItemId: NXP_STORY_2_ID, entityType: 'work_item', entityId: NXP_STORY_2_ID, actorId: ADMIN_USER_ID, action: 'work_item.created', changes: null, metadata: { title: 'Replace tslint with ESLint workspace-wide', type: 'story' } },
-    { id: uuidv7(), workspaceId: W, projectId: NXP, workItemId: NXP_STORY_2_ID, entityType: 'work_item', entityId: NXP_STORY_2_ID, actorId: ADMIN_USER_ID, action: 'work_item.priority_changed', changes: { field: 'priority', old: 'normal', new: 'high' }, metadata: {} },
+    {
+      id: uuidv7(),
+      workspaceId: W,
+      projectId: NXP,
+      workItemId: NXP_STORY_2_ID,
+      entityType: 'work_item',
+      entityId: NXP_STORY_2_ID,
+      actorId: ADMIN_USER_ID,
+      action: 'work_item.created',
+      changes: null,
+      metadata: { title: 'Replace tslint with ESLint workspace-wide', type: 'story' },
+    },
+    {
+      id: uuidv7(),
+      workspaceId: W,
+      projectId: NXP,
+      workItemId: NXP_STORY_2_ID,
+      entityType: 'work_item',
+      entityId: NXP_STORY_2_ID,
+      actorId: ADMIN_USER_ID,
+      action: 'work_item.priority_changed',
+      changes: { field: 'priority', old: 'normal', new: 'high' },
+      metadata: {},
+    },
     // MOB-1
-    { id: uuidv7(), workspaceId: W, projectId: MOB, workItemId: MOB_STORY_1_ID, entityType: 'work_item', entityId: MOB_STORY_1_ID, actorId: ADMIN_USER_ID, action: 'work_item.created', changes: null, metadata: { title: 'Scaffold React Native project with Expo 51', type: 'story' } },
-    { id: uuidv7(), workspaceId: W, projectId: MOB, workItemId: MOB_STORY_1_ID, entityType: 'work_item', entityId: MOB_STORY_1_ID, actorId: DEVELOPER_ID, action: 'work_item.assigned', changes: { field: 'assigneeId', old: null, new: DEVELOPER_ID }, metadata: {} },
+    {
+      id: uuidv7(),
+      workspaceId: W,
+      projectId: MOB,
+      workItemId: MOB_STORY_1_ID,
+      entityType: 'work_item',
+      entityId: MOB_STORY_1_ID,
+      actorId: ADMIN_USER_ID,
+      action: 'work_item.created',
+      changes: null,
+      metadata: { title: 'Scaffold React Native project with Expo 51', type: 'story' },
+    },
+    {
+      id: uuidv7(),
+      workspaceId: W,
+      projectId: MOB,
+      workItemId: MOB_STORY_1_ID,
+      entityType: 'work_item',
+      entityId: MOB_STORY_1_ID,
+      actorId: DEVELOPER_ID,
+      action: 'work_item.assigned',
+      changes: { field: 'assigneeId', old: null, new: DEVELOPER_ID },
+      metadata: {},
+    },
     // NXP-7
-    { id: uuidv7(), workspaceId: W, projectId: NXP, workItemId: NXP_STORY_7_ID, entityType: 'work_item', entityId: NXP_STORY_7_ID, actorId: ADMIN_USER_ID, action: 'work_item.created', changes: null, metadata: { title: 'Migrate all apps to ESLint flat-config', type: 'story' } },
-    { id: uuidv7(), workspaceId: W, projectId: NXP, workItemId: NXP_STORY_7_ID, entityType: 'work_item', entityId: NXP_STORY_7_ID, actorId: ADMIN_USER_ID, action: 'work_item.assigned', changes: { field: 'assigneeId', old: null, new: ADMIN_USER_ID }, metadata: {} },
-    { id: uuidv7(), workspaceId: W, projectId: NXP, workItemId: NXP_STORY_7_ID, entityType: 'work_item', entityId: NXP_STORY_7_ID, actorId: ADMIN_USER_ID, action: 'work_item.flow_state_changed', changes: { field: 'statusId', old: null, new: 'in_progress' }, metadata: { statusName: 'In Progress' } },
+    {
+      id: uuidv7(),
+      workspaceId: W,
+      projectId: NXP,
+      workItemId: NXP_STORY_7_ID,
+      entityType: 'work_item',
+      entityId: NXP_STORY_7_ID,
+      actorId: ADMIN_USER_ID,
+      action: 'work_item.created',
+      changes: null,
+      metadata: { title: 'Migrate all apps to ESLint flat-config', type: 'story' },
+    },
+    {
+      id: uuidv7(),
+      workspaceId: W,
+      projectId: NXP,
+      workItemId: NXP_STORY_7_ID,
+      entityType: 'work_item',
+      entityId: NXP_STORY_7_ID,
+      actorId: ADMIN_USER_ID,
+      action: 'work_item.assigned',
+      changes: { field: 'assigneeId', old: null, new: ADMIN_USER_ID },
+      metadata: {},
+    },
+    {
+      id: uuidv7(),
+      workspaceId: W,
+      projectId: NXP,
+      workItemId: NXP_STORY_7_ID,
+      entityType: 'work_item',
+      entityId: NXP_STORY_7_ID,
+      actorId: ADMIN_USER_ID,
+      action: 'work_item.flow_state_changed',
+      changes: { field: 'statusId', old: null, new: 'in_progress' },
+      metadata: { statusName: 'In Progress' },
+    },
     // NXP-8
-    { id: uuidv7(), workspaceId: W, projectId: NXP, workItemId: NXP_STORY_8_ID, entityType: 'work_item', entityId: NXP_STORY_8_ID, actorId: ADMIN_USER_ID, action: 'work_item.created', changes: null, metadata: { title: 'Enforce strict TypeScript settings across workspace', type: 'story' } },
-    { id: uuidv7(), workspaceId: W, projectId: NXP, workItemId: NXP_STORY_8_ID, entityType: 'work_item', entityId: NXP_STORY_8_ID, actorId: ADMIN_USER_ID, action: 'work_item.assigned', changes: { field: 'assigneeId', old: null, new: DEVELOPER_ID }, metadata: {} },
+    {
+      id: uuidv7(),
+      workspaceId: W,
+      projectId: NXP,
+      workItemId: NXP_STORY_8_ID,
+      entityType: 'work_item',
+      entityId: NXP_STORY_8_ID,
+      actorId: ADMIN_USER_ID,
+      action: 'work_item.created',
+      changes: null,
+      metadata: { title: 'Enforce strict TypeScript settings across workspace', type: 'story' },
+    },
+    {
+      id: uuidv7(),
+      workspaceId: W,
+      projectId: NXP,
+      workItemId: NXP_STORY_8_ID,
+      entityType: 'work_item',
+      entityId: NXP_STORY_8_ID,
+      actorId: ADMIN_USER_ID,
+      action: 'work_item.assigned',
+      changes: { field: 'assigneeId', old: null, new: DEVELOPER_ID },
+      metadata: {},
+    },
     // NXP-10 (accepted — show full lifecycle)
-    { id: uuidv7(), workspaceId: W, projectId: NXP, workItemId: NXP_STORY_10_ID, entityType: 'work_item', entityId: NXP_STORY_10_ID, actorId: ADMIN_USER_ID, action: 'work_item.created', changes: null, metadata: { title: 'Setup shared tsconfig base with path aliases', type: 'story' } },
-    { id: uuidv7(), workspaceId: W, projectId: NXP, workItemId: NXP_STORY_10_ID, entityType: 'work_item', entityId: NXP_STORY_10_ID, actorId: ADMIN_USER_ID, action: 'work_item.assigned', changes: { field: 'assigneeId', old: null, new: ADMIN_USER_ID }, metadata: {} },
-    { id: uuidv7(), workspaceId: W, projectId: NXP, workItemId: NXP_STORY_10_ID, entityType: 'work_item', entityId: NXP_STORY_10_ID, actorId: ADMIN_USER_ID, action: 'work_item.schedule_state_changed', changes: { field: 'scheduleState', old: 'defined', new: 'in_progress' }, metadata: {} },
-    { id: uuidv7(), workspaceId: W, projectId: NXP, workItemId: NXP_STORY_10_ID, entityType: 'work_item', entityId: NXP_STORY_10_ID, actorId: ADMIN_USER_ID, action: 'work_item.schedule_state_changed', changes: { field: 'scheduleState', old: 'in_progress', new: 'accepted' }, metadata: {} },
+    {
+      id: uuidv7(),
+      workspaceId: W,
+      projectId: NXP,
+      workItemId: NXP_STORY_10_ID,
+      entityType: 'work_item',
+      entityId: NXP_STORY_10_ID,
+      actorId: ADMIN_USER_ID,
+      action: 'work_item.created',
+      changes: null,
+      metadata: { title: 'Setup shared tsconfig base with path aliases', type: 'story' },
+    },
+    {
+      id: uuidv7(),
+      workspaceId: W,
+      projectId: NXP,
+      workItemId: NXP_STORY_10_ID,
+      entityType: 'work_item',
+      entityId: NXP_STORY_10_ID,
+      actorId: ADMIN_USER_ID,
+      action: 'work_item.assigned',
+      changes: { field: 'assigneeId', old: null, new: ADMIN_USER_ID },
+      metadata: {},
+    },
+    {
+      id: uuidv7(),
+      workspaceId: W,
+      projectId: NXP,
+      workItemId: NXP_STORY_10_ID,
+      entityType: 'work_item',
+      entityId: NXP_STORY_10_ID,
+      actorId: ADMIN_USER_ID,
+      action: 'work_item.schedule_state_changed',
+      changes: { field: 'scheduleState', old: 'defined', new: 'in_progress' },
+      metadata: {},
+    },
+    {
+      id: uuidv7(),
+      workspaceId: W,
+      projectId: NXP,
+      workItemId: NXP_STORY_10_ID,
+      entityType: 'work_item',
+      entityId: NXP_STORY_10_ID,
+      actorId: ADMIN_USER_ID,
+      action: 'work_item.schedule_state_changed',
+      changes: { field: 'scheduleState', old: 'in_progress', new: 'accepted' },
+      metadata: {},
+    },
     // NXP-11 (urgent defect)
-    { id: uuidv7(), workspaceId: W, projectId: NXP, workItemId: NXP_DEFECT_11_ID, entityType: 'work_item', entityId: NXP_DEFECT_11_ID, actorId: DEVELOPER_ID, action: 'work_item.created', changes: null, metadata: { title: 'ESLint rule conflicts between root and app-level configs', type: 'defect' } },
-    { id: uuidv7(), workspaceId: W, projectId: NXP, workItemId: NXP_DEFECT_11_ID, entityType: 'work_item', entityId: NXP_DEFECT_11_ID, actorId: ADMIN_USER_ID, action: 'work_item.priority_changed', changes: { field: 'priority', old: 'normal', new: 'urgent' }, metadata: {} },
-    { id: uuidv7(), workspaceId: W, projectId: NXP, workItemId: NXP_DEFECT_11_ID, entityType: 'work_item', entityId: NXP_DEFECT_11_ID, actorId: ADMIN_USER_ID, action: 'work_item.assigned', changes: { field: 'assigneeId', old: null, new: ADMIN_USER_ID }, metadata: {} },
+    {
+      id: uuidv7(),
+      workspaceId: W,
+      projectId: NXP,
+      workItemId: NXP_DEFECT_11_ID,
+      entityType: 'work_item',
+      entityId: NXP_DEFECT_11_ID,
+      actorId: DEVELOPER_ID,
+      action: 'work_item.created',
+      changes: null,
+      metadata: {
+        title: 'ESLint rule conflicts between root and app-level configs',
+        type: 'defect',
+      },
+    },
+    {
+      id: uuidv7(),
+      workspaceId: W,
+      projectId: NXP,
+      workItemId: NXP_DEFECT_11_ID,
+      entityType: 'work_item',
+      entityId: NXP_DEFECT_11_ID,
+      actorId: ADMIN_USER_ID,
+      action: 'work_item.priority_changed',
+      changes: { field: 'priority', old: 'normal', new: 'urgent' },
+      metadata: {},
+    },
+    {
+      id: uuidv7(),
+      workspaceId: W,
+      projectId: NXP,
+      workItemId: NXP_DEFECT_11_ID,
+      entityType: 'work_item',
+      entityId: NXP_DEFECT_11_ID,
+      actorId: ADMIN_USER_ID,
+      action: 'work_item.assigned',
+      changes: { field: 'assigneeId', old: null, new: ADMIN_USER_ID },
+      metadata: {},
+    },
   ];
 
   await db.insert(schema.activityLogs).values(rows);
@@ -804,7 +1101,15 @@ async function seedActivityLogs() {
  * Safe to call multiple times — all inserts use onConflictDoNothing.
  */
 export async function seed(connectionUrl?: string): Promise<void> {
-  if (process.env['NODE_ENV'] === 'production') {
+  // Safety net: refuse to seed a production database unless a deploy has
+  // explicitly opted in via SEED_ON_DEPLOY=true. Every deployed environment —
+  // including develop — runs with NODE_ENV=production, so NODE_ENV alone cannot
+  // distinguish "real prod" from an intended develop seed. The develop migrator
+  // sets SEED_ON_DEPLOY=true to provision the breakglass account, dev workspace
+  // and SSO connection; production has no migrator task and never sets the flag,
+  // so it stays protected. A stray `pnpm db:seed` against prod (NODE_ENV=production,
+  // no flag) is still blocked.
+  if (process.env['NODE_ENV'] === 'production' && process.env['SEED_ON_DEPLOY'] !== 'true') {
     throw new Error('Seed script must not run in production (NODE_ENV=production).');
   }
 
@@ -1059,7 +1364,9 @@ export async function seed(connectionUrl?: string): Promise<void> {
       );
     }
 
-    console.log(`✅  Seed complete — ${SEED_PROJECTS.length} projects, 7 users, 2 teams, 4 iterations, 3 releases, work items seeded`);
+    console.log(
+      `✅  Seed complete — ${SEED_PROJECTS.length} projects, 7 users, 2 teams, 4 iterations, 3 releases, work items seeded`,
+    );
   } finally {
     await pool.end();
   }
@@ -1154,12 +1461,26 @@ async function seedRbacDemoUsers(): Promise<void> {
   await db
     .insert(projectMembers)
     .values([
-      { id: uuidv7(), workspaceId: WORKSPACE_ID, projectId: NXP_ID, userId: PROJECT_LEAD_ID, status: 'active' },
-      { id: uuidv7(), workspaceId: WORKSPACE_ID, projectId: MOB_ID, userId: PROJECT_LEAD_ID, status: 'active' },
+      {
+        id: uuidv7(),
+        workspaceId: WORKSPACE_ID,
+        projectId: NXP_ID,
+        userId: PROJECT_LEAD_ID,
+        status: 'active',
+      },
+      {
+        id: uuidv7(),
+        workspaceId: WORKSPACE_ID,
+        projectId: MOB_ID,
+        userId: PROJECT_LEAD_ID,
+        status: 'active',
+      },
     ])
     .onConflictDoNothing();
 
-  console.log('✅  RBAC/PBAC demo users seeded (project_admin, workspace_member, guest, PBAC lead)');
+  console.log(
+    '✅  RBAC/PBAC demo users seeded (project_admin, workspace_member, guest, PBAC lead)',
+  );
 }
 
 // Run directly: pnpm db:seed
