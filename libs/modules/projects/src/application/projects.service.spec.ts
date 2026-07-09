@@ -6,7 +6,7 @@ import { WORKFLOW_STATUS_REPOSITORY } from '../domain/ports/workflow-status.repo
 import { LABEL_REPOSITORY } from '../domain/ports/label.repository';
 import { PROJECT_TEAM_REPOSITORY } from '../domain/ports/project-team.repository';
 import { PROJECT_MEMBER_REPOSITORY } from '../domain/ports/project-member.repository';
-import { WORKSPACE_MEMBER_REPOSITORY } from '@modules/tenancy';
+import { WORKSPACE_MEMBER_REPOSITORY } from '@modules/workspace';
 import type { Project, WorkflowStatus } from '../domain/project.types';
 import {
   NotFoundException,

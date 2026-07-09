@@ -1,5 +1,5 @@
 import type { CursorPayload, PagedResult, DbExecutor } from '@platform';
-import type { Workspace, CreateWorkspaceInput, UpdateWorkspaceInput } from '../tenancy.types';
+import type { Workspace, CreateWorkspaceInput, UpdateWorkspaceInput } from '../workspace.types';
 
 export const WORKSPACE_REPOSITORY = Symbol('WORKSPACE_REPOSITORY');
 

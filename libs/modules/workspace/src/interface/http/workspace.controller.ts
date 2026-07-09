@@ -31,7 +31,7 @@ import {
 } from '@platform';
 import type { JwtPayload, PagedResult } from '@platform';
 import { CurrentUser } from '@modules/identity/interface/http/decorators/current-user.decorator';
-import { TenancyService } from '../../application/tenancy.service';
+import { WorkspaceService } from '../../application/workspace.service';
 import {
   CreateWorkspaceDto,
   UpdateWorkspaceDto,
@@ -40,20 +40,20 @@ import {
   InviteMemberDto,
   AcceptInvitationDto,
   UpdateWorkspaceSettingsDto,
-} from './dto/tenancy-request.dto';
+} from './dto/workspace-request.dto';
 import {
   WorkspaceResponseDto,
   MemberResponseDto,
   MemberWithProfileResponseDto,
   InvitationResponseDto,
   WorkspaceSettingsResponseDto,
-} from './dto/tenancy-response.dto';
+} from './dto/workspace-response.dto';
 import type {
   Workspace,
   WorkspaceMember,
   WorkspaceInvitation,
   WorkspaceSettings,
-} from '../../domain/tenancy.types';
+} from '../../domain/workspace.types';
 
 // ── Mappers ──────────────────────────────────────────────────────────────────
 
@@ -113,7 +113,7 @@ function toSettingsDto(s: WorkspaceSettings): WorkspaceSettingsResponseDto {
 @Controller('workspaces')
 @Auth()
 export class WorkspaceController {
-  constructor(private readonly tenancyService: TenancyService) {}
+  constructor(private readonly workspaceService: WorkspaceService) {}
 
   /**
    * Guard: workspace-scoped routes operate strictly on the caller's active
@@ -137,7 +137,7 @@ export class WorkspaceController {
     @Query() query: PageQueryDto,
   ): Promise<PagedResult<WorkspaceResponseDto>> {
     const args = buildPageArgs(query);
-    const page = await this.tenancyService.listWorkspacesForUser(user.sub, args);
+    const page = await this.workspaceService.listWorkspacesForUser(user.sub, args);
     return { data: page.data.map(toWorkspaceDto), pageInfo: page.pageInfo };
   }
 
@@ -154,7 +154,7 @@ export class WorkspaceController {
     @CurrentUser() user: JwtPayload,
     @Body() dto: CreateWorkspaceDto,
   ): Promise<WorkspaceResponseDto> {
-    const workspace = await this.tenancyService.createWorkspace(
+    const workspace = await this.workspaceService.createWorkspace(
       user,
       dto.slug,
       dto.name,
@@ -176,7 +176,7 @@ export class WorkspaceController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<WorkspaceResponseDto> {
     this.assertActive(user, id);
-    const workspace = await this.tenancyService.getWorkspace(id);
+    const workspace = await this.workspaceService.getWorkspace(id);
     return toWorkspaceDto(workspace);
   }
 
@@ -194,7 +194,7 @@ export class WorkspaceController {
     @Body() dto: UpdateWorkspaceDto,
   ): Promise<WorkspaceResponseDto> {
     this.assertActive(user, id);
-    const workspace = await this.tenancyService.updateWorkspace(id, dto);
+    const workspace = await this.workspaceService.updateWorkspace(id, dto);
     return toWorkspaceDto(workspace);
   }
 
@@ -214,7 +214,7 @@ export class WorkspaceController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<void> {
     this.assertActive(user, id);
-    await this.tenancyService.deleteWorkspace(id);
+    await this.workspaceService.deleteWorkspace(id);
   }
 
   // ── List members ───────────────────────────────────────────────────────────
@@ -231,7 +231,7 @@ export class WorkspaceController {
   ): Promise<PagedResult<MemberResponseDto>> {
     this.assertActive(user, id);
     const args = buildPageArgs(query);
-    const page = await this.tenancyService.listMembers(id, args);
+    const page = await this.workspaceService.listMembers(id, args);
     return { data: page.data.map(toMemberDto), pageInfo: page.pageInfo };
   }
 
@@ -247,7 +247,7 @@ export class WorkspaceController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<MemberWithProfileResponseDto[]> {
     this.assertActive(user, id);
-    return this.tenancyService.listMembersWithProfile(id) as unknown as Promise<
+    return this.workspaceService.listMembersWithProfile(id) as unknown as Promise<
       MemberWithProfileResponseDto[]
     >;
   }
@@ -266,7 +266,7 @@ export class WorkspaceController {
     @Body() dto: AddMemberDto,
   ): Promise<MemberResponseDto> {
     this.assertActive(user, id);
-    const member = await this.tenancyService.addMember(id, dto.userId, user.sub);
+    const member = await this.workspaceService.addMember(id, dto.userId, user.sub);
     return toMemberDto(member);
   }
 
@@ -286,7 +286,7 @@ export class WorkspaceController {
     @Body() dto: UpdateMemberDto,
   ): Promise<MemberResponseDto> {
     this.assertActive(user, id);
-    const member = await this.tenancyService.updateMember(
+    const member = await this.workspaceService.updateMember(
       id,
       memberId,
       dto,
@@ -311,7 +311,7 @@ export class WorkspaceController {
     @Param('userId', ParseUUIDPipe) userId: string,
   ): Promise<void> {
     this.assertActive(user, id);
-    await this.tenancyService.removeMember(id, userId, user.sub);
+    await this.workspaceService.removeMember(id, userId, user.sub);
   }
 
   // ── Invite member ──────────────────────────────────────────────────────────
@@ -330,7 +330,7 @@ export class WorkspaceController {
     @Body() dto: InviteMemberDto,
   ): Promise<InvitationResponseDto> {
     this.assertActive(user, id);
-    const invitation = await this.tenancyService.inviteMember(
+    const invitation = await this.workspaceService.inviteMember(
       id,
       dto.email,
       dto.roleId,
@@ -351,7 +351,7 @@ export class WorkspaceController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<InvitationResponseDto[]> {
     this.assertActive(user, id);
-    const invitations = await this.tenancyService.listInvitations(id);
+    const invitations = await this.workspaceService.listInvitations(id);
     return invitations.map(toInvitationDto);
   }
 
@@ -371,7 +371,7 @@ export class WorkspaceController {
     @Param('invitationId', ParseUUIDPipe) invitationId: string,
   ): Promise<void> {
     this.assertActive(user, id);
-    await this.tenancyService.cancelInvitation(id, invitationId, user.sub);
+    await this.workspaceService.cancelInvitation(id, invitationId, user.sub);
   }
 
   // ── Workspace settings ─────────────────────────────────────────────────────
@@ -386,7 +386,7 @@ export class WorkspaceController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<WorkspaceSettingsResponseDto> {
     this.assertActive(user, id);
-    const settings = await this.tenancyService.getSettings(id);
+    const settings = await this.workspaceService.getSettings(id);
     return toSettingsDto(settings);
   }
 
@@ -402,7 +402,7 @@ export class WorkspaceController {
     @Body() dto: UpdateWorkspaceSettingsDto,
   ): Promise<WorkspaceSettingsResponseDto> {
     this.assertActive(user, id);
-    const settings = await this.tenancyService.updateSettings(id, dto);
+    const settings = await this.workspaceService.updateSettings(id, dto);
     return toSettingsDto(settings);
   }
 }
@@ -414,7 +414,7 @@ export class WorkspaceController {
 @ApiTags('invitations')
 @Controller('invitations')
 export class InvitationController {
-  constructor(private readonly tenancyService: TenancyService) {}
+  constructor(private readonly workspaceService: WorkspaceService) {}
 
   @Post('accept')
   @Auth()
@@ -428,6 +428,6 @@ export class InvitationController {
     @Body() dto: AcceptInvitationDto,
     @CurrentUser() user: JwtPayload,
   ): Promise<void> {
-    await this.tenancyService.acceptInvitation(dto.token, user.sub);
+    await this.workspaceService.acceptInvitation(dto.token, user.sub);
   }
 }

@@ -2,8 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
-import { workspaceSettings } from '../../../../../../db/schema/tenancy';
-import type { WorkspaceSettings, UpdateWorkspaceSettingsInput } from '../../domain/tenancy.types';
+import { workspaceSettings } from '../../../../../../db/schema/workspace';
+import type { WorkspaceSettings, UpdateWorkspaceSettingsInput } from '../../domain/workspace.types';
 import { IWorkspaceSettingsRepository } from '../../domain/ports/workspace-settings.repository';
 
 @Injectable()

@@ -1,4 +1,4 @@
-import type { WorkspaceSettings, UpdateWorkspaceSettingsInput } from '../tenancy.types';
+import type { WorkspaceSettings, UpdateWorkspaceSettingsInput } from '../workspace.types';
 
 export const WORKSPACE_SETTINGS_REPOSITORY = Symbol('WORKSPACE_SETTINGS_REPOSITORY');
 

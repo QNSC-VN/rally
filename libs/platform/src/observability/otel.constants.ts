@@ -26,11 +26,11 @@ export const OTEL_METRICS = {
     MOVED_TOTAL: 'work_items.moved.total',
   },
 
-  // Tenancy domain
-  TENANCY: {
-    WORKSPACE_CREATED_TOTAL: 'tenancy.workspace.created.total',
-    MEMBER_INVITED_TOTAL: 'tenancy.member.invited.total',
-    MEMBER_JOINED_TOTAL: 'tenancy.member.joined.total',
+  // Workspace domain
+  WORKSPACE: {
+    WORKSPACE_CREATED_TOTAL: 'workspace.workspace.created.total',
+    MEMBER_INVITED_TOTAL: 'workspace.member.invited.total',
+    MEMBER_JOINED_TOTAL: 'workspace.member.joined.total',
   },
 
   // Outbox relay

@@ -1,7 +1,7 @@
 import { Module, Logger, type OnApplicationBootstrap } from '@nestjs/common';
-import { TenancyService } from './application/tenancy.service';
+import { WorkspaceService } from './application/workspace.service';
 import { TeamService } from './application/team.service';
-import { WorkspaceController, InvitationController } from './interface/http/tenancy.controller';
+import { WorkspaceController, InvitationController } from './interface/http/workspace.controller';
 import { TeamController } from './interface/http/team.controller';
 import { WorkspaceDrizzleRepository } from './infrastructure/persistence/workspace.drizzle-repository';
 import { WorkspaceMemberDrizzleRepository } from './infrastructure/persistence/workspace-member.drizzle-repository';
@@ -19,7 +19,7 @@ import { TEAM_MEMBER_REPOSITORY } from './domain/ports/team-member.repository';
 @Module({
   controllers: [WorkspaceController, InvitationController, TeamController],
   providers: [
-    TenancyService,
+    WorkspaceService,
     TeamService,
     { provide: WORKSPACE_REPOSITORY, useClass: WorkspaceDrizzleRepository },
     { provide: WORKSPACE_MEMBER_REPOSITORY, useClass: WorkspaceMemberDrizzleRepository },
@@ -28,12 +28,12 @@ import { TEAM_MEMBER_REPOSITORY } from './domain/ports/team-member.repository';
     { provide: TEAM_REPOSITORY, useClass: TeamDrizzleRepository },
     { provide: TEAM_MEMBER_REPOSITORY, useClass: TeamMemberDrizzleRepository },
   ],
-  exports: [TenancyService, TeamService, WORKSPACE_MEMBER_REPOSITORY],
+  exports: [WorkspaceService, TeamService, WORKSPACE_MEMBER_REPOSITORY],
 })
-export class TenancyModule implements OnApplicationBootstrap {
-  private readonly logger = new Logger(TenancyModule.name);
+export class WorkspaceModule implements OnApplicationBootstrap {
+  private readonly logger = new Logger(WorkspaceModule.name);
 
-  constructor(private readonly tenancy: TenancyService) {}
+  constructor(private readonly workspace: WorkspaceService) {}
 
   /**
    * Ensure a root workspace exists on boot so a freshly-migrated install is
@@ -42,7 +42,7 @@ export class TenancyModule implements OnApplicationBootstrap {
    */
   async onApplicationBootstrap(): Promise<void> {
     try {
-      await this.tenancy.ensureDefaultWorkspace();
+      await this.workspace.ensureDefaultWorkspace();
     } catch (err) {
       this.logger.error({ err }, 'Failed to ensure default workspace on bootstrap');
     }

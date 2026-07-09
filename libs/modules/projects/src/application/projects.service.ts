@@ -22,7 +22,7 @@ import {
   IProjectMemberRepository,
   PROJECT_MEMBER_REPOSITORY,
 } from '../domain/ports/project-member.repository';
-import { IWorkspaceMemberRepository, WORKSPACE_MEMBER_REPOSITORY } from '@modules/tenancy';
+import { IWorkspaceMemberRepository, WORKSPACE_MEMBER_REPOSITORY } from '@modules/workspace';
 import type {
   Project,
   ProjectWithStats,

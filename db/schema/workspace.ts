@@ -1,5 +1,5 @@
 /**
- * tenancy schema — workspaces, workspace_members, workspace_invitations,
+ * workspace schema — workspaces, workspace_members, workspace_invitations,
  *                   workspace_settings
  *
  * `workspace` is the switchable root of the model (multi-tenancy was removed —
@@ -20,11 +20,11 @@ import {
 import { sql } from 'drizzle-orm';
 import { workspaceStatusEnum, workspaceMemberStatusEnum, invitationStatusEnum } from './enums';
 
-export const tenancySchema = pgSchema('tenancy');
+export const workspaceSchema = pgSchema('workspace');
 
 // ── workspaces (root) ───────────────────────────────────────────────────────
 
-export const workspaces = tenancySchema.table(
+export const workspaces = workspaceSchema.table(
   'workspaces',
   {
     id: uuid('id').primaryKey().defaultRandom(),
@@ -51,7 +51,7 @@ export const workspaces = tenancySchema.table(
 // Many-to-many: a person exists once in identity.users and is attached to one
 // or many workspaces via these rows.
 
-export const workspaceMembers = tenancySchema.table(
+export const workspaceMembers = workspaceSchema.table(
   'workspace_members',
   {
     id: uuid('id').primaryKey().defaultRandom(),
@@ -74,7 +74,7 @@ export const workspaceMembers = tenancySchema.table(
 
 // ── workspace_invitations ────────────────────────────────────────────
 
-export const workspaceInvitations = tenancySchema.table(
+export const workspaceInvitations = workspaceSchema.table(
   'workspace_invitations',
   {
     id: uuid('id').primaryKey().defaultRandom(),
@@ -99,7 +99,7 @@ export const workspaceInvitations = tenancySchema.table(
 
 // ── workspace_settings ───────────────────────────────────────────────
 
-export const workspaceSettings = tenancySchema.table(
+export const workspaceSettings = workspaceSchema.table(
   'workspace_settings',
   {
     id: uuid('id').primaryKey().defaultRandom(),

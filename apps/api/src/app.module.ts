@@ -6,7 +6,7 @@ import { trace, isSpanContextValid } from '@opentelemetry/api';
 import { requestContextStorage } from '@platform/context/request-context';
 import { PlatformModule } from '@platform';
 import { IdentityModule } from '@modules/identity';
-import { TenancyModule } from '@modules/tenancy';
+import { WorkspaceModule } from '@modules/workspace';
 import { AccessModule } from '@modules/access';
 import { ProjectsModule } from '@modules/projects';
 import { WorkItemsModule } from '@modules/work-items';
@@ -91,7 +91,7 @@ import { AsyncLocalStorageMiddleware } from '@platform/context/als.middleware';
 
     // Bounded contexts
     IdentityModule,
-    TenancyModule,
+    WorkspaceModule,
     AccessModule,
     ProjectsModule,
     WorkItemsModule,

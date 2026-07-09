@@ -18,7 +18,7 @@ export const ssoProviderEnum = pgEnum('sso_provider', ['entra', 'saml', 'google'
 /** Lifecycle state of an SSO connection. */
 export const ssoConnectionStatusEnum = pgEnum('sso_connection_status', ['active', 'disabled']);
 
-// ── tenancy ────────────────────────────────────────────────────────────────
+// ── workspace ──────────────────────────────────────────────────────────────
 
 export const workspaceStatusEnum = pgEnum('workspace_status', ['active', 'archived']);
 

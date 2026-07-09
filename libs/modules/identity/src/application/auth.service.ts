@@ -20,8 +20,8 @@ import {
 import type { JwtPayload, DrizzleDB } from '@platform';
 import { SYSTEM_ROLE } from '@shared-kernel';
 import { AccessService } from '@modules/access';
-import { TenancyService } from '@modules/tenancy';
-import type { WorkspaceMembership } from '@modules/tenancy';
+import { WorkspaceService } from '@modules/workspace';
+import type { WorkspaceMembership } from '@modules/workspace';
 import { AuditService } from '@modules/audit';
 import { IUserRepository, USER_REPOSITORY } from '../domain/ports/user.repository';
 import {
@@ -68,7 +68,7 @@ export class AuthService {
     private readonly config: AppConfigService,
     private readonly emailScheduler: EmailSchedulerService,
     private readonly accessService: AccessService,
-    private readonly tenancyService: TenancyService,
+    private readonly workspaceService: WorkspaceService,
     private readonly audit: AuditService,
   ) {}
 
@@ -108,7 +108,7 @@ export class AuthService {
 
     const sessionId = uuidv7();
     // Load keycards — pick the most-recently-active workspace.
-    const memberships = await this.tenancyService.getMemberships(user.id);
+    const memberships = await this.workspaceService.getMemberships(user.id);
     const activeWorkspaceId = memberships[0]?.workspaceId;
     if (!activeWorkspaceId) {
       throw new UnauthorizedException('ACCOUNT_DEACTIVATED', 'No active workspace membership found');
@@ -123,7 +123,7 @@ export class AuthService {
     if (platformAdminEmails.includes(user.email.toLowerCase())) {
       const elevated = await this.accessService.elevateToWorkspaceAdmin(user.id, activeWorkspaceId);
       // Re-fetch so the response reflects the new role
-      updatedMemberships = await this.tenancyService.getMemberships(user.id);
+      updatedMemberships = await this.workspaceService.getMemberships(user.id);
       if (elevated) {
         void this.audit.record({
           workspaceId: activeWorkspaceId,
@@ -177,7 +177,7 @@ export class AuthService {
     this.logger.log({ userId: user.id, jti, sessionId }, 'User logged in');
 
     // Fire-and-forget: touch last-active for the workspace switcher + audit trail
-    void this.tenancyService.touchMembership(user.id, activeWorkspaceId);
+    void this.workspaceService.touchMembership(user.id, activeWorkspaceId);
     void this.audit.record({
       workspaceId: activeWorkspaceId,
       actorId: user.id,
@@ -283,13 +283,13 @@ export class AuthService {
     // workspace.
     const orgName =
       input.organizationName?.trim() || this.defaultOrgName(input.displayName, email);
-    const workspace = await this.tenancyService.provisionWorkspace(orgName, user.id);
+    const workspace = await this.workspaceService.provisionWorkspace(orgName, user.id);
     const workspaceId = workspace.id;
     await this.accessService.ensureDefaultRole(user.id, workspaceId, SYSTEM_ROLE.WORKSPACE_ADMIN);
 
     // Issue a login session (mirrors login()).
     const sessionId = uuidv7();
-    const memberships = await this.tenancyService.getMemberships(user.id);
+    const memberships = await this.workspaceService.getMemberships(user.id);
     const { permissions } = await this.accessService.getUserRoleAndPermissions(user.id, workspaceId);
     const { accessToken, jti, expiresIn } = this.signAccessToken(
       user,
@@ -322,7 +322,7 @@ export class AuthService {
 
     this.logger.log({ userId: user.id, workspaceId, jti, sessionId }, 'User signed up');
 
-    void this.tenancyService.touchMembership(user.id, workspaceId);
+    void this.workspaceService.touchMembership(user.id, workspaceId);
     void this.audit.record({
       workspaceId,
       actorId: user.id,
@@ -561,7 +561,7 @@ export class AuthService {
       }
       user = found;
       // Determine active workspace from memberships (most-recently-active first).
-      const membershipsEarly = await this.tenancyService.getMemberships(user.id);
+      const membershipsEarly = await this.workspaceService.getMemberships(user.id);
       ssoWorkspaceId = membershipsEarly[0]?.workspaceId ?? '';
       if (!ssoWorkspaceId) {
         throw new UnauthorizedException('ACCOUNT_DEACTIVATED', 'No active workspace membership found');
@@ -651,8 +651,8 @@ export class AuthService {
       metadata: { provider: 'entra', oid },
     });
 
-    const memberships = await this.tenancyService.getMemberships(user.id);
-    void this.tenancyService.touchMembership(user.id, ssoWorkspaceId);
+    const memberships = await this.workspaceService.getMemberships(user.id);
+    void this.workspaceService.touchMembership(user.id, ssoWorkspaceId);
 
     return {
       accessToken,
@@ -739,7 +739,7 @@ export class AuthService {
     const user = await this.userRepo.upsertBySsoIdentity('entra', oid, email, displayName);
 
     // Ensure the user is an active member of the SSO connection's workspace.
-    await this.tenancyService.enrollMember(workspaceId, user.id);
+    await this.workspaceService.enrollMember(workspaceId, user.id);
 
     if (defaultRoleSlug) {
       await this.accessService.ensureDefaultRole(user.id, workspaceId, defaultRoleSlug);
@@ -1030,7 +1030,7 @@ export class AuthService {
     ipAddress?: string,
   ): Promise<RefreshResult> {
     // Verify the caller has an active membership for the target workspace.
-    const keycard = await this.tenancyService.getMembership(payload.sub, targetWorkspaceId);
+    const keycard = await this.workspaceService.getMembership(payload.sub, targetWorkspaceId);
     if (!keycard || keycard.status !== 'active') {
       throw new UnauthorizedException(
         'WORKSPACE_ACCESS_DENIED',
@@ -1094,7 +1094,7 @@ export class AuthService {
       'Workspace switched',
     );
 
-    void this.tenancyService.touchMembership(user.id, targetWorkspaceId);
+    void this.workspaceService.touchMembership(user.id, targetWorkspaceId);
     void this.audit.record({
       workspaceId: targetWorkspaceId,
       actorId: user.id,

@@ -16,7 +16,7 @@ import {
 import { DRIZZLE } from '@platform';
 import { ValkeyService } from '@platform';
 import { AccessService } from '@modules/access';
-import { TenancyService } from '@modules/tenancy';
+import { WorkspaceService } from '@modules/workspace';
 import { AuditService } from '@modules/audit';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -130,7 +130,7 @@ const makeSsoConnectionRepo = () => ({
   update: vi.fn().mockResolvedValue(undefined),
 });
 
-const makeTenancyService = () => ({
+const makeWorkspaceService = () => ({
   getMemberships: vi
     .fn()
     .mockResolvedValue([
@@ -166,7 +166,7 @@ describe('AuthService', () => {
   let auditService: ReturnType<typeof makeAuditService>;
   let jwt: ReturnType<typeof makeJwt>;
   let accessService: ReturnType<typeof makeAccessService>;
-  let tenancyService: ReturnType<typeof makeTenancyService>;
+  let workspaceService: ReturnType<typeof makeWorkspaceService>;
 
   beforeEach(async () => {
     userRepo = makeUserRepo();
@@ -177,7 +177,7 @@ describe('AuthService', () => {
     jwt = makeJwt();
     accessService = makeAccessService();
     auditService = makeAuditService();
-    tenancyService = makeTenancyService();
+    workspaceService = makeWorkspaceService();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -191,7 +191,7 @@ describe('AuthService', () => {
         { provide: AppConfigService, useValue: config },
         { provide: EmailSchedulerService, useValue: emailScheduler },
         { provide: AccessService, useValue: accessService },
-        { provide: TenancyService, useValue: tenancyService },
+        { provide: WorkspaceService, useValue: workspaceService },
         { provide: AuditService, useValue: auditService },
       ],
     }).compile();
@@ -580,7 +580,7 @@ describe('AuthService', () => {
     });
 
     it('binds the session to the most-recently-active workspace', async () => {
-      tenancyService.getMemberships.mockResolvedValue([
+      workspaceService.getMemberships.mockResolvedValue([
         {
           workspaceId: 'workspace-recent',
           name: 'Recent',
@@ -605,11 +605,11 @@ describe('AuthService', () => {
         expect.objectContaining({ workspaceId: 'workspace-recent' }),
         expect.anything(),
       );
-      expect(tenancyService.touchMembership).toHaveBeenCalledWith(user.id, 'workspace-recent');
+      expect(workspaceService.touchMembership).toHaveBeenCalledWith(user.id, 'workspace-recent');
     });
 
     it('throws ACCOUNT_DEACTIVATED when the user has no active membership', async () => {
-      tenancyService.getMemberships.mockResolvedValue([]);
+      workspaceService.getMemberships.mockResolvedValue([]);
 
       await expect(service.login('alice@example.com', 'correct-password')).rejects.toThrow(
         UnauthorizedException,
@@ -635,23 +635,23 @@ describe('AuthService', () => {
     });
 
     it('rotates the session to the target workspace for an active member', async () => {
-      tenancyService.getMembership.mockResolvedValue({ status: 'active' });
+      workspaceService.getMembership.mockResolvedValue({ status: 'active' });
       userRepo.findById.mockResolvedValue(mockUser());
 
       const result = await service.switchWorkspace(makePayload(), 'workspace-to');
 
       expect(result.accessToken).toBe('mock-access-token');
-      expect(tenancyService.getMembership).toHaveBeenCalledWith('user-1', 'workspace-to');
+      expect(workspaceService.getMembership).toHaveBeenCalledWith('user-1', 'workspace-to');
       expect(sessionRepo.revokeById).toHaveBeenCalledWith('session-1', expect.anything());
       expect(sessionRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({ workspaceId: 'workspace-to' }),
         expect.anything(),
       );
-      expect(tenancyService.touchMembership).toHaveBeenCalledWith('user-1', 'workspace-to');
+      expect(workspaceService.touchMembership).toHaveBeenCalledWith('user-1', 'workspace-to');
     });
 
     it('throws WORKSPACE_ACCESS_DENIED when caller is not a member', async () => {
-      tenancyService.getMembership.mockResolvedValue(null);
+      workspaceService.getMembership.mockResolvedValue(null);
 
       await expect(service.switchWorkspace(makePayload(), 'workspace-to')).rejects.toThrow(
         UnauthorizedException,
@@ -660,7 +660,7 @@ describe('AuthService', () => {
     });
 
     it('throws WORKSPACE_ACCESS_DENIED when the membership is not active', async () => {
-      tenancyService.getMembership.mockResolvedValue({ status: 'suspended' });
+      workspaceService.getMembership.mockResolvedValue({ status: 'suspended' });
 
       await expect(service.switchWorkspace(makePayload(), 'workspace-to')).rejects.toThrow(
         UnauthorizedException,

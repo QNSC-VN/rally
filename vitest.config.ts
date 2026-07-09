@@ -53,7 +53,7 @@ export default defineConfig({
       // is a conscious decision when writing the matching spec.
       include: [
         'libs/modules/identity/src/application/auth.service.ts',
-        'libs/modules/tenancy/src/application/tenancy.service.ts',
+        'libs/modules/workspace/src/application/workspace.service.ts',
         'libs/modules/projects/src/application/projects.service.ts',
         'libs/modules/planning/src/application/planning.service.ts',
         'libs/modules/work-items/src/application/work-items.service.ts',

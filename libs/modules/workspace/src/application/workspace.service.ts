@@ -36,11 +36,11 @@ import type {
   UpdateWorkspaceInput,
   UpdateMemberInput,
   UpdateWorkspaceSettingsInput,
-} from '../domain/tenancy.types';
+} from '../domain/workspace.types';
 
 @Injectable()
-export class TenancyService {
-  private readonly logger = new Logger(TenancyService.name);
+export class WorkspaceService {
+  private readonly logger = new Logger(WorkspaceService.name);
 
   constructor(
     @Inject(WORKSPACE_REPOSITORY) private readonly workspaceRepo: IWorkspaceRepository,
@@ -60,7 +60,7 @@ export class TenancyService {
    * Ensure at least one workspace exists so a freshly-migrated install has a
    * root to log into. Idempotent: does nothing once any workspace exists.
    */
-  @Span('tenancy.ensureDefaultWorkspace')
+  @Span('workspace.ensureDefaultWorkspace')
   async ensureDefaultWorkspace(): Promise<Workspace | null> {
     const existing = await this.workspaceRepo.count();
     if (existing > 0) return null;
@@ -108,7 +108,7 @@ export class TenancyService {
    * Provision a fresh root workspace and enroll the creator as its first member.
    * Used for administrative bootstrap and (optionally) first-user signup.
    */
-  @Span('tenancy.provisionWorkspace')
+  @Span('workspace.provisionWorkspace')
   async provisionWorkspace(name: string, creatorUserId: string): Promise<Workspace> {
     const slug = `${this.slugify(name)}-${randomBytes(3).toString('hex')}`.slice(0, 63);
     return this.uow.run(async (tx) => {
@@ -139,7 +139,7 @@ export class TenancyService {
     return this.workspaceRepo.listForUser(userId, args);
   }
 
-  @Span('tenancy.createWorkspace')
+  @Span('workspace.createWorkspace')
   async createWorkspace(
     actor: JwtPayload,
     slug: string,
@@ -212,7 +212,7 @@ export class TenancyService {
     return this.memberRepo.listMembersWithProfile(workspaceId);
   }
 
-  @Span('tenancy.addMember')
+  @Span('workspace.addMember')
   async addMember(workspaceId: string, userId: string, actorId: string): Promise<WorkspaceMember> {
     await this.getWorkspace(workspaceId);
 
@@ -293,7 +293,7 @@ export class TenancyService {
 
   // ── Invitations ─────────────────────────────────────────────────────────────
 
-  @Span('tenancy.inviteMember')
+  @Span('workspace.inviteMember')
   async inviteMember(
     workspaceId: string,
     email: string,
@@ -376,7 +376,7 @@ export class TenancyService {
     this.logger.log({ invitationId, actorId }, 'Invitation cancelled');
   }
 
-  @Span('tenancy.acceptInvitation')
+  @Span('workspace.acceptInvitation')
   async acceptInvitation(rawToken: string, acceptingUserId: string): Promise<void> {
     const tokenHash = createHash('sha256').update(rawToken).digest('hex');
     const invitation = await this.invitationRepo.findByTokenHash(tokenHash);

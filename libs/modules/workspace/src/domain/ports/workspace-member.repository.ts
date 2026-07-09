@@ -5,7 +5,7 @@ import type {
   WorkspaceMembership,
   AddMemberInput,
   UpdateMemberInput,
-} from '../tenancy.types';
+} from '../workspace.types';
 
 export const WORKSPACE_MEMBER_REPOSITORY = Symbol('WORKSPACE_MEMBER_REPOSITORY');
 

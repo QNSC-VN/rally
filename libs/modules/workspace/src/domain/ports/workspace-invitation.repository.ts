@@ -1,4 +1,4 @@
-import type { WorkspaceInvitation, CreateInvitationInput } from '../tenancy.types';
+import type { WorkspaceInvitation, CreateInvitationInput } from '../workspace.types';
 import type { DbExecutor } from '@platform';
 
 export const WORKSPACE_INVITATION_REPOSITORY = Symbol('WORKSPACE_INVITATION_REPOSITORY');

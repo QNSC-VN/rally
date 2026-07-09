@@ -13,7 +13,7 @@ import {
 import type { JwtPayload } from '@platform';
 import { AuthService } from '../../application/auth.service';
 import { AccessService } from '@modules/access';
-import { TenancyService } from '@modules/tenancy';
+import { WorkspaceService } from '@modules/workspace';
 import {
   LoginDto,
   SignupDto,
@@ -44,7 +44,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly accessService: AccessService,
-    private readonly tenancyService: TenancyService,
+    private readonly workspaceService: WorkspaceService,
   ) {}
 
   private buildRefreshCookieOptions(req: FastifyRequest, maxAge: number) {
@@ -297,7 +297,7 @@ export class AuthController {
     const [profile, { role, permissions }, memberships] = await Promise.all([
       this.authService.getMe(user.sub),
       this.accessService.getUserRoleAndPermissions(user.sub, user.workspaceId),
-      this.tenancyService.getMemberships(user.sub),
+      this.workspaceService.getMemberships(user.sub),
     ]);
     return {
       id: profile.id,
@@ -329,7 +329,7 @@ export class AuthController {
     const [profile, { role, permissions }, memberships] = await Promise.all([
       this.authService.updateProfile(user.sub, dto),
       this.accessService.getUserRoleAndPermissions(user.sub, user.workspaceId),
-      this.tenancyService.getMemberships(user.sub),
+      this.workspaceService.getMemberships(user.sub),
     ]);
     return {
       id: profile.id,

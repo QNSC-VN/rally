@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { and, count, desc, eq, lt } from 'drizzle-orm';
 import { InjectDrizzle, buildPageResult } from '@platform';
 import type { DrizzleDB, DbExecutor, CursorPayload, PagedResult } from '@platform';
-import { workspaces, workspaceMembers } from '../../../../../../db/schema/tenancy';
+import { workspaces, workspaceMembers } from '../../../../../../db/schema/workspace';
 import { users } from '../../../../../../db/schema/identity';
 import { systemRoles, userRoleAssignments } from '../../../../../../db/schema/access';
 import type {
@@ -11,7 +11,7 @@ import type {
   WorkspaceMembership,
   AddMemberInput,
   UpdateMemberInput,
-} from '../../domain/tenancy.types';
+} from '../../domain/workspace.types';
 import { IWorkspaceMemberRepository } from '../../domain/ports/workspace-member.repository';
 
 @Injectable()

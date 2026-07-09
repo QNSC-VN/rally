@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mocked } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
-import { TenancyService } from './tenancy.service';
+import { WorkspaceService } from './workspace.service';
 import { WORKSPACE_REPOSITORY, IWorkspaceRepository } from '../domain/ports/workspace.repository';
 import {
   WORKSPACE_MEMBER_REPOSITORY,
@@ -19,7 +19,7 @@ import type {
   Workspace,
   WorkspaceMember,
   WorkspaceInvitation,
-} from '../domain/tenancy.types';
+} from '../domain/workspace.types';
 import {
   NotFoundException,
   ConflictException,
@@ -144,8 +144,8 @@ const makeUow = () => ({
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
-describe('TenancyService', () => {
-  let service: TenancyService;
+describe('WorkspaceService', () => {
+  let service: WorkspaceService;
   let workspaceRepo: ReturnType<typeof makeWorkspaceRepo>;
   let memberRepo: ReturnType<typeof makeMemberRepo>;
   let invitationRepo: ReturnType<typeof makeInvitationRepo>;
@@ -161,7 +161,7 @@ describe('TenancyService', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        TenancyService,
+        WorkspaceService,
         { provide: WORKSPACE_REPOSITORY, useValue: workspaceRepo },
         { provide: WORKSPACE_MEMBER_REPOSITORY, useValue: memberRepo },
         { provide: WORKSPACE_INVITATION_REPOSITORY, useValue: invitationRepo },
@@ -172,7 +172,7 @@ describe('TenancyService', () => {
       ],
     }).compile();
 
-    service = module.get(TenancyService);
+    service = module.get(WorkspaceService);
   });
 
   // ── ensureDefaultWorkspace ───────────────────────────────────────────────────

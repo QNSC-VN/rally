@@ -2,12 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { and, eq, gt } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB, DbExecutor } from '@platform';
-import { workspaceInvitations } from '../../../../../../db/schema/tenancy';
+import { workspaceInvitations } from '../../../../../../db/schema/workspace';
 import type {
   WorkspaceInvitation,
   CreateInvitationInput,
   InvitationStatus,
-} from '../../domain/tenancy.types';
+} from '../../domain/workspace.types';
 import { IWorkspaceInvitationRepository } from '../../domain/ports/workspace-invitation.repository';
 
 @Injectable()

@@ -11,7 +11,7 @@
     "../../libs/platform/src/**/*",
     "../../libs/contracts/src/**/*",
     "../../libs/modules/identity/src/**/*",
-    "../../libs/modules/tenancy/src/**/*",
+    "../../libs/modules/workspace/src/**/*",
     "../../libs/modules/access/src/**/*",
     "../../libs/modules/projects/src/**/*",
     "../../libs/modules/work-items/src/**/*",
