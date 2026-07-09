@@ -20,13 +20,13 @@ export class NotificationDrizzleRepository implements INotificationRepository {
   }
 
   async listForRecipient(
-    tenantId: string,
+    workspaceId: string,
     recipientId: string,
     unreadOnly: boolean,
     limit: number,
   ): Promise<Notification[]> {
     const conditions = [
-      eq(inAppNotifications.tenantId, tenantId),
+      eq(inAppNotifications.workspaceId, workspaceId),
       eq(inAppNotifications.recipientId, recipientId),
     ];
     if (unreadOnly) {
@@ -47,7 +47,7 @@ export class NotificationDrizzleRepository implements INotificationRepository {
       .insert(inAppNotifications)
       .values({
         id: input.id,
-        tenantId: input.tenantId,
+        workspaceId: input.workspaceId,
         recipientId: input.recipientId,
         actorId: input.actorId,
         type: input.type,
@@ -66,13 +66,13 @@ export class NotificationDrizzleRepository implements INotificationRepository {
     return (rows[0] as Notification | undefined) ?? null;
   }
 
-  async countUnread(tenantId: string, recipientId: string): Promise<number> {
+  async countUnread(workspaceId: string, recipientId: string): Promise<number> {
     const rows = await this.db
       .select({ value: count() })
       .from(inAppNotifications)
       .where(
         and(
-          eq(inAppNotifications.tenantId, tenantId),
+          eq(inAppNotifications.workspaceId, workspaceId),
           eq(inAppNotifications.recipientId, recipientId),
           eq(inAppNotifications.isRead, false),
         ),
@@ -87,13 +87,13 @@ export class NotificationDrizzleRepository implements INotificationRepository {
       .where(eq(inAppNotifications.id, id));
   }
 
-  async markAllRead(tenantId: string, recipientId: string): Promise<void> {
+  async markAllRead(workspaceId: string, recipientId: string): Promise<void> {
     await this.db
       .update(inAppNotifications)
       .set({ isRead: true, readAt: new Date() })
       .where(
         and(
-          eq(inAppNotifications.tenantId, tenantId),
+          eq(inAppNotifications.workspaceId, workspaceId),
           eq(inAppNotifications.recipientId, recipientId),
           eq(inAppNotifications.isRead, false),
         ),
@@ -107,7 +107,7 @@ export class NotificationDrizzleRepository implements INotificationRepository {
    * Limit is capped at 50 to prevent unbounded replay on very stale clients.
    */
   async listSince(
-    tenantId: string,
+    workspaceId: string,
     recipientId: string,
     afterId: string,
     limit: number,
@@ -117,7 +117,7 @@ export class NotificationDrizzleRepository implements INotificationRepository {
       .from(inAppNotifications)
       .where(
         and(
-          eq(inAppNotifications.tenantId, tenantId),
+          eq(inAppNotifications.workspaceId, workspaceId),
           eq(inAppNotifications.recipientId, recipientId),
           gt(inAppNotifications.id, afterId),
         ),

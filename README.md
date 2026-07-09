@@ -54,4 +54,4 @@ Promotion `develop → prod` is a tagged release. See `.github/workflows/` and `
 
 ## Infra
 
-`infra/live/{develop,prod}` compose modules from [`qnsc-tf-modules`](https://github.com/QNSC-VN/qnsc-tf-modules) (network, ecs-cluster, ecs-service, rds, cache, messaging, secrets, cdn, waf). State in S3 + DynamoDB (shared bootstrap). `infra/live/_shared` holds per-product ECR repos + GitHub OIDC deploy roles.
+`infra/live/{develop,prod}` compose modules from [`qnsc-tf-modules`](https://github.com/QNSC-VN/qnsc-tf-modules) (ecs-cluster, ecs-service, rds, messaging, secrets, pages-web, dns-record). The shared VPC/NAT/ALB (+ prod cache/WAF) live once per env in `qnsc-infra` (`platform/runtime-dev` / `runtime-prod`) and are consumed via `terraform_remote_state`; RDS + Fargate stay per-product (dev cache is a Valkey sidecar). State in S3 + DynamoDB (shared bootstrap). `infra/live/_shared` holds per-product ECR repos + GitHub OIDC deploy roles.

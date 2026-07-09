@@ -21,7 +21,7 @@ export interface IActivityLogRepository {
   /** Newest-first history for one work item (includes its task activity). */
   listByWorkItem(
     workItemId: string,
-    tenantId: string,
+    workspaceId: string,
     args: { limit: number; offset: number },
   ): Promise<{ items: ActivityLog[]; total: number }>;
 }

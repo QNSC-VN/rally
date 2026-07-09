@@ -129,9 +129,9 @@ export function LoginPage() {
           timezone: string
         }
         memberships: {
-          tenantId: string
-          tenantName: string
-          tenantSlug: string
+          workspaceId: string
+          name: string
+          slug: string
           lastActiveAt: string | null
           roleSlug: string | null
           roleName: string | null

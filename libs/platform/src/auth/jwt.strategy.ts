@@ -7,7 +7,7 @@ import { AppConfigService } from '../config/app-config.service';
 export interface JwtPayload {
   /** Subject = userId */
   sub: string;
-  tenantId: string;
+  workspaceId: string;
   sessionId: string;
   jti: string;
   iss: string;

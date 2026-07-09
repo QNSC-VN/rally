@@ -50,7 +50,7 @@ import { NotificationRelayService } from './notifications/notification-relay.ser
               }
               const reqCtx = requestContextStorage.getStore();
               if (reqCtx) {
-                if (reqCtx.tenantId) result['tenantId'] = reqCtx.tenantId;
+                if (reqCtx.workspaceId) result['workspaceId'] = reqCtx.workspaceId;
                 if (reqCtx.userId) result['userId'] = reqCtx.userId;
                 if (reqCtx.correlationId) result['correlationId'] = reqCtx.correlationId;
               }

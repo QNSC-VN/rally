@@ -51,7 +51,6 @@ export const projects = workSchema.table(
   'projects',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    tenantId: uuid('tenant_id').notNull(),
     workspaceId: uuid('workspace_id').notNull(),
     key: varchar('key', { length: 10 }).notNull(),
     name: varchar('name', { length: 255 }).notNull(),
@@ -64,10 +63,9 @@ export const projects = workSchema.table(
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
   },
   (t) => ({
-    tenantIdx: index('ix_projects_tenant').on(t.tenantId),
     workspaceIdx: index('ix_projects_workspace').on(t.workspaceId),
-    keyIdx: uniqueIndex('uq_projects_key')
-      .on(t.tenantId, t.key)
+    keyIdx: uniqueIndex('uq_projects_workspace_key')
+      .on(t.workspaceId, t.key)
       .where(sql`deleted_at IS NULL`),
   }),
 );
@@ -76,7 +74,7 @@ export const projects = workSchema.table(
 
 export const projectCounters = workSchema.table('project_counters', {
   projectId: uuid('project_id').primaryKey(),
-  tenantId: uuid('tenant_id').notNull(),
+  workspaceId: uuid('workspace_id').notNull(),
   lastItemNumber: integer('last_item_number').notNull().default(0),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -87,7 +85,7 @@ export const workItems = workSchema.table(
   'work_items',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    tenantId: uuid('tenant_id').notNull(),
+    workspaceId: uuid('workspace_id').notNull(),
     projectId: uuid('project_id').notNull(),
     itemKey: varchar('item_key', { length: 30 }).notNull(),
     type: workItemTypeEnum('type').notNull(),
@@ -127,27 +125,27 @@ export const workItems = workSchema.table(
     searchVector: tsvector('search_vector'),
   },
   (t) => ({
-    tenantIdx: index('ix_wi_tenant').on(t.tenantId),
+    workspaceIdx: index('ix_wi_workspace').on(t.workspaceId),
     projectIdx: index('ix_wi_project').on(t.projectId),
     itemKeyIdx: uniqueIndex('uq_wi_item_key').on(t.projectId, t.itemKey),
-    boardIdx: index('ix_wi_board').on(t.tenantId, t.projectId, t.statusId, t.rank),
-    backlogIdx: index('ix_wi_backlog').on(t.tenantId, t.projectId, t.rank),
-    // Default list/pagination path: filter (tenantId, projectId), order by createdAt,
+    boardIdx: index('ix_wi_board').on(t.workspaceId, t.projectId, t.statusId, t.rank),
+    backlogIdx: index('ix_wi_backlog').on(t.workspaceId, t.projectId, t.rank),
+    // Default list/pagination path: filter (workspaceId, projectId), order by createdAt,
     // excluding soft-deleted rows. Partial index keeps it lean and sort-free.
     listIdx: index('ix_wi_list')
-      .on(t.tenantId, t.projectId, t.createdAt)
+      .on(t.workspaceId, t.projectId, t.createdAt)
       .where(sql`deleted_at IS NULL`),
     // Task-list-under-parent hot path (Tasks tab + totals aggregation).
     tasksIdx: index('ix_wi_tasks')
       .on(t.parentId, t.rank)
       .where(sql`type = 'task' AND deleted_at IS NULL`),
-    assigneeIdx: index('ix_wi_assignee').on(t.tenantId, t.assigneeId),
+    assigneeIdx: index('ix_wi_assignee').on(t.workspaceId, t.assigneeId),
     parentIdx: index('ix_wi_parent').on(t.parentId),
     teamIdx: index('ix_wi_team').on(t.teamId),
     iterationIdx: index('ix_wi_iteration').on(t.iterationId),
     releaseIdx: index('ix_wi_release').on(t.releaseId),
     blockedIdx: index('ix_wi_blocked')
-      .on(t.tenantId, t.isBlocked)
+      .on(t.workspaceId, t.isBlocked)
       .where(sql`is_blocked = true`),
     ftsIdx: index('ix_wi_fts').on(t.searchVector).where(sql`deleted_at IS NULL`),
   }),
@@ -159,7 +157,7 @@ export const workflowStatuses = workSchema.table(
   'workflow_statuses',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    tenantId: uuid('tenant_id').notNull(),
+    workspaceId: uuid('workspace_id').notNull(),
     projectId: uuid('project_id').notNull(),
     name: varchar('name', { length: 100 }).notNull(),
     category: workflowStatusCategoryEnum('category').notNull(),
@@ -169,7 +167,7 @@ export const workflowStatuses = workSchema.table(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    tenantIdx: index('ix_ws_tenant').on(t.tenantId),
+    workspaceIdx: index('ix_ws_workspace').on(t.workspaceId),
     projectIdx: index('ix_ws_project').on(t.projectId),
   }),
 );
@@ -180,7 +178,7 @@ export const workflowTransitions = workSchema.table(
   'workflow_transitions',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    tenantId: uuid('tenant_id').notNull(),
+    workspaceId: uuid('workspace_id').notNull(),
     projectId: uuid('project_id').notNull(),
     fromStatusId: uuid('from_status_id'), // NULL = any status
     toStatusId: uuid('to_status_id').notNull(),
@@ -189,7 +187,7 @@ export const workflowTransitions = workSchema.table(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    tenantIdx: index('ix_wt_tenant').on(t.tenantId),
+    workspaceIdx: index('ix_wt_workspace').on(t.workspaceId),
     projectIdx: index('ix_wt_project').on(t.projectId),
   }),
 );
@@ -202,7 +200,7 @@ export const iterations = workSchema.table(
   'iterations',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    tenantId: uuid('tenant_id').notNull(),
+    workspaceId: uuid('workspace_id').notNull(),
     projectId: uuid('project_id').notNull(),
     teamId: uuid('team_id'),
     iterationKey: varchar('iteration_key', { length: 30 }),
@@ -220,7 +218,7 @@ export const iterations = workSchema.table(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    tenantIdx: index('ix_iterations_tenant').on(t.tenantId),
+    workspaceIdx: index('ix_iterations_workspace').on(t.workspaceId),
     projectIdx: index('ix_iterations_project').on(t.projectId),
     teamIdx: index('ix_iterations_team').on(t.teamId),
     keyIdx: uniqueIndex('uq_iterations_key').on(t.projectId, t.iterationKey),
@@ -236,7 +234,7 @@ export const iterationDailySnapshots = workSchema.table(
   'iteration_daily_snapshots',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    tenantId: uuid('tenant_id').notNull(),
+    workspaceId: uuid('workspace_id').notNull(),
     iterationId: uuid('iteration_id').notNull(),
     snapshotDate: date('snapshot_date').notNull(),
     totalPoints: integer('total_points').notNull().default(0),
@@ -247,7 +245,7 @@ export const iterationDailySnapshots = workSchema.table(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    tenantIdx: index('ix_ids_tenant').on(t.tenantId),
+    workspaceIdx: index('ix_ids_workspace').on(t.workspaceId),
     iterationIdx: index('ix_ids_iteration').on(t.iterationId),
     uniqueDay: uniqueIndex('uq_ids_iteration_date').on(t.iterationId, t.snapshotDate),
   }),
@@ -259,7 +257,7 @@ export const releases = workSchema.table(
   'releases',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    tenantId: uuid('tenant_id').notNull(),
+    workspaceId: uuid('workspace_id').notNull(),
     projectId: uuid('project_id').notNull(),
     name: varchar('name', { length: 255 }).notNull(),
     description: text('description'),
@@ -270,7 +268,7 @@ export const releases = workSchema.table(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    tenantIdx: index('ix_releases_tenant').on(t.tenantId),
+    workspaceIdx: index('ix_releases_workspace').on(t.workspaceId),
     projectIdx: index('ix_releases_project').on(t.projectId),
   }),
 );
@@ -281,7 +279,7 @@ export const comments = workSchema.table(
   'comments',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    tenantId: uuid('tenant_id').notNull(),
+    workspaceId: uuid('workspace_id').notNull(),
     workItemId: uuid('work_item_id').notNull(),
     authorId: uuid('author_id').notNull(),
     body: text('body').notNull(),
@@ -293,7 +291,7 @@ export const comments = workSchema.table(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    tenantIdx: index('ix_comments_tenant').on(t.tenantId),
+    workspaceIdx: index('ix_comments_workspace').on(t.workspaceId),
     workItemIdx: index('ix_comments_work_item').on(t.workItemId),
     authorIdx: index('ix_comments_author').on(t.authorId),
     parentIdx: index('ix_comments_parent').on(t.parentId),
@@ -306,7 +304,7 @@ export const attachments = workSchema.table(
   'attachments',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    tenantId: uuid('tenant_id').notNull(),
+    workspaceId: uuid('workspace_id').notNull(),
     workItemId: uuid('work_item_id').notNull(),
     uploadedBy: uuid('uploaded_by').notNull(),
     filename: varchar('filename', { length: 500 }).notNull(),
@@ -318,7 +316,7 @@ export const attachments = workSchema.table(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    tenantIdx: index('ix_attach_tenant').on(t.tenantId),
+    workspaceIdx: index('ix_attach_workspace').on(t.workspaceId),
     workItemIdx: index('ix_attach_work_item').on(t.workItemId),
   }),
 );
@@ -329,7 +327,7 @@ export const labels = workSchema.table(
   'labels',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    tenantId: uuid('tenant_id').notNull(),
+    workspaceId: uuid('workspace_id').notNull(),
     projectId: uuid('project_id').notNull(),
     name: varchar('name', { length: 100 }).notNull(),
     color: varchar('color', { length: 20 }).notNull().default('#6b7280'),
@@ -337,7 +335,7 @@ export const labels = workSchema.table(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    tenantIdx: index('ix_labels_tenant').on(t.tenantId),
+    workspaceIdx: index('ix_labels_workspace').on(t.workspaceId),
     projectIdx: index('ix_labels_project').on(t.projectId),
     uniqueName: uniqueIndex('uq_labels_name').on(t.projectId, t.name),
   }),
@@ -365,7 +363,6 @@ export const teams = workSchema.table(
   'teams',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    tenantId: uuid('tenant_id').notNull(),
     workspaceId: uuid('workspace_id').notNull(),
     name: varchar('name', { length: 255 }).notNull(),
     key: varchar('key', { length: 10 }).notNull(),
@@ -376,7 +373,6 @@ export const teams = workSchema.table(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    tenantIdx: index('ix_teams_tenant').on(t.tenantId),
     workspaceIdx: index('ix_teams_workspace').on(t.workspaceId),
     uniqueKey: uniqueIndex('uq_teams_key').on(t.workspaceId, t.key),
   }),
@@ -388,7 +384,7 @@ export const teamMembers = workSchema.table(
   'team_members',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    tenantId: uuid('tenant_id').notNull(),
+    workspaceId: uuid('workspace_id').notNull(),
     teamId: uuid('team_id').notNull(),
     userId: uuid('user_id').notNull(),
     status: teamMemberStatusEnum('status').notNull().default('active'),
@@ -396,7 +392,7 @@ export const teamMembers = workSchema.table(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    tenantIdx: index('ix_tm_tenant').on(t.tenantId),
+    workspaceIdx: index('ix_tm_workspace').on(t.workspaceId),
     teamIdx: index('ix_tm_team').on(t.teamId),
     uniqueMember: uniqueIndex('uq_team_member').on(t.teamId, t.userId),
   }),
@@ -408,7 +404,7 @@ export const projectTeams = workSchema.table(
   'project_teams',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    tenantId: uuid('tenant_id').notNull(),
+    workspaceId: uuid('workspace_id').notNull(),
     projectId: uuid('project_id').notNull(),
     teamId: uuid('team_id').notNull(),
     status: projectTeamStatusEnum('status').notNull().default('active'),
@@ -417,7 +413,7 @@ export const projectTeams = workSchema.table(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    tenantIdx: index('ix_pt_tenant').on(t.tenantId),
+    workspaceIdx: index('ix_pt_workspace').on(t.workspaceId),
     projectIdx: index('ix_pt_project').on(t.projectId),
     uniqueLink: uniqueIndex('uq_project_team').on(t.projectId, t.teamId),
   }),
@@ -429,7 +425,7 @@ export const projectMembers = workSchema.table(
   'project_members',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    tenantId: uuid('tenant_id').notNull(),
+    workspaceId: uuid('workspace_id').notNull(),
     projectId: uuid('project_id').notNull(),
     userId: uuid('user_id').notNull(),
     roleId: uuid('role_id'),
@@ -439,7 +435,7 @@ export const projectMembers = workSchema.table(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    tenantIdx: index('ix_pm_tenant').on(t.tenantId),
+    workspaceIdx: index('ix_pm_workspace').on(t.workspaceId),
     projectIdx: index('ix_pm_project').on(t.projectId),
     userIdx: index('ix_pm_user').on(t.userId),
     uniqueMember: uniqueIndex('uq_project_member').on(t.projectId, t.userId),
@@ -458,7 +454,7 @@ export const activityLogs = workSchema.table(
   'activity_logs',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    tenantId: uuid('tenant_id').notNull(),
+    workspaceId: uuid('workspace_id').notNull(),
     projectId: uuid('project_id').notNull(),
     // Anchor row: parent work item id for both item and task activity, so the
     // item history can show task changes too. entityId is the concrete subject.
@@ -473,7 +469,7 @@ export const activityLogs = workSchema.table(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    tenantIdx: index('ix_activity_tenant').on(t.tenantId),
+    workspaceIdx: index('ix_activity_workspace').on(t.workspaceId),
     // Primary read path: history for one work item, newest first.
     workItemIdx: index('ix_activity_work_item').on(t.workItemId, t.createdAt),
     projectIdx: index('ix_activity_project').on(t.projectId),
@@ -488,7 +484,7 @@ export const timeLogs = workSchema.table(
   'time_logs',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    tenantId: uuid('tenant_id').notNull(),
+    workspaceId: uuid('workspace_id').notNull(),
     workItemId: uuid('work_item_id').notNull(),
     userId: uuid('user_id').notNull(),
     loggedDate: date('logged_date').notNull(),
@@ -499,7 +495,7 @@ export const timeLogs = workSchema.table(
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
   },
   (t) => ({
-    tenantIdx: index('ix_tl_tenant').on(t.tenantId),
+    workspaceIdx: index('ix_tl_workspace').on(t.workspaceId),
     workItemIdx: index('ix_tl_work_item').on(t.workItemId).where(sql`deleted_at IS NULL`),
     userIdx: index('ix_tl_user').on(t.userId, t.loggedDate),
   }),
@@ -514,12 +510,12 @@ export const workItemWatchers = workSchema.table(
   {
     workItemId: uuid('work_item_id').notNull(),
     userId: uuid('user_id').notNull(),
-    tenantId: uuid('tenant_id').notNull(),
+    workspaceId: uuid('workspace_id').notNull(),
     watchedAt: timestamp('watched_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.workItemId, t.userId] }),
     userIdx: index('ix_wiw_user').on(t.userId),
-    tenantIdx: index('ix_wiw_tenant').on(t.tenantId),
+    workspaceIdx: index('ix_wiw_workspace').on(t.workspaceId),
   }),
 );

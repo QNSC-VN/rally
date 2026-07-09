@@ -1,4 +1,5 @@
 terraform {
+  required_version = ">= 1.9"
   required_providers {
     aws        = { source = "hashicorp/aws", version = "~> 5.0" }
     cloudflare = { source = "cloudflare/cloudflare", version = "~> 4.0" }
@@ -52,34 +53,36 @@ locals {
   cloudflare_zone_id = try(data.terraform_remote_state.shared.outputs.cloudflare_zone_id, "")
 
   ecr_base       = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${local.region}.amazonaws.com"
-  ecr_api_url    = "${local.ecr_base}/rally-api:latest"
-  ecr_worker_url = "${local.ecr_base}/rally-worker:latest"
+  ecr_api_url    = "${local.ecr_base}/rally-api:${var.image_tag}"
+  ecr_worker_url = "${local.ecr_base}/rally-worker:${var.image_tag}"
 
   # Cloudflare IPv4 ranges — single source of truth in qnsc-infra bootstrap
   # (read via _shared remote state), so a CF range change is one edit there.
   cloudflare_ipv4 = data.terraform_remote_state.shared.outputs.cloudflare_ipv4
+
+  # prod_tier switch (Option A): lean = shared runtime-prod cache + single-AZ
+  # DB + 1 task/svc; ha = per-product cache + multi-AZ DB + 2 tasks/svc.
+  is_ha = var.prod_tier == "ha"
+
+  # Cache endpoint: lean uses the shared runtime-prod node (via remote state);
+  # ha uses this product's own cache node (module.cache below). REDIS_URL is an
+  # env var (not a secret) — the endpoint isn't sensitive.
+  cache_endpoint = coalesce(one(module.cache[*].endpoint), data.terraform_remote_state.runtime.outputs.cache_endpoint)
+  cache_port     = coalesce(one(module.cache[*].port), data.terraform_remote_state.runtime.outputs.cache_port)
+  redis_url      = "redis://${local.cache_endpoint}:${local.cache_port}"
 }
 
-# ── Networking ────────────────────────────────────────────────────────────────
-module "network" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/network?ref=network-v1.1.2"
-
-  name   = local.name
-  region = local.region
-  azs    = local.azs
-
-  vpc_cidr             = "10.20.0.0/16"
-  public_subnet_cidrs  = ["10.20.0.0/24", "10.20.1.0/24", "10.20.2.0/24"]
-  private_subnet_cidrs = ["10.20.10.0/24", "10.20.11.0/24", "10.20.12.0/24"]
-  data_subnet_cidrs    = ["10.20.20.0/24", "10.20.21.0/24", "10.20.22.0/24"]
-
-  multi_az_nat            = false   # single NAT — saves $87/mo; outbound HA sacrificed, inbound HA (ALB) unaffected
-  app_port                = 3000
-  enable_flow_logs        = true
-  flow_log_retention_days = 90    # SOC 2 CC7.2 minimum
-  alb_ingress_cidrs       = local.cloudflare_ipv4  # lock ALB to Cloudflare orange-cloud proxy IPs
-
-  tags = { Environment = local.env }
+# ── Shared runtime layer (VPC + NAT + ALB + prod cache + WAF) ─────────────────
+# Option A: the prod VPC/NAT/ALB/WAF (and, in lean tier, a shared cache node)
+# live once per env in qnsc-infra/live/runtime-prod and are consumed here via
+# remote state. RDS + Fargate stay per-product below.
+data "terraform_remote_state" "runtime" {
+  backend = "s3"
+  config = {
+    bucket = "qnsc-tofu-state"
+    key    = "platform/runtime-prod/terraform.tfstate"
+    region = "ap-southeast-1"
+  }
 }
 
 # ── Secrets ───────────────────────────────────────────────────────────────────
@@ -91,10 +94,9 @@ module "secrets" {
 
   secret_names = {
     "db-url"      = "PostgreSQL connection URL for the app"
-    "jwt-private" = "Ed25519 private key (PEM, base64-encoded)"
-    "jwt-public"  = "Ed25519 public key (PEM, base64-encoded)"
+    "jwt-private" = "EC P-256 (ES256) private key (PEM, base64-encoded)"
+    "jwt-public"  = "EC P-256 (ES256) public key (PEM, base64-encoded)"
     "csrf-secret" = "CSRF token signing secret"
-    "redis-url"   = "Redis/Valkey connection URL"
   }
 
   tags = { Environment = local.env }
@@ -105,31 +107,34 @@ module "rds" {
   source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/rds?ref=rds-v1.1.0"
 
   identifier        = local.name
-  subnet_ids        = module.network.data_subnet_ids
-  security_group_id = module.network.sg_rds_id
+  subnet_ids        = data.terraform_remote_state.runtime.outputs.data_subnet_ids
+  security_group_id = data.terraform_remote_state.runtime.outputs.sg_rds_id
   kms_key_arn       = local.kms_key_arn
 
-  instance_class           = "db.t4g.large"
+  instance_class           = local.is_ha ? "db.t4g.large" : "db.t4g.micro"
   allocated_storage_gb     = 100
   max_allocated_storage_gb = 500
-  multi_az                 = true   # HA in production
+  multi_az                 = local.is_ha # HA tier only — lean is single-AZ
   deletion_protection      = true
   backup_retention_days    = 30
+  monitoring_interval      = local.is_ha ? 60 : 0 # Enhanced Monitoring in ha only
 
   tags = { Environment = local.env }
 }
 
 # ── ElastiCache Valkey ────────────────────────────────────────────────────────
+# Per-product cache in the HA tier only. In lean, both products share the single
+# runtime-prod cache node (key-prefixed) — see local.cache_endpoint.
 module "cache" {
+  count  = local.is_ha ? 1 : 0
   source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/cache?ref=cache-v1.0.0"
 
   name              = local.name
-  subnet_ids        = module.network.data_subnet_ids
-  security_group_id = module.network.sg_cache_id
+  subnet_ids        = data.terraform_remote_state.runtime.outputs.data_subnet_ids
+  security_group_id = data.terraform_remote_state.runtime.outputs.sg_cache_id
 
-  max_data_storage_gb      = 10
-  max_ecpu_per_second      = 10000
-  snapshot_retention_days  = 7
+  mode      = "node"
+  node_type = "cache.t4g.micro"
 
   tags = { Environment = local.env }
 }
@@ -161,31 +166,8 @@ module "messaging" {
   tags = { Environment = local.env }
 }
 
-# ── ALB ───────────────────────────────────────────────────────────────────────
-module "alb_logs" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/alb-logs?ref=alb-logs-v1.0.0"
-
-  bucket_name = "${local.name}-alb-logs"
-  tags        = { Environment = local.env }
-}
-
-# ── ALB (shared module: LB + HTTPS/HTTP listener pair) ───────────────────────
-# Prod: deletion protection on + access logs to the alb_logs bucket. The API
-# attaches to the HTTPS listener directly (see module.api below), so no
-# separate /v1/* HTTP-forward rule (that's a develop-only CloudFront quirk).
-module "alb" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/alb?ref=alb-v1.0.0"
-
-  name               = local.name
-  security_group_ids = [module.network.sg_alb_id]
-  subnet_ids         = module.network.public_subnet_ids
-  certificate_arn    = var.acm_cert_arn
-
-  enable_deletion_protection = true
-  access_logs_bucket         = module.alb_logs.bucket_id
-
-  tags = { Environment = local.env }
-}
+# ── ALB: shared, lives in runtime-prod (with access logs + WAF). This stack
+# attaches host-header listener rules (module.api) to its HTTPS listener. ──────
 
 # ── ECS Cluster ───────────────────────────────────────────────────────────────
 module "ecs_cluster" {
@@ -196,74 +178,75 @@ module "ecs_cluster" {
 
 # ── ECS Service — API ─────────────────────────────────────────────────────────
 module "api" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v1.1.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v1.3.0"
 
-  service_name  = "api"
-  cluster_name  = module.ecs_cluster.cluster_name
-  cluster_arn   = module.ecs_cluster.cluster_arn
-  region        = local.region
-  image_uri     = local.ecr_api_url
+  service_name = "api"
+  cluster_name = module.ecs_cluster.cluster_name
+  cluster_arn  = module.ecs_cluster.cluster_arn
+  region       = local.region
+  image_uri    = local.ecr_api_url
 
   cpu    = 1024
   memory = 2048
 
-  vpc_id            = module.network.vpc_id
-  subnet_ids        = module.network.private_subnet_ids
-  security_group_id = module.network.sg_app_id
+  vpc_id            = data.terraform_remote_state.runtime.outputs.vpc_id
+  subnet_ids        = data.terraform_remote_state.runtime.outputs.private_subnet_ids
+  security_group_id = data.terraform_remote_state.runtime.outputs.sg_app_id
 
-  desired_count = 2   # at least 2 for HA
-  min_count     = 2
+  desired_count = local.is_ha ? 2 : 1 # ha: 2 for redundancy; lean: 1
+  min_count     = local.is_ha ? 2 : 1
   max_count     = 10
 
-  attach_alb       = true
-  alb_listener_arn = module.alb.https_listener_arn
-  alb_priority     = 100
+  attach_alb        = true
+  alb_listener_arn  = data.terraform_remote_state.runtime.outputs.https_listener_arn
+  alb_priority      = 100
   alb_path_patterns = ["/*"]
+  alb_host_headers  = ["rally-api.qnsc.vn"] # host-based routing on the shared prod ALB
   health_check_path = "/v1/healthz"
 
   secret_arns = values(module.secrets.secret_arns)
   secrets = [
-    { name = "DATABASE_URL",    secret_arn = module.secrets.secret_arns["db-url"] },
-    { name = "REDIS_URL",       secret_arn = module.secrets.secret_arns["redis-url"] },
+    { name = "DATABASE_URL", secret_arn = module.secrets.secret_arns["db-url"] },
     { name = "JWT_PRIVATE_KEY", secret_arn = module.secrets.secret_arns["jwt-private"] },
-    { name = "JWT_PUBLIC_KEY",  secret_arn = module.secrets.secret_arns["jwt-public"] },
-    { name = "CSRF_SECRET",     secret_arn = module.secrets.secret_arns["csrf-secret"] },
+    { name = "JWT_PUBLIC_KEY", secret_arn = module.secrets.secret_arns["jwt-public"] },
+    { name = "CSRF_SECRET", secret_arn = module.secrets.secret_arns["csrf-secret"] },
   ]
 
   environment_vars = [
     { name = "NODE_ENV", value = "production" },
-    { name = "PORT",     value = "3000" },
+    { name = "PORT", value = "3000" },
+    { name = "REDIS_URL", value = local.redis_url }, # shared (lean) or per-product (ha) cache
   ]
 
   sqs_queue_arns = values(module.messaging.queue_arns)
   sns_topic_arns = values(module.messaging.topic_arns)
 
-  cpu_target_pct    = 60   # tighter target in prod
-  memory_target_pct = 70
-  log_retention_days = 90  # 90 days — SOC 2 minimum for prod logs
+  cpu_target_pct     = 60 # tighter target in prod
+  memory_target_pct  = 70
+  log_retention_days = 90 # 90 days — SOC 2 minimum for prod logs
 
   tags = { Environment = local.env, Service = "api" }
 }
 
 # ── ECS Service — Worker ──────────────────────────────────────────────────────
 module "worker" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v1.1.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v1.3.0"
 
-  service_name  = "worker"
-  cluster_name  = module.ecs_cluster.cluster_name
-  cluster_arn   = module.ecs_cluster.cluster_arn
-  region        = local.region
-  image_uri     = local.ecr_worker_url
+  service_name = "worker"
+  cluster_name = module.ecs_cluster.cluster_name
+  cluster_arn  = module.ecs_cluster.cluster_arn
+  region       = local.region
+  image_uri    = local.ecr_worker_url
 
   cpu    = 512
   memory = 1024
 
-  vpc_id            = module.network.vpc_id
-  subnet_ids        = module.network.private_subnet_ids
-  security_group_id = module.network.sg_app_id
+  vpc_id            = data.terraform_remote_state.runtime.outputs.vpc_id
+  subnet_ids        = data.terraform_remote_state.runtime.outputs.private_subnet_ids
+  security_group_id = data.terraform_remote_state.runtime.outputs.sg_app_id
 
-  desired_count = 2
-  min_count     = 2
+  desired_count = local.is_ha ? 2 : 1
+  min_count     = local.is_ha ? 2 : 1
   max_count     = 6
 
   attach_alb = false
@@ -273,61 +256,39 @@ module "worker" {
 
   secret_arns = values(module.secrets.secret_arns)
   secrets = [
-    { name = "DATABASE_URL",    secret_arn = module.secrets.secret_arns["db-url"] },
-    { name = "REDIS_URL",       secret_arn = module.secrets.secret_arns["redis-url"] },
+    { name = "DATABASE_URL", secret_arn = module.secrets.secret_arns["db-url"] },
     { name = "JWT_PRIVATE_KEY", secret_arn = module.secrets.secret_arns["jwt-private"] },
-    { name = "JWT_PUBLIC_KEY",  secret_arn = module.secrets.secret_arns["jwt-public"] },
+    { name = "JWT_PUBLIC_KEY", secret_arn = module.secrets.secret_arns["jwt-public"] },
   ]
 
   environment_vars = [
     { name = "NODE_ENV", value = "production" },
+    { name = "REDIS_URL", value = local.redis_url },
   ]
 
-  sqs_queue_arns    = values(module.messaging.queue_arns)
-  sns_topic_arns    = values(module.messaging.topic_arns)
+  sqs_queue_arns     = values(module.messaging.queue_arns)
+  sns_topic_arns     = values(module.messaging.topic_arns)
   log_retention_days = 90
 
   tags = { Environment = local.env, Service = "worker" }
 }
 
-# ── WAF ───────────────────────────────────────────────────────────────────────
-module "waf" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/waf?ref=waf-v1.0.1"
+# ── WAF: lives in runtime-prod and is associated with the shared ALB there. ──
 
-  name                = local.name
-  alb_arn             = module.alb.arn
-  rate_limit_per_5min = 3000
+# ── Web SPA — Cloudflare Pages (zero-egress, native SPA routing) ─────────────
+# Consistent with rally develop + opshub. Cloudflare's global edge replaces the
+# CloudFront PriceClass_All coverage. The custom domain (web_domain, e.g.
+# "rally.qnsc.vn") is a prod product decision — the web module (Pages project +
+# custom domain + DNS) is created only when cloudflare_account_id AND web_domain
+# are both set, so prod applies cleanly before the public hostname is chosen.
+module "web" {
+  count  = var.cloudflare_account_id != "" && var.web_domain != "" ? 1 : 0
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/pages-web?ref=pages-web-v1.0.0"
 
-  tags = { Environment = local.env }
-}
-
-# ── CDN (S3 + CloudFront) — rally-web SPA ─────────────────────────────────────
-# PriceClass_All in prod — full global PoP coverage for enterprise users.
-# The custom domain (web_domain, e.g. "rally.qnsc.vn") is only wired when set —
-# prod's public hostname is a product decision, so it stays off until chosen.
-module "cdn" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/cdn?ref=cdn-v1.1.0"
-
-  name         = "qnsc-rally-web-prod" # "rally-web-prod" is a globally-unique S3 bucket name already claimed by another AWS account
-  acm_cert_arn = var.web_acm_cert_arn
-  aliases      = var.web_domain != "" ? [var.web_domain] : []
-  price_class  = "PriceClass_All"
-
-  tags = { Environment = local.env, Service = "web" }
-}
-
-# ── DNS — <web_domain> → CloudFront (shared dns-record module) ──────────────
-# Zone ID from qnsc-infra bootstrap (via _shared remote state). Created only
-# when BOTH the zone ID is present AND web_domain is set — prod's public
-# hostname isn't decided yet, so this stays off until web_domain is set.
-module "dns_web" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/dns-record?ref=dns-record-v1.0.0"
-
-  enabled = local.cloudflare_zone_id != "" && var.web_domain != ""
-  zone_id = local.cloudflare_zone_id
-  name    = var.web_domain
-  type    = "CNAME"
-  content = module.cdn.cloudfront_domain
-  proxied = false
-  comment = "rally-prod web SPA → CloudFront (managed by rally-infra prod)"
+  account_id  = var.cloudflare_account_id
+  name        = "rally-prod-web"
+  zone_id     = local.cloudflare_zone_id
+  domain      = var.web_domain
+  record_name = var.web_domain
+  comment     = "rally-prod web SPA → Cloudflare Pages (managed by rally-infra prod)"
 }

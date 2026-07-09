@@ -9,7 +9,7 @@ export const ITERATION_STATUS_REPOSITORY = Symbol('ITERATION_STATUS_REPOSITORY')
 
 /**
  * Read-model over `work_items` for the Iteration Status screen. All queries are
- * scoped to a single iteration and tenant; nothing here mutates work items.
+ * scoped to a single iteration and workspace; nothing here mutates work items.
  */
 /** Metrics computed directly from work items (before iteration-derived fields). */
 export type RawIterationMetrics = Pick<
@@ -19,11 +19,11 @@ export type RawIterationMetrics = Pick<
 
 export interface IIterationStatusRepository {
   /** Aggregate metrics across all non-deleted items assigned to the iteration. */
-  getMetrics(iterationId: string, tenantId: string): Promise<RawIterationMetrics>;
+  getMetrics(iterationId: string, workspaceId: string): Promise<RawIterationMetrics>;
   /** Paginated story/defect list assigned to the iteration, with task rollups. */
   listItems(
     iterationId: string,
-    tenantId: string,
+    workspaceId: string,
     filters: IterationStatusFilters,
     args: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<IterationStatusItem>>;

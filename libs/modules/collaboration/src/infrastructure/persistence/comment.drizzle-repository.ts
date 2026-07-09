@@ -15,14 +15,14 @@ export class CommentDrizzleRepository implements ICommentRepository {
     return (rows[0]) ?? null;
   }
 
-  async listByWorkItem(workItemId: string, tenantId: string): Promise<Comment[]> {
+  async listByWorkItem(workItemId: string, workspaceId: string): Promise<Comment[]> {
     const rows = await this.db
       .select()
       .from(comments)
       .where(
         and(
           eq(comments.workItemId, workItemId),
-          eq(comments.tenantId, tenantId),
+          eq(comments.workspaceId, workspaceId),
           isNull(comments.deletedAt),
         ),
       );
@@ -34,7 +34,7 @@ export class CommentDrizzleRepository implements ICommentRepository {
       .insert(comments)
       .values({
         id: input.id,
-        tenantId: input.tenantId,
+        workspaceId: input.workspaceId,
         workItemId: input.workItemId,
         authorId: input.authorId,
         body: input.body,

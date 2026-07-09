@@ -3,11 +3,11 @@ import type { TimeLog, CreateTimeLogInput, UpdateTimeLogInput } from '../time-lo
 export const TIME_LOG_REPOSITORY = Symbol('TIME_LOG_REPOSITORY');
 
 export interface ITimeLogRepository {
-  findById(id: string, tenantId: string): Promise<TimeLog | null>;
+  findById(id: string, workspaceId: string): Promise<TimeLog | null>;
 
   listByWorkItem(
     workItemId: string,
-    tenantId: string,
+    workspaceId: string,
     args: { limit: number; offset: number },
   ): Promise<{ items: TimeLog[]; total: number }>;
 

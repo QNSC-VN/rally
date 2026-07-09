@@ -13,7 +13,6 @@ import { JwtAuthGuard } from './auth/jwt.guard';
 import { PermissionGuard } from './auth/permission.guard';
 import { RateLimitGuard } from './rate-limit/rate-limit.guard';
 import { OutboxService } from './outbox/outbox.service';
-import { TenantRlsService } from './database/tenant-rls.service';
 import { EmailService } from './email/email.service';
 import { EmailSchedulerService } from './email/email-scheduler.service';
 import { EMAIL_PROVIDER } from './email/email.provider';
@@ -70,7 +69,6 @@ import { StorageService } from './storage/storage.service';
     // Use @RateLimit('TIER') to override, @SkipRateLimit() to opt out.
     { provide: APP_GUARD, useClass: RateLimitGuard },
     OutboxService,
-    TenantRlsService,
     // Email provider — selected via EMAIL_PROVIDER env var ('ses' | 'resend' | 'dev').
     // All providers share the same IEmailProvider interface; swap without touching business logic.
     // SES: needs MAIL_FROM_EMAIL + IAM ses:SendEmail role (cheapest at scale).
@@ -103,7 +101,6 @@ import { StorageService } from './storage/storage.service';
     JwtAuthGuard,
     PermissionGuard,
     OutboxService,
-    TenantRlsService,
     EmailService,
     EmailSchedulerService,
     NotificationSchedulerService,

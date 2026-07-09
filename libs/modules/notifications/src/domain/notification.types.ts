@@ -1,6 +1,6 @@
 export interface Notification {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   recipientId: string;
   actorId: string | null;
   type: string;
@@ -17,7 +17,7 @@ export interface Notification {
 
 export interface CreateNotificationInput {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   recipientId: string;
   actorId?: string;
   type: string;

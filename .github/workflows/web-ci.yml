@@ -33,9 +33,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
 
-      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1.0.0
+      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1
         with:
           node-version: ${{ env.NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}
@@ -56,9 +56,9 @@ jobs:
     outputs:
       has_tests: ${{ steps.detect.outputs.has_tests }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
 
-      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1.0.0
+      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1
         with:
           node-version: ${{ env.NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}
@@ -83,14 +83,130 @@ jobs:
 
       - name: Upload coverage
         if: always() && steps.detect.outputs.has_tests == 'true'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: coverage
           path: coverage/
           retention-days: 7
 
   # ─────────────────────────────────────────────────────────────────────────
-  # 3. Vite build — verifies the production bundle compiles cleanly.
+  # 3. E2E (Playwright) — full-stack flows against a live API + seeded DB.
+  #    Boots Postgres + Redis, migrates + seeds, starts the API (rate limiting
+  #    off so per-test login is allowed), then runs the browser specs. The
+  #    Playwright config auto-starts the Vite dev server, which proxies /v1 → API.
+  # ─────────────────────────────────────────────────────────────────────────
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rally_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+
+    env:
+      # Shared by migrate/seed, the API process, and the specs.
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rally_test?sslmode=disable
+      DATABASE_MIGRATION_URL: postgresql://postgres:postgres@localhost:5432/rally_test?sslmode=disable
+      REDIS_URL: redis://localhost:6379
+      JWT_ISSUER: rally-api
+      JWT_AUDIENCE: rally-web
+      JWT_ACCESS_EXPIRY: 15m
+      JWT_REFRESH_EXPIRY: 30d
+      CSRF_SECRET: ci-test-csrf-secret-min-32-characters-ok
+      # Rotating refresh tokens can't be shared across test contexts, so each
+      # spec logs in fresh — disable rate limiting so that never 429s.
+      DISABLE_RATE_LIMIT: 'true'
+      # The seed's break-glass admin password the e2e helper logs in with.
+      BREAKGLASS_EMAIL: admin@acme.dev
+      BREAKGLASS_PASSWORD: DevAdminPass123!
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
+
+      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+
+      # Ephemeral ES256 keypair for the API (matches platform.module.ts). Test-only.
+      - name: Generate CI JWT keypair
+        run: |
+          node - << 'EOF'
+          const { generateKeyPairSync } = require('crypto');
+          const { privateKey, publicKey } = generateKeyPairSync('ec', {
+            namedCurve: 'P-256',
+            privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+            publicKeyEncoding:  { type: 'spki',  format: 'pem' },
+          });
+          const b64 = (s) => Buffer.from(s).toString('base64');
+          const fs  = require('fs');
+          fs.appendFileSync(process.env.GITHUB_ENV,
+            `JWT_PRIVATE_KEY=${b64(privateKey)}\nJWT_PUBLIC_KEY=${b64(publicKey)}\n`);
+          EOF
+
+      - name: Migrate + seed database
+        run: pnpm db:migrate
+        env:
+          SEED_ON_DEPLOY: 'true'
+
+      - name: Build API
+        run: pnpm build:api
+
+      - name: Start API (background)
+        run: |
+          node --enable-source-maps dist/apps/api/apps/api/src/main.js > /tmp/api.log 2>&1 &
+          echo "Waiting for API health..."
+          for i in $(seq 1 40); do
+            if curl -sf http://localhost:3000/v1/healthz >/dev/null 2>&1; then
+              echo "API up after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "API failed to start"; cat /tmp/api.log; exit 1
+        env:
+          PORT: '3000'
+
+      - name: Install Playwright browsers
+        run: pnpm --filter rally-web exec playwright install --with-deps chromium
+
+      - name: Run E2E
+        run: pnpm --filter rally-web exec playwright test --reporter=line
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          name: playwright-report
+          path: apps/web/test-results/
+          retention-days: 7
+
+      - name: API logs on failure
+        if: failure()
+        run: cat /tmp/api.log || true
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 4. Vite build — verifies the production bundle compiles cleanly.
   #    Publishes the dist as an artifact for the deploy job to consume.
   # ─────────────────────────────────────────────────────────────────────────
   build:
@@ -99,9 +215,9 @@ jobs:
     needs: [quality, test]
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
 
-      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1.0.0
+      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1
         with:
           node-version: ${{ env.NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}
@@ -110,7 +226,7 @@ jobs:
         run: pnpm --filter rally-web build
 
       - name: Upload dist artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: dist-${{ github.sha }}
           path: dist/
@@ -126,7 +242,7 @@ jobs:
     if: github.event_name == 'pull_request'
     timeout-minutes: 5
     steps:
-      - uses: amannn/action-semantic-pull-request@v5
+      - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50  # v6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

@@ -7,7 +7,7 @@ export interface IReleaseRepository {
   findById(id: string): Promise<Release | null>;
   listByProject(
     projectId: string,
-    tenantId: string,
+    workspaceId: string,
     args: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<Release>>;
   create(input: CreateReleaseInput): Promise<Release>;

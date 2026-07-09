@@ -97,34 +97,6 @@ export async function handleSsoRedirect(): Promise<AuthenticationResult | null> 
 }
 
 /**
- * Attempt a silent token refresh for the active account.
- * Returns the idToken string, or null if no active session.
- *
- * @deprecated Use tryAcquireSsoTokenSilent for enterprise refresh flows —
- * this version auto-redirects on InteractionRequiredAuthError, which is
- * unsafe to call from background refresh middleware.
- */
-export async function acquireSsoTokenSilent(): Promise<string | null> {
-  const instance = await ensureInitialized()
-  const accounts = instance.getAllAccounts()
-  if (accounts.length === 0) return null
-
-  try {
-    const result = await instance.acquireTokenSilent({
-      scopes: ['openid', 'profile', 'email'],
-      account: accounts[0] as AccountInfo,
-    })
-    return result.idToken
-  } catch (err) {
-    if (err instanceof InteractionRequiredAuthError) {
-      // Token expired and silent refresh failed — trigger interactive login
-      await triggerSsoLogin()
-    }
-    return null
-  }
-}
-
-/**
  * Enterprise SSO silent token refresh — structured result, NO auto-redirect.
  *
  * Returns:

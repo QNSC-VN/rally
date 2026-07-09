@@ -11,18 +11,19 @@ import { defineConfig, devices } from '@playwright/test'
 export default defineConfig({
   testDir: './src/test/e2e',
   testMatch: '**/*.e2e.ts',
-  // Phase 2 specs share a single browser and mutate data; run serially for determinism.
+  // Phase 2 specs mutate data and each logs in fresh (rotating refresh tokens
+  // can't be shared across contexts); run serially for determinism.
   fullyParallel: false,
   workers: 1,
   retries: process.env.CI ? 1 : 0,
-  timeout: 30_000,
+  timeout: 45_000,
   expect: { timeout: 10_000 },
   reporter: [['list']],
-  // Log in once; every spec reuses the session (avoids the AUTH_LOGIN rate limit).
-  globalSetup: './src/test/e2e/global-setup.ts',
+  // Each test logs in fresh (see helpers.login). No shared storageState — the
+  // backend rotates + reuse-protects refresh tokens, so a shared session breaks.
+  // Requires the API to run with DISABLE_RATE_LIMIT=true so per-test login is OK.
   use: {
     baseURL: 'http://localhost:5173',
-    storageState: 'src/test/e2e/.auth/admin.json',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },

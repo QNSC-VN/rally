@@ -16,6 +16,9 @@ test.describe('P2.2 Iteration Management (Timeboxes)', () => {
     const name = `E2E Iteration ${Date.now()}`
     await page.getByRole('button', { name: 'Create Iteration' }).click()
     await page.getByPlaceholder('Enter iteration name...').fill(name)
+    // Start/End dates are required by the modal — fill them or submit is blocked.
+    await page.locator('input[type="date"]').first().fill('2026-08-01')
+    await page.locator('input[type="date"]').nth(1).fill('2026-08-14')
     // Create-with-details opens the full-page detail on success.
     await page.getByRole('button', { name: 'Create with details' }).click()
     await settle(page)

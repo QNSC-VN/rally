@@ -21,7 +21,7 @@ export class CollaborationService {
   // ── Comments ──────────────────────────────────────────────────────────────
 
   async listComments(actor: JwtPayload, workItemId: string): Promise<Comment[]> {
-    return this.commentRepo.listByWorkItem(workItemId, actor.tenantId);
+    return this.commentRepo.listByWorkItem(workItemId, actor.workspaceId);
   }
 
   async createComment(
@@ -32,7 +32,7 @@ export class CollaborationService {
   ): Promise<Comment> {
     const comment = await this.commentRepo.create({
       id: uuidv7(),
-      tenantId: actor.tenantId,
+      workspaceId: actor.workspaceId,
       workItemId,
       authorId: actor.sub,
       body,
@@ -44,7 +44,7 @@ export class CollaborationService {
 
   async updateComment(actor: JwtPayload, commentId: string, body: string): Promise<Comment> {
     const comment = await this.commentRepo.findById(commentId);
-    if (!comment || comment.tenantId !== actor.tenantId || comment.deletedAt) {
+    if (!comment || comment.workspaceId !== actor.workspaceId || comment.deletedAt) {
       throw new NotFoundException('COMMENT_NOT_FOUND', 'Comment not found');
     }
     if (comment.authorId !== actor.sub) {
@@ -58,7 +58,7 @@ export class CollaborationService {
 
   async deleteComment(actor: JwtPayload, commentId: string): Promise<void> {
     const comment = await this.commentRepo.findById(commentId);
-    if (!comment || comment.tenantId !== actor.tenantId || comment.deletedAt) {
+    if (!comment || comment.workspaceId !== actor.workspaceId || comment.deletedAt) {
       throw new NotFoundException('COMMENT_NOT_FOUND', 'Comment not found');
     }
     if (comment.authorId !== actor.sub) {
@@ -73,7 +73,7 @@ export class CollaborationService {
   // ── Attachments ───────────────────────────────────────────────────────────
 
   async listAttachments(actor: JwtPayload, workItemId: string): Promise<Attachment[]> {
-    return this.attachmentRepo.listByWorkItem(workItemId, actor.tenantId);
+    return this.attachmentRepo.listByWorkItem(workItemId, actor.workspaceId);
   }
 
   async createAttachment(
@@ -88,7 +88,7 @@ export class CollaborationService {
   ): Promise<Attachment> {
     const attachment = await this.attachmentRepo.create({
       id: uuidv7(),
-      tenantId: actor.tenantId,
+      workspaceId: actor.workspaceId,
       workItemId,
       uploadedBy: actor.sub,
       ...input,
@@ -99,7 +99,7 @@ export class CollaborationService {
 
   async deleteAttachment(actor: JwtPayload, attachmentId: string): Promise<void> {
     const attachment = await this.attachmentRepo.findById(attachmentId);
-    if (!attachment || attachment.tenantId !== actor.tenantId || attachment.deletedAt) {
+    if (!attachment || attachment.workspaceId !== actor.workspaceId || attachment.deletedAt) {
       throw new NotFoundException('ATTACHMENT_NOT_FOUND', 'Attachment not found');
     }
     await this.attachmentRepo.softDelete(attachmentId);

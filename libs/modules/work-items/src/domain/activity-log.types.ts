@@ -35,7 +35,7 @@ export interface ActivityChange {
 
 export interface CreateActivityLogInput {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   projectId: string;
   workItemId: string;
   entityType: ActivityEntityType;
@@ -48,7 +48,7 @@ export interface CreateActivityLogInput {
 
 export interface ActivityLog {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   projectId: string;
   workItemId: string;
   entityType: string;

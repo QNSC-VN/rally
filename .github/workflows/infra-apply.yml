@@ -8,6 +8,13 @@ name: OpenTofu Apply
 #
 # Prod infra can NOT be applied by a normal merge to main — it only happens on
 # a deliberate semver tag, so an accidental push can never touch production.
+#
+# PREREQUISITE (Option A shared runtime): the platform shared-runtime stacks in
+# qnsc-infra — runtime-dev (for develop) and runtime-prod (for prod) — own the
+# shared VPC/NAT/ALB (+ prod cache/WAF) and MUST be applied before this product
+# stack. develop/prod consume them via terraform_remote_state, so a product
+# apply fails if the runtime state doesn't exist yet. The platform pipeline
+# applies runtime first.
 # ─────────────────────────────────────────────────────────────────────────────
 on:
   push:
@@ -39,7 +46,7 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0   # v7.0.0
 
-      - uses: QNSC-VN/qnsc-ci/actions/setup-tofu-aws@v1.5
+      - uses: QNSC-VN/qnsc-ci/actions/setup-tofu-aws@v1
         with:
           role-arn: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/rally-github-infra-apply
           aws-region: ${{ env.AWS_REGION }}
@@ -73,7 +80,7 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0   # v7.0.0
 
-      - uses: QNSC-VN/qnsc-ci/actions/setup-tofu-aws@v1.5
+      - uses: QNSC-VN/qnsc-ci/actions/setup-tofu-aws@v1
         with:
           role-arn: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/rally-github-infra-apply
           aws-region: ${{ env.AWS_REGION }}
@@ -95,10 +102,45 @@ jobs:
         run: tofu apply -input=false -auto-approve
         env:
           TF_VAR_acm_cert_arn:       ${{ vars.ACM_CERT_ARN_DEVELOP }}
-          TF_VAR_web_acm_cert_arn:   ${{ vars.WEB_ACM_CERT_ARN_DEVELOP }}
           TF_VAR_entra_tenant_id:    ${{ vars.ENTRA_TENANT_ID }}
           TF_VAR_entra_client_id:    ${{ vars.ENTRA_CLIENT_ID }}
           TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TF_VAR_cloudflare_account_id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # Mint a short-lived installation token from the RELEASE_BOT GitHub App
+      # (same app release.yml uses) so we never need a long-lived user PAT.
+      # Requires the app to have "Variables: read and write" on this repo.
+      # Falls back to no token (publish step skipped) when the app isn't set.
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3
+        id: app-token
+        if: ${{ vars.RELEASE_BOT_APP_ID != '' }}
+        continue-on-error: true
+        with:
+          app-id: ${{ vars.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+
+      # Sync the infra IDs the deploy workflows read (backend-deploy.yml,
+      # web-deploy.yml) straight from Terraform outputs, so a rebuild that
+      # changes subnet/SG/CloudFront IDs can never leave the vars stale.
+      # Skipped automatically when no app token could be minted. Tolerant of a
+      # missing "Variables: write" grant so it never blocks the infra apply.
+      - name: Publish infra IDs to develop environment variables
+        if: ${{ steps.app-token.outputs.token != '' }}
+        continue-on-error: true
+        working-directory: infra/live/develop
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          set_var() { echo "  set ${1}"; gh variable set "$1" --env develop --repo "$REPO" --body "$2"; }
+          set_var ECS_CLUSTER           "$(tofu output -raw ecs_cluster_name)"
+          set_var ECS_API_SERVICE       "$(tofu output -raw ecs_api_service)"
+          set_var ECS_WORKER_SERVICE    "$(tofu output -raw ecs_worker_service)"
+          set_var ECS_MIGRATOR_TASK_DEF "$(tofu output -raw ecs_migrator_task_def)"
+          set_var ECS_MIGRATOR_SUBNET   "$(tofu output -json private_subnet_ids | jq -r 'join(",")')"
+          set_var ECS_MIGRATOR_SG       "$(tofu output -raw sg_app_id)"
+          set_var PAGES_PROJECT         "$(tofu output -raw web_pages_project)"
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Production — only on a v*.*.* tag push, AND requires manual approval via the
@@ -114,7 +156,7 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0   # v7.0.0
 
-      - uses: QNSC-VN/qnsc-ci/actions/setup-tofu-aws@v1.5
+      - uses: QNSC-VN/qnsc-ci/actions/setup-tofu-aws@v1
         with:
           role-arn: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/rally-github-infra-apply
           aws-region: ${{ env.AWS_REGION }}
@@ -136,8 +178,8 @@ jobs:
         run: tofu apply -input=false -auto-approve
         env:
           TF_VAR_acm_cert_arn:       ${{ secrets.ACM_CERT_ARN_PROD }}
-          TF_VAR_web_acm_cert_arn:   ${{ secrets.WEB_ACM_CERT_ARN_PROD }}
           TF_VAR_entra_tenant_id:    ${{ vars.ENTRA_TENANT_ID }}
           TF_VAR_entra_client_id:    ${{ vars.ENTRA_CLIENT_ID }}
           TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TF_VAR_cloudflare_account_id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           TF_VAR_web_domain:           ${{ vars.RALLY_WEB_DOMAIN_PROD }}

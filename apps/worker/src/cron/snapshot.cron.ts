@@ -1,12 +1,12 @@
 /**
  * SnapshotCronService — daily cron that materialises sprint burndown data.
  *
- * Runs at midnight UTC every day. Finds all active sprints across all tenants
+ * Runs at midnight UTC every day. Finds all active sprints across all workspaces
  * and upserts a sprint_daily_snapshots row so burndown charts always have
  * today's data point even if no HTTP request is made.
  *
  * Design:
- * - Injects DrizzleDB directly to query cross-tenant active sprints without
+ * - Injects DrizzleDB directly to query cross-workspace active sprints without
  *   needing a JwtPayload actor (this is an internal scheduled operation).
  * - Aggregates work item counts using a single JOIN query per sprint.
  * - Delegates the upsert to ReportingService.upsertSnapshot() which reuses
@@ -54,7 +54,7 @@ export class SnapshotCronService {
     this.logger.log(`Taking daily sprint snapshots for ${today}`);
 
     const activeSprints = await this.db
-      .select({ id: iterations.id, tenantId: iterations.tenantId })
+      .select({ id: iterations.id, workspaceId: iterations.workspaceId })
       .from(iterations)
       .where(eq(iterations.state, 'committed'));
 
@@ -68,9 +68,9 @@ export class SnapshotCronService {
 
     for (const sprint of activeSprints) {
       try {
-        const stats = await this.aggregateSprintStats(sprint.tenantId, sprint.id);
+        const stats = await this.aggregateSprintStats(sprint.workspaceId, sprint.id);
         await this.reportingService.upsertSnapshot({
-          tenantId: sprint.tenantId,
+          workspaceId: sprint.workspaceId,
           sprintId: sprint.id,
           snapshotDate: today,
           totalPoints: stats.totalPoints,
@@ -83,7 +83,7 @@ export class SnapshotCronService {
       } catch (err) {
         failed++;
         this.logger.error(
-          { err, sprintId: sprint.id, tenantId: sprint.tenantId },
+          { err, sprintId: sprint.id, workspaceId: sprint.workspaceId },
           'Failed to take sprint snapshot',
         );
       }
@@ -93,7 +93,7 @@ export class SnapshotCronService {
   }
 
   private async aggregateSprintStats(
-    tenantId: string,
+    workspaceId: string,
     sprintId: string,
   ): Promise<{
     totalPoints: number;
@@ -120,7 +120,7 @@ export class SnapshotCronService {
       )
       .where(
         and(
-          eq(workItems.tenantId, tenantId),
+          eq(workItems.workspaceId, workspaceId),
           eq(workItems.iterationId, sprintId),
           isNull(workItems.deletedAt),
         ),

@@ -27,7 +27,7 @@
 #     ECS_MIGRATOR_TASK_DEF    e.g. rally-develop-migrator
 #     ECS_MIGRATOR_SUBNET      private subnet ID (comma-separated if multiple)
 #     ECS_MIGRATOR_SG          security group allowing outbound to RDS
-#     APP_URL                  e.g. https://api-dev.yourdomain.com (for health)
+#     API_URL                  e.g. https://rally-api-dev.qnsc.vn (backend health check; /v1/healthz is appended)
 #
 #   Environment-scoped IAM roles (provisioned by rally-infra):
 #     rally-github-ecr-push        build-push job (ECR push + retag)
@@ -103,7 +103,7 @@ jobs:
 
       - name: Setup AWS OIDC + ECR login
         id: aws
-        uses: QNSC-VN/qnsc-ci/actions/setup-aws-oidc@v1.4
+        uses: QNSC-VN/qnsc-ci/actions/setup-aws-oidc@v1
         with:
           role-arn: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/rally-github-ecr-push
           region: ${{ vars.AWS_REGION }}
@@ -113,7 +113,7 @@ jobs:
       # Prod deploys the exact binary tested in develop. No new build.
       - name: Promote images ${{ env.SOURCE_TAG }} → ${{ env.IMAGE_TAG }}
         if: github.ref_type == 'tag'
-        uses: QNSC-VN/qnsc-ci/actions/promote-ecr-images@v1.4
+        uses: QNSC-VN/qnsc-ci/actions/promote-ecr-images@v1
         with:
           image-names: rally-api,rally-worker,rally-migrator
           source-tag:  ${{ env.SOURCE_TAG }}
@@ -124,7 +124,7 @@ jobs:
       - name: Build & push API image
         if: github.ref_type != 'tag'
         id: build-api
-        uses: QNSC-VN/qnsc-ci/actions/build-push-ecr@v1.4
+        uses: QNSC-VN/qnsc-ci/actions/build-push-ecr@v1
         with:
           ecr-registry: ${{ steps.aws.outputs.ecr-registry }}
           image-name: rally-api
@@ -135,7 +135,7 @@ jobs:
 
       - name: Scan API image for critical CVEs
         if: github.ref_type != 'tag'
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           image-ref: '${{ steps.aws.outputs.ecr-registry }}/rally-api:${{ env.IMAGE_TAG }}'
           format: table
@@ -146,14 +146,14 @@ jobs:
       - name: Attest API image (SLSA provenance)
         if: github.ref_type != 'tag'
         continue-on-error: true # requires GitHub Advanced Security or public repo
-        uses: QNSC-VN/qnsc-ci/actions/attest-image@v1.4
+        uses: QNSC-VN/qnsc-ci/actions/attest-image@v1
         with:
           image-ref: ${{ steps.aws.outputs.ecr-registry }}/rally-api@${{ steps.build-api.outputs.image-digest }}
 
       - name: Build & push Worker image
         if: github.ref_type != 'tag'
         id: build-worker
-        uses: QNSC-VN/qnsc-ci/actions/build-push-ecr@v1.4
+        uses: QNSC-VN/qnsc-ci/actions/build-push-ecr@v1
         with:
           ecr-registry: ${{ steps.aws.outputs.ecr-registry }}
           image-name: rally-worker
@@ -164,7 +164,7 @@ jobs:
 
       - name: Scan Worker image for critical CVEs
         if: github.ref_type != 'tag'
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           image-ref: '${{ steps.aws.outputs.ecr-registry }}/rally-worker:${{ env.IMAGE_TAG }}'
           format: table
@@ -175,14 +175,14 @@ jobs:
       - name: Attest Worker image (SLSA provenance)
         if: github.ref_type != 'tag'
         continue-on-error: true # requires GitHub Advanced Security or public repo
-        uses: QNSC-VN/qnsc-ci/actions/attest-image@v1.4
+        uses: QNSC-VN/qnsc-ci/actions/attest-image@v1
         with:
           image-ref: ${{ steps.aws.outputs.ecr-registry }}/rally-worker@${{ steps.build-worker.outputs.image-digest }}
 
       - name: Build & push Migrator image
         if: github.ref_type != 'tag'
         id: build-migrator
-        uses: QNSC-VN/qnsc-ci/actions/build-push-ecr@v1.4
+        uses: QNSC-VN/qnsc-ci/actions/build-push-ecr@v1
         with:
           ecr-registry: ${{ steps.aws.outputs.ecr-registry }}
           image-name: rally-migrator
@@ -193,7 +193,7 @@ jobs:
 
       - name: Scan Migrator image for critical CVEs
         if: github.ref_type != 'tag'
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           image-ref: '${{ steps.aws.outputs.ecr-registry }}/rally-migrator:${{ env.IMAGE_TAG }}'
           format: table
@@ -204,7 +204,7 @@ jobs:
       - name: Attest Migrator image (SLSA provenance)
         if: github.ref_type != 'tag'
         continue-on-error: true # requires GitHub Advanced Security or public repo
-        uses: QNSC-VN/qnsc-ci/actions/attest-image@v1.4
+        uses: QNSC-VN/qnsc-ci/actions/attest-image@v1
         with:
           image-ref: ${{ steps.aws.outputs.ecr-registry }}/rally-migrator@${{ steps.build-migrator.outputs.image-digest }}
 
@@ -231,12 +231,12 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Setup AWS OIDC (deploy role)
-        uses: QNSC-VN/qnsc-ci/actions/setup-aws-oidc@v1.4
+        uses: QNSC-VN/qnsc-ci/actions/setup-aws-oidc@v1
         with:
           role-arn: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/rally-github-deploy-${{ env.ENVIRONMENT }}
           region: ${{ vars.AWS_REGION }}
 
-      # ── Step 1: Update task definitions to use the exact image tag ────────
+      # ── Step 1: Update task definitions to pin the exact image tag ────────
       - name: Update API task definition to ${{ env.IMAGE_TAG }}
         id: api-taskdef
         run: |
@@ -292,55 +292,70 @@ jobs:
             --query 'taskDefinition.taskDefinitionArn' --output text)
           echo "arn=$ARN" >> "$GITHUB_OUTPUT"
 
-      # ── Step 2: Ensure RDS is available before running migrations ───────
-      # Dev environment has a cost-saver scheduler (stop 20:00, start 08:00 ICT).
-      # A deploy triggered while RDS is stopped would time out. This step starts
-      # the instance if stopped and waits up to 8 min for it to become available.
-      # On prod (Multi-AZ) this is a fast no-op — Multi-AZ RDS cannot be stopped.
-      - name: Ensure RDS is available (dev cost-saver guard)
+      # ── Step 2: Wake the dev environment (RDS + ECS) before migrations ────
+      # The dev cost-saver scheduler stops RDS and scales ECS services to 0 at
+      # 20:00 ICT (restores at 08:00 ICT). A deploy that runs while the env is
+      # asleep would otherwise (a) time out on the DB and (b) start zero tasks,
+      # so the verify step would never see the new image. This step starts RDS
+      # (waits up to 8 min) and scales any service at desiredCount=0 back to 1.
+      # On prod this is a no-op: RDS is Multi-AZ (never stopped) and services
+      # are never scaled to 0.
+      - name: Ensure dev environment is awake (RDS + ECS)
         if: env.ENVIRONMENT == 'develop'
         env:
           AWS_REGION: ${{ vars.AWS_REGION }}
           RDS_IDENTIFIER: ${{ vars.RDS_INSTANCE_ID }}
+          ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+          ECS_API_SERVICE: ${{ vars.ECS_API_SERVICE }}
+          ECS_WORKER_SERVICE: ${{ vars.ECS_WORKER_SERVICE }}
         run: |
-          STATUS=$(aws rds describe-db-instances \
-            --db-instance-identifier "$RDS_IDENTIFIER" \
-            --region "$AWS_REGION" \
-            --query 'DBInstances[0].DBInstanceStatus' \
-            --output text 2>/dev/null || echo "not-found")
+          # ── RDS: start if the cost-saver stopped it, then wait for available ──
+          ensure_rds() {
+            local status
+            status=$(aws rds describe-db-instances \
+              --db-instance-identifier "$RDS_IDENTIFIER" --region "$AWS_REGION" \
+              --query 'DBInstances[0].DBInstanceStatus' --output text 2>/dev/null || echo "not-found")
+            echo "RDS status: $status"
+            [ "$status" = "available" ] && return 0
+            if [ "$status" = "stopped" ]; then
+              echo "RDS is stopped — starting it now..."
+              aws rds start-db-instance \
+                --db-instance-identifier "$RDS_IDENTIFIER" --region "$AWS_REGION" >/dev/null \
+                || echo "::warning::start-db-instance failed; will keep polling in case another actor started it"
+            fi
+            echo "Waiting for RDS to become available (timeout: 8 min)..."
+            for i in $(seq 1 32); do
+              sleep 15
+              status=$(aws rds describe-db-instances \
+                --db-instance-identifier "$RDS_IDENTIFIER" --region "$AWS_REGION" \
+                --query 'DBInstances[0].DBInstanceStatus' --output text 2>/dev/null || echo "unknown")
+              echo "  [${i}/32] RDS: $status"
+              [ "$status" = "available" ] && { echo "RDS is available."; return 0; }
+            done
+            echo "Timed out waiting for RDS after 8 minutes."
+            return 1
+          }
+          ensure_rds
 
-          echo "RDS status: $STATUS"
-
-          if [ "$STATUS" = "stopped" ]; then
-            echo "RDS is stopped — starting it now..."
-            aws rds start-db-instance \
-              --db-instance-identifier "$RDS_IDENTIFIER" \
-              --region "$AWS_REGION" > /dev/null
-          elif [ "$STATUS" = "available" ]; then
-            echo "RDS already available — proceeding."
-            exit 0
-          fi
-
-          echo "Waiting for RDS to become available (timeout: 8 min)..."
-          for i in $(seq 1 32); do
-            sleep 15
-            STATUS=$(aws rds describe-db-instances \
-              --db-instance-identifier "$RDS_IDENTIFIER" \
-              --region "$AWS_REGION" \
-              --query 'DBInstances[0].DBInstanceStatus' \
-              --output text)
-            echo "  [${i}/32] Status: $STATUS"
-            if [ "$STATUS" = "available" ]; then
-              echo "RDS is available."
-              exit 0
+          # ── ECS: restore any service the cost-saver scaled to 0, otherwise the
+          #    deploy starts no tasks and the verify step times out. ──
+          for SVC in "$ECS_API_SERVICE" "$ECS_WORKER_SERVICE"; do
+            [ -z "$SVC" ] && continue
+            desired=$(aws ecs describe-services \
+              --cluster "$ECS_CLUSTER" --services "$SVC" --region "$AWS_REGION" \
+              --query 'services[0].desiredCount' --output text 2>/dev/null || echo "0")
+            if [ "$desired" = "0" ]; then
+              echo "ECS $SVC is scaled to 0 (cost-saver) — scaling up to 1"
+              aws ecs update-service --cluster "$ECS_CLUSTER" --service "$SVC" \
+                --desired-count 1 --region "$AWS_REGION" >/dev/null
+            else
+              echo "ECS $SVC desiredCount=$desired — no scale-up needed"
             fi
           done
-          echo "Timed out waiting for RDS after 8 minutes."
-          exit 1
 
       # ── Step 3: Run migrations BEFORE any traffic shifts ─────────────────
       - name: Run database migrations
-        uses: QNSC-VN/qnsc-ci/actions/run-db-migration@v1.4
+        uses: QNSC-VN/qnsc-ci/actions/run-db-migration@v1
         with:
           cluster: ${{ vars.ECS_CLUSTER }}
           task-definition: ${{ vars.ECS_MIGRATOR_TASK_DEF }}
@@ -349,7 +364,7 @@ jobs:
           region: ${{ vars.AWS_REGION }}
           environment: ${{ env.ENVIRONMENT }}
 
-      # ── Step 3: Deploy API + Worker with updated task definitions ─────────
+      # ── Step 4: Deploy API + Worker with pinned task definitions ──────────
       - name: Deploy API service
         run: |
           aws ecs update-service \
@@ -368,42 +383,24 @@ jobs:
             --force-new-deployment \
             --region "${{ vars.AWS_REGION }}"
 
-      # ── Step 4: Wait for ECS to stabilise, verify image tag ──────────────
+      # ── Step 5: Verify API is running the expected image tag ──────────────
       - name: Verify API deployment
-        run: |
-          echo "Waiting for ECS service to reach steady state…"
-          AWS_MAX_ATTEMPTS=120 aws ecs wait services-stable \
-            --cluster "${{ vars.ECS_CLUSTER }}" \
-            --services "${{ vars.ECS_API_SERVICE }}" \
-            --region "${{ vars.AWS_REGION }}"
-          echo "✓ ECS service stable"
-
-          ACTIVE_TASKDEF=$(aws ecs describe-services \
-            --cluster "${{ vars.ECS_CLUSTER }}" \
-            --services "${{ vars.ECS_API_SERVICE }}" \
-            --region "${{ vars.AWS_REGION }}" \
-            --query 'services[0].taskDefinition' --output text)
-          ACTIVE_IMAGE=$(aws ecs describe-task-definition \
-            --task-definition "$ACTIVE_TASKDEF" \
-            --region "${{ vars.AWS_REGION }}" \
-            --query 'taskDefinition.containerDefinitions[0].image' --output text)
-          echo "Active task definition : $ACTIVE_TASKDEF"
-          echo "Active image           : $ACTIVE_IMAGE"
-          if ! echo "$ACTIVE_IMAGE" | grep -q "${{ env.IMAGE_TAG }}"; then
-            echo "ERROR: Expected image tag '${{ env.IMAGE_TAG }}' but active image is '$ACTIVE_IMAGE'"
-            exit 1
-          fi
-          echo "✓ Image tag verified: ${{ env.IMAGE_TAG }}"
-
-      # ── Step 5: Health check ──────────────────────────────────────────────
-      - name: Post-deploy health check
-        if: vars.APP_URL != ''
-        uses: QNSC-VN/qnsc-ci/actions/post-deploy-health-check@v1.4
+        uses: QNSC-VN/qnsc-ci/actions/verify-ecs-deploy@v1
         with:
-          url: ${{ vars.APP_URL }}/v1/healthz
+          cluster:   ${{ vars.ECS_CLUSTER }}
+          service:   ${{ vars.ECS_API_SERVICE }}
+          image-tag: ${{ env.IMAGE_TAG }}
+          region:    ${{ vars.AWS_REGION }}
+
+      # ── Step 6: Health check ──────────────────────────────────────────────
+      - name: Post-deploy health check
+        if: vars.API_URL != ''
+        uses: QNSC-VN/qnsc-ci/actions/post-deploy-health-check@v1
+        with:
+          url: ${{ vars.API_URL }}/v1/healthz
           timeout-seconds: '120'
 
-      # ── Step 6: Job summary ───────────────────────────────────────────────
+      # ── Step 7: Job summary ───────────────────────────────────────────────
       - name: Deployment summary
         if: always()
         run: |
@@ -414,12 +411,12 @@ jobs:
           echo "| **Image tag** | \`$IMAGE_TAG\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| **Commit** | \`${{ github.sha }}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| **Actor** | ${{ github.actor }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **App URL** | \`${{ vars.APP_URL }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **API URL** | \`${{ vars.API_URL }}\` |" >> "$GITHUB_STEP_SUMMARY"
 
-      # ── Step 7: Notify Slack / Discord ────────────────────────────────────
+      # ── Step 8: Notify Slack / Discord ────────────────────────────────────
       - name: Notify deploy result
         if: always()
-        uses: QNSC-VN/qnsc-ci/actions/notify-deploy@v1.4
+        uses: QNSC-VN/qnsc-ci/actions/notify-deploy@v1
         with:
           webhook-url: ${{ secrets.SLACK_DEPLOY_WEBHOOK }}
           status: ${{ job.status == 'success' && 'success' || 'failure' }}

@@ -7,7 +7,6 @@ import { apiErrorMessage } from '@/shared/api/api-error'
 
 export interface Project {
   id: string
-  tenantId: string
   workspaceId: string
   key: string
   name: string

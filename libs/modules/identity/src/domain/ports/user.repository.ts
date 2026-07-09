@@ -48,7 +48,6 @@ export interface IUserRepository {
     providerSub: string,
     providerEmail: string,
     displayName: string,
-    tenantId: string,
     tx?: DbExecutor,
   ): Promise<User>;
 }

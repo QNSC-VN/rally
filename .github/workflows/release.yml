@@ -3,7 +3,9 @@
 # main push, then auto-tags when that PR is merged.
 # The tag triggers backend-deploy.yml (prod deploy with approval gate).
 #
-# Requires: RELEASE_BOT_APP_ID (org var) + RELEASE_BOT_PRIVATE_KEY (org secret).
+# Delegates to the shared reusable workflow in qnsc-ci so release logic stays
+# DRY across products. RELEASE_BOT_APP_ID (org var) is read automatically;
+# RELEASE_BOT_PRIVATE_KEY (org secret) is passed explicitly below.
 # =============================================================================
 name: Create Release
 
@@ -15,27 +17,8 @@ concurrency:
   group: release-please
   cancel-in-progress: false
 
-permissions:
-  contents: write
-  pull-requests: write
-
 jobs:
-  release-please:
-    name: Release Please
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      # GitHub App token lets Release Please open PRs and push tags that
-      # trigger downstream workflows (GITHUB_TOKEN cannot trigger other workflows).
-      # Falls back to github.token when RELEASE_BOT_APP_ID is not yet configured.
-      - uses: actions/create-github-app-token@v1
-        id: app-token
-        continue-on-error: true
-        with:
-          app-id: ${{ vars.RELEASE_BOT_APP_ID }}
-          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
-
-      - uses: googleapis/release-please-action@v5
-        with:
-          token: ${{ steps.app-token.outputs.token || github.token }}
-          config-file: release-please-config.json
+  release:
+    uses: QNSC-VN/qnsc-ci/.github/workflows/release-please.yml@v1
+    secrets:
+      RELEASE_BOT_PRIVATE_KEY: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}

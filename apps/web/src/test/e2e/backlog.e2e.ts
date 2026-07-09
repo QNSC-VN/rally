@@ -18,7 +18,9 @@ test.describe('P2.1 Backlog Enhancement', () => {
     await page.goto('/backlog')
     await settle(page)
 
-    const stateSelects = page.getByLabel('Schedule state')
+    // Wait for at least one backlog row to render before counting (the list is
+    // fetched async; counting immediately races the query).
+    const stateSelects = page.getByLabel('Schedule state', { exact: true })
     const count = await stateSelects.count()
     test.skip(count === 0, 'No backlog items to edit in this project')
 
@@ -31,7 +33,7 @@ test.describe('P2.1 Backlog Enhancement', () => {
     // Reload and confirm the change stuck (sourced from work_items).
     await page.reload()
     await settle(page)
-    await expect(page.getByLabel('Schedule state').first()).toHaveValue(next)
+    await expect(page.getByLabel('Schedule state', { exact: true }).first()).toHaveValue(next)
   })
 
   test('bulk assign bar appears with Release and Iteration actions', async ({ page }) => {

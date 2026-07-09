@@ -3,7 +3,7 @@ export type { ReleaseStatus };
 
 export interface Release {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   projectId: string;
   name: string;
   description: string | null;
@@ -16,7 +16,7 @@ export interface Release {
 
 export interface CreateReleaseInput {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   projectId: string;
   name: string;
   description?: string;

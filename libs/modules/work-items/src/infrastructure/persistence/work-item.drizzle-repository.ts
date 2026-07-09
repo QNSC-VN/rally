@@ -22,16 +22,16 @@ import { IWorkItemRepository, IterationScope } from '../../domain/ports/work-ite
 export class WorkItemDrizzleRepository implements IWorkItemRepository {
   constructor(@InjectDrizzle() private readonly db: DrizzleDB) {}
 
-  async findById(id: string, tenantId: string): Promise<WorkItem | null> {
+  async findById(id: string, workspaceId: string): Promise<WorkItem | null> {
     const rows = await this.db
       .select()
       .from(workItems)
-      .where(and(eq(workItems.id, id), eq(workItems.tenantId, tenantId), isNull(workItems.deletedAt)))
+      .where(and(eq(workItems.id, id), eq(workItems.workspaceId, workspaceId), isNull(workItems.deletedAt)))
       .limit(1);
     return (rows[0] as WorkItem | undefined) ?? null;
   }
 
-  async findByIds(ids: string[], tenantId: string): Promise<WorkItem[]> {
+  async findByIds(ids: string[], workspaceId: string): Promise<WorkItem[]> {
     if (ids.length === 0) return [];
     const rows = await this.db
       .select()
@@ -39,7 +39,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       .where(
         and(
           inArray(workItems.id, ids),
-          eq(workItems.tenantId, tenantId),
+          eq(workItems.workspaceId, workspaceId),
           isNull(workItems.deletedAt),
         ),
       );
@@ -48,21 +48,21 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
 
   async findIterationScope(
     iterationId: string,
-    tenantId: string,
+    workspaceId: string,
   ): Promise<IterationScope | null> {
     const rows = await this.db
       .select({ projectId: iterations.projectId, teamId: iterations.teamId })
       .from(iterations)
-      .where(and(eq(iterations.id, iterationId), eq(iterations.tenantId, tenantId)))
+      .where(and(eq(iterations.id, iterationId), eq(iterations.workspaceId, workspaceId)))
       .limit(1);
     return rows[0] ?? null;
   }
 
-  async findReleaseProject(releaseId: string, tenantId: string): Promise<string | null> {
+  async findReleaseProject(releaseId: string, workspaceId: string): Promise<string | null> {
     const rows = await this.db
       .select({ projectId: releases.projectId })
       .from(releases)
-      .where(and(eq(releases.id, releaseId), eq(releases.tenantId, tenantId)))
+      .where(and(eq(releases.id, releaseId), eq(releases.workspaceId, workspaceId)))
       .limit(1);
     return rows[0]?.projectId ?? null;
   }
@@ -70,7 +70,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
   async assignIteration(
     ids: string[],
     iterationId: string | null,
-    tenantId: string,
+    workspaceId: string,
     updatedBy: string,
     executor?: DbExecutor,
   ): Promise<void> {
@@ -82,7 +82,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       .where(
         and(
           inArray(workItems.id, ids),
-          eq(workItems.tenantId, tenantId),
+          eq(workItems.workspaceId, workspaceId),
           isNull(workItems.deletedAt),
         ),
       );
@@ -91,7 +91,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
   async assignRelease(
     ids: string[],
     releaseId: string | null,
-    tenantId: string,
+    workspaceId: string,
     updatedBy: string,
     executor?: DbExecutor,
   ): Promise<void> {
@@ -103,7 +103,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       .where(
         and(
           inArray(workItems.id, ids),
-          eq(workItems.tenantId, tenantId),
+          eq(workItems.workspaceId, workspaceId),
           isNull(workItems.deletedAt),
         ),
       );
@@ -112,12 +112,12 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
   /** Shared filter builder for list/backlog queries. */
   private buildFilters(
     projectId: string,
-    tenantId: string,
+    workspaceId: string,
     filters: WorkItemFilters,
   ): ReturnType<typeof and>[] {
     const conditions = [
       eq(workItems.projectId, projectId),
-      eq(workItems.tenantId, tenantId),
+      eq(workItems.workspaceId, workspaceId),
       isNull(workItems.deletedAt),
     ];
 
@@ -148,11 +148,11 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
 
   async listByProject(
     projectId: string,
-    tenantId: string,
+    workspaceId: string,
     filters: WorkItemFilters,
     { limit, cursor }: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<WorkItem>> {
-    const conditions = this.buildFilters(projectId, tenantId, filters);
+    const conditions = this.buildFilters(projectId, workspaceId, filters);
     if (cursor) {
       conditions.push(lt(workItems.createdAt, new Date(cursor.k[0] as string)));
     }
@@ -169,11 +169,11 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
 
   async listBacklog(
     projectId: string,
-    tenantId: string,
+    workspaceId: string,
     filters: WorkItemFilters,
     { limit, cursor }: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<WorkItem>> {
-    const conditions = this.buildFilters(projectId, tenantId, filters);
+    const conditions = this.buildFilters(projectId, workspaceId, filters);
     // Backlog shows only story + defect (tasks live under their parent item).
     conditions.push(inArray(workItems.type, ['story', 'defect']));
     if (cursor) {
@@ -190,14 +190,14 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     return buildPageResult(rows as WorkItem[], limit, (w) => [w.createdAt.toISOString()]);
   }
 
-  async listTasksByParent(parentId: string, tenantId: string): Promise<WorkItem[]> {
+  async listTasksByParent(parentId: string, workspaceId: string): Promise<WorkItem[]> {
     const rows = await this.db
       .select()
       .from(workItems)
       .where(
         and(
           eq(workItems.parentId, parentId),
-          eq(workItems.tenantId, tenantId),
+          eq(workItems.workspaceId, workspaceId),
           eq(workItems.type, 'task'),
           isNull(workItems.deletedAt),
         ),
@@ -206,7 +206,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     return rows as WorkItem[];
   }
 
-  async getTaskTotals(parentId: string, tenantId: string): Promise<TaskTotals> {
+  async getTaskTotals(parentId: string, workspaceId: string): Promise<TaskTotals> {
     const rows = await this.db
       .select({
         taskCount: sql<number>`count(*)::int`,
@@ -218,7 +218,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       .where(
         and(
           eq(workItems.parentId, parentId),
-          eq(workItems.tenantId, tenantId),
+          eq(workItems.workspaceId, workspaceId),
           eq(workItems.type, 'task'),
           isNull(workItems.deletedAt),
         ),
@@ -238,7 +238,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       .insert(workItems)
       .values({
         id: input.id,
-        tenantId: input.tenantId,
+        workspaceId: input.workspaceId,
         projectId: input.projectId,
         itemKey: input.itemKey,
         type: input.type,
@@ -265,7 +265,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     return rows[0] as WorkItem;
   }
 
-  async update(id: string, input: UpdateWorkItemInput, tenantId: string, executor?: DbExecutor): Promise<WorkItem> {
+  async update(id: string, input: UpdateWorkItemInput, workspaceId: string, executor?: DbExecutor): Promise<WorkItem> {
     const exec = executor ?? this.db;
     const rows = await exec
       .update(workItems)
@@ -297,44 +297,44 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         ...(input.updatedBy !== undefined && { updatedBy: input.updatedBy }),
         updatedAt: new Date(),
       })
-      .where(and(eq(workItems.id, id), eq(workItems.tenantId, tenantId)))
+      .where(and(eq(workItems.id, id), eq(workItems.workspaceId, workspaceId)))
       .returning();
     return rows[0] as WorkItem;
   }
 
-  async softDelete(id: string, tenantId: string, executor?: DbExecutor): Promise<void> {
+  async softDelete(id: string, workspaceId: string, executor?: DbExecutor): Promise<void> {
     const exec = executor ?? this.db;
     await exec
       .update(workItems)
       .set({ deletedAt: new Date(), updatedAt: new Date() })
-      .where(and(eq(workItems.id, id), eq(workItems.tenantId, tenantId)));
+      .where(and(eq(workItems.id, id), eq(workItems.workspaceId, workspaceId)));
   }
 
   async reorderItems(
     items: Array<{ id: string; rank: string }>,
-    tenantId: string,
+    workspaceId: string,
     executor?: DbExecutor,
   ): Promise<void> {
     if (items.length === 0) return;
     const exec = executor ?? this.db;
     // Single transaction — caller (service) wraps this in uow.run() for
-    // atomicity + RLS activation. The tenant_id guard here is belt-and-
-    // suspenders: even if called outside UoW it cannot write across tenants.
+    // atomicity + RLS activation. The workspace_id guard here is belt-and-
+    // suspenders: even if called outside UoW it cannot write across workspaces.
     await Promise.all(
       items.map(({ id, rank }) =>
         exec
           .update(workItems)
           .set({ rank, updatedAt: new Date() })
-          .where(and(eq(workItems.id, id), eq(workItems.tenantId, tenantId))),
+          .where(and(eq(workItems.id, id), eq(workItems.workspaceId, workspaceId))),
       ),
     );
   }
 
-  async addLabel(workItemId: string, labelId: string, _tenantId: string): Promise<void> {
+  async addLabel(workItemId: string, labelId: string, _workspaceId: string): Promise<void> {
     await this.db.insert(workItemLabels).values({ workItemId, labelId }).onConflictDoNothing();
   }
 
-  async removeLabel(workItemId: string, labelId: string, _tenantId: string): Promise<void> {
+  async removeLabel(workItemId: string, labelId: string, _workspaceId: string): Promise<void> {
     await this.db
       .delete(workItemLabels)
       .where(and(eq(workItemLabels.workItemId, workItemId), eq(workItemLabels.labelId, labelId)));

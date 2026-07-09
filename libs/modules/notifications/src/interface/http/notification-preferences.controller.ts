@@ -45,7 +45,7 @@ export class NotificationPreferencesController {
   @ApiResponse({ status: 200 })
   @ApiCommonErrors(401)
   async list(@CurrentUser() user: JwtPayload): Promise<PreferenceResponseDto[]> {
-    const prefs = await this.prefsService.listPreferences(user.tenantId, user.sub);
+    const prefs = await this.prefsService.listPreferences(user.workspaceId, user.sub);
     return prefs.map(toDto);
   }
 
@@ -66,7 +66,7 @@ export class NotificationPreferencesController {
     @Body() body: UpsertPreferenceDto,
   ): Promise<PreferenceResponseDto> {
     const pref = await this.prefsService.upsert({
-      tenantId: user.tenantId,
+      workspaceId: user.workspaceId,
       userId: user.sub,
       type,
       inApp: body.inApp,
@@ -85,6 +85,6 @@ export class NotificationPreferencesController {
   @ApiResponse({ status: 204, description: 'Reset to default' })
   @ApiCommonErrors(401)
   async reset(@CurrentUser() user: JwtPayload, @Param('type') type: string): Promise<void> {
-    await this.prefsService.reset(user.tenantId, user.sub, type);
+    await this.prefsService.reset(user.workspaceId, user.sub, type);
   }
 }

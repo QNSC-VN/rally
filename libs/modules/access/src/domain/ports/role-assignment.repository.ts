@@ -3,15 +3,15 @@ import type { UserRoleAssignment, AssignRoleInput, ScopeType } from '../access.t
 export const ROLE_ASSIGNMENT_REPOSITORY = Symbol('ROLE_ASSIGNMENT_REPOSITORY');
 
 export interface IRoleAssignmentRepository {
-  findById(id: string, tenantId: string): Promise<UserRoleAssignment | null>;
+  findById(id: string, workspaceId: string): Promise<UserRoleAssignment | null>;
   findExisting(
     userId: string,
     roleId: string,
     scopeType: ScopeType,
     scopeId: string | null,
-    tenantId: string,
+    workspaceId: string,
   ): Promise<UserRoleAssignment | null>;
-  listForUser(tenantId: string, userId: string): Promise<UserRoleAssignment[]>;
+  listForUser(workspaceId: string, userId: string): Promise<UserRoleAssignment[]>;
   create(input: AssignRoleInput): Promise<UserRoleAssignment>;
   delete(id: string): Promise<void>;
 }

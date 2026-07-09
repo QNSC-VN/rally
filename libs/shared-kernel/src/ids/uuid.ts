@@ -16,7 +16,6 @@ declare const __brand: unique symbol;
 type Brand<B> = { readonly [__brand]: B };
 export type Branded<T, B> = T & Brand<B>;
 
-export type TenantId = Branded<string, 'TenantId'>;
 export type WorkspaceId = Branded<string, 'WorkspaceId'>;
 export type UserId = Branded<string, 'UserId'>;
 export type ProjectId = Branded<string, 'ProjectId'>;
@@ -26,9 +25,6 @@ export type ReleaseId = Branded<string, 'ReleaseId'>;
 export type CommentId = Branded<string, 'CommentId'>;
 export type AttachmentId = Branded<string, 'AttachmentId'>;
 
-export function asTenantId(id: string): TenantId {
-  return id as TenantId;
-}
 export function asWorkspaceId(id: string): WorkspaceId {
   return id as WorkspaceId;
 }

@@ -10,25 +10,25 @@ import type { IAttachmentRepository } from '../../domain/ports/attachment.reposi
 export class AttachmentDrizzleRepository implements IAttachmentRepository {
   constructor(@InjectDrizzle() private readonly db: DrizzleDB) {}
 
-  async findById(id: string, tenantId: string): Promise<Attachment | null> {
+  async findById(id: string, workspaceId: string): Promise<Attachment | null> {
     const rows = await this.db
       .select()
       .from(attachments)
       .where(
-        and(eq(attachments.id, id), eq(attachments.tenantId, tenantId), isNull(attachments.deletedAt)),
+        and(eq(attachments.id, id), eq(attachments.workspaceId, workspaceId), isNull(attachments.deletedAt)),
       )
       .limit(1);
     return rows[0] ?? null;
   }
 
-  async listByWorkItem(workItemId: string, tenantId: string): Promise<Attachment[]> {
+  async listByWorkItem(workItemId: string, workspaceId: string): Promise<Attachment[]> {
     const rows = await this.db
       .select()
       .from(attachments)
       .where(
         and(
           eq(attachments.workItemId, workItemId),
-          eq(attachments.tenantId, tenantId),
+          eq(attachments.workspaceId, workspaceId),
           eq(attachments.status, 'completed'),
           isNull(attachments.deletedAt),
         ),
@@ -37,14 +37,14 @@ export class AttachmentDrizzleRepository implements IAttachmentRepository {
     return rows;
   }
 
-  async countByWorkItem(workItemId: string, tenantId: string): Promise<number> {
+  async countByWorkItem(workItemId: string, workspaceId: string): Promise<number> {
     const [{ cnt }] = await this.db
       .select({ cnt: count() })
       .from(attachments)
       .where(
         and(
           eq(attachments.workItemId, workItemId),
-          eq(attachments.tenantId, tenantId),
+          eq(attachments.workspaceId, workspaceId),
           eq(attachments.status, 'completed'),
           isNull(attachments.deletedAt),
         ),
@@ -57,7 +57,7 @@ export class AttachmentDrizzleRepository implements IAttachmentRepository {
       .insert(attachments)
       .values({
         id: input.id,
-        tenantId: input.tenantId,
+        workspaceId: input.workspaceId,
         workItemId: input.workItemId,
         uploadedBy: input.uploadedBy,
         filename: input.filename,

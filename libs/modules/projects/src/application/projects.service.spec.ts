@@ -6,7 +6,7 @@ import { WORKFLOW_STATUS_REPOSITORY } from '../domain/ports/workflow-status.repo
 import { LABEL_REPOSITORY } from '../domain/ports/label.repository';
 import { PROJECT_TEAM_REPOSITORY } from '../domain/ports/project-team.repository';
 import { PROJECT_MEMBER_REPOSITORY } from '../domain/ports/project-member.repository';
-import { WORKSPACE_MEMBER_REPOSITORY } from '@modules/tenancy';
+import { WORKSPACE_MEMBER_REPOSITORY } from '@modules/workspace';
 import type { Project, WorkflowStatus } from '../domain/project.types';
 import {
   NotFoundException,
@@ -21,7 +21,6 @@ const now = new Date('2024-06-01');
 
 const mockProject = (o: Partial<Project> = {}): Project => ({
   id: 'proj-1',
-  tenantId: 'tenant-1',
   workspaceId: 'ws-1',
   key: 'PROJ',
   name: 'Test Project',
@@ -37,7 +36,7 @@ const mockProject = (o: Partial<Project> = {}): Project => ({
 
 const mockStatus = (o: Partial<WorkflowStatus> = {}): WorkflowStatus => ({
   id: 'status-1',
-  tenantId: 'tenant-1',
+  workspaceId: 'ws-1',
   projectId: 'proj-1',
   name: 'To Do',
   category: 'to_do',
@@ -50,7 +49,7 @@ const mockStatus = (o: Partial<WorkflowStatus> = {}): WorkflowStatus => ({
 
 const mockActor = {
   sub: 'user-1',
-  tenantId: 'tenant-1',
+  workspaceId: 'ws-1',
   sessionId: 's1',
   jti: 'j1',
   iat: 0,
@@ -166,7 +165,7 @@ describe('ProjectsService', () => {
       projectRepo.create.mockResolvedValue(mockProject());
       statusRepo.create.mockResolvedValue(mockStatus());
 
-      const result = await service.createProject(mockActor, 'ws-1', 'proj', 'Test Project');
+      const result = await service.createProject(mockActor, 'proj', 'Test Project');
 
       expect(result.key).toBe('PROJ');
       expect(projectRepo.create).toHaveBeenCalledWith(
@@ -181,7 +180,7 @@ describe('ProjectsService', () => {
       projectRepo.create.mockResolvedValue(mockProject({ key: 'MYKEY' }));
       statusRepo.create.mockResolvedValue(mockStatus());
 
-      await service.createProject(mockActor, 'ws-1', 'mykey', 'My Project');
+      await service.createProject(mockActor, 'mykey', 'My Project');
 
       expect(projectRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({ key: 'MYKEY' }),
@@ -192,7 +191,7 @@ describe('ProjectsService', () => {
     it('throws ConflictException when key is already taken', async () => {
       projectRepo.findByKey.mockResolvedValue(mockProject());
 
-      await expect(service.createProject(mockActor, 'ws-1', 'PROJ', 'Duplicate')).rejects.toThrow(
+      await expect(service.createProject(mockActor, 'PROJ', 'Duplicate')).rejects.toThrow(
         ConflictException,
       );
     });
@@ -203,23 +202,23 @@ describe('ProjectsService', () => {
   describe('getProject', () => {
     it('returns project when found', async () => {
       projectRepo.findById.mockResolvedValue(mockProject());
-      const result = await service.getProject('tenant-1', 'proj-1');
+      const result = await service.getProject('ws-1', 'proj-1');
       expect(result.key).toBe('PROJ');
     });
 
     it('throws NotFoundException when not found', async () => {
       projectRepo.findById.mockResolvedValue(null);
-      await expect(service.getProject('tenant-1', 'missing')).rejects.toThrow(NotFoundException);
+      await expect(service.getProject('ws-1', 'missing')).rejects.toThrow(NotFoundException);
     });
 
-    it('throws NotFoundException when tenant mismatch', async () => {
-      projectRepo.findById.mockResolvedValue(mockProject({ tenantId: 'other-tenant' }));
-      await expect(service.getProject('tenant-1', 'proj-1')).rejects.toThrow(NotFoundException);
+    it('throws NotFoundException when workspace mismatch', async () => {
+      projectRepo.findById.mockResolvedValue(mockProject({ workspaceId: 'other-ws' }));
+      await expect(service.getProject('ws-1', 'proj-1')).rejects.toThrow(NotFoundException);
     });
 
     it('throws NotFoundException when project is soft-deleted', async () => {
       projectRepo.findById.mockResolvedValue(mockProject({ deletedAt: now }));
-      await expect(service.getProject('tenant-1', 'proj-1')).rejects.toThrow(NotFoundException);
+      await expect(service.getProject('ws-1', 'proj-1')).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -241,9 +240,9 @@ describe('ProjectsService', () => {
     it('soft-deletes project', async () => {
       projectRepo.findById.mockResolvedValue(mockProject());
 
-      await service.deleteProject('tenant-1', 'proj-1');
+      await service.deleteProject('ws-1', 'proj-1');
 
-      expect(projectRepo.softDelete).toHaveBeenCalledWith('proj-1', 'tenant-1');
+      expect(projectRepo.softDelete).toHaveBeenCalledWith('proj-1', 'ws-1');
     });
   });
 
@@ -272,7 +271,7 @@ describe('ProjectsService', () => {
       projectRepo.findById.mockResolvedValue(mockProject({ key: 'PROJ' }));
       projectRepo.incrementCounter.mockResolvedValue(42);
 
-      const key = await service.generateItemKey('tenant-1', 'proj-1');
+      const key = await service.generateItemKey('ws-1', 'proj-1');
       expect(key).toBe('PROJ-42');
     });
   });
@@ -284,7 +283,7 @@ describe('ProjectsService', () => {
       projectRepo.findById.mockResolvedValue(mockProject());
       statusRepo.listByProject.mockResolvedValue([mockStatus()]);
 
-      const result = await service.listStatuses('tenant-1', 'proj-1');
+      const result = await service.listStatuses('ws-1', 'proj-1');
       expect(result).toHaveLength(1);
     });
   });
@@ -296,7 +295,7 @@ describe('ProjectsService', () => {
       projectRepo.findById.mockResolvedValue(mockProject());
       statusRepo.findById.mockResolvedValue(mockStatus());
 
-      await service.deleteStatus('tenant-1', 'proj-1', 'status-1');
+      await service.deleteStatus('ws-1', 'proj-1', 'status-1');
       expect(statusRepo.delete).toHaveBeenCalledWith('status-1');
     });
 
@@ -304,7 +303,7 @@ describe('ProjectsService', () => {
       projectRepo.findById.mockResolvedValue(mockProject());
       statusRepo.findById.mockResolvedValue(mockStatus({ projectId: 'other-proj' }));
 
-      await expect(service.deleteStatus('tenant-1', 'proj-1', 'status-1')).rejects.toThrow(
+      await expect(service.deleteStatus('ws-1', 'proj-1', 'status-1')).rejects.toThrow(
         NotFoundException,
       );
     });

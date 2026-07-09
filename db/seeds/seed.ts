@@ -6,14 +6,14 @@ try {
 }
 
 /**
- * Seed script — creates the first tenant, workspace, admin user,
+ * Seed script — creates the default workspace, break-glass admin user,
  * system roles + permission catalogue, default workflow for dev/test,
  * and sample projects that mirror the real business flow:
  *   project → counter → lead-as-project-member → workflow statuses
  *
  * Run standalone : pnpm db:seed
  * Called by      : db/migrate.ts when SEED_ON_DEPLOY=true (develop env only)
- * Idempotent — safe to run multiple times.
+ * Idempotent — safe to run multiple times. Refuses to run in production.
  */
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
@@ -23,9 +23,10 @@ import * as argon2 from 'argon2';
 import { and, eq, sql } from 'drizzle-orm';
 import * as schema from '../schema';
 // Direct imports to avoid barrel tsx/CJS resolution edge cases at runtime.
-import { projectCounters, projectMembers, workItems, iterations, releases, teams, teamMembers } from '../schema/work';
+import { projectCounters, projectMembers, projectTeams, workItems, iterations, releases, teams, teamMembers } from '../schema/work';
 import { userRoleAssignments } from '../schema/access';
 import { ssoConnections } from '../schema/identity';
+import { ROLE_PERMISSIONS, ROLE_NAMES, SYSTEM_ROLE, type SystemRoleSlug } from '../permissions.catalog';
 // Inlined from libs/modules/projects/src/domain/project.constants.ts
 // so the migrator Docker image (which doesn't include libs/) can run this seed.
 const DEFAULT_WORKFLOW_STATUSES = [
@@ -46,11 +47,17 @@ const DEFAULT_WORKFLOW_STATUSES = [
 let db: ReturnType<typeof drizzle<typeof schema>>;
 
 // Fixed UUIDs ensure idempotency — same rows on every seed run.
-const SYSTEM_TENANT_ID = '00000000-0000-7000-8000-000000000001';
 const ADMIN_USER_ID = '00000000-0000-7000-8000-000000000002';
 const WORKSPACE_ID = '00000000-0000-7000-8000-000000000003';
 const DEVELOPER_ID = '00000000-0000-7000-8000-000000000020';
 const VIEWER_ID = '00000000-0000-7000-8000-000000000021';
+
+// RBAC/PBAC demo users — one per otherwise-uncovered system role, plus a
+// project-scoped "lead" that proves per-project (PBAC) differentiation.
+const PROJECT_ADMIN_ID = '00000000-0000-7000-8000-000000000022';
+const WORKSPACE_MEMBER_ID = '00000000-0000-7000-8000-000000000023';
+const GUEST_ID = '00000000-0000-7000-8000-000000000024';
+const PROJECT_LEAD_ID = '00000000-0000-7000-8000-000000000025';
 
 const NXP_STORY_1_ID = '00000000-0000-7000-8000-000000000030';
 const NXP_STORY_2_ID = '00000000-0000-7000-8000-000000000031';
@@ -128,7 +135,6 @@ async function seedProject(project: {
     .insert(schema.projects)
     .values({
       id: project.id,
-      tenantId: SYSTEM_TENANT_ID,
       workspaceId: WORKSPACE_ID,
       key: project.key,
       name: project.name,
@@ -146,7 +152,7 @@ async function seedProject(project: {
       .select({ id: schema.projects.id })
       .from(schema.projects)
       .where(
-        and(eq(schema.projects.tenantId, SYSTEM_TENANT_ID), eq(schema.projects.key, project.key)),
+        and(eq(schema.projects.workspaceId, WORKSPACE_ID), eq(schema.projects.key, project.key)),
       )
       .limit(1);
     actualId = existing[0]?.id;
@@ -156,7 +162,7 @@ async function seedProject(project: {
   // 2. Initialise the item-key counter (mirrors ProjectsService.createProject)
   await db
     .insert(schema.projectCounters)
-    .values({ projectId: actualId, tenantId: SYSTEM_TENANT_ID, lastItemNumber: 0 })
+    .values({ projectId: actualId, workspaceId: WORKSPACE_ID, lastItemNumber: 0 })
     .onConflictDoNothing();
 
   // 3. Add the lead as the first active project member if not already present
@@ -164,7 +170,7 @@ async function seedProject(project: {
     .insert(projectMembers)
     .values({
       id: uuidv7(),
-      tenantId: SYSTEM_TENANT_ID,
+      workspaceId: WORKSPACE_ID,
       projectId: actualId,
       userId: ADMIN_USER_ID,
       status: 'active',
@@ -185,7 +191,7 @@ async function seedProject(project: {
         .insert(schema.workflowStatuses)
         .values({
           id: uuidv7(),
-          tenantId: SYSTEM_TENANT_ID,
+          workspaceId: WORKSPACE_ID,
           projectId: actualId,
           name: s.name,
           category: s.category,
@@ -306,7 +312,7 @@ async function seedWorkItems() {
         .insert(workItems)
         .values({
           ...item,
-          tenantId: SYSTEM_TENANT_ID,
+          workspaceId: WORKSPACE_ID,
           projectId: nxpId,
           createdBy: ADMIN_USER_ID,
           rank: item.itemKey, // deterministic rank for seeded items
@@ -376,7 +382,7 @@ async function seedWorkItems() {
         .insert(workItems)
         .values({
           ...item,
-          tenantId: SYSTEM_TENANT_ID,
+          workspaceId: WORKSPACE_ID,
           projectId: mobId,
           createdBy: ADMIN_USER_ID,
           rank: item.itemKey,
@@ -397,7 +403,6 @@ async function seedTeams() {
   await db.insert(teams).values([
     {
       id: TEAM_ALPHA_ID,
-      tenantId: SYSTEM_TENANT_ID,
       workspaceId: WORKSPACE_ID,
       name: 'Team Alpha',
       key: 'ALPHA',
@@ -407,7 +412,6 @@ async function seedTeams() {
     },
     {
       id: TEAM_BETA_ID,
-      tenantId: SYSTEM_TENANT_ID,
       workspaceId: WORKSPACE_ID,
       name: 'Team Beta',
       key: 'BETA',
@@ -419,10 +423,25 @@ async function seedTeams() {
 
   // Team members
   await db.insert(teamMembers).values([
-    { id: '00000000-0000-7000-8000-000000000080', tenantId: SYSTEM_TENANT_ID, teamId: TEAM_ALPHA_ID, userId: ADMIN_USER_ID, status: 'active' },
-    { id: '00000000-0000-7000-8000-000000000081', tenantId: SYSTEM_TENANT_ID, teamId: TEAM_ALPHA_ID, userId: DEVELOPER_ID, status: 'active' },
-    { id: '00000000-0000-7000-8000-000000000082', tenantId: SYSTEM_TENANT_ID, teamId: TEAM_BETA_ID, userId: DEVELOPER_ID, status: 'active' },
-    { id: '00000000-0000-7000-8000-000000000083', tenantId: SYSTEM_TENANT_ID, teamId: TEAM_BETA_ID, userId: VIEWER_ID, status: 'active' },
+    { id: '00000000-0000-7000-8000-000000000080', workspaceId: WORKSPACE_ID, teamId: TEAM_ALPHA_ID, userId: ADMIN_USER_ID, status: 'active' },
+    { id: '00000000-0000-7000-8000-000000000081', workspaceId: WORKSPACE_ID, teamId: TEAM_ALPHA_ID, userId: DEVELOPER_ID, status: 'active' },
+    { id: '00000000-0000-7000-8000-000000000082', workspaceId: WORKSPACE_ID, teamId: TEAM_BETA_ID, userId: DEVELOPER_ID, status: 'active' },
+    { id: '00000000-0000-7000-8000-000000000083', workspaceId: WORKSPACE_ID, teamId: TEAM_BETA_ID, userId: VIEWER_ID, status: 'active' },
+  ]).onConflictDoNothing();
+
+  // Link teams to their projects (project_teams). Iterations carry a team_id and
+  // creating a work item into an iteration validates the team is linked to the
+  // project (assertTeamLinked) — without these links, "Add Item" fails with
+  // "Team is not linked to this project". Alpha → NXP/OPS, Beta → MOB/PRT.
+  const NXP = SEED_PROJECTS[0].id; // NX Platform
+  const MOB = SEED_PROJECTS[1].id; // Mobile App
+  const OPS = SEED_PROJECTS[2].id; // DevOps & Infrastructure
+  const PRT = SEED_PROJECTS[4].id; // Partner Portal
+  await db.insert(projectTeams).values([
+    { id: '00000000-0000-7000-8000-000000000090', workspaceId: WORKSPACE_ID, projectId: NXP, teamId: TEAM_ALPHA_ID, status: 'active' },
+    { id: '00000000-0000-7000-8000-000000000091', workspaceId: WORKSPACE_ID, projectId: OPS, teamId: TEAM_ALPHA_ID, status: 'active' },
+    { id: '00000000-0000-7000-8000-000000000092', workspaceId: WORKSPACE_ID, projectId: MOB, teamId: TEAM_BETA_ID, status: 'active' },
+    { id: '00000000-0000-7000-8000-000000000093', workspaceId: WORKSPACE_ID, projectId: PRT, teamId: TEAM_BETA_ID, status: 'active' },
   ]).onConflictDoNothing();
 
   console.log('✅  Teams seeded');
@@ -437,7 +456,7 @@ async function seedReleases() {
     // NXP releases
     {
       id: NXP_RELEASE_1_ID,
-      tenantId: SYSTEM_TENANT_ID,
+      workspaceId: WORKSPACE_ID,
       projectId: nxpId,
       name: 'v2.0 — NX Platform Upgrade',
       description: 'Major upgrade to NX v21 + ESLint flat-config rollout.',
@@ -446,7 +465,7 @@ async function seedReleases() {
     },
     {
       id: NXP_RELEASE_2_ID,
-      tenantId: SYSTEM_TENANT_ID,
+      workspaceId: WORKSPACE_ID,
       projectId: nxpId,
       name: 'v2.1 — Storybook & DX',
       description: 'Storybook 8 integration and developer experience improvements.',
@@ -456,7 +475,7 @@ async function seedReleases() {
     // MOB release
     {
       id: '00000000-0000-7000-8000-000000000052',
-      tenantId: SYSTEM_TENANT_ID,
+      workspaceId: WORKSPACE_ID,
       projectId: mobId,
       name: 'v1.5 — Auth & Accessibility',
       description: 'Biometric auth, dark mode, and accessibility fixes.',
@@ -477,7 +496,7 @@ async function seedIterations() {
     // ── NXP iterations (3 sprints — past / current / next) ──────────────────
     {
       id: NXP_ITER_PREV_ID,
-      tenantId: SYSTEM_TENANT_ID,
+      workspaceId: WORKSPACE_ID,
       projectId: nxpId,
       teamId: TEAM_ALPHA_ID,
       iterationKey: 'IT-1',
@@ -491,7 +510,7 @@ async function seedIterations() {
     },
     {
       id: NXP_ITER_CURRENT_ID,
-      tenantId: SYSTEM_TENANT_ID,
+      workspaceId: WORKSPACE_ID,
       projectId: nxpId,
       teamId: TEAM_ALPHA_ID,
       iterationKey: 'IT-2',
@@ -506,7 +525,7 @@ async function seedIterations() {
     },
     {
       id: NXP_ITER_NEXT_ID,
-      tenantId: SYSTEM_TENANT_ID,
+      workspaceId: WORKSPACE_ID,
       projectId: nxpId,
       teamId: TEAM_ALPHA_ID,
       iterationKey: 'IT-3',
@@ -521,7 +540,7 @@ async function seedIterations() {
     // ── MOB iteration (current sprint) ──────────────────────────────────────
     {
       id: MOB_ITER_CURRENT_ID,
-      tenantId: SYSTEM_TENANT_ID,
+      workspaceId: WORKSPACE_ID,
       projectId: mobId,
       teamId: TEAM_BETA_ID,
       iterationKey: 'IT-1',
@@ -658,7 +677,7 @@ async function seedExtendedWorkItems() {
   for (const item of nxpExtended) {
     await db.insert(workItems).values({
       ...item,
-      tenantId: SYSTEM_TENANT_ID,
+      workspaceId: WORKSPACE_ID,
       projectId: nxpId,
       createdBy: ADMIN_USER_ID,
       rank: item.itemKey,
@@ -713,7 +732,7 @@ async function seedExtendedWorkItems() {
     for (const item of mobExtended) {
       await db.insert(workItems).values({
         ...item,
-        tenantId: SYSTEM_TENANT_ID,
+        workspaceId: WORKSPACE_ID,
         projectId: mobId,
         createdBy: ADMIN_USER_ID,
         rank: item.itemKey,
@@ -742,37 +761,37 @@ async function seedActivityLogs() {
 
   const NXP = SEED_PROJECTS[0].id;
   const MOB = SEED_PROJECTS[1].id;
-  const T = SYSTEM_TENANT_ID;
+  const W = WORKSPACE_ID;
 
   type ActivityRow = typeof schema.activityLogs.$inferInsert;
 
   const rows: ActivityRow[] = [
     // NXP-1
-    { id: uuidv7(), tenantId: T, projectId: NXP, workItemId: NXP_STORY_1_ID, entityType: 'work_item', entityId: NXP_STORY_1_ID, actorId: ADMIN_USER_ID, action: 'work_item.created', changes: null, metadata: { title: 'Upgrade NX to v21 and apply migrations', type: 'story' } },
-    { id: uuidv7(), tenantId: T, projectId: NXP, workItemId: NXP_STORY_1_ID, entityType: 'work_item', entityId: NXP_STORY_1_ID, actorId: ADMIN_USER_ID, action: 'work_item.assigned', changes: { field: 'assigneeId', old: null, new: DEVELOPER_ID }, metadata: {} },
-    { id: uuidv7(), tenantId: T, projectId: NXP, workItemId: NXP_STORY_1_ID, entityType: 'work_item', entityId: NXP_STORY_1_ID, actorId: DEVELOPER_ID, action: 'work_item.schedule_state_changed', changes: { field: 'scheduleState', old: 'defined', new: 'in_progress' }, metadata: {} },
+    { id: uuidv7(), workspaceId: W, projectId: NXP, workItemId: NXP_STORY_1_ID, entityType: 'work_item', entityId: NXP_STORY_1_ID, actorId: ADMIN_USER_ID, action: 'work_item.created', changes: null, metadata: { title: 'Upgrade NX to v21 and apply migrations', type: 'story' } },
+    { id: uuidv7(), workspaceId: W, projectId: NXP, workItemId: NXP_STORY_1_ID, entityType: 'work_item', entityId: NXP_STORY_1_ID, actorId: ADMIN_USER_ID, action: 'work_item.assigned', changes: { field: 'assigneeId', old: null, new: DEVELOPER_ID }, metadata: {} },
+    { id: uuidv7(), workspaceId: W, projectId: NXP, workItemId: NXP_STORY_1_ID, entityType: 'work_item', entityId: NXP_STORY_1_ID, actorId: DEVELOPER_ID, action: 'work_item.schedule_state_changed', changes: { field: 'scheduleState', old: 'defined', new: 'in_progress' }, metadata: {} },
     // NXP-2
-    { id: uuidv7(), tenantId: T, projectId: NXP, workItemId: NXP_STORY_2_ID, entityType: 'work_item', entityId: NXP_STORY_2_ID, actorId: ADMIN_USER_ID, action: 'work_item.created', changes: null, metadata: { title: 'Replace tslint with ESLint workspace-wide', type: 'story' } },
-    { id: uuidv7(), tenantId: T, projectId: NXP, workItemId: NXP_STORY_2_ID, entityType: 'work_item', entityId: NXP_STORY_2_ID, actorId: ADMIN_USER_ID, action: 'work_item.priority_changed', changes: { field: 'priority', old: 'normal', new: 'high' }, metadata: {} },
+    { id: uuidv7(), workspaceId: W, projectId: NXP, workItemId: NXP_STORY_2_ID, entityType: 'work_item', entityId: NXP_STORY_2_ID, actorId: ADMIN_USER_ID, action: 'work_item.created', changes: null, metadata: { title: 'Replace tslint with ESLint workspace-wide', type: 'story' } },
+    { id: uuidv7(), workspaceId: W, projectId: NXP, workItemId: NXP_STORY_2_ID, entityType: 'work_item', entityId: NXP_STORY_2_ID, actorId: ADMIN_USER_ID, action: 'work_item.priority_changed', changes: { field: 'priority', old: 'normal', new: 'high' }, metadata: {} },
     // MOB-1
-    { id: uuidv7(), tenantId: T, projectId: MOB, workItemId: MOB_STORY_1_ID, entityType: 'work_item', entityId: MOB_STORY_1_ID, actorId: ADMIN_USER_ID, action: 'work_item.created', changes: null, metadata: { title: 'Scaffold React Native project with Expo 51', type: 'story' } },
-    { id: uuidv7(), tenantId: T, projectId: MOB, workItemId: MOB_STORY_1_ID, entityType: 'work_item', entityId: MOB_STORY_1_ID, actorId: DEVELOPER_ID, action: 'work_item.assigned', changes: { field: 'assigneeId', old: null, new: DEVELOPER_ID }, metadata: {} },
+    { id: uuidv7(), workspaceId: W, projectId: MOB, workItemId: MOB_STORY_1_ID, entityType: 'work_item', entityId: MOB_STORY_1_ID, actorId: ADMIN_USER_ID, action: 'work_item.created', changes: null, metadata: { title: 'Scaffold React Native project with Expo 51', type: 'story' } },
+    { id: uuidv7(), workspaceId: W, projectId: MOB, workItemId: MOB_STORY_1_ID, entityType: 'work_item', entityId: MOB_STORY_1_ID, actorId: DEVELOPER_ID, action: 'work_item.assigned', changes: { field: 'assigneeId', old: null, new: DEVELOPER_ID }, metadata: {} },
     // NXP-7
-    { id: uuidv7(), tenantId: T, projectId: NXP, workItemId: NXP_STORY_7_ID, entityType: 'work_item', entityId: NXP_STORY_7_ID, actorId: ADMIN_USER_ID, action: 'work_item.created', changes: null, metadata: { title: 'Migrate all apps to ESLint flat-config', type: 'story' } },
-    { id: uuidv7(), tenantId: T, projectId: NXP, workItemId: NXP_STORY_7_ID, entityType: 'work_item', entityId: NXP_STORY_7_ID, actorId: ADMIN_USER_ID, action: 'work_item.assigned', changes: { field: 'assigneeId', old: null, new: ADMIN_USER_ID }, metadata: {} },
-    { id: uuidv7(), tenantId: T, projectId: NXP, workItemId: NXP_STORY_7_ID, entityType: 'work_item', entityId: NXP_STORY_7_ID, actorId: ADMIN_USER_ID, action: 'work_item.flow_state_changed', changes: { field: 'statusId', old: null, new: 'in_progress' }, metadata: { statusName: 'In Progress' } },
+    { id: uuidv7(), workspaceId: W, projectId: NXP, workItemId: NXP_STORY_7_ID, entityType: 'work_item', entityId: NXP_STORY_7_ID, actorId: ADMIN_USER_ID, action: 'work_item.created', changes: null, metadata: { title: 'Migrate all apps to ESLint flat-config', type: 'story' } },
+    { id: uuidv7(), workspaceId: W, projectId: NXP, workItemId: NXP_STORY_7_ID, entityType: 'work_item', entityId: NXP_STORY_7_ID, actorId: ADMIN_USER_ID, action: 'work_item.assigned', changes: { field: 'assigneeId', old: null, new: ADMIN_USER_ID }, metadata: {} },
+    { id: uuidv7(), workspaceId: W, projectId: NXP, workItemId: NXP_STORY_7_ID, entityType: 'work_item', entityId: NXP_STORY_7_ID, actorId: ADMIN_USER_ID, action: 'work_item.flow_state_changed', changes: { field: 'statusId', old: null, new: 'in_progress' }, metadata: { statusName: 'In Progress' } },
     // NXP-8
-    { id: uuidv7(), tenantId: T, projectId: NXP, workItemId: NXP_STORY_8_ID, entityType: 'work_item', entityId: NXP_STORY_8_ID, actorId: ADMIN_USER_ID, action: 'work_item.created', changes: null, metadata: { title: 'Enforce strict TypeScript settings across workspace', type: 'story' } },
-    { id: uuidv7(), tenantId: T, projectId: NXP, workItemId: NXP_STORY_8_ID, entityType: 'work_item', entityId: NXP_STORY_8_ID, actorId: ADMIN_USER_ID, action: 'work_item.assigned', changes: { field: 'assigneeId', old: null, new: DEVELOPER_ID }, metadata: {} },
+    { id: uuidv7(), workspaceId: W, projectId: NXP, workItemId: NXP_STORY_8_ID, entityType: 'work_item', entityId: NXP_STORY_8_ID, actorId: ADMIN_USER_ID, action: 'work_item.created', changes: null, metadata: { title: 'Enforce strict TypeScript settings across workspace', type: 'story' } },
+    { id: uuidv7(), workspaceId: W, projectId: NXP, workItemId: NXP_STORY_8_ID, entityType: 'work_item', entityId: NXP_STORY_8_ID, actorId: ADMIN_USER_ID, action: 'work_item.assigned', changes: { field: 'assigneeId', old: null, new: DEVELOPER_ID }, metadata: {} },
     // NXP-10 (accepted — show full lifecycle)
-    { id: uuidv7(), tenantId: T, projectId: NXP, workItemId: NXP_STORY_10_ID, entityType: 'work_item', entityId: NXP_STORY_10_ID, actorId: ADMIN_USER_ID, action: 'work_item.created', changes: null, metadata: { title: 'Setup shared tsconfig base with path aliases', type: 'story' } },
-    { id: uuidv7(), tenantId: T, projectId: NXP, workItemId: NXP_STORY_10_ID, entityType: 'work_item', entityId: NXP_STORY_10_ID, actorId: ADMIN_USER_ID, action: 'work_item.assigned', changes: { field: 'assigneeId', old: null, new: ADMIN_USER_ID }, metadata: {} },
-    { id: uuidv7(), tenantId: T, projectId: NXP, workItemId: NXP_STORY_10_ID, entityType: 'work_item', entityId: NXP_STORY_10_ID, actorId: ADMIN_USER_ID, action: 'work_item.schedule_state_changed', changes: { field: 'scheduleState', old: 'defined', new: 'in_progress' }, metadata: {} },
-    { id: uuidv7(), tenantId: T, projectId: NXP, workItemId: NXP_STORY_10_ID, entityType: 'work_item', entityId: NXP_STORY_10_ID, actorId: ADMIN_USER_ID, action: 'work_item.schedule_state_changed', changes: { field: 'scheduleState', old: 'in_progress', new: 'accepted' }, metadata: {} },
+    { id: uuidv7(), workspaceId: W, projectId: NXP, workItemId: NXP_STORY_10_ID, entityType: 'work_item', entityId: NXP_STORY_10_ID, actorId: ADMIN_USER_ID, action: 'work_item.created', changes: null, metadata: { title: 'Setup shared tsconfig base with path aliases', type: 'story' } },
+    { id: uuidv7(), workspaceId: W, projectId: NXP, workItemId: NXP_STORY_10_ID, entityType: 'work_item', entityId: NXP_STORY_10_ID, actorId: ADMIN_USER_ID, action: 'work_item.assigned', changes: { field: 'assigneeId', old: null, new: ADMIN_USER_ID }, metadata: {} },
+    { id: uuidv7(), workspaceId: W, projectId: NXP, workItemId: NXP_STORY_10_ID, entityType: 'work_item', entityId: NXP_STORY_10_ID, actorId: ADMIN_USER_ID, action: 'work_item.schedule_state_changed', changes: { field: 'scheduleState', old: 'defined', new: 'in_progress' }, metadata: {} },
+    { id: uuidv7(), workspaceId: W, projectId: NXP, workItemId: NXP_STORY_10_ID, entityType: 'work_item', entityId: NXP_STORY_10_ID, actorId: ADMIN_USER_ID, action: 'work_item.schedule_state_changed', changes: { field: 'scheduleState', old: 'in_progress', new: 'accepted' }, metadata: {} },
     // NXP-11 (urgent defect)
-    { id: uuidv7(), tenantId: T, projectId: NXP, workItemId: NXP_DEFECT_11_ID, entityType: 'work_item', entityId: NXP_DEFECT_11_ID, actorId: DEVELOPER_ID, action: 'work_item.created', changes: null, metadata: { title: 'ESLint rule conflicts between root and app-level configs', type: 'defect' } },
-    { id: uuidv7(), tenantId: T, projectId: NXP, workItemId: NXP_DEFECT_11_ID, entityType: 'work_item', entityId: NXP_DEFECT_11_ID, actorId: ADMIN_USER_ID, action: 'work_item.priority_changed', changes: { field: 'priority', old: 'normal', new: 'urgent' }, metadata: {} },
-    { id: uuidv7(), tenantId: T, projectId: NXP, workItemId: NXP_DEFECT_11_ID, entityType: 'work_item', entityId: NXP_DEFECT_11_ID, actorId: ADMIN_USER_ID, action: 'work_item.assigned', changes: { field: 'assigneeId', old: null, new: ADMIN_USER_ID }, metadata: {} },
+    { id: uuidv7(), workspaceId: W, projectId: NXP, workItemId: NXP_DEFECT_11_ID, entityType: 'work_item', entityId: NXP_DEFECT_11_ID, actorId: DEVELOPER_ID, action: 'work_item.created', changes: null, metadata: { title: 'ESLint rule conflicts between root and app-level configs', type: 'defect' } },
+    { id: uuidv7(), workspaceId: W, projectId: NXP, workItemId: NXP_DEFECT_11_ID, entityType: 'work_item', entityId: NXP_DEFECT_11_ID, actorId: ADMIN_USER_ID, action: 'work_item.priority_changed', changes: { field: 'priority', old: 'normal', new: 'urgent' }, metadata: {} },
+    { id: uuidv7(), workspaceId: W, projectId: NXP, workItemId: NXP_DEFECT_11_ID, entityType: 'work_item', entityId: NXP_DEFECT_11_ID, actorId: ADMIN_USER_ID, action: 'work_item.assigned', changes: { field: 'assigneeId', old: null, new: ADMIN_USER_ID }, metadata: {} },
   ];
 
   await db.insert(schema.activityLogs).values(rows);
@@ -785,6 +804,10 @@ async function seedActivityLogs() {
  * Safe to call multiple times — all inserts use onConflictDoNothing.
  */
 export async function seed(connectionUrl?: string): Promise<void> {
+  if (process.env['NODE_ENV'] === 'production') {
+    throw new Error('Seed script must not run in production (NODE_ENV=production).');
+  }
+
   const url = connectionUrl ?? process.env['DATABASE_URL'];
   if (!url) throw new Error('DATABASE_URL or connectionUrl required');
 
@@ -794,24 +817,11 @@ export async function seed(connectionUrl?: string): Promise<void> {
   try {
     console.log('Seeding...');
 
-    // ── Tenant ──────────────────────────────────────────────────────────────
-    await db
-      .insert(schema.tenants)
-      .values({
-        id: SYSTEM_TENANT_ID,
-        slug: 'acme',
-        name: 'Acme Corp (Dev Tenant)',
-        status: 'active',
-        plan: 'free',
-      })
-      .onConflictDoNothing();
-
-    // ── Workspace ────────────────────────────────────────────────────────────
+    // ── Workspace (root) ──────────────────────────────────────────────────────
     await db
       .insert(schema.workspaces)
       .values({
         id: WORKSPACE_ID,
-        tenantId: SYSTEM_TENANT_ID,
         slug: 'main',
         name: 'ACME Corp',
       })
@@ -835,17 +845,10 @@ export async function seed(connectionUrl?: string): Promise<void> {
       })
       .onConflictDoNothing();
 
-    // ── Tenant member (global user → tenant link) ────────────────────────────
-    await db
-      .insert(schema.tenantMembers)
-      .values({ tenantId: SYSTEM_TENANT_ID, userId: ADMIN_USER_ID })
-      .onConflictDoNothing();
-
     // ── Workspace member ─────────────────────────────────────────────────────
     await db
       .insert(schema.workspaceMembers)
       .values({
-        tenantId: SYSTEM_TENANT_ID,
         workspaceId: WORKSPACE_ID,
         userId: ADMIN_USER_ID,
       })
@@ -879,92 +882,33 @@ export async function seed(connectionUrl?: string): Promise<void> {
       .onConflictDoNothing();
 
     await db
-      .insert(schema.tenantMembers)
-      .values([
-        { tenantId: SYSTEM_TENANT_ID, userId: DEVELOPER_ID },
-        { tenantId: SYSTEM_TENANT_ID, userId: VIEWER_ID },
-      ])
-      .onConflictDoNothing();
-
-    await db
       .insert(schema.workspaceMembers)
       .values([
-        { tenantId: SYSTEM_TENANT_ID, workspaceId: WORKSPACE_ID, userId: DEVELOPER_ID },
-        { tenantId: SYSTEM_TENANT_ID, workspaceId: WORKSPACE_ID, userId: VIEWER_ID },
+        { workspaceId: WORKSPACE_ID, userId: DEVELOPER_ID },
+        { workspaceId: WORKSPACE_ID, userId: VIEWER_ID },
       ])
       .onConflictDoNothing();
 
     // ── System roles ─────────────────────────────────────────────────────────
-    const ROLES = [
-      {
-        slug: 'workspace_admin',
-        name: 'Workspace Admin',
-        permissions: [
-          'workspace:*',
-          'project:view',
-          'project:create',
-          'project:edit',
-          'project:archive',
-          'project:restore',
-          'project:delete',
-          'work_item:create',
-          'work_item:edit',
-          'work_item:delete',
-          'work_item:view',
-          'iteration:view',
-          'iteration:manage',
-          'release:manage',
-        ],
-      },
-      {
-        slug: 'project_admin',
-        name: 'Project Admin',
-        permissions: [
-          'project:view',
-          'project:create',
-          'project:edit',
-          'project:archive',
-          'project:restore',
-          'work_item:create',
-          'work_item:edit',
-          'work_item:delete',
-          'work_item:view',
-          'iteration:view',
-          'iteration:manage',
-          'release:manage',
-        ],
-      },
-      {
-        slug: 'project_member',
-        name: 'Project Member',
-        // BA spec: Developer can update any work item (no "own-only" concept)
-        permissions: ['work_item:create', 'work_item:edit', 'work_item:view', 'iteration:view'],
-      },
-      {
-        slug: 'project_viewer',
-        name: 'Project Viewer',
-        permissions: ['work_item:view', 'iteration:view'],
-      },
-      {
-        slug: 'workspace_member',
-        name: 'Workspace Member',
-        permissions: ['workspace:view', 'project:view'],
-      },
-      { slug: 'guest', name: 'Guest', permissions: ['work_item:view:public'] },
-    ];
-
-    for (const role of ROLES) {
+    // Roles + their permission grants come from the canonical catalogue
+    // (db/permissions.catalog.ts) — the same source the backend @RequirePermission
+    // decorators and the frontend gating derive their codes from. onConflictDoUpdate
+    // means re-seeding an existing DB backfills any newly-granted permissions.
+    const roleSlugs = Object.keys(ROLE_PERMISSIONS) as SystemRoleSlug[];
+    for (const slug of roleSlugs) {
+      const permissions = ROLE_PERMISSIONS[slug];
+      const name = ROLE_NAMES[slug];
       await db
         .insert(schema.systemRoles)
         .values({
-          name: role.name,
-          slug: role.slug,
+          name,
+          slug,
           isSystem: true,
-          permissions: role.permissions,
+          permissions,
         })
         .onConflictDoUpdate({
           target: schema.systemRoles.slug,
-          set: { permissions: role.permissions, name: role.name },
+          set: { permissions, name },
         });
     }
 
@@ -979,7 +923,7 @@ export async function seed(connectionUrl?: string): Promise<void> {
       await db
         .insert(userRoleAssignments)
         .values({
-          tenantId: SYSTEM_TENANT_ID,
+          workspaceId: WORKSPACE_ID,
           userId: ADMIN_USER_ID,
           roleId: adminRoleRow[0].id,
           scopeType: 'workspace',
@@ -1000,7 +944,7 @@ export async function seed(connectionUrl?: string): Promise<void> {
       await db
         .insert(userRoleAssignments)
         .values({
-          tenantId: SYSTEM_TENANT_ID,
+          workspaceId: WORKSPACE_ID,
           userId: DEVELOPER_ID,
           roleId: memberRoleRow.id,
           scopeType: 'workspace',
@@ -1021,7 +965,7 @@ export async function seed(connectionUrl?: string): Promise<void> {
       await db
         .insert(userRoleAssignments)
         .values({
-          tenantId: SYSTEM_TENANT_ID,
+          workspaceId: WORKSPACE_ID,
           userId: VIEWER_ID,
           roleId: viewerRoleRow.id,
           scopeType: 'workspace',
@@ -1030,16 +974,6 @@ export async function seed(connectionUrl?: string): Promise<void> {
         })
         .onConflictDoNothing();
     }
-
-    // ── Subscription ─────────────────────────────────────────────────────────
-    await db
-      .insert(schema.subscriptions)
-      .values({
-        tenantId: SYSTEM_TENANT_ID,
-        plan: 'free',
-        status: 'active',
-      })
-      .onConflictDoNothing();
 
     // ── Projects (real business flow: project + counter + member + statuses) ──
     for (const project of SEED_PROJECTS) {
@@ -1051,12 +985,15 @@ export async function seed(connectionUrl?: string): Promise<void> {
       .insert(projectMembers)
       .values({
         id: uuidv7(),
-        tenantId: SYSTEM_TENANT_ID,
+        workspaceId: WORKSPACE_ID,
         projectId: SEED_PROJECTS[0].id, // NXP
         userId: DEVELOPER_ID,
         status: 'active',
       })
       .onConflictDoNothing();
+
+    // ── RBAC/PBAC demo users (role coverage + per-project scoping) ───────────
+    await seedRbacDemoUsers();
 
     // ── Work items ────────────────────────────────────────────────────────────
     await seedWorkItems();
@@ -1078,30 +1015,151 @@ export async function seed(connectionUrl?: string): Promise<void> {
 
     // ── SSO connection (dev) ──────────────────────────────────────────────────
     // Maps the configured Entra directory (`ENTRA_TENANT_ID`) to the acme tenant
-    // so federated login resolves through the proper per-tenant SSO registry
-    // instead of the dev-only ENTRA_DEFAULT_TENANT_ID fallback.
+    // so federated login resolves through the proper per-workspace SSO registry
+    // (the primary workspace-resolution mechanism — see resolveAndProvisionSsoUser).
     const entraTid = process.env['ENTRA_TENANT_ID'];
     if (entraTid) {
+      // Restrict JIT provisioning to the corporate domain(s). Empty list = any
+      // directory user could self-provision; default to qnsc.vn so only company
+      // accounts can auto-create. Overridable via SSO_ALLOWED_EMAIL_DOMAINS
+      // (comma-separated). NOTE: this only gates NEW users — already-linked SSO
+      // identities skip the domain check on subsequent logins.
+      const ssoAllowedDomains = (process.env['SSO_ALLOWED_EMAIL_DOMAINS'] ?? 'qnsc.vn')
+        .split(',')
+        .map((d) => d.trim().toLowerCase())
+        .filter(Boolean);
       await db
         .insert(ssoConnections)
         .values({
-          tenantId: SYSTEM_TENANT_ID,
           workspaceId: WORKSPACE_ID,
           provider: 'entra',
           externalTenantId: entraTid,
           defaultRoleSlug: 'project_member',
-          allowedEmailDomains: [],
+          allowedEmailDomains: ssoAllowedDomains,
           jitEnabled: true,
           status: 'active',
         })
-        .onConflictDoNothing();
-      console.log(`   ↳ SSO connection seeded for Entra tid ${entraTid} → acme tenant`);
+        // Reconcile config on every seed so allow-list / default-role / JIT
+        // changes take effect on the existing connection. onConflictDoNothing
+        // would freeze whatever was written on first provision.
+        .onConflictDoUpdate({
+          target: [ssoConnections.provider, ssoConnections.externalTenantId],
+          set: {
+            workspaceId: WORKSPACE_ID,
+            defaultRoleSlug: 'project_member',
+            allowedEmailDomains: ssoAllowedDomains,
+            jitEnabled: true,
+            status: 'active',
+            updatedAt: new Date(),
+          },
+        });
+      console.log(
+        `   ↳ SSO connection reconciled for Entra tid ${entraTid} → acme workspace ` +
+          `(domains: ${ssoAllowedDomains.join(', ') || 'any'})`,
+      );
     }
 
-    console.log(`✅  Seed complete — ${SEED_PROJECTS.length} projects, 3 users, 2 teams, 4 iterations, 3 releases, work items seeded`);
+    console.log(`✅  Seed complete — ${SEED_PROJECTS.length} projects, 7 users, 2 teams, 4 iterations, 3 releases, work items seeded`);
   } finally {
     await pool.end();
   }
+}
+
+// ── RBAC/PBAC demo users ─────────────────────────────────────────────────────
+// The 3 primary users (admin/dev/viewer) only cover workspace_admin,
+// project_member and project_viewer. This seeds one user for each remaining
+// system role so the FE can exercise every role state, plus a PROJECT-scoped
+// "lead" that proves per-project (PBAC) resolution: project_admin on NXP,
+// project_viewer on MOB, and only baseline (workspace_member fallback) elsewhere.
+//
+// Business note: the implemented catalogue roles are workspace_admin /
+// project_admin / project_member / project_viewer / workspace_member / guest.
+// The early UI mockup used Project Manager / Product Owner / Tester instead; the
+// catalogue (db/permissions.catalog.ts) is the current source of truth. If BA
+// re-scopes roles, update the catalogue + these demo assignments together.
+//
+// Idempotent (fixed UUIDs + onConflictDoNothing). All four share one dev
+// password so they are easy to log in as; the admin/dev/viewer keep their own.
+async function seedRbacDemoUsers(): Promise<void> {
+  const demoHash = await argon2.hash('Demo@Rally2026!', { type: argon2.argon2id });
+
+  const demoUsers = [
+    { id: PROJECT_ADMIN_ID, email: 'projectadmin@acme.dev', displayName: 'Carol ProjectAdmin' },
+    { id: WORKSPACE_MEMBER_ID, email: 'member@acme.dev', displayName: 'Dave Member' },
+    { id: GUEST_ID, email: 'guest@acme.dev', displayName: 'Eve Guest' },
+    { id: PROJECT_LEAD_ID, email: 'lead@acme.dev', displayName: 'Frank Lead' },
+  ];
+
+  await db
+    .insert(schema.users)
+    .values(
+      demoUsers.map((u) => ({
+        id: u.id,
+        email: u.email,
+        displayName: u.displayName,
+        emailVerified: true,
+        locale: 'en',
+        timezone: 'Asia/Ho_Chi_Minh',
+        passwordHash: demoHash,
+      })),
+    )
+    .onConflictDoNothing();
+
+  await db
+    .insert(schema.workspaceMembers)
+    .values(demoUsers.map((u) => ({ workspaceId: WORKSPACE_ID, userId: u.id })))
+    .onConflictDoNothing();
+
+  // role slug → id (roles were seeded earlier in seed())
+  const roleRows = await db
+    .select({ id: schema.systemRoles.id, slug: schema.systemRoles.slug })
+    .from(schema.systemRoles);
+  const roleIdBySlug = new Map(roleRows.map((r) => [r.slug, r.id]));
+
+  const assign = async (
+    userId: string,
+    slug: SystemRoleSlug,
+    scopeType: 'workspace' | 'project',
+    scopeId: string,
+  ): Promise<void> => {
+    const roleId = roleIdBySlug.get(slug);
+    if (!roleId) return;
+    await db
+      .insert(userRoleAssignments)
+      .values({
+        workspaceId: WORKSPACE_ID,
+        userId,
+        roleId,
+        scopeType,
+        scopeId,
+        grantedBy: ADMIN_USER_ID,
+      })
+      .onConflictDoNothing();
+  };
+
+  // Workspace-wide roles → land in the JWT baseline for these users.
+  await assign(PROJECT_ADMIN_ID, SYSTEM_ROLE.PROJECT_ADMIN, 'workspace', WORKSPACE_ID);
+  await assign(WORKSPACE_MEMBER_ID, SYSTEM_ROLE.WORKSPACE_MEMBER, 'workspace', WORKSPACE_ID);
+  await assign(GUEST_ID, SYSTEM_ROLE.GUEST, 'workspace', WORKSPACE_ID);
+
+  // PBAC: Frank has NO workspace/global role — only project-scoped grants,
+  // resolved per-request by getProjectPermissions(). project_admin on NXP,
+  // project_viewer on MOB; every other project falls back to baseline only.
+  const NXP_ID = SEED_PROJECTS[0].id;
+  const MOB_ID = SEED_PROJECTS[1].id;
+  await assign(PROJECT_LEAD_ID, SYSTEM_ROLE.PROJECT_ADMIN, 'project', NXP_ID);
+  await assign(PROJECT_LEAD_ID, SYSTEM_ROLE.PROJECT_VIEWER, 'project', MOB_ID);
+
+  // Make Frank an actual member of both projects (realism + assignee validity).
+  await db
+    .insert(projectMembers)
+    .values([
+      { id: uuidv7(), workspaceId: WORKSPACE_ID, projectId: NXP_ID, userId: PROJECT_LEAD_ID, status: 'active' },
+      { id: uuidv7(), workspaceId: WORKSPACE_ID, projectId: MOB_ID, userId: PROJECT_LEAD_ID, status: 'active' },
+    ])
+    .onConflictDoNothing();
+
+  console.log('✅  RBAC/PBAC demo users seeded (project_admin, workspace_member, guest, PBAC lead)');
 }
 
 // Run directly: pnpm db:seed

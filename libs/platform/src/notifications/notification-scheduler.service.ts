@@ -23,7 +23,7 @@ import { notificationOutbox } from '../../../../db/schema/messaging';
 import type { NotificationTemplateName, NotificationTemplateVars } from './notification.templates';
 
 export interface ScheduleNotificationOptions<K extends NotificationTemplateName> {
-  tenantId: string;
+  workspaceId: string;
   recipientId: string;
   /** UUID of the user whose action triggered this notification (may differ from the actor in JWT). */
   actorId?: string;
@@ -64,7 +64,7 @@ export class NotificationSchedulerService {
     options: ScheduleNotificationOptions<K>,
   ): Promise<void> {
     const {
-      tenantId,
+      workspaceId,
       recipientId,
       actorId,
       template,
@@ -78,7 +78,7 @@ export class NotificationSchedulerService {
       .insert(notificationOutbox)
       .values({
         id: uuidv7(),
-        tenantId,
+        workspaceId,
         recipientId,
         actorId,
         type: template as string,
@@ -90,7 +90,7 @@ export class NotificationSchedulerService {
       .onConflictDoNothing({ target: notificationOutbox.idempotencyKey });
 
     this.logger.debug(
-      { tenantId, recipientId, template, idempotencyKey },
+      { workspaceId, recipientId, template, idempotencyKey },
       'Notification scheduled',
     );
 

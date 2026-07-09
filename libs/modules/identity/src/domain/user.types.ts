@@ -24,7 +24,7 @@ export interface User {
 
 export interface AuthSession {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   userId: string;
   tokenHash: string;
   familyId: string;
@@ -39,7 +39,7 @@ export interface AuthSession {
 
 export interface CreateSessionInput {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   userId: string;
   tokenHash: string;
   familyId: string;
@@ -62,7 +62,6 @@ export interface PasswordResetToken {
 
 export interface SsoIdentity {
   id: string;
-  tenantId: string;
   userId: string;
   provider: string;
   providerSub: string;
@@ -73,12 +72,11 @@ export interface SsoIdentity {
 
 /**
  * Maps an external identity provider (Entra `tid`, SAML/OIDC issuer) to a single
- * Rally tenant. Resolved during SSO login to route a federated user into the
- * correct tenant without relying on an insecure global default.
+ * Rally workspace. Resolved during SSO login to route a federated user into the
+ * correct workspace without relying on an insecure global default.
  */
 export interface SsoConnection {
   id: string;
-  tenantId: string;
   workspaceId: string;
   provider: string;
   externalTenantId: string;

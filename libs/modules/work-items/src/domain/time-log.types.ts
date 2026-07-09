@@ -1,6 +1,6 @@
 export interface TimeLog {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   workItemId: string;
   userId: string;
   /** ISO date string, e.g. "2026-06-25" */
@@ -15,7 +15,7 @@ export interface TimeLog {
 
 export interface CreateTimeLogInput {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   workItemId: string;
   userId: string;
   loggedDate: string;

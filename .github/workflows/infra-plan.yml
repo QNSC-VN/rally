@@ -54,7 +54,7 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0   # v7.0.0
 
-      - uses: QNSC-VN/qnsc-ci/actions/setup-tofu-aws@v1.5
+      - uses: QNSC-VN/qnsc-ci/actions/setup-tofu-aws@v1
         with:
           role-arn: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/rally-github-infra-plan
           aws-region: ${{ env.AWS_REGION }}
@@ -75,10 +75,14 @@ jobs:
         id: plan
         working-directory: ${{ matrix.workspace }}
         run: |
-          tofu plan -input=false -no-color -out=tfplan 2>&1 | tee plan.txt
+          # The infra-plan OIDC role is read-only and has no DynamoDB write
+          # permission, so it cannot acquire the state lock. Plan never mutates
+          # state, so run lock-free (apply still locks via the admin apply role).
+          tofu plan -input=false -lock=false -no-color -out=tfplan 2>&1 | tee plan.txt
           echo "exitcode=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
         env:
-          TF_VAR_acm_cert_arn: ${{ secrets.ACM_CERT_ARN }}
+          TF_VAR_acm_cert_arn:         ${{ secrets.ACM_CERT_ARN }}
+          TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
       - name: Post plan to PR
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3   # v9.0.0

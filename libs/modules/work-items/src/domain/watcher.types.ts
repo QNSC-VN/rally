@@ -1,6 +1,6 @@
 export interface Watcher {
   workItemId: string;
   userId: string;
-  tenantId: string;
+  workspaceId: string;
   watchedAt: Date;
 }

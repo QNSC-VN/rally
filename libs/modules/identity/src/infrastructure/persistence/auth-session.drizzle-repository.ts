@@ -23,7 +23,7 @@ export class AuthSessionDrizzleRepository implements IAuthSessionRepository {
     const row = rows[0];
     return {
       id: row.id,
-      tenantId: row.tenantId,
+      workspaceId: row.workspaceId,
       userId: row.userId,
       tokenHash: row.tokenHash,
       familyId: row.familyId,
@@ -38,7 +38,7 @@ export class AuthSessionDrizzleRepository implements IAuthSessionRepository {
   async create(input: CreateSessionInput, tx?: DbExecutor): Promise<void> {
     await (tx ?? this.db).insert(authSessions).values({
       id: input.id,
-      tenantId: input.tenantId,
+      workspaceId: input.workspaceId,
       userId: input.userId,
       tokenHash: input.tokenHash,
       familyId: input.familyId,
