@@ -17,7 +17,6 @@ import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
-import { useNavigate } from '@tanstack/react-router'
 import {
   useReleases,
   useCreateRelease,
@@ -57,7 +56,6 @@ function CreateReleaseModal({ projectId, onClose }: { projectId: string; onClose
   const [state, setState] = useState<ReleaseStatus>('planning')
   const [error, setError] = useState<string | null>(null)
   const create = useCreateRelease()
-  const [createWithDetails, setCreateWithDetails] = useState(false)
 
   async function submit() {
     setError(null)
@@ -157,7 +155,6 @@ function CreateReleaseModal({ projectId, onClose }: { projectId: string; onClose
           type="button"
           disabled={create.isPending || !name.trim()}
           onClick={() => {
-            setCreateWithDetails(true)
             void submit()
           }}
           className="rounded px-4 py-1.5 text-[11px] font-semibold transition-colors hover:opacity-90 disabled:opacity-50"
@@ -169,7 +166,6 @@ function CreateReleaseModal({ projectId, onClose }: { projectId: string; onClose
           type="button"
           disabled={create.isPending || !name.trim()}
           onClick={() => {
-            setCreateWithDetails(false)
             void submit()
           }}
           className="flex items-center gap-1.5 rounded px-4 py-1.5 text-[11px] font-semibold text-white transition-colors hover:opacity-90 disabled:opacity-50"
@@ -312,7 +308,6 @@ function ReleaseRow({
 }) {
   const update = useUpdateRelease(release.id, projectId)
   const status = release.status as ReleaseStatus
-  const navigate = useNavigate()
 
   function handleStateChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const newState = e.target.value as ReleaseStatus

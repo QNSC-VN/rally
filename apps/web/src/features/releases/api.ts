@@ -149,7 +149,6 @@ export function useDeleteRelease(projectId: string) {
 
 // Inline edit helper — optimistic update for a single field.
 export function useInlineReleaseField(id: string, projectId: string, field: keyof UpdateReleaseInput) {
-  const update = useUpdateRelease(id, projectId)
   return useMutation({
     mutationFn: async (value: unknown) => {
       const patch: UpdateReleaseInput = { [field]: value }
