@@ -170,6 +170,16 @@ const iterationStatusRoute = createRoute({
   ),
 })
 
+const teamStatusRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: '/team-status',
+  staticData: { breadcrumb: 'Team Status' },
+  component: lazyPage(
+    () => import('@/pages/team-status/team-status-page'),
+    'TeamStatusPage',
+  ),
+})
+
 const releasesRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/releases',
@@ -200,6 +210,7 @@ const routeTree = rootRoute.addChildren([
     backlogRoute,
     timeboxesRoute,
     iterationStatusRoute,
+    teamStatusRoute,
     releasesRoute,
     workItemDetailRoute,
     notFoundRoute,

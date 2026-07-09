@@ -79,6 +79,12 @@ const NAV_ITEMS: NavItem[] = [
         featureFlag: 'feature.iteration-status',
         permission: 'work_item:view',
       },
+      {
+        path: '/team-status',
+        label: 'Team Status',
+        featureFlag: 'feature.team-status',
+        permission: 'team_status:view',
+      },
     ],
   },
   {
