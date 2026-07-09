@@ -386,6 +386,112 @@ export class AuthService {
     };
   }
 
+  // ---------------------------------------------------------------------------
+  // Dev login — passwordless, non-production only (local development + E2E)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Sign in a seeded account by email with no password or IdP round-trip.
+   *
+   * Rally is SSO-only in production; this exists purely so local development and
+   * the Playwright E2E suite can authenticate without a real Entra tenant. It is
+   * hard-blocked when NODE_ENV is 'production' so it can never be used as a
+   * password-less backdoor in a deployed environment.
+   */
+  @Span('auth.devLogin')
+  async devLogin(email: string, ipAddress?: string): Promise<LoginResult> {
+    if (this.config.get('NODE_ENV') === 'production') {
+      throw new UnauthorizedException('DEV_LOGIN_DISABLED', 'Dev login is disabled in production');
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const user = await this.userRepo.findByEmail(normalizedEmail);
+    if (!user || user.deletedAt || user.status === 'suspended' || user.status === 'inactive') {
+      throw new UnauthorizedException(
+        'AUTH_INVALID_CREDENTIALS',
+        'No active account exists for this email',
+      );
+    }
+
+    const memberships = await this.workspaceService.getMemberships(user.id);
+    const workspaceId = memberships[0]?.workspaceId;
+    if (!workspaceId) {
+      throw new UnauthorizedException(
+        'ACCOUNT_DEACTIVATED',
+        'No active workspace membership found',
+      );
+    }
+
+    const sessionId = uuidv7();
+    const { permissions } = await this.accessService.getUserRoleAndPermissions(
+      user.id,
+      workspaceId,
+    );
+    // authMethod 'password' (not SSO) so the SPA uses plain cookie-based refresh
+    // instead of an MSAL silent re-auth for these local sessions.
+    const { accessToken, jti, expiresIn } = this.signAccessToken(
+      user,
+      sessionId,
+      permissions,
+      workspaceId,
+      'password',
+    );
+    const { refreshToken, tokenHash, familyId } = this.generateRefreshToken();
+
+    const refreshExpiry = new Date();
+    refreshExpiry.setSeconds(refreshExpiry.getSeconds() + this.refreshTtlSeconds());
+
+    const csrfToken = randomBytes(32).toString('hex');
+
+    await this.db.transaction(async (tx) => {
+      await this.sessionRepo.create(
+        {
+          id: sessionId,
+          workspaceId,
+          userId: user.id,
+          tokenHash,
+          familyId,
+          ipAddress,
+          expiresAt: refreshExpiry,
+          csrfToken,
+        },
+        tx,
+      );
+      await this.userRepo.updateLastLogin(user.id, tx);
+    });
+
+    this.logger.log({ userId: user.id, jti, sessionId }, 'User logged in via dev-login');
+
+    void this.audit.record({
+      workspaceId,
+      actorId: user.id,
+      actorEmail: user.email,
+      action: 'auth.login.dev',
+      resourceType: 'session',
+      resourceId: sessionId,
+      ipAddress,
+      metadata: { method: 'dev-login' },
+    });
+
+    void this.workspaceService.touchMembership(user.id, workspaceId);
+
+    return {
+      accessToken,
+      refreshToken,
+      expiresIn,
+      csrfToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        displayName: user.displayName,
+        avatarUrl: user.avatarUrl,
+        locale: user.locale,
+        timezone: user.timezone,
+      },
+      memberships,
+    };
+  }
+
   /**
    * Resolve which Rally workspace a federated (SSO) user belongs to and provision
    * them if needed. Resolution is driven entirely by the SSO connection:

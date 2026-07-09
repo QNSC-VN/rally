@@ -20,7 +20,14 @@ export const SsoLoginSchema = z.object({
 });
 
 export class SsoLoginDto extends createZodDto(SsoLoginSchema) {}
+// ── Dev login (non-production only) ──────────────────────────────────────────
 
+export const DevLoginSchema = z.object({
+  /** Email of a seeded account. Passwordless — for local development and E2E only. */
+  email: z.string().email('a valid email is required').max(320),
+});
+
+export class DevLoginDto extends createZodDto(DevLoginSchema) {}
 // ── Switch workspace ─────────────────────────────────────────────────────────
 
 export const SwitchWorkspaceSchema = z.object({

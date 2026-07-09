@@ -7,7 +7,7 @@ import type { JwtPayload } from '@platform';
 import { AuthService } from '../../application/auth.service';
 import { AccessService } from '@modules/access';
 import { WorkspaceService } from '@modules/workspace';
-import { UpdateProfileDto, SsoLoginDto, SwitchWorkspaceDto } from './dto/login.dto';
+import { UpdateProfileDto, SsoLoginDto, DevLoginDto, SwitchWorkspaceDto } from './dto/login.dto';
 import { AuthTokenResponseDto, UserProfileResponseDto } from './dto/auth-response.dto';
 import { CurrentUser } from './decorators/current-user.decorator';
 
@@ -80,6 +80,44 @@ export class AuthController {
     @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<AuthTokenResponseDto> {
     const result = await this.authService.ssoLogin(dto.idToken, req.ip);
+
+    reply.setCookie(
+      REFRESH_COOKIE,
+      result.refreshToken,
+      this.buildRefreshCookieOptions(req, REMEMBER_ME_TTL_SECONDS),
+    );
+    reply.setCookie(
+      CSRF_COOKIE,
+      result.csrfToken,
+      this.buildCsrfCookieOptions(req, REMEMBER_ME_TTL_SECONDS),
+    );
+
+    return {
+      accessToken: result.accessToken,
+      expiresIn: result.expiresIn,
+      user: result.user,
+      memberships: result.memberships,
+    };
+  }
+
+  // ── POST /auth/dev-login ────────────────────────────────────────
+  // Passwordless sign-in for local development and E2E. The service hard-blocks
+  // this in production (NODE_ENV==='production') so it is never a deployed
+  // backdoor. Real environments use POST /auth/sso (Microsoft Entra ID).
+
+  @Post('dev-login')
+  @Public()
+  @RateLimit('AUTH_LOGIN')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Passwordless dev/E2E login (non-production only)' })
+  @ApiResponse({ status: 200, type: AuthTokenResponseDto })
+  @ApiCommonErrors(400, 401, 422)
+  async devLogin(
+    @Body() dto: DevLoginDto,
+    @Req() req: FastifyRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ): Promise<AuthTokenResponseDto> {
+    const result = await this.authService.devLogin(dto.email, req.ip);
 
     reply.setCookie(
       REFRESH_COOKIE,

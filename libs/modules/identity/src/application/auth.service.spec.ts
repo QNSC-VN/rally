@@ -222,6 +222,44 @@ describe('AuthService', () => {
     });
   });
 
+  // ── devLogin ─────────────────────────────────────────────────────────────
+
+  describe('devLogin', () => {
+    it('signs in a seeded account by email and creates a session', async () => {
+      userRepo.findByEmail.mockResolvedValue(mockUser({ email: 'admin@acme.dev' }));
+
+      const result = await service.devLogin('admin@acme.dev');
+
+      expect(result.accessToken).toBe('mock-access-token');
+      expect(result.refreshToken).toBeDefined();
+      expect(userRepo.findByEmail).toHaveBeenCalledWith('admin@acme.dev');
+      expect(sessionRepo.create).toHaveBeenCalledOnce();
+      expect(userRepo.updateLastLogin).toHaveBeenCalledOnce();
+    });
+
+    it('is blocked in production', async () => {
+      config.get.mockImplementation((key: string) =>
+        key === 'NODE_ENV' ? 'production' : undefined,
+      );
+
+      await expect(service.devLogin('admin@acme.dev')).rejects.toThrow(UnauthorizedException);
+      expect(userRepo.findByEmail).not.toHaveBeenCalled();
+    });
+
+    it('throws when no account exists for the email', async () => {
+      userRepo.findByEmail.mockResolvedValue(null);
+
+      await expect(service.devLogin('nobody@acme.dev')).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('throws when the account has no workspace membership', async () => {
+      userRepo.findByEmail.mockResolvedValue(mockUser());
+      workspaceService.getMemberships.mockResolvedValue([]);
+
+      await expect(service.devLogin('admin@acme.dev')).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
   // ── logout ─────────────────────────────────────────────────────────────────
 
   describe('logout', () => {

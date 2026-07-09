@@ -1,6 +1,6 @@
 import { type Page, expect } from '@playwright/test'
 
-export const ADMIN = { email: 'admin@acme.dev', password: 'DevAdminPass123!' }
+export const ADMIN = { email: 'admin@acme.dev' }
 export const SEED_PROJECT = 'NX Platform'
 
 const SEED_CONTEXT = {
@@ -28,6 +28,9 @@ const SEED_CONTEXT = {
  * family. The API runs with DISABLE_RATE_LIMIT=true in e2e, so per-test login
  * doesn't hit the AUTH_LOGIN limit.
  *
+ * Rally is SSO-only; the E2E environment has no Entra tenant, so we use the
+ * passwordless dev-login form (email only, seeded accounts, non-production).
+ *
  * Don't wait for 'networkidle' — the app holds a persistent SSE notifications
  * stream open so the network never idles; use 'domcontentloaded' + explicit
  * element waits.
@@ -35,7 +38,6 @@ const SEED_CONTEXT = {
 export async function login(page: Page): Promise<void> {
   await page.goto('/login', { waitUntil: 'domcontentloaded' })
   await page.fill('input[type="email"]', ADMIN.email)
-  await page.fill('input[type="password"]', ADMIN.password)
   await page.click('button[type="submit"]')
   await page.waitForURL((u) => !u.pathname.includes('login'), { timeout: 20_000 })
   // Seed the project/workspace context so project-scoped screens work without
@@ -46,9 +48,7 @@ export async function login(page: Page): Promise<void> {
   await page.reload({ waitUntil: 'domcontentloaded' })
   // Wait for the authenticated shell to be present (not the login page) before
   // returning — a fixed timeout races the auth-context hydration on cold start.
-  await page
-    .waitForURL((u) => !u.pathname.includes('login'), { timeout: 20_000 })
-    .catch(() => {})
+  await page.waitForURL((u) => !u.pathname.includes('login'), { timeout: 20_000 }).catch(() => {})
   // The top-nav "Home" link only renders in the authenticated shell — waiting
   // for it confirms auth hydration finished (vs. a race back to /login).
   await page

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Layers, ShieldCheck, Check, AlertCircle } from 'lucide-react'
-import { isSsoConfigured } from '@/shared/config/env'
+import { ENV, isSsoConfigured } from '@/shared/config/env'
 
 // ── Microsoft logo SVG (official 4-square mark) ────────────────────────────
 function MicrosoftLogo() {
@@ -23,8 +23,11 @@ function MicrosoftLogo() {
 export function LoginPage() {
   const [ssoLoading, setSsoLoading] = useState(false)
   const [ssoError, setSsoError] = useState<string | null>(null)
+  const [devEmail, setDevEmail] = useState('admin@acme.dev')
+  const [devLoading, setDevLoading] = useState(false)
+  const [devError, setDevError] = useState<string | null>(null)
 
-  // ── SSO handler ───────────────────────────────────────────────────────────
+  // ── SSO handler ────────────────────────────────────────────────────
   async function handleSsoLogin() {
     setSsoLoading(true)
     setSsoError(null)
@@ -36,6 +39,31 @@ export function LoginPage() {
     } catch {
       setSsoError('Could not initiate sign-in. Please try again.')
       setSsoLoading(false)
+    }
+  }
+
+  // ── Dev sign-in (non-SSO environments only) ─────────────────────────────
+  async function handleDevLogin(e: React.FormEvent) {
+    e.preventDefault()
+    setDevLoading(true)
+    setDevError(null)
+    try {
+      const res = await fetch(`${ENV.API_BASE_URL}/v1/auth/dev-login`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: devEmail }),
+      })
+      if (!res.ok) {
+        setDevError('Login failed. Check the email is a seeded account and the API is running.')
+        setDevLoading(false)
+        return
+      }
+      // Full reload — bootstrapAuth() restores the session from the refresh cookie.
+      window.location.assign('/')
+    } catch {
+      setDevError('Could not reach the API. Is it running on :3000?')
+      setDevLoading(false)
     }
   }
 
@@ -228,9 +256,56 @@ export function LoginPage() {
                   </button>
                 </>
               ) : (
-                <p className="text-[12px]" style={{ color: '#5c6478' }}>
-                  Single sign-on is not configured for this environment. Contact your administrator.
-                </p>
+                <form onSubmit={handleDevLogin} className="flex flex-col gap-4">
+                  <p className="text-[12px]" style={{ color: '#5c6478' }}>
+                    Single sign-on is not configured for this environment. Use a seeded account to
+                    continue (development only).
+                  </p>
+
+                  {devError && (
+                    <div
+                      role="alert"
+                      className="flex items-start gap-2 rounded px-3 py-2.5 text-[11px]"
+                      style={{
+                        color: '#b91c1c',
+                        backgroundColor: '#fef2f2',
+                        border: '1px solid #f0c7c1',
+                      }}
+                    >
+                      <AlertCircle size={14} className="mt-px shrink-0" />
+                      {devError}
+                    </div>
+                  )}
+
+                  <div className="flex flex-col gap-1.5">
+                    <label
+                      htmlFor="dev-email"
+                      className="text-[11px] font-medium"
+                      style={{ color: '#5c6478' }}
+                    >
+                      Email
+                    </label>
+                    <input
+                      id="dev-email"
+                      type="email"
+                      required
+                      value={devEmail}
+                      onChange={(e) => setDevEmail(e.target.value)}
+                      className="h-10 w-full rounded px-3 text-[13px] outline-none"
+                      style={{ border: '1px solid #d9dee7', color: '#1a2234' }}
+                      placeholder="you@acme.dev"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={devLoading}
+                    className="flex w-full items-center justify-center gap-2 rounded py-3 text-[13px] font-medium text-white transition-colors disabled:opacity-60"
+                    style={{ backgroundColor: '#1d3f73' }}
+                  >
+                    {devLoading ? 'Signing in…' : 'Sign in'}
+                  </button>
+                </form>
               )}
             </div>
           </div>
