@@ -104,6 +104,9 @@ importers:
       '@qnsc-vn/identity':
         specifier: ^2.0.0
         version: 2.0.0(476c1c8832459ba5fdeb30daeb2de803)
+      '@qnsc-vn/platform-cache':
+        specifier: ^1.0.0
+        version: 1.0.0(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(ioredis@5.11.1)
       argon2:
         specifier: ^0.44.0
         version: 0.44.0

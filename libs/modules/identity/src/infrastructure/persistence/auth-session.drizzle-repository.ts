@@ -2,15 +2,14 @@ import { Injectable } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB, DbExecutor } from '@platform';
+import type { AuthSession, CreateSessionInput, IAuthSessionRepository } from '@qnsc-vn/identity';
 import { authSessions } from '../../../../../../db/schema/identity';
 import { ssoProviderEnum } from '../../../../../../db/schema/enums';
-import type { AuthSession, CreateSessionInput } from '../../domain/user.types';
 
 type SsoProvider = (typeof ssoProviderEnum.enumValues)[number];
-import { IAuthSessionRepository } from '../../domain/ports/auth-session.repository';
 
 @Injectable()
-export class AuthSessionDrizzleRepository implements IAuthSessionRepository {
+export class AuthSessionDrizzleRepository implements IAuthSessionRepository<DbExecutor> {
   constructor(@InjectDrizzle() private readonly db: DrizzleDB) {}
 
   async findByTokenHash(hash: string): Promise<AuthSession | null> {
@@ -23,7 +22,8 @@ export class AuthSessionDrizzleRepository implements IAuthSessionRepository {
     const row = rows[0];
     return {
       id: row.id,
-      workspaceId: row.workspaceId,
+      // rally stores the auth context (workspace) in the workspace_id column.
+      contextId: row.workspaceId,
       userId: row.userId,
       tokenHash: row.tokenHash,
       familyId: row.familyId,
@@ -38,7 +38,8 @@ export class AuthSessionDrizzleRepository implements IAuthSessionRepository {
   async create(input: CreateSessionInput, tx?: DbExecutor): Promise<void> {
     await (tx ?? this.db).insert(authSessions).values({
       id: input.id,
-      workspaceId: input.workspaceId,
+      // rally is workspace-scoped: contextId is always the (non-null) workspace id.
+      workspaceId: input.contextId as string,
       userId: input.userId,
       tokenHash: input.tokenHash,
       familyId: input.familyId,

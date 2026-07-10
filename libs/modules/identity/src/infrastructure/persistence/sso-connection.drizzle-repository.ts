@@ -3,8 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { ssoConnections } from '../../../../../../db/schema/identity';
-import type { SsoConnection } from '../../domain/user.types';
-import { ISsoConnectionRepository } from '../../domain/ports/sso-connection.repository';
+import type { SsoConnection, ISsoConnectionRepository } from '@qnsc-vn/identity';
 
 @Injectable()
 export class SsoConnectionDrizzleRepository implements ISsoConnectionRepository {
@@ -24,6 +23,6 @@ export class SsoConnectionDrizzleRepository implements ISsoConnectionRepository 
         ),
       )
       .limit(1);
-    return (rows[0]) ?? null;
+    return rows[0] ?? null;
   }
 }

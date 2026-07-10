@@ -31,6 +31,7 @@ const mockIteration = (o: Partial<Iteration> = {}): Iteration => ({
 const actor = {
   sub: 'user-1',
   workspaceId: 'ws-1',
+  contextId: 'ws-1',
   sessionId: 's1',
   jti: 'j1',
   iat: 0,
@@ -38,6 +39,7 @@ const actor = {
   iss: 'rally',
   aud: 'rally-app',
   permissions: [] as string[],
+  claims: { permissions: [] as string[] },
   authMethod: 'password' as const,
 };
 

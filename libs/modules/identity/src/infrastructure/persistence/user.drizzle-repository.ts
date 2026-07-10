@@ -7,11 +7,10 @@ import { users, ssoIdentities } from '../../../../../../db/schema/identity';
 import { ssoProviderEnum } from '../../../../../../db/schema/enums';
 
 type SsoProvider = (typeof ssoProviderEnum.enumValues)[number];
-import type { User, UserStatus, SsoIdentity } from '../../domain/user.types';
-import { IUserRepository } from '../../domain/ports/user.repository';
+import type { User, UserStatus, SsoIdentity, IUserRepository } from '@qnsc-vn/identity';
 
 @Injectable()
-export class UserDrizzleRepository implements IUserRepository {
+export class UserDrizzleRepository implements IUserRepository<DbExecutor> {
   constructor(@InjectDrizzle() private readonly db: DrizzleDB) {}
 
   async findByEmail(email: string): Promise<User | null> {

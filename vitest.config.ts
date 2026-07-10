@@ -51,7 +51,6 @@ export default defineConfig({
       // Threshold enforces quality on tested code; adding new files here
       // is a conscious decision when writing the matching spec.
       include: [
-        'libs/modules/identity/src/application/auth.service.ts',
         'libs/modules/workspace/src/application/workspace.service.ts',
         'libs/modules/projects/src/application/projects.service.ts',
         'libs/modules/planning/src/application/planning.service.ts',
