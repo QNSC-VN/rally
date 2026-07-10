@@ -143,23 +143,8 @@ export const ErrorCodes = {
 
 export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];
 
-export type ErrorCategory =
-  | 'NOT_FOUND'
-  | 'CONFLICT'
-  | 'VALIDATION_FAILED'
-  | 'PERMISSION_DENIED'
-  | 'PRECONDITION_FAILED'
-  | 'RATE_LIMITED'
-  | 'UNAUTHORIZED'
-  | 'INTERNAL';
-
-export const CATEGORY_HTTP_STATUS: Record<ErrorCategory, number> = {
-  NOT_FOUND: 404,
-  CONFLICT: 409,
-  VALIDATION_FAILED: 422,
-  PERMISSION_DENIED: 403,
-  PRECONDITION_FAILED: 412,
-  RATE_LIMITED: 429,
-  UNAUTHORIZED: 401,
-  INTERNAL: 500,
-};
+// The error-category taxonomy and its HTTP-status mapping are framework-level
+// invariants owned by @qnsc-vn/platform-http. Re-exported here so product code keeps
+// importing them from '@platform' while there is a SINGLE source of truth (no drift).
+// The product-specific `ErrorCode` catalog above stays local (product policy).
+export { type ErrorCategory, CATEGORY_HTTP_STATUS } from '@qnsc-vn/platform-http';

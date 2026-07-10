@@ -3,7 +3,7 @@ import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 import { AppConfigService } from '@platform/config';
 import { trace, isSpanContextValid } from '@opentelemetry/api';
-import { requestContextStorage } from '@platform/context/request-context';
+import { requestContextStorage, RequestContextService } from '@platform/context/request-context';
 import { PlatformModule } from '@platform';
 import { IdentityModule } from '@modules/identity';
 import { WorkspaceModule } from '@modules/workspace';
@@ -17,7 +17,7 @@ import { CollaborationModule } from '@modules/collaboration';
 import { NotificationsModule } from '@modules/notifications';
 import { AuditModule } from '@modules/audit';
 import { ReportingModule } from '@modules/reporting';
-import { GlobalExceptionFilter } from '@platform/http/global-exception.filter';
+import { GlobalExceptionFilter, REQUEST_CONTEXT } from '@qnsc-vn/platform-http';
 import { HttpLoggingInterceptor } from '@platform/http/http-logging.interceptor';
 import { ZodValidationPipe } from 'nestjs-zod';
 import { SanitizationPipe } from '@platform/pipes/sanitization.pipe';
@@ -104,6 +104,9 @@ import { AsyncLocalStorageMiddleware } from '@platform/context/als.middleware';
     ReportingModule,
   ],
   providers: [
+    // Bind the shared filter's request-context port to rally's ALS-backed service.
+    { provide: REQUEST_CONTEXT, useExisting: RequestContextService },
+
     // Global exception filter → stable RFC-9457-style error envelope
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },
 

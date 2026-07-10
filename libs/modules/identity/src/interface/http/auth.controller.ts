@@ -96,7 +96,7 @@ export class AuthController {
       accessToken: result.accessToken,
       expiresIn: result.expiresIn,
       user: result.user,
-      memberships: result.memberships,
+      memberships: result.memberships ?? [],
     };
   }
 
@@ -134,7 +134,7 @@ export class AuthController {
       accessToken: result.accessToken,
       expiresIn: result.expiresIn,
       user: result.user,
-      memberships: result.memberships,
+      memberships: result.memberships ?? [],
     };
   }
 
