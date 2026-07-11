@@ -87,7 +87,7 @@ export const useAuthStore = create<AuthState>()(
             // BFF: the server re-issues tokens onto the SAME session; the browser
             // keeps its session cookie and holds no tokens, so there is nothing to
             // store client-side. A 204 means the session now resolves to the new ws.
-            const res = await fetch(`${API}/bff/switch-workspace`, {
+            const res = await fetch(`${API}/v1/bff/switch-workspace`, {
               method: 'POST',
               credentials: 'include',
               referrerPolicy: 'no-referrer',

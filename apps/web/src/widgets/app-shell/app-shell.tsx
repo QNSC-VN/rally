@@ -186,7 +186,7 @@ export function AppShell() {
     // cookie) and return to login. No MSAL, no in-browser tokens to clear.
     if (isBffAuth) {
       try {
-        await fetch(`${ENV.API_BASE_URL}/bff/logout`, {
+        await fetch(`${ENV.API_BASE_URL}/v1/bff/logout`, {
           method: 'POST',
           credentials: 'include',
           referrerPolicy: 'no-referrer',

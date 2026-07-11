@@ -43,7 +43,7 @@ describe('useAuthStore.switchWorkspace (BFF mode)', () => {
     vi.unstubAllGlobals()
   })
 
-  it('posts to /bff/switch-workspace with no Authorization header and re-orders memberships', async () => {
+  it('posts to /v1/bff/switch-workspace with no Authorization header and re-orders memberships', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
     vi.stubGlobal('fetch', fetchMock)
 
@@ -52,7 +52,7 @@ describe('useAuthStore.switchWorkspace (BFF mode)', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
-    expect(url).toBe('/bff/switch-workspace')
+    expect(url).toBe('/v1/bff/switch-workspace')
     expect(init.method).toBe('POST')
     expect((init.headers as Record<string, string>).Authorization).toBeUndefined()
     expect(init.body).toBe(JSON.stringify({ workspaceId: 'ws-2' }))

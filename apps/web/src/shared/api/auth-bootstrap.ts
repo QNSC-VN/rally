@@ -116,7 +116,7 @@ async function _finalizeSession(accessToken: string, expiresIn?: number): Promis
 async function _runBff(): Promise<void> {
   const { clearAuth } = useAuthStore.getState()
 
-  const meRes = await fetch(`${BASE}/bff/me`, {
+  const meRes = await fetch(`${BASE}/v1/bff/me`, {
     credentials: 'include',
     referrerPolicy: 'no-referrer',
     headers: { accept: 'application/json' },

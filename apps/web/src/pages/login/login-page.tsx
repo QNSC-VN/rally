@@ -37,7 +37,7 @@ export function LoginPage() {
         // navigates to Entra and returns with a session cookie already set — no
         // MSAL, no in-browser tokens. Execution stops at the redirect.
         const returnTo = new URLSearchParams(window.location.search).get('returnTo') ?? '/'
-        window.location.href = `/bff/login?returnTo=${encodeURIComponent(returnTo)}`
+        window.location.href = `/v1/bff/login?returnTo=${encodeURIComponent(returnTo)}`
         return
       }
       // eslint-disable-next-line boundaries/dependencies
@@ -56,9 +56,9 @@ export function LoginPage() {
     setDevLoading(true)
     setDevError(null)
     try {
-      // In BFF mode the session lands on the server (same-origin `/bff`); in
-      // legacy mode the browser holds the tokens (cross-origin `/v1`).
-      const endpoint = isBffAuth ? '/bff/dev-login' : `${ENV.API_BASE_URL}/v1/auth/dev-login`
+      // In BFF mode the session lands on the server (same-origin `/v1/bff`); in
+      // legacy mode the browser holds the tokens (cross-origin `/v1/auth`).
+      const endpoint = isBffAuth ? '/v1/bff/dev-login' : `${ENV.API_BASE_URL}/v1/auth/dev-login`
       const res = await fetch(endpoint, {
         method: 'POST',
         credentials: 'include',

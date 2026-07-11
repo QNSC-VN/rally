@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 import {
   AuthService,
   EntraTokenVerifier,
@@ -44,7 +44,12 @@ import { DrizzleTransactionRunner } from './application/transaction-runner';
  *
  * Rally keeps its own `JwtStrategy` / guards (extended `JwtPayload`), so the
  * package's `AuthModule.forRoot` is intentionally NOT used here.
+ *
+ * Marked `@Global` so the `BFF_SESSION_RESOLVER` bridge it exports is visible to
+ * the shared (also global) `JwtAuthGuard` singleton, which must resolve the BFF
+ * session cookie on EVERY authenticated route — not only the identity module's.
  */
+@Global()
 @Module({
   imports: [AccessModule, WorkspaceModule],
   controllers: [IdentityController, AuthController, BffController],
@@ -98,6 +103,6 @@ import { DrizzleTransactionRunner } from './application/transaction-runner';
       }),
     },
   ],
-  exports: [AuthService],
+  exports: [AuthService, BFF_SESSION_RESOLVER],
 })
 export class IdentityModule {}
