@@ -20,6 +20,11 @@ import { WorkspaceModule, WorkspaceService } from '@modules/workspace';
 import { AuditService } from '@modules/audit';
 import { IdentityController } from './interface/http/identity.controller';
 import { AuthController } from './interface/http/auth.controller';
+import { BffController } from './interface/http/bff/bff.controller';
+import { BffSessionGuard } from './interface/http/bff/bff-session.guard';
+import { BffService } from './application/bff/bff.service';
+import { BffSessionStore } from './application/bff/bff-session.store';
+import { EntraOidcClient } from './application/bff/entra-oidc.client';
 import { UserDrizzleRepository } from './infrastructure/persistence/user.drizzle-repository';
 import { AuthSessionDrizzleRepository } from './infrastructure/persistence/auth-session.drizzle-repository';
 import { SsoConnectionDrizzleRepository } from './infrastructure/persistence/sso-connection.drizzle-repository';
@@ -43,10 +48,18 @@ import { DrizzleTransactionRunner } from './application/transaction-runner';
  */
 @Module({
   imports: [AccessModule, WorkspaceModule],
-  controllers: [IdentityController, AuthController],
+  controllers: [IdentityController, AuthController, BffController],
   providers: [
     AuthService,
     EntraTokenVerifier,
+
+    // BFF (Backend-for-Frontend) same-origin OIDC session. Inert unless
+    // AUTH_MODE=bff; the Entra client, session store, and guard are generic and
+    // are earmarked to move into `@qnsc-vn/identity` once opshub adopts BFF too.
+    EntraOidcClient,
+    BffSessionStore,
+    BffService,
+    BffSessionGuard,
 
     // Persistence ports → rally drizzle repositories.
     { provide: USER_REPOSITORY, useClass: UserDrizzleRepository },
