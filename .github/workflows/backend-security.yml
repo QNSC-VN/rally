@@ -86,6 +86,7 @@ jobs:
     permissions:
       security-events: write # upload SARIF to GitHub Security tab
       contents: read
+      packages: read # pull @qnsc-vn/* from GitHub Packages during image build
 
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
@@ -101,6 +102,8 @@ jobs:
           load: true
           tags: rally-api:scan
           cache-from: type=gha,scope=api # reuses cache from CI build job if available
+          secrets: |
+            node_auth_token=${{ secrets.GITHUB_TOKEN }}
 
       # Two-pass scan: CRITICAL blocks the build; HIGH is reported only.
       # ignore-unfixed: true — skip CVEs with no upstream fix (supply chain noise).
@@ -144,6 +147,10 @@ jobs:
       security-events: write
       actions: read
       contents: read
+      packages: read # pull @qnsc-vn/* from GitHub Packages for the build
+    env:
+      # Authenticates pnpm against GitHub Packages for @qnsc-vn/* (see .npmrc).
+      NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7

@@ -2,30 +2,26 @@ import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { Algorithm } from 'jsonwebtoken';
+import type { JwtPayload as CoreJwtPayload } from '@qnsc-vn/identity';
 import { AppConfigService } from '../config/app-config.service';
 
-export interface JwtPayload {
-  /** Subject = userId */
-  sub: string;
+/**
+ * Rally's request-scoped auth principal. Extends the shared `@qnsc-vn/identity`
+ * access-token payload — which carries the product-neutral `contextId` and the
+ * product-defined `claims` bag — with rally's own flattened conveniences:
+ * `workspaceId` (== `contextId`) and `permissions` (== `claims.permissions`).
+ * Keeping these mirrors means rally's guards, decorators, and controllers keep
+ * reading the same `req.user` fields they always have.
+ */
+export interface JwtPayload extends CoreJwtPayload {
+  /** Active workspace id — rally's mirror of the core `contextId`. */
   workspaceId: string;
-  sessionId: string;
-  jti: string;
-  iss: string;
-  aud: string | string[];
-  iat: number;
-  exp: number;
   /**
-   * Effective permission codes for this user, embedded at token-mint time.
-   * Refreshed on every token rotation so stale permissions are bounded by
-   * the access-token TTL (default 15 min).
+   * Effective permission codes for this user — rally's flattened mirror of
+   * `claims.permissions`. Embedded at token-mint time and refreshed on every
+   * rotation, so stale permissions are bounded by the access-token TTL.
    */
   permissions: string[];
-  /**
-   * How the session was originally established.
-   * 'sso': via Entra ID — frontend must re-validate with MSAL on each refresh cycle.
-   * 'password': credential-based — standard Rally refresh rotation.
-   */
-  authMethod: 'password' | 'sso';
 }
 
 @Injectable()
@@ -41,9 +37,14 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     });
   }
 
-  validate(payload: JwtPayload): JwtPayload {
-    // Denylist check (Valkey) happens in a separate guard or here via injection
-    // Returning payload attaches it to request.user
-    return payload;
+  /**
+   * Map the verified `@qnsc-vn/identity` token onto rally's `req.user`:
+   * `contextId` → `workspaceId` and `claims.permissions` → `permissions`.
+   * The denylist (Valkey) check happens in the JwtAuthGuard.
+   */
+  validate(payload: CoreJwtPayload): JwtPayload {
+    const rawPermissions = (payload.claims as { permissions?: unknown }).permissions;
+    const permissions = Array.isArray(rawPermissions) ? (rawPermissions as string[]) : [];
+    return { ...payload, workspaceId: payload.contextId ?? '', permissions };
   }
 }

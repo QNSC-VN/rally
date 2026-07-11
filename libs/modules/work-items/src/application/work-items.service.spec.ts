@@ -54,6 +54,7 @@ const mockWorkItem = (o: Partial<WorkItem> = {}): WorkItem => ({
 const mockActor = {
   sub: 'user-1',
   workspaceId: 'ws-1',
+  contextId: 'ws-1',
   sessionId: 's1',
   jti: 'j1',
   iat: 0,
@@ -61,6 +62,7 @@ const mockActor = {
   iss: 'rally',
   aud: 'rally-app',
   permissions: [] as string[],
+  claims: { permissions: [] as string[] },
   authMethod: 'password' as const,
 };
 
@@ -347,9 +349,7 @@ describe('WorkItemsService', () => {
 
     it('throws when work item not found', async () => {
       workItemRepo.findById.mockResolvedValue(null);
-      await expect(service.deleteWorkItem('ws-1', 'missing')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(service.deleteWorkItem('ws-1', 'missing')).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -434,9 +434,7 @@ describe('WorkItemsService', () => {
 
   describe('P1-15 scope validation', () => {
     it('createWorkItem validates assignee is workspace member', async () => {
-      projectsService.assertWorkspaceMember.mockRejectedValueOnce(
-        new Error('ASSIGNEE_NOT_MEMBER'),
-      );
+      projectsService.assertWorkspaceMember.mockRejectedValueOnce(new Error('ASSIGNEE_NOT_MEMBER'));
       await expect(
         service.createWorkItem(mockActor, 'proj-1', 'story', 'Story', {
           assigneeId: 'not-a-member',
@@ -446,17 +444,14 @@ describe('WorkItemsService', () => {
 
     it('updateWorkItem validates new assignee is workspace member', async () => {
       workItemRepo.findById.mockResolvedValue(mockWorkItem());
-      projectsService.assertWorkspaceMember.mockRejectedValueOnce(
-        new Error('ASSIGNEE_NOT_MEMBER'),
-      );
+      projectsService.assertWorkspaceMember.mockRejectedValueOnce(new Error('ASSIGNEE_NOT_MEMBER'));
       await expect(
         service.updateWorkItem(mockActor, 'wi-1', { assigneeId: 'outsider' }),
       ).rejects.toThrow('ASSIGNEE_NOT_MEMBER');
     });
 
     it('createWorkItem validates parentId belongs to same project', async () => {
-      workItemRepo.findById
-        .mockResolvedValueOnce(null) // first call: parent not found
+      workItemRepo.findById.mockResolvedValueOnce(null); // first call: parent not found
       await expect(
         service.createWorkItem(mockActor, 'proj-1', 'story', 'Story', {
           parentId: 'bad-parent',
@@ -505,9 +500,9 @@ describe('WorkItemsService', () => {
 
     it('rejects priority edits on stories', async () => {
       workItemRepo.findById.mockResolvedValue(mockWorkItem({ type: 'story' }));
-      await expect(
-        service.updateWorkItem(mockActor, 'wi-1', { priority: 'high' }),
-      ).rejects.toThrow(PreconditionFailedException);
+      await expect(service.updateWorkItem(mockActor, 'wi-1', { priority: 'high' })).rejects.toThrow(
+        PreconditionFailedException,
+      );
     });
   });
 
@@ -534,12 +529,10 @@ describe('WorkItemsService', () => {
     });
 
     it('rejects if an item is out of the given project', async () => {
-      workItemRepo.findByIds.mockResolvedValue([
-        mockWorkItem({ id: 'a', projectId: 'proj-2' }),
-      ]);
-      await expect(
-        service.bulkAssignIteration(mockActor, 'proj-1', ['a'], null),
-      ).rejects.toThrow(PreconditionFailedException);
+      workItemRepo.findByIds.mockResolvedValue([mockWorkItem({ id: 'a', projectId: 'proj-2' })]);
+      await expect(service.bulkAssignIteration(mockActor, 'proj-1', ['a'], null)).rejects.toThrow(
+        PreconditionFailedException,
+      );
     });
 
     it('unassigns (null) without touching iteration scope lookup', async () => {
@@ -578,9 +571,9 @@ describe('WorkItemsService', () => {
     it('rejects a release from another project', async () => {
       workItemRepo.findByIds.mockResolvedValue([mockWorkItem({ id: 'a' })]);
       workItemRepo.findReleaseProject.mockResolvedValue('proj-2');
-      await expect(
-        service.bulkAssignRelease(mockActor, 'proj-1', ['a'], 'rel-1'),
-      ).rejects.toThrow(PreconditionFailedException);
+      await expect(service.bulkAssignRelease(mockActor, 'proj-1', ['a'], 'rel-1')).rejects.toThrow(
+        PreconditionFailedException,
+      );
       expect(workItemRepo.assignRelease).not.toHaveBeenCalled();
     });
 

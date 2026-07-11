@@ -36,9 +36,11 @@ RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 
 WORKDIR /app
 
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml .npmrc ./
 
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store,sharing=locked \
+    --mount=type=secret,id=node_auth_token \
+    export NODE_AUTH_TOKEN="$(cat /run/secrets/node_auth_token 2>/dev/null || true)" && \
     pnpm config set store-dir /root/.local/share/pnpm/store && \
     HUSKY=0 pnpm install --frozen-lockfile
 
@@ -54,9 +56,11 @@ RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 
 WORKDIR /app
 
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml .npmrc ./
 
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store,sharing=locked \
+    --mount=type=secret,id=node_auth_token \
+    export NODE_AUTH_TOKEN="$(cat /run/secrets/node_auth_token 2>/dev/null || true)" && \
     pnpm config set store-dir /root/.local/share/pnpm/store && \
     pnpm install --frozen-lockfile --prod --ignore-scripts
 

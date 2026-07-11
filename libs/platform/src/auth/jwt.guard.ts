@@ -1,13 +1,13 @@
 import { ExecutionContext, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { RequestContextService } from '../context/request-context';
-import { ValkeyService } from '../cache/valkey.service';
+import { AuthTokenCache } from '@qnsc-vn/identity';
 
 /**
  * JWT auth guard.
  * Verifies the Bearer access token, then populates request context with
  * workspaceId / userId / sessionId so downstream scoping works correctly.
- * Also checks the access-token denylist in Valkey (set on logout).
+ * Also checks the access-token denylist in the cache (set on logout).
  *
  * Pair with @Public() decorator to opt-out individual routes.
  */
@@ -17,7 +17,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
 
   constructor(
     private readonly ctx: RequestContextService,
-    private readonly valkey: ValkeyService,
+    private readonly authCache: AuthTokenCache,
   ) {
     super();
   }
@@ -40,15 +40,15 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       // Check both token-level (logout) and user-level (suspension/deactivation) denylist.
       // Parallel lookups: saves ~1 RTT per authenticated request.
       const [tokenRevoked, userRevoked] = await Promise.all([
-        this.valkey.isTokenDenied(req.user.jti),
-        this.valkey.isUserRevoked(req.user.sub),
+        this.authCache.isTokenDenied(req.user.jti),
+        this.authCache.isUserRevoked(req.user.sub),
       ]);
       if (tokenRevoked || userRevoked) {
         throw new UnauthorizedException('Token has been revoked');
       }
     } catch (err) {
       if (err instanceof UnauthorizedException) throw err;
-      // Denylist is best-effort. If Valkey is unavailable we fail open so
+      // Denylist is best-effort. If the cache is unavailable we fail open so
       // valid users aren't blocked — tokens still expire via their JWT exp claim.
       this.logger.warn({ err }, 'Token denylist check failed; failing open');
     }

@@ -6,7 +6,8 @@ import { APP_GUARD } from '@nestjs/core';
 import { AppConfigModule } from './config/config.module';
 import { AppConfigService } from './config/app-config.service';
 import { DatabaseModule } from './database/database.module';
-import { CacheModule } from './cache/valkey.module';
+import { CacheModule } from '@qnsc-vn/platform-cache';
+import { AuthTokenCache } from '@qnsc-vn/identity';
 import { RequestContextService } from './context/request-context';
 import { JwtStrategy } from './auth/jwt.strategy';
 import { JwtAuthGuard } from './auth/jwt.guard';
@@ -33,7 +34,16 @@ import { StorageService } from './storage/storage.service';
   imports: [
     AppConfigModule,
     DatabaseModule,
-    CacheModule,
+    // Shared Valkey/Redis cache primitive (@qnsc-vn/platform-cache). Rally runs
+    // in `required` mode: a REDIS_URL must be configured for the process to boot.
+    CacheModule.forRootAsync({
+      inject: [AppConfigService],
+      useFactory: (config: AppConfigService) => ({
+        url: config.get('REDIS_URL'),
+        keyPrefix: config.get('REDIS_KEY_PREFIX'),
+        mode: 'required' as const,
+      }),
+    }),
 
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
@@ -62,6 +72,9 @@ import { StorageService } from './storage/storage.service';
   controllers: [HealthController],
   providers: [
     RequestContextService,
+    // Auth-token cache (denylist / rotation grace / user revocation) owned by
+    // @qnsc-vn/identity, composing the shared CacheService primitive.
+    AuthTokenCache,
     JwtStrategy,
     JwtAuthGuard,
     PermissionGuard,
@@ -96,6 +109,7 @@ import { StorageService } from './storage/storage.service';
     AppConfigModule,
     DatabaseModule,
     CacheModule,
+    AuthTokenCache,
     JwtModule,
     RequestContextService,
     JwtAuthGuard,

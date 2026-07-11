@@ -15,11 +15,7 @@ import {
   WORKSPACE_SETTINGS_REPOSITORY,
   IWorkspaceSettingsRepository,
 } from '../domain/ports/workspace-settings.repository';
-import type {
-  Workspace,
-  WorkspaceMember,
-  WorkspaceInvitation,
-} from '../domain/workspace.types';
+import type { Workspace, WorkspaceMember, WorkspaceInvitation } from '../domain/workspace.types';
 import {
   NotFoundException,
   ConflictException,
@@ -77,50 +73,46 @@ const mockInvitation = (o: Partial<WorkspaceInvitation> = {}): WorkspaceInvitati
 
 // ── Mock factories ────────────────────────────────────────────────────────────
 
-const makeWorkspaceRepo = (): Mocked<IWorkspaceRepository> =>
-  ({
-    findById: vi.fn(),
-    findBySlug: vi.fn(),
-    listForUser: vi.fn(),
-    listAll: vi.fn().mockResolvedValue([]),
-    count: vi.fn().mockResolvedValue(0),
-    create: vi.fn(),
-    update: vi.fn(),
-    softDelete: vi.fn().mockResolvedValue(undefined),
-  });
+const makeWorkspaceRepo = (): Mocked<IWorkspaceRepository> => ({
+  findById: vi.fn(),
+  findBySlug: vi.fn(),
+  listForUser: vi.fn(),
+  listAll: vi.fn().mockResolvedValue([]),
+  count: vi.fn().mockResolvedValue(0),
+  create: vi.fn(),
+  update: vi.fn(),
+  softDelete: vi.fn().mockResolvedValue(undefined),
+});
 
-const makeMemberRepo = (): Mocked<IWorkspaceMemberRepository> =>
-  ({
-    findMember: vi.fn(),
-    findMemberById: vi.fn(),
-    findMembershipsForUser: vi.fn().mockResolvedValue([]),
-    listMembers: vi.fn(),
-    listMembersWithProfile: vi.fn().mockResolvedValue([]),
-    addMember: vi.fn(),
-    updateMember: vi.fn(),
-    removeMember: vi.fn().mockResolvedValue(undefined),
-    isMember: vi.fn().mockResolvedValue(false),
-    touchLastActive: vi.fn().mockResolvedValue(undefined),
-    countActiveAdmins: vi.fn().mockResolvedValue(2),
-    isActiveAdmin: vi.fn().mockResolvedValue(false),
-  });
+const makeMemberRepo = (): Mocked<IWorkspaceMemberRepository> => ({
+  findMember: vi.fn(),
+  findMemberById: vi.fn(),
+  findMembershipsForUser: vi.fn().mockResolvedValue([]),
+  listMembers: vi.fn(),
+  listMembersWithProfile: vi.fn().mockResolvedValue([]),
+  addMember: vi.fn(),
+  updateMember: vi.fn(),
+  removeMember: vi.fn().mockResolvedValue(undefined),
+  isMember: vi.fn().mockResolvedValue(false),
+  touchLastActive: vi.fn().mockResolvedValue(undefined),
+  countActiveAdmins: vi.fn().mockResolvedValue(2),
+  isActiveAdmin: vi.fn().mockResolvedValue(false),
+});
 
-const makeInvitationRepo = (): Mocked<IWorkspaceInvitationRepository> =>
-  ({
-    findByTokenHash: vi.fn(),
-    findById: vi.fn(),
-    findPendingByEmail: vi.fn(),
-    listByWorkspace: vi.fn().mockResolvedValue([]),
-    create: vi.fn(),
-    updateStatus: vi.fn().mockResolvedValue(undefined),
-    cancelExistingForEmail: vi.fn().mockResolvedValue(undefined),
-  });
+const makeInvitationRepo = (): Mocked<IWorkspaceInvitationRepository> => ({
+  findByTokenHash: vi.fn(),
+  findById: vi.fn(),
+  findPendingByEmail: vi.fn(),
+  listByWorkspace: vi.fn().mockResolvedValue([]),
+  create: vi.fn(),
+  updateStatus: vi.fn().mockResolvedValue(undefined),
+  cancelExistingForEmail: vi.fn().mockResolvedValue(undefined),
+});
 
-const makeSettingsRepo = (): Mocked<IWorkspaceSettingsRepository> =>
-  ({
-    findByWorkspace: vi.fn(),
-    upsert: vi.fn(),
-  });
+const makeSettingsRepo = (): Mocked<IWorkspaceSettingsRepository> => ({
+  findByWorkspace: vi.fn(),
+  upsert: vi.fn(),
+});
 
 const makeConfig = () => ({
   get: vi.fn((key: string) => {
@@ -261,6 +253,7 @@ describe('WorkspaceService', () => {
     const actor = {
       sub: 'user-1',
       workspaceId: 'ws-1',
+      contextId: 'ws-1',
       sessionId: 's1',
       jti: 'j1',
       iat: 0,
@@ -268,6 +261,7 @@ describe('WorkspaceService', () => {
       iss: '',
       aud: '',
       permissions: [] as string[],
+      claims: { permissions: [] as string[] },
       authMethod: 'password' as const,
     };
 
@@ -347,7 +341,12 @@ describe('WorkspaceService', () => {
       memberRepo.findMemberById.mockResolvedValue(mockMember());
       memberRepo.updateMember.mockResolvedValue(mockMember({ status: 'suspended' }));
 
-      const result = await service.updateMember('ws-1', 'member-1', { status: 'suspended' }, 'actor-1');
+      const result = await service.updateMember(
+        'ws-1',
+        'member-1',
+        { status: 'suspended' },
+        'actor-1',
+      );
       expect(result.status).toBe('suspended');
     });
 

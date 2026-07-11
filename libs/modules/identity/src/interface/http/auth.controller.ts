@@ -4,7 +4,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import '@fastify/cookie';
 import { Auth, ApiCommonErrors, Public, UnauthorizedException, RateLimit } from '@platform';
 import type { JwtPayload } from '@platform';
-import { AuthService } from '../../application/auth.service';
+import { AuthService } from '@qnsc-vn/identity';
 import { AccessService } from '@modules/access';
 import { WorkspaceService } from '@modules/workspace';
 import { UpdateProfileDto, SsoLoginDto, DevLoginDto, SwitchWorkspaceDto } from './dto/login.dto';
@@ -96,7 +96,7 @@ export class AuthController {
       accessToken: result.accessToken,
       expiresIn: result.expiresIn,
       user: result.user,
-      memberships: result.memberships,
+      memberships: result.memberships ?? [],
     };
   }
 
@@ -134,7 +134,7 @@ export class AuthController {
       accessToken: result.accessToken,
       expiresIn: result.expiresIn,
       user: result.user,
-      memberships: result.memberships,
+      memberships: result.memberships ?? [],
     };
   }
 

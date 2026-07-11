@@ -13,7 +13,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { sql } from 'drizzle-orm';
-import { InjectDrizzle, AppConfigService, StorageService, ValkeyService } from '@platform';
+import { InjectDrizzle, AppConfigService, StorageService, CacheService } from '@platform';
 import type { DrizzleDB } from '@platform';
 
 @Injectable()
@@ -26,12 +26,12 @@ export class CleanupCronService {
     @InjectDrizzle() private readonly db: DrizzleDB,
     private readonly config: AppConfigService,
     private readonly storageService: StorageService,
-    private readonly valkey: ValkeyService,
+    private readonly cache: CacheService,
   ) {}
 
   @Cron('0 1 * * *', { name: 'daily-cleanup', timeZone: 'UTC' })
   async runCleanup(): Promise<void> {
-    const acquired = await this.valkey.acquireLock('cron:daily-cleanup', this.LOCK_TTL_MS);
+    const acquired = await this.cache.acquireLock('cron:daily-cleanup', this.LOCK_TTL_MS);
     if (!acquired) {
       this.logger.warn('Cleanup cron lock held by another pod — skipping this tick');
       return;
@@ -39,7 +39,7 @@ export class CleanupCronService {
     try {
       await this.purgeStaleData();
     } finally {
-      await this.valkey.releaseLock('cron:daily-cleanup');
+      await this.cache.releaseLock('cron:daily-cleanup');
     }
   }
 

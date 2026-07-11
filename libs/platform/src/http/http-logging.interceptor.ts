@@ -2,6 +2,7 @@ import { CallHandler, ExecutionContext, Injectable, Logger, NestInterceptor } fr
 import type { FastifyRequest } from 'fastify';
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
+import { DomainException as SharedDomainException } from '@qnsc-vn/platform-http';
 import { AppConfigService } from '../config/app-config.service';
 
 /** Routes whose access logs are suppressed (probes + favicon spam). */
@@ -111,9 +112,23 @@ export class HttpLoggingInterceptor implements NestInterceptor {
         },
         error: (err: unknown) => {
           const duration = Date.now() - startTime;
-          const statusCode = (err as { getStatus?: () => number }).getStatus?.() ?? 500;
-          const errorCode =
-            (err as { getResponse?: () => { code?: string } }).getResponse?.()?.code ?? 'INTERNAL';
+          // Reflect the ACTUAL response status in the access log. The global
+          // exception filter maps DomainException (rally's own or a shared
+          // @qnsc-vn/* package's — both extend the shared base) to its
+          // `httpStatus`; without this branch such errors would be mislogged as
+          // 500/INTERNAL and pollute 5xx error-rate alerts. Fall back to Nest's
+          // HttpException accessors, then to 500.
+          let statusCode: number;
+          let errorCode: string;
+          if (err instanceof SharedDomainException) {
+            statusCode = err.httpStatus;
+            errorCode = err.code;
+          } else {
+            statusCode = (err as { getStatus?: () => number }).getStatus?.() ?? 500;
+            errorCode =
+              (err as { getResponse?: () => { code?: string } }).getResponse?.()?.code ??
+              'INTERNAL';
+          }
           const userId = req.user?.id;
 
           this.log(statusCode, {

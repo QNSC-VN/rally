@@ -60,6 +60,7 @@ const mockWorkItem = (o: Partial<WorkItem> = {}): WorkItem => ({
 const actorForWorkspace = (workspaceId: string) => ({
   sub: 'user-1',
   workspaceId,
+  contextId: workspaceId,
   sessionId: 's1',
   jti: 'j1',
   iat: 0,
@@ -67,6 +68,7 @@ const actorForWorkspace = (workspaceId: string) => ({
   iss: 'rally',
   aud: 'rally-app',
   permissions: [] as string[],
+  claims: { permissions: [] as string[] },
   authMethod: 'password' as const,
 });
 
