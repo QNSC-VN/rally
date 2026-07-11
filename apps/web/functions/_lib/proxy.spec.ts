@@ -44,15 +44,19 @@ describe('buildProxyRequest', () => {
     expect(proxied.headers.get('cookie')).toBe('__Host-rally_session=abc')
   })
 
-  it('appends to an existing x-forwarded-for chain', () => {
+  it('drops a client-supplied x-forwarded-for and trusts only cf-connecting-ip', () => {
     const request = new Request('https://rally-dev.qnsc.vn/v1/me', {
       headers: {
         'x-forwarded-for': '198.51.100.1',
+        'x-real-ip': '198.51.100.1',
+        forwarded: 'for=198.51.100.1',
         'cf-connecting-ip': '203.0.113.7',
       },
     })
     const proxied = buildProxyRequest(request, API_ORIGIN)
-    expect(proxied.headers.get('x-forwarded-for')).toBe('198.51.100.1, 203.0.113.7')
+    expect(proxied.headers.get('x-forwarded-for')).toBe('203.0.113.7')
+    expect(proxied.headers.get('x-real-ip')).toBeNull()
+    expect(proxied.headers.get('forwarded')).toBeNull()
   })
 
   it('drops hop-by-hop headers', () => {

@@ -29,6 +29,17 @@ const HOP_BY_HOP_HEADERS: ReadonlySet<string> = new Set([
 /** Methods that never carry a request body. */
 const BODILESS_METHODS: ReadonlySet<string> = new Set(['GET', 'HEAD'])
 
+/**
+ * Client-supplied forwarding/trust headers that must be stripped before we set
+ * our own from the trusted Cloudflare edge. Forwarding an inbound value would
+ * let a caller spoof their apparent IP for the API's rate-limit/audit/geo logic.
+ */
+const CLIENT_SPOOFABLE_HEADERS: ReadonlySet<string> = new Set([
+  'x-forwarded-for',
+  'x-real-ip',
+  'forwarded',
+])
+
 /** Rebuild the target URL: keep the incoming path + query, swap in the API origin. */
 export function buildUpstreamUrl(requestUrl: string, apiOrigin: string): string {
   const incoming = new URL(requestUrl)
@@ -50,11 +61,15 @@ export function buildProxyRequest(request: Request, apiOrigin: string): Request 
   for (const header of HOP_BY_HOP_HEADERS) headers.delete(header)
   headers.delete('host')
 
+  // Drop any client-supplied forwarding/trust headers before setting our own.
+  // The Worker sits directly behind Cloudflare, so `cf-connecting-ip` is the
+  // single authoritative client IP; preserving an inbound X-Forwarded-For would
+  // let a caller spoof their apparent IP for the API's rate-limit/audit/geo
+  // decisions (the API trusts these headers via Fastify `trustProxy`).
+  for (const header of CLIENT_SPOOFABLE_HEADERS) headers.delete(header)
+
   const clientIp = request.headers.get('cf-connecting-ip')
-  if (clientIp) {
-    const existing = headers.get('x-forwarded-for')
-    headers.set('x-forwarded-for', existing ? `${existing}, ${clientIp}` : clientIp)
-  }
+  if (clientIp) headers.set('x-forwarded-for', clientIp)
   headers.set('x-forwarded-proto', 'https')
   headers.set('x-forwarded-host', new URL(request.url).host)
 
