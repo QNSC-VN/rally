@@ -101,8 +101,8 @@ export const EnvSchema = z
     SESSION_CLEANUP_OLDER_THAN_DAYS: z.coerce.number().int().positive().default(7),
 
     // SSO — Microsoft Entra ID (Azure AD) OpenID Connect
-    // Rally is SSO-only: when both vars are set, the /v1/auth/sso endpoint is the
-    // sole authentication path. Both must be configured in every deployed env.
+    // Rally is SSO-only. These identify the Entra app the server-side BFF OIDC
+    // flow authenticates against. Both must be configured in every deployed env.
     ENTRA_TENANT_ID: z.string().optional(),
     ENTRA_CLIENT_ID: z.string().optional(),
 
@@ -110,8 +110,9 @@ export const EnvSchema = z
     // When AUTH_MODE=bff the API becomes a *confidential* OIDC client: it runs the
     // Authorization-Code + PKCE flow server-side and issues an opaque, httpOnly
     // `__Host-` session cookie, so Entra/JWT tokens never reach the browser. The
-    // default 'legacy' preserves the current in-browser MSAL model byte-for-byte,
-    // so every /bff/* route is a no-op (404) until an env explicitly opts in.
+    // SPA now speaks the BFF flow exclusively; 'legacy' remains only as a
+    // deprecated server-side fallback and ships no first-party login UI. Every
+    // /bff/* route is a no-op (404) unless an env explicitly sets AUTH_MODE=bff.
     AUTH_MODE: z.enum(['legacy', 'bff']).default('legacy'),
     /** Entra confidential-client secret. Required when AUTH_MODE=bff. */
     ENTRA_CLIENT_SECRET: z.string().optional(),

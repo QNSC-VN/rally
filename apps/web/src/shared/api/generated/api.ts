@@ -55,91 +55,6 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  '/v1/auth/sso': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Authenticate with Microsoft Entra ID (SSO) */
-    post: operations['AuthController_ssoLogin']
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/v1/auth/dev-login': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Passwordless dev/E2E login (non-production only) */
-    post: operations['AuthController_devLogin']
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/v1/auth/refresh': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Rotate refresh token and issue new access token */
-    post: operations['AuthController_refresh']
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/v1/auth/switch-workspace': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Switch active workspace and re-issue tokens */
-    post: operations['AuthController_switchWorkspace']
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/v1/auth/logout': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Revoke current session and access token */
-    post: operations['AuthController_logout']
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
   '/v1/auth/me': {
     parameters: {
       query?: never
@@ -147,8 +62,7 @@ export interface paths {
       path?: never
       cookie?: never
     }
-    /** Get authenticated user profile */
-    get: operations['AuthController_getMe']
+    get?: never
     put?: never
     post?: never
     delete?: never
@@ -1566,37 +1480,11 @@ export interface paths {
 export type webhooks = Record<string, never>
 export interface components {
   schemas: {
-    SsoLoginDto: {
-      idToken: string
-    }
-    AuthTokenResponseDto: {
-      accessToken: string
-      /** @description Seconds until access token expires */
-      expiresIn: number
-      user: {
-        id: string
-        email: string
-        displayName: string
-        avatarUrl: string | null
-        locale: string
-        timezone: string
-      }
-      memberships: {
-        workspaceId: string
-        name: string
-        slug: string
-        lastActiveAt: string | null
-        roleSlug: string | null
-        roleName: string | null
-      }[]
-    }
-    DevLoginDto: {
-      /** Format: email */
-      email: string
-    }
-    SwitchWorkspaceDto: {
-      /** Format: uuid */
-      workspaceId: string
+    UpdateProfileDto: {
+      displayName?: string
+      avatarUrl?: string | null
+      locale?: string
+      timezone?: string
     }
     UserProfileResponseDto: {
       id: string
@@ -1620,12 +1508,6 @@ export interface components {
         roleSlug: string | null
         roleName: string | null
       }[]
-    }
-    UpdateProfileDto: {
-      displayName?: string
-      avatarUrl?: string | null
-      locale?: string
-      timezone?: string
     }
     RoleResponseDto: {
       /** Format: uuid */
@@ -2530,242 +2412,6 @@ export interface operations {
             }
           }
         }
-      }
-    }
-  }
-  AuthController_ssoLogin: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['SsoLoginDto']
-      }
-    }
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['AuthTokenResponseDto']
-        }
-      }
-      /** @description Bad Request — validation error or malformed input */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unprocessable — business rule violation */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Too Many Requests — rate limit exceeded. Check Retry-After header. */
-      429: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  AuthController_devLogin: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['DevLoginDto']
-      }
-    }
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['AuthTokenResponseDto']
-        }
-      }
-      /** @description Bad Request — validation error or malformed input */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unprocessable — business rule violation */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Too Many Requests — rate limit exceeded. Check Retry-After header. */
-      429: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  AuthController_refresh: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': {
-            accessToken?: string
-            expiresIn?: number
-          }
-        }
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Too Many Requests — rate limit exceeded. Check Retry-After header. */
-      429: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  AuthController_switchWorkspace: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['SwitchWorkspaceDto']
-      }
-    }
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': {
-            accessToken?: string
-            expiresIn?: number
-          }
-        }
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Forbidden — insufficient permissions */
-      403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Too Many Requests — rate limit exceeded. Check Retry-After header. */
-      429: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  AuthController_logout: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Session revoked */
-      204: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  AuthController_getMe: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['UserProfileResponseDto']
-        }
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
       }
     }
   }

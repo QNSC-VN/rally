@@ -12,14 +12,6 @@ export const UpdateProfileSchema = z.object({
 
 export class UpdateProfileDto extends createZodDto(UpdateProfileSchema) {}
 
-// ── SSO login ────────────────────────────────────────────────────────────────
-
-export const SsoLoginSchema = z.object({
-  /** Entra ID id_token obtained from MSAL handleRedirectPromise(). */
-  idToken: z.string().min(1, 'idToken is required'),
-});
-
-export class SsoLoginDto extends createZodDto(SsoLoginSchema) {}
 // ── Dev login (non-production only) ──────────────────────────────────────────
 
 export const DevLoginSchema = z.object({
