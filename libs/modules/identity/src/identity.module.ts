@@ -14,14 +14,13 @@ import {
   ENTRA_VERIFIER_OPTIONS,
 } from '@qnsc-vn/identity';
 import type { AuthServiceOptions, EntraVerifierOptions } from '@qnsc-vn/identity';
-import { AppConfigService } from '@platform';
+import { AppConfigService, BFF_SESSION_RESOLVER } from '@platform';
 import { AccessModule, AccessService } from '@modules/access';
 import { WorkspaceModule, WorkspaceService } from '@modules/workspace';
 import { AuditService } from '@modules/audit';
 import { IdentityController } from './interface/http/identity.controller';
 import { AuthController } from './interface/http/auth.controller';
 import { BffController } from './interface/http/bff/bff.controller';
-import { BffSessionGuard } from './interface/http/bff/bff-session.guard';
 import { BffService } from './application/bff/bff.service';
 import { BffSessionStore } from './application/bff/bff-session.store';
 import { EntraOidcClient } from './application/bff/entra-oidc.client';
@@ -59,7 +58,9 @@ import { DrizzleTransactionRunner } from './application/transaction-runner';
     EntraOidcClient,
     BffSessionStore,
     BffService,
-    BffSessionGuard,
+    // Bridge that lets the shared JwtAuthGuard authenticate `/api/*` requests
+    // from the BFF session cookie when no Bearer token is present.
+    { provide: BFF_SESSION_RESOLVER, useExisting: BffService },
 
     // Persistence ports → rally drizzle repositories.
     { provide: USER_REPOSITORY, useClass: UserDrizzleRepository },

@@ -7,12 +7,11 @@ import {
   Query,
   Req,
   Res,
-  UseGuards,
 } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import '@fastify/cookie';
-import { UnauthorizedException } from '@platform';
+import { Auth, UnauthorizedException } from '@platform';
 import type { JwtPayload } from '@platform';
 import { AuthService } from '@qnsc-vn/identity';
 import { AccessService } from '@modules/access';
@@ -21,7 +20,6 @@ import { BffService } from '../../../application/bff/bff.service';
 import { readCookie } from '../../../application/bff/bff.util';
 import { CurrentUser } from '../decorators/current-user.decorator';
 import { UserProfileResponseDto } from '../dto/auth-response.dto';
-import { BffSessionGuard } from './bff-session.guard';
 import {
   BFF_SESSION_COOKIE,
   BFF_STATE_COOKIE,
@@ -103,15 +101,18 @@ export class BffController {
   }
 
   // ── POST /bff/logout ─────────────────────────────────────────────────────
+  // Authenticated via the shared guard's session-cookie path (@Auth). `bffSid`
+  // is populated by JwtAuthGuard when it resolves the session.
   @Post('logout')
   @HttpCode(204)
-  @UseGuards(BffSessionGuard)
+  @Auth()
   async logout(
     @CurrentUser() user: JwtPayload,
     @Req() req: FastifyRequest & { bffSid?: string },
     @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<void> {
-    const sid = req.bffSid;
+    this.ensureEnabled();
+    const sid = req.bffSid ?? readCookie(req, BFF_SESSION_COOKIE);
     if (sid) {
       await this.bff.logout(sid, user);
     }
@@ -121,8 +122,9 @@ export class BffController {
   // ── GET /bff/me ──────────────────────────────────────────────────────────
   // Session-cookie authenticated mirror of GET /v1/auth/me.
   @Get('me')
-  @UseGuards(BffSessionGuard)
+  @Auth()
   async me(@CurrentUser() user: JwtPayload): Promise<UserProfileResponseDto> {
+    this.ensureEnabled();
     const [profile, { role, permissions }, memberships] = await Promise.all([
       this.authService.getMe(user.sub),
       this.accessService.getUserRoleAndPermissions(user.sub, user.workspaceId),

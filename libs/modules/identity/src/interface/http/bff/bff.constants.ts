@@ -1,10 +1,9 @@
 /**
- * Opaque BFF session id cookie. The `__Host-` prefix pins it to Secure +
- * path=/ + no Domain, so a subdomain can neither set nor read it. `SameSite=Strict`
- * because the SPA and API are same-origin under the BFF, so no cross-site GET
- * ever needs to carry it.
+ * The opaque BFF session-id cookie name is owned by the platform auth layer,
+ * because the shared `JwtAuthGuard` reads it. Re-exported here so BFF code has a
+ * single import site for all its cookie names.
  */
-export const BFF_SESSION_COOKIE = '__Host-rally_session';
+export { BFF_SESSION_COOKIE } from '@platform';
 
 /**
  * Short-lived OIDC `state` cookie, browser-bound for the login round-trip.
