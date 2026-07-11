@@ -14,8 +14,7 @@ import {
   ENTRA_VERIFIER_OPTIONS,
 } from '@qnsc-vn/identity';
 import type { AuthServiceOptions, EntraVerifierOptions } from '@qnsc-vn/identity';
-import { ValkeyService as PlatformCacheValkeyService } from '@qnsc-vn/platform-cache';
-import { AppConfigService, ValkeyService } from '@platform';
+import { AppConfigService } from '@platform';
 import { AccessModule, AccessService } from '@modules/access';
 import { WorkspaceModule, WorkspaceService } from '@modules/workspace';
 import { AuditService } from '@modules/audit';
@@ -36,7 +35,7 @@ import { DrizzleTransactionRunner } from './application/transaction-runner';
  *  - service ports      → rally's access / workspace / audit services
  *  - claims provider    → rally's permission-based {@link RallyClaimsProvider}
  *  - transaction runner → drizzle `db.transaction`
- *  - token denylist     → rally's Valkey service (bound to the core's cache token)
+ *  - token denylist     → `AuthTokenCache` (provided by the global PlatformModule)
  *  - options            → rally's env-driven config
  *
  * Rally keeps its own `JwtStrategy` / guards (extended `JwtPayload`), so the
@@ -62,10 +61,6 @@ import { DrizzleTransactionRunner } from './application/transaction-runner';
     // Product adapters.
     { provide: CLAIMS_PROVIDER, useClass: RallyClaimsProvider },
     { provide: TRANSACTION_RUNNER, useClass: DrizzleTransactionRunner },
-
-    // Token denylist: the core injects the platform-cache ValkeyService class;
-    // bind it to rally's structurally-compatible ValkeyService instance.
-    { provide: PlatformCacheValkeyService, useExisting: ValkeyService },
 
     {
       provide: AUTH_SERVICE_OPTIONS,

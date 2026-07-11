@@ -6,7 +6,7 @@ import { SkipRateLimit } from '../rate-limit/rate-limit.decorator';
 import { InjectDrizzle } from '../database/drizzle.provider';
 import type { DrizzleDB } from '../database/drizzle.provider';
 import { sql } from 'drizzle-orm';
-import { ValkeyService } from '../cache/valkey.service';
+import { CacheService } from '@qnsc-vn/platform-cache';
 import { AppConfigService } from '../config/app-config.service';
 
 @ApiTags('health')
@@ -15,7 +15,7 @@ export class HealthController {
   constructor(
     private readonly health: HealthCheckService,
     @InjectDrizzle() private readonly db: DrizzleDB,
-    private readonly valkey: ValkeyService,
+    private readonly cache: CacheService,
     private readonly config: AppConfigService,
   ) {}
 
@@ -82,7 +82,7 @@ export class HealthController {
       },
       async () => {
         try {
-          await this.valkey.instance.ping();
+          await this.cache.instance.ping();
           return { valkey: { status: 'up' } };
         } catch (e) {
           return { valkey: { status: 'down', error: String(e) } };

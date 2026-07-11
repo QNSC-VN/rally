@@ -16,7 +16,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { and, eq, isNull } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
-import { InjectDrizzle, ValkeyService } from '@platform';
+import { InjectDrizzle, CacheService } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { ReportingService } from '@modules/reporting';
 import { iterations, workItems, workflowStatuses } from '../../../../db/schema/work';
@@ -30,13 +30,13 @@ export class SnapshotCronService {
   constructor(
     @InjectDrizzle() private readonly db: DrizzleDB,
     private readonly reportingService: ReportingService,
-    private readonly valkey: ValkeyService,
+    private readonly cache: CacheService,
   ) {}
 
   /** Runs at midnight UTC every day. */
   @Cron('0 0 * * *', { name: 'daily-sprint-snapshot', timeZone: 'UTC' })
   async takeDailySnapshots(): Promise<void> {
-    const acquired = await this.valkey.acquireLock('cron:daily-snapshot', this.LOCK_TTL_MS);
+    const acquired = await this.cache.acquireLock('cron:daily-snapshot', this.LOCK_TTL_MS);
     if (!acquired) {
       this.logger.warn('Snapshot cron lock held by another pod — skipping this tick');
       return;
@@ -44,7 +44,7 @@ export class SnapshotCronService {
     try {
       await this.runSnapshots();
     } finally {
-      await this.valkey.releaseLock('cron:daily-snapshot');
+      await this.cache.releaseLock('cron:daily-snapshot');
     }
   }
 

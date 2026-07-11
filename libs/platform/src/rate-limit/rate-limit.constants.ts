@@ -2,7 +2,7 @@
  * Rate limit tier definitions.
  *
  * Each tier defines a { limit, windowSeconds } pair used by RateLimitGuard to
- * call ValkeyService.consumeRateLimit(). The tiers are intentionally named by
+ * call CacheService.consumeRateLimit(). The tiers are intentionally named by
  * intent, not by numbers, so callers read like documentation.
  *
  * Tier selection guide:

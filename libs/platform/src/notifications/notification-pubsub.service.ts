@@ -15,7 +15,7 @@
  *
  * Why a dedicated subscriber connection?
  *   ioredis subscriber mode (after SUBSCRIBE) cannot run regular Redis commands
- *   on the same connection. ValkeyService holds the "command" connection used for
+ *   on the same connection. CacheService holds the "command" connection used for
  *   cache, rate-limit, and denylist.  This service creates a second, subscriber-only
  *   ioredis connection that is never used for anything else.
  *
@@ -29,7 +29,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import Redis from 'ioredis';
 import { AppConfigService } from '../config/app-config.service';
-import { ValkeyService } from '../cache/valkey.service';
+import { CacheService } from '@qnsc-vn/platform-cache';
 
 export interface NotificationPubSubPayload {
   notificationId: string;
@@ -56,8 +56,8 @@ export class NotificationPubSubService implements OnModuleInit, OnModuleDestroy 
 
   constructor(
     private readonly config: AppConfigService,
-    /** ValkeyService client — used for PUBLISH (still accepts commands in sub mode). */
-    private readonly valkey: ValkeyService,
+    /** CacheService client — used for PUBLISH (still accepts commands in sub mode). */
+    private readonly cache: CacheService,
   ) {}
 
   onModuleInit(): void {
@@ -107,14 +107,14 @@ export class NotificationPubSubService implements OnModuleInit, OnModuleDestroy 
     return `${prefix}notifications:${suffix}`;
   }
 
-  // ── Publisher (uses ValkeyService command connection) ─────────────────────
+  // ── Publisher (uses CacheService command connection) ─────────────────────
 
   /**
    * Published by NotificationSchedulerService after writing to notification_outbox.
    * Wakes the Worker relay so delivery latency is near-zero instead of ≤5s.
    */
   async wakeRelay(): Promise<void> {
-    await this.valkey.instance.publish(this.relayWakeChannel(), '');
+    await this.cache.instance.publish(this.relayWakeChannel(), '');
   }
 
   /**
@@ -122,7 +122,7 @@ export class NotificationPubSubService implements OnModuleInit, OnModuleDestroy 
    * Mirrors wakeRelay() for consistent near-zero email delivery latency.
    */
   async wakeEmailRelay(): Promise<void> {
-    await this.valkey.instance.publish(this.emailRelayWakeChannel(), '');
+    await this.cache.instance.publish(this.emailRelayWakeChannel(), '');
   }
 
   /**
@@ -131,7 +131,7 @@ export class NotificationPubSubService implements OnModuleInit, OnModuleDestroy 
    * the new event to the browser without any client-side polling.
    */
   async notifyUser(payload: NotificationPubSubPayload): Promise<void> {
-    await this.valkey.instance.publish(
+    await this.cache.instance.publish(
       this.userChannel(payload.recipientId),
       JSON.stringify(payload),
     );

@@ -102,14 +102,14 @@ importers:
         specifier: ^1.41.1
         version: 1.41.1
       '@qnsc-vn/identity':
-        specifier: ^4.0.0
-        version: 4.0.0(e0c72a7c5373f5c7ef159af3b4f0c30d)
+        specifier: ^5.1.0
+        version: 5.1.0(43549fe51188c5e9a9899e722fb74733)
       '@qnsc-vn/platform-cache':
-        specifier: ^1.0.0
-        version: 1.0.0(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(ioredis@5.11.1)
+        specifier: ^2.1.0
+        version: 2.1.0(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(ioredis@5.11.1)
       '@qnsc-vn/platform-http':
-        specifier: ^2.0.0
-        version: 2.0.0(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/swagger@11.4.5(@fastify/static@9.1.3)(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2))(fastify@5.10.0)(ioredis@5.11.1)(nestjs-zod@5.4.0(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/swagger@11.4.5(@fastify/static@9.1.3)(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2))(rxjs@7.8.2)(zod@4.4.3))(zod@4.4.3)
+        specifier: ^3.0.0
+        version: 3.0.0(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/swagger@11.4.5(@fastify/static@9.1.3)(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2))(@qnsc-vn/platform-cache@2.1.0(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(ioredis@5.11.1))(fastify@5.10.0)(ioredis@5.11.1)(nestjs-zod@5.4.0(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/swagger@11.4.5(@fastify/static@9.1.3)(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2))(rxjs@7.8.2)(zod@4.4.3))(zod@4.4.3)
       argon2:
         specifier: ^0.44.0
         version: 0.44.0
@@ -2559,8 +2559,8 @@ packages:
   '@protobufjs/utf8@1.1.1':
     resolution: {integrity: sha512-oOAWABowe8EAbMyWKM0tYDKi8Yaox52D+HWZhAIJqQXbqe0xI/GV7FhLWqlEKreMkfDjshR5FKgi3mnle0h6Eg==}
 
-  '@qnsc-vn/identity@4.0.0':
-    resolution: {integrity: sha512-jJoxm3IzX0Df0buRbF44RtADtKtTzovf76PCLcIw6XN6Bd9Wzy+7NBP9LTTlDozyRqSYj57uGJq+dz2GxkUSew==, tarball: https://npm.pkg.github.com/download/@qnsc-vn/identity/4.0.0/0e4af4a80eb8ae42dac431f226e57bdef272ec22}
+  '@qnsc-vn/identity@5.1.0':
+    resolution: {integrity: sha512-l9mMQA3QaJXgTxkFJMDNUb3kjrMKJjXJVjW/JRQC1mBrOV5bFT8PKXMFj5ZCuErp+RdIsql6hxYUhUDDTObSuQ==, tarball: https://npm.pkg.github.com/download/@qnsc-vn/identity/5.1.0/d0d9f076506c3d5e6749e6b66b836ff3f1c8a9e0}
     peerDependencies:
       '@fastify/cookie': '>=11'
       '@nestjs/common': '>=11'
@@ -2568,7 +2568,7 @@ packages:
       '@nestjs/jwt': '>=11'
       '@nestjs/passport': '>=11'
       '@nestjs/swagger': '>=11'
-      '@qnsc-vn/platform-cache': '>=1.0.0'
+      '@qnsc-vn/platform-cache': '>=2.0.0'
       '@qnsc-vn/platform-http': '>=2.0.0'
       fastify: 5.10.0
       nestjs-zod: '>=5'
@@ -2576,18 +2576,19 @@ packages:
       passport-jwt: '>=4'
       zod: '>=4'
 
-  '@qnsc-vn/platform-cache@1.0.0':
-    resolution: {integrity: sha512-v9seeeslbaFflPq8Xof+A9qpq8Dn8H1M8Zs1yAvy8IhUEIAiqEhcyHAFRF6wV4x80HePO+q45GVDJ97ZJpuaaQ==, tarball: https://npm.pkg.github.com/download/@qnsc-vn/platform-cache/1.0.0/6d537cb9ad0120ec5f00ed94f24b89b23204d909}
+  '@qnsc-vn/platform-cache@2.1.0':
+    resolution: {integrity: sha512-BXJ7UWEQUfWVi/OoG3AaitwlqOH8xjpeQZavk0Gsg2U38mB+VYDORwP3VC/TangFNC77bK0qdGSiXOBBsgISNg==, tarball: https://npm.pkg.github.com/download/@qnsc-vn/platform-cache/2.1.0/25d962fb0bdf7387bfddcd82c2850066e8ed8d71}
     peerDependencies:
       '@nestjs/common': '>=11'
       ioredis: '>=5'
 
-  '@qnsc-vn/platform-http@2.0.0':
-    resolution: {integrity: sha512-6QVhq5UaOUKl8CDhsHjwpB6heKEM5WVUG6Hya8RGpxgCm1nUk66LlcTHIGVLmm4Wtjb753dJmpRau8Y1F/7a0Q==, tarball: https://npm.pkg.github.com/download/@qnsc-vn/platform-http/2.0.0/cf0fdc423f1dffb44205c4f315475ee18366914c}
+  '@qnsc-vn/platform-http@3.0.0':
+    resolution: {integrity: sha512-1vy0pvgYTuLRM0IdTGILM2+zIP1eJu6GloL3n7smcACKEp/Lw2g0wA7wjswlOnQkE6g/4CdCZ4X/gxbPqfFKiQ==, tarball: https://npm.pkg.github.com/download/@qnsc-vn/platform-http/3.0.0/4087b243b9100a0b390f423bdae227f165cf370a}
     peerDependencies:
       '@nestjs/common': '>=11'
       '@nestjs/core': '>=11'
       '@nestjs/swagger': '>=11'
+      '@qnsc-vn/platform-cache': '>=2.0.0'
       fastify: 5.10.0
       ioredis: '>=5'
       nestjs-zod: '>=5'
@@ -10475,7 +10476,7 @@ snapshots:
 
   '@protobufjs/utf8@1.1.1': {}
 
-  '@qnsc-vn/identity@4.0.0(e0c72a7c5373f5c7ef159af3b4f0c30d)':
+  '@qnsc-vn/identity@5.1.0(43549fe51188c5e9a9899e722fb74733)':
     dependencies:
       '@fastify/cookie': 11.0.2
       '@nestjs/common': 11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -10483,8 +10484,8 @@ snapshots:
       '@nestjs/jwt': 11.0.2(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))
       '@nestjs/passport': 11.0.5(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(passport@0.7.0)
       '@nestjs/swagger': 11.4.5(@fastify/static@9.1.3)(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)
-      '@qnsc-vn/platform-cache': 1.0.0(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(ioredis@5.11.1)
-      '@qnsc-vn/platform-http': 2.0.0(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/swagger@11.4.5(@fastify/static@9.1.3)(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2))(fastify@5.10.0)(ioredis@5.11.1)(nestjs-zod@5.4.0(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/swagger@11.4.5(@fastify/static@9.1.3)(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2))(rxjs@7.8.2)(zod@4.4.3))(zod@4.4.3)
+      '@qnsc-vn/platform-cache': 2.1.0(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(ioredis@5.11.1)
+      '@qnsc-vn/platform-http': 3.0.0(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/swagger@11.4.5(@fastify/static@9.1.3)(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2))(@qnsc-vn/platform-cache@2.1.0(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(ioredis@5.11.1))(fastify@5.10.0)(ioredis@5.11.1)(nestjs-zod@5.4.0(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/swagger@11.4.5(@fastify/static@9.1.3)(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2))(rxjs@7.8.2)(zod@4.4.3))(zod@4.4.3)
       fastify: 5.10.0
       jose: 6.2.3
       nestjs-zod: 5.4.0(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/swagger@11.4.5(@fastify/static@9.1.3)(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2))(rxjs@7.8.2)(zod@4.4.3)
@@ -10493,17 +10494,17 @@ snapshots:
       uuidv7: 1.2.1
       zod: 4.4.3
 
-  '@qnsc-vn/platform-cache@1.0.0(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(ioredis@5.11.1)':
+  '@qnsc-vn/platform-cache@2.1.0(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(ioredis@5.11.1)':
     dependencies:
       '@nestjs/common': 11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2)
       ioredis: 5.11.1
 
-  '@qnsc-vn/platform-http@2.0.0(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/swagger@11.4.5(@fastify/static@9.1.3)(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2))(fastify@5.10.0)(ioredis@5.11.1)(nestjs-zod@5.4.0(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/swagger@11.4.5(@fastify/static@9.1.3)(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2))(rxjs@7.8.2)(zod@4.4.3))(zod@4.4.3)':
+  '@qnsc-vn/platform-http@3.0.0(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/swagger@11.4.5(@fastify/static@9.1.3)(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2))(@qnsc-vn/platform-cache@2.1.0(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(ioredis@5.11.1))(fastify@5.10.0)(ioredis@5.11.1)(nestjs-zod@5.4.0(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/swagger@11.4.5(@fastify/static@9.1.3)(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2))(rxjs@7.8.2)(zod@4.4.3))(zod@4.4.3)':
     dependencies:
       '@nestjs/common': 11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@nestjs/core': 11.1.27(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@nestjs/swagger': 11.4.5(@fastify/static@9.1.3)(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)
-      '@qnsc-vn/platform-cache': 1.0.0(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(ioredis@5.11.1)
+      '@qnsc-vn/platform-cache': 2.1.0(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(ioredis@5.11.1)
       fastify: 5.10.0
       ioredis: 5.11.1
       nestjs-zod: 5.4.0(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/swagger@11.4.5(@fastify/static@9.1.3)(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2))(rxjs@7.8.2)(zod@4.4.3)
