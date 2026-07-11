@@ -5,7 +5,7 @@
  * in-progress MSAL redirect (i.e., returning from Microsoft account picker).
  * Must be awaited before the router guard evaluates `isAuthenticated`.
  */
-import { ENV, isSsoConfigured } from '@/shared/config/env'
+import { ENV, isBffAuth, isSsoConfigured } from '@/shared/config/env'
 import {
   setAccessToken,
   scheduleProactiveRefresh,
@@ -28,6 +28,15 @@ async function _run(): Promise<void> {
   const { clearAuth, setLoading } = useAuthStore.getState()
   setLoading(true)
   try {
+    // ── BFF mode: session lives in the __Host-rally_session cookie ───────────
+    // No in-browser tokens and no MSAL. /bff/me is cookie-authenticated and the
+    // shared guard transparently refreshes the underlying access token
+    // server-side, so the client just asks "who am I?" on boot.
+    if (isBffAuth) {
+      await _runBff()
+      return
+    }
+
     // ── Step 1: Try to restore session from httpOnly refresh-token cookie ─────
     // Delegate to the http-client single-flight refresh instead of issuing our
     // own fetch. The refresh cookie is single-use with rotation + theft
@@ -81,7 +90,7 @@ async function _run(): Promise<void> {
 }
 
 async function _finalizeSession(accessToken: string, expiresIn?: number): Promise<void> {
-  const { setUser, clearAuth } = useAuthStore.getState()
+  const { clearAuth } = useAuthStore.getState()
   setAccessToken(accessToken)
   if (expiresIn) scheduleProactiveRefresh(expiresIn)
 
@@ -96,28 +105,55 @@ async function _finalizeSession(accessToken: string, expiresIn?: number): Promis
     return
   }
 
-  const user = (await meRes.json()) as {
-    id: string
-    email: string
-    displayName: string
-    avatarUrl?: string | null
-    locale: string
-    timezone: string
-    role: string
-    permissions: string[]
-    emailVerified: boolean
-    createdAt: string
-    updatedAt: string
-    memberships: {
-      workspaceId: string
-      name: string
-      slug: string
-      lastActiveAt: string | null
-      roleSlug: string | null
-      roleName: string | null
-    }[]
+  _applyUser((await meRes.json()) as MeResponse, accessToken)
+}
+
+/**
+ * BFF cold-start: restore the session from the __Host-rally_session cookie via
+ * the cookie-authenticated /bff/me. There is no in-browser access token — the
+ * store is seeded with an empty one and requests authenticate via the cookie.
+ */
+async function _runBff(): Promise<void> {
+  const { clearAuth } = useAuthStore.getState()
+
+  const meRes = await fetch(`${BASE}/bff/me`, {
+    credentials: 'include',
+    referrerPolicy: 'no-referrer',
+    headers: { accept: 'application/json' },
+  })
+
+  if (!meRes.ok) {
+    clearAuth()
+    return
   }
 
+  _applyUser((await meRes.json()) as MeResponse, '')
+}
+
+interface MeResponse {
+  id: string
+  email: string
+  displayName: string
+  avatarUrl?: string | null
+  locale: string
+  timezone: string
+  role: string
+  permissions: string[]
+  emailVerified: boolean
+  createdAt: string
+  updatedAt: string
+  memberships: {
+    workspaceId: string
+    name: string
+    slug: string
+    lastActiveAt: string | null
+    roleSlug: string | null
+    roleName: string | null
+  }[]
+}
+
+function _applyUser(user: MeResponse, accessToken: string): void {
+  const { setUser } = useAuthStore.getState()
   setUser(
     {
       ...user,

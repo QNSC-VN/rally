@@ -3,13 +3,14 @@ import type { ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './app/styles/globals.css'
 import './shared/i18n/i18n'
-import { isSsoConfigured } from './shared/config/env'
+import { isBffAuth, isSsoConfigured } from './shared/config/env'
 import { registerSsoRefresh } from './shared/api/sso-refresh-slot'
 import App from './App'
 
 // Register MSAL silent-refresh into the shared slot before any auth refresh
 // can fire. main.tsx is boundary-exempt (above the FSD layer hierarchy).
-if (isSsoConfigured) {
+// Skipped entirely in BFF mode — refresh is server-side, so MSAL is never loaded.
+if (!isBffAuth && isSsoConfigured) {
   void import('./app/auth/msal').then(({ tryAcquireSsoTokenSilent }) => {
     registerSsoRefresh(tryAcquireSsoTokenSilent)
   })

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Layers, ShieldCheck, Check, AlertCircle } from 'lucide-react'
-import { ENV, isSsoConfigured } from '@/shared/config/env'
+import { ENV, isBffAuth, isSsoConfigured } from '@/shared/config/env'
 
 // ── Microsoft logo SVG (official 4-square mark) ────────────────────────────
 function MicrosoftLogo() {
@@ -32,6 +32,14 @@ export function LoginPage() {
     setSsoLoading(true)
     setSsoError(null)
     try {
+      if (isBffAuth) {
+        // Same-origin BFF: hand off to the server-side login route. The browser
+        // navigates to Entra and returns with a session cookie already set — no
+        // MSAL, no in-browser tokens. Execution stops at the redirect.
+        const returnTo = new URLSearchParams(window.location.search).get('returnTo') ?? '/'
+        window.location.href = `/bff/login?returnTo=${encodeURIComponent(returnTo)}`
+        return
+      }
       // eslint-disable-next-line boundaries/dependencies
       const { triggerSsoLogin } = await import('@/app/auth/msal')
       await triggerSsoLogin()
@@ -200,7 +208,7 @@ export function LoginPage() {
                 </div>
               </div>
               <p className="mt-2 text-[12px]" style={{ color: '#5c6478' }}>
-                {isSsoConfigured
+                {isSsoConfigured || isBffAuth
                   ? 'Use your organisational account to continue.'
                   : 'Use your Workspace Admin account to continue.'}
               </p>
@@ -208,7 +216,7 @@ export function LoginPage() {
 
             <div className="px-7 py-6">
               {/* ── SSO sign-in ──────────────────────────────────────────── */}
-              {isSsoConfigured ? (
+              {isSsoConfigured || isBffAuth ? (
                 <>
                   {ssoError && (
                     <div

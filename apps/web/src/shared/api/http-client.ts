@@ -9,7 +9,7 @@
  */
 import createClient from 'openapi-fetch'
 import type { paths } from './generated/api'
-import { ENV } from '@/shared/config/env'
+import { ENV, isBffAuth } from '@/shared/config/env'
 import { getSsoRefresh } from './sso-refresh-slot'
 
 const BASE_URL = ENV.API_BASE_URL
@@ -189,12 +189,18 @@ apiClient.use({
   // ── Response middleware: handle 401 → refresh → retry; 403 → forbidden ──────
   async onResponse({ request, response }) {
     if (response.status === 401 && !request.url.includes('/auth/refresh')) {
-      const refreshed = await refreshAccessToken()
-      if (refreshed && _accessToken) {
-        request.headers.set('Authorization', `Bearer ${_accessToken}`)
-        return fetch(request)
+      // In BFF mode the browser holds no tokens and cannot refresh: the shared
+      // guard already rotates the access token server-side, so a 401 here means
+      // the session is truly dead. Skip the client refresh and go to login.
+      if (!isBffAuth) {
+        const refreshed = await refreshAccessToken()
+        if (refreshed && _accessToken) {
+          request.headers.set('Authorization', `Bearer ${_accessToken}`)
+          return fetch(request)
+        }
       }
-      // Refresh failed — redirect to login, preserving the current page as returnTo
+      // Refresh failed (or BFF session expired) — redirect to login, preserving
+      // the current page as returnTo.
       setAccessToken(null)
       const returnTo = encodeURIComponent(window.location.pathname + window.location.search)
       window.location.href = `/login?returnTo=${returnTo}`
