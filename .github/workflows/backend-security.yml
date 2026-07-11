@@ -30,4 +30,4 @@ jobs:
     with:
       product: rally
       image_target: api
-    secrets: inherit
+    # security.yml declares no secrets — nothing to pass (no `secrets: inherit`).

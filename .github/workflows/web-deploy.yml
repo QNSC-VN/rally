@@ -7,8 +7,9 @@
 #             Environment's required reviewer, enforced inside the reusable)
 #
 # The reusable builds the Vite bundle and publishes it to Cloudflare Pages.
-# VITE_*/PAGES_PROJECT/APP_URL are env-scoped GitHub vars; Cloudflare creds +
-# Slack webhook flow through `secrets: inherit`.
+# VITE_*/PAGES_PROJECT/APP_URL are env-scoped GitHub vars; the Cloudflare creds
+# (+ optional Slack webhook) are passed explicitly to the reusable
+# (least-privilege, no `secrets: inherit`).
 # =============================================================================
 name: Web · Deploy
 
@@ -27,4 +28,8 @@ jobs:
     uses: QNSC-VN/qnsc-ci/.github/workflows/web-deploy.yml@v1
     with:
       product: rally
-    secrets: inherit
+    # Least-privilege: pass only what the reusable declares (no `secrets: inherit`).
+    secrets:
+      CLOUDFLARE_API_TOKEN:  ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      SLACK_DEPLOY_WEBHOOK:  ${{ secrets.SLACK_DEPLOY_WEBHOOK }}

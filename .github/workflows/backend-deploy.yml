@@ -8,7 +8,8 @@
 #
 # The reusable builds/attests on main, promotes the exact dev image on tag,
 # migrates, then rolls the ECS services. All ECS_*/RDS/APP_URL config is read
-# from env-scoped GitHub vars, so this caller only needs `secrets: inherit`.
+# from env-scoped GitHub vars; only the AWS account id (+ optional Slack webhook)
+# are passed explicitly to the reusable (least-privilege, no `secrets: inherit`).
 # =============================================================================
 name: Backend · Deploy
 
@@ -29,4 +30,7 @@ jobs:
       product: rally
       has_worker: true
       has_migrator: true
-    secrets: inherit
+    # Least-privilege: pass only what the reusable declares (no `secrets: inherit`).
+    secrets:
+      AWS_ACCOUNT_ID:       ${{ secrets.AWS_ACCOUNT_ID }}
+      SLACK_DEPLOY_WEBHOOK: ${{ secrets.SLACK_DEPLOY_WEBHOOK }}
