@@ -25,6 +25,17 @@ variable "prod_tier" {
   }
 }
 
+variable "entra_tenant_id" {
+  type        = string
+  default     = ""
+  description = "Microsoft Entra (Azure AD) tenant ID — required (BFF auth); injected via TF_VAR in CI"
+}
+
+variable "entra_client_id" {
+  type        = string
+  default     = ""
+  description = "Microsoft Entra (Azure AD) app client ID — required (BFF auth); injected via TF_VAR in CI"
+}
 
 variable "cloudflare_account_id" {
   type        = string
