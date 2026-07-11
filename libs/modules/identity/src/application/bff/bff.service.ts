@@ -127,6 +127,23 @@ export class BffService {
     }
   }
 
+  /**
+   * Switch the active workspace for a live session. Re-issues tokens via rally's
+   * {@link AuthService} and persists them back onto the SAME session id, so the
+   * unchanged session cookie transparently starts resolving to the new
+   * workspace's claims. Returns the new claims, or `null` when the session is
+   * gone. Unlike the legacy flow, no token ever reaches the browser.
+   */
+  async switchWorkspace(sid: string, workspaceId: string, ip: string): Promise<JwtPayload | null> {
+    const session = await this.store.getSession(sid);
+    if (!session) return null;
+
+    const result = await this.authService.switchWorkspace(session.claims, workspaceId, ip);
+    const next = this.toSession(result);
+    await this.store.saveSession(sid, next, this.sessionTtlSeconds);
+    return next.claims;
+  }
+
   /** Revoke the underlying auth session and delete the server-side BFF session. */
   async logout(sid: string, principal: JwtPayload): Promise<void> {
     await Promise.allSettled([this.authService.logout(principal), this.store.deleteSession(sid)]);

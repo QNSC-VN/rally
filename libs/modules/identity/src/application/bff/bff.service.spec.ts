@@ -42,6 +42,7 @@ describe('BffService', () => {
   let authService: {
     ssoLogin: ReturnType<typeof vi.fn>;
     refresh: ReturnType<typeof vi.fn>;
+    switchWorkspace: ReturnType<typeof vi.fn>;
     logout: ReturnType<typeof vi.fn>;
   };
   let service: BffService;
@@ -62,6 +63,7 @@ describe('BffService', () => {
     authService = {
       ssoLogin: vi.fn(),
       refresh: vi.fn(),
+      switchWorkspace: vi.fn(),
       logout: vi.fn().mockResolvedValue(undefined),
     };
     service = new BffService(
@@ -218,6 +220,45 @@ describe('BffService', () => {
       await service.logout('sid', principal);
       expect(authService.logout).toHaveBeenCalledWith(principal);
       expect(store.deleteSession).toHaveBeenCalledWith('sid');
+    });
+  });
+
+  describe('switchWorkspace', () => {
+    it('returns null when the session is absent', async () => {
+      store.getSession.mockResolvedValue(null);
+      expect(await service.switchWorkspace('sid', 'ws-2', '1.1.1.1')).toBeNull();
+      expect(authService.switchWorkspace).not.toHaveBeenCalled();
+    });
+
+    it('re-issues tokens for the target workspace and persists them on the same session', async () => {
+      store.getSession.mockResolvedValue({
+        claims: { sub: 'user-1', workspaceId: 'ws-1' },
+        accessToken: 'old',
+        refreshToken: 'refresh-old',
+        csrfToken: 'csrf-old',
+        accessTokenExpiresAt: Date.now() + 5 * 60_000,
+        createdAt: Date.now(),
+      });
+      authService.switchWorkspace.mockResolvedValue({
+        accessToken: accessToken(900, { contextId: 'ws-2' }),
+        refreshToken: 'refresh-new',
+        csrfToken: 'csrf-new',
+        expiresIn: 900,
+      });
+
+      const claims = await service.switchWorkspace('sid', 'ws-2', '2.2.2.2');
+
+      expect(authService.switchWorkspace).toHaveBeenCalledWith(
+        { sub: 'user-1', workspaceId: 'ws-1' },
+        'ws-2',
+        '2.2.2.2',
+      );
+      expect(store.saveSession).toHaveBeenCalledTimes(1);
+      const [sid, session, ttl] = store.saveSession.mock.calls[0];
+      expect(sid).toBe('sid');
+      expect(session.refreshToken).toBe('refresh-new');
+      expect(ttl).toBe(3600);
+      expect(claims?.workspaceId).toBe('ws-2');
     });
   });
 });

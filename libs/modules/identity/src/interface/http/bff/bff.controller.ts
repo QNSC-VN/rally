@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   HttpCode,
@@ -20,6 +21,7 @@ import { BffService } from '../../../application/bff/bff.service';
 import { readCookie } from '../../../application/bff/bff.util';
 import { CurrentUser } from '../decorators/current-user.decorator';
 import { UserProfileResponseDto } from '../dto/auth-response.dto';
+import { SwitchWorkspaceDto } from '../dto/login.dto';
 import {
   BFF_SESSION_COOKIE,
   BFF_STATE_COOKIE,
@@ -117,6 +119,29 @@ export class BffController {
       await this.bff.logout(sid, user);
     }
     reply.clearCookie(BFF_SESSION_COOKIE, { path: '/' });
+  }
+
+  // ── POST /bff/switch-workspace ───────────────────────────────────────────
+  // Session-cookie authenticated mirror of POST /v1/auth/switch-workspace.
+  // Re-issues tokens for the target workspace and stores them on the SAME
+  // session, so the browser keeps its existing session cookie and simply starts
+  // resolving to the new workspace. No token is returned to the client.
+  @Post('switch-workspace')
+  @HttpCode(204)
+  @Auth()
+  async switchWorkspace(
+    @Body() dto: SwitchWorkspaceDto,
+    @Req() req: FastifyRequest & { bffSid?: string },
+  ): Promise<void> {
+    this.ensureEnabled();
+    const sid = req.bffSid ?? readCookie(req, BFF_SESSION_COOKIE);
+    if (!sid) {
+      throw new UnauthorizedException('AUTH_TOKEN_INVALID', 'No active BFF session');
+    }
+    const claims = await this.bff.switchWorkspace(sid, dto.workspaceId, req.ip);
+    if (!claims) {
+      throw new UnauthorizedException('AUTH_TOKEN_INVALID', 'Session no longer exists');
+    }
   }
 
   // ── GET /bff/me ──────────────────────────────────────────────────────────
