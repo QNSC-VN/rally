@@ -1,4 +1,4 @@
-name: OpenTofu Apply
+name: Infrastructure · Apply
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Infra apply, gated the same way as the app deploys (backend-deploy.yml):
@@ -25,6 +25,12 @@ on:
       - "infra/live/**"
       - ".github/workflows/infra-apply.yml"
   workflow_dispatch:
+
+# Serialize applies on the same ref so two quick merges can't race the tofu
+# state lock. Never cancel a running apply mid-flight.
+concurrency:
+  group: infra-apply-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   id-token: write
