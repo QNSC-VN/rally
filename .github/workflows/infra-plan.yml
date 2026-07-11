@@ -18,7 +18,7 @@ jobs:
     with:
       product: rally
     secrets:
-      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
       # Mirror the apply-time TF_VARs so plan ≈ apply (masked inside the reusable).
       tf_secret_vars_json: |
         {
