@@ -1,17 +1,18 @@
 /**
- * Same-origin reverse proxy used by the Cloudflare Pages Functions that front
- * the rally SPA. It forwards `/v1/*` and `/bff/*` from the SPA origin
- * (`rally-dev.qnsc.vn`) to the API origin (`rally-api-dev.qnsc.vn`), so the
- * browser sees a single origin. That is what lets the BFF issue a
- * `__Host-rally_session` cookie with `SameSite=Strict` and drop CORS entirely.
+ * Same-origin reverse proxy used by the Cloudflare Pages Function that fronts
+ * the rally SPA. It forwards `/v1/*` (which includes the BFF auth routes
+ * `/v1/bff/*`) from the SPA origin (`rally-dev.qnsc.vn`) to the API origin
+ * (`rally-api-dev.qnsc.vn`), so the browser sees a single origin. That is what
+ * lets the BFF issue a `__Host-rally_session` cookie with `SameSite=Strict` and
+ * drop CORS entirely.
  *
  * The logic here is pure and framework-agnostic (only web-standard `Request` /
  * `Response` / `Headers` / `URL`), so it is unit-testable under the web app's
  * vitest and portable to a standalone Worker if we ever move off Pages.
  *
- * NOTE: this proxy is inert until the SPA is pointed at same-origin `/v1`
- * (increment 4). Today the SPA still calls `rally-api-dev.qnsc.vn` directly, so
- * these paths are never hit on the Pages origin.
+ * Requires the Pages project to expose `API_ORIGIN`, e.g.
+ * `https://rally-api-dev.qnsc.vn`. Active only when the SPA is built with
+ * `VITE_AUTH_MODE=bff`; otherwise the SPA calls the API cross-origin directly.
  */
 
 /** Hop-by-hop headers that must never cross a proxy boundary (RFC 7230 §6.1). */

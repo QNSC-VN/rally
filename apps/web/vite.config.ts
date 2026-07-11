@@ -31,13 +31,6 @@ export default defineConfig(({ mode }) => ({
         changeOrigin: true,
         secure: false,
       },
-      // Same-origin BFF surface for local `VITE_AUTH_MODE=bff` verification —
-      // mirrors what the Cloudflare Pages Functions proxy does in deployed envs.
-      '/bff': {
-        target: 'http://localhost:3000',
-        changeOrigin: true,
-        secure: false,
-      },
     },
   },
   resolve: {
