@@ -14,6 +14,12 @@ export const ENV = {
   // Flip to 'bff' per-deployment via VITE_AUTH_MODE once the edge proxy is live.
   AUTH_MODE: (import.meta.env.VITE_AUTH_MODE ?? 'legacy') as 'legacy' | 'bff',
 
+  // Passwordless dev-login affordance (seeded accounts, no Entra). OFF by
+  // default so it never ships to production; enable per NON-PROD deployment via
+  // VITE_DEV_LOGIN=true so QA can sign in the same way in every environment. The
+  // API independently hard-blocks dev-login when NODE_ENV==='production'.
+  DEV_LOGIN_ENABLED: (import.meta.env.VITE_DEV_LOGIN ?? 'false') === 'true',
+
   // SSO — Microsoft Entra ID
   // Set these in .env.local (or CI/CD secrets) to enable SSO login.
   ENTRA_TENANT_ID: (import.meta.env.VITE_ENTRA_TENANT_ID ?? '') as string,

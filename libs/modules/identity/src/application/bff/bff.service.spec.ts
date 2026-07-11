@@ -44,6 +44,7 @@ describe('BffService', () => {
     refresh: ReturnType<typeof vi.fn>;
     switchWorkspace: ReturnType<typeof vi.fn>;
     logout: ReturnType<typeof vi.fn>;
+    devLogin: ReturnType<typeof vi.fn>;
   };
   let service: BffService;
 
@@ -65,6 +66,7 @@ describe('BffService', () => {
       refresh: vi.fn(),
       switchWorkspace: vi.fn(),
       logout: vi.fn().mockResolvedValue(undefined),
+      devLogin: vi.fn(),
     };
     service = new BffService(
       config,
@@ -151,6 +153,40 @@ describe('BffService', () => {
       expect(session.claims.workspaceId).toBe('ws-1');
       expect(ttl).toBe(3600);
       expect(result.returnTo).toBe('/dashboard');
+    });
+  });
+
+  describe('devLogin', () => {
+    it('devLoginAllowed is true in non-prod bff mode, false in production', () => {
+      expect(service.devLoginAllowed).toBe(true);
+      const prod = new BffService(
+        {
+          get: (k: string) => (k === 'NODE_ENV' ? 'production' : CONFIG[k]),
+        } as unknown as AppConfigService,
+        oidc as unknown as EntraOidcClient,
+        store as unknown as BffSessionStore,
+        authService as unknown as AuthService,
+      );
+      expect(prod.devLoginAllowed).toBe(false);
+    });
+
+    it('mints a session from a seeded email and returns the sid', async () => {
+      authService.devLogin.mockResolvedValue({
+        accessToken: accessToken(900),
+        refreshToken: 'refresh-dev',
+        csrfToken: 'csrf-dev',
+        expiresIn: 900,
+      });
+
+      const sid = await service.devLogin('qa@acme.dev', '3.3.3.3');
+
+      expect(authService.devLogin).toHaveBeenCalledWith('qa@acme.dev', '3.3.3.3');
+      expect(store.saveSession).toHaveBeenCalledTimes(1);
+      const [savedSid, session, ttl] = store.saveSession.mock.calls[0];
+      expect(savedSid).toBe(sid);
+      expect(session.refreshToken).toBe('refresh-dev');
+      expect(session.claims.workspaceId).toBe('ws-1');
+      expect(ttl).toBe(3600);
     });
   });
 

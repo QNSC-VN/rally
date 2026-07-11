@@ -49,6 +49,15 @@ export class BffService {
   }
 
   /**
+   * Whether the passwordless dev-login shortcut may run. Dev/E2E only: false in
+   * production even if a misconfiguration left the route reachable. (rally's
+   * {@link AuthService.devLogin} additionally hard-blocks in production.)
+   */
+  get devLoginAllowed(): boolean {
+    return this.enabled && this.config.get('NODE_ENV') !== 'production';
+  }
+
+  /**
    * Begin login: generate PKCE + `state`, persist the pending auth request, and
    * return the Entra authorize URL to redirect the browser to.
    */
@@ -100,6 +109,19 @@ export class BffService {
     const sid = randomUUID();
     await this.store.saveSession(sid, this.toSession(loginResult), this.sessionTtlSeconds);
     return { sid, returnTo: authRequest.returnTo };
+  }
+
+  /**
+   * DEV/E2E ONLY: mint a real server-side session from a seeded email, bypassing
+   * Entra entirely. Mirrors {@link completeLogin}'s tail but sources tokens from
+   * rally's dev-login (which itself hard-blocks in production). Returns the new
+   * session id to set as the `__Host-` session cookie.
+   */
+  async devLogin(email: string, ip: string): Promise<string> {
+    const loginResult = await this.authService.devLogin(email, ip);
+    const sid = randomUUID();
+    await this.store.saveSession(sid, this.toSession(loginResult), this.sessionTtlSeconds);
+    return sid;
   }
 
   /**

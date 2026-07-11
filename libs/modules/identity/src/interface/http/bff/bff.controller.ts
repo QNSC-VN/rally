@@ -12,7 +12,7 @@ import {
 import { ApiExcludeController } from '@nestjs/swagger';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import '@fastify/cookie';
-import { Auth, UnauthorizedException } from '@platform';
+import { Auth, Public, UnauthorizedException } from '@platform';
 import type { JwtPayload } from '@platform';
 import { AuthService } from '@qnsc-vn/identity';
 import { AccessService } from '@modules/access';
@@ -21,7 +21,7 @@ import { BffService } from '../../../application/bff/bff.service';
 import { readCookie } from '../../../application/bff/bff.util';
 import { CurrentUser } from '../decorators/current-user.decorator';
 import { UserProfileResponseDto } from '../dto/auth-response.dto';
-import { SwitchWorkspaceDto } from '../dto/login.dto';
+import { DevLoginDto, SwitchWorkspaceDto } from '../dto/login.dto';
 import {
   BFF_SESSION_COOKIE,
   BFF_STATE_COOKIE,
@@ -100,6 +100,33 @@ export class BffController {
       maxAge: this.bff.sessionTtlSeconds,
     });
     this.redirect(reply, result.returnTo);
+  }
+
+  // ── POST /bff/dev-login ──────────────────────────────────────────────────
+  // DEV/E2E ONLY (404 in production): passwordless mint of a real server-side
+  // session so the same-origin cookie flow can be exercised locally without an
+  // Entra tenant. Mirrors POST /v1/auth/dev-login but lands the session on the
+  // SERVER (sets the `__Host-` session cookie), not the browser.
+  @Post('dev-login')
+  @Public()
+  @HttpCode(204)
+  async devLogin(
+    @Body() dto: DevLoginDto,
+    @Req() req: FastifyRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ): Promise<void> {
+    this.ensureEnabled();
+    if (!this.bff.devLoginAllowed) {
+      throw new NotFoundException();
+    }
+    const sid = await this.bff.devLogin(dto.email, req.ip);
+    reply.setCookie(BFF_SESSION_COOKIE, sid, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'strict',
+      path: '/',
+      maxAge: this.bff.sessionTtlSeconds,
+    });
   }
 
   // ── POST /bff/logout ─────────────────────────────────────────────────────

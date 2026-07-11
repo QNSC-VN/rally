@@ -56,7 +56,10 @@ export function LoginPage() {
     setDevLoading(true)
     setDevError(null)
     try {
-      const res = await fetch(`${ENV.API_BASE_URL}/v1/auth/dev-login`, {
+      // In BFF mode the session lands on the server (same-origin `/bff`); in
+      // legacy mode the browser holds the tokens (cross-origin `/v1`).
+      const endpoint = isBffAuth ? '/bff/dev-login' : `${ENV.API_BASE_URL}/v1/auth/dev-login`
+      const res = await fetch(endpoint, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -216,7 +219,7 @@ export function LoginPage() {
 
             <div className="px-7 py-6">
               {/* ── SSO sign-in ──────────────────────────────────────────── */}
-              {isSsoConfigured || isBffAuth ? (
+              {(isSsoConfigured || isBffAuth) && (
                 <>
                   {ssoError && (
                     <div
@@ -263,11 +266,17 @@ export function LoginPage() {
                     {ssoLoading ? 'Redirecting to Microsoft…' : 'Sign in with Microsoft'}
                   </button>
                 </>
-              ) : (
+              )}
+              {/* ── Dev sign-in ──────────────────────────────────────────────
+                  Legacy non-SSO envs, and BFF mode when VITE_DEV_LOGIN=true (any
+                  non-prod deployment), so QA exercises the identical same-origin
+                  session flow without an Entra tenant. */}
+              {((!isSsoConfigured && !isBffAuth) || (isBffAuth && ENV.DEV_LOGIN_ENABLED)) && (
                 <form onSubmit={handleDevLogin} className="flex flex-col gap-4">
                   <p className="text-[12px]" style={{ color: '#5c6478' }}>
-                    Single sign-on is not configured for this environment. Use a seeded account to
-                    continue (development only).
+                    {isBffAuth
+                      ? 'Development only: sign in with a seeded account (mints a server-side BFF session).'
+                      : 'Single sign-on is not configured for this environment. Use a seeded account to continue (development only).'}
                   </p>
 
                   {devError && (
