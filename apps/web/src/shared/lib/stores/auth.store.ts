@@ -1,8 +1,7 @@
 import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
-import { setAccessToken } from '@/shared/api/http-client'
 import { queryClient } from '@/shared/api/query-client'
-import { ENV, isBffAuth } from '@/shared/config/env'
+import { ENV } from '@/shared/config/env'
 
 export interface WorkspaceMembership {
   workspaceId: string
@@ -37,7 +36,7 @@ interface AuthState {
   isLoading: boolean
   isSwitchingWorkspace: boolean
 
-  setUser: (user: AuthUser, accessToken: string, memberships?: WorkspaceMembership[]) => void
+  setUser: (user: AuthUser, memberships?: WorkspaceMembership[]) => void
   clearAuth: () => void
   setLoading: (loading: boolean) => void
   switchWorkspace: (workspaceId: string) => Promise<void>
@@ -58,14 +57,12 @@ export const useAuthStore = create<AuthState>()(
       isLoading: true,
       isSwitchingWorkspace: false,
 
-      setUser: (user, accessToken, memberships = []) => {
-        setAccessToken(accessToken)
+      setUser: (user, memberships = []) => {
         const activeWorkspaceId = memberships[0]?.workspaceId ?? null
         set({ user, memberships, activeWorkspaceId, isAuthenticated: true, isLoading: false })
       },
 
       clearAuth: () => {
-        setAccessToken(null)
         set({
           user: null,
           memberships: [],
@@ -83,42 +80,17 @@ export const useAuthStore = create<AuthState>()(
 
         set({ isSwitchingWorkspace: true })
         try {
-          if (isBffAuth) {
-            // BFF: the server re-issues tokens onto the SAME session; the browser
-            // keeps its session cookie and holds no tokens, so there is nothing to
-            // store client-side. A 204 means the session now resolves to the new ws.
-            const res = await fetch(`${API}/v1/bff/switch-workspace`, {
-              method: 'POST',
-              credentials: 'include',
-              referrerPolicy: 'no-referrer',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ workspaceId }),
-            })
-            if (!res.ok) throw new Error('Switch failed')
-          } else {
-            const { getAccessToken, scheduleProactiveRefresh } =
-              await import('@/shared/api/http-client')
-            const res = await fetch(`${API}/v1/auth/switch-workspace`, {
-              method: 'POST',
-              credentials: 'include',
-              referrerPolicy: 'no-referrer',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${getAccessToken()}`,
-              },
-              body: JSON.stringify({ workspaceId }),
-            })
-
-            if (!res.ok) throw new Error('Switch failed')
-
-            const { accessToken, expiresIn } = (await res.json()) as {
-              accessToken: string
-              expiresIn: number
-            }
-
-            setAccessToken(accessToken)
-            if (expiresIn) scheduleProactiveRefresh(expiresIn)
-          }
+          // The server re-issues tokens onto the SAME session; the browser keeps
+          // its session cookie and holds no tokens, so there is nothing to store
+          // client-side. A 204 means the session now resolves to the new ws.
+          const res = await fetch(`${API}/v1/bff/switch-workspace`, {
+            method: 'POST',
+            credentials: 'include',
+            referrerPolicy: 'no-referrer',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ workspaceId }),
+          })
+          if (!res.ok) throw new Error('Switch failed')
 
           queryClient.clear()
 

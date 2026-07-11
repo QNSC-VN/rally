@@ -1,160 +1,17 @@
 /**
- * Typed HTTP client — wraps openapi-fetch with auth, CSRF, refresh, and trace.
+ * Typed HTTP client — wraps openapi-fetch for the same-origin BFF auth model.
  * All API calls go through here; never call fetch() directly.
  *
- * Auth model (FRONTEND_STRUCTURE §8):
- *  - Access JWT: in-memory only (never localStorage)
- *  - Refresh token: httpOnly cookie (auto-sent by browser)
- *  - CSRF token: double-submit cookie+header on mutating requests
+ * Auth model: the browser holds NO tokens. Requests carry the
+ * `__Host-rally_session` cookie (sent automatically via `credentials: 'include'`),
+ * and the API's shared guard resolves + refreshes the underlying access token
+ * server-side. A 401 therefore means the session is genuinely dead.
  */
 import createClient from 'openapi-fetch'
 import type { paths } from './generated/api'
-import { ENV, isBffAuth } from '@/shared/config/env'
-import { getSsoRefresh } from './sso-refresh-slot'
+import { ENV } from '@/shared/config/env'
 
 const BASE_URL = ENV.API_BASE_URL
-
-// ── In-memory access token (never stored in localStorage) ────────────────────
-let _accessToken: string | null = null
-
-export function setAccessToken(token: string | null) {
-  _accessToken = token
-}
-
-export function getAccessToken() {
-  return _accessToken
-}
-
-// ── Proactive refresh timer — fires 60s before access token expires ───────────
-// This avoids the 401 → refresh → retry latency hit that would otherwise occur
-// on the first request after every 15-minute expiry window.
-let _refreshTimer: ReturnType<typeof setTimeout> | null = null
-
-export function scheduleProactiveRefresh(expiresIn: number) {
-  cancelProactiveRefresh()
-  const delayMs = Math.max((expiresIn - 60) * 1000, 30_000) // at least 30s
-  _refreshTimer = setTimeout(() => void refreshAccessToken(), delayMs)
-}
-
-export function cancelProactiveRefresh() {
-  if (_refreshTimer) {
-    clearTimeout(_refreshTimer)
-    _refreshTimer = null
-  }
-}
-
-// ── CSRF token (read from cookie, sent as header) ────────────────────────────
-function getCsrfToken(): string | undefined {
-  return document.cookie
-    .split(';')
-    .map((c) => c.trim())
-    .find((c) => c.startsWith('csrf_token='))
-    ?.split('=')[1]
-}
-
-// ── Single-flight refresh (prevents concurrent 401s triggering multiple refreshes)
-let _refreshPromise: Promise<boolean> | null = null
-
-/**
- * Decode authMethod from the in-memory access token without verifying the
- * signature (the server already verified it; we just need the claim locally).
- */
-function getAuthMethodFromToken(): 'sso' | 'password' | null {
-  if (!_accessToken) return null
-  try {
-    const payload = JSON.parse(atob(_accessToken.split('.')[1]!)) as {
-      authMethod?: string
-    }
-    return payload.authMethod === 'sso' ? 'sso' : 'password'
-  } catch {
-    return null
-  }
-}
-
-/**
- * Cross-tab refresh coordination via the Web Locks API. Serializes refreshes
- * across every tab so two tabs can never rotate the same single-use refresh
- * cookie concurrently — which the server would treat as token theft and revoke
- * the whole family. Falls back to a plain call where Web Locks is unavailable
- * (older browsers / insecure contexts).
- */
-function withRefreshLock(fn: () => Promise<boolean>): Promise<boolean> {
-  const locks = (globalThis.navigator as Navigator | undefined)?.locks
-  if (locks?.request) {
-    return locks.request('rally-auth-refresh', { mode: 'exclusive' }, fn)
-  }
-  return fn()
-}
-
-export async function refreshAccessToken(): Promise<boolean> {
-  if (_refreshPromise) return _refreshPromise
-  _refreshPromise = (async () => {
-    try {
-      return await withRefreshLock(doRefreshOnce)
-    } finally {
-      _refreshPromise = null
-    }
-  })()
-  return _refreshPromise
-}
-
-async function doRefreshOnce(): Promise<boolean> {
-  try {
-    // Enterprise SSO path: re-validate with Microsoft Entra on every refresh
-    // cycle. This enforces Entra deprovisioning within one access-token TTL
-    // (default 15 min) rather than the full 30-day Rally refresh window.
-    const ssoFn = getSsoRefresh()
-    if (getAuthMethodFromToken() === 'sso' && ssoFn) {
-      const ssoResult = await ssoFn()
-
-      if (ssoResult === 'interaction_required') {
-        // Entra deliberately revoked the session (user deprovisioned, MFA
-        // policy change, conditional-access block). Do NOT fall back to
-        // Rally refresh — the session must be invalidated immediately.
-        setAccessToken(null)
-        return false
-      }
-
-      if (ssoResult !== null) {
-        // Fresh Entra id_token — exchange for a new Rally session
-        const res = await fetch(`${BASE_URL}/v1/auth/sso`, {
-          method: 'POST',
-          credentials: 'include',
-          referrerPolicy: 'no-referrer',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ idToken: ssoResult.idToken }),
-        })
-        if (!res.ok) return false
-        const data = (await res.json()) as { accessToken: string; expiresIn?: number }
-        setAccessToken(data.accessToken)
-        if (data.expiresIn) scheduleProactiveRefresh(data.expiresIn)
-        return true
-      }
-      // ssoResult === null: no MSAL accounts in sessionStorage (new tab or
-      // MSAL cache cleared). Fall through to Rally cookie refresh so the
-      // user isn't unexpectedly logged out just for opening a new tab.
-    }
-
-    // Standard Rally refresh token rotation (password sessions + new-tab SSO fallback).
-    // No request body — do NOT send `Content-Type: application/json`, or Fastify
-    // rejects the empty body with `FST_ERR_CTP_EMPTY_JSON_BODY` (400) and the
-    // cold-start session restore bounces the user back to login.
-    const csrfToken = getCsrfToken()
-    const res = await fetch(`${BASE_URL}/v1/auth/refresh`, {
-      method: 'POST',
-      credentials: 'include',
-      referrerPolicy: 'no-referrer',
-      headers: csrfToken ? { 'x-csrf-token': csrfToken } : undefined,
-    })
-    if (!res.ok) return false
-    const data = (await res.json()) as { accessToken: string; expiresIn?: number }
-    setAccessToken(data.accessToken)
-    if (data.expiresIn) scheduleProactiveRefresh(data.expiresIn)
-    return true
-  } catch {
-    return false
-  }
-}
 
 // ── Base client ──────────────────────────────────────────────────────────────
 export const apiClient = createClient<paths>({
@@ -162,52 +19,31 @@ export const apiClient = createClient<paths>({
   credentials: 'include',
 })
 
-// ── Request middleware: inject auth + CSRF + trace headers ───────────────────
+// ── Request middleware: OTel trace correlation ───────────────────────────────
 apiClient.use({
   async onRequest({ request }) {
-    if (_accessToken) {
-      request.headers.set('Authorization', `Bearer ${_accessToken}`)
-    }
-
-    const isMutation = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method)
-    if (isMutation) {
-      const csrf = getCsrfToken()
-      if (csrf) request.headers.set('x-csrf-token', csrf)
-    }
-
-    // OTel trace correlation (W3C traceparent)
-    // crypto.randomUUID() requires a secure context (HTTPS/localhost) — skip in plain-HTTP dev
+    // W3C traceparent for OTel correlation. crypto.randomUUID() needs a secure
+    // context (HTTPS/localhost) — skip in plain-HTTP dev.
     if (typeof crypto.randomUUID === 'function') {
       const traceId = crypto.randomUUID().replace(/-/g, '')
       const spanId = crypto.randomUUID().replace(/-/g, '').slice(0, 16)
       request.headers.set('traceparent', `00-${traceId}-${spanId}-01`)
     }
-
     return request
   },
 
-  // ── Response middleware: handle 401 → refresh → retry; 403 → forbidden ──────
+  // ── Response middleware: 401 → login; 403 → forbidden ──────────────────────
   async onResponse({ request, response }) {
-    if (response.status === 401 && !request.url.includes('/auth/refresh')) {
-      // In BFF mode the browser holds no tokens and cannot refresh: the shared
-      // guard already rotates the access token server-side, so a 401 here means
-      // the session is truly dead. Skip the client refresh and go to login.
-      if (!isBffAuth) {
-        const refreshed = await refreshAccessToken()
-        if (refreshed && _accessToken) {
-          request.headers.set('Authorization', `Bearer ${_accessToken}`)
-          return fetch(request)
-        }
-      }
-      // Refresh failed (or BFF session expired) — redirect to login, preserving
+    if (response.status === 401) {
+      // The shared guard refreshes the session's access token server-side, so a
+      // 401 means the session is truly dead — send the user to login, keeping
       // the current page as returnTo.
-      setAccessToken(null)
       const returnTo = encodeURIComponent(window.location.pathname + window.location.search)
       window.location.href = `/login?returnTo=${returnTo}`
     }
 
-    // 403: navigate to the access-denied page (unless this is an auth endpoint
-    // where the caller handles the error inline, e.g. login form)
+    // 403: access-denied page (unless an auth endpoint where the caller handles
+    // the error inline, e.g. the login form).
     if (response.status === 403 && !request.url.includes('/auth/')) {
       window.location.href = '/403'
     }

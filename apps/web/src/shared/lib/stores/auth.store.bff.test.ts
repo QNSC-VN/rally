@@ -1,16 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// Force BFF mode so the store takes the /bff/switch-workspace branch. Must be
-// mocked before the store module is imported (it reads isBffAuth on call and
-// ENV.API_BASE_URL at load).
+// Stub env so the store reads a relative API base at module load.
 vi.mock('@/shared/config/env', () => ({
   ENV: { API_BASE_URL: '' },
-  isBffAuth: true,
-}))
-vi.mock('@/shared/api/http-client', () => ({
-  setAccessToken: vi.fn(),
-  scheduleProactiveRefresh: vi.fn(),
-  getAccessToken: vi.fn(() => null),
 }))
 vi.mock('@/shared/api/query-client', () => ({ queryClient: { clear: vi.fn() } }))
 
@@ -47,7 +39,7 @@ describe('useAuthStore.switchWorkspace (BFF mode)', () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
     vi.stubGlobal('fetch', fetchMock)
 
-    useAuthStore.getState().setUser(user, '', [membership('ws-1'), membership('ws-2')])
+    useAuthStore.getState().setUser(user, [membership('ws-1'), membership('ws-2')])
     await useAuthStore.getState().switchWorkspace('ws-2')
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
@@ -67,7 +59,7 @@ describe('useAuthStore.switchWorkspace (BFF mode)', () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 401 }))
     vi.stubGlobal('fetch', fetchMock)
 
-    useAuthStore.getState().setUser(user, '', [membership('ws-1'), membership('ws-2')])
+    useAuthStore.getState().setUser(user, [membership('ws-1'), membership('ws-2')])
     await expect(useAuthStore.getState().switchWorkspace('ws-2')).rejects.toThrow('Switch failed')
     expect(useAuthStore.getState().isSwitchingWorkspace).toBe(false)
   })

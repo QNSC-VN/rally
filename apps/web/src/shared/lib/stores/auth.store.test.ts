@@ -1,12 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// The store calls setAccessToken (http-client) on setUser/clearAuth — stub it so
-// the test doesn't pull in the real client/network layer.
-vi.mock('@/shared/api/http-client', () => ({
-  setAccessToken: vi.fn(),
-  scheduleProactiveRefresh: vi.fn(),
-  getAccessToken: vi.fn(() => null),
-}))
 vi.mock('@/shared/api/query-client', () => ({ queryClient: { clear: vi.fn() } }))
 
 import { useAuthStore } from './auth.store'
@@ -33,8 +26,15 @@ describe('useAuthStore', () => {
     it('setUser marks authenticated and picks the first membership workspace', () => {
       useAuthStore
         .getState()
-        .setUser(makeUser([]), 'token-abc', [
-          { workspaceId: 't1', name: 'Acme', slug: 'acme', lastActiveAt: null, roleSlug: null, roleName: null },
+        .setUser(makeUser([]), [
+          {
+            workspaceId: 't1',
+            name: 'Acme',
+            slug: 'acme',
+            lastActiveAt: null,
+            roleSlug: null,
+            roleName: null,
+          },
         ])
       const s = useAuthStore.getState()
       expect(s.isAuthenticated).toBe(true)
@@ -43,7 +43,7 @@ describe('useAuthStore', () => {
     })
 
     it('clearAuth resets to an unauthenticated state', () => {
-      useAuthStore.getState().setUser(makeUser(['work_item:view']), 'token', [])
+      useAuthStore.getState().setUser(makeUser(['work_item:view']), [])
       useAuthStore.getState().clearAuth()
       const s = useAuthStore.getState()
       expect(s.isAuthenticated).toBe(false)
@@ -58,7 +58,7 @@ describe('useAuthStore', () => {
     })
 
     it('grants everything on the workspace:* wildcard', () => {
-      useAuthStore.getState().setUser(makeUser(['workspace:*']), 'token', [])
+      useAuthStore.getState().setUser(makeUser(['workspace:*']), [])
       const { hasPermission } = useAuthStore.getState()
       expect(hasPermission('work_item:edit')).toBe(true)
       expect(hasPermission('project:delete')).toBe(true)
@@ -66,7 +66,7 @@ describe('useAuthStore', () => {
     })
 
     it('matches an exact permission code', () => {
-      useAuthStore.getState().setUser(makeUser(['work_item:edit', 'project:view']), 'token', [])
+      useAuthStore.getState().setUser(makeUser(['work_item:edit', 'project:view']), [])
       const { hasPermission } = useAuthStore.getState()
       expect(hasPermission('work_item:edit')).toBe(true)
       expect(hasPermission('project:view')).toBe(true)
@@ -74,7 +74,7 @@ describe('useAuthStore', () => {
     })
 
     it('grants a namespace via the ns:* wildcard', () => {
-      useAuthStore.getState().setUser(makeUser(['work_item:*']), 'token', [])
+      useAuthStore.getState().setUser(makeUser(['work_item:*']), [])
       const { hasPermission } = useAuthStore.getState()
       expect(hasPermission('work_item:edit')).toBe(true)
       expect(hasPermission('work_item:delete')).toBe(true)
@@ -83,7 +83,7 @@ describe('useAuthStore', () => {
     })
 
     it('denies when the user holds no matching permission', () => {
-      useAuthStore.getState().setUser(makeUser(['work_item:view']), 'token', [])
+      useAuthStore.getState().setUser(makeUser(['work_item:view']), [])
       expect(useAuthStore.getState().hasPermission('release:manage')).toBe(false)
     })
   })

@@ -34,7 +34,6 @@ import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
-import { getAccessToken, cancelProactiveRefresh } from '@/shared/api/http-client'
 import { useNavigate } from '@tanstack/react-router'
 import {
   useWorkspaceTeams,
@@ -181,13 +180,10 @@ function ProfileTab() {
         createdAt: string
         updatedAt: string
       }
-      const token = getAccessToken()
-      if (token) {
-        setUser(
-          { ...u, avatarUrl: u.avatarUrl ?? undefined, permissions: u.permissions ?? [] },
-          token,
-        )
-      }
+      setUser(
+        { ...u, avatarUrl: u.avatarUrl ?? undefined, permissions: u.permissions ?? [] },
+        useAuthStore.getState().memberships,
+      )
       toast.success('Profile updated')
     } catch {
       profile.setError('root', { message: 'Network error — please try again.' })
@@ -201,7 +197,6 @@ function ProfileTab() {
       /* ignore */
     }
     useAuthStore.getState().clearAuth()
-    cancelProactiveRefresh()
     toast.success('Signed out from all devices')
     await navigate({ to: '/login' })
   }
