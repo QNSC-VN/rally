@@ -11,8 +11,8 @@
  * vitest and portable to a standalone Worker if we ever move off Pages.
  *
  * Requires the Pages project to expose `API_ORIGIN`, e.g.
- * `https://rally-api-dev.qnsc.vn`. Active only when the SPA is built with
- * `VITE_AUTH_MODE=bff`; otherwise the SPA calls the API cross-origin directly.
+ * `https://rally-api-dev.qnsc.vn`. The SPA always talks to the API through this
+ * same-origin proxy (the BFF flow depends on it).
  */
 
 /** Hop-by-hop headers that must never cross a proxy boundary (RFC 7230 §6.1). */

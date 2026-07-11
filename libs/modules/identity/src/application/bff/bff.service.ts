@@ -43,9 +43,13 @@ export class BffService {
     private readonly authService: AuthService,
   ) {}
 
-  /** Whether BFF auth mode is active. When false every /bff/* route 404s. */
+  /**
+   * BFF is rally's only authentication mode, so the resolver is always active.
+   * Retained to satisfy the generic {@link BffSessionResolver} contract that the
+   * shared JwtAuthGuard consumes.
+   */
   get enabled(): boolean {
-    return this.config.get('AUTH_MODE') === 'bff';
+    return true;
   }
 
   /**
@@ -54,7 +58,7 @@ export class BffService {
    * {@link AuthService.devLogin} additionally hard-blocks in production.)
    */
   get devLoginAllowed(): boolean {
-    return this.enabled && this.config.get('NODE_ENV') !== 'production';
+    return this.config.get('NODE_ENV') !== 'production';
   }
 
   /**

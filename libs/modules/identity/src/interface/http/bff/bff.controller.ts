@@ -31,8 +31,7 @@ import {
 /**
  * Backend-for-Frontend auth surface. Runs the Entra Authorization-Code + PKCE
  * flow server-side and issues an opaque `__Host-` session cookie so tokens
- * never reach the browser. The whole controller is inert (404) unless
- * `AUTH_MODE=bff`, so the default legacy MSAL path is byte-for-byte unchanged.
+ * never reach the browser. This is rally's only authentication surface.
  *
  * Excluded from Swagger: these are browser-redirect endpoints, not a JSON API.
  */
@@ -54,7 +53,6 @@ export class BffController {
     @Query('returnTo') returnTo: string | undefined,
     @Res() reply: FastifyReply,
   ): Promise<void> {
-    this.ensureEnabled();
     const { authorizeUrl, state } = await this.bff.beginLogin(returnTo);
 
     reply.setCookie(BFF_STATE_COOKIE, state, {
@@ -77,7 +75,6 @@ export class BffController {
     @Req() req: FastifyRequest,
     @Res() reply: FastifyReply,
   ): Promise<void> {
-    this.ensureEnabled();
     if (!code || !state) {
       throw new UnauthorizedException('AUTH_TOKEN_INVALID', 'Missing authorization code or state');
     }
@@ -115,7 +112,6 @@ export class BffController {
     @Req() req: FastifyRequest,
     @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<void> {
-    this.ensureEnabled();
     if (!this.bff.devLoginAllowed) {
       throw new NotFoundException();
     }
@@ -140,7 +136,6 @@ export class BffController {
     @Req() req: FastifyRequest & { bffSid?: string },
     @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<void> {
-    this.ensureEnabled();
     const sid = req.bffSid ?? readCookie(req, BFF_SESSION_COOKIE);
     if (sid) {
       await this.bff.logout(sid, user);
@@ -160,7 +155,6 @@ export class BffController {
     @Body() dto: SwitchWorkspaceDto,
     @Req() req: FastifyRequest & { bffSid?: string },
   ): Promise<void> {
-    this.ensureEnabled();
     const sid = req.bffSid ?? readCookie(req, BFF_SESSION_COOKIE);
     if (!sid) {
       throw new UnauthorizedException('AUTH_TOKEN_INVALID', 'No active BFF session');
@@ -176,7 +170,6 @@ export class BffController {
   @Get('me')
   @Auth()
   async me(@CurrentUser() user: JwtPayload): Promise<UserProfileResponseDto> {
-    this.ensureEnabled();
     const [profile, { role, permissions }, memberships] = await Promise.all([
       this.authService.getMe(user.sub),
       this.accessService.getUserRoleAndPermissions(user.sub, user.workspaceId),
@@ -196,12 +189,6 @@ export class BffController {
       updatedAt: profile.updatedAt.toISOString(),
       memberships,
     };
-  }
-
-  private ensureEnabled(): void {
-    if (!this.bff.enabled) {
-      throw new NotFoundException();
-    }
   }
 
   /** Version-agnostic 302 redirect (avoids Fastify `reply.redirect` arg-order drift). */

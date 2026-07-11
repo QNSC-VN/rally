@@ -57,9 +57,9 @@ import { DrizzleTransactionRunner } from './application/transaction-runner';
     AuthService,
     EntraTokenVerifier,
 
-    // BFF (Backend-for-Frontend) same-origin OIDC session. Inert unless
-    // AUTH_MODE=bff; the Entra client, session store, and guard are generic and
-    // are earmarked to move into `@qnsc-vn/identity` once opshub adopts BFF too.
+    // BFF (Backend-for-Frontend) same-origin OIDC session — rally's only auth
+    // path. The Entra client, session store, and guard are generic and are
+    // earmarked to move into `@qnsc-vn/identity` once opshub adopts BFF too.
     EntraOidcClient,
     BffSessionStore,
     BffService,

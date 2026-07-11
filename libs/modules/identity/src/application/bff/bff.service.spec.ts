@@ -24,7 +24,6 @@ function accessToken(secondsFromNow: number, extra: Record<string, unknown> = {}
 }
 
 const CONFIG: Record<string, unknown> = {
-  AUTH_MODE: 'bff',
   BFF_POST_LOGIN_REDIRECT: '/home',
   BFF_SESSION_TTL_SECONDS: 3600,
 };
@@ -77,15 +76,8 @@ describe('BffService', () => {
   });
 
   describe('enabled', () => {
-    it('reflects AUTH_MODE', () => {
+    it('is always true (BFF is the only auth mode)', () => {
       expect(service.enabled).toBe(true);
-      const legacy = new BffService(
-        { get: () => 'legacy' } as unknown as AppConfigService,
-        oidc as unknown as EntraOidcClient,
-        store as unknown as BffSessionStore,
-        authService as unknown as AuthService,
-      );
-      expect(legacy.enabled).toBe(false);
     });
   });
 
@@ -157,7 +149,7 @@ describe('BffService', () => {
   });
 
   describe('devLogin', () => {
-    it('devLoginAllowed is true in non-prod bff mode, false in production', () => {
+    it('devLoginAllowed is true outside production, false in production', () => {
       expect(service.devLoginAllowed).toBe(true);
       const prod = new BffService(
         {

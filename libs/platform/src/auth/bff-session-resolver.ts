@@ -7,7 +7,7 @@ import type { JwtPayload } from './jwt.strategy';
  *
  * The concrete implementation (Entra OIDC + Valkey session) lives in the
  * product's identity module and is bound to the {@link BFF_SESSION_RESOLVER}
- * token. When it is left unbound — legacy mode, or any product without BFF —
+ * token. When it is left unbound — any product without BFF —
  * the guard behaves exactly as a pure JWT guard, so the Bearer path is never
  * altered. This inversion keeps the platform layer free of a hard dependency on
  * the identity module.

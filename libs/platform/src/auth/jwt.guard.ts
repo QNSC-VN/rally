@@ -25,7 +25,7 @@ import type { JwtPayload } from './jwt.strategy';
  * BFF (same-origin) mode: when a {@link BffSessionResolver} is bound and no
  * Bearer token is present, the guard instead authenticates from the opaque
  * `__Host-` session cookie — resolving (and transparently refreshing) the
- * server-side session. When the resolver is unbound or disabled (legacy mode),
+ * server-side session. When the resolver is unbound (a product without BFF),
  * this path is skipped entirely and the Bearer flow is byte-for-byte unchanged.
  *
  * Pair with @Public() decorator to opt-out individual routes.
