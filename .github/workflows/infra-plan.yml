@@ -1,4 +1,9 @@
-name: OpenTofu Plan
+# =============================================================================
+# Infrastructure · Plan — thin caller of the shared reusable (qnsc-ci).
+# Dry-run on every PR touching infra/live/**; posts a plan comment per changed
+# workspace and gates on `tofu fmt`.
+# =============================================================================
+name: Infrastructure · Plan
 
 on:
   pull_request:
@@ -7,102 +12,16 @@ on:
       - "infra/live/**"
       - ".github/workflows/infra-plan.yml"
 
-permissions:
-  id-token: write      # OIDC
-  contents: read
-  pull-requests: write # post plan comment
-
-env:
-  TOFU_VERSION: "1.9.1"
-  AWS_REGION: ap-southeast-1
-
 jobs:
-  # ─────────────────────────────────────────────────────────────────────────────
-  # Detect which live/ directories changed so we only plan those
-  # ─────────────────────────────────────────────────────────────────────────────
-  detect-changes:
-    runs-on: ubuntu-latest
-    outputs:
-      workspaces: ${{ steps.set.outputs.workspaces }}
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0   # v7.0.0
-        with: { fetch-depth: 0 }
-
-      - id: set
-        run: |
-          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD \
-            | grep '^infra/live/' \
-            | cut -d/ -f1-3 \
-            | sort -u \
-            | jq -Rc '[.,inputs]' \
-            | jq -sc 'add // []')
-          echo "workspaces=$CHANGED" >> $GITHUB_OUTPUT
-
-  # ─────────────────────────────────────────────────────────────────────────────
-  # Plan each workspace
-  # ─────────────────────────────────────────────────────────────────────────────
   plan:
-    needs: detect-changes
-    if: ${{ needs.detect-changes.outputs.workspaces != '[]' }}
-    runs-on: ubuntu-latest
-
-    strategy:
-      fail-fast: false
-      matrix:
-        workspace: ${{ fromJson(needs.detect-changes.outputs.workspaces) }}
-
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0   # v7.0.0
-
-      - uses: QNSC-VN/qnsc-ci/actions/setup-tofu-aws@v1
-        with:
-          role-arn: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/rally-github-infra-plan
-          aws-region: ${{ env.AWS_REGION }}
-          tofu-version: ${{ env.TOFU_VERSION }}
-
-      - name: Configure git for public modules
-        run: git config --global url."https://github.com".insteadOf "https://github.com"
-
-      - name: tofu init
-        working-directory: ${{ matrix.workspace }}
-        run: tofu init -input=false
-
-      - name: tofu validate
-        working-directory: ${{ matrix.workspace }}
-        run: tofu validate
-
-      - name: tofu plan
-        id: plan
-        working-directory: ${{ matrix.workspace }}
-        run: |
-          # The infra-plan OIDC role is read-only and has no DynamoDB write
-          # permission, so it cannot acquire the state lock. Plan never mutates
-          # state, so run lock-free (apply still locks via the admin apply role).
-          tofu plan -input=false -lock=false -no-color -out=tfplan 2>&1 | tee plan.txt
-          echo "exitcode=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
-        env:
-          TF_VAR_acm_cert_arn:         ${{ secrets.ACM_CERT_ARN }}
-          TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-
-      - name: Post plan to PR
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3   # v9.0.0
-        if: always()
-        with:
-          script: |
-            const fs = require('fs');
-            const plan = fs.readFileSync('${{ matrix.workspace }}/plan.txt', 'utf8');
-            const MAX = 65000;
-            const body = `### OpenTofu Plan — \`${{ matrix.workspace }}\`
-            \`\`\`hcl
-            ${plan.length > MAX ? plan.slice(0, MAX) + '\n... (truncated)' : plan}
-            \`\`\``;
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body,
-            });
-
-      - name: Fail if plan errored
-        if: steps.plan.outputs.exitcode != '0' && steps.plan.outputs.exitcode != '2'
-        run: exit 1
+    uses: QNSC-VN/qnsc-ci/.github/workflows/infra-plan.yml@v1
+    with:
+      product: rally
+    secrets:
+      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      # Mirror the apply-time TF_VARs so plan ≈ apply (masked inside the reusable).
+      tf_secret_vars_json: |
+        {
+          "acm_cert_arn": "${{ secrets.ACM_CERT_ARN }}",
+          "cloudflare_api_token": "${{ secrets.CLOUDFLARE_API_TOKEN }}"
+        }

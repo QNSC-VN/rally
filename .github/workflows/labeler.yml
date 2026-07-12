@@ -1,6 +1,6 @@
 # =============================================================================
-# PR Labeler — auto-applies area/* labels based on changed files.
-# Runs on every PR open/sync using the labeler.yml config.
+# PR Labeler — thin caller of the shared reusable (qnsc-ci). The label map
+# (.github/labeler.yml) stays product-local; this only wires the plumbing.
 # =============================================================================
 name: PR Labeler
 
@@ -12,18 +12,9 @@ concurrency:
   group: labeler-${{ github.ref }}
   cancel-in-progress: true
 
-permissions:
-  contents: read
-  pull-requests: write
-
 jobs:
   labeler:
-    name: Label PR
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/labeler@b8dd2d9be0f68b860e7dae5dae7d772984eacd6d  # v6
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          configuration-path: .github/labeler.yml
-          sync-labels: true
+    uses: QNSC-VN/qnsc-ci/.github/workflows/labeler.yml@v1
+    permissions:
+      contents: read
+      pull-requests: write
