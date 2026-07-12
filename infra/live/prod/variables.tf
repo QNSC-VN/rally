@@ -55,7 +55,7 @@ variable "web_domain" {
   default     = ""
   description = <<-EOT
     Public hostname for the prod web SPA (e.g. "rally.qnsc.vn"). Leave empty
-    until the prod domain is decided — CloudFront alias and the Cloudflare DNS
-    record are both skipped while empty, so prod applies cleanly without it.
+    until the prod domain is decided — the Cloudflare Pages custom domain and
+    DNS record are both skipped while empty, so prod applies cleanly without it.
   EOT
 }

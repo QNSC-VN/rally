@@ -125,9 +125,9 @@ jobs:
           app-id: ${{ vars.RELEASE_BOT_APP_ID }}
           private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
 
-      # Sync the infra IDs the deploy workflows read (backend-deploy.yml,
-      # web-deploy.yml) straight from Terraform outputs, so a rebuild that
-      # changes subnet/SG/CloudFront IDs can never leave the vars stale.
+      # Sync the infra IDs the deploy workflows read (backend-deploy.yml)
+      # straight from Terraform outputs, so a rebuild that changes subnet/SG
+      # IDs can never leave the vars stale.
       # Skipped automatically when no app token could be minted. Tolerant of a
       # missing "Variables: write" grant so it never blocks the infra apply.
       - name: Publish infra IDs to develop environment variables
