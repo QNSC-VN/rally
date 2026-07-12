@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 import {
   AuthService,
   EntraTokenVerifier,
@@ -14,12 +14,16 @@ import {
   ENTRA_VERIFIER_OPTIONS,
 } from '@qnsc-vn/identity';
 import type { AuthServiceOptions, EntraVerifierOptions } from '@qnsc-vn/identity';
-import { AppConfigService } from '@platform';
+import { AppConfigService, BFF_SESSION_RESOLVER } from '@platform';
 import { AccessModule, AccessService } from '@modules/access';
 import { WorkspaceModule, WorkspaceService } from '@modules/workspace';
 import { AuditService } from '@modules/audit';
 import { IdentityController } from './interface/http/identity.controller';
 import { AuthController } from './interface/http/auth.controller';
+import { BffController } from './interface/http/bff/bff.controller';
+import { BffService } from './application/bff/bff.service';
+import { BffSessionStore } from './application/bff/bff-session.store';
+import { EntraOidcClient } from './application/bff/entra-oidc.client';
 import { UserDrizzleRepository } from './infrastructure/persistence/user.drizzle-repository';
 import { AuthSessionDrizzleRepository } from './infrastructure/persistence/auth-session.drizzle-repository';
 import { SsoConnectionDrizzleRepository } from './infrastructure/persistence/sso-connection.drizzle-repository';
@@ -40,13 +44,28 @@ import { DrizzleTransactionRunner } from './application/transaction-runner';
  *
  * Rally keeps its own `JwtStrategy` / guards (extended `JwtPayload`), so the
  * package's `AuthModule.forRoot` is intentionally NOT used here.
+ *
+ * Marked `@Global` so the `BFF_SESSION_RESOLVER` bridge it exports is visible to
+ * the shared (also global) `JwtAuthGuard` singleton, which must resolve the BFF
+ * session cookie on EVERY authenticated route — not only the identity module's.
  */
+@Global()
 @Module({
   imports: [AccessModule, WorkspaceModule],
-  controllers: [IdentityController, AuthController],
+  controllers: [IdentityController, AuthController, BffController],
   providers: [
     AuthService,
     EntraTokenVerifier,
+
+    // BFF (Backend-for-Frontend) same-origin OIDC session — rally's only auth
+    // path. The Entra client, session store, and guard are generic and are
+    // earmarked to move into `@qnsc-vn/identity` once opshub adopts BFF too.
+    EntraOidcClient,
+    BffSessionStore,
+    BffService,
+    // Bridge that lets the shared JwtAuthGuard authenticate `/api/*` requests
+    // from the BFF session cookie when no Bearer token is present.
+    { provide: BFF_SESSION_RESOLVER, useExisting: BffService },
 
     // Persistence ports → rally drizzle repositories.
     { provide: USER_REPOSITORY, useClass: UserDrizzleRepository },
@@ -84,6 +103,6 @@ import { DrizzleTransactionRunner } from './application/transaction-runner';
       }),
     },
   ],
-  exports: [AuthService],
+  exports: [AuthService, BFF_SESSION_RESOLVER],
 })
 export class IdentityModule {}

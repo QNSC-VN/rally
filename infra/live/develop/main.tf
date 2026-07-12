@@ -105,10 +105,11 @@ module "secrets" {
   recovery_window_days = 0
 
   secret_names = {
-    "db-url"      = "PostgreSQL connection URL for the app"
-    "jwt-private" = "EC P-256 (ES256) private key (PEM, base64-encoded)"
-    "jwt-public"  = "EC P-256 (ES256) public key (PEM, base64-encoded)"
-    "csrf-secret" = "CSRF token signing secret"
+    "db-url"              = "PostgreSQL connection URL for the app"
+    "jwt-private"         = "EC P-256 (ES256) private key (PEM, base64-encoded)"
+    "jwt-public"          = "EC P-256 (ES256) public key (PEM, base64-encoded)"
+    "csrf-secret"         = "CSRF token signing secret"
+    "entra-client-secret" = "Microsoft Entra confidential-client secret (BFF OIDC)"
   }
 
   tags = { Environment = local.env }
@@ -214,6 +215,7 @@ module "api" {
     { name = "JWT_PRIVATE_KEY", secret_arn = module.secrets.secret_arns["jwt-private"] },
     { name = "JWT_PUBLIC_KEY", secret_arn = module.secrets.secret_arns["jwt-public"] },
     { name = "CSRF_SECRET", secret_arn = module.secrets.secret_arns["csrf-secret"] },
+    { name = "ENTRA_CLIENT_SECRET", secret_arn = module.secrets.secret_arns["entra-client-secret"] },
   ]
 
   environment_vars = [
@@ -228,9 +230,10 @@ module "api" {
     { name = "JWT_AUDIENCE", value = "rally-web" },
     { name = "JWT_ACCESS_EXPIRY", value = "15m" },
     { name = "JWT_REFRESH_EXPIRY", value = "30d" },
-    # Microsoft Entra SSO — set tenant/client IDs; leave empty to disable SSO
+    # Microsoft Entra SSO (BFF) — all Entra vars are mandatory; the API fails to boot without them.
     { name = "ENTRA_TENANT_ID", value = var.entra_tenant_id },
     { name = "ENTRA_CLIENT_ID", value = var.entra_client_id },
+    { name = "ENTRA_REDIRECT_URI", value = "https://rally-dev.qnsc.vn/v1/bff/callback" },
     # Comma-separated emails auto-granted workspace_admin on every SSO login
     { name = "PLATFORM_ADMIN_EMAILS", value = "nghiavt18@qnsc.vn,quangld@qnsc.vn,hieuvbm@qnsc.vn,anhntn@qnsc.vn" },
     # Messaging — SQS queue URLs injected at deploy time from module outputs
@@ -296,12 +299,18 @@ module "worker" {
     { name = "JWT_PUBLIC_KEY", secret_arn = module.secrets.secret_arns["jwt-public"] },
     # Shared schema requires CSRF_SECRET even though the worker never uses it as middleware
     { name = "CSRF_SECRET", secret_arn = module.secrets.secret_arns["csrf-secret"] },
+    # Shared schema also validates the Entra client secret at boot (worker runs the same env schema).
+    { name = "ENTRA_CLIENT_SECRET", secret_arn = module.secrets.secret_arns["entra-client-secret"] },
   ]
 
   environment_vars = [
     { name = "NODE_ENV", value = "production" },
     { name = "REDIS_URL", value = "redis://localhost:6379" }, # dev: Valkey sidecar
     { name = "AWS_REGION", value = local.region },
+    # Entra SSO — the worker validates the shared env schema, so these are required to boot.
+    { name = "ENTRA_TENANT_ID", value = var.entra_tenant_id },
+    { name = "ENTRA_CLIENT_ID", value = var.entra_client_id },
+    { name = "ENTRA_REDIRECT_URI", value = "https://rally-dev.qnsc.vn/v1/bff/callback" },
     { name = "SQS_NOTIFICATIONS_URL", value = module.messaging.queue_urls["notifications"] },
     { name = "SQS_AUDIT_URL", value = module.messaging.queue_urls["audit"] },
     { name = "SQS_REPORTING_URL", value = module.messaging.queue_urls["reporting"] },

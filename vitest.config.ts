@@ -41,6 +41,11 @@ export default defineConfig({
       OTEL_SERVICE_NAME: 'rally-api-test',
       OTEL_WORKER_SERVICE_NAME: 'rally-worker-test',
       APP_BASE_URL: 'http://localhost:5173',
+      // Entra BFF OIDC — test-only placeholders. Never used for real auth.
+      ENTRA_TENANT_ID: 'test-tenant',
+      ENTRA_CLIENT_ID: 'test-client',
+      ENTRA_CLIENT_SECRET: 'test-secret',
+      ENTRA_REDIRECT_URI: 'http://localhost:5173/v1/bff/callback',
     },
     include: ['libs/**/*.spec.ts', 'apps/**/*.spec.ts'],
     exclude: ['node_modules', 'dist'],

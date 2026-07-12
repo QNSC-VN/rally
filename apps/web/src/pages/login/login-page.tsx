@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Layers, ShieldCheck, Check, AlertCircle } from 'lucide-react'
-import { ENV, isSsoConfigured } from '@/shared/config/env'
+import { ENV } from '@/shared/config/env'
 
 // ── Microsoft logo SVG (official 4-square mark) ────────────────────────────
 function MicrosoftLogo() {
@@ -32,10 +32,11 @@ export function LoginPage() {
     setSsoLoading(true)
     setSsoError(null)
     try {
-      // eslint-disable-next-line boundaries/dependencies
-      const { triggerSsoLogin } = await import('@/app/auth/msal')
-      await triggerSsoLogin()
-      // Page redirects to Microsoft — execution stops here
+      // Same-origin BFF: hand off to the server-side login route. The browser
+      // navigates to Entra and returns with a session cookie already set — no
+      // in-browser tokens. Execution stops at the redirect.
+      const returnTo = new URLSearchParams(window.location.search).get('returnTo') ?? '/'
+      window.location.href = `/v1/bff/login?returnTo=${encodeURIComponent(returnTo)}`
     } catch {
       setSsoError('Could not initiate sign-in. Please try again.')
       setSsoLoading(false)
@@ -48,7 +49,10 @@ export function LoginPage() {
     setDevLoading(true)
     setDevError(null)
     try {
-      const res = await fetch(`${ENV.API_BASE_URL}/v1/auth/dev-login`, {
+      // The session lands on the server (same-origin /v1/bff); the browser holds
+      // no tokens.
+      const endpoint = '/v1/bff/dev-login'
+      const res = await fetch(endpoint, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -200,66 +204,65 @@ export function LoginPage() {
                 </div>
               </div>
               <p className="mt-2 text-[12px]" style={{ color: '#5c6478' }}>
-                {isSsoConfigured
-                  ? 'Use your organisational account to continue.'
-                  : 'Use your Workspace Admin account to continue.'}
+                Use your organisational account to continue.
               </p>
             </div>
 
             <div className="px-7 py-6">
               {/* ── SSO sign-in ──────────────────────────────────────────── */}
-              {isSsoConfigured ? (
-                <>
-                  {ssoError && (
-                    <div
-                      role="alert"
-                      className="mb-4 flex items-start gap-2 rounded px-3 py-2.5 text-[11px]"
-                      style={{
-                        color: '#b91c1c',
-                        backgroundColor: '#fef2f2',
-                        border: '1px solid #f0c7c1',
-                      }}
-                    >
-                      <AlertCircle size={14} className="mt-px shrink-0" />
-                      {ssoError}
-                    </div>
-                  )}
+              {ssoError && (
+                <div
+                  role="alert"
+                  className="mb-4 flex items-start gap-2 rounded px-3 py-2.5 text-[11px]"
+                  style={{
+                    color: '#b91c1c',
+                    backgroundColor: '#fef2f2',
+                    border: '1px solid #f0c7c1',
+                  }}
+                >
+                  <AlertCircle size={14} className="mt-px shrink-0" />
+                  {ssoError}
+                </div>
+              )}
 
-                  <button
-                    type="button"
-                    onClick={handleSsoLogin}
-                    disabled={ssoLoading}
-                    className="flex w-full items-center justify-center gap-3 rounded py-3 text-[13px] font-medium transition-colors disabled:opacity-60"
-                    style={{
-                      backgroundColor: '#fff',
-                      border: '1px solid #d9dee7',
-                      color: '#1a2234',
-                      boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = '#f5f7fa'
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = '#fff'
-                    }}
-                  >
-                    {ssoLoading ? (
-                      <span
-                        className="h-5 w-5 animate-spin rounded-full"
-                        style={{ border: '2px solid #d9dee7', borderTopColor: '#1d3f73' }}
-                        aria-label="Signing in…"
-                      />
-                    ) : (
-                      <MicrosoftLogo />
-                    )}
-                    {ssoLoading ? 'Redirecting to Microsoft…' : 'Sign in with Microsoft'}
-                  </button>
-                </>
-              ) : (
+              <button
+                type="button"
+                onClick={handleSsoLogin}
+                disabled={ssoLoading}
+                className="flex w-full items-center justify-center gap-3 rounded py-3 text-[13px] font-medium transition-colors disabled:opacity-60"
+                style={{
+                  backgroundColor: '#fff',
+                  border: '1px solid #d9dee7',
+                  color: '#1a2234',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#f5f7fa'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = '#fff'
+                }}
+              >
+                {ssoLoading ? (
+                  <span
+                    className="h-5 w-5 animate-spin rounded-full"
+                    style={{ border: '2px solid #d9dee7', borderTopColor: '#1d3f73' }}
+                    aria-label="Signing in…"
+                  />
+                ) : (
+                  <MicrosoftLogo />
+                )}
+                {ssoLoading ? 'Redirecting to Microsoft…' : 'Sign in with Microsoft'}
+              </button>
+              {/* ── Dev sign-in ─────────────────────────────────────────────
+                  Shown when VITE_DEV_LOGIN=true (any non-prod deployment), so QA
+                  exercises the identical same-origin session flow without an
+                  Entra tenant. Never enabled in production. */}
+              {ENV.DEV_LOGIN_ENABLED && (
                 <form onSubmit={handleDevLogin} className="flex flex-col gap-4">
                   <p className="text-[12px]" style={{ color: '#5c6478' }}>
-                    Single sign-on is not configured for this environment. Use a seeded account to
-                    continue (development only).
+                    Development only: sign in with a seeded account (mints a server-side BFF
+                    session).
                   </p>
 
                   {devError && (

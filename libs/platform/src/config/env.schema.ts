@@ -100,10 +100,35 @@ export const EnvSchema = z.object({
   SESSION_CLEANUP_OLDER_THAN_DAYS: z.coerce.number().int().positive().default(7),
 
   // SSO — Microsoft Entra ID (Azure AD) OpenID Connect
-  // Rally is SSO-only: when both vars are set, the /v1/auth/sso endpoint is the
-  // sole authentication path. Both must be configured in every deployed env.
-  ENTRA_TENANT_ID: z.string().optional(),
-  ENTRA_CLIENT_ID: z.string().optional(),
+  // Rally authenticates exclusively through the server-side BFF flow, so these
+  // Entra credentials are mandatory in every environment; the API refuses to
+  // boot without them.
+  ENTRA_TENANT_ID: z.string().min(1),
+  ENTRA_CLIENT_ID: z.string().min(1),
+
+  // ── BFF (Backend-for-Frontend) — server-side OIDC session ──────────────────
+  // The API is a *confidential* OIDC client: it runs the Authorization-Code +
+  // PKCE flow server-side and issues an opaque, httpOnly `__Host-` session
+  // cookie, so Entra/JWT tokens never reach the browser. This is rally's sole
+  // authentication mode — every /bff/* route is always active.
+  /** Entra confidential-client secret. */
+  ENTRA_CLIENT_SECRET: z.string().min(1),
+  /**
+   * Absolute URL of the BFF OIDC callback, registered as a redirect URI on the
+   * Entra app registration, e.g. https://rally-dev.qnsc.vn/v1/bff/callback.
+   */
+  ENTRA_REDIRECT_URI: z.string().url(),
+  /**
+   * Same-origin path the browser lands on after a successful BFF login when no
+   * safe `returnTo` was supplied. Must be a root-relative path.
+   */
+  BFF_POST_LOGIN_REDIRECT: z.string().default('/'),
+  /** Server-side BFF session lifetime (seconds). Defaults to 30 days. */
+  BFF_SESSION_TTL_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(30 * 24 * 60 * 60),
 
   /**
    * Comma-separated SSO (Entra) emails auto-granted workspace_admin on first login.

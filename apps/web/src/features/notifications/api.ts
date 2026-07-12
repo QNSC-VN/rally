@@ -5,7 +5,6 @@ import { useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
-import { getAccessToken } from '@/shared/api/http-client'
 import { ENV } from '@/shared/config/env'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -100,7 +99,7 @@ export function useNotificationSse(
 
   useEffect(() => {
     let aborted = false
-    let lastEventId: string | null = null  // persisted across reconnects
+    let lastEventId: string | null = null // persisted across reconnects
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null
     let activeReader: ReadableStreamDefaultReader<Uint8Array> | null = null
     const controller = new AbortController()
@@ -111,13 +110,10 @@ export function useNotificationSse(
 
     async function connect() {
       reconnectTimer = null
-      const token = getAccessToken()
-      if (!token) {
-        scheduleReconnect(5_000)
-        return
-      }
 
-      const headers: Record<string, string> = { Authorization: `Bearer ${token}` }
+      // Cookie-authenticated via __Host-rally_session (the browser holds no
+      // token); the shared guard refreshes the access token server-side.
+      const headers: Record<string, string> = {}
       if (lastEventId) headers['Last-Event-ID'] = lastEventId
 
       try {
@@ -204,7 +200,9 @@ export function useNotificationSse(
     return () => {
       aborted = true
       controller.abort()
-      activeReader?.cancel().catch(() => { /* noop */ })
+      activeReader?.cancel().catch(() => {
+        /* noop */
+      })
       if (reconnectTimer !== null) clearTimeout(reconnectTimer)
     }
     // Intentionally empty deps — connect runs once; token is read dynamically inside.

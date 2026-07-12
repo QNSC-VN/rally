@@ -267,9 +267,6 @@ importers:
 
   apps/web:
     dependencies:
-      '@azure/msal-browser':
-        specifier: ^5.15.0
-        version: 5.16.0
       '@dnd-kit/core':
         specifier: ^6.3.1
         version: 6.3.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -601,14 +598,6 @@ packages:
   '@aws/lambda-invoke-store@0.3.0':
     resolution: {integrity: sha512-sl4Bm6yiMNYrZKkqqDFWN0UfnWhlS8ivKxrYl+6t0gCLrqr8y3B2IqZZbFRkfaVVp7C/baApyh71P+LeE1A2sQ==}
     engines: {node: '>=18.0.0'}
-
-  '@azure/msal-browser@5.16.0':
-    resolution: {integrity: sha512-Wc75FGnQgYpsm5jsOqn1H8AXsh8vXruA6vwip1nhjrJxwby7juxKAIVLr7csepmHiwdZGr6EwI5BlSc3PizEtQ==}
-    engines: {node: '>=0.8.0'}
-
-  '@azure/msal-common@16.11.0':
-    resolution: {integrity: sha512-UikJOtMwkFpZNzTH6Dqk8UTUPbow15zH3e0UjGYZy69lYENW/S05gMLhbxI2eonz66uALhIljvhsSMEb6+O30g==}
-    engines: {node: '>=0.8.0'}
 
   '@babel/code-frame@7.29.7':
     resolution: {integrity: sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw==}
@@ -8478,12 +8467,6 @@ snapshots:
       tslib: 2.8.1
 
   '@aws/lambda-invoke-store@0.3.0': {}
-
-  '@azure/msal-browser@5.16.0':
-    dependencies:
-      '@azure/msal-common': 16.11.0
-
-  '@azure/msal-common@16.11.0': {}
 
   '@babel/code-frame@7.29.7':
     dependencies:

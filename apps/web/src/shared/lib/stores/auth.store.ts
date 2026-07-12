@@ -1,6 +1,5 @@
 import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
-import { setAccessToken } from '@/shared/api/http-client'
 import { queryClient } from '@/shared/api/query-client'
 import { ENV } from '@/shared/config/env'
 
@@ -37,7 +36,7 @@ interface AuthState {
   isLoading: boolean
   isSwitchingWorkspace: boolean
 
-  setUser: (user: AuthUser, accessToken: string, memberships?: WorkspaceMembership[]) => void
+  setUser: (user: AuthUser, memberships?: WorkspaceMembership[]) => void
   clearAuth: () => void
   setLoading: (loading: boolean) => void
   switchWorkspace: (workspaceId: string) => Promise<void>
@@ -48,81 +47,75 @@ interface AuthState {
 
 const API = ENV.API_BASE_URL
 
-export const useAuthStore = create<AuthState>()(devtools((set, get) => ({
-  user: null,
-  memberships: [],
-  activeWorkspaceId: null,
-  isAuthenticated: false,
-  isLoading: true,
-  isSwitchingWorkspace: false,
-
-  setUser: (user, accessToken, memberships = []) => {
-    setAccessToken(accessToken)
-    const activeWorkspaceId = memberships[0]?.workspaceId ?? null
-    set({ user, memberships, activeWorkspaceId, isAuthenticated: true, isLoading: false })
-  },
-
-  clearAuth: () => {
-    setAccessToken(null)
-    set({
+export const useAuthStore = create<AuthState>()(
+  devtools(
+    (set, get) => ({
       user: null,
       memberships: [],
       activeWorkspaceId: null,
       isAuthenticated: false,
-      isLoading: false,
-    })
-  },
+      isLoading: true,
+      isSwitchingWorkspace: false,
 
-  setLoading: (isLoading) => set({ isLoading }),
+      setUser: (user, memberships = []) => {
+        const activeWorkspaceId = memberships[0]?.workspaceId ?? null
+        set({ user, memberships, activeWorkspaceId, isAuthenticated: true, isLoading: false })
+      },
 
-  switchWorkspace: async (workspaceId: string) => {
-    const { activeWorkspaceId } = get()
-    if (workspaceId === activeWorkspaceId) return
+      clearAuth: () => {
+        set({
+          user: null,
+          memberships: [],
+          activeWorkspaceId: null,
+          isAuthenticated: false,
+          isLoading: false,
+        })
+      },
 
-    set({ isSwitchingWorkspace: true })
-    try {
-      const { getAccessToken, scheduleProactiveRefresh } = await import('@/shared/api/http-client')
-      const res = await fetch(`${API}/v1/auth/switch-workspace`, {
-        method: 'POST',
-        credentials: 'include',
-        referrerPolicy: 'no-referrer',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${getAccessToken()}`,
-        },
-        body: JSON.stringify({ workspaceId }),
-      })
+      setLoading: (isLoading) => set({ isLoading }),
 
-      if (!res.ok) throw new Error('Switch failed')
+      switchWorkspace: async (workspaceId: string) => {
+        const { activeWorkspaceId } = get()
+        if (workspaceId === activeWorkspaceId) return
 
-      const { accessToken, expiresIn } = (await res.json()) as {
-        accessToken: string
-        expiresIn: number
-      }
+        set({ isSwitchingWorkspace: true })
+        try {
+          // The server re-issues tokens onto the SAME session; the browser keeps
+          // its session cookie and holds no tokens, so there is nothing to store
+          // client-side. A 204 means the session now resolves to the new ws.
+          const res = await fetch(`${API}/v1/bff/switch-workspace`, {
+            method: 'POST',
+            credentials: 'include',
+            referrerPolicy: 'no-referrer',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ workspaceId }),
+          })
+          if (!res.ok) throw new Error('Switch failed')
 
-      setAccessToken(accessToken)
-      if (expiresIn) scheduleProactiveRefresh(expiresIn)
-      queryClient.clear()
+          queryClient.clear()
 
-      // Re-order memberships so switched workspace is first
-      const { memberships } = get()
-      const reordered = [
-        ...memberships.filter((m) => m.workspaceId === workspaceId),
-        ...memberships.filter((m) => m.workspaceId !== workspaceId),
-      ]
-      set({ activeWorkspaceId: workspaceId, memberships: reordered })
-    } finally {
-      set({ isSwitchingWorkspace: false })
-    }
-  },
+          // Re-order memberships so switched workspace is first
+          const { memberships } = get()
+          const reordered = [
+            ...memberships.filter((m) => m.workspaceId === workspaceId),
+            ...memberships.filter((m) => m.workspaceId !== workspaceId),
+          ]
+          set({ activeWorkspaceId: workspaceId, memberships: reordered })
+        } finally {
+          set({ isSwitchingWorkspace: false })
+        }
+      },
 
-  hasPermission: (code) => {
-    const { user } = get()
-    if (!user) return false
-    if (user.permissions.includes('workspace:*')) return true
-    if (user.permissions.includes(code)) return true
-    const [ns, action] = code.split(':')
-    if (action && user.permissions.includes(`${ns}:*`)) return true
-    return false
-  },
-}), { name: 'auth-store' }))
+      hasPermission: (code) => {
+        const { user } = get()
+        if (!user) return false
+        if (user.permissions.includes('workspace:*')) return true
+        if (user.permissions.includes(code)) return true
+        const [ns, action] = code.split(':')
+        if (action && user.permissions.includes(`${ns}:*`)) return true
+        return false
+      },
+    }),
+    { name: 'auth-store' },
+  ),
+)

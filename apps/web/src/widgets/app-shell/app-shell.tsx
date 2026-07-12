@@ -22,8 +22,7 @@ import { useWorkspaces } from '@/features/workspaces/api'
 import { useProjects } from '@/features/projects/api'
 import { useProjectTeams } from '@/features/teams/api'
 import { useNotificationUnreadCount, useNotificationSse } from '@/features/notifications/api'
-import { cancelProactiveRefresh, getAccessToken } from '@/shared/api/http-client'
-import { apiClient } from '@/shared/api/http-client'
+import { ENV } from '@/shared/config/env'
 import { isFeatureEnabled } from '@/shared/config/feature-flags'
 import { queryClient } from '@/shared/api/query-client'
 import { NotificationPopover } from '@/widgets/notification-popover/notification-popover'
@@ -181,36 +180,19 @@ export function AppShell() {
   }, [projectId])
 
   async function handleSignOut() {
-    // Read authMethod from the JWT before clearAuth() nulls the in-memory token.
-    // isSsoConfigured is env-based (always true when SSO vars are set) so it
-    // cannot distinguish password sessions from SSO sessions — use the token claim.
-    let wasSSO = false
-    const token = getAccessToken()
-    if (token) {
-      try {
-        const payload = JSON.parse(atob(token.split('.')[1]!)) as { authMethod?: string }
-        wasSSO = payload.authMethod === 'sso'
-      } catch { /* malformed token — treat as password session */ }
-    }
-
+    // Revoke the server-side session (clears the __Host-rally_session cookie)
+    // and return to login. The browser holds no tokens to clear.
     try {
-      await apiClient.POST('/v1/auth/logout', {})
+      await fetch(`${ENV.API_BASE_URL}/v1/bff/logout`, {
+        method: 'POST',
+        credentials: 'include',
+        referrerPolicy: 'no-referrer',
+      })
     } catch {
       // Ignore network errors on sign-out — always clear local state
     }
     clearAuth()
-    cancelProactiveRefresh()
     toast.success('Signed out')
-
-    // Only redirect to Microsoft to terminate the Entra session when the user
-    // actually signed in via SSO. Password-login users go straight to /login.
-    if (wasSSO) {
-      // eslint-disable-next-line boundaries/dependencies
-      const { msalLogoutRedirect } = await import('@/app/auth/msal')
-      await msalLogoutRedirect(window.location.origin + '/login')
-      return
-    }
-
     await navigate({ to: '/login' })
   }
 
@@ -485,7 +467,11 @@ export function AppShell() {
                         <Users size={12} className="shrink-0" style={{ color: '#5c6478' }} />
                         <span className="truncate text-[11px]">All Teams</span>
                         {!team && (
-                          <Check size={10} className="ml-auto shrink-0" style={{ color: '#1d3f73' }} />
+                          <Check
+                            size={10}
+                            className="ml-auto shrink-0"
+                            style={{ color: '#1d3f73' }}
+                          />
                         )}
                       </button>
                       {activeTeams.map((t) => (
@@ -509,7 +495,11 @@ export function AppShell() {
                           </span>
                           <span className="truncate text-[11px]">{t.name}</span>
                           {team === t.id && (
-                            <Check size={10} className="ml-auto shrink-0" style={{ color: '#1d3f73' }} />
+                            <Check
+                              size={10}
+                              className="ml-auto shrink-0"
+                              style={{ color: '#1d3f73' }}
+                            />
                           )}
                         </button>
                       ))}

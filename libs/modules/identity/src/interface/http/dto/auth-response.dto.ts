@@ -21,16 +21,6 @@ const WorkspaceMembershipSchema = z.object({
   roleName: z.string().nullable(),
 });
 
-export const AuthTokenResponseSchema = z.object({
-  accessToken: z.string(),
-  expiresIn: z.number().describe('Seconds until access token expires'),
-  user: UserProfileSchema,
-  /** All active workspace memberships, most-recently-active first. Drives the workspace switcher. */
-  memberships: z.array(WorkspaceMembershipSchema),
-});
-
-export class AuthTokenResponseDto extends createZodDto(AuthTokenResponseSchema) {}
-
 export const UserProfileResponseSchema = UserProfileSchema.extend({
   role: z.string(),
   permissions: z.array(z.string()),

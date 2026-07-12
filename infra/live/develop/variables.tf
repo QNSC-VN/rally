@@ -16,13 +16,13 @@ variable "cloudflare_account_id" {
 
 variable "entra_tenant_id" {
   type        = string
-  description = "Microsoft Entra (Azure AD) tenant ID — leave empty to disable SSO"
+  description = "Microsoft Entra (Azure AD) tenant ID — required (BFF auth); injected via TF_VAR in CI"
   default     = ""
 }
 
 variable "entra_client_id" {
   type        = string
-  description = "Microsoft Entra (Azure AD) app client ID — leave empty to disable SSO"
+  description = "Microsoft Entra (Azure AD) app client ID — required (BFF auth); injected via TF_VAR in CI"
   default     = ""
 }
 

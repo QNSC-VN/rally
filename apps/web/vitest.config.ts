@@ -14,7 +14,7 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
-    include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    include: ['src/**/*.{test,spec}.{ts,tsx}', 'functions/**/*.{test,spec}.{ts,tsx}'],
     exclude: ['src/test/e2e/**', 'node_modules', 'dist'],
     coverage: {
       provider: 'v8',
@@ -25,10 +25,7 @@ export default defineConfig({
       // to the pure-logic layer (stores, hooks, utils) where unit tests are the
       // right tool, and held to a real 60% there. UI coverage lives in e2e.
       include: ['src/shared/lib/**/*.{ts,tsx}'],
-      exclude: [
-        'src/test/**',
-        'src/**/*.d.ts',
-      ],
+      exclude: ['src/test/**', 'src/**/*.d.ts'],
       thresholds: {
         lines: 60,
         functions: 60,
