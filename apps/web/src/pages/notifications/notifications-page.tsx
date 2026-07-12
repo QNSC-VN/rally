@@ -1,30 +1,44 @@
 import { useState } from 'react'
+import { useNavigate } from '@tanstack/react-router'
 import { AlertTriangle, Bell, CheckCheck, Circle, CircleDot } from 'lucide-react'
 import { toast } from 'sonner'
 import { BRAND } from '@/shared/config/brand'
+import { relativeTime } from '@/shared/lib/utils'
 import {
   useNotifications,
   useMarkNotificationRead,
   useMarkAllNotificationsRead,
 } from '@/features/notifications/api'
 
-function relativeTime(iso: string): string {
-  const diffMs = Date.now() - new Date(iso).getTime()
-  const mins = Math.floor(diffMs / 60_000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  return `${Math.floor(hrs / 24)}d ago`
-}
-
 export function NotificationsPage() {
+  const navigate = useNavigate()
   const [unreadOnly, setUnreadOnly] = useState(false)
   const { data: notifications = [], isLoading, isError } = useNotifications(unreadOnly)
   const markRead = useMarkNotificationRead()
   const markAll = useMarkAllNotificationsRead()
 
   const unreadCount = notifications.filter((n) => !n.isRead).length
+
+  function handleNotificationClick(n: { resourceType: string | null; resourceId: string | null; id: string; isRead: boolean }) {
+    // Mark as read then navigate
+    if (!n.isRead) {
+      void markRead.mutateAsync(n.id)
+    }
+    if (n.resourceType && n.resourceId) {
+      const routeMap: Record<string, string> = {
+        work_item: '/item/$itemKey',
+        task: '/item/$itemKey',
+        iteration: '/timeboxes',
+        release: '/releases/$releaseId',
+        milestone: '/milestones/$milestoneId',
+        project: '/projects',
+      }
+      const route = routeMap[n.resourceType]
+      if (route) {
+        void navigate({ to: route, params: { itemKey: n.resourceId, releaseId: n.resourceId, milestoneId: n.resourceId } })
+      }
+    }
+  }
 
   async function handleMarkAll() {
     try {
@@ -126,17 +140,18 @@ export function NotificationsPage() {
             {notifications.map((n) => (
               <li
                 key={n.id}
-                className="flex items-start gap-3 px-6 py-4 transition-colors hover:bg-[#f7f8fa]"
+                className="flex items-start gap-3 px-6 py-4 transition-colors hover:bg-[#f7f8fa] cursor-pointer"
                 style={{
                   borderBottom: `1px solid ${BRAND.borderInner}`,
                   backgroundColor: n.isRead ? undefined : '#f5f8ff',
                 }}
+                onClick={() => handleNotificationClick(n)}
               >
                 {/* Read indicator */}
                 <button
                   title={n.isRead ? 'Read' : 'Mark as read'}
                   disabled={n.isRead || markRead.isPending}
-                  onClick={() => void markRead.mutateAsync(n.id)}
+                  onClick={(e) => { e.stopPropagation(); void markRead.mutateAsync(n.id) }}
                   className="mt-0.5 shrink-0 transition-opacity hover:opacity-70 disabled:cursor-default"
                 >
                   {n.isRead ? (

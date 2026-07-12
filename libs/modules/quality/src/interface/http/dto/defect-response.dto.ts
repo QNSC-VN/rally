@@ -1,0 +1,47 @@
+import { createZodDto } from 'nestjs-zod';
+import { z } from 'zod';
+
+export const DefectMetricsSchema = z.object({
+  openDefects: z.number(),
+  critical: z.number(),
+  inProgress: z.number(),
+  verifiedAccepted: z.number(),
+  reopened: z.number(),
+  blockers: z.number(),
+});
+
+export const DefectRowSchema = z.object({
+  id: z.string().uuid(),
+  itemKey: z.string(),
+  title: z.string(),
+  type: z.string(),
+  priority: z.string(),
+  severity: z.enum(['critical', 'high', 'medium', 'low']).nullable(),
+  foundInEnvironment: z.enum(['development', 'staging', 'production', 'testing']).nullable(),
+  rootCause: z.enum(['requirements', 'design', 'code', 'test', 'integration', 'other']).nullable(),
+  resolution: z.enum(['fixed', 'wont_fix', 'duplicate', 'cannot_reproduce', 'deferred', 'by_design']).nullable(),
+  foundInReleaseId: z.string().uuid().nullable(),
+  foundInReleaseName: z.string().nullable(),
+  assigneeId: z.string().uuid().nullable(),
+  assigneeName: z.string().nullable(),
+  scheduleState: z.string(),
+  iterationId: z.string().uuid().nullable(),
+  iterationName: z.string().nullable(),
+  releaseId: z.string().uuid().nullable(),
+  releaseName: z.string().nullable(),
+  parentId: z.string().uuid().nullable(),
+  parentKey: z.string().nullable(),
+  parentTitle: z.string().nullable(),
+  isBlocked: z.boolean(),
+  defectState: z.enum(['submitted', 'open', 'fixed', 'closed', 'closed_declined']).nullable(),
+  fixedInBuild: z.string().max(255).nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const DefectListResponseSchema = z.object({
+  metrics: DefectMetricsSchema,
+  data: z.array(DefectRowSchema),
+});
+
+export class DefectListResponseDto extends createZodDto(DefectListResponseSchema) {}

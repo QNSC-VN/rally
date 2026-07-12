@@ -47,3 +47,6 @@ junit.xml
 *.tfstate
 *.tfstate.*
 *.tfplan
+
+# Claude artifacts
+.claude/

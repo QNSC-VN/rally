@@ -41,6 +41,13 @@ import {
   teamMemberStatusEnum,
   attachmentStatusEnum,
   activityEntityTypeEnum,
+  milestoneStatusEnum,
+  defectSeverityEnum,
+  defectEnvironmentEnum,
+  defectRootCauseEnum,
+  defectResolutionEnum,
+  defectStateEnum,
+  taskStateEnum,
 } from './enums';
 
 export const workSchema = pgSchema('work');
@@ -71,13 +78,18 @@ export const projects = workSchema.table(
 );
 
 // ── project_counters (item_key seq) ───────────────────────────────────────
+// Per-project, per-type sequential counter. Composite PK (projectId, itemType)
+// ensures each work-item type has its own numbering sequence.
 
 export const projectCounters = workSchema.table('project_counters', {
-  projectId: uuid('project_id').primaryKey(),
+  projectId: uuid('project_id').notNull(),
+  itemType: workItemTypeEnum('item_type').notNull().default('story'),
   workspaceId: uuid('workspace_id').notNull(),
   lastItemNumber: integer('last_item_number').notNull().default(0),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => [
+  { pk: primaryKey({ columns: [table.projectId, table.itemType] }) },
+]);
 
 // ── work_items ────────────────────────────────────────────────────────────
 
@@ -111,6 +123,16 @@ export const workItems = workSchema.table(
     // Dedicated rich-text fields (sanitized server-side), distinct from comments.
     notes: text('notes'),
     releaseNotes: text('release_notes'),
+    devOwnerId: uuid('dev_owner_id'),
+    // P3.4 — Defect-specific fields (only meaningful when type = 'defect')
+    severity: defectSeverityEnum('severity'),
+    foundInEnvironment: defectEnvironmentEnum('found_in_environment'),
+    foundInReleaseId: uuid('found_in_release_id').references(() => releases.id, { onDelete: 'set null' }),
+    // P3.4 — Root cause and resolution (only meaningful when type = 'defect')
+    rootCause: defectRootCauseEnum('root_cause'),
+    resolution: defectResolutionEnum('resolution'),
+    defectState: defectStateEnum('defect_state'),
+    fixedInBuild: varchar('fixed_in_build', { length: 255 }),
     isBlocked: boolean('is_blocked').notNull().default(false),
     blockedReason: text('blocked_reason'),
     rank: varchar('rank', { length: 255 }).notNull().default(''),
@@ -261,9 +283,15 @@ export const releases = workSchema.table(
     projectId: uuid('project_id').notNull(),
     name: varchar('name', { length: 255 }).notNull(),
     description: text('description'),
-    status: releaseStatusEnum('status').notNull().default('planned'),
-    targetDate: date('target_date'),
-    releasedAt: timestamp('released_at', { withTimezone: true }),
+    status: releaseStatusEnum('status').notNull().default('planning'),
+    startDate: date('start_date'),
+    releaseDate: date('release_date'),
+    plannedVelocity: integer('planned_velocity'),
+    planEstimate: numeric('plan_estimate', { precision: 8, scale: 2 }),
+    version: varchar('version', { length: 100 }),
+    theme: text('theme'),
+    notes: text('notes'),
+    releaseNotes: text('release_notes'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -517,5 +545,174 @@ export const workItemWatchers = workSchema.table(
     pk: primaryKey({ columns: [t.workItemId, t.userId] }),
     userIdx: index('ix_wiw_user').on(t.userId),
     workspaceIdx: index('ix_wiw_workspace').on(t.workspaceId),
+  }),
+);
+
+// ── release_daily_snapshots (burndown / scope tracking read model) ───────
+
+export const releaseDailySnapshots = workSchema.table(
+  'release_daily_snapshots',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    releaseId: uuid('release_id').notNull(),
+    snapshotDate: date('snapshot_date').notNull(),
+    totalPoints: numeric('total_points', { precision: 8, scale: 2 }).notNull().default('0'),
+    completedPoints: numeric('completed_points', { precision: 8, scale: 2 }).notNull().default('0'),
+    remainingPoints: numeric('remaining_points', { precision: 8, scale: 2 }).notNull().default('0'),
+    totalItems: integer('total_items').notNull().default(0),
+    completedItems: integer('completed_items').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    uniqueRelease: uniqueIndex('uq_rds_release_date').on(t.releaseId, t.snapshotDate),
+    releaseIdx: index('ix_rds_release').on(t.releaseId),
+  }),
+);
+
+// ── tasks (P3 refactor — separate from work_items) ──────────────────────
+// Child execution items belonging to a parent work item (Story / Defect).
+// US and DE stay in work_items; Tasks get their own table.
+
+export const tasks = workSchema.table(
+  'tasks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id').notNull(),
+    projectId: uuid('project_id').notNull(),
+    parentId: uuid('parent_id').notNull().references(() => workItems.id, { onDelete: 'cascade' }),
+    title: varchar('title', { length: 500 }).notNull(),
+    description: text('description'),
+    state: taskStateEnum('state').notNull().default('defined'),
+    assigneeId: uuid('assignee_id'),
+    teamId: uuid('team_id'),
+    iterationId: uuid('iteration_id'),
+    estimateHours: numeric('estimate_hours', { precision: 8, scale: 2 }),
+    todoHours: numeric('todo_hours', { precision: 8, scale: 2 }),
+    actualHours: numeric('actual_hours', { precision: 8, scale: 2 }),
+    rank: varchar('rank', { length: 255 }).notNull().default(''),
+    createdBy: uuid('created_by').notNull(),
+    updatedBy: uuid('updated_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (t) => ({
+    workspaceIdx: index('ix_tasks_workspace').on(t.workspaceId),
+    projectIdx: index('ix_tasks_project').on(t.projectId),
+    parentIdx: index('ix_tasks_parent').on(t.parentId),
+    iterationIdx: index('ix_tasks_iteration').on(t.iterationId),
+    assigneeIdx: index('ix_tasks_assignee').on(t.assigneeId),
+    teamIdx: index('ix_tasks_team').on(t.teamId),
+    rankIdx: index('ix_tasks_rank').on(t.parentId, t.rank),
+  }),
+);
+
+// ── milestones (P3.3) ────────────────────────────────────────────────────
+// Project-level milestone that can link to multiple releases.
+// Target dates are derived from linked releases (read-only, computed).
+
+export const milestones = workSchema.table(
+  'milestones',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('workspace_id').notNull(),
+    projectId: uuid('project_id').notNull(),
+    name: varchar('name', { length: 255 }).notNull(),
+    description: text('description'),
+    notes: text('notes'),
+    status: milestoneStatusEnum('status').notNull().default('planned'),
+    ownerId: uuid('owner_id'),
+    targetStartDate: date('target_start_date'),
+    targetEndDate: date('target_end_date'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    tenantIdx: index('ix_milestones_tenant').on(t.tenantId),
+    projectIdx: index('ix_milestones_project').on(t.projectId),
+  }),
+);
+
+// ── milestone_releases (link table) ──────────────────────────────────────
+
+export const milestoneReleases = workSchema.table(
+  'milestone_releases',
+  {
+    milestoneId: uuid('milestone_id').notNull(),
+    releaseId: uuid('release_id').notNull(),
+    linkedAt: timestamp('linked_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.milestoneId, t.releaseId] }),
+    milestoneIdx: index('ix_mr_milestone').on(t.milestoneId),
+    releaseIdx: index('ix_mr_release').on(t.releaseId),
+  }),
+);
+
+// ── milestone_projects (P3.3 multi-project support) ────────────────────
+export const milestoneProjects = workSchema.table(
+  'milestone_projects',
+  {
+    milestoneId: uuid('milestone_id').notNull(),
+    projectId: uuid('project_id').notNull(),
+    linkedAt: timestamp('linked_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.milestoneId, t.projectId] }),
+    milestoneIdx: index('ix_mp_milestone').on(t.milestoneId),
+    projectIdx: index('ix_mp_project').on(t.projectId),
+  }),
+);
+
+// ── milestone_teams (P3.3 multi-team support) ─────────────────────────
+export const milestoneTeams = workSchema.table(
+  'milestone_teams',
+  {
+    milestoneId: uuid('milestone_id').notNull(),
+    teamId: uuid('team_id').notNull(),
+    linkedAt: timestamp('linked_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.milestoneId, t.teamId] }),
+    milestoneIdx: index('ix_mt_milestone').on(t.milestoneId),
+    teamIdx: index('ix_mt_team').on(t.teamId),
+  }),
+);
+
+// ── milestone_artifacts (P3.3 — US/DE assigned to milestone) ──────────
+export const milestoneArtifacts = workSchema.table(
+  'milestone_artifacts',
+  {
+    milestoneId: uuid('milestone_id').notNull(),
+    workItemId: uuid('work_item_id').notNull().references(() => workItems.id, { onDelete: 'cascade' }),
+    assignedAt: timestamp('assigned_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.milestoneId, t.workItemId] }),
+    milestoneIdx: index('ix_ma_milestone').on(t.milestoneId),
+    workItemIdx: index('ix_ma_work_item').on(t.workItemId),
+  }),
+);
+
+// ── member_capacity (P3.1 Team Status) ─────────────────────────────────
+
+export const memberCapacity = workSchema.table(
+  'member_capacity',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id').notNull(),
+    projectId: uuid('project_id').notNull(),
+    teamId: uuid('team_id').notNull(),
+    iterationId: uuid('iteration_id').notNull(),
+    userId: uuid('user_id').notNull(),
+    capacityHours: numeric('capacity_hours', { precision: 8, scale: 2 }).notNull().default('0'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    uniqueMember: uniqueIndex('uq_member_capacity').on(t.projectId, t.teamId, t.iterationId, t.userId),
+    workspaceIdx: index('ix_mc_workspace').on(t.workspaceId),
+    iterationIdx: index('ix_mc_iteration').on(t.iterationId),
+    userIdx: index('ix_mc_user').on(t.userId),
   }),
 );

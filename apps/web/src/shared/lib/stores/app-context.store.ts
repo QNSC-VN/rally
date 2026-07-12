@@ -14,10 +14,15 @@ export interface ProjectContext {
   projectName: string
 }
 
+export interface TeamContext {
+  teamId: string
+  teamName: string
+}
+
 interface AppContextState {
   workspace: WorkspaceContext | null
   project: ProjectContext | null
-  team: string | null
+  team: TeamContext | null
   sidebarCollapsed: boolean
   commandPaletteOpen: boolean
   /** Static feature flags for the current deployment. */
@@ -25,7 +30,7 @@ interface AppContextState {
 
   setWorkspace: (ws: WorkspaceContext) => void
   setProject: (project: ProjectContext | null) => void
-  setTeam: (team: string | null) => void
+  setTeam: (team: TeamContext | null) => void
   toggleSidebar: () => void
   setCommandPalette: (open: boolean) => void
   isFeatureEnabled: (flag: string) => boolean

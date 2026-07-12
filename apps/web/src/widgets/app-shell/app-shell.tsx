@@ -64,6 +64,12 @@ const NAV_ITEMS: NavItem[] = [
         featureFlag: 'feature.timeboxes',
         permission: 'iteration:view',
       },
+      {
+        path: '/milestones',
+        label: 'Milestones',
+        featureFlag: 'feature.milestones',
+        permission: 'milestone:view',
+      },
     ],
   },
   {
@@ -78,13 +84,33 @@ const NAV_ITEMS: NavItem[] = [
         featureFlag: 'feature.iteration-status',
         permission: 'work_item:view',
       },
+      {
+        path: '/team-status',
+        label: 'Team Status',
+        featureFlag: 'feature.team-status',
+        permission: 'work_item:view',
+      },
+      {
+        path: '/team-board',
+        label: 'Team Board',
+        featureFlag: 'feature.team-board', // Not active or disabled by feature flag
+        permission: 'work_item:view',
+      },
     ],
   },
   {
-    path: '/quality',
+    path: '/quality/defects',
     label: 'Quality',
     featureFlag: 'feature.quality',
     permission: 'work_item:view',
+    children: [
+      {
+        path: '/quality/defects',
+        label: 'Defects',
+        featureFlag: 'feature.quality',
+        permission: 'work_item:view',
+      },
+    ],
   },
   {
     path: '/portfolio',
@@ -153,9 +179,7 @@ export function AppShell() {
   // Teams for the selected project — powers the context Team selector (SHELL-FR-006)
   const { data: projectTeams = [] } = useProjectTeams(project?.projectId)
   const activeTeams = projectTeams.filter((t) => t.status === 'active')
-  const selectedTeamName = team
-    ? (activeTeams.find((t) => t.id === team)?.name ?? 'All Teams')
-    : 'All Teams'
+  const selectedTeamName = team?.teamName ?? 'All Teams'
   useEffect(() => {
     if (!workspaces || workspaces.length === 0) return
     const first = workspaces[0]
@@ -178,6 +202,15 @@ export function AppShell() {
       void queryClient.invalidateQueries()
     }
   }, [projectId])
+
+  // Invalidate work-item queries when the team context changes so that
+  // backlog / iteration-status / home pages re-fetch with the new teamId filter.
+  const teamId = team?.teamId
+  useEffect(() => {
+    if (projectId) {
+      void queryClient.invalidateQueries({ queryKey: ['work-items'] })
+    }
+  }, [teamId, projectId])
 
   async function handleSignOut() {
     // Revoke the server-side session (clears the __Host-rally_session cookie)
@@ -478,13 +511,13 @@ export function AppShell() {
                         <button
                           key={t.id}
                           onClick={() => {
-                            setTeam(t.id)
+                            setTeam({ teamId: t.id, teamName: t.name })
                             closeAll()
                           }}
                           className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left hover:bg-[#f4f6f9]"
                           style={{
-                            color: team === t.id ? '#1d3f73' : '#1a2234',
-                            fontWeight: team === t.id ? 600 : 400,
+                            color: team?.teamId === t.id ? '#1d3f73' : '#1a2234',
+                            fontWeight: team?.teamId === t.id ? 600 : 400,
                           }}
                         >
                           <span
@@ -494,12 +527,8 @@ export function AppShell() {
                             {t.key}
                           </span>
                           <span className="truncate text-[11px]">{t.name}</span>
-                          {team === t.id && (
-                            <Check
-                              size={10}
-                              className="ml-auto shrink-0"
-                              style={{ color: '#1d3f73' }}
-                            />
+                          {team?.teamId === t.id && (
+                            <Check size={10} className="ml-auto shrink-0" style={{ color: '#1d3f73' }} />
                           )}
                         </button>
                       ))}

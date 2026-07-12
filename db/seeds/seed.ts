@@ -23,16 +23,7 @@ import { uuidv7 } from 'uuidv7';
 import { and, eq, sql } from 'drizzle-orm';
 import * as schema from '../schema';
 // Direct imports to avoid barrel tsx/CJS resolution edge cases at runtime.
-import {
-  projectCounters,
-  projectMembers,
-  projectTeams,
-  workItems,
-  iterations,
-  releases,
-  teams,
-  teamMembers,
-} from '../schema/work';
+import { projectCounters, projectMembers, projectTeams, workItems, iterations, releases, teams, teamMembers, tasks } from '../schema/work';
 import { userRoleAssignments } from '../schema/access';
 import { ssoConnections } from '../schema/identity';
 import {
@@ -57,6 +48,12 @@ const DEFAULT_WORKFLOW_STATUSES = [
 ] as const;
 
 // Assigned inside seed() before any helper function runs.
+
+function getDeterministicRank(itemKey: string): string {
+  const match = itemKey.match(/\d+/);
+  if (!match) return 'a0000';
+  return 'a' + match[0].padStart(4, '0');
+}
 
 let db: ReturnType<typeof drizzle<typeof schema>>;
 
@@ -173,11 +170,14 @@ async function seedProject(project: {
   }
   if (!actualId) return; // should never happen
 
-  // 2. Initialise the item-key counter (mirrors ProjectsService.createProject)
-  await db
-    .insert(schema.projectCounters)
-    .values({ projectId: actualId, workspaceId: WORKSPACE_ID, lastItemNumber: 0 })
-    .onConflictDoNothing();
+  // 2. Initialise the item-key counter per work-item type (mirrors ProjectsService.createProject)
+  const counterTypes = ['initiative', 'feature', 'story', 'task', 'defect'] as const;
+  for (const itemType of counterTypes) {
+    await db
+      .insert(schema.projectCounters)
+      .values({ projectId: actualId, workspaceId: WORKSPACE_ID, itemType, lastItemNumber: 0 })
+      .onConflictDoNothing();
+  }
 
   // 3. Add the lead as the first active project member if not already present
   await db
@@ -249,7 +249,7 @@ async function seedWorkItems() {
       // Stories
       {
         id: NXP_STORY_1_ID,
-        itemKey: 'NXP-1',
+        itemKey: 'US000001',
         type: 'story' as const,
         title: 'Upgrade NX workspace to v21',
         statusId: nxp.inProgress,
@@ -260,7 +260,7 @@ async function seedWorkItems() {
       },
       {
         id: NXP_STORY_2_ID,
-        itemKey: 'NXP-2',
+        itemKey: 'US000002',
         type: 'story' as const,
         title: 'Integrate Storybook 8 into shared UI library',
         statusId: nxp.todo,
@@ -272,7 +272,7 @@ async function seedWorkItems() {
       // Defect
       {
         id: uuidv7(),
-        itemKey: 'NXP-3',
+        itemKey: 'DE000001',
         type: 'defect' as const,
         title: 'CI pipeline fails intermittently on Windows build agents',
         statusId: nxp.inProgress,
@@ -280,37 +280,10 @@ async function seedWorkItems() {
         priority: 'urgent' as const,
         assigneeId: ADMIN_USER_ID,
       },
-      // Tasks under NXP-1
-      {
-        id: uuidv7(),
-        itemKey: 'NXP-4',
-        type: 'task' as const,
-        title: 'Update workspace.json for NX v21 breaking changes',
-        statusId: nxp.done,
-        scheduleState: 'completed' as const,
-        priority: 'high' as const,
-        parentId: NXP_STORY_1_ID,
-        assigneeId: DEVELOPER_ID,
-        estimateHours: '2',
-        actualHours: '1.5',
-      },
-      {
-        id: uuidv7(),
-        itemKey: 'NXP-5',
-        type: 'task' as const,
-        title: 'Validate all affected generators after upgrade',
-        statusId: nxp.inProgress,
-        scheduleState: 'in_progress' as const,
-        priority: 'high' as const,
-        parentId: NXP_STORY_1_ID,
-        assigneeId: ADMIN_USER_ID,
-        estimateHours: '3',
-        todoHours: '2',
-      },
       // Feature
       {
         id: uuidv7(),
-        itemKey: 'NXP-6',
+        itemKey: 'FE000001',
         type: 'feature' as const,
         title: 'Shared ESLint flat-config across all apps',
         statusId: nxp.todo,
@@ -329,14 +302,61 @@ async function seedWorkItems() {
           workspaceId: WORKSPACE_ID,
           projectId: nxpId,
           createdBy: ADMIN_USER_ID,
-          rank: item.itemKey, // deterministic rank for seeded items
+          rank: getDeterministicRank(item.itemKey),
         })
         .onConflictDoNothing();
     }
+    // Seed tasks into the separate tasks table
+    const nxpTasks = [
+      {
+        id: '00000000-0000-7000-8000-000000000034' as const,
+        title: 'Update workspace.json for NX v21 breaking changes',
+        state: 'completed' as const,
+        parentId: NXP_STORY_1_ID,
+        assigneeId: DEVELOPER_ID,
+        estimateHours: '2',
+        actualHours: '1.5',
+      },
+      {
+        id: '00000000-0000-7000-8000-000000000035' as const,
+        title: 'Validate all affected generators after upgrade',
+        state: 'in_progress' as const,
+        parentId: NXP_STORY_1_ID,
+        assigneeId: ADMIN_USER_ID,
+        estimateHours: '3',
+        todoHours: '2',
+      },
+    ];
+    for (let i = 0; i < nxpTasks.length; i++) {
+      const t = nxpTasks[i];
+      await db
+        .insert(tasks)
+        .values({
+          ...t,
+          tenantId: SYSTEM_TENANT_ID,
+          projectId: nxpId,
+          rank: getDeterministicRank(`TA${String(i + 1).padStart(6, '0')}`),
+          createdBy: ADMIN_USER_ID,
+        })
+        .onConflictDoNothing();
+    }
+    // Update per-type counters
     await db
       .update(projectCounters)
-      .set({ lastItemNumber: sql`GREATEST(${projectCounters.lastItemNumber}, ${nxpItems.length})` })
-      .where(eq(projectCounters.projectId, nxpId));
+      .set({ lastItemNumber: sql`GREATEST(${projectCounters.lastItemNumber}, 2)` })
+      .where(and(eq(projectCounters.projectId, nxpId), eq(projectCounters.itemType, 'story')));
+    await db
+      .update(projectCounters)
+      .set({ lastItemNumber: sql`GREATEST(${projectCounters.lastItemNumber}, 1)` })
+      .where(and(eq(projectCounters.projectId, nxpId), eq(projectCounters.itemType, 'defect')));
+    await db
+      .update(projectCounters)
+      .set({ lastItemNumber: sql`GREATEST(${projectCounters.lastItemNumber}, 1)` })
+      .where(and(eq(projectCounters.projectId, nxpId), eq(projectCounters.itemType, 'feature')));
+    await db
+      .update(projectCounters)
+      .set({ lastItemNumber: sql`GREATEST(${projectCounters.lastItemNumber}, ${nxpTasks.length})` })
+      .where(and(eq(projectCounters.projectId, nxpId), eq(projectCounters.itemType, 'task')));
   }
 
   // ── MOB: Mobile App ────────────────────────────────────────────────────
@@ -346,7 +366,7 @@ async function seedWorkItems() {
     const mobItems = [
       {
         id: MOB_STORY_1_ID,
-        itemKey: 'MOB-1',
+        itemKey: 'US000001',
         type: 'story' as const,
         title: 'Implement biometric authentication (Face ID / Fingerprint)',
         statusId: mob.todo,
@@ -357,7 +377,7 @@ async function seedWorkItems() {
       },
       {
         id: uuidv7(),
-        itemKey: 'MOB-2',
+        itemKey: 'US000002',
         type: 'story' as const,
         title: 'Dark mode support across all screens',
         statusId: mob.inProgress,
@@ -368,26 +388,13 @@ async function seedWorkItems() {
       },
       {
         id: uuidv7(),
-        itemKey: 'MOB-3',
+        itemKey: 'DE000001',
         type: 'defect' as const,
         title: 'App crashes on Android 14 when rotating to landscape on Home screen',
         statusId: mob.todo,
         scheduleState: 'defined' as const,
         priority: 'urgent' as const,
         assigneeId: DEVELOPER_ID,
-      },
-      // Task under MOB-1
-      {
-        id: uuidv7(),
-        itemKey: 'MOB-4',
-        type: 'task' as const,
-        title: 'Integrate expo-local-authentication SDK',
-        statusId: mob.todo,
-        scheduleState: 'defined' as const,
-        priority: 'high' as const,
-        parentId: MOB_STORY_1_ID,
-        estimateHours: '4',
-        todoHours: '4',
       },
     ];
 
@@ -399,14 +406,42 @@ async function seedWorkItems() {
           workspaceId: WORKSPACE_ID,
           projectId: mobId,
           createdBy: ADMIN_USER_ID,
-          rank: item.itemKey,
+          rank: getDeterministicRank(item.itemKey),
+        })
+        .onConflictDoNothing();
+    }
+    // Seed tasks into the separate tasks table
+    const mobTasks = [
+      {
+        id: '00000000-0000-7000-8000-000000000036' as const,
+        title: 'Integrate expo-local-authentication SDK',
+        state: 'defined' as const,
+        parentId: MOB_STORY_1_ID,
+        estimateHours: '4',
+        todoHours: '4',
+      },
+    ];
+    for (let i = 0; i < mobTasks.length; i++) {
+      const t = mobTasks[i];
+      await db
+        .insert(tasks)
+        .values({
+          ...t,
+          tenantId: SYSTEM_TENANT_ID,
+          projectId: mobId,
+          rank: getDeterministicRank(`TA${String(i + 1).padStart(6, '0')}`),
+          createdBy: ADMIN_USER_ID,
         })
         .onConflictDoNothing();
     }
     await db
       .update(projectCounters)
-      .set({ lastItemNumber: sql`GREATEST(${projectCounters.lastItemNumber}, ${mobItems.length})` })
-      .where(eq(projectCounters.projectId, mobId));
+      .set({ lastItemNumber: sql`GREATEST(${projectCounters.lastItemNumber}, 2)` })
+      .where(and(eq(projectCounters.projectId, mobId), eq(projectCounters.itemType, 'story')));
+    await db
+      .update(projectCounters)
+      .set({ lastItemNumber: sql`GREATEST(${projectCounters.lastItemNumber}, 1)` })
+      .where(and(eq(projectCounters.projectId, mobId), eq(projectCounters.itemType, 'defect')));
   }
 
   console.log('✅  Work items seeded');
@@ -663,7 +698,7 @@ async function seedExtendedWorkItems() {
     // Iteration-assigned stories (Sprint 26.1 — committed)
     {
       id: NXP_STORY_7_ID,
-      itemKey: 'NXP-7',
+      itemKey: 'US000005',
       type: 'story' as const,
       title: 'Migrate all apps to ESLint flat-config',
       statusId: nxpInProgress,
@@ -676,7 +711,7 @@ async function seedExtendedWorkItems() {
     },
     {
       id: NXP_STORY_8_ID,
-      itemKey: 'NXP-8',
+      itemKey: 'US000006',
       type: 'story' as const,
       title: 'Enforce strict TypeScript settings across workspace',
       statusId: nxpTodo,
@@ -689,7 +724,7 @@ async function seedExtendedWorkItems() {
     },
     {
       id: NXP_STORY_9_ID,
-      itemKey: 'NXP-9',
+      itemKey: 'US000007',
       type: 'story' as const,
       title: 'Add Storybook 8 to component library',
       statusId: nxpTodo,
@@ -703,7 +738,7 @@ async function seedExtendedWorkItems() {
     // Accepted item (from previous sprint)
     {
       id: NXP_STORY_10_ID,
-      itemKey: 'NXP-10',
+      itemKey: 'US000008',
       type: 'story' as const,
       title: 'Setup shared tsconfig base with path aliases',
       statusId: nxpDone,
@@ -717,7 +752,7 @@ async function seedExtendedWorkItems() {
     // Defect in current sprint
     {
       id: NXP_DEFECT_11_ID,
-      itemKey: 'NXP-11',
+      itemKey: 'DE000002',
       type: 'defect' as const,
       title: 'ESLint rule conflicts between root and app-level configs',
       statusId: nxpInProgress,
@@ -729,7 +764,7 @@ async function seedExtendedWorkItems() {
     // Backlog items (no iteration)
     {
       id: uuidv7(),
-      itemKey: 'NXP-12',
+      itemKey: 'US000009',
       type: 'story' as const,
       title: 'Automate dependency graph visualisation in CI',
       statusId: nxpTodo,
@@ -740,7 +775,7 @@ async function seedExtendedWorkItems() {
     },
     {
       id: uuidv7(),
-      itemKey: 'NXP-13',
+      itemKey: 'US000010',
       type: 'story' as const,
       title: 'Integrate Chromatic for visual regression testing',
       statusId: nxpTodo,
@@ -752,30 +787,29 @@ async function seedExtendedWorkItems() {
   ];
 
   for (const item of nxpExtended) {
-    await db
-      .insert(workItems)
-      .values({
-        ...item,
-        workspaceId: WORKSPACE_ID,
-        projectId: nxpId,
-        createdBy: ADMIN_USER_ID,
-        rank: item.itemKey,
-      })
-      .onConflictDoNothing();
+    await db.insert(workItems).values({
+      ...item,
+      workspaceId: WORKSPACE_ID,
+      projectId: nxpId,
+      createdBy: ADMIN_USER_ID,
+      rank: getDeterministicRank(item.itemKey),
+    }).onConflictDoNothing();
   }
 
-  // Update counter — use GREATEST so re-running seed never regresses below existing keys
-  await db
-    .update(projectCounters)
-    .set({ lastItemNumber: sql`GREATEST(${projectCounters.lastItemNumber}, 13)` })
-    .where(eq(projectCounters.projectId, nxpId));
+  // Update per-type counters for extended items
+  await db.update(projectCounters)
+    .set({ lastItemNumber: sql`GREATEST(${projectCounters.lastItemNumber}, 10)` })
+    .where(and(eq(projectCounters.projectId, nxpId), eq(projectCounters.itemType, 'story')));
+  await db.update(projectCounters)
+    .set({ lastItemNumber: sql`GREATEST(${projectCounters.lastItemNumber}, 2)` })
+    .where(and(eq(projectCounters.projectId, nxpId), eq(projectCounters.itemType, 'defect')));
 
   // MOB extended items (with iteration)
   if (mobTodo && mobInProgress) {
     const mobExtended = [
       {
         id: uuidv7(),
-        itemKey: 'MOB-5',
+        itemKey: 'US000003',
         type: 'story' as const,
         title: 'Implement Face ID login flow (iOS)',
         statusId: mobInProgress,
@@ -787,7 +821,7 @@ async function seedExtendedWorkItems() {
       },
       {
         id: uuidv7(),
-        itemKey: 'MOB-6',
+        itemKey: 'US000004',
         type: 'story' as const,
         title: 'Dark mode — apply theme tokens to navigation screens',
         statusId: mobTodo,
@@ -799,7 +833,7 @@ async function seedExtendedWorkItems() {
       },
       {
         id: uuidv7(),
-        itemKey: 'MOB-7',
+        itemKey: 'DE000002',
         type: 'defect' as const,
         title: 'Push notifications not delivered on iOS 18.1 background state',
         statusId: mobTodo,
@@ -811,22 +845,21 @@ async function seedExtendedWorkItems() {
     ];
 
     for (const item of mobExtended) {
-      await db
-        .insert(workItems)
-        .values({
-          ...item,
-          workspaceId: WORKSPACE_ID,
-          projectId: mobId,
-          createdBy: ADMIN_USER_ID,
-          rank: item.itemKey,
-        })
-        .onConflictDoNothing();
+      await db.insert(workItems).values({
+        ...item,
+        workspaceId: WORKSPACE_ID,
+        projectId: mobId,
+        createdBy: ADMIN_USER_ID,
+        rank: getDeterministicRank(item.itemKey),
+      }).onConflictDoNothing();
     }
 
-    await db
-      .update(projectCounters)
-      .set({ lastItemNumber: sql`GREATEST(${projectCounters.lastItemNumber}, 7)` })
-      .where(eq(projectCounters.projectId, mobId));
+    await db.update(projectCounters)
+      .set({ lastItemNumber: sql`GREATEST(${projectCounters.lastItemNumber}, 4)` })
+      .where(and(eq(projectCounters.projectId, mobId), eq(projectCounters.itemType, 'story')));
+    await db.update(projectCounters)
+      .set({ lastItemNumber: sql`GREATEST(${projectCounters.lastItemNumber}, 2)` })
+      .where(and(eq(projectCounters.projectId, mobId), eq(projectCounters.itemType, 'defect')));
   }
 
   console.log('✅  Extended work items seeded (with releases + iterations)');

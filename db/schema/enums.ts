@@ -74,6 +74,7 @@ export const workItemPriorityEnum = pgEnum('work_item_priority', [
 export const workItemScheduleStateEnum = pgEnum('work_item_schedule_state', [
   'idea',
   'defined',
+  'ready',
   'in_progress',
   'completed',
   'accepted',
@@ -94,7 +95,7 @@ export const iterationStateEnum = pgEnum('iteration_state', [
   'accepted',
 ]);
 
-export const releaseStatusEnum = pgEnum('release_status', ['planned', 'released', 'archived']);
+export const releaseStatusEnum = pgEnum('release_status', ['planning', 'active', 'accepted']);
 
 export const attachmentStatusEnum = pgEnum('attachment_status', ['pending', 'completed']);
 
@@ -118,6 +119,70 @@ export const notificationJobStatusEnum = pgEnum('notification_job_status', [
   'failed',
 ]);
 
+// P3.4 — Defect severity (separate from priority).
+// P3.4 — 'none' added for P3.4 compliance (app layer maps labels: critical→Critical, high→Major Problem, medium→Minor Problem, low→Trivial, none→None).
+export const defectSeverityEnum = pgEnum('defect_severity', [
+  'critical',
+  'high',
+  'medium',
+  'low',
+  'none',
+]);
+
+// P3.4 — Defect environment where the defect was found.
+export const defectEnvironmentEnum = pgEnum('defect_environment', [
+  'development',
+  'staging',
+  'production',
+  'testing',
+]);
+
+// P3.4 — Defect root cause categories (Rally-aligned).
+export const defectRootCauseEnum = pgEnum('defect_root_cause', [
+  'requirements',
+  'design',
+  'code',
+  'test',
+  'integration',
+  'other',
+]);
+
+// P3.4 — Defect resolution status (Rally-aligned).
+export const defectResolutionEnum = pgEnum('defect_resolution', [
+  'fixed',
+  'wont_fix',
+  'duplicate',
+  'cannot_reproduce',
+  'deferred',
+  'by_design',
+]);
+
+// P3.4 — Defect State (separate from Flow State / Schedule State)
+export const defectStateEnum = pgEnum('defect_state', [
+  'submitted',
+  'open',
+  'fixed',
+  'closed',
+  'closed_declined',
+]);
+
+// Task schedule state (subset for task table)
+export const taskStateEnum = pgEnum('task_state', [
+  'defined',
+  'in_progress',
+  'completed',
+]);
+
+// P3.3 — Milestone states aligned with BA spec.
+export const milestoneStatusEnum = pgEnum('milestone_status', [
+  'planned',
+  'at_risk',
+  'met',
+  'missed',
+  'cancelled',
+  'completed',
+]);
+
 // ── TypeScript types (derived — never drift from DB) ──────────────────────
 
 export type UserStatus = (typeof userStatusEnum.enumValues)[number];
@@ -139,3 +204,10 @@ export type ReleaseStatus = (typeof releaseStatusEnum.enumValues)[number];
 export type OutboxStatus = (typeof outboxStatusEnum.enumValues)[number];
 export type EmailJobStatus = (typeof emailJobStatusEnum.enumValues)[number];
 export type NotificationJobStatus = (typeof notificationJobStatusEnum.enumValues)[number];
+export type MilestoneStatus = (typeof milestoneStatusEnum.enumValues)[number];
+export type DefectSeverity = (typeof defectSeverityEnum.enumValues)[number];
+export type DefectEnvironment = (typeof defectEnvironmentEnum.enumValues)[number];
+export type DefectRootCause = (typeof defectRootCauseEnum.enumValues)[number];
+export type DefectResolution = (typeof defectResolutionEnum.enumValues)[number];
+export type DefectState = (typeof defectStateEnum.enumValues)[number];
+export type TaskState = (typeof taskStateEnum.enumValues)[number];

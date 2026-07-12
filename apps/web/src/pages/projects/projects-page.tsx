@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   AlertTriangle,
   Archive,
@@ -368,7 +368,20 @@ export function ProjectsPage() {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<'All' | 'active' | 'archived'>('active')
   const [openMenu, setOpenMenu] = useState<string | null>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
   const [showNewModal, setShowNewModal] = useState(false)
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!openMenu) return
+    function handleClick(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpenMenu(null)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [openMenu])
   const [editingProject, setEditingProject] = useState<Project | null>(null)
   const [archivingProject, setArchivingProject] = useState<Project | null>(null)
 
@@ -554,6 +567,7 @@ export function ProjectsPage() {
           )}
 
           {/* Rows */}
+          <div ref={menuRef}>
           {!isLoading &&
             filtered.map((project) => (
               <div
@@ -694,6 +708,7 @@ export function ProjectsPage() {
                 </div>
               </div>
             ))}
+          </div>
         </div>
       </div>
     </div>

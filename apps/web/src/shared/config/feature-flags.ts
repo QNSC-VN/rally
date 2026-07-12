@@ -11,10 +11,13 @@ export const FEATURE_FLAGS: Record<string, boolean> = {
   // Phase 2: Timeboxes/Iterations (Plan) and Iteration Status (Track) are live.
   'feature.timeboxes': true,
   'feature.iteration-status': true,
+  'feature.team-status': true,
+  'feature.team-board': false,
   'feature.board': false,
-  'feature.quality': false,
+  'feature.quality': true,
   'feature.portfolio': false,
   'feature.releases': true,
+  'feature.milestones': true,
   'feature.reports': false,
   // Phase 0 features that are live:
   'feature.home': true,

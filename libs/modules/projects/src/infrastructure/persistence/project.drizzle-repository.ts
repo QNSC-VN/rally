@@ -8,6 +8,7 @@ import {
   projectMembers,
   projectTeams,
 } from '../../../../../../db/schema/work';
+import type { WorkItemType } from '../../domain/ports/project.repository';
 import { users } from '../../../../../../db/schema/identity';
 import type {
   Project,
@@ -182,21 +183,47 @@ export class ProjectDrizzleRepository implements IProjectRepository {
   }
 
   async initCounter(projectId: string, workspaceId: string, tx?: DbExecutor): Promise<void> {
-    await (tx ?? this.db)
-      .insert(projectCounters)
-      .values({ projectId, workspaceId, lastItemNumber: 0 })
-      .onConflictDoNothing();
+    const db = tx ?? this.db;
+    // Seed a counter row for every work-item type so any type can be created
+    const types = ['initiative', 'feature', 'story', 'task', 'defect'] as const;
+    for (const itemType of types) {
+      await db
+        .insert(projectCounters)
+        .values({ projectId, workspaceId, itemType, lastItemNumber: 0 })
+        .onConflictDoNothing();
+    }
   }
 
-  async incrementCounter(projectId: string, workspaceId: string): Promise<number> {
-    const rows = await this.db
+  async incrementCounter(projectId: string, workspaceId: string, itemType: WorkItemType, tx?: DbExecutor): Promise<number> {
+    const db = tx ?? this.db;
+    const rows = await db
       .update(projectCounters)
       .set({
         lastItemNumber: sql`${projectCounters.lastItemNumber} + 1`,
         updatedAt: new Date(),
       })
-      .where(and(eq(projectCounters.projectId, projectId), eq(projectCounters.workspaceId, workspaceId)))
+      .where(
+        and(
+          eq(projectCounters.projectId, projectId),
+          eq(projectCounters.workspaceId, workspaceId),
+          eq(projectCounters.itemType, itemType),
+        ),
+      )
       .returning({ lastItemNumber: projectCounters.lastItemNumber });
     return rows[0].lastItemNumber;
+  }
+
+  async getMaxItemNumber(projectId: string, workspaceId: string, itemType: WorkItemType): Promise<number> {
+    const row = await this.db
+      .select({ max: sql<number>`COALESCE(MAX(${projectCounters.lastItemNumber}), 0)` })
+      .from(projectCounters)
+      .where(
+        and(
+          eq(projectCounters.projectId, projectId),
+          eq(projectCounters.workspaceId, workspaceId),
+          eq(projectCounters.itemType, itemType),
+        ),
+      );
+    return row[0].max;
   }
 }

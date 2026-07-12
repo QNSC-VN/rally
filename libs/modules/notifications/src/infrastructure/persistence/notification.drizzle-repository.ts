@@ -80,11 +80,11 @@ export class NotificationDrizzleRepository implements INotificationRepository {
     return rows[0]?.value ?? 0;
   }
 
-  async markRead(id: string): Promise<void> {
+  async markRead(tenantId: string, id: string): Promise<void> {
     await this.db
       .update(inAppNotifications)
       .set({ isRead: true, readAt: new Date() })
-      .where(eq(inAppNotifications.id, id));
+      .where(and(eq(inAppNotifications.id, id), eq(inAppNotifications.tenantId, tenantId)));
   }
 
   async markAllRead(workspaceId: string, recipientId: string): Promise<void> {

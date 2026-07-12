@@ -16,7 +16,7 @@ export interface IterationScope {
 }
 
 export interface IWorkItemRepository {
-  findById(id: string, workspaceId: string): Promise<WorkItem | null>;
+  findById(id: string, workspaceId: string, executor?: DbExecutor): Promise<WorkItem | null>;
   /** Non-deleted work items for the given ids, scoped to a workspace. */
   findByIds(ids: string[], workspaceId: string): Promise<WorkItem[]>;
   /** Project/team scope of an iteration (any workspace guard is applied by caller). */
@@ -54,8 +54,19 @@ export interface IWorkItemRepository {
   ): Promise<PagedResult<WorkItem>>;
   /** Direct child tasks of a parent work item, ordered by rank. */
   listTasksByParent(parentId: string, workspaceId: string): Promise<WorkItem[]>;
+  /**
+   * Highest existing rank in the given scope (siblings under a parent task
+   * list, or top-level project items when parentId is omitted). Null if the
+   * scope is empty. Used to append newly-created items at the end of order.
+   */
+  findMaxRank(scope: { projectId: string; parentId?: string | null }, workspaceId: string): Promise<string | null>;
   /** Server-side aggregated totals for a parent's tasks (totals row). */
   getTaskTotals(parentId: string, workspaceId: string): Promise<TaskTotals>;
+  /**
+   * Check whether ALL non-deleted child tasks of a parent are in 'completed' state.
+   * Returns true if the parent has zero tasks (nothing to block completion).
+   */
+  areAllTasksComplete(parentId: string, workspaceId: string, executor?: DbExecutor): Promise<boolean>;
   create(input: CreateWorkItemInput, executor?: DbExecutor): Promise<WorkItem>;
   update(id: string, input: UpdateWorkItemInput, workspaceId: string, executor?: DbExecutor): Promise<WorkItem>;
   softDelete(id: string, workspaceId: string, executor?: DbExecutor): Promise<void>;

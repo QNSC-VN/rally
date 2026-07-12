@@ -188,7 +188,7 @@ export function HomePage() {
   )
 
   // ── Data fetching ──────────────────────────────────────────────────────────
-  const { data: allProjects = [] } = useProjects(workspaceId)
+  const { data: allProjects = [], isLoading: loadingProjects } = useProjects(workspaceId)
   const activeProjects = useMemo(
     () => allProjects.filter((p) => p.status === 'active'),
     [allProjects],
@@ -209,12 +209,12 @@ export function HomePage() {
   const { data: myItems = [] } = useMyWorkItems(projectsForMyWork, user?.id)
 
   const summaryMetrics = [
-    { label: 'Active Projects', value: String(activeProjects.length), path: '/portfolio', comingSoon: true },
+    { label: 'Active Projects', value: String(activeProjects.length), path: '/projects' },
     { label: 'Open Work Items', value: String(counts.total), path: '/backlog' },
-    { label: 'Active Sprints', value: String(activeSprintsCount), path: '/board', comingSoon: true },
+    { label: 'Active Sprints', value: String(activeSprintsCount), path: '/timeboxes' },
     { label: 'Blocked Items', value: String(counts.blocked), path: '/backlog', alert: true },
-    { label: 'Open Defects', value: String(counts.defects), path: '/quality', alert: true, comingSoon: true },
-    { label: 'Assigned to Me', value: String(myItems.length), path: '/' },
+    { label: 'Open Defects', value: String(counts.defects), path: '/quality', alert: true },
+    { label: 'Assigned to Me', value: String(myItems.length), path: '/backlog' },
   ]
 
   return (
@@ -240,6 +240,16 @@ export function HomePage() {
       </div>
 
       {/* Summary strip */}
+      {loadingProjects ? (
+        <div className="flex shrink-0 bg-white" style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="flex flex-1 flex-col justify-center gap-2 px-5 py-3" style={i > 0 ? { borderLeft: `1px solid ${BRAND.borderSubtle}` } : undefined}>
+              <div className="h-3 w-20 animate-pulse rounded bg-gray-200" />
+              <div className="h-6 w-8 animate-pulse rounded bg-gray-200" />
+            </div>
+          ))}
+        </div>
+      ) : (
       <div
         className="flex shrink-0 bg-white"
         style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
@@ -263,17 +273,7 @@ export function HomePage() {
           )
           const sharedStyle = { borderLeft: i > 0 ? `1px solid ${BRAND.borderSubtle}` : undefined }
           const sharedClass = 'flex flex-1 flex-col justify-center px-5 py-3 text-left transition-colors hover:bg-[#f7f8fa]'
-          return m.comingSoon ? (
-            <button
-              key={m.label}
-              type="button"
-              onClick={() => toast.info(`${m.label} — coming soon`)}
-              className={sharedClass}
-              style={sharedStyle}
-            >
-              {inner}
-            </button>
-          ) : (
+          return (
             <Link
               key={m.label}
               to={m.path as '/'}
@@ -285,6 +285,7 @@ export function HomePage() {
           )
         })}
       </div>
+      )}
 
       {/* Body grid */}
       <div className="grid flex-1 grid-cols-3 gap-4 p-4">

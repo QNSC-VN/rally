@@ -1,18 +1,66 @@
 /**
  * Releases API hooks — TanStack Query wrappers.
+ * P3.2: Updated for Planning/Active/Accepted states and new fields.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
-import type { components } from '@/shared/api/generated/api'
 
-export type Release = components['schemas']['ReleaseResponseDto']
+// ── Types ────────────────────────────────────────────────────────────────────
+
+export type ReleaseStatus = 'planning' | 'active' | 'accepted'
+
+export interface TaskRollup {
+  totalItems: number
+  completedItems: number
+  acceptedItems: number
+  toDoItems: number
+  totalPoints: number
+  completedPoints: number
+  toDoPoints: number
+  progressPercent: number
+}
+
+export interface Release {
+  id: string
+  tenantId: string
+  projectId: string
+  name: string
+  description: string | null
+  theme: string | null
+  notes: string | null
+  status: ReleaseStatus
+  startDate: string | null
+  releaseDate: string | null
+  targetDate: string | null
+  plannedVelocity: number | null
+  planEstimate: number | null
+  version: string | null
+  releasedAt: string | null
+  createdAt: string
+  updatedAt: string
+  taskRollup?: TaskRollup
+}
+
+export interface BurndownPoint {
+  date: string
+  totalPoints: number
+  completedPoints: number
+  remainingPoints: number
+  totalItems: number
+  completedItems: number
+}
+
+// ── Keys ─────────────────────────────────────────────────────────────────────
 
 export const releaseKeys = {
   all: ['releases'] as const,
   list: (projectId: string) => [...releaseKeys.all, 'list', projectId] as const,
   detail: (id: string) => [...releaseKeys.all, 'detail', id] as const,
+  burndown: (id: string) => [...releaseKeys.all, 'burndown', id] as const,
 } as const
+
+// ── Queries ──────────────────────────────────────────────────────────────────
 
 export function useReleases(projectId: string | undefined) {
   return useQuery({
@@ -23,18 +71,61 @@ export function useReleases(projectId: string | undefined) {
         params: { query: { projectId } },
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
-      return (data as { data: Release[] } | undefined)?.data ?? []
+      return ((data as { data?: Release[] } | undefined)?.data ?? []) as Release[]
     },
     enabled: !!projectId,
     staleTime: 60_000,
   })
 }
 
+export function useRelease(id: string | undefined) {
+  return useQuery({
+    queryKey: releaseKeys.detail(id ?? ''),
+    queryFn: async () => {
+      if (!id) return null
+      const { data, error, response } = await apiClient.GET('/v1/releases/{id}', {
+        params: { path: { id } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as unknown as Release
+    },
+    enabled: !!id,
+    staleTime: 30_000,
+  })
+}
+
+export function useReleaseBurndown(releaseId: string | undefined) {
+  return useQuery({
+    queryKey: releaseKeys.burndown(releaseId ?? ''),
+    queryFn: async () => {
+      if (!releaseId) return []
+      const { getAccessToken } = await import('@/shared/api/http-client')
+      const token = getAccessToken()
+      const res = await fetch(`/api/v1/releases/${releaseId}/burndown`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.message ?? `Burndown fetch failed (${res.status})`)
+      }
+      const json = await res.json() as BurndownPoint[]
+      return json
+    },
+    enabled: !!releaseId,
+    staleTime: 5 * 60_000,
+  })
+}
+
+// ── Mutations ────────────────────────────────────────────────────────────────
+
 export interface CreateReleaseInput {
   projectId: string
   name: string
   description?: string
-  targetDate?: string
+  theme?: string
+  startDate?: string
+  releaseDate?: string
+  state?: ReleaseStatus
 }
 
 export function useCreateRelease() {
@@ -45,7 +136,7 @@ export function useCreateRelease() {
         body: body as never,
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
-      return data as Release
+      return data as unknown as Release
     },
     onSuccess: (release) => {
       void qc.invalidateQueries({ queryKey: releaseKeys.list(release.projectId) })
@@ -56,10 +147,17 @@ export function useCreateRelease() {
 export interface UpdateReleaseInput {
   name?: string
   description?: string | null
-  targetDate?: string | null
+  theme?: string | null
+  notes?: string | null
+  startDate?: string | null
+  releaseDate?: string | null
+  plannedVelocity?: number | null
+  planEstimate?: number | null
+  version?: string | null
+  state?: ReleaseStatus
 }
 
-export function useUpdateRelease(id: string) {
+export function useUpdateRelease(id: string, projectId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (body: UpdateReleaseInput) => {
@@ -68,11 +166,12 @@ export function useUpdateRelease(id: string) {
         body: body as never,
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
-      return data as Release
+      return data as unknown as Release
     },
-    onSuccess: (release) => {
-      qc.setQueryData(releaseKeys.detail(id), release)
-      void qc.invalidateQueries({ queryKey: releaseKeys.list(release.projectId) })
+    onSuccess: () => {
+      qc.setQueryData(releaseKeys.detail(id), undefined)
+      void qc.invalidateQueries({ queryKey: releaseKeys.detail(id) })
+      void qc.invalidateQueries({ queryKey: releaseKeys.list(projectId) })
     },
   })
 }
@@ -92,19 +191,72 @@ export function useDeleteRelease(projectId: string) {
   })
 }
 
-export function useShipRelease(projectId: string) {
+// Inline edit helper — optimistic update for a single field.
+export function useInlineReleaseField(id: string, projectId: string, field: keyof UpdateReleaseInput) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (id: string) => {
-      const { data, error, response } = await apiClient.POST('/v1/releases/{id}/ship', {
+    mutationFn: async (value: unknown) => {
+      const patch: UpdateReleaseInput = { [field]: value }
+      const { data, error, response } = await apiClient.PATCH('/v1/releases/{id}', {
         params: { path: { id } },
-        body: {} as never,
+        body: patch as never,
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
-      return data as Release
+      return data as unknown as Release
     },
     onSuccess: () => {
+      qc.setQueryData(releaseKeys.detail(id), undefined)
+      void qc.invalidateQueries({ queryKey: releaseKeys.detail(id) })
       void qc.invalidateQueries({ queryKey: releaseKeys.list(projectId) })
     },
+  })
+}
+
+// ── Release Artifacts (linked work items) ───────────────────────────────────────
+
+export interface ReleaseArtifactItem {
+  id: string
+  itemKey: string
+  type: string
+  title: string
+  scheduleState: string
+  priority: string
+  assigneeId: string | null
+  assigneeName?: string | null
+  storyPoints: number | null
+  rank?: number
+}
+
+export interface ReleaseArtifactPageResponse {
+  data: ReleaseArtifactItem[]
+  pageInfo: { hasNextPage: boolean; nextCursor: string | null; limit: number; total?: number }
+}
+
+export function useReleaseArtifacts(
+  releaseId: string | undefined,
+  params?: { page?: number; pageSize?: number; search?: string },
+) {
+  return useQuery({
+    queryKey: ['release', releaseId, 'artifacts', params],
+    queryFn: async () => {
+      if (!releaseId) return { data: [], pageInfo: { hasNextPage: false, nextCursor: null, limit: 50, total: 0 } }
+      const { data, error, response } = await apiClient.GET('/v1/releases/{id}/artifacts', {
+        params: {
+          path: { id: releaseId },
+          query: {
+            limit: params?.pageSize ?? 50,
+            q: params?.search || undefined,
+          },
+        },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      const res = data as ReleaseArtifactPageResponse | undefined
+      return {
+        data: res?.data ?? [],
+        pageInfo: res?.pageInfo ?? { hasNextPage: false, nextCursor: null, limit: 50, total: 0 },
+      }
+    },
+    enabled: !!releaseId,
+    staleTime: 15_000,
   })
 }

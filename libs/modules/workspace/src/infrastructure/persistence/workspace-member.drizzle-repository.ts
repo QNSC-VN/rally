@@ -157,8 +157,8 @@ export class WorkspaceMemberDrizzleRepository implements IWorkspaceMemberReposit
     return rows[0];
   }
 
-  async updateMember(id: string, input: UpdateMemberInput): Promise<WorkspaceMember> {
-    const rows = await this.db
+  async updateMember(id: string, input: UpdateMemberInput, tx?: DbExecutor): Promise<WorkspaceMember> {
+    const rows = await (tx ?? this.db)
       .update(workspaceMembers)
       .set({
         ...(input.roleId !== undefined && { roleId: input.roleId }),
@@ -170,8 +170,8 @@ export class WorkspaceMemberDrizzleRepository implements IWorkspaceMemberReposit
     return rows[0];
   }
 
-  async removeMember(workspaceId: string, userId: string): Promise<void> {
-    await this.db
+  async removeMember(workspaceId: string, userId: string, tx?: DbExecutor): Promise<void> {
+    await (tx ?? this.db)
       .update(workspaceMembers)
       .set({ status: 'removed', updatedAt: new Date() })
       .where(

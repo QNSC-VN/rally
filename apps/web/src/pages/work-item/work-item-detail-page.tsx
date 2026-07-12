@@ -11,6 +11,7 @@ import { useParams, useNavigate, Link } from '@tanstack/react-router'
 import {
   Bell,
   BellOff,
+  Bug,
   ChevronLeft,
   History,
   ListChecks,
@@ -31,6 +32,8 @@ import {
   useWatchers,
   useToggleWatch,
   useDeleteWorkItem,
+  useChildDefects,
+  useBacklog,
   type WorkItem,
 } from '@/features/work-items/api'
 import { useReleases } from '@/features/releases/api'
@@ -38,12 +41,10 @@ import { useProjectStatuses } from '@/features/projects/api'
 import { useProjectTeams, useProjectMembers } from '@/features/teams/api'
 import { useIterationOptions } from '@/features/iterations/api'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
-import { TypeBadge } from '@/entities/work-item/ui/badges'
+import { TypeBadge, ScheduleStateBadge } from '@/entities/work-item/ui/badges'
 import {
-  ScheduleState,
   SCHEDULE_STATE_VALUES,
   SCHEDULE_STATE_LABEL,
-  SCHEDULE_STATE_CONFIG,
   PRIORITY_VALUES,
   WORK_ITEM_PRIORITY_CONFIG,
 } from '@/entities/work-item/model/types'
@@ -61,32 +62,41 @@ import { SaveIndicator } from '@/shared/ui/save-indicator'
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type SaveStatus = ReturnType<typeof useSaveState>['status']
-type DetailTab = 'details' | 'tasks' | 'history'
+type DetailTab = 'details' | 'tasks' | 'defects' | 'history'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 // Local Field removed — use shared <FormField> from @/shared/ui/form-field instead.
 // Sidebar selects use shared <NativeSelect> from @/shared/ui/native-select.
 
-// ── Task state badge ──────────────────────────────────────────────────────────
+// ── Details tab ───────────────────────────────────────────────────────────────
 
-function TaskStateBadge({ state }: { state: string }) {
-  const key = state.toLowerCase() as ScheduleState
-  const cfg = SCHEDULE_STATE_CONFIG[key] ?? SCHEDULE_STATE_CONFIG[ScheduleState.Idea]
-  const label = SCHEDULE_STATE_LABEL[key] ?? state
-  // Derive border and dot colors from the text color with opacity fallback
+/** Editable parent story dropdown for defects. */
+function ParentStorySelect({
+  projectId,
+  currentParentId,
+  onUpdate,
+}: {
+  projectId: string
+  currentParentId: string | null
+  onUpdate: (patch: { parentId: string | null }) => void
+}) {
+  const { data: backlogData } = useBacklog(projectId, { type: 'story' })
+  const stories = backlogData?.data ?? []
   return (
-    <span
-      className="inline-flex items-center gap-1 rounded-sm px-2 py-px text-[11px] font-medium whitespace-nowrap"
-      style={{ backgroundColor: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}33` }}
+    <NativeSelect
+      value={currentParentId ?? ''}
+      onChange={(e) => onUpdate({ parentId: e.target.value || null })}
     >
-      <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: cfg.color }} />
-      {label}
-    </span>
+      <option value="">No parent story</option>
+      {stories.map((s) => (
+        <option key={s.id} value={s.id}>
+          {s.itemKey} — {s.title}
+        </option>
+      ))}
+    </NativeSelect>
   )
 }
-
-// ── Details tab ───────────────────────────────────────────────────────────────
 
 function DetailsTab({
   item,
@@ -286,15 +296,15 @@ function TasksTab({ workItemId, projectId }: { workItemId: string; projectId: st
                 <span className="px-3 font-mono text-[11px]" style={{ color: '#5c6478' }}>
                   {task.rank ?? '—'}
                 </span>
-                <span
-                  className="px-3 font-mono text-[11px] hover:underline"
-                  style={{ color: '#2558a6' }}
-                >
-                  {task.itemKey}
+                <span className="flex items-center gap-1 px-3">
+                  <TypeBadge type={task.type} />
+                  <span className="font-mono text-[11px] hover:underline" style={{ color: '#2558a6' }}>
+                    {task.itemKey}
+                  </span>
                 </span>
                 <span className="truncate px-3 font-medium">{task.title}</span>
                 <span className="px-3">
-                  <TaskStateBadge state={task.scheduleState} />
+                  <ScheduleStateBadge state={task.scheduleState} dot />
                 </span>
                 <span className="truncate px-3" style={{ color: '#5c6478' }}>
                   {ownerName(task.assigneeId)}
@@ -415,6 +425,83 @@ function HistoryTab({ workItemId }: { workItemId: string }) {
   )
 }
 
+// ── Defects tab (child defects of a story) ─────────────────────────────────
+
+const DEFECT_COLS = ['ID', 'Title', 'State', 'Priority', 'Owner', 'Severity']
+const DEFECT_GRID = '80px 1fr 120px 80px 130px 100px'
+
+function DefectsTab({ workItemId, projectId }: { workItemId: string; projectId: string }) {
+  const { data: defects = [], isLoading } = useChildDefects(workItemId, projectId)
+  const { data: members = [] } = useProjectMembers(projectId)
+  const navigate = useNavigate()
+
+  const ownerName = (id?: string | null) =>
+    id ? (members.find((m) => m.userId === id)?.displayName ?? '—') : '—'
+
+  function openDefect(d: WorkItem) {
+    void navigate({ to: '/item/$itemKey', params: { itemKey: d.itemKey } })
+  }
+
+  if (isLoading) return <div className="flex items-center justify-center py-12"><Spinner size="md" /></div>
+
+  return (
+    <div className="w-full">
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <h2 className="text-[20px] font-semibold" style={{ color: '#273449' }}>
+            Defects
+          </h2>
+          <p className="text-[12px] mt-0.5" style={{ color: '#6b7280' }}>
+            {defects.length} defect{defects.length !== 1 ? 's' : ''} linked to this story
+          </p>
+        </div>
+      </div>
+
+      {defects.length === 0 ? (
+        <div className="rounded py-12 text-center" style={{ border: '1px dashed #d7dde7' }}>
+          <Bug size={28} style={{ color: '#c0c7d1', margin: '0 auto 8px' }} />
+          <p className="text-[13px] font-medium" style={{ color: '#6b7280' }}>No defects linked to this story</p>
+          <p className="text-[11px] mt-1" style={{ color: '#9ca3af' }}>
+            Create a defect and assign it as a child of this story
+          </p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded" style={{ border: '1px solid #d7dde7' }}>
+          <div className="min-w-[600px]">
+            {/* Header */}
+            <div
+              className="grid items-center bg-[#f7f8fa] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider"
+              style={{ gridTemplateColumns: DEFECT_GRID, color: '#6b7280', borderBottom: '1px solid #d7dde7' }}
+            >
+              {DEFECT_COLS.map((col) => (
+                <span key={col}>{col}</span>
+              ))}
+            </div>
+            {/* Rows */}
+            {defects.map((d) => (
+              <div
+                key={d.id}
+                className="grid cursor-pointer items-center px-3 py-2 text-[12px] transition-colors hover:bg-[#f7f8fa]"
+                style={{ gridTemplateColumns: DEFECT_GRID, borderBottom: '1px solid #edf0f4' }}
+                onClick={() => openDefect(d)}
+              >
+                <TypeBadge type={d.type} />
+                <span className="truncate font-medium" style={{ color: '#273449' }}>
+                  {d.title}
+                </span>
+                <ScheduleStateBadge state={d.scheduleState} dot />
+                <span style={{ color: '#5c6478' }}>{d.priority}</span>
+                <span style={{ color: '#5c6478' }}>{ownerName(d.assigneeId)}</span>
+                <span style={{ color: '#5c6478' }}>{d.severity ?? '—'}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Sidebar (Details tab) ─────────────────────────────────────────────────────
 
 interface SidebarProps {
@@ -444,9 +531,10 @@ function DetailSidebar({
   const { data: iterations = [] } = useIterationOptions(item.projectId, item.teamId)
   const { data: statuses = [] } = useProjectStatuses(item.projectId)
   const { data: parentItem } = useWorkItem(
-    item.type === 'task' ? (item.parentId ?? undefined) : undefined,
+    (item.type === 'task' || item.type === 'defect') ? (item.parentId ?? undefined) : undefined,
   )
   const isTask = item.type === 'task'
+  const isDefect = item.type === 'defect'
   const disabled = updating || readOnly
 
   const SCHEDULE_STATES = SCHEDULE_STATE_VALUES.map((v) => ({
@@ -494,9 +582,10 @@ function DetailSidebar({
         <FormField label="Schedule State">
           <NativeSelect
             value={item.scheduleState ?? ''}
-            onChange={(e) =>
-              onUpdate({ scheduleState: e.target.value as WorkItem['scheduleState'] })
-            }
+            onChange={(e) => {
+              const v = e.target.value as WorkItem['scheduleState']
+              if (v !== item.scheduleState) onUpdate({ scheduleState: v })
+            }}
             disabled={disabled}
                       >
             {SCHEDULE_STATES.map(({ value, label }) => (
@@ -580,11 +669,41 @@ function DetailSidebar({
             <Link
               to={'/item/$itemKey'}
               params={{ itemKey: parentItem?.itemKey ?? item.parentId }}
-              className="block truncate rounded px-3 py-2 text-[12px] hover:bg-slate-50"
+              className="flex items-center gap-1.5 truncate rounded px-3 py-2 text-[12px] hover:bg-slate-50"
               style={{ border: '1px solid #d7dde7', color: '#2558a6' }}
             >
+              {parentItem && <TypeBadge type={parentItem.type} />}
               {parentItem?.itemKey ?? item.parentId}
             </Link>
+          </FormField>
+        )}
+
+        {/* Defect: Parent Story link */}
+        {isDefect && (
+          <FormField label="Parent Story">
+            {disabled ? (
+              item.parentId ? (
+                <Link
+                  to={'/item/$itemKey'}
+                  params={{ itemKey: parentItem?.itemKey ?? item.parentId! }}
+                  className="block truncate rounded px-3 py-2 text-[12px] hover:bg-slate-50"
+                  style={{ border: '1px solid #d7dde7', color: '#2558a6' }}
+                >
+                  {parentItem && <TypeBadge type={parentItem.type} />}
+                  {parentItem ? `${parentItem.itemKey} — ${parentItem.title}` : item.parentId}
+                </Link>
+              ) : (
+                <span className="block rounded px-3 py-2 text-[12px]" style={{ border: '1px solid #d7dde7', color: '#9ca3af' }}>
+                  No parent story
+                </span>
+              )
+            ) : (
+              <ParentStorySelect
+                projectId={item.projectId}
+                currentParentId={item.parentId}
+                onUpdate={(patch) => onUpdate(patch)}
+              />
+            )}
           </FormField>
         )}
 
@@ -651,7 +770,10 @@ function DetailSidebar({
             <FormField label="Iteration">
               <NativeSelect
                 value={item.iterationId ?? ''}
-                onChange={(e) => onUpdate({ iterationId: e.target.value || null })}
+                onChange={(e) => {
+                  const v = e.target.value || null
+                  if (v !== (item.iterationId ?? null)) onUpdate({ iterationId: v })
+                }}
                 disabled={disabled}
                               >
                 <option value="">No iteration</option>
@@ -749,6 +871,14 @@ export function WorkItemDetailPage() {
   const { data: watchers = [] } = useWatchers(itemByKey?.id)
   const toggleWatch = useToggleWatch(itemByKey?.id)
   const isWatching = watchers.some((w) => w.userId === currentUserId)
+
+  // Defects tab: fetch child defects for stories
+  const isStory = itemByKey?.type === 'story'
+  const { data: childDefects = [] } = useChildDefects(
+    isStory ? itemByKey.id : undefined,
+    isStory ? itemByKey.projectId : undefined,
+  )
+  const defectCount = childDefects.length
 
   const patchItem = useCallback(
     async (patch: Record<string, unknown>) => {
@@ -848,6 +978,22 @@ export function WorkItemDetailPage() {
               </span>
             ),
             label: 'Tasks',
+          },
+        ]
+      : []),
+    ...(isStory
+      ? [
+          {
+            id: 'defects' as DetailTab,
+            icon: (
+              <span className="flex items-center gap-1.5">
+                <Bug size={19} />
+                {defectCount > 0 && (
+                  <span className="text-[10px] font-semibold tabular-nums">{defectCount}</span>
+                )}
+              </span>
+            ),
+            label: 'Defects',
           },
         ]
       : []),
@@ -975,6 +1121,9 @@ export function WorkItemDetailPage() {
           )}
           {activeTab === 'tasks' && !isTask && (
             <TasksTab workItemId={item.id} projectId={item.projectId} />
+          )}
+          {activeTab === 'defects' && isStory && (
+            <DefectsTab workItemId={item.id} projectId={item.projectId} />
           )}
           {activeTab === 'history' && <HistoryTab workItemId={item.id} />}
         </main>

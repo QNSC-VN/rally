@@ -6,7 +6,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
-import { useCreateWorkItem, type WorkItem } from '@/features/work-items/api'
+import { useCreateWorkItem, useBacklog, type WorkItem } from '@/features/work-items/api'
 import { useProjectTeams } from '@/features/teams/api'
 import { useProjectMembers } from '@/features/teams/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
@@ -31,15 +31,19 @@ export function CreateWorkItemModal({ projectId, onClose, onCreated, onCreatedWi
   const [type, setType] = useState<CreatableType>('story')
   const [title, setTitle] = useState('')
   // Auto-fill from the Team selected in the workspace context (falls back to "No team")
-  const [teamId, setTeamId] = useState(team ?? '')
+  const [teamId, setTeamId] = useState(team?.teamId ?? '')
   const [assigneeId, setAssigneeId] = useState('')
   const [storyPoints, setStoryPoints] = useState('')
+  const [parentStoryId, setParentStoryId] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
   const createMutation = useCreateWorkItem()
   const { data: teams = [] } = useProjectTeams(projectId)
   const { data: members = [] } = useProjectMembers(projectId)
+  // Fetch stories for the parent dropdown (only used when type=defect)
+  const { data: backlogData } = useBacklog(projectId, { type: 'story' })
+  const stories = backlogData?.data ?? []
 
   const titleRef = useRef<HTMLInputElement>(null)
   const submitRef = useRef(submit)
@@ -61,6 +65,7 @@ export function CreateWorkItemModal({ projectId, onClose, onCreated, onCreatedWi
         teamId: teamId || undefined,
         assigneeId: assigneeId || undefined,
         storyPoints: storyPoints ? Number(storyPoints) : undefined,
+        parentId: type === 'defect' ? (parentStoryId || undefined) : undefined,
       })
       if (withDetails) {
         onCreatedWithDetails?.(item)
@@ -110,13 +115,14 @@ export function CreateWorkItemModal({ projectId, onClose, onCreated, onCreatedWi
                   key={value}
                   type="button"
                   onClick={() => setType(value)}
-                  className="flex-1 py-1.5 text-[11px] font-semibold rounded-sm transition-colors"
+                  className="flex items-center justify-center gap-1 flex-1 py-1.5 text-[11px] font-semibold rounded-sm transition-colors"
                   style={{
                     backgroundColor: active ? cfg.bg : 'transparent',
                     color: active ? cfg.color : BRAND.textSecondary,
                     border: `1px solid ${active ? cfg.color + '55' : BRAND.borderSubtle}`,
                   }}
                 >
+                  {cfg.icon && <cfg.icon size={12} strokeWidth={2.2} />}
                   {label}
                 </button>
               )
@@ -136,6 +142,18 @@ export function CreateWorkItemModal({ projectId, onClose, onCreated, onCreatedWi
             className="text-[13px]"
           />
         </FormField>
+
+        {/* Parent Story — Defect only */}
+        {type === 'defect' && (
+          <FormField label="Parent Story" htmlFor="wi-parent-story">
+            <NativeSelect id="wi-parent-story" value={parentStoryId} onChange={(e) => setParentStoryId(e.target.value)}>
+              <option value="">No parent story</option>
+              {stories.map((s) => (
+                <option key={s.id} value={s.id}>{s.itemKey} — {s.title}</option>
+              ))}
+            </NativeSelect>
+          </FormField>
+        )}
 
         {/* Team + Owner row */}
         <div className="grid grid-cols-2 gap-4">
