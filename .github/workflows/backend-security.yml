@@ -23,6 +23,7 @@ concurrency:
 permissions:
   contents: read
   security-events: write # SARIF upload (no-op on free plan, lights up after GHAS)
+  packages: read # ceiling for the reusable Trivy build to pull private @qnsc-vn/* (packages can only be reduced, not elevated, in the called workflow)
 
 jobs:
   security:
