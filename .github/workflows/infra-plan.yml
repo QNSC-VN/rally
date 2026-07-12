@@ -22,6 +22,6 @@ jobs:
       # Mirror the apply-time TF_VARs so plan ≈ apply (masked inside the reusable).
       tf_secret_vars_json: |
         {
-          "acm_cert_arn": "${{ secrets.ACM_CERT_ARN }}",
+          "acm_cert_arn": "${{ vars.ACM_CERT_ARN_DEVELOP }}",
           "cloudflare_api_token": "${{ secrets.CLOUDFLARE_API_TOKEN }}"
         }
