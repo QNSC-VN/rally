@@ -1,8 +1,3 @@
-variable "acm_cert_arn" {
-  type        = string
-  description = "ACM certificate ARN for the ALB HTTPS listener (ap-southeast-1)"
-}
-
 variable "cloudflare_account_id" {
   type        = string
   default     = ""

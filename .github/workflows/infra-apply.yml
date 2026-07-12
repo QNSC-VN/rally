@@ -107,7 +107,6 @@ jobs:
         working-directory: infra/live/develop
         run: tofu apply -input=false -auto-approve
         env:
-          TF_VAR_acm_cert_arn:       ${{ vars.ACM_CERT_ARN_DEVELOP }}
           TF_VAR_entra_tenant_id:    ${{ vars.ENTRA_TENANT_ID }}
           TF_VAR_entra_client_id:    ${{ vars.ENTRA_CLIENT_ID }}
           TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -183,7 +182,6 @@ jobs:
         working-directory: infra/live/prod
         run: tofu apply -input=false -auto-approve
         env:
-          TF_VAR_acm_cert_arn:       ${{ vars.ACM_CERT_ARN_PROD }}
           TF_VAR_entra_tenant_id:    ${{ vars.ENTRA_TENANT_ID }}
           TF_VAR_entra_client_id:    ${{ vars.ENTRA_CLIENT_ID }}
           TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
