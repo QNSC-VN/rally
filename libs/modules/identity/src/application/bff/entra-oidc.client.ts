@@ -18,10 +18,10 @@ const OIDC_SCOPES = 'openid profile email';
 /**
  * Minimal, stateless Microsoft Entra ID OIDC client for the Authorization-Code
  * + PKCE flow. It builds the authorize URL and exchanges the returned code for
- * an `id_token` — which is handed straight to `AuthService.ssoLogin`, exactly
- * as the browser MSAL flow does today. Because rally calls no downstream
- * Microsoft Graph APIs, the BFF is *login-only*: it never keeps the Entra
- * access token, so there is no long-lived Microsoft token custody to secure.
+ * an `id_token` — which is handed straight to `AuthService.ssoLogin`. Because
+ * rally calls no downstream Microsoft Graph APIs, the BFF is *login-only*: it
+ * never keeps the Entra access token, so there is no long-lived Microsoft
+ * token custody to secure.
  *
  * This class holds no request state, which is what lets it lift cleanly into
  * `@qnsc-vn/identity` when opshub adopts the same flow (see the identity
