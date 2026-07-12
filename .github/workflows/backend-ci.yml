@@ -143,6 +143,11 @@ jobs:
           JWT_ACCESS_EXPIRY: 15m
           JWT_REFRESH_EXPIRY: 30d
           CSRF_SECRET: ci-test-csrf-secret-min-32-characters-ok
+          # Entra BFF OIDC — CI test-only placeholders (never used for real auth).
+          ENTRA_TENANT_ID: ci-test-tenant
+          ENTRA_CLIENT_ID: ci-test-client
+          ENTRA_CLIENT_SECRET: ci-test-secret
+          ENTRA_REDIRECT_URI: http://localhost:3000/v1/bff/callback
 
       - name: Upload coverage
         if: always()
@@ -293,6 +298,11 @@ jobs:
           CSRF_SECRET: ci-test-csrf-secret-min-32-characters-ok
           OTEL_ENABLED: 'false'
           RESILIENCE_ENABLED: 'false'
+          # Entra BFF OIDC — CI test-only placeholders (never used for real auth).
+          ENTRA_TENANT_ID: ci-test-tenant
+          ENTRA_CLIENT_ID: ci-test-client
+          ENTRA_CLIENT_SECRET: ci-test-secret
+          ENTRA_REDIRECT_URI: http://localhost:3000/v1/bff/callback
 
       - name: Upload OpenAPI spec artifact
         uses: QNSC-VN/qnsc-ci/actions/publish-openapi-spec@v1
