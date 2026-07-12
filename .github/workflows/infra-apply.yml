@@ -1,4 +1,4 @@
-name: OpenTofu Apply
+name: Infrastructure · Apply
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Infra apply, gated the same way as the app deploys (backend-deploy.yml):
@@ -26,6 +26,12 @@ on:
       - ".github/workflows/infra-apply.yml"
   workflow_dispatch:
 
+# Serialize applies on the same ref so two quick merges can't race the tofu
+# state lock. Never cancel a running apply mid-flight.
+concurrency:
+  group: infra-apply-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   id-token: write
   contents: read
@@ -48,7 +54,7 @@ jobs:
 
       - uses: QNSC-VN/qnsc-ci/actions/setup-tofu-aws@v1
         with:
-          role-arn: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/rally-github-infra-apply
+          role-arn: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/rally-github-infra-apply
           aws-region: ${{ env.AWS_REGION }}
           tofu-version: ${{ env.TOFU_VERSION }}
 
@@ -82,7 +88,7 @@ jobs:
 
       - uses: QNSC-VN/qnsc-ci/actions/setup-tofu-aws@v1
         with:
-          role-arn: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/rally-github-infra-apply
+          role-arn: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/rally-github-infra-apply
           aws-region: ${{ env.AWS_REGION }}
           tofu-version: ${{ env.TOFU_VERSION }}
 
@@ -158,7 +164,7 @@ jobs:
 
       - uses: QNSC-VN/qnsc-ci/actions/setup-tofu-aws@v1
         with:
-          role-arn: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/rally-github-infra-apply
+          role-arn: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/rally-github-infra-apply
           aws-region: ${{ env.AWS_REGION }}
           tofu-version: ${{ env.TOFU_VERSION }}
 

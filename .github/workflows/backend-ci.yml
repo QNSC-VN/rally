@@ -1,9 +1,9 @@
 # =============================================================================
 # CI — fast quality gates on every PR and push to main
 # Gate: lint → typecheck → unit tests → e2e tests → docker build → openapi diff
-# Security scans (Trivy, CodeQL) live in security.yml — independently runnable.
+# Security scans live in the Security · Scan workflow — independently runnable.
 # =============================================================================
-name: CI — Backend
+name: Backend · CI
 
 on:
   push:

@@ -1,9 +1,9 @@
 # =============================================================================
 # CI — fast quality gates on every PR and push to main/develop
 # Gate: lint → typecheck → unit tests → build → pr-title
-# Security scans (Trivy, CodeQL) live in security.yml — independently runnable.
+# Security scans live in the Security · Scan workflow — independently runnable.
 # =============================================================================
-name: CI — Web
+name: Web · CI
 
 on:
   push:

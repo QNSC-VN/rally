@@ -7,7 +7,7 @@
 # DRY across products. RELEASE_BOT_APP_ID (org var) is read automatically;
 # RELEASE_BOT_PRIVATE_KEY (org secret) is passed explicitly below.
 # =============================================================================
-name: Create Release
+name: Release
 
 on:
   push:
