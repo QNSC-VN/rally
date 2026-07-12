@@ -54,10 +54,9 @@ module "ecr" {
 }
 
 # ── GitHub OIDC ───────────────────────────────────────────────────────────────
-# Owns ALL rally deploy roles: API (per-env), ECR push, infra plan/apply, AND
-# the web (SPA) deploy roles (previously hand-rolled below — now the module's
-# web_deploy_environments input). Web bucket names keep "rally-web-*" naming
-# (unrelated to the monorepo — S3 names are free-form and already live).
+# Owns ALL rally AWS deploy roles: API (per-env), ECR push, infra plan/apply.
+# The web SPA deploys to Cloudflare Pages (see live/*/main.tf module "web"), so
+# it needs no AWS deploy role here.
 module "iam_oidc" {
   source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/iam-oidc?ref=iam-oidc-v1.2.0"
 
@@ -78,24 +77,6 @@ module "iam_oidc" {
         "repo:${local.github_org}/rally:ref:refs/tags/v*",
         "repo:${local.github_org}/rally:environment:production"
       ]
-    }
-  }
-
-  web_deploy_environments = {
-    develop = {
-      allowed_subjects = [
-        "repo:${local.github_org}/rally:ref:refs/heads/main",
-        "repo:${local.github_org}/rally:environment:develop",
-      ]
-      s3_bucket = "rally-web-develop"
-    }
-    production = {
-      allowed_subjects = [
-        "repo:${local.github_org}/rally:ref:refs/heads/main",
-        "repo:${local.github_org}/rally:ref:refs/tags/v*",
-        "repo:${local.github_org}/rally:environment:production",
-      ]
-      s3_bucket = "qnsc-rally-web-prod" # "rally-web-prod" is globally claimed by another AWS account
     }
   }
 
