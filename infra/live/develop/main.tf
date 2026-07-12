@@ -388,12 +388,14 @@ module "migrator" {
 
 # ── Web SPA — Cloudflare Pages (zero-egress, native SPA routing) ─────────────
 # Replaces the deprecated S3 + CloudFront (cdn) stack. Content is deployed from
-# CI with `wrangler pages deploy apps/web/dist`. The API has its own edge — the
-# SPA calls https://rally-api-dev.qnsc.vn directly (VITE_API_URL baked at build
-# time), which is Cloudflare-proxied → ALB. Same-site under qnsc.vn, so cookies
-# + CORS work cleanly. Pages provisions the project + custom domain + proxied
-# CNAME. Gated on cloudflare_account_id so the stack still applies before the
-# Cloudflare account is wired.
+# CI with `wrangler pages deploy apps/web/dist`. The SPA is built with an empty
+# VITE_API_URL, so it reaches the API through relative /v1/* paths that the
+# Pages Function reverse-proxy (apps/web/functions/v1/[[path]].ts) forwards to
+# API_ORIGIN. That keeps the SPA and API same-origin under rally-dev.qnsc.vn —
+# required so the BFF __Host- session cookie is honoured (no cross-site cookie,
+# no CORS). Pages provisions the project + custom domain + proxied CNAME. Gated
+# on cloudflare_account_id so the stack still applies before the CF account is
+# wired.
 module "web" {
   count  = var.cloudflare_account_id != "" ? 1 : 0
   source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/pages-web?ref=pages-web-v1.0.0"
@@ -404,6 +406,12 @@ module "web" {
   domain      = local.cloudflare_zone_id != "" ? "rally-dev.qnsc.vn" : ""
   record_name = local.cloudflare_zone_id != "" ? "rally-dev" : ""
   comment     = "rally-develop web SPA → Cloudflare Pages (managed by rally-infra develop)"
+
+  # Pages Function proxy upstream: /v1/* (incl. /v1/bff/*) is forwarded here so
+  # the browser only ever sees the SPA origin (same-origin BFF requirement).
+  production_env_vars = {
+    API_ORIGIN = "https://rally-api-dev.qnsc.vn"
+  }
 }
 
 # ── DNS — rally-api-dev.qnsc.vn → ALB (Cloudflare-proxied edge) ──────────────

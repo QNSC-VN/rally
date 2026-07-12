@@ -304,4 +304,10 @@ module "web" {
   domain      = var.web_domain
   record_name = var.web_domain
   comment     = "rally-prod web SPA → Cloudflare Pages (managed by rally-infra prod)"
+
+  # Pages Function proxy upstream: /v1/* (incl. /v1/bff/*) is forwarded here so
+  # the browser only ever sees the SPA origin (same-origin BFF requirement).
+  production_env_vars = {
+    API_ORIGIN = "https://rally-api.qnsc.vn"
+  }
 }
