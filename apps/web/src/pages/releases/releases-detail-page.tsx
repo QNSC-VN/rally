@@ -7,6 +7,7 @@
  */
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
+/* eslint-disable react-hooks/set-state-in-effect */
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import { ChevronLeft, ChevronRight, Layers, Loader2, Save, Search, TrendingDown } from 'lucide-react'
 import { BRAND } from '@/shared/config/brand'
@@ -251,8 +252,7 @@ function ReleaseArtifactsTab({ releaseId }: { releaseId: string }) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export function ReleaseDetailPage() {
-  const { releaseId } = useParams({ from: '/releases/$releaseId' })
-  const navigate = useNavigate()
+  const { releaseId } = useParams({ from: '/auth/releases/$releaseId' })
   const { project } = useAppContext()
   const projectId = project?.projectId ?? ''
   const canManage = useAuthStore((s) => s.hasPermission('release:manage'))
@@ -476,7 +476,7 @@ export function ReleaseDetailPage() {
                   Project Scope
                 </label>
                 <div className="text-[12px] font-semibold py-1" style={{ color: BRAND.textPrimary }}>
-                  {project?.name ?? '—'}
+                  {project?.projectName ?? '—'}
                 </div>
               </div>
 

@@ -20,7 +20,7 @@ export class TeamStatusDrizzleRepository implements ITeamStatusRepository {
     // `work_items WHERE type='task'`. Join with work_items for the
     // parent (work product) info.
     const conditions = [
-      eq(tasks.tenantId, tenantId),
+      eq(tasks.workspaceId, tenantId),
       isNull(tasks.deletedAt),
       // Task iteration matches directly OR its parent's iteration matches
       sql`(${tasks.iterationId} = ${iterationId} OR (SELECT p.iteration_id FROM work.work_items p WHERE p.id = ${tasks.parentId} AND p.deleted_at IS NULL) = ${iterationId})`,

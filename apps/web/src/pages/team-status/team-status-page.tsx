@@ -5,14 +5,14 @@
  * owner/member. Features inline editing for Capacity, Task Name, and Task State.
  * Iteration selector reuses the same pattern as Iteration Status.
  */
-import { useMemo, useState, useCallback, useEffect, useRef } from 'react'
+/* eslint-disable react-hooks/set-state-in-effect */
+import { useMemo, useState, useCallback, useEffect } from 'react'
 import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
 import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  ArrowUpDown,
   Inbox,
 } from 'lucide-react'
 import { SkeletonList } from '@/shared/ui/skeleton'
@@ -67,6 +67,8 @@ const TEAM_STATUS_COLUMNS: ColumnDef<ColKey>[] = [
   { key: 'owner', label: 'Owner', defaultWidth: 96 },
 ]
 
+const RIGHT_ALIGNED = new Set<ColKey>(['capacity', 'estimate', 'todo', 'actuals'])
+
 function fmtRange(it: Pick<Iteration, 'startDate' | 'endDate'>) {
   const s = it.startDate ?? '—'
   const e = it.endDate ?? '—'
@@ -87,7 +89,17 @@ export function TeamStatusPage() {
     STORAGE_KEYS.TEAM_STATUS_COLUMNS,
   )
 
-  const RIGHT_ALIGNED = useRef(new Set<ColKey>(['capacity', 'estimate', 'todo', 'actuals'])).current
+  // Build per-column style (width + order + visibility) via useColumnLayout.
+  const colStyles = useMemo(
+    () =>
+      Object.fromEntries(
+        TEAM_STATUS_COLUMNS.map((c) => [
+          c.key,
+          styleFor(c.key, c.key === 'name' ? { flex: 1, minWidth: 150 } : { flexShrink: 0 }),
+        ]),
+      ) as Record<ColKey, React.CSSProperties>,
+    [styleFor],
+  )
 
   const { data: iterations = [] } = useIterations(projectId)
   const { data: members = [] } = useProjectMembers(projectId)
@@ -165,17 +177,6 @@ export function TeamStatusPage() {
   const totals = status?.totals
   const groups = status?.groups ?? []
 
-  // Build per-column style (width + order + visibility) via useColumnLayout.
-  const colStyles = useMemo(
-    () =>
-      Object.fromEntries(
-        TEAM_STATUS_COLUMNS.map((c) => [
-          c.key,
-          styleFor(c.key, c.key === 'name' ? { flex: 1, minWidth: 150 } : { flexShrink: 0 }),
-        ]),
-      ) as Record<ColKey, React.CSSProperties>,
-    [styleFor],
-  )
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
@@ -515,7 +516,7 @@ function MemberGroup({
             task={task}
             idx={idx}
             projectId={projectId}
-            teamId={teamId}
+            teamId={teamId ?? ''}
             iterationId={iterationId}
             canEdit={canEdit}
             colStyles={colStyles}

@@ -163,20 +163,23 @@ export function ColumnFieldsMenu<K extends string>({
                 )}
 
                 {/* ── Drag handle (only the handle is draggable, not the row) ── */}
-                <GripVertical
-                  size={13}
-                  className="cursor-grab active:cursor-grabbing shrink-0"
-                  style={{
-                    color: isActive ? ACCENT : '#a0a0a0',
-                    transition: 'color 0.12s ease',
-                  }}
+                <span
                   draggable
-                  onDragStart={(e) => handleDragStart(col.key, e)}
+                  onDragStart={(e: React.DragEvent<HTMLSpanElement>) => handleDragStart(col.key, e as unknown as React.DragEvent)}
                   onDragEnd={handleDragEnd}
                   tabIndex={0}
                   aria-label={`Drag to reorder ${col.label} column`}
                   role="button"
-                />
+                  className="cursor-grab active:cursor-grabbing shrink-0 flex items-center"
+                >
+                  <GripVertical
+                    size={13}
+                    style={{
+                      color: isActive ? ACCENT : '#a0a0a0',
+                      transition: 'color 0.12s ease',
+                    }}
+                  />
+                </span>
 
                 {/* ── Checkbox + label ── */}
                 <label

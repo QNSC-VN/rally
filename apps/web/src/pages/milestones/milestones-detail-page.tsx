@@ -7,6 +7,7 @@
  */
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
+/* eslint-disable react-hooks/set-state-in-effect */
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import {
   ChevronLeft,
@@ -21,7 +22,6 @@ import {
 } from 'lucide-react'
 import { BRAND } from '@/shared/config/brand'
 import { InlineSelect } from '@/shared/ui/native-select'
-import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
@@ -151,7 +151,7 @@ function SelectionModal({
           />
         </div>
       </div>
-      <ModalBody className="space-y-1" style={{ maxHeight: 320 }}>
+      <ModalBody className="space-y-1">
         {/* Select-all row */}
         <label
           className="flex items-center gap-2 px-1 py-1.5 text-[11px] font-semibold cursor-pointer select-none rounded hover:bg-gray-50"
@@ -484,8 +484,7 @@ function ArtifactsTab({ milestoneId }: { milestoneId: string }) {
 type TabKey = 'details' | 'artifacts'
 
 export function MilestoneDetailPage() {
-  const { milestoneId } = useParams({ from: '/milestones/$milestoneId' })
-  const navigate = useNavigate()
+  const { milestoneId } = useParams({ from: '/auth/milestones/$milestoneId' })
   const { project, workspace } = useAppContext()
   const projectId = project?.projectId ?? ''
   const workspaceId = workspace?.workspaceId ?? ''

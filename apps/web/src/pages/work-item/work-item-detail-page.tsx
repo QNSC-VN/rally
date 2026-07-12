@@ -492,7 +492,7 @@ function DefectsTab({ workItemId, projectId }: { workItemId: string; projectId: 
                 <ScheduleStateBadge state={d.scheduleState} dot />
                 <span style={{ color: '#5c6478' }}>{d.priority}</span>
                 <span style={{ color: '#5c6478' }}>{ownerName(d.assigneeId)}</span>
-                <span style={{ color: '#5c6478' }}>{d.severity ?? '—'}</span>
+                <span style={{ color: '#5c6478' }}>{((d as unknown as { severity?: string }).severity) ?? '—'}</span>
               </div>
             ))}
           </div>

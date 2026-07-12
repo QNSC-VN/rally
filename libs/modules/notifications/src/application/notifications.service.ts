@@ -29,11 +29,11 @@ export class NotificationsService {
     if (
       !notification ||
       notification.recipientId !== actor.sub ||
-      notification.tenantId !== actor.tenantId
+      notification.workspaceId !== actor.workspaceId
     ) {
       throw new NotFoundException('NOTIFICATION_NOT_FOUND', 'Notification not found');
     }
-    await this.notificationRepo.markRead(actor.tenantId, notificationId);
+    await this.notificationRepo.markRead(notificationId);
   }
 
   async markAllRead(actor: JwtPayload): Promise<void> {

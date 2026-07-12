@@ -67,14 +67,6 @@ const FLOW_STATE_OPTIONS: { value: string; label: string }[] = [
   { value: 'released', label: 'Released' },
 ]
 
-const PRIORITY_STYLE: Record<string, { bg: string; text: string; border: string }> = {
-  urgent: { bg: '#fef2f2', text: '#b91c1c', border: '#fecaca' },
-  high: { bg: '#fff7ed', text: '#9a3412', border: '#fed7aa' },
-  normal: { bg: '#fefce8', text: '#854d0e', border: '#fef08a' },
-  low: { bg: '#f1f5f9', text: '#475569', border: '#cbd5e1' },
-  none: { bg: '#f1f5f9', text: '#8c94a6', border: '#e2e6eb' },
-}
-
 const PRIORITY_OPTIONS: { value: string; label: string }[] = [
   { value: 'none', label: 'None' },
   { value: 'urgent', label: 'Urgent' },
@@ -99,19 +91,9 @@ const DEFECT_STATE_OPTIONS: { value: string; label: string }[] = [
   { value: 'closed_declined', label: 'Closed Declined' },
 ]
 
-const ROOT_CAUSE_LABEL: Record<string, string> = {
-  requirements: 'Requirements',
-  design: 'Design',
-  code: 'Code',
-  test: 'Test',
-  integration: 'Integration',
-  other: 'Other',
-}
-
 function DefectStateInlineCell({
   defect,
   canEdit,
-  projectId,
 }: {
   defect: DefectRow
   canEdit: boolean
@@ -167,7 +149,6 @@ function DefectStateInlineCell({
 function FixedInBuildCell({
   defect,
   canEdit,
-  projectId,
 }: {
   defect: DefectRow
   canEdit: boolean
@@ -216,14 +197,6 @@ function FixedInBuildCell({
   )
 }
 
-/** Derive defect-specific State from resolution + scheduleState (fallback when defectState is null) */
-function deriveDefectState(d: DefectRow): string {
-  if (d.resolution === 'wont_fix') return 'Closed Declined'
-  if (d.resolution === 'fixed') return 'Fixed'
-  if (['completed', 'accepted', 'released'].includes(d.scheduleState)) return 'Closed'
-  if (d.scheduleState === 'in_progress') return 'Open'
-  return 'Submitted'
-}
 
 type QualityColKey = 'rank' | 'id' | 'name' | 'userStory' | 'severity' | 'priority' | 'state' | 'flowState' | 'fixedInBuild' | 'iteration' | 'submittedBy' | 'owner'
 
@@ -294,7 +267,6 @@ function DefectInlineCell({
   currentValue,
   displayValue,
   canEdit,
-  projectId,
 }: {
   defect: DefectRow
   field: 'severity' | 'priority' | 'scheduleState'
@@ -698,7 +670,6 @@ export function QualityPage() {
             <div className="flex-1 overflow-auto">
               {defects.map((d, idx) => {
                 const sevStyle = d.severity && d.severity !== 'none' ? SEVERITY_STYLE[d.severity] : null
-                const defectState = d.defectState ?? deriveDefectState(d)
                 const flowLabel = FLOW_STATE_LABEL[d.scheduleState] ?? d.scheduleState
                 const userStory = d.parentKey
                   ? `${d.parentKey}: ${d.parentTitle ?? ''}`

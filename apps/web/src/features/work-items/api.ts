@@ -235,7 +235,7 @@ export function useUpdateWorkItem(id: string) {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as WorkItem
     },
-    onSuccess: (item) => {
+    onSuccess: (item, variables) => {
       qc.setQueryData(workItemKeys.detail(id), item)
       // Also update the work-item-by-key cache so WorkItemDetailPage reflects immediately.
       // Must pass projectId to match the exact cache key used by useWorkItemByKey().
@@ -266,8 +266,8 @@ export function useUpdateWorkItem(id: string) {
         }
       }
       // If parentId changed, also invalidate old parent's child defects
-      if (input.parentId !== undefined && input.parentId !== item.parentId && input.parentId) {
-        void qc.invalidateQueries({ queryKey: childDefectsKeys.byParent(input.parentId) })
+      if (variables.parentId !== undefined && variables.parentId !== item.parentId && variables.parentId) {
+        void qc.invalidateQueries({ queryKey: childDefectsKeys.byParent(variables.parentId) })
       }
     },
   })

@@ -331,7 +331,7 @@ function CreateIterationModal({
   const create = useCreateIteration()
   const [name, setName] = useState('')
   // Auto-fill from the Team selected in the workspace context (falls back to "No team")
-  const [teamId, setTeamId] = useState<string>(team ?? '')
+  const [teamId, setTeamId] = useState<string>(team?.teamId ?? '')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [state, setState] = useState<IterationState>('planning')

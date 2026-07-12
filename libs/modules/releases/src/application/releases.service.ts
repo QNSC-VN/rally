@@ -140,11 +140,11 @@ export class ReleasesService {
   async shipRelease(actor: JwtPayload, id: string): Promise<Release> {
     const release = await this.getRelease(actor.workspaceId, id);
     await this.accessService.assertProjectPermission(actor, release.projectId, PERMISSION.RELEASE_MANAGE);
-    if (release.status === 'released') {
-      throw new PreconditionFailedException('RELEASE_NOT_FOUND', 'Release has already shipped');
+    if (release.status === 'accepted') {
+      throw new PreconditionFailedException('RELEASE_ALREADY_SHIPPED', 'Release has already shipped');
     }
     const updated = await this.releaseRepo.update(id, {
-      status: 'released',
+      status: 'accepted',
       releasedAt: new Date(),
     });
     this.logger.log({ releaseId: id }, 'Release shipped');

@@ -8,7 +8,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
-import { AlertTriangle, Loader2, Plus, Search, Trash2, X, PackageOpen, Pencil, ExternalLink, BarChart3 } from 'lucide-react'
+import { AlertTriangle, Loader2, Plus, Search, Trash2, X, PackageOpen, Pencil, ExternalLink } from 'lucide-react'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { InlineSelect } from '@/shared/ui/native-select'
 import { BRAND } from '@/shared/config/brand'
@@ -28,7 +28,6 @@ import {
   useDeleteRelease,
   type Release,
   type ReleaseStatus,
-  type TaskRollup,
 } from '@/features/releases/api'
 
 // ── Column definitions (resize) ──────────────────────────────────────────
@@ -367,14 +366,12 @@ function ReleaseRow({
   release,
   projectId,
   canManage,
-  onEdit,
   onDelete,
   colStyleFor,
 }: {
   release: Release
   projectId: string
   canManage: boolean
-  onEdit: (r: Release) => void
   onDelete: (id: string) => void
   colStyleFor: (key: ColKey, base?: React.CSSProperties) => React.CSSProperties
 }) {
@@ -873,7 +870,6 @@ export function ReleasesPage() {
               release={release}
               projectId={projectId!}
               canManage={canManage}
-              onEdit={setEditingRelease}
               onDelete={(id) => { void handleDelete(id) }}
               colStyleFor={colStyleFor}
             />

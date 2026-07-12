@@ -80,7 +80,7 @@ export class MilestonesService {
       .where(
         and(
           eq(milestoneReleases.milestoneId, milestoneId),
-          eq(releases.tenantId, tenantId),
+          eq(releases.workspaceId, tenantId),
         ),
       );
 

@@ -207,7 +207,7 @@ export class MilestoneDrizzleRepository implements IMilestoneRepository {
         releaseDate: releases.releaseDate,
       })
       .from(releases)
-      .where(and(sql`${releases.id} = ANY(${releaseIds})`, eq(releases.tenantId, tenantId)));
+      .where(and(sql`${releases.id} = ANY(${releaseIds})`, eq(releases.workspaceId, tenantId)));
 
     if (rows.length === 0) return { startDate: null, endDate: null };
 

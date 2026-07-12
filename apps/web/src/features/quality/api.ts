@@ -2,7 +2,7 @@
  * Quality/Defect API hooks — TanStack Query wrappers.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { apiClient, getAccessToken } from '@/shared/api/http-client'
+import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
 
 export type DefectSeverity = 'critical' | 'high' | 'medium' | 'low' | 'none'
@@ -124,12 +124,10 @@ export function useCreateDefect() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (body: CreateDefectInput) => {
-      const token = getAccessToken()
       const res = await fetch('/api/v1/work-items', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           projectId: body.projectId,
@@ -153,7 +151,7 @@ export function useCreateDefect() {
       }
       return json
     },
-    onSuccess: (_data, variables) => {
+    onSuccess: () => {
       void qc.invalidateQueries({ queryKey: qualityKeys.all })
     },
   })

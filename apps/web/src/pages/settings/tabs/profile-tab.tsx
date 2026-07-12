@@ -8,7 +8,6 @@ import { BRAND } from '@/shared/config/brand'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
-import { getAccessToken, cancelProactiveRefresh } from '@/shared/api/http-client'
 import { useNavigate } from '@tanstack/react-router'
 import { Field, Divider, PasswordInput } from './shared'
 
@@ -100,14 +99,12 @@ export function ProfileTab() {
         emailVerified: boolean
         createdAt: string
         updatedAt: string
+        memberships?: unknown[]
       }
-      const token = getAccessToken()
-      if (token) {
-        setUser(
-          { ...u, avatarUrl: u.avatarUrl ?? undefined, permissions: u.permissions ?? [] },
-          token,
-        )
-      }
+      setUser(
+        { ...u, avatarUrl: u.avatarUrl ?? undefined, permissions: u.permissions ?? [] },
+        (u.memberships as never[]) ?? [],
+      )
       toast.success('Profile updated')
     } catch {
       profile.setError('root', { message: 'Network error — please try again.' })
@@ -117,7 +114,13 @@ export function ProfileTab() {
   async function onChangePassword(data: PasswordForm) {
     try {
       const body = { currentPassword: data.currentPassword, newPassword: data.newPassword }
-      const { error, response } = await apiClient.PATCH('/v1/auth/password', {
+      const customClient = apiClient as unknown as {
+        PATCH: (
+          url: string,
+          options: { body: typeof body }
+        ) => Promise<{ error?: unknown; response: { status: number } }>
+      }
+      const { error, response } = await customClient.PATCH('/v1/auth/password', {
         body,
       })
       if (error) {
@@ -140,7 +143,6 @@ export function ProfileTab() {
       /* ignore */
     }
     useAuthStore.getState().clearAuth()
-    cancelProactiveRefresh()
     toast.success('Signed out from all devices')
     await navigate({ to: '/login' })
   }

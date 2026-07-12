@@ -29,7 +29,7 @@ export class ProjectTeamDrizzleRepository implements IProjectTeamRepository {
     const rows = await this.db
       .select({
         id: projectTeams.id,
-        tenantId: projectTeams.tenantId,
+        workspaceId: projectTeams.workspaceId,
         projectId: projectTeams.projectId,
         teamId: projectTeams.teamId,
         status: projectTeams.status,

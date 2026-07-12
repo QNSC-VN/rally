@@ -5,7 +5,6 @@ import {
   ConflictException,
   PreconditionFailedException,
   Span,
-  TenantRlsService,
 } from '@platform';
 import type { CursorPayload, PagedResult } from '@platform';
 import { IWorkspaceRepository, WORKSPACE_REPOSITORY } from '../domain/ports/workspace.repository';
@@ -18,7 +17,7 @@ import type {
   WorkspaceMember,
   WorkspaceMemberWithProfile,
   UpdateMemberInput,
-} from '../domain/tenancy.types';
+} from '../domain/workspace.types';
 
 /** Workspace member management (list/add/update/remove). */
 @Injectable()
@@ -28,43 +27,33 @@ export class WorkspaceMemberService {
   constructor(
     @Inject(WORKSPACE_REPOSITORY) private readonly workspaceRepo: IWorkspaceRepository,
     @Inject(WORKSPACE_MEMBER_REPOSITORY) private readonly memberRepo: IWorkspaceMemberRepository,
-    private readonly rls: TenantRlsService,
   ) {}
 
   /** Same existence/ownership check as WorkspaceService.getWorkspace. */
-  private async getWorkspace(tenantId: string, workspaceId: string): Promise<Workspace> {
-    const workspace = await this.workspaceRepo.findById(workspaceId, tenantId);
-    if (!workspace || workspace.deletedAt || workspace.tenantId !== tenantId) {
+  private async getWorkspace(workspaceId: string): Promise<Workspace> {
+    const workspace = await this.workspaceRepo.findById(workspaceId);
+    if (!workspace || workspace.deletedAt) {
       throw new NotFoundException('WORKSPACE_NOT_FOUND', 'Workspace not found');
     }
     return workspace;
   }
 
   async listMembers(
-    tenantId: string,
     workspaceId: string,
     args: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<WorkspaceMember>> {
-    await this.getWorkspace(tenantId, workspaceId);
+    await this.getWorkspace(workspaceId);
     return this.memberRepo.listMembers(workspaceId, args);
   }
 
-  async listMembersWithProfile(
-    tenantId: string,
-    workspaceId: string,
-  ): Promise<WorkspaceMemberWithProfile[]> {
-    await this.getWorkspace(tenantId, workspaceId);
+  async listMembersWithProfile(workspaceId: string): Promise<WorkspaceMemberWithProfile[]> {
+    await this.getWorkspace(workspaceId);
     return this.memberRepo.listMembersWithProfile(workspaceId);
   }
 
-  @Span('tenancy.addMember')
-  async addMember(
-    tenantId: string,
-    workspaceId: string,
-    userId: string,
-    actorId: string,
-  ): Promise<WorkspaceMember> {
-    await this.getWorkspace(tenantId, workspaceId);
+  @Span('workspace.addMember')
+  async addMember(workspaceId: string, userId: string, actorId: string): Promise<WorkspaceMember> {
+    await this.getWorkspace(workspaceId);
 
     const existing = await this.memberRepo.findMember(workspaceId, userId);
     if (existing) {
@@ -74,31 +63,24 @@ export class WorkspaceMemberService {
       );
     }
 
-    const member = await this.rls.withTenantContext(tenantId, (tx) =>
-      this.memberRepo.addMember(
-        {
-          id: uuidv7(),
-          tenantId,
-          workspaceId,
-          userId,
-          roleId: undefined,
-        },
-        tx,
-      ),
-    );
+    const member = await this.memberRepo.addMember({
+      id: uuidv7(),
+      workspaceId,
+      userId,
+      roleId: undefined,
+    });
 
     this.logger.log({ workspaceId, userId, actorId }, 'Member added to workspace');
     return member;
   }
 
   async updateMember(
-    tenantId: string,
     workspaceId: string,
     memberId: string,
     input: UpdateMemberInput,
     actorId: string,
   ): Promise<WorkspaceMember> {
-    await this.getWorkspace(tenantId, workspaceId);
+    await this.getWorkspace(workspaceId);
 
     const member = await this.memberRepo.findMemberById(memberId);
     if (!member || member.workspaceId !== workspaceId) {
@@ -119,20 +101,13 @@ export class WorkspaceMemberService {
       }
     }
 
-    const updated = await this.rls.withTenantContext(tenantId, (tx) =>
-      this.memberRepo.updateMember(memberId, input, tx),
-    );
+    const updated = await this.memberRepo.updateMember(memberId, input);
     this.logger.log({ workspaceId, memberId, actorId }, 'Member updated');
     return updated;
   }
 
-  async removeMember(
-    tenantId: string,
-    workspaceId: string,
-    userId: string,
-    actorId: string,
-  ): Promise<void> {
-    await this.getWorkspace(tenantId, workspaceId);
+  async removeMember(workspaceId: string, userId: string, actorId: string): Promise<void> {
+    await this.getWorkspace(workspaceId);
 
     const existing = await this.memberRepo.findMember(workspaceId, userId);
     if (!existing) {
@@ -142,9 +117,7 @@ export class WorkspaceMemberService {
       );
     }
 
-    await this.rls.withTenantContext(tenantId, (tx) =>
-      this.memberRepo.removeMember(workspaceId, userId, tx),
-    );
+    await this.memberRepo.removeMember(workspaceId, userId);
     this.logger.log({ workspaceId, userId, actorId }, 'Member removed from workspace');
   }
 }

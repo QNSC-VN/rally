@@ -99,11 +99,7 @@ export function useReleaseBurndown(releaseId: string | undefined) {
     queryKey: releaseKeys.burndown(releaseId ?? ''),
     queryFn: async () => {
       if (!releaseId) return []
-      const { getAccessToken } = await import('@/shared/api/http-client')
-      const token = getAccessToken()
-      const res = await fetch(`/api/v1/releases/${releaseId}/burndown`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      const res = await fetch(`/api/v1/releases/${releaseId}/burndown`)
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
         throw new Error(body.message ?? `Burndown fetch failed (${res.status})`)
@@ -240,7 +236,18 @@ export function useReleaseArtifacts(
     queryKey: ['release', releaseId, 'artifacts', params],
     queryFn: async () => {
       if (!releaseId) return { data: [], pageInfo: { hasNextPage: false, nextCursor: null, limit: 50, total: 0 } }
-      const { data, error, response } = await apiClient.GET('/v1/releases/{id}/artifacts', {
+      const customClient = apiClient as unknown as {
+        GET: (
+          url: string,
+          options: {
+            params: {
+              path: { id: string }
+              query: { limit: number; q: string | undefined }
+            }
+          }
+        ) => Promise<{ data?: ReleaseArtifactPageResponse; error?: unknown; response: { status: number } }>
+      }
+      const { data, error, response } = await customClient.GET('/v1/releases/{id}/artifacts', {
         params: {
           path: { id: releaseId },
           query: {
@@ -250,7 +257,7 @@ export function useReleaseArtifacts(
         },
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
-      const res = data as ReleaseArtifactPageResponse | undefined
+      const res = data
       return {
         data: res?.data ?? [],
         pageInfo: res?.pageInfo ?? { hasNextPage: false, nextCursor: null, limit: 50, total: 0 },

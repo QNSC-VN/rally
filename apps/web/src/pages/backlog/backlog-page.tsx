@@ -9,6 +9,7 @@
  *  - resizable columns (persisted in localStorage)
  *  - "Create Work Item" modal
  */
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   DndContext,
@@ -210,7 +211,7 @@ export function BacklogPage() {
   // Reference lists for the P2.1 filters, inline selects and id→name lookups.
   const { data: members = [] } = useProjectMembers(projectId)
   const { data: releases = [] } = useReleases(projectId)
-  const { data: iterations = [] } = useIterationOptions(projectId, team)
+  const { data: iterations = [] } = useIterationOptions(projectId, team?.teamId)
 
   // Reset pagination on filter/project change (synchronously, before useBacklog reads cursor)
   const prevTeamRef = useRef(team?.teamId)

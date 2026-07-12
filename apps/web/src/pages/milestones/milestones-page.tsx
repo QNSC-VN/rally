@@ -63,8 +63,8 @@ function MilestoneFormFields({
   notes, setNotes,
   status, setStatus,
   ownerId, setOwnerId,
-  targetStartDate, setTargetStartDate,
-  targetEndDate, setTargetEndDate,
+  targetStartDate,
+  targetEndDate,
   selectedReleases, toggleRelease,
   releases,
   members,
@@ -74,8 +74,8 @@ function MilestoneFormFields({
   notes: string; setNotes: (v: string) => void
   status: MilestoneStatus; setStatus: (v: MilestoneStatus) => void
   ownerId: string; setOwnerId: (v: string) => void
-  targetStartDate: string; setTargetStartDate: (v: string) => void
-  targetEndDate: string; setTargetEndDate: (v: string) => void
+  targetStartDate: string;
+  targetEndDate: string;
   selectedReleases: string[]; toggleRelease: (rid: string) => void
   releases: { id: string; name: string }[] | undefined
   members: { userId: string; displayName?: string; email?: string }[] | undefined
@@ -192,8 +192,8 @@ function CreateMilestoneModal({
   const [description, setDescription] = useState('')
   const [notes, setNotes] = useState('')
   const [status, setStatus] = useState<MilestoneStatus>('planned')
-  const [targetStartDate, setTargetStartDate] = useState('')
-  const [targetEndDate, setTargetEndDate] = useState('')
+  const targetStartDate = ''
+  const targetEndDate = ''
   const [selectedReleases, setSelectedReleases] = useState<string[]>([])
   const [ownerId, setOwnerId] = useState('')
   const { data: releases } = useReleases(projectId)
@@ -236,8 +236,8 @@ function CreateMilestoneModal({
             notes={notes} setNotes={setNotes}
             status={status} setStatus={setStatus}
             ownerId={ownerId} setOwnerId={setOwnerId}
-            targetStartDate={targetStartDate} setTargetStartDate={setTargetStartDate}
-            targetEndDate={targetEndDate} setTargetEndDate={setTargetEndDate}
+            targetStartDate={targetStartDate}
+            targetEndDate={targetEndDate}
             selectedReleases={selectedReleases} toggleRelease={toggleRelease}
             releases={releases}
             members={members}
@@ -281,8 +281,8 @@ function EditMilestoneModal({
   const [status, setStatus] = useState<MilestoneStatus>(milestone.status)
   const [selectedReleases, setSelectedReleases] = useState<string[]>(milestone.releaseIds ?? [])
   const [ownerId, setOwnerId] = useState(milestone.ownerId ?? '')
-  const [targetStartDate, setTargetStartDate] = useState(milestone.targetStartDate ?? '')
-  const [targetEndDate, setTargetEndDate] = useState(milestone.targetEndDate ?? '')
+  const targetStartDate = milestone.targetStartDate ?? ''
+  const targetEndDate = milestone.targetEndDate ?? ''
   const { data: releases } = useReleases(milestone.projectId)
   const { data: members } = useProjectMembers(milestone.projectId)
   const update = useUpdateMilestone()
@@ -323,8 +323,8 @@ function EditMilestoneModal({
             notes={notes} setNotes={setNotes}
             status={status} setStatus={setStatus}
             ownerId={ownerId} setOwnerId={setOwnerId}
-            targetStartDate={targetStartDate} setTargetStartDate={setTargetStartDate}
-            targetEndDate={targetEndDate} setTargetEndDate={setTargetEndDate}
+            targetStartDate={targetStartDate}
+            targetEndDate={targetEndDate}
             selectedReleases={selectedReleases} toggleRelease={toggleRelease}
             releases={releases}
             members={members}

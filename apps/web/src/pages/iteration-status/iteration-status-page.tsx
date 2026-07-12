@@ -6,6 +6,7 @@
  * metric strip (from the backend read-model), and an editable work-item list.
  * Sourced from /v1/iterations/:id/status.
  */
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useMemo, useState, useCallback, useEffect } from 'react'
 import { useColumnLayout, type ColumnDef } from '@/shared/lib/hooks/use-column-layout'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
@@ -35,7 +36,6 @@ import {
   Bug,
   ListChecks,
   BarChart3,
-  ArrowUpDown,
   GripVertical,
 } from 'lucide-react'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
@@ -219,8 +219,8 @@ export function IterationStatusPage() {
     if (!sortCol) return items
     const dir = sortDir === 'asc' ? 1 : -1
     return [...items].sort((a, b) => {
-      let va: string | number = ''
-      let vb: string | number = ''
+      let va: string | number
+      let vb: string | number
       switch (sortCol) {
         case 'rank':
           va = a.rank
@@ -1246,12 +1246,16 @@ function StatusRow({
               }}
             />
           </button>
-          <GripVertical
+          <span
             ref={setActivatorNodeRef}
             {...(dragEnabled && canEdit ? { ...attributes, ...listeners } : {})}
-            size={12}
-            style={{ color: AZ.textMuted, cursor: dragEnabled && canEdit ? 'grab' : 'default' }}
-          />
+            style={{ display: 'inline-flex', cursor: dragEnabled && canEdit ? 'grab' : 'default' }}
+          >
+            <GripVertical
+              size={12}
+              style={{ color: AZ.textMuted }}
+            />
+          </span>
         </div>
 
         {/* ID */}

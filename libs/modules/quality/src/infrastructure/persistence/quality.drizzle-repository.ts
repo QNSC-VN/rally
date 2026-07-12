@@ -29,7 +29,7 @@ export class QualityDrizzleRepository implements IQualityRepository {
     } = {},
   ): Promise<{ rows: DefectRow[] }> {
     const conditions = [
-      eq(workItems.tenantId, tenantId),
+      eq(workItems.workspaceId, tenantId),
       eq(workItems.projectId, projectId),
       eq(workItems.type, 'defect'),
       isNull(workItems.deletedAt),
@@ -179,7 +179,7 @@ export class QualityDrizzleRepository implements IQualityRepository {
       .from(workItems)
       .where(
         and(
-          eq(workItems.tenantId, tenantId),
+          eq(workItems.workspaceId, tenantId),
           eq(workItems.projectId, projectId),
           eq(workItems.type, 'defect'),
           isNull(workItems.deletedAt),
