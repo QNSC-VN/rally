@@ -148,6 +148,9 @@ jobs:
       ENTRA_CLIENT_ID: ci-test-client
       ENTRA_CLIENT_SECRET: ci-test-secret
       ENTRA_REDIRECT_URI: http://localhost:3000/v1/bff/callback
+      # Render the dev-login form (Vite build flag). The E2E helper signs in via
+      # the passwordless /v1/bff/dev-login form since CI has no Entra tenant.
+      VITE_DEV_LOGIN: 'true'
       # Rotating refresh tokens can't be shared across test contexts, so each
       # spec logs in fresh — disable rate limiting so that never 429s.
       DISABLE_RATE_LIMIT: 'true'
