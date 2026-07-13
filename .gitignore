@@ -50,3 +50,7 @@ junit.xml
 
 # Claude artifacts
 .claude/
+
+# Spurious npm lockfiles — this repo uses pnpm only
+package-lock.json
+**/package-lock.json
