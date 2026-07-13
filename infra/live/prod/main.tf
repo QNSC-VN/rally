@@ -49,12 +49,22 @@ locals {
   region = "ap-southeast-1"
   azs    = ["ap-southeast-1a", "ap-southeast-1b", "ap-southeast-1c"]
 
+  # Public hostnames (Cloudflare-proxied). Single source of truth for the prod
+  # domain — referenced by CORS_ORIGINS, APP_BASE_URL, ENTRA_REDIRECT_URI, the
+  # S3 CORS allow-list, the API host-header rule, the API DNS record and the
+  # Pages custom domain below.
+  app_domain   = "rally.qnsc.vn"
+  app_base_url = "https://${local.app_domain}"
+  api_domain   = "rally-api.qnsc.vn"
+  api_record   = "rally-api" # subdomain label for the Cloudflare CNAME
+
   kms_key_arn        = data.terraform_remote_state.shared.outputs.kms_key_arn
   cloudflare_zone_id = try(data.terraform_remote_state.shared.outputs.cloudflare_zone_id, "")
 
-  ecr_base       = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${local.region}.amazonaws.com"
-  ecr_api_url    = "${local.ecr_base}/rally-api:${var.image_tag}"
-  ecr_worker_url = "${local.ecr_base}/rally-worker:${var.image_tag}"
+  ecr_base         = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${local.region}.amazonaws.com"
+  ecr_api_url      = "${local.ecr_base}/rally-api:${var.image_tag}"
+  ecr_worker_url   = "${local.ecr_base}/rally-worker:${var.image_tag}"
+  ecr_migrator_url = "${local.ecr_base}/rally-migrator:${var.image_tag}"
 
   # Cloudflare IPv4 ranges — single source of truth in qnsc-infra bootstrap
   # (read via _shared remote state), so a CF range change is one edit there.
@@ -202,10 +212,11 @@ module "api" {
   alb_listener_arn  = data.terraform_remote_state.runtime.outputs.https_listener_arn
   alb_priority      = 100
   alb_path_patterns = ["/*"]
-  alb_host_headers  = ["rally-api.qnsc.vn"] # host-based routing on the shared prod ALB
+  alb_host_headers  = [local.api_domain] # host-based routing on the shared prod ALB
   health_check_path = "/v1/healthz"
 
   secret_arns = values(module.secrets.secret_arns)
+  kms_key_arn = local.kms_key_arn
   secrets = [
     { name = "DATABASE_URL", secret_arn = module.secrets.secret_arns["db-url"] },
     { name = "JWT_PRIVATE_KEY", secret_arn = module.secrets.secret_arns["jwt-private"] },
@@ -218,10 +229,35 @@ module "api" {
     { name = "NODE_ENV", value = "production" },
     { name = "PORT", value = "3000" },
     { name = "REDIS_URL", value = local.redis_url }, # shared (lean) or per-product (ha) cache
+    { name = "AWS_REGION", value = local.region },
+    { name = "CORS_ORIGINS", value = local.app_base_url },
+    { name = "APP_BASE_URL", value = local.app_base_url },
+    # JWT config — defaults match app .env.example; override if needed
+    { name = "JWT_ISSUER", value = "rally-api" },
+    { name = "JWT_AUDIENCE", value = "rally-web" },
+    { name = "JWT_ACCESS_EXPIRY", value = "15m" },
+    { name = "JWT_REFRESH_EXPIRY", value = "30d" },
     # Microsoft Entra SSO (BFF) — mandatory; the API fails to boot without them.
     { name = "ENTRA_TENANT_ID", value = var.entra_tenant_id },
     { name = "ENTRA_CLIENT_ID", value = var.entra_client_id },
-    { name = "ENTRA_REDIRECT_URI", value = "https://rally.qnsc.vn/v1/bff/callback" },
+    { name = "ENTRA_REDIRECT_URI", value = "${local.app_base_url}/v1/bff/callback" },
+    # Comma-separated emails auto-granted workspace_admin on every SSO login
+    { name = "PLATFORM_ADMIN_EMAILS", value = "nghiavt@qnsc.vn,quangld@qnsc.vn,hieuvbm@qnsc.vn,anhntn@qnsc.vn" },
+    # Messaging — SQS queue URLs injected at deploy time from module outputs
+    { name = "SQS_NOTIFICATIONS_URL", value = module.messaging.queue_urls["notifications"] },
+    { name = "SQS_AUDIT_URL", value = module.messaging.queue_urls["audit"] },
+    { name = "SQS_REPORTING_URL", value = module.messaging.queue_urls["reporting"] },
+    { name = "SQS_SEARCH_URL", value = module.messaging.queue_urls["search"] },
+    { name = "SNS_TOPIC_ARN", value = module.messaging.topic_arns["domain-events"] },
+    # S3 attachments bucket
+    { name = "S3_ATTACHMENTS_BUCKET", value = module.app_bucket.bucket },
+    # Email — SES in production
+    { name = "EMAIL_PROVIDER", value = "ses" },
+    # Observability
+    { name = "LOG_LEVEL", value = "info" },
+    { name = "LOG_PRETTY", value = "false" },
+    { name = "OTEL_ENABLED", value = "false" },
+    { name = "OTEL_SERVICE_NAME", value = "rally-api" },
   ]
 
   sqs_queue_arns = values(module.messaging.queue_arns)
@@ -257,10 +293,12 @@ module "worker" {
 
   attach_alb = false
 
-  health_check_command = "curl -f http://localhost:3001/v1/healthz || exit 1"
+  # Worker has no HTTP listener — check the node process is alive instead
+  health_check_command = "pgrep -x node || exit 1"
   container_port       = 3001
 
   secret_arns = values(module.secrets.secret_arns)
+  kms_key_arn = local.kms_key_arn
   secrets = [
     { name = "DATABASE_URL", secret_arn = module.secrets.secret_arns["db-url"] },
     { name = "JWT_PRIVATE_KEY", secret_arn = module.secrets.secret_arns["jwt-private"] },
@@ -273,10 +311,22 @@ module "worker" {
   environment_vars = [
     { name = "NODE_ENV", value = "production" },
     { name = "REDIS_URL", value = local.redis_url },
+    { name = "AWS_REGION", value = local.region },
     # Entra SSO — the worker validates the shared env schema, so these are required to boot.
     { name = "ENTRA_TENANT_ID", value = var.entra_tenant_id },
     { name = "ENTRA_CLIENT_ID", value = var.entra_client_id },
-    { name = "ENTRA_REDIRECT_URI", value = "https://rally.qnsc.vn/v1/bff/callback" },
+    { name = "ENTRA_REDIRECT_URI", value = "${local.app_base_url}/v1/bff/callback" },
+    { name = "SQS_NOTIFICATIONS_URL", value = module.messaging.queue_urls["notifications"] },
+    { name = "SQS_AUDIT_URL", value = module.messaging.queue_urls["audit"] },
+    { name = "SQS_REPORTING_URL", value = module.messaging.queue_urls["reporting"] },
+    { name = "SQS_SEARCH_URL", value = module.messaging.queue_urls["search"] },
+    { name = "SNS_TOPIC_ARN", value = module.messaging.topic_arns["domain-events"] },
+    { name = "S3_ATTACHMENTS_BUCKET", value = module.app_bucket.bucket },
+    { name = "EMAIL_PROVIDER", value = "ses" },
+    { name = "LOG_LEVEL", value = "info" },
+    { name = "LOG_PRETTY", value = "false" },
+    { name = "OTEL_ENABLED", value = "false" },
+    { name = "OTEL_SERVICE_NAME", value = "rally-worker" },
   ]
 
   sqs_queue_arns     = values(module.messaging.queue_arns)
@@ -286,28 +336,96 @@ module "worker" {
   tags = { Environment = local.env, Service = "worker" }
 }
 
+# ── S3 — Attachments bucket ───────────────────────────────────────────────────
+module "app_bucket" {
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/app-bucket?ref=app-bucket-v1.0.0"
+
+  name          = "${local.name}-attachments"
+  kms_key_arn   = local.kms_key_arn
+  force_destroy = false # prod: retain attachments — never allow accidental bucket wipe
+
+  cors_rules = [{
+    allowed_headers = ["Content-Type", "Content-Disposition"]
+    allowed_methods = ["PUT"]
+    allowed_origins = [local.app_base_url]
+    expose_headers  = ["ETag"]
+    max_age_seconds = 3600
+  }]
+
+  tags = { Environment = local.env }
+}
+
+# ── Migrator (one-shot, run by the deploy pipeline before the service update) ─
+# Runs `pnpm migration:run` then exits. Never scheduled as a service; the
+# backend deploy triggers it with aws ecs run-task before rolling the API.
+module "migrator" {
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/oneshot-task?ref=oneshot-task-v1.0.0"
+
+  name               = "${local.name}-migrator"
+  container_name     = "migrator"
+  image              = local.ecr_migrator_url
+  cpu                = 512
+  memory             = 1024
+  execution_role_arn = module.api.execution_role_arn
+  task_role_arn      = module.api.task_role_arn
+  region             = local.region
+  log_retention_days = 90 # prod: SOC 2 minimum retention
+
+  environment = {
+    NODE_ENV       = "production"
+    AWS_REGION     = local.region
+    SEED_ON_DEPLOY = "true"
+    # Required by seed.ts to insert the SSO connection row that maps this Entra
+    # directory to the system tenant. The insert is idempotent, so re-running on
+    # each deploy is safe; without it, SSO login returns 401 on first prod boot.
+    ENTRA_TENANT_ID = var.entra_tenant_id
+  }
+
+  secrets = {
+    DATABASE_URL = module.secrets.secret_arns["db-url"]
+  }
+
+  tags = { Environment = local.env, Service = "migrator" }
+}
+
 # ── WAF: lives in runtime-prod and is associated with the shared ALB there. ──
 
 # ── Web SPA — Cloudflare Pages (zero-egress, native SPA routing) ─────────────
 # Consistent with rally develop + opshub. Cloudflare's global edge replaces the
-# CloudFront PriceClass_All coverage. The custom domain (web_domain, e.g.
-# "rally.qnsc.vn") is a prod product decision — the web module (Pages project +
-# custom domain + DNS) is created only when cloudflare_account_id AND web_domain
-# are both set, so prod applies cleanly before the public hostname is chosen.
+# CloudFront PriceClass_All coverage. The Pages project + custom domain + proxied
+# CNAME are created once the Cloudflare account is wired (gated on
+# cloudflare_account_id); the public hostname is local.app_domain.
 module "web" {
-  count  = var.cloudflare_account_id != "" && var.web_domain != "" ? 1 : 0
+  count  = var.cloudflare_account_id != "" ? 1 : 0
   source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/pages-web?ref=pages-web-v1.0.0"
 
   account_id  = var.cloudflare_account_id
   name        = "rally-prod-web"
   zone_id     = local.cloudflare_zone_id
-  domain      = var.web_domain
-  record_name = var.web_domain
+  domain      = local.cloudflare_zone_id != "" ? local.app_domain : ""
+  record_name = local.cloudflare_zone_id != "" ? "rally" : ""
   comment     = "rally-prod web SPA → Cloudflare Pages (managed by rally-infra prod)"
 
   # Pages Function proxy upstream: /v1/* (incl. /v1/bff/*) is forwarded here so
   # the browser only ever sees the SPA origin (same-origin BFF requirement).
   production_env_vars = {
-    API_ORIGIN = "https://rally-api.qnsc.vn"
+    API_ORIGIN = "https://${local.api_domain}"
   }
+}
+
+# ── DNS — rally-api.qnsc.vn → ALB (Cloudflare-proxied edge) ──────────────────
+# The API's public edge. Cloudflare-proxied (orange cloud) so the shared ALB is
+# never directly reachable — WAF/DDoS/TLS terminate at Cloudflare, and the ALB
+# SG is locked to cloudflare_ipv4. Cloudflare→origin runs Full (strict); the ALB
+# HTTPS listener serves the *.qnsc.vn cert, matching the SNI rally-api.qnsc.vn.
+module "dns_api" {
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/dns-record?ref=dns-record-v1.1.0"
+
+  enabled = local.cloudflare_zone_id != ""
+  zone_id = local.cloudflare_zone_id
+  name    = local.api_record
+  type    = "CNAME"
+  content = data.terraform_remote_state.runtime.outputs.alb_dns_name
+  proxied = true # orange cloud: shield the ALB, edge WAF/DDoS at Cloudflare
+  comment = "rally-prod API → ALB via Cloudflare proxy (managed by rally-infra prod)"
 }
