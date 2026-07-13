@@ -16,6 +16,7 @@ import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { SearchInput } from '@/shared/ui/search-input'
+import { OwnerCell } from '@/shared/ui/owner-cell'
 import { RELEASE_STATUS_STYLE } from '@/features/releases/status-colors'
 import { useProjectPermissions } from '@/features/access/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
@@ -34,35 +35,6 @@ const RELEASE_STATES: ReleaseStatus[] = ['planning', 'active', 'accepted']
 const STATUS_STYLE = RELEASE_STATUS_STYLE
 
 type TabKey = 'details' | 'artifacts'
-
-// ── Owner cell (avatar + name) ─────────────────────────────────────────────────
-
-function OwnerCell({ name }: { name?: string | null }) {
-  if (!name)
-    return (
-      <span className="text-[10px]" style={{ color: '#a0a7b5' }}>
-        —
-      </span>
-    )
-  const initials = name
-    .split(' ')
-    .slice(0, 2)
-    .map((n) => n[0]?.toUpperCase())
-    .join('')
-  return (
-    <div className="flex items-center gap-1 overflow-hidden">
-      <span
-        className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[8px] font-bold"
-        style={{ backgroundColor: '#e5ebf4', color: '#1d3f73' }}
-      >
-        {initials}
-      </span>
-      <span className="truncate text-[10px]" style={{ color: '#5c6478' }}>
-        {name}
-      </span>
-    </div>
-  )
-}
 
 // ── Release artifact row ──────────────────────────────────────────────────────
 
