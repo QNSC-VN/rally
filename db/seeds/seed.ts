@@ -33,8 +33,20 @@ import {
   teams,
   teamMembers,
   tasks,
+  milestones,
+  milestoneReleases,
+  milestoneProjects,
+  memberCapacity,
+  releaseDailySnapshots,
+  iterationDailySnapshots,
+  comments,
+  labels,
+  workItemLabels,
+  timeLogs,
+  workItemWatchers,
 } from '../schema/work';
 import { userRoleAssignments } from '../schema/access';
+import { workspaceSettings } from '../schema/workspace';
 import { ssoConnections } from '../schema/identity';
 import {
   ROLE_PERMISSIONS,
@@ -1147,6 +1159,253 @@ async function seedActivityLogs() {
   console.log(`✅  Activity logs seeded (${rows.length} entries)`);
 }
 
+// ── Phase 3: milestones, capacity, defect fields, burndown, collaboration ─────
+// Fills the tables the Phase-3 surfaces read from so Milestones, Team Status,
+// Quality/Defects, burndown charts, and collaboration all show demo data
+// instead of empty states. Idempotent (fixed ids / onConflictDoNothing).
+async function seedPhase3() {
+  const NXP = SEED_PROJECTS[0].id;
+
+  // 1. Workspace settings (defaults the Workspace Settings tab reads).
+  await db
+    .insert(workspaceSettings)
+    .values({
+      id: '00000000-0000-7000-8000-0000000000a0',
+      workspaceId: WORKSPACE_ID,
+      timezone: 'Asia/Ho_Chi_Minh',
+      defaultLocale: 'en',
+      dateFormat: 'YYYY-MM-DD',
+    })
+    .onConflictDoNothing();
+
+  // 2. Defect fields — populate every seeded defect so the Quality board shows
+  //    severity / state / root cause. NXP_DEFECT_11 gets a rich, fixed row.
+  await db
+    .update(workItems)
+    .set({
+      severity: 'high',
+      foundInEnvironment: 'staging',
+      rootCause: 'code',
+      defectState: 'open',
+    })
+    .where(and(eq(workItems.workspaceId, WORKSPACE_ID), eq(workItems.type, 'defect')));
+  await db
+    .update(workItems)
+    .set({
+      severity: 'critical',
+      foundInEnvironment: 'production',
+      rootCause: 'integration',
+      resolution: 'fixed',
+      defectState: 'fixed',
+      fixedInBuild: 'v2.0.0-rc3',
+    })
+    .where(eq(workItems.id, NXP_DEFECT_11_ID));
+
+  // 3. Milestones for NX Platform, linked to its releases + owning project.
+  const MS_1 = '00000000-0000-7000-8000-0000000000b0';
+  const MS_2 = '00000000-0000-7000-8000-0000000000b1';
+  await db
+    .insert(milestones)
+    .values([
+      {
+        id: MS_1,
+        workspaceId: WORKSPACE_ID,
+        projectId: NXP,
+        name: 'GA — NX Platform v2',
+        description: 'General availability of the v2 platform.',
+        status: 'planned',
+        ownerId: ADMIN_USER_ID,
+        targetStartDate: '2026-07-01',
+        targetEndDate: '2026-07-31',
+      },
+      {
+        id: MS_2,
+        workspaceId: WORKSPACE_ID,
+        projectId: NXP,
+        name: 'Hardening & Beta',
+        description: 'Beta cut and a hardening pass before GA.',
+        status: 'at_risk',
+        ownerId: ADMIN_USER_ID,
+        targetStartDate: '2026-08-01',
+        targetEndDate: '2026-08-31',
+      },
+    ])
+    .onConflictDoNothing();
+  await db
+    .insert(milestoneReleases)
+    .values([
+      { milestoneId: MS_1, releaseId: NXP_RELEASE_1_ID },
+      { milestoneId: MS_2, releaseId: NXP_RELEASE_2_ID },
+    ])
+    .onConflictDoNothing();
+  await db
+    .insert(milestoneProjects)
+    .values([
+      { milestoneId: MS_1, projectId: NXP },
+      { milestoneId: MS_2, projectId: NXP },
+    ])
+    .onConflictDoNothing();
+
+  // 4. Member capacity — Team Alpha in the active NXP iteration (Team Status).
+  await db
+    .insert(memberCapacity)
+    .values([
+      {
+        id: '00000000-0000-7000-8000-0000000000c0',
+        workspaceId: WORKSPACE_ID,
+        projectId: NXP,
+        teamId: TEAM_ALPHA_ID,
+        iterationId: NXP_ITER_CURRENT_ID,
+        userId: ADMIN_USER_ID,
+        capacityHours: '60',
+      },
+      {
+        id: '00000000-0000-7000-8000-0000000000c1',
+        workspaceId: WORKSPACE_ID,
+        projectId: NXP,
+        teamId: TEAM_ALPHA_ID,
+        iterationId: NXP_ITER_CURRENT_ID,
+        userId: DEVELOPER_ID,
+        capacityHours: '72',
+      },
+    ])
+    .onConflictDoNothing();
+
+  // 5. Burndown series — 5 daily snapshots for the active iteration + release 1.
+  const burndown = [
+    { d: '2026-06-22', total: 21, done: 0 },
+    { d: '2026-06-23', total: 21, done: 3 },
+    { d: '2026-06-24', total: 21, done: 8 },
+    { d: '2026-06-25', total: 21, done: 13 },
+    { d: '2026-06-26', total: 21, done: 16 },
+  ];
+  await db
+    .insert(iterationDailySnapshots)
+    .values(
+      burndown.map((s) => ({
+        id: uuidv7(),
+        workspaceId: WORKSPACE_ID,
+        iterationId: NXP_ITER_CURRENT_ID,
+        snapshotDate: s.d,
+        totalPoints: s.total,
+        completedPoints: s.done,
+        remainingPoints: s.total - s.done,
+        totalItems: 5,
+        completedItems: Math.round((s.done / s.total) * 5),
+      })),
+    )
+    .onConflictDoNothing();
+  await db
+    .insert(releaseDailySnapshots)
+    .values(
+      burndown.map((s) => ({
+        id: uuidv7(),
+        releaseId: NXP_RELEASE_1_ID,
+        snapshotDate: s.d,
+        totalPoints: String(s.total),
+        completedPoints: String(s.done),
+        remainingPoints: String(s.total - s.done),
+        totalItems: 5,
+        completedItems: Math.round((s.done / s.total) * 5),
+      })),
+    )
+    .onConflictDoNothing();
+
+  // 6. Labels (project-scoped) + a couple of assignments.
+  const LBL_BUG = '00000000-0000-7000-8000-0000000000d0';
+  const LBL_TD = '00000000-0000-7000-8000-0000000000d1';
+  const LBL_UX = '00000000-0000-7000-8000-0000000000d2';
+  await db
+    .insert(labels)
+    .values([
+      { id: LBL_BUG, workspaceId: WORKSPACE_ID, projectId: NXP, name: 'bug', color: '#e5484d' },
+      {
+        id: LBL_TD,
+        workspaceId: WORKSPACE_ID,
+        projectId: NXP,
+        name: 'tech-debt',
+        color: '#f5a623',
+      },
+      { id: LBL_UX, workspaceId: WORKSPACE_ID, projectId: NXP, name: 'ux', color: '#3b82f6' },
+    ])
+    .onConflictDoNothing();
+  await db
+    .insert(workItemLabels)
+    .values([
+      { workItemId: NXP_DEFECT_11_ID, labelId: LBL_BUG },
+      { workItemId: NXP_STORY_1_ID, labelId: LBL_UX },
+      { workItemId: NXP_STORY_2_ID, labelId: LBL_TD },
+    ])
+    .onConflictDoNothing();
+
+  // 7. Comments (one threaded reply) on a story + the flagship defect.
+  await db
+    .insert(comments)
+    .values([
+      {
+        id: '00000000-0000-7000-8000-0000000000e0',
+        workspaceId: WORKSPACE_ID,
+        workItemId: NXP_STORY_1_ID,
+        authorId: ADMIN_USER_ID,
+        body: 'Kicking this off for the v2 milestone — aligning scope with the GA release.',
+      },
+      {
+        id: '00000000-0000-7000-8000-0000000000e1',
+        workspaceId: WORKSPACE_ID,
+        workItemId: NXP_STORY_1_ID,
+        authorId: DEVELOPER_ID,
+        body: 'Picking it up. Will break the API work into tasks.',
+        parentId: '00000000-0000-7000-8000-0000000000e0',
+      },
+      {
+        id: '00000000-0000-7000-8000-0000000000e2',
+        workspaceId: WORKSPACE_ID,
+        workItemId: NXP_DEFECT_11_ID,
+        authorId: DEVELOPER_ID,
+        body: 'Reproduced on production; root cause is the integration retry path. Fix in rc3.',
+      },
+    ])
+    .onConflictDoNothing();
+
+  // 8. Time logs by the developer.
+  await db
+    .insert(timeLogs)
+    .values([
+      {
+        id: '00000000-0000-7000-8000-0000000000f0',
+        workspaceId: WORKSPACE_ID,
+        workItemId: NXP_STORY_1_ID,
+        userId: DEVELOPER_ID,
+        loggedDate: '2026-06-24',
+        hours: '4.5',
+        description: 'API scaffolding + tests',
+      },
+      {
+        id: '00000000-0000-7000-8000-0000000000f1',
+        workspaceId: WORKSPACE_ID,
+        workItemId: NXP_DEFECT_11_ID,
+        userId: DEVELOPER_ID,
+        loggedDate: '2026-06-25',
+        hours: '2',
+        description: 'Debug + fix retry path',
+      },
+    ])
+    .onConflictDoNothing();
+
+  // 9. Watchers.
+  await db
+    .insert(workItemWatchers)
+    .values([
+      { workItemId: NXP_STORY_1_ID, userId: ADMIN_USER_ID, workspaceId: WORKSPACE_ID },
+      { workItemId: NXP_DEFECT_11_ID, userId: DEVELOPER_ID, workspaceId: WORKSPACE_ID },
+    ])
+    .onConflictDoNothing();
+
+  console.log(
+    '✅  Phase 3 seeded (2 milestones, capacity, defect fields, burndown, labels, comments, time logs, watchers)',
+  );
+}
+
 /**
  * Seed the RBAC role catalogue (system_roles) into the given db handle.
  *
@@ -1488,8 +1747,11 @@ export async function seed(connectionUrl?: string): Promise<void> {
     // ── Revision history (activity logs for fixed-ID items) ──────────────────
     await seedActivityLogs();
 
+    // ── Phase 3: milestones, capacity, defect fields, burndown, collaboration ─
+    await seedPhase3();
+
     console.log(
-      `✅  Seed complete — ${SEED_PROJECTS.length} projects, 7 users, 2 teams, 4 iterations, 3 releases, work items seeded`,
+      `✅  Seed complete — ${SEED_PROJECTS.length} projects, 6 users, 2 teams, 4 iterations, 3 releases, 2 milestones, work items + Phase 3 data seeded`,
     );
   } finally {
     await pool.end();
