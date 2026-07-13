@@ -267,6 +267,13 @@
       "when": 1783300000000,
       "tag": "0036_type_prefixed_item_keys",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1783400000000,
+      "tag": "0037_drop_guest_role",
+      "breakpoints": true
     }
   ]
 }
