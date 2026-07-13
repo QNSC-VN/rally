@@ -70,22 +70,18 @@ locals {
   # (read via _shared remote state), so a CF range change is one edit there.
   cloudflare_ipv4 = data.terraform_remote_state.shared.outputs.cloudflare_ipv4
 
-  # prod_tier switch (Option A): lean = shared runtime-prod cache + single-AZ
-  # DB + 1 task/svc; ha = per-product cache + multi-AZ DB + 2 tasks/svc.
-  is_ha = var.prod_tier == "ha"
-
-  # Cache endpoint: lean uses the shared runtime-prod node (via remote state);
-  # ha uses this product's own cache node (module.cache below). REDIS_URL is an
-  # env var (not a secret) — the endpoint isn't sensitive.
-  cache_endpoint = coalesce(one(module.cache[*].endpoint), data.terraform_remote_state.runtime.outputs.cache_endpoint)
-  cache_port     = coalesce(one(module.cache[*].port), data.terraform_remote_state.runtime.outputs.cache_port)
+  # Cache endpoint: the shared runtime-prod Valkey node (via remote state),
+  # key-prefixed per product. REDIS_URL is an env var (not a secret) — the
+  # endpoint isn't sensitive.
+  cache_endpoint = data.terraform_remote_state.runtime.outputs.cache_endpoint
+  cache_port     = data.terraform_remote_state.runtime.outputs.cache_port
   redis_url      = "redis://${local.cache_endpoint}:${local.cache_port}"
 }
 
-# ── Shared runtime layer (VPC + NAT + ALB + prod cache + WAF) ─────────────────
-# Option A: the prod VPC/NAT/ALB/WAF (and, in lean tier, a shared cache node)
-# live once per env in qnsc-infra/live/runtime-prod and are consumed here via
-# remote state. RDS + Fargate stay per-product below.
+# ── Shared runtime layer (VPC + NAT + ALB + shared cache + WAF) ───────────────
+# The prod VPC/NAT/ALB/WAF and the shared cache node live once per env in
+# qnsc-infra/live/runtime-prod and are consumed here via remote state. RDS +
+# Fargate stay per-product below.
 data "terraform_remote_state" "runtime" {
   backend = "s3"
   config = {
@@ -122,33 +118,20 @@ module "rds" {
   security_group_id = data.terraform_remote_state.runtime.outputs.sg_rds_id
   kms_key_arn       = local.kms_key_arn
 
-  instance_class           = local.is_ha ? "db.t4g.large" : "db.t4g.micro"
+  instance_class           = "db.t4g.micro"
   allocated_storage_gb     = 100
   max_allocated_storage_gb = 500
-  multi_az                 = local.is_ha # HA tier only — lean is single-AZ
+  multi_az                 = false
   deletion_protection      = true
   backup_retention_days    = 30
-  monitoring_interval      = local.is_ha ? 60 : 0 # Enhanced Monitoring in ha only
+  monitoring_interval      = 0
 
   tags = { Environment = local.env }
 }
 
-# ── ElastiCache Valkey ────────────────────────────────────────────────────────
-# Per-product cache in the HA tier only. In lean, both products share the single
-# runtime-prod cache node (key-prefixed) — see local.cache_endpoint.
-module "cache" {
-  count  = local.is_ha ? 1 : 0
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/cache?ref=cache-v1.0.0"
-
-  name              = local.name
-  subnet_ids        = data.terraform_remote_state.runtime.outputs.data_subnet_ids
-  security_group_id = data.terraform_remote_state.runtime.outputs.sg_cache_id
-
-  mode      = "node"
-  node_type = "cache.t4g.micro"
-
-  tags = { Environment = local.env }
-}
+# ── Cache ───────────────────────────────────────────────────────────────────
+# No per-product cache node — this product uses the shared runtime-prod Valkey
+# node (key-prefixed: rally:*) via remote state — see local.cache_endpoint.
 
 # ── Messaging ─────────────────────────────────────────────────────────────────
 module "messaging" {
@@ -204,8 +187,8 @@ module "api" {
   subnet_ids        = data.terraform_remote_state.runtime.outputs.private_subnet_ids
   security_group_id = data.terraform_remote_state.runtime.outputs.sg_app_id
 
-  desired_count = local.is_ha ? 2 : 1 # ha: 2 for redundancy; lean: 1
-  min_count     = local.is_ha ? 2 : 1
+  desired_count = 1
+  min_count     = 1
   max_count     = 10
 
   attach_alb        = true
@@ -228,7 +211,7 @@ module "api" {
   environment_vars = [
     { name = "NODE_ENV", value = "production" },
     { name = "PORT", value = "3000" },
-    { name = "REDIS_URL", value = local.redis_url }, # shared (lean) or per-product (ha) cache
+    { name = "REDIS_URL", value = local.redis_url }, # shared runtime-prod cache
     { name = "AWS_REGION", value = local.region },
     { name = "CORS_ORIGINS", value = local.app_base_url },
     { name = "APP_BASE_URL", value = local.app_base_url },
@@ -287,8 +270,8 @@ module "worker" {
   subnet_ids        = data.terraform_remote_state.runtime.outputs.private_subnet_ids
   security_group_id = data.terraform_remote_state.runtime.outputs.sg_app_id
 
-  desired_count = local.is_ha ? 2 : 1
-  min_count     = local.is_ha ? 2 : 1
+  desired_count = 1
+  min_count     = 1
   max_count     = 6
 
   attach_alb = false
