@@ -3,6 +3,16 @@
 
 ALTER TABLE "work"."project_counters" ADD COLUMN IF NOT EXISTS "item_type" "public"."work_item_type" NOT NULL DEFAULT 'story';
 --> statement-breakpoint
+-- Widen the primary key to (project_id, item_type) BEFORE seeding per-type rows.
+-- Existing rows carry item_type='story' (column default), so each project still
+-- has exactly one row here => the composite key is satisfiable. Doing this first
+-- is required: the INSERT below adds additional item_type rows per project, which
+-- would violate the old single-column (project_id) primary key on any database
+-- that already has counter rows (fresh CI DBs have none, so this only bit develop).
+ALTER TABLE "work"."project_counters" DROP CONSTRAINT IF EXISTS project_counters_pkey;
+--> statement-breakpoint
+ALTER TABLE "work"."project_counters" ADD CONSTRAINT project_counters_pkey PRIMARY KEY ("project_id", "item_type");
+--> statement-breakpoint
 INSERT INTO "work"."project_counters" ("project_id", "workspace_id", "item_type", "last_item_number", "updated_at")
 SELECT DISTINCT pc.project_id, pc.workspace_id, t.enumlabel::"public"."work_item_type", 0, now()
 FROM "work"."project_counters" pc
@@ -23,10 +33,6 @@ FROM (
   GROUP BY wi.project_id, wi.type
 ) mk
 WHERE pc.project_id = mk.project_id AND pc.item_type = mk.item_type;
---> statement-breakpoint
-ALTER TABLE "work"."project_counters" DROP CONSTRAINT IF EXISTS project_counters_pkey;
---> statement-breakpoint
-ALTER TABLE "work"."project_counters" ADD CONSTRAINT project_counters_pkey PRIMARY KEY ("project_id", "item_type");
 --> statement-breakpoint
 UPDATE "work"."work_items" wi
 SET "item_key" =
