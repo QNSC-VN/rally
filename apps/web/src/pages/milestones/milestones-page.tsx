@@ -1,0 +1,583 @@
+/**
+ * Milestones — P3.3
+ *
+ * Lists milestones for the active project. Milestones live under
+ * Plan > Timeboxes alongside Iterations and Releases.
+ */
+import { useMemo, useState } from 'react'
+import { useNavigate } from '@tanstack/react-router'
+import { toast } from 'sonner'
+import { AlertTriangle, Plus, Search, Pencil, Trash2, PackageOpen } from 'lucide-react'
+import { useColumnLayout, type ColumnDef } from '@/shared/lib/hooks/use-column-layout'
+import { ResizeHandle } from '@/shared/ui/resize-handle'
+import { STORAGE_KEYS } from '@/shared/config/storage-keys'
+import { SkeletonList } from '@/shared/ui/skeleton'
+import { BRAND } from '@/shared/config/brand'
+import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
+import { FormField } from '@/shared/ui/form-field'
+import { Input } from '@/shared/ui/input'
+import { Textarea } from '@/shared/ui/textarea'
+import { useAppContext } from '@/shared/lib/stores/app-context.store'
+import { useAuthStore } from '@/shared/lib/stores/auth.store'
+import {
+  useMilestones,
+  useCreateMilestone,
+  useUpdateMilestone,
+  useDeleteMilestone,
+  type Milestone,
+  type MilestoneStatus,
+} from '@/features/milestones/api'
+import { useReleases } from '@/features/releases/api'
+import { useProjectMembers } from '@/features/teams/api'
+
+// ── Status badge ──────────────────────────────────────────────────────────────
+
+const STATUS_STYLE: Record<MilestoneStatus, { bg: string; text: string; border: string; label: string }> = {
+  planned: { bg: '#eef3fb', text: '#475569', border: '#cbd5e1', label: 'Planned' },
+  at_risk: { bg: '#fff7ed', text: '#9a3412', border: '#fed7aa', label: 'At Risk' },
+  met: { bg: '#eaf5ed', text: '#1e6930', border: '#b9dec2', label: 'Met' },
+  missed: { bg: '#fef2f2', text: '#b91c1c', border: '#fecaca', label: 'Missed' },
+  cancelled: { bg: '#f1f5f9', text: '#475569', border: '#cbd5e1', label: 'Cancelled' },
+  completed: { bg: '#eef6f0', text: '#1e6930', border: '#a8d5b3', label: 'Completed' },
+}
+
+function StatusBadge({ status }: { status: MilestoneStatus }) {
+  const s = STATUS_STYLE[status] ?? STATUS_STYLE.planned
+  return (
+    <span
+      className="inline-flex items-center rounded-sm px-1.5 py-px text-[11px] font-medium whitespace-nowrap"
+      style={{ backgroundColor: s.bg, color: s.text, border: `1px solid ${s.border}` }}
+    >
+      {s.label}
+    </span>
+  )
+}
+
+const MILESTONE_STATUSES: MilestoneStatus[] = ['planned', 'at_risk', 'met', 'missed', 'cancelled', 'completed']
+
+// ── Shared modal body ────────────────────────────────────────────────────────
+
+function MilestoneFormFields({
+  name, setName,
+  description, setDescription,
+  notes, setNotes,
+  status, setStatus,
+  ownerId, setOwnerId,
+  targetStartDate,
+  targetEndDate,
+  selectedReleases, toggleRelease,
+  releases,
+  members,
+}: {
+  name: string; setName: (v: string) => void
+  description: string; setDescription: (v: string) => void
+  notes: string; setNotes: (v: string) => void
+  status: MilestoneStatus; setStatus: (v: MilestoneStatus) => void
+  ownerId: string; setOwnerId: (v: string) => void
+  targetStartDate: string;
+  targetEndDate: string;
+  selectedReleases: string[]; toggleRelease: (rid: string) => void
+  releases: { id: string; name: string }[] | undefined
+  members: { userId: string; displayName?: string; email?: string }[] | undefined
+}) {
+  return (
+    <>
+      <FormField label="Milestone name" required>
+        <Input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="e.g. Q4 Release Candidate"
+          autoFocus
+        />
+      </FormField>
+      <FormField label="Status">
+        <select
+          value={status}
+          onChange={(e) => setStatus(e.target.value as MilestoneStatus)}
+          className="w-full rounded-md border px-3 py-1.5 text-sm"
+          style={{ borderColor: BRAND.border, color: '#1a2234' }}
+        >
+          {MILESTONE_STATUSES.map((s) => (
+            <option key={s} value={s}>{STATUS_STYLE[s].label}</option>
+          ))}
+        </select>
+      </FormField>
+      <FormField label="Description">
+        <Textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Milestone description..."
+          rows={2}
+        />
+      </FormField>
+      <FormField label="Notes">
+        <Textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Internal notes..."
+          rows={2}
+        />
+      </FormField>
+      <FormField label="Owner">
+        <select
+          value={ownerId}
+          onChange={(e) => setOwnerId(e.target.value)}
+          className="w-full rounded-md border px-3 py-1.5 text-sm"
+          style={{ borderColor: BRAND.border, color: '#1a2234' }}
+        >
+          <option value="">Unassigned</option>
+          {(members ?? []).map((m) => (
+            <option key={m.userId} value={m.userId}>
+              {m.displayName ?? m.email}
+            </option>
+          ))}
+        </select>
+      </FormField>
+      <div className="grid grid-cols-2 gap-3">
+        <FormField label="Target Start">
+          <input
+            type="date"
+            value={targetStartDate}
+            readOnly
+            disabled
+            className="w-full rounded-md border px-3 py-1.5 text-sm bg-gray-50 cursor-not-allowed opacity-70"
+            style={{ borderColor: BRAND.border, color: '#5c6478' }}
+          />
+          <p className="mt-0.5 text-[10px]" style={{ color: '#8c94a6' }}>Derived from linked Releases</p>
+        </FormField>
+        <FormField label="Target End">
+          <input
+            type="date"
+            value={targetEndDate}
+            readOnly
+            disabled
+            className="w-full rounded-md border px-3 py-1.5 text-sm bg-gray-50 cursor-not-allowed opacity-70"
+            style={{ borderColor: BRAND.border, color: '#5c6478' }}
+          />
+          <p className="mt-0.5 text-[10px]" style={{ color: '#8c94a6' }}>Derived from linked Releases</p>
+        </FormField>
+      </div>
+      <FormField label="Associated Releases">
+        <div className="flex flex-col gap-1.5 max-h-32 overflow-y-auto p-2 rounded-md border" style={{ borderColor: BRAND.border }}>
+          {releases && releases.length > 0 ? (
+            releases.map((r) => (
+              <label key={r.id} className="flex items-center gap-2 text-xs cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={selectedReleases.includes(r.id)}
+                  onChange={() => toggleRelease(r.id)}
+                />
+                <span>{r.name}</span>
+              </label>
+            ))
+          ) : (
+            <span className="text-xs text-gray-400">No releases available</span>
+          )}
+        </div>
+      </FormField>
+    </>
+  )
+}
+
+// ── Create modal ──────────────────────────────────────────────────────────────
+
+function CreateMilestoneModal({
+  projectId,
+  onClose,
+}: {
+  projectId: string
+  onClose: () => void
+}) {
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [notes, setNotes] = useState('')
+  const [status, setStatus] = useState<MilestoneStatus>('planned')
+  const targetStartDate = ''
+  const targetEndDate = ''
+  const [selectedReleases, setSelectedReleases] = useState<string[]>([])
+  const [ownerId, setOwnerId] = useState('')
+  const { data: releases } = useReleases(projectId)
+  const { data: members } = useProjectMembers(projectId)
+  const create = useCreateMilestone()
+
+  function toggleRelease(rid: string) {
+    setSelectedReleases((prev) =>
+      prev.includes(rid) ? prev.filter((id) => id !== rid) : [...prev, rid],
+    )
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!name.trim()) return
+    try {
+      await create.mutateAsync({
+        projectId,
+        name: name.trim(),
+        description: description.trim() || undefined,
+        notes: notes.trim() || undefined,
+        status,
+        ownerId: ownerId || undefined,
+        releaseIds: selectedReleases,
+      })
+      toast.success(`Milestone "${name}" created`)
+      onClose()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to create milestone')
+    }
+  }
+
+  return (
+    <AppModal open onClose={onClose} title="New Milestone" width={480}>
+      <form onSubmit={(e) => { void handleSubmit(e) }}>
+        <ModalBody className="space-y-4">
+          <MilestoneFormFields
+            name={name} setName={setName}
+            description={description} setDescription={setDescription}
+            notes={notes} setNotes={setNotes}
+            status={status} setStatus={setStatus}
+            ownerId={ownerId} setOwnerId={setOwnerId}
+            targetStartDate={targetStartDate}
+            targetEndDate={targetEndDate}
+            selectedReleases={selectedReleases} toggleRelease={toggleRelease}
+            releases={releases}
+            members={members}
+          />
+        </ModalBody>
+        <ModalFooter>
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-1.5 text-sm rounded-md cursor-pointer"
+            style={{ border: `1px solid ${BRAND.border}`, color: '#5c6478' }}
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={create.isPending || !name.trim()}
+            className="px-4 py-1.5 text-sm font-medium text-white rounded-md disabled:opacity-50 cursor-pointer"
+            style={{ backgroundColor: BRAND.primary }}
+          >
+            {create.isPending ? 'Creating...' : 'Create Milestone'}
+          </button>
+        </ModalFooter>
+      </form>
+    </AppModal>
+  )
+}
+
+// ── Edit modal ────────────────────────────────────────────────────────────────
+
+function EditMilestoneModal({
+  milestone,
+  onClose,
+}: {
+  milestone: Milestone
+  onClose: () => void
+}) {
+  const [name, setName] = useState(milestone.name)
+  const [description, setDescription] = useState(milestone.description ?? '')
+  const [notes, setNotes] = useState(milestone.notes ?? '')
+  const [status, setStatus] = useState<MilestoneStatus>(milestone.status)
+  const [selectedReleases, setSelectedReleases] = useState<string[]>(milestone.releaseIds ?? [])
+  const [ownerId, setOwnerId] = useState(milestone.ownerId ?? '')
+  const targetStartDate = milestone.targetStartDate ?? ''
+  const targetEndDate = milestone.targetEndDate ?? ''
+  const { data: releases } = useReleases(milestone.projectId)
+  const { data: members } = useProjectMembers(milestone.projectId)
+  const update = useUpdateMilestone()
+
+  function toggleRelease(rid: string) {
+    setSelectedReleases((prev) =>
+      prev.includes(rid) ? prev.filter((id) => id !== rid) : [...prev, rid],
+    )
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!name.trim()) return
+    try {
+      await update.mutateAsync({
+        id: milestone.id,
+        name: name.trim(),
+        description: description.trim() || null,
+        notes: notes.trim() || null,
+        status,
+        ownerId: ownerId || null,
+        releaseIds: selectedReleases,
+      })
+      toast.success('Milestone updated')
+      onClose()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update milestone')
+    }
+  }
+
+  return (
+    <AppModal open onClose={onClose} title="Edit Milestone" width={480}>
+      <form onSubmit={(e) => { void handleSubmit(e) }}>
+        <ModalBody className="space-y-4">
+          <MilestoneFormFields
+            name={name} setName={setName}
+            description={description} setDescription={setDescription}
+            notes={notes} setNotes={setNotes}
+            status={status} setStatus={setStatus}
+            ownerId={ownerId} setOwnerId={setOwnerId}
+            targetStartDate={targetStartDate}
+            targetEndDate={targetEndDate}
+            selectedReleases={selectedReleases} toggleRelease={toggleRelease}
+            releases={releases}
+            members={members}
+          />
+        </ModalBody>
+        <ModalFooter>
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-1.5 text-sm rounded-md cursor-pointer"
+            style={{ border: `1px solid ${BRAND.border}`, color: '#5c6478' }}
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={update.isPending || !name.trim()}
+            className="px-4 py-1.5 text-sm font-medium text-white rounded-md disabled:opacity-50 cursor-pointer"
+            style={{ backgroundColor: BRAND.primary }}
+          >
+            {update.isPending ? 'Saving...' : 'Save'}
+          </button>
+        </ModalFooter>
+      </form>
+    </AppModal>
+  )
+}
+
+// ── Column definitions (resize) ──────────────────────────────────────────
+
+type MilestoneColKey = 'name' | 'targetStartDate' | 'targetEndDate' | 'status' | 'actions'
+
+const MILESTONES_COLUMNS: ColumnDef<MilestoneColKey>[] = [
+  { key: 'name', label: 'Name', defaultWidth: 260, minWidth: 120, locked: true },
+  { key: 'targetStartDate', label: 'Target Start Date', defaultWidth: 120, minWidth: 90 },
+  { key: 'targetEndDate', label: 'Target End Date', defaultWidth: 120, minWidth: 90 },
+  { key: 'status', label: 'Status', defaultWidth: 100, minWidth: 70 },
+  { key: 'actions', label: '', defaultWidth: 96, minWidth: 48, locked: true },
+]
+
+// ── Milestones page ───────────────────────────────────────────────────────────
+
+export function MilestonesPage() {
+  const { project } = useAppContext()
+  const { startResize, styleFor } = useColumnLayout(MILESTONES_COLUMNS, STORAGE_KEYS.MILESTONES_COLUMNS)
+  const canManage = useAuthStore((s) => s.hasPermission('milestone:manage'))
+  const { data: milestones, isLoading, error } = useMilestones(project?.projectId)
+  const deleteMilestone = useDeleteMilestone()
+  const navigate = useNavigate()
+
+  const [search, setSearch] = useState('')
+  const [showCreate, setShowCreate] = useState(false)
+  const [editing, setEditing] = useState<Milestone | null>(null)
+  const [deleting, setDeleting] = useState<string | null>(null)
+
+  const filtered = useMemo(() => {
+    if (!milestones) return []
+    const q = search.toLowerCase()
+    return milestones.filter(
+      (m) =>
+        m.name.toLowerCase().includes(q) ||
+        m.description?.toLowerCase().includes(q),
+    )
+  }, [milestones, search])
+
+  async function handleDelete(id: string) {
+    try {
+      await deleteMilestone.mutateAsync(id)
+      toast.success('Milestone deleted')
+      setDeleting(null)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete')
+    }
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center flex-1 gap-2 p-8">
+        <AlertTriangle size={32} style={{ color: BRAND.danger }} />
+        <p className="text-sm" style={{ color: '#5c6478' }}>
+          {error instanceof Error ? error.message : 'Failed to load milestones'}
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col flex-1 overflow-hidden">
+      {/* Toolbar */}
+      <div
+        className="flex items-center gap-2 px-4 py-2 bg-white shrink-0"
+        style={{ borderBottom: `1px solid ${BRAND.border}` }}
+      >
+        <h2 className="text-sm font-semibold mr-2" style={{ color: '#1a2234' }}>
+          Milestones
+        </h2>
+        <div className="relative">
+          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: '#8c94a6' }} />
+          <input
+            type="text"
+            placeholder="Search milestones..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-8 pr-3 py-1.5 text-xs rounded-md focus:outline-none"
+            style={{
+              backgroundColor: '#f4f6f9',
+              border: `1px solid ${BRAND.border}`,
+              color: '#1a2234',
+              width: 200,
+            }}
+          />
+        </div>
+        <div className="flex-1" />
+        {canManage && (
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white rounded-md"
+            style={{ backgroundColor: BRAND.primary }}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = BRAND.primaryHover)}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = BRAND.primary)}
+          >
+            <Plus size={14} />
+            New Milestone
+          </button>
+        )}
+      </div>
+
+      {/* Table */}
+      <div className="flex flex-1 overflow-hidden bg-white">
+        {isLoading ? (
+          <SkeletonList rows={6} />
+        ) : filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center flex-1 gap-3 p-8">
+            <PackageOpen size={40} style={{ color: '#c4cad4' }} />
+            <p className="text-sm" style={{ color: '#8c94a6' }}>
+              {search ? 'No milestones match your search' : 'No milestones yet'}
+            </p>
+            {canManage && !search && (
+              <button
+                onClick={() => setShowCreate(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white rounded-md"
+                style={{ backgroundColor: BRAND.primary }}
+              >
+                <Plus size={14} />
+                Create Milestone
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="flex-1 overflow-auto">
+            {/* Header */}
+            <div
+              className="flex items-center h-8 px-3 shrink-0 select-none"
+              style={{ backgroundColor: '#f7f8fa', borderBottom: `1px solid ${BRAND.border}`, minWidth: 'max-content' }}
+            >
+              {MILESTONES_COLUMNS.map((col) => (
+                <div
+                  key={col.key}
+                  className="relative group flex items-center gap-1 px-2 text-[9px] font-semibold uppercase tracking-wider whitespace-nowrap"
+                  style={{ ...styleFor(col.key, { flexShrink: 0 }), color: '#8c94a6' }}
+                >
+                  <span>{col.label}</span>
+                  <ResizeHandle onMouseDown={(e) => startResize(col.key, e)} ariaLabel={`Resize ${col.label} column`} />
+                </div>
+              ))}
+            </div>
+            {/* Rows */}
+            {filtered.map((ms) => (
+              <div
+                key={ms.id}
+                className="flex items-center h-8 px-3 cursor-pointer"
+                style={{ borderBottom: '1px solid #edf0f4', minWidth: 'max-content' }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f7f8fa')}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                onClick={() => navigate({ to: '/milestones/$milestoneId', params: { milestoneId: ms.id } })}
+              >
+                {/* Name */}
+                <div className="shrink-0 px-2" style={styleFor('name')}>
+                  <span className="text-xs font-medium truncate block" style={{ color: '#1a2234' }}>
+                    {ms.name}
+                  </span>
+                </div>
+                {/* Target Start Date */}
+                <div className="shrink-0 text-xs px-2" style={{ ...styleFor('targetStartDate'), color: '#5c6478' }}>
+                  {ms.targetStartDate ?? '\u2014'}
+                </div>
+                {/* Target End Date */}
+                <div className="shrink-0 text-xs px-2" style={{ ...styleFor('targetEndDate'), color: '#5c6478' }}>
+                  {ms.targetEndDate ?? '\u2014'}
+                </div>
+                {/* Status */}
+                <div className="shrink-0 px-2" style={styleFor('status')}>
+                  <StatusBadge status={ms.status} />
+                </div>
+                {/* Actions */}
+                <div className="shrink-0 px-2" style={styleFor('actions')}>
+                  {canManage && (
+                    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={() => setEditing(ms)}
+                        className="p-1 rounded hover:bg-gray-100"
+                        title="Edit"
+                      >
+                        <Pencil size={13} style={{ color: '#5c6478' }} />
+                      </button>
+                      {deleting === ms.id ? (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => { void handleDelete(ms.id) }}
+                            className="px-1.5 py-0.5 text-[10px] font-medium rounded"
+                            style={{ backgroundColor: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca' }}
+                          >
+                            Confirm
+                          </button>
+                          <button
+                            onClick={() => setDeleting(null)}
+                            className="px-1.5 py-0.5 text-[10px] rounded"
+                            style={{ border: `1px solid ${BRAND.border}`, color: '#5c6478' }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setDeleting(ms.id)}
+                          className="p-1 rounded hover:bg-red-50"
+                          title="Delete"
+                        >
+                          <Trash2 size={13} style={{ color: '#b91c1c' }} />
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Modals */}
+      {showCreate && (
+        <CreateMilestoneModal
+          projectId={project?.projectId ?? ''}
+          onClose={() => setShowCreate(false)}
+        />
+      )}
+      {editing && (
+        <EditMilestoneModal
+          milestone={editing}
+          onClose={() => setEditing(null)}
+        />
+      )}
+    </div>
+  )
+}

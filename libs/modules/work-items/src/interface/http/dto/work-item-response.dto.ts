@@ -33,6 +33,15 @@ export const WorkItemResponseSchema = z.object({
   updatedBy: z.string().uuid().nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
+  // P3.4 — Defect-specific fields
+  severity: z.string().nullable(),
+  foundInEnvironment: z.string().nullable(),
+  foundInReleaseId: z.string().uuid().nullable(),
+  rootCause: z.string().nullable(),
+  resolution: z.string().nullable(),
+  devOwnerId: z.string().uuid().nullable(),
+  defectState: z.string().nullable(),
+  fixedInBuild: z.string().nullable(),
 });
 
 export class WorkItemResponseDto extends createZodDto(WorkItemResponseSchema) {}

@@ -331,7 +331,7 @@ function CreateIterationModal({
   const create = useCreateIteration()
   const [name, setName] = useState('')
   // Auto-fill from the Team selected in the workspace context (falls back to "No team")
-  const [teamId, setTeamId] = useState<string>(team ?? '')
+  const [teamId, setTeamId] = useState<string>(team?.teamId ?? '')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [state, setState] = useState<IterationState>('planning')
@@ -528,7 +528,7 @@ function IterationDetail({ id, canManage, onBack }: { id: string; canManage: boo
           <FormField label="Start Date">
             <Input
               type="date"
-              defaultValue={it.startDate ?? ''}
+              value={it.startDate ?? ''}
               disabled={disabled}
               onBlur={(e) => patch({ startDate: e.target.value || null })}
             />
@@ -536,14 +536,14 @@ function IterationDetail({ id, canManage, onBack }: { id: string; canManage: boo
           <FormField label="End Date">
             <Input
               type="date"
-              defaultValue={it.endDate ?? ''}
+              value={it.endDate ?? ''}
               disabled={disabled}
               onBlur={(e) => patch({ endDate: e.target.value || null })}
             />
           </FormField>
           <FormField label="State">
             <NativeSelect
-              defaultValue={it.state}
+              value={it.state}
               disabled={disabled}
               onChange={(e) => patch({ state: e.target.value as IterationState })}
             >

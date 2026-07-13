@@ -5,6 +5,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
+import { iterationKeys } from '@/features/iterations/api'
 import type { components } from '@/shared/api/generated/api'
 
 // ── Response types from generated contract ────────────────────────────────────
@@ -22,12 +23,25 @@ export type WiScheduleState = WorkItem['scheduleState']
 
 // ── Query keys ────────────────────────────────────────────────────────────────
 
+/**
+ * Build a stable, deterministic string from filter values so that
+ * TanStack Query's key-hash always changes when any value changes.
+ * (JSON.stringify drops undefined properties, which causes collisions.)
+ */
+function filterHash(f: Record<string, unknown>): string {
+  return Object.entries(f)
+    .filter(([, v]) => v !== undefined)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${k}=${v}`)
+    .join('&')
+}
+
 export const workItemKeys = {
   all: ['work-items'] as const,
   list: (projectId: string, filters?: Record<string, unknown>) =>
-    [...workItemKeys.all, 'list', projectId, filters] as const,
+    [...workItemKeys.all, 'list', projectId, filterHash(filters ?? {})] as const,
   backlog: (projectId: string, filters?: Record<string, unknown>) =>
-    [...workItemKeys.all, 'backlog', projectId, filters] as const,
+    [...workItemKeys.all, 'backlog', projectId, filterHash(filters ?? {})] as const,
   detail: (id: string) => [...workItemKeys.all, 'detail', id] as const,
   byKey: (itemKey: string, projectId?: string | null) =>
     [...workItemKeys.all, 'by-key', itemKey, projectId ?? null] as const,
@@ -137,6 +151,36 @@ export function useTaskTotals(workItemId: string | undefined) {
   })
 }
 
+// ── Child Defects (defects with parentId set to a story) ────────────────────
+
+export const childDefectsKeys = {
+  all: ['child-defects'] as const,
+  byParent: (parentId: string) => [...childDefectsKeys.all, parentId] as const,
+}
+
+export function useChildDefects(parentId: string | undefined, projectId?: string) {
+  return useQuery({
+    queryKey: childDefectsKeys.byParent(parentId ?? ''),
+    queryFn: async () => {
+      if (!parentId) return []
+      const { data, error, response } = await apiClient.GET('/v1/work-items', {
+        params: {
+          query: {
+            projectId: projectId ?? '',
+            parentId,
+            type: 'defect' as const,
+            limit: 200,
+          },
+        },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return ((data as { data?: WorkItem[] } | undefined)?.data ?? [])
+    },
+    enabled: !!parentId && !!projectId,
+    staleTime: 15_000,
+  })
+}
+
 // ── Activity Log ──────────────────────────────────────────────────────────────
 
 export function useActivityLog(workItemId: string | undefined) {
@@ -173,6 +217,9 @@ export function useCreateWorkItem() {
     onSuccess: (item) => {
       void qc.invalidateQueries({ queryKey: workItemKeys.backlog(item.projectId) })
       void qc.invalidateQueries({ queryKey: workItemKeys.list(item.projectId) })
+      if (item.parentId) {
+        void qc.invalidateQueries({ queryKey: childDefectsKeys.byParent(item.parentId) })
+      }
     },
   })
 }
@@ -188,10 +235,11 @@ export function useUpdateWorkItem(id: string) {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as WorkItem
     },
-    onSuccess: (item) => {
+    onSuccess: (item, variables) => {
       qc.setQueryData(workItemKeys.detail(id), item)
-      // Also update the work-item-by-key cache so WorkItemDetailPage reflects immediately
-      qc.setQueriesData({ queryKey: workItemKeys.byKey(item.itemKey) }, item)
+      // Also update the work-item-by-key cache so WorkItemDetailPage reflects immediately.
+      // Must pass projectId to match the exact cache key used by useWorkItemByKey().
+      qc.setQueriesData({ queryKey: workItemKeys.byKey(item.itemKey, item.projectId) }, item)
       // Optimistically update the item inside any cached backlog list so the
       // inline-edit selects reflect the new value without waiting for the refetch.
       qc.setQueriesData<{ data?: WorkItem[]; pageInfo?: unknown }>(
@@ -203,6 +251,24 @@ export function useUpdateWorkItem(id: string) {
       )
       void qc.invalidateQueries({ queryKey: workItemKeys.backlog(item.projectId) })
       void qc.invalidateQueries({ queryKey: workItemKeys.activity(id) })
+      // Invalidate iteration-status cache so the Iteration Status page reflects
+      // schedule-state / iteration changes immediately.
+      void qc.invalidateQueries({ queryKey: iterationKeys.statusAll })
+      // If this item is a task, invalidate its parent's task list/rollup so the
+      // expanded task row (e.g. the state segmented control) reflects the change
+      // without waiting for a stale-time refetch.
+      if (item.parentId) {
+        void qc.invalidateQueries({ queryKey: workItemKeys.tasks(item.parentId) })
+        void qc.invalidateQueries({ queryKey: workItemKeys.taskTotals(item.parentId) })
+        // If this item is a defect under a story, invalidate child defects cache
+        if (item.type === 'defect') {
+          void qc.invalidateQueries({ queryKey: childDefectsKeys.byParent(item.parentId) })
+        }
+      }
+      // If parentId changed, also invalidate old parent's child defects
+      if (variables.parentId !== undefined && variables.parentId !== item.parentId && variables.parentId) {
+        void qc.invalidateQueries({ queryKey: childDefectsKeys.byParent(variables.parentId) })
+      }
     },
   })
 }
@@ -432,7 +498,7 @@ export function useBulkAssignIteration() {
     onSuccess: (_r, input) => {
       void qc.invalidateQueries({ queryKey: workItemKeys.backlog(input.projectId) })
       void qc.invalidateQueries({ queryKey: workItemKeys.list(input.projectId) })
-      void qc.invalidateQueries({ queryKey: ['iteration-status'] })
+      void qc.invalidateQueries({ queryKey: iterationKeys.statusAll })
     },
   })
 }
@@ -450,6 +516,9 @@ export function useRankWorkItem(id: string) {
     },
     onSuccess: (item) => {
       void qc.invalidateQueries({ queryKey: workItemKeys.backlog(item.projectId) })
+      void qc.invalidateQueries({ queryKey: workItemKeys.list(item.projectId) })
+      void qc.invalidateQueries({ queryKey: iterationKeys.statusAll })
+      void qc.invalidateQueries({ queryKey: ['team-status'] })
     },
   })
 }
@@ -467,6 +536,9 @@ export function useRankAnyWorkItem() {
     },
     onSuccess: (item) => {
       void qc.invalidateQueries({ queryKey: workItemKeys.backlog(item.projectId) })
+      void qc.invalidateQueries({ queryKey: workItemKeys.list(item.projectId) })
+      void qc.invalidateQueries({ queryKey: iterationKeys.statusAll })
+      void qc.invalidateQueries({ queryKey: ['team-status'] })
     },
   })
 }

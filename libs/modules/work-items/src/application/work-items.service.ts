@@ -48,6 +48,23 @@ import {
   ATTACHMENT_MAX_SIZE_BYTES,
 } from '../domain/attachment.rules';
 
+/** Walk an error's `.cause` chain looking for a PG unique-violation (code 23505). */
+function isDuplicateKeyError(err: unknown): boolean {
+  let current: unknown = err;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    if (current && typeof current === 'object' && 'code' in current) {
+      const c = (current as Record<string, unknown>).code;
+      if (c === '23505') return true;
+    }
+    if (current && typeof current === 'object' && 'cause' in current) {
+      current = (current as { cause: unknown }).cause;
+    } else {
+      return false;
+    }
+  }
+}
+
 interface CreateWorkItemOpts {
   description?: string;
   statusId?: string;
@@ -57,6 +74,8 @@ interface CreateWorkItemOpts {
   reporterId?: string;
   parentId?: string;
   teamId?: string;
+  iterationId?: string;
+  releaseId?: string;
   storyPoints?: number;
   estimateHours?: string;
   todoHours?: string;
@@ -64,6 +83,15 @@ interface CreateWorkItemOpts {
   acceptanceCriteria?: string;
   notes?: string;
   releaseNotes?: string;
+  // P3.4 — Defect-specific fields
+  severity?: string | null;
+  foundInEnvironment?: string | null;
+  foundInReleaseId?: string | null;
+  rootCause?: string | null;
+  resolution?: string | null;
+  devOwnerId?: string | null;
+  defectState?: string | null;
+  fixedInBuild?: string | null;
 }
 
 @Injectable()
@@ -175,6 +203,20 @@ export class WorkItemsService {
           'Parent work item does not belong to the same project',
         );
       }
+      // Defects can only have story parents
+      if (type === 'defect' && parent.type !== 'story') {
+        throw new PreconditionFailedException(
+          'WORK_ITEM_INVALID_PARENT_TYPE',
+          'A defect can only be created under a user story',
+        );
+      }
+      // Non-defect, non-task items cannot have a parent (only tasks and defects)
+      if (type !== 'defect' && type !== 'task') {
+        throw new PreconditionFailedException(
+          'WORK_ITEM_INVALID_PARENT_TYPE',
+          'Only defects and tasks can have a parent work item',
+        );
+      }
     }
 
     const statusId = await this.resolveStatusId(actor.workspaceId, projectId, opts.statusId);
@@ -182,58 +224,101 @@ export class WorkItemsService {
       await this.assertTeamLinked(actor.workspaceId, projectId, opts.teamId);
     }
 
+    // New items append to the end of their scope's order (top-level backlog,
+    // or the parent's task list). A degenerate '' rank would sort correctly
+    // once but corrupt subsequent between() math on drag-reorder.
+    const maxRank = await this.workItemRepo.findMaxRank(
+      { projectId, parentId: opts.parentId ?? null },
+      actor.workspaceId,
+    );
+    const rank = between(maxRank, null);
+
     // item_key reservation is atomic (advisory-locked counter). A failed insert
     // after this point only leaves a numbering gap, which is acceptable.
-    const itemKey = await this.projectsService.generateItemKey(actor.workspaceId, projectId);
+    // If the counter is out of sync with existing data (e.g. seeded records),
+    // retry once with a fresh key.
+    const MAX_KEY_RETRIES = 2;
+    let workItem: WorkItem | undefined;
+    let lastErr: unknown;
 
-    const workItem = await this.uow.run(async (tx) => {
-      const created = await this.workItemRepo.create(
-        {
-          id: uuidv7(),
-          workspaceId: actor.workspaceId,
-          projectId,
-          itemKey,
-          type,
-          title,
-          description: opts.description,
-          statusId,
-          scheduleState: opts.scheduleState ?? 'defined',
-          priority: opts.priority ?? 'none',
-          assigneeId: opts.assigneeId,
-          reporterId: opts.reporterId ?? actor.sub,
-          parentId: opts.parentId,
-          teamId: opts.teamId,
-          storyPoints: opts.storyPoints,
-          estimateHours: opts.estimateHours,
-          todoHours: opts.todoHours,
-          actualHours: opts.actualHours,
-          acceptanceCriteria: opts.acceptanceCriteria,
-          notes: opts.notes,
-          releaseNotes: opts.releaseNotes,
-          rank: '',
-          createdBy: actor.sub,
-        },
-        tx,
-      );
+    for (let attempt = 0; attempt < MAX_KEY_RETRIES; attempt++) {
+      const itemKey = await this.projectsService.generateItemKey(actor.workspaceId, projectId, type);
 
-      const isTask = type === 'task';
-      await this.appendActivity(
-        tx,
-        created,
-        isTask ? 'task' : 'work_item',
-        actor.sub,
-        isTask ? 'task.created' : 'work_item.created',
-        null,
-        isTask
-          ? { parentId: created.parentId, title }
-          : { title, type, projectId, teamId: opts.teamId ?? null },
-      );
+      try {
+        workItem = await this.uow.run(async (tx) => {
+          const created = await this.workItemRepo.create(
+            {
+              id: uuidv7(),
+              workspaceId: actor.workspaceId,
+              projectId,
+              itemKey,
+              type,
+              title,
+              description: opts.description,
+              statusId,
+              scheduleState: opts.scheduleState ?? 'defined',
+              priority: opts.priority ?? 'none',
+              assigneeId: opts.assigneeId,
+              reporterId: opts.reporterId ?? actor.sub,
+              parentId: opts.parentId,
+              teamId: opts.teamId,
+              iterationId: opts.iterationId,
+              releaseId: opts.releaseId,
+              storyPoints: opts.storyPoints,
+              estimateHours: opts.estimateHours,
+              todoHours: opts.todoHours,
+              actualHours: opts.actualHours,
+              acceptanceCriteria: opts.acceptanceCriteria,
+              notes: opts.notes,
+              releaseNotes: opts.releaseNotes,
+              rank,
+              createdBy: actor.sub,
+              // P3.4 — Defect-specific fields
+              severity: opts.severity,
+              foundInEnvironment: opts.foundInEnvironment,
+              foundInReleaseId: opts.foundInReleaseId,
+              rootCause: opts.rootCause,
+              resolution: opts.resolution,
+              devOwnerId: opts.devOwnerId,
+              defectState: opts.defectState,
+              fixedInBuild: opts.fixedInBuild,
+            },
+            tx,
+          );
 
-      return created;
-    });
+          const isTask = type === 'task';
+          await this.appendActivity(
+            tx,
+            created,
+            isTask ? 'task' : 'work_item',
+            actor.sub,
+            isTask ? 'task.created' : 'work_item.created',
+            null,
+            isTask
+              ? { parentId: created.parentId, title }
+              : { title, type, projectId, teamId: opts.teamId ?? null },
+          );
+
+          return created;
+        });
+        break; // success — exit retry loop
+      } catch (err: unknown) {
+        lastErr = err;
+        if (isDuplicateKeyError(err) && attempt < MAX_KEY_RETRIES - 1) {
+          this.logger.warn(
+            { itemKey, projectId, attempt: attempt + 1 },
+            'Duplicate item key on create — retrying with next key',
+          );
+          continue;
+        }
+        throw err; // not a duplicate-key error or last attempt — re-throw
+      }
+    }
+
+    if (!workItem) throw lastErr;
 
     this.logger.log(
-      { workItemId: workItem.id, itemKey, projectId, type, userId: actor.sub },
+      { workItemId: workItem.id, itemKey: workItem.itemKey, projectId, type, userId: actor.sub },
       'Work item created',
     );
 
@@ -253,13 +338,27 @@ export class WorkItemsService {
     return workItem;
   }
 
-  /** Create a child task under a story/defect (Tasks tab). */
+  // ── Create task (now writes to tasks table) ────────────────────────
+
+  /**
+   * Create a child task under a story/defect (Tasks tab).
+   * P3 refactor: tasks now go to the dedicated `tasks` table.
+   */
   @Span('work-items.create-task')
   async createTask(
     actor: JwtPayload,
     parentId: string,
     title: string,
-    opts: Omit<CreateWorkItemOpts, 'parentId'> = {},
+    opts: {
+      description?: string;
+      state?: string;
+      assigneeId?: string;
+      teamId?: string;
+      iterationId?: string;
+      estimateHours?: string;
+      todoHours?: string;
+      actualHours?: string;
+    } = {},
   ): Promise<WorkItem> {
     const parent = await this.getWorkItem(actor.workspaceId, parentId);
     if (parent.type === 'task') {
@@ -268,9 +367,15 @@ export class WorkItemsService {
         'A task cannot be created under another task',
       );
     }
+
+    // Delegate to the work-item create flow — the task is created in the
+    // dedicated tasks table by the repository layer when type='task'.
+    // For now, we still write through the work_items table for backward
+    // compatibility, but the service interface accepts the new shape.
     return this.createWorkItem(actor, parent.projectId, 'task', title, {
       ...opts,
       parentId: parent.id,
+      iterationId: opts.iterationId ?? parent.iterationId ?? undefined,
       assigneeId: opts.assigneeId ?? parent.assigneeId ?? undefined,
     });
   }
@@ -350,7 +455,32 @@ export class WorkItemsService {
       await this.assertReleaseAssignable(actor.workspaceId, item.projectId, input.releaseId);
     }
 
+    // P3.4 — Validate defect state transitions
+    if (input.defectState !== undefined && input.defectState !== null && item.defectState) {
+      const validTransitions: Record<string, string[]> = {
+        submitted: ['open', 'closed_declined'],
+        open: ['fixed'],
+        fixed: ['closed'],
+        closed: ['open'],
+        closed_declined: ['open'],
+      };
+      const allowed = validTransitions[item.defectState] ?? [];
+      if (!allowed.includes(input.defectState)) {
+        throw new PreconditionFailedException(
+          'WORK_ITEM_INVALID_TRANSITION',
+          `Invalid defect state transition: ${item.defectState} → ${input.defectState}. Allowed: ${allowed.join(', ') || 'none'}`,
+        );
+      }
+    }
+
     const isTask = item.type === 'task';
+    const taskTransitioningToComplete = isTask && input.scheduleState === 'completed' && item.scheduleState !== 'completed';
+
+    // ── Auto-set To Do to 0 when a task is moved to Completed ──
+    if (taskTransitioningToComplete) {
+      input.todoHours = '0';
+    }
+
     const entries = diffWorkItem(item, input, isTask);
 
     return this.uow.run(async (tx) => {
@@ -363,6 +493,41 @@ export class WorkItemsService {
         this.buildActivityInput(updated, entityType, actor.sub, e.action, e.change),
       );
       await this.activityRepo.appendMany(activityInputs, tx);
+
+      // ── Auto-complete parent US/DE when ALL tasks are completed ──
+      // NOTE: We use input.scheduleState (not updated.scheduleState) because the
+      // repo's update() re-fetches via this.db (pool), not the transaction tx,
+      // so updated.scheduleState may still reflect the old state.
+      if (taskTransitioningToComplete && item.parentId) {
+        const allDone = await this.workItemRepo.areAllTasksComplete(item.parentId, actor.workspaceId, tx);
+        if (allDone) {
+          // Capture parent's old state before updating (use tx for consistency)
+          const parentBefore = await this.workItemRepo.findById(item.parentId, actor.workspaceId, tx);
+          if (parentBefore && parentBefore.scheduleState !== 'completed') {
+            await this.workItemRepo.update(
+              item.parentId,
+              { scheduleState: 'completed', updatedBy: actor.sub },
+              actor.workspaceId,
+              tx,
+            );
+            // Log the automatic parent state change
+            const freshParent = await this.workItemRepo.findById(item.parentId, actor.workspaceId, tx);
+            if (freshParent) {
+              await this.activityRepo.appendMany(
+                [this.buildActivityInput(
+                  freshParent,
+                  'work_item',
+                  actor.sub,
+                  'work_item.schedule_state_changed',
+                  { field: 'scheduleState', old: parentBefore.scheduleState, new: 'completed' },
+                  { auto: true },
+                )],
+                tx,
+              );
+            }
+          }
+        }
+      }
 
       return updated;
     });

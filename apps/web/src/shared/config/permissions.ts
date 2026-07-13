@@ -20,7 +20,15 @@ export const PERMISSION = {
   PROJECT_MANAGE_MEMBERS: 'project:manage_members',
 
   ITERATION_MANAGE: 'iteration:manage',
+  ITERATION_VIEW: 'iteration:view',
+  RELEASE_VIEW: 'release:view',
   RELEASE_MANAGE: 'release:manage',
+  TEAM_STATUS_VIEW: 'team_status:view',
+  TEAM_STATUS_EDIT: 'team_status:edit',
+  MILESTONE_VIEW: 'milestone:view',
+  MILESTONE_MANAGE: 'milestone:manage',
+  QUALITY_VIEW: 'quality:view',
+  QUALITY_EDIT: 'quality:edit',
 } as const
 
 export type Permission = (typeof PERMISSION)[keyof typeof PERMISSION]

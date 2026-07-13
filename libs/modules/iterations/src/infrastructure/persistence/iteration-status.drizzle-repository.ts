@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { and, asc, desc, eq, ilike, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 import { InjectDrizzle, buildPageResult } from '@platform';
 import type { DrizzleDB, CursorPayload, PagedResult } from '@platform';
-import { workItems } from '../../../../../../db/schema/work';
+import { workItems, tasks } from '../../../../../../db/schema/work';
 import type {
   IterationStatusItem,
   IterationStatusFilters,
@@ -25,7 +25,7 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
         totalPlanEstimate: sql<number>`coalesce(sum(${workItems.storyPoints}), 0)::int`,
         acceptedPoints: sql<number>`coalesce(sum(${workItems.storyPoints}) filter (where ${workItems.scheduleState} = 'accepted'), 0)::int`,
         defectCount: sql<number>`(count(*) filter (where ${workItems.type} = 'defect'))::int`,
-        taskCount: sql<number>`(count(*) filter (where ${workItems.type} = 'task'))::int`,
+        taskCount: sql<number>`(select count(*)::int from ${tasks} t where t.parent_id = ${workItems.id} and t.deleted_at is null)`,
       })
       .from(workItems)
       .where(
@@ -73,19 +73,17 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
       }
     }
 
-    // Task rollups via correlated subqueries over child tasks (parent_id = row id).
+    // Task rollups via correlated subqueries over the dedicated `tasks` table.
     const taskEstimate = sql<string>`(
       select coalesce(sum(t.estimate_hours), 0)
-      from ${workItems} t
+      from ${tasks} t
       where t.parent_id = ${workItems.id}
-        and t.type = 'task'
         and t.deleted_at is null
     )`;
     const toDo = sql<string>`(
       select coalesce(sum(t.todo_hours), 0)
-      from ${workItems} t
+      from ${tasks} t
       where t.parent_id = ${workItems.id}
-        and t.type = 'task'
         and t.deleted_at is null
     )`;
 

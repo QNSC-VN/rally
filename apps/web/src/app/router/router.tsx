@@ -159,6 +159,52 @@ const releasesRoute = createRoute({
   component: lazyPage(() => import('@/pages/releases/releases-page'), 'ReleasesPage'),
 })
 
+const releaseDetailRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: '/releases/$releaseId',
+  staticData: { breadcrumb: 'Release Detail' },
+  component: lazyPage(() => import('@/pages/releases/releases-detail-page'), 'ReleaseDetailPage'),
+})
+
+const milestonesRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: '/milestones',
+  staticData: { breadcrumb: 'Milestones' },
+  component: lazyPage(() => import('@/pages/milestones/milestones-page'), 'MilestonesPage'),
+})
+
+const milestoneDetailRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: '/milestones/$milestoneId',
+  staticData: { breadcrumb: 'Milestone Detail' },
+  component: lazyPage(() => import('@/pages/milestones/milestones-detail-page'), 'MilestoneDetailPage'),
+})
+
+const qualityRedirectRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: '/quality',
+  beforeLoad: () => {
+    throw redirect({ to: '/quality/defects' })
+  },
+})
+
+const qualityDefectsRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: '/quality/defects',
+  staticData: { breadcrumb: 'Quality' },
+  component: lazyPage(() => import('@/pages/quality/quality-page'), 'QualityPage'),
+})
+
+const teamStatusRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: '/team-status',
+  staticData: { breadcrumb: 'Team Status' },
+  component: lazyPage(
+    () => import('@/pages/team-status/team-status-page'),
+    'TeamStatusPage',
+  ),
+})
+
 // ── Not found ─────────────────────────────────────────────────────────────────
 
 const notFoundRoute = createRoute({
@@ -181,6 +227,12 @@ const routeTree = rootRoute.addChildren([
     timeboxesRoute,
     iterationStatusRoute,
     releasesRoute,
+    releaseDetailRoute,
+    milestonesRoute,
+    milestoneDetailRoute,
+    qualityRedirectRoute,
+    qualityDefectsRoute,
+    teamStatusRoute,
     workItemDetailRoute,
     notFoundRoute,
   ]),

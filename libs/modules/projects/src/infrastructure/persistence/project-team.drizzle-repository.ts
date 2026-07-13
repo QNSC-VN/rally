@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
-import { projectTeams } from '../../../../../../db/schema/work';
+import { projectTeams, teams } from '../../../../../../db/schema/work';
 import type { ProjectTeamLink } from '../../domain/project.types';
 import { IProjectTeamRepository } from '../../domain/ports/project-team.repository';
 
@@ -27,11 +27,26 @@ export class ProjectTeamDrizzleRepository implements IProjectTeamRepository {
 
   async listByProject(projectId: string): Promise<ProjectTeamLink[]> {
     const rows = await this.db
-      .select()
+      .select({
+        id: projectTeams.id,
+        workspaceId: projectTeams.workspaceId,
+        projectId: projectTeams.projectId,
+        teamId: projectTeams.teamId,
+        status: projectTeams.status,
+        linkedAt: projectTeams.linkedAt,
+        unlinkedAt: projectTeams.unlinkedAt,
+        name: teams.name,
+        key: teams.key,
+      })
       .from(projectTeams)
+      .leftJoin(teams, eq(projectTeams.teamId, teams.id))
       .where(and(eq(projectTeams.projectId, projectId), eq(projectTeams.status, 'active')))
       .orderBy(projectTeams.linkedAt);
-    return rows;
+    return rows.map((r) => ({
+      ...r,
+      name: r.name ?? undefined,
+      key: r.key ?? undefined,
+    }));
   }
 
   async linkTeam(

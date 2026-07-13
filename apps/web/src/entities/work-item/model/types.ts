@@ -1,3 +1,6 @@
+import type { LucideIcon } from 'lucide-react'
+import { BookOpen, Target, Layers, ClipboardList, Bug } from 'lucide-react'
+
 // ── Const objects (replaces enums for erasableSyntaxOnly compat) ─────────────
 
 export const WorkItemType = {
@@ -49,14 +52,15 @@ export interface BadgeStyle {
   label: string
   color: string
   bg: string
+  icon?: LucideIcon
 }
 
 export const WORK_ITEM_TYPE_CONFIG: Record<WorkItemType, BadgeStyle> = {
-  [WorkItemType.Initiative]: { label: 'IN', color: '#059669', bg: '#ecfdf5' },
-  [WorkItemType.Feature]:    { label: 'FE', color: '#7c3aed', bg: '#f3effd' },
-  [WorkItemType.Story]:      { label: 'US', color: '#2558a6', bg: '#eef3fb' },
-  [WorkItemType.Task]:       { label: 'TA', color: '#1d3f73', bg: '#e5ebf4' },
-  [WorkItemType.Defect]:     { label: 'DE', color: '#b91c1c', bg: '#fef2f2' },
+  [WorkItemType.Initiative]: { label: 'IN', color: '#059669', bg: '#ecfdf5', icon: Target },
+  [WorkItemType.Feature]:    { label: 'FE', color: '#7c3aed', bg: '#f3effd', icon: Layers },
+  [WorkItemType.Story]:      { label: 'US', color: '#2558a6', bg: '#eef3fb', icon: BookOpen },
+  [WorkItemType.Task]:       { label: 'TA', color: '#1d3f73', bg: '#e5ebf4', icon: ClipboardList },
+  [WorkItemType.Defect]:     { label: 'DE', color: '#b91c1c', bg: '#fef2f2', icon: Bug },
 }
 
 export const SCHEDULE_STATE_LABEL: Record<ScheduleState, string> = {
@@ -97,3 +101,51 @@ export const WORK_ITEM_PRIORITY_CONFIG: Record<WorkItemPriority, PriorityStyle> 
 
 // ── Fallback style ────────────────────────────────────────────────────────────
 export const BADGE_FALLBACK: StatusBadgeStyle = { color: '#5c6478', bg: '#edf0f4' }
+
+// ── Simplified 3-state model (Track pages: Define / In Progress / Complete) ────
+// Iteration Status and Team Status both collapse the 6 ScheduleStates (or their
+// own task-state enum) down to these 3 buckets for their task rows — shared here
+// so both pages render the same colors instead of hand-rolling their own.
+
+export type SimplifiedState = 'define' | 'in_progress' | 'complete'
+
+export const SIMPLIFIED_STATE_LABEL: Record<SimplifiedState, string> = {
+  define: 'Define',
+  in_progress: 'In Progress',
+  complete: 'Complete',
+}
+
+export interface SimplifiedStateStyle extends StatusBadgeStyle {
+  /** Background used when this state is the active/selected segment of a control. */
+  activeBg: string
+}
+
+export const SIMPLIFIED_STATE_CONFIG: Record<SimplifiedState, SimplifiedStateStyle> = {
+  define: { color: '#5c6478', bg: '#edf0f4', activeBg: '#4a5568' },
+  in_progress: { color: '#1d6f9e', bg: '#e5f2fb', activeBg: '#1a5c8a' },
+  complete: { color: '#3d7a4e', bg: '#eef6f0', activeBg: '#2d603c' },
+}
+
+/** Ordered left-to-right, as rendered in the segmented control. */
+export const SIMPLIFIED_STATE_ORDER: SimplifiedState[] = ['define', 'in_progress', 'complete']
+
+const SIMPLIFIED_STATE_GROUPS: Record<SimplifiedState, ScheduleState[]> = {
+  define: [ScheduleState.Idea, ScheduleState.Defined],
+  in_progress: [ScheduleState.InProgress],
+  complete: [ScheduleState.Completed, ScheduleState.Accepted, ScheduleState.Released],
+}
+
+export function getSimplifiedState(state: ScheduleState): SimplifiedState {
+  for (const key of SIMPLIFIED_STATE_ORDER) {
+    if (SIMPLIFIED_STATE_GROUPS[key].includes(state)) return key
+  }
+  return 'define'
+}
+
+/** Representative canonical ScheduleState written back to the API when a
+ * simplified rectangle is clicked (tasks don't use idea/accepted/released). */
+export const SIMPLIFIED_STATE_TO_SCHEDULE_STATE: Record<SimplifiedState, ScheduleState> = {
+  define: ScheduleState.Defined,
+  in_progress: ScheduleState.InProgress,
+  complete: ScheduleState.Completed,
+}

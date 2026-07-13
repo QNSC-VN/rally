@@ -186,4 +186,42 @@ jobs:
           TF_VAR_entra_client_id:    ${{ vars.ENTRA_CLIENT_ID }}
           TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           TF_VAR_cloudflare_account_id: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          TF_VAR_web_domain:           ${{ vars.RALLY_WEB_DOMAIN_PROD }}
+          # Prod reliability tier (Option A): 'lean' (default) or 'ha'. Set the
+          # RALLY_PROD_TIER repo/production var to 'ha' to switch — no code change.
+          TF_VAR_prod_tier:            ${{ vars.RALLY_PROD_TIER || 'lean' }}
+          # Pin the prod image to the exact release tag that triggered this apply
+          # (e.g. v1.4.2), so an infra apply never resets the task def to :latest.
+          TF_VAR_image_tag:            ${{ github.ref_name }}
+
+      # Mint a short-lived installation token from the RELEASE_BOT GitHub App so
+      # we never need a long-lived user PAT. Requires the app to have
+      # "Variables: read and write" on this repo. Falls back to no token
+      # (publish step skipped) when the app isn't configured.
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3
+        id: app-token
+        if: ${{ vars.RELEASE_BOT_APP_ID != '' }}
+        continue-on-error: true
+        with:
+          app-id: ${{ vars.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+
+      # Sync the infra IDs the deploy workflows read (backend-deploy.yml) straight
+      # from Terraform outputs into the production environment, so a rebuild that
+      # changes subnet/SG IDs can never leave the prod vars stale.
+      - name: Publish infra IDs to production environment variables
+        if: ${{ steps.app-token.outputs.token != '' }}
+        continue-on-error: true
+        working-directory: infra/live/prod
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          set_var() { echo "  set ${1}"; gh variable set "$1" --env production --repo "$REPO" --body "$2"; }
+          set_var ECS_CLUSTER           "$(tofu output -raw ecs_cluster_name)"
+          set_var ECS_API_SERVICE       "$(tofu output -raw ecs_api_service)"
+          set_var ECS_WORKER_SERVICE    "$(tofu output -raw ecs_worker_service)"
+          set_var ECS_MIGRATOR_TASK_DEF "$(tofu output -raw ecs_migrator_task_def)"
+          set_var ECS_MIGRATOR_SUBNET   "$(tofu output -json private_subnet_ids | jq -r 'join(",")')"
+          set_var ECS_MIGRATOR_SG       "$(tofu output -raw sg_app_id)"
+          set_var PAGES_PROJECT         "$(tofu output -raw web_pages_project)"

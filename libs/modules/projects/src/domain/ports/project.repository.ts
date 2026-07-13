@@ -6,6 +6,9 @@ import type {
   UpdateProjectInput,
 } from '../project.types';
 
+/** Work item type values — mirrors db/schema/enums workItemTypeEnum */
+export type WorkItemType = 'initiative' | 'feature' | 'story' | 'task' | 'defect';
+
 export const PROJECT_REPOSITORY = Symbol('PROJECT_REPOSITORY');
 
 export interface IProjectRepository {
@@ -23,5 +26,6 @@ export interface IProjectRepository {
   update(id: string, input: UpdateProjectInput, workspaceId: string): Promise<Project>;
   softDelete(id: string, workspaceId: string): Promise<void>;
   initCounter(projectId: string, workspaceId: string, tx?: DbExecutor): Promise<void>;
-  incrementCounter(projectId: string, workspaceId: string): Promise<number>;
+  incrementCounter(projectId: string, workspaceId: string, itemType: WorkItemType, tx?: DbExecutor): Promise<number>;
+  getMaxItemNumber(projectId: string, workspaceId: string, itemType: WorkItemType): Promise<number>;
 }

@@ -59,6 +59,18 @@ export class PreconditionFailedException extends DomainException {
   }
 }
 
+/**
+ * Application-level input validation failures raised outside the Zod DTO
+ * pipeline (e.g. business-rule checks in a service method). Maps to HTTP 422,
+ * same as ZodValidationException, so the FE can treat every `VALIDATION_FAILED`
+ * code consistently regardless of where it was thrown.
+ */
+export class ValidationException extends DomainException {
+  constructor(code: ErrorCode, message: string) {
+    super(code, message, 'VALIDATION_FAILED');
+  }
+}
+
 export class RateLimitedException extends DomainException {
   constructor(message = 'Rate limit exceeded') {
     super('RATE_LIMITED', message, 'RATE_LIMITED');

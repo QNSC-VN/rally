@@ -20,8 +20,8 @@ export interface IWorkspaceMemberRepository {
   ): Promise<PagedResult<WorkspaceMember>>;
   listMembersWithProfile(workspaceId: string): Promise<WorkspaceMemberWithProfile[]>;
   addMember(input: AddMemberInput, tx?: DbExecutor): Promise<WorkspaceMember>;
-  updateMember(id: string, input: UpdateMemberInput): Promise<WorkspaceMember>;
-  removeMember(workspaceId: string, userId: string): Promise<void>;
+  updateMember(id: string, input: UpdateMemberInput, tx?: DbExecutor): Promise<WorkspaceMember>;
+  removeMember(workspaceId: string, userId: string, tx?: DbExecutor): Promise<void>;
   isMember(workspaceId: string, userId: string): Promise<boolean>;
   /** Stamp last_active_at so next login auto-selects the most recent workspace. */
   touchLastActive(userId: string, workspaceId: string): Promise<void>;

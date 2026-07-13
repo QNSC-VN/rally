@@ -32,6 +32,7 @@ const hoursNullable = z.coerce
 export const WorkItemQuerySchema = PageQuerySchema.extend({
   projectId: z.string().uuid(),
   type: z.enum(WORK_ITEM_TYPES).optional(),
+  parentId: z.string().uuid().optional(),
   statusId: z.string().uuid().optional(),
   scheduleState: z.enum(SCHEDULE_STATES).optional(),
   priority: z.enum(WORK_ITEM_PRIORITIES).optional(),
@@ -65,6 +66,15 @@ export const CreateWorkItemSchema = z.object({
   acceptanceCriteria: z.string().max(50000).optional(),
   notes: z.string().max(50000).optional(),
   releaseNotes: z.string().max(50000).optional(),
+  // P3.4 — Defect-specific fields (only meaningful when type='defect')
+  severity: z.enum(['none', 'critical', 'high', 'medium', 'low']).optional(),
+  foundInEnvironment: z.enum(['development', 'staging', 'production', 'testing']).optional(),
+  foundInReleaseId: z.string().uuid().nullable().optional(),
+  rootCause: z.enum(['requirements', 'design', 'code', 'test', 'integration', 'other']).optional(),
+  resolution: z.enum(['fixed', 'wont_fix', 'duplicate', 'cannot_reproduce', 'deferred', 'by_design']).optional(),
+  devOwnerId: z.string().uuid().nullable().optional(),
+  defectState: z.enum(['submitted', 'open', 'fixed', 'closed', 'closed_declined']).optional(),
+  fixedInBuild: z.string().max(255).nullable().optional(),
 });
 
 export class CreateWorkItemDto extends createZodDto(CreateWorkItemSchema) {}
@@ -93,18 +103,28 @@ export const UpdateWorkItemSchema = z.object({
   isBlocked: z.boolean().optional(),
   blockedReason: z.string().max(1000).nullable().optional(),
   customFields: z.record(z.string(), z.unknown()).optional(),
+  // P3.4 — Defect-specific fields
+  severity: z.enum(['none', 'critical', 'high', 'medium', 'low']).nullable().optional(),
+  foundInEnvironment: z.enum(['development', 'staging', 'production', 'testing']).nullable().optional(),
+  foundInReleaseId: z.string().uuid().nullable().optional(),
+  rootCause: z.enum(['requirements', 'design', 'code', 'test', 'integration', 'other']).nullable().optional(),
+  resolution: z.enum(['fixed', 'wont_fix', 'duplicate', 'cannot_reproduce', 'deferred', 'by_design']).nullable().optional(),
+  devOwnerId: z.string().uuid().nullable().optional(),
+  defectState: z.enum(['submitted', 'open', 'fixed', 'closed', 'closed_declined']).nullable().optional(),
+  fixedInBuild: z.string().max(255).nullable().optional(),
 });
 
 export class UpdateWorkItemDto extends createZodDto(UpdateWorkItemSchema) {}
 
-// ── Create task (Tasks tab) ─────────────────────────────────────────────────
+// ── Create task (Tasks tab — now writes to tasks table) ──────────────────
 
 export const CreateTaskSchema = z.object({
   title: z.string().min(1).max(500).trim(),
   description: z.string().max(50000).optional(),
-  statusId: z.string().uuid().optional(),
-  scheduleState: z.enum(SCHEDULE_STATES).optional(),
+  state: z.enum(['defined', 'in_progress', 'completed']).optional(),
   assigneeId: z.string().uuid().optional(),
+  teamId: z.string().uuid().optional(),
+  iterationId: z.string().uuid().optional(),
   estimateHours: hoursOptional,
   todoHours: hoursOptional,
   actualHours: hoursOptional,

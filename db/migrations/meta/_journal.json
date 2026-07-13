@@ -204,6 +204,69 @@
       "when": 1783000006000,
       "tag": "0028_drop_password_auth",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1783000006000,
+      "tag": "0028_member_capacity",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1783000007000,
+      "tag": "0029_release_management_p32",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1783000008000,
+      "tag": "0030_milestones_p33",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1783000009000,
+      "tag": "0031_defect_fields_p34",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1783000010000,
+      "tag": "0032_defect_root_cause_resolution_p34",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1783000010000,
+      "tag": "0033_release_daily_snapshots_p32",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1783100000000,
+      "tag": "0034_ready_state_dev_owner_p3_fixes",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1783200000000,
+      "tag": "0035_phase3_structural_changes",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1783300000000,
+      "tag": "0036_type_prefixed_item_keys",
+      "breakpoints": true
     }
   ]
 }

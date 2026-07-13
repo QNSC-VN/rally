@@ -27,8 +27,9 @@ describe('useAppContext store', () => {
   })
 
   it('sets the selected team and reset() clears it', () => {
-    useAppContext.getState().setTeam('team-1')
-    expect(useAppContext.getState().team).toBe('team-1')
+    useAppContext.getState().setTeam({ teamId: 'team-1', teamName: 'Team One' })
+    expect(useAppContext.getState().team?.teamId).toBe('team-1')
+    expect(useAppContext.getState().team?.teamName).toBe('Team One')
 
     useAppContext.getState().reset()
     expect(useAppContext.getState().team).toBeNull()

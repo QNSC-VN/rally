@@ -20,11 +20,13 @@ export function TypeBadge({ type }: TypeBadgeProps) {
     label: type.slice(0, 2).toUpperCase(),
     ...BADGE_FALLBACK,
   }
+  const Icon = cfg.icon
   return (
     <span
-      className="inline-flex h-5 min-w-[36px] items-center justify-center rounded-sm px-1.5 text-[9px] font-semibold"
+      className="inline-flex h-5 min-w-[36px] items-center justify-center gap-0.5 rounded-sm px-1.5 text-[9px] font-semibold"
       style={{ color: cfg.color, backgroundColor: cfg.bg }}
     >
+      {Icon && <Icon size={10} strokeWidth={2.2} />}
       {cfg.label}
     </span>
   )
@@ -34,11 +36,24 @@ export function TypeBadge({ type }: TypeBadgeProps) {
 
 interface ScheduleStateBadgeProps {
   state: ScheduleState | string
+  /** Render a small leading color dot instead of the tinted background pill. */
+  dot?: boolean
 }
 
-export function ScheduleStateBadge({ state }: ScheduleStateBadgeProps) {
+export function ScheduleStateBadge({ state, dot }: ScheduleStateBadgeProps) {
   const cfg = SCHEDULE_STATE_CONFIG[state as ScheduleState] ?? BADGE_FALLBACK
   const label = SCHEDULE_STATE_LABEL[state as ScheduleState] ?? state
+  if (dot) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-sm px-2 py-px text-[11px] font-medium whitespace-nowrap"
+        style={{ backgroundColor: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}33` }}
+      >
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: cfg.color }} />
+        {label}
+      </span>
+    )
+  }
   return (
     <span
       className="inline-flex h-5 items-center rounded-sm px-1.5 text-[10px] font-medium"

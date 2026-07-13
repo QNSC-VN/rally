@@ -48,6 +48,15 @@ const mockWorkItem = (o: Partial<WorkItem> = {}): WorkItem => ({
   createdAt: now,
   updatedAt: now,
   deletedAt: null,
+  // P3.4 — Defect-specific fields
+  severity: null,
+  foundInEnvironment: null,
+  foundInReleaseId: null,
+  rootCause: null,
+  resolution: null,
+  devOwnerId: null,
+  defectState: null,
+  fixedInBuild: null,
   ...o,
 });
 
@@ -91,6 +100,7 @@ const makeWorkItemRepo = () => ({
   listByProject: vi.fn(),
   listBacklog: vi.fn(),
   listTasksByParent: vi.fn(),
+  findMaxRank: vi.fn().mockResolvedValue(null),
   getTaskTotals: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),

@@ -9,7 +9,8 @@
  *  - resizable columns (persisted in localStorage)
  *  - "Create Work Item" modal
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+/* eslint-disable react-hooks/set-state-in-effect */
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   DndContext,
   PointerSensor,
@@ -30,6 +31,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { ChevronLeft, ChevronRight, GripVertical, Plus, Search, X } from 'lucide-react'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { InlineCellSelect, InlineSelect } from '@/shared/ui/native-select'
+import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import {
@@ -54,6 +56,9 @@ import {
 import { BRAND } from '@/shared/config/brand'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { CreateWorkItemModal } from '@/features/work-items/ui/create-work-item-modal'
+import { useColumnLayout, type ColumnDef } from '@/shared/lib/hooks/use-column-layout'
+import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
+import { ResizeHandle } from '@/shared/ui/resize-handle'
 
 // ── Column definitions ─────────────────────────────────────────────────────────
 
@@ -95,22 +100,32 @@ const COLUMN_LABELS: Record<ColumnKey, string> = {
   iteration: 'Iteration',
 }
 
-function loadSavedWidths(): Record<ColumnKey, number> {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEYS.BACKLOG_COLUMN_WIDTHS)
-    if (!raw) return { ...DEFAULT_WIDTHS }
-    return { ...DEFAULT_WIDTHS, ...JSON.parse(raw) } as Record<ColumnKey, number>
-  } catch {
-    return { ...DEFAULT_WIDTHS }
-  }
-}
+const COLUMNS: ColumnKey[] = [
+  'type',
+  'id',
+  'name',
+  'scheduleState',
+  'priority',
+  'estimate',
+  'owner',
+  'release',
+  'iteration',
+]
+
+const BACKLOG_COLUMNS: ColumnDef<ColumnKey>[] = COLUMNS.map((key) => ({
+  key,
+  label: COLUMN_LABELS[key],
+  defaultWidth: DEFAULT_WIDTHS[key],
+  minWidth: COLUMN_MINS[key],
+  locked: key === 'id' || key === 'name',
+}))
 
 // ── Resizable column header ────────────────────────────────────────────────────
 
 interface ResizableHeaderProps {
   column: ColumnKey
   label: string
-  width: number
+  style: React.CSSProperties
   align?: 'left' | 'center' | 'right'
   onResizeStart: (col: ColumnKey, e: React.MouseEvent) => void
 }
@@ -118,33 +133,22 @@ interface ResizableHeaderProps {
 function ResizableHeader({
   column,
   label,
-  width,
+  style,
   align = 'left',
   onResizeStart,
 }: ResizableHeaderProps) {
   return (
     <div
-      className="relative flex h-full shrink-0 items-center text-[9px] font-semibold tracking-wider uppercase select-none"
+      className="relative flex h-full shrink-0 items-center text-[11px] font-bold select-none px-2 group"
       style={{
-        width,
-        color: BRAND.columnHeader,
+        ...style,
+        color: '#4b5563',
         justifyContent:
           align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start',
       }}
     >
-      {label}
-      <div
-        role="separator"
-        aria-label={`Resize ${label}`}
-        aria-orientation="vertical"
-        onMouseDown={(e) => onResizeStart(column, e)}
-        className="group absolute top-0 right-0 z-10 h-full w-2 cursor-col-resize"
-      >
-        <div
-          className="absolute top-1 right-[3px] bottom-1 w-px group-hover:bg-primary"
-          style={{ backgroundColor: '#d9dee7' }}
-        />
-      </div>
+      <span className="truncate">{label}</span>
+      <ResizeHandle onMouseDown={(e) => onResizeStart(column, e)} ariaLabel={`Resize ${label}`} />
     </div>
   )
 }
@@ -207,15 +211,18 @@ export function BacklogPage() {
   // Reference lists for the P2.1 filters, inline selects and id→name lookups.
   const { data: members = [] } = useProjectMembers(projectId)
   const { data: releases = [] } = useReleases(projectId)
-  const { data: iterations = [] } = useIterationOptions(projectId, team)
+  const { data: iterations = [] } = useIterationOptions(projectId, team?.teamId)
 
-  // Reset pagination on filter/project change
+  // Reset pagination on filter/project change (synchronously, before useBacklog reads cursor)
+  const prevTeamRef = useRef(team?.teamId)
+  if (prevTeamRef.current !== team?.teamId) {
+    prevTeamRef.current = team?.teamId
+    setCursor(undefined)
+    setCursorHistory([])
+  }
   useEffect(() => {
-    const id = setTimeout(() => {
-      setCursor(undefined)
-      setCursorHistory([])
-    }, 0)
-    return () => clearTimeout(id)
+    setCursor(undefined)
+    setCursorHistory([])
   }, [search, filterType, filterState, filterOwner, filterRelease, filterIteration, pageSize, projectId])
 
   const { data, isLoading, isError, error } = useBacklog(projectId, {
@@ -224,6 +231,7 @@ export function BacklogPage() {
     assigneeId: filterOwner || undefined,
     releaseId: filterRelease || undefined,
     iterationId: filterIteration || undefined,
+    teamId: team?.teamId || undefined,
     q: search || undefined,
     limit: pageSize,
     cursor,
@@ -284,55 +292,14 @@ export function BacklogPage() {
     })
   }
 
-  // ── Column resize ─────────────────────────────────────────────────────────────
-  const [colWidths, setColWidths] = useState<Record<ColumnKey, number>>(loadSavedWidths)
-  const resizingRef = useRef<{ col: ColumnKey; startX: number; startW: number } | null>(null)
-  // Holds the current resize cleanup fn so we can remove listeners on unmount
-  // even if the user navigates away mid-drag (mouseup never fires).
-  const resizeCleanupRef = useRef<(() => void) | null>(null)
-
-  // Safety net: remove any lingering document listeners when the component unmounts.
-  useEffect(
-    () => () => {
-      resizeCleanupRef.current?.()
-    },
-    [],
+  // ── Column resize / order / visibility ──────────────────────────────────────
+  const { widths: colWidths, startResize, order, hidden, toggleVisible, reorder, styleFor } = useColumnLayout(
+    BACKLOG_COLUMNS,
+    STORAGE_KEYS.BACKLOG_COLUMN_WIDTHS,
   )
-
-  const startResize = useCallback(
-    (col: ColumnKey, e: React.MouseEvent) => {
-      e.preventDefault()
-      resizingRef.current = { col, startX: e.clientX, startW: colWidths[col] }
-      document.body.style.cursor = 'col-resize'
-      document.body.style.userSelect = 'none'
-
-      function onMove(ev: MouseEvent) {
-        if (!resizingRef.current) return
-        const { col: c, startX, startW } = resizingRef.current
-        const next = Math.max(COLUMN_MINS[c], startW + ev.clientX - startX)
-        setColWidths((prev) => {
-          const updated = { ...prev, [c]: next }
-          try {
-            localStorage.setItem(STORAGE_KEYS.BACKLOG_COLUMN_WIDTHS, JSON.stringify(updated))
-          } catch {
-            /* noop */
-          }
-          return updated
-        })
-      }
-      function onUp() {
-        resizingRef.current = null
-        resizeCleanupRef.current = null
-        document.body.style.cursor = ''
-        document.body.style.userSelect = ''
-        document.removeEventListener('mousemove', onMove)
-        document.removeEventListener('mouseup', onUp)
-      }
-      resizeCleanupRef.current = onUp
-      document.addEventListener('mousemove', onMove)
-      document.addEventListener('mouseup', onUp)
-    },
-    [colWidths],
+  const colStyles = useMemo(
+    () => Object.fromEntries(COLUMNS.map((k) => [k, styleFor(k)])) as Record<ColumnKey, React.CSSProperties>,
+    [styleFor],
   )
 
   // ── Navigation ────────────────────────────────────────────────────────────────
@@ -401,212 +368,50 @@ export function BacklogPage() {
     )
   }
 
-  const COLUMNS: ColumnKey[] = [
-    'type',
-    'id',
-    'name',
-    'scheduleState',
-    'priority',
-    'estimate',
-    'owner',
-    'release',
-    'iteration',
-  ]
-
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      {/* Toolbar */}
-      <div
-        className="flex shrink-0 flex-wrap items-center gap-2 bg-white px-4 py-2"
-        style={{ borderBottom: '1px solid #e2e6eb' }}
-      >
-        {/* Title */}
-        <h2 className="mr-1 shrink-0 text-[13px] font-semibold" style={{ color: '#1a2234' }}>
-          Backlog
-        </h2>
-        <div className="h-4 w-px shrink-0" style={{ backgroundColor: '#dde2ea' }} />
-
-        {/* Search */}
-        <div className="relative">
-          <Search
-            size={12}
-            className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2"
-            style={{ color: '#8c94a6' }}
-          />
-          <input
-            type="text"
-            placeholder="Search…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="rounded py-1 pr-3 pl-7 text-[11px] focus:outline-none"
-            style={{
-              backgroundColor: '#f4f6f9',
-              border: '1px solid #dde2ea',
-              color: '#1a2234',
-              width: 160,
-            }}
-          />
-        </div>
-
-        {/* Type filter */}
-        <InlineSelect
-          value={filterType}
-          onChange={(e) => setFilterType(e.target.value as '' | 'story' | 'defect')}
-          aria-label="Filter by type"
-          className="w-auto"
-        >
-          <option value="">All Types</option>
-          <option value="story">Story</option>
-          <option value="defect">Defect</option>
-        </InlineSelect>
-
-        {/* Schedule State filter */}
-        <InlineSelect
-          value={filterState}
-          onChange={(e) => setFilterState(e.target.value)}
-          aria-label="Filter by schedule state"
-          className="w-auto"
-        >
-          {SCHEDULE_STATE_OPTS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </InlineSelect>
-
-        {/* Owner filter (P2-BL-06) */}
-        <InlineSelect
-          value={filterOwner}
-          onChange={(e) => setFilterOwner(e.target.value)}
-          aria-label="Filter by owner"
-          className="w-auto"
-        >
-          <option value="">All Owners</option>
-          {members.map((m) => (
-            <option key={m.userId} value={m.userId}>
-              {m.displayName ?? m.email ?? m.userId}
-            </option>
-          ))}
-        </InlineSelect>
-
-        {/* Release filter (P2-BL-06) */}
-        <InlineSelect
-          value={filterRelease}
-          onChange={(e) => setFilterRelease(e.target.value)}
-          aria-label="Filter by release"
-          className="w-auto"
-        >
-          <option value="">All Releases</option>
-          {releases.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.name}
-            </option>
-          ))}
-        </InlineSelect>
-
-        {/* Iteration filter (P2-BL-06) */}
-        <InlineSelect
-          value={filterIteration}
-          onChange={(e) => setFilterIteration(e.target.value)}
-          aria-label="Filter by iteration"
-          className="w-auto"
-        >
-          <option value="">All Iterations</option>
-          {iterations.map((it) => (
-            <option key={it.id} value={it.id}>
-              {it.name}
-            </option>
-          ))}
-        </InlineSelect>
-
-        <div className="flex-1" />
-
-        {/* Create Work Item button — right side of toolbar */}
-        <button
-          onClick={() => setShowCreate(true)}
-          disabled={!canCreate}
-          title={!canCreate ? 'You do not have permission to create work items' : undefined}
-          className="flex items-center gap-1.5 rounded px-3 py-1 text-[11px] font-semibold text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-          style={{ backgroundColor: BRAND.primary }}
-        >
-          <Plus size={12} />
-          Create Work Item
-        </button>
-      </div>
+      <BacklogToolbar
+        search={search}
+        setSearch={setSearch}
+        filterType={filterType}
+        setFilterType={setFilterType}
+        filterState={filterState}
+        setFilterState={setFilterState}
+        filterOwner={filterOwner}
+        setFilterOwner={setFilterOwner}
+        filterRelease={filterRelease}
+        setFilterRelease={setFilterRelease}
+        filterIteration={filterIteration}
+        setFilterIteration={setFilterIteration}
+        members={members}
+        releases={releases}
+        iterations={iterations}
+        canCreate={canCreate}
+        onCreate={() => setShowCreate(true)}
+        columns={BACKLOG_COLUMNS}
+        order={order}
+        hidden={hidden}
+        toggleVisible={toggleVisible}
+        reorder={reorder}
+      />
 
       {/* Bulk action bar (P2-BL-08) */}
       {selectedIds.size > 0 && (
-        <div
-          className="flex shrink-0 items-center gap-2 px-4 py-1.5"
-          style={{ backgroundColor: '#edf2fb', borderBottom: '1px solid #bdd0ef' }}
-        >
-          <span className="mr-1 text-[11px] font-semibold" style={{ color: '#2558a6' }}>
-            {selectedIds.size} selected
-          </span>
-
-          {canEdit && (
-            <>
-              {/* Bulk assign Release */}
-              <InlineSelect
-                value=""
-                disabled={bulkRelease.isPending}
-                onChange={(e) => {
-                  if (!e.target.value) return
-                  void assignReleaseToSelected(e.target.value === '__none__' ? null : e.target.value)
-                }}
-                className="w-auto"
-                aria-label="Assign release to selected"
-              >
-                <option value="">Assign Release…</option>
-                <option value="__none__">— Unschedule —</option>
-                {releases.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                  </option>
-                ))}
-              </InlineSelect>
-
-              {/* Bulk assign Iteration */}
-              <InlineSelect
-                value=""
-                disabled={bulkIteration.isPending}
-                onChange={(e) => {
-                  if (!e.target.value) return
-                  void assignIterationToSelected(e.target.value === '__none__' ? null : e.target.value)
-                }}
-                className="w-auto"
-                aria-label="Assign iteration to selected"
-              >
-                <option value="">Assign Iteration…</option>
-                <option value="__none__">— Unschedule —</option>
-                {iterations.map((it) => (
-                  <option key={it.id} value={it.id}>
-                    {it.name}
-                  </option>
-                ))}
-              </InlineSelect>
-            </>
-          )}
-
-          {bulkError && (
-            <span className="text-[11px]" style={{ color: '#b91c1c' }}>
-              {bulkError}
-            </span>
-          )}
-
-          <div className="flex-1" />
-          <button
-            onClick={() => {
-              setSelectedIds(new Set())
-              setBulkError(null)
-            }}
-            className="p-0.5"
-            style={{ color: '#5c6478' }}
-            aria-label="Clear selection"
-          >
-            <X size={13} />
-          </button>
-        </div>
+        <BulkActionBar
+          selectedCount={selectedIds.size}
+          canEdit={canEdit}
+          releases={releases}
+          iterations={iterations}
+          bulkReleasePending={bulkRelease.isPending}
+          bulkIterationPending={bulkIteration.isPending}
+          onAssignRelease={assignReleaseToSelected}
+          onAssignIteration={assignIterationToSelected}
+          bulkError={bulkError}
+          onClear={() => {
+            setSelectedIds(new Set())
+            setBulkError(null)
+          }}
+        />
       )}
 
       {/* Table area */}
@@ -615,38 +420,7 @@ export function BacklogPage() {
           <div className="flex-1 overflow-auto">
             <div style={{ width: tableWidth, minWidth: '100%' }}>
               {/* Header row */}
-              <div
-                className="sticky top-0 z-10 flex h-8 items-center gap-2 px-3 select-none"
-                style={{ backgroundColor: '#f7f8fa', borderBottom: '1px solid #e2e6eb' }}
-              >
-                <div className="w-5 shrink-0">
-                  <input
-                    type="checkbox"
-                    checked={allSelected}
-                    onChange={toggleAll}
-                    className="h-3.5 w-3.5 rounded"
-                    style={{ accentColor: '#1d3f73' }}
-                    aria-label="Select all"
-                  />
-                </div>
-                <div className="w-4 shrink-0" />
-                <div
-                  className="w-6 shrink-0 text-right text-[9px] font-semibold tracking-wider uppercase"
-                  style={{ color: '#8c94a6' }}
-                >
-                  #
-                </div>
-                {COLUMNS.map((col) => (
-                  <ResizableHeader
-                    key={col}
-                    column={col}
-                    label={COLUMN_LABELS[col]}
-                    width={colWidths[col]}
-                    align={col === 'estimate' ? 'center' : 'left'}
-                    onResizeStart={startResize}
-                  />
-                ))}
-              </div>
+              <TableHeaderBar colStyles={colStyles} allSelected={allSelected} onToggleAll={toggleAll} startResize={startResize} />
 
               {/* Loading */}
               {isLoading && <SkeletonList rows={10} cols={7} />}
@@ -689,8 +463,7 @@ export function BacklogPage() {
                         selected={selectedIds.has(item.id)}
                         onToggleSelect={() => toggleSelect(item.id)}
                         onOpen={() => openItem(item)}
-                        colWidths={colWidths}
-                        tableWidth={tableWidth}
+                        colStyles={colStyles}
                         canEdit={canEdit}
                         members={members}
                         releases={releases}
@@ -704,54 +477,15 @@ export function BacklogPage() {
           </div>
 
           {/* Pagination footer */}
-          <div
-            className="flex h-10 shrink-0 items-center justify-between bg-white px-3"
-            style={{ borderTop: '1px solid #e2e6eb' }}
-          >
-            <div className="flex items-center gap-2 text-[11px]" style={{ color: '#5c6478' }}>
-              <span>Rows per page</span>
-              <InlineSelect
-                aria-label="Rows per page"
-                value={pageSize}
-                onChange={(e) => setPageSize(Number(e.target.value))}
-                className="w-auto"
-              >
-                {[10, 25, 50, 100].map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </InlineSelect>
-              <span style={{ color: '#8c94a6' }}>
-                {pageInfo
-                  ? `${(currentPage - 1) * pageSize + 1}–${(currentPage - 1) * pageSize + items.length} ${pageInfo.total ? `of ${pageInfo.total}` : ''}`
-                  : ''}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] tabular-nums" style={{ color: '#5c6478' }}>
-                Page {currentPage}
-              </span>
-              <button
-                aria-label="Previous page"
-                disabled={currentPage === 1}
-                onClick={goPrevPage}
-                className="rounded p-1.5 disabled:opacity-35"
-                style={{ border: '1px solid #dde2ea', color: '#5c6478' }}
-              >
-                <ChevronLeft size={13} />
-              </button>
-              <button
-                aria-label="Next page"
-                disabled={!pageInfo?.hasNextPage}
-                onClick={goNextPage}
-                className="rounded p-1.5 disabled:opacity-35"
-                style={{ border: '1px solid #dde2ea', color: '#5c6478' }}
-              >
-                <ChevronRight size={13} />
-              </button>
-            </div>
-          </div>
+          <PaginationFooter
+            pageSize={pageSize}
+            setPageSize={setPageSize}
+            currentPage={currentPage}
+            itemCount={items.length}
+            pageInfo={pageInfo}
+            onPrevPage={goPrevPage}
+            onNextPage={goNextPage}
+          />
         </div>
       </div>
 
@@ -774,6 +508,400 @@ export function BacklogPage() {
   )
 }
 
+// ── Toolbar (title, search, filters, create button) ─────────────────────────
+
+interface BacklogToolbarProps {
+  search: string
+  setSearch: (v: string) => void
+  filterType: '' | 'story' | 'defect'
+  setFilterType: (v: '' | 'story' | 'defect') => void
+  filterState: string
+  setFilterState: (v: string) => void
+  filterOwner: string
+  setFilterOwner: (v: string) => void
+  filterRelease: string
+  setFilterRelease: (v: string) => void
+  filterIteration: string
+  setFilterIteration: (v: string) => void
+  members: Array<{ userId: string; displayName?: string; email?: string }>
+  releases: Array<{ id: string; name: string }>
+  iterations: Array<{ id: string; name: string }>
+  canCreate: boolean
+  onCreate: () => void
+  columns: ColumnDef<ColumnKey>[]
+  order: ColumnKey[]
+  hidden: Set<ColumnKey>
+  toggleVisible: (key: ColumnKey) => void
+  reorder: (dragKey: ColumnKey, overKey: ColumnKey) => void
+}
+
+function BacklogToolbar({
+  search,
+  setSearch,
+  filterType,
+  setFilterType,
+  filterState,
+  setFilterState,
+  filterOwner,
+  setFilterOwner,
+  filterRelease,
+  setFilterRelease,
+  filterIteration,
+  setFilterIteration,
+  members,
+  releases,
+  iterations,
+  canCreate,
+  onCreate,
+  columns,
+  order,
+  hidden,
+  toggleVisible,
+  reorder,
+}: BacklogToolbarProps) {
+  return (
+    <div
+      className="flex shrink-0 flex-wrap items-center gap-2 bg-white px-4 py-2"
+      style={{ borderBottom: '1px solid #e2e6eb' }}
+    >
+      {/* Title */}
+      <h2 className="mr-1 shrink-0 text-[13px] font-semibold" style={{ color: '#1a2234' }}>
+        Backlog
+      </h2>
+      <div className="h-4 w-px shrink-0" style={{ backgroundColor: '#dde2ea' }} />
+
+      {/* Search */}
+      <div className="relative">
+        <Search
+          size={12}
+          className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2"
+          style={{ color: '#8c94a6' }}
+        />
+        <input
+          type="text"
+          placeholder="Search…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="rounded py-1 pr-3 pl-7 text-[11px] focus:outline-none"
+          style={{
+            backgroundColor: '#f4f6f9',
+            border: '1px solid #dde2ea',
+            color: '#1a2234',
+            width: 160,
+          }}
+        />
+      </div>
+
+      {/* Type filter */}
+      <InlineSelect
+        value={filterType}
+        onChange={(e) => setFilterType(e.target.value as '' | 'story' | 'defect')}
+        aria-label="Filter by type"
+        className="w-auto"
+      >
+        <option value="">All Types</option>
+        <option value="story">Story</option>
+        <option value="defect">Defect</option>
+      </InlineSelect>
+
+      {/* Schedule State filter */}
+      <InlineSelect
+        value={filterState}
+        onChange={(e) => setFilterState(e.target.value)}
+        aria-label="Filter by schedule state"
+        className="w-auto"
+      >
+        {SCHEDULE_STATE_OPTS.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </InlineSelect>
+
+      {/* Owner filter (P2-BL-06) */}
+      <InlineSelect
+        value={filterOwner}
+        onChange={(e) => setFilterOwner(e.target.value)}
+        aria-label="Filter by owner"
+        className="w-auto"
+      >
+        <option value="">All Owners</option>
+        {members.map((m) => (
+          <option key={m.userId} value={m.userId}>
+            {m.displayName ?? m.email ?? m.userId}
+          </option>
+        ))}
+      </InlineSelect>
+
+      {/* Release filter (P2-BL-06) */}
+      <InlineSelect
+        value={filterRelease}
+        onChange={(e) => setFilterRelease(e.target.value)}
+        aria-label="Filter by release"
+        className="w-auto"
+      >
+        <option value="">All Releases</option>
+        {releases.map((r) => (
+          <option key={r.id} value={r.id}>
+            {r.name}
+          </option>
+        ))}
+      </InlineSelect>
+
+      {/* Iteration filter (P2-BL-06) */}
+      <InlineSelect
+        value={filterIteration}
+        onChange={(e) => setFilterIteration(e.target.value)}
+        aria-label="Filter by iteration"
+        className="w-auto"
+      >
+        <option value="">All Iterations</option>
+        {iterations.map((it) => (
+          <option key={it.id} value={it.id}>
+            {it.name}
+          </option>
+        ))}
+      </InlineSelect>
+
+      <div className="flex-1" />
+
+      <ColumnFieldsMenu
+        columns={columns}
+        order={order}
+        hidden={hidden}
+        onToggle={toggleVisible}
+        onReorder={reorder}
+      />
+
+      {/* Create Work Item button — right side of toolbar */}
+      <button
+        onClick={onCreate}
+        disabled={!canCreate}
+        title={!canCreate ? 'You do not have permission to create work items' : undefined}
+        className="flex items-center gap-1.5 rounded px-3 py-1 text-[11px] font-semibold text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+        style={{ backgroundColor: BRAND.primary }}
+      >
+        <Plus size={12} />
+        Create Work Item
+      </button>
+    </div>
+  )
+}
+
+// ── Bulk action bar (P2-BL-08) ───────────────────────────────────────────────
+
+interface BulkActionBarProps {
+  selectedCount: number
+  canEdit: boolean
+  releases: Array<{ id: string; name: string }>
+  iterations: Array<{ id: string; name: string }>
+  bulkReleasePending: boolean
+  bulkIterationPending: boolean
+  onAssignRelease: (releaseId: string | null) => void
+  onAssignIteration: (iterationId: string | null) => void
+  bulkError: string | null
+  onClear: () => void
+}
+
+function BulkActionBar({
+  selectedCount,
+  canEdit,
+  releases,
+  iterations,
+  bulkReleasePending,
+  bulkIterationPending,
+  onAssignRelease,
+  onAssignIteration,
+  bulkError,
+  onClear,
+}: BulkActionBarProps) {
+  return (
+    <div
+      className="flex shrink-0 items-center gap-2 px-4 py-1.5"
+      style={{ backgroundColor: '#edf2fb', borderBottom: '1px solid #bdd0ef' }}
+    >
+      <span className="mr-1 text-[11px] font-semibold" style={{ color: '#2558a6' }}>
+        {selectedCount} selected
+      </span>
+
+      {canEdit && (
+        <>
+          {/* Bulk assign Release */}
+          <InlineSelect
+            value=""
+            disabled={bulkReleasePending}
+            onChange={(e) => {
+              if (!e.target.value) return
+              onAssignRelease(e.target.value === '__none__' ? null : e.target.value)
+            }}
+            className="w-auto"
+            aria-label="Assign release to selected"
+          >
+            <option value="">Assign Release…</option>
+            <option value="__none__">— Unschedule —</option>
+            {releases.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+              </option>
+            ))}
+          </InlineSelect>
+
+          {/* Bulk assign Iteration */}
+          <InlineSelect
+            value=""
+            disabled={bulkIterationPending}
+            onChange={(e) => {
+              if (!e.target.value) return
+              onAssignIteration(e.target.value === '__none__' ? null : e.target.value)
+            }}
+            className="w-auto"
+            aria-label="Assign iteration to selected"
+          >
+            <option value="">Assign Iteration…</option>
+            <option value="__none__">— Unschedule —</option>
+            {iterations.map((it) => (
+              <option key={it.id} value={it.id}>
+                {it.name}
+              </option>
+            ))}
+          </InlineSelect>
+        </>
+      )}
+
+      {bulkError && (
+        <span className="text-[11px]" style={{ color: '#b91c1c' }}>
+          {bulkError}
+        </span>
+      )}
+
+      <div className="flex-1" />
+      <button onClick={onClear} className="p-0.5" style={{ color: '#5c6478' }} aria-label="Clear selection">
+        <X size={13} />
+      </button>
+    </div>
+  )
+}
+
+// ── Table header bar (select-all + resizable column headers) ───────────────
+
+function TableHeaderBar({
+  colStyles,
+  allSelected,
+  onToggleAll,
+  startResize,
+}: {
+  colStyles: Record<ColumnKey, React.CSSProperties>
+  allSelected: boolean
+  onToggleAll: () => void
+  startResize: (col: ColumnKey, e: React.MouseEvent) => void
+}) {
+  return (
+    <div
+      className="sticky top-0 z-10 flex h-[34px] items-center gap-2 px-3 select-none"
+      style={{ backgroundColor: '#f3f4f6', borderBottom: '1px solid #e2e8f0', minWidth: 'max-content' }}
+    >
+      <div className="w-5 shrink-0 px-2">
+        <input
+          type="checkbox"
+          checked={allSelected}
+          onChange={onToggleAll}
+          className="h-3.5 w-3.5 rounded"
+          style={{ accentColor: '#1d3f73' }}
+          aria-label="Select all"
+        />
+      </div>
+      <div className="w-4 shrink-0 px-2" />
+      <div
+        className="w-6 shrink-0 text-right text-[11px] font-bold px-2"
+        style={{ color: '#4b5563' }}
+      >
+        #
+      </div>
+      {COLUMNS.map((col) => (
+        <ResizableHeader
+          key={col}
+          column={col}
+          label={COLUMN_LABELS[col]}
+          style={colStyles[col]}
+          align={col === 'estimate' ? 'center' : 'left'}
+          onResizeStart={startResize}
+        />
+      ))}
+    </div>
+  )
+}
+
+// ── Pagination footer ────────────────────────────────────────────────────────
+
+function PaginationFooter({
+  pageSize,
+  setPageSize,
+  currentPage,
+  itemCount,
+  pageInfo,
+  onPrevPage,
+  onNextPage,
+}: {
+  pageSize: number
+  setPageSize: (n: number) => void
+  currentPage: number
+  itemCount: number
+  pageInfo: { hasNextPage: boolean; nextCursor: string | null; limit: number; total?: number } | undefined
+  onPrevPage: () => void
+  onNextPage: () => void
+}) {
+  return (
+    <div
+      className="flex h-10 shrink-0 items-center justify-between bg-white px-3"
+      style={{ borderTop: '1px solid #e2e6eb' }}
+    >
+      <div className="flex items-center gap-2 text-[11px]" style={{ color: '#5c6478' }}>
+        <span>Rows per page</span>
+        <InlineSelect
+          aria-label="Rows per page"
+          value={pageSize}
+          onChange={(e) => setPageSize(Number(e.target.value))}
+          className="w-auto"
+        >
+          {[10, 25, 50, 100].map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </InlineSelect>
+        <span style={{ color: '#8c94a6' }}>
+          {pageInfo
+            ? `${(currentPage - 1) * pageSize + 1}–${(currentPage - 1) * pageSize + itemCount} ${pageInfo.total ? `of ${pageInfo.total}` : ''}`
+            : ''}
+        </span>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] tabular-nums" style={{ color: '#5c6478' }}>
+          Page {currentPage}
+        </span>
+        <button
+          aria-label="Previous page"
+          disabled={currentPage === 1}
+          onClick={onPrevPage}
+          className="rounded p-1.5 disabled:opacity-35"
+          style={{ border: '1px solid #dde2ea', color: '#5c6478' }}
+        >
+          <ChevronLeft size={13} />
+        </button>
+        <button
+          aria-label="Next page"
+          disabled={!pageInfo?.hasNextPage}
+          onClick={onNextPage}
+          className="rounded p-1.5 disabled:opacity-35"
+          style={{ border: '1px solid #dde2ea', color: '#5c6478' }}
+        >
+          <ChevronRight size={13} />
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Backlog row with inline editing (P2-BL-07) ──────────────────────────────────
 
 interface BacklogRowProps {
@@ -782,8 +910,7 @@ interface BacklogRowProps {
   selected: boolean
   onToggleSelect: () => void
   onOpen: () => void
-  colWidths: Record<ColumnKey, number>
-  tableWidth: number
+  colStyles: Record<ColumnKey, React.CSSProperties>
   canEdit: boolean
   members: Array<{ userId: string; displayName?: string; email?: string }>
   releases: Array<{ id: string; name: string }>
@@ -798,7 +925,7 @@ function BacklogRow({
   selected,
   onToggleSelect,
   onOpen,
-  colWidths,
+  colStyles,
   canEdit,
   members,
   releases,
@@ -806,8 +933,6 @@ function BacklogRow({
 }: BacklogRowProps) {
   const { setNodeRef, setActivatorNodeRef, listeners, attributes, transform, transition, isDragging } = useSortable({ id: item.id })
   const update = useUpdateWorkItem(item.id)
-  const [editingTitle, setEditingTitle] = useState(false)
-  const [titleDraft, setTitleDraft] = useState(item.title)
 
   // Fire a PATCH only when the value actually changed; errors surface via the
   // mutation cache (the list re-reads the source of truth on invalidate).
@@ -815,11 +940,9 @@ function BacklogRow({
     update.mutate(body)
   }
 
-  function commitTitle() {
-    setEditingTitle(false)
-    const next = titleDraft.trim()
-    if (next && next !== item.title) patch({ title: next })
-    else setTitleDraft(item.title)
+  function commitTitle(next: string) {
+    const trimmed = next.trim()
+    if (trimmed && trimmed !== item.title) patch({ title: trimmed })
   }
 
   const ownerName = (() => {
@@ -832,10 +955,10 @@ function BacklogRow({
   return (
     <div
       ref={setNodeRef}
-      className="group flex h-8 items-center gap-2 px-3 hover:bg-[#f7f8fa]"
+      className="group flex h-[34px] items-center gap-2 px-3 hover:bg-[#f1f6fc] transition-colors duration-100"
       style={{
-        minWidth: '100%',
-        backgroundColor: isDragging ? '#edf2fb' : selected ? '#f3f6fb' : undefined,
+        minWidth: 'max-content',
+        backgroundColor: isDragging ? '#edf2fb' : selected ? '#f3f6fb' : '#ffffff',
         borderBottom: '1px solid #edf0f4',
         opacity: isDragging ? 0.6 : 1,
         transform: CSS.Transform.toString(transform),
@@ -846,7 +969,7 @@ function BacklogRow({
       {...attributes}
     >
       {/* Checkbox */}
-      <div className="w-5 shrink-0" onClick={stop}>
+      <div className="w-5 shrink-0 px-2" onClick={stop}>
         <input
           type="checkbox"
           checked={selected}
@@ -860,54 +983,50 @@ function BacklogRow({
       {/* Drag handle (visible on hover, activates drag) */}
       <div
         ref={setActivatorNodeRef}
-        className="w-4 shrink-0 cursor-grab opacity-0 group-hover:opacity-100 active:cursor-grabbing"
+        className="w-4 shrink-0 cursor-grab opacity-0 group-hover:opacity-100 active:cursor-grabbing px-2"
         {...listeners}
       >
         <GripVertical size={11} style={{ color: '#8c94a6' }} />
       </div>
 
       {/* Row number */}
-      <div className="w-6 shrink-0 text-right font-mono text-[10px] tabular-nums" style={{ color: '#8c94a6' }}>
+      <div className="w-6 shrink-0 text-right font-mono text-[10px] tabular-nums px-2" style={{ color: '#8c94a6' }}>
         {rowNum}
       </div>
 
       {/* Type */}
-      <div className="shrink-0 overflow-hidden" style={{ width: colWidths.type }}>
+      <div className="shrink-0 overflow-hidden px-2" style={colStyles.type}>
         <TypeBadge type={item.type} />
       </div>
 
       {/* ID — opens detail */}
       <button
-        className="shrink-0 overflow-hidden text-left font-mono text-[10px] underline-offset-2 hover:underline"
-        style={{ width: colWidths.id, color: '#2558a6' }}
+        className="shrink-0 overflow-hidden text-left font-mono text-[10px] underline-offset-2 hover:underline px-2"
+        style={{ ...colStyles.id, color: '#2558a6' }}
         onClick={onOpen}
       >
         {item.itemKey}
       </button>
 
       {/* Title — inline edit */}
-      <div className="min-w-0 shrink-0 pr-2" style={{ width: colWidths.name }} onClick={stop}>
-        {editingTitle && canEdit ? (
-          <input
-            autoFocus
-            value={titleDraft}
-            onChange={(e) => setTitleDraft(e.target.value)}
-            onBlur={commitTitle}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') commitTitle()
-              if (e.key === 'Escape') {
-                setTitleDraft(item.title)
-                setEditingTitle(false)
-              }
-            }}
-            className="w-full rounded px-1 py-0.5 text-[12px] focus:outline-none"
-            style={{ border: '1px solid #9fb5d5', color: '#1a2234' }}
+      <div className="min-w-0 shrink-0 px-2" style={colStyles.name} onClick={stop}>
+        {canEdit ? (
+          <InlineEditableCell
+            value={item.title}
+            canEdit
+            onCommit={commitTitle}
+            className="block truncate text-[12px] font-medium"
+            style={{ color: '#1a2234', cursor: 'text' }}
+            inputClassName="w-full rounded px-1 py-0.5 text-[12px] focus:outline-none"
+            inputStyle={{ border: '1px solid #9fb5d5', color: '#1a2234' }}
+            ariaLabel="Title"
+            title={item.title}
           />
         ) : (
           <span
             className="block truncate text-[12px] font-medium"
-            style={{ color: '#1a2234', cursor: canEdit ? 'text' : 'pointer' }}
-            onClick={() => (canEdit ? setEditingTitle(true) : onOpen())}
+            style={{ color: '#1a2234', cursor: 'pointer' }}
+            onClick={onOpen}
             title={item.title}
           >
             {item.title}
@@ -916,7 +1035,7 @@ function BacklogRow({
       </div>
 
       {/* Schedule State — inline select */}
-      <div className="shrink-0 overflow-hidden" style={{ width: colWidths.scheduleState }} onClick={stop}>
+      <div className="shrink-0 overflow-hidden px-2" style={colStyles.scheduleState} onClick={stop}>
         {canEdit ? (
           <InlineCellSelect
             value={item.scheduleState}
@@ -938,7 +1057,7 @@ function BacklogRow({
       </div>
 
       {/* Priority — defects only */}
-      <div className="shrink-0 overflow-hidden" style={{ width: colWidths.priority }} onClick={stop}>
+      <div className="shrink-0 overflow-hidden px-2" style={colStyles.priority} onClick={stop}>
         {item.type === 'defect' ? (
           canEdit ? (
             <InlineCellSelect
@@ -966,7 +1085,7 @@ function BacklogRow({
       </div>
 
       {/* Plan Estimate — inline number */}
-      <div className="shrink-0 text-center" style={{ width: colWidths.estimate }} onClick={stop}>
+      <div className="shrink-0 text-center px-2" style={colStyles.estimate} onClick={stop}>
         {canEdit ? (
           <input
             type="number"
@@ -975,7 +1094,7 @@ function BacklogRow({
             onBlur={(e) => {
               const raw = e.target.value
               const next = raw === '' ? null : Number(raw)
-              if (next !== (item.storyPoints ?? null)) patch({ storyPoints: next })
+              if (next !== (item.storyPoints ?? null)) patch({ storyPoints: next, todoHours: next })
             }}
             className="w-12 rounded px-1 py-0.5 text-center font-mono text-[10px] focus:outline-none"
             style={{ border: '1px solid #dde2ea', color: '#5c6478' }}
@@ -989,7 +1108,7 @@ function BacklogRow({
       </div>
 
       {/* Owner — inline select */}
-      <div className="shrink-0 overflow-hidden" style={{ width: colWidths.owner }} onClick={stop}>
+      <div className="shrink-0 overflow-hidden px-2" style={colStyles.owner} onClick={stop}>
         {canEdit ? (
           <InlineCellSelect
             value={item.assigneeId ?? ''}
@@ -1011,7 +1130,7 @@ function BacklogRow({
       </div>
 
       {/* Release — inline select */}
-      <div className="shrink-0 overflow-hidden" style={{ width: colWidths.release }} onClick={stop}>
+      <div className="shrink-0 overflow-hidden px-2" style={colStyles.release} onClick={stop}>
         {canEdit ? (
           <InlineCellSelect
             value={item.releaseId ?? ''}
@@ -1035,7 +1154,7 @@ function BacklogRow({
       </div>
 
       {/* Iteration — inline select */}
-      <div className="shrink-0 overflow-hidden" style={{ width: colWidths.iteration }} onClick={stop}>
+      <div className="shrink-0 overflow-hidden px-2" style={colStyles.iteration} onClick={stop}>
         {canEdit ? (
           <InlineCellSelect
             value={item.iterationId ?? ''}

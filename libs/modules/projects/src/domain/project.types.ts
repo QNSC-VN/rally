@@ -95,6 +95,8 @@ export interface ProjectTeamLink {
   status: ProjectTeamStatus;
   linkedAt: Date;
   unlinkedAt: Date | null;
+  name?: string;
+  key?: string;
 }
 
 export interface ProjectMember {

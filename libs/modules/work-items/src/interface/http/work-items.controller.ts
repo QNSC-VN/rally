@@ -95,6 +95,15 @@ function toWorkItemDto(w: WorkItem): WorkItemResponseDto {
     updatedBy: w.updatedBy,
     createdAt: w.createdAt.toISOString(),
     updatedAt: w.updatedAt.toISOString(),
+    // P3.4 — Defect-specific fields
+    severity: w.severity,
+    foundInEnvironment: w.foundInEnvironment,
+    foundInReleaseId: w.foundInReleaseId,
+    rootCause: w.rootCause,
+    resolution: w.resolution,
+    devOwnerId: w.devOwnerId,
+    defectState: w.defectState,
+    fixedInBuild: w.fixedInBuild,
   };
 }
 
@@ -169,6 +178,7 @@ export class WorkItemsController {
       query.projectId,
       {
         type: query.type,
+        parentId: query.parentId,
         statusId: query.statusId,
         scheduleState: query.scheduleState,
         priority: query.priority,
@@ -199,6 +209,7 @@ export class WorkItemsController {
       query.projectId,
       {
         type: query.type,
+        parentId: query.parentId,
         statusId: query.statusId,
         scheduleState: query.scheduleState,
         priority: query.priority,
@@ -245,6 +256,15 @@ export class WorkItemsController {
         acceptanceCriteria: dto.acceptanceCriteria,
         notes: dto.notes,
         releaseNotes: dto.releaseNotes,
+        // P3.4 — Defect-specific fields
+        severity: dto.severity,
+        foundInEnvironment: dto.foundInEnvironment,
+        foundInReleaseId: dto.foundInReleaseId,
+        rootCause: dto.rootCause,
+        resolution: dto.resolution,
+        devOwnerId: dto.devOwnerId,
+        defectState: dto.defectState,
+        fixedInBuild: dto.fixedInBuild,
       },
     );
     return toWorkItemDto(item);
@@ -438,9 +458,10 @@ export class WorkItemsController {
   ): Promise<WorkItemResponseDto> {
     const task = await this.workItemsService.createTask(user, id, dto.title, {
       description: dto.description,
-      statusId: dto.statusId,
-      scheduleState: dto.scheduleState,
+      state: dto.state,
       assigneeId: dto.assigneeId,
+      teamId: dto.teamId,
+      iterationId: dto.iterationId,
       estimateHours: dto.estimateHours,
       todoHours: dto.todoHours,
       actualHours: dto.actualHours,

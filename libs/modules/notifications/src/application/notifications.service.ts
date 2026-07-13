@@ -26,7 +26,11 @@ export class NotificationsService {
 
   async markRead(actor: JwtPayload, notificationId: string): Promise<void> {
     const notification = await this.notificationRepo.findById(notificationId);
-    if (!notification || notification.recipientId !== actor.sub) {
+    if (
+      !notification ||
+      notification.recipientId !== actor.sub ||
+      notification.workspaceId !== actor.workspaceId
+    ) {
       throw new NotFoundException('NOTIFICATION_NOT_FOUND', 'Notification not found');
     }
     await this.notificationRepo.markRead(notificationId);

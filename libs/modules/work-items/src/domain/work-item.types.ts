@@ -39,6 +39,15 @@ export interface WorkItem {
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
+  // P3.4 — Defect-specific fields
+  severity: string | null;
+  foundInEnvironment: string | null;
+  foundInReleaseId: string | null;
+  rootCause: string | null;
+  resolution: string | null;
+  devOwnerId: string | null;
+  defectState: string | null;
+  fixedInBuild: string | null;
 }
 
 export interface WorkItemFilters {
@@ -50,6 +59,7 @@ export interface WorkItemFilters {
   teamId?: string;
   iterationId?: string;
   releaseId?: string;
+  parentId?: string;
   /** Free-text search: item_key exact (case-insensitive) or title ILIKE. */
   q?: string;
 }
@@ -69,6 +79,8 @@ export interface CreateWorkItemInput {
   reporterId?: string;
   parentId?: string;
   teamId?: string;
+  iterationId?: string;
+  releaseId?: string;
   storyPoints?: number;
   estimateHours?: string;
   todoHours?: string;
@@ -78,6 +90,15 @@ export interface CreateWorkItemInput {
   releaseNotes?: string;
   rank: string;
   createdBy: string;
+  // P3.4 — Defect-specific fields
+  severity?: string | null;
+  foundInEnvironment?: string | null;
+  foundInReleaseId?: string | null;
+  rootCause?: string | null;
+  resolution?: string | null;
+  devOwnerId?: string | null;
+  defectState?: string | null;
+  fixedInBuild?: string | null;
 }
 
 export interface UpdateWorkItemInput {
@@ -105,6 +126,15 @@ export interface UpdateWorkItemInput {
   customFields?: Record<string, unknown>;
   /** Set by the service on every mutation for audit/activity attribution. */
   updatedBy?: string;
+  // P3.4 — Defect-specific fields
+  severity?: string | null;
+  foundInEnvironment?: string | null;
+  foundInReleaseId?: string | null;
+  rootCause?: string | null;
+  resolution?: string | null;
+  devOwnerId?: string | null;
+  defectState?: string | null;
+  fixedInBuild?: string | null;
 }
 
 /** Aggregated task time totals for the Tasks-tab totals row. */

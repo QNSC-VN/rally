@@ -29,8 +29,9 @@ export const iterationKeys = {
   detail: (id: string) => ['iteration', id] as const,
   committedCount: (projectIds: string[]) =>
     ['iterations', 'committed-count', [...projectIds].sort()] as const,
+  statusAll: ['iteration-status'] as const,
   status: (id: string, filters?: unknown) =>
-    filters ? (['iteration-status', id, filters] as const) : (['iteration-status', id] as const),
+    filters ? ([...iterationKeys.statusAll, id, filters] as const) : ([...iterationKeys.statusAll, id] as const),
 }
 
 // ── Assignment options (P2-IT-10) — compact picker feed ─────────────────────

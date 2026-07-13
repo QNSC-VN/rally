@@ -1,0 +1,218 @@
+import { Injectable } from '@nestjs/common';
+import { InjectDrizzle } from '@platform';
+import type { DrizzleDB } from '@platform';
+import { and, eq, isNull, sql, inArray } from 'drizzle-orm';
+import { workItems, iterations, releases } from '../../../../../../db/schema/work';
+import type { DefectSeverity, DefectEnvironment, DefectRootCause, DefectResolution, WorkItemPriority, WorkItemScheduleState } from '../../../../../../db/schema/enums';
+import type { DefectMetrics, DefectRow } from '../../domain/quality.types';
+import { IQualityRepository, QUALITY_REPOSITORY } from '../../domain/ports/quality.repository';
+
+@Injectable()
+export class QualityDrizzleRepository implements IQualityRepository {
+  constructor(@InjectDrizzle() private readonly db: DrizzleDB) {}
+
+  async listDefects(
+    tenantId: string,
+    projectId: string,
+    opts: {
+      search?: string;
+      severity?: string;
+      environment?: string;
+      priority?: string;
+      scheduleState?: string;
+      assigneeId?: string;
+      releaseId?: string;
+      rootCause?: string;
+      resolution?: string;
+      limit?: number;
+      offset?: number;
+    } = {},
+  ): Promise<{ rows: DefectRow[] }> {
+    const conditions = [
+      eq(workItems.workspaceId, tenantId),
+      eq(workItems.projectId, projectId),
+      eq(workItems.type, 'defect'),
+      isNull(workItems.deletedAt),
+    ];
+
+    if (opts.severity && opts.severity !== 'all') {
+      conditions.push(eq(workItems.severity, opts.severity as DefectSeverity));
+    }
+    if (opts.environment && opts.environment !== 'all') {
+      conditions.push(eq(workItems.foundInEnvironment, opts.environment as DefectEnvironment));
+    }
+    if (opts.priority && opts.priority !== 'all') {
+      conditions.push(eq(workItems.priority, opts.priority as WorkItemPriority));
+    }
+    if (opts.scheduleState && opts.scheduleState !== 'all') {
+      conditions.push(eq(workItems.scheduleState, opts.scheduleState as WorkItemScheduleState));
+    }
+    if (opts.assigneeId) {
+      conditions.push(eq(workItems.assigneeId, opts.assigneeId));
+    }
+    if (opts.releaseId) {
+      conditions.push(eq(workItems.releaseId, opts.releaseId));
+    }
+    if (opts.rootCause && opts.rootCause !== 'all') {
+      conditions.push(eq(workItems.rootCause, opts.rootCause as DefectRootCause));
+    }
+    if (opts.resolution && opts.resolution !== 'all') {
+      conditions.push(eq(workItems.resolution, opts.resolution as DefectResolution));
+    }
+    if (opts.search) {
+      conditions.push(sql`work_items.title ILIKE ${`%${opts.search}%`}`);
+    }
+
+    const limit = Math.min(opts.limit ?? 100, 200);
+    const offset = opts.offset ?? 0;
+
+    const rows = await this.db
+      .select({
+        id: workItems.id,
+        itemKey: workItems.itemKey,
+        title: workItems.title,
+        type: workItems.type,
+        priority: workItems.priority,
+        severity: workItems.severity,
+        foundInEnvironment: workItems.foundInEnvironment,
+        rootCause: workItems.rootCause,
+        resolution: workItems.resolution,
+        foundInReleaseId: workItems.foundInReleaseId,
+        assigneeId: workItems.assigneeId,
+        scheduleState: workItems.scheduleState,
+        iterationId: workItems.iterationId,
+        releaseId: workItems.releaseId,
+        parentId: workItems.parentId,
+        isBlocked: workItems.isBlocked,
+        rank: workItems.rank,
+        defectState: workItems.defectState,
+        fixedInBuild: workItems.fixedInBuild,
+        createdById: workItems.createdBy,
+        createdAt: workItems.createdAt,
+        updatedAt: workItems.updatedAt,
+        iterationName: iterations.name,
+        releaseName: releases.name,
+        foundInReleaseName: sql<string>`found_in_release.name`,
+        parentKey: sql<string>`parent_wi.item_key`,
+        parentTitle: sql<string>`parent_wi.title`,
+      })
+      .from(workItems)
+      .leftJoin(iterations, eq(workItems.iterationId, iterations.id))
+      .leftJoin(releases, eq(workItems.releaseId, releases.id))
+      .leftJoin(sql`work.releases found_in_release`, sql`found_in_release.id = work_items.found_in_release_id`)
+      .leftJoin(sql`work.work_items parent_wi`, sql`parent_wi.id = work_items.parent_id`)
+      .where(and(...conditions))
+      .orderBy(workItems.createdAt)
+      .limit(limit)
+      .offset(offset);
+
+    // Batch-fetch assignee names
+    const assigneeIds = [...new Set(rows.map((r) => r.assigneeId).filter(Boolean))] as string[];
+    let assigneeMap: Record<string, string> = {};
+    if (assigneeIds.length > 0) {
+      const userRows = await this.db
+        .select({ id: sql<string>`id`, displayName: sql<string>`display_name` })
+        .from(sql`identity.users`)
+        .where(inArray(sql`id`, assigneeIds));
+      assigneeMap = Object.fromEntries(userRows.map((u) => [u.id, u.displayName]));
+    }
+
+    // Batch-fetch creator names
+    const creatorIds = [...new Set(rows.map((r) => r.createdById).filter(Boolean))] as string[];
+    let creatorMap: Record<string, string> = {};
+    if (creatorIds.length > 0) {
+      const creatorRows = await this.db
+        .select({ id: sql<string>`id`, displayName: sql<string>`display_name` })
+        .from(sql`identity.users`)
+        .where(inArray(sql`id`, creatorIds));
+      creatorMap = Object.fromEntries(creatorRows.map((u) => [u.id, u.displayName]));
+    }
+
+    const data: DefectRow[] = rows.map((r) => ({
+      id: r.id,
+      itemKey: r.itemKey,
+      title: r.title,
+      type: r.type,
+      priority: r.priority,
+      severity: r.severity,
+      foundInEnvironment: r.foundInEnvironment,
+      rootCause: r.rootCause,
+      resolution: r.resolution,
+      foundInReleaseId: r.foundInReleaseId,
+      foundInReleaseName: r.foundInReleaseName,
+      assigneeId: r.assigneeId,
+      assigneeName: r.assigneeId ? (assigneeMap[r.assigneeId] ?? null) : null,
+      scheduleState: r.scheduleState,
+      iterationId: r.iterationId,
+      iterationName: r.iterationName,
+      releaseId: r.releaseId,
+      releaseName: r.releaseName,
+      parentId: r.parentId,
+      parentKey: r.parentKey,
+      parentTitle: r.parentTitle,
+      isBlocked: r.isBlocked,
+      rank: r.rank,
+      defectState: r.defectState,
+      fixedInBuild: r.fixedInBuild,
+      createdById: r.createdById,
+      createdByName: r.createdById ? (creatorMap[r.createdById] ?? null) : null,
+      createdAt: r.createdAt.toISOString(),
+      updatedAt: r.updatedAt.toISOString(),
+    }));
+
+    return { rows: data };
+  }
+
+  async computeMetrics(
+    tenantId: string,
+    projectId: string,
+  ): Promise<DefectMetrics> {
+    const rows = await this.db
+      .select({
+        scheduleState: workItems.scheduleState,
+        severity: workItems.severity,
+        isBlocked: workItems.isBlocked,
+        resolution: workItems.resolution,
+        createdAt: workItems.createdAt,
+        updatedAt: workItems.updatedAt,
+      })
+      .from(workItems)
+      .where(
+        and(
+          eq(workItems.workspaceId, tenantId),
+          eq(workItems.projectId, projectId),
+          eq(workItems.type, 'defect'),
+          isNull(workItems.deletedAt),
+        ),
+      );
+
+    let openDefects = 0;
+    let critical = 0;
+    let inProgress = 0;
+    let verifiedAccepted = 0;
+    let reopened = 0;
+    let blockers = 0;
+
+    for (const r of rows) {
+      // Open = currently in-flight states (not done)
+      if (['defined', 'ready', 'in_progress'].includes(r.scheduleState)) openDefects++;
+      if (r.severity === 'critical') critical++;
+      // In-progress includes testing-like states
+      if (['in_progress', 'ready'].includes(r.scheduleState)) inProgress++;
+      if (['completed', 'accepted', 'released'].includes(r.scheduleState)) verifiedAccepted++;
+      if (r.isBlocked) blockers++;
+      
+      // Reopened heuristic: currently open but was previously resolved/closed
+      // Evidence: has a resolution set but scheduleState is NOT completed/accepted/released
+      // OR was created long ago, updated recently, and is back in an open state
+      if (
+        r.resolution &&
+        ['defined', 'ready', 'in_progress'].includes(r.scheduleState)
+      ) {
+        reopened++;
+      }
+    }
+
+    return { openDefects, critical, inProgress, verifiedAccepted, reopened, blockers };
+  }
+}

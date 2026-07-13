@@ -37,6 +37,7 @@ import type {
 } from '../domain/project.types';
 import { DEFAULT_WORKFLOW_STATUSES } from '../domain/project.constants';
 import type { Label } from '../domain/label.types';
+import type { WorkItemType } from '../domain/ports/project.repository';
 
 @Injectable()
 export class ProjectsService {
@@ -256,8 +257,16 @@ export class ProjectsService {
     }
   }
 
-  /** Used by work-items to generate the next sequential item key (e.g. "PROJ-42"). */
-  async generateItemKey(workspaceId: string, projectId: string): Promise<string> {
+  /** Used by work-items to generate the next sequential item key (e.g. "US000042"). */
+  private static readonly TYPE_PREFIX: Record<WorkItemType, string> = {
+    initiative: 'IN',
+    feature: 'FE',
+    story: 'US',
+    task: 'TA',
+    defect: 'DE',
+  };
+
+  async generateItemKey(workspaceId: string, projectId: string, type: WorkItemType): Promise<string> {
     const project = await this.getProject(workspaceId, projectId);
     // PRJ-FR-010: archived projects are read-only; block new work item creation
     if (project.status === 'archived') {
@@ -266,8 +275,9 @@ export class ProjectsService {
         'Cannot create work items in an archived project.',
       );
     }
-    const seq = await this.projectRepo.incrementCounter(projectId, workspaceId);
-    return `${project.key}-${seq}`;
+    const prefix = ProjectsService.TYPE_PREFIX[type];
+    const seq = await this.projectRepo.incrementCounter(projectId, workspaceId, type);
+    return `${prefix}${String(seq).padStart(6, '0')}`;
   }
 
   // ── Workflow status mutations ──────────────────────────────────────────────
