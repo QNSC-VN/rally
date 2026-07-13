@@ -14,10 +14,10 @@ import { NotFoundException, UnitOfWork } from '@platform';
 import { ProjectsService } from '@modules/projects';
 
 // Tenant isolation is enforced at the application layer via `getWorkItem`'s
-// `item.tenantId !== tenantId` guard. These tests exercise that boundary
+// `item.workspaceId !== workspaceId` guard. These tests exercise that boundary
 // directly: a caller scoped to tenant B must never be able to read or mutate
 // a work item (or its logs/watchers/attachments) that belongs to tenant A,
-// and every repository call must carry the caller's own tenantId — never a
+// and every repository call must carry the caller's own workspaceId — never a
 // hardcoded or borrowed one.
 
 const now = new Date('2024-06-01');
@@ -27,7 +27,7 @@ const TENANT_B = 'tenant-b';
 
 const mockWorkItem = (o: Partial<WorkItem> = {}): WorkItem => ({
   id: 'wi-a',
-  tenantId: TENANT_A,
+  workspaceId: TENANT_A,
   projectId: 'proj-1',
   itemKey: 'PROJ-1',
   type: 'story',
@@ -72,7 +72,7 @@ const mockWorkItem = (o: Partial<WorkItem> = {}): WorkItem => ({
 
 const mockTimeLog = (o: Partial<TimeLog> = {}): TimeLog => ({
   id: 'log-a',
-  tenantId: TENANT_A,
+  workspaceId: TENANT_A,
   workItemId: 'wi-a',
   userId: 'user-1',
   loggedDate: '2026-06-25',
@@ -86,7 +86,7 @@ const mockTimeLog = (o: Partial<TimeLog> = {}): TimeLog => ({
 
 const mockAttachment = (o: Partial<Attachment> = {}): Attachment => ({
   id: 'att-a',
-  tenantId: TENANT_A,
+  workspaceId: TENANT_A,
   workItemId: 'wi-a',
   uploadedBy: 'user-1',
   filename: 'file.txt',
@@ -99,9 +99,9 @@ const mockAttachment = (o: Partial<Attachment> = {}): Attachment => ({
   ...o,
 });
 
-const actorForTenant = (tenantId: string) => ({
+const actorForTenant = (workspaceId: string) => ({
   sub: 'user-1',
-  tenantId,
+  workspaceId,
   sessionId: 's1',
   jti: 'j1',
   iat: 0,
@@ -116,11 +116,11 @@ const actorForTenant = (tenantId: string) => ({
 // scoping — an item is only visible to its owning tenant, regardless of what
 // the caller passes.
 const makeScopedWorkItemRepo = (items: WorkItem[]) => ({
-  findById: vi.fn((id: string, tenantId: string) =>
-    Promise.resolve(items.find((i) => i.id === id && i.tenantId === tenantId) ?? null),
+  findById: vi.fn((id: string, workspaceId: string) =>
+    Promise.resolve(items.find((i) => i.id === id && i.workspaceId === workspaceId) ?? null),
   ),
-  findByIds: vi.fn((ids: string[], tenantId: string) =>
-    Promise.resolve(items.filter((i) => ids.includes(i.id) && i.tenantId === tenantId)),
+  findByIds: vi.fn((ids: string[], workspaceId: string) =>
+    Promise.resolve(items.filter((i) => ids.includes(i.id) && i.workspaceId === workspaceId)),
   ),
   findIterationScope: vi.fn().mockResolvedValue(null),
   findReleaseProject: vi.fn().mockResolvedValue(null),
@@ -132,7 +132,9 @@ const makeScopedWorkItemRepo = (items: WorkItem[]) => ({
   findMaxRank: vi.fn().mockResolvedValue(null),
   getTaskTotals: vi.fn(),
   create: vi.fn(),
-  update: vi.fn((id: string, patch: Partial<WorkItem>) => Promise.resolve(mockWorkItem({ id, ...patch }))),
+  update: vi.fn((id: string, patch: Partial<WorkItem>) =>
+    Promise.resolve(mockWorkItem({ id, ...patch })),
+  ),
   softDelete: vi.fn().mockResolvedValue(undefined),
   reorderItems: vi.fn().mockResolvedValue(undefined),
   addLabel: vi.fn().mockResolvedValue(undefined),
@@ -141,18 +143,20 @@ const makeScopedWorkItemRepo = (items: WorkItem[]) => ({
 });
 
 const makeScopedTimeLogRepo = (logs: TimeLog[]) => ({
-  findById: vi.fn((id: string, tenantId: string) =>
-    Promise.resolve(logs.find((l) => l.id === id && l.tenantId === tenantId) ?? null),
+  findById: vi.fn((id: string, workspaceId: string) =>
+    Promise.resolve(logs.find((l) => l.id === id && l.workspaceId === workspaceId) ?? null),
   ),
   listByWorkItem: vi.fn().mockResolvedValue({ items: [], total: 0 }),
   create: vi.fn((input: Partial<TimeLog>) => Promise.resolve(mockTimeLog(input))),
-  update: vi.fn((id: string, patch: Partial<TimeLog>) => Promise.resolve(mockTimeLog({ id, ...patch }))),
+  update: vi.fn((id: string, patch: Partial<TimeLog>) =>
+    Promise.resolve(mockTimeLog({ id, ...patch })),
+  ),
   softDelete: vi.fn().mockResolvedValue(undefined),
 });
 
 const makeScopedAttachmentRepo = (attachments: Attachment[]) => ({
-  findById: vi.fn((id: string, tenantId: string) =>
-    Promise.resolve(attachments.find((a) => a.id === id && a.tenantId === tenantId) ?? null),
+  findById: vi.fn((id: string, workspaceId: string) =>
+    Promise.resolve(attachments.find((a) => a.id === id && a.workspaceId === workspaceId) ?? null),
   ),
   listByWorkItem: vi.fn().mockResolvedValue([]),
   countByWorkItem: vi.fn().mockResolvedValue(0),
@@ -181,7 +185,9 @@ const makeUnitOfWork = () => ({
 });
 
 const makeProjectsService = () => ({
-  getProject: vi.fn().mockResolvedValue({ id: 'proj-1', tenantId: TENANT_A, workspaceId: 'ws-1' }),
+  getProject: vi
+    .fn()
+    .mockResolvedValue({ id: 'proj-1', workspaceId: TENANT_A, workspaceId: 'ws-1' }),
   listStatuses: vi.fn().mockResolvedValue([]),
   assertTransitionAllowed: vi.fn().mockResolvedValue(undefined),
   generateItemKey: vi.fn().mockResolvedValue('PROJ-42'),
@@ -207,9 +213,9 @@ describe('WorkItemsService — tenant isolation', () => {
   let activityRepo: ReturnType<typeof makeActivityRepo>;
   let projectsService: ReturnType<typeof makeProjectsService>;
 
-  const itemA = mockWorkItem({ id: 'wi-a', tenantId: TENANT_A });
-  const logA = mockTimeLog({ id: 'log-a', tenantId: TENANT_A, workItemId: 'wi-a' });
-  const attachmentA = mockAttachment({ id: 'att-a', tenantId: TENANT_A, workItemId: 'wi-a' });
+  const itemA = mockWorkItem({ id: 'wi-a', workspaceId: TENANT_A });
+  const logA = mockTimeLog({ id: 'log-a', workspaceId: TENANT_A, workItemId: 'wi-a' });
+  const attachmentA = mockAttachment({ id: 'att-a', workspaceId: TENANT_A, workItemId: 'wi-a' });
 
   const build = async (
     wiRepo: ReturnType<typeof makeScopedWorkItemRepo>,
@@ -258,7 +264,7 @@ describe('WorkItemsService — tenant isolation', () => {
 
     it('defends in depth: rejects even if the repository leaks a foreign row', async () => {
       const leakyRepo = makeScopedWorkItemRepo([itemA]);
-      leakyRepo.findById.mockResolvedValue(itemA); // ignores the tenantId argument
+      leakyRepo.findById.mockResolvedValue(itemA); // ignores the workspaceId argument
       const leakyService = await build(leakyRepo, timeLogRepo, attachmentRepo);
       await expect(leakyService.getWorkItem(TENANT_B, 'wi-a')).rejects.toThrow(NotFoundException);
     });
@@ -274,7 +280,7 @@ describe('WorkItemsService — tenant isolation', () => {
       expect(workItemRepo.update).not.toHaveBeenCalled();
     });
 
-    it('updates using the caller tenantId, not a hardcoded one', async () => {
+    it('updates using the caller workspaceId, not a hardcoded one', async () => {
       await service.updateWorkItem(actorForTenant(TENANT_A), 'wi-a', { title: 'ok' });
       expect(workItemRepo.update).toHaveBeenCalledWith(
         'wi-a',
@@ -291,7 +297,7 @@ describe('WorkItemsService — tenant isolation', () => {
       expect(workItemRepo.softDelete).not.toHaveBeenCalled();
     });
 
-    it('soft-deletes using the caller tenantId', async () => {
+    it('soft-deletes using the caller workspaceId', async () => {
       await service.deleteWorkItem(TENANT_A, 'wi-a');
       expect(workItemRepo.softDelete).toHaveBeenCalledWith('wi-a', TENANT_A);
     });
@@ -310,9 +316,9 @@ describe('WorkItemsService — tenant isolation', () => {
 
   describe('createTask', () => {
     it('cannot create a task under a foreign tenant parent', async () => {
-      await expect(
-        service.createTask(actorForTenant(TENANT_B), 'wi-a', 'Subtask'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.createTask(actorForTenant(TENANT_B), 'wi-a', 'Subtask')).rejects.toThrow(
+        NotFoundException,
+      );
       expect(workItemRepo.create).not.toHaveBeenCalled();
     });
   });
@@ -337,9 +343,9 @@ describe('WorkItemsService — tenant isolation', () => {
 
   describe('getActivity', () => {
     it('cannot read activity of a foreign tenant work item', async () => {
-      await expect(
-        service.getActivity(TENANT_B, 'wi-a', { limit: 10, offset: 0 }),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.getActivity(TENANT_B, 'wi-a', { limit: 10, offset: 0 })).rejects.toThrow(
+        NotFoundException,
+      );
       expect(activityRepo.listByWorkItem).not.toHaveBeenCalled();
     });
   });
@@ -359,7 +365,7 @@ describe('WorkItemsService — tenant isolation', () => {
       expect(workItemRepo.addLabel).not.toHaveBeenCalled();
     });
 
-    it('adds a label using the caller tenantId', async () => {
+    it('adds a label using the caller workspaceId', async () => {
       await service.addLabelToWorkItem(TENANT_A, 'wi-a', 'l1');
       expect(workItemRepo.addLabel).toHaveBeenCalledWith('wi-a', 'l1', TENANT_A);
     });
@@ -395,7 +401,7 @@ describe('WorkItemsService — tenant isolation', () => {
       expect(workItemRepo.update).not.toHaveBeenCalled();
     });
 
-    it('neighbour lookup uses the caller tenantId', async () => {
+    it('neighbour lookup uses the caller workspaceId', async () => {
       workItemRepo.findByIds.mockResolvedValueOnce([mockWorkItem({ id: 'before', rank: 'a' })]);
       await service.rankWorkItem(actorForTenant(TENANT_A), 'wi-a', {
         projectId: 'proj-1',
@@ -409,7 +415,7 @@ describe('WorkItemsService — tenant isolation', () => {
   // ── Bulk assignment ───────────────────────────────────────────────────────
 
   describe('bulk assignment', () => {
-    it('bulkAssignRelease loads items scoped to the caller tenantId', async () => {
+    it('bulkAssignRelease loads items scoped to the caller workspaceId', async () => {
       await expect(
         service.bulkAssignRelease(actorForTenant(TENANT_B), 'proj-1', ['wi-a'], null),
       ).rejects.toThrow(NotFoundException);
@@ -417,7 +423,7 @@ describe('WorkItemsService — tenant isolation', () => {
       expect(workItemRepo.assignRelease).not.toHaveBeenCalled();
     });
 
-    it('bulkAssignIteration loads items scoped to the caller tenantId', async () => {
+    it('bulkAssignIteration loads items scoped to the caller workspaceId', async () => {
       await expect(
         service.bulkAssignIteration(actorForTenant(TENANT_B), 'proj-1', ['wi-a'], null),
       ).rejects.toThrow(NotFoundException);
@@ -443,13 +449,13 @@ describe('WorkItemsService — tenant isolation', () => {
       expect(timeLogRepo.create).not.toHaveBeenCalled();
     });
 
-    it('logs time using the caller tenantId', async () => {
+    it('logs time using the caller workspaceId', async () => {
       await service.logTime(actorForTenant(TENANT_A), 'wi-a', {
         loggedDate: '2026-06-25',
         hours: '1',
       });
       expect(timeLogRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ tenantId: TENANT_A, workItemId: 'wi-a' }),
+        expect.objectContaining({ workspaceId: TENANT_A, workItemId: 'wi-a' }),
       );
     });
 
@@ -483,7 +489,7 @@ describe('WorkItemsService — tenant isolation', () => {
       expect(watcherRepo.watch).not.toHaveBeenCalled();
     });
 
-    it('watches using the caller tenantId', async () => {
+    it('watches using the caller workspaceId', async () => {
       await service.watch(actorForTenant(TENANT_A), 'wi-a');
       expect(watcherRepo.watch).toHaveBeenCalledWith('wi-a', 'user-1', TENANT_A);
     });
@@ -510,14 +516,14 @@ describe('WorkItemsService — tenant isolation', () => {
       expect(attachmentRepo.create).not.toHaveBeenCalled();
     });
 
-    it('presigns using the caller tenantId', async () => {
+    it('presigns using the caller workspaceId', async () => {
       await service.presignAttachment(actorForTenant(TENANT_A), 'wi-a', {
         filename: 'a.txt',
         mimeType: 'text/plain',
         sizeBytes: 10,
       });
       expect(attachmentRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ tenantId: TENANT_A, workItemId: 'wi-a' }),
+        expect.objectContaining({ workspaceId: TENANT_A, workItemId: 'wi-a' }),
       );
     });
 
@@ -534,9 +540,9 @@ describe('WorkItemsService — tenant isolation', () => {
     });
 
     it('cannot get a download url via a foreign tenant work item scope', async () => {
-      await expect(
-        service.getAttachmentDownloadUrl(TENANT_B, 'wi-a', 'att-a'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.getAttachmentDownloadUrl(TENANT_B, 'wi-a', 'att-a')).rejects.toThrow(
+        NotFoundException,
+      );
       expect(attachmentRepo.findById).not.toHaveBeenCalled();
     });
 
@@ -551,12 +557,17 @@ describe('WorkItemsService — tenant isolation', () => {
   // ── List endpoints (project-scoped, not item-scoped) ─────────────────────
 
   describe('listWorkItems / listBacklog', () => {
-    it('listWorkItems resolves project access using the caller tenantId', async () => {
+    it('listWorkItems resolves project access using the caller workspaceId', async () => {
       workItemRepo.listByProject.mockResolvedValue({
         data: [],
         pageInfo: { nextCursor: null, hasNextPage: false, limit: 20 },
       });
-      await service.listWorkItems(actorForTenant(TENANT_B), 'proj-1', {}, { limit: 20, cursor: null });
+      await service.listWorkItems(
+        actorForTenant(TENANT_B),
+        'proj-1',
+        {},
+        { limit: 20, cursor: null },
+      );
       expect(projectsService.getProject).toHaveBeenCalledWith(TENANT_B, 'proj-1');
       expect(workItemRepo.listByProject).toHaveBeenCalledWith(
         'proj-1',
@@ -566,12 +577,17 @@ describe('WorkItemsService — tenant isolation', () => {
       );
     });
 
-    it('listBacklog resolves project access using the caller tenantId', async () => {
+    it('listBacklog resolves project access using the caller workspaceId', async () => {
       workItemRepo.listBacklog.mockResolvedValue({
         data: [],
         pageInfo: { nextCursor: null, hasNextPage: false, limit: 20 },
       });
-      await service.listBacklog(actorForTenant(TENANT_B), 'proj-1', {}, { limit: 20, cursor: null });
+      await service.listBacklog(
+        actorForTenant(TENANT_B),
+        'proj-1',
+        {},
+        { limit: 20, cursor: null },
+      );
       expect(projectsService.getProject).toHaveBeenCalledWith(TENANT_B, 'proj-1');
       expect(workItemRepo.listBacklog).toHaveBeenCalledWith(
         'proj-1',

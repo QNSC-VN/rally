@@ -3,7 +3,7 @@ export type { MilestoneStatus };
 
 export interface Milestone {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   projectId: string;
   name: string;
   description: string | null;
@@ -22,7 +22,7 @@ export interface Milestone {
 
 export interface CreateMilestoneInput {
   id: string;
-  tenantId: string;
+  workspaceId: string;
   projectId: string;
   name: string;
   description?: string;

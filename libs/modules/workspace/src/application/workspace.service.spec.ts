@@ -8,7 +8,6 @@ import {
   IWorkspaceMemberRepository,
 } from '../domain/ports/workspace-member.repository';
 import {
-<<<<<<<< HEAD:libs/modules/workspace/src/application/workspace.service.spec.ts
   WORKSPACE_INVITATION_REPOSITORY,
   IWorkspaceInvitationRepository,
 } from '../domain/ports/workspace-invitation.repository';
@@ -25,23 +24,11 @@ import {
   EmailSchedulerService,
   UnitOfWork,
 } from '@platform';
-========
-  TENANT_DOMAIN_REPOSITORY,
-  ITenantDomainRepository,
-} from '../domain/ports/tenant-domain.repository';
-import {
-  TENANT_MEMBER_REPOSITORY,
-  ITenantMemberRepository,
-} from '../domain/ports/tenant-member.repository';
-import type { Tenant } from '../domain/tenancy.types';
-import { NotFoundException, AppConfigService, TenantRlsService } from '@platform';
->>>>>>>> 9af2412 (feat: Phase 3 — tasks table, defect lifecycle, milestones, UI polish & bug fixes):libs/modules/tenancy/src/application/tenancy.service.spec.ts
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
 const now = new Date('2024-06-01');
 
-<<<<<<<< HEAD:libs/modules/workspace/src/application/workspace.service.spec.ts
 const mockWorkspace = (o: Partial<Workspace> = {}): Workspace => ({
   id: 'ws-1',
   slug: 'main',
@@ -49,14 +36,6 @@ const mockWorkspace = (o: Partial<Workspace> = {}): Workspace => ({
   description: null,
   avatarUrl: null,
   status: 'active',
-========
-const mockTenant = (o: Partial<Tenant> = {}): Tenant => ({
-  id: 'tenant-1',
-  slug: 'acme',
-  name: 'Acme Corp',
-  status: 'active',
-  plan: 'free',
->>>>>>>> 9af2412 (feat: Phase 3 — tasks table, defect lifecycle, milestones, UI polish & bug fixes):libs/modules/tenancy/src/application/tenancy.service.spec.ts
   settings: {},
   createdAt: now,
   updatedAt: now,
@@ -64,7 +43,6 @@ const mockTenant = (o: Partial<Tenant> = {}): Tenant => ({
   ...o,
 });
 
-<<<<<<<< HEAD:libs/modules/workspace/src/application/workspace.service.spec.ts
 const mockMember = (o: Partial<WorkspaceMember> = {}): WorkspaceMember => ({
   id: 'member-1',
   workspaceId: 'ws-1',
@@ -93,8 +71,6 @@ const mockInvitation = (o: Partial<WorkspaceInvitation> = {}): WorkspaceInvitati
   ...o,
 });
 
-========
->>>>>>>> 9af2412 (feat: Phase 3 — tasks table, defect lifecycle, milestones, UI polish & bug fixes):libs/modules/tenancy/src/application/tenancy.service.spec.ts
 // ── Mock factories ────────────────────────────────────────────────────────────
 
 const makeWorkspaceRepo = (): Mocked<IWorkspaceRepository> => ({
@@ -133,24 +109,9 @@ const makeInvitationRepo = (): Mocked<IWorkspaceInvitationRepository> => ({
   cancelExistingForEmail: vi.fn().mockResolvedValue(undefined),
 });
 
-<<<<<<<< HEAD:libs/modules/workspace/src/application/workspace.service.spec.ts
 const makeSettingsRepo = (): Mocked<IWorkspaceSettingsRepository> => ({
   findByWorkspace: vi.fn(),
   upsert: vi.fn(),
-========
-const makeTenantDomainRepo = (): Mocked<ITenantDomainRepository> => ({
-  findByDomain: vi.fn().mockResolvedValue(null),
-  create: vi
-    .fn()
-    .mockResolvedValue({ id: 'domain-1', domain: 'example.com', tenantId: 'tenant-1' }),
-});
-
-const makeTenantMemberRepo = (): Mocked<ITenantMemberRepository> => ({
-  findByUserId: vi.fn().mockResolvedValue([]),
-  findByUserAndTenant: vi.fn().mockResolvedValue(null),
-  create: vi.fn().mockResolvedValue(undefined),
-  touchLastActive: vi.fn().mockResolvedValue(undefined),
->>>>>>>> 9af2412 (feat: Phase 3 — tasks table, defect lifecycle, milestones, UI polish & bug fixes):libs/modules/tenancy/src/application/tenancy.service.spec.ts
 });
 
 const makeConfig = () => ({
@@ -161,7 +122,6 @@ const makeConfig = () => ({
     };
     return vals[key];
   }),
-<<<<<<<< HEAD:libs/modules/workspace/src/application/workspace.service.spec.ts
 });
 
 const makeEmailScheduler = () => ({
@@ -172,13 +132,6 @@ const makeEmailScheduler = () => ({
 // receive a tx argument exactly as they would in production.
 const makeUow = () => ({
   run: vi.fn((fn: (tx: unknown) => unknown) => fn({})),
-========
-  isSingleTenant: vi.fn().mockReturnValue(false),
-});
-
-const makeRls = () => ({
-  withTenantContext: vi.fn((_tenantId: string, fn: (tx: unknown) => unknown) => fn({})),
->>>>>>>> 9af2412 (feat: Phase 3 — tasks table, defect lifecycle, milestones, UI polish & bug fixes):libs/modules/tenancy/src/application/tenancy.service.spec.ts
 });
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -187,46 +140,27 @@ describe('WorkspaceService', () => {
   let service: WorkspaceService;
   let workspaceRepo: ReturnType<typeof makeWorkspaceRepo>;
   let memberRepo: ReturnType<typeof makeMemberRepo>;
-<<<<<<<< HEAD:libs/modules/workspace/src/application/workspace.service.spec.ts
   let invitationRepo: ReturnType<typeof makeInvitationRepo>;
   let settingsRepo: ReturnType<typeof makeSettingsRepo>;
   let emailScheduler: ReturnType<typeof makeEmailScheduler>;
-========
-  let tenantDomainRepo: ReturnType<typeof makeTenantDomainRepo>;
-  let tenantMemberRepo: ReturnType<typeof makeTenantMemberRepo>;
-  let rls: ReturnType<typeof makeRls>;
->>>>>>>> 9af2412 (feat: Phase 3 — tasks table, defect lifecycle, milestones, UI polish & bug fixes):libs/modules/tenancy/src/application/tenancy.service.spec.ts
 
   beforeEach(async () => {
     workspaceRepo = makeWorkspaceRepo();
     memberRepo = makeMemberRepo();
-<<<<<<<< HEAD:libs/modules/workspace/src/application/workspace.service.spec.ts
     invitationRepo = makeInvitationRepo();
     settingsRepo = makeSettingsRepo();
     emailScheduler = makeEmailScheduler();
-========
-    tenantDomainRepo = makeTenantDomainRepo();
-    tenantMemberRepo = makeTenantMemberRepo();
-    rls = makeRls();
->>>>>>>> 9af2412 (feat: Phase 3 — tasks table, defect lifecycle, milestones, UI polish & bug fixes):libs/modules/tenancy/src/application/tenancy.service.spec.ts
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         WorkspaceService,
         { provide: WORKSPACE_REPOSITORY, useValue: workspaceRepo },
         { provide: WORKSPACE_MEMBER_REPOSITORY, useValue: memberRepo },
-<<<<<<<< HEAD:libs/modules/workspace/src/application/workspace.service.spec.ts
         { provide: WORKSPACE_INVITATION_REPOSITORY, useValue: invitationRepo },
         { provide: WORKSPACE_SETTINGS_REPOSITORY, useValue: settingsRepo },
         { provide: AppConfigService, useValue: makeConfig() },
         { provide: EmailSchedulerService, useValue: emailScheduler },
         { provide: UnitOfWork, useValue: makeUow() },
-========
-        { provide: TENANT_DOMAIN_REPOSITORY, useValue: tenantDomainRepo },
-        { provide: TENANT_MEMBER_REPOSITORY, useValue: tenantMemberRepo },
-        { provide: AppConfigService, useValue: makeConfig() },
-        { provide: TenantRlsService, useValue: rls },
->>>>>>>> 9af2412 (feat: Phase 3 — tasks table, defect lifecycle, milestones, UI polish & bug fixes):libs/modules/tenancy/src/application/tenancy.service.spec.ts
       ],
     }).compile();
 
@@ -255,7 +189,6 @@ describe('WorkspaceService', () => {
       expect(workspaceRepo.create).not.toHaveBeenCalled();
     });
   });
-<<<<<<<< HEAD:libs/modules/workspace/src/application/workspace.service.spec.ts
 
   // ── getMembership / touch / enroll ───────────────────────────────────────────
 
@@ -573,6 +506,4 @@ describe('WorkspaceService', () => {
       await expect(service.acceptInvitation('expired-token', 'user-1')).rejects.toThrow();
     });
   });
-========
->>>>>>>> 9af2412 (feat: Phase 3 — tasks table, defect lifecycle, milestones, UI polish & bug fixes):libs/modules/tenancy/src/application/tenancy.service.spec.ts
 });

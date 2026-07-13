@@ -11,12 +11,8 @@ import {
   WORKSPACE_MEMBER_REPOSITORY,
   IWorkspaceMemberRepository,
 } from '../domain/ports/workspace-member.repository';
-import {
-  TENANT_MEMBER_REPOSITORY,
-  ITenantMemberRepository,
-} from '../domain/ports/tenant-member.repository';
-import type { Workspace, WorkspaceInvitation } from '../domain/tenancy.types';
-import { NotFoundException, AppConfigService, EmailSchedulerService, UnitOfWork, TenantRlsService } from '@platform';
+import type { Workspace, WorkspaceInvitation } from '../domain/workspace.types';
+import { NotFoundException, AppConfigService, EmailSchedulerService, UnitOfWork } from '@platform';
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -24,11 +20,11 @@ const now = new Date('2024-06-01');
 
 const mockWorkspace = (o: Partial<Workspace> = {}): Workspace => ({
   id: 'ws-1',
-  tenantId: 'tenant-1',
   slug: 'main',
   name: 'Main',
   description: null,
   avatarUrl: null,
+  status: 'active',
   settings: {},
   createdAt: now,
   updatedAt: now,
@@ -38,7 +34,6 @@ const mockWorkspace = (o: Partial<Workspace> = {}): Workspace => ({
 
 const mockInvitation = (o: Partial<WorkspaceInvitation> = {}): WorkspaceInvitation => ({
   id: 'inv-1',
-  tenantId: 'tenant-1',
   workspaceId: 'ws-1',
   email: 'bob@example.com',
   roleId: null,
@@ -54,45 +49,40 @@ const mockInvitation = (o: Partial<WorkspaceInvitation> = {}): WorkspaceInvitati
 
 // ── Mock factories ────────────────────────────────────────────────────────────
 
-const makeWorkspaceRepo = (): Mocked<IWorkspaceRepository> =>
-  ({
-    findById: vi.fn(),
-    findBySlug: vi.fn(),
-    listByTenant: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    softDelete: vi.fn().mockResolvedValue(undefined),
-  });
+const makeWorkspaceRepo = (): Mocked<IWorkspaceRepository> => ({
+  findById: vi.fn(),
+  findBySlug: vi.fn(),
+  listForUser: vi.fn(),
+  listAll: vi.fn(),
+  count: vi.fn(),
+  create: vi.fn(),
+  update: vi.fn(),
+  softDelete: vi.fn().mockResolvedValue(undefined),
+});
 
-const makeInvitationRepo = (): Mocked<IWorkspaceInvitationRepository> =>
-  ({
-    findByTokenHash: vi.fn(),
-    findById: vi.fn(),
-    findPendingByEmail: vi.fn(),
-    listByWorkspace: vi.fn(),
-    create: vi.fn(),
-    updateStatus: vi.fn().mockResolvedValue(undefined),
-    cancelExistingForEmail: vi.fn().mockResolvedValue(undefined),
-  });
+const makeInvitationRepo = (): Mocked<IWorkspaceInvitationRepository> => ({
+  findByTokenHash: vi.fn(),
+  findById: vi.fn(),
+  findPendingByEmail: vi.fn(),
+  listByWorkspace: vi.fn(),
+  create: vi.fn(),
+  updateStatus: vi.fn().mockResolvedValue(undefined),
+  cancelExistingForEmail: vi.fn().mockResolvedValue(undefined),
+});
 
-const makeMemberRepo = (): Mocked<IWorkspaceMemberRepository> =>
-  ({
-    findMember: vi.fn(),
-    findMemberById: vi.fn(),
-    listMembers: vi.fn(),
-    listMembersWithProfile: vi.fn(),
-    addMember: vi.fn(),
-    updateMember: vi.fn(),
-    removeMember: vi.fn().mockResolvedValue(undefined),
-    isMember: vi.fn().mockResolvedValue(false),
-    countActiveAdmins: vi.fn().mockResolvedValue(0),
-  });
-
-const makeTenantMemberRepo = (): Mocked<ITenantMemberRepository> => ({
-  findByUserId: vi.fn().mockResolvedValue([]),
-  findByUserAndTenant: vi.fn().mockResolvedValue(null),
-  create: vi.fn().mockResolvedValue(undefined),
+const makeMemberRepo = (): Mocked<IWorkspaceMemberRepository> => ({
+  findMember: vi.fn(),
+  findMemberById: vi.fn(),
+  findMembershipsForUser: vi.fn(),
+  listMembers: vi.fn(),
+  listMembersWithProfile: vi.fn(),
+  addMember: vi.fn(),
+  updateMember: vi.fn(),
+  removeMember: vi.fn().mockResolvedValue(undefined),
+  isMember: vi.fn().mockResolvedValue(false),
   touchLastActive: vi.fn().mockResolvedValue(undefined),
+  countActiveAdmins: vi.fn().mockResolvedValue(0),
+  isActiveAdmin: vi.fn().mockResolvedValue(false),
 });
 
 const makeConfig = () => ({
@@ -115,10 +105,6 @@ const makeUow = () => ({
   run: vi.fn((fn: (tx: unknown) => unknown) => fn({})),
 });
 
-const makeRls = () => ({
-  withTenantContext: vi.fn((_tenantId: string, fn: (tx: unknown) => unknown) => fn({})),
-});
-
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe('InvitationService', () => {
@@ -126,19 +112,15 @@ describe('InvitationService', () => {
   let workspaceRepo: ReturnType<typeof makeWorkspaceRepo>;
   let invitationRepo: ReturnType<typeof makeInvitationRepo>;
   let memberRepo: ReturnType<typeof makeMemberRepo>;
-  let tenantMemberRepo: ReturnType<typeof makeTenantMemberRepo>;
   let emailScheduler: ReturnType<typeof makeEmailScheduler>;
   let uow: ReturnType<typeof makeUow>;
-  let rls: ReturnType<typeof makeRls>;
 
   beforeEach(async () => {
     workspaceRepo = makeWorkspaceRepo();
     invitationRepo = makeInvitationRepo();
     memberRepo = makeMemberRepo();
-    tenantMemberRepo = makeTenantMemberRepo();
     emailScheduler = makeEmailScheduler();
     uow = makeUow();
-    rls = makeRls();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -146,11 +128,9 @@ describe('InvitationService', () => {
         { provide: WORKSPACE_REPOSITORY, useValue: workspaceRepo },
         { provide: WORKSPACE_INVITATION_REPOSITORY, useValue: invitationRepo },
         { provide: WORKSPACE_MEMBER_REPOSITORY, useValue: memberRepo },
-        { provide: TENANT_MEMBER_REPOSITORY, useValue: tenantMemberRepo },
         { provide: AppConfigService, useValue: makeConfig() },
         { provide: EmailSchedulerService, useValue: emailScheduler },
         { provide: UnitOfWork, useValue: uow },
-        { provide: TenantRlsService, useValue: rls },
       ],
     }).compile();
 
@@ -164,13 +144,7 @@ describe('InvitationService', () => {
       workspaceRepo.findById.mockResolvedValue(mockWorkspace());
       invitationRepo.create.mockResolvedValue(mockInvitation());
 
-      const result = await service.inviteMember(
-        'tenant-1',
-        'ws-1',
-        'bob@example.com',
-        undefined,
-        'actor-1',
-      );
+      const result = await service.inviteMember('ws-1', 'bob@example.com', undefined, 'actor-1');
 
       expect(result.email).toBe('bob@example.com');
       expect(invitationRepo.cancelExistingForEmail).toHaveBeenCalledWith(
@@ -196,7 +170,7 @@ describe('InvitationService', () => {
       workspaceRepo.findById.mockResolvedValue(mockWorkspace());
       invitationRepo.create.mockResolvedValue(mockInvitation({ email: 'bob@example.com' }));
 
-      await service.inviteMember('tenant-1', 'ws-1', 'BOB@Example.com', undefined, 'actor-1');
+      await service.inviteMember('ws-1', 'BOB@Example.com', undefined, 'actor-1');
 
       expect(invitationRepo.cancelExistingForEmail).toHaveBeenCalledWith(
         'ws-1',
@@ -213,23 +187,18 @@ describe('InvitationService', () => {
       workspaceRepo.findById.mockResolvedValue(mockWorkspace());
       invitationRepo.findById.mockResolvedValue(mockInvitation());
 
-      await service.cancelInvitation('tenant-1', 'ws-1', 'inv-1', 'actor-1');
+      await service.cancelInvitation('ws-1', 'inv-1', 'actor-1');
 
-      expect(invitationRepo.updateStatus).toHaveBeenCalledWith(
-        'inv-1',
-        'cancelled',
-        undefined,
-        expect.anything(),
-      );
+      expect(invitationRepo.updateStatus).toHaveBeenCalledWith('inv-1', 'cancelled');
     });
 
     it('throws NotFoundException when invitation not found', async () => {
       workspaceRepo.findById.mockResolvedValue(mockWorkspace());
       invitationRepo.findById.mockResolvedValue(null);
 
-      await expect(
-        service.cancelInvitation('tenant-1', 'ws-1', 'inv-missing', 'actor-1'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.cancelInvitation('ws-1', 'inv-missing', 'actor-1')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -238,15 +207,14 @@ describe('InvitationService', () => {
   describe('acceptInvitation', () => {
     it('accepts pending invitation and adds member', async () => {
       invitationRepo.findByTokenHash.mockResolvedValue(mockInvitation({ status: 'pending' }));
-      workspaceRepo.findById.mockResolvedValue(mockWorkspace());
       memberRepo.findMember.mockResolvedValue(null);
       memberRepo.addMember.mockResolvedValue({
         id: 'member-1',
-        tenantId: 'tenant-1',
         workspaceId: 'ws-1',
         userId: 'user-2',
         roleId: null,
         status: 'active',
+        lastActiveAt: null,
         joinedAt: now,
         updatedAt: now,
         createdAt: now,

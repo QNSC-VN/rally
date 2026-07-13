@@ -22,7 +22,9 @@ function loadExtras<K extends string>(storageKey: string, knownKeys: K[]): Store
     const parsed = JSON.parse(raw) as StoredExtras<K>
     const known = new Set(knownKeys)
     const order = Array.isArray(parsed.order) ? parsed.order.filter((k) => known.has(k)) : undefined
-    const hidden = Array.isArray(parsed.hidden) ? parsed.hidden.filter((k) => known.has(k)) : undefined
+    const hidden = Array.isArray(parsed.hidden)
+      ? parsed.hidden.filter((k) => known.has(k))
+      : undefined
     return { order, hidden }
   } catch {
     return {}
@@ -54,14 +56,22 @@ export function useColumnLayout<K extends string>(columns: ColumnDef<K>[], stora
     [columns],
   )
 
-  const { widths, startResize, resizedKeys } = useResizableColumns(defaults, { min: mins, storageKey })
+  const { widths, startResize, resizedKeys } = useResizableColumns(defaults, {
+    min: mins,
+    storageKey,
+  })
 
   const [{ order, hidden }, setExtras] = useState(() => {
     const stored = loadExtras<K>(storageKey, knownKeys)
     const order = stored.order ?? knownKeys
     // Reconcile: keep known stored order, append any new columns not yet stored.
-    const merged = [...order.filter((k) => knownKeys.includes(k)), ...knownKeys.filter((k) => !order.includes(k))]
-    const hiddenSet = new Set((stored.hidden ?? []).filter((k) => !columns.find((c) => c.key === k)?.locked))
+    const merged = [
+      ...order.filter((k) => knownKeys.includes(k)),
+      ...knownKeys.filter((k) => !order.includes(k)),
+    ]
+    const hiddenSet = new Set(
+      (stored.hidden ?? []).filter((k) => !columns.find((c) => c.key === k)?.locked),
+    )
     return { order: merged, hidden: hiddenSet }
   })
 
@@ -118,15 +128,19 @@ export function useColumnLayout<K extends string>(columns: ColumnDef<K>[], stora
       }
 
       const width = widths[key] ?? base.width
-      const { flex, flexShrink, flexGrow, flexBasis, ...rest } = base
 
+      // Fixed-width column: pin width and drop any flex sizing the callsite set,
+      // so the resized width always wins.
       return {
-        ...rest,
+        ...base,
         order: orderIndex.get(key) ?? 0,
         width,
         minWidth: width,
         maxWidth: width,
         flex: `0 0 ${width}px`,
+        flexShrink: undefined,
+        flexGrow: undefined,
+        flexBasis: undefined,
       }
     },
     [widths, orderIndex, hidden],

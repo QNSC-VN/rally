@@ -1,10 +1,10 @@
-import type { DefectRow, DefectMetrics, DefectListResult } from '../quality.types';
+import type { DefectRow, DefectMetrics } from '../quality.types';
 
 export const QUALITY_REPOSITORY = Symbol('QUALITY_REPOSITORY');
 
 export interface IQualityRepository {
   listDefects(
-    tenantId: string,
+    workspaceId: string,
     projectId: string,
     opts: {
       search?: string;
@@ -20,9 +20,6 @@ export interface IQualityRepository {
       offset?: number;
     },
   ): Promise<{ rows: DefectRow[] }>;
-  
-  computeMetrics(
-    tenantId: string,
-    projectId: string,
-  ): Promise<DefectMetrics>;
+
+  computeMetrics(workspaceId: string, projectId: string): Promise<DefectMetrics>;
 }

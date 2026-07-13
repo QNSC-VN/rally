@@ -3,8 +3,8 @@
 
 ALTER TABLE "work"."project_counters" ADD COLUMN IF NOT EXISTS "item_type" "public"."work_item_type" NOT NULL DEFAULT 'story';
 --> statement-breakpoint
-INSERT INTO "work"."project_counters" ("project_id", "tenant_id", "item_type", "last_item_number", "updated_at")
-SELECT DISTINCT pc.project_id, pc.tenant_id, t.enumlabel::"public"."work_item_type", 0, now()
+INSERT INTO "work"."project_counters" ("project_id", "workspace_id", "item_type", "last_item_number", "updated_at")
+SELECT DISTINCT pc.project_id, pc.workspace_id, t.enumlabel::"public"."work_item_type", 0, now()
 FROM "work"."project_counters" pc
 CROSS JOIN (
   SELECT unnest(enum_range(NULL::"public"."work_item_type")::text[]) AS enumlabel

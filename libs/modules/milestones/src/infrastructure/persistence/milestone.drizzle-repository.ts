@@ -9,9 +9,12 @@ import {
   milestoneTeams,
   milestoneArtifacts,
   releases,
-  workItems,
 } from '../../../../../../db/schema/work';
-import type { Milestone, CreateMilestoneInput, UpdateMilestoneInput } from '../../domain/milestone.types';
+import type {
+  Milestone,
+  CreateMilestoneInput,
+  UpdateMilestoneInput,
+} from '../../domain/milestone.types';
 import { IMilestoneRepository } from '../../domain/ports/milestone.repository';
 
 @Injectable()
@@ -31,10 +34,13 @@ export class MilestoneDrizzleRepository implements IMilestoneRepository {
 
   async listByProject(
     projectId: string,
-    tenantId: string,
+    workspaceId: string,
     { limit, cursor }: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<Milestone>> {
-    const conditions = [eq(milestones.projectId, projectId), eq(milestones.tenantId, tenantId)];
+    const conditions = [
+      eq(milestones.projectId, projectId),
+      eq(milestones.workspaceId, workspaceId),
+    ];
     if (cursor) {
       conditions.push(lt(milestones.createdAt, new Date(cursor.k[0] as string)));
     }
@@ -48,10 +54,13 @@ export class MilestoneDrizzleRepository implements IMilestoneRepository {
 
     // Batch-fetch release IDs for ALL milestones in a single query (fixes N+1)
     const milestoneIds = rows.map((r) => r.id);
-    let releaseMap: Record<string, string[]> = {};
+    const releaseMap: Record<string, string[]> = {};
     if (milestoneIds.length > 0) {
       const links = await this.db
-        .select({ milestoneId: milestoneReleases.milestoneId, releaseId: milestoneReleases.releaseId })
+        .select({
+          milestoneId: milestoneReleases.milestoneId,
+          releaseId: milestoneReleases.releaseId,
+        })
         .from(milestoneReleases)
         .where(inArray(milestoneReleases.milestoneId, milestoneIds));
       for (const link of links) {
@@ -73,7 +82,7 @@ export class MilestoneDrizzleRepository implements IMilestoneRepository {
       .insert(milestones)
       .values({
         id: input.id,
-        tenantId: input.tenantId,
+        workspaceId: input.workspaceId,
         projectId: input.projectId,
         name: input.name,
         description: input.description,
@@ -84,7 +93,12 @@ export class MilestoneDrizzleRepository implements IMilestoneRepository {
         targetEndDate: null,
       })
       .returning();
-    return { ...rows[0], releaseIds: input.releaseIds ?? [], projectIds: input.projectIds ?? [], teamIds: input.teamIds ?? [] };
+    return {
+      ...rows[0],
+      releaseIds: input.releaseIds ?? [],
+      projectIds: input.projectIds ?? [],
+      teamIds: input.teamIds ?? [],
+    };
   }
 
   async update(id: string, input: UpdateMilestoneInput): Promise<Milestone> {
@@ -124,9 +138,9 @@ export class MilestoneDrizzleRepository implements IMilestoneRepository {
   async setReleaseLinks(milestoneId: string, releaseIds: string[]): Promise<void> {
     await this.db.delete(milestoneReleases).where(eq(milestoneReleases.milestoneId, milestoneId));
     if (releaseIds.length > 0) {
-      await this.db.insert(milestoneReleases).values(
-        releaseIds.map((releaseId) => ({ milestoneId, releaseId })),
-      );
+      await this.db
+        .insert(milestoneReleases)
+        .values(releaseIds.map((releaseId) => ({ milestoneId, releaseId })));
     }
   }
 
@@ -151,9 +165,9 @@ export class MilestoneDrizzleRepository implements IMilestoneRepository {
   async setProjectLinks(milestoneId: string, projectIds: string[]): Promise<void> {
     await this.db.delete(milestoneProjects).where(eq(milestoneProjects.milestoneId, milestoneId));
     if (projectIds.length > 0) {
-      await this.db.insert(milestoneProjects).values(
-        projectIds.map((projectId) => ({ milestoneId, projectId })),
-      );
+      await this.db
+        .insert(milestoneProjects)
+        .values(projectIds.map((projectId) => ({ milestoneId, projectId })));
     }
   }
 
@@ -170,9 +184,9 @@ export class MilestoneDrizzleRepository implements IMilestoneRepository {
   async setTeamLinks(milestoneId: string, teamIds: string[]): Promise<void> {
     await this.db.delete(milestoneTeams).where(eq(milestoneTeams.milestoneId, milestoneId));
     if (teamIds.length > 0) {
-      await this.db.insert(milestoneTeams).values(
-        teamIds.map((teamId) => ({ milestoneId, teamId })),
-      );
+      await this.db
+        .insert(milestoneTeams)
+        .values(teamIds.map((teamId) => ({ milestoneId, teamId })));
     }
   }
 
@@ -189,15 +203,15 @@ export class MilestoneDrizzleRepository implements IMilestoneRepository {
   async setArtifactLinks(milestoneId: string, workItemIds: string[]): Promise<void> {
     await this.db.delete(milestoneArtifacts).where(eq(milestoneArtifacts.milestoneId, milestoneId));
     if (workItemIds.length > 0) {
-      await this.db.insert(milestoneArtifacts).values(
-        workItemIds.map((workItemId) => ({ milestoneId, workItemId })),
-      );
+      await this.db
+        .insert(milestoneArtifacts)
+        .values(workItemIds.map((workItemId) => ({ milestoneId, workItemId })));
     }
   }
 
   async deriveTargetDates(
     releaseIds: string[],
-    tenantId: string,
+    workspaceId: string,
   ): Promise<{ startDate: string | null; endDate: string | null }> {
     if (releaseIds.length === 0) return { startDate: null, endDate: null };
 
@@ -207,7 +221,7 @@ export class MilestoneDrizzleRepository implements IMilestoneRepository {
         releaseDate: releases.releaseDate,
       })
       .from(releases)
-      .where(and(sql`${releases.id} = ANY(${releaseIds})`, eq(releases.workspaceId, tenantId)));
+      .where(and(sql`${releases.id} = ANY(${releaseIds})`, eq(releases.workspaceId, workspaceId)));
 
     if (rows.length === 0) return { startDate: null, endDate: null };
 

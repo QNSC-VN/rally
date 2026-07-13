@@ -23,7 +23,17 @@ import { uuidv7 } from 'uuidv7';
 import { and, eq, sql } from 'drizzle-orm';
 import * as schema from '../schema';
 // Direct imports to avoid barrel tsx/CJS resolution edge cases at runtime.
-import { projectCounters, projectMembers, projectTeams, workItems, iterations, releases, teams, teamMembers, tasks } from '../schema/work';
+import {
+  projectCounters,
+  projectMembers,
+  projectTeams,
+  workItems,
+  iterations,
+  releases,
+  teams,
+  teamMembers,
+  tasks,
+} from '../schema/work';
 import { userRoleAssignments } from '../schema/access';
 import { ssoConnections } from '../schema/identity';
 import {
@@ -333,7 +343,7 @@ async function seedWorkItems() {
         .insert(tasks)
         .values({
           ...t,
-          tenantId: SYSTEM_TENANT_ID,
+          workspaceId: WORKSPACE_ID,
           projectId: nxpId,
           rank: getDeterministicRank(`TA${String(i + 1).padStart(6, '0')}`),
           createdBy: ADMIN_USER_ID,
@@ -427,7 +437,7 @@ async function seedWorkItems() {
         .insert(tasks)
         .values({
           ...t,
-          tenantId: SYSTEM_TENANT_ID,
+          workspaceId: WORKSPACE_ID,
           projectId: mobId,
           rank: getDeterministicRank(`TA${String(i + 1).padStart(6, '0')}`),
           createdBy: ADMIN_USER_ID,
@@ -568,8 +578,8 @@ async function seedReleases() {
         projectId: nxpId,
         name: 'v2.0 — NX Platform Upgrade',
         description: 'Major upgrade to NX v21 + ESLint flat-config rollout.',
-        status: 'planned',
-        targetDate: '2026-07-31',
+        status: 'planning',
+        releaseDate: '2026-07-31',
       },
       {
         id: NXP_RELEASE_2_ID,
@@ -577,8 +587,8 @@ async function seedReleases() {
         projectId: nxpId,
         name: 'v2.1 — Storybook & DX',
         description: 'Storybook 8 integration and developer experience improvements.',
-        status: 'planned',
-        targetDate: '2026-08-31',
+        status: 'planning',
+        releaseDate: '2026-08-31',
       },
       // MOB release
       {
@@ -587,8 +597,8 @@ async function seedReleases() {
         projectId: mobId,
         name: 'v1.5 — Auth & Accessibility',
         description: 'Biometric auth, dark mode, and accessibility fixes.',
-        status: 'planned',
-        targetDate: '2026-08-15',
+        status: 'planning',
+        releaseDate: '2026-08-15',
       },
     ])
     .onConflictDoNothing();
@@ -787,20 +797,25 @@ async function seedExtendedWorkItems() {
   ];
 
   for (const item of nxpExtended) {
-    await db.insert(workItems).values({
-      ...item,
-      workspaceId: WORKSPACE_ID,
-      projectId: nxpId,
-      createdBy: ADMIN_USER_ID,
-      rank: getDeterministicRank(item.itemKey),
-    }).onConflictDoNothing();
+    await db
+      .insert(workItems)
+      .values({
+        ...item,
+        workspaceId: WORKSPACE_ID,
+        projectId: nxpId,
+        createdBy: ADMIN_USER_ID,
+        rank: getDeterministicRank(item.itemKey),
+      })
+      .onConflictDoNothing();
   }
 
   // Update per-type counters for extended items
-  await db.update(projectCounters)
+  await db
+    .update(projectCounters)
     .set({ lastItemNumber: sql`GREATEST(${projectCounters.lastItemNumber}, 10)` })
     .where(and(eq(projectCounters.projectId, nxpId), eq(projectCounters.itemType, 'story')));
-  await db.update(projectCounters)
+  await db
+    .update(projectCounters)
     .set({ lastItemNumber: sql`GREATEST(${projectCounters.lastItemNumber}, 2)` })
     .where(and(eq(projectCounters.projectId, nxpId), eq(projectCounters.itemType, 'defect')));
 
@@ -845,19 +860,24 @@ async function seedExtendedWorkItems() {
     ];
 
     for (const item of mobExtended) {
-      await db.insert(workItems).values({
-        ...item,
-        workspaceId: WORKSPACE_ID,
-        projectId: mobId,
-        createdBy: ADMIN_USER_ID,
-        rank: getDeterministicRank(item.itemKey),
-      }).onConflictDoNothing();
+      await db
+        .insert(workItems)
+        .values({
+          ...item,
+          workspaceId: WORKSPACE_ID,
+          projectId: mobId,
+          createdBy: ADMIN_USER_ID,
+          rank: getDeterministicRank(item.itemKey),
+        })
+        .onConflictDoNothing();
     }
 
-    await db.update(projectCounters)
+    await db
+      .update(projectCounters)
       .set({ lastItemNumber: sql`GREATEST(${projectCounters.lastItemNumber}, 4)` })
       .where(and(eq(projectCounters.projectId, mobId), eq(projectCounters.itemType, 'story')));
-    await db.update(projectCounters)
+    await db
+      .update(projectCounters)
       .set({ lastItemNumber: sql`GREATEST(${projectCounters.lastItemNumber}, 2)` })
       .where(and(eq(projectCounters.projectId, mobId), eq(projectCounters.itemType, 'defect')));
   }

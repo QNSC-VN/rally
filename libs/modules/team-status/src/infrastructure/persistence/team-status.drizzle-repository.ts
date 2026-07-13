@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { and, eq, isNull, asc, sql, inArray } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
-import { tasks, workItems, memberCapacity, releases } from '../../../../../../db/schema/work';
+import { tasks, memberCapacity } from '../../../../../../db/schema/work';
 import { users } from '../../../../../../db/schema/identity';
 import type { RawTeamStatusTaskRow } from '../../domain/team-status.types';
 import { ITeamStatusRepository } from '../../domain/ports/team-status.repository';
@@ -13,14 +13,14 @@ export class TeamStatusDrizzleRepository implements ITeamStatusRepository {
 
   async getTaskRows(
     iterationId: string,
-    tenantId: string,
+    workspaceId: string,
     teamId?: string | null,
   ): Promise<RawTeamStatusTaskRow[]> {
     // P3 refactor: Query from the dedicated `tasks` table instead of
     // `work_items WHERE type='task'`. Join with work_items for the
     // parent (work product) info.
     const conditions = [
-      eq(tasks.workspaceId, tenantId),
+      eq(tasks.workspaceId, workspaceId),
       isNull(tasks.deletedAt),
       // Task iteration matches directly OR its parent's iteration matches
       sql`(${tasks.iterationId} = ${iterationId} OR (SELECT p.iteration_id FROM work.work_items p WHERE p.id = ${tasks.parentId} AND p.deleted_at IS NULL) = ${iterationId})`,
@@ -84,7 +84,9 @@ export class TeamStatusDrizzleRepository implements ITeamStatusRepository {
         .select({ id: users.id, displayName: users.displayName, avatarUrl: users.avatarUrl })
         .from(users)
         .where(inArray(users.id, assigneeIds));
-      userMap = new Map(userRows.map((u) => [u.id, { displayName: u.displayName, avatarUrl: u.avatarUrl }]));
+      userMap = new Map(
+        userRows.map((u) => [u.id, { displayName: u.displayName, avatarUrl: u.avatarUrl }]),
+      );
     }
 
     return taskRows.map((r) => {
@@ -113,10 +115,7 @@ export class TeamStatusDrizzleRepository implements ITeamStatusRepository {
     });
   }
 
-  async getCapacities(
-    iterationId: string,
-    userIds: string[],
-  ): Promise<Map<string, number>> {
+  async getCapacities(iterationId: string, userIds: string[]): Promise<Map<string, number>> {
     if (userIds.length === 0) return new Map();
 
     const rows = await this.db
@@ -126,10 +125,7 @@ export class TeamStatusDrizzleRepository implements ITeamStatusRepository {
       })
       .from(memberCapacity)
       .where(
-        and(
-          eq(memberCapacity.iterationId, iterationId),
-          inArray(memberCapacity.userId, userIds),
-        ),
+        and(eq(memberCapacity.iterationId, iterationId), inArray(memberCapacity.userId, userIds)),
       );
 
     const map = new Map<string, number>();
@@ -140,21 +136,21 @@ export class TeamStatusDrizzleRepository implements ITeamStatusRepository {
   }
 
   async upsertCapacity(input: {
-    tenantId: string;
+    workspaceId: string;
     projectId: string;
     teamId: string;
     iterationId: string;
     userId: string;
     capacityHours: number;
   }): Promise<{ userId: string; capacityHours: number }> {
-    const { userId, capacityHours, iterationId, projectId, teamId, tenantId } = input;
+    const { userId, capacityHours, iterationId, projectId, teamId, workspaceId } = input;
 
     const existing = await this.db
       .select({ id: memberCapacity.id })
       .from(memberCapacity)
       .where(
         and(
-          eq(memberCapacity.workspaceId, tenantId),
+          eq(memberCapacity.workspaceId, workspaceId),
           eq(memberCapacity.projectId, projectId),
           eq(memberCapacity.teamId, teamId),
           eq(memberCapacity.iterationId, iterationId),
@@ -167,10 +163,12 @@ export class TeamStatusDrizzleRepository implements ITeamStatusRepository {
       await this.db
         .update(memberCapacity)
         .set({ capacityHours: String(capacityHours), updatedAt: new Date() })
-        .where(and(eq(memberCapacity.id, existing[0].id), eq(memberCapacity.workspaceId, tenantId)));
+        .where(
+          and(eq(memberCapacity.id, existing[0].id), eq(memberCapacity.workspaceId, workspaceId)),
+        );
     } else {
       await this.db.insert(memberCapacity).values({
-        workspaceId: tenantId,
+        workspaceId: workspaceId,
         projectId,
         teamId,
         iterationId,

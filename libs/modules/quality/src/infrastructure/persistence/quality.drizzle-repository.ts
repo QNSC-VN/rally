@@ -3,16 +3,23 @@ import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { and, eq, isNull, sql, inArray } from 'drizzle-orm';
 import { workItems, iterations, releases } from '../../../../../../db/schema/work';
-import type { DefectSeverity, DefectEnvironment, DefectRootCause, DefectResolution, WorkItemPriority, WorkItemScheduleState } from '../../../../../../db/schema/enums';
+import type {
+  DefectSeverity,
+  DefectEnvironment,
+  DefectRootCause,
+  DefectResolution,
+  WorkItemPriority,
+  WorkItemScheduleState,
+} from '../../../../../../db/schema/enums';
 import type { DefectMetrics, DefectRow } from '../../domain/quality.types';
-import { IQualityRepository, QUALITY_REPOSITORY } from '../../domain/ports/quality.repository';
+import { IQualityRepository } from '../../domain/ports/quality.repository';
 
 @Injectable()
 export class QualityDrizzleRepository implements IQualityRepository {
   constructor(@InjectDrizzle() private readonly db: DrizzleDB) {}
 
   async listDefects(
-    tenantId: string,
+    workspaceId: string,
     projectId: string,
     opts: {
       search?: string;
@@ -29,7 +36,7 @@ export class QualityDrizzleRepository implements IQualityRepository {
     } = {},
   ): Promise<{ rows: DefectRow[] }> {
     const conditions = [
-      eq(workItems.workspaceId, tenantId),
+      eq(workItems.workspaceId, workspaceId),
       eq(workItems.projectId, projectId),
       eq(workItems.type, 'defect'),
       isNull(workItems.deletedAt),
@@ -99,7 +106,10 @@ export class QualityDrizzleRepository implements IQualityRepository {
       .from(workItems)
       .leftJoin(iterations, eq(workItems.iterationId, iterations.id))
       .leftJoin(releases, eq(workItems.releaseId, releases.id))
-      .leftJoin(sql`work.releases found_in_release`, sql`found_in_release.id = work_items.found_in_release_id`)
+      .leftJoin(
+        sql`work.releases found_in_release`,
+        sql`found_in_release.id = work_items.found_in_release_id`,
+      )
       .leftJoin(sql`work.work_items parent_wi`, sql`parent_wi.id = work_items.parent_id`)
       .where(and(...conditions))
       .orderBy(workItems.createdAt)
@@ -163,10 +173,7 @@ export class QualityDrizzleRepository implements IQualityRepository {
     return { rows: data };
   }
 
-  async computeMetrics(
-    tenantId: string,
-    projectId: string,
-  ): Promise<DefectMetrics> {
+  async computeMetrics(workspaceId: string, projectId: string): Promise<DefectMetrics> {
     const rows = await this.db
       .select({
         scheduleState: workItems.scheduleState,
@@ -179,7 +186,7 @@ export class QualityDrizzleRepository implements IQualityRepository {
       .from(workItems)
       .where(
         and(
-          eq(workItems.workspaceId, tenantId),
+          eq(workItems.workspaceId, workspaceId),
           eq(workItems.projectId, projectId),
           eq(workItems.type, 'defect'),
           isNull(workItems.deletedAt),
@@ -201,14 +208,11 @@ export class QualityDrizzleRepository implements IQualityRepository {
       if (['in_progress', 'ready'].includes(r.scheduleState)) inProgress++;
       if (['completed', 'accepted', 'released'].includes(r.scheduleState)) verifiedAccepted++;
       if (r.isBlocked) blockers++;
-      
+
       // Reopened heuristic: currently open but was previously resolved/closed
       // Evidence: has a resolution set but scheduleState is NOT completed/accepted/released
       // OR was created long ago, updated recently, and is back in an open state
-      if (
-        r.resolution &&
-        ['defined', 'ready', 'in_progress'].includes(r.scheduleState)
-      ) {
+      if (r.resolution && ['defined', 'ready', 'in_progress'].includes(r.scheduleState)) {
         reopened++;
       }
     }

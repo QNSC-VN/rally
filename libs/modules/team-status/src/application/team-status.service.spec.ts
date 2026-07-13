@@ -12,7 +12,7 @@ import type { RawTeamStatusTaskRow } from '../domain/team-status.types';
 
 const actor = {
   sub: 'user-1',
-  tenantId: 'ws-1',
+  workspaceId: 'ws-1',
   sessionId: 's1',
   jti: 'j1',
   iat: 0,
@@ -25,7 +25,7 @@ const actor = {
 
 const mockIteration = {
   id: 'it-1',
-  tenantId: 'ws-1',
+  workspaceId: 'ws-1',
   projectId: 'proj-1',
   teamId: 'team-a',
   iterationKey: 'IT-1',
@@ -124,19 +124,40 @@ describe('TeamStatusService', () => {
         projectId: 'other-proj',
       });
 
-      await expect(
-        service.getTeamStatus(actor, 'proj-1', 'team-a', 'it-1'),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.getTeamStatus(actor, 'proj-1', 'team-a', 'it-1')).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('groups tasks by assigneeId and computes per-member aggregates', async () => {
       repo.getTaskRows.mockResolvedValue([
-        makeRawRow({ id: 't1', assigneeId: 'alice', estimateHours: '4', todoHours: '2', actualHours: '2' }),
-        makeRawRow({ id: 't2', assigneeId: 'alice', estimateHours: '6', todoHours: '3', actualHours: '5' }),
-        makeRawRow({ id: 't3', assigneeId: 'bob', estimateHours: '3', todoHours: '3', actualHours: '0' }),
+        makeRawRow({
+          id: 't1',
+          assigneeId: 'alice',
+          estimateHours: '4',
+          todoHours: '2',
+          actualHours: '2',
+        }),
+        makeRawRow({
+          id: 't2',
+          assigneeId: 'alice',
+          estimateHours: '6',
+          todoHours: '3',
+          actualHours: '5',
+        }),
+        makeRawRow({
+          id: 't3',
+          assigneeId: 'bob',
+          estimateHours: '3',
+          todoHours: '3',
+          actualHours: '0',
+        }),
       ]);
       repo.getCapacities.mockResolvedValue(
-        new Map([['alice', 40], ['bob', 40]]),
+        new Map([
+          ['alice', 40],
+          ['bob', 40],
+        ]),
       );
 
       const result = await service.getTeamStatus(actor, 'proj-1', 'team-a', 'it-1');
@@ -148,8 +169,8 @@ describe('TeamStatusService', () => {
       const alice = result.groups.find((g) => g.owner.id === 'alice')!;
       expect(alice.taskCount).toBe(2);
       expect(alice.estimateHours).toBe(10); // 4 + 6
-      expect(alice.todoHours).toBe(5);      // 2 + 3
-      expect(alice.actualHours).toBe(7);    // 2 + 5
+      expect(alice.todoHours).toBe(5); // 2 + 3
+      expect(alice.actualHours).toBe(7); // 2 + 5
       expect(alice.capacityHours).toBe(40);
       // progress = round(estimate/capacity * 100) = round(10/40 * 100) = 25
       expect(alice.progressPercent).toBe(25);
@@ -186,7 +207,12 @@ describe('TeamStatusService', () => {
         makeRawRow({ id: 't1', assigneeId: 'zara', assigneeDisplayName: 'Zara Jones' }),
         makeRawRow({ id: 't2', assigneeId: 'amy', assigneeDisplayName: 'Amy Lee' }),
       ]);
-      repo.getCapacities.mockResolvedValue(new Map([['zara', 40], ['amy', 40]]));
+      repo.getCapacities.mockResolvedValue(
+        new Map([
+          ['zara', 40],
+          ['amy', 40],
+        ]),
+      );
 
       const result = await service.getTeamStatus(actor, 'proj-1', 'team-a', 'it-1');
       expect(result.groups[0].owner.displayName).toBe('Amy Lee');
@@ -194,9 +220,7 @@ describe('TeamStatusService', () => {
     });
 
     it('defaults capacity to 0 when repo returns no capacity for a user', async () => {
-      repo.getTaskRows.mockResolvedValue([
-        makeRawRow({ id: 't1', assigneeId: 'alice' }),
-      ]);
+      repo.getTaskRows.mockResolvedValue([makeRawRow({ id: 't1', assigneeId: 'alice' })]);
       repo.getCapacities.mockResolvedValue(new Map()); // no capacity entry
 
       const result = await service.getTeamStatus(actor, 'proj-1', 'team-a', 'it-1');
@@ -251,7 +275,11 @@ describe('TeamStatusService', () => {
         makeRawRow({ id: 't-done', assigneeId: 'carol', scheduleState: 'accepted' }),
       ]);
       repo.getCapacities.mockResolvedValue(
-        new Map([['alice', 40], ['bob', 40], ['carol', 40]]),
+        new Map([
+          ['alice', 40],
+          ['bob', 40],
+          ['carol', 40],
+        ]),
       );
 
       const result = await service.getTeamStatus(actor, 'proj-1', 'team-a', 'it-1');
@@ -284,7 +312,9 @@ describe('TeamStatusService', () => {
       });
 
       expect(access.assertProjectPermission).toHaveBeenCalledWith(
-        actor, 'proj-1', expect.any(String),
+        actor,
+        'proj-1',
+        expect.any(String),
       );
       expect(repo.upsertCapacity).toHaveBeenCalledWith(
         expect.objectContaining({ userId: 'alice', capacityHours: 40 }),
@@ -323,19 +353,19 @@ describe('TeamStatusService', () => {
       workItems.getWorkItem.mockResolvedValue({
         id: 'task-1',
         projectId: 'proj-1',
-        tenantId: 'ws-1',
+        workspaceId: 'ws-1',
       });
 
-      await expect(
-        service.updateTask(actor, 'task-1', { title: '   ' }),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.updateTask(actor, 'task-1', { title: '   ' })).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('maps Completed state to completed scheduleState', async () => {
       workItems.getWorkItem.mockResolvedValue({
         id: 'task-1',
         projectId: 'proj-1',
-        tenantId: 'ws-1',
+        workspaceId: 'ws-1',
       });
       workItems.updateWorkItem.mockResolvedValue({
         id: 'task-1',
@@ -346,9 +376,9 @@ describe('TeamStatusService', () => {
       });
 
       const result = await service.updateTask(actor, 'task-1', { state: 'Completed' });
-      expect(workItems.updateWorkItem).toHaveBeenCalledWith(
-        actor, 'task-1', { scheduleState: 'completed' },
-      );
+      expect(workItems.updateWorkItem).toHaveBeenCalledWith(actor, 'task-1', {
+        scheduleState: 'completed',
+      });
       expect(result.state).toBe('Completed');
     });
 
@@ -356,11 +386,9 @@ describe('TeamStatusService', () => {
       workItems.getWorkItem.mockResolvedValue({
         id: 'task-1',
         projectId: 'proj-1',
-        tenantId: 'ws-1',
+        workspaceId: 'ws-1',
       });
-      workItems.listTasks.mockResolvedValue([
-        { id: 'task-1', scheduleState: 'completed' },
-      ]);
+      workItems.listTasks.mockResolvedValue([{ id: 'task-1', scheduleState: 'completed' }]);
       workItems.updateWorkItem
         .mockResolvedValueOnce({
           id: 'task-1',
@@ -377,9 +405,9 @@ describe('TeamStatusService', () => {
 
       const result = await service.updateTask(actor, 'task-1', { state: 'Completed' });
       expect(workItems.updateWorkItem).toHaveBeenCalledTimes(2);
-      expect(workItems.updateWorkItem).toHaveBeenNthCalledWith(
-        2, actor, 'story-1', { scheduleState: 'completed' },
-      );
+      expect(workItems.updateWorkItem).toHaveBeenNthCalledWith(2, actor, 'story-1', {
+        scheduleState: 'completed',
+      });
       expect(result.workProduct).toEqual({
         id: 'story-1',
         key: 'PROJ-5',
@@ -391,7 +419,7 @@ describe('TeamStatusService', () => {
       workItems.getWorkItem.mockResolvedValue({
         id: 'task-1',
         projectId: 'proj-1',
-        tenantId: 'ws-1',
+        workspaceId: 'ws-1',
       });
       workItems.updateWorkItem.mockResolvedValue({
         id: 'task-1',
@@ -409,7 +437,7 @@ describe('TeamStatusService', () => {
       workItems.getWorkItem.mockResolvedValue({
         id: 'task-1',
         projectId: 'proj-1',
-        tenantId: 'ws-1',
+        workspaceId: 'ws-1',
       });
       workItems.updateWorkItem
         .mockResolvedValueOnce({

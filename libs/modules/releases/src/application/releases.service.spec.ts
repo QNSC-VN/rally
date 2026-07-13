@@ -18,7 +18,7 @@ const now = new Date('2024-06-01');
 
 const actor = {
   sub: 'user-1',
-  tenantId: 'ws-1',
+  workspaceId: 'ws-1',
   sessionId: 's1',
   jti: 'j1',
   iat: 0,
@@ -31,7 +31,7 @@ const actor = {
 
 const mockRelease = (o: Partial<Release> = {}): Release => ({
   id: 'rel-1',
-  tenantId: 'ws-1',
+  workspaceId: 'ws-1',
   projectId: 'proj-1',
   name: 'v1.0',
   description: 'First release',
@@ -62,9 +62,7 @@ const makeRepo = () => ({
   findById: vi.fn(),
   listByProject: vi.fn().mockResolvedValue(emptyPage),
   create: vi.fn().mockImplementation((input) => Promise.resolve(mockRelease(input))),
-  update: vi.fn().mockImplementation((id, patch) =>
-    Promise.resolve(mockRelease({ id, ...patch })),
-  ),
+  update: vi.fn().mockImplementation((id, patch) => Promise.resolve(mockRelease({ id, ...patch }))),
   delete: vi.fn().mockResolvedValue(undefined),
 });
 
@@ -125,9 +123,9 @@ describe('ReleasesService', () => {
 
     it('propagates project-not-found', async () => {
       projects.getProject.mockRejectedValue(new Error('PROJECT_NOT_FOUND'));
-      await expect(
-        service.listReleases(actor, 'bad', { limit: 25, cursor: null }),
-      ).rejects.toThrow('PROJECT_NOT_FOUND');
+      await expect(service.listReleases(actor, 'bad', { limit: 25, cursor: null })).rejects.toThrow(
+        'PROJECT_NOT_FOUND',
+      );
     });
   });
 
@@ -136,17 +134,13 @@ describe('ReleasesService', () => {
   describe('createRelease', () => {
     it('creates with default planning status when none provided', async () => {
       const result = await service.createRelease(actor, 'proj-1', 'v2.0');
-      expect(repo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ status: 'planning' }),
-      );
+      expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ status: 'planning' }));
       expect(result.status).toBe('planning');
     });
 
     it('uses provided status when given', async () => {
       await service.createRelease(actor, 'proj-1', 'v2.0', { state: 'active' });
-      expect(repo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ status: 'active' }),
-      );
+      expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ status: 'active' }));
     });
 
     it('rejects releaseDate before startDate', async () => {
@@ -175,9 +169,9 @@ describe('ReleasesService', () => {
 
     it('validates project exists before creating', async () => {
       projects.getProject.mockRejectedValue(new Error('PROJECT_NOT_FOUND'));
-      await expect(
-        service.createRelease(actor, 'bad', 'v2.0'),
-      ).rejects.toThrow('PROJECT_NOT_FOUND');
+      await expect(service.createRelease(actor, 'bad', 'v2.0')).rejects.toThrow(
+        'PROJECT_NOT_FOUND',
+      );
       expect(repo.create).not.toHaveBeenCalled();
     });
   });
@@ -197,7 +191,7 @@ describe('ReleasesService', () => {
     });
 
     it('throws when release belongs to different workspace', async () => {
-      repo.findById.mockResolvedValue(mockRelease({ tenantId: 'other-ws' }));
+      repo.findById.mockResolvedValue(mockRelease({ workspaceId: 'other-ws' }));
       await expect(service.getRelease('ws-1', 'rel-1')).rejects.toThrow(NotFoundException);
     });
   });
@@ -209,7 +203,9 @@ describe('ReleasesService', () => {
       repo.findById.mockResolvedValue(mockRelease());
       await service.updateRelease(actor, 'rel-1', { name: 'Renamed' });
       expect(access.assertProjectPermission).toHaveBeenCalledWith(
-        actor, 'proj-1', expect.any(String),
+        actor,
+        'proj-1',
+        expect.any(String),
       );
     });
 
@@ -225,9 +221,9 @@ describe('ReleasesService', () => {
 
     it('throws NotFoundException when release not found', async () => {
       repo.findById.mockResolvedValue(null);
-      await expect(
-        service.updateRelease(actor, 'bad', { name: 'X' }),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.updateRelease(actor, 'bad', { name: 'X' })).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
