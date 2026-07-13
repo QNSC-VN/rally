@@ -226,7 +226,7 @@ type QualityColKey =
 
 const QUALITY_COLUMNS: ColumnDef<QualityColKey>[] = [
   { key: 'rank', label: 'Rank', defaultWidth: 40, locked: true },
-  { key: 'id', label: 'ID', defaultWidth: 64, locked: true },
+  { key: 'id', label: 'ID', defaultWidth: 104, minWidth: 84, locked: true },
   { key: 'name', label: 'Name', defaultWidth: 200, minWidth: 120, locked: true },
   { key: 'userStory', label: 'User Story', defaultWidth: 140, minWidth: 80 },
   { key: 'severity', label: 'Severity', defaultWidth: 100, minWidth: 70 },
@@ -806,9 +806,16 @@ export function QualityPage() {
                       {idx + 1}
                     </div>
                     {/* ID */}
-                    <div className="flex shrink-0 items-center gap-1 px-2" style={styleFor('id')}>
+                    <div
+                      className="flex shrink-0 items-center gap-1 overflow-hidden px-2"
+                      style={styleFor('id')}
+                    >
                       <TypeBadge type={d.type} />
-                      <span className="font-mono text-[10px]" style={{ color: '#5c6478' }}>
+                      <span
+                        className="truncate font-mono text-[10px]"
+                        title={d.itemKey}
+                        style={{ color: '#5c6478' }}
+                      >
                         {d.itemKey}
                       </span>
                     </div>

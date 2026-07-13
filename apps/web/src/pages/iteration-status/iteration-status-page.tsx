@@ -122,7 +122,7 @@ type ColKey =
 
 const ITERATION_STATUS_COLUMNS: ColumnDef<ColKey>[] = [
   { key: 'rank', label: 'Rank', defaultWidth: 45, locked: true },
-  { key: 'id', label: 'ID', defaultWidth: 70, locked: true },
+  { key: 'id', label: 'ID', defaultWidth: 104, minWidth: 84, locked: true },
   { key: 'name', label: 'Name', defaultWidth: 240, minWidth: 150, locked: true },
   { key: 'state', label: 'State', defaultWidth: 112 },
   { key: 'block', label: 'Block', defaultWidth: 42 },
@@ -1544,11 +1544,14 @@ function StatusRow({
         </div>
 
         {/* ID */}
-        <div style={colStyles.id} className="flex items-center gap-1 px-2">
+        <div style={colStyles.id} className="flex items-center gap-1 overflow-hidden px-2">
           <TypeBadge type={item.type} />
           <button
             onClick={onOpen}
+            title={item.itemKey}
+            className="truncate"
             style={{
+              minWidth: 0,
               fontSize: 12,
               fontFamily: 'Consolas, Monaco, "Courier New", monospace',
               color: AZ.primary,
