@@ -12,22 +12,23 @@ import type { TimeLog } from '../domain/time-log.types';
 import type { Attachment } from '../domain/attachment.types';
 import { NotFoundException, UnitOfWork } from '@platform';
 import { ProjectsService } from '@modules/projects';
+import { AccessService } from '@modules/access';
 
-// Tenant isolation is enforced at the application layer via `getWorkItem`'s
+// Workspace isolation is enforced at the application layer via `getWorkItem`'s
 // `item.workspaceId !== workspaceId` guard. These tests exercise that boundary
-// directly: a caller scoped to tenant B must never be able to read or mutate
-// a work item (or its logs/watchers/attachments) that belongs to tenant A,
+// directly: a caller scoped to workspace B must never be able to read or mutate
+// a work item (or its logs/watchers/attachments) that belongs to workspace A,
 // and every repository call must carry the caller's own workspaceId — never a
 // hardcoded or borrowed one.
 
 const now = new Date('2024-06-01');
 
-const TENANT_A = 'tenant-a';
-const TENANT_B = 'tenant-b';
+const WORKSPACE_A = 'workspace-a';
+const WORKSPACE_B = 'workspace-b';
 
 const mockWorkItem = (o: Partial<WorkItem> = {}): WorkItem => ({
   id: 'wi-a',
-  workspaceId: TENANT_A,
+  workspaceId: WORKSPACE_A,
   projectId: 'proj-1',
   itemKey: 'PROJ-1',
   type: 'story',
@@ -72,7 +73,7 @@ const mockWorkItem = (o: Partial<WorkItem> = {}): WorkItem => ({
 
 const mockTimeLog = (o: Partial<TimeLog> = {}): TimeLog => ({
   id: 'log-a',
-  workspaceId: TENANT_A,
+  workspaceId: WORKSPACE_A,
   workItemId: 'wi-a',
   userId: 'user-1',
   loggedDate: '2026-06-25',
@@ -86,20 +87,20 @@ const mockTimeLog = (o: Partial<TimeLog> = {}): TimeLog => ({
 
 const mockAttachment = (o: Partial<Attachment> = {}): Attachment => ({
   id: 'att-a',
-  workspaceId: TENANT_A,
+  workspaceId: WORKSPACE_A,
   workItemId: 'wi-a',
   uploadedBy: 'user-1',
   filename: 'file.txt',
   mimeType: 'text/plain',
   sizeBytes: 100,
-  storageKey: `${TENANT_A}/wi-a/att-a`,
+  storageKey: `${WORKSPACE_A}/wi-a/att-a`,
   status: 'completed',
   deletedAt: null,
   createdAt: now,
   ...o,
 });
 
-const actorForTenant = (workspaceId: string) => ({
+const actorForWorkspace = (workspaceId: string) => ({
   sub: 'user-1',
   workspaceId,
   sessionId: 's1',
@@ -112,8 +113,8 @@ const actorForTenant = (workspaceId: string) => ({
   authMethod: 'password' as const,
 });
 
-// findById/findByIds faithfully simulate the SQL `WHERE id = ? AND tenant_id = ?`
-// scoping — an item is only visible to its owning tenant, regardless of what
+// findById/findByIds faithfully simulate the SQL `WHERE id = ? AND workspace_id = ?`
+// scoping — an item is only visible to its owning workspace, regardless of what
 // the caller passes.
 const makeScopedWorkItemRepo = (items: WorkItem[]) => ({
   findById: vi.fn((id: string, workspaceId: string) =>
@@ -185,9 +186,7 @@ const makeUnitOfWork = () => ({
 });
 
 const makeProjectsService = () => ({
-  getProject: vi
-    .fn()
-    .mockResolvedValue({ id: 'proj-1', workspaceId: TENANT_A, workspaceId: 'ws-1' }),
+  getProject: vi.fn().mockResolvedValue({ id: 'proj-1', workspaceId: WORKSPACE_A }),
   listStatuses: vi.fn().mockResolvedValue([]),
   assertTransitionAllowed: vi.fn().mockResolvedValue(undefined),
   generateItemKey: vi.fn().mockResolvedValue('PROJ-42'),
@@ -204,7 +203,7 @@ const makeStorageService = () => ({
   cdnUrl: vi.fn().mockReturnValue(null),
 });
 
-describe('WorkItemsService — tenant isolation', () => {
+describe('WorkItemsService — workspace isolation', () => {
   let service: WorkItemsService;
   let workItemRepo: ReturnType<typeof makeScopedWorkItemRepo>;
   let timeLogRepo: ReturnType<typeof makeScopedTimeLogRepo>;
@@ -213,9 +212,9 @@ describe('WorkItemsService — tenant isolation', () => {
   let activityRepo: ReturnType<typeof makeActivityRepo>;
   let projectsService: ReturnType<typeof makeProjectsService>;
 
-  const itemA = mockWorkItem({ id: 'wi-a', workspaceId: TENANT_A });
-  const logA = mockTimeLog({ id: 'log-a', workspaceId: TENANT_A, workItemId: 'wi-a' });
-  const attachmentA = mockAttachment({ id: 'att-a', workspaceId: TENANT_A, workItemId: 'wi-a' });
+  const itemA = mockWorkItem({ id: 'wi-a', workspaceId: WORKSPACE_A });
+  const logA = mockTimeLog({ id: 'log-a', workspaceId: WORKSPACE_A, workItemId: 'wi-a' });
+  const attachmentA = mockAttachment({ id: 'att-a', workspaceId: WORKSPACE_A, workItemId: 'wi-a' });
 
   const build = async (
     wiRepo: ReturnType<typeof makeScopedWorkItemRepo>,
@@ -235,6 +234,10 @@ describe('WorkItemsService — tenant isolation', () => {
         { provide: ATTACHMENT_REPOSITORY, useValue: atRepo },
         { provide: StorageService, useValue: makeStorageService() },
         { provide: ProjectsService, useValue: projectsService },
+        {
+          provide: AccessService,
+          useValue: { assertProjectPermission: vi.fn().mockResolvedValue(undefined) },
+        },
         { provide: UnitOfWork, useValue: makeUnitOfWork() },
       ],
     }).compile();
@@ -251,74 +254,76 @@ describe('WorkItemsService — tenant isolation', () => {
   // ── getWorkItem — the central gate ───────────────────────────────────────
 
   describe('getWorkItem', () => {
-    it('reads a work item scoped to its owning tenant', async () => {
-      const item = await service.getWorkItem(TENANT_A, 'wi-a');
+    it('reads a work item scoped to its owning workspace', async () => {
+      const item = await service.getWorkItem(WORKSPACE_A, 'wi-a');
       expect(item.id).toBe('wi-a');
-      expect(workItemRepo.findById).toHaveBeenCalledWith('wi-a', TENANT_A);
+      expect(workItemRepo.findById).toHaveBeenCalledWith('wi-a', WORKSPACE_A);
     });
 
-    it('cannot fetch a foreign tenant work item by id', async () => {
-      await expect(service.getWorkItem(TENANT_B, 'wi-a')).rejects.toThrow(NotFoundException);
-      expect(workItemRepo.findById).toHaveBeenCalledWith('wi-a', TENANT_B);
+    it('cannot fetch a foreign workspace work item by id', async () => {
+      await expect(service.getWorkItem(WORKSPACE_B, 'wi-a')).rejects.toThrow(NotFoundException);
+      expect(workItemRepo.findById).toHaveBeenCalledWith('wi-a', WORKSPACE_B);
     });
 
     it('defends in depth: rejects even if the repository leaks a foreign row', async () => {
       const leakyRepo = makeScopedWorkItemRepo([itemA]);
       leakyRepo.findById.mockResolvedValue(itemA); // ignores the workspaceId argument
       const leakyService = await build(leakyRepo, timeLogRepo, attachmentRepo);
-      await expect(leakyService.getWorkItem(TENANT_B, 'wi-a')).rejects.toThrow(NotFoundException);
+      await expect(leakyService.getWorkItem(WORKSPACE_B, 'wi-a')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
   // ── updateWorkItem / deleteWorkItem / moveWorkItem ───────────────────────
 
   describe('updateWorkItem', () => {
-    it('cannot update a foreign tenant work item', async () => {
+    it('cannot update a foreign workspace work item', async () => {
       await expect(
-        service.updateWorkItem(actorForTenant(TENANT_B), 'wi-a', { title: 'hijacked' }),
+        service.updateWorkItem(actorForWorkspace(WORKSPACE_B), 'wi-a', { title: 'hijacked' }),
       ).rejects.toThrow(NotFoundException);
       expect(workItemRepo.update).not.toHaveBeenCalled();
     });
 
     it('updates using the caller workspaceId, not a hardcoded one', async () => {
-      await service.updateWorkItem(actorForTenant(TENANT_A), 'wi-a', { title: 'ok' });
+      await service.updateWorkItem(actorForWorkspace(WORKSPACE_A), 'wi-a', { title: 'ok' });
       expect(workItemRepo.update).toHaveBeenCalledWith(
         'wi-a',
         expect.objectContaining({ title: 'ok' }),
-        TENANT_A,
+        WORKSPACE_A,
         expect.anything(),
       );
     });
   });
 
   describe('deleteWorkItem', () => {
-    it('cannot delete a foreign tenant work item', async () => {
-      await expect(service.deleteWorkItem(TENANT_B, 'wi-a')).rejects.toThrow(NotFoundException);
+    it('cannot delete a foreign workspace work item', async () => {
+      await expect(service.deleteWorkItem(WORKSPACE_B, 'wi-a')).rejects.toThrow(NotFoundException);
       expect(workItemRepo.softDelete).not.toHaveBeenCalled();
     });
 
     it('soft-deletes using the caller workspaceId', async () => {
-      await service.deleteWorkItem(TENANT_A, 'wi-a');
-      expect(workItemRepo.softDelete).toHaveBeenCalledWith('wi-a', TENANT_A);
+      await service.deleteWorkItem(actorForWorkspace(WORKSPACE_A), 'wi-a');
+      expect(workItemRepo.softDelete).toHaveBeenCalledWith('wi-a', WORKSPACE_A);
     });
   });
 
   describe('moveWorkItem', () => {
-    it('cannot move a foreign tenant work item', async () => {
+    it('cannot move a foreign workspace work item', async () => {
       await expect(
-        service.moveWorkItem(actorForTenant(TENANT_B), 'wi-a', 'status-done'),
+        service.moveWorkItem(actorForWorkspace(WORKSPACE_B), 'wi-a', 'status-done'),
       ).rejects.toThrow(NotFoundException);
       expect(workItemRepo.update).not.toHaveBeenCalled();
     });
   });
 
-  // ── createTask (parent lookup is tenant-gated) ───────────────────────────
+  // ── createTask (parent lookup is workspace-gated) ───────────────────────────
 
   describe('createTask', () => {
-    it('cannot create a task under a foreign tenant parent', async () => {
-      await expect(service.createTask(actorForTenant(TENANT_B), 'wi-a', 'Subtask')).rejects.toThrow(
-        NotFoundException,
-      );
+    it('cannot create a task under a foreign workspace parent', async () => {
+      await expect(
+        service.createTask(actorForWorkspace(WORKSPACE_B), 'wi-a', 'Subtask'),
+      ).rejects.toThrow(NotFoundException);
       expect(workItemRepo.create).not.toHaveBeenCalled();
     });
   });
@@ -326,15 +331,15 @@ describe('WorkItemsService — tenant isolation', () => {
   // ── Tasks list / totals ──────────────────────────────────────────────────
 
   describe('listTasks', () => {
-    it('cannot list tasks of a foreign tenant parent', async () => {
-      await expect(service.listTasks(TENANT_B, 'wi-a')).rejects.toThrow(NotFoundException);
+    it('cannot list tasks of a foreign workspace parent', async () => {
+      await expect(service.listTasks(WORKSPACE_B, 'wi-a')).rejects.toThrow(NotFoundException);
       expect(workItemRepo.listTasksByParent).not.toHaveBeenCalled();
     });
   });
 
   describe('getTaskTotals', () => {
-    it('cannot read task totals of a foreign tenant parent', async () => {
-      await expect(service.getTaskTotals(TENANT_B, 'wi-a')).rejects.toThrow(NotFoundException);
+    it('cannot read task totals of a foreign workspace parent', async () => {
+      await expect(service.getTaskTotals(WORKSPACE_B, 'wi-a')).rejects.toThrow(NotFoundException);
       expect(workItemRepo.getTaskTotals).not.toHaveBeenCalled();
     });
   });
@@ -342,10 +347,10 @@ describe('WorkItemsService — tenant isolation', () => {
   // ── Activity ──────────────────────────────────────────────────────────────
 
   describe('getActivity', () => {
-    it('cannot read activity of a foreign tenant work item', async () => {
-      await expect(service.getActivity(TENANT_B, 'wi-a', { limit: 10, offset: 0 })).rejects.toThrow(
-        NotFoundException,
-      );
+    it('cannot read activity of a foreign workspace work item', async () => {
+      await expect(
+        service.getActivity(WORKSPACE_B, 'wi-a', { limit: 10, offset: 0 }),
+      ).rejects.toThrow(NotFoundException);
       expect(activityRepo.listByWorkItem).not.toHaveBeenCalled();
     });
   });
@@ -353,25 +358,27 @@ describe('WorkItemsService — tenant isolation', () => {
   // ── Labels ────────────────────────────────────────────────────────────────
 
   describe('label management', () => {
-    it('cannot list labels of a foreign tenant work item', async () => {
-      await expect(service.getWorkItemLabels(TENANT_B, 'wi-a')).rejects.toThrow(NotFoundException);
+    it('cannot list labels of a foreign workspace work item', async () => {
+      await expect(service.getWorkItemLabels(WORKSPACE_B, 'wi-a')).rejects.toThrow(
+        NotFoundException,
+      );
       expect(workItemRepo.listLabels).not.toHaveBeenCalled();
     });
 
-    it('cannot add a label to a foreign tenant work item', async () => {
-      await expect(service.addLabelToWorkItem(TENANT_B, 'wi-a', 'l1')).rejects.toThrow(
+    it('cannot add a label to a foreign workspace work item', async () => {
+      await expect(service.addLabelToWorkItem(WORKSPACE_B, 'wi-a', 'l1')).rejects.toThrow(
         NotFoundException,
       );
       expect(workItemRepo.addLabel).not.toHaveBeenCalled();
     });
 
     it('adds a label using the caller workspaceId', async () => {
-      await service.addLabelToWorkItem(TENANT_A, 'wi-a', 'l1');
-      expect(workItemRepo.addLabel).toHaveBeenCalledWith('wi-a', 'l1', TENANT_A);
+      await service.addLabelToWorkItem(actorForWorkspace(WORKSPACE_A), 'wi-a', 'l1');
+      expect(workItemRepo.addLabel).toHaveBeenCalledWith('wi-a', 'l1', WORKSPACE_A);
     });
 
-    it('cannot remove a label from a foreign tenant work item', async () => {
-      await expect(service.removeLabelFromWorkItem(TENANT_B, 'wi-a', 'l1')).rejects.toThrow(
+    it('cannot remove a label from a foreign workspace work item', async () => {
+      await expect(service.removeLabelFromWorkItem(WORKSPACE_B, 'wi-a', 'l1')).rejects.toThrow(
         NotFoundException,
       );
       expect(workItemRepo.removeLabel).not.toHaveBeenCalled();
@@ -381,18 +388,18 @@ describe('WorkItemsService — tenant isolation', () => {
   // ── reorderWorkItems / rankWorkItem ──────────────────────────────────────
 
   describe('reorderWorkItems', () => {
-    it('cannot reorder a foreign tenant work item', async () => {
+    it('cannot reorder a foreign workspace work item', async () => {
       await expect(
-        service.reorderWorkItems(TENANT_B, [{ id: 'wi-a', rank: 'b1' }]),
+        service.reorderWorkItems(WORKSPACE_B, [{ id: 'wi-a', rank: 'b1' }]),
       ).rejects.toThrow(NotFoundException);
       expect(workItemRepo.reorderItems).not.toHaveBeenCalled();
     });
   });
 
   describe('rankWorkItem', () => {
-    it('cannot rank a foreign tenant work item', async () => {
+    it('cannot rank a foreign workspace work item', async () => {
       await expect(
-        service.rankWorkItem(actorForTenant(TENANT_B), 'wi-a', {
+        service.rankWorkItem(actorForWorkspace(WORKSPACE_B), 'wi-a', {
           projectId: 'proj-1',
           beforeId: null,
           afterId: null,
@@ -403,12 +410,12 @@ describe('WorkItemsService — tenant isolation', () => {
 
     it('neighbour lookup uses the caller workspaceId', async () => {
       workItemRepo.findByIds.mockResolvedValueOnce([mockWorkItem({ id: 'before', rank: 'a' })]);
-      await service.rankWorkItem(actorForTenant(TENANT_A), 'wi-a', {
+      await service.rankWorkItem(actorForWorkspace(WORKSPACE_A), 'wi-a', {
         projectId: 'proj-1',
         beforeId: 'before',
         afterId: null,
       });
-      expect(workItemRepo.findByIds).toHaveBeenCalledWith(['before'], TENANT_A);
+      expect(workItemRepo.findByIds).toHaveBeenCalledWith(['before'], WORKSPACE_A);
     });
   });
 
@@ -417,17 +424,17 @@ describe('WorkItemsService — tenant isolation', () => {
   describe('bulk assignment', () => {
     it('bulkAssignRelease loads items scoped to the caller workspaceId', async () => {
       await expect(
-        service.bulkAssignRelease(actorForTenant(TENANT_B), 'proj-1', ['wi-a'], null),
+        service.bulkAssignRelease(actorForWorkspace(WORKSPACE_B), 'proj-1', ['wi-a'], null),
       ).rejects.toThrow(NotFoundException);
-      expect(workItemRepo.findByIds).toHaveBeenCalledWith(['wi-a'], TENANT_B);
+      expect(workItemRepo.findByIds).toHaveBeenCalledWith(['wi-a'], WORKSPACE_B);
       expect(workItemRepo.assignRelease).not.toHaveBeenCalled();
     });
 
     it('bulkAssignIteration loads items scoped to the caller workspaceId', async () => {
       await expect(
-        service.bulkAssignIteration(actorForTenant(TENANT_B), 'proj-1', ['wi-a'], null),
+        service.bulkAssignIteration(actorForWorkspace(WORKSPACE_B), 'proj-1', ['wi-a'], null),
       ).rejects.toThrow(NotFoundException);
-      expect(workItemRepo.findByIds).toHaveBeenCalledWith(['wi-a'], TENANT_B);
+      expect(workItemRepo.findByIds).toHaveBeenCalledWith(['wi-a'], WORKSPACE_B);
       expect(workItemRepo.assignIteration).not.toHaveBeenCalled();
     });
   });
@@ -435,40 +442,43 @@ describe('WorkItemsService — tenant isolation', () => {
   // ── Time logging ──────────────────────────────────────────────────────────
 
   describe('time logs', () => {
-    it('cannot list time logs of a foreign tenant work item', async () => {
+    it('cannot list time logs of a foreign workspace work item', async () => {
       await expect(
-        service.listTimeLogs(TENANT_B, 'wi-a', { page: 1, pageSize: 20 }),
+        service.listTimeLogs(WORKSPACE_B, 'wi-a', { page: 1, pageSize: 20 }),
       ).rejects.toThrow(NotFoundException);
       expect(timeLogRepo.listByWorkItem).not.toHaveBeenCalled();
     });
 
-    it('cannot log time against a foreign tenant work item', async () => {
+    it('cannot log time against a foreign workspace work item', async () => {
       await expect(
-        service.logTime(actorForTenant(TENANT_B), 'wi-a', { loggedDate: '2026-06-25', hours: '1' }),
+        service.logTime(actorForWorkspace(WORKSPACE_B), 'wi-a', {
+          loggedDate: '2026-06-25',
+          hours: '1',
+        }),
       ).rejects.toThrow(NotFoundException);
       expect(timeLogRepo.create).not.toHaveBeenCalled();
     });
 
     it('logs time using the caller workspaceId', async () => {
-      await service.logTime(actorForTenant(TENANT_A), 'wi-a', {
+      await service.logTime(actorForWorkspace(WORKSPACE_A), 'wi-a', {
         loggedDate: '2026-06-25',
         hours: '1',
       });
       expect(timeLogRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ workspaceId: TENANT_A, workItemId: 'wi-a' }),
+        expect.objectContaining({ workspaceId: WORKSPACE_A, workItemId: 'wi-a' }),
       );
     });
 
-    it('cannot update a time log via a foreign tenant work item scope', async () => {
+    it('cannot update a time log via a foreign workspace work item scope', async () => {
       await expect(
-        service.updateTimeLog(actorForTenant(TENANT_B), 'wi-a', 'log-a', { hours: '3' }),
+        service.updateTimeLog(actorForWorkspace(WORKSPACE_B), 'wi-a', 'log-a', { hours: '3' }),
       ).rejects.toThrow(NotFoundException);
       expect(timeLogRepo.update).not.toHaveBeenCalled();
     });
 
-    it('cannot delete a time log via a foreign tenant work item scope', async () => {
+    it('cannot delete a time log via a foreign workspace work item scope', async () => {
       await expect(
-        service.deleteTimeLog(actorForTenant(TENANT_B), 'wi-a', 'log-a'),
+        service.deleteTimeLog(actorForWorkspace(WORKSPACE_B), 'wi-a', 'log-a'),
       ).rejects.toThrow(NotFoundException);
       expect(timeLogRepo.softDelete).not.toHaveBeenCalled();
     });
@@ -477,25 +487,25 @@ describe('WorkItemsService — tenant isolation', () => {
   // ── Watchers ──────────────────────────────────────────────────────────────
 
   describe('watchers', () => {
-    it('cannot list watchers of a foreign tenant work item', async () => {
-      await expect(service.listWatchers(TENANT_B, 'wi-a')).rejects.toThrow(NotFoundException);
+    it('cannot list watchers of a foreign workspace work item', async () => {
+      await expect(service.listWatchers(WORKSPACE_B, 'wi-a')).rejects.toThrow(NotFoundException);
       expect(watcherRepo.listByWorkItem).not.toHaveBeenCalled();
     });
 
-    it('cannot watch a foreign tenant work item', async () => {
-      await expect(service.watch(actorForTenant(TENANT_B), 'wi-a')).rejects.toThrow(
+    it('cannot watch a foreign workspace work item', async () => {
+      await expect(service.watch(actorForWorkspace(WORKSPACE_B), 'wi-a')).rejects.toThrow(
         NotFoundException,
       );
       expect(watcherRepo.watch).not.toHaveBeenCalled();
     });
 
     it('watches using the caller workspaceId', async () => {
-      await service.watch(actorForTenant(TENANT_A), 'wi-a');
-      expect(watcherRepo.watch).toHaveBeenCalledWith('wi-a', 'user-1', TENANT_A);
+      await service.watch(actorForWorkspace(WORKSPACE_A), 'wi-a');
+      expect(watcherRepo.watch).toHaveBeenCalledWith('wi-a', 'user-1', WORKSPACE_A);
     });
 
-    it('cannot unwatch a foreign tenant work item', async () => {
-      await expect(service.unwatch(actorForTenant(TENANT_B), 'wi-a')).rejects.toThrow(
+    it('cannot unwatch a foreign workspace work item', async () => {
+      await expect(service.unwatch(actorForWorkspace(WORKSPACE_B), 'wi-a')).rejects.toThrow(
         NotFoundException,
       );
       expect(watcherRepo.unwatch).not.toHaveBeenCalled();
@@ -505,9 +515,9 @@ describe('WorkItemsService — tenant isolation', () => {
   // ── Attachments ───────────────────────────────────────────────────────────
 
   describe('attachments', () => {
-    it('cannot presign an attachment against a foreign tenant work item', async () => {
+    it('cannot presign an attachment against a foreign workspace work item', async () => {
       await expect(
-        service.presignAttachment(actorForTenant(TENANT_B), 'wi-a', {
+        service.presignAttachment(actorForWorkspace(WORKSPACE_B), 'wi-a', {
           filename: 'a.txt',
           mimeType: 'text/plain',
           sizeBytes: 10,
@@ -517,38 +527,38 @@ describe('WorkItemsService — tenant isolation', () => {
     });
 
     it('presigns using the caller workspaceId', async () => {
-      await service.presignAttachment(actorForTenant(TENANT_A), 'wi-a', {
+      await service.presignAttachment(actorForWorkspace(WORKSPACE_A), 'wi-a', {
         filename: 'a.txt',
         mimeType: 'text/plain',
         sizeBytes: 10,
       });
       expect(attachmentRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ workspaceId: TENANT_A, workItemId: 'wi-a' }),
+        expect.objectContaining({ workspaceId: WORKSPACE_A, workItemId: 'wi-a' }),
       );
     });
 
-    it('cannot confirm an attachment via a foreign tenant work item scope', async () => {
+    it('cannot confirm an attachment via a foreign workspace work item scope', async () => {
       await expect(
-        service.confirmAttachment(actorForTenant(TENANT_B), 'wi-a', 'att-a'),
+        service.confirmAttachment(actorForWorkspace(WORKSPACE_B), 'wi-a', 'att-a'),
       ).rejects.toThrow(NotFoundException);
       expect(attachmentRepo.confirm).not.toHaveBeenCalled();
     });
 
-    it('cannot list attachments of a foreign tenant work item', async () => {
-      await expect(service.listAttachments(TENANT_B, 'wi-a')).rejects.toThrow(NotFoundException);
+    it('cannot list attachments of a foreign workspace work item', async () => {
+      await expect(service.listAttachments(WORKSPACE_B, 'wi-a')).rejects.toThrow(NotFoundException);
       expect(attachmentRepo.listByWorkItem).not.toHaveBeenCalled();
     });
 
-    it('cannot get a download url via a foreign tenant work item scope', async () => {
-      await expect(service.getAttachmentDownloadUrl(TENANT_B, 'wi-a', 'att-a')).rejects.toThrow(
+    it('cannot get a download url via a foreign workspace work item scope', async () => {
+      await expect(service.getAttachmentDownloadUrl(WORKSPACE_B, 'wi-a', 'att-a')).rejects.toThrow(
         NotFoundException,
       );
       expect(attachmentRepo.findById).not.toHaveBeenCalled();
     });
 
-    it('cannot delete an attachment via a foreign tenant work item scope', async () => {
+    it('cannot delete an attachment via a foreign workspace work item scope', async () => {
       await expect(
-        service.deleteAttachment(actorForTenant(TENANT_B), 'wi-a', 'att-a'),
+        service.deleteAttachment(actorForWorkspace(WORKSPACE_B), 'wi-a', 'att-a'),
       ).rejects.toThrow(NotFoundException);
       expect(attachmentRepo.softDelete).not.toHaveBeenCalled();
     });
@@ -563,15 +573,15 @@ describe('WorkItemsService — tenant isolation', () => {
         pageInfo: { nextCursor: null, hasNextPage: false, limit: 20 },
       });
       await service.listWorkItems(
-        actorForTenant(TENANT_B),
+        actorForWorkspace(WORKSPACE_B),
         'proj-1',
         {},
         { limit: 20, cursor: null },
       );
-      expect(projectsService.getProject).toHaveBeenCalledWith(TENANT_B, 'proj-1');
+      expect(projectsService.getProject).toHaveBeenCalledWith(WORKSPACE_B, 'proj-1');
       expect(workItemRepo.listByProject).toHaveBeenCalledWith(
         'proj-1',
-        TENANT_B,
+        WORKSPACE_B,
         {},
         expect.anything(),
       );
@@ -583,15 +593,15 @@ describe('WorkItemsService — tenant isolation', () => {
         pageInfo: { nextCursor: null, hasNextPage: false, limit: 20 },
       });
       await service.listBacklog(
-        actorForTenant(TENANT_B),
+        actorForWorkspace(WORKSPACE_B),
         'proj-1',
         {},
         { limit: 20, cursor: null },
       );
-      expect(projectsService.getProject).toHaveBeenCalledWith(TENANT_B, 'proj-1');
+      expect(projectsService.getProject).toHaveBeenCalledWith(WORKSPACE_B, 'proj-1');
       expect(workItemRepo.listBacklog).toHaveBeenCalledWith(
         'proj-1',
-        TENANT_B,
+        WORKSPACE_B,
         {},
         expect.anything(),
       );

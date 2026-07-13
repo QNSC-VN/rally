@@ -47,7 +47,14 @@ CREATE INDEX ix_tasks_rank ON work.tasks(parent_id, rank);
 INSERT INTO work.tasks (id, workspace_id, project_id, parent_id, title, description, state, assignee_id, team_id, iteration_id, estimate_hours, todo_hours, actual_hours, rank, created_by, updated_by, created_at, updated_at, deleted_at)
 SELECT 
     wi.id, wi.workspace_id, wi.project_id, wi.parent_id, wi.title, wi.description,
-    CASE wi.schedule_state
+    -- Cast to text so the literals below are plain strings, not references to
+    -- enum values. 'ready' is added to work_item_schedule_state in 0034, and
+    -- Postgres forbids using a newly-ADDED enum value in the same transaction
+    -- as an existing (pre-committed) type (error 55P04, check_safe_enum_use).
+    -- Drizzle runs all pending migrations in ONE transaction, so on any DB that
+    -- already had the enum committed (develop/prod) this would abort the batch;
+    -- ::text sidesteps the check while producing identical results.
+    CASE wi.schedule_state::text
         WHEN 'idea' THEN 'defined'
         WHEN 'defined' THEN 'defined'
         WHEN 'ready' THEN 'defined'

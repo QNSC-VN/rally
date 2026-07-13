@@ -7,5 +7,5 @@
 
 DELETE FROM "access"."user_role_assignments"
   WHERE role_id IN (SELECT id FROM "access"."system_roles" WHERE slug = 'guest');
-
+--> statement-breakpoint
 DELETE FROM "access"."system_roles" WHERE slug = 'guest';
