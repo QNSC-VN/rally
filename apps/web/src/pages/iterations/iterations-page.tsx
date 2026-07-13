@@ -7,7 +7,8 @@
  */
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { ChevronLeft, Filter, Loader2, Plus, Search } from 'lucide-react'
+import { ChevronLeft, Filter, Loader2, Plus } from 'lucide-react'
+import { SearchInput } from '@/shared/ui/search-input'
 import { Spinner } from '@/shared/ui/spinner'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { NativeSelect, InlineSelect } from '@/shared/ui/native-select'
@@ -155,29 +156,16 @@ export function IterationsPage() {
             </button>
           )}
         </div>
-        <div className="relative">
-          <Search
-            size={12}
-            className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2"
-            style={{ color: BRAND.textMuted }}
-          />
-          <input
-            type="text"
-            placeholder="Search iterations..."
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value)
-              setPage(1)
-            }}
-            className="rounded py-1 pr-3 pl-7 text-[11px] focus:outline-none"
-            style={{
-              backgroundColor: BRAND.surfaceSubtle,
-              border: `1px solid ${BRAND.borderSubtle}`,
-              color: BRAND.textPrimary,
-              width: 190,
-            }}
-          />
-        </div>
+        <SearchInput
+          value={search}
+          onChange={(v) => {
+            setSearch(v)
+            setPage(1)
+          }}
+          placeholder="Search iterations..."
+          ariaLabel="Search iterations"
+          width={190}
+        />
         <button
           onClick={() => setShowFilters((p) => !p)}
           className="flex items-center gap-1.5 rounded px-3 py-1 text-[11px] font-semibold"

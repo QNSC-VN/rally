@@ -14,7 +14,6 @@ import {
   ChevronRight,
   Loader2,
   Save,
-  Search,
   Users,
   FolderKanban,
   Layers,
@@ -24,6 +23,8 @@ import { BRAND } from '@/shared/config/brand'
 import { InlineSelect } from '@/shared/ui/native-select'
 import { Textarea } from '@/shared/ui/textarea'
 import { SkeletonList } from '@/shared/ui/skeleton'
+import { SearchInput } from '@/shared/ui/search-input'
+import { MILESTONE_STATUS_STYLE } from '@/features/milestones/status-colors'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { useProjectPermissions } from '@/features/access/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
@@ -48,17 +49,7 @@ import { TypeBadge, ScheduleStateBadge, PriorityBadge } from '@/entities/work-it
 
 // ── Status config ──────────────────────────────────────────────────────────────
 
-const STATUS_STYLE: Record<
-  MilestoneStatus,
-  { bg: string; text: string; border: string; label: string }
-> = {
-  planned: { bg: '#eef3fb', text: '#475569', border: '#cbd5e1', label: 'Planned' },
-  at_risk: { bg: '#fff7ed', text: '#9a3412', border: '#fed7aa', label: 'At Risk' },
-  met: { bg: '#eaf5ed', text: '#1e6930', border: '#b9dec2', label: 'Met' },
-  missed: { bg: '#fef2f2', text: '#b91c1c', border: '#fecaca', label: 'Missed' },
-  cancelled: { bg: '#f1f5f9', text: '#475569', border: '#cbd5e1', label: 'Cancelled' },
-  completed: { bg: '#eef6f0', text: '#1e6930', border: '#a8d5b3', label: 'Completed' },
-}
+const STATUS_STYLE = MILESTONE_STATUS_STYLE
 
 const MILESTONE_STATUSES: MilestoneStatus[] = [
   'planned',
@@ -144,26 +135,15 @@ function SelectionModal({
     <AppModal open={open} onClose={onClose} title={title} width={440}>
       {/* Search bar above ModalBody */}
       <div className="px-5 pt-3 pb-1">
-        <div className="relative">
-          <Search
-            size={13}
-            className="absolute top-1/2 left-2.5 -translate-y-1/2"
-            style={{ color: '#8c94a6' }}
-          />
-          <input
-            type="text"
-            placeholder={`Search ${title.toLowerCase()}...`}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-md py-1.5 pr-3 pl-8 text-xs focus:ring-1 focus:outline-none"
-            style={{
-              backgroundColor: '#f4f6f9',
-              border: `1px solid ${BRAND.border}`,
-              color: '#1a2234',
-            }}
-            autoFocus
-          />
-        </div>
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder={`Search ${title.toLowerCase()}...`}
+          ariaLabel={`Search ${title.toLowerCase()}`}
+          iconSize={13}
+          autoFocus
+          className="w-full rounded-md py-1.5 pl-8 text-xs"
+        />
       </div>
       <ModalBody className="space-y-1">
         {/* Select-all row */}
@@ -408,25 +388,15 @@ function ArtifactsTab({ milestoneId }: { milestoneId: string }) {
         className="flex shrink-0 items-center gap-3 px-4 py-2"
         style={{ borderBottom: `1px solid ${BRAND.borderSubtle}`, backgroundColor: BRAND.surface }}
       >
-        <div className="relative" style={{ width: 220 }}>
-          <Search
-            size={13}
-            className="absolute top-1/2 left-2.5 -translate-y-1/2"
-            style={{ color: '#8c94a6' }}
-          />
-          <input
-            type="text"
-            placeholder="Search artifacts..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-md py-1.5 pr-3 pl-8 text-xs focus:ring-1 focus:outline-none"
-            style={{
-              backgroundColor: '#f4f6f9',
-              border: `1px solid ${BRAND.border}`,
-              color: '#1a2234',
-            }}
-          />
-        </div>
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Search artifacts..."
+          ariaLabel="Search artifacts"
+          width={220}
+          iconSize={13}
+          className="rounded-md py-1.5 pl-8 text-xs"
+        />
         <div className="flex-1" />
         <span className="text-[11px]" style={{ color: BRAND.textMuted }}>
           {pageInfo?.total != null ? `${pageInfo.total} items` : ''}

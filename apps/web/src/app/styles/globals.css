@@ -47,7 +47,7 @@
   /* Border / input */
   --border: rgba(0, 0, 0, 0.08);
   --border-strong: #d9dee7;
-  --input: #d7dde7;          /* form-control border — used by shadcn Input/Textarea */
+  --input: #d7dde7; /* form-control border — used by shadcn Input/Textarea */
   --input-background: #f4f6f9;
   --ring: #1d3f73;
 
@@ -110,7 +110,7 @@
   --destructive-foreground: #ffffff;
   --border: rgba(255, 255, 255, 0.08);
   --border-strong: #2a3a54;
-  --input: #2a3a54;          /* dark-mode form-control border */
+  --input: #2a3a54; /* dark-mode form-control border */
   --input-background: #1a2234;
   --ring: #4a80d4;
   --sidebar: #0f1623;
@@ -170,6 +170,25 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+  }
+  /*
+   * Interactive-cursor baseline (DRY). Tailwind v4 / modern UA stylesheets reset
+   * native controls to `cursor: default`, so every raw <button>, role=button,
+   * tab, summary and <select> across the app looked non-interactive. Set the
+   * pointer once here instead of per-component; disabled controls opt back out.
+   */
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']),
+  [role='tab']:not([aria-disabled='true']),
+  [role='option'],
+  summary,
+  select:not(:disabled) {
+    cursor: pointer;
+  }
+  button:disabled,
+  [aria-disabled='true'],
+  [role='button'][aria-disabled='true'] {
+    cursor: not-allowed;
   }
   html {
     font-size: 14px;

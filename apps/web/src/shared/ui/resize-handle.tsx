@@ -33,7 +33,7 @@ export function ResizeHandle({ onMouseDown, ariaLabel = 'Resize column' }: Resiz
       onClick={(e) => e.stopPropagation()}
     >
       <div
-        className="h-full w-[1.5px] bg-transparent group-hover:bg-slate-300 hover:!bg-[#0078d4] active:!bg-[#0078d4] transition-colors duration-150"
+        className="h-full w-[1.5px] bg-transparent transition-colors duration-150 group-hover:bg-slate-300 hover:!bg-primary active:!bg-primary"
         style={{ marginLeft: 4.5 }}
       />
     </div>

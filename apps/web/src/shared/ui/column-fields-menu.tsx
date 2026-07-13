@@ -13,7 +13,8 @@ interface ColumnFieldsMenuProps<K extends string> {
 
 const PANEL_BG = '#ffffff'
 const PANEL_BORDER = '#e1e1e1'
-const ACCENT = '#0078d4'
+// Brand navy primary (matches --primary in globals.css), not Fluent blue.
+const ACCENT = '#1d3f73'
 
 /**
  * "Show Fields" trigger button + dropdown panel: checkbox to toggle a
@@ -138,11 +139,7 @@ export function ColumnFieldsMenu<K extends string>({
                   borderRadius: 3,
                   fontSize: 12.5,
                   color: '#333333',
-                  background: isDropTarget
-                    ? '#f0f6fc'
-                    : isActive
-                      ? '#f3f3f3'
-                      : 'transparent',
+                  background: isDropTarget ? '#f0f6fc' : isActive ? '#f3f3f3' : 'transparent',
                   cursor: 'default',
                   opacity: isActive ? 0.4 : 1,
                   transition: 'background-color 0.12s ease, opacity 0.12s ease',
@@ -154,10 +151,10 @@ export function ColumnFieldsMenu<K extends string>({
                 {/* ── Drop indicator (horizontal blue line above the target) ── */}
                 {isDropTarget && (
                   <div
-                    className="absolute top-0 left-1 right-1 h-[2px] rounded-full z-10"
+                    className="absolute top-0 right-1 left-1 z-10 h-[2px] rounded-full"
                     style={{
                       backgroundColor: ACCENT,
-                      boxShadow: '0 0 6px rgba(0,120,212,0.45)',
+                      boxShadow: '0 0 6px rgba(29,63,115,0.45)',
                     }}
                   />
                 )}
@@ -165,12 +162,14 @@ export function ColumnFieldsMenu<K extends string>({
                 {/* ── Drag handle (only the handle is draggable, not the row) ── */}
                 <span
                   draggable
-                  onDragStart={(e: React.DragEvent<HTMLSpanElement>) => handleDragStart(col.key, e as unknown as React.DragEvent)}
+                  onDragStart={(e: React.DragEvent<HTMLSpanElement>) =>
+                    handleDragStart(col.key, e as unknown as React.DragEvent)
+                  }
                   onDragEnd={handleDragEnd}
                   tabIndex={0}
                   aria-label={`Drag to reorder ${col.label} column`}
                   role="button"
-                  className="cursor-grab active:cursor-grabbing shrink-0 flex items-center"
+                  className="flex shrink-0 cursor-grab items-center active:cursor-grabbing"
                 >
                   <GripVertical
                     size={13}

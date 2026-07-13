@@ -31,6 +31,8 @@ import { useProjectPermissions } from '@/features/access/api'
 import { useColumnLayout, type ColumnDef } from '@/shared/lib/hooks/use-column-layout'
 import { ResizeHandle } from '@/shared/ui/resize-handle'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
+import { StatusBadge as StatusPill } from '@/shared/ui/status-badge'
+import { RELEASE_STATUS_STYLE } from '@/features/releases/status-colors'
 import {
   useReleases,
   useCreateRelease,
@@ -69,25 +71,10 @@ const RELEASES_COLUMNS: ColumnDef<ColKey>[] = [
 
 const RELEASE_STATES: ReleaseStatus[] = ['planning', 'active', 'accepted']
 
-const STATUS_STYLE: Record<
-  ReleaseStatus,
-  { bg: string; text: string; border: string; label: string }
-> = {
-  planning: { bg: '#eef3fb', text: '#1d3f73', border: '#bdd0ef', label: 'Planning' },
-  active: { bg: '#fff7ed', text: '#92400e', border: '#fed7aa', label: 'Active' },
-  accepted: { bg: '#eaf5ed', text: '#1e6930', border: '#b9dec2', label: 'Accepted' },
-}
+const STATUS_STYLE = RELEASE_STATUS_STYLE
 
 function StatusBadge({ status }: { status: ReleaseStatus }) {
-  const s = STATUS_STYLE[status] ?? STATUS_STYLE.planning
-  return (
-    <span
-      className="inline-flex items-center rounded-sm px-1.5 py-px text-[11px] font-medium whitespace-nowrap"
-      style={{ backgroundColor: s.bg, color: s.text, border: `1px solid ${s.border}` }}
-    >
-      {s.label}
-    </span>
-  )
+  return <StatusPill style={STATUS_STYLE[status] ?? STATUS_STYLE.planning} />
 }
 
 // ── Create modal (P3-REL-FR-011/012: Type locked to Release) ─────────────
@@ -649,6 +636,7 @@ function ReleaseRow({
             key={release.name}
             defaultValue={release.name}
             onBlur={handleNameBlur}
+            aria-label="Release name"
             onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
             className="w-full rounded border-0 bg-transparent px-0.5 text-[11px] font-semibold focus:bg-white focus:ring-1 focus:outline-none"
             style={{ color: BRAND.textPrimary }}
@@ -671,6 +659,7 @@ function ReleaseRow({
             key={release.theme}
             defaultValue={release.theme ?? ''}
             onBlur={handleThemeBlur}
+            aria-label="Theme"
             placeholder="—"
             onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
             className="w-full rounded border-0 bg-transparent px-0.5 text-[11px] focus:bg-white focus:ring-1 focus:outline-none"
@@ -692,6 +681,7 @@ function ReleaseRow({
             key={release.version}
             defaultValue={release.version ?? ''}
             onBlur={handleVersionBlur}
+            aria-label="Version"
             placeholder="—"
             onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
             className="w-full rounded border-0 bg-transparent px-0.5 text-[11px] focus:bg-white focus:ring-1 focus:outline-none"
@@ -713,6 +703,7 @@ function ReleaseRow({
             type="date"
             defaultValue={release.startDate ?? ''}
             onBlur={handleStartDateBlur}
+            aria-label="Start date"
             className="w-full rounded border-0 bg-transparent px-0.5 text-[11px] focus:bg-white focus:ring-1 focus:outline-none"
             style={{ color: BRAND.textSecondary }}
           />
@@ -732,6 +723,7 @@ function ReleaseRow({
             type="date"
             defaultValue={release.releaseDate ?? ''}
             onBlur={handleReleaseDateBlur}
+            aria-label="Release date"
             className="w-full rounded border-0 bg-transparent px-0.5 text-[11px] focus:bg-white focus:ring-1 focus:outline-none"
             style={{ color: BRAND.textSecondary }}
           />
@@ -751,6 +743,7 @@ function ReleaseRow({
             key={release.plannedVelocity}
             defaultValue={release.plannedVelocity != null ? String(release.plannedVelocity) : ''}
             onBlur={handleVelocityBlur}
+            aria-label="Planned velocity"
             placeholder="—"
             onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
             className="w-full rounded border-0 bg-transparent px-0.5 text-right font-mono text-[11px] focus:bg-white focus:ring-1 focus:outline-none"
@@ -957,6 +950,7 @@ export function ReleasesPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search releases…"
+              aria-label="Search releases"
               className="h-7 rounded-md border pr-3 pl-7 text-[12px] placeholder:text-gray-400 focus:ring-2 focus:outline-none"
               style={{
                 borderColor: BRAND.border,
