@@ -208,7 +208,7 @@
     {
       "idx": 29,
       "version": "7",
-      "when": 1783000006000,
+      "when": 1783000006500,
       "tag": "0028_member_capacity",
       "breakpoints": true
     },
@@ -243,7 +243,7 @@
     {
       "idx": 34,
       "version": "7",
-      "when": 1783000010000,
+      "when": 1783000010500,
       "tag": "0033_release_daily_snapshots_p32",
       "breakpoints": true
     },
@@ -273,6 +273,13 @@
       "version": "7",
       "when": 1783400000000,
       "tag": "0037_drop_guest_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1783500000000,
+      "tag": "0038_backfill_member_capacity",
       "breakpoints": true
     }
   ]
