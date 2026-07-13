@@ -53,6 +53,12 @@ locals {
   region = "ap-southeast-1"
   azs    = ["ap-southeast-1a", "ap-southeast-1b", "ap-southeast-1c"]
 
+  # Public SPA/API hostname (Cloudflare-proxied). Single source of truth for the
+  # dev domain — referenced by CORS_ORIGINS, APP_BASE_URL, ENTRA_REDIRECT_URI,
+  # the S3 CORS allow-list and the Pages custom domain below.
+  app_domain   = "rally-dev.qnsc.vn"
+  app_base_url = "https://${local.app_domain}"
+
   kms_key_arn        = data.terraform_remote_state.shared.outputs.kms_key_arn
   cloudflare_zone_id = try(data.terraform_remote_state.shared.outputs.cloudflare_zone_id, "")
 
@@ -223,8 +229,8 @@ module "api" {
     { name = "PORT", value = "3000" },
     { name = "REDIS_URL", value = "redis://localhost:6379" }, # dev: Valkey sidecar
     { name = "AWS_REGION", value = local.region },
-    { name = "CORS_ORIGINS", value = "https://rally-dev.qnsc.vn" },
-    { name = "APP_BASE_URL", value = "https://rally-dev.qnsc.vn" },
+    { name = "CORS_ORIGINS", value = local.app_base_url },
+    { name = "APP_BASE_URL", value = local.app_base_url },
     # JWT config — defaults match app .env.example; override if needed
     { name = "JWT_ISSUER", value = "rally-api" },
     { name = "JWT_AUDIENCE", value = "rally-web" },
@@ -233,7 +239,7 @@ module "api" {
     # Microsoft Entra SSO (BFF) — all Entra vars are mandatory; the API fails to boot without them.
     { name = "ENTRA_TENANT_ID", value = var.entra_tenant_id },
     { name = "ENTRA_CLIENT_ID", value = var.entra_client_id },
-    { name = "ENTRA_REDIRECT_URI", value = "https://rally-dev.qnsc.vn/v1/bff/callback" },
+    { name = "ENTRA_REDIRECT_URI", value = "${local.app_base_url}/v1/bff/callback" },
     # Comma-separated emails auto-granted workspace_admin on every SSO login
     { name = "PLATFORM_ADMIN_EMAILS", value = "nghiavt18@qnsc.vn,quangld@qnsc.vn,hieuvbm@qnsc.vn,anhntn@qnsc.vn" },
     # Messaging — SQS queue URLs injected at deploy time from module outputs
@@ -310,7 +316,7 @@ module "worker" {
     # Entra SSO — the worker validates the shared env schema, so these are required to boot.
     { name = "ENTRA_TENANT_ID", value = var.entra_tenant_id },
     { name = "ENTRA_CLIENT_ID", value = var.entra_client_id },
-    { name = "ENTRA_REDIRECT_URI", value = "https://rally-dev.qnsc.vn/v1/bff/callback" },
+    { name = "ENTRA_REDIRECT_URI", value = "${local.app_base_url}/v1/bff/callback" },
     { name = "SQS_NOTIFICATIONS_URL", value = module.messaging.queue_urls["notifications"] },
     { name = "SQS_AUDIT_URL", value = module.messaging.queue_urls["audit"] },
     { name = "SQS_REPORTING_URL", value = module.messaging.queue_urls["reporting"] },
@@ -341,7 +347,7 @@ module "app_bucket" {
   cors_rules = [{
     allowed_headers = ["Content-Type", "Content-Disposition"]
     allowed_methods = ["PUT"]
-    allowed_origins = ["https://rally-dev.qnsc.vn", "http://localhost:5173"]
+    allowed_origins = [local.app_base_url, "http://localhost:5173"]
     expose_headers  = ["ETag"]
     max_age_seconds = 3600
   }]
@@ -403,7 +409,7 @@ module "web" {
   account_id  = var.cloudflare_account_id
   name        = "rally-develop-web"
   zone_id     = local.cloudflare_zone_id
-  domain      = local.cloudflare_zone_id != "" ? "rally-dev.qnsc.vn" : ""
+  domain      = local.cloudflare_zone_id != "" ? local.app_domain : ""
   record_name = local.cloudflare_zone_id != "" ? "rally-dev" : ""
   comment     = "rally-develop web SPA → Cloudflare Pages (managed by rally-infra develop)"
 
