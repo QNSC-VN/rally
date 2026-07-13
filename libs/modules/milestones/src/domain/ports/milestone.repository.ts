@@ -7,7 +7,7 @@ export interface IMilestoneRepository {
   findById(id: string): Promise<Milestone | null>;
   listByProject(
     projectId: string,
-    tenantId: string,
+    workspaceId: string,
     args: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<Milestone>>;
   create(input: CreateMilestoneInput): Promise<Milestone>;
@@ -18,7 +18,10 @@ export interface IMilestoneRepository {
   /** Get linked release IDs for a milestone. */
   getReleaseIds(milestoneId: string): Promise<string[]>;
   /** Derive target dates from linked releases. */
-  deriveTargetDates(releaseIds: string[], tenantId: string): Promise<{ startDate: string | null; endDate: string | null }>;
+  deriveTargetDates(
+    releaseIds: string[],
+    workspaceId: string,
+  ): Promise<{ startDate: string | null; endDate: string | null }>;
   // P3.3 — Multi-project/multi-team/artifact junction tables
   getProjectIds(milestoneId: string): Promise<string[]>;
   setProjectLinks(milestoneId: string, projectIds: string[]): Promise<void>;

@@ -51,14 +51,14 @@ import {
 /** Walk an error's `.cause` chain looking for a PG unique-violation (code 23505). */
 function isDuplicateKeyError(err: unknown): boolean {
   let current: unknown = err;
-  // eslint-disable-next-line no-constant-condition
+
   while (true) {
     if (current && typeof current === 'object' && 'code' in current) {
       const c = (current as Record<string, unknown>).code;
       if (c === '23505') return true;
     }
     if (current && typeof current === 'object' && 'cause' in current) {
-      current = (current as { cause: unknown }).cause;
+      current = current.cause;
     } else {
       return false;
     }
@@ -242,7 +242,11 @@ export class WorkItemsService {
     let lastErr: unknown;
 
     for (let attempt = 0; attempt < MAX_KEY_RETRIES; attempt++) {
-      const itemKey = await this.projectsService.generateItemKey(actor.workspaceId, projectId, type);
+      const itemKey = await this.projectsService.generateItemKey(
+        actor.workspaceId,
+        projectId,
+        type,
+      );
 
       try {
         workItem = await this.uow.run(async (tx) => {
@@ -327,7 +331,8 @@ export class WorkItemsService {
     if (workItem.assigneeId && workItem.assigneeId !== actor.sub) {
       autoWatchers.push(workItem.assigneeId);
     }
-    this.watcherRepo.watchMany(workItem.id, autoWatchers, actor.workspaceId)
+    this.watcherRepo
+      .watchMany(workItem.id, autoWatchers, actor.workspaceId)
       .catch((err: unknown) => {
         this.logger.warn(
           { err, workItemId: workItem.id, watchers: autoWatchers },
@@ -474,7 +479,8 @@ export class WorkItemsService {
     }
 
     const isTask = item.type === 'task';
-    const taskTransitioningToComplete = isTask && input.scheduleState === 'completed' && item.scheduleState !== 'completed';
+    const taskTransitioningToComplete =
+      isTask && input.scheduleState === 'completed' && item.scheduleState !== 'completed';
 
     // ── Auto-set To Do to 0 when a task is moved to Completed ──
     if (taskTransitioningToComplete) {
@@ -484,7 +490,12 @@ export class WorkItemsService {
     const entries = diffWorkItem(item, input, isTask);
 
     return this.uow.run(async (tx) => {
-      const updated = await this.workItemRepo.update(id, { ...input, updatedBy: actor.sub }, actor.workspaceId, tx);
+      const updated = await this.workItemRepo.update(
+        id,
+        { ...input, updatedBy: actor.sub },
+        actor.workspaceId,
+        tx,
+      );
 
       // Build all diff entries then flush in ONE multi-row INSERT — avoids N
       // sequential round-trips for edits that touch multiple fields at once.
@@ -499,10 +510,18 @@ export class WorkItemsService {
       // repo's update() re-fetches via this.db (pool), not the transaction tx,
       // so updated.scheduleState may still reflect the old state.
       if (taskTransitioningToComplete && item.parentId) {
-        const allDone = await this.workItemRepo.areAllTasksComplete(item.parentId, actor.workspaceId, tx);
+        const allDone = await this.workItemRepo.areAllTasksComplete(
+          item.parentId,
+          actor.workspaceId,
+          tx,
+        );
         if (allDone) {
           // Capture parent's old state before updating (use tx for consistency)
-          const parentBefore = await this.workItemRepo.findById(item.parentId, actor.workspaceId, tx);
+          const parentBefore = await this.workItemRepo.findById(
+            item.parentId,
+            actor.workspaceId,
+            tx,
+          );
           if (parentBefore && parentBefore.scheduleState !== 'completed') {
             await this.workItemRepo.update(
               item.parentId,
@@ -511,17 +530,23 @@ export class WorkItemsService {
               tx,
             );
             // Log the automatic parent state change
-            const freshParent = await this.workItemRepo.findById(item.parentId, actor.workspaceId, tx);
+            const freshParent = await this.workItemRepo.findById(
+              item.parentId,
+              actor.workspaceId,
+              tx,
+            );
             if (freshParent) {
               await this.activityRepo.appendMany(
-                [this.buildActivityInput(
-                  freshParent,
-                  'work_item',
-                  actor.sub,
-                  'work_item.schedule_state_changed',
-                  { field: 'scheduleState', old: parentBefore.scheduleState, new: 'completed' },
-                  { auto: true },
-                )],
+                [
+                  this.buildActivityInput(
+                    freshParent,
+                    'work_item',
+                    actor.sub,
+                    'work_item.schedule_state_changed',
+                    { field: 'scheduleState', old: parentBefore.scheduleState, new: 'completed' },
+                    { auto: true },
+                  ),
+                ],
                 tx,
               );
             }
@@ -870,10 +895,9 @@ export class WorkItemsService {
       description: input.description,
     });
     // Auto-watch the user who logs time so they receive future notifications.
-    this.watcherRepo.watch(workItemId, actor.sub, actor.workspaceId)
-      .catch((err: unknown) => {
-        this.logger.warn({ err, workItemId }, 'Auto-watch on time-log failed — proceeding');
-      });
+    this.watcherRepo.watch(workItemId, actor.sub, actor.workspaceId).catch((err: unknown) => {
+      this.logger.warn({ err, workItemId }, 'Auto-watch on time-log failed — proceeding');
+    });
     this.logger.log({ workItemId, logId: log.id, userId: actor.sub }, 'Time logged');
     return log;
   }
@@ -986,7 +1010,11 @@ export class WorkItemsService {
       storageKey,
     });
 
-    const { uploadUrl } = await this.storageService.presignPut(storageKey, input.mimeType, input.sizeBytes);
+    const { uploadUrl } = await this.storageService.presignPut(
+      storageKey,
+      input.mimeType,
+      input.sizeBytes,
+    );
     return { attachmentId: id, uploadUrl };
   }
 
@@ -1042,7 +1070,10 @@ export class WorkItemsService {
       changes: null,
       metadata: { filename: attachment.filename },
     });
-    this.logger.log({ workItemId, attachmentId, filename: attachment.filename }, 'Attachment confirmed');
+    this.logger.log(
+      { workItemId, attachmentId, filename: attachment.filename },
+      'Attachment confirmed',
+    );
     return confirmed;
   }
 
@@ -1070,7 +1101,11 @@ export class WorkItemsService {
   }
 
   @Span('work-items.delete-attachment')
-  async deleteAttachment(actor: JwtPayload, workItemId: string, attachmentId: string): Promise<void> {
+  async deleteAttachment(
+    actor: JwtPayload,
+    workItemId: string,
+    attachmentId: string,
+  ): Promise<void> {
     const item = await this.getWorkItem(actor.workspaceId, workItemId);
 
     const attachment = await this.attachmentRepo.findById(attachmentId, actor.workspaceId);
@@ -1102,6 +1137,9 @@ export class WorkItemsService {
       changes: null,
       metadata: { filename: attachment.filename },
     });
-    this.logger.log({ workItemId, attachmentId, filename: attachment.filename }, 'Attachment deleted');
+    this.logger.log(
+      { workItemId, attachmentId, filename: attachment.filename },
+      'Attachment deleted',
+    );
   }
 }

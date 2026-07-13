@@ -6,7 +6,7 @@ import { and, eq, isNull, sql, inArray } from 'drizzle-orm';
 import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
 import { PERMISSION } from '@shared-kernel';
-import { workItems, milestones, milestoneReleases, releases, milestoneArtifacts } from '../../../../../db/schema/work';
+import { workItems, milestones, milestoneReleases, releases } from '../../../../../db/schema/work';
 import { IMilestoneRepository, MILESTONE_REPOSITORY } from '../domain/ports/milestone.repository';
 import type { Milestone, MilestoneStatus, UpdateMilestoneInput } from '../domain/milestone.types';
 
@@ -53,8 +53,8 @@ export class MilestonesService {
     projectId: string,
     args: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<Milestone & { progress?: MilestoneProgress }>> {
-    await this.projectsService.getProject(actor.tenantId, projectId);
-    const page = await this.milestoneRepo.listByProject(projectId, actor.tenantId, args);
+    await this.projectsService.getProject(actor.workspaceId, projectId);
+    const page = await this.milestoneRepo.listByProject(projectId, actor.workspaceId, args);
 
     const progressByMilestone = await this.computeProgressBatch(page.data);
     return {
@@ -69,7 +69,7 @@ export class MilestonesService {
    * Recompute targetStartDate / targetEndDate from linked releases and
    * persist the result.  If no releases are linked, sets both to null.
    */
-  private async recalcTargetDates(milestoneId: string, tenantId: string): Promise<void> {
+  private async recalcTargetDates(milestoneId: string, workspaceId: string): Promise<void> {
     const result = await this.db
       .select({
         startDate: sql<string | null>`MIN(${releases.startDate})`,
@@ -78,10 +78,7 @@ export class MilestonesService {
       .from(milestoneReleases)
       .innerJoin(releases, eq(milestoneReleases.releaseId, releases.id))
       .where(
-        and(
-          eq(milestoneReleases.milestoneId, milestoneId),
-          eq(releases.workspaceId, tenantId),
-        ),
+        and(eq(milestoneReleases.milestoneId, milestoneId), eq(releases.workspaceId, workspaceId)),
       );
 
     const { startDate, endDate } = result[0] ?? { startDate: null, endDate: null };
@@ -98,15 +95,25 @@ export class MilestonesService {
     actor: JwtPayload,
     projectId: string,
     name: string,
-    opts: { description?: string; notes?: string; status?: string; ownerId?: string; targetStartDate?: string; targetEndDate?: string; releaseIds?: string[]; projectIds?: string[]; teamIds?: string[] } = {},
+    opts: {
+      description?: string;
+      notes?: string;
+      status?: string;
+      ownerId?: string;
+      targetStartDate?: string;
+      targetEndDate?: string;
+      releaseIds?: string[];
+      projectIds?: string[];
+      teamIds?: string[];
+    } = {},
   ): Promise<Milestone> {
-    await this.projectsService.getProject(actor.tenantId, projectId);
+    await this.projectsService.getProject(actor.workspaceId, projectId);
 
     const releaseIds = opts.releaseIds ?? [];
 
     const milestone = await this.milestoneRepo.create({
       id: uuidv7(),
-      tenantId: actor.tenantId,
+      workspaceId: actor.workspaceId,
       projectId,
       name,
       description: opts.description,
@@ -129,23 +136,29 @@ export class MilestonesService {
     }
 
     // Always derive target dates from linked releases (read-only computed fields)
-    await this.recalcTargetDates(milestone.id, actor.tenantId);
+    await this.recalcTargetDates(milestone.id, actor.workspaceId);
 
     const final = await this.milestoneRepo.findById(milestone.id);
-    this.logger.log({ milestoneId: milestone.id, projectId, userId: actor.sub }, 'Milestone created');
+    this.logger.log(
+      { milestoneId: milestone.id, projectId, userId: actor.sub },
+      'Milestone created',
+    );
     return final!;
   }
 
   // ── Get ───────────────────────────────────────────────────────────────────
 
-  async getMilestone(tenantId: string, id: string): Promise<Milestone & { progress?: MilestoneProgress }> {
+  async getMilestone(
+    workspaceId: string,
+    id: string,
+  ): Promise<Milestone & { progress?: MilestoneProgress }> {
     const milestone = await this.milestoneRepo.findById(id);
-    if (!milestone || milestone.tenantId !== tenantId) {
+    if (!milestone || milestone.workspaceId !== workspaceId) {
       throw new NotFoundException('MILESTONE_NOT_FOUND', 'Milestone not found');
     }
 
     // Ensure target dates are always derived from linked releases
-    await this.recalcTargetDates(id, tenantId);
+    await this.recalcTargetDates(id, workspaceId);
     const refreshed = await this.milestoneRepo.findById(id);
 
     // Compute progress from work items linked to this milestone's releases
@@ -202,7 +215,9 @@ export class MilestonesService {
       )
       .groupBy(workItems.releaseId);
 
-    return new Map(stats.filter((s) => s.releaseId !== null).map((s) => [s.releaseId as string, s]));
+    return new Map(
+      stats.filter((s) => s.releaseId !== null).map((s) => [s.releaseId as string, s]),
+    );
   }
 
   private aggregateProgress(
@@ -224,18 +239,29 @@ export class MilestonesService {
       completedPoints += Number(s.completedPoints);
     }
 
-    const progressPercent = totalPoints > 0
-      ? Math.min(Math.round((completedPoints / totalPoints) * 100), 100)
-      : (totalItems > 0 && completedItems === totalItems ? 100 : 0);
+    const progressPercent =
+      totalPoints > 0
+        ? Math.min(Math.round((completedPoints / totalPoints) * 100), 100)
+        : totalItems > 0 && completedItems === totalItems
+          ? 100
+          : 0;
 
     return { totalItems, completedItems, totalPoints, completedPoints, progressPercent };
   }
 
   // ── Update ────────────────────────────────────────────────────────────────
 
-  async updateMilestone(actor: JwtPayload, id: string, input: UpdateMilestoneInput): Promise<Milestone> {
-    const milestone = await this.getMilestone(actor.tenantId, id);
-    await this.accessService.assertProjectPermission(actor, milestone.projectId, PERMISSION.MILESTONE_MANAGE);
+  async updateMilestone(
+    actor: JwtPayload,
+    id: string,
+    input: UpdateMilestoneInput,
+  ): Promise<Milestone> {
+    const milestone = await this.getMilestone(actor.workspaceId, id);
+    await this.accessService.assertProjectPermission(
+      actor,
+      milestone.projectId,
+      PERMISSION.MILESTONE_MANAGE,
+    );
 
     // Validate status transition
     if (input.status && input.status !== milestone.status) {
@@ -250,7 +276,7 @@ export class MilestonesService {
     // If releaseIds changed, always recalculate target dates from releases
     if (input.releaseIds !== undefined) {
       await this.milestoneRepo.setReleaseLinks(id, input.releaseIds);
-      await this.recalcTargetDates(id, actor.tenantId);
+      await this.recalcTargetDates(id, actor.workspaceId);
     }
     if (input.projectIds !== undefined) {
       await this.milestoneRepo.setProjectLinks(id, input.projectIds);
@@ -274,11 +300,8 @@ export class MilestonesService {
 
   // ── Artifact management (P3.3) ──────────────────────────────────────
 
-  async getMilestoneArtifacts(
-    actor: JwtPayload,
-    milestoneId: string,
-  ): Promise<string[]> {
-    await this.getMilestone(actor.tenantId, milestoneId);
+  async getMilestoneArtifacts(actor: JwtPayload, milestoneId: string): Promise<string[]> {
+    await this.getMilestone(actor.workspaceId, milestoneId);
     return this.milestoneRepo.getArtifactIds(milestoneId);
   }
 
@@ -287,17 +310,18 @@ export class MilestonesService {
     milestoneId: string,
     workItemIds: string[],
   ): Promise<string[]> {
-    const milestone = await this.getMilestone(actor.tenantId, milestoneId);
-    await this.accessService.assertProjectPermission(actor, milestone.projectId, PERMISSION.MILESTONE_MANAGE);
+    const milestone = await this.getMilestone(actor.workspaceId, milestoneId);
+    await this.accessService.assertProjectPermission(
+      actor,
+      milestone.projectId,
+      PERMISSION.MILESTONE_MANAGE,
+    );
     await this.milestoneRepo.setArtifactLinks(milestoneId, workItemIds);
     return this.milestoneRepo.getArtifactIds(milestoneId);
   }
 
-  async getMilestoneProjects(
-    actor: JwtPayload,
-    milestoneId: string,
-  ): Promise<string[]> {
-    await this.getMilestone(actor.tenantId, milestoneId);
+  async getMilestoneProjects(actor: JwtPayload, milestoneId: string): Promise<string[]> {
+    await this.getMilestone(actor.workspaceId, milestoneId);
     return this.milestoneRepo.getProjectIds(milestoneId);
   }
 
@@ -306,17 +330,18 @@ export class MilestonesService {
     milestoneId: string,
     projectIds: string[],
   ): Promise<string[]> {
-    const milestone = await this.getMilestone(actor.tenantId, milestoneId);
-    await this.accessService.assertProjectPermission(actor, milestone.projectId, PERMISSION.MILESTONE_MANAGE);
+    const milestone = await this.getMilestone(actor.workspaceId, milestoneId);
+    await this.accessService.assertProjectPermission(
+      actor,
+      milestone.projectId,
+      PERMISSION.MILESTONE_MANAGE,
+    );
     await this.milestoneRepo.setProjectLinks(milestoneId, projectIds);
     return this.milestoneRepo.getProjectIds(milestoneId);
   }
 
-  async getMilestoneTeams(
-    actor: JwtPayload,
-    milestoneId: string,
-  ): Promise<string[]> {
-    await this.getMilestone(actor.tenantId, milestoneId);
+  async getMilestoneTeams(actor: JwtPayload, milestoneId: string): Promise<string[]> {
+    await this.getMilestone(actor.workspaceId, milestoneId);
     return this.milestoneRepo.getTeamIds(milestoneId);
   }
 
@@ -325,8 +350,12 @@ export class MilestonesService {
     milestoneId: string,
     teamIds: string[],
   ): Promise<string[]> {
-    const milestone = await this.getMilestone(actor.tenantId, milestoneId);
-    await this.accessService.assertProjectPermission(actor, milestone.projectId, PERMISSION.MILESTONE_MANAGE);
+    const milestone = await this.getMilestone(actor.workspaceId, milestoneId);
+    await this.accessService.assertProjectPermission(
+      actor,
+      milestone.projectId,
+      PERMISSION.MILESTONE_MANAGE,
+    );
     await this.milestoneRepo.setTeamLinks(milestoneId, teamIds);
     return this.milestoneRepo.getTeamIds(milestoneId);
   }
@@ -334,8 +363,12 @@ export class MilestonesService {
   // ── Delete ────────────────────────────────────────────────────────────────
 
   async deleteMilestone(actor: JwtPayload, id: string): Promise<void> {
-    const milestone = await this.getMilestone(actor.tenantId, id);
-    await this.accessService.assertProjectPermission(actor, milestone.projectId, PERMISSION.MILESTONE_MANAGE);
+    const milestone = await this.getMilestone(actor.workspaceId, id);
+    await this.accessService.assertProjectPermission(
+      actor,
+      milestone.projectId,
+      PERMISSION.MILESTONE_MANAGE,
+    );
     await this.milestoneRepo.delete(id);
     this.logger.log({ milestoneId: id }, 'Milestone deleted');
   }

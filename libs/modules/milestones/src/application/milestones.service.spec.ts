@@ -13,7 +13,7 @@ const now = new Date('2024-06-01');
 
 const actor = {
   sub: 'user-1',
-  tenantId: 'ws-1',
+  workspaceId: 'ws-1',
   sessionId: 's1',
   jti: 'j1',
   iat: 0,
@@ -26,7 +26,7 @@ const actor = {
 
 const mockMilestone = (o: Partial<Milestone> = {}): Milestone => ({
   id: 'ms-1',
-  tenantId: 'ws-1',
+  workspaceId: 'ws-1',
   projectId: 'proj-1',
   name: 'MVP Launch',
   description: null,
@@ -49,14 +49,14 @@ const emptyPage = {
 // ── Mock factories ────────────────────────────────────────────────────────────
 
 const makeRepo = () => ({
-  findById: vi.fn(),
+  findById: vi.fn().mockResolvedValue(mockMilestone()),
   listByProject: vi.fn().mockResolvedValue(emptyPage),
-  create: vi.fn().mockImplementation((input) =>
-    Promise.resolve(mockMilestone(input)),
-  ),
-  update: vi.fn().mockImplementation((id, patch) =>
-    Promise.resolve(mockMilestone({ id, ...patch, releaseIds: [] })),
-  ),
+  create: vi.fn().mockImplementation((input) => Promise.resolve(mockMilestone(input))),
+  update: vi
+    .fn()
+    .mockImplementation((id, patch) =>
+      Promise.resolve(mockMilestone({ id, ...patch, releaseIds: [] })),
+    ),
   delete: vi.fn().mockResolvedValue(undefined),
   setReleaseLinks: vi.fn().mockResolvedValue(undefined),
   getReleaseIds: vi.fn().mockResolvedValue([]),
@@ -64,6 +64,12 @@ const makeRepo = () => ({
     startDate: '2024-06-01',
     endDate: '2024-08-01',
   }),
+  getProjectIds: vi.fn().mockResolvedValue([]),
+  setProjectLinks: vi.fn().mockResolvedValue(undefined),
+  getTeamIds: vi.fn().mockResolvedValue([]),
+  setTeamLinks: vi.fn().mockResolvedValue(undefined),
+  getArtifactIds: vi.fn().mockResolvedValue([]),
+  setArtifactLinks: vi.fn().mockResolvedValue(undefined),
 });
 
 const makeProjects = () => ({
@@ -74,43 +80,36 @@ const makeAccess = () => ({
   assertProjectPermission: vi.fn().mockResolvedValue(undefined),
 });
 
-/** Flexible mock DB that chains any method and resolves to a configurable value. */
-const makeDb = (overrides?: { selectResult?: unknown[]; updateResult?: unknown }) => {
-  const self: Record<string, any> = {
-    // Drizzle select chain – every unknown method returns `self` for chaining
-  };
+/**
+ * Flexible mock DB. The root object is deliberately NOT thenable — Nest's DI
+ * awaits thenable useValue providers, which would unwrap the mock into its
+ * resolved value and leave the service without a `.select`. Only the query
+ * chain returned by `select()`/`update()` is awaitable.
+ */
+const makeChain = (result: unknown) => {
+  const chain: Record<string, unknown> = {};
   for (const key of [
-    'select', 'from', 'where', 'groupBy', 'innerJoin',
-    'update', 'set', 'limit', 'orderBy',
+    'from',
+    'where',
+    'groupBy',
+    'innerJoin',
+    'leftJoin',
+    'set',
+    'limit',
+    'orderBy',
+    'returning',
   ]) {
-    self[key] = vi.fn().mockReturnValue(self);
+    chain[key] = vi.fn().mockReturnValue(chain);
   }
-  // `.returning()` also returns self (used by repo, not service)
-  self.returning = vi.fn().mockImplementation(() => self);
-
-  // Make the chain thenable so `await db.select()…` works
-  self.then = vi.fn().mockImplementation(function (
-    this: typeof self,
-    resolve: (v: unknown) => void,
-  ) {
-    resolve(overrides?.selectResult ?? []);
-  });
-
-  // For `db.update(...).set(...).where(...)` we also need thenable behavior
-  const updateSelf: Record<string, any> = {};
-  for (const key of ['set', 'where', 'returning']) {
-    updateSelf[key] = vi.fn().mockReturnValue(updateSelf);
-  }
-  updateSelf.then = vi.fn().mockImplementation(function (
-    this: typeof updateSelf,
-    resolve: (v: unknown) => void,
-  ) {
-    resolve(overrides?.updateResult ?? undefined);
-  });
-  self.update = vi.fn().mockReturnValue(updateSelf);
-
-  return self;
+  // Awaitable terminal: any point in the chain resolves to `result`.
+  chain.then = (resolve: (v: unknown) => void) => resolve(result);
+  return chain;
 };
+
+const makeDb = (overrides?: { selectResult?: unknown[]; updateResult?: unknown }) => ({
+  select: vi.fn(() => makeChain(overrides?.selectResult ?? [])),
+  update: vi.fn(() => makeChain(overrides?.updateResult ?? undefined)),
+});
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
@@ -161,17 +160,13 @@ describe('MilestonesService', () => {
   describe('createMilestone', () => {
     it('creates with default planned status', async () => {
       const result = await service.createMilestone(actor, 'proj-1', 'MVP');
-      expect(repo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ status: 'planned' }),
-      );
+      expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ status: 'planned' }));
       expect(result.status).toBe('planned');
     });
 
     it('uses provided status when given', async () => {
       await service.createMilestone(actor, 'proj-1', 'MVP', { status: 'active' });
-      expect(repo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ status: 'active' }),
-      );
+      expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ status: 'active' }));
     });
 
     it('calls recalcTargetDates via DB when releases are linked', async () => {
@@ -179,21 +174,21 @@ describe('MilestonesService', () => {
 
       // recalcTargetDates does: db.select().from().innerJoin().where() => aggregates
       // then db.update().set().where() to persist
-      const result = await service.createMilestone(actor, 'proj-1', 'MVP', {
+      await service.createMilestone(actor, 'proj-1', 'MVP', {
         releaseIds,
       });
 
       expect(repo.setReleaseLinks).toHaveBeenCalledWith(expect.any(String), releaseIds);
       // recalcTargetDates uses db.select (the select chain is thenable)
       expect(db.select).toHaveBeenCalled();
-      // Also calls findById again after recalc to get final values
-      expect(repo.findById).toHaveBeenCalledTimes(2); // once for internal, once after recalc
+      // create fetches the final row once, after links + recalc
+      expect(repo.findById).toHaveBeenCalledTimes(1);
     });
 
     it('sets null target dates when no releases linked', async () => {
       // When no releases, recalcTargetDates still runs but the aggregate query
       // returns empty array → dates become null
-      const result = await service.createMilestone(actor, 'proj-1', 'MVP', {
+      await service.createMilestone(actor, 'proj-1', 'MVP', {
         releaseIds: [],
       });
 
@@ -205,7 +200,7 @@ describe('MilestonesService', () => {
     it('ignores manual target dates — always derives from releases', async () => {
       const releaseIds = ['rel-1', 'rel-2'];
 
-      const result = await service.createMilestone(actor, 'proj-1', 'MVP', {
+      await service.createMilestone(actor, 'proj-1', 'MVP', {
         releaseIds,
         targetStartDate: '2024-05-01',
         targetEndDate: '2024-12-31',
@@ -224,9 +219,9 @@ describe('MilestonesService', () => {
 
     it('validates project exists before creating', async () => {
       projects.getProject.mockRejectedValue(new Error('PROJECT_NOT_FOUND'));
-      await expect(
-        service.createMilestone(actor, 'bad', 'MVP'),
-      ).rejects.toThrow('PROJECT_NOT_FOUND');
+      await expect(service.createMilestone(actor, 'bad', 'MVP')).rejects.toThrow(
+        'PROJECT_NOT_FOUND',
+      );
       expect(repo.create).not.toHaveBeenCalled();
     });
   });
@@ -246,7 +241,7 @@ describe('MilestonesService', () => {
     });
 
     it('throws when milestone belongs to different workspace', async () => {
-      repo.findById.mockResolvedValue(mockMilestone({ tenantId: 'other-ws' }));
+      repo.findById.mockResolvedValue(mockMilestone({ workspaceId: 'other-ws' }));
       await expect(service.getMilestone('ws-1', 'ms-1')).rejects.toThrow(NotFoundException);
     });
 
@@ -267,7 +262,9 @@ describe('MilestonesService', () => {
       repo.findById.mockResolvedValue(mockMilestone());
       await service.updateMilestone(actor, 'ms-1', { name: 'Renamed' });
       expect(access.assertProjectPermission).toHaveBeenCalledWith(
-        actor, 'proj-1', expect.any(String),
+        actor,
+        'proj-1',
+        expect.any(String),
       );
     });
 
@@ -275,7 +272,7 @@ describe('MilestonesService', () => {
       repo.findById.mockResolvedValue(mockMilestone());
       repo.getReleaseIds.mockResolvedValue(['rel-new']);
 
-      const result = await service.updateMilestone(actor, 'ms-1', {
+      await service.updateMilestone(actor, 'ms-1', {
         releaseIds: ['rel-new'],
       });
 
@@ -292,7 +289,7 @@ describe('MilestonesService', () => {
         }),
       );
 
-      const result = await service.updateMilestone(actor, 'ms-1', {
+      await service.updateMilestone(actor, 'ms-1', {
         releaseIds: [],
       });
 
@@ -320,9 +317,9 @@ describe('MilestonesService', () => {
 
     it('throws NotFoundException when milestone not found', async () => {
       repo.findById.mockResolvedValue(null);
-      await expect(
-        service.updateMilestone(actor, 'bad', { name: 'X' }),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.updateMilestone(actor, 'bad', { name: 'X' })).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('strips targetStartDate/targetEndDate from input even when provided', async () => {
@@ -368,11 +365,10 @@ describe('MilestonesService', () => {
   // ── deleteMilestone ──────────────────────────────────────────────────────
 
   describe('deleteMilestone', () => {
-    it('cleans up release links before deleting', async () => {
+    it('deletes the milestone (link rows drop via DB cascade)', async () => {
       repo.findById.mockResolvedValue(mockMilestone());
       await service.deleteMilestone(actor, 'ms-1');
 
-      expect(repo.setReleaseLinks).toHaveBeenCalledWith('ms-1', []);
       expect(repo.delete).toHaveBeenCalledWith('ms-1');
     });
 

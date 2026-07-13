@@ -81,15 +81,17 @@ export const projects = workSchema.table(
 // Per-project, per-type sequential counter. Composite PK (projectId, itemType)
 // ensures each work-item type has its own numbering sequence.
 
-export const projectCounters = workSchema.table('project_counters', {
-  projectId: uuid('project_id').notNull(),
-  itemType: workItemTypeEnum('item_type').notNull().default('story'),
-  workspaceId: uuid('workspace_id').notNull(),
-  lastItemNumber: integer('last_item_number').notNull().default(0),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => [
-  { pk: primaryKey({ columns: [table.projectId, table.itemType] }) },
-]);
+export const projectCounters = workSchema.table(
+  'project_counters',
+  {
+    projectId: uuid('project_id').notNull(),
+    itemType: workItemTypeEnum('item_type').notNull().default('story'),
+    workspaceId: uuid('workspace_id').notNull(),
+    lastItemNumber: integer('last_item_number').notNull().default(0),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [{ pk: primaryKey({ columns: [table.projectId, table.itemType] }) }],
+);
 
 // ── work_items ────────────────────────────────────────────────────────────
 
@@ -127,7 +129,9 @@ export const workItems = workSchema.table(
     // P3.4 — Defect-specific fields (only meaningful when type = 'defect')
     severity: defectSeverityEnum('severity'),
     foundInEnvironment: defectEnvironmentEnum('found_in_environment'),
-    foundInReleaseId: uuid('found_in_release_id').references(() => releases.id, { onDelete: 'set null' }),
+    foundInReleaseId: uuid('found_in_release_id').references(() => releases.id, {
+      onDelete: 'set null',
+    }),
     // P3.4 — Root cause and resolution (only meaningful when type = 'defect')
     rootCause: defectRootCauseEnum('root_cause'),
     resolution: defectResolutionEnum('resolution'),
@@ -169,7 +173,9 @@ export const workItems = workSchema.table(
     blockedIdx: index('ix_wi_blocked')
       .on(t.workspaceId, t.isBlocked)
       .where(sql`is_blocked = true`),
-    ftsIdx: index('ix_wi_fts').on(t.searchVector).where(sql`deleted_at IS NULL`),
+    ftsIdx: index('ix_wi_fts')
+      .on(t.searchVector)
+      .where(sql`deleted_at IS NULL`),
   }),
 );
 
@@ -524,7 +530,9 @@ export const timeLogs = workSchema.table(
   },
   (t) => ({
     workspaceIdx: index('ix_tl_workspace').on(t.workspaceId),
-    workItemIdx: index('ix_tl_work_item').on(t.workItemId).where(sql`deleted_at IS NULL`),
+    workItemIdx: index('ix_tl_work_item')
+      .on(t.workItemId)
+      .where(sql`deleted_at IS NULL`),
     userIdx: index('ix_tl_user').on(t.userId, t.loggedDate),
   }),
 );
@@ -579,7 +587,9 @@ export const tasks = workSchema.table(
     id: uuid('id').primaryKey().defaultRandom(),
     workspaceId: uuid('workspace_id').notNull(),
     projectId: uuid('project_id').notNull(),
-    parentId: uuid('parent_id').notNull().references(() => workItems.id, { onDelete: 'cascade' }),
+    parentId: uuid('parent_id')
+      .notNull()
+      .references(() => workItems.id, { onDelete: 'cascade' }),
     title: varchar('title', { length: 500 }).notNull(),
     description: text('description'),
     state: taskStateEnum('state').notNull().default('defined'),
@@ -615,7 +625,7 @@ export const milestones = workSchema.table(
   'milestones',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    tenantId: uuid('workspace_id').notNull(),
+    workspaceId: uuid('workspace_id').notNull(),
     projectId: uuid('project_id').notNull(),
     name: varchar('name', { length: 255 }).notNull(),
     description: text('description'),
@@ -628,7 +638,7 @@ export const milestones = workSchema.table(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    tenantIdx: index('ix_milestones_tenant').on(t.tenantId),
+    workspaceIdx: index('ix_milestones_workspace').on(t.workspaceId),
     projectIdx: index('ix_milestones_project').on(t.projectId),
   }),
 );
@@ -684,7 +694,9 @@ export const milestoneArtifacts = workSchema.table(
   'milestone_artifacts',
   {
     milestoneId: uuid('milestone_id').notNull(),
-    workItemId: uuid('work_item_id').notNull().references(() => workItems.id, { onDelete: 'cascade' }),
+    workItemId: uuid('work_item_id')
+      .notNull()
+      .references(() => workItems.id, { onDelete: 'cascade' }),
     assignedAt: timestamp('assigned_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -710,7 +722,12 @@ export const memberCapacity = workSchema.table(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    uniqueMember: uniqueIndex('uq_member_capacity').on(t.projectId, t.teamId, t.iterationId, t.userId),
+    uniqueMember: uniqueIndex('uq_member_capacity').on(
+      t.projectId,
+      t.teamId,
+      t.iterationId,
+      t.userId,
+    ),
     workspaceIdx: index('ix_mc_workspace').on(t.workspaceId),
     iterationIdx: index('ix_mc_iteration').on(t.iterationId),
     userIdx: index('ix_mc_user').on(t.userId),

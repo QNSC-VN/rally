@@ -4,7 +4,10 @@ import { PERMISSION } from '@shared-kernel';
 import { AccessService } from '@modules/access';
 import { IterationsService } from '@modules/iterations';
 import { WorkItemsService, type UpdateWorkItemInput } from '@modules/work-items';
-import { ITeamStatusRepository, TEAM_STATUS_REPOSITORY } from '../domain/ports/team-status.repository';
+import {
+  ITeamStatusRepository,
+  TEAM_STATUS_REPOSITORY,
+} from '../domain/ports/team-status.repository';
 import type {
   TeamStatusResponse,
   TeamStatusMemberGroup,
@@ -56,13 +59,13 @@ export class TeamStatusService {
     iterationId: string,
   ): Promise<TeamStatusResponse> {
     // Validate iteration exists and belongs to the project.
-    const iteration = await this.iterationsService.getIteration(actor.tenantId, iterationId);
+    const iteration = await this.iterationsService.getIteration(actor.workspaceId, iterationId);
     if (iteration.projectId !== projectId) {
       throw new BadRequestException('Iteration does not belong to this project');
     }
 
     // Fetch raw task rows (type=task, assigned to this iteration).
-    const rows = await this.repo.getTaskRows(iterationId, actor.tenantId, teamId);
+    const rows = await this.repo.getTaskRows(iterationId, actor.workspaceId, teamId);
 
     // Group by assigneeId.
     const groupMap = new Map<string, TeamStatusTaskRow[]>();
@@ -75,9 +78,10 @@ export class TeamStatusService {
 
     // Fetch capacities for all assigned users.
     const userIds = [...groupMap.keys()].filter((id) => id !== 'unassigned');
-    const capacities = userIds.length > 0
-      ? await this.repo.getCapacities(iterationId, userIds)
-      : new Map<string, number>();
+    const capacities =
+      userIds.length > 0
+        ? await this.repo.getCapacities(iterationId, userIds)
+        : new Map<string, number>();
 
     // Build member groups.
     const groups: TeamStatusMemberGroup[] = [];
@@ -91,9 +95,7 @@ export class TeamStatusService {
       const taskEstimate = tasks.reduce((s, t) => s + t.estimateHours, 0);
       const taskTodo = tasks.reduce((s, t) => s + t.todoHours, 0);
       const taskActual = tasks.reduce((s, t) => s + t.actualHours, 0);
-      const progress = capacity > 0
-        ? Math.round((taskEstimate / capacity) * 100)
-        : 0;
+      const progress = capacity > 0 ? Math.round((taskEstimate / capacity) * 100) : 0;
 
       groups.push({
         owner: {
@@ -159,7 +161,10 @@ export class TeamStatusService {
     // Resolve teamId from iteration when not provided (e.g. "All teams" view)
     let teamId = input.teamId;
     if (!teamId) {
-      const iteration = await this.iterationsService.getIteration(actor.tenantId, input.iterationId);
+      const iteration = await this.iterationsService.getIteration(
+        actor.workspaceId,
+        input.iterationId,
+      );
       teamId = iteration.teamId ?? undefined;
       if (!teamId) {
         throw new BadRequestException(
@@ -169,7 +174,7 @@ export class TeamStatusService {
     }
 
     return this.repo.upsertCapacity({
-      tenantId: actor.tenantId,
+      workspaceId: actor.workspaceId,
       projectId: input.projectId,
       teamId,
       iterationId: input.iterationId,
@@ -196,7 +201,7 @@ export class TeamStatusService {
     workProduct?: { id: string; key: string; status: string };
   }> {
     // Look up the task to get its projectId for permission check.
-    const task = await this.workItemsService.getWorkItem(actor.tenantId, taskId);
+    const task = await this.workItemsService.getWorkItem(actor.workspaceId, taskId);
     await this.assertEditPermission(actor, task.projectId);
 
     const updateInput: UpdateWorkItemInput = {};
@@ -210,9 +215,9 @@ export class TeamStatusService {
     if (input.state !== undefined) {
       // Map Team Status state to task_state enum
       const stateMap: Record<TeamTaskState, string> = {
-        'Defined': 'defined',
+        Defined: 'defined',
         'In-Progress': 'in_progress',
-        'Completed': 'completed',
+        Completed: 'completed',
       };
       updateInput.scheduleState = stateMap[input.state] as 'defined' | 'in_progress' | 'completed';
     }
@@ -286,9 +291,7 @@ export class TeamStatusService {
         title: row.parentTitle ?? '',
         status: row.parentScheduleState ?? '',
       },
-      release: row.releaseId
-        ? { id: row.releaseId, name: row.releaseName ?? '' }
-        : null,
+      release: row.releaseId ? { id: row.releaseId, name: row.releaseName ?? '' } : null,
       state: STATE_NORMALIZE[row.scheduleState] ?? 'Defined',
       estimateHours: Number(row.estimateHours ?? 0),
       todoHours: Number(row.todoHours ?? 0),
@@ -303,10 +306,6 @@ export class TeamStatusService {
   }
 
   private async assertEditPermission(actor: JwtPayload, projectId: string) {
-    await this.accessService.assertProjectPermission(
-      actor,
-      projectId,
-      PERMISSION.TEAM_STATUS_EDIT,
-    );
+    await this.accessService.assertProjectPermission(actor, projectId, PERMISSION.TEAM_STATUS_EDIT);
   }
 }

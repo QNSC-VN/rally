@@ -17,14 +17,18 @@ import type { JwtPayload, PagedResult } from '@platform';
 import { CurrentUser } from '@modules/identity';
 import { RequireProjectPermission, AuthProjectScoped } from '@modules/access';
 import { MilestonesService, type MilestoneProgress } from '../../application/milestones.service';
-import { MilestoneQueryDto, CreateMilestoneDto, UpdateMilestoneDto } from './dto/milestone-request.dto';
+import {
+  MilestoneQueryDto,
+  CreateMilestoneDto,
+  UpdateMilestoneDto,
+} from './dto/milestone-request.dto';
 import { MilestoneResponseDto, MilestoneListItemDto } from './dto/milestone-response.dto';
 import type { Milestone } from '../../domain/milestone.types';
 
 function toMilestoneDto(m: Milestone & { progress?: MilestoneProgress }): MilestoneResponseDto {
   return {
     id: m.id,
-    tenantId: m.tenantId,
+    workspaceId: m.workspaceId,
     projectId: m.projectId,
     name: m.name,
     description: m.description,
@@ -93,7 +97,7 @@ export class MilestonesController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<MilestoneResponseDto> {
-    const milestone = await this.milestonesService.getMilestone(user.tenantId, id);
+    const milestone = await this.milestonesService.getMilestone(user.workspaceId, id);
     return toMilestoneDto(milestone);
   }
 

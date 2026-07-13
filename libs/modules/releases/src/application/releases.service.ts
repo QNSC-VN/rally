@@ -1,4 +1,11 @@
-import { Inject, Injectable, Logger, NotFoundException, PreconditionFailedException, BadRequestException } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  PreconditionFailedException,
+  BadRequestException,
+} from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
 import { and, eq, isNull, sql, desc, lt } from 'drizzle-orm';
 import { InjectDrizzle, buildPageResult } from '@platform';
@@ -70,7 +77,7 @@ export class ReleasesService {
       theme: opts.theme,
       startDate: opts.startDate,
       releaseDate: opts.releaseDate,
-      status: opts.state as Release['status'] ?? 'planning',
+      status: (opts.state as Release['status']) ?? 'planning',
       releaseNotes: opts.releaseNotes,
     });
 
@@ -93,7 +100,11 @@ export class ReleasesService {
   async updateRelease(actor: JwtPayload, id: string, input: UpdateReleaseInput): Promise<Release> {
     const release = await this.getRelease(actor.workspaceId, id);
     // Per-project check: the caller must hold release:manage for THIS release's project.
-    await this.accessService.assertProjectPermission(actor, release.projectId, PERMISSION.RELEASE_MANAGE);
+    await this.accessService.assertProjectPermission(
+      actor,
+      release.projectId,
+      PERMISSION.RELEASE_MANAGE,
+    );
 
     // Validate status transition
     if (input.status && input.status !== release.status) {
@@ -123,7 +134,11 @@ export class ReleasesService {
 
   async deleteRelease(actor: JwtPayload, id: string): Promise<void> {
     const release = await this.getRelease(actor.workspaceId, id);
-    await this.accessService.assertProjectPermission(actor, release.projectId, PERMISSION.RELEASE_MANAGE);
+    await this.accessService.assertProjectPermission(
+      actor,
+      release.projectId,
+      PERMISSION.RELEASE_MANAGE,
+    );
     // Accepted releases cannot be deleted
     if (release.status === 'accepted') {
       throw new PreconditionFailedException(
@@ -139,9 +154,16 @@ export class ReleasesService {
 
   async shipRelease(actor: JwtPayload, id: string): Promise<Release> {
     const release = await this.getRelease(actor.workspaceId, id);
-    await this.accessService.assertProjectPermission(actor, release.projectId, PERMISSION.RELEASE_MANAGE);
+    await this.accessService.assertProjectPermission(
+      actor,
+      release.projectId,
+      PERMISSION.RELEASE_MANAGE,
+    );
     if (release.status === 'accepted') {
-      throw new PreconditionFailedException('RELEASE_ALREADY_SHIPPED', 'Release has already shipped');
+      throw new PreconditionFailedException(
+        'RELEASE_ALREADY_SHIPPED',
+        'Release has already shipped',
+      );
     }
     const updated = await this.releaseRepo.update(id, {
       status: 'accepted',
@@ -176,9 +198,12 @@ export class ReleasesService {
     const completedPoints = Number(s.completedPoints);
     const toDoPoints = totalPoints - completedPoints;
     const toDoItems = s.totalItems - s.completedItems;
-    const progressPercent = totalPoints > 0
-      ? Math.min(Math.round((completedPoints / totalPoints) * 100), 100)
-      : (s.totalItems > 0 && s.completedItems === s.totalItems ? 100 : 0);
+    const progressPercent =
+      totalPoints > 0
+        ? Math.min(Math.round((completedPoints / totalPoints) * 100), 100)
+        : s.totalItems > 0 && s.completedItems === s.totalItems
+          ? 100
+          : 0;
 
     return {
       ...release,
@@ -205,8 +230,24 @@ export class ReleasesService {
     actor: JwtPayload,
     releaseId: string,
     args: { limit: number; cursor: CursorPayload | null },
-  ): Promise<PagedResult<{ id: string; itemKey: string; type: string; title: string; scheduleState: string; priority: string; assigneeId: string | null; iterationId: string | null; releaseId: string | null; storyPoints: number | null; createdAt: Date; updatedAt: Date }>> {
-    const release = await this.getRelease(actor.workspaceId, releaseId);
+  ): Promise<
+    PagedResult<{
+      id: string;
+      itemKey: string;
+      type: string;
+      title: string;
+      scheduleState: string;
+      priority: string;
+      assigneeId: string | null;
+      iterationId: string | null;
+      releaseId: string | null;
+      storyPoints: number | null;
+      createdAt: Date;
+      updatedAt: Date;
+    }>
+  > {
+    // Validates the release exists and is visible to the actor's workspace.
+    await this.getRelease(actor.workspaceId, releaseId);
 
     const conditions = [
       eq(workItems.releaseId, releaseId),
@@ -239,7 +280,7 @@ export class ReleasesService {
       .orderBy(desc(workItems.createdAt))
       .limit(args.limit + 1);
 
-    return buildPageResult(rows as any[], args.limit, (w) => [w.createdAt.toISOString()]);
+    return buildPageResult(rows, args.limit, (w) => [w.createdAt.toISOString()]);
   }
 
   // ── Burndown ─────────────────────────────────────────────────────────────

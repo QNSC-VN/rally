@@ -33,19 +33,12 @@ export class QualityService {
       offset?: number;
     } = {},
   ): Promise<DefectListResult> {
-    await this.projectsService.getProject(actor.tenantId, projectId);
+    await this.projectsService.getProject(actor.workspaceId, projectId);
 
-    const { rows } = await this.qualityRepo.listDefects(
-      actor.tenantId,
-      projectId,
-      opts,
-    );
+    const { rows } = await this.qualityRepo.listDefects(actor.workspaceId, projectId, opts);
 
     // Metrics — compute from ALL defects (not just the page)
-    const metrics = await this.qualityRepo.computeMetrics(
-      actor.tenantId,
-      projectId,
-    );
+    const metrics = await this.qualityRepo.computeMetrics(actor.workspaceId, projectId);
 
     return { metrics, data: rows };
   }
@@ -57,7 +50,7 @@ export class QualityService {
   async createDefect(
     actor: JwtPayload,
     projectId: string,
-    input: {
+    _input: {
       title: string;
       description?: string;
       priority?: string;
@@ -76,7 +69,7 @@ export class QualityService {
     // to WorkItemsService.createWorkItem with type='defect'.
     // For now, throw to indicate the endpoint is wired but needs the work-items integration.
     throw new BadRequestException(
-      'Use POST /v1/work-items with type=defect to create defects. The quality module provides read and metrics only.'
+      'Use POST /v1/work-items with type=defect to create defects. The quality module provides read and metrics only.',
     );
   }
 }

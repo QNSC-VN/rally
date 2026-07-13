@@ -17,5 +17,5 @@ CREATE INDEX ix_wi_found_in_release ON work.work_items (found_in_release_id)
   WHERE type = 'defect' AND deleted_at IS NULL;
 
 -- Index for filtering defects by severity
-CREATE INDEX ix_wi_defect_severity ON work.work_items (tenant_id, severity)
+CREATE INDEX ix_wi_defect_severity ON work.work_items (workspace_id, severity)
   WHERE type = 'defect' AND deleted_at IS NULL;
