@@ -28,6 +28,11 @@ jobs:
     uses: QNSC-VN/qnsc-ci/.github/workflows/web-deploy.yml@v1
     with:
       product: rally
+      # Monorepo: run wrangler from the web package dir so it discovers the
+      # file-based Pages Functions (apps/web/functions/**) and bundles the
+      # /v1/* BFF reverse-proxy. web_dist_path is relative to working_directory.
+      working_directory: apps/web
+      web_dist_path: dist
     # Least-privilege: pass only what the reusable declares (no `secrets: inherit`).
     secrets:
       CLOUDFLARE_API_TOKEN:  ${{ secrets.CLOUDFLARE_API_TOKEN }}
