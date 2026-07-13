@@ -12,6 +12,15 @@ on:
       - "infra/live/**"
       - ".github/workflows/infra-plan.yml"
 
+# Granted at the caller so the reusable can request them (a reusable workflow
+# can never exceed the caller's token). id-token:write is mandatory for the
+# OIDC AssumeRole; without an explicit grant it defaults to `none` and GitHub
+# rejects the whole workflow at compile time ("0 jobs" run failure).
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
 jobs:
   plan:
     uses: QNSC-VN/qnsc-ci/.github/workflows/infra-plan.yml@v1
@@ -22,6 +31,5 @@ jobs:
       # Mirror the apply-time TF_VARs so plan ≈ apply (masked inside the reusable).
       tf_secret_vars_json: |
         {
-          "acm_cert_arn": "${{ vars.ACM_CERT_ARN_DEVELOP }}",
           "cloudflare_api_token": "${{ secrets.CLOUDFLARE_API_TOKEN }}"
         }

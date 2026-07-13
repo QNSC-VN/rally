@@ -1,8 +1,3 @@
-variable "acm_cert_arn" {
-  type        = string
-  description = "ACM certificate ARN for the production ALB HTTPS listener (ap-southeast-1)"
-}
-
 variable "image_tag" {
   type        = string
   default     = "latest"
