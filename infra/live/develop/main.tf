@@ -241,7 +241,7 @@ module "api" {
     { name = "ENTRA_CLIENT_ID", value = var.entra_client_id },
     { name = "ENTRA_REDIRECT_URI", value = "${local.app_base_url}/v1/bff/callback" },
     # Comma-separated emails auto-granted workspace_admin on every SSO login
-    { name = "PLATFORM_ADMIN_EMAILS", value = "nghiavt18@qnsc.vn,quangld@qnsc.vn,hieuvbm@qnsc.vn,anhntn@qnsc.vn" },
+    { name = "PLATFORM_ADMIN_EMAILS", value = "nghiavt@qnsc.vn,quangld@qnsc.vn,hieuvbm@qnsc.vn,anhntn@qnsc.vn" },
     # Messaging — SQS queue URLs injected at deploy time from module outputs
     { name = "SQS_NOTIFICATIONS_URL", value = module.messaging.queue_urls["notifications"] },
     { name = "SQS_AUDIT_URL", value = module.messaging.queue_urls["audit"] },
