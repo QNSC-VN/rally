@@ -52,8 +52,9 @@ export class IterationStatusService {
     filters: IterationStatusFilters,
     args: { limit: number; cursor: CursorPayload | null },
   ): Promise<IterationStatusResult> {
-    // Validates existence + workspace ownership (throws ITERATION_NOT_FOUND).
-    const iteration = await this.iterationsService.getIteration(actor.workspaceId, iterationId);
+    // Loads the iteration and authorizes the actor to view its project
+    // (throws ITERATION_NOT_FOUND / 403 for a project the actor can't see).
+    const iteration = await this.iterationsService.getIterationForView(actor, iterationId);
 
     const [raw, items] = await Promise.all([
       this.statusRepo.getMetrics(iterationId, actor.workspaceId),

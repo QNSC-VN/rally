@@ -18,7 +18,7 @@ import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
-import { useAuthStore } from '@/shared/lib/stores/auth.store'
+import { useProjectPermissions } from '@/features/access/api'
 import {
   useMilestones,
   useCreateMilestone,
@@ -32,7 +32,10 @@ import { useProjectMembers } from '@/features/teams/api'
 
 // ── Status badge ──────────────────────────────────────────────────────────────
 
-const STATUS_STYLE: Record<MilestoneStatus, { bg: string; text: string; border: string; label: string }> = {
+const STATUS_STYLE: Record<
+  MilestoneStatus,
+  { bg: string; text: string; border: string; label: string }
+> = {
   planned: { bg: '#eef3fb', text: '#475569', border: '#cbd5e1', label: 'Planned' },
   at_risk: { bg: '#fff7ed', text: '#9a3412', border: '#fed7aa', label: 'At Risk' },
   met: { bg: '#eaf5ed', text: '#1e6930', border: '#b9dec2', label: 'Met' },
@@ -53,30 +56,49 @@ function StatusBadge({ status }: { status: MilestoneStatus }) {
   )
 }
 
-const MILESTONE_STATUSES: MilestoneStatus[] = ['planned', 'at_risk', 'met', 'missed', 'cancelled', 'completed']
+const MILESTONE_STATUSES: MilestoneStatus[] = [
+  'planned',
+  'at_risk',
+  'met',
+  'missed',
+  'cancelled',
+  'completed',
+]
 
 // ── Shared modal body ────────────────────────────────────────────────────────
 
 function MilestoneFormFields({
-  name, setName,
-  description, setDescription,
-  notes, setNotes,
-  status, setStatus,
-  ownerId, setOwnerId,
+  name,
+  setName,
+  description,
+  setDescription,
+  notes,
+  setNotes,
+  status,
+  setStatus,
+  ownerId,
+  setOwnerId,
   targetStartDate,
   targetEndDate,
-  selectedReleases, toggleRelease,
+  selectedReleases,
+  toggleRelease,
   releases,
   members,
 }: {
-  name: string; setName: (v: string) => void
-  description: string; setDescription: (v: string) => void
-  notes: string; setNotes: (v: string) => void
-  status: MilestoneStatus; setStatus: (v: MilestoneStatus) => void
-  ownerId: string; setOwnerId: (v: string) => void
-  targetStartDate: string;
-  targetEndDate: string;
-  selectedReleases: string[]; toggleRelease: (rid: string) => void
+  name: string
+  setName: (v: string) => void
+  description: string
+  setDescription: (v: string) => void
+  notes: string
+  setNotes: (v: string) => void
+  status: MilestoneStatus
+  setStatus: (v: MilestoneStatus) => void
+  ownerId: string
+  setOwnerId: (v: string) => void
+  targetStartDate: string
+  targetEndDate: string
+  selectedReleases: string[]
+  toggleRelease: (rid: string) => void
   releases: { id: string; name: string }[] | undefined
   members: { userId: string; displayName?: string; email?: string }[] | undefined
 }) {
@@ -98,7 +120,9 @@ function MilestoneFormFields({
           style={{ borderColor: BRAND.border, color: '#1a2234' }}
         >
           {MILESTONE_STATUSES.map((s) => (
-            <option key={s} value={s}>{STATUS_STYLE[s].label}</option>
+            <option key={s} value={s}>
+              {STATUS_STYLE[s].label}
+            </option>
           ))}
         </select>
       </FormField>
@@ -140,10 +164,12 @@ function MilestoneFormFields({
             value={targetStartDate}
             readOnly
             disabled
-            className="w-full rounded-md border px-3 py-1.5 text-sm bg-gray-50 cursor-not-allowed opacity-70"
+            className="w-full cursor-not-allowed rounded-md border bg-gray-50 px-3 py-1.5 text-sm opacity-70"
             style={{ borderColor: BRAND.border, color: '#5c6478' }}
           />
-          <p className="mt-0.5 text-[10px]" style={{ color: '#8c94a6' }}>Derived from linked Releases</p>
+          <p className="mt-0.5 text-[10px]" style={{ color: '#8c94a6' }}>
+            Derived from linked Releases
+          </p>
         </FormField>
         <FormField label="Target End">
           <input
@@ -151,17 +177,25 @@ function MilestoneFormFields({
             value={targetEndDate}
             readOnly
             disabled
-            className="w-full rounded-md border px-3 py-1.5 text-sm bg-gray-50 cursor-not-allowed opacity-70"
+            className="w-full cursor-not-allowed rounded-md border bg-gray-50 px-3 py-1.5 text-sm opacity-70"
             style={{ borderColor: BRAND.border, color: '#5c6478' }}
           />
-          <p className="mt-0.5 text-[10px]" style={{ color: '#8c94a6' }}>Derived from linked Releases</p>
+          <p className="mt-0.5 text-[10px]" style={{ color: '#8c94a6' }}>
+            Derived from linked Releases
+          </p>
         </FormField>
       </div>
       <FormField label="Associated Releases">
-        <div className="flex flex-col gap-1.5 max-h-32 overflow-y-auto p-2 rounded-md border" style={{ borderColor: BRAND.border }}>
+        <div
+          className="flex max-h-32 flex-col gap-1.5 overflow-y-auto rounded-md border p-2"
+          style={{ borderColor: BRAND.border }}
+        >
           {releases && releases.length > 0 ? (
             releases.map((r) => (
-              <label key={r.id} className="flex items-center gap-2 text-xs cursor-pointer select-none">
+              <label
+                key={r.id}
+                className="flex cursor-pointer items-center gap-2 text-xs select-none"
+              >
                 <input
                   type="checkbox"
                   checked={selectedReleases.includes(r.id)}
@@ -181,13 +215,7 @@ function MilestoneFormFields({
 
 // ── Create modal ──────────────────────────────────────────────────────────────
 
-function CreateMilestoneModal({
-  projectId,
-  onClose,
-}: {
-  projectId: string
-  onClose: () => void
-}) {
+function CreateMilestoneModal({ projectId, onClose }: { projectId: string; onClose: () => void }) {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [notes, setNotes] = useState('')
@@ -228,17 +256,27 @@ function CreateMilestoneModal({
 
   return (
     <AppModal open onClose={onClose} title="New Milestone" width={480}>
-      <form onSubmit={(e) => { void handleSubmit(e) }}>
+      <form
+        onSubmit={(e) => {
+          void handleSubmit(e)
+        }}
+      >
         <ModalBody className="space-y-4">
           <MilestoneFormFields
-            name={name} setName={setName}
-            description={description} setDescription={setDescription}
-            notes={notes} setNotes={setNotes}
-            status={status} setStatus={setStatus}
-            ownerId={ownerId} setOwnerId={setOwnerId}
+            name={name}
+            setName={setName}
+            description={description}
+            setDescription={setDescription}
+            notes={notes}
+            setNotes={setNotes}
+            status={status}
+            setStatus={setStatus}
+            ownerId={ownerId}
+            setOwnerId={setOwnerId}
             targetStartDate={targetStartDate}
             targetEndDate={targetEndDate}
-            selectedReleases={selectedReleases} toggleRelease={toggleRelease}
+            selectedReleases={selectedReleases}
+            toggleRelease={toggleRelease}
             releases={releases}
             members={members}
           />
@@ -247,7 +285,7 @@ function CreateMilestoneModal({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-1.5 text-sm rounded-md cursor-pointer"
+            className="cursor-pointer rounded-md px-4 py-1.5 text-sm"
             style={{ border: `1px solid ${BRAND.border}`, color: '#5c6478' }}
           >
             Cancel
@@ -255,7 +293,7 @@ function CreateMilestoneModal({
           <button
             type="submit"
             disabled={create.isPending || !name.trim()}
-            className="px-4 py-1.5 text-sm font-medium text-white rounded-md disabled:opacity-50 cursor-pointer"
+            className="cursor-pointer rounded-md px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
             style={{ backgroundColor: BRAND.primary }}
           >
             {create.isPending ? 'Creating...' : 'Create Milestone'}
@@ -268,13 +306,7 @@ function CreateMilestoneModal({
 
 // ── Edit modal ────────────────────────────────────────────────────────────────
 
-function EditMilestoneModal({
-  milestone,
-  onClose,
-}: {
-  milestone: Milestone
-  onClose: () => void
-}) {
+function EditMilestoneModal({ milestone, onClose }: { milestone: Milestone; onClose: () => void }) {
   const [name, setName] = useState(milestone.name)
   const [description, setDescription] = useState(milestone.description ?? '')
   const [notes, setNotes] = useState(milestone.notes ?? '')
@@ -315,17 +347,27 @@ function EditMilestoneModal({
 
   return (
     <AppModal open onClose={onClose} title="Edit Milestone" width={480}>
-      <form onSubmit={(e) => { void handleSubmit(e) }}>
+      <form
+        onSubmit={(e) => {
+          void handleSubmit(e)
+        }}
+      >
         <ModalBody className="space-y-4">
           <MilestoneFormFields
-            name={name} setName={setName}
-            description={description} setDescription={setDescription}
-            notes={notes} setNotes={setNotes}
-            status={status} setStatus={setStatus}
-            ownerId={ownerId} setOwnerId={setOwnerId}
+            name={name}
+            setName={setName}
+            description={description}
+            setDescription={setDescription}
+            notes={notes}
+            setNotes={setNotes}
+            status={status}
+            setStatus={setStatus}
+            ownerId={ownerId}
+            setOwnerId={setOwnerId}
             targetStartDate={targetStartDate}
             targetEndDate={targetEndDate}
-            selectedReleases={selectedReleases} toggleRelease={toggleRelease}
+            selectedReleases={selectedReleases}
+            toggleRelease={toggleRelease}
             releases={releases}
             members={members}
           />
@@ -334,7 +376,7 @@ function EditMilestoneModal({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-1.5 text-sm rounded-md cursor-pointer"
+            className="cursor-pointer rounded-md px-4 py-1.5 text-sm"
             style={{ border: `1px solid ${BRAND.border}`, color: '#5c6478' }}
           >
             Cancel
@@ -342,7 +384,7 @@ function EditMilestoneModal({
           <button
             type="submit"
             disabled={update.isPending || !name.trim()}
-            className="px-4 py-1.5 text-sm font-medium text-white rounded-md disabled:opacity-50 cursor-pointer"
+            className="cursor-pointer rounded-md px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
             style={{ backgroundColor: BRAND.primary }}
           >
             {update.isPending ? 'Saving...' : 'Save'}
@@ -369,8 +411,12 @@ const MILESTONES_COLUMNS: ColumnDef<MilestoneColKey>[] = [
 
 export function MilestonesPage() {
   const { project } = useAppContext()
-  const { startResize, styleFor } = useColumnLayout(MILESTONES_COLUMNS, STORAGE_KEYS.MILESTONES_COLUMNS)
-  const canManage = useAuthStore((s) => s.hasPermission('milestone:manage'))
+  const { startResize, styleFor } = useColumnLayout(
+    MILESTONES_COLUMNS,
+    STORAGE_KEYS.MILESTONES_COLUMNS,
+  )
+  const { can } = useProjectPermissions(project?.projectId)
+  const canManage = can('milestone:manage')
   const { data: milestones, isLoading, error } = useMilestones(project?.projectId)
   const deleteMilestone = useDeleteMilestone()
   const navigate = useNavigate()
@@ -384,9 +430,7 @@ export function MilestonesPage() {
     if (!milestones) return []
     const q = search.toLowerCase()
     return milestones.filter(
-      (m) =>
-        m.name.toLowerCase().includes(q) ||
-        m.description?.toLowerCase().includes(q),
+      (m) => m.name.toLowerCase().includes(q) || m.description?.toLowerCase().includes(q),
     )
   }, [milestones, search])
 
@@ -402,7 +446,7 @@ export function MilestonesPage() {
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center flex-1 gap-2 p-8">
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8">
         <AlertTriangle size={32} style={{ color: BRAND.danger }} />
         <p className="text-sm" style={{ color: '#5c6478' }}>
           {error instanceof Error ? error.message : 'Failed to load milestones'}
@@ -412,23 +456,27 @@ export function MilestonesPage() {
   }
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden">
+    <div className="flex flex-1 flex-col overflow-hidden">
       {/* Toolbar */}
       <div
-        className="flex items-center gap-2 px-4 py-2 bg-white shrink-0"
+        className="flex shrink-0 items-center gap-2 bg-white px-4 py-2"
         style={{ borderBottom: `1px solid ${BRAND.border}` }}
       >
-        <h2 className="text-sm font-semibold mr-2" style={{ color: '#1a2234' }}>
+        <h2 className="mr-2 text-sm font-semibold" style={{ color: '#1a2234' }}>
           Milestones
         </h2>
         <div className="relative">
-          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: '#8c94a6' }} />
+          <Search
+            size={14}
+            className="absolute top-1/2 left-2.5 -translate-y-1/2"
+            style={{ color: '#8c94a6' }}
+          />
           <input
             type="text"
             placeholder="Search milestones..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-8 pr-3 py-1.5 text-xs rounded-md focus:outline-none"
+            className="rounded-md py-1.5 pr-3 pl-8 text-xs focus:outline-none"
             style={{
               backgroundColor: '#f4f6f9',
               border: `1px solid ${BRAND.border}`,
@@ -441,7 +489,7 @@ export function MilestonesPage() {
         {canManage && (
           <button
             onClick={() => setShowCreate(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white rounded-md"
+            className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-white"
             style={{ backgroundColor: BRAND.primary }}
             onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = BRAND.primaryHover)}
             onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = BRAND.primary)}
@@ -457,7 +505,7 @@ export function MilestonesPage() {
         {isLoading ? (
           <SkeletonList rows={6} />
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center flex-1 gap-3 p-8">
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8">
             <PackageOpen size={40} style={{ color: '#c4cad4' }} />
             <p className="text-sm" style={{ color: '#8c94a6' }}>
               {search ? 'No milestones match your search' : 'No milestones yet'}
@@ -465,7 +513,7 @@ export function MilestonesPage() {
             {canManage && !search && (
               <button
                 onClick={() => setShowCreate(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white rounded-md"
+                className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-white"
                 style={{ backgroundColor: BRAND.primary }}
               >
                 <Plus size={14} />
@@ -477,17 +525,24 @@ export function MilestonesPage() {
           <div className="flex-1 overflow-auto">
             {/* Header */}
             <div
-              className="flex items-center h-8 px-3 shrink-0 select-none"
-              style={{ backgroundColor: '#f7f8fa', borderBottom: `1px solid ${BRAND.border}`, minWidth: 'max-content' }}
+              className="flex h-8 shrink-0 items-center px-3 select-none"
+              style={{
+                backgroundColor: '#f7f8fa',
+                borderBottom: `1px solid ${BRAND.border}`,
+                minWidth: 'max-content',
+              }}
             >
               {MILESTONES_COLUMNS.map((col) => (
                 <div
                   key={col.key}
-                  className="relative group flex items-center gap-1 px-2 text-[9px] font-semibold uppercase tracking-wider whitespace-nowrap"
+                  className="group relative flex items-center gap-1 px-2 text-[9px] font-semibold tracking-wider whitespace-nowrap uppercase"
                   style={{ ...styleFor(col.key, { flexShrink: 0 }), color: '#8c94a6' }}
                 >
                   <span>{col.label}</span>
-                  <ResizeHandle onMouseDown={(e) => startResize(col.key, e)} ariaLabel={`Resize ${col.label} column`} />
+                  <ResizeHandle
+                    onMouseDown={(e) => startResize(col.key, e)}
+                    ariaLabel={`Resize ${col.label} column`}
+                  />
                 </div>
               ))}
             </div>
@@ -495,24 +550,32 @@ export function MilestonesPage() {
             {filtered.map((ms) => (
               <div
                 key={ms.id}
-                className="flex items-center h-8 px-3 cursor-pointer"
+                className="flex h-8 cursor-pointer items-center px-3"
                 style={{ borderBottom: '1px solid #edf0f4', minWidth: 'max-content' }}
                 onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f7f8fa')}
                 onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-                onClick={() => navigate({ to: '/milestones/$milestoneId', params: { milestoneId: ms.id } })}
+                onClick={() =>
+                  navigate({ to: '/milestones/$milestoneId', params: { milestoneId: ms.id } })
+                }
               >
                 {/* Name */}
                 <div className="shrink-0 px-2" style={styleFor('name')}>
-                  <span className="text-xs font-medium truncate block" style={{ color: '#1a2234' }}>
+                  <span className="block truncate text-xs font-medium" style={{ color: '#1a2234' }}>
                     {ms.name}
                   </span>
                 </div>
                 {/* Target Start Date */}
-                <div className="shrink-0 text-xs px-2" style={{ ...styleFor('targetStartDate'), color: '#5c6478' }}>
+                <div
+                  className="shrink-0 px-2 text-xs"
+                  style={{ ...styleFor('targetStartDate'), color: '#5c6478' }}
+                >
                   {ms.targetStartDate ?? '\u2014'}
                 </div>
                 {/* Target End Date */}
-                <div className="shrink-0 text-xs px-2" style={{ ...styleFor('targetEndDate'), color: '#5c6478' }}>
+                <div
+                  className="shrink-0 px-2 text-xs"
+                  style={{ ...styleFor('targetEndDate'), color: '#5c6478' }}
+                >
                   {ms.targetEndDate ?? '\u2014'}
                 </div>
                 {/* Status */}
@@ -525,7 +588,7 @@ export function MilestonesPage() {
                     <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                       <button
                         onClick={() => setEditing(ms)}
-                        className="p-1 rounded hover:bg-gray-100"
+                        className="rounded p-1 hover:bg-gray-100"
                         title="Edit"
                       >
                         <Pencil size={13} style={{ color: '#5c6478' }} />
@@ -533,15 +596,21 @@ export function MilestonesPage() {
                       {deleting === ms.id ? (
                         <div className="flex items-center gap-1">
                           <button
-                            onClick={() => { void handleDelete(ms.id) }}
-                            className="px-1.5 py-0.5 text-[10px] font-medium rounded"
-                            style={{ backgroundColor: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca' }}
+                            onClick={() => {
+                              void handleDelete(ms.id)
+                            }}
+                            className="rounded px-1.5 py-0.5 text-[10px] font-medium"
+                            style={{
+                              backgroundColor: '#fef2f2',
+                              color: '#b91c1c',
+                              border: '1px solid #fecaca',
+                            }}
                           >
                             Confirm
                           </button>
                           <button
                             onClick={() => setDeleting(null)}
-                            className="px-1.5 py-0.5 text-[10px] rounded"
+                            className="rounded px-1.5 py-0.5 text-[10px]"
                             style={{ border: `1px solid ${BRAND.border}`, color: '#5c6478' }}
                           >
                             Cancel
@@ -550,7 +619,7 @@ export function MilestonesPage() {
                       ) : (
                         <button
                           onClick={() => setDeleting(ms.id)}
-                          className="p-1 rounded hover:bg-red-50"
+                          className="rounded p-1 hover:bg-red-50"
                           title="Delete"
                         >
                           <Trash2 size={13} style={{ color: '#b91c1c' }} />
@@ -572,12 +641,7 @@ export function MilestonesPage() {
           onClose={() => setShowCreate(false)}
         />
       )}
-      {editing && (
-        <EditMilestoneModal
-          milestone={editing}
-          onClose={() => setEditing(null)}
-        />
-      )}
+      {editing && <EditMilestoneModal milestone={editing} onClose={() => setEditing(null)} />}
     </div>
   )
 }

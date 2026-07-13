@@ -73,6 +73,70 @@ export type Permission = (typeof PERMISSION)[keyof typeof PERMISSION];
 export type SystemRoleSlug = (typeof SYSTEM_ROLE)[keyof typeof SYSTEM_ROLE];
 
 /**
+ * The SCOPE TIER of every permission — the single fact that decides how it is
+ * enforced, so a permission can never be checked at the wrong scope by accident:
+ *
+ *   - `workspace` — resolved against the workspace-wide baseline baked into the
+ *     JWT (the flat `@RequirePermission` guard). It isn't tied to a single
+ *     project instance: administering the workspace, or minting a new project.
+ *   - `project`  — resolved PER PROJECT at request time as
+ *     `baseline ∪ project-scoped role` (the `@RequireProjectPermission` guard,
+ *     or `AccessService.assertProjectPermission` when the project id is only
+ *     known after loading a resource). Everything that acts on an EXISTING
+ *     project is project-tier — including `project:delete` (it targets a
+ *     specific project; only workspace_admin holds it, so `workspace:*`
+ *     fast-paths the check regardless of tier).
+ *
+ * The derived `WorkspacePermission` / `ProjectPermission` types below feed the
+ * two decorators' signatures, which is what makes a mis-scoped guard a COMPILE
+ * error rather than a silent authorization gap.
+ */
+export const PERMISSION_TIER = {
+  [PERMISSION.WORKSPACE_ALL]: 'workspace',
+  [PERMISSION.WORKSPACE_VIEW]: 'workspace',
+  [PERMISSION.WORKSPACE_CREATE]: 'workspace',
+  [PERMISSION.WORKSPACE_MANAGE_MEMBERS]: 'workspace',
+  [PERMISSION.WORKSPACE_MANAGE_TEAMS]: 'workspace',
+  [PERMISSION.PROJECT_CREATE]: 'workspace',
+
+  [PERMISSION.PROJECT_VIEW]: 'project',
+  [PERMISSION.PROJECT_EDIT]: 'project',
+  [PERMISSION.PROJECT_ARCHIVE]: 'project',
+  [PERMISSION.PROJECT_RESTORE]: 'project',
+  [PERMISSION.PROJECT_DELETE]: 'project',
+  [PERMISSION.PROJECT_MANAGE_MEMBERS]: 'project',
+  [PERMISSION.WORK_ITEM_VIEW]: 'project',
+  [PERMISSION.WORK_ITEM_CREATE]: 'project',
+  [PERMISSION.WORK_ITEM_EDIT]: 'project',
+  [PERMISSION.WORK_ITEM_DELETE]: 'project',
+  [PERMISSION.ITERATION_VIEW]: 'project',
+  [PERMISSION.ITERATION_MANAGE]: 'project',
+  [PERMISSION.RELEASE_VIEW]: 'project',
+  [PERMISSION.RELEASE_MANAGE]: 'project',
+  [PERMISSION.TEAM_STATUS_VIEW]: 'project',
+  [PERMISSION.TEAM_STATUS_EDIT]: 'project',
+  [PERMISSION.QUALITY_VIEW]: 'project',
+  [PERMISSION.QUALITY_EDIT]: 'project',
+  [PERMISSION.MILESTONE_VIEW]: 'project',
+  [PERMISSION.MILESTONE_MANAGE]: 'project',
+} as const satisfies Record<Permission, 'workspace' | 'project'>;
+
+/** Permissions enforced against the workspace-wide JWT baseline. */
+export type WorkspacePermission = {
+  [K in Permission]: (typeof PERMISSION_TIER)[K] extends 'workspace' ? K : never;
+}[Permission];
+
+/** Permissions resolved per-project (baseline ∪ project-scoped role). */
+export type ProjectPermission = {
+  [K in Permission]: (typeof PERMISSION_TIER)[K] extends 'project' ? K : never;
+}[Permission];
+
+/** Runtime tier lookup — mirror of the compile-time split for guard internals. */
+export function isProjectTierPermission(permission: string): permission is ProjectPermission {
+  return (PERMISSION_TIER as Record<string, 'workspace' | 'project'>)[permission] === 'project';
+}
+
+/**
  * The one wildcard-aware permission check, shared by every guard and service so
  * the semantics can't drift. A caller holding `permissions` is granted `required`
  * when any of these is true:

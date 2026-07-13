@@ -33,7 +33,7 @@ import { SkeletonList } from '@/shared/ui/skeleton'
 import { InlineCellSelect, InlineSelect } from '@/shared/ui/native-select'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
-import { useAuthStore } from '@/shared/lib/stores/auth.store'
+import { useProjectPermissions } from '@/features/access/api'
 import {
   useBacklog,
   useUpdateWorkItem,
@@ -62,7 +62,16 @@ import { ResizeHandle } from '@/shared/ui/resize-handle'
 
 // ── Column definitions ─────────────────────────────────────────────────────────
 
-type ColumnKey = 'type' | 'id' | 'name' | 'scheduleState' | 'priority' | 'estimate' | 'owner' | 'release' | 'iteration'
+type ColumnKey =
+  | 'type'
+  | 'id'
+  | 'name'
+  | 'scheduleState'
+  | 'priority'
+  | 'estimate'
+  | 'owner'
+  | 'release'
+  | 'iteration'
 
 const COLUMN_MINS: Record<ColumnKey, number> = {
   type: 60,
@@ -139,7 +148,7 @@ function ResizableHeader({
 }: ResizableHeaderProps) {
   return (
     <div
-      className="relative flex h-full shrink-0 items-center text-[11px] font-bold select-none px-2 group"
+      className="group relative flex h-full shrink-0 items-center px-2 text-[11px] font-bold select-none"
       style={{
         ...style,
         color: '#4b5563',
@@ -194,7 +203,8 @@ export function BacklogPage() {
   const { project, team } = useAppContext()
   const projectId = project?.projectId
 
-  const canEdit = useAuthStore((s) => s.hasPermission('work_item:edit'))
+  const { can } = useProjectPermissions(projectId)
+  const canEdit = can('work_item:edit')
 
   // ── Filters ──────────────────────────────────────────────────────────────────
   const [search, setSearch] = useState('')
@@ -223,7 +233,16 @@ export function BacklogPage() {
   useEffect(() => {
     setCursor(undefined)
     setCursorHistory([])
-  }, [search, filterType, filterState, filterOwner, filterRelease, filterIteration, pageSize, projectId])
+  }, [
+    search,
+    filterType,
+    filterState,
+    filterOwner,
+    filterRelease,
+    filterIteration,
+    pageSize,
+    projectId,
+  ])
 
   const { data, isLoading, isError, error } = useBacklog(projectId, {
     type: filterType || undefined,
@@ -293,12 +312,21 @@ export function BacklogPage() {
   }
 
   // ── Column resize / order / visibility ──────────────────────────────────────
-  const { widths: colWidths, startResize, order, hidden, toggleVisible, reorder, styleFor } = useColumnLayout(
-    BACKLOG_COLUMNS,
-    STORAGE_KEYS.BACKLOG_COLUMN_WIDTHS,
-  )
+  const {
+    widths: colWidths,
+    startResize,
+    order,
+    hidden,
+    toggleVisible,
+    reorder,
+    styleFor,
+  } = useColumnLayout(BACKLOG_COLUMNS, STORAGE_KEYS.BACKLOG_COLUMN_WIDTHS)
   const colStyles = useMemo(
-    () => Object.fromEntries(COLUMNS.map((k) => [k, styleFor(k)])) as Record<ColumnKey, React.CSSProperties>,
+    () =>
+      Object.fromEntries(COLUMNS.map((k) => [k, styleFor(k)])) as Record<
+        ColumnKey,
+        React.CSSProperties
+      >,
     [styleFor],
   )
 
@@ -323,7 +351,7 @@ export function BacklogPage() {
 
   // ── Create modal ─────────────────────────────────────────────────────────────
   const [showCreate, setShowCreate] = useState(false)
-  const canCreate = useAuthStore((s) => s.hasPermission('work_item:create'))
+  const canCreate = can('work_item:create')
 
   // ── Bulk assignment (P2-BL-08) ────────────────────────────────────────────────
   const bulkRelease = useBulkAssignRelease()
@@ -420,7 +448,12 @@ export function BacklogPage() {
           <div className="flex-1 overflow-auto">
             <div style={{ width: tableWidth, minWidth: '100%' }}>
               {/* Header row */}
-              <TableHeaderBar colStyles={colStyles} allSelected={allSelected} onToggleAll={toggleAll} startResize={startResize} />
+              <TableHeaderBar
+                colStyles={colStyles}
+                allSelected={allSelected}
+                onToggleAll={toggleAll}
+                startResize={startResize}
+              />
 
               {/* Loading */}
               {isLoading && <SkeletonList rows={10} cols={7} />}
@@ -453,8 +486,15 @@ export function BacklogPage() {
 
               {/* Rows */}
               {!isLoading && !isError && (
-                <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                  <SortableContext items={localItems.map((it) => it.id)} strategy={verticalListSortingStrategy}>
+                <DndContext
+                  sensors={dndSensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleDragEnd}
+                >
+                  <SortableContext
+                    items={localItems.map((it) => it.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
                     {localItems.map((item, idx) => (
                       <BacklogRow
                         key={item.id}
@@ -775,7 +815,12 @@ function BulkActionBar({
       )}
 
       <div className="flex-1" />
-      <button onClick={onClear} className="p-0.5" style={{ color: '#5c6478' }} aria-label="Clear selection">
+      <button
+        onClick={onClear}
+        className="p-0.5"
+        style={{ color: '#5c6478' }}
+        aria-label="Clear selection"
+      >
         <X size={13} />
       </button>
     </div>
@@ -798,7 +843,11 @@ function TableHeaderBar({
   return (
     <div
       className="sticky top-0 z-10 flex h-[34px] items-center gap-2 px-3 select-none"
-      style={{ backgroundColor: '#f3f4f6', borderBottom: '1px solid #e2e8f0', minWidth: 'max-content' }}
+      style={{
+        backgroundColor: '#f3f4f6',
+        borderBottom: '1px solid #e2e8f0',
+        minWidth: 'max-content',
+      }}
     >
       <div className="w-5 shrink-0 px-2">
         <input
@@ -812,7 +861,7 @@ function TableHeaderBar({
       </div>
       <div className="w-4 shrink-0 px-2" />
       <div
-        className="w-6 shrink-0 text-right text-[11px] font-bold px-2"
+        className="w-6 shrink-0 px-2 text-right text-[11px] font-bold"
         style={{ color: '#4b5563' }}
       >
         #
@@ -846,7 +895,8 @@ function PaginationFooter({
   setPageSize: (n: number) => void
   currentPage: number
   itemCount: number
-  pageInfo: { hasNextPage: boolean; nextCursor: string | null; limit: number; total?: number } | undefined
+  pageInfo:
+    { hasNextPage: boolean; nextCursor: string | null; limit: number; total?: number } | undefined
   onPrevPage: () => void
   onNextPage: () => void
 }) {
@@ -931,7 +981,15 @@ function BacklogRow({
   releases,
   iterations,
 }: BacklogRowProps) {
-  const { setNodeRef, setActivatorNodeRef, listeners, attributes, transform, transition, isDragging } = useSortable({ id: item.id })
+  const {
+    setNodeRef,
+    setActivatorNodeRef,
+    listeners,
+    attributes,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: item.id })
   const update = useUpdateWorkItem(item.id)
 
   // Fire a PATCH only when the value actually changed; errors surface via the
@@ -955,7 +1013,7 @@ function BacklogRow({
   return (
     <div
       ref={setNodeRef}
-      className="group flex h-[34px] items-center gap-2 px-3 hover:bg-[#f1f6fc] transition-colors duration-100"
+      className="group flex h-[34px] items-center gap-2 px-3 transition-colors duration-100 hover:bg-[#f1f6fc]"
       style={{
         minWidth: 'max-content',
         backgroundColor: isDragging ? '#edf2fb' : selected ? '#f3f6fb' : '#ffffff',
@@ -983,14 +1041,17 @@ function BacklogRow({
       {/* Drag handle (visible on hover, activates drag) */}
       <div
         ref={setActivatorNodeRef}
-        className="w-4 shrink-0 cursor-grab opacity-0 group-hover:opacity-100 active:cursor-grabbing px-2"
+        className="w-4 shrink-0 cursor-grab px-2 opacity-0 group-hover:opacity-100 active:cursor-grabbing"
         {...listeners}
       >
         <GripVertical size={11} style={{ color: '#8c94a6' }} />
       </div>
 
       {/* Row number */}
-      <div className="w-6 shrink-0 text-right font-mono text-[10px] tabular-nums px-2" style={{ color: '#8c94a6' }}>
+      <div
+        className="w-6 shrink-0 px-2 text-right font-mono text-[10px] tabular-nums"
+        style={{ color: '#8c94a6' }}
+      >
         {rowNum}
       </div>
 
@@ -1001,7 +1062,7 @@ function BacklogRow({
 
       {/* ID — opens detail */}
       <button
-        className="shrink-0 overflow-hidden text-left font-mono text-[10px] underline-offset-2 hover:underline px-2"
+        className="shrink-0 overflow-hidden px-2 text-left font-mono text-[10px] underline-offset-2 hover:underline"
         style={{ ...colStyles.id, color: '#2558a6' }}
         onClick={onOpen}
       >
@@ -1039,7 +1100,9 @@ function BacklogRow({
         {canEdit ? (
           <InlineCellSelect
             value={item.scheduleState}
-            displayValue={SCHEDULE_STATE_LABEL[item.scheduleState as ScheduleState] ?? item.scheduleState}
+            displayValue={
+              SCHEDULE_STATE_LABEL[item.scheduleState as ScheduleState] ?? item.scheduleState
+            }
             onChange={(e) =>
               patch({ scheduleState: e.target.value as UpdateWorkItemInput['scheduleState'] })
             }
@@ -1085,7 +1148,7 @@ function BacklogRow({
       </div>
 
       {/* Plan Estimate — inline number */}
-      <div className="shrink-0 text-center px-2" style={colStyles.estimate} onClick={stop}>
+      <div className="shrink-0 px-2 text-center" style={colStyles.estimate} onClick={stop}>
         {canEdit ? (
           <input
             type="number"
@@ -1147,7 +1210,10 @@ function BacklogRow({
             ))}
           </InlineCellSelect>
         ) : (
-          <span className="truncate text-[11px]" style={{ color: item.releaseId ? '#1a2234' : '#a0a7b5' }}>
+          <span
+            className="truncate text-[11px]"
+            style={{ color: item.releaseId ? '#1a2234' : '#a0a7b5' }}
+          >
             {releases.find((r) => r.id === item.releaseId)?.name ?? '—'}
           </span>
         )}
@@ -1171,7 +1237,10 @@ function BacklogRow({
             ))}
           </InlineCellSelect>
         ) : (
-          <span className="truncate text-[11px]" style={{ color: item.iterationId ? '#1a2234' : '#a0a7b5' }}>
+          <span
+            className="truncate text-[11px]"
+            style={{ color: item.iterationId ? '#1a2234' : '#a0a7b5' }}
+          >
             {iterations.find((it) => it.id === item.iterationId)?.name ?? '—'}
           </span>
         )}

@@ -9,7 +9,7 @@ import {
   between,
 } from '@platform';
 import type { JwtPayload, CursorPayload, PagedResult, DbExecutor } from '@platform';
-import { PERMISSION } from '@shared-kernel';
+import { PERMISSION, type ProjectPermission } from '@shared-kernel';
 import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
 import { IWorkItemRepository, WORK_ITEM_REPOSITORY } from '../domain/ports/work-item.repository';
@@ -409,7 +409,7 @@ export class WorkItemsService {
   private async getWorkItemForWrite(
     actor: JwtPayload,
     id: string,
-    required: (typeof PERMISSION)[keyof typeof PERMISSION],
+    required: ProjectPermission,
   ): Promise<WorkItem> {
     const item = await this.getWorkItem(actor.workspaceId, id);
     await this.accessService.assertProjectPermission(actor, item.projectId, required);

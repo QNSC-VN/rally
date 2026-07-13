@@ -16,6 +16,7 @@ export type WorkItemType = (typeof WorkItemType)[keyof typeof WorkItemType]
 export const ScheduleState = {
   Idea: 'idea',
   Defined: 'defined',
+  Ready: 'ready',
   InProgress: 'in_progress',
   Completed: 'completed',
   Accepted: 'accepted',
@@ -57,19 +58,20 @@ export interface BadgeStyle {
 
 export const WORK_ITEM_TYPE_CONFIG: Record<WorkItemType, BadgeStyle> = {
   [WorkItemType.Initiative]: { label: 'IN', color: '#059669', bg: '#ecfdf5', icon: Target },
-  [WorkItemType.Feature]:    { label: 'FE', color: '#7c3aed', bg: '#f3effd', icon: Layers },
-  [WorkItemType.Story]:      { label: 'US', color: '#2558a6', bg: '#eef3fb', icon: BookOpen },
-  [WorkItemType.Task]:       { label: 'TA', color: '#1d3f73', bg: '#e5ebf4', icon: ClipboardList },
-  [WorkItemType.Defect]:     { label: 'DE', color: '#b91c1c', bg: '#fef2f2', icon: Bug },
+  [WorkItemType.Feature]: { label: 'FE', color: '#7c3aed', bg: '#f3effd', icon: Layers },
+  [WorkItemType.Story]: { label: 'US', color: '#2558a6', bg: '#eef3fb', icon: BookOpen },
+  [WorkItemType.Task]: { label: 'TA', color: '#1d3f73', bg: '#e5ebf4', icon: ClipboardList },
+  [WorkItemType.Defect]: { label: 'DE', color: '#b91c1c', bg: '#fef2f2', icon: Bug },
 }
 
 export const SCHEDULE_STATE_LABEL: Record<ScheduleState, string> = {
-  [ScheduleState.Idea]:       'Idea',
-  [ScheduleState.Defined]:    'Defined',
+  [ScheduleState.Idea]: 'Idea',
+  [ScheduleState.Defined]: 'Defined',
+  [ScheduleState.Ready]: 'Ready',
   [ScheduleState.InProgress]: 'In Progress',
-  [ScheduleState.Completed]:  'Completed',
-  [ScheduleState.Accepted]:   'Accepted',
-  [ScheduleState.Released]:   'Released',
+  [ScheduleState.Completed]: 'Completed',
+  [ScheduleState.Accepted]: 'Accepted',
+  [ScheduleState.Released]: 'Released',
 }
 
 export interface StatusBadgeStyle {
@@ -78,12 +80,13 @@ export interface StatusBadgeStyle {
 }
 
 export const SCHEDULE_STATE_CONFIG: Record<ScheduleState, StatusBadgeStyle> = {
-  [ScheduleState.Idea]:       { color: '#6b7280', bg: '#f3f4f6' },
-  [ScheduleState.Defined]:    { color: '#5c6478', bg: '#edf0f4' },
+  [ScheduleState.Idea]: { color: '#6b7280', bg: '#f3f4f6' },
+  [ScheduleState.Defined]: { color: '#5c6478', bg: '#edf0f4' },
+  [ScheduleState.Ready]: { color: '#0f766e', bg: '#e6f6f3' },
   [ScheduleState.InProgress]: { color: '#1d6f9e', bg: '#e5f2fb' },
-  [ScheduleState.Completed]:  { color: '#3d7a4e', bg: '#eef6f0' },
-  [ScheduleState.Accepted]:   { color: '#1e6930', bg: '#eaf5ed' },
-  [ScheduleState.Released]:   { color: '#7c3aed', bg: '#f3effd' },
+  [ScheduleState.Completed]: { color: '#3d7a4e', bg: '#eef6f0' },
+  [ScheduleState.Accepted]: { color: '#1e6930', bg: '#eaf5ed' },
+  [ScheduleState.Released]: { color: '#7c3aed', bg: '#f3effd' },
 }
 
 export interface PriorityStyle {
@@ -92,10 +95,10 @@ export interface PriorityStyle {
 }
 
 export const WORK_ITEM_PRIORITY_CONFIG: Record<WorkItemPriority, PriorityStyle> = {
-  [WorkItemPriority.None]:   { label: '—',      color: '#9ca3af' },
-  [WorkItemPriority.Low]:    { label: 'Low',    color: '#8c94a6' },
+  [WorkItemPriority.None]: { label: '—', color: '#9ca3af' },
+  [WorkItemPriority.Low]: { label: 'Low', color: '#8c94a6' },
   [WorkItemPriority.Normal]: { label: 'Normal', color: '#5c6478' },
-  [WorkItemPriority.High]:   { label: 'High',   color: '#d97706' },
+  [WorkItemPriority.High]: { label: 'High', color: '#d97706' },
   [WorkItemPriority.Urgent]: { label: 'Urgent', color: '#b91c1c' },
 }
 
@@ -130,7 +133,7 @@ export const SIMPLIFIED_STATE_CONFIG: Record<SimplifiedState, SimplifiedStateSty
 export const SIMPLIFIED_STATE_ORDER: SimplifiedState[] = ['define', 'in_progress', 'complete']
 
 const SIMPLIFIED_STATE_GROUPS: Record<SimplifiedState, ScheduleState[]> = {
-  define: [ScheduleState.Idea, ScheduleState.Defined],
+  define: [ScheduleState.Idea, ScheduleState.Defined, ScheduleState.Ready],
   in_progress: [ScheduleState.InProgress],
   complete: [ScheduleState.Completed, ScheduleState.Accepted, ScheduleState.Released],
 }

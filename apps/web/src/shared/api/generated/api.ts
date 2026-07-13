@@ -157,6 +157,63 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v1/projects/{projectId}/my-permissions': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * The current user's effective permissions for a project
+     * @description Baseline (workspace-wide) permissions unioned with any project-scoped role. Used by the frontend to gate project-scoped UI accurately.
+     */
+    get: operations['AccessController_getMyProjectPermissions']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/projects/{projectId}/role-assignments': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /**
+     * Assign a project-scoped role to a user (project admin)
+     * @description Grants a project-scoped role on this project. Only roles whose permissions are entirely project-tier may be granted here; workspace-level roles require the workspace-scoped endpoint.
+     */
+    post: operations['AccessController_assignProjectRole']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/projects/{projectId}/role-assignments/{id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    /** Revoke a project-scoped role assignment (project admin) */
+    delete: operations['AccessController_revokeProjectRole']
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v1/workspaces': {
     parameters: {
       query?: never
@@ -1155,17 +1212,34 @@ export interface paths {
     patch: operations['ReleasesController_updateRelease']
     trace?: never
   }
-  '/v1/releases/{id}/ship': {
+  '/v1/releases/{id}/burndown': {
     parameters: {
       query?: never
       header?: never
       path?: never
       cookie?: never
     }
-    get?: never
+    /** Get release burndown data */
+    get: operations['ReleasesController_getReleaseBurndown']
     put?: never
-    /** Mark a release as shipped */
-    post: operations['ReleasesController_shipRelease']
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/releases/{id}/artifacts': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List artifacts (stories/defects) in a release */
+    get: operations['ReleasesController_listReleaseArtifacts']
+    put?: never
+    post?: never
     delete?: never
     options?: never
     head?: never
@@ -1476,6 +1550,165 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v1/team-status': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Get Team Status for an iteration */
+    get: operations['TeamStatusController_getTeamStatus']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/team-status/capacity': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    /** Update member capacity for an iteration */
+    patch: operations['TeamStatusController_updateCapacity']
+    trace?: never
+  }
+  '/v1/team-status/tasks/{taskId}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    /** Update a task from Team Status (title/state) */
+    patch: operations['TeamStatusController_updateTask']
+    trace?: never
+  }
+  '/v1/milestones': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List milestones for a project */
+    get: operations['MilestonesController_listMilestones']
+    put?: never
+    /** Create a milestone */
+    post: operations['MilestonesController_createMilestone']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/milestones/{id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Get milestone details */
+    get: operations['MilestonesController_getMilestone']
+    put?: never
+    post?: never
+    /** Delete a milestone */
+    delete: operations['MilestonesController_deleteMilestone']
+    options?: never
+    head?: never
+    /** Update milestone details */
+    patch: operations['MilestonesController_updateMilestone']
+    trace?: never
+  }
+  '/v1/milestones/{id}/artifacts': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List milestone artifacts (US/DE work items) */
+    get: operations['MilestonesController_listMilestoneArtifacts']
+    /** Set milestone artifacts (replace all) */
+    put: operations['MilestonesController_setMilestoneArtifacts']
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/milestones/{id}/projects': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List linked projects for a milestone */
+    get: operations['MilestonesController_listMilestoneProjects']
+    /** Set linked projects for a milestone (replace all) */
+    put: operations['MilestonesController_setMilestoneProjects']
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/milestones/{id}/teams': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List linked teams for a milestone */
+    get: operations['MilestonesController_listMilestoneTeams']
+    /** Set linked teams for a milestone (replace all) */
+    put: operations['MilestonesController_setMilestoneTeams']
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/quality/defects': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List defects with metrics for a project */
+    get: operations['QualityController_listDefects']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
 }
 export type webhooks = Record<string, never>
 export interface components {
@@ -1545,6 +1778,17 @@ export interface components {
       scopeType: 'global' | 'workspace' | 'project'
       /** Format: uuid */
       scopeId?: string
+    }
+    ProjectPermissionsResponseDto: {
+      /** Format: uuid */
+      projectId: string
+      permissions: string[]
+    }
+    AssignProjectRoleDto: {
+      /** Format: uuid */
+      userId: string
+      /** Format: uuid */
+      roleId: string
     }
     WorkspaceResponseDto: {
       /** Format: uuid */
@@ -1807,6 +2051,14 @@ export interface components {
       createdAt: string
       /** Format: date-time */
       updatedAt: string
+      severity: string | null
+      foundInEnvironment: string | null
+      foundInReleaseId: string | null
+      rootCause: string | null
+      resolution: string | null
+      devOwnerId: string | null
+      defectState: string | null
+      fixedInBuild: string | null
     }
     CreateWorkItemDto: {
       /** Format: uuid */
@@ -1818,7 +2070,8 @@ export interface components {
       /** Format: uuid */
       statusId?: string
       /** @enum {string} */
-      scheduleState?: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'released'
+      scheduleState?:
+        'idea' | 'defined' | 'ready' | 'in_progress' | 'completed' | 'accepted' | 'released'
       /**
        * @default none
        * @enum {string}
@@ -1839,6 +2092,20 @@ export interface components {
       acceptanceCriteria?: string
       notes?: string
       releaseNotes?: string
+      /** @enum {string} */
+      severity?: 'none' | 'critical' | 'high' | 'medium' | 'low'
+      /** @enum {string} */
+      foundInEnvironment?: 'development' | 'staging' | 'production' | 'testing'
+      foundInReleaseId?: string | null
+      /** @enum {string} */
+      rootCause?: 'requirements' | 'design' | 'code' | 'test' | 'integration' | 'other'
+      /** @enum {string} */
+      resolution?:
+        'fixed' | 'wont_fix' | 'duplicate' | 'cannot_reproduce' | 'deferred' | 'by_design'
+      devOwnerId?: string | null
+      /** @enum {string} */
+      defectState?: 'submitted' | 'open' | 'fixed' | 'closed' | 'closed_declined'
+      fixedInBuild?: string | null
     }
     BulkAssignReleaseDto: {
       /** Format: uuid */
@@ -1858,7 +2125,8 @@ export interface components {
       /** Format: uuid */
       statusId?: string
       /** @enum {string} */
-      scheduleState?: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'released'
+      scheduleState?:
+        'idea' | 'defined' | 'ready' | 'in_progress' | 'completed' | 'accepted' | 'released'
       /** @enum {string} */
       priority?: 'none' | 'low' | 'normal' | 'high' | 'urgent'
       assigneeId?: string | null
@@ -1879,6 +2147,15 @@ export interface components {
       customFields?: {
         [key: string]: unknown
       }
+      severity?: ('none' | 'critical' | 'high' | 'medium' | 'low') | null
+      foundInEnvironment?: ('development' | 'staging' | 'production' | 'testing') | null
+      foundInReleaseId?: string | null
+      rootCause?: ('requirements' | 'design' | 'code' | 'test' | 'integration' | 'other') | null
+      resolution?:
+        ('fixed' | 'wont_fix' | 'duplicate' | 'cannot_reproduce' | 'deferred' | 'by_design') | null
+      devOwnerId?: string | null
+      defectState?: ('submitted' | 'open' | 'fixed' | 'closed' | 'closed_declined') | null
+      fixedInBuild?: string | null
     }
     MoveWorkItemDto: {
       /** Format: uuid */
@@ -1906,12 +2183,14 @@ export interface components {
     CreateTaskDto: {
       title: string
       description?: string
-      /** Format: uuid */
-      statusId?: string
       /** @enum {string} */
-      scheduleState?: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'released'
+      state?: 'defined' | 'in_progress' | 'completed'
       /** Format: uuid */
       assigneeId?: string
+      /** Format: uuid */
+      teamId?: string
+      /** Format: uuid */
+      iterationId?: string
       estimateHours?: number
       todoHours?: number
       actualHours?: number
@@ -2106,7 +2385,8 @@ export interface components {
         type: 'initiative' | 'feature' | 'story' | 'task' | 'defect'
         title: string
         /** @enum {string} */
-        scheduleState: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'released'
+        scheduleState:
+          'idea' | 'defined' | 'ready' | 'in_progress' | 'completed' | 'accepted' | 'released'
         iterationId: string | null
         isBlocked: boolean
         planEstimate: number | null
@@ -2143,27 +2423,63 @@ export interface components {
       projectId: string
       name: string
       description: string | null
+      theme: string | null
       /** @enum {string} */
-      status: 'planned' | 'released' | 'archived'
+      status: 'planning' | 'active' | 'accepted'
       /** @description YYYY-MM-DD */
-      targetDate: string | null
+      startDate: string | null
+      /** @description YYYY-MM-DD */
+      releaseDate: string | null
+      plannedVelocity: number | null
+      planEstimate: number | null
+      projectName?: string
+      notes: string | null
+      releaseNotes: string | null
+      version: string | null
       releasedAt: string | null
       /** Format: date-time */
       createdAt: string
       /** Format: date-time */
       updatedAt: string
+      taskRollup?: {
+        totalItems: number
+        completedItems: number
+        acceptedItems: number
+        toDoItems: number
+        totalPoints: number
+        completedPoints: number
+        toDoPoints: number
+        progressPercent: number
+      }
     }
     CreateReleaseDto: {
       /** Format: uuid */
       projectId: string
       name: string
       description?: string
-      targetDate?: string
+      theme?: string
+      startDate?: string
+      releaseDate?: string
+      /**
+       * @default planning
+       * @enum {string}
+       */
+      state: 'planning' | 'active' | 'accepted'
+      releaseNotes?: string | null
     }
     UpdateReleaseDto: {
       name?: string
       description?: string | null
-      targetDate?: string | null
+      theme?: string | null
+      notes?: string | null
+      startDate?: string | null
+      releaseDate?: string | null
+      plannedVelocity?: number | null
+      planEstimate?: number | null
+      version?: string | null
+      /** @enum {string} */
+      state?: 'planning' | 'active' | 'accepted'
+      releaseNotes?: string | null
     }
     CreateWorkflowStatusDto: {
       name: string
@@ -2241,6 +2557,123 @@ export interface components {
       }
       /** Format: date-time */
       occurredAt: string
+    }
+    UpdateCapacityDto: {
+      /** Format: uuid */
+      projectId: string
+      /** Format: uuid */
+      teamId?: string
+      /** Format: uuid */
+      iterationId: string
+      /** Format: uuid */
+      userId: string
+      capacityHours: number
+    }
+    UpdateTeamTaskDto: {
+      title?: string
+      /** @enum {string} */
+      state?: 'Defined' | 'In-Progress' | 'Completed'
+      estimateHours?: number | null
+      todoHours?: number | null
+      actualHours?: number | null
+      assigneeId?: string | null
+    }
+    MilestoneListItemDto: {
+      /** Format: uuid */
+      id: string
+      /** Format: uuid */
+      workspaceId: string
+      /** Format: uuid */
+      projectId: string
+      name: string
+      description: string | null
+      notes: string | null
+      /** @enum {string} */
+      status: 'planned' | 'at_risk' | 'met' | 'missed' | 'cancelled' | 'completed'
+      ownerId: string | null
+      /** @description YYYY-MM-DD, manually set or derived from linked releases */
+      targetStartDate: string | null
+      /** @description YYYY-MM-DD, manually set or derived from linked releases */
+      targetEndDate: string | null
+      releaseIds: string[]
+      projectIds?: string[]
+      teamIds?: string[]
+      /** @description Work-item completion across linked releases */
+      progress?: {
+        totalItems: number
+        completedItems: number
+        totalPoints: number
+        completedPoints: number
+        progressPercent: number
+      }
+      /** Format: date-time */
+      createdAt: string
+      /** Format: date-time */
+      updatedAt: string
+    }
+    CreateMilestoneDto: {
+      /** Format: uuid */
+      projectId: string
+      name: string
+      description?: string
+      notes?: string
+      /** @enum {string} */
+      status?: 'planned' | 'at_risk' | 'met' | 'missed' | 'cancelled' | 'completed'
+      /** Format: uuid */
+      ownerId?: string
+      /** Format: date */
+      targetStartDate?: string
+      /** Format: date */
+      targetEndDate?: string
+      releaseIds: string[]
+      projectIds?: string[]
+      teamIds?: string[]
+    }
+    MilestoneResponseDto: {
+      /** Format: uuid */
+      id: string
+      /** Format: uuid */
+      workspaceId: string
+      /** Format: uuid */
+      projectId: string
+      name: string
+      description: string | null
+      notes: string | null
+      /** @enum {string} */
+      status: 'planned' | 'at_risk' | 'met' | 'missed' | 'cancelled' | 'completed'
+      ownerId: string | null
+      /** @description YYYY-MM-DD, manually set or derived from linked releases */
+      targetStartDate: string | null
+      /** @description YYYY-MM-DD, manually set or derived from linked releases */
+      targetEndDate: string | null
+      releaseIds: string[]
+      projectIds?: string[]
+      teamIds?: string[]
+      /** @description Work-item completion across linked releases */
+      progress?: {
+        totalItems: number
+        completedItems: number
+        totalPoints: number
+        completedPoints: number
+        progressPercent: number
+      }
+      /** Format: date-time */
+      createdAt: string
+      /** Format: date-time */
+      updatedAt: string
+    }
+    UpdateMilestoneDto: {
+      name?: string
+      description?: string | null
+      notes?: string | null
+      /** @enum {string} */
+      status?: 'planned' | 'at_risk' | 'met' | 'missed' | 'cancelled' | 'completed'
+      ownerId?: string | null
+      targetStartDate?: string | null
+      targetEndDate?: string | null
+      releaseIds?: string[]
+      projectIds?: string[]
+      teamIds?: string[]
     }
   }
   responses: never
@@ -2615,6 +3048,143 @@ export interface operations {
       query?: never
       header?: never
       path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Role assignment revoked */
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  AccessController_getMyProjectPermissions: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        projectId: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ProjectPermissionsResponseDto']
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  AccessController_assignProjectRole: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        projectId: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['AssignProjectRoleDto']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['RoleAssignmentResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Conflict — duplicate record or state conflict */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  AccessController_revokeProjectRole: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        projectId: string
         id: string
       }
       cookie?: never
@@ -4486,8 +5056,10 @@ export interface operations {
         sort?: string
         projectId: string
         type?: 'initiative' | 'feature' | 'story' | 'task' | 'defect'
+        parentId?: string
         statusId?: string
-        scheduleState?: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'released'
+        scheduleState?:
+          'idea' | 'defined' | 'ready' | 'in_progress' | 'completed' | 'accepted' | 'released'
         priority?: 'none' | 'low' | 'normal' | 'high' | 'urgent'
         assigneeId?: string
         teamId?: string
@@ -4608,8 +5180,10 @@ export interface operations {
         sort?: string
         projectId: string
         type?: 'initiative' | 'feature' | 'story' | 'task' | 'defect'
+        parentId?: string
         statusId?: string
-        scheduleState?: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'released'
+        scheduleState?:
+          'idea' | 'defined' | 'ready' | 'in_progress' | 'completed' | 'accepted' | 'released'
         priority?: 'none' | 'low' | 'normal' | 'high' | 'urgent'
         assigneeId?: string
         teamId?: string
@@ -6278,7 +6852,8 @@ export interface operations {
         sort?: string
         q?: string
         type?: 'initiative' | 'feature' | 'story' | 'task' | 'defect'
-        scheduleState?: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'released'
+        scheduleState?:
+          'idea' | 'defined' | 'ready' | 'in_progress' | 'completed' | 'accepted' | 'released'
         isBlocked?: boolean
         assigneeId?: string
         sortBy?:
@@ -6633,7 +7208,7 @@ export interface operations {
       }
     }
   }
-  ReleasesController_shipRelease: {
+  ReleasesController_getReleaseBurndown: {
     parameters: {
       query?: never
       header?: never
@@ -6644,13 +7219,11 @@ export interface operations {
     }
     requestBody?: never
     responses: {
-      201: {
+      200: {
         headers: {
           [name: string]: unknown
         }
-        content: {
-          'application/json': components['schemas']['ReleaseResponseDto']
-        }
+        content?: never
       }
       /** @description Bad Request — validation error or malformed input */
       400: {
@@ -6666,8 +7239,58 @@ export interface operations {
         }
         content?: never
       }
-      /** @description Forbidden — insufficient permissions */
-      403: {
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  ReleasesController_listReleaseArtifacts: {
+    parameters: {
+      query: {
+        limit?: number
+        cursor?: string
+        sort?: string
+        projectId: string
+      }
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Paginated list */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': {
+            data?: components['schemas']['ReleaseResponseDto'][]
+            pageInfo?: {
+              /** @description Opaque cursor token for the next page */
+              nextCursor: string | null
+              hasNextPage: boolean
+              /** @description Number of items returned per page */
+              limit: number
+            }
+          }
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
         headers: {
           [name: string]: unknown
         }
@@ -7439,6 +8062,716 @@ export interface operations {
       }
       /** @description Unauthorized — missing or invalid authentication */
       401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  TeamStatusController_getTeamStatus: {
+    parameters: {
+      query: {
+        projectId: string
+        teamId?: string | null
+        iterationId: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Grouped task status by member */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  TeamStatusController_updateCapacity: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateCapacityDto']
+      }
+    }
+    responses: {
+      /** @description Updated capacity */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  TeamStatusController_updateTask: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        taskId: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateTeamTaskDto']
+      }
+    }
+    responses: {
+      /** @description Updated task */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  MilestonesController_listMilestones: {
+    parameters: {
+      query: {
+        limit?: number
+        cursor?: string
+        sort?: string
+        projectId: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Paginated list */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': {
+            data?: components['schemas']['MilestoneListItemDto'][]
+            pageInfo?: {
+              /** @description Opaque cursor token for the next page */
+              nextCursor: string | null
+              hasNextPage: boolean
+              /** @description Number of items returned per page */
+              limit: number
+            }
+          }
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  MilestonesController_createMilestone: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateMilestoneDto']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['MilestoneResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  MilestonesController_getMilestone: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['MilestoneResponseDto']
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  MilestonesController_deleteMilestone: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Milestone deleted */
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  MilestonesController_updateMilestone: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateMilestoneDto']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['MilestoneResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  MilestonesController_listMilestoneArtifacts: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Array of work item IDs */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  MilestonesController_setMilestoneArtifacts: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Updated artifact IDs */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  MilestonesController_listMilestoneProjects: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Array of project IDs */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  MilestonesController_setMilestoneProjects: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Updated project IDs */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  MilestonesController_listMilestoneTeams: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Array of team IDs */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  MilestonesController_setMilestoneTeams: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Updated team IDs */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  QualityController_listDefects: {
+    parameters: {
+      query: {
+        limit?: number
+        cursor?: string
+        sort?: string
+        projectId: string
+        search?: string
+        severity?: 'all' | 'critical' | 'high' | 'medium' | 'low'
+        environment?: 'all' | 'development' | 'staging' | 'production' | 'testing'
+        priority?: 'all' | 'none' | 'low' | 'normal' | 'high' | 'urgent'
+        scheduleState?:
+          | 'all'
+          | 'idea'
+          | 'defined'
+          | 'ready'
+          | 'in_progress'
+          | 'completed'
+          | 'accepted'
+          | 'released'
+        assigneeId?: string
+        releaseId?: string
+        rootCause?: 'all' | 'requirements' | 'design' | 'code' | 'test' | 'integration' | 'other'
+        resolution?:
+          'all' | 'fixed' | 'wont_fix' | 'duplicate' | 'cannot_reproduce' | 'deferred' | 'by_design'
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': Record<string, never>
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
         headers: {
           [name: string]: unknown
         }

@@ -16,7 +16,6 @@ import {
   ApiCommonErrors,
   ApiPagedResponse,
   buildPageArgs,
-  RequirePermission,
   UseIdempotency,
   RateLimit,
 } from '@platform';
@@ -626,7 +625,6 @@ export class WorkItemsController {
   }
 
   @Post(':id/watchers')
-  @RequirePermission('work_item:view')
   @HttpCode(204)
   @ApiOperation({ summary: 'Watch (follow) a work item' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -640,7 +638,6 @@ export class WorkItemsController {
   }
 
   @Delete(':id/watchers')
-  @RequirePermission('work_item:view')
   @HttpCode(204)
   @ApiOperation({ summary: 'Unwatch (unfollow) a work item' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })

@@ -10,7 +10,11 @@ export {
   PERMISSION,
   ROLE_PERMISSIONS,
   ROLE_NAMES,
+  PERMISSION_TIER,
   permissionGrants,
+  isProjectTierPermission,
   type Permission,
+  type WorkspacePermission,
+  type ProjectPermission,
   type SystemRoleSlug,
 } from '../../../db/permissions.catalog';

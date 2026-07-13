@@ -32,3 +32,15 @@ export interface AssignRoleInput {
   scopeId?: string;
   grantedBy: string;
 }
+
+/**
+ * A user's role assignment joined with the role's permission set — the shape
+ * returned by a single assignments ⨝ roles query. Lets permission resolution
+ * (baseline & per-project) avoid an N+1 fan-out of per-role lookups.
+ */
+export interface EffectiveAssignment {
+  scopeType: ScopeType;
+  scopeId: string | null;
+  roleSlug: string;
+  permissions: string[];
+}

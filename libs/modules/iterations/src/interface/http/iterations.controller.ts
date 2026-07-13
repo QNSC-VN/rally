@@ -11,12 +11,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import {
-  ApiCommonErrors,
-  ApiPagedResponse,
-  buildPageArgs,
-  RequirePermission,
-} from '@platform';
+import { ApiCommonErrors, ApiPagedResponse, buildPageArgs } from '@platform';
 import type { JwtPayload, PagedResult } from '@platform';
 import { CurrentUser } from '@modules/identity';
 import { RequireProjectPermission, AuthProjectScoped } from '@modules/access';
@@ -90,7 +85,7 @@ export class IterationsController {
   ) {}
 
   @Get()
-  @RequirePermission('iteration:view')
+  @RequireProjectPermission('iteration:view', 'query', 'projectId')
   @ApiOperation({ summary: 'List iterations for a project' })
   @ApiPagedResponse(IterationResponseDto)
   @ApiCommonErrors(400, 401, 404)
@@ -139,7 +134,7 @@ export class IterationsController {
   // ── Assignment options (P2-IT-10) — declared before :id to avoid route conflict ──
 
   @Get('options')
-  @RequirePermission('iteration:view')
+  @RequireProjectPermission('iteration:view', 'query', 'projectId')
   @ApiOperation({ summary: 'Get assignable iterations for the work-item picker' })
   @ApiResponse({ status: 200, type: [IterationOptionDto] })
   @ApiCommonErrors(400, 401, 404)
@@ -156,7 +151,6 @@ export class IterationsController {
   }
 
   @Get(':id')
-  @RequirePermission('iteration:view')
   @ApiOperation({ summary: 'Get iteration details' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: IterationResponseDto })
@@ -165,7 +159,7 @@ export class IterationsController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<IterationResponseDto> {
-    const iteration = await this.iterationsService.getIteration(user.workspaceId, id);
+    const iteration = await this.iterationsService.getIterationForView(user, id);
     return toIterationDto(iteration);
   }
 
@@ -229,7 +223,6 @@ export class IterationsController {
   // ── Iteration Status read-model (P2.3) ──────────────────────────────────────
 
   @Get(':id/status')
-  @RequirePermission('iteration:view')
   @ApiOperation({ summary: 'Get Iteration Status: metrics + assigned work items' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: IterationStatusResponseDto })
@@ -270,7 +263,6 @@ export class IterationsController {
   }
 
   @Post(':id/work-items')
-  @RequirePermission('work_item:create')
   @ApiOperation({ summary: 'Create a Story/Defect directly in the iteration' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 201, type: CreateIterationItemResponseDto })

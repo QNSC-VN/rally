@@ -25,7 +25,7 @@ import { InlineSelect } from '@/shared/ui/native-select'
 import { Textarea } from '@/shared/ui/textarea'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
-import { useAuthStore } from '@/shared/lib/stores/auth.store'
+import { useProjectPermissions } from '@/features/access/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import {
   useMilestone,
@@ -48,7 +48,10 @@ import { TypeBadge, ScheduleStateBadge, PriorityBadge } from '@/entities/work-it
 
 // ── Status config ──────────────────────────────────────────────────────────────
 
-const STATUS_STYLE: Record<MilestoneStatus, { bg: string; text: string; border: string; label: string }> = {
+const STATUS_STYLE: Record<
+  MilestoneStatus,
+  { bg: string; text: string; border: string; label: string }
+> = {
   planned: { bg: '#eef3fb', text: '#475569', border: '#cbd5e1', label: 'Planned' },
   at_risk: { bg: '#fff7ed', text: '#9a3412', border: '#fed7aa', label: 'At Risk' },
   met: { bg: '#eaf5ed', text: '#1e6930', border: '#b9dec2', label: 'Met' },
@@ -57,7 +60,14 @@ const STATUS_STYLE: Record<MilestoneStatus, { bg: string; text: string; border: 
   completed: { bg: '#eef6f0', text: '#1e6930', border: '#a8d5b3', label: 'Completed' },
 }
 
-const MILESTONE_STATUSES: MilestoneStatus[] = ['planned', 'at_risk', 'met', 'missed', 'cancelled', 'completed']
+const MILESTONE_STATUSES: MilestoneStatus[] = [
+  'planned',
+  'at_risk',
+  'met',
+  'missed',
+  'cancelled',
+  'completed',
+]
 
 // ── Searchable Selection Modal (reusable) ───────────────────────────────────────
 
@@ -135,13 +145,17 @@ function SelectionModal({
       {/* Search bar above ModalBody */}
       <div className="px-5 pt-3 pb-1">
         <div className="relative">
-          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: '#8c94a6' }} />
+          <Search
+            size={13}
+            className="absolute top-1/2 left-2.5 -translate-y-1/2"
+            style={{ color: '#8c94a6' }}
+          />
           <input
             type="text"
             placeholder={`Search ${title.toLowerCase()}...`}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-8 pr-3 py-1.5 text-xs rounded-md focus:outline-none focus:ring-1"
+            className="w-full rounded-md py-1.5 pr-3 pl-8 text-xs focus:ring-1 focus:outline-none"
             style={{
               backgroundColor: '#f4f6f9',
               border: `1px solid ${BRAND.border}`,
@@ -154,7 +168,7 @@ function SelectionModal({
       <ModalBody className="space-y-1">
         {/* Select-all row */}
         <label
-          className="flex items-center gap-2 px-1 py-1.5 text-[11px] font-semibold cursor-pointer select-none rounded hover:bg-gray-50"
+          className="flex cursor-pointer items-center gap-2 rounded px-1 py-1.5 text-[11px] font-semibold select-none hover:bg-gray-50"
           style={{ color: BRAND.textSecondary }}
         >
           <input
@@ -168,14 +182,14 @@ function SelectionModal({
         </label>
         <div className="max-h-60 overflow-y-auto">
           {filtered.length === 0 ? (
-            <p className="text-xs py-4 text-center" style={{ color: BRAND.textMuted }}>
+            <p className="py-4 text-center text-xs" style={{ color: BRAND.textMuted }}>
               No items found
             </p>
           ) : (
             filtered.map((item) => (
               <label
                 key={item.id}
-                className="flex items-center gap-2 px-1 py-1.5 text-xs cursor-pointer select-none rounded hover:bg-gray-50 transition-colors"
+                className="flex cursor-pointer items-center gap-2 rounded px-1 py-1.5 text-xs transition-colors select-none hover:bg-gray-50"
               >
                 <input
                   type="checkbox"
@@ -196,16 +210,18 @@ function SelectionModal({
         <button
           type="button"
           onClick={onClose}
-          className="px-4 py-1.5 text-sm rounded-md cursor-pointer"
+          className="cursor-pointer rounded-md px-4 py-1.5 text-sm"
           style={{ border: `1px solid ${BRAND.border}`, color: '#5c6478' }}
         >
           Cancel
         </button>
         <button
           type="button"
-          onClick={() => { void handleSave() }}
+          onClick={() => {
+            void handleSave()
+          }}
           disabled={saving}
-          className="flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium text-white rounded-md disabled:opacity-50 cursor-pointer"
+          className="flex cursor-pointer items-center gap-1.5 rounded-md px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
           style={{ backgroundColor: BRAND.primary }}
         >
           {saving ? <Loader2 size={12} className="animate-spin" /> : null}
@@ -236,7 +252,7 @@ function RelationButton({
       type="button"
       onClick={onClick}
       disabled={!canManage}
-      className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-xs transition-colors hover:bg-gray-50 disabled:cursor-default disabled:opacity-80 text-left"
+      className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs transition-colors hover:bg-gray-50 disabled:cursor-default disabled:opacity-80"
       style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textPrimary }}
     >
       <Icon size={14} style={{ color: BRAND.textMuted }} />
@@ -255,8 +271,16 @@ function RelationButton({
 
 function OwnerCell({ name }: { name?: string | null }) {
   if (!name)
-    return <span className="text-[10px]" style={{ color: '#a0a7b5' }}>—</span>
-  const initials = name.split(' ').slice(0, 2).map((n) => n[0]?.toUpperCase()).join('')
+    return (
+      <span className="text-[10px]" style={{ color: '#a0a7b5' }}>
+        —
+      </span>
+    )
+  const initials = name
+    .split(' ')
+    .slice(0, 2)
+    .map((n) => n[0]?.toUpperCase())
+    .join('')
   return (
     <div className="flex items-center gap-1 overflow-hidden">
       <span
@@ -265,14 +289,24 @@ function OwnerCell({ name }: { name?: string | null }) {
       >
         {initials}
       </span>
-      <span className="truncate text-[10px]" style={{ color: '#5c6478' }}>{name}</span>
+      <span className="truncate text-[10px]" style={{ color: '#5c6478' }}>
+        {name}
+      </span>
     </div>
   )
 }
 
 // ── Artifacts table row ────────────────────────────────────────────────────────
 
-function ArtifactRow({ item, index, onOpen }: { item: ArtifactItem; index: number; onOpen: () => void }) {
+function ArtifactRow({
+  item,
+  index,
+  onOpen,
+}: {
+  item: ArtifactItem
+  index: number
+  onOpen: () => void
+}) {
   return (
     <tr
       className="cursor-pointer transition-colors duration-75"
@@ -282,16 +316,25 @@ function ArtifactRow({ item, index, onOpen }: { item: ArtifactItem; index: numbe
       onClick={onOpen}
     >
       {/* Rank */}
-      <td className="h-8 px-3 text-center font-mono text-[10px] tabular-nums" style={{ color: '#8c94a6' }}>
+      <td
+        className="h-8 px-3 text-center font-mono text-[10px] tabular-nums"
+        style={{ color: '#8c94a6' }}
+      >
         {index + 1}
       </td>
       {/* ID */}
-      <td className="h-8 px-3 font-mono text-[10px] underline-offset-2 hover:underline" style={{ color: BRAND.primaryLight }}>
+      <td
+        className="h-8 px-3 font-mono text-[10px] underline-offset-2 hover:underline"
+        style={{ color: BRAND.primaryLight }}
+      >
         {item.itemKey}
       </td>
       {/* Name */}
       <td className="h-8 px-3">
-        <span className="text-xs font-medium truncate block max-w-[300px]" style={{ color: BRAND.textPrimary }}>
+        <span
+          className="block max-w-[300px] truncate text-xs font-medium"
+          style={{ color: BRAND.textPrimary }}
+        >
           {item.title}
         </span>
       </td>
@@ -362,17 +405,21 @@ function ArtifactsTab({ milestoneId }: { milestoneId: string }) {
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Search toolbar */}
       <div
-        className="flex items-center gap-3 px-4 py-2 shrink-0"
+        className="flex shrink-0 items-center gap-3 px-4 py-2"
         style={{ borderBottom: `1px solid ${BRAND.borderSubtle}`, backgroundColor: BRAND.surface }}
       >
         <div className="relative" style={{ width: 220 }}>
-          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: '#8c94a6' }} />
+          <Search
+            size={13}
+            className="absolute top-1/2 left-2.5 -translate-y-1/2"
+            style={{ color: '#8c94a6' }}
+          />
           <input
             type="text"
             placeholder="Search artifacts..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-8 pr-3 py-1.5 text-xs rounded-md focus:outline-none focus:ring-1"
+            className="w-full rounded-md py-1.5 pr-3 pl-8 text-xs focus:ring-1 focus:outline-none"
             style={{
               backgroundColor: '#f4f6f9',
               border: `1px solid ${BRAND.border}`,
@@ -391,7 +438,7 @@ function ArtifactsTab({ milestoneId }: { milestoneId: string }) {
         {isLoading ? (
           <SkeletonList rows={8} />
         ) : items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full gap-2 p-8">
+          <div className="flex h-full flex-col items-center justify-center gap-2 p-8">
             <Layers size={32} style={{ color: '#c4cad4' }} />
             <p className="text-xs" style={{ color: BRAND.textMuted }}>
               {search ? 'No artifacts match your search' : 'No artifacts linked to this milestone'}
@@ -401,17 +448,33 @@ function ArtifactsTab({ milestoneId }: { milestoneId: string }) {
           <table className="w-full text-left">
             <thead>
               <tr
-                className="text-[9px] font-semibold uppercase tracking-wider select-none"
+                className="text-[9px] font-semibold tracking-wider uppercase select-none"
                 style={{ backgroundColor: '#f7f8fa', borderBottom: `1px solid ${BRAND.border}` }}
               >
-                <th className="h-7 px-3 font-medium text-center w-12" style={{ color: '#8c94a6' }}>#</th>
-                <th className="h-7 px-3 font-medium w-20" style={{ color: '#8c94a6' }}>ID</th>
-                <th className="h-7 px-3 font-medium" style={{ color: '#8c94a6' }}>Name</th>
-                <th className="h-7 px-3 font-medium w-14" style={{ color: '#8c94a6' }}>Type</th>
-                <th className="h-7 px-3 font-medium w-24" style={{ color: '#8c94a6' }}>Schedule State</th>
-                <th className="h-7 px-3 font-medium w-16" style={{ color: '#8c94a6' }}>Priority</th>
-                <th className="h-7 px-3 font-medium w-28" style={{ color: '#8c94a6' }}>Owner</th>
-                <th className="h-7 px-3 font-medium text-center w-14" style={{ color: '#8c94a6' }}>Est.</th>
+                <th className="h-7 w-12 px-3 text-center font-medium" style={{ color: '#8c94a6' }}>
+                  #
+                </th>
+                <th className="h-7 w-20 px-3 font-medium" style={{ color: '#8c94a6' }}>
+                  ID
+                </th>
+                <th className="h-7 px-3 font-medium" style={{ color: '#8c94a6' }}>
+                  Name
+                </th>
+                <th className="h-7 w-14 px-3 font-medium" style={{ color: '#8c94a6' }}>
+                  Type
+                </th>
+                <th className="h-7 w-24 px-3 font-medium" style={{ color: '#8c94a6' }}>
+                  Schedule State
+                </th>
+                <th className="h-7 w-16 px-3 font-medium" style={{ color: '#8c94a6' }}>
+                  Priority
+                </th>
+                <th className="h-7 w-28 px-3 font-medium" style={{ color: '#8c94a6' }}>
+                  Owner
+                </th>
+                <th className="h-7 w-14 px-3 text-center font-medium" style={{ color: '#8c94a6' }}>
+                  Est.
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -420,7 +483,9 @@ function ArtifactsTab({ milestoneId }: { milestoneId: string }) {
                   key={item.id}
                   item={item}
                   index={cursorHistory.length * pageSize + idx}
-                  onOpen={() => navigate({ to: '/item/$itemKey', params: { itemKey: item.itemKey } })}
+                  onOpen={() =>
+                    navigate({ to: '/item/$itemKey', params: { itemKey: item.itemKey } })
+                  }
                 />
               ))}
             </tbody>
@@ -443,7 +508,9 @@ function ArtifactsTab({ milestoneId }: { milestoneId: string }) {
               className="w-auto"
             >
               {[10, 25, 50, 100].map((s) => (
-                <option key={s} value={s}>{s}</option>
+                <option key={s} value={s}>
+                  {s}
+                </option>
               ))}
             </InlineSelect>
             <span style={{ color: '#8c94a6' }}>
@@ -453,7 +520,9 @@ function ArtifactsTab({ milestoneId }: { milestoneId: string }) {
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-[11px] tabular-nums" style={{ color: '#5c6478' }}>Page {currentPage}</span>
+            <span className="text-[11px] tabular-nums" style={{ color: '#5c6478' }}>
+              Page {currentPage}
+            </span>
             <button
               aria-label="Previous page"
               disabled={currentPage === 1}
@@ -488,7 +557,8 @@ export function MilestoneDetailPage() {
   const { project, workspace } = useAppContext()
   const projectId = project?.projectId ?? ''
   const workspaceId = workspace?.workspaceId ?? ''
-  const canManage = useAuthStore((s) => s.hasPermission('milestone:manage'))
+  const { can } = useProjectPermissions(projectId || undefined)
+  const canManage = can('milestone:manage')
 
   const { data: milestone, isLoading, isError } = useMilestone(milestoneId)
   const update = useUpdateMilestone()
@@ -582,7 +652,10 @@ export function MilestoneDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="flex flex-1 items-center justify-center" style={{ backgroundColor: BRAND.pageBg }}>
+      <div
+        className="flex flex-1 items-center justify-center"
+        style={{ backgroundColor: BRAND.pageBg }}
+      >
         <Loader2 className="animate-spin" size={24} style={{ color: BRAND.primary }} />
       </div>
     )
@@ -590,11 +663,18 @@ export function MilestoneDetailPage() {
 
   if (isError || !milestone) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-3" style={{ backgroundColor: BRAND.pageBg }}>
+      <div
+        className="flex flex-1 flex-col items-center justify-center gap-3"
+        style={{ backgroundColor: BRAND.pageBg }}
+      >
         <p className="text-[13px]" style={{ color: BRAND.textSecondary }}>
           Milestone details could not be loaded.
         </p>
-        <Link to="/milestones" className="text-[12px] font-semibold hover:underline" style={{ color: BRAND.primary }}>
+        <Link
+          to="/milestones"
+          className="text-[12px] font-semibold hover:underline"
+          style={{ color: BRAND.primary }}
+        >
           ← Back to Milestones
         </Link>
       </div>
@@ -609,7 +689,7 @@ export function MilestoneDetailPage() {
   ]
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden" style={{ backgroundColor: BRAND.pageBg }}>
+    <div className="flex flex-1 flex-col overflow-hidden" style={{ backgroundColor: BRAND.pageBg }}>
       {/* Header bar */}
       <div
         className="flex h-12 shrink-0 items-center justify-between gap-4 px-4"
@@ -618,7 +698,7 @@ export function MilestoneDetailPage() {
         <div className="flex items-center gap-2">
           <Link
             to="/milestones"
-            className="flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 transition-colors"
+            className="flex h-7 w-7 items-center justify-center rounded transition-colors hover:bg-gray-100"
             style={{ color: BRAND.textSecondary }}
           >
             <ChevronLeft size={16} />
@@ -629,8 +709,10 @@ export function MilestoneDetailPage() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 onBlur={handleFieldSave}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleFieldSave() }}
-                className="text-[14px] font-semibold bg-transparent focus:outline-none focus:bg-white focus:ring-1 px-1 py-0.5 rounded border-0"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleFieldSave()
+                }}
+                className="rounded border-0 bg-transparent px-1 py-0.5 text-[14px] font-semibold focus:bg-white focus:ring-1 focus:outline-none"
                 style={{ color: BRAND.textPrimary, width: 320 }}
               />
             ) : (
@@ -648,7 +730,9 @@ export function MilestoneDetailPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          {saving && <Loader2 size={12} className="animate-spin" style={{ color: BRAND.primary }} />}
+          {saving && (
+            <Loader2 size={12} className="animate-spin" style={{ color: BRAND.primary }} />
+          )}
           {canManage && (
             <button
               onClick={handleFieldSave}
@@ -656,7 +740,11 @@ export function MilestoneDetailPage() {
               className="flex h-7 items-center gap-1.5 rounded-md px-3 text-[12px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
               style={{ backgroundColor: BRAND.primary }}
             >
-              {update.isPending || saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+              {update.isPending || saving ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <Save size={12} />
+              )}
               Save Changes
             </button>
           )}
@@ -665,7 +753,7 @@ export function MilestoneDetailPage() {
 
       {/* Tab bar */}
       <div
-        className="flex items-center gap-0 px-4 shrink-0"
+        className="flex shrink-0 items-center gap-0 px-4"
         style={{ borderBottom: `1px solid ${BRAND.border}`, backgroundColor: BRAND.surface }}
       >
         {TABS.map((tab) => (
@@ -680,7 +768,7 @@ export function MilestoneDetailPage() {
             {tab.label}
             {activeTab === tab.key && (
               <span
-                className="absolute bottom-0 left-0 right-0 h-0.5"
+                className="absolute right-0 bottom-0 left-0 h-0.5"
                 style={{ backgroundColor: BRAND.primary }}
               />
             )}
@@ -695,9 +783,15 @@ export function MilestoneDetailPage() {
         /* Details tab — two panel layout */
         <div className="flex flex-1 overflow-hidden">
           {/* Left panel: Description & Notes */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-6" style={{ backgroundColor: BRAND.surface }}>
+          <div
+            className="flex-1 space-y-6 overflow-y-auto p-6"
+            style={{ backgroundColor: BRAND.surface }}
+          >
             <div className="space-y-2">
-              <h2 className="text-[12px] font-semibold uppercase tracking-wider" style={{ color: BRAND.textSecondary }}>
+              <h2
+                className="text-[12px] font-semibold tracking-wider uppercase"
+                style={{ color: BRAND.textSecondary }}
+              >
                 Description
               </h2>
               <Textarea
@@ -707,13 +801,20 @@ export function MilestoneDetailPage() {
                 disabled={!canManage}
                 placeholder="Enter milestone description..."
                 rows={6}
-                className="w-full text-[12px] p-3 rounded-md border focus:outline-none focus:ring-1"
-                style={{ borderColor: BRAND.border, backgroundColor: BRAND.surface, color: BRAND.textPrimary }}
+                className="w-full rounded-md border p-3 text-[12px] focus:ring-1 focus:outline-none"
+                style={{
+                  borderColor: BRAND.border,
+                  backgroundColor: BRAND.surface,
+                  color: BRAND.textPrimary,
+                }}
               />
             </div>
 
             <div className="space-y-2">
-              <h2 className="text-[12px] font-semibold uppercase tracking-wider" style={{ color: BRAND.textSecondary }}>
+              <h2
+                className="text-[12px] font-semibold tracking-wider uppercase"
+                style={{ color: BRAND.textSecondary }}
+              >
                 Notes
               </h2>
               <Textarea
@@ -723,18 +824,25 @@ export function MilestoneDetailPage() {
                 disabled={!canManage}
                 placeholder="Add internal notes..."
                 rows={10}
-                className="w-full text-[12px] p-3 rounded-md border focus:outline-none focus:ring-1"
-                style={{ borderColor: BRAND.border, backgroundColor: BRAND.surface, color: BRAND.textPrimary }}
+                className="w-full rounded-md border p-3 text-[12px] focus:ring-1 focus:outline-none"
+                style={{
+                  borderColor: BRAND.border,
+                  backgroundColor: BRAND.surface,
+                  color: BRAND.textPrimary,
+                }}
               />
             </div>
           </div>
 
           {/* Right sidebar (320px, scrollable) */}
           <div
-            className="w-80 shrink-0 overflow-y-auto border-l p-5 space-y-5"
+            className="w-80 shrink-0 space-y-5 overflow-y-auto border-l p-5"
             style={{ backgroundColor: BRAND.surface, borderColor: BRAND.border }}
           >
-            <h2 className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: BRAND.textMuted }}>
+            <h2
+              className="text-[11px] font-semibold tracking-wider uppercase"
+              style={{ color: BRAND.textMuted }}
+            >
               Metadata Details
             </h2>
 
@@ -770,12 +878,16 @@ export function MilestoneDetailPage() {
 
             {/* Owner */}
             <div className="space-y-1">
-              <label className="text-[10px] font-medium" style={{ color: BRAND.textSecondary }}>Owner</label>
+              <label className="text-[10px] font-medium" style={{ color: BRAND.textSecondary }}>
+                Owner
+              </label>
               {canManage ? (
                 <select
                   value={ownerId}
-                  onChange={(e) => { void handleOwnerChange(e.target.value) }}
-                  className="w-full text-[11px] px-2 py-1 rounded bg-white focus:outline-none cursor-pointer"
+                  onChange={(e) => {
+                    void handleOwnerChange(e.target.value)
+                  }}
+                  className="w-full cursor-pointer rounded bg-white px-2 py-1 text-[11px] focus:outline-none"
                   style={{ border: `1px solid ${BRAND.borderInput}`, color: BRAND.textPrimary }}
                 >
                   <option value="">Unassigned</option>
@@ -786,10 +898,13 @@ export function MilestoneDetailPage() {
                   ))}
                 </select>
               ) : (
-                <div className="text-[12px] font-semibold py-1" style={{ color: BRAND.textPrimary }}>
-                  {members.find((m) => m.userId === milestone.ownerId)?.displayName
-                    ?? members.find((m) => m.userId === milestone.ownerId)?.email
-                    ?? '—'}
+                <div
+                  className="py-1 text-[12px] font-semibold"
+                  style={{ color: BRAND.textPrimary }}
+                >
+                  {members.find((m) => m.userId === milestone.ownerId)?.displayName ??
+                    members.find((m) => m.userId === milestone.ownerId)?.email ??
+                    '—'}
                 </div>
               )}
             </div>
@@ -801,11 +916,13 @@ export function MilestoneDetailPage() {
               </label>
               <div className="flex items-center gap-1.5">
                 <CalendarDays size={12} style={{ color: BRAND.textMuted }} />
-                <span className="text-[12px] font-mono" style={{ color: BRAND.textPrimary }}>
+                <span className="font-mono text-[12px]" style={{ color: BRAND.textPrimary }}>
                   {milestone.targetStartDate ?? '—'}
                 </span>
               </div>
-              <p className="text-[9px]" style={{ color: BRAND.textMuted }}>Derived from linked Releases</p>
+              <p className="text-[9px]" style={{ color: BRAND.textMuted }}>
+                Derived from linked Releases
+              </p>
             </div>
 
             {/* Target End Date (read-only, derived) */}
@@ -815,25 +932,33 @@ export function MilestoneDetailPage() {
               </label>
               <div className="flex items-center gap-1.5">
                 <CalendarDays size={12} style={{ color: BRAND.textMuted }} />
-                <span className="text-[12px] font-mono" style={{ color: BRAND.textPrimary }}>
+                <span className="font-mono text-[12px]" style={{ color: BRAND.textPrimary }}>
                   {milestone.targetEndDate ?? '—'}
                 </span>
               </div>
-              <p className="text-[9px]" style={{ color: BRAND.textMuted }}>Derived from linked Releases</p>
+              <p className="text-[9px]" style={{ color: BRAND.textMuted }}>
+                Derived from linked Releases
+              </p>
             </div>
 
             {/* Status */}
             <div className="space-y-1">
-              <label className="text-[10px] font-medium" style={{ color: BRAND.textSecondary }}>Status</label>
+              <label className="text-[10px] font-medium" style={{ color: BRAND.textSecondary }}>
+                Status
+              </label>
               {canManage ? (
                 <InlineSelect
                   value={status}
-                  onChange={(e) => { void handleStatusChange(e.target.value as MilestoneStatus) }}
-                  className="w-full text-[11px] px-2 py-1 rounded bg-white focus:outline-none"
+                  onChange={(e) => {
+                    void handleStatusChange(e.target.value as MilestoneStatus)
+                  }}
+                  className="w-full rounded bg-white px-2 py-1 text-[11px] focus:outline-none"
                   style={{ border: `1px solid ${BRAND.borderInput}`, color: BRAND.textPrimary }}
                 >
                   {MILESTONE_STATUSES.map((st) => (
-                    <option key={st} value={st}>{STATUS_STYLE[st].label}</option>
+                    <option key={st} value={st}>
+                      {STATUS_STYLE[st].label}
+                    </option>
                   ))}
                 </InlineSelect>
               ) : (
@@ -849,35 +974,50 @@ export function MilestoneDetailPage() {
             {/* Progress */}
             {milestone.progress && (
               <div
-                className="p-3 rounded-md space-y-2"
+                className="space-y-2 rounded-md p-3"
                 style={{ backgroundColor: '#f8fafc', border: `1px solid ${BRAND.borderSubtle}` }}
               >
-                <h3 className="text-[10px] font-bold uppercase tracking-wider" style={{ color: BRAND.textSecondary }}>
+                <h3
+                  className="text-[10px] font-bold tracking-wider uppercase"
+                  style={{ color: BRAND.textSecondary }}
+                >
                   Progress
                 </h3>
                 <div className="space-y-1">
-                  <div className="flex justify-between text-[11px] font-semibold" style={{ color: BRAND.textPrimary }}>
+                  <div
+                    className="flex justify-between text-[11px] font-semibold"
+                    style={{ color: BRAND.textPrimary }}
+                  >
                     <span>Completion</span>
                     <span>{milestone.progress.progressPercent}%</span>
                   </div>
-                  <div className="w-full h-2 rounded-full overflow-hidden" style={{ backgroundColor: '#e2e8f0' }}>
+                  <div
+                    className="h-2 w-full overflow-hidden rounded-full"
+                    style={{ backgroundColor: '#e2e8f0' }}
+                  >
                     <div
                       className="h-full rounded-full transition-all"
                       style={{
                         width: `${milestone.progress.progressPercent}%`,
-                        backgroundColor: milestone.progress.progressPercent === 100 ? '#16a34a' : '#2563eb',
+                        backgroundColor:
+                          milestone.progress.progressPercent === 100 ? '#16a34a' : '#2563eb',
                       }}
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-[10px]" style={{ color: BRAND.textMuted }}>
+                <div
+                  className="grid grid-cols-2 gap-2 text-[10px]"
+                  style={{ color: BRAND.textMuted }}
+                >
                   <div>
-                    Items: <span className="font-semibold" style={{ color: BRAND.textPrimary }}>
+                    Items:{' '}
+                    <span className="font-semibold" style={{ color: BRAND.textPrimary }}>
                       {milestone.progress.completedItems}/{milestone.progress.totalItems}
                     </span>
                   </div>
                   <div>
-                    Points: <span className="font-semibold" style={{ color: BRAND.textPrimary }}>
+                    Points:{' '}
+                    <span className="font-semibold" style={{ color: BRAND.textPrimary }}>
                       {milestone.progress.completedPoints}/{milestone.progress.totalPoints}
                     </span>
                   </div>

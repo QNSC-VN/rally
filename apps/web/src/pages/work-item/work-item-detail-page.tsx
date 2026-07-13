@@ -41,6 +41,7 @@ import { useProjectStatuses } from '@/features/projects/api'
 import { useProjectTeams, useProjectMembers } from '@/features/teams/api'
 import { useIterationOptions } from '@/features/iterations/api'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
+import { useProjectPermissions } from '@/features/access/api'
 import { TypeBadge, ScheduleStateBadge } from '@/entities/work-item/ui/badges'
 import {
   SCHEDULE_STATE_VALUES,
@@ -158,7 +159,19 @@ function DetailsTab({
 
 // TASK-FR-003: columns Rank, ID, Name, State, Owner, Project, Teams, To Do, Actuals, Estimate.
 const TASK_GRID = '44px 56px 72px 1fr 130px 150px 110px 120px 60px 60px 80px'
-const TASK_COLS = ['', 'Rank', 'ID', 'Name', 'State', 'Owner', 'Project', 'Teams', 'To Do', 'Actuals', 'Estimate']
+const TASK_COLS = [
+  '',
+  'Rank',
+  'ID',
+  'Name',
+  'State',
+  'Owner',
+  'Project',
+  'Teams',
+  'To Do',
+  'Actuals',
+  'Estimate',
+]
 
 function TasksTab({ workItemId, projectId }: { workItemId: string; projectId: string }) {
   const { data: tasks = [], isLoading } = useTasks(workItemId)
@@ -298,7 +311,10 @@ function TasksTab({ workItemId, projectId }: { workItemId: string; projectId: st
                 </span>
                 <span className="flex items-center gap-1 px-3">
                   <TypeBadge type={task.type} />
-                  <span className="font-mono text-[11px] hover:underline" style={{ color: '#2558a6' }}>
+                  <span
+                    className="font-mono text-[11px] hover:underline"
+                    style={{ color: '#2558a6' }}
+                  >
                     {task.itemKey}
                   </span>
                 </span>
@@ -442,7 +458,12 @@ function DefectsTab({ workItemId, projectId }: { workItemId: string; projectId: 
     void navigate({ to: '/item/$itemKey', params: { itemKey: d.itemKey } })
   }
 
-  if (isLoading) return <div className="flex items-center justify-center py-12"><Spinner size="md" /></div>
+  if (isLoading)
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Spinner size="md" />
+      </div>
+    )
 
   return (
     <div className="w-full">
@@ -451,7 +472,7 @@ function DefectsTab({ workItemId, projectId }: { workItemId: string; projectId: 
           <h2 className="text-[20px] font-semibold" style={{ color: '#273449' }}>
             Defects
           </h2>
-          <p className="text-[12px] mt-0.5" style={{ color: '#6b7280' }}>
+          <p className="mt-0.5 text-[12px]" style={{ color: '#6b7280' }}>
             {defects.length} defect{defects.length !== 1 ? 's' : ''} linked to this story
           </p>
         </div>
@@ -460,8 +481,10 @@ function DefectsTab({ workItemId, projectId }: { workItemId: string; projectId: 
       {defects.length === 0 ? (
         <div className="rounded py-12 text-center" style={{ border: '1px dashed #d7dde7' }}>
           <Bug size={28} style={{ color: '#c0c7d1', margin: '0 auto 8px' }} />
-          <p className="text-[13px] font-medium" style={{ color: '#6b7280' }}>No defects linked to this story</p>
-          <p className="text-[11px] mt-1" style={{ color: '#9ca3af' }}>
+          <p className="text-[13px] font-medium" style={{ color: '#6b7280' }}>
+            No defects linked to this story
+          </p>
+          <p className="mt-1 text-[11px]" style={{ color: '#9ca3af' }}>
             Create a defect and assign it as a child of this story
           </p>
         </div>
@@ -470,8 +493,12 @@ function DefectsTab({ workItemId, projectId }: { workItemId: string; projectId: 
           <div className="min-w-[600px]">
             {/* Header */}
             <div
-              className="grid items-center bg-[#f7f8fa] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider"
-              style={{ gridTemplateColumns: DEFECT_GRID, color: '#6b7280', borderBottom: '1px solid #d7dde7' }}
+              className="grid items-center bg-[#f7f8fa] px-3 py-1.5 text-[10px] font-semibold tracking-wider uppercase"
+              style={{
+                gridTemplateColumns: DEFECT_GRID,
+                color: '#6b7280',
+                borderBottom: '1px solid #d7dde7',
+              }}
             >
               {DEFECT_COLS.map((col) => (
                 <span key={col}>{col}</span>
@@ -492,7 +519,9 @@ function DefectsTab({ workItemId, projectId }: { workItemId: string; projectId: 
                 <ScheduleStateBadge state={d.scheduleState} dot />
                 <span style={{ color: '#5c6478' }}>{d.priority}</span>
                 <span style={{ color: '#5c6478' }}>{ownerName(d.assigneeId)}</span>
-                <span style={{ color: '#5c6478' }}>{((d as unknown as { severity?: string }).severity) ?? '—'}</span>
+                <span style={{ color: '#5c6478' }}>
+                  {(d as unknown as { severity?: string }).severity ?? '—'}
+                </span>
               </div>
             ))}
           </div>
@@ -531,7 +560,7 @@ function DetailSidebar({
   const { data: iterations = [] } = useIterationOptions(item.projectId, item.teamId)
   const { data: statuses = [] } = useProjectStatuses(item.projectId)
   const { data: parentItem } = useWorkItem(
-    (item.type === 'task' || item.type === 'defect') ? (item.parentId ?? undefined) : undefined,
+    item.type === 'task' || item.type === 'defect' ? (item.parentId ?? undefined) : undefined,
   )
   const isTask = item.type === 'task'
   const isDefect = item.type === 'defect'
@@ -587,7 +616,7 @@ function DetailSidebar({
               if (v !== item.scheduleState) onUpdate({ scheduleState: v })
             }}
             disabled={disabled}
-                      >
+          >
             {SCHEDULE_STATES.map(({ value, label }) => (
               <option key={value} value={value}>
                 {label}
@@ -602,7 +631,7 @@ function DetailSidebar({
             value={item.statusId ?? ''}
             onChange={(e) => onUpdate({ statusId: e.target.value })}
             disabled={disabled}
-                      >
+          >
             {statuses.length === 0 && (
               <option value={item.statusId ?? ''}>{item.statusId ?? 'Unknown'}</option>
             )}
@@ -620,7 +649,7 @@ function DetailSidebar({
             value={item.assigneeId ?? ''}
             onChange={(e) => onUpdate({ assigneeId: e.target.value || null })}
             disabled={disabled}
-                      >
+          >
             <option value="">Unassigned</option>
             {members.map((m) => (
               <option key={m.userId} value={m.userId}>
@@ -636,7 +665,7 @@ function DetailSidebar({
             value={item.teamId ?? ''}
             onChange={(e) => onUpdate({ teamId: e.target.value || null })}
             disabled={disabled}
-                      >
+          >
             <option value="">No team</option>
             {teams.map((t) => (
               <option key={t.id} value={t.id}>
@@ -653,7 +682,7 @@ function DetailSidebar({
               value={item.priority ?? 'none'}
               onChange={(e) => onUpdate({ priority: e.target.value as WorkItem['priority'] })}
               disabled={disabled}
-                          >
+            >
               {PRIORITIES.map(({ value, label }) => (
                 <option key={value} value={value}>
                   {label}
@@ -693,7 +722,10 @@ function DetailSidebar({
                   {parentItem ? `${parentItem.itemKey} — ${parentItem.title}` : item.parentId}
                 </Link>
               ) : (
-                <span className="block rounded px-3 py-2 text-[12px]" style={{ border: '1px solid #d7dde7', color: '#9ca3af' }}>
+                <span
+                  className="block rounded px-3 py-2 text-[12px]"
+                  style={{ border: '1px solid #d7dde7', color: '#9ca3af' }}
+                >
                   No parent story
                 </span>
               )
@@ -720,7 +752,7 @@ function DetailSidebar({
                   onUpdate({ estimateHours: e.target.value ? Number(e.target.value) : null })
                 }
                 disabled={disabled}
-                              />
+              />
             </FormField>
             <FormField label="To Do (h)">
               <input
@@ -732,7 +764,7 @@ function DetailSidebar({
                   onUpdate({ todoHours: e.target.value ? Number(e.target.value) : null })
                 }
                 disabled={disabled}
-                              />
+              />
             </FormField>
             <FormField label="Actual (h)">
               <input
@@ -744,7 +776,7 @@ function DetailSidebar({
                   onUpdate({ actualHours: e.target.value ? Number(e.target.value) : null })
                 }
                 disabled={disabled}
-                              />
+              />
             </FormField>
           </>
         )}
@@ -760,7 +792,7 @@ function DetailSidebar({
                 onUpdate({ storyPoints: e.target.value ? Number(e.target.value) : null })
               }
               disabled={disabled}
-                          />
+            />
           </FormField>
         )}
 
@@ -775,7 +807,7 @@ function DetailSidebar({
                   if (v !== (item.iterationId ?? null)) onUpdate({ iterationId: v })
                 }}
                 disabled={disabled}
-                              >
+              >
                 <option value="">No iteration</option>
                 {iterations.map((i) => (
                   <option key={i.id} value={i.id}>
@@ -789,7 +821,7 @@ function DetailSidebar({
                 value={item.releaseId ?? ''}
                 onChange={(e) => onUpdate({ releaseId: e.target.value || null })}
                 disabled={disabled}
-                              >
+              >
                 <option value="">No release</option>
                 {releases.map((r) => (
                   <option key={r.id} value={r.id}>
@@ -864,7 +896,8 @@ export function WorkItemDetailPage() {
 
   // P1-11: work item is read-only when the user lacks work_item:edit permission.
   // BA spec: all active roles (non-Viewer) can update any work item.
-  const readOnly = !useAuthStore((s) => s.hasPermission('work_item:edit'))
+  const { can } = useProjectPermissions(itemByKey?.projectId)
+  const readOnly = !can('work_item:edit')
   const currentUserId = useAuthStore((s) => s.user?.id)
 
   // P1-23: watchers
@@ -1070,7 +1103,7 @@ export function WorkItemDetailPage() {
             </button>
             {moreOpen && (
               <div
-                className="absolute right-0 top-full z-50 mt-1 w-44 overflow-hidden rounded shadow-lg"
+                className="absolute top-full right-0 z-50 mt-1 w-44 overflow-hidden rounded shadow-lg"
                 style={{ backgroundColor: 'white', border: '1px solid #d7dde7' }}
               >
                 {!readOnly && (

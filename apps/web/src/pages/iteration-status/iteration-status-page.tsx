@@ -22,7 +22,12 @@ import {
   useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core'
-import { SortableContext, verticalListSortingStrategy, arrayMove, useSortable } from '@dnd-kit/sortable'
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  arrayMove,
+  useSortable,
+} from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import {
   Search,
@@ -46,7 +51,7 @@ import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
-import { useAuthStore } from '@/shared/lib/stores/auth.store'
+import { useProjectPermissions } from '@/features/access/api'
 import {
   useIterations,
   useIterationStatus,
@@ -54,7 +59,12 @@ import {
   type Iteration,
   type IterationStatusItem,
 } from '@/features/iterations/api'
-import { useUpdateWorkItem, useTasks, useRankAnyWorkItem, type WorkItem } from '@/features/work-items/api'
+import {
+  useUpdateWorkItem,
+  useTasks,
+  useRankAnyWorkItem,
+  type WorkItem,
+} from '@/features/work-items/api'
 import { useProjectMembers } from '@/features/teams/api'
 import {
   SCHEDULE_STATE_LABEL,
@@ -88,6 +98,7 @@ const AZ = {
 const STATE_LETTER: Record<ScheduleState, string> = {
   idea: 'I',
   defined: 'D',
+  ready: 'Rd',
   in_progress: 'P',
   completed: 'C',
   accepted: 'A',
@@ -95,7 +106,19 @@ const STATE_LETTER: Record<ScheduleState, string> = {
 }
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-type ColKey = 'rank' | 'id' | 'name' | 'state' | 'block' | 'planEstimate' | 'taskEstimate' | 'toDo' | 'actual' | 'owner' | 'defects' | 'devOwner'
+type ColKey =
+  | 'rank'
+  | 'id'
+  | 'name'
+  | 'state'
+  | 'block'
+  | 'planEstimate'
+  | 'taskEstimate'
+  | 'toDo'
+  | 'actual'
+  | 'owner'
+  | 'defects'
+  | 'devOwner'
 
 const ITERATION_STATUS_COLUMNS: ColumnDef<ColKey>[] = [
   { key: 'rank', label: 'Rank', defaultWidth: 45, locked: true },
@@ -138,16 +161,14 @@ export function IterationStatusPage() {
   const navigate = useNavigate()
   const { project } = useAppContext()
   const projectId = project?.projectId
-  const canEdit = useAuthStore((s) => s.hasPermission('work_item:edit'))
-  const canCreate = useAuthStore((s) => s.hasPermission('work_item:create'))
+  const { can } = useProjectPermissions(projectId)
+  const canEdit = can('work_item:edit')
+  const canCreate = can('work_item:create')
 
   const { data: iterations = [] } = useIterations(projectId)
   const { data: members = [] } = useProjectMembers(projectId)
 
-  const memberMap = useMemo(
-    () => new Map(members.map((m) => [m.userId, m])),
-    [members],
-  )
+  const memberMap = useMemo(() => new Map(members.map((m) => [m.userId, m])), [members])
 
   const [chosenId, setChosenId] = useState<string | null>(null)
   const [selectorOpen, setSelectorOpen] = useState(false)
@@ -172,22 +193,27 @@ export function IterationStatusPage() {
   }, [projectId])
 
   const selectedId =
-    chosenId && iterations.some((i) => i.id === chosenId)
-      ? chosenId
-      : (iterations[0]?.id ?? null)
+    chosenId && iterations.some((i) => i.id === chosenId) ? chosenId : (iterations[0]?.id ?? null)
 
-  const setSelectedId = useCallback((id: string | null) => {
-    setChosenId(id)
-    if (projectId) {
-      if (id) {
-        localStorage.setItem(`${STORAGE_KEYS.LAST_ACCESSED_ITERATION}:${projectId}`, id)
-      } else {
-        localStorage.removeItem(`${STORAGE_KEYS.LAST_ACCESSED_ITERATION}:${projectId}`)
+  const setSelectedId = useCallback(
+    (id: string | null) => {
+      setChosenId(id)
+      if (projectId) {
+        if (id) {
+          localStorage.setItem(`${STORAGE_KEYS.LAST_ACCESSED_ITERATION}:${projectId}`, id)
+        } else {
+          localStorage.removeItem(`${STORAGE_KEYS.LAST_ACCESSED_ITERATION}:${projectId}`)
+        }
       }
-    }
-  }, [projectId])
+    },
+    [projectId],
+  )
 
-  const { data: status, isLoading, isError } = useIterationStatus(selectedId ?? undefined, {
+  const {
+    data: status,
+    isLoading,
+    isError,
+  } = useIterationStatus(selectedId ?? undefined, {
     q: search.trim() || undefined,
   })
 
@@ -289,7 +315,12 @@ export function IterationStatusPage() {
     const afterId = newIndex < reordered.length - 1 ? reordered[newIndex + 1].id : null
     if (!projectId) return
     rankMutation.mutate(
-      { id: active.id as string, projectId, beforeId: beforeId ?? undefined, afterId: afterId ?? undefined },
+      {
+        id: active.id as string,
+        projectId,
+        beforeId: beforeId ?? undefined,
+        afterId: afterId ?? undefined,
+      },
       { onError: (err) => toast.error(err.message) },
     )
   }
@@ -315,25 +346,31 @@ export function IterationStatusPage() {
   const tDays = computeTotalDays(selected)
   const iterationProgressPct = tDays > 0 ? ((tDays - Math.max(daysLeft, 0)) / tDays) * 100 : 0
 
-  const colStyles = useMemo(() => ({
-    rank: styleFor('rank', { flexShrink: 0 }),
-    id: styleFor('id', { flexShrink: 0 }),
-    name: styleFor('name', { flex: 1, minWidth: 150 }),
-    state: styleFor('state', { flexShrink: 0 }),
-    block: styleFor('block', { flexShrink: 0 }),
-    planEstimate: styleFor('planEstimate', { flexShrink: 0 }),
-    taskEstimate: styleFor('taskEstimate', { flexShrink: 0 }),
-    toDo: styleFor('toDo', { flexShrink: 0 }),
-    actual: styleFor('actual', { flexShrink: 0 }),
-    owner: styleFor('owner', { flexShrink: 0 }),
-    defects: styleFor('defects', { flexShrink: 0 }),
-    devOwner: styleFor('devOwner', { flexShrink: 0 }),
-  }), [styleFor])
+  const colStyles = useMemo(
+    () => ({
+      rank: styleFor('rank', { flexShrink: 0 }),
+      id: styleFor('id', { flexShrink: 0 }),
+      name: styleFor('name', { flex: 1, minWidth: 150 }),
+      state: styleFor('state', { flexShrink: 0 }),
+      block: styleFor('block', { flexShrink: 0 }),
+      planEstimate: styleFor('planEstimate', { flexShrink: 0 }),
+      taskEstimate: styleFor('taskEstimate', { flexShrink: 0 }),
+      toDo: styleFor('toDo', { flexShrink: 0 }),
+      actual: styleFor('actual', { flexShrink: 0 }),
+      owner: styleFor('owner', { flexShrink: 0 }),
+      defects: styleFor('defects', { flexShrink: 0 }),
+      devOwner: styleFor('devOwner', { flexShrink: 0 }),
+    }),
+    [styleFor],
+  )
 
   // ── Empty / guard states ──────────────────────────────────────────────
   if (!projectId) {
     return (
-      <div className="flex flex-1 items-center justify-center" style={{ color: AZ.textMuted, fontSize: 13, fontFamily: AZ.font }}>
+      <div
+        className="flex flex-1 items-center justify-center"
+        style={{ color: AZ.textMuted, fontSize: 13, fontFamily: AZ.font }}
+      >
         Select a project to view Iteration Status.
       </div>
     )
@@ -341,13 +378,28 @@ export function IterationStatusPage() {
 
   if (!iterations.length) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-2" style={{ color: AZ.textMuted, fontSize: 13, fontFamily: AZ.font }}>
+      <div
+        className="flex flex-1 flex-col items-center justify-center gap-2"
+        style={{ color: AZ.textMuted, fontSize: 13, fontFamily: AZ.font }}
+      >
         <span>No iterations in this project/team yet.</span>
         <button
           onClick={() => navigate({ to: '/timeboxes' })}
-          style={{ color: AZ.primary, fontSize: 12, fontWeight: 600, cursor: 'pointer', background: 'none', border: 'none', textDecoration: 'none' }}
-          onMouseOver={(e) => { (e.target as HTMLElement).style.textDecoration = 'underline' }}
-          onMouseOut={(e) => { (e.target as HTMLElement).style.textDecoration = 'none' }}
+          style={{
+            color: AZ.primary,
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: 'pointer',
+            background: 'none',
+            border: 'none',
+            textDecoration: 'none',
+          }}
+          onMouseOver={(e) => {
+            ;(e.target as HTMLElement).style.textDecoration = 'underline'
+          }}
+          onMouseOut={(e) => {
+            ;(e.target as HTMLElement).style.textDecoration = 'none'
+          }}
         >
           Go to Timeboxes →
         </button>
@@ -356,7 +408,10 @@ export function IterationStatusPage() {
   }
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden" style={{ fontFamily: AZ.font, backgroundColor: AZ.bg, color: AZ.textPrimary, fontSize: 12 }}>
+    <div
+      className="flex flex-1 flex-col overflow-hidden"
+      style={{ fontFamily: AZ.font, backgroundColor: AZ.bg, color: AZ.textPrimary, fontSize: 12 }}
+    >
       <TopBar viewMode={viewMode} setViewMode={setViewMode} />
 
       <IterationSelectorBar
@@ -372,7 +427,7 @@ export function IterationStatusPage() {
 
       {/* ── 3. "Iteration Status" title ───────────────────────────────────── */}
       <div
-        className="px-4 shrink-0"
+        className="shrink-0 px-4"
         style={{
           height: 36,
           display: 'flex',
@@ -380,7 +435,9 @@ export function IterationStatusPage() {
           borderBottom: `1px solid ${AZ.border}`,
         }}
       >
-        <span style={{ fontSize: 16, fontWeight: 700, color: AZ.textPrimary }}>Iteration Status</span>
+        <span style={{ fontSize: 16, fontWeight: 700, color: AZ.textPrimary }}>
+          Iteration Status
+        </span>
       </div>
 
       <MetricsStrip
@@ -404,8 +461,14 @@ export function IterationStatusPage() {
       />
 
       {/* ── 6. Table ─────────────────────────────────────────────────────── */}
-      <div className="flex flex-col flex-1 overflow-auto" style={{ backgroundColor: AZ.bg }}>
-        <TableHeaderRow colStyles={colStyles} sortCol={sortCol} sortDir={sortDir} toggleSort={toggleSort} startResize={startResize} />
+      <div className="flex flex-1 flex-col overflow-auto" style={{ backgroundColor: AZ.bg }}>
+        <TableHeaderRow
+          colStyles={colStyles}
+          sortCol={sortCol}
+          sortDir={sortDir}
+          toggleSort={toggleSort}
+          startResize={startResize}
+        />
 
         {/* Rows */}
         {isLoading && <SkeletonList rows={10} cols={12} />}
@@ -420,8 +483,15 @@ export function IterationStatusPage() {
         )}
 
         {!isLoading && !isError && (
-          <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-            <SortableContext items={localItems.map((it) => it.id)} strategy={verticalListSortingStrategy}>
+          <DndContext
+            sensors={dndSensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={localItems.map((it) => it.id)}
+              strategy={verticalListSortingStrategy}
+            >
               {localItems.map((item, idx) => (
                 <StatusRow
                   key={item.id}
@@ -460,7 +530,11 @@ export function IterationStatusPage() {
 
       {/* ── Add Item modal ───────────────────────────────────────────────── */}
       {showAdd && selected && (
-        <AddItemModal iteration={selected} onClose={() => setShowAdd(false)} onCreated={() => setShowAdd(false)} />
+        <AddItemModal
+          iteration={selected}
+          onClose={() => setShowAdd(false)}
+          onCreated={() => setShowAdd(false)}
+        />
       )}
     </div>
   )
@@ -477,7 +551,7 @@ function TopBar({
 }) {
   return (
     <div
-      className="flex items-center px-4 shrink-0"
+      className="flex shrink-0 items-center px-4"
       style={{
         height: 32,
         borderBottom: `1px solid ${AZ.border}`,
@@ -489,7 +563,10 @@ function TopBar({
       <span style={{ fontSize: 12, color: AZ.textMuted }}>Children</span>
       <div className="flex-1" />
       {/* View mode toggles */}
-      <div className="flex items-center" style={{ border: `1px solid ${AZ.border}`, borderRadius: 2, overflow: 'hidden' }}>
+      <div
+        className="flex items-center"
+        style={{ border: `1px solid ${AZ.border}`, borderRadius: 2, overflow: 'hidden' }}
+      >
         {(['list', 'board', 'compact'] as const).map((mode) => (
           <button
             key={mode}
@@ -506,10 +583,10 @@ function TopBar({
               textTransform: 'capitalize' as const,
             }}
             onMouseOver={(e) => {
-              if (viewMode !== mode) (e.currentTarget.style.backgroundColor = AZ.bgAlt)
+              if (viewMode !== mode) e.currentTarget.style.backgroundColor = AZ.bgAlt
             }}
             onMouseOut={(e) => {
-              if (viewMode !== mode) (e.currentTarget.style.backgroundColor = 'transparent')
+              if (viewMode !== mode) e.currentTarget.style.backgroundColor = 'transparent'
             }}
           >
             {mode}
@@ -543,15 +620,25 @@ function IterationSelectorBar({
 }) {
   return (
     <div
-      className="flex items-center gap-2 px-4 shrink-0"
+      className="flex shrink-0 items-center gap-2 px-4"
       style={{
         height: 36,
         borderBottom: `1px solid ${AZ.border}`,
         backgroundColor: AZ.bg,
       }}
     >
-      <span style={{ fontSize: 12, fontWeight: 600, color: AZ.textPrimary, whiteSpace: 'nowrap' }}>Iteration</span>
-      <div className="flex items-center" style={{ border: `1px solid ${AZ.border}`, borderRadius: 2, overflow: 'visible', height: 28 }}>
+      <span style={{ fontSize: 12, fontWeight: 600, color: AZ.textPrimary, whiteSpace: 'nowrap' }}>
+        Iteration
+      </span>
+      <div
+        className="flex items-center"
+        style={{
+          border: `1px solid ${AZ.border}`,
+          borderRadius: 2,
+          overflow: 'visible',
+          height: 28,
+        }}
+      >
         <button
           disabled={selectedIndex <= 0}
           onClick={() => move(-1)}
@@ -567,8 +654,12 @@ function IterationSelectorBar({
             color: selectedIndex <= 0 ? AZ.textMuted : AZ.textSecondary,
             opacity: selectedIndex <= 0 ? 0.4 : 1,
           }}
-          onMouseOver={(e) => { if (selectedIndex > 0) e.currentTarget.style.backgroundColor = AZ.bgAlt }}
-          onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'transparent' }}
+          onMouseOver={(e) => {
+            if (selectedIndex > 0) e.currentTarget.style.backgroundColor = AZ.bgAlt
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent'
+          }}
         >
           <ChevronLeft size={14} />
         </button>
@@ -589,10 +680,16 @@ function IterationSelectorBar({
               fontFamily: AZ.font,
               textAlign: 'left',
             }}
-            onMouseOver={(e) => { e.currentTarget.style.backgroundColor = AZ.bgAlt }}
-            onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'transparent' }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.backgroundColor = AZ.bgAlt
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent'
+            }}
           >
-            <span style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>{selected?.name}</span>
+            <span style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>
+              {selected?.name}
+            </span>
             <span style={{ fontSize: 11, whiteSpace: 'nowrap', color: AZ.textSecondary }}>
               {selected && fmtRange(selected)}
             </span>
@@ -600,7 +697,7 @@ function IterationSelectorBar({
           </button>
           {selectorOpen && (
             <div
-              className="absolute left-0 top-full z-50"
+              className="absolute top-full left-0 z-50"
               style={{
                 marginTop: 4,
                 width: 380,
@@ -663,8 +760,13 @@ function IterationSelectorBar({
             color: selectedIndex >= iterations.length - 1 ? AZ.textMuted : AZ.textSecondary,
             opacity: selectedIndex >= iterations.length - 1 ? 0.4 : 1,
           }}
-          onMouseOver={(e) => { if (selectedIndex < iterations.length - 1) e.currentTarget.style.backgroundColor = AZ.bgAlt }}
-          onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'transparent' }}
+          onMouseOver={(e) => {
+            if (selectedIndex < iterations.length - 1)
+              e.currentTarget.style.backgroundColor = AZ.bgAlt
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent'
+          }}
         >
           <ChevronRight size={14} />
         </button>
@@ -709,7 +811,7 @@ function MetricsStrip({
 }) {
   return (
     <div
-      className="flex items-stretch shrink-0 px-4"
+      className="flex shrink-0 items-stretch px-4"
       style={{
         height: 72,
         borderBottom: `1px solid ${AZ.border}`,
@@ -721,7 +823,16 @@ function MetricsStrip({
       <div className="flex items-stretch" style={{ gap: 32, flex: 1 }}>
         {/* Planned Velocity */}
         <div className="flex flex-col justify-center" style={{ minWidth: 160 }}>
-          <span style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', color: AZ.textMuted, marginBottom: 2 }}>
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              color: AZ.textMuted,
+              marginBottom: 2,
+            }}
+          >
             Planned Velocity
           </span>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
@@ -732,14 +843,39 @@ function MetricsStrip({
               {metrics?.totalPlanEstimate ?? 0} of {metrics?.plannedVelocity ?? 0} Points
             </span>
           </div>
-          <div style={{ width: 120, height: 4, backgroundColor: '#e0e0e0', borderRadius: 2, marginTop: 4, overflow: 'hidden' }}>
-            <div style={{ width: `${Math.min(velocityPct, 100)}%`, height: '100%', backgroundColor: AZ.primary, borderRadius: 2 }} />
+          <div
+            style={{
+              width: 120,
+              height: 4,
+              backgroundColor: '#e0e0e0',
+              borderRadius: 2,
+              marginTop: 4,
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                width: `${Math.min(velocityPct, 100)}%`,
+                height: '100%',
+                backgroundColor: AZ.primary,
+                borderRadius: 2,
+              }}
+            />
           </div>
         </div>
 
         {/* Iteration End */}
         <div className="flex flex-col justify-center" style={{ minWidth: 140 }}>
-          <span style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', color: AZ.textMuted, marginBottom: 2 }}>
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              color: AZ.textMuted,
+              marginBottom: 2,
+            }}
+          >
             Iteration End
           </span>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
@@ -750,14 +886,39 @@ function MetricsStrip({
               {metrics?.daysLeft == null ? 'no end date' : `of ${tDays} days left`}
             </span>
           </div>
-          <div style={{ width: 120, height: 4, backgroundColor: '#e0e0e0', borderRadius: 2, marginTop: 4, overflow: 'hidden' }}>
-            <div style={{ width: `${Math.min(iterationProgressPct, 100)}%`, height: '100%', backgroundColor: '#999999', borderRadius: 2 }} />
+          <div
+            style={{
+              width: 120,
+              height: 4,
+              backgroundColor: '#e0e0e0',
+              borderRadius: 2,
+              marginTop: 4,
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                width: `${Math.min(iterationProgressPct, 100)}%`,
+                height: '100%',
+                backgroundColor: '#999999',
+                borderRadius: 2,
+              }}
+            />
           </div>
         </div>
 
         {/* Accepted */}
         <div className="flex flex-col justify-center" style={{ minWidth: 140 }}>
-          <span style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', color: AZ.textMuted, marginBottom: 2 }}>
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              color: AZ.textMuted,
+              marginBottom: 2,
+            }}
+          >
             Accepted
           </span>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
@@ -768,8 +929,24 @@ function MetricsStrip({
               {metrics?.acceptedPoints ?? 0} of {metrics?.totalPlanEstimate ?? 0} Points
             </span>
           </div>
-          <div style={{ width: 120, height: 4, backgroundColor: '#e0e0e0', borderRadius: 2, marginTop: 4, overflow: 'hidden' }}>
-            <div style={{ width: `${Math.min(acceptedPct, 100)}%`, height: '100%', backgroundColor: '#1e6930', borderRadius: 2 }} />
+          <div
+            style={{
+              width: 120,
+              height: 4,
+              backgroundColor: '#e0e0e0',
+              borderRadius: 2,
+              marginTop: 4,
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                width: `${Math.min(acceptedPct, 100)}%`,
+                height: '100%',
+                backgroundColor: '#1e6930',
+                borderRadius: 2,
+              }}
+            />
           </div>
         </div>
       </div>
@@ -808,8 +985,12 @@ function MetricsStrip({
             fontFamily: AZ.font,
             whiteSpace: 'nowrap',
           }}
-          onMouseOver={(e) => { e.currentTarget.style.backgroundColor = AZ.primaryLight }}
-          onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'transparent' }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.backgroundColor = AZ.primaryLight
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent'
+          }}
         >
           <BarChart3 size={14} />
           View Charts
@@ -844,7 +1025,7 @@ function Toolbar({
 }) {
   return (
     <div
-      className="flex items-center gap-2 px-4 shrink-0"
+      className="flex shrink-0 items-center gap-2 px-4"
       style={{
         height: 36,
         borderBottom: `1px solid ${AZ.border}`,
@@ -880,8 +1061,12 @@ function Toolbar({
             fontFamily: AZ.font,
             outline: 'none',
           }}
-          onFocus={(e) => { e.currentTarget.style.borderColor = AZ.primary }}
-          onBlur={(e) => { e.currentTarget.style.borderColor = AZ.border }}
+          onFocus={(e) => {
+            e.currentTarget.style.borderColor = AZ.primary
+          }}
+          onBlur={(e) => {
+            e.currentTarget.style.borderColor = AZ.border
+          }}
         />
       </div>
 
@@ -900,8 +1085,12 @@ function Toolbar({
             cursor: 'pointer',
             fontFamily: AZ.font,
           }}
-          onMouseOver={(e) => { e.currentTarget.style.backgroundColor = AZ.primaryHover }}
-          onMouseOut={(e) => { e.currentTarget.style.backgroundColor = AZ.primary }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.backgroundColor = AZ.primaryHover
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.backgroundColor = AZ.primary
+          }}
         >
           <Plus size={14} /> Add New
         </button>
@@ -920,8 +1109,12 @@ function Toolbar({
           cursor: 'pointer',
           fontFamily: AZ.font,
         }}
-        onMouseOver={(e) => { e.currentTarget.style.backgroundColor = AZ.bgAlt }}
-        onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'transparent' }}
+        onMouseOver={(e) => {
+          e.currentTarget.style.backgroundColor = AZ.bgAlt
+        }}
+        onMouseOut={(e) => {
+          e.currentTarget.style.backgroundColor = 'transparent'
+        }}
       >
         <Filter size={14} /> Show Filters
       </button>
@@ -974,53 +1167,116 @@ function TableHeaderRow({
         minWidth: 'max-content',
       }}
     >
-      <div style={colStyles.rank} className="relative group text-center px-2">
+      <div style={colStyles.rank} className="group relative px-2 text-center">
         <SortHeader label="Rank" col="rank" activeCol={sortCol} dir={sortDir} onSort={toggleSort} />
         <ResizeHandle onMouseDown={(e) => startResize('rank', e)} ariaLabel="Resize rank column" />
       </div>
-      <div style={colStyles.id} className="relative group px-2">
+      <div style={colStyles.id} className="group relative px-2">
         <SortHeader label="ID" col="id" activeCol={sortCol} dir={sortDir} onSort={toggleSort} />
         <ResizeHandle onMouseDown={(e) => startResize('id', e)} ariaLabel="Resize ID column" />
       </div>
-      <div style={colStyles.name} className="relative group px-2">
+      <div style={colStyles.name} className="group relative px-2">
         <SortHeader label="Name" col="name" activeCol={sortCol} dir={sortDir} onSort={toggleSort} />
         <ResizeHandle onMouseDown={(e) => startResize('name', e)} ariaLabel="Resize Name column" />
       </div>
-      <div style={colStyles.state} className="relative group text-center px-2">
-        <SortHeader label="State" col="scheduleState" activeCol={sortCol} dir={sortDir} onSort={toggleSort} />
-        <ResizeHandle onMouseDown={(e) => startResize('state', e)} ariaLabel="Resize State column" />
+      <div style={colStyles.state} className="group relative px-2 text-center">
+        <SortHeader
+          label="State"
+          col="scheduleState"
+          activeCol={sortCol}
+          dir={sortDir}
+          onSort={toggleSort}
+        />
+        <ResizeHandle
+          onMouseDown={(e) => startResize('state', e)}
+          ariaLabel="Resize State column"
+        />
       </div>
-      <div style={colStyles.block} className="relative group text-center px-2">
-        <SortHeader label="Block" col="block" activeCol={sortCol} dir={sortDir} onSort={toggleSort} />
-        <ResizeHandle onMouseDown={(e) => startResize('block', e)} ariaLabel="Resize Block column" />
+      <div style={colStyles.block} className="group relative px-2 text-center">
+        <SortHeader
+          label="Block"
+          col="block"
+          activeCol={sortCol}
+          dir={sortDir}
+          onSort={toggleSort}
+        />
+        <ResizeHandle
+          onMouseDown={(e) => startResize('block', e)}
+          ariaLabel="Resize Block column"
+        />
       </div>
-      <div style={colStyles.planEstimate} className="relative group text-right px-2">
-        <SortHeader label="Plan Estimate" col="planEstimate" activeCol={sortCol} dir={sortDir} onSort={toggleSort} rightAlign />
-        <ResizeHandle onMouseDown={(e) => startResize('planEstimate', e)} ariaLabel="Resize Plan Estimate column" />
+      <div style={colStyles.planEstimate} className="group relative px-2 text-right">
+        <SortHeader
+          label="Plan Estimate"
+          col="planEstimate"
+          activeCol={sortCol}
+          dir={sortDir}
+          onSort={toggleSort}
+          rightAlign
+        />
+        <ResizeHandle
+          onMouseDown={(e) => startResize('planEstimate', e)}
+          ariaLabel="Resize Plan Estimate column"
+        />
       </div>
-      <div style={colStyles.taskEstimate} className="relative group text-right px-2">
-        <SortHeader label="Task Estimate" col="taskEstimate" activeCol={sortCol} dir={sortDir} onSort={toggleSort} rightAlign />
-        <ResizeHandle onMouseDown={(e) => startResize('taskEstimate', e)} ariaLabel="Resize Task Estimate column" />
+      <div style={colStyles.taskEstimate} className="group relative px-2 text-right">
+        <SortHeader
+          label="Task Estimate"
+          col="taskEstimate"
+          activeCol={sortCol}
+          dir={sortDir}
+          onSort={toggleSort}
+          rightAlign
+        />
+        <ResizeHandle
+          onMouseDown={(e) => startResize('taskEstimate', e)}
+          ariaLabel="Resize Task Estimate column"
+        />
       </div>
-      <div style={colStyles.toDo} className="relative group text-right px-2">
-        <SortHeader label="To Do" col="toDo" activeCol={sortCol} dir={sortDir} onSort={toggleSort} rightAlign />
+      <div style={colStyles.toDo} className="group relative px-2 text-right">
+        <SortHeader
+          label="To Do"
+          col="toDo"
+          activeCol={sortCol}
+          dir={sortDir}
+          onSort={toggleSort}
+          rightAlign
+        />
         <ResizeHandle onMouseDown={(e) => startResize('toDo', e)} ariaLabel="Resize To Do column" />
       </div>
-      <div style={colStyles.actual} className="relative group text-right px-2">
+      <div style={colStyles.actual} className="group relative px-2 text-right">
         <span>Actual</span>
-        <ResizeHandle onMouseDown={(e) => startResize('actual', e)} ariaLabel="Resize Actual column" />
+        <ResizeHandle
+          onMouseDown={(e) => startResize('actual', e)}
+          ariaLabel="Resize Actual column"
+        />
       </div>
-      <div style={colStyles.owner} className="relative group px-2">
-        <SortHeader label="Owner" col="owner" activeCol={sortCol} dir={sortDir} onSort={toggleSort} />
-        <ResizeHandle onMouseDown={(e) => startResize('owner', e)} ariaLabel="Resize Owner column" />
+      <div style={colStyles.owner} className="group relative px-2">
+        <SortHeader
+          label="Owner"
+          col="owner"
+          activeCol={sortCol}
+          dir={sortDir}
+          onSort={toggleSort}
+        />
+        <ResizeHandle
+          onMouseDown={(e) => startResize('owner', e)}
+          ariaLabel="Resize Owner column"
+        />
       </div>
-      <div style={colStyles.defects} className="relative group text-center px-2">
+      <div style={colStyles.defects} className="group relative px-2 text-center">
         <span>Defects</span>
-        <ResizeHandle onMouseDown={(e) => startResize('defects', e)} ariaLabel="Resize Defects column" />
+        <ResizeHandle
+          onMouseDown={(e) => startResize('defects', e)}
+          ariaLabel="Resize Defects column"
+        />
       </div>
-      <div style={colStyles.devOwner} className="relative group px-2">
+      <div style={colStyles.devOwner} className="group relative px-2">
         <span>DEV O</span>
-        <ResizeHandle onMouseDown={(e) => startResize('devOwner', e)} ariaLabel="Resize Dev Owner column" />
+        <ResizeHandle
+          onMouseDown={(e) => startResize('devOwner', e)}
+          ariaLabel="Resize Dev Owner column"
+        />
       </div>
     </div>
   )
@@ -1090,7 +1346,7 @@ function SortHeader({
   const isActive = activeCol === col
   return (
     <div
-      className="flex items-center gap-1 cursor-pointer select-none group/sort"
+      className="group/sort flex cursor-pointer items-center gap-1 select-none"
       style={{ justifyContent: rightAlign ? 'flex-end' : 'flex-start', width: '100%' }}
       onClick={() => onSort(col)}
     >
@@ -1105,12 +1361,15 @@ function SortHeader({
       </span>
       {isActive ? (
         dir === 'desc' ? (
-          <ChevronDown size={11} className="text-[#0078d4] shrink-0" />
+          <ChevronDown size={11} className="shrink-0 text-[#0078d4]" />
         ) : (
-          <ChevronUp size={11} className="text-[#0078d4] shrink-0" />
+          <ChevronUp size={11} className="shrink-0 text-[#0078d4]" />
         )
       ) : (
-        <ChevronUp size={11} className="text-slate-300 opacity-0 group-hover/sort:opacity-100 transition-opacity duration-150 shrink-0" />
+        <ChevronUp
+          size={11}
+          className="shrink-0 text-slate-300 opacity-0 transition-opacity duration-150 group-hover/sort:opacity-100"
+        />
       )}
     </div>
   )
@@ -1144,13 +1403,23 @@ function StatusRow({
 
   const stateLetter = STATE_LETTER[item.scheduleState] ?? '?'
   const [tasksExpanded, setTasksExpanded] = useState(false)
-  const { data: childTasks = [], isLoading: isLoadingTasks } = useTasks(tasksExpanded ? item.id : undefined)
+  const { data: childTasks = [], isLoading: isLoadingTasks } = useTasks(
+    tasksExpanded ? item.id : undefined,
+  )
 
   const membersList = useMemo(() => Array.from(memberMap.values()), [memberMap])
 
   const [editingOwner, setEditingOwner] = useState(false)
 
-  const { setNodeRef, setActivatorNodeRef, listeners, attributes, transform, transition, isDragging } = useSortable({
+  const {
+    setNodeRef,
+    setActivatorNodeRef,
+    listeners,
+    attributes,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
     id: item.id,
     disabled: !dragEnabled || !canEdit,
   })
@@ -1167,10 +1436,13 @@ function StatusRow({
       return
     }
     // Auto-sync To Do to the new Plan Estimate value.
-    update.mutate({ storyPoints: num, todoHours: num }, {
-      onSuccess: () => toast.success('Plan estimate updated'),
-      onError: (err) => toast.error(err.message),
-    })
+    update.mutate(
+      { storyPoints: num, todoHours: num },
+      {
+        onSuccess: () => toast.success('Plan estimate updated'),
+        onError: (err) => toast.error(err.message),
+      },
+    )
   }
 
   function commitTodo(raw: string) {
@@ -1179,34 +1451,44 @@ function StatusRow({
       toast.error('Todo hours must be a positive number')
       return
     }
-    update.mutate({ todoHours: num }, {
-      onSuccess: () => toast.success('Todo hours updated'),
-      onError: (err) => toast.error(err.message),
-    })
+    update.mutate(
+      { todoHours: num },
+      {
+        onSuccess: () => toast.success('Todo hours updated'),
+        onError: (err) => toast.error(err.message),
+      },
+    )
   }
 
   function handleOwnerChange(userId: string | null) {
-    update.mutate({ assigneeId: userId }, {
-      onSuccess: () => {
-        setEditingOwner(false)
-        toast.success('Owner updated')
+    update.mutate(
+      { assigneeId: userId },
+      {
+        onSuccess: () => {
+          setEditingOwner(false)
+          toast.success('Owner updated')
+        },
+        onError: (err) => toast.error(err.message),
       },
-      onError: (err) => toast.error(err.message)
-    })
+    )
   }
 
   function toggleBlocked() {
-    update.mutate({ isBlocked: !item.isBlocked }, {
-      onSuccess: () => toast.success(item.isBlocked ? 'Work item unblocked' : 'Work item blocked'),
-      onError: (err) => toast.error(err.message)
-    })
+    update.mutate(
+      { isBlocked: !item.isBlocked },
+      {
+        onSuccess: () =>
+          toast.success(item.isBlocked ? 'Work item unblocked' : 'Work item blocked'),
+        onError: (err) => toast.error(err.message),
+      },
+    )
   }
 
   return (
     <>
       <div
         ref={setNodeRef}
-        className="flex items-center hover:bg-[#f1f6fc] transition-colors duration-100"
+        className="flex items-center transition-colors duration-100 hover:bg-[#f1f6fc]"
         style={{
           height: 34,
           paddingLeft: 4,
@@ -1217,12 +1499,18 @@ function StatusRow({
           minWidth: 'max-content',
           ...rowStyle,
         }}
-        onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#f1f6fc' }}
-        onMouseOut={(e) => { e.currentTarget.style.backgroundColor = AZ.bg }}
+        onMouseOver={(e) => {
+          e.currentTarget.style.backgroundColor = '#f1f6fc'
+        }}
+        onMouseOut={(e) => {
+          e.currentTarget.style.backgroundColor = AZ.bg
+        }}
       >
         {/* Rank / Expand Button */}
         <div style={colStyles.rank} className="flex items-center justify-center gap-1 px-2">
-          <span className="font-mono text-[10px]" style={{ color: AZ.textSecondary }}>{rank}</span>
+          <span className="font-mono text-[10px]" style={{ color: AZ.textSecondary }}>
+            {rank}
+          </span>
           <button
             onClick={(e) => {
               e.stopPropagation()
@@ -1251,10 +1539,7 @@ function StatusRow({
             {...(dragEnabled && canEdit ? { ...attributes, ...listeners } : {})}
             style={{ display: 'inline-flex', cursor: dragEnabled && canEdit ? 'grab' : 'default' }}
           >
-            <GripVertical
-              size={12}
-              style={{ color: AZ.textMuted }}
-            />
+            <GripVertical size={12} style={{ color: AZ.textMuted }} />
           </span>
         </div>
 
@@ -1273,8 +1558,12 @@ function StatusRow({
               padding: 0,
               textAlign: 'left',
             }}
-            onMouseOver={(e) => { e.currentTarget.style.textDecoration = 'underline' }}
-            onMouseOut={(e) => { e.currentTarget.style.textDecoration = 'none' }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.textDecoration = 'underline'
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.textDecoration = 'none'
+            }}
           >
             {item.itemKey}
           </button>
@@ -1299,17 +1588,24 @@ function StatusRow({
               display: 'block',
               fontFamily: AZ.font,
             }}
-            onMouseOver={(e) => { e.currentTarget.style.textDecoration = 'underline' }}
-            onMouseOut={(e) => { e.currentTarget.style.textDecoration = 'none' }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.textDecoration = 'underline'
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.textDecoration = 'none'
+            }}
           >
             {item.title}
           </button>
         </div>
 
         {/* Schedule State — Continuous Segmented Rectangles layout */}
-        <div style={colStyles.state} className="flex justify-center select-none px-2">
+        <div style={colStyles.state} className="flex justify-center px-2 select-none">
           {canEdit ? (
-            <div className="flex border rounded overflow-hidden" style={{ borderColor: AZ.border, height: 20 }}>
+            <div
+              className="flex overflow-hidden rounded border"
+              style={{ borderColor: AZ.border, height: 20 }}
+            >
               {SCHEDULE_STATE_VALUES.map((s) => {
                 const isSel = item.scheduleState === s
                 return (
@@ -1345,11 +1641,15 @@ function StatusRow({
                 borderRadius: 2,
                 fontSize: 11,
                 fontWeight: 700,
-                backgroundColor: SCHEDULE_STATE_CONFIG[item.scheduleState as ScheduleState]?.bg ?? AZ.primaryLight,
-                color: SCHEDULE_STATE_CONFIG[item.scheduleState as ScheduleState]?.color ?? AZ.primary,
+                backgroundColor:
+                  SCHEDULE_STATE_CONFIG[item.scheduleState as ScheduleState]?.bg ?? AZ.primaryLight,
+                color:
+                  SCHEDULE_STATE_CONFIG[item.scheduleState as ScheduleState]?.color ?? AZ.primary,
                 fontFamily: AZ.font,
               }}
-              title={SCHEDULE_STATE_LABEL[item.scheduleState as ScheduleState] ?? item.scheduleState}
+              title={
+                SCHEDULE_STATE_LABEL[item.scheduleState as ScheduleState] ?? item.scheduleState
+              }
             >
               {stateLetter}
             </span>
@@ -1417,7 +1717,11 @@ function StatusRow({
             canEdit={canEdit}
             onCommit={commitEstimate}
             displayValue={item.planEstimate ?? '—'}
-            style={{ fontFamily: 'Consolas, Monaco, monospace', color: AZ.textSecondary, fontSize: 12 }}
+            style={{
+              fontFamily: 'Consolas, Monaco, monospace',
+              color: AZ.textSecondary,
+              fontSize: 12,
+            }}
             inputStyle={{
               width: '100%',
               textAlign: 'right',
@@ -1432,7 +1736,16 @@ function StatusRow({
         </div>
 
         {/* Task Estimate (Rollup - readonly) */}
-        <div style={{ ...colStyles.taskEstimate, textAlign: 'right', fontFamily: 'Consolas, Monaco, monospace', color: AZ.textSecondary, fontSize: 12 }} className="px-2 text-right">
+        <div
+          style={{
+            ...colStyles.taskEstimate,
+            textAlign: 'right',
+            fontFamily: 'Consolas, Monaco, monospace',
+            color: AZ.textSecondary,
+            fontSize: 12,
+          }}
+          className="px-2 text-right"
+        >
           {item.taskEstimate || '—'}
         </div>
 
@@ -1443,7 +1756,11 @@ function StatusRow({
             canEdit={canEdit}
             onCommit={commitTodo}
             displayValue={item.toDo ?? '—'}
-            style={{ fontFamily: 'Consolas, Monaco, monospace', color: AZ.textSecondary, fontSize: 12 }}
+            style={{
+              fontFamily: 'Consolas, Monaco, monospace',
+              color: AZ.textSecondary,
+              fontSize: 12,
+            }}
             inputStyle={{
               width: '100%',
               textAlign: 'right',
@@ -1458,7 +1775,10 @@ function StatusRow({
         </div>
 
         {/* Actual — not tracked at story level, only on tasks */}
-        <div style={{ ...colStyles.actual, textAlign: 'right', color: AZ.textMuted, fontSize: 12 }} className="px-2 text-right">
+        <div
+          style={{ ...colStyles.actual, textAlign: 'right', color: AZ.textMuted, fontSize: 12 }}
+          className="px-2 text-right"
+        >
           &mdash;
         </div>
 
@@ -1500,7 +1820,10 @@ function StatusRow({
         </div>
 
         {/* Defects — no per-item data available */}
-        <div style={{ ...colStyles.defects, textAlign: 'center', color: AZ.textMuted, fontSize: 12 }} className="px-2 text-center">
+        <div
+          style={{ ...colStyles.defects, textAlign: 'center', color: AZ.textMuted, fontSize: 12 }}
+          className="px-2 text-center"
+        >
           &mdash;
         </div>
 
@@ -1519,12 +1842,28 @@ function StatusRow({
       {tasksExpanded && (
         <div style={{ borderLeft: `2px solid ${AZ.primaryLight}`, backgroundColor: '#fafbfc' }}>
           {isLoadingTasks && (
-            <div style={{ padding: '6px 44px', fontSize: 11, color: AZ.textMuted, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div
+              style={{
+                padding: '6px 44px',
+                fontSize: 11,
+                color: AZ.textMuted,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
               <Loader2 size={12} className="animate-spin" /> Loading tasks...
             </div>
           )}
           {!isLoadingTasks && childTasks.length === 0 && (
-            <div style={{ padding: '6px 44px', fontSize: 11, color: AZ.textMuted, fontStyle: 'italic' }}>
+            <div
+              style={{
+                padding: '6px 44px',
+                fontSize: 11,
+                color: AZ.textMuted,
+                fontStyle: 'italic',
+              }}
+            >
               No tasks created under this item
             </div>
           )}
@@ -1540,7 +1879,9 @@ function StatusRow({
                   membersList={membersList}
                   canEdit={canEdit}
                   colStyles={colStyles}
-                  onOpen={() => navigate({ to: '/item/$itemKey', params: { itemKey: task.itemKey } })}
+                  onOpen={() =>
+                    navigate({ to: '/item/$itemKey', params: { itemKey: task.itemKey } })
+                  }
                 />
               )
             })}
@@ -1577,10 +1918,13 @@ function ChildTaskRow({
       return
     }
     // Auto-sync To Do to the new estimate value.
-    updateTask.mutate({ estimateHours: num, todoHours: num }, {
-      onSuccess: () => toast.success('Task estimate updated'),
-      onError: (err) => toast.error(err.message),
-    })
+    updateTask.mutate(
+      { estimateHours: num, todoHours: num },
+      {
+        onSuccess: () => toast.success('Task estimate updated'),
+        onError: (err) => toast.error(err.message),
+      },
+    )
   }
 
   function commitTaskTodo(raw: string) {
@@ -1589,10 +1933,13 @@ function ChildTaskRow({
       toast.error('Todo hours must be a positive number')
       return
     }
-    updateTask.mutate({ todoHours: num }, {
-      onSuccess: () => toast.success('Todo hours updated'),
-      onError: (err) => toast.error(err.message),
-    })
+    updateTask.mutate(
+      { todoHours: num },
+      {
+        onSuccess: () => toast.success('Todo hours updated'),
+        onError: (err) => toast.error(err.message),
+      },
+    )
   }
 
   function commitTaskActual(raw: string) {
@@ -1601,20 +1948,26 @@ function ChildTaskRow({
       toast.error('Actual hours must be a positive number')
       return
     }
-    updateTask.mutate({ actualHours: num }, {
-      onSuccess: () => toast.success('Actual hours updated'),
-      onError: (err) => toast.error(err.message),
-    })
+    updateTask.mutate(
+      { actualHours: num },
+      {
+        onSuccess: () => toast.success('Actual hours updated'),
+        onError: (err) => toast.error(err.message),
+      },
+    )
   }
 
   function handleOwnerChange(userId: string | null) {
-    updateTask.mutate({ assigneeId: userId }, {
-      onSuccess: () => {
-        setEditingOwner(false)
-        toast.success('Owner updated')
+    updateTask.mutate(
+      { assigneeId: userId },
+      {
+        onSuccess: () => {
+          setEditingOwner(false)
+          toast.success('Owner updated')
+        },
+        onError: (err) => toast.error(err.message),
       },
-      onError: (err) => toast.error(err.message),
-    })
+    )
   }
 
   return (
@@ -1629,8 +1982,12 @@ function ChildTaskRow({
         color: AZ.textSecondary,
         minWidth: 'max-content',
       }}
-      onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#f1f6fc' }}
-      onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'transparent' }}
+      onMouseOver={(e) => {
+        e.currentTarget.style.backgroundColor = '#f1f6fc'
+      }}
+      onMouseOut={(e) => {
+        e.currentTarget.style.backgroundColor = 'transparent'
+      }}
     >
       <div style={colStyles.rank} className="px-2" />
       <div style={colStyles.id} className="flex items-center gap-1 px-2">
@@ -1647,8 +2004,12 @@ function ChildTaskRow({
             padding: 0,
             textAlign: 'left',
           }}
-          onMouseOver={(e) => { e.currentTarget.style.textDecoration = 'underline' }}
-          onMouseOut={(e) => { e.currentTarget.style.textDecoration = 'none' }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.textDecoration = 'underline'
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.textDecoration = 'none'
+          }}
         >
           {task.itemKey}
         </button>
@@ -1656,15 +2017,22 @@ function ChildTaskRow({
       <div style={colStyles.name} className="overflow-hidden px-2">
         <span style={{ color: AZ.textPrimary }}>{task.title}</span>
       </div>
-      <div style={colStyles.state} className="flex justify-center px-2" onClick={(e) => e.stopPropagation()}>
+      <div
+        style={colStyles.state}
+        className="flex justify-center px-2"
+        onClick={(e) => e.stopPropagation()}
+      >
         <SimplifiedStateControl
           scheduleState={task.scheduleState as ScheduleState}
           canEdit={canEdit}
           onChange={(next) => {
-            updateTask.mutate({ scheduleState: next }, {
-              onSuccess: () => toast.success('Task state updated'),
-              onError: (err) => toast.error(err.message),
-            })
+            updateTask.mutate(
+              { scheduleState: next },
+              {
+                onSuccess: () => toast.success('Task state updated'),
+                onError: (err) => toast.error(err.message),
+              },
+            )
           }}
         />
       </div>
@@ -1677,7 +2045,15 @@ function ChildTaskRow({
           onCommit={commitTaskEstimate}
           displayValue={task.estimateHours ?? '—'}
           style={{ fontFamily: 'Consolas, Monaco, monospace', fontSize: 11 }}
-          inputStyle={{ width: '100%', textAlign: 'right', fontSize: 11, fontFamily: 'Consolas, Monaco, monospace', border: `1px solid ${AZ.primary}`, borderRadius: 2, outline: 'none' }}
+          inputStyle={{
+            width: '100%',
+            textAlign: 'right',
+            fontSize: 11,
+            fontFamily: 'Consolas, Monaco, monospace',
+            border: `1px solid ${AZ.primary}`,
+            borderRadius: 2,
+            outline: 'none',
+          }}
           ariaLabel="Task estimate"
         />
       </div>
@@ -1688,7 +2064,15 @@ function ChildTaskRow({
           onCommit={commitTaskTodo}
           displayValue={task.todoHours ?? '—'}
           style={{ fontFamily: 'Consolas, Monaco, monospace', fontSize: 11 }}
-          inputStyle={{ width: '100%', textAlign: 'right', fontSize: 11, fontFamily: 'Consolas, Monaco, monospace', border: `1px solid ${AZ.primary}`, borderRadius: 2, outline: 'none' }}
+          inputStyle={{
+            width: '100%',
+            textAlign: 'right',
+            fontSize: 11,
+            fontFamily: 'Consolas, Monaco, monospace',
+            border: `1px solid ${AZ.primary}`,
+            borderRadius: 2,
+            outline: 'none',
+          }}
           ariaLabel="Todo hours"
         />
       </div>
@@ -1699,7 +2083,15 @@ function ChildTaskRow({
           onCommit={commitTaskActual}
           displayValue={task.actualHours ?? '—'}
           style={{ fontFamily: 'Consolas, Monaco, monospace', fontSize: 11 }}
-          inputStyle={{ width: '100%', textAlign: 'right', fontSize: 11, fontFamily: 'Consolas, Monaco, monospace', border: `1px solid ${AZ.primary}`, borderRadius: 2, outline: 'none' }}
+          inputStyle={{
+            width: '100%',
+            textAlign: 'right',
+            fontSize: 11,
+            fontFamily: 'Consolas, Monaco, monospace',
+            border: `1px solid ${AZ.primary}`,
+            borderRadius: 2,
+            outline: 'none',
+          }}
           ariaLabel="Actual hours"
         />
       </div>
@@ -1710,15 +2102,26 @@ function ChildTaskRow({
             value={task.assigneeId ?? ''}
             onChange={(e) => handleOwnerChange(e.target.value || null)}
             onBlur={() => setEditingOwner(false)}
-            style={{ width: '100%', fontSize: 11, border: `1px solid ${AZ.primary}`, borderRadius: 2, fontFamily: AZ.font }}
+            style={{
+              width: '100%',
+              fontSize: 11,
+              border: `1px solid ${AZ.primary}`,
+              borderRadius: 2,
+              fontFamily: AZ.font,
+            }}
           >
             <option value="">Unassigned</option>
             {membersList.map((m) => (
-              <option key={m.userId} value={m.userId}>{m.displayName}</option>
+              <option key={m.userId} value={m.userId}>
+                {m.displayName}
+              </option>
             ))}
           </select>
         ) : (
-          <span onClick={canEdit ? () => setEditingOwner(true) : undefined} style={{ cursor: canEdit ? 'pointer' : 'default' }}>
+          <span
+            onClick={canEdit ? () => setEditingOwner(true) : undefined}
+            style={{ cursor: canEdit ? 'pointer' : 'default' }}
+          >
             {taskOwner}
           </span>
         )}
@@ -1730,15 +2133,26 @@ function ChildTaskRow({
             value={task.assigneeId ?? ''}
             onChange={(e) => handleOwnerChange(e.target.value || null)}
             onBlur={() => setEditingOwner(false)}
-            style={{ width: '100%', fontSize: 11, border: `1px solid ${AZ.primary}`, borderRadius: 2, fontFamily: AZ.font }}
+            style={{
+              width: '100%',
+              fontSize: 11,
+              border: `1px solid ${AZ.primary}`,
+              borderRadius: 2,
+              fontFamily: AZ.font,
+            }}
           >
             <option value="">Unassigned</option>
             {membersList.map((m) => (
-              <option key={m.userId} value={m.userId}>{m.displayName}</option>
+              <option key={m.userId} value={m.userId}>
+                {m.displayName}
+              </option>
             ))}
           </select>
         ) : (
-          <span onClick={canEdit ? () => setEditingOwner(true) : undefined} style={{ cursor: canEdit ? 'pointer' : 'default' }}>
+          <span
+            onClick={canEdit ? () => setEditingOwner(true) : undefined}
+            style={{ cursor: canEdit ? 'pointer' : 'default' }}
+          >
             {taskOwner}
           </span>
         )}
@@ -1782,7 +2196,10 @@ function SimplifiedStateControl({
   }
 
   return (
-    <div className="flex border rounded overflow-hidden" style={{ borderColor: AZ.border, height: 20 }}>
+    <div
+      className="flex overflow-hidden rounded border"
+      style={{ borderColor: AZ.border, height: 20 }}
+    >
       {SIMPLIFIED_STATE_ORDER.map((s) => {
         const isSel = current === s
         const cfg = SIMPLIFIED_STATE_CONFIG[s]
@@ -1842,7 +2259,9 @@ function AddItemModal({
         title: title.trim(),
         planEstimate: planEstimate === '' ? undefined : Number(planEstimate),
       })
-      toast.success(`${type === 'defect' ? 'Defect' : 'Story'} "${title.trim()}" added to iteration`)
+      toast.success(
+        `${type === 'defect' ? 'Defect' : 'Story'} "${title.trim()}" added to iteration`,
+      )
       if (openDetail) {
         void navigate({ to: '/item/$itemKey', params: { itemKey: result.itemKey } })
       } else {
@@ -1872,7 +2291,7 @@ function AddItemModal({
                 key={o}
                 type="button"
                 onClick={() => setType(o)}
-                className="flex-1 py-1.5 text-[11px] font-semibold rounded-sm capitalize transition-colors"
+                className="flex-1 rounded-sm py-1.5 text-[11px] font-semibold capitalize transition-colors"
                 style={{
                   backgroundColor: type === o ? '#eef3fb' : 'transparent',
                   color: type === o ? BRAND.primary : BRAND.textSecondary,
