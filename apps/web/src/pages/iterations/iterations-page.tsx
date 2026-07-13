@@ -16,7 +16,7 @@ import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
-import { useAuthStore } from '@/shared/lib/stores/auth.store'
+import { useProjectPermissions } from '@/features/access/api'
 import { useProjectTeams } from '@/features/teams/api'
 import {
   useIterations,
@@ -43,7 +43,7 @@ function StateBadge({ state }: { state: IterationState }) {
   const s = STATE_STYLE[state]
   return (
     <span
-      className="inline-flex items-center px-1.5 py-px text-[11px] font-medium rounded-sm whitespace-nowrap"
+      className="inline-flex items-center rounded-sm px-1.5 py-px text-[11px] font-medium whitespace-nowrap"
       style={{ backgroundColor: s.bg, color: s.text, border: `1px solid ${s.border}` }}
     >
       {STATE_LABEL[state]}
@@ -70,7 +70,8 @@ const PAGE_SIZE = 25
 export function IterationsPage() {
   const { project } = useAppContext()
   const projectId = project?.projectId
-  const canManage = useAuthStore((s) => s.hasPermission('iteration:manage'))
+  const { can } = useProjectPermissions(projectId)
+  const canManage = can('iteration:manage')
 
   const { data: iterations = [], isLoading, isError } = useIterations(projectId)
 
@@ -90,9 +91,7 @@ export function IterationsPage() {
     const rows = iterations.filter((it) => {
       const matchesQ =
         !q ||
-        [it.name, it.theme ?? '', it.iterationKey ?? ''].some((v) =>
-          v.toLowerCase().includes(q),
-        )
+        [it.name, it.theme ?? '', it.iterationKey ?? ''].some((v) => v.toLowerCase().includes(q))
       const matchesState = stateFilter === 'all' || it.state === stateFilter
       return matchesQ && matchesState
     })
@@ -113,12 +112,17 @@ export function IterationsPage() {
   const pageRows = filtered.slice((activePage - 1) * PAGE_SIZE, activePage * PAGE_SIZE)
 
   function toggleSort(key: SortKey) {
-    setSort((p) => (p.key === key ? { key, dir: p.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }))
+    setSort((p) =>
+      p.key === key ? { key, dir: p.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' },
+    )
   }
 
   if (!projectId) {
     return (
-      <div className="flex flex-1 items-center justify-center text-[13px]" style={{ color: BRAND.textMuted }}>
+      <div
+        className="flex flex-1 items-center justify-center text-[13px]"
+        style={{ color: BRAND.textMuted }}
+      >
         Select a project to view iterations.
       </div>
     )
@@ -131,20 +135,20 @@ export function IterationsPage() {
   const tableWidth = COLUMNS.reduce((t, c) => t + c.width, 0) + 40
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden">
+    <div className="flex flex-1 flex-col overflow-hidden">
       {/* Toolbar */}
       <div
-        className="flex items-end gap-2 px-4 py-2 shrink-0"
+        className="flex shrink-0 items-end gap-2 px-4 py-2"
         style={{ backgroundColor: BRAND.surface, borderBottom: `1px solid ${BRAND.borderSubtle}` }}
       >
-        <div className="flex flex-col items-start gap-1.5 mr-2 min-w-[150px]">
+        <div className="mr-2 flex min-w-[150px] flex-col items-start gap-1.5">
           <h2 className="text-[13px] font-semibold" style={{ color: BRAND.textPrimary }}>
             Timeboxes
           </h2>
           {canManage && (
             <button
               onClick={() => setShowCreate(true)}
-              className="flex items-center gap-1.5 px-3 py-1 text-[11px] font-semibold text-white rounded"
+              className="flex items-center gap-1.5 rounded px-3 py-1 text-[11px] font-semibold text-white"
               style={{ backgroundColor: BRAND.primary }}
             >
               <Plus size={12} /> Create Iteration
@@ -152,7 +156,11 @@ export function IterationsPage() {
           )}
         </div>
         <div className="relative">
-          <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: BRAND.textMuted }} />
+          <Search
+            size={12}
+            className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2"
+            style={{ color: BRAND.textMuted }}
+          />
           <input
             type="text"
             placeholder="Search iterations..."
@@ -161,14 +169,23 @@ export function IterationsPage() {
               setSearch(e.target.value)
               setPage(1)
             }}
-            className="pl-7 pr-3 py-1 text-[11px] rounded focus:outline-none"
-            style={{ backgroundColor: BRAND.surfaceSubtle, border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textPrimary, width: 190 }}
+            className="rounded py-1 pr-3 pl-7 text-[11px] focus:outline-none"
+            style={{
+              backgroundColor: BRAND.surfaceSubtle,
+              border: `1px solid ${BRAND.borderSubtle}`,
+              color: BRAND.textPrimary,
+              width: 190,
+            }}
           />
         </div>
         <button
           onClick={() => setShowFilters((p) => !p)}
-          className="flex items-center gap-1.5 px-3 py-1 text-[11px] font-semibold rounded"
-          style={{ border: '1px solid #bdd0ef', color: BRAND.primaryLight, backgroundColor: showFilters || stateFilter !== 'all' ? '#edf2fb' : '#fff' }}
+          className="flex items-center gap-1.5 rounded px-3 py-1 text-[11px] font-semibold"
+          style={{
+            border: '1px solid #bdd0ef',
+            color: BRAND.primaryLight,
+            backgroundColor: showFilters || stateFilter !== 'all' ? '#edf2fb' : '#fff',
+          }}
         >
           <Filter size={12} /> {showFilters ? 'Hide filter' : 'Show filter'}
           {stateFilter !== 'all' ? ' (1)' : ''}
@@ -177,9 +194,15 @@ export function IterationsPage() {
       </div>
 
       {showFilters && (
-        <div className="px-4 py-3 shrink-0" style={{ backgroundColor: '#f5f8fc', borderBottom: '1px solid #cfdced' }}>
+        <div
+          className="shrink-0 px-4 py-3"
+          style={{ backgroundColor: '#f5f8fc', borderBottom: '1px solid #cfdced' }}
+        >
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 px-2 py-1.5 rounded" style={{ backgroundColor: BRAND.surface, border: `1px solid ${BRAND.borderSubtle}` }}>
+            <div
+              className="flex items-center gap-1.5 rounded px-2 py-1.5"
+              style={{ backgroundColor: BRAND.surface, border: `1px solid ${BRAND.borderSubtle}` }}
+            >
               <span className="text-[11px] font-semibold" style={{ color: BRAND.textSecondary }}>
                 State
               </span>
@@ -199,7 +222,11 @@ export function IterationsPage() {
               </InlineSelect>
             </div>
             {stateFilter !== 'all' && (
-              <button onClick={() => setStateFilter('all')} className="cursor-pointer px-2.5 py-1 text-[11px] rounded hover:bg-[#f0f4fb]" style={{ color: BRAND.primaryLight }}>
+              <button
+                onClick={() => setStateFilter('all')}
+                className="cursor-pointer rounded px-2.5 py-1 text-[11px] hover:bg-[#f0f4fb]"
+                style={{ color: BRAND.primaryLight }}
+              >
                 Clear filters
               </button>
             )}
@@ -208,12 +235,18 @@ export function IterationsPage() {
       )}
 
       {/* Table */}
-      <div className="flex flex-col flex-1 overflow-hidden" style={{ backgroundColor: BRAND.surface }}>
+      <div
+        className="flex flex-1 flex-col overflow-hidden"
+        style={{ backgroundColor: BRAND.surface }}
+      >
         <div className="flex-1 overflow-auto">
           <div style={{ width: tableWidth, minWidth: '100%' }}>
             <div
-              className="sticky top-0 z-10 flex items-center h-8 px-3 select-none"
-              style={{ backgroundColor: BRAND.surfaceHover, borderBottom: `1px solid ${BRAND.borderSubtle}` }}
+              className="sticky top-0 z-10 flex h-8 items-center px-3 select-none"
+              style={{
+                backgroundColor: BRAND.surfaceHover,
+                borderBottom: `1px solid ${BRAND.borderSubtle}`,
+              }}
             >
               <div className="w-10 shrink-0" />
               {COLUMNS.map((c) => {
@@ -222,8 +255,13 @@ export function IterationsPage() {
                   <button
                     key={c.key}
                     onClick={() => toggleSort(c.key)}
-                    className="h-full flex items-center gap-1 px-2 text-[11px] font-semibold"
-                    style={{ width: c.width, color: active ? BRAND.primary : BRAND.textMuted, borderRight: `1px solid ${BRAND.borderSubtle}`, justifyContent: c.align === 'right' ? 'flex-end' : 'flex-start' }}
+                    className="flex h-full items-center gap-1 px-2 text-[11px] font-semibold"
+                    style={{
+                      width: c.width,
+                      color: active ? BRAND.primary : BRAND.textMuted,
+                      borderRight: `1px solid ${BRAND.borderSubtle}`,
+                      justifyContent: c.align === 'right' ? 'flex-end' : 'flex-start',
+                    }}
                   >
                     <span className="truncate">{c.label}</span>
                     {active && <span>{sort.dir === 'asc' ? '▲' : '▼'}</span>}
@@ -235,35 +273,61 @@ export function IterationsPage() {
             {isLoading && <SkeletonList rows={8} cols={6} />}
 
             {!isLoading && isError && (
-              <div className="h-40 flex items-center justify-center text-[12px]" style={{ color: BRAND.danger }}>
+              <div
+                className="flex h-40 items-center justify-center text-[12px]"
+                style={{ color: BRAND.danger }}
+              >
                 Failed to load iterations. Please try again.
               </div>
             )}
 
-            {!isLoading && !isError &&
+            {!isLoading &&
+              !isError &&
               pageRows.map((it) => (
                 <div
                   key={it.id}
                   onClick={() => setDetailId(it.id)}
-                  className="flex items-center h-8 px-3 cursor-pointer transition-colors hover:bg-[#f4f6f9]"
-                  style={{ width: tableWidth, minWidth: '100%', borderBottom: `1px solid ${BRAND.borderInner}` }}
+                  className="flex h-8 cursor-pointer items-center px-3 transition-colors hover:bg-[#f4f6f9]"
+                  style={{
+                    width: tableWidth,
+                    minWidth: '100%',
+                    borderBottom: `1px solid ${BRAND.borderInner}`,
+                  }}
                 >
-                  <div className="w-10 shrink-0 px-2 text-[10px] font-mono truncate" style={{ color: BRAND.textMuted }}>
+                  <div
+                    className="w-10 shrink-0 truncate px-2 font-mono text-[10px]"
+                    style={{ color: BRAND.textMuted }}
+                  >
                     {it.iterationKey ?? ''}
                   </div>
-                  <div className="shrink-0 px-2 text-[11px] font-medium truncate" style={{ width: COLUMNS[0].width, color: BRAND.textPrimary }}>
+                  <div
+                    className="shrink-0 truncate px-2 text-[11px] font-medium"
+                    style={{ width: COLUMNS[0].width, color: BRAND.textPrimary }}
+                  >
                     {it.name}
                   </div>
-                  <div className="shrink-0 px-2 text-[11px] truncate" style={{ width: COLUMNS[1].width, color: BRAND.textPrimary }}>
+                  <div
+                    className="shrink-0 truncate px-2 text-[11px]"
+                    style={{ width: COLUMNS[1].width, color: BRAND.textPrimary }}
+                  >
                     {it.theme ?? ''}
                   </div>
-                  <div className="shrink-0 px-2 text-[11px] truncate" style={{ width: COLUMNS[2].width, color: BRAND.textSecondary }}>
+                  <div
+                    className="shrink-0 truncate px-2 text-[11px]"
+                    style={{ width: COLUMNS[2].width, color: BRAND.textSecondary }}
+                  >
                     {it.startDate ?? ''}
                   </div>
-                  <div className="shrink-0 px-2 text-[11px] truncate" style={{ width: COLUMNS[3].width, color: BRAND.textSecondary }}>
+                  <div
+                    className="shrink-0 truncate px-2 text-[11px]"
+                    style={{ width: COLUMNS[3].width, color: BRAND.textSecondary }}
+                  >
                     {it.endDate ?? ''}
                   </div>
-                  <div className="shrink-0 px-2 text-right text-[11px] font-mono tabular-nums" style={{ width: COLUMNS[4].width, color: BRAND.textSecondary }}>
+                  <div
+                    className="shrink-0 px-2 text-right font-mono text-[11px] tabular-nums"
+                    style={{ width: COLUMNS[4].width, color: BRAND.textSecondary }}
+                  >
                     {it.plannedVelocity ?? ''}
                   </div>
                   <div className="shrink-0 px-2" style={{ width: COLUMNS[5].width }}>
@@ -273,7 +337,10 @@ export function IterationsPage() {
               ))}
 
             {!isLoading && !isError && pageRows.length === 0 && (
-              <div className="h-40 flex items-center justify-center text-[12px]" style={{ color: BRAND.textMuted }}>
+              <div
+                className="flex h-40 items-center justify-center text-[12px]"
+                style={{ color: BRAND.textMuted }}
+              >
                 No iterations found
               </div>
             )}
@@ -281,7 +348,10 @@ export function IterationsPage() {
         </div>
 
         {/* Pagination */}
-        <div className="h-10 shrink-0 flex items-center justify-between px-3" style={{ backgroundColor: BRAND.surface, borderTop: `1px solid ${BRAND.borderSubtle}` }}>
+        <div
+          className="flex h-10 shrink-0 items-center justify-between px-3"
+          style={{ backgroundColor: BRAND.surface, borderTop: `1px solid ${BRAND.borderSubtle}` }}
+        >
           <span className="text-[11px]" style={{ color: BRAND.textMuted }}>
             {filtered.length === 0
               ? '0 records'
@@ -291,10 +361,22 @@ export function IterationsPage() {
             <span className="text-[11px] tabular-nums" style={{ color: BRAND.textSecondary }}>
               Page {activePage} of {totalPages}
             </span>
-            <button aria-label="Previous page" disabled={activePage === 1} onClick={() => setPage(activePage - 1)} className="cursor-pointer p-1.5 rounded transition-colors hover:bg-[#f0f4fb] disabled:cursor-not-allowed disabled:opacity-35" style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}>
+            <button
+              aria-label="Previous page"
+              disabled={activePage === 1}
+              onClick={() => setPage(activePage - 1)}
+              className="cursor-pointer rounded p-1.5 transition-colors hover:bg-[#f0f4fb] disabled:cursor-not-allowed disabled:opacity-35"
+              style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
+            >
               <ChevronLeft size={13} />
             </button>
-            <button aria-label="Next page" disabled={activePage === totalPages} onClick={() => setPage(activePage + 1)} className="cursor-pointer p-1.5 rounded transition-colors hover:bg-[#f0f4fb] disabled:cursor-not-allowed disabled:opacity-35" style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}>
+            <button
+              aria-label="Next page"
+              disabled={activePage === totalPages}
+              onClick={() => setPage(activePage + 1)}
+              className="cursor-pointer rounded p-1.5 transition-colors hover:bg-[#f0f4fb] disabled:cursor-not-allowed disabled:opacity-35"
+              style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
+            >
               <ChevronLeft size={13} className="rotate-180" />
             </button>
           </div>
@@ -374,7 +456,12 @@ function CreateIterationModal({
     <AppModal open onClose={onClose} title="New Iteration" width={480}>
       <ModalBody className="space-y-4">
         <FormField label="Name" required error={error ?? undefined}>
-          <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Enter iteration name..." />
+          <Input
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Enter iteration name..."
+          />
         </FormField>
         <FormField label="Team">
           <NativeSelect value={teamId} onChange={(e) => setTeamId(e.target.value)}>
@@ -438,7 +525,15 @@ function CreateIterationModal({
 
 // ── Full-page detail ──────────────────────────────────────────────────────────
 
-function IterationDetail({ id, canManage, onBack }: { id: string; canManage: boolean; onBack: () => void }) {
+function IterationDetail({
+  id,
+  canManage,
+  onBack,
+}: {
+  id: string
+  canManage: boolean
+  onBack: () => void
+}) {
   const { project } = useAppContext()
   const { data: it, isLoading } = useIteration(id)
   const update = useUpdateIteration(id)
@@ -466,29 +561,42 @@ function IterationDetail({ id, canManage, onBack }: { id: string; canManage: boo
   }
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden bg-white">
+    <div className="flex flex-1 flex-col overflow-hidden bg-white">
       <div className="shrink-0 text-white" style={{ backgroundColor: '#173f78' }}>
-        <div className="h-12 px-4 flex items-center gap-3">
-          <button aria-label="Back" onClick={onBack} className="p-1.5 rounded hover:bg-white/10">
+        <div className="flex h-12 items-center gap-3 px-4">
+          <button aria-label="Back" onClick={onBack} className="rounded p-1.5 hover:bg-white/10">
             <ChevronLeft size={18} />
           </button>
-          <span className="px-1.5 py-px text-[10px] font-semibold rounded-sm" style={{ backgroundColor: '#eef3fb', color: '#1d3f73' }}>
+          <span
+            className="rounded-sm px-1.5 py-px text-[10px] font-semibold"
+            style={{ backgroundColor: '#eef3fb', color: '#1d3f73' }}
+          >
             Iteration
           </span>
           <span className="font-mono text-[13px] font-semibold">{it.iterationKey ?? 'New'}</span>
           <span className="h-5 w-px bg-white/25" />
-          <h1 className="text-[15px] font-semibold truncate">{it.name}</h1>
+          <h1 className="truncate text-[15px] font-semibold">{it.name}</h1>
         </div>
       </div>
 
-      <div className="flex flex-1 min-h-0 gap-2" style={{ backgroundColor: '#e7ebf0' }}>
+      <div className="flex min-h-0 flex-1 gap-2" style={{ backgroundColor: '#e7ebf0' }}>
         <main className="flex-1 overflow-y-auto p-6" style={{ backgroundColor: '#f3f5f8' }}>
           <div className="space-y-5">
             <h2 className="text-[18px] font-semibold" style={{ color: '#273449' }}>
               Details
             </h2>
-            <section className="bg-white rounded overflow-hidden" style={{ border: `1px solid ${BRAND.borderSubtle}` }}>
-              <div className="px-4 py-2 text-[11px] font-semibold" style={{ color: BRAND.textSecondary, backgroundColor: BRAND.surfaceSubtle, borderBottom: `1px solid ${BRAND.borderSubtle}` }}>
+            <section
+              className="overflow-hidden rounded bg-white"
+              style={{ border: `1px solid ${BRAND.borderSubtle}` }}
+            >
+              <div
+                className="px-4 py-2 text-[11px] font-semibold"
+                style={{
+                  color: BRAND.textSecondary,
+                  backgroundColor: BRAND.surfaceSubtle,
+                  borderBottom: `1px solid ${BRAND.borderSubtle}`,
+                }}
+              >
                 Theme
               </div>
               <textarea
@@ -501,8 +609,18 @@ function IterationDetail({ id, canManage, onBack }: { id: string; canManage: boo
                 style={{ minHeight: 200, color: BRAND.textPrimary }}
               />
             </section>
-            <section className="bg-white rounded overflow-hidden" style={{ border: `1px solid ${BRAND.borderSubtle}` }}>
-              <div className="px-4 py-2 text-[11px] font-semibold" style={{ color: BRAND.textSecondary, backgroundColor: BRAND.surfaceSubtle, borderBottom: `1px solid ${BRAND.borderSubtle}` }}>
+            <section
+              className="overflow-hidden rounded bg-white"
+              style={{ border: `1px solid ${BRAND.borderSubtle}` }}
+            >
+              <div
+                className="px-4 py-2 text-[11px] font-semibold"
+                style={{
+                  color: BRAND.textSecondary,
+                  backgroundColor: BRAND.surfaceSubtle,
+                  borderBottom: `1px solid ${BRAND.borderSubtle}`,
+                }}
+              >
                 Notes
               </div>
               <textarea
@@ -518,7 +636,10 @@ function IterationDetail({ id, canManage, onBack }: { id: string; canManage: boo
           </div>
         </main>
 
-        <aside className="w-[320px] shrink-0 overflow-y-auto p-5 space-y-4 bg-white" style={{ borderLeft: `1px solid ${BRAND.borderSubtle}` }}>
+        <aside
+          className="w-[320px] shrink-0 space-y-4 overflow-y-auto bg-white p-5"
+          style={{ borderLeft: `1px solid ${BRAND.borderSubtle}` }}
+        >
           <FormField label="Project">
             <div className={readonlyCls}>{project?.projectName ?? '—'}</div>
           </FormField>
@@ -558,7 +679,9 @@ function IterationDetail({ id, canManage, onBack }: { id: string; canManage: boo
               min={0}
               defaultValue={it.plannedVelocity ?? ''}
               disabled={disabled}
-              onBlur={(e) => patch({ plannedVelocity: e.target.value === '' ? null : Number(e.target.value) })}
+              onBlur={(e) =>
+                patch({ plannedVelocity: e.target.value === '' ? null : Number(e.target.value) })
+              }
               placeholder="0"
             />
           </FormField>

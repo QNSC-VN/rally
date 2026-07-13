@@ -9,7 +9,9 @@ import {
   between,
 } from '@platform';
 import type { JwtPayload, CursorPayload, PagedResult, DbExecutor } from '@platform';
+import { PERMISSION, type ProjectPermission } from '@shared-kernel';
 import { ProjectsService } from '@modules/projects';
+import { AccessService } from '@modules/access';
 import { IWorkItemRepository, WORK_ITEM_REPOSITORY } from '../domain/ports/work-item.repository';
 import {
   IActivityLogRepository,
@@ -106,6 +108,7 @@ export class WorkItemsService {
     @Inject(ATTACHMENT_REPOSITORY) private readonly attachmentRepo: IAttachmentRepository,
     private readonly storageService: StorageService,
     private readonly projectsService: ProjectsService,
+    private readonly accessService: AccessService,
     private readonly uow: UnitOfWork,
   ) {}
 
@@ -188,6 +191,7 @@ export class WorkItemsService {
     opts: CreateWorkItemOpts = {},
   ): Promise<WorkItem> {
     const project = await this.projectsService.getProject(actor.workspaceId, projectId);
+    await this.accessService.assertProjectPermission(actor, projectId, PERMISSION.WORK_ITEM_CREATE);
 
     // P1-15: assignee must be an active workspace member
     if (opts.assigneeId) {
@@ -395,6 +399,23 @@ export class WorkItemsService {
     return item;
   }
 
+  /**
+   * Load a work item for a MUTATION and authorize the actor against the item's
+   * OWN project. This is the single seam that makes every write project-scoped:
+   * a workspace-wide grant fast-paths inside assertProjectPermission, while a
+   * user who only holds the permission on a different project is rejected. Use
+   * this instead of getWorkItem() in every method that changes an item.
+   */
+  private async getWorkItemForWrite(
+    actor: JwtPayload,
+    id: string,
+    required: ProjectPermission,
+  ): Promise<WorkItem> {
+    const item = await this.getWorkItem(actor.workspaceId, id);
+    await this.accessService.assertProjectPermission(actor, item.projectId, required);
+    return item;
+  }
+
   // ── Tasks (list + totals) ───────────────────────────────────────────────────
 
   async listTasks(workspaceId: string, parentId: string): Promise<WorkItem[]> {
@@ -426,7 +447,7 @@ export class WorkItemsService {
     id: string,
     input: UpdateWorkItemInput,
   ): Promise<WorkItem> {
-    const item = await this.getWorkItem(actor.workspaceId, id);
+    const item = await this.getWorkItemForWrite(actor, id, PERMISSION.WORK_ITEM_EDIT);
 
     // P1-15: validate new assignee is an active workspace member
     if (input.assigneeId && input.assigneeId !== item.assigneeId) {
@@ -561,9 +582,9 @@ export class WorkItemsService {
   // ── Delete ────────────────────────────────────────────────────────────────
 
   @Span('work-items.delete')
-  async deleteWorkItem(workspaceId: string, id: string): Promise<void> {
-    await this.getWorkItem(workspaceId, id);
-    await this.workItemRepo.softDelete(id, workspaceId);
+  async deleteWorkItem(actor: JwtPayload, id: string): Promise<void> {
+    await this.getWorkItemForWrite(actor, id, PERMISSION.WORK_ITEM_DELETE);
+    await this.workItemRepo.softDelete(id, actor.workspaceId);
     this.logger.log({ workItemId: id }, 'Work item soft-deleted');
   }
 
@@ -577,17 +598,23 @@ export class WorkItemsService {
   // ── Reorder (backlog drag-and-drop) ───────────────────────────────────────
 
   async reorderWorkItems(
-    workspaceId: string,
+    actor: JwtPayload,
     items: Array<{ id: string; rank: string }>,
   ): Promise<void> {
     if (items.length === 0) return;
     // Validate all items belong to this workspace before updating
-    const existing = await Promise.all(items.map(({ id }) => this.getWorkItem(workspaceId, id)));
-    if (existing.some((w) => w.workspaceId !== workspaceId)) {
+    const existing = await Promise.all(
+      items.map(({ id }) => this.getWorkItem(actor.workspaceId, id)),
+    );
+    if (existing.some((w) => w.workspaceId !== actor.workspaceId)) {
       throw new Error('Workspace mismatch');
     }
+    // Authorize edit on every project the batch touches (usually one backlog).
+    for (const projectId of new Set(existing.map((w) => w.projectId))) {
+      await this.accessService.assertProjectPermission(actor, projectId, PERMISSION.WORK_ITEM_EDIT);
+    }
     // Wrap in UoW so all rank UPDATEs are one atomic transaction with RLS active.
-    await this.uow.run((tx) => this.workItemRepo.reorderItems(items, workspaceId, tx));
+    await this.uow.run((tx) => this.workItemRepo.reorderItems(items, actor.workspaceId, tx));
   }
 
   // ── Neighbour-based reorder (P2-BL-05) ────────────────────────────────────
@@ -604,7 +631,7 @@ export class WorkItemsService {
     id: string,
     opts: { projectId: string; beforeId?: string | null; afterId?: string | null },
   ): Promise<WorkItem> {
-    const item = await this.getWorkItem(actor.workspaceId, id);
+    const item = await this.getWorkItemForWrite(actor, id, PERMISSION.WORK_ITEM_EDIT);
     if (item.projectId !== opts.projectId) {
       throw new PreconditionFailedException(
         'WORK_ITEM_PARENT_SCOPE_MISMATCH',
@@ -664,7 +691,7 @@ export class WorkItemsService {
     itemIds: string[],
     releaseId: string | null,
   ): Promise<number> {
-    const items = await this.loadBulkItems(actor.workspaceId, projectId, itemIds);
+    const items = await this.loadBulkItems(actor, projectId, itemIds);
     if (releaseId) {
       await this.assertReleaseAssignable(actor.workspaceId, projectId, releaseId);
     }
@@ -694,7 +721,7 @@ export class WorkItemsService {
     itemIds: string[],
     iterationId: string | null,
   ): Promise<number> {
-    const items = await this.loadBulkItems(actor.workspaceId, projectId, itemIds);
+    const items = await this.loadBulkItems(actor, projectId, itemIds);
 
     // P2.1 scope: only stories and defects can be scheduled into an iteration.
     const nonBacklog = items.find((i) => i.type !== 'story' && i.type !== 'defect');
@@ -732,15 +759,16 @@ export class WorkItemsService {
    * request (all-or-nothing) if any id is missing or out of scope.
    */
   private async loadBulkItems(
-    workspaceId: string,
+    actor: JwtPayload,
     projectId: string,
     itemIds: string[],
   ): Promise<WorkItem[]> {
+    await this.accessService.assertProjectPermission(actor, projectId, PERMISSION.WORK_ITEM_EDIT);
     const ids = [...new Set(itemIds)];
     if (ids.length === 0) {
       throw new PreconditionFailedException('WORK_ITEM_EMPTY_SELECTION', 'No items selected');
     }
-    const items = await this.workItemRepo.findByIds(ids, workspaceId);
+    const items = await this.workItemRepo.findByIds(ids, actor.workspaceId);
     if (items.length !== ids.length) {
       throw new NotFoundException('WORK_ITEM_NOT_FOUND', 'One or more work items were not found');
     }
@@ -851,16 +879,16 @@ export class WorkItemsService {
     return this.workItemRepo.listLabels(id);
   }
 
-  async addLabelToWorkItem(workspaceId: string, id: string, labelId: string): Promise<void> {
-    const item = await this.getWorkItem(workspaceId, id);
+  async addLabelToWorkItem(actor: JwtPayload, id: string, labelId: string): Promise<void> {
+    const item = await this.getWorkItemForWrite(actor, id, PERMISSION.WORK_ITEM_EDIT);
     // P1-15: label must belong to the same project as the work item
     await this.projectsService.assertLabelBelongsToProject(item.projectId, labelId);
-    await this.workItemRepo.addLabel(id, labelId, workspaceId);
+    await this.workItemRepo.addLabel(id, labelId, actor.workspaceId);
   }
 
-  async removeLabelFromWorkItem(workspaceId: string, id: string, labelId: string): Promise<void> {
-    await this.getWorkItem(workspaceId, id);
-    await this.workItemRepo.removeLabel(id, labelId, workspaceId);
+  async removeLabelFromWorkItem(actor: JwtPayload, id: string, labelId: string): Promise<void> {
+    await this.getWorkItemForWrite(actor, id, PERMISSION.WORK_ITEM_EDIT);
+    await this.workItemRepo.removeLabel(id, labelId, actor.workspaceId);
   }
 
   // ── Time Logging ──────────────────────────────────────────────────────────
@@ -884,7 +912,7 @@ export class WorkItemsService {
     workItemId: string,
     input: { loggedDate: string; hours: string; description?: string },
   ): Promise<TimeLog> {
-    await this.getWorkItem(actor.workspaceId, workItemId);
+    await this.getWorkItemForWrite(actor, workItemId, PERMISSION.WORK_ITEM_EDIT);
     const log = await this.timeLogRepo.create({
       id: uuidv7(),
       workspaceId: actor.workspaceId,
@@ -909,7 +937,7 @@ export class WorkItemsService {
     logId: string,
     input: { loggedDate?: string; hours?: string; description?: string | null },
   ): Promise<TimeLog> {
-    await this.getWorkItem(actor.workspaceId, workItemId);
+    await this.getWorkItemForWrite(actor, workItemId, PERMISSION.WORK_ITEM_EDIT);
     const log = await this.timeLogRepo.findById(logId, actor.workspaceId);
     if (!log || log.workItemId !== workItemId) {
       throw new NotFoundException('TIME_LOG_NOT_FOUND', 'Time log entry not found');
@@ -926,7 +954,7 @@ export class WorkItemsService {
 
   @Span('work-items.delete-time-log')
   async deleteTimeLog(actor: JwtPayload, workItemId: string, logId: string): Promise<void> {
-    await this.getWorkItem(actor.workspaceId, workItemId);
+    await this.getWorkItemForWrite(actor, workItemId, PERMISSION.WORK_ITEM_EDIT);
     const log = await this.timeLogRepo.findById(logId, actor.workspaceId);
     if (!log || log.workItemId !== workItemId) {
       throw new NotFoundException('TIME_LOG_NOT_FOUND', 'Time log entry not found');
@@ -953,13 +981,13 @@ export class WorkItemsService {
 
   @Span('work-items.watch')
   async watch(actor: JwtPayload, workItemId: string): Promise<void> {
-    await this.getWorkItem(actor.workspaceId, workItemId);
+    await this.getWorkItemForWrite(actor, workItemId, PERMISSION.WORK_ITEM_EDIT);
     await this.watcherRepo.watch(workItemId, actor.sub, actor.workspaceId);
   }
 
   @Span('work-items.unwatch')
   async unwatch(actor: JwtPayload, workItemId: string): Promise<void> {
-    await this.getWorkItem(actor.workspaceId, workItemId);
+    await this.getWorkItemForWrite(actor, workItemId, PERMISSION.WORK_ITEM_EDIT);
     await this.watcherRepo.unwatch(workItemId, actor.sub);
   }
 
@@ -971,7 +999,7 @@ export class WorkItemsService {
     workItemId: string,
     input: { filename: string; mimeType: string; sizeBytes: number },
   ): Promise<{ attachmentId: string; uploadUrl: string }> {
-    await this.getWorkItem(actor.workspaceId, workItemId);
+    await this.getWorkItemForWrite(actor, workItemId, PERMISSION.WORK_ITEM_EDIT);
 
     if (!ATTACHMENT_ALLOWED_MIME_TYPES.has(input.mimeType)) {
       throw new PreconditionFailedException(
@@ -1024,7 +1052,7 @@ export class WorkItemsService {
     workItemId: string,
     attachmentId: string,
   ): Promise<Attachment> {
-    const item = await this.getWorkItem(actor.workspaceId, workItemId);
+    const item = await this.getWorkItemForWrite(actor, workItemId, PERMISSION.WORK_ITEM_EDIT);
 
     const attachment = await this.attachmentRepo.findById(attachmentId, actor.workspaceId);
     if (!attachment || attachment.workItemId !== workItemId) {
@@ -1106,7 +1134,7 @@ export class WorkItemsService {
     workItemId: string,
     attachmentId: string,
   ): Promise<void> {
-    const item = await this.getWorkItem(actor.workspaceId, workItemId);
+    const item = await this.getWorkItemForWrite(actor, workItemId, PERMISSION.WORK_ITEM_EDIT);
 
     const attachment = await this.attachmentRepo.findById(attachmentId, actor.workspaceId);
     if (!attachment || attachment.workItemId !== workItemId) {

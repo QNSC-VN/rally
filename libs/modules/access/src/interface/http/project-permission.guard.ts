@@ -12,7 +12,7 @@ import { Reflector } from '@nestjs/core';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard, PermissionGuard } from '@platform';
 import type { JwtPayload } from '@platform';
-import { permissionGrants, type Permission } from '@shared-kernel';
+import { permissionGrants, type ProjectPermission } from '@shared-kernel';
 import { AccessService } from '../../application/access.service';
 
 export const PROJECT_PERMISSION_KEY = 'requiredProjectPermission';
@@ -21,7 +21,7 @@ export const PROJECT_PERMISSION_KEY = 'requiredProjectPermission';
 export type ProjectIdSource = 'param' | 'query' | 'body';
 
 interface ProjectPermissionMeta {
-  permission: Permission;
+  permission: ProjectPermission;
   from: ProjectIdSource;
   field: string;
 }
@@ -47,10 +47,11 @@ interface ProjectPermissionMeta {
  * loading the resource, so we don't do a redundant lookup.
  */
 export const RequireProjectPermission = (
-  permission: Permission,
+  permission: ProjectPermission,
   from: ProjectIdSource = 'param',
   field = 'id',
-) => SetMetadata(PROJECT_PERMISSION_KEY, { permission, from, field } satisfies ProjectPermissionMeta);
+) =>
+  SetMetadata(PROJECT_PERMISSION_KEY, { permission, from, field } satisfies ProjectPermissionMeta);
 
 @Injectable()
 export class ProjectPermissionGuard implements CanActivate {
@@ -122,11 +123,7 @@ export class ProjectPermissionGuard implements CanActivate {
     meta: ProjectPermissionMeta,
   ): string | undefined {
     const bag =
-      meta.from === 'param'
-        ? request.params
-        : meta.from === 'query'
-          ? request.query
-          : request.body;
+      meta.from === 'param' ? request.params : meta.from === 'query' ? request.query : request.body;
     const value = bag?.[meta.field];
     return typeof value === 'string' && value.length > 0 ? value : undefined;
   }

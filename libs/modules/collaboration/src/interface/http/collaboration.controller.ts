@@ -10,14 +10,11 @@ import {
   Post,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Auth, ApiCommonErrors, RequirePermission } from '@platform';
+import { Auth, ApiCommonErrors } from '@platform';
 import type { JwtPayload } from '@platform';
 import { CurrentUser } from '@modules/identity';
 import { CollaborationService } from '../../application/collaboration.service';
-import {
-  CreateCommentDto,
-  UpdateCommentDto,
-} from './dto/collaboration-request.dto';
+import { CreateCommentDto, UpdateCommentDto } from './dto/collaboration-request.dto';
 import { CommentResponseDto } from './dto/collaboration-response.dto';
 import type { Comment } from '../../domain/collaboration.types';
 
@@ -57,7 +54,6 @@ export class CollaborationController {
   }
 
   @Post('comments')
-  @RequirePermission('work_item:edit')
   @ApiOperation({ summary: 'Add a comment to a work item' })
   @ApiParam({ name: 'workItemId', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 201, type: CommentResponseDto })
@@ -77,7 +73,6 @@ export class CollaborationController {
   }
 
   @Patch('comments/:commentId')
-  @RequirePermission('work_item:edit')
   @ApiOperation({ summary: 'Update a comment' })
   @ApiParam({ name: 'workItemId', type: 'string', format: 'uuid' })
   @ApiParam({ name: 'commentId', type: 'string', format: 'uuid' })
@@ -93,7 +88,6 @@ export class CollaborationController {
   }
 
   @Delete('comments/:commentId')
-  @RequirePermission('work_item:edit')
   @HttpCode(204)
   @ApiOperation({ summary: 'Delete a comment (soft delete)' })
   @ApiParam({ name: 'workItemId', type: 'string', format: 'uuid' })
@@ -107,4 +101,3 @@ export class CollaborationController {
     await this.collaborationService.deleteComment(user, commentId);
   }
 }
-

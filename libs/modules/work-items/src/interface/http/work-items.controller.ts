@@ -16,7 +16,6 @@ import {
   ApiCommonErrors,
   ApiPagedResponse,
   buildPageArgs,
-  RequirePermission,
   UseIdempotency,
   RateLimit,
 } from '@platform';
@@ -227,7 +226,6 @@ export class WorkItemsController {
   // ── Create ─────────────────────────────────────────────────────────────────
 
   @Post()
-  @RequirePermission('work_item:create')
   @ApiOperation({ summary: 'Create a work item' })
   @ApiResponse({ status: 201, type: WorkItemResponseDto })
   @ApiCommonErrors(400, 401, 404, 409, 422)
@@ -289,7 +287,6 @@ export class WorkItemsController {
   // Declared before @Patch(':id') so the static paths are not captured as an :id.
 
   @Patch('bulk-release')
-  @RequirePermission('work_item:edit')
   @ApiOperation({ summary: 'Bulk assign (or clear) a release on selected work items' })
   @ApiResponse({
     status: 200,
@@ -311,7 +308,6 @@ export class WorkItemsController {
   }
 
   @Patch('bulk-iteration')
-  @RequirePermission('work_item:edit')
   @ApiOperation({ summary: 'Bulk assign (or clear) an iteration on selected work items' })
   @ApiResponse({
     status: 200,
@@ -335,7 +331,6 @@ export class WorkItemsController {
   // ── Update ─────────────────────────────────────────────────────────────────
 
   @Patch(':id')
-  @RequirePermission('work_item:edit')
   @ApiOperation({ summary: 'Update a work item' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: WorkItemResponseDto })
@@ -352,7 +347,6 @@ export class WorkItemsController {
   // ── Delete ─────────────────────────────────────────────────────────────────
 
   @Delete(':id')
-  @RequirePermission('work_item:delete')
   @HttpCode(204)
   @ApiOperation({ summary: 'Delete a work item (soft delete)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -362,13 +356,12 @@ export class WorkItemsController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<void> {
-    await this.workItemsService.deleteWorkItem(user.workspaceId, id);
+    await this.workItemsService.deleteWorkItem(user, id);
   }
 
   // ── Move (board transition) ────────────────────────────────────────────────
 
   @Patch(':id/move')
-  @RequirePermission('work_item:edit')
   @ApiOperation({ summary: 'Transition a work item to a new workflow status' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: WorkItemResponseDto })
@@ -385,7 +378,6 @@ export class WorkItemsController {
   // ── Reorder (backlog drag-and-drop) ───────────────────────────────────────
 
   @Patch('reorder')
-  @RequirePermission('work_item:edit')
   @HttpCode(204)
   @ApiOperation({ summary: 'Bulk update work item ranks for backlog reordering' })
   @ApiResponse({ status: 204, description: 'Work items reordered' })
@@ -394,13 +386,12 @@ export class WorkItemsController {
     @CurrentUser() user: JwtPayload,
     @Body() dto: ReorderWorkItemsDto,
   ): Promise<void> {
-    await this.workItemsService.reorderWorkItems(user.workspaceId, dto.items);
+    await this.workItemsService.reorderWorkItems(user, dto.items);
   }
 
   // ── Rank (neighbour-based single-item reorder — P2-BL-05) ─────────────────
 
   @Patch(':id/rank')
-  @RequirePermission('work_item:edit')
   @ApiOperation({ summary: 'Reorder a work item between two backlog neighbours' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: WorkItemResponseDto })
@@ -446,7 +437,6 @@ export class WorkItemsController {
   }
 
   @Post(':id/tasks')
-  @RequirePermission('work_item:create')
   @ApiOperation({ summary: 'Create a child task under a work item' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 201, type: WorkItemResponseDto })
@@ -518,7 +508,6 @@ export class WorkItemsController {
   }
 
   @Post(':id/labels')
-  @RequirePermission('work_item:edit')
   @HttpCode(204)
   @ApiOperation({ summary: 'Add a label to a work item' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -529,11 +518,10 @@ export class WorkItemsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: AddLabelDto,
   ): Promise<void> {
-    await this.workItemsService.addLabelToWorkItem(user.workspaceId, id, dto.labelId);
+    await this.workItemsService.addLabelToWorkItem(user, id, dto.labelId);
   }
 
   @Delete(':id/labels/:labelId')
-  @RequirePermission('work_item:edit')
   @HttpCode(204)
   @ApiOperation({ summary: 'Remove a label from a work item' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -545,7 +533,7 @@ export class WorkItemsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Param('labelId', ParseUUIDPipe) labelId: string,
   ): Promise<void> {
-    await this.workItemsService.removeLabelFromWorkItem(user.workspaceId, id, labelId);
+    await this.workItemsService.removeLabelFromWorkItem(user, id, labelId);
   }
 
   // ── Time Logs ───────────────────────────────────────────────────────────────
@@ -568,7 +556,6 @@ export class WorkItemsController {
   }
 
   @Post(':id/time-logs')
-  @RequirePermission('work_item:edit')
   @UseIdempotency()
   @ApiOperation({ summary: 'Log hours against a work item' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -588,7 +575,6 @@ export class WorkItemsController {
   }
 
   @Patch(':id/time-logs/:logId')
-  @RequirePermission('work_item:edit')
   @ApiOperation({ summary: 'Edit a time log entry (owner only)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiParam({ name: 'logId', type: 'string', format: 'uuid' })
@@ -609,7 +595,6 @@ export class WorkItemsController {
   }
 
   @Delete(':id/time-logs/:logId')
-  @RequirePermission('work_item:edit')
   @HttpCode(204)
   @ApiOperation({ summary: 'Delete a time log entry (owner or admin)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -640,7 +625,6 @@ export class WorkItemsController {
   }
 
   @Post(':id/watchers')
-  @RequirePermission('work_item:view')
   @HttpCode(204)
   @ApiOperation({ summary: 'Watch (follow) a work item' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -654,7 +638,6 @@ export class WorkItemsController {
   }
 
   @Delete(':id/watchers')
-  @RequirePermission('work_item:view')
   @HttpCode(204)
   @ApiOperation({ summary: 'Unwatch (unfollow) a work item' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -669,7 +652,6 @@ export class WorkItemsController {
   // ── Attachments ──────────────────────────────────────────────────────────
 
   @Post(':id/attachments/presign')
-  @RequirePermission('work_item:edit')
   @RateLimit('STRICT')
   @ApiOperation({ summary: 'Get presigned S3 PUT URL to upload an attachment' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -688,7 +670,6 @@ export class WorkItemsController {
   }
 
   @Post(':id/attachments/:aid/confirm')
-  @RequirePermission('work_item:edit')
   @HttpCode(200)
   @ApiOperation({ summary: 'Confirm file upload completed — activates the attachment' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -732,7 +713,6 @@ export class WorkItemsController {
   }
 
   @Delete(':id/attachments/:aid')
-  @RequirePermission('work_item:edit')
   @HttpCode(204)
   @ApiOperation({ summary: 'Delete an attachment (uploader or admin only)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })

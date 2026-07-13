@@ -10,6 +10,7 @@ import { StorageService } from '@platform';
 import type { WorkItem } from '../domain/work-item.types';
 import { NotFoundException, PreconditionFailedException, UnitOfWork } from '@platform';
 import { ProjectsService } from '@modules/projects';
+import { AccessService } from '@modules/access';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -134,6 +135,11 @@ const makeProjectsService = () => ({
   assertLabelBelongsToProject: vi.fn().mockResolvedValue(undefined),
 });
 
+// Grants everything by default; individual tests override to assert denial.
+const makeAccessService = () => ({
+  assertProjectPermission: vi.fn().mockResolvedValue(undefined),
+});
+
 const makeTimeLogRepo = () => ({
   findById: vi.fn(),
   listByWorkItem: vi.fn(),
@@ -175,6 +181,7 @@ describe('WorkItemsService', () => {
   let workItemRepo: ReturnType<typeof makeWorkItemRepo>;
   let activityRepo: ReturnType<typeof makeActivityRepo>;
   let projectsService: ReturnType<typeof makeProjectsService>;
+  let accessService: ReturnType<typeof makeAccessService>;
   let uow: ReturnType<typeof makeUnitOfWork>;
   let timeLogRepo: ReturnType<typeof makeTimeLogRepo>;
   let watcherRepo: ReturnType<typeof makeWatcherRepo>;
@@ -185,6 +192,7 @@ describe('WorkItemsService', () => {
     workItemRepo = makeWorkItemRepo();
     activityRepo = makeActivityRepo();
     projectsService = makeProjectsService();
+    accessService = makeAccessService();
     uow = makeUnitOfWork();
     timeLogRepo = makeTimeLogRepo();
     watcherRepo = makeWatcherRepo();
@@ -201,6 +209,7 @@ describe('WorkItemsService', () => {
         { provide: ATTACHMENT_REPOSITORY, useValue: attachmentRepo },
         { provide: StorageService, useValue: storageService },
         { provide: ProjectsService, useValue: projectsService },
+        { provide: AccessService, useValue: accessService },
         { provide: UnitOfWork, useValue: uow },
       ],
     }).compile();
@@ -352,14 +361,55 @@ describe('WorkItemsService', () => {
     it('soft-deletes the work item', async () => {
       workItemRepo.findById.mockResolvedValue(mockWorkItem());
 
-      await service.deleteWorkItem('ws-1', 'wi-1');
+      await service.deleteWorkItem(mockActor, 'wi-1');
 
       expect(workItemRepo.softDelete).toHaveBeenCalledWith('wi-1', 'ws-1');
     });
 
     it('throws when work item not found', async () => {
       workItemRepo.findById.mockResolvedValue(null);
-      await expect(service.deleteWorkItem('ws-1', 'missing')).rejects.toThrow(NotFoundException);
+      await expect(service.deleteWorkItem(mockActor, 'missing')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // ── project-scoped write authorization ─────────────────────────────────────
+  // Writes are gated per PROJECT (the item's own project), not workspace-wide.
+  describe('project-scoped write enforcement', () => {
+    it('authorizes a create against the target project', async () => {
+      workItemRepo.create.mockResolvedValue(mockWorkItem());
+      await service.createWorkItem(mockActor, 'proj-1', 'story', 'Title');
+      expect(accessService.assertProjectPermission).toHaveBeenCalledWith(
+        mockActor,
+        'proj-1',
+        'work_item:create',
+      );
+    });
+
+    it('authorizes an edit against the item’s own project and rejects when denied', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ projectId: 'proj-9' }));
+      const denied = new Error('PROJECT_PERMISSION_DENIED');
+      accessService.assertProjectPermission.mockRejectedValueOnce(denied);
+
+      await expect(service.updateWorkItem(mockActor, 'wi-1', { title: 'x' })).rejects.toThrow(
+        denied,
+      );
+      expect(accessService.assertProjectPermission).toHaveBeenCalledWith(
+        mockActor,
+        'proj-9',
+        'work_item:edit',
+      );
+      // Denied before any write.
+      expect(workItemRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('authorizes delete with work_item:delete on the item’s project', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ projectId: 'proj-9' }));
+      await service.deleteWorkItem(mockActor, 'wi-1');
+      expect(accessService.assertProjectPermission).toHaveBeenCalledWith(
+        mockActor,
+        'proj-9',
+        'work_item:delete',
+      );
     });
   });
 
@@ -391,13 +441,13 @@ describe('WorkItemsService', () => {
 
   describe('reorderWorkItems', () => {
     it('skips when items array is empty', async () => {
-      await service.reorderWorkItems('ws-1', []);
+      await service.reorderWorkItems(mockActor, []);
       expect(workItemRepo.reorderItems).not.toHaveBeenCalled();
     });
 
     it('validates each item belongs to workspace before reordering', async () => {
       workItemRepo.findById.mockResolvedValue(mockWorkItem());
-      await service.reorderWorkItems('ws-1', [{ id: 'wi-1', rank: 'b1' }]);
+      await service.reorderWorkItems(mockActor, [{ id: 'wi-1', rank: 'b1' }]);
       expect(workItemRepo.reorderItems).toHaveBeenCalledWith(
         [{ id: 'wi-1', rank: 'b1' }],
         'ws-1',
@@ -421,7 +471,7 @@ describe('WorkItemsService', () => {
     });
 
     it('addLabelToWorkItem adds label', async () => {
-      await service.addLabelToWorkItem('ws-1', 'wi-1', 'l1');
+      await service.addLabelToWorkItem(mockActor, 'wi-1', 'l1');
       expect(workItemRepo.addLabel).toHaveBeenCalledWith('wi-1', 'l1', 'ws-1');
     });
 
@@ -429,13 +479,13 @@ describe('WorkItemsService', () => {
       projectsService.assertLabelBelongsToProject.mockRejectedValueOnce(
         new Error('LABEL_NOT_IN_PROJECT'),
       );
-      await expect(service.addLabelToWorkItem('ws-1', 'wi-1', 'bad-label')).rejects.toThrow(
+      await expect(service.addLabelToWorkItem(mockActor, 'wi-1', 'bad-label')).rejects.toThrow(
         'LABEL_NOT_IN_PROJECT',
       );
     });
 
     it('removeLabelFromWorkItem removes label', async () => {
-      await service.removeLabelFromWorkItem('ws-1', 'wi-1', 'l1');
+      await service.removeLabelFromWorkItem(mockActor, 'wi-1', 'l1');
       expect(workItemRepo.removeLabel).toHaveBeenCalledWith('wi-1', 'l1', 'ws-1');
     });
   });

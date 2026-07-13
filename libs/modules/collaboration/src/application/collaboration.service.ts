@@ -2,6 +2,9 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
 import { NotFoundException, PreconditionFailedException } from '@platform';
 import type { JwtPayload } from '@platform';
+import { PERMISSION } from '@shared-kernel';
+import { WorkItemsService } from '@modules/work-items';
+import { AccessService } from '@modules/access';
 import { ICommentRepository, COMMENT_REPOSITORY } from '../domain/ports/comment.repository';
 import {
   IAttachmentRepository,
@@ -16,7 +19,24 @@ export class CollaborationService {
   constructor(
     @Inject(COMMENT_REPOSITORY) private readonly commentRepo: ICommentRepository,
     @Inject(ATTACHMENT_REPOSITORY) private readonly attachmentRepo: IAttachmentRepository,
+    private readonly workItemsService: WorkItemsService,
+    private readonly accessService: AccessService,
   ) {}
+
+  /**
+   * Authorize a collaboration write against the OWNING project of the target
+   * work item. Commenting is a work_item:edit action; resolving the item's
+   * project makes it project-scoped like every other write (a workspace-wide
+   * grant fast-paths; a project-scoped grant only applies to that project).
+   */
+  private async assertCanCollaborate(actor: JwtPayload, workItemId: string): Promise<void> {
+    const item = await this.workItemsService.getWorkItem(actor.workspaceId, workItemId);
+    await this.accessService.assertProjectPermission(
+      actor,
+      item.projectId,
+      PERMISSION.WORK_ITEM_EDIT,
+    );
+  }
 
   // ── Comments ──────────────────────────────────────────────────────────────
 
@@ -30,6 +50,7 @@ export class CollaborationService {
     body: string,
     parentId?: string,
   ): Promise<Comment> {
+    await this.assertCanCollaborate(actor, workItemId);
     const comment = await this.commentRepo.create({
       id: uuidv7(),
       workspaceId: actor.workspaceId,
@@ -53,6 +74,7 @@ export class CollaborationService {
         'You can only edit your own comments',
       );
     }
+    await this.assertCanCollaborate(actor, comment.workItemId);
     return this.commentRepo.update(commentId, body);
   }
 
@@ -67,6 +89,7 @@ export class CollaborationService {
         'You can only delete your own comments',
       );
     }
+    await this.assertCanCollaborate(actor, comment.workItemId);
     await this.commentRepo.softDelete(commentId);
   }
 

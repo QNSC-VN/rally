@@ -9,20 +9,38 @@ import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 /* eslint-disable react-hooks/set-state-in-effect */
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
-import { ChevronLeft, ChevronRight, Layers, Loader2, Save, Search, TrendingDown } from 'lucide-react'
+import {
+  ChevronLeft,
+  ChevronRight,
+  Layers,
+  Loader2,
+  Save,
+  Search,
+  TrendingDown,
+} from 'lucide-react'
 import { BRAND } from '@/shared/config/brand'
 import { InlineSelect } from '@/shared/ui/native-select'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
 import { SkeletonList } from '@/shared/ui/skeleton'
-import { useAuthStore } from '@/shared/lib/stores/auth.store'
+import { useProjectPermissions } from '@/features/access/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
-import { useRelease, useUpdateRelease, useReleaseBurndown, useReleaseArtifacts, type ReleaseStatus, type ReleaseArtifactItem } from '@/features/releases/api'
+import {
+  useRelease,
+  useUpdateRelease,
+  useReleaseBurndown,
+  useReleaseArtifacts,
+  type ReleaseStatus,
+  type ReleaseArtifactItem,
+} from '@/features/releases/api'
 import { TypeBadge, ScheduleStateBadge, PriorityBadge } from '@/entities/work-item/ui/badges'
 
 const RELEASE_STATES: ReleaseStatus[] = ['planning', 'active', 'accepted']
 
-const STATUS_STYLE: Record<ReleaseStatus, { bg: string; text: string; border: string; label: string }> = {
+const STATUS_STYLE: Record<
+  ReleaseStatus,
+  { bg: string; text: string; border: string; label: string }
+> = {
   planning: { bg: '#eef3fb', text: '#1d3f73', border: '#bdd0ef', label: 'Planning' },
   active: { bg: '#fff7ed', text: '#92400e', border: '#fed7aa', label: 'Active' },
   accepted: { bg: '#eaf5ed', text: '#1e6930', border: '#b9dec2', label: 'Accepted' },
@@ -34,8 +52,16 @@ type TabKey = 'details' | 'artifacts'
 
 function OwnerCell({ name }: { name?: string | null }) {
   if (!name)
-    return <span className="text-[10px]" style={{ color: '#a0a7b5' }}>—</span>
-  const initials = name.split(' ').slice(0, 2).map((n) => n[0]?.toUpperCase()).join('')
+    return (
+      <span className="text-[10px]" style={{ color: '#a0a7b5' }}>
+        —
+      </span>
+    )
+  const initials = name
+    .split(' ')
+    .slice(0, 2)
+    .map((n) => n[0]?.toUpperCase())
+    .join('')
   return (
     <div className="flex items-center gap-1 overflow-hidden">
       <span
@@ -44,14 +70,24 @@ function OwnerCell({ name }: { name?: string | null }) {
       >
         {initials}
       </span>
-      <span className="truncate text-[10px]" style={{ color: '#5c6478' }}>{name}</span>
+      <span className="truncate text-[10px]" style={{ color: '#5c6478' }}>
+        {name}
+      </span>
     </div>
   )
 }
 
 // ── Release artifact row ──────────────────────────────────────────────────────
 
-function ReleaseArtifactRow({ item, index, onOpen }: { item: ReleaseArtifactItem; index: number; onOpen: () => void }) {
+function ReleaseArtifactRow({
+  item,
+  index,
+  onOpen,
+}: {
+  item: ReleaseArtifactItem
+  index: number
+  onOpen: () => void
+}) {
   return (
     <tr
       className="cursor-pointer transition-colors duration-75"
@@ -60,14 +96,23 @@ function ReleaseArtifactRow({ item, index, onOpen }: { item: ReleaseArtifactItem
       onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
       onClick={onOpen}
     >
-      <td className="h-8 px-3 text-center font-mono text-[10px] tabular-nums" style={{ color: '#8c94a6' }}>
+      <td
+        className="h-8 px-3 text-center font-mono text-[10px] tabular-nums"
+        style={{ color: '#8c94a6' }}
+      >
         {index + 1}
       </td>
-      <td className="h-8 px-3 font-mono text-[10px] underline-offset-2 hover:underline" style={{ color: BRAND.primaryLight }}>
+      <td
+        className="h-8 px-3 font-mono text-[10px] underline-offset-2 hover:underline"
+        style={{ color: BRAND.primaryLight }}
+      >
         {item.itemKey}
       </td>
       <td className="h-8 px-3">
-        <span className="text-xs font-medium truncate block max-w-[300px]" style={{ color: BRAND.textPrimary }}>
+        <span
+          className="block max-w-[300px] truncate text-xs font-medium"
+          style={{ color: BRAND.textPrimary }}
+        >
           {item.title}
         </span>
       </td>
@@ -132,17 +177,21 @@ function ReleaseArtifactsTab({ releaseId }: { releaseId: string }) {
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Search toolbar */}
       <div
-        className="flex items-center gap-3 px-4 py-2 shrink-0"
+        className="flex shrink-0 items-center gap-3 px-4 py-2"
         style={{ borderBottom: `1px solid ${BRAND.borderSubtle}`, backgroundColor: BRAND.surface }}
       >
         <div className="relative" style={{ width: 220 }}>
-          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: '#8c94a6' }} />
+          <Search
+            size={13}
+            className="absolute top-1/2 left-2.5 -translate-y-1/2"
+            style={{ color: '#8c94a6' }}
+          />
           <input
             type="text"
             placeholder="Search artifacts..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-8 pr-3 py-1.5 text-xs rounded-md focus:outline-none focus:ring-1"
+            className="w-full rounded-md py-1.5 pr-3 pl-8 text-xs focus:ring-1 focus:outline-none"
             style={{
               backgroundColor: '#f4f6f9',
               border: `1px solid ${BRAND.border}`,
@@ -161,7 +210,7 @@ function ReleaseArtifactsTab({ releaseId }: { releaseId: string }) {
         {isLoading ? (
           <SkeletonList rows={8} />
         ) : items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full gap-2 p-8">
+          <div className="flex h-full flex-col items-center justify-center gap-2 p-8">
             <Layers size={32} style={{ color: '#c4cad4' }} />
             <p className="text-xs" style={{ color: BRAND.textMuted }}>
               {search ? 'No artifacts match your search' : 'No artifacts linked to this release'}
@@ -171,17 +220,33 @@ function ReleaseArtifactsTab({ releaseId }: { releaseId: string }) {
           <table className="w-full text-left">
             <thead>
               <tr
-                className="text-[9px] font-semibold uppercase tracking-wider select-none"
+                className="text-[9px] font-semibold tracking-wider uppercase select-none"
                 style={{ backgroundColor: '#f7f8fa', borderBottom: `1px solid ${BRAND.border}` }}
               >
-                <th className="h-7 px-3 font-medium text-center w-12" style={{ color: '#8c94a6' }}>#</th>
-                <th className="h-7 px-3 font-medium w-20" style={{ color: '#8c94a6' }}>ID</th>
-                <th className="h-7 px-3 font-medium" style={{ color: '#8c94a6' }}>Name</th>
-                <th className="h-7 px-3 font-medium w-14" style={{ color: '#8c94a6' }}>Type</th>
-                <th className="h-7 px-3 font-medium w-24" style={{ color: '#8c94a6' }}>Schedule State</th>
-                <th className="h-7 px-3 font-medium w-16" style={{ color: '#8c94a6' }}>Priority</th>
-                <th className="h-7 px-3 font-medium w-28" style={{ color: '#8c94a6' }}>Owner</th>
-                <th className="h-7 px-3 font-medium text-center w-14" style={{ color: '#8c94a6' }}>Est.</th>
+                <th className="h-7 w-12 px-3 text-center font-medium" style={{ color: '#8c94a6' }}>
+                  #
+                </th>
+                <th className="h-7 w-20 px-3 font-medium" style={{ color: '#8c94a6' }}>
+                  ID
+                </th>
+                <th className="h-7 px-3 font-medium" style={{ color: '#8c94a6' }}>
+                  Name
+                </th>
+                <th className="h-7 w-14 px-3 font-medium" style={{ color: '#8c94a6' }}>
+                  Type
+                </th>
+                <th className="h-7 w-24 px-3 font-medium" style={{ color: '#8c94a6' }}>
+                  Schedule State
+                </th>
+                <th className="h-7 w-16 px-3 font-medium" style={{ color: '#8c94a6' }}>
+                  Priority
+                </th>
+                <th className="h-7 w-28 px-3 font-medium" style={{ color: '#8c94a6' }}>
+                  Owner
+                </th>
+                <th className="h-7 w-14 px-3 text-center font-medium" style={{ color: '#8c94a6' }}>
+                  Est.
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -190,7 +255,9 @@ function ReleaseArtifactsTab({ releaseId }: { releaseId: string }) {
                   key={item.id}
                   item={item}
                   index={cursorHistory.length * pageSize + idx}
-                  onOpen={() => navigate({ to: '/item/$itemKey', params: { itemKey: item.itemKey } })}
+                  onOpen={() =>
+                    navigate({ to: '/item/$itemKey', params: { itemKey: item.itemKey } })
+                  }
                 />
               ))}
             </tbody>
@@ -213,7 +280,9 @@ function ReleaseArtifactsTab({ releaseId }: { releaseId: string }) {
               className="w-auto"
             >
               {[10, 25, 50, 100].map((s) => (
-                <option key={s} value={s}>{s}</option>
+                <option key={s} value={s}>
+                  {s}
+                </option>
               ))}
             </InlineSelect>
             <span style={{ color: '#8c94a6' }}>
@@ -223,7 +292,9 @@ function ReleaseArtifactsTab({ releaseId }: { releaseId: string }) {
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-[11px] tabular-nums" style={{ color: '#5c6478' }}>Page {currentPage}</span>
+            <span className="text-[11px] tabular-nums" style={{ color: '#5c6478' }}>
+              Page {currentPage}
+            </span>
             <button
               aria-label="Previous page"
               disabled={currentPage === 1}
@@ -255,7 +326,8 @@ export function ReleaseDetailPage() {
   const { releaseId } = useParams({ from: '/auth/releases/$releaseId' })
   const { project } = useAppContext()
   const projectId = project?.projectId ?? ''
-  const canManage = useAuthStore((s) => s.hasPermission('release:manage'))
+  const { can } = useProjectPermissions(projectId || undefined)
+  const canManage = can('release:manage')
 
   const { data: release, isLoading, isError } = useRelease(releaseId)
   const update = useUpdateRelease(releaseId, projectId)
@@ -317,7 +389,10 @@ export function ReleaseDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="flex flex-1 items-center justify-center" style={{ backgroundColor: BRAND.pageBg }}>
+      <div
+        className="flex flex-1 items-center justify-center"
+        style={{ backgroundColor: BRAND.pageBg }}
+      >
         <Loader2 className="animate-spin" size={24} style={{ color: BRAND.primary }} />
       </div>
     )
@@ -325,11 +400,18 @@ export function ReleaseDetailPage() {
 
   if (isError || !release) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-3" style={{ backgroundColor: BRAND.pageBg }}>
+      <div
+        className="flex flex-1 flex-col items-center justify-center gap-3"
+        style={{ backgroundColor: BRAND.pageBg }}
+      >
         <p className="text-[13px]" style={{ color: BRAND.textSecondary }}>
           Release details could not be loaded.
         </p>
-        <Link to="/releases" className="text-[12px] font-semibold hover:underline" style={{ color: BRAND.primary }}>
+        <Link
+          to="/releases"
+          className="text-[12px] font-semibold hover:underline"
+          style={{ color: BRAND.primary }}
+        >
           ← Back to Releases
         </Link>
       </div>
@@ -345,7 +427,7 @@ export function ReleaseDetailPage() {
   ]
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden" style={{ backgroundColor: BRAND.pageBg }}>
+    <div className="flex flex-1 flex-col overflow-hidden" style={{ backgroundColor: BRAND.pageBg }}>
       {/* Header bar */}
       <div
         className="flex h-12 shrink-0 items-center justify-between gap-4 px-4"
@@ -354,7 +436,7 @@ export function ReleaseDetailPage() {
         <div className="flex items-center gap-2">
           <Link
             to="/releases"
-            className="flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 transition-colors"
+            className="flex h-7 w-7 items-center justify-center rounded transition-colors hover:bg-gray-100"
             style={{ color: BRAND.textSecondary }}
           >
             <ChevronLeft size={16} />
@@ -365,7 +447,7 @@ export function ReleaseDetailPage() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 onBlur={handleSave}
-                className="text-[14px] font-semibold bg-transparent focus:outline-none focus:bg-white focus:ring-1 px-1 py-0.5 rounded border-0"
+                className="rounded border-0 bg-transparent px-1 py-0.5 text-[14px] font-semibold focus:bg-white focus:ring-1 focus:outline-none"
                 style={{ color: BRAND.textPrimary, width: 240 }}
               />
             ) : (
@@ -397,7 +479,7 @@ export function ReleaseDetailPage() {
 
       {/* Tab bar */}
       <div
-        className="flex items-center gap-0 px-4 shrink-0"
+        className="flex shrink-0 items-center gap-0 px-4"
         style={{ borderBottom: `1px solid ${BRAND.border}`, backgroundColor: BRAND.surface }}
       >
         {TABS.map((tab) => (
@@ -412,7 +494,7 @@ export function ReleaseDetailPage() {
             {tab.label}
             {activeTab === tab.key && (
               <span
-                className="absolute bottom-0 left-0 right-0 h-0.5"
+                className="absolute right-0 bottom-0 left-0 h-0.5"
                 style={{ backgroundColor: BRAND.primary }}
               />
             )}
@@ -427,9 +509,12 @@ export function ReleaseDetailPage() {
         /* Main Grid split — Details tab */
         <div className="flex flex-1 overflow-hidden">
           {/* Left Side: Theme & Notes rich editors */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          <div className="flex-1 space-y-6 overflow-y-auto p-6">
             <div className="space-y-2">
-              <h2 className="text-[12px] font-semibold uppercase tracking-wider" style={{ color: BRAND.textSecondary }}>
+              <h2
+                className="text-[12px] font-semibold tracking-wider uppercase"
+                style={{ color: BRAND.textSecondary }}
+              >
                 Release Theme
               </h2>
               <Textarea
@@ -439,13 +524,20 @@ export function ReleaseDetailPage() {
                 disabled={!canManage}
                 placeholder="Enter release themes and high level objectives..."
                 rows={4}
-                className="w-full text-[12px] p-3 rounded-md border focus:outline-none focus:ring-1"
-                style={{ borderColor: BRAND.border, backgroundColor: BRAND.surface, color: BRAND.textPrimary }}
+                className="w-full rounded-md border p-3 text-[12px] focus:ring-1 focus:outline-none"
+                style={{
+                  borderColor: BRAND.border,
+                  backgroundColor: BRAND.surface,
+                  color: BRAND.textPrimary,
+                }}
               />
             </div>
 
             <div className="space-y-2">
-              <h2 className="text-[12px] font-semibold uppercase tracking-wider" style={{ color: BRAND.textSecondary }}>
+              <h2
+                className="text-[12px] font-semibold tracking-wider uppercase"
+                style={{ color: BRAND.textSecondary }}
+              >
                 Notes & Scope Deliverables
               </h2>
               <Textarea
@@ -455,19 +547,26 @@ export function ReleaseDetailPage() {
                 disabled={!canManage}
                 placeholder="Add release notes, acceptance criteria, scope list, or deployment criteria..."
                 rows={12}
-                className="w-full text-[12px] p-3 rounded-md border focus:outline-none focus:ring-1"
-                style={{ borderColor: BRAND.border, backgroundColor: BRAND.surface, color: BRAND.textPrimary }}
+                className="w-full rounded-md border p-3 text-[12px] focus:ring-1 focus:outline-none"
+                style={{
+                  borderColor: BRAND.border,
+                  backgroundColor: BRAND.surface,
+                  color: BRAND.textPrimary,
+                }}
               />
             </div>
           </div>
 
           {/* Right Side Panel */}
           <div
-            className="w-72 shrink-0 overflow-y-auto border-l p-5 space-y-5"
+            className="w-72 shrink-0 space-y-5 overflow-y-auto border-l p-5"
             style={{ backgroundColor: BRAND.surface, borderColor: BRAND.border }}
           >
             <div className="space-y-4">
-              <h2 className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: BRAND.textMuted }}>
+              <h2
+                className="text-[11px] font-semibold tracking-wider uppercase"
+                style={{ color: BRAND.textMuted }}
+              >
                 Metadata Details
               </h2>
 
@@ -475,7 +574,10 @@ export function ReleaseDetailPage() {
                 <label className="text-[10px] font-medium" style={{ color: BRAND.textSecondary }}>
                   Project Scope
                 </label>
-                <div className="text-[12px] font-semibold py-1" style={{ color: BRAND.textPrimary }}>
+                <div
+                  className="py-1 text-[12px] font-semibold"
+                  style={{ color: BRAND.textPrimary }}
+                >
                   {project?.projectName ?? '—'}
                 </div>
               </div>
@@ -492,7 +594,7 @@ export function ReleaseDetailPage() {
                       // Auto-trigger save on change
                       void update.mutateAsync({ state: e.target.value as ReleaseStatus })
                     }}
-                    className="w-full text-[11px] px-2 py-1 rounded bg-white focus:outline-none"
+                    className="w-full rounded bg-white px-2 py-1 text-[11px] focus:outline-none"
                     style={{ border: `1px solid ${BRAND.borderInput}`, color: BRAND.textPrimary }}
                   >
                     {RELEASE_STATES.map((st) => (
@@ -502,7 +604,10 @@ export function ReleaseDetailPage() {
                     ))}
                   </InlineSelect>
                 ) : (
-                  <div className="text-[12px] font-semibold py-1" style={{ color: BRAND.textPrimary }}>
+                  <div
+                    className="py-1 text-[12px] font-semibold"
+                    style={{ color: BRAND.textPrimary }}
+                  >
                     {s.label}
                   </div>
                 )}
@@ -519,10 +624,10 @@ export function ReleaseDetailPage() {
                       value={startDate}
                       onChange={(e) => setStartDate(e.target.value)}
                       onBlur={handleSave}
-                      className="text-[11px] py-1 px-2"
+                      className="px-2 py-1 text-[11px]"
                     />
                   ) : (
-                    <div className="text-[12px] font-mono" style={{ color: BRAND.textPrimary }}>
+                    <div className="font-mono text-[12px]" style={{ color: BRAND.textPrimary }}>
                       {startDate || '—'}
                     </div>
                   )}
@@ -538,10 +643,10 @@ export function ReleaseDetailPage() {
                       value={releaseDate}
                       onChange={(e) => setReleaseDate(e.target.value)}
                       onBlur={handleSave}
-                      className="text-[11px] py-1 px-2"
+                      className="px-2 py-1 text-[11px]"
                     />
                   ) : (
-                    <div className="text-[12px] font-mono" style={{ color: BRAND.textPrimary }}>
+                    <div className="font-mono text-[12px]" style={{ color: BRAND.textPrimary }}>
                       {releaseDate || '—'}
                     </div>
                   )}
@@ -561,10 +666,10 @@ export function ReleaseDetailPage() {
                       onChange={(e) => setPlannedVelocity(e.target.value)}
                       onBlur={handleSave}
                       placeholder="0"
-                      className="text-[11px] py-1 px-2"
+                      className="px-2 py-1 text-[11px]"
                     />
                   ) : (
-                    <div className="text-[12px] font-mono" style={{ color: BRAND.textPrimary }}>
+                    <div className="font-mono text-[12px]" style={{ color: BRAND.textPrimary }}>
                       {plannedVelocity || '—'}
                     </div>
                   )}
@@ -582,10 +687,10 @@ export function ReleaseDetailPage() {
                       onChange={(e) => setPlanEstimate(e.target.value)}
                       onBlur={handleSave}
                       placeholder="0"
-                      className="text-[11px] py-1 px-2"
+                      className="px-2 py-1 text-[11px]"
                     />
                   ) : (
-                    <div className="text-[12px] font-mono" style={{ color: BRAND.textPrimary }}>
+                    <div className="font-mono text-[12px]" style={{ color: BRAND.textPrimary }}>
                       {planEstimate || '—'}
                     </div>
                   )}
@@ -602,7 +707,7 @@ export function ReleaseDetailPage() {
                     onChange={(e) => setVersion(e.target.value)}
                     onBlur={handleSave}
                     placeholder="e.g. v2.4.0"
-                    className="text-[11px] py-1 px-2"
+                    className="px-2 py-1 text-[11px]"
                   />
                 ) : (
                   <div className="text-[12px] font-semibold" style={{ color: BRAND.textPrimary }}>
@@ -615,19 +720,28 @@ export function ReleaseDetailPage() {
             {/* Task Roll-up metrics panel (read-only: Estimate / To Do / Actual) */}
             {rollup && (
               <div
-                className="p-3 rounded-md space-y-3"
+                className="space-y-3 rounded-md p-3"
                 style={{ backgroundColor: '#f8fafc', border: `1px solid ${BRAND.borderSubtle}` }}
               >
-                <h3 className="text-[10px] font-bold uppercase tracking-wider" style={{ color: BRAND.textSecondary }}>
+                <h3
+                  className="text-[10px] font-bold tracking-wider uppercase"
+                  style={{ color: BRAND.textSecondary }}
+                >
                   Task Roll-up
                 </h3>
 
                 <div className="space-y-1">
-                  <div className="flex justify-between text-[11px] font-semibold" style={{ color: BRAND.textPrimary }}>
+                  <div
+                    className="flex justify-between text-[11px] font-semibold"
+                    style={{ color: BRAND.textPrimary }}
+                  >
                     <span>Completion</span>
                     <span>{rollup.progressPercent}%</span>
                   </div>
-                  <div className="w-full h-2 rounded-full overflow-hidden" style={{ backgroundColor: '#e2e8f0' }}>
+                  <div
+                    className="h-2 w-full overflow-hidden rounded-full"
+                    style={{ backgroundColor: '#e2e8f0' }}
+                  >
                     <div
                       className="h-full rounded-full transition-all"
                       style={{
@@ -642,36 +756,80 @@ export function ReleaseDetailPage() {
                   {/* Estimate / To Do / Actual — points */}
                   <div className="grid grid-cols-3 gap-1 text-center">
                     <div className="rounded-sm py-1.5" style={{ backgroundColor: '#eef3fb' }}>
-                      <div className="text-[9px] uppercase tracking-wider font-semibold" style={{ color: '#1d3f73' }}>Estimate</div>
-                      <div className="text-[14px] font-mono font-bold" style={{ color: BRAND.textPrimary }}>{rollup.totalPoints}</div>
+                      <div
+                        className="text-[9px] font-semibold tracking-wider uppercase"
+                        style={{ color: '#1d3f73' }}
+                      >
+                        Estimate
+                      </div>
+                      <div
+                        className="font-mono text-[14px] font-bold"
+                        style={{ color: BRAND.textPrimary }}
+                      >
+                        {rollup.totalPoints}
+                      </div>
                     </div>
                     <div className="rounded-sm py-1.5" style={{ backgroundColor: '#fff7ed' }}>
-                      <div className="text-[9px] uppercase tracking-wider font-semibold" style={{ color: '#92400e' }}>To Do</div>
-                      <div className="text-[14px] font-mono font-bold" style={{ color: BRAND.textPrimary }}>{rollup.toDoPoints}</div>
+                      <div
+                        className="text-[9px] font-semibold tracking-wider uppercase"
+                        style={{ color: '#92400e' }}
+                      >
+                        To Do
+                      </div>
+                      <div
+                        className="font-mono text-[14px] font-bold"
+                        style={{ color: BRAND.textPrimary }}
+                      >
+                        {rollup.toDoPoints}
+                      </div>
                     </div>
                     <div className="rounded-sm py-1.5" style={{ backgroundColor: '#eaf5ed' }}>
-                      <div className="text-[9px] uppercase tracking-wider font-semibold" style={{ color: '#1e6930' }}>Actual</div>
-                      <div className="text-[14px] font-mono font-bold" style={{ color: BRAND.textPrimary }}>{rollup.completedPoints}</div>
+                      <div
+                        className="text-[9px] font-semibold tracking-wider uppercase"
+                        style={{ color: '#1e6930' }}
+                      >
+                        Actual
+                      </div>
+                      <div
+                        className="font-mono text-[14px] font-bold"
+                        style={{ color: BRAND.textPrimary }}
+                      >
+                        {rollup.completedPoints}
+                      </div>
                     </div>
                   </div>
 
                   {/* Item counts */}
-                  <div className="grid grid-cols-3 gap-1 text-[10px] font-mono text-center pt-1" style={{ color: BRAND.textMuted }}>
-                    <div>Items: <span className="font-semibold text-gray-700">{rollup.totalItems}</span></div>
-                    <div>To Do: <span className="font-semibold text-gray-700">{rollup.toDoItems}</span></div>
-                    <div>Done: <span className="font-semibold text-gray-700">{rollup.completedItems}</span></div>
+                  <div
+                    className="grid grid-cols-3 gap-1 pt-1 text-center font-mono text-[10px]"
+                    style={{ color: BRAND.textMuted }}
+                  >
+                    <div>
+                      Items:{' '}
+                      <span className="font-semibold text-gray-700">{rollup.totalItems}</span>
+                    </div>
+                    <div>
+                      To Do: <span className="font-semibold text-gray-700">{rollup.toDoItems}</span>
+                    </div>
+                    <div>
+                      Done:{' '}
+                      <span className="font-semibold text-gray-700">{rollup.completedItems}</span>
+                    </div>
                   </div>
                 </div>
 
                 {/* Accepted count (read-only) */}
                 <div
-                  className="flex items-center justify-between rounded-sm px-3 py-2 mt-1"
+                  className="mt-1 flex items-center justify-between rounded-sm px-3 py-2"
                   style={{ backgroundColor: '#eaf5ed', border: '1px solid #b9dec2' }}
                 >
-                  <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: '#1e6930' }}>
+                  <span
+                    className="text-[10px] font-semibold tracking-wider uppercase"
+                    style={{ color: '#1e6930' }}
+                  >
                     Accepted
                   </span>
-                  <span className="text-[14px] font-mono font-bold" style={{ color: '#1e6930' }}>
+                  <span className="font-mono text-[14px] font-bold" style={{ color: '#1e6930' }}>
                     {rollup.acceptedItems}
                   </span>
                 </div>
@@ -680,35 +838,78 @@ export function ReleaseDetailPage() {
 
             {/* Burndown Section */}
             <div
-              className="p-4 rounded-md space-y-3"
+              className="space-y-3 rounded-md p-4"
               style={{ backgroundColor: '#f8fafc', border: `1px solid ${BRAND.borderSubtle}` }}
             >
-              <h3 className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5" style={{ color: BRAND.textSecondary }}>
+              <h3
+                className="flex items-center gap-1.5 text-[10px] font-bold tracking-wider uppercase"
+                style={{ color: BRAND.textSecondary }}
+              >
                 <TrendingDown size={13} />
                 Burndown
               </h3>
               {burndownLoading ? (
-                <div className="flex items-center justify-center h-32">
+                <div className="flex h-32 items-center justify-center">
                   <Loader2 className="animate-spin" size={16} style={{ color: BRAND.textMuted }} />
                 </div>
               ) : burndown && burndown.length > 0 ? (
-                <div className="overflow-auto max-h-56">
-                  <table className="w-full text-[10px] text-left">
+                <div className="max-h-56 overflow-auto">
+                  <table className="w-full text-left text-[10px]">
                     <thead>
                       <tr style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}>
-                        <th className="py-1 pr-2 font-semibold" style={{ color: BRAND.textSecondary }}>Date</th>
-                        <th className="py-1 pr-2 font-semibold text-right" style={{ color: BRAND.textSecondary }}>Total</th>
-                        <th className="py-1 pr-2 font-semibold text-right" style={{ color: BRAND.textSecondary }}>Done</th>
-                        <th className="py-1 font-semibold text-right" style={{ color: BRAND.textSecondary }}>Remaining</th>
+                        <th
+                          className="py-1 pr-2 font-semibold"
+                          style={{ color: BRAND.textSecondary }}
+                        >
+                          Date
+                        </th>
+                        <th
+                          className="py-1 pr-2 text-right font-semibold"
+                          style={{ color: BRAND.textSecondary }}
+                        >
+                          Total
+                        </th>
+                        <th
+                          className="py-1 pr-2 text-right font-semibold"
+                          style={{ color: BRAND.textSecondary }}
+                        >
+                          Done
+                        </th>
+                        <th
+                          className="py-1 text-right font-semibold"
+                          style={{ color: BRAND.textSecondary }}
+                        >
+                          Remaining
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
                       {burndown.map((pt) => (
-                        <tr key={pt.date} style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}>
-                          <td className="py-1 pr-2 font-mono" style={{ color: BRAND.textPrimary }}>{pt.date}</td>
-                          <td className="py-1 pr-2 font-mono text-right" style={{ color: BRAND.textPrimary }}>{pt.totalPoints}</td>
-                          <td className="py-1 pr-2 font-mono text-right" style={{ color: '#1e6930' }}>{pt.completedPoints}</td>
-                          <td className="py-1 font-mono text-right" style={{ color: BRAND.textPrimary }}>{pt.remainingPoints}</td>
+                        <tr
+                          key={pt.date}
+                          style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
+                        >
+                          <td className="py-1 pr-2 font-mono" style={{ color: BRAND.textPrimary }}>
+                            {pt.date}
+                          </td>
+                          <td
+                            className="py-1 pr-2 text-right font-mono"
+                            style={{ color: BRAND.textPrimary }}
+                          >
+                            {pt.totalPoints}
+                          </td>
+                          <td
+                            className="py-1 pr-2 text-right font-mono"
+                            style={{ color: '#1e6930' }}
+                          >
+                            {pt.completedPoints}
+                          </td>
+                          <td
+                            className="py-1 text-right font-mono"
+                            style={{ color: BRAND.textPrimary }}
+                          >
+                            {pt.remainingPoints}
+                          </td>
                         </tr>
                       ))}
                     </tbody>

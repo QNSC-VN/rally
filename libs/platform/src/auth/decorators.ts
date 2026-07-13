@@ -9,7 +9,7 @@ import { ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from './jwt.guard';
 import { PermissionGuard } from './permission.guard';
 import type { JwtPayload } from './jwt.strategy';
-import type { Permission } from '@shared-kernel';
+import type { WorkspacePermission } from '@shared-kernel';
 
 export const IS_PUBLIC_KEY = 'isPublic';
 export const PERMISSION_KEY = 'requiredPermission';
@@ -17,8 +17,18 @@ export const PERMISSION_KEY = 'requiredPermission';
 /** Mark a route as unauthenticated (skip JwtAuthGuard). */
 export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);
 
-/** Require a specific permission code (RBAC check via PermissionGuard). */
-export const RequirePermission = (permission: Permission) => SetMetadata(PERMISSION_KEY, permission);
+/**
+ * Require a WORKSPACE-tier permission, checked against the flat workspace-wide
+ * baseline in the JWT (via PermissionGuard).
+ *
+ * The signature only accepts workspace-tier codes on purpose: a project-tier
+ * permission (work_item:*, iteration:*, project:edit, …) must be resolved
+ * per-project, so passing one here is a COMPILE error — use
+ * @RequireProjectPermission (project id in the request) or
+ * AccessService.assertProjectPermission (project id known only after a load).
+ */
+export const RequirePermission = (permission: WorkspacePermission) =>
+  SetMetadata(PERMISSION_KEY, permission);
 
 /**
  * Extract the authenticated user's JWT payload from the request.
@@ -59,7 +69,7 @@ export const ApiCommonErrors = (...codes: HttpErrorCode[]) =>
   );
 
 /** Apply JWT auth + permission guard + Swagger bearer annotation in one decorator. */
-export const Auth = (permission?: Permission) =>
+export const Auth = (permission?: WorkspacePermission) =>
   applyDecorators(
     ...[
       UseGuards(JwtAuthGuard, PermissionGuard),

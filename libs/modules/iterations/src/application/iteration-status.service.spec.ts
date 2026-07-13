@@ -49,7 +49,10 @@ const emptyPage = { data: [], pageInfo: { nextCursor: null, hasNextPage: false, 
 describe('IterationStatusService', () => {
   let service: IterationStatusService;
   let statusRepo: { getMetrics: ReturnType<typeof vi.fn>; listItems: ReturnType<typeof vi.fn> };
-  let iterationsService: { getIteration: ReturnType<typeof vi.fn> };
+  let iterationsService: {
+    getIteration: ReturnType<typeof vi.fn>;
+    getIterationForView: ReturnType<typeof vi.fn>;
+  };
   let workItemsService: {
     createWorkItem: ReturnType<typeof vi.fn>;
     bulkAssignIteration: ReturnType<typeof vi.fn>;
@@ -65,7 +68,11 @@ describe('IterationStatusService', () => {
       }),
       listItems: vi.fn().mockResolvedValue(emptyPage),
     };
-    iterationsService = { getIteration: vi.fn().mockResolvedValue(mockIteration()) };
+    // getStatus reads via getIterationForView (project-scoped view check);
+    // createItemInIteration reads via getIteration. Alias both to one mock so a
+    // single per-test mockResolvedValue/mockRejectedValue drives either path.
+    const getIterationMock = vi.fn().mockResolvedValue(mockIteration());
+    iterationsService = { getIteration: getIterationMock, getIterationForView: getIterationMock };
     workItemsService = {
       createWorkItem: vi.fn().mockResolvedValue({ id: 'wi-new' }),
       bulkAssignIteration: vi.fn().mockResolvedValue(1),

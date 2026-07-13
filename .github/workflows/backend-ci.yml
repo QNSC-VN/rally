@@ -158,7 +158,70 @@ jobs:
           retention-days: 7
 
   # ─────────────────────────────────────────────────────────────────────────
-  # 3. Docker build validation (BuildKit cache, no push)
+  # 3. Migration upgrade path — proves new migrations apply on top of an
+  #    EXISTING (main) database, i.e. the real path develop/prod take.
+  #
+  #    The `test` job migrates a FRESH, empty DB. That can never catch a whole
+  #    class of failures — most notably `ALTER TYPE … ADD VALUE` followed by a
+  #    use of that value in the same batch: on an empty DB the enum type is
+  #    CREATEd in the same transaction, which Postgres permits; on a real DB the
+  #    type is already committed, so the same batch aborts with 55P04. Drizzle
+  #    runs all pending migrations in one transaction, so this bites every
+  #    incremental deploy but stays invisible to a from-scratch test.
+  #
+  #    Strategy: apply main's migrations first and COMMIT them (baseline), then
+  #    apply only the migrations this PR adds on top. A migration that can't
+  #    upgrade a prod-like database fails here — before it can reach main.
+  # ─────────────────────────────────────────────────────────────────────────
+  migrations:
+    name: Migration upgrade path
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      DATABASE_MIGRATION_URL: postgresql://postgres:postgres@localhost:5432/rally_upgrade?sslmode=disable
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rally_upgrade
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
+        with:
+          fetch-depth: 0  # need origin/main to build the baseline schema
+
+      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+
+      # Baseline: swap in main's migration files, apply + COMMIT them so the DB
+      # mirrors a real deployed environment, then restore this PR's files.
+      # (On push-to-main this is a no-op: origin/main == HEAD.)
+      - name: Apply baseline (main) migrations
+        run: |
+          git checkout origin/main -- db/migrations
+          pnpm db:migrate
+          git checkout HEAD -- db/migrations
+
+      # Upgrade: apply only the migrations this PR adds, on the committed
+      # baseline. Reproduces the committed-enum restriction and any other
+      # incremental-only hazard; fails the PR if the upgrade can't complete.
+      - name: Apply new migrations on top of baseline
+        run: pnpm db:migrate
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 4. Docker build validation (BuildKit cache, no push)
   #    Runs after tests to avoid wasting compute on broken code.
   # ─────────────────────────────────────────────────────────────────────────
   build:

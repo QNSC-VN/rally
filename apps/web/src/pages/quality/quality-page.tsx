@@ -18,8 +18,14 @@ import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
 import { InlineCellSelect } from '@/shared/ui/native-select'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
-import { useAuthStore } from '@/shared/lib/stores/auth.store'
-import { useDefects, useCreateDefect, qualityKeys, type DefectSeverity, type DefectRow } from '@/features/quality/api'
+import { useProjectPermissions } from '@/features/access/api'
+import {
+  useDefects,
+  useCreateDefect,
+  qualityKeys,
+  type DefectSeverity,
+  type DefectRow,
+} from '@/features/quality/api'
 import { useProjectMembers } from '@/features/teams/api'
 import { useReleases } from '@/features/releases/api'
 import { useUpdateWorkItem } from '@/features/work-items/api'
@@ -32,7 +38,10 @@ import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 // ── Constants ──────────────────────────────────────────────────────────────
 
 /** DB key → SRS display label mapping for severity */
-const SEVERITY_STYLE: Record<DefectSeverity, { bg: string; text: string; border: string; label: string }> = {
+const SEVERITY_STYLE: Record<
+  DefectSeverity,
+  { bg: string; text: string; border: string; label: string }
+> = {
   critical: { bg: '#fef2f2', text: '#b91c1c', border: '#fecaca', label: 'Critical' },
   high: { bg: '#fff7ed', text: '#9a3412', border: '#fed7aa', label: 'Major Problem' },
   medium: { bg: '#fefce8', text: '#854d0e', border: '#fef08a', label: 'Minor Problem' },
@@ -52,6 +61,7 @@ const SEVERITY_OPTIONS: { value: string; label: string }[] = [
 const FLOW_STATE_LABEL: Record<string, string> = {
   idea: 'Idea',
   defined: 'Defined',
+  ready: 'Ready',
   in_progress: 'In-Progress',
   completed: 'Completed',
   accepted: 'Accepted',
@@ -75,7 +85,10 @@ const PRIORITY_OPTIONS: { value: string; label: string }[] = [
   { value: 'low', label: 'Low' },
 ]
 
-const DEFECT_STATE_STYLE: Record<string, { bg: string; text: string; border: string; label: string }> = {
+const DEFECT_STATE_STYLE: Record<
+  string,
+  { bg: string; text: string; border: string; label: string }
+> = {
   submitted: { bg: '#eff6ff', text: '#1d4ed8', border: '#bfdbfe', label: 'Submitted' },
   open: { bg: '#fff7ed', text: '#9a3412', border: '#fed7aa', label: 'Open' },
   fixed: { bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0', label: 'Fixed' },
@@ -106,18 +119,15 @@ function DefectStateInlineCell({
 
   function handleChange(val: string) {
     if (val === currentVal) return
-    update.mutate(
-      { defectState: val } as never,
-      {
-        onSuccess: () => {
-          void qc.invalidateQueries({ queryKey: qualityKeys.all })
-          toast.success('Defect state updated')
-        },
-        onError: () => {
-          toast.error('Failed to update defect state')
-        },
+    update.mutate({ defectState: val } as never, {
+      onSuccess: () => {
+        void qc.invalidateQueries({ queryKey: qualityKeys.all })
+        toast.success('Defect state updated')
       },
-    )
+      onError: () => {
+        toast.error('Failed to update defect state')
+      },
+    })
   }
 
   return (
@@ -130,13 +140,19 @@ function DefectStateInlineCell({
           disabled={update.isPending}
         >
           {DEFECT_STATE_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
           ))}
         </InlineCellSelect>
       ) : (
         <span
-          className="inline-flex items-center px-1.5 py-px text-[10px] font-medium rounded-sm"
-          style={{ backgroundColor: style.bg, color: style.text, border: `1px solid ${style.border}` }}
+          className="inline-flex items-center rounded-sm px-1.5 py-px text-[10px] font-medium"
+          style={{
+            backgroundColor: style.bg,
+            color: style.text,
+            border: `1px solid ${style.border}`,
+          }}
         >
           {style.label}
         </span>
@@ -160,18 +176,15 @@ function FixedInBuildCell({
   function handleCommit(value: string) {
     const trimmed = value.trim()
     if (trimmed === (defect.fixedInBuild ?? '')) return
-    update.mutate(
-      { fixedInBuild: trimmed || null } as never,
-      {
-        onSuccess: () => {
-          void qc.invalidateQueries({ queryKey: qualityKeys.all })
-          toast.success('Fixed In Build updated')
-        },
-        onError: () => {
-          toast.error('Failed to update')
-        },
+    update.mutate({ fixedInBuild: trimmed || null } as never, {
+      onSuccess: () => {
+        void qc.invalidateQueries({ queryKey: qualityKeys.all })
+        toast.success('Fixed In Build updated')
       },
-    )
+      onError: () => {
+        toast.error('Failed to update')
+      },
+    })
   }
 
   return (
@@ -182,7 +195,7 @@ function FixedInBuildCell({
         onCommit={handleCommit}
         trigger="dblclick"
         displayValue={defect.fixedInBuild ?? '—'}
-        className="text-[10px] truncate hover:underline"
+        className="truncate text-[10px] hover:underline"
         style={{ color: '#5c6478' }}
         inputClassName="text-[10px] px-1 py-0.5 rounded focus:outline-none"
         inputStyle={{
@@ -197,8 +210,19 @@ function FixedInBuildCell({
   )
 }
 
-
-type QualityColKey = 'rank' | 'id' | 'name' | 'userStory' | 'severity' | 'priority' | 'state' | 'flowState' | 'fixedInBuild' | 'iteration' | 'submittedBy' | 'owner'
+type QualityColKey =
+  | 'rank'
+  | 'id'
+  | 'name'
+  | 'userStory'
+  | 'severity'
+  | 'priority'
+  | 'state'
+  | 'flowState'
+  | 'fixedInBuild'
+  | 'iteration'
+  | 'submittedBy'
+  | 'owner'
 
 const QUALITY_COLUMNS: ColumnDef<QualityColKey>[] = [
   { key: 'rank', label: 'Rank', defaultWidth: 40, locked: true },
@@ -219,11 +243,17 @@ const QUALITY_COLUMNS: ColumnDef<QualityColKey>[] = [
 
 function MetricCard({ label, value, color }: { label: string; value: number; color: string }) {
   return (
-    <div className="flex flex-col justify-center px-5 gap-0.5" style={{ borderLeft: `1px solid ${BRAND.border}` }}>
-      <span className="text-[9px] uppercase tracking-widest font-semibold" style={{ color: '#8c94a6' }}>
+    <div
+      className="flex flex-col justify-center gap-0.5 px-5"
+      style={{ borderLeft: `1px solid ${BRAND.border}` }}
+    >
+      <span
+        className="text-[9px] font-semibold tracking-widest uppercase"
+        style={{ color: '#8c94a6' }}
+      >
         {label}
       </span>
-      <span className="text-[17px] font-semibold leading-none" style={{ color }}>
+      <span className="text-[17px] leading-none font-semibold" style={{ color }}>
         {value}
       </span>
     </div>
@@ -247,12 +277,14 @@ function FilterSelect({
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="text-[11px] rounded px-1.5 py-1 bg-white focus:outline-none"
+      className="rounded bg-white px-1.5 py-1 text-[11px] focus:outline-none"
       style={{ border: `1px solid ${BRAND.border}`, color: '#5c6478' }}
       aria-label={label}
     >
       {options.map((o) => (
-        <option key={o.value} value={o.value}>{o.label}</option>
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
       ))}
     </select>
   )
@@ -281,17 +313,14 @@ function DefectInlineCell({
 
   function handleChange(val: string) {
     if (val === currentValue) return
-    update.mutate(
-      { [field]: val || undefined } as never,
-      {
-        onSuccess: () => {
-          void qc.invalidateQueries({ queryKey: qualityKeys.all })
-        },
-        onError: () => {
-          toast.error('Failed to update')
-        },
+    update.mutate({ [field]: val || undefined } as never, {
+      onSuccess: () => {
+        void qc.invalidateQueries({ queryKey: qualityKeys.all })
       },
-    )
+      onError: () => {
+        toast.error('Failed to update')
+      },
+    })
   }
 
   return (
@@ -303,7 +332,9 @@ function DefectInlineCell({
         disabled={!canEdit || update.isPending}
       >
         {options.map((o) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
         ))}
       </InlineCellSelect>
     </div>
@@ -312,13 +343,7 @@ function DefectInlineCell({
 
 // ── Log Defect modal ───────────────────────────────────────────────────────
 
-function LogDefectModal({
-  projectId,
-  onClose,
-}: {
-  projectId: string
-  onClose: () => void
-}) {
+function LogDefectModal({ projectId, onClose }: { projectId: string; onClose: () => void }) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [severity, setSeverity] = useState('')
@@ -362,7 +387,12 @@ function LogDefectModal({
 
   return (
     <AppModal open onClose={onClose} title="Log Defect" width={480}>
-      <form onSubmit={(e) => { e.preventDefault(); void handleSubmit() }}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
+          void handleSubmit()
+        }}
+      >
         <ModalBody className="space-y-4">
           <FormField label="Title" required error={error ?? undefined}>
             <Input
@@ -390,7 +420,9 @@ function LogDefectModal({
               >
                 <option value="">—</option>
                 {SEVERITY_OPTIONS.map((s) => (
-                  <option key={s.value} value={s.value}>{s.label}</option>
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
                 ))}
               </select>
             </FormField>
@@ -402,7 +434,9 @@ function LogDefectModal({
                 style={{ borderColor: BRAND.border, color: '#1a2234' }}
               >
                 {PRIORITY_OPTIONS.map((p) => (
-                  <option key={p.value} value={p.value}>{p.label}</option>
+                  <option key={p.value} value={p.value}>
+                    {p.label}
+                  </option>
                 ))}
               </select>
             </FormField>
@@ -417,7 +451,9 @@ function LogDefectModal({
               >
                 <option value="">—</option>
                 {(['development', 'staging', 'production', 'testing'] as const).map((e) => (
-                  <option key={e} value={e}>{e.charAt(0).toUpperCase() + e.slice(1)}</option>
+                  <option key={e} value={e}>
+                    {e.charAt(0).toUpperCase() + e.slice(1)}
+                  </option>
                 ))}
               </select>
             </FormField>
@@ -429,9 +465,13 @@ function LogDefectModal({
                 style={{ borderColor: BRAND.border, color: '#1a2234' }}
               >
                 <option value="">—</option>
-                {(['requirements', 'design', 'code', 'test', 'integration', 'other'] as const).map((r) => (
-                  <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>
-                ))}
+                {(['requirements', 'design', 'code', 'test', 'integration', 'other'] as const).map(
+                  (r) => (
+                    <option key={r} value={r}>
+                      {r.charAt(0).toUpperCase() + r.slice(1)}
+                    </option>
+                  ),
+                )}
               </select>
             </FormField>
           </div>
@@ -460,7 +500,9 @@ function LogDefectModal({
               >
                 <option value="">—</option>
                 {(releases ?? []).map((r) => (
-                  <option key={r.id} value={r.id}>{r.name}</option>
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
                 ))}
               </select>
             </FormField>
@@ -470,7 +512,7 @@ function LogDefectModal({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-1.5 text-sm rounded-md cursor-pointer"
+            className="cursor-pointer rounded-md px-4 py-1.5 text-sm"
             style={{ border: `1px solid ${BRAND.border}`, color: '#5c6478' }}
           >
             Cancel
@@ -478,7 +520,7 @@ function LogDefectModal({
           <button
             type="submit"
             disabled={createDefect.isPending || !title.trim()}
-            className="px-4 py-1.5 text-sm font-medium text-white rounded-md disabled:opacity-50 cursor-pointer"
+            className="cursor-pointer rounded-md px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
             style={{ backgroundColor: BRAND.primary }}
           >
             {createDefect.isPending ? 'Logging...' : 'Log Defect'}
@@ -494,7 +536,8 @@ function LogDefectModal({
 export function QualityPage() {
   const navigate = useNavigate()
   const { project } = useAppContext()
-  const canManage = useAuthStore((s) => s.hasPermission('quality:edit'))
+  const { can } = useProjectPermissions(project?.projectId)
+  const canManage = can('quality:edit')
   const { startResize, styleFor } = useColumnLayout(QUALITY_COLUMNS, STORAGE_KEYS.QUALITY_COLUMNS)
   const [search, setSearch] = useState('')
   const [severityFilter, setSeverityFilter] = useState('all')
@@ -522,11 +565,18 @@ export function QualityPage() {
   })
 
   const defects = data?.data ?? []
-  const metrics = data?.metrics ?? { openDefects: 0, critical: 0, inProgress: 0, verifiedAccepted: 0, reopened: 0, blockers: 0 }
+  const metrics = data?.metrics ?? {
+    openDefects: 0,
+    critical: 0,
+    inProgress: 0,
+    verifiedAccepted: 0,
+    reopened: 0,
+    blockers: 0,
+  }
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center flex-1 gap-2 p-8">
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8">
         <AlertTriangle size={32} style={{ color: BRAND.danger }} />
         <p className="text-sm" style={{ color: '#5c6478' }}>
           {error instanceof Error ? error.message : 'Failed to load defects'}
@@ -536,97 +586,147 @@ export function QualityPage() {
   }
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden">
+    <div className="flex flex-1 flex-col overflow-hidden">
       {/* Metrics strip */}
-      <div className="flex items-stretch bg-white shrink-0" style={{ borderBottom: `1px solid ${BRAND.border}`, height: 52 }}>
+      <div
+        className="flex shrink-0 items-stretch bg-white"
+        style={{ borderBottom: `1px solid ${BRAND.border}`, height: 52 }}
+      >
         <MetricCard label="Open Defects" value={metrics.openDefects} color="#8a5808" />
         <MetricCard label="Critical" value={metrics.critical} color="#b91c1c" />
         <MetricCard label="In Progress" value={metrics.inProgress} color="#7e22ce" />
         <MetricCard label="Verified / Accepted" value={metrics.verifiedAccepted} color="#1e6930" />
         <MetricCard label="Reopened" value={metrics.reopened} color="#1a2234" />
-        <MetricCard label="Blockers" value={metrics.blockers} color={metrics.blockers > 0 ? '#b91c1c' : '#1a2234'} />
+        <MetricCard
+          label="Blockers"
+          value={metrics.blockers}
+          color={metrics.blockers > 0 ? '#b91c1c' : '#1a2234'}
+        />
         <div className="flex-1" style={{ borderLeft: `1px solid ${BRAND.border}` }} />
       </div>
 
       {/* Toolbar */}
       <div
-        className="flex items-center gap-1.5 px-4 py-1.5 bg-white shrink-0 flex-wrap"
+        className="flex shrink-0 flex-wrap items-center gap-1.5 bg-white px-4 py-1.5"
         style={{ borderBottom: `1px solid ${BRAND.border}` }}
       >
-        <h2 className="text-[13px] font-semibold mr-1" style={{ color: '#1a2234' }}>
+        <h2 className="mr-1 text-[13px] font-semibold" style={{ color: '#1a2234' }}>
           Defects
         </h2>
         <div className="relative">
-          <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#8c94a6' }} />
+          <Search
+            size={12}
+            className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2"
+            style={{ color: '#8c94a6' }}
+          />
           <input
             type="text"
             placeholder="Search defects..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-7 pr-3 py-1 text-[11px] rounded focus:outline-none"
-            style={{ backgroundColor: '#f4f6f9', border: `1px solid ${BRAND.border}`, color: '#1a2234', width: 140 }}
+            className="rounded py-1 pr-3 pl-7 text-[11px] focus:outline-none"
+            style={{
+              backgroundColor: '#f4f6f9',
+              border: `1px solid ${BRAND.border}`,
+              color: '#1a2234',
+              width: 140,
+            }}
           />
         </div>
 
-        <FilterSelect label="Severity" value={severityFilter} onChange={setSeverityFilter} options={[
-          { value: 'all', label: 'All Severity' },
-          ...SEVERITY_OPTIONS,
-        ]} />
+        <FilterSelect
+          label="Severity"
+          value={severityFilter}
+          onChange={setSeverityFilter}
+          options={[{ value: 'all', label: 'All Severity' }, ...SEVERITY_OPTIONS]}
+        />
 
-        <FilterSelect label="Environment" value={envFilter} onChange={setEnvFilter} options={[
-          { value: 'all', label: 'All Env' },
-          { value: 'development', label: 'Development' },
-          { value: 'staging', label: 'Staging' },
-          { value: 'production', label: 'Production' },
-          { value: 'testing', label: 'Testing' },
-        ]} />
+        <FilterSelect
+          label="Environment"
+          value={envFilter}
+          onChange={setEnvFilter}
+          options={[
+            { value: 'all', label: 'All Env' },
+            { value: 'development', label: 'Development' },
+            { value: 'staging', label: 'Staging' },
+            { value: 'production', label: 'Production' },
+            { value: 'testing', label: 'Testing' },
+          ]}
+        />
 
-        <FilterSelect label="Priority" value={priorityFilter} onChange={setPriorityFilter} options={[
-          { value: 'all', label: 'All Priority' },
-          ...PRIORITY_OPTIONS,
-        ]} />
+        <FilterSelect
+          label="Priority"
+          value={priorityFilter}
+          onChange={setPriorityFilter}
+          options={[{ value: 'all', label: 'All Priority' }, ...PRIORITY_OPTIONS]}
+        />
 
-        <FilterSelect label="Flow State" value={stateFilter} onChange={setStateFilter} options={[
-          { value: 'all', label: 'All Flow States' },
-          ...FLOW_STATE_OPTIONS,
-        ]} />
+        <FilterSelect
+          label="Flow State"
+          value={stateFilter}
+          onChange={setStateFilter}
+          options={[{ value: 'all', label: 'All Flow States' }, ...FLOW_STATE_OPTIONS]}
+        />
 
-        <FilterSelect label="Owner" value={ownerFilter} onChange={setOwnerFilter} options={[
-          { value: 'all', label: 'All Owners' },
-          ...(members ?? []).map((m) => ({ value: m.userId, label: m.displayName ?? m.email ?? m.userId })),
-        ]} />
+        <FilterSelect
+          label="Owner"
+          value={ownerFilter}
+          onChange={setOwnerFilter}
+          options={[
+            { value: 'all', label: 'All Owners' },
+            ...(members ?? []).map((m) => ({
+              value: m.userId,
+              label: m.displayName ?? m.email ?? m.userId,
+            })),
+          ]}
+        />
 
-        <FilterSelect label="Release" value={releaseFilter} onChange={setReleaseFilter} options={[
-          { value: 'all', label: 'All Releases' },
-          ...(releases ?? []).map((r) => ({ value: r.id, label: r.name })),
-        ]} />
+        <FilterSelect
+          label="Release"
+          value={releaseFilter}
+          onChange={setReleaseFilter}
+          options={[
+            { value: 'all', label: 'All Releases' },
+            ...(releases ?? []).map((r) => ({ value: r.id, label: r.name })),
+          ]}
+        />
 
-        <FilterSelect label="Root Cause" value={rootCauseFilter} onChange={setRootCauseFilter} options={[
-          { value: 'all', label: 'All Root Causes' },
-          { value: 'requirements', label: 'Requirements' },
-          { value: 'design', label: 'Design' },
-          { value: 'code', label: 'Code' },
-          { value: 'test', label: 'Test' },
-          { value: 'integration', label: 'Integration' },
-          { value: 'other', label: 'Other' },
-        ]} />
+        <FilterSelect
+          label="Root Cause"
+          value={rootCauseFilter}
+          onChange={setRootCauseFilter}
+          options={[
+            { value: 'all', label: 'All Root Causes' },
+            { value: 'requirements', label: 'Requirements' },
+            { value: 'design', label: 'Design' },
+            { value: 'code', label: 'Code' },
+            { value: 'test', label: 'Test' },
+            { value: 'integration', label: 'Integration' },
+            { value: 'other', label: 'Other' },
+          ]}
+        />
 
-        <FilterSelect label="Resolution" value={resolutionFilter} onChange={setResolutionFilter} options={[
-          { value: 'all', label: 'All Resolutions' },
-          { value: 'fixed', label: 'Fixed' },
-          { value: 'wont_fix', label: "Won't Fix" },
-          { value: 'duplicate', label: 'Duplicate' },
-          { value: 'cannot_reproduce', label: 'Cannot Reproduce' },
-          { value: 'deferred', label: 'Deferred' },
-          { value: 'by_design', label: 'By Design' },
-        ]} />
+        <FilterSelect
+          label="Resolution"
+          value={resolutionFilter}
+          onChange={setResolutionFilter}
+          options={[
+            { value: 'all', label: 'All Resolutions' },
+            { value: 'fixed', label: 'Fixed' },
+            { value: 'wont_fix', label: "Won't Fix" },
+            { value: 'duplicate', label: 'Duplicate' },
+            { value: 'cannot_reproduce', label: 'Cannot Reproduce' },
+            { value: 'deferred', label: 'Deferred' },
+            { value: 'by_design', label: 'By Design' },
+          ]}
+        />
 
         <div className="flex-1" />
 
         {canManage && (
           <button
             onClick={() => setShowLogDefect(true)}
-            className="flex items-center gap-1.5 px-3 py-1 text-[11px] font-semibold text-white rounded ml-1 hover:brightness-95 cursor-pointer"
+            className="ml-1 flex cursor-pointer items-center gap-1.5 rounded px-3 py-1 text-[11px] font-semibold text-white hover:brightness-95"
             style={{ backgroundColor: '#1d3f73' }}
           >
             <Plus size={12} />
@@ -640,71 +740,101 @@ export function QualityPage() {
         {isLoading ? (
           <SkeletonList rows={8} />
         ) : defects.length === 0 ? (
-          <div className="flex flex-col items-center justify-center flex-1 gap-3 p-8">
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8">
             <PackageOpen size={40} style={{ color: '#c4cad4' }} />
             <p className="text-sm" style={{ color: '#8c94a6' }}>
-              {search || severityFilter !== 'all' || envFilter !== 'all' || priorityFilter !== 'all' || stateFilter !== 'all'
+              {search ||
+              severityFilter !== 'all' ||
+              envFilter !== 'all' ||
+              priorityFilter !== 'all' ||
+              stateFilter !== 'all'
                 ? 'No defects match your filters'
                 : 'No defects logged yet'}
             </p>
           </div>
         ) : (
-          <div className="flex flex-col flex-1 overflow-hidden">
+          <div className="flex flex-1 flex-col overflow-hidden">
             {/* Header */}
             <div
-              className="flex items-center h-8 px-3 shrink-0 select-none overflow-x-auto"
-              style={{ backgroundColor: '#f7f8fa', borderBottom: `1px solid ${BRAND.border}`, minWidth: 'max-content' }}
+              className="flex h-8 shrink-0 items-center overflow-x-auto px-3 select-none"
+              style={{
+                backgroundColor: '#f7f8fa',
+                borderBottom: `1px solid ${BRAND.border}`,
+                minWidth: 'max-content',
+              }}
             >
               {QUALITY_COLUMNS.map((col) => (
                 <div
                   key={col.key}
-                  className="relative group flex items-center gap-1 px-2 text-[9px] font-semibold uppercase tracking-wider whitespace-nowrap"
+                  className="group relative flex items-center gap-1 px-2 text-[9px] font-semibold tracking-wider whitespace-nowrap uppercase"
                   style={{ ...styleFor(col.key, { flexShrink: 0 }), color: '#8c94a6' }}
                 >
                   <span>{col.label}</span>
-                  <ResizeHandle onMouseDown={(e) => startResize(col.key, e)} ariaLabel={`Resize ${col.label} column`} />
+                  <ResizeHandle
+                    onMouseDown={(e) => startResize(col.key, e)}
+                    ariaLabel={`Resize ${col.label} column`}
+                  />
                 </div>
               ))}
             </div>
             {/* Rows */}
             <div className="flex-1 overflow-auto">
               {defects.map((d, idx) => {
-                const sevStyle = d.severity && d.severity !== 'none' ? SEVERITY_STYLE[d.severity] : null
+                const sevStyle =
+                  d.severity && d.severity !== 'none' ? SEVERITY_STYLE[d.severity] : null
                 const flowLabel = FLOW_STATE_LABEL[d.scheduleState] ?? d.scheduleState
                 const userStory = d.parentKey
                   ? `${d.parentKey}: ${d.parentTitle ?? ''}`
-                  : d.parentTitle ?? ''
+                  : (d.parentTitle ?? '')
 
                 return (
                   <div
                     key={d.id}
-                    className="flex items-center h-8 px-3 cursor-pointer"
+                    className="flex h-8 cursor-pointer items-center px-3"
                     style={{ borderBottom: '1px solid #edf0f4', minWidth: 'max-content' }}
                     onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f7f8fa')}
                     onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-                    onClick={() => navigate({ to: '/item/$itemKey', params: { itemKey: d.itemKey } })}
+                    onClick={() =>
+                      navigate({ to: '/item/$itemKey', params: { itemKey: d.itemKey } })
+                    }
                   >
                     {/* Rank */}
-                    <div className="shrink-0 text-[10px] text-center px-2" style={{ ...styleFor('rank'), color: '#8c94a6' }}>
+                    <div
+                      className="shrink-0 px-2 text-center text-[10px]"
+                      style={{ ...styleFor('rank'), color: '#8c94a6' }}
+                    >
                       {idx + 1}
                     </div>
                     {/* ID */}
                     <div className="flex shrink-0 items-center gap-1 px-2" style={styleFor('id')}>
                       <TypeBadge type={d.type} />
-                      <span className="font-mono text-[10px]" style={{ color: '#5c6478' }}>{d.itemKey}</span>
+                      <span className="font-mono text-[10px]" style={{ color: '#5c6478' }}>
+                        {d.itemKey}
+                      </span>
                     </div>
                     {/* Name */}
-                    <div className="shrink-0 px-2 min-w-0" style={styleFor('name')}>
-                      <span className="block truncate text-[12px] font-medium" style={{ color: '#1a2234' }}>
+                    <div className="min-w-0 shrink-0 px-2" style={styleFor('name')}>
+                      <span
+                        className="block truncate text-[12px] font-medium"
+                        style={{ color: '#1a2234' }}
+                      >
                         {d.title}
                       </span>
                     </div>
                     {/* User Story */}
-                    <div className="shrink-0 text-[10px] truncate px-2" style={{ ...styleFor('userStory'), color: '#5c6478' }} title={userStory}>
+                    <div
+                      className="shrink-0 truncate px-2 text-[10px]"
+                      style={{ ...styleFor('userStory'), color: '#5c6478' }}
+                      title={userStory}
+                    >
                       {userStory || '—'}
                     </div>
                     {/* Severity (inline editable) */}
-                    <div className="shrink-0 px-2" style={styleFor('severity')} onClick={(e) => e.stopPropagation()}>
+                    <div
+                      className="shrink-0 px-2"
+                      style={styleFor('severity')}
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       {sevStyle ? (
                         <DefectInlineCell
                           defect={d}
@@ -716,17 +846,27 @@ export function QualityPage() {
                           projectId={project?.projectId ?? ''}
                         />
                       ) : (
-                        <span className="text-[10px]" style={{ color: '#c4cad4' }}>—</span>
+                        <span className="text-[10px]" style={{ color: '#c4cad4' }}>
+                          —
+                        </span>
                       )}
                     </div>
                     {/* Priority (inline editable) */}
-                    <div className="shrink-0 px-2" style={styleFor('priority')} onClick={(e) => e.stopPropagation()}>
+                    <div
+                      className="shrink-0 px-2"
+                      style={styleFor('priority')}
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <DefectInlineCell
                         defect={d}
                         field="priority"
                         options={PRIORITY_OPTIONS}
                         currentValue={d.priority}
-                        displayValue={d.priority === 'none' ? '—' : d.priority.charAt(0).toUpperCase() + d.priority.slice(1)}
+                        displayValue={
+                          d.priority === 'none'
+                            ? '—'
+                            : d.priority.charAt(0).toUpperCase() + d.priority.slice(1)
+                        }
                         canEdit={canManage}
                         projectId={project?.projectId ?? ''}
                       />
@@ -740,7 +880,11 @@ export function QualityPage() {
                       />
                     </div>
                     {/* Flow State (inline editable) */}
-                    <div className="shrink-0 px-2" style={styleFor('flowState')} onClick={(e) => e.stopPropagation()}>
+                    <div
+                      className="shrink-0 px-2"
+                      style={styleFor('flowState')}
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <DefectInlineCell
                         defect={d}
                         field="scheduleState"
@@ -760,15 +904,27 @@ export function QualityPage() {
                       />
                     </div>
                     {/* Iteration */}
-                    <div className="shrink-0 text-[10px] truncate px-2" style={{ ...styleFor('iteration'), color: '#5c6478' }} title={d.iterationName ?? ''}>
+                    <div
+                      className="shrink-0 truncate px-2 text-[10px]"
+                      style={{ ...styleFor('iteration'), color: '#5c6478' }}
+                      title={d.iterationName ?? ''}
+                    >
                       {d.iterationName ?? '—'}
                     </div>
                     {/* Submitted By */}
-                    <div className="shrink-0 text-[10px] truncate px-2" style={{ ...styleFor('submittedBy'), color: '#5c6478' }} title={d.createdByName ?? ''}>
+                    <div
+                      className="shrink-0 truncate px-2 text-[10px]"
+                      style={{ ...styleFor('submittedBy'), color: '#5c6478' }}
+                      title={d.createdByName ?? ''}
+                    >
                       {d.createdByName ?? '—'}
                     </div>
                     {/* Owner */}
-                    <div className="shrink-0 text-[10px] truncate px-2" style={{ ...styleFor('owner'), color: '#5c6478' }} title={d.assigneeName ?? ''}>
+                    <div
+                      className="shrink-0 truncate px-2 text-[10px]"
+                      style={{ ...styleFor('owner'), color: '#5c6478' }}
+                      title={d.assigneeName ?? ''}
+                    >
                       {d.assigneeName ?? '—'}
                     </div>
                   </div>

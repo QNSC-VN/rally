@@ -26,3 +26,10 @@ export const RoleAssignmentResponseSchema = z.object({
 });
 
 export class RoleAssignmentResponseDto extends createZodDto(RoleAssignmentResponseSchema) {}
+
+export const ProjectPermissionsResponseSchema = z.object({
+  projectId: z.string().uuid(),
+  permissions: z.array(z.string()),
+});
+
+export class ProjectPermissionsResponseDto extends createZodDto(ProjectPermissionsResponseSchema) {}

@@ -77,7 +77,6 @@ const VIEWER_ID = '00000000-0000-7000-8000-000000000021';
 // project-scoped "lead" that proves per-project (PBAC) differentiation.
 const PROJECT_ADMIN_ID = '00000000-0000-7000-8000-000000000022';
 const WORKSPACE_MEMBER_ID = '00000000-0000-7000-8000-000000000023';
-const GUEST_ID = '00000000-0000-7000-8000-000000000024';
 const PROJECT_LEAD_ID = '00000000-0000-7000-8000-000000000025';
 
 const NXP_STORY_1_ID = '00000000-0000-7000-8000-000000000030';
@@ -1505,7 +1504,7 @@ export async function seed(connectionUrl?: string): Promise<void> {
 // project_viewer on MOB, and only baseline (workspace_member fallback) elsewhere.
 //
 // Business note: the implemented catalogue roles are workspace_admin /
-// project_admin / project_member / project_viewer / workspace_member / guest.
+// project_admin / project_member / project_viewer / workspace_member.
 // The early UI mockup used Project Manager / Product Owner / Tester instead; the
 // catalogue (db/permissions.catalog.ts) is the current source of truth. If BA
 // re-scopes roles, update the catalogue + these demo assignments together.
@@ -1516,7 +1515,6 @@ async function seedRbacDemoUsers(): Promise<void> {
   const demoUsers = [
     { id: PROJECT_ADMIN_ID, email: 'projectadmin@acme.dev', displayName: 'Carol ProjectAdmin' },
     { id: WORKSPACE_MEMBER_ID, email: 'member@acme.dev', displayName: 'Dave Member' },
-    { id: GUEST_ID, email: 'guest@acme.dev', displayName: 'Eve Guest' },
     { id: PROJECT_LEAD_ID, email: 'lead@acme.dev', displayName: 'Frank Lead' },
   ];
 
@@ -1569,7 +1567,6 @@ async function seedRbacDemoUsers(): Promise<void> {
   // Workspace-wide roles → land in the JWT baseline for these users.
   await assign(PROJECT_ADMIN_ID, SYSTEM_ROLE.PROJECT_ADMIN, 'workspace', WORKSPACE_ID);
   await assign(WORKSPACE_MEMBER_ID, SYSTEM_ROLE.WORKSPACE_MEMBER, 'workspace', WORKSPACE_ID);
-  await assign(GUEST_ID, SYSTEM_ROLE.GUEST, 'workspace', WORKSPACE_ID);
 
   // PBAC: Frank has NO workspace/global role — only project-scoped grants,
   // resolved per-request by getProjectPermissions(). project_admin on NXP,
@@ -1600,9 +1597,7 @@ async function seedRbacDemoUsers(): Promise<void> {
     ])
     .onConflictDoNothing();
 
-  console.log(
-    '✅  RBAC/PBAC demo users seeded (project_admin, workspace_member, guest, PBAC lead)',
-  );
+  console.log('✅  RBAC/PBAC demo users seeded (project_admin, workspace_member, PBAC lead)');
 }
 
 // Run directly: pnpm db:seed

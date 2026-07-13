@@ -9,3 +9,10 @@ export const AssignRoleSchema = z.object({
   scopeId: z.string().uuid().optional(),
 });
 export class AssignRoleDto extends createZodDto(AssignRoleSchema) {}
+
+/** Body for project-scoped role assignment — scope is fixed to the URL project. */
+export const AssignProjectRoleSchema = z.object({
+  userId: z.string().uuid(),
+  roleId: z.string().uuid(),
+});
+export class AssignProjectRoleDto extends createZodDto(AssignProjectRoleSchema) {}

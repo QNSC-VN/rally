@@ -12,10 +12,7 @@ import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
 import { PERMISSION } from '@shared-kernel';
 import { workItems, workflowStatuses } from '../../../../../db/schema/work';
-import {
-  IIterationRepository,
-  ITERATION_REPOSITORY,
-} from '../domain/ports/iteration.repository';
+import { IIterationRepository, ITERATION_REPOSITORY } from '../domain/ports/iteration.repository';
 import type {
   Iteration,
   IterationOption,
@@ -116,6 +113,22 @@ export class IterationsService {
     return iteration;
   }
 
+  /**
+   * Load an iteration and authorize the actor to VIEW its project. Use at read
+   * entry points (controller GET, status read) so a project-scoped viewer only
+   * sees iterations in projects they can access; a workspace-wide iteration:view
+   * fast-paths inside assertProjectPermission.
+   */
+  async getIterationForView(actor: JwtPayload, id: string): Promise<Iteration> {
+    const iteration = await this.getIteration(actor.workspaceId, id);
+    await this.accessService.assertProjectPermission(
+      actor,
+      iteration.projectId,
+      PERMISSION.ITERATION_VIEW,
+    );
+    return iteration;
+  }
+
   // ── Update ────────────────────────────────────────────────────────────────
 
   async updateIteration(
@@ -125,7 +138,11 @@ export class IterationsService {
   ): Promise<Iteration> {
     const current = await this.getIteration(actor.workspaceId, id);
     // Per-project check against THIS iteration's project.
-    await this.accessService.assertProjectPermission(actor, current.projectId, PERMISSION.ITERATION_MANAGE);
+    await this.accessService.assertProjectPermission(
+      actor,
+      current.projectId,
+      PERMISSION.ITERATION_MANAGE,
+    );
 
     // Team must remain linked to the iteration's project.
     if (input.teamId) {
@@ -144,7 +161,11 @@ export class IterationsService {
 
   async deleteIteration(actor: JwtPayload, id: string): Promise<void> {
     const iteration = await this.getIteration(actor.workspaceId, id);
-    await this.accessService.assertProjectPermission(actor, iteration.projectId, PERMISSION.ITERATION_MANAGE);
+    await this.accessService.assertProjectPermission(
+      actor,
+      iteration.projectId,
+      PERMISSION.ITERATION_MANAGE,
+    );
     if (iteration.state !== 'planning') {
       throw new PreconditionFailedException(
         'ITERATION_NOT_PLANNING',
@@ -159,7 +180,11 @@ export class IterationsService {
 
   async commitIteration(actor: JwtPayload, id: string): Promise<Iteration> {
     const iteration = await this.getIteration(actor.workspaceId, id);
-    await this.accessService.assertProjectPermission(actor, iteration.projectId, PERMISSION.ITERATION_MANAGE);
+    await this.accessService.assertProjectPermission(
+      actor,
+      iteration.projectId,
+      PERMISSION.ITERATION_MANAGE,
+    );
 
     if (iteration.state !== 'planning') {
       throw new PreconditionFailedException(
@@ -190,7 +215,11 @@ export class IterationsService {
   ): Promise<Iteration> {
     const workspaceId = actor.workspaceId;
     const iteration = await this.getIteration(workspaceId, id);
-    await this.accessService.assertProjectPermission(actor, iteration.projectId, PERMISSION.ITERATION_MANAGE);
+    await this.accessService.assertProjectPermission(
+      actor,
+      iteration.projectId,
+      PERMISSION.ITERATION_MANAGE,
+    );
 
     if (iteration.state !== 'committed') {
       throw new PreconditionFailedException(

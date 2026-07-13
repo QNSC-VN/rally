@@ -9,12 +9,17 @@ import {
   Post,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Auth, ApiCommonErrors, RequirePermission } from '@platform';
+import { ApiCommonErrors, RequirePermission } from '@platform';
 import type { JwtPayload } from '@platform';
 import { CurrentUser } from '@platform';
 import { AccessService } from '../../application/access.service';
-import { AssignRoleDto } from './dto/access-request.dto';
-import { RoleResponseDto, RoleAssignmentResponseDto } from './dto/access-response.dto';
+import { AuthProjectScoped, RequireProjectPermission } from './project-permission.guard';
+import { AssignRoleDto, AssignProjectRoleDto } from './dto/access-request.dto';
+import {
+  RoleResponseDto,
+  RoleAssignmentResponseDto,
+  ProjectPermissionsResponseDto,
+} from './dto/access-response.dto';
 import type { SystemRole, UserRoleAssignment } from '../../domain/access.types';
 
 function toRoleDto(r: SystemRole): RoleResponseDto {
@@ -45,7 +50,7 @@ function toAssignmentDto(a: UserRoleAssignment): RoleAssignmentResponseDto {
 
 @ApiTags('access')
 @Controller()
-@Auth()
+@AuthProjectScoped()
 export class AccessController {
   constructor(private readonly accessService: AccessService) {}
 
@@ -106,5 +111,71 @@ export class AccessController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<void> {
     await this.accessService.revokeRole(user, id);
+  }
+
+  // ── Project-scoped membership ────────────────────────────────────────────────
+
+  @Get('projects/:projectId/my-permissions')
+  @ApiOperation({
+    summary: "The current user's effective permissions for a project",
+    description:
+      'Baseline (workspace-wide) permissions unioned with any project-scoped role. ' +
+      'Used by the frontend to gate project-scoped UI accurately.',
+  })
+  @ApiParam({ name: 'projectId', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: ProjectPermissionsResponseDto })
+  @ApiCommonErrors(401)
+  async getMyProjectPermissions(
+    @CurrentUser() user: JwtPayload,
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+  ): Promise<ProjectPermissionsResponseDto> {
+    const permissions = await this.accessService.getProjectPermissions(
+      user.sub,
+      user.workspaceId,
+      projectId,
+    );
+    return { projectId, permissions };
+  }
+
+  @Post('projects/:projectId/role-assignments')
+  @RequireProjectPermission('project:manage_members', 'param', 'projectId')
+  @ApiOperation({
+    summary: 'Assign a project-scoped role to a user (project admin)',
+    description:
+      'Grants a project-scoped role on this project. Only roles whose permissions ' +
+      'are entirely project-tier may be granted here; workspace-level roles require ' +
+      'the workspace-scoped endpoint.',
+  })
+  @ApiParam({ name: 'projectId', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 201, type: RoleAssignmentResponseDto })
+  @ApiCommonErrors(400, 401, 403, 404, 409, 422)
+  async assignProjectRole(
+    @CurrentUser() user: JwtPayload,
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+    @Body() dto: AssignProjectRoleDto,
+  ): Promise<RoleAssignmentResponseDto> {
+    const assignment = await this.accessService.assignProjectRole(
+      user,
+      projectId,
+      dto.userId,
+      dto.roleId,
+    );
+    return toAssignmentDto(assignment);
+  }
+
+  @Delete('projects/:projectId/role-assignments/:id')
+  @RequireProjectPermission('project:manage_members', 'param', 'projectId')
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Revoke a project-scoped role assignment (project admin)' })
+  @ApiParam({ name: 'projectId', type: 'string', format: 'uuid' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 204, description: 'Role assignment revoked' })
+  @ApiCommonErrors(401, 403, 404)
+  async revokeProjectRole(
+    @CurrentUser() user: JwtPayload,
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<void> {
+    await this.accessService.revokeProjectRole(user, projectId, id);
   }
 }
