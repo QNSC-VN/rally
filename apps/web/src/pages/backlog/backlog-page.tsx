@@ -28,10 +28,12 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
-import { ChevronLeft, ChevronRight, GripVertical, Plus, Search, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, GripVertical, Plus, X } from 'lucide-react'
+import { SearchInput } from '@/shared/ui/search-input'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { InlineCellSelect, InlineSelect } from '@/shared/ui/native-select'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
+import { OwnerCell } from '@/shared/ui/owner-cell'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
 import {
@@ -163,33 +165,6 @@ function ResizableHeader({
 }
 
 // ── Owner cell (avatar + name) ─────────────────────────────────────────────────
-
-function OwnerCell({ name }: { name?: string | null }) {
-  if (!name)
-    return (
-      <span className="text-[10px]" style={{ color: '#a0a7b5' }}>
-        —
-      </span>
-    )
-  const initials = name
-    .split(' ')
-    .slice(0, 2)
-    .map((n) => n[0]?.toUpperCase())
-    .join('')
-  return (
-    <div className="flex items-center gap-1 overflow-hidden">
-      <span
-        className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[8px] font-bold"
-        style={{ backgroundColor: '#e5ebf4', color: '#1d3f73' }}
-      >
-        {initials}
-      </span>
-      <span className="truncate text-[10px]" style={{ color: '#5c6478' }}>
-        {name}
-      </span>
-    </div>
-  )
-}
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
@@ -611,26 +586,13 @@ function BacklogToolbar({
       <div className="h-4 w-px shrink-0" style={{ backgroundColor: '#dde2ea' }} />
 
       {/* Search */}
-      <div className="relative">
-        <Search
-          size={12}
-          className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2"
-          style={{ color: '#8c94a6' }}
-        />
-        <input
-          type="text"
-          placeholder="Search…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="rounded py-1 pr-3 pl-7 text-[11px] focus:outline-none"
-          style={{
-            backgroundColor: '#f4f6f9',
-            border: '1px solid #dde2ea',
-            color: '#1a2234',
-            width: 160,
-          }}
-        />
-      </div>
+      <SearchInput
+        value={search}
+        onChange={setSearch}
+        placeholder="Search…"
+        ariaLabel="Search backlog"
+        width={160}
+      />
 
       {/* Type filter */}
       <InlineSelect

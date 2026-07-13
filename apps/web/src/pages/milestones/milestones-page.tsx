@@ -7,7 +7,10 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
-import { AlertTriangle, Plus, Search, Pencil, Trash2, PackageOpen } from 'lucide-react'
+import { AlertTriangle, Plus, Pencil, Trash2, PackageOpen } from 'lucide-react'
+import { SearchInput } from '@/shared/ui/search-input'
+import { StatusBadge as StatusPill } from '@/shared/ui/status-badge'
+import { MILESTONE_STATUS_STYLE } from '@/features/milestones/status-colors'
 import { useColumnLayout, type ColumnDef } from '@/shared/lib/hooks/use-column-layout'
 import { ResizeHandle } from '@/shared/ui/resize-handle'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
@@ -32,28 +35,10 @@ import { useProjectMembers } from '@/features/teams/api'
 
 // ── Status badge ──────────────────────────────────────────────────────────────
 
-const STATUS_STYLE: Record<
-  MilestoneStatus,
-  { bg: string; text: string; border: string; label: string }
-> = {
-  planned: { bg: '#eef3fb', text: '#475569', border: '#cbd5e1', label: 'Planned' },
-  at_risk: { bg: '#fff7ed', text: '#9a3412', border: '#fed7aa', label: 'At Risk' },
-  met: { bg: '#eaf5ed', text: '#1e6930', border: '#b9dec2', label: 'Met' },
-  missed: { bg: '#fef2f2', text: '#b91c1c', border: '#fecaca', label: 'Missed' },
-  cancelled: { bg: '#f1f5f9', text: '#475569', border: '#cbd5e1', label: 'Cancelled' },
-  completed: { bg: '#eef6f0', text: '#1e6930', border: '#a8d5b3', label: 'Completed' },
-}
+const STATUS_STYLE = MILESTONE_STATUS_STYLE
 
 function StatusBadge({ status }: { status: MilestoneStatus }) {
-  const s = STATUS_STYLE[status] ?? STATUS_STYLE.planned
-  return (
-    <span
-      className="inline-flex items-center rounded-sm px-1.5 py-px text-[11px] font-medium whitespace-nowrap"
-      style={{ backgroundColor: s.bg, color: s.text, border: `1px solid ${s.border}` }}
-    >
-      {s.label}
-    </span>
-  )
+  return <StatusPill style={STATUS_STYLE[status] ?? STATUS_STYLE.planned} />
 }
 
 const MILESTONE_STATUSES: MilestoneStatus[] = [
@@ -465,26 +450,15 @@ export function MilestonesPage() {
         <h2 className="mr-2 text-sm font-semibold" style={{ color: '#1a2234' }}>
           Milestones
         </h2>
-        <div className="relative">
-          <Search
-            size={14}
-            className="absolute top-1/2 left-2.5 -translate-y-1/2"
-            style={{ color: '#8c94a6' }}
-          />
-          <input
-            type="text"
-            placeholder="Search milestones..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="rounded-md py-1.5 pr-3 pl-8 text-xs focus:outline-none"
-            style={{
-              backgroundColor: '#f4f6f9',
-              border: `1px solid ${BRAND.border}`,
-              color: '#1a2234',
-              width: 200,
-            }}
-          />
-        </div>
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Search milestones..."
+          ariaLabel="Search milestones"
+          width={200}
+          iconSize={14}
+          className="rounded-md py-1.5 pl-8 text-xs"
+        />
         <div className="flex-1" />
         {canManage && (
           <button

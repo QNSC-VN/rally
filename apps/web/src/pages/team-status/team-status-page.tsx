@@ -50,7 +50,7 @@ type ColKey =
 
 const TEAM_STATUS_COLUMNS: ColumnDef<ColKey>[] = [
   { key: 'rank', label: 'Rank', defaultWidth: 45, locked: true },
-  { key: 'id', label: 'ID', defaultWidth: 70, locked: true },
+  { key: 'id', label: 'ID', defaultWidth: 104, minWidth: 84, locked: true },
   { key: 'name', label: 'Task Name', defaultWidth: 240, minWidth: 150, locked: true },
   { key: 'workProduct', label: 'Work Product', defaultWidth: 140 },
   { key: 'release', label: 'Release', defaultWidth: 96 },

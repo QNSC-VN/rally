@@ -8,13 +8,13 @@ import {
   MoreHorizontal,
   Plus,
   RotateCcw,
-  Search,
   User,
   Users,
   UsersRound,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { BRAND } from '@/shared/config/brand'
+import { SearchInput } from '@/shared/ui/search-input'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
@@ -64,13 +64,18 @@ function ArchiveConfirmModal({
         {/* Impact summary */}
         <div
           className="rounded p-3 text-[11px]"
-          style={{ backgroundColor: BRAND.surfaceSubtle, border: `1px solid ${BRAND.borderSubtle}` }}
+          style={{
+            backgroundColor: BRAND.surfaceSubtle,
+            border: `1px solid ${BRAND.borderSubtle}`,
+          }}
         >
           <p className="font-semibold" style={{ color: BRAND.textPrimary }}>
             What will happen:
           </p>
           <ul className="mt-1.5 space-y-0.5" style={{ color: BRAND.textSecondary }}>
-            <li>· Project status changes to <strong>Archived</strong></li>
+            <li>
+              · Project status changes to <strong>Archived</strong>
+            </li>
             <li>· No new work items, iterations, or releases can be created</li>
             <li>· Existing data remains accessible in read-only mode</li>
             <li>· The project will be hidden from the Active filter</li>
@@ -475,21 +480,14 @@ export function ProjectsPage() {
         style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
       >
         {/* Search */}
-        <div className="relative">
-          <Search
-            size={13}
-            className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2"
-            style={{ color: BRAND.textMuted }}
-          />
-          <input
-            type="search"
-            placeholder="Search projects…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-52 rounded py-1.5 pr-3 pl-8 text-[11px] focus:outline-none"
-            style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textPrimary }}
-          />
-        </div>
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Search projects…"
+          ariaLabel="Search projects"
+          iconSize={13}
+          className="w-52 py-1.5 pl-8"
+        />
 
         {/* Status filter tabs */}
         <div className="flex items-center gap-1">
@@ -568,146 +566,146 @@ export function ProjectsPage() {
 
           {/* Rows */}
           <div ref={menuRef}>
-          {!isLoading &&
-            filtered.map((project) => (
-              <div
-                key={project.id}
-                className="relative flex h-12 cursor-default items-center gap-3 px-4 transition-colors hover:bg-[#f7f8fa]"
-                style={{
-                  borderBottom: `1px solid ${BRAND.borderInner}`,
-                  opacity: project.status === 'archived' ? 0.7 : 1,
-                }}
-              >
-                {/* Key */}
-                <div className="w-16 shrink-0">
-                  <span
-                    className="inline-flex h-5 items-center rounded-sm px-1.5 font-mono text-[10px] font-semibold"
-                    style={{ backgroundColor: '#e5ebf4', color: BRAND.primary }}
-                  >
-                    {project.key}
-                  </span>
-                </div>
-
-                {/* Name + desc */}
-                <div className="min-w-0 flex-1">
-                  <div
-                    className="truncate text-[12px] font-semibold"
-                    style={{ color: BRAND.textPrimary }}
-                  >
-                    {project.name}
-                  </div>
-                  {project.description && (
-                    <div className="truncate text-[10px]" style={{ color: BRAND.textMuted }}>
-                      {project.description}
-                    </div>
-                  )}
-                </div>
-
-                {/* Status */}
-                <div className="w-20 shrink-0">
-                  <ProjectStatusBadge status={project.status} />
-                </div>
-
-                {/* Lead */}
+            {!isLoading &&
+              filtered.map((project) => (
                 <div
-                  className="flex w-28 shrink-0 items-center gap-1.5 text-[11px]"
-                  style={{ color: BRAND.textSecondary }}
+                  key={project.id}
+                  className="relative flex h-12 cursor-default items-center gap-3 px-4 transition-colors hover:bg-[#f7f8fa]"
+                  style={{
+                    borderBottom: `1px solid ${BRAND.borderInner}`,
+                    opacity: project.status === 'archived' ? 0.7 : 1,
+                  }}
                 >
-                  {project.leadId ? (
-                    <>
-                      <User size={11} style={{ color: BRAND.textMuted }} />
-                      <span className="truncate">
-                        {project.leadName ??
-                          (project.leadId === currentUser?.id ? currentUser.displayName : '—')}
-                      </span>
-                    </>
-                  ) : (
-                    <span style={{ color: BRAND.textMuted }}>—</span>
-                  )}
-                </div>
-
-                {/* Members */}
-                <div className="w-16 shrink-0 text-[11px]" style={{ color: BRAND.textSecondary }}>
-                  {project.memberCount > 0 ? (
-                    <span className="inline-flex items-center gap-1">
-                      <Users size={11} style={{ color: BRAND.textMuted }} />
-                      {project.memberCount}
-                    </span>
-                  ) : (
-                    <span style={{ color: BRAND.textMuted }}>—</span>
-                  )}
-                </div>
-
-                {/* Teams */}
-                <div className="w-16 shrink-0 text-[11px]" style={{ color: BRAND.textSecondary }}>
-                  {project.teamCount > 0 ? (
-                    <span className="inline-flex items-center gap-1">
-                      <UsersRound size={11} style={{ color: BRAND.textMuted }} />
-                      {project.teamCount}
-                    </span>
-                  ) : (
-                    <span style={{ color: BRAND.textMuted }}>—</span>
-                  )}
-                </div>
-
-                {/* Updated */}
-                <div className="w-36 shrink-0 text-[11px]" style={{ color: BRAND.textSecondary }}>
-                  {new Date(project.updatedAt).toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric',
-                  })}
-                </div>
-
-                {/* Row actions */}
-                <div className="relative w-8 shrink-0">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setOpenMenu(openMenu === project.id ? null : project.id)
-                    }}
-                    className="flex h-6 w-6 items-center justify-center rounded hover:bg-[#e5ebf4]"
-                    style={{ color: BRAND.textMuted }}
-                    aria-label="Project actions"
-                  >
-                    <MoreHorizontal size={14} />
-                  </button>
-
-                  {openMenu === project.id && (
-                    <div
-                      className="absolute top-7 right-0 z-20 w-44 overflow-hidden rounded bg-white py-1 shadow-lg"
-                      style={{ border: `1px solid ${BRAND.border}` }}
+                  {/* Key */}
+                  <div className="w-16 shrink-0">
+                    <span
+                      className="inline-flex h-5 items-center rounded-sm px-1.5 font-mono text-[10px] font-semibold"
+                      style={{ backgroundColor: '#e5ebf4', color: BRAND.primary }}
                     >
-                      <button
-                        className="flex w-full items-center gap-2 px-3 py-2 text-[11px] hover:bg-[#f4f6f9]"
-                        style={{ color: BRAND.textPrimary }}
-                        onClick={() => {
-                          setEditingProject(project)
-                          setOpenMenu(null)
-                        }}
-                      >
-                        <Edit3 size={12} style={{ color: BRAND.textSecondary }} />
-                        Edit project
-                      </button>
-                      <button
-                        className="flex w-full items-center gap-2 px-3 py-2 text-[11px] hover:bg-[#f4f6f9]"
-                        style={{
-                          color: project.status === 'active' ? BRAND.danger : BRAND.textPrimary,
-                        }}
-                        onClick={() => void toggleArchive(project)}
-                      >
-                        {project.status === 'active' ? (
-                          <Archive size={12} style={{ color: BRAND.danger }} />
-                        ) : (
-                          <RotateCcw size={12} style={{ color: BRAND.textSecondary }} />
-                        )}
-                        {project.status === 'active' ? 'Archive project' : 'Restore project'}
-                      </button>
+                      {project.key}
+                    </span>
+                  </div>
+
+                  {/* Name + desc */}
+                  <div className="min-w-0 flex-1">
+                    <div
+                      className="truncate text-[12px] font-semibold"
+                      style={{ color: BRAND.textPrimary }}
+                    >
+                      {project.name}
                     </div>
-                  )}
+                    {project.description && (
+                      <div className="truncate text-[10px]" style={{ color: BRAND.textMuted }}>
+                        {project.description}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Status */}
+                  <div className="w-20 shrink-0">
+                    <ProjectStatusBadge status={project.status} />
+                  </div>
+
+                  {/* Lead */}
+                  <div
+                    className="flex w-28 shrink-0 items-center gap-1.5 text-[11px]"
+                    style={{ color: BRAND.textSecondary }}
+                  >
+                    {project.leadId ? (
+                      <>
+                        <User size={11} style={{ color: BRAND.textMuted }} />
+                        <span className="truncate">
+                          {project.leadName ??
+                            (project.leadId === currentUser?.id ? currentUser.displayName : '—')}
+                        </span>
+                      </>
+                    ) : (
+                      <span style={{ color: BRAND.textMuted }}>—</span>
+                    )}
+                  </div>
+
+                  {/* Members */}
+                  <div className="w-16 shrink-0 text-[11px]" style={{ color: BRAND.textSecondary }}>
+                    {project.memberCount > 0 ? (
+                      <span className="inline-flex items-center gap-1">
+                        <Users size={11} style={{ color: BRAND.textMuted }} />
+                        {project.memberCount}
+                      </span>
+                    ) : (
+                      <span style={{ color: BRAND.textMuted }}>—</span>
+                    )}
+                  </div>
+
+                  {/* Teams */}
+                  <div className="w-16 shrink-0 text-[11px]" style={{ color: BRAND.textSecondary }}>
+                    {project.teamCount > 0 ? (
+                      <span className="inline-flex items-center gap-1">
+                        <UsersRound size={11} style={{ color: BRAND.textMuted }} />
+                        {project.teamCount}
+                      </span>
+                    ) : (
+                      <span style={{ color: BRAND.textMuted }}>—</span>
+                    )}
+                  </div>
+
+                  {/* Updated */}
+                  <div className="w-36 shrink-0 text-[11px]" style={{ color: BRAND.textSecondary }}>
+                    {new Date(project.updatedAt).toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}
+                  </div>
+
+                  {/* Row actions */}
+                  <div className="relative w-8 shrink-0">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setOpenMenu(openMenu === project.id ? null : project.id)
+                      }}
+                      className="flex h-6 w-6 items-center justify-center rounded hover:bg-[#e5ebf4]"
+                      style={{ color: BRAND.textMuted }}
+                      aria-label="Project actions"
+                    >
+                      <MoreHorizontal size={14} />
+                    </button>
+
+                    {openMenu === project.id && (
+                      <div
+                        className="absolute top-7 right-0 z-20 w-44 overflow-hidden rounded bg-white py-1 shadow-lg"
+                        style={{ border: `1px solid ${BRAND.border}` }}
+                      >
+                        <button
+                          className="flex w-full items-center gap-2 px-3 py-2 text-[11px] hover:bg-[#f4f6f9]"
+                          style={{ color: BRAND.textPrimary }}
+                          onClick={() => {
+                            setEditingProject(project)
+                            setOpenMenu(null)
+                          }}
+                        >
+                          <Edit3 size={12} style={{ color: BRAND.textSecondary }} />
+                          Edit project
+                        </button>
+                        <button
+                          className="flex w-full items-center gap-2 px-3 py-2 text-[11px] hover:bg-[#f4f6f9]"
+                          style={{
+                            color: project.status === 'active' ? BRAND.danger : BRAND.textPrimary,
+                          }}
+                          onClick={() => void toggleArchive(project)}
+                        >
+                          {project.status === 'active' ? (
+                            <Archive size={12} style={{ color: BRAND.danger }} />
+                          ) : (
+                            <RotateCcw size={12} style={{ color: BRAND.textSecondary }} />
+                          )}
+                          {project.status === 'active' ? 'Archive project' : 'Restore project'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
           </div>
         </div>
       </div>

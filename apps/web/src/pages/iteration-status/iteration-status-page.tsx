@@ -78,11 +78,11 @@ import {
   SIMPLIFIED_STATE_TO_SCHEDULE_STATE,
 } from '@/entities/work-item/model/types'
 
-// ── Azure-style primary color ──────────────────────────────────────────────
+// ── Accent palette (Rally navy brand; neutral Azure-style layout kept) ──────
 const AZ = {
-  primary: '#0078d4',
-  primaryHover: '#106ebe',
-  primaryLight: '#deecf9',
+  primary: '#1d3f73',
+  primaryHover: '#162d56',
+  primaryLight: '#edf2fb',
   textPrimary: '#1a1a1a',
   textSecondary: '#666666',
   textMuted: '#999999',
@@ -122,7 +122,7 @@ type ColKey =
 
 const ITERATION_STATUS_COLUMNS: ColumnDef<ColKey>[] = [
   { key: 'rank', label: 'Rank', defaultWidth: 45, locked: true },
-  { key: 'id', label: 'ID', defaultWidth: 70, locked: true },
+  { key: 'id', label: 'ID', defaultWidth: 104, minWidth: 84, locked: true },
   { key: 'name', label: 'Name', defaultWidth: 240, minWidth: 150, locked: true },
   { key: 'state', label: 'State', defaultWidth: 112 },
   { key: 'block', label: 'Block', defaultWidth: 42 },
@@ -1048,6 +1048,7 @@ function Toolbar({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search Work Items"
+          aria-label="Search work items"
           style={{
             paddingLeft: 30,
             paddingRight: 10,
@@ -1361,9 +1362,9 @@ function SortHeader({
       </span>
       {isActive ? (
         dir === 'desc' ? (
-          <ChevronDown size={11} className="shrink-0 text-[#0078d4]" />
+          <ChevronDown size={11} className="shrink-0 text-[#1d3f73]" />
         ) : (
-          <ChevronUp size={11} className="shrink-0 text-[#0078d4]" />
+          <ChevronUp size={11} className="shrink-0 text-[#1d3f73]" />
         )
       ) : (
         <ChevronUp
@@ -1544,11 +1545,14 @@ function StatusRow({
         </div>
 
         {/* ID */}
-        <div style={colStyles.id} className="flex items-center gap-1 px-2">
+        <div style={colStyles.id} className="flex items-center gap-1 overflow-hidden px-2">
           <TypeBadge type={item.type} />
           <button
             onClick={onOpen}
+            title={item.itemKey}
+            className="truncate"
             style={{
+              minWidth: 0,
               fontSize: 12,
               fontFamily: 'Consolas, Monaco, "Courier New", monospace',
               color: AZ.primary,

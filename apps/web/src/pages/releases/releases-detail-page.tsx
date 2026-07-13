@@ -9,20 +9,15 @@ import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 /* eslint-disable react-hooks/set-state-in-effect */
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
-import {
-  ChevronLeft,
-  ChevronRight,
-  Layers,
-  Loader2,
-  Save,
-  Search,
-  TrendingDown,
-} from 'lucide-react'
+import { ChevronLeft, ChevronRight, Layers, Loader2, Save, TrendingDown } from 'lucide-react'
 import { BRAND } from '@/shared/config/brand'
 import { InlineSelect } from '@/shared/ui/native-select'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
 import { SkeletonList } from '@/shared/ui/skeleton'
+import { SearchInput } from '@/shared/ui/search-input'
+import { OwnerCell } from '@/shared/ui/owner-cell'
+import { RELEASE_STATUS_STYLE } from '@/features/releases/status-colors'
 import { useProjectPermissions } from '@/features/access/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import {
@@ -37,45 +32,9 @@ import { TypeBadge, ScheduleStateBadge, PriorityBadge } from '@/entities/work-it
 
 const RELEASE_STATES: ReleaseStatus[] = ['planning', 'active', 'accepted']
 
-const STATUS_STYLE: Record<
-  ReleaseStatus,
-  { bg: string; text: string; border: string; label: string }
-> = {
-  planning: { bg: '#eef3fb', text: '#1d3f73', border: '#bdd0ef', label: 'Planning' },
-  active: { bg: '#fff7ed', text: '#92400e', border: '#fed7aa', label: 'Active' },
-  accepted: { bg: '#eaf5ed', text: '#1e6930', border: '#b9dec2', label: 'Accepted' },
-}
+const STATUS_STYLE = RELEASE_STATUS_STYLE
 
 type TabKey = 'details' | 'artifacts'
-
-// ── Owner cell (avatar + name) ─────────────────────────────────────────────────
-
-function OwnerCell({ name }: { name?: string | null }) {
-  if (!name)
-    return (
-      <span className="text-[10px]" style={{ color: '#a0a7b5' }}>
-        —
-      </span>
-    )
-  const initials = name
-    .split(' ')
-    .slice(0, 2)
-    .map((n) => n[0]?.toUpperCase())
-    .join('')
-  return (
-    <div className="flex items-center gap-1 overflow-hidden">
-      <span
-        className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[8px] font-bold"
-        style={{ backgroundColor: '#e5ebf4', color: '#1d3f73' }}
-      >
-        {initials}
-      </span>
-      <span className="truncate text-[10px]" style={{ color: '#5c6478' }}>
-        {name}
-      </span>
-    </div>
-  )
-}
 
 // ── Release artifact row ──────────────────────────────────────────────────────
 
@@ -180,25 +139,15 @@ function ReleaseArtifactsTab({ releaseId }: { releaseId: string }) {
         className="flex shrink-0 items-center gap-3 px-4 py-2"
         style={{ borderBottom: `1px solid ${BRAND.borderSubtle}`, backgroundColor: BRAND.surface }}
       >
-        <div className="relative" style={{ width: 220 }}>
-          <Search
-            size={13}
-            className="absolute top-1/2 left-2.5 -translate-y-1/2"
-            style={{ color: '#8c94a6' }}
-          />
-          <input
-            type="text"
-            placeholder="Search artifacts..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-md py-1.5 pr-3 pl-8 text-xs focus:ring-1 focus:outline-none"
-            style={{
-              backgroundColor: '#f4f6f9',
-              border: `1px solid ${BRAND.border}`,
-              color: '#1a2234',
-            }}
-          />
-        </div>
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Search artifacts..."
+          ariaLabel="Search artifacts"
+          width={220}
+          iconSize={13}
+          className="rounded-md py-1.5 pl-8 text-xs"
+        />
         <div className="flex-1" />
         <span className="text-[11px]" style={{ color: BRAND.textMuted }}>
           {pageInfo?.total != null ? `${pageInfo.total} items` : ''}
