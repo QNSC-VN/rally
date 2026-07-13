@@ -4,22 +4,6 @@ variable "image_tag" {
   description = "Container image tag to deploy for api & worker. CI overrides this with the release sha to pin prod images; defaults to 'latest' for a bare apply."
 }
 
-variable "prod_tier" {
-  type        = string
-  default     = "lean"
-  description = <<-EOT
-    Production reliability tier (Option A cost switch):
-    'lean' (~$200/mo) = shared runtime-prod cache node + single-AZ RDS + 1 task/svc.
-    'ha'   (~$300/mo) = per-product cache + multi-AZ RDS + 2 tasks/svc + Enhanced Monitoring.
-    Only per-product knobs (RDS, cache, task counts) switch here; the shared
-    VPC/NAT/ALB/WAF tier is selected in qnsc-infra/live/runtime-prod.
-  EOT
-  validation {
-    condition     = contains(["lean", "ha"], var.prod_tier)
-    error_message = "prod_tier must be 'lean' or 'ha'."
-  }
-}
-
 variable "entra_tenant_id" {
   type        = string
   default     = ""
