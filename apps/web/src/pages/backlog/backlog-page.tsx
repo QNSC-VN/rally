@@ -28,7 +28,8 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
-import { ChevronLeft, ChevronRight, GripVertical, Plus, Search, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, GripVertical, Plus, X } from 'lucide-react'
+import { SearchInput } from '@/shared/ui/search-input'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { InlineCellSelect, InlineSelect } from '@/shared/ui/native-select'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
@@ -611,26 +612,13 @@ function BacklogToolbar({
       <div className="h-4 w-px shrink-0" style={{ backgroundColor: '#dde2ea' }} />
 
       {/* Search */}
-      <div className="relative">
-        <Search
-          size={12}
-          className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2"
-          style={{ color: '#8c94a6' }}
-        />
-        <input
-          type="text"
-          placeholder="Search…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="rounded py-1 pr-3 pl-7 text-[11px] focus:outline-none"
-          style={{
-            backgroundColor: '#f4f6f9',
-            border: '1px solid #dde2ea',
-            color: '#1a2234',
-            width: 160,
-          }}
-        />
-      </div>
+      <SearchInput
+        value={search}
+        onChange={setSearch}
+        placeholder="Search…"
+        ariaLabel="Search backlog"
+        width={160}
+      />
 
       {/* Type filter */}
       <InlineSelect

@@ -649,6 +649,7 @@ function ReleaseRow({
             key={release.name}
             defaultValue={release.name}
             onBlur={handleNameBlur}
+            aria-label="Release name"
             onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
             className="w-full rounded border-0 bg-transparent px-0.5 text-[11px] font-semibold focus:bg-white focus:ring-1 focus:outline-none"
             style={{ color: BRAND.textPrimary }}
@@ -671,6 +672,7 @@ function ReleaseRow({
             key={release.theme}
             defaultValue={release.theme ?? ''}
             onBlur={handleThemeBlur}
+            aria-label="Theme"
             placeholder="—"
             onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
             className="w-full rounded border-0 bg-transparent px-0.5 text-[11px] focus:bg-white focus:ring-1 focus:outline-none"
@@ -692,6 +694,7 @@ function ReleaseRow({
             key={release.version}
             defaultValue={release.version ?? ''}
             onBlur={handleVersionBlur}
+            aria-label="Version"
             placeholder="—"
             onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
             className="w-full rounded border-0 bg-transparent px-0.5 text-[11px] focus:bg-white focus:ring-1 focus:outline-none"
@@ -713,6 +716,7 @@ function ReleaseRow({
             type="date"
             defaultValue={release.startDate ?? ''}
             onBlur={handleStartDateBlur}
+            aria-label="Start date"
             className="w-full rounded border-0 bg-transparent px-0.5 text-[11px] focus:bg-white focus:ring-1 focus:outline-none"
             style={{ color: BRAND.textSecondary }}
           />
@@ -732,6 +736,7 @@ function ReleaseRow({
             type="date"
             defaultValue={release.releaseDate ?? ''}
             onBlur={handleReleaseDateBlur}
+            aria-label="Release date"
             className="w-full rounded border-0 bg-transparent px-0.5 text-[11px] focus:bg-white focus:ring-1 focus:outline-none"
             style={{ color: BRAND.textSecondary }}
           />
@@ -751,6 +756,7 @@ function ReleaseRow({
             key={release.plannedVelocity}
             defaultValue={release.plannedVelocity != null ? String(release.plannedVelocity) : ''}
             onBlur={handleVelocityBlur}
+            aria-label="Planned velocity"
             placeholder="—"
             onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
             className="w-full rounded border-0 bg-transparent px-0.5 text-right font-mono text-[11px] focus:bg-white focus:ring-1 focus:outline-none"
@@ -957,6 +963,7 @@ export function ReleasesPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search releases…"
+              aria-label="Search releases"
               className="h-7 rounded-md border pr-3 pl-7 text-[12px] placeholder:text-gray-400 focus:ring-2 focus:outline-none"
               style={{
                 borderColor: BRAND.border,

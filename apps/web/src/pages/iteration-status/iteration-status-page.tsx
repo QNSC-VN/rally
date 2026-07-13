@@ -1048,6 +1048,7 @@ function Toolbar({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search Work Items"
+          aria-label="Search work items"
           style={{
             paddingLeft: 30,
             paddingRight: 10,

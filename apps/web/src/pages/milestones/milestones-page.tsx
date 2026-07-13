@@ -7,7 +7,8 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
-import { AlertTriangle, Plus, Search, Pencil, Trash2, PackageOpen } from 'lucide-react'
+import { AlertTriangle, Plus, Pencil, Trash2, PackageOpen } from 'lucide-react'
+import { SearchInput } from '@/shared/ui/search-input'
 import { useColumnLayout, type ColumnDef } from '@/shared/lib/hooks/use-column-layout'
 import { ResizeHandle } from '@/shared/ui/resize-handle'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
@@ -465,26 +466,15 @@ export function MilestonesPage() {
         <h2 className="mr-2 text-sm font-semibold" style={{ color: '#1a2234' }}>
           Milestones
         </h2>
-        <div className="relative">
-          <Search
-            size={14}
-            className="absolute top-1/2 left-2.5 -translate-y-1/2"
-            style={{ color: '#8c94a6' }}
-          />
-          <input
-            type="text"
-            placeholder="Search milestones..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="rounded-md py-1.5 pr-3 pl-8 text-xs focus:outline-none"
-            style={{
-              backgroundColor: '#f4f6f9',
-              border: `1px solid ${BRAND.border}`,
-              color: '#1a2234',
-              width: 200,
-            }}
-          />
-        </div>
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Search milestones..."
+          ariaLabel="Search milestones"
+          width={200}
+          iconSize={14}
+          className="rounded-md py-1.5 pl-8 text-xs"
+        />
         <div className="flex-1" />
         {canManage && (
           <button

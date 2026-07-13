@@ -8,7 +8,8 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
-import { AlertTriangle, Search, PackageOpen, Plus } from 'lucide-react'
+import { AlertTriangle, PackageOpen, Plus } from 'lucide-react'
+import { SearchInput } from '@/shared/ui/search-input'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { BRAND } from '@/shared/config/brand'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
@@ -613,26 +614,13 @@ export function QualityPage() {
         <h2 className="mr-1 text-[13px] font-semibold" style={{ color: '#1a2234' }}>
           Defects
         </h2>
-        <div className="relative">
-          <Search
-            size={12}
-            className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2"
-            style={{ color: '#8c94a6' }}
-          />
-          <input
-            type="text"
-            placeholder="Search defects..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="rounded py-1 pr-3 pl-7 text-[11px] focus:outline-none"
-            style={{
-              backgroundColor: '#f4f6f9',
-              border: `1px solid ${BRAND.border}`,
-              color: '#1a2234',
-              width: 140,
-            }}
-          />
-        </div>
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Search defects..."
+          ariaLabel="Search defects"
+          width={140}
+        />
 
         <FilterSelect
           label="Severity"

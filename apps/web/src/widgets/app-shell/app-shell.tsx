@@ -528,7 +528,11 @@ export function AppShell() {
                           </span>
                           <span className="truncate text-[11px]">{t.name}</span>
                           {team?.teamId === t.id && (
-                            <Check size={10} className="ml-auto shrink-0" style={{ color: '#1d3f73' }} />
+                            <Check
+                              size={10}
+                              className="ml-auto shrink-0"
+                              style={{ color: '#1d3f73' }}
+                            />
                           )}
                         </button>
                       ))}
@@ -717,6 +721,7 @@ export function AppShell() {
             <input
               type="search"
               placeholder="Search all work items"
+              aria-label="Search all work items"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="rounded py-1 pr-3 pl-7 text-[12px] text-white placeholder:text-[rgba(255,255,255,0.45)] focus:outline-none"
