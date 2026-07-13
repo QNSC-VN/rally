@@ -8,5 +8,5 @@
     "tsBuildInfoFile": "./dist/db/.tsbuildinfo"
   },
   "include": ["db/**/*.ts"],
-  "exclude": ["node_modules", "dist", "db/_inspect*.ts"]
+  "exclude": ["node_modules", "dist"]
 }
