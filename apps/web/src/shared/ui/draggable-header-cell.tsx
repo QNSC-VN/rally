@@ -4,9 +4,10 @@ import { ResizeHandle } from '@/shared/ui/resize-handle'
 /**
  * Visual design tokens for the drag indicator line.
  * Centralised so every table page shares the exact same look.
+ * Brand navy (matches --primary in globals.css), not Fluent blue.
  */
-const INDICATOR_COLOR = '#0078d4'
-const INDICATOR_GLOW = '0 0 6px rgba(0,120,212,0.45)'
+const INDICATOR_COLOR = '#1d3f73'
+const INDICATOR_GLOW = '0 0 6px rgba(29,63,115,0.45)'
 
 interface HeaderCellProps<K extends string> {
   colKey: K
@@ -61,7 +62,7 @@ export function HeaderCell<K extends string>({
 }: HeaderCellProps<K>) {
   return (
     <div
-      className={`shrink-0 relative group flex items-center gap-1 px-2 ${
+      className={`group relative flex shrink-0 items-center gap-1 px-2 ${
         isRight ? 'justify-end text-right' : ''
       }`}
       style={{
@@ -78,7 +79,7 @@ export function HeaderCell<K extends string>({
       {/* ── Left drop indicator ── */}
       {indicatorBefore && (
         <div
-          className="absolute left-0 top-1 bottom-1 w-[2px] rounded-full z-30 -translate-x-px"
+          className="absolute top-1 bottom-1 left-0 z-30 w-[2px] -translate-x-px rounded-full"
           style={{ backgroundColor: INDICATOR_COLOR, boxShadow: INDICATOR_GLOW }}
         />
       )}
@@ -92,7 +93,7 @@ export function HeaderCell<K extends string>({
       {/* ── Right drop indicator ── */}
       {indicatorAfter && (
         <div
-          className="absolute right-0 top-1 bottom-1 w-[2px] rounded-full z-30 translate-x-px"
+          className="absolute top-1 right-0 bottom-1 z-30 w-[2px] translate-x-px rounded-full"
           style={{ backgroundColor: INDICATOR_COLOR, boxShadow: INDICATOR_GLOW }}
         />
       )}

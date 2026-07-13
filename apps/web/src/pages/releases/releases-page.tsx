@@ -31,6 +31,8 @@ import { useProjectPermissions } from '@/features/access/api'
 import { useColumnLayout, type ColumnDef } from '@/shared/lib/hooks/use-column-layout'
 import { ResizeHandle } from '@/shared/ui/resize-handle'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
+import { StatusBadge as StatusPill } from '@/shared/ui/status-badge'
+import { RELEASE_STATUS_STYLE } from '@/features/releases/status-colors'
 import {
   useReleases,
   useCreateRelease,
@@ -69,25 +71,10 @@ const RELEASES_COLUMNS: ColumnDef<ColKey>[] = [
 
 const RELEASE_STATES: ReleaseStatus[] = ['planning', 'active', 'accepted']
 
-const STATUS_STYLE: Record<
-  ReleaseStatus,
-  { bg: string; text: string; border: string; label: string }
-> = {
-  planning: { bg: '#eef3fb', text: '#1d3f73', border: '#bdd0ef', label: 'Planning' },
-  active: { bg: '#fff7ed', text: '#92400e', border: '#fed7aa', label: 'Active' },
-  accepted: { bg: '#eaf5ed', text: '#1e6930', border: '#b9dec2', label: 'Accepted' },
-}
+const STATUS_STYLE = RELEASE_STATUS_STYLE
 
 function StatusBadge({ status }: { status: ReleaseStatus }) {
-  const s = STATUS_STYLE[status] ?? STATUS_STYLE.planning
-  return (
-    <span
-      className="inline-flex items-center rounded-sm px-1.5 py-px text-[11px] font-medium whitespace-nowrap"
-      style={{ backgroundColor: s.bg, color: s.text, border: `1px solid ${s.border}` }}
-    >
-      {s.label}
-    </span>
-  )
+  return <StatusPill style={STATUS_STYLE[status] ?? STATUS_STYLE.planning} />
 }
 
 // ── Create modal (P3-REL-FR-011/012: Type locked to Release) ─────────────

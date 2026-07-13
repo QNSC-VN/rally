@@ -24,6 +24,7 @@ import { InlineSelect } from '@/shared/ui/native-select'
 import { Textarea } from '@/shared/ui/textarea'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { SearchInput } from '@/shared/ui/search-input'
+import { MILESTONE_STATUS_STYLE } from '@/features/milestones/status-colors'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { useProjectPermissions } from '@/features/access/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
@@ -48,17 +49,7 @@ import { TypeBadge, ScheduleStateBadge, PriorityBadge } from '@/entities/work-it
 
 // ── Status config ──────────────────────────────────────────────────────────────
 
-const STATUS_STYLE: Record<
-  MilestoneStatus,
-  { bg: string; text: string; border: string; label: string }
-> = {
-  planned: { bg: '#eef3fb', text: '#475569', border: '#cbd5e1', label: 'Planned' },
-  at_risk: { bg: '#fff7ed', text: '#9a3412', border: '#fed7aa', label: 'At Risk' },
-  met: { bg: '#eaf5ed', text: '#1e6930', border: '#b9dec2', label: 'Met' },
-  missed: { bg: '#fef2f2', text: '#b91c1c', border: '#fecaca', label: 'Missed' },
-  cancelled: { bg: '#f1f5f9', text: '#475569', border: '#cbd5e1', label: 'Cancelled' },
-  completed: { bg: '#eef6f0', text: '#1e6930', border: '#a8d5b3', label: 'Completed' },
-}
+const STATUS_STYLE = MILESTONE_STATUS_STYLE
 
 const MILESTONE_STATUSES: MilestoneStatus[] = [
   'planned',

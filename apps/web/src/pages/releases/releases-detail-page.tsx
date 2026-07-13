@@ -16,6 +16,7 @@ import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { SearchInput } from '@/shared/ui/search-input'
+import { RELEASE_STATUS_STYLE } from '@/features/releases/status-colors'
 import { useProjectPermissions } from '@/features/access/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import {
@@ -30,14 +31,7 @@ import { TypeBadge, ScheduleStateBadge, PriorityBadge } from '@/entities/work-it
 
 const RELEASE_STATES: ReleaseStatus[] = ['planning', 'active', 'accepted']
 
-const STATUS_STYLE: Record<
-  ReleaseStatus,
-  { bg: string; text: string; border: string; label: string }
-> = {
-  planning: { bg: '#eef3fb', text: '#1d3f73', border: '#bdd0ef', label: 'Planning' },
-  active: { bg: '#fff7ed', text: '#92400e', border: '#fed7aa', label: 'Active' },
-  accepted: { bg: '#eaf5ed', text: '#1e6930', border: '#b9dec2', label: 'Accepted' },
-}
+const STATUS_STYLE = RELEASE_STATUS_STYLE
 
 type TabKey = 'details' | 'artifacts'
 

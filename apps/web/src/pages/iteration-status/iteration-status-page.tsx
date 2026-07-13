@@ -78,11 +78,11 @@ import {
   SIMPLIFIED_STATE_TO_SCHEDULE_STATE,
 } from '@/entities/work-item/model/types'
 
-// ── Azure-style primary color ──────────────────────────────────────────────
+// ── Accent palette (Rally navy brand; neutral Azure-style layout kept) ──────
 const AZ = {
-  primary: '#0078d4',
-  primaryHover: '#106ebe',
-  primaryLight: '#deecf9',
+  primary: '#1d3f73',
+  primaryHover: '#162d56',
+  primaryLight: '#edf2fb',
   textPrimary: '#1a1a1a',
   textSecondary: '#666666',
   textMuted: '#999999',
@@ -1362,9 +1362,9 @@ function SortHeader({
       </span>
       {isActive ? (
         dir === 'desc' ? (
-          <ChevronDown size={11} className="shrink-0 text-[#0078d4]" />
+          <ChevronDown size={11} className="shrink-0 text-[#1d3f73]" />
         ) : (
-          <ChevronUp size={11} className="shrink-0 text-[#0078d4]" />
+          <ChevronUp size={11} className="shrink-0 text-[#1d3f73]" />
         )
       ) : (
         <ChevronUp
