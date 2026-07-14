@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
 import { queryClient } from '@/shared/api/query-client'
 import { ENV } from '@/shared/config/env'
+import { grants } from '@/shared/config/permission-check'
 
 export interface WorkspaceMembership {
   workspaceId: string
@@ -109,11 +110,7 @@ export const useAuthStore = create<AuthState>()(
       hasPermission: (code) => {
         const { user } = get()
         if (!user) return false
-        if (user.permissions.includes('workspace:*')) return true
-        if (user.permissions.includes(code)) return true
-        const [ns, action] = code.split(':')
-        if (action && user.permissions.includes(`${ns}:*`)) return true
-        return false
+        return grants(user.permissions, code)
       },
     }),
     { name: 'auth-store' },

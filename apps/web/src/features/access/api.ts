@@ -16,18 +16,10 @@ import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
+import { grants } from '@/shared/config/permission-check'
 
 export const accessKeys = {
   myProjectPermissions: (projectId: string) => ['my-project-permissions', projectId] as const,
-}
-
-/** Wildcard-aware permission check: `workspace:*` / `ns:*` / exact match. */
-function grants(permissions: string[], code: string): boolean {
-  if (permissions.includes('workspace:*')) return true
-  if (permissions.includes(code)) return true
-  const [ns, action] = code.split(':')
-  if (action && permissions.includes(`${ns}:*`)) return true
-  return false
 }
 
 export interface ProjectPermissions {
