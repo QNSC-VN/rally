@@ -5,3 +5,4 @@ export * from './jwt.strategy';
 export { PermissionGuard } from '@qnsc-vn/identity';
 export * from './decorators';
 export * from './bff-session-resolver';
+export * from './rally-principal';
