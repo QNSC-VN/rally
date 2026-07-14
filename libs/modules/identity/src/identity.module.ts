@@ -2,6 +2,10 @@ import { Global, Module } from '@nestjs/common';
 import {
   AuthService,
   EntraTokenVerifier,
+  EntraOidcClient,
+  BffService,
+  BffSessionStore,
+  BFF_OPTIONS,
   USER_REPOSITORY,
   AUTH_SESSION_REPOSITORY,
   SSO_CONNECTION_REPOSITORY,
@@ -13,7 +17,7 @@ import {
   AUTH_SERVICE_OPTIONS,
   ENTRA_VERIFIER_OPTIONS,
 } from '@qnsc-vn/identity';
-import type { AuthServiceOptions, EntraVerifierOptions } from '@qnsc-vn/identity';
+import type { AuthServiceOptions, EntraVerifierOptions, BffOptions } from '@qnsc-vn/identity';
 import { AppConfigService, BFF_SESSION_RESOLVER } from '@platform';
 import { AccessModule, AccessService } from '@modules/access';
 import { WorkspaceModule, WorkspaceService } from '@modules/workspace';
@@ -21,9 +25,7 @@ import { AuditService } from '@modules/audit';
 import { IdentityController } from './interface/http/identity.controller';
 import { AuthController } from './interface/http/auth.controller';
 import { BffController } from './interface/http/bff/bff.controller';
-import { BffService } from './application/bff/bff.service';
-import { BffSessionStore } from './application/bff/bff-session.store';
-import { EntraOidcClient } from './application/bff/entra-oidc.client';
+import { RallyBffSessionResolver } from './application/bff-session.resolver';
 import { UserDrizzleRepository } from './infrastructure/persistence/user.drizzle-repository';
 import { AuthSessionDrizzleRepository } from './infrastructure/persistence/auth-session.drizzle-repository';
 import { SsoConnectionDrizzleRepository } from './infrastructure/persistence/sso-connection.drizzle-repository';
@@ -58,14 +60,16 @@ import { DrizzleTransactionRunner } from './application/transaction-runner';
     EntraTokenVerifier,
 
     // BFF (Backend-for-Frontend) same-origin OIDC session — rally's only auth
-    // path. The Entra client, session store, and guard are generic and are
-    // earmarked to move into `@qnsc-vn/identity` once opshub adopts BFF too.
+    // path. The Entra client, session store, and orchestrator now live in
+    // `@qnsc-vn/identity`; rally binds `BFF_OPTIONS` from its env config and
+    // adapts the core principal to `req.user` via `RallyBffSessionResolver`.
     EntraOidcClient,
     BffSessionStore,
     BffService,
+    RallyBffSessionResolver,
     // Bridge that lets the shared JwtAuthGuard authenticate `/api/*` requests
     // from the BFF session cookie when no Bearer token is present.
-    { provide: BFF_SESSION_RESOLVER, useExisting: BffService },
+    { provide: BFF_SESSION_RESOLVER, useExisting: RallyBffSessionResolver },
 
     // Persistence ports → rally drizzle repositories.
     { provide: USER_REPOSITORY, useClass: UserDrizzleRepository },
@@ -100,6 +104,21 @@ import { DrizzleTransactionRunner } from './application/transaction-runner';
       useFactory: (config: AppConfigService): EntraVerifierOptions => ({
         tenantId: config.get('ENTRA_TENANT_ID') ?? '',
         clientId: config.get('ENTRA_CLIENT_ID') ?? '',
+      }),
+    },
+    {
+      provide: BFF_OPTIONS,
+      inject: [AppConfigService],
+      useFactory: (config: AppConfigService): BffOptions => ({
+        nodeEnv: config.get('NODE_ENV'),
+        postLoginRedirect: config.get('BFF_POST_LOGIN_REDIRECT'),
+        sessionTtlSeconds: config.get('BFF_SESSION_TTL_SECONDS'),
+        entra: {
+          tenantId: config.get('ENTRA_TENANT_ID'),
+          clientId: config.get('ENTRA_CLIENT_ID'),
+          clientSecret: config.get('ENTRA_CLIENT_SECRET'),
+          redirectUri: config.get('ENTRA_REDIRECT_URI'),
+        },
       }),
     },
   ],
