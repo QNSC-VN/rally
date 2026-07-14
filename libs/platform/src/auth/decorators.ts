@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from './jwt.guard';
-import { PermissionGuard } from './permission.guard';
+import { PermissionGuard } from '@qnsc-vn/identity';
 import type { JwtPayload } from './jwt.strategy';
 import type { WorkspacePermission } from '@shared-kernel';
 
