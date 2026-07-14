@@ -416,27 +416,46 @@ export class WorkItemsService {
     return item;
   }
 
-  // ── Tasks (list + totals) ───────────────────────────────────────────────────
-
-  async listTasks(workspaceId: string, parentId: string): Promise<WorkItem[]> {
-    await this.getWorkItem(workspaceId, parentId);
-    return this.workItemRepo.listTasksByParent(parentId, workspaceId);
+  /**
+   * Load a work item for a READ and authorize the actor against the item's OWN
+   * project via `work_item:view`. The read counterpart of getWorkItemForWrite:
+   * a workspace-wide grant fast-paths inside assertProjectPermission, while a
+   * user who lacks view on the item's project is rejected — closing the
+   * project-isolation gap on sub-resource reads (tasks, activity, labels,
+   * time logs, watchers, attachments). Use this instead of getWorkItem() in
+   * every actor-facing read that exposes a single item or its sub-resources.
+   */
+  async getWorkItemForView(actor: JwtPayload, id: string): Promise<WorkItem> {
+    const item = await this.getWorkItem(actor.workspaceId, id);
+    await this.accessService.assertProjectPermission(
+      actor,
+      item.projectId,
+      PERMISSION.WORK_ITEM_VIEW,
+    );
+    return item;
   }
 
-  async getTaskTotals(workspaceId: string, parentId: string): Promise<TaskTotals> {
-    await this.getWorkItem(workspaceId, parentId);
-    return this.workItemRepo.getTaskTotals(parentId, workspaceId);
+  // ── Tasks (list + totals) ───────────────────────────────────────────────────
+
+  async listTasks(actor: JwtPayload, parentId: string): Promise<WorkItem[]> {
+    await this.getWorkItemForView(actor, parentId);
+    return this.workItemRepo.listTasksByParent(parentId, actor.workspaceId);
+  }
+
+  async getTaskTotals(actor: JwtPayload, parentId: string): Promise<TaskTotals> {
+    await this.getWorkItemForView(actor, parentId);
+    return this.workItemRepo.getTaskTotals(parentId, actor.workspaceId);
   }
 
   // ── Activity (Revision History) ──────────────────────────────────────────────
 
   async getActivity(
-    workspaceId: string,
+    actor: JwtPayload,
     workItemId: string,
     args: { limit: number; offset: number },
   ): Promise<{ items: ActivityLog[]; total: number }> {
-    await this.getWorkItem(workspaceId, workItemId);
-    return this.activityRepo.listByWorkItem(workItemId, workspaceId, args);
+    await this.getWorkItemForView(actor, workItemId);
+    return this.activityRepo.listByWorkItem(workItemId, actor.workspaceId, args);
   }
 
   // ── Update ────────────────────────────────────────────────────────────────
@@ -872,10 +891,10 @@ export class WorkItemsService {
   // ── Labels ────────────────────────────────────────────────────────────────
 
   async getWorkItemLabels(
-    workspaceId: string,
+    actor: JwtPayload,
     id: string,
   ): Promise<Array<{ id: string; name: string; color: string }>> {
-    await this.getWorkItem(workspaceId, id);
+    await this.getWorkItemForView(actor, id);
     return this.workItemRepo.listLabels(id);
   }
 
@@ -895,12 +914,12 @@ export class WorkItemsService {
 
   @Span('work-items.list-time-logs')
   async listTimeLogs(
-    workspaceId: string,
+    actor: JwtPayload,
     workItemId: string,
     args: { page: number; pageSize: number },
   ): Promise<{ items: TimeLog[]; total: number }> {
-    await this.getWorkItem(workspaceId, workItemId);
-    return this.timeLogRepo.listByWorkItem(workItemId, workspaceId, {
+    await this.getWorkItemForView(actor, workItemId);
+    return this.timeLogRepo.listByWorkItem(workItemId, actor.workspaceId, {
       limit: args.pageSize,
       offset: (args.page - 1) * args.pageSize,
     });
@@ -974,9 +993,9 @@ export class WorkItemsService {
   // ── Watchers ──────────────────────────────────────────────────────────────
 
   @Span('work-items.list-watchers')
-  async listWatchers(workspaceId: string, workItemId: string): Promise<Watcher[]> {
-    await this.getWorkItem(workspaceId, workItemId);
-    return this.watcherRepo.listByWorkItem(workItemId, workspaceId);
+  async listWatchers(actor: JwtPayload, workItemId: string): Promise<Watcher[]> {
+    await this.getWorkItemForView(actor, workItemId);
+    return this.watcherRepo.listByWorkItem(workItemId, actor.workspaceId);
   }
 
   @Span('work-items.watch')
@@ -1106,20 +1125,20 @@ export class WorkItemsService {
   }
 
   @Span('work-items.list-attachments')
-  async listAttachments(workspaceId: string, workItemId: string): Promise<Attachment[]> {
-    await this.getWorkItem(workspaceId, workItemId);
-    return this.attachmentRepo.listByWorkItem(workItemId, workspaceId);
+  async listAttachments(actor: JwtPayload, workItemId: string): Promise<Attachment[]> {
+    await this.getWorkItemForView(actor, workItemId);
+    return this.attachmentRepo.listByWorkItem(workItemId, actor.workspaceId);
   }
 
   @Span('work-items.get-attachment-download-url')
   async getAttachmentDownloadUrl(
-    workspaceId: string,
+    actor: JwtPayload,
     workItemId: string,
     attachmentId: string,
   ): Promise<{ downloadUrl: string }> {
-    await this.getWorkItem(workspaceId, workItemId);
+    await this.getWorkItemForView(actor, workItemId);
 
-    const attachment = await this.attachmentRepo.findById(attachmentId, workspaceId);
+    const attachment = await this.attachmentRepo.findById(attachmentId, actor.workspaceId);
     if (!attachment || attachment.workItemId !== workItemId || attachment.status !== 'completed') {
       throw new NotFoundException('ATTACHMENT_NOT_FOUND', 'Attachment not found');
     }
