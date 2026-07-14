@@ -13,6 +13,7 @@ const now = new Date('2024-06-01');
 const mockActor = {
   sub: 'user-1',
   workspaceId: 'ws-1',
+  contextId: 'ws-1',
   sessionId: 's1',
   jti: 'j1',
   iat: 0,
@@ -20,6 +21,7 @@ const mockActor = {
   iss: 'rally',
   aud: 'rally-app',
   permissions: [] as string[],
+  claims: { permissions: [] as string[] },
   authMethod: 'sso' as const,
 };
 
