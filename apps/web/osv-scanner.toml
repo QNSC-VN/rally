@@ -1,0 +1,6 @@
+# Accepted dependency advisories (osv-scanner). Each MUST have a reason + review date.
+# osv-scanner auto-discovers this file next to apps/web/pnpm-lock.yaml under `--recursive`.
+[[IgnoredVulns]]
+id = "GHSA-h67p-54hq-rp68"
+ignoreUntil = 2026-10-14T00:00:00Z
+reason = "js-yaml 4.1.1 (CVSS 5.3 medium), transitive in apps/web; no direct fix path yet. Renovate will bump when a fix lands; re-triage by ignoreUntil."

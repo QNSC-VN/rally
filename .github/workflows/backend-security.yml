@@ -31,4 +31,6 @@ jobs:
     with:
       product: rally
       image_target: api
+      semgrep_blocking: true
+      osv_blocking: true
     # security.yml declares no secrets — nothing to pass (no `secrets: inherit`).
