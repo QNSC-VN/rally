@@ -50,13 +50,13 @@ describe('useColumnDrag', () => {
     expect(result.current.dropIndicator).toBeNull()
   })
 
-  it('fires onReorder(from, target) on drop and clears state', () => {
+  it('fires onReorder(from, target, position) on drop and clears state', () => {
     const onReorder = vi.fn()
     const { result } = renderHook(() => useColumnDrag<K>({ onReorder }))
     act(() => result.current.handleDragStart('name', dragEvent()))
     act(() => result.current.handleDragOver('owner', dragEvent({ clientX: 10 })))
     act(() => result.current.handleDrop(dragEvent()))
-    expect(onReorder).toHaveBeenCalledWith('name', 'owner')
+    expect(onReorder).toHaveBeenCalledWith('name', 'owner', 'before')
     expect(result.current.activeDragKey).toBeNull()
     expect(result.current.dropIndicator).toBeNull()
   })

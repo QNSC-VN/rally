@@ -7,8 +7,8 @@
  */
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { ChevronLeft, Filter, Loader2, Plus } from 'lucide-react'
-import { SearchInput } from '@/shared/ui/search-input'
+import { ChevronLeft, Loader2, Plus } from 'lucide-react'
+import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { Spinner } from '@/shared/ui/spinner'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { NativeSelect, InlineSelect } from '@/shared/ui/native-select'
@@ -77,7 +77,6 @@ export function IterationsPage() {
   const { data: iterations = [], isLoading, isError } = useIterations(projectId)
 
   const [search, setSearch] = useState('')
-  const [showFilters, setShowFilters] = useState(false)
   const [stateFilter, setStateFilter] = useState<'all' | IterationState>('all')
   const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({
     key: 'startDate',
@@ -133,20 +132,25 @@ export function IterationsPage() {
     return <IterationDetail id={detailId} canManage={canManage} onBack={() => setDetailId(null)} />
   }
 
-  const tableWidth = COLUMNS.reduce((t, c) => t + c.width, 0) + 40
+  const tableWidth = COLUMNS.reduce((t, c) => t + c.width, 0) + 64
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Toolbar */}
-      <div
-        className="flex shrink-0 items-end gap-2 px-4 py-2"
-        style={{ backgroundColor: BRAND.surface, borderBottom: `1px solid ${BRAND.borderSubtle}` }}
-      >
-        <div className="mr-2 flex min-w-[150px] flex-col items-start gap-1.5">
-          <h2 className="text-[13px] font-semibold" style={{ color: BRAND.textPrimary }}>
-            Timeboxes
-          </h2>
-          {canManage && (
+      <PageToolbar
+        title="Timeboxes"
+        search={{
+          value: search,
+          onChange: (v) => {
+            setSearch(v)
+            setPage(1)
+          },
+          placeholder: 'Search iterations…',
+          ariaLabel: 'Search iterations',
+          width: 190,
+        }}
+        actions={
+          canManage ? (
             <button
               onClick={() => setShowCreate(true)}
               className="flex items-center gap-1.5 rounded px-3 py-1 text-[11px] font-semibold text-white"
@@ -154,39 +158,12 @@ export function IterationsPage() {
             >
               <Plus size={12} /> Create Iteration
             </button>
-          )}
-        </div>
-        <SearchInput
-          value={search}
-          onChange={(v) => {
-            setSearch(v)
-            setPage(1)
-          }}
-          placeholder="Search iterations..."
-          ariaLabel="Search iterations"
-          width={190}
-        />
-        <button
-          onClick={() => setShowFilters((p) => !p)}
-          className="flex items-center gap-1.5 rounded px-3 py-1 text-[11px] font-semibold"
-          style={{
-            border: '1px solid #bdd0ef',
-            color: BRAND.primaryLight,
-            backgroundColor: showFilters || stateFilter !== 'all' ? '#edf2fb' : '#fff',
-          }}
-        >
-          <Filter size={12} /> {showFilters ? 'Hide filter' : 'Show filter'}
-          {stateFilter !== 'all' ? ' (1)' : ''}
-        </button>
-        <div className="flex-1" />
-      </div>
-
-      {showFilters && (
-        <div
-          className="shrink-0 px-4 py-3"
-          style={{ backgroundColor: '#f5f8fc', borderBottom: '1px solid #cfdced' }}
-        >
-          <div className="flex items-center gap-2">
+          ) : undefined
+        }
+        activeFilterCount={stateFilter !== 'all' ? 1 : 0}
+        defaultFiltersOpen={stateFilter !== 'all'}
+        filters={
+          <>
             <div
               className="flex items-center gap-1.5 rounded px-2 py-1.5"
               style={{ backgroundColor: BRAND.surface, border: `1px solid ${BRAND.borderSubtle}` }}
@@ -218,9 +195,9 @@ export function IterationsPage() {
                 Clear filters
               </button>
             )}
-          </div>
-        </div>
-      )}
+          </>
+        }
+      />
 
       {/* Table */}
       <div
@@ -236,7 +213,7 @@ export function IterationsPage() {
                 borderBottom: `1px solid ${BRAND.borderSubtle}`,
               }}
             >
-              <div className="w-10 shrink-0" />
+              <div className="w-16 shrink-0" />
               {COLUMNS.map((c) => {
                 const active = sort.key === c.key
                 return (
@@ -283,14 +260,16 @@ export function IterationsPage() {
                   }}
                 >
                   <div
-                    className="w-10 shrink-0 truncate px-2 font-mono text-[10px]"
+                    className="w-16 shrink-0 truncate px-2 font-mono text-[10px]"
                     style={{ color: BRAND.textMuted }}
+                    title={it.iterationKey ?? ''}
                   >
                     {it.iterationKey ?? ''}
                   </div>
                   <div
                     className="shrink-0 truncate px-2 text-[11px] font-medium"
                     style={{ width: COLUMNS[0].width, color: BRAND.textPrimary }}
+                    title={it.name}
                   >
                     {it.name}
                   </div>

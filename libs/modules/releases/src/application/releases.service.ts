@@ -1,14 +1,12 @@
-import {
-  Inject,
-  Injectable,
-  Logger,
-  NotFoundException,
-  PreconditionFailedException,
-  BadRequestException,
-} from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
 import { and, eq, isNull, sql, desc, lt } from 'drizzle-orm';
-import { InjectDrizzle, buildPageResult } from '@platform';
+import {
+  InjectDrizzle,
+  buildPageResult,
+  NotFoundException,
+  PreconditionFailedException,
+} from '@platform';
 import type { JwtPayload, CursorPayload, PagedResult, DrizzleDB } from '@platform';
 import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
@@ -65,7 +63,10 @@ export class ReleasesService {
 
     // Validate date range: releaseDate >= startDate
     if (opts.startDate && opts.releaseDate && opts.releaseDate < opts.startDate) {
-      throw new BadRequestException('Release date must be >= start date');
+      throw new PreconditionFailedException(
+        'RELEASE_INVALID_DATE_RANGE',
+        'Release date must be >= start date',
+      );
     }
 
     const release = await this.releaseRepo.create({
@@ -110,7 +111,8 @@ export class ReleasesService {
     if (input.status && input.status !== release.status) {
       const allowed = RELEASE_TRANSITIONS[release.status] ?? [];
       if (!allowed.includes(input.status)) {
-        throw new BadRequestException(
+        throw new PreconditionFailedException(
+          'RELEASE_INVALID_TRANSITION',
           `Invalid release transition: ${release.status} → ${input.status}. Allowed: ${allowed.join(', ') || 'none (terminal)'}`,
         );
       }
@@ -124,7 +126,10 @@ export class ReleasesService {
     const startDate = input.startDate !== undefined ? input.startDate : release.startDate;
     const releaseDate = input.releaseDate !== undefined ? input.releaseDate : release.releaseDate;
     if (startDate && releaseDate && releaseDate < startDate) {
-      throw new BadRequestException('Release date must be >= start date');
+      throw new PreconditionFailedException(
+        'RELEASE_INVALID_DATE_RANGE',
+        'Release date must be >= start date',
+      );
     }
 
     return this.releaseRepo.update(id, input);
@@ -288,7 +293,7 @@ export class ReleasesService {
   async getReleaseBurndown(workspaceId: string, releaseId: string) {
     const release = await this.releaseRepo.findById(releaseId);
     if (!release || release.workspaceId !== workspaceId) {
-      throw new NotFoundException('Release not found');
+      throw new NotFoundException('RELEASE_NOT_FOUND', 'Release not found');
     }
 
     const snapshots = await this.db

@@ -1,9 +1,6 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
-import {
-  workItemTypeEnum,
-  workItemScheduleStateEnum,
-} from '../../../../../../../db/schema/enums';
+import { workItemTypeEnum, workItemScheduleStateEnum } from '../../../../../../../db/schema/enums';
 
 export const IterationStatusMetricsSchema = z.object({
   plannedVelocityPercent: z.number().int(),
@@ -24,11 +21,17 @@ export const IterationStatusItemSchema = z.object({
   scheduleState: z.enum(workItemScheduleStateEnum.enumValues),
   iterationId: z.string().uuid().nullable(),
   isBlocked: z.boolean(),
+  blockedReason: z.string().nullable(),
   planEstimate: z.number().int().nullable(),
   taskEstimate: z.number(),
   toDo: z.number(),
   assigneeId: z.string().uuid().nullable(),
   rank: z.string(),
+  featureKey: z.string().nullable(),
+  featureTitle: z.string().nullable(),
+  defectCount: z.number().int(),
+  openDefectCount: z.number().int(),
+  milestones: z.array(z.string()),
 });
 
 export const IterationSummarySchema = z.object({
@@ -58,4 +61,6 @@ export const CreateIterationItemResponseSchema = z.object({
   itemKey: z.string(),
 });
 
-export class CreateIterationItemResponseDto extends createZodDto(CreateIterationItemResponseSchema) {}
+export class CreateIterationItemResponseDto extends createZodDto(
+  CreateIterationItemResponseSchema,
+) {}

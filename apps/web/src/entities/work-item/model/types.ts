@@ -74,6 +74,20 @@ export const SCHEDULE_STATE_LABEL: Record<ScheduleState, string> = {
   [ScheduleState.Released]: 'Released',
 }
 
+/**
+ * Human-readable, proper-cased priority labels for dropdowns/menus.
+ * Single source of truth — do not hand-capitalize raw enum values in pages.
+ * (The badge uses WORK_ITEM_PRIORITY_CONFIG.label which renders "—" for None;
+ * selectable lists should show the word "None" instead.)
+ */
+export const PRIORITY_LABEL: Record<WorkItemPriority, string> = {
+  [WorkItemPriority.None]: 'None',
+  [WorkItemPriority.Low]: 'Low',
+  [WorkItemPriority.Normal]: 'Normal',
+  [WorkItemPriority.High]: 'High',
+  [WorkItemPriority.Urgent]: 'Urgent',
+}
+
 export interface StatusBadgeStyle {
   color: string
   bg: string

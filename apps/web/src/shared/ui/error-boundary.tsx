@@ -24,8 +24,10 @@ export class PageErrorBoundary extends Component<Props, State> {
   state: State = { hasError: false, errorMessage: null }
 
   static getDerivedStateFromError(error: unknown): State {
-    const message =
-      error instanceof Error ? error.message : 'An unexpected error occurred.'
+    // Client-side render crash — deliberately distinct copy from the backend's
+    // 500 "An unexpected error occurred" so a failure can be traced to the right
+    // layer (browser render vs server request).
+    const message = error instanceof Error ? error.message : 'This page failed to render.'
     return { hasError: true, errorMessage: message }
   }
 
@@ -56,11 +58,12 @@ export class PageErrorBoundary extends Component<Props, State> {
             <AlertTriangle size={30} style={{ color: '#dc2626' }} />
           </div>
           <div className="text-center">
-            <p className="text-[22px] font-bold leading-none" style={{ color: BRAND.textPrimary }}>
+            <p className="text-[22px] leading-none font-bold" style={{ color: BRAND.textPrimary }}>
               Something went wrong
             </p>
             <p className="mt-2 max-w-xs text-[13px]" style={{ color: BRAND.textSecondary }}>
-              {this.state.errorMessage ?? 'An unexpected error occurred on this page.'}
+              {this.state.errorMessage ??
+                'This page failed to render. Try again, or reload if it persists.'}
             </p>
           </div>
           <button

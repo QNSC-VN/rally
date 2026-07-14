@@ -158,7 +158,7 @@ function DetailsTab({
 // ── Tasks tab ─────────────────────────────────────────────────────────────────
 
 // TASK-FR-003: columns Rank, ID, Name, State, Owner, Project, Teams, To Do, Actuals, Estimate.
-const TASK_GRID = '44px 56px 72px 1fr 130px 150px 110px 120px 60px 60px 80px'
+const TASK_GRID = '44px 56px 108px 1fr 130px 150px 110px 120px 60px 60px 80px'
 const TASK_COLS = [
   '',
   'Rank',
@@ -221,7 +221,7 @@ function TasksTab({ workItemId, projectId }: { workItemId: string; projectId: st
         </div>
       ) : (
         <div className="overflow-x-auto rounded bg-white" style={{ border: '1px solid #dde2ea' }}>
-          <div style={{ minWidth: 1180 }}>
+          <div style={{ minWidth: 1216 }}>
             {/* Header row */}
             <div
               className="grid h-10 items-center"
@@ -309,11 +309,11 @@ function TasksTab({ workItemId, projectId }: { workItemId: string; projectId: st
                 <span className="px-3 font-mono text-[11px]" style={{ color: '#5c6478' }}>
                   {task.rank ?? '—'}
                 </span>
-                <span className="flex items-center gap-1 px-3">
+                <span className="flex items-center gap-1 overflow-hidden px-3">
                   <TypeBadge type={task.type} />
                   <span
                     className="font-mono text-[11px] hover:underline"
-                    style={{ color: '#2558a6' }}
+                    style={{ color: '#2558a6', whiteSpace: 'nowrap' }}
                   >
                     {task.itemKey}
                   </span>
@@ -688,6 +688,29 @@ function DetailSidebar({
                   {label}
                 </option>
               ))}
+            </NativeSelect>
+          </FormField>
+        )}
+
+        {/* Environment — Defect only */}
+        {isDefect && (
+          <FormField label="Environment">
+            <NativeSelect
+              value={item.foundInEnvironment ?? ''}
+              onChange={(e) =>
+                onUpdate({
+                  foundInEnvironment:
+                    (e.target.value as 'development' | 'staging' | 'production' | 'testing') ||
+                    null,
+                })
+              }
+              disabled={disabled}
+            >
+              <option value="">Not specified</option>
+              <option value="development">Development</option>
+              <option value="staging">Staging</option>
+              <option value="production">Production</option>
+              <option value="testing">Testing</option>
             </NativeSelect>
           </FormField>
         )}

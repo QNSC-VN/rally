@@ -590,6 +590,7 @@ export const tasks = workSchema.table(
     parentId: uuid('parent_id')
       .notNull()
       .references(() => workItems.id, { onDelete: 'cascade' }),
+    itemKey: varchar('item_key', { length: 30 }).notNull(),
     title: varchar('title', { length: 500 }).notNull(),
     description: text('description'),
     state: taskStateEnum('state').notNull().default('defined'),
@@ -614,6 +615,7 @@ export const tasks = workSchema.table(
     assigneeIdx: index('ix_tasks_assignee').on(t.assigneeId),
     teamIdx: index('ix_tasks_team').on(t.teamId),
     rankIdx: index('ix_tasks_rank').on(t.parentId, t.rank),
+    itemKeyIdx: uniqueIndex('uq_task_item_key').on(t.projectId, t.itemKey),
   }),
 );
 

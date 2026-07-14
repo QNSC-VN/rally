@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
 import { TeamStatusService } from './team-status.service';
-import { BadRequestException } from '@nestjs/common';
+import { PreconditionFailedException, ValidationException } from '@platform';
 import { TEAM_STATUS_REPOSITORY } from '../domain/ports/team-status.repository';
 import { IterationsService } from '@modules/iterations';
 import { WorkItemsService } from '@modules/work-items';
@@ -127,7 +127,7 @@ describe('TeamStatusService', () => {
       });
 
       await expect(service.getTeamStatus(actor, 'proj-1', 'team-a', 'it-1')).rejects.toThrow(
-        BadRequestException,
+        PreconditionFailedException,
       );
     });
 
@@ -332,7 +332,7 @@ describe('TeamStatusService', () => {
           userId: 'alice',
           capacityHours: -5,
         }),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow(ValidationException);
       expect(repo.upsertCapacity).not.toHaveBeenCalled();
     });
 
@@ -359,7 +359,7 @@ describe('TeamStatusService', () => {
       });
 
       await expect(service.updateTask(actor, 'task-1', { title: '   ' })).rejects.toThrow(
-        BadRequestException,
+        ValidationException,
       );
     });
 

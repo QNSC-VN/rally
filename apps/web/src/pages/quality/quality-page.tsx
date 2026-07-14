@@ -9,7 +9,7 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
 import { AlertTriangle, PackageOpen, Plus } from 'lucide-react'
-import { SearchInput } from '@/shared/ui/search-input'
+import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { BRAND } from '@/shared/config/brand'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
@@ -549,6 +549,7 @@ export function QualityPage() {
   const [releaseFilter, setReleaseFilter] = useState('all')
   const [rootCauseFilter, setRootCauseFilter] = useState('all')
   const [resolutionFilter, setResolutionFilter] = useState('all')
+  const [defectStateFilter, setDefectStateFilter] = useState('all')
   const [showLogDefect, setShowLogDefect] = useState(false)
   const { data: members } = useProjectMembers(project?.projectId)
   const { data: releases } = useReleases(project?.projectId)
@@ -563,6 +564,7 @@ export function QualityPage() {
     releaseId: releaseFilter !== 'all' ? releaseFilter : undefined,
     rootCause: rootCauseFilter,
     resolution: resolutionFilter,
+    defectState: defectStateFilter,
   })
 
   const defects = data?.data ?? []
@@ -607,121 +609,137 @@ export function QualityPage() {
       </div>
 
       {/* Toolbar */}
-      <div
-        className="flex shrink-0 flex-wrap items-center gap-1.5 bg-white px-4 py-1.5"
-        style={{ borderBottom: `1px solid ${BRAND.border}` }}
-      >
-        <h2 className="mr-1 text-[13px] font-semibold" style={{ color: '#1a2234' }}>
-          Defects
-        </h2>
-        <SearchInput
-          value={search}
-          onChange={setSearch}
-          placeholder="Search defects..."
-          ariaLabel="Search defects"
-          width={140}
-        />
+      <PageToolbar
+        title="Defects"
+        search={{
+          value: search,
+          onChange: setSearch,
+          placeholder: 'Search defects…',
+          ariaLabel: 'Search defects',
+          width: 160,
+        }}
+        actions={
+          canManage ? (
+            <button
+              onClick={() => setShowLogDefect(true)}
+              className="flex cursor-pointer items-center gap-1.5 rounded px-3 py-1 text-[11px] font-semibold text-white hover:brightness-95"
+              style={{ backgroundColor: BRAND.primary }}
+            >
+              <Plus size={12} />
+              Log Defect
+            </button>
+          ) : undefined
+        }
+        activeFilterCount={
+          (severityFilter !== 'all' ? 1 : 0) +
+          (envFilter !== 'all' ? 1 : 0) +
+          (priorityFilter !== 'all' ? 1 : 0) +
+          (stateFilter !== 'all' ? 1 : 0) +
+          (defectStateFilter !== 'all' ? 1 : 0) +
+          (ownerFilter !== 'all' ? 1 : 0) +
+          (releaseFilter !== 'all' ? 1 : 0) +
+          (rootCauseFilter !== 'all' ? 1 : 0) +
+          (resolutionFilter !== 'all' ? 1 : 0)
+        }
+        filters={
+          <>
+            <FilterSelect
+              label="Severity"
+              value={severityFilter}
+              onChange={setSeverityFilter}
+              options={[{ value: 'all', label: 'All Severity' }, ...SEVERITY_OPTIONS]}
+            />
 
-        <FilterSelect
-          label="Severity"
-          value={severityFilter}
-          onChange={setSeverityFilter}
-          options={[{ value: 'all', label: 'All Severity' }, ...SEVERITY_OPTIONS]}
-        />
+            <FilterSelect
+              label="Environment"
+              value={envFilter}
+              onChange={setEnvFilter}
+              options={[
+                { value: 'all', label: 'All Env' },
+                { value: 'development', label: 'Development' },
+                { value: 'staging', label: 'Staging' },
+                { value: 'production', label: 'Production' },
+                { value: 'testing', label: 'Testing' },
+              ]}
+            />
 
-        <FilterSelect
-          label="Environment"
-          value={envFilter}
-          onChange={setEnvFilter}
-          options={[
-            { value: 'all', label: 'All Env' },
-            { value: 'development', label: 'Development' },
-            { value: 'staging', label: 'Staging' },
-            { value: 'production', label: 'Production' },
-            { value: 'testing', label: 'Testing' },
-          ]}
-        />
+            <FilterSelect
+              label="Priority"
+              value={priorityFilter}
+              onChange={setPriorityFilter}
+              options={[{ value: 'all', label: 'All Priority' }, ...PRIORITY_OPTIONS]}
+            />
 
-        <FilterSelect
-          label="Priority"
-          value={priorityFilter}
-          onChange={setPriorityFilter}
-          options={[{ value: 'all', label: 'All Priority' }, ...PRIORITY_OPTIONS]}
-        />
+            <FilterSelect
+              label="Flow State"
+              value={stateFilter}
+              onChange={setStateFilter}
+              options={[{ value: 'all', label: 'All Flow States' }, ...FLOW_STATE_OPTIONS]}
+            />
 
-        <FilterSelect
-          label="Flow State"
-          value={stateFilter}
-          onChange={setStateFilter}
-          options={[{ value: 'all', label: 'All Flow States' }, ...FLOW_STATE_OPTIONS]}
-        />
+            <FilterSelect
+              label="Defect State"
+              value={defectStateFilter}
+              onChange={setDefectStateFilter}
+              options={[{ value: 'all', label: 'All Defect States' }, ...DEFECT_STATE_OPTIONS]}
+            />
 
-        <FilterSelect
-          label="Owner"
-          value={ownerFilter}
-          onChange={setOwnerFilter}
-          options={[
-            { value: 'all', label: 'All Owners' },
-            ...(members ?? []).map((m) => ({
-              value: m.userId,
-              label: m.displayName ?? m.email ?? m.userId,
-            })),
-          ]}
-        />
+            <FilterSelect
+              label="Owner"
+              value={ownerFilter}
+              onChange={setOwnerFilter}
+              options={[
+                { value: 'all', label: 'All Owners' },
+                ...(members ?? []).map((m) => ({
+                  value: m.userId,
+                  label: m.displayName ?? m.email ?? m.userId,
+                })),
+              ]}
+            />
 
-        <FilterSelect
-          label="Release"
-          value={releaseFilter}
-          onChange={setReleaseFilter}
-          options={[
-            { value: 'all', label: 'All Releases' },
-            ...(releases ?? []).map((r) => ({ value: r.id, label: r.name })),
-          ]}
-        />
+            <FilterSelect
+              label="Release"
+              value={releaseFilter}
+              onChange={setReleaseFilter}
+              options={[
+                { value: 'all', label: 'All Releases' },
+                ...(releases ?? []).map((r) => ({ value: r.id, label: r.name })),
+              ]}
+            />
 
-        <FilterSelect
-          label="Root Cause"
-          value={rootCauseFilter}
-          onChange={setRootCauseFilter}
-          options={[
-            { value: 'all', label: 'All Root Causes' },
-            { value: 'requirements', label: 'Requirements' },
-            { value: 'design', label: 'Design' },
-            { value: 'code', label: 'Code' },
-            { value: 'test', label: 'Test' },
-            { value: 'integration', label: 'Integration' },
-            { value: 'other', label: 'Other' },
-          ]}
-        />
+            <FilterSelect
+              label="Root Cause"
+              value={rootCauseFilter}
+              onChange={setRootCauseFilter}
+              options={[
+                { value: 'all', label: 'All Root Causes' },
+                { value: 'requirements', label: 'Requirements' },
+                { value: 'design', label: 'Design' },
+                { value: 'code', label: 'Code' },
+                { value: 'test', label: 'Test' },
+                { value: 'integration', label: 'Integration' },
+                { value: 'other', label: 'Other' },
+              ]}
+            />
 
-        <FilterSelect
-          label="Resolution"
-          value={resolutionFilter}
-          onChange={setResolutionFilter}
-          options={[
-            { value: 'all', label: 'All Resolutions' },
-            { value: 'fixed', label: 'Fixed' },
-            { value: 'wont_fix', label: "Won't Fix" },
-            { value: 'duplicate', label: 'Duplicate' },
-            { value: 'cannot_reproduce', label: 'Cannot Reproduce' },
-            { value: 'deferred', label: 'Deferred' },
-            { value: 'by_design', label: 'By Design' },
-          ]}
-        />
-
-        <div className="flex-1" />
-
-        {canManage && (
-          <button
-            onClick={() => setShowLogDefect(true)}
-            className="ml-1 flex cursor-pointer items-center gap-1.5 rounded px-3 py-1 text-[11px] font-semibold text-white hover:brightness-95"
-            style={{ backgroundColor: '#1d3f73' }}
-          >
-            <Plus size={12} />
-            Log Defect
-          </button>
-        )}
-      </div>
+            <FilterSelect
+              label="Resolution"
+              value={resolutionFilter}
+              onChange={setResolutionFilter}
+              options={[
+                { value: 'all', label: 'All Resolutions' },
+                { value: 'unresolved', label: 'Open (Unresolved)' },
+                { value: 'fixed', label: 'Fixed' },
+                { value: 'wont_fix', label: "Won't Fix" },
+                { value: 'duplicate', label: 'Duplicate' },
+                { value: 'cannot_reproduce', label: 'Cannot Reproduce' },
+                { value: 'deferred', label: 'Deferred' },
+                { value: 'by_design', label: 'By Design' },
+              ]}
+            />
+          </>
+        }
+      />
 
       {/* Defect table */}
       <div className="flex flex-1 overflow-hidden bg-white">

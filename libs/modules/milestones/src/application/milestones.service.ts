@@ -1,6 +1,6 @@
-import { Inject, Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
-import { InjectDrizzle, NotFoundException } from '@platform';
+import { InjectDrizzle, NotFoundException, PreconditionFailedException } from '@platform';
 import type { JwtPayload, CursorPayload, PagedResult, DrizzleDB } from '@platform';
 import { and, eq, isNull, sql, inArray } from 'drizzle-orm';
 import { ProjectsService } from '@modules/projects';
@@ -267,7 +267,8 @@ export class MilestonesService {
     if (input.status && input.status !== milestone.status) {
       const allowed = MILESTONE_TRANSITIONS[milestone.status] ?? [];
       if (!allowed.includes(input.status)) {
-        throw new BadRequestException(
+        throw new PreconditionFailedException(
+          'MILESTONE_INVALID_TRANSITION',
           `Invalid milestone transition: ${milestone.status} → ${input.status}. Allowed: ${allowed.join(', ') || 'none (terminal)'}`,
         );
       }

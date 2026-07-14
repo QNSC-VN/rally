@@ -2389,11 +2389,17 @@ export interface components {
           'idea' | 'defined' | 'ready' | 'in_progress' | 'completed' | 'accepted' | 'released'
         iterationId: string | null
         isBlocked: boolean
+        blockedReason: string | null
         planEstimate: number | null
         taskEstimate: number
         toDo: number
         assigneeId: string | null
         rank: string
+        featureKey: string | null
+        featureTitle: string | null
+        defectCount: number
+        openDefectCount: number
+        milestones: string[]
       }[]
       pageInfo: {
         nextCursor: string | null
@@ -5061,7 +5067,7 @@ export interface operations {
         scheduleState?:
           'idea' | 'defined' | 'ready' | 'in_progress' | 'completed' | 'accepted' | 'released'
         priority?: 'none' | 'low' | 'normal' | 'high' | 'urgent'
-        assigneeId?: string
+        assigneeId?: string | 'unassigned'
         teamId?: string
         iterationId?: string
         releaseId?: string
@@ -5185,7 +5191,7 @@ export interface operations {
         scheduleState?:
           'idea' | 'defined' | 'ready' | 'in_progress' | 'completed' | 'accepted' | 'released'
         priority?: 'none' | 'low' | 'normal' | 'high' | 'urgent'
-        assigneeId?: string
+        assigneeId?: string | 'unassigned'
         teamId?: string
         iterationId?: string
         releaseId?: string
@@ -8740,7 +8746,15 @@ export interface operations {
         releaseId?: string
         rootCause?: 'all' | 'requirements' | 'design' | 'code' | 'test' | 'integration' | 'other'
         resolution?:
-          'all' | 'fixed' | 'wont_fix' | 'duplicate' | 'cannot_reproduce' | 'deferred' | 'by_design'
+          | 'all'
+          | 'unresolved'
+          | 'fixed'
+          | 'wont_fix'
+          | 'duplicate'
+          | 'cannot_reproduce'
+          | 'deferred'
+          | 'by_design'
+        defectState?: 'all' | 'submitted' | 'open' | 'fixed' | 'closed' | 'closed_declined'
       }
       header?: never
       path?: never

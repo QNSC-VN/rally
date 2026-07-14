@@ -50,6 +50,12 @@ describe('useColumnLayout', () => {
     expect(stored.order).toEqual(['id', 'status', 'name'])
   })
 
+  it('reorders a column after another (left-to-right drag)', () => {
+    const { result } = renderHook(() => useColumnLayout(COLUMNS, KEY))
+    act(() => result.current.reorder('id', 'name', 'after'))
+    expect(result.current.order).toEqual(['name', 'id', 'status'])
+  })
+
   it('is a no-op when reordering a column onto itself', () => {
     const { result } = renderHook(() => useColumnLayout(COLUMNS, KEY))
     act(() => result.current.reorder('name', 'name'))

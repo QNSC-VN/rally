@@ -18,10 +18,7 @@ export class QualityController {
   @RequireProjectPermission('quality:view', 'query', 'projectId')
   @ApiOperation({ summary: 'List defects with metrics for a project' })
   @ApiCommonErrors(400, 401, 403, 404)
-  listDefects(
-    @CurrentUser() user: JwtPayload,
-    @Query() query: DefectQueryDto,
-  ) {
+  listDefects(@CurrentUser() user: JwtPayload, @Query() query: DefectQueryDto) {
     return this.qualityService.getDefects(user, query.projectId, {
       search: query.search,
       severity: query.severity,
@@ -32,6 +29,7 @@ export class QualityController {
       releaseId: query.releaseId,
       rootCause: query.rootCause,
       resolution: query.resolution,
+      defectState: query.defectState,
       limit: query.limit,
     });
   }

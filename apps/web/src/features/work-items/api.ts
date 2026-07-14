@@ -69,13 +69,21 @@ export function useBacklog(projectId: string | undefined, filters: BacklogFilter
   return useQuery({
     queryKey: workItemKeys.backlog(projectId ?? '', filters as Record<string, unknown>),
     queryFn: async () => {
-      if (!projectId) return { data: [], pageInfo: { hasNextPage: false, nextCursor: null, limit: 25, total: 0 } }
+      if (!projectId)
+        return { data: [], pageInfo: { hasNextPage: false, nextCursor: null, limit: 25, total: 0 } }
       const { data, error, response } = await apiClient.GET('/v1/work-items/backlog', {
         params: {
           query: {
             projectId,
             type: filters.type as 'story' | 'defect' | undefined,
-            scheduleState: filters.scheduleState as 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'released' | undefined,
+            scheduleState: filters.scheduleState as
+              | 'idea'
+              | 'defined'
+              | 'in_progress'
+              | 'completed'
+              | 'accepted'
+              | 'released'
+              | undefined,
             assigneeId: filters.assigneeId,
             iterationId: filters.iterationId,
             releaseId: filters.releaseId,
@@ -87,7 +95,17 @@ export function useBacklog(projectId: string | undefined, filters: BacklogFilter
         },
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
-      const res = data as { data?: WorkItem[]; pageInfo?: { hasNextPage: boolean; nextCursor: string | null; limit: number; total?: number } } | undefined
+      const res = data as
+        | {
+            data?: WorkItem[]
+            pageInfo?: {
+              hasNextPage: boolean
+              nextCursor: string | null
+              limit: number
+              total?: number
+            }
+          }
+        | undefined
       return {
         data: res?.data ?? [],
         pageInfo: res?.pageInfo ?? { hasNextPage: false, nextCursor: null, limit: 50, total: 0 },
@@ -169,12 +187,12 @@ export function useChildDefects(parentId: string | undefined, projectId?: string
             projectId: projectId ?? '',
             parentId,
             type: 'defect' as const,
-            limit: 200,
+            limit: 100,
           },
         },
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
-      return ((data as { data?: WorkItem[] } | undefined)?.data ?? [])
+      return (data as { data?: WorkItem[] } | undefined)?.data ?? []
     },
     enabled: !!parentId && !!projectId,
     staleTime: 15_000,
@@ -266,7 +284,11 @@ export function useUpdateWorkItem(id: string) {
         }
       }
       // If parentId changed, also invalidate old parent's child defects
-      if (variables.parentId !== undefined && variables.parentId !== item.parentId && variables.parentId) {
+      if (
+        variables.parentId !== undefined &&
+        variables.parentId !== item.parentId &&
+        variables.parentId
+      ) {
         void qc.invalidateQueries({ queryKey: childDefectsKeys.byParent(variables.parentId) })
       }
     },
@@ -305,6 +327,39 @@ export function useDeleteWorkItem() {
     onSuccess: (projectId) => {
       void qc.invalidateQueries({ queryKey: workItemKeys.backlog(projectId) })
       void qc.invalidateQueries({ queryKey: workItemKeys.list(projectId) })
+      // Iteration Status shows work items too — refresh it after a deletion.
+      void qc.invalidateQueries({ queryKey: iterationKeys.statusAll })
+    },
+  })
+}
+
+/**
+ * Update a work item by id supplied at call time (vs. `useUpdateWorkItem(id)`
+ * which binds the id when the hook is created). Enables bulk operations that
+ * iterate over a selection — a single mutation instance can be reused for every
+ * id, which the Rules of Hooks forbid with the id-bound variant.
+ */
+export function useUpdateAnyWorkItem() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, input }: { id: string; input: UpdateWorkItemInput }) => {
+      const { data, error, response } = await apiClient.PATCH('/v1/work-items/{id}', {
+        params: { path: { id } },
+        body: input,
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as WorkItem
+    },
+    onSuccess: (item) => {
+      qc.setQueryData(workItemKeys.detail(item.id), item)
+      qc.setQueriesData({ queryKey: workItemKeys.byKey(item.itemKey, item.projectId) }, item)
+      void qc.invalidateQueries({ queryKey: workItemKeys.backlog(item.projectId) })
+      void qc.invalidateQueries({ queryKey: workItemKeys.list(item.projectId) })
+      void qc.invalidateQueries({ queryKey: iterationKeys.statusAll })
+      if (item.parentId) {
+        void qc.invalidateQueries({ queryKey: workItemKeys.tasks(item.parentId) })
+        void qc.invalidateQueries({ queryKey: workItemKeys.taskTotals(item.parentId) })
+      }
     },
   })
 }
@@ -323,7 +378,10 @@ export interface ListWorkItemsParams {
 
 export function useWorkItems(params: ListWorkItemsParams | null) {
   return useQuery({
-    queryKey: workItemKeys.list(params?.projectId ?? '', (params as unknown as Record<string, unknown>) ?? {}),
+    queryKey: workItemKeys.list(
+      params?.projectId ?? '',
+      (params as unknown as Record<string, unknown>) ?? {},
+    ),
     queryFn: async () => {
       if (!params) return []
       const { data, error, response } = await apiClient.GET('/v1/work-items', {
@@ -542,4 +600,3 @@ export function useRankAnyWorkItem() {
     },
   })
 }
-

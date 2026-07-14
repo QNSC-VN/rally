@@ -34,6 +34,8 @@ export interface IterationStatusItem {
   scheduleState: WorkItemScheduleState;
   iterationId: string | null;
   isBlocked: boolean;
+  /** work_items.blocked_reason — surfaced beside the Block flag (Rally "Blocked Reason"). */
+  blockedReason: string | null;
   /** work_items.story_points (Plan Estimate). */
   planEstimate: number | null;
   /** Rollup: sum of child task estimate hours. */
@@ -42,6 +44,16 @@ export interface IterationStatusItem {
   toDo: number;
   assigneeId: string | null;
   rank: string;
+  /** Nearest ancestor Feature key (Rally "Feature" column); null when none. */
+  featureKey: string | null;
+  /** Nearest ancestor Feature title, for the chip tooltip. */
+  featureTitle: string | null;
+  /** Count of non-deleted child defects (Rally "Defects"). */
+  defectCount: number;
+  /** Count of child defects not yet accepted/released (Rally "Defect Status"). */
+  openDefectCount: number;
+  /** Names of milestones directly assigned to this item (Rally "Milestones"). */
+  milestones: string[];
 }
 
 /** Sort keys for the Iteration Status list (mirrors the backlog list). */

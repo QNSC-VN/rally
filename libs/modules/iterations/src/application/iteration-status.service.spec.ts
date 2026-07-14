@@ -156,7 +156,7 @@ describe('IterationStatusService', () => {
   });
 
   describe('createItemInIteration', () => {
-    it('creates in the iteration project/team then assigns the iteration', async () => {
+    it('creates the item already assigned to the iteration in one step', async () => {
       iterationsService.getIteration.mockResolvedValue(
         mockIteration({ projectId: 'proj-1', teamId: 'team-a' }),
       );
@@ -171,14 +171,10 @@ describe('IterationStatusService', () => {
         'proj-1',
         'story',
         'New story',
-        expect.objectContaining({ teamId: 'team-a', storyPoints: 3 }),
+        expect.objectContaining({ teamId: 'team-a', storyPoints: 3, iterationId: 'it-1' }),
       );
-      expect(workItemsService.bulkAssignIteration).toHaveBeenCalledWith(
-        actor,
-        'proj-1',
-        ['wi-new'],
-        'it-1',
-      );
+      // Single-permission create-and-assign: no separate bulk-assignment step.
+      expect(workItemsService.bulkAssignIteration).not.toHaveBeenCalled();
     });
 
     it('creates project-scoped (no teamId) when iteration has no team', async () => {
@@ -191,19 +187,20 @@ describe('IterationStatusService', () => {
         'proj-1',
         'defect',
         'Bug',
-        expect.objectContaining({ teamId: undefined }),
+        expect.objectContaining({ teamId: undefined, iterationId: 'it-1' }),
       );
     });
 
-    it('propagates bulkAssignIteration error (e.g. task type rejected downstream)', async () => {
+    it('rejects non-backlog types (only story/defect) before creating', async () => {
       const { PreconditionFailedException: PFE } = await import('@platform');
-      workItemsService.bulkAssignIteration.mockRejectedValue(
-        new PFE('WORK_ITEM_NOT_BACKLOG_TYPE', 'Only stories and defects allowed'),
-      );
       iterationsService.getIteration.mockResolvedValue(mockIteration());
       await expect(
-        service.createItemInIteration(actor, 'it-1', { type: 'task', title: 'T' }),
+        service.createItemInIteration(actor, 'it-1', {
+          type: 'task',
+          title: 'T',
+        }),
       ).rejects.toBeInstanceOf(PFE);
+      expect(workItemsService.createWorkItem).not.toHaveBeenCalled();
     });
   });
 

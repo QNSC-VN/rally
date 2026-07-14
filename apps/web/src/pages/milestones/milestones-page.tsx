@@ -8,7 +8,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { AlertTriangle, Plus, Pencil, Trash2, PackageOpen } from 'lucide-react'
-import { SearchInput } from '@/shared/ui/search-input'
+import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { StatusBadge as StatusPill } from '@/shared/ui/status-badge'
 import { MILESTONE_STATUS_STYLE } from '@/features/milestones/status-colors'
 import { useColumnLayout, type ColumnDef } from '@/shared/lib/hooks/use-column-layout'
@@ -144,27 +144,23 @@ function MilestoneFormFields({
       </FormField>
       <div className="grid grid-cols-2 gap-3">
         <FormField label="Target Start">
-          <input
-            type="date"
-            value={targetStartDate}
-            readOnly
-            disabled
-            className="w-full cursor-not-allowed rounded-md border bg-gray-50 px-3 py-1.5 text-sm opacity-70"
-            style={{ borderColor: BRAND.border, color: '#5c6478' }}
-          />
+          <div
+            className="w-full rounded-md border bg-gray-50 px-3 py-1.5 text-sm"
+            style={{ borderColor: BRAND.border, color: targetStartDate ? '#1a2234' : '#8c94a6' }}
+          >
+            {targetStartDate || 'Not set'}
+          </div>
           <p className="mt-0.5 text-[10px]" style={{ color: '#8c94a6' }}>
             Derived from linked Releases
           </p>
         </FormField>
         <FormField label="Target End">
-          <input
-            type="date"
-            value={targetEndDate}
-            readOnly
-            disabled
-            className="w-full cursor-not-allowed rounded-md border bg-gray-50 px-3 py-1.5 text-sm opacity-70"
-            style={{ borderColor: BRAND.border, color: '#5c6478' }}
-          />
+          <div
+            className="w-full rounded-md border bg-gray-50 px-3 py-1.5 text-sm"
+            style={{ borderColor: BRAND.border, color: targetEndDate ? '#1a2234' : '#8c94a6' }}
+          >
+            {targetEndDate || 'Not set'}
+          </div>
           <p className="mt-0.5 text-[10px]" style={{ color: '#8c94a6' }}>
             Derived from linked Releases
           </p>
@@ -443,36 +439,30 @@ export function MilestonesPage() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Toolbar */}
-      <div
-        className="flex shrink-0 items-center gap-2 bg-white px-4 py-2"
-        style={{ borderBottom: `1px solid ${BRAND.border}` }}
-      >
-        <h2 className="mr-2 text-sm font-semibold" style={{ color: '#1a2234' }}>
-          Milestones
-        </h2>
-        <SearchInput
-          value={search}
-          onChange={setSearch}
-          placeholder="Search milestones..."
-          ariaLabel="Search milestones"
-          width={200}
-          iconSize={14}
-          className="rounded-md py-1.5 pl-8 text-xs"
-        />
-        <div className="flex-1" />
-        {canManage && (
-          <button
-            onClick={() => setShowCreate(true)}
-            className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-white"
-            style={{ backgroundColor: BRAND.primary }}
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = BRAND.primaryHover)}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = BRAND.primary)}
-          >
-            <Plus size={14} />
-            New Milestone
-          </button>
-        )}
-      </div>
+      <PageToolbar
+        title="Milestones"
+        search={{
+          value: search,
+          onChange: setSearch,
+          placeholder: 'Search milestones…',
+          ariaLabel: 'Search milestones',
+          width: 200,
+        }}
+        actions={
+          canManage ? (
+            <button
+              onClick={() => setShowCreate(true)}
+              className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-white"
+              style={{ backgroundColor: BRAND.primary }}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = BRAND.primaryHover)}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = BRAND.primary)}
+            >
+              <Plus size={14} />
+              New Milestone
+            </button>
+          ) : undefined
+        }
+      />
 
       {/* Table */}
       <div className="flex flex-1 overflow-hidden bg-white">

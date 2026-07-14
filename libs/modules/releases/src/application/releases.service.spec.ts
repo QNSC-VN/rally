@@ -1,10 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
-import {
-  NotFoundException,
-  PreconditionFailedException,
-  BadRequestException,
-} from '@nestjs/common';
+import { NotFoundException, PreconditionFailedException } from '@platform';
 import { ReleasesService } from './releases.service';
 import { RELEASE_REPOSITORY } from '../domain/ports/release.repository';
 import { ProjectsService } from '@modules/projects';
@@ -151,7 +147,7 @@ describe('ReleasesService', () => {
           startDate: '2024-07-01',
           releaseDate: '2024-06-01',
         }),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow(PreconditionFailedException);
     });
 
     it('allows releaseDate equal to startDate', async () => {
@@ -218,7 +214,7 @@ describe('ReleasesService', () => {
           startDate: '2024-07-01',
           releaseDate: '2024-06-01',
         }),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow(PreconditionFailedException);
     });
 
     it('throws NotFoundException when release not found', async () => {

@@ -16,6 +16,7 @@ export interface IQualityRepository {
       releaseId?: string;
       rootCause?: string;
       resolution?: string;
+      defectState?: string;
       limit?: number;
       offset?: number;
     },

@@ -6,6 +6,7 @@ import {
   workItemPriorityEnum,
   workItemScheduleStateEnum,
 } from '../../../../../../../db/schema/enums';
+import { UNASSIGNED_FILTER } from '../../../domain/work-item.types';
 
 const WORK_ITEM_TYPES = workItemTypeEnum.enumValues;
 const WORK_ITEM_PRIORITIES = workItemPriorityEnum.enumValues;
@@ -36,7 +37,8 @@ export const WorkItemQuerySchema = PageQuerySchema.extend({
   statusId: z.string().uuid().optional(),
   scheduleState: z.enum(SCHEDULE_STATES).optional(),
   priority: z.enum(WORK_ITEM_PRIORITIES).optional(),
-  assigneeId: z.string().uuid().optional(),
+  // A UUID targets one owner; the sentinel filters unassigned items (owner IS NULL).
+  assigneeId: z.union([z.string().uuid(), z.literal(UNASSIGNED_FILTER)]).optional(),
   teamId: z.string().uuid().optional(),
   iterationId: z.string().uuid().optional(),
   releaseId: z.string().uuid().optional(),
@@ -71,7 +73,9 @@ export const CreateWorkItemSchema = z.object({
   foundInEnvironment: z.enum(['development', 'staging', 'production', 'testing']).optional(),
   foundInReleaseId: z.string().uuid().nullable().optional(),
   rootCause: z.enum(['requirements', 'design', 'code', 'test', 'integration', 'other']).optional(),
-  resolution: z.enum(['fixed', 'wont_fix', 'duplicate', 'cannot_reproduce', 'deferred', 'by_design']).optional(),
+  resolution: z
+    .enum(['fixed', 'wont_fix', 'duplicate', 'cannot_reproduce', 'deferred', 'by_design'])
+    .optional(),
   devOwnerId: z.string().uuid().nullable().optional(),
   defectState: z.enum(['submitted', 'open', 'fixed', 'closed', 'closed_declined']).optional(),
   fixedInBuild: z.string().max(255).nullable().optional(),
@@ -105,12 +109,24 @@ export const UpdateWorkItemSchema = z.object({
   customFields: z.record(z.string(), z.unknown()).optional(),
   // P3.4 — Defect-specific fields
   severity: z.enum(['none', 'critical', 'high', 'medium', 'low']).nullable().optional(),
-  foundInEnvironment: z.enum(['development', 'staging', 'production', 'testing']).nullable().optional(),
+  foundInEnvironment: z
+    .enum(['development', 'staging', 'production', 'testing'])
+    .nullable()
+    .optional(),
   foundInReleaseId: z.string().uuid().nullable().optional(),
-  rootCause: z.enum(['requirements', 'design', 'code', 'test', 'integration', 'other']).nullable().optional(),
-  resolution: z.enum(['fixed', 'wont_fix', 'duplicate', 'cannot_reproduce', 'deferred', 'by_design']).nullable().optional(),
+  rootCause: z
+    .enum(['requirements', 'design', 'code', 'test', 'integration', 'other'])
+    .nullable()
+    .optional(),
+  resolution: z
+    .enum(['fixed', 'wont_fix', 'duplicate', 'cannot_reproduce', 'deferred', 'by_design'])
+    .nullable()
+    .optional(),
   devOwnerId: z.string().uuid().nullable().optional(),
-  defectState: z.enum(['submitted', 'open', 'fixed', 'closed', 'closed_declined']).nullable().optional(),
+  defectState: z
+    .enum(['submitted', 'open', 'fixed', 'closed', 'closed_declined'])
+    .nullable()
+    .optional(),
   fixedInBuild: z.string().max(255).nullable().optional(),
 });
 
@@ -204,7 +220,11 @@ export class AddLabelDto extends createZodDto(AddLabelSchema) {}
 
 export const CreateTimeLogSchema = z.object({
   loggedDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD'),
-  hours: z.coerce.number().positive().max(24).transform((v) => v.toFixed(2)),
+  hours: z.coerce
+    .number()
+    .positive()
+    .max(24)
+    .transform((v) => v.toFixed(2)),
   description: z.string().max(2000).optional(),
 });
 
@@ -238,8 +258,11 @@ export class TimeLogQueryDto extends createZodDto(TimeLogQuerySchema) {}
 export const PresignAttachmentSchema = z.object({
   filename: z.string().min(1).max(500),
   mimeType: z.string().min(1).max(255),
-  sizeBytes: z.number().int().positive().max(25 * 1024 * 1024),
+  sizeBytes: z
+    .number()
+    .int()
+    .positive()
+    .max(25 * 1024 * 1024),
 });
 
 export class PresignAttachmentDto extends createZodDto(PresignAttachmentSchema) {}
-

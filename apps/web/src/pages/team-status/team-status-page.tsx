@@ -12,7 +12,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { ChevronDown, ChevronLeft, ChevronRight, Inbox } from 'lucide-react'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
-import { HeaderCell } from '@/shared/ui/draggable-header-cell'
+import { DataTableHeader, type DataTableHeaderColumn } from '@/shared/ui/data-table-header'
 import { BRAND } from '@/shared/config/brand'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
@@ -27,11 +27,15 @@ import {
 } from '@/features/team-status/api'
 import { Avatar } from '@/shared/ui/avatar'
 import { useColumnLayout, type ColumnDef } from '@/shared/lib/hooks/use-column-layout'
+import { useColumnDrag } from '@/shared/lib/hooks/use-column-drag'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { useProjectMembers, type ProjectMember } from '@/features/teams/api'
 import { SIMPLIFIED_STATE_CONFIG, type SimplifiedState } from '@/entities/work-item/model/types'
+import { StateStepper } from '@/entities/work-item/ui/state-stepper'
+import { type StateStep } from '@/entities/work-item/ui/state-steps'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
+import { OwnerSelectCell } from '@/shared/ui/owner-cell'
 
 const TEAM_TASK_STATES: TeamTaskState[] = ['Defined', 'In-Progress', 'Completed']
 
@@ -63,6 +67,13 @@ const TEAM_STATUS_COLUMNS: ColumnDef<ColKey>[] = [
 ]
 
 const RIGHT_ALIGNED = new Set<ColKey>(['capacity', 'estimate', 'todo', 'actuals'])
+
+/** Header descriptors for the shared <DataTableHeader> (no sort on this grid). */
+const TEAM_HEADER_COLUMNS: DataTableHeaderColumn<ColKey>[] = TEAM_STATUS_COLUMNS.map((c) => ({
+  key: c.key,
+  label: c.label,
+  align: RIGHT_ALIGNED.has(c.key) ? ('right' as const) : undefined,
+}))
 
 function fmtRange(it: Pick<Iteration, 'startDate' | 'endDate'>) {
   const s = it.startDate ?? '—'
@@ -96,6 +107,17 @@ export function TeamStatusPage() {
       ) as Record<ColKey, React.CSSProperties>,
     [styleFor],
   )
+
+  // Header column drag-to-reorder (persists via useColumnLayout.reorder).
+  const {
+    activeDragKey,
+    dropIndicator,
+    handleDragStart,
+    handleDragOver,
+    handleDragLeave,
+    handleDrop,
+    handleDragEnd,
+  } = useColumnDrag<ColKey>({ onReorder: reorder })
 
   const { data: iterations = [] } = useIterations(projectId)
   const { data: members = [] } = useProjectMembers(projectId)
@@ -283,27 +305,22 @@ export function TeamStatusPage() {
         style={{ backgroundColor: BRAND.surface }}
       >
         {/* Header row (P3-TS-FR-010) */}
-        <div
-          className="sticky top-0 z-10 flex h-[34px] items-center px-3 text-[11px] font-bold select-none"
-          style={{
-            backgroundColor: '#f3f4f6',
-            borderBottom: '1px solid #e2e8f0',
-            color: '#4b5563',
-            minWidth: 'max-content',
+        <DataTableHeader
+          columns={TEAM_HEADER_COLUMNS}
+          colStyles={colStyles}
+          onResize={startResize}
+          className="px-3"
+          leading={<div className="w-6 shrink-0" />}
+          columnDrag={{
+            activeDragKey,
+            dropIndicator,
+            onDragStart: handleDragStart,
+            onDragOver: handleDragOver,
+            onDragLeave: handleDragLeave,
+            onDrop: handleDrop,
+            onDragEnd: handleDragEnd,
           }}
-        >
-          <div className="w-6 shrink-0" /> {/* Expand/collapse */}
-          {TEAM_STATUS_COLUMNS.map((col) => (
-            <HeaderCell
-              key={col.key}
-              colKey={col.key}
-              label={col.label}
-              style={colStyles[col.key]}
-              isRight={RIGHT_ALIGNED.has(col.key)}
-              onResize={startResize}
-            />
-          ))}
-        </div>
+        />
 
         {/* Totals row (P3-TS-FR-013) */}
         {totals && (
@@ -572,7 +589,6 @@ function TaskRow({
   onOpen: () => void
 }) {
   const updateTask = useUpdateTeamTask(projectId, teamId, iterationId)
-  const [editingOwner, setEditingOwner] = useState(false)
 
   function commitTitle(raw: string) {
     const trimmed = raw.trim()
@@ -650,10 +666,7 @@ function TaskRow({
     updateTask.mutate(
       { taskId: task.id, assigneeId: userId },
       {
-        onSuccess: () => {
-          setEditingOwner(false)
-          toast.success('Owner updated')
-        },
+        onSuccess: () => toast.success('Owner updated'),
         onError: (e) => toast.error(e.message),
       },
     )
@@ -729,40 +742,13 @@ function TaskRow({
       </div>
       {/* State (P3-TS-FR-021 — inline editable) */}
       <div className="shrink-0 px-2" style={colStyles.state} onClick={(e) => e.stopPropagation()}>
-        {canEdit ? (
-          <div
-            className="flex overflow-hidden rounded border"
-            style={{ borderColor: BRAND.borderSubtle, height: 20 }}
-          >
-            {TEAM_TASK_STATES.map((s) => {
-              const isSel = task.state === s
-              const cfg = SIMPLIFIED_STATE_CONFIG[TEAM_TASK_STATE_TO_SIMPLIFIED[s] ?? 'define']
-              return (
-                <button
-                  key={s}
-                  title={s}
-                  onClick={() => {
-                    if (!isSel) handleStateChange(s)
-                  }}
-                  style={{
-                    border: 'none',
-                    padding: '0 4px',
-                    fontSize: '9px',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    backgroundColor: isSel ? cfg.activeBg : '#fff',
-                    color: isSel ? '#fff' : cfg.color,
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {s === 'Defined' ? 'D' : s === 'In-Progress' ? 'I' : 'C'}
-                </button>
-              )
-            })}
-          </div>
-        ) : (
-          <StateBadge state={task.state} />
-        )}
+        <StateStepper
+          steps={TEAM_TASK_STATE_STEPS}
+          value={task.state}
+          canEdit={canEdit}
+          onChange={handleStateChange}
+          ariaLabel="Task state"
+        />
       </div>
       {/* Capacity (empty on task row — P3-TS-FR-024) */}
       <div className="shrink-0 px-2" style={colStyles.capacity} />
@@ -836,39 +822,23 @@ function TaskRow({
         style={colStyles.owner}
         onClick={(e) => e.stopPropagation()}
       >
-        {editingOwner && canEdit ? (
-          <select
-            autoFocus
-            value={task.owner.id ?? ''}
-            onChange={(e) => handleOwnerChange(e.target.value || null)}
-            onBlur={() => setEditingOwner(false)}
-            className="w-full rounded text-[11px] focus:outline-none"
-            style={{ border: `1px solid ${BRAND.borderInput}`, color: BRAND.textPrimary }}
-          >
-            <option value="">Unassigned</option>
-            {members.map((m) => (
-              <option key={m.userId} value={m.userId}>
-                {m.displayName}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <span
-            className="truncate"
-            style={{ color: BRAND.textSecondary, cursor: canEdit ? 'pointer' : 'default' }}
-            onClick={canEdit ? () => setEditingOwner(true) : undefined}
-          >
-            {task.owner.displayName}
-          </span>
-        )}
+        <OwnerSelectCell
+          ownerName={task.owner.id ? task.owner.displayName : null}
+          assigneeId={task.owner.id}
+          members={members}
+          canEdit={canEdit}
+          onChange={handleOwnerChange}
+        />
       </div>
     </div>
   )
 }
 
-// ── State badge ─────────────────────────────────────────────────────────────
+// ── State stepper steps ─────────────────────────────────────────────────────
 // Colors sourced from the shared SIMPLIFIED_STATE_CONFIG (same 3-bucket model
 // Iteration Status uses for its task rows), keyed off our own TeamTaskState.
+// The segmented control itself is the shared StateStepper so every grid in the
+// app renders the state column identically.
 
 const TEAM_TASK_STATE_TO_SIMPLIFIED: Record<TeamTaskState, SimplifiedState> = {
   Defined: 'define',
@@ -876,14 +846,9 @@ const TEAM_TASK_STATE_TO_SIMPLIFIED: Record<TeamTaskState, SimplifiedState> = {
   Completed: 'complete',
 }
 
-function StateBadge({ state }: { state: TeamTaskState }) {
-  const cfg = SIMPLIFIED_STATE_CONFIG[TEAM_TASK_STATE_TO_SIMPLIFIED[state] ?? 'define']
-  return (
-    <span
-      className="rounded px-1.5 py-px text-[10px] font-medium"
-      style={{ backgroundColor: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}20` }}
-    >
-      {state}
-    </span>
-  )
-}
+const TEAM_TASK_STATE_STEPS: StateStep<TeamTaskState>[] = TEAM_TASK_STATES.map((s) => ({
+  value: s,
+  label: s,
+  letter: s.charAt(0),
+  activeBg: SIMPLIFIED_STATE_CONFIG[TEAM_TASK_STATE_TO_SIMPLIFIED[s]].activeBg,
+}))

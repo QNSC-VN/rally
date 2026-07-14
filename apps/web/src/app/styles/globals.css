@@ -178,14 +178,27 @@
    * pointer once here instead of per-component; disabled controls opt back out.
    */
   button:not(:disabled),
+  a[href],
+  label[for],
+  summary,
+  select:not(:disabled),
+  input[type='checkbox']:not(:disabled),
+  input[type='radio']:not(:disabled),
+  input[type='file']:not(:disabled),
   [role='button']:not([aria-disabled='true']),
   [role='tab']:not([aria-disabled='true']),
-  [role='option'],
-  summary,
-  select:not(:disabled) {
+  [role='option']:not([aria-disabled='true']),
+  [role='menuitem']:not([aria-disabled='true']),
+  [role='menuitemcheckbox']:not([aria-disabled='true']),
+  [role='menuitemradio']:not([aria-disabled='true']),
+  [role='switch']:not([aria-disabled='true']),
+  [role='radio']:not([aria-disabled='true']),
+  [role='link']:not([aria-disabled='true']) {
     cursor: pointer;
   }
   button:disabled,
+  input:disabled,
+  select:disabled,
   [aria-disabled='true'],
   [role='button'][aria-disabled='true'] {
     cursor: not-allowed;

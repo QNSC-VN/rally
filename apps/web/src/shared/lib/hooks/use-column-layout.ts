@@ -97,14 +97,21 @@ export function useColumnLayout<K extends string>(columns: ColumnDef<K>[], stora
     [columns, persist],
   )
 
-  /** Move `dragKey` to sit just before `overKey` in the order array. */
+  /**
+   * Move `dragKey` to sit relative to `overKey` in the order array.
+   * `position` defaults to `'before'` (backwards-compatible with the Show
+   * Fields menu); pass `'after'` to drop a column to the RIGHT of the target
+   * (required for left-to-right header drags).
+   */
   const reorder = useCallback(
-    (dragKey: K, overKey: K) => {
+    (dragKey: K, overKey: K, position: 'before' | 'after' = 'before') => {
       if (dragKey === overKey) return
       setExtras((prev) => {
         const withoutDrag = prev.order.filter((k) => k !== dragKey)
         const overIndex = withoutDrag.indexOf(overKey)
-        withoutDrag.splice(overIndex, 0, dragKey)
+        if (overIndex === -1) return prev
+        const insertAt = position === 'after' ? overIndex + 1 : overIndex
+        withoutDrag.splice(insertAt, 0, dragKey)
         const next = { order: withoutDrag, hidden: prev.hidden }
         persist(next)
         return next
