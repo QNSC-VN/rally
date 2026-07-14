@@ -103,6 +103,7 @@ const mockAttachment = (o: Partial<Attachment> = {}): Attachment => ({
 const actorForWorkspace = (workspaceId: string) => ({
   sub: 'user-1',
   workspaceId,
+  contextId: workspaceId,
   sessionId: 's1',
   jti: 'j1',
   iat: 0,
@@ -110,6 +111,7 @@ const actorForWorkspace = (workspaceId: string) => ({
   iss: 'rally',
   aud: 'rally-app',
   permissions: [] as string[],
+  claims: { permissions: [] as string[] },
   authMethod: 'password' as const,
 });
 
@@ -298,7 +300,9 @@ describe('WorkItemsService — workspace isolation', () => {
 
   describe('deleteWorkItem', () => {
     it('cannot delete a foreign workspace work item', async () => {
-      await expect(service.deleteWorkItem(WORKSPACE_B, 'wi-a')).rejects.toThrow(NotFoundException);
+      await expect(service.deleteWorkItem(actorForWorkspace(WORKSPACE_B), 'wi-a')).rejects.toThrow(
+        NotFoundException,
+      );
       expect(workItemRepo.softDelete).not.toHaveBeenCalled();
     });
 
@@ -332,14 +336,18 @@ describe('WorkItemsService — workspace isolation', () => {
 
   describe('listTasks', () => {
     it('cannot list tasks of a foreign workspace parent', async () => {
-      await expect(service.listTasks(WORKSPACE_B, 'wi-a')).rejects.toThrow(NotFoundException);
+      await expect(service.listTasks(actorForWorkspace(WORKSPACE_B), 'wi-a')).rejects.toThrow(
+        NotFoundException,
+      );
       expect(workItemRepo.listTasksByParent).not.toHaveBeenCalled();
     });
   });
 
   describe('getTaskTotals', () => {
     it('cannot read task totals of a foreign workspace parent', async () => {
-      await expect(service.getTaskTotals(WORKSPACE_B, 'wi-a')).rejects.toThrow(NotFoundException);
+      await expect(service.getTaskTotals(actorForWorkspace(WORKSPACE_B), 'wi-a')).rejects.toThrow(
+        NotFoundException,
+      );
       expect(workItemRepo.getTaskTotals).not.toHaveBeenCalled();
     });
   });
@@ -349,7 +357,7 @@ describe('WorkItemsService — workspace isolation', () => {
   describe('getActivity', () => {
     it('cannot read activity of a foreign workspace work item', async () => {
       await expect(
-        service.getActivity(WORKSPACE_B, 'wi-a', { limit: 10, offset: 0 }),
+        service.getActivity(actorForWorkspace(WORKSPACE_B), 'wi-a', { limit: 10, offset: 0 }),
       ).rejects.toThrow(NotFoundException);
       expect(activityRepo.listByWorkItem).not.toHaveBeenCalled();
     });
@@ -359,16 +367,16 @@ describe('WorkItemsService — workspace isolation', () => {
 
   describe('label management', () => {
     it('cannot list labels of a foreign workspace work item', async () => {
-      await expect(service.getWorkItemLabels(WORKSPACE_B, 'wi-a')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.getWorkItemLabels(actorForWorkspace(WORKSPACE_B), 'wi-a'),
+      ).rejects.toThrow(NotFoundException);
       expect(workItemRepo.listLabels).not.toHaveBeenCalled();
     });
 
     it('cannot add a label to a foreign workspace work item', async () => {
-      await expect(service.addLabelToWorkItem(WORKSPACE_B, 'wi-a', 'l1')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.addLabelToWorkItem(actorForWorkspace(WORKSPACE_B), 'wi-a', 'l1'),
+      ).rejects.toThrow(NotFoundException);
       expect(workItemRepo.addLabel).not.toHaveBeenCalled();
     });
 
@@ -378,9 +386,9 @@ describe('WorkItemsService — workspace isolation', () => {
     });
 
     it('cannot remove a label from a foreign workspace work item', async () => {
-      await expect(service.removeLabelFromWorkItem(WORKSPACE_B, 'wi-a', 'l1')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.removeLabelFromWorkItem(actorForWorkspace(WORKSPACE_B), 'wi-a', 'l1'),
+      ).rejects.toThrow(NotFoundException);
       expect(workItemRepo.removeLabel).not.toHaveBeenCalled();
     });
   });
@@ -390,7 +398,7 @@ describe('WorkItemsService — workspace isolation', () => {
   describe('reorderWorkItems', () => {
     it('cannot reorder a foreign workspace work item', async () => {
       await expect(
-        service.reorderWorkItems(WORKSPACE_B, [{ id: 'wi-a', rank: 'b1' }]),
+        service.reorderWorkItems(actorForWorkspace(WORKSPACE_B), [{ id: 'wi-a', rank: 'b1' }]),
       ).rejects.toThrow(NotFoundException);
       expect(workItemRepo.reorderItems).not.toHaveBeenCalled();
     });
@@ -444,7 +452,7 @@ describe('WorkItemsService — workspace isolation', () => {
   describe('time logs', () => {
     it('cannot list time logs of a foreign workspace work item', async () => {
       await expect(
-        service.listTimeLogs(WORKSPACE_B, 'wi-a', { page: 1, pageSize: 20 }),
+        service.listTimeLogs(actorForWorkspace(WORKSPACE_B), 'wi-a', { page: 1, pageSize: 20 }),
       ).rejects.toThrow(NotFoundException);
       expect(timeLogRepo.listByWorkItem).not.toHaveBeenCalled();
     });
@@ -488,7 +496,9 @@ describe('WorkItemsService — workspace isolation', () => {
 
   describe('watchers', () => {
     it('cannot list watchers of a foreign workspace work item', async () => {
-      await expect(service.listWatchers(WORKSPACE_B, 'wi-a')).rejects.toThrow(NotFoundException);
+      await expect(service.listWatchers(actorForWorkspace(WORKSPACE_B), 'wi-a')).rejects.toThrow(
+        NotFoundException,
+      );
       expect(watcherRepo.listByWorkItem).not.toHaveBeenCalled();
     });
 
@@ -545,14 +555,16 @@ describe('WorkItemsService — workspace isolation', () => {
     });
 
     it('cannot list attachments of a foreign workspace work item', async () => {
-      await expect(service.listAttachments(WORKSPACE_B, 'wi-a')).rejects.toThrow(NotFoundException);
+      await expect(service.listAttachments(actorForWorkspace(WORKSPACE_B), 'wi-a')).rejects.toThrow(
+        NotFoundException,
+      );
       expect(attachmentRepo.listByWorkItem).not.toHaveBeenCalled();
     });
 
     it('cannot get a download url via a foreign workspace work item scope', async () => {
-      await expect(service.getAttachmentDownloadUrl(WORKSPACE_B, 'wi-a', 'att-a')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.getAttachmentDownloadUrl(actorForWorkspace(WORKSPACE_B), 'wi-a', 'att-a'),
+      ).rejects.toThrow(NotFoundException);
       expect(attachmentRepo.findById).not.toHaveBeenCalled();
     });
 

@@ -465,7 +465,7 @@ describe('WorkItemsService', () => {
 
     it('getWorkItemLabels returns labels for work item', async () => {
       workItemRepo.listLabels.mockResolvedValue([{ id: 'l1', name: 'bug', color: '#f00' }]);
-      const result = await service.getWorkItemLabels('ws-1', 'wi-1');
+      const result = await service.getWorkItemLabels(mockActor, 'wi-1');
       expect(result).toHaveLength(1);
       expect(result[0].name).toBe('bug');
     });

@@ -12,7 +12,6 @@ import {
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
-  Auth,
   ApiCommonErrors,
   ApiPagedResponse,
   buildPageArgs,
@@ -20,6 +19,7 @@ import {
   RateLimit,
 } from '@platform';
 import type { JwtPayload, PagedResult } from '@platform';
+import { AuthProjectScoped, RequireProjectPermission } from '@modules/access';
 import { CurrentUser } from '@modules/identity';
 import { WorkItemsService } from '../../application/work-items.service';
 import {
@@ -157,7 +157,7 @@ function toAttachmentDto(a: Attachment): AttachmentResponseDto {
 
 @ApiTags('work-items')
 @Controller('work-items')
-@Auth()
+@AuthProjectScoped()
 export class WorkItemsController {
   constructor(private readonly workItemsService: WorkItemsService) {}
 
@@ -165,6 +165,7 @@ export class WorkItemsController {
 
   @Get()
   @ApiOperation({ summary: 'List work items in a project' })
+  @RequireProjectPermission('work_item:view', 'query', 'projectId')
   @ApiPagedResponse(WorkItemResponseDto)
   @ApiCommonErrors(400, 401, 404)
   async listWorkItems(
@@ -196,6 +197,7 @@ export class WorkItemsController {
 
   @Get('backlog')
   @ApiOperation({ summary: 'List backlog items (stories and defects) in a project' })
+  @RequireProjectPermission('work_item:view', 'query', 'projectId')
   @ApiPagedResponse(WorkItemResponseDto)
   @ApiCommonErrors(400, 401, 404)
   async listBacklog(
@@ -279,7 +281,7 @@ export class WorkItemsController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<WorkItemResponseDto> {
-    const item = await this.workItemsService.getWorkItem(user.workspaceId, id);
+    const item = await this.workItemsService.getWorkItemForView(user, id);
     return toWorkItemDto(item);
   }
 
@@ -420,7 +422,7 @@ export class WorkItemsController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<WorkItemResponseDto[]> {
-    const tasks = await this.workItemsService.listTasks(user.workspaceId, id);
+    const tasks = await this.workItemsService.listTasks(user, id);
     return tasks.map(toWorkItemDto);
   }
 
@@ -433,7 +435,7 @@ export class WorkItemsController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<TaskTotalsResponseDto> {
-    return this.workItemsService.getTaskTotals(user.workspaceId, id);
+    return this.workItemsService.getTaskTotals(user, id);
   }
 
   @Post(':id/tasks')
@@ -472,7 +474,7 @@ export class WorkItemsController {
     @Query() query: ActivityQueryDto,
   ): Promise<{ data: ActivityResponseDto[]; total: number; page: number; pageSize: number }> {
     const { page, pageSize } = query;
-    const result = await this.workItemsService.getActivity(user.workspaceId, id, {
+    const result = await this.workItemsService.getActivity(user, id, {
       limit: pageSize,
       offset: (page - 1) * pageSize,
     });
@@ -504,7 +506,7 @@ export class WorkItemsController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<Array<{ id: string; name: string; color: string }>> {
-    return this.workItemsService.getWorkItemLabels(user.workspaceId, id);
+    return this.workItemsService.getWorkItemLabels(user, id);
   }
 
   @Post(':id/labels')
@@ -548,7 +550,7 @@ export class WorkItemsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Query() query: TimeLogQueryDto,
   ): Promise<{ items: TimeLogResponseDto[]; total: number }> {
-    const result = await this.workItemsService.listTimeLogs(user.workspaceId, id, {
+    const result = await this.workItemsService.listTimeLogs(user, id, {
       page: query.page,
       pageSize: query.pageSize,
     });
@@ -620,7 +622,7 @@ export class WorkItemsController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<WatcherResponseDto[]> {
-    const watchers = await this.workItemsService.listWatchers(user.workspaceId, id);
+    const watchers = await this.workItemsService.listWatchers(user, id);
     return watchers.map(toWatcherDto);
   }
 
@@ -694,7 +696,7 @@ export class WorkItemsController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<AttachmentResponseDto[]> {
-    const items = await this.workItemsService.listAttachments(user.workspaceId, id);
+    const items = await this.workItemsService.listAttachments(user, id);
     return items.map(toAttachmentDto);
   }
 
@@ -709,7 +711,7 @@ export class WorkItemsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Param('aid', ParseUUIDPipe) aid: string,
   ): Promise<DownloadUrlResponseDto> {
-    return this.workItemsService.getAttachmentDownloadUrl(user.workspaceId, id, aid);
+    return this.workItemsService.getAttachmentDownloadUrl(user, id, aid);
   }
 
   @Delete(':id/attachments/:aid')
