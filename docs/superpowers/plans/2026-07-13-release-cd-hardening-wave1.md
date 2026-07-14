@@ -28,6 +28,8 @@ npx --yes @action-validator/cli@latest .github/workflows/backend-deploy.yml || \
 
 ## Task 1: ECS deployment circuit breaker + auto-rollback
 
+> **⚠️ SUPERSEDED (infra check).** The shared Terraform module `qnsc-tf-modules/modules/ecs-service` (tag `ecs-service-v1.3.0`, which rally/opshub deploy) **already declares** `deployment_circuit_breaker { enable = true, rollback = true }`. Setting it again from the deploy workflow is redundant and — because `--deployment-configuration` on `update-service` replaces the whole config — resets `maximumPercent`/`minimumHealthyPercent` to defaults on every deploy. **Single source of truth = Terraform.** The circuit-breaker CLI flag was therefore NOT shipped (removed from qnsc-ci #27). Auto-rollback still works — it's IaC-managed — and Task 4 (rollback-aware notify) detects and reports it. No workflow change for this task; the steps below are retained only as the original record.
+
 **File:** Modify `.github/workflows/backend-deploy.yml` (the two `aws ecs update-service … --force-new-deployment` steps: "Deploy API service", "Deploy Worker service").
 
 **Why:** Today a bad rollout stays live; ECS's native circuit breaker reverts to the last stable task set on failure.
