@@ -23,7 +23,7 @@ permissions:
 
 jobs:
   plan:
-    uses: QNSC-VN/qnsc-ci/.github/workflows/infra-plan.yml@v1
+    uses: QNSC-VN/qnsc-ci/.github/workflows/infra-plan.yml@v1.3.0
     with:
       product: rally
     secrets:

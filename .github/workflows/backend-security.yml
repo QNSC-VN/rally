@@ -27,8 +27,10 @@ permissions:
 
 jobs:
   security:
-    uses: QNSC-VN/qnsc-ci/.github/workflows/security.yml@v1
+    uses: QNSC-VN/qnsc-ci/.github/workflows/security.yml@v1.3.0
     with:
       product: rally
       image_target: api
+      semgrep_blocking: true
+      osv_blocking: true
     # security.yml declares no secrets — nothing to pass (no `secrets: inherit`).
