@@ -26,10 +26,14 @@ on:
       - ".github/workflows/infra-apply.yml"
   workflow_dispatch:
 
-# Serialize applies on the same ref so two quick merges can't race the tofu
-# state lock. Never cancel a running apply mid-flight.
+# Serialize ALL infra applies for this repo (constant group, NOT keyed on
+# github.ref). Merging a release PR pushes main AND creates the vX.Y.Z tag
+# near-simultaneously; both runs execute apply-shared against the same
+# infra/live/_shared state. A ref-keyed group put them in different groups →
+# concurrent tofu apply → state-lock failure on every release. One group makes
+# the tag run queue behind the branch run. Never cancel a running apply.
 concurrency:
-  group: infra-apply-${{ github.ref }}
+  group: infra-apply-${{ github.repository }}
   cancel-in-progress: false
 
 permissions:
