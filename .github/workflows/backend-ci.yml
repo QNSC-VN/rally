@@ -114,6 +114,12 @@ jobs:
         run: pnpm db:migrate
         env:
           DATABASE_MIGRATION_URL: postgresql://postgres:postgres@localhost:5432/rally_test?sslmode=disable
+          # db:migrate also runs seedTenantBootstrap, which only creates the
+          # primary Entra SSO connection when ENTRA_TENANT_ID is set. The SSO
+          # → RBAC e2e (test/e2e/sso-rbac.e2e.spec.ts) needs that connection to
+          # resolve a workspace, so seed it here. Values mirror .env.
+          ENTRA_TENANT_ID: dev-tenant
+          SSO_ALLOWED_EMAIL_DOMAINS: qnsc.vn
 
       - name: Unit tests (with coverage)
         run: pnpm test:cov
@@ -144,10 +150,15 @@ jobs:
           JWT_REFRESH_EXPIRY: 30d
           CSRF_SECRET: ci-test-csrf-secret-min-32-characters-ok
           # Entra BFF OIDC — CI test-only placeholders (never used for real auth).
-          ENTRA_TENANT_ID: ci-test-tenant
+          # ENTRA_TENANT_ID matches the SSO connection seeded during migrations so
+          # the SSO → RBAC e2e resolves its workspace; PLATFORM_ADMIN_EMAILS drives
+          # the admin-elevation assertion. Both mirror .env.
+          ENTRA_TENANT_ID: dev-tenant
           ENTRA_CLIENT_ID: ci-test-client
           ENTRA_CLIENT_SECRET: ci-test-secret
           ENTRA_REDIRECT_URI: http://localhost:3000/v1/bff/callback
+          SSO_ALLOWED_EMAIL_DOMAINS: qnsc.vn
+          PLATFORM_ADMIN_EMAILS: nghiavt@qnsc.vn
 
       - name: Upload coverage
         if: always()
