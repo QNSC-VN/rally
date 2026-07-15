@@ -125,7 +125,7 @@ function RelatedItemField({
   onOpen,
 }: {
   label: string
-  target: WorkItem | undefined
+  target: WorkItem | null | undefined
   emptyText: string
   onOpen: (itemKey: string) => void
 }) {
