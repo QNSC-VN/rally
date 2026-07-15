@@ -16,6 +16,24 @@ name: Web · Deploy
 on:
   push:
     branches: [main]
+    # Skip the develop build+deploy when a merge touches ONLY paths this service
+    # doesn't ship: docs, infra (own apply flow), and the backend (api/worker/
+    # libs/db/Dockerfile/nest config). paths-ignore fires only if EVERY changed
+    # file matches — a shared change (root lockfile, package.json) still deploys,
+    # so under-deploy is impossible. Release tags always change package.json +
+    # manifest (root, never ignored) → prod never skipped.
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.claude/**'
+      - 'infra/**'
+      - 'apps/api/**'
+      - 'apps/worker/**'
+      - 'libs/**'
+      - 'db/**'
+      - 'Dockerfile'
+      - 'nest-cli.json'
+      - 'tsconfig.migrator.json'
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'   # semver only — no -rc suffix
 

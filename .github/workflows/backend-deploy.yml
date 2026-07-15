@@ -16,6 +16,17 @@ name: Backend · Deploy
 on:
   push:
     branches: [main]
+    # Skip the develop build+deploy when a merge touches ONLY paths this service
+    # doesn't ship: docs, infra (own apply flow), and the web app. paths-ignore
+    # fires only if EVERY changed file matches — a shared change (libs, db, root
+    # lockfile) still deploys, so under-deploy is impossible. Release tags always
+    # change package.json + manifest (root, never ignored) → prod never skipped.
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.claude/**'
+      - 'infra/**'
+      - 'apps/web/**'
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'   # semver only — no -rc suffix
 

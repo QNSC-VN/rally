@@ -211,6 +211,29 @@ jobs:
         with:
           fetch-depth: 0  # need origin/main to build the baseline schema
 
+      # Expand-contract advisory (WARN-only): migrate-before-flip runs the new
+      # migration while the OLD app is briefly still live, so backward-
+      # incompatible DDL (drop/rename/narrow a column) can break it. Flag such
+      # DDL in this PR's new migration lines via GHA annotations — never fails
+      # the build. Acknowledge a deliberate one with a trailing
+      # `-- expand-contract-ok: <reason>` on the line.
+      # TODO: flip to blocking before the first production project goes live.
+      - name: Expand-contract advisory
+        if: github.event_name == 'pull_request'
+        run: |
+          added=$(git diff origin/main...HEAD -- 'db/migrations/*.sql' \
+            | grep -E '^\+' | grep -vE '^\+\+\+' || true)
+          if [ -z "$added" ]; then echo "No new migration lines."; exit 0; fi
+          pattern='DROP[[:space:]]+COLUMN|DROP[[:space:]]+TABLE|RENAME[[:space:]]+(COLUMN|TO)|SET[[:space:]]+NOT[[:space:]]+NULL'
+          hits=$(echo "$added" | grep -iE "$pattern" | grep -iv 'expand-contract-ok' || true)
+          if [ -n "$hits" ]; then
+            echo "$hits" | while IFS= read -r line; do
+              echo "::warning title=Expand-contract::Backward-incompatible DDL — verify migrate-before-flip safe: ${line#+}"
+            done
+          else
+            echo "No backward-incompatible DDL detected."
+          fi
+
       - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1.3.0
         with:
           node-version: ${{ env.NODE_VERSION }}
