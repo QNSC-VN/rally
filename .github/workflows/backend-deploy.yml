@@ -28,7 +28,7 @@ concurrency:
 
 jobs:
   deploy:
-    uses: QNSC-VN/qnsc-ci/.github/workflows/backend-deploy.yml@v1.3.2
+    uses: QNSC-VN/qnsc-ci/.github/workflows/backend-deploy.yml@v1.3.3
     with:
       product: rally
       has_worker: true
