@@ -10,7 +10,7 @@ test.describe('P2.2 Iteration Management (Timeboxes)', () => {
     // Toolbar + list chrome render.
     await expect(page.getByRole('heading', { name: 'Timeboxes' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Create Iteration' })).toBeVisible()
-    await expect(page.getByPlaceholder('Search iterations...')).toBeVisible()
+    await expect(page.getByPlaceholder('Search iterations…')).toBeVisible()
 
     // Create an iteration with a unique name so the test is re-runnable.
     const name = `E2E Iteration ${Date.now()}`
@@ -31,7 +31,7 @@ test.describe('P2.2 Iteration Management (Timeboxes)', () => {
     // Back to the list — the new iteration is present and searchable.
     await page.getByRole('button', { name: 'Back' }).click()
     await settle(page)
-    await page.getByPlaceholder('Search iterations...').fill(name)
+    await page.getByPlaceholder('Search iterations…').fill(name)
     await settle(page, 600)
     await expect(page.getByText(name)).toBeVisible()
   })
@@ -41,7 +41,7 @@ test.describe('P2.2 Iteration Management (Timeboxes)', () => {
     await page.goto('/timeboxes')
     await settle(page)
 
-    await page.getByRole('button', { name: /Show filter/ }).click()
+    await page.getByRole('button', { name: /Filters/ }).click()
     const stateFilter = page.getByLabel('Filter iterations by state')
     await expect(stateFilter).toBeVisible()
     // Filter to Planning — the iterations created by these specs default to planning.

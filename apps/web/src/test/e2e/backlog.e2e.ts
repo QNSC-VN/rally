@@ -8,6 +8,8 @@ test.describe('P2.1 Backlog Enhancement', () => {
     await settle(page)
 
     await expect(page.getByRole('heading', { name: 'Backlog' })).toBeVisible()
+    // Filters live behind the collapsible "Filters" toggle (Rally-style) — open it.
+    await page.getByRole('button', { name: /Filters/ }).click()
     await expect(page.getByLabel('Filter by owner')).toBeVisible()
     await expect(page.getByLabel('Filter by release')).toBeVisible()
     await expect(page.getByLabel('Filter by iteration')).toBeVisible()
@@ -18,22 +20,37 @@ test.describe('P2.1 Backlog Enhancement', () => {
     await page.goto('/backlog')
     await settle(page)
 
-    // Wait for at least one backlog row to render before counting (the list is
-    // fetched async; counting immediately races the query).
-    const stateSelects = page.getByLabel('Schedule state', { exact: true })
-    const count = await stateSelects.count()
+    // Schedule state renders as a Rally-style segmented stepper (role=group):
+    // one button per state, the active one disabled and showing its letter.
+    const steppers = page.getByRole('group', { name: 'Schedule state' })
+    const count = await steppers.count()
     test.skip(count === 0, 'No backlog items to edit in this project')
 
-    const first = stateSelects.first()
-    const current = await first.inputValue()
-    const next = current === 'completed' ? 'in_progress' : 'completed'
-    await first.selectOption(next)
+    const stepper = steppers.first()
+    // Pick a target segment that isn't the current one (current is disabled, and
+    // its accessible name is the letter — not the label — so it won't match here).
+    const candidates = ['Completed', 'In Progress', 'Accepted', 'Ready', 'Defined']
+    let targetLabel = ''
+    for (const label of candidates) {
+      const btn = stepper.getByRole('button', { name: label })
+      if ((await btn.count()) > 0 && (await btn.isEnabled())) {
+        targetLabel = label
+        break
+      }
+    }
+    test.skip(targetLabel === '', 'No alternate schedule state available on the first row')
+
+    const targetLetter = targetLabel === 'In Progress' ? 'P' : targetLabel[0]
+    await stepper.getByRole('button', { name: targetLabel }).click()
     await settle(page, 1200)
 
-    // Reload and confirm the change stuck (sourced from work_items).
+    // Reload and confirm the change stuck (sourced from work_items): the first
+    // row's active (disabled) segment now shows the target state's letter.
     await page.reload()
     await settle(page)
-    await expect(page.getByLabel('Schedule state', { exact: true }).first()).toHaveValue(next)
+    await expect(
+      page.getByRole('group', { name: 'Schedule state' }).first().locator('button:disabled'),
+    ).toHaveText(targetLetter)
   })
 
   test('bulk assign bar appears with Release and Iteration actions', async ({ page }) => {
