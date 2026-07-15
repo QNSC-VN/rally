@@ -7,7 +7,7 @@
  * Sidebar differs by type (task shows time fields + Work Product link).
  */
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { useParams, useNavigate, Link } from '@tanstack/react-router'
+import { useParams, useNavigate } from '@tanstack/react-router'
 import {
   Bell,
   BellOff,
@@ -27,6 +27,7 @@ import {
   useTasks,
   useTaskTotals,
   useActivityLog,
+  useWorkItemLabels,
   useUpdateWorkItem,
   useWorkItem,
   useWatchers,
@@ -42,12 +43,25 @@ import { useProjectTeams, useProjectMembers } from '@/features/teams/api'
 import { useIterationOptions } from '@/features/iterations/api'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { useProjectPermissions } from '@/features/access/api'
-import { TypeBadge, ScheduleStateBadge } from '@/entities/work-item/ui/badges'
 import {
-  SCHEDULE_STATE_VALUES,
-  SCHEDULE_STATE_LABEL,
+  TypeBadge,
+  ScheduleStateBadge,
+  PriorityBadge,
+  SeverityBadge,
+} from '@/entities/work-item/ui/badges'
+import { IdCell } from '@/entities/work-item/ui/id-cell'
+import { WorkItemRefCell } from '@/entities/work-item/ui/work-item-ref-cell'
+import { LabelChips } from '@/entities/work-item/ui/label-chips'
+import { TaskRollup } from '@/entities/work-item/ui/task-rollup'
+import { describeActivity } from '@/entities/work-item/model/activity'
+import { OwnerCell } from '@/shared/ui/owner-cell'
+import { StateStepper } from '@/entities/work-item/ui/state-stepper'
+import { SCHEDULE_STATE_STEPS } from '@/entities/work-item/ui/state-steps'
+import {
   PRIORITY_VALUES,
+  ScheduleState,
   WORK_ITEM_PRIORITY_CONFIG,
+  type WorkItemType,
 } from '@/entities/work-item/model/types'
 import { BRAND } from '@/shared/config/brand'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
@@ -96,6 +110,44 @@ function ParentStorySelect({
         </option>
       ))}
     </NativeSelect>
+  )
+}
+
+/**
+ * Read-only related-item field (Work Product / Feature / Parent Story) rendered
+ * as a bordered pill via the shared <WorkItemRefCell>. Falls back to a muted
+ * placeholder while the target loads or when unset.
+ */
+function RelatedItemField({
+  label,
+  target,
+  emptyText,
+  onOpen,
+}: {
+  label: string
+  target: WorkItem | null | undefined
+  emptyText: string
+  onOpen: (itemKey: string) => void
+}) {
+  return (
+    <FormField label={label}>
+      {target ? (
+        <WorkItemRefCell
+          variant="pill"
+          type={target.type as WorkItemType}
+          itemKey={target.itemKey}
+          title={target.title}
+          onOpen={() => onOpen(target.itemKey)}
+        />
+      ) : (
+        <span
+          className="block rounded px-3 py-2 text-[12px]"
+          style={{ border: '1px solid #d7dde7', color: '#9ca3af' }}
+        >
+          {emptyText}
+        </span>
+      )}
+    </FormField>
   )
 }
 
@@ -290,7 +342,7 @@ function TasksTab({ workItemId, projectId }: { workItemId: string; projectId: st
             {tasks.map((task) => (
               <div
                 key={task.id}
-                className="grid min-h-10 cursor-pointer items-center text-[12px] hover:bg-[#f7f8fa]"
+                className="grid min-h-10 cursor-pointer items-center text-[12px] hover:bg-[#f1f6fc]"
                 style={{
                   gridTemplateColumns: TASK_GRID,
                   borderBottom: '1px solid #edf0f4',
@@ -309,21 +361,15 @@ function TasksTab({ workItemId, projectId }: { workItemId: string; projectId: st
                 <span className="px-3 font-mono text-[11px]" style={{ color: '#5c6478' }}>
                   {task.rank ?? '—'}
                 </span>
-                <span className="flex items-center gap-1 overflow-hidden px-3">
-                  <TypeBadge type={task.type} />
-                  <span
-                    className="font-mono text-[11px] hover:underline"
-                    style={{ color: '#2558a6', whiteSpace: 'nowrap' }}
-                  >
-                    {task.itemKey}
-                  </span>
+                <span className="flex items-center overflow-hidden px-3">
+                  <IdCell type={task.type} itemKey={task.itemKey} onOpen={() => openTask(task)} />
                 </span>
                 <span className="truncate px-3 font-medium">{task.title}</span>
                 <span className="px-3">
-                  <ScheduleStateBadge state={task.scheduleState} dot />
+                  <ScheduleStateBadge state={task.scheduleState} />
                 </span>
-                <span className="truncate px-3" style={{ color: '#5c6478' }}>
-                  {ownerName(task.assigneeId)}
+                <span className="flex items-center overflow-hidden px-3">
+                  <OwnerCell name={task.assigneeId ? ownerName(task.assigneeId) : null} />
                 </span>
                 <span className="truncate px-3" style={{ color: '#5c6478' }}>
                   {projectLabel}
@@ -364,6 +410,8 @@ function HistoryTab({ workItemId }: { workItemId: string }) {
     )
   }
 
+  const GRID = '90px 1fr 190px 170px'
+
   return (
     <div className="w-full space-y-5">
       <div>
@@ -379,16 +427,16 @@ function HistoryTab({ workItemId }: { workItemId: string }) {
         <div
           className="grid px-4 py-2 text-[10px] font-semibold tracking-wider uppercase"
           style={{
-            gridTemplateColumns: '160px 180px 160px 1fr',
+            gridTemplateColumns: GRID,
             color: '#64748b',
             backgroundColor: '#f8fafc',
             borderBottom: '1px solid #dde2ea',
           }}
         >
-          <span>Time</span>
-          <span>Actor</span>
-          <span>Action</span>
-          <span>Details</span>
+          <span>Revision</span>
+          <span>Description</span>
+          <span>Creation Date</span>
+          <span>User</span>
         </div>
 
         {logs.length === 0 && (
@@ -397,24 +445,28 @@ function HistoryTab({ workItemId }: { workItemId: string }) {
           </div>
         )}
 
-        {logs.map((log) => {
-          const actorName =
-            (log as typeof log & { actorName?: string | null }).actorName ?? log.actorId ?? '—'
-          const actorInitials = actorName
+        {logs.map((log, i) => {
+          const revision = logs.length - i
+          const userName = log.actorName ?? log.actorId ?? 'System'
+          const initials = userName
             .split(' ')
             .slice(0, 2)
-            .map((n: string) => n[0]?.toUpperCase())
+            .map((n) => n[0]?.toUpperCase())
             .join('')
           return (
             <div
               key={log.id}
               className="grid items-start px-4 py-3 text-[12px]"
               style={{
-                gridTemplateColumns: '160px 180px 160px 1fr',
+                gridTemplateColumns: GRID,
                 borderBottom: '1px solid #edf0f4',
                 color: '#334155',
               }}
             >
+              <span className="font-mono text-[11px] tabular-nums" style={{ color: '#2558a6' }}>
+                {revision}
+              </span>
+              <span style={{ color: '#334155' }}>{describeActivity(log)}</span>
               <span className="font-mono text-[11px]" style={{ color: '#64748b' }}>
                 {new Date(log.createdAt).toLocaleString()}
               </span>
@@ -423,15 +475,9 @@ function HistoryTab({ workItemId }: { workItemId: string }) {
                   className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[8px] font-bold"
                   style={{ backgroundColor: '#e5ebf4', color: '#1d3f73' }}
                 >
-                  {actorInitials}
+                  {initials}
                 </span>
-                <span className="truncate">{actorName}</span>
-              </span>
-              <span className="font-semibold" style={{ color: '#273449' }}>
-                {log.action}
-              </span>
-              <span style={{ color: '#5c6478' }}>
-                {(log as typeof log & { detail?: string }).detail ?? '—'}
+                <span className="truncate">{userName}</span>
               </span>
             </div>
           )
@@ -508,19 +554,25 @@ function DefectsTab({ workItemId, projectId }: { workItemId: string; projectId: 
             {defects.map((d) => (
               <div
                 key={d.id}
-                className="grid cursor-pointer items-center px-3 py-2 text-[12px] transition-colors hover:bg-[#f7f8fa]"
+                className="grid cursor-pointer items-center px-3 py-2 text-[12px] transition-colors hover:bg-[#f1f6fc]"
                 style={{ gridTemplateColumns: DEFECT_GRID, borderBottom: '1px solid #edf0f4' }}
                 onClick={() => openDefect(d)}
               >
-                <TypeBadge type={d.type} />
+                <span className="flex items-center overflow-hidden">
+                  <IdCell type={d.type} itemKey={d.itemKey} onOpen={() => openDefect(d)} />
+                </span>
                 <span className="truncate font-medium" style={{ color: '#273449' }}>
                   {d.title}
                 </span>
-                <ScheduleStateBadge state={d.scheduleState} dot />
-                <span style={{ color: '#5c6478' }}>{d.priority}</span>
-                <span style={{ color: '#5c6478' }}>{ownerName(d.assigneeId)}</span>
-                <span style={{ color: '#5c6478' }}>
-                  {(d as unknown as { severity?: string }).severity ?? '—'}
+                <ScheduleStateBadge state={d.scheduleState} />
+                <span>
+                  <PriorityBadge priority={d.priority} />
+                </span>
+                <span className="flex items-center overflow-hidden">
+                  <OwnerCell name={d.assigneeId ? ownerName(d.assigneeId) : null} />
+                </span>
+                <span>
+                  <SeverityBadge severity={(d as unknown as { severity?: string }).severity} />
                 </span>
               </div>
             ))}
@@ -559,17 +611,15 @@ function DetailSidebar({
   const { data: releases = [] } = useReleases(item.projectId)
   const { data: iterations = [] } = useIterationOptions(item.projectId, item.teamId)
   const { data: statuses = [] } = useProjectStatuses(item.projectId)
-  const { data: parentItem } = useWorkItem(
-    item.type === 'task' || item.type === 'defect' ? (item.parentId ?? undefined) : undefined,
-  )
+  const { data: parentItem } = useWorkItem(item.parentId ?? undefined)
+  const { data: taskTotals } = useTaskTotals(item.type !== 'task' ? item.id : undefined)
+  const { data: tags = [] } = useWorkItemLabels(item.id)
   const isTask = item.type === 'task'
   const isDefect = item.type === 'defect'
   const disabled = updating || readOnly
+  const navigate = useNavigate()
+  const openItem = (itemKey: string) => void navigate({ to: '/item/$itemKey', params: { itemKey } })
 
-  const SCHEDULE_STATES = SCHEDULE_STATE_VALUES.map((v) => ({
-    value: v,
-    label: SCHEDULE_STATE_LABEL[v],
-  }))
   const PRIORITIES = PRIORITY_VALUES.map((v) => ({
     value: v,
     label: WORK_ITEM_PRIORITY_CONFIG[v].label,
@@ -609,20 +659,18 @@ function DetailSidebar({
       <div className="space-y-4 p-5">
         {/* Schedule State */}
         <FormField label="Schedule State">
-          <NativeSelect
-            value={item.scheduleState ?? ''}
-            onChange={(e) => {
-              const v = e.target.value as WorkItem['scheduleState']
-              if (v !== item.scheduleState) onUpdate({ scheduleState: v })
-            }}
-            disabled={disabled}
-          >
-            {SCHEDULE_STATES.map(({ value, label }) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </NativeSelect>
+          <div>
+            <StateStepper
+              steps={SCHEDULE_STATE_STEPS}
+              value={(item.scheduleState ?? ScheduleState.Defined) as ScheduleState}
+              canEdit={!disabled}
+              onChange={(next) => {
+                if (next !== item.scheduleState)
+                  onUpdate({ scheduleState: next as WorkItem['scheduleState'] })
+              }}
+              ariaLabel="Schedule State"
+            />
+          </div>
         </FormField>
 
         {/* Flow State (workflow status — project-specific Kanban column) */}
@@ -717,50 +765,42 @@ function DetailSidebar({
 
         {/* Task: Work Product (parent link) */}
         {isTask && item.parentId && (
-          <FormField label="Work Product">
-            <Link
-              to={'/item/$itemKey'}
-              params={{ itemKey: parentItem?.itemKey ?? item.parentId }}
-              className="flex items-center gap-1.5 truncate rounded px-3 py-2 text-[12px] hover:bg-slate-50"
-              style={{ border: '1px solid #d7dde7', color: '#2558a6' }}
-            >
-              {parentItem && <TypeBadge type={parentItem.type} />}
-              {parentItem?.itemKey ?? item.parentId}
-            </Link>
-          </FormField>
+          <RelatedItemField
+            label="Work Product"
+            target={parentItem}
+            emptyText="Loading…"
+            onOpen={openItem}
+          />
         )}
 
-        {/* Defect: Parent Story link */}
-        {isDefect && (
-          <FormField label="Parent Story">
-            {disabled ? (
-              item.parentId ? (
-                <Link
-                  to={'/item/$itemKey'}
-                  params={{ itemKey: parentItem?.itemKey ?? item.parentId! }}
-                  className="block truncate rounded px-3 py-2 text-[12px] hover:bg-slate-50"
-                  style={{ border: '1px solid #d7dde7', color: '#2558a6' }}
-                >
-                  {parentItem && <TypeBadge type={parentItem.type} />}
-                  {parentItem ? `${parentItem.itemKey} — ${parentItem.title}` : item.parentId}
-                </Link>
-              ) : (
-                <span
-                  className="block rounded px-3 py-2 text-[12px]"
-                  style={{ border: '1px solid #d7dde7', color: '#9ca3af' }}
-                >
-                  No parent story
-                </span>
-              )
-            ) : (
+        {/* Story: Feature (parent link) */}
+        {item.type === 'story' && item.parentId && (
+          <RelatedItemField
+            label="Feature"
+            target={parentItem}
+            emptyText="Loading…"
+            onOpen={openItem}
+          />
+        )}
+
+        {/* Defect: Parent Story (editable dropdown, or read-only pill) */}
+        {isDefect &&
+          (disabled ? (
+            <RelatedItemField
+              label="Parent Story"
+              target={parentItem}
+              emptyText={item.parentId ? 'Loading…' : 'No parent story'}
+              onOpen={openItem}
+            />
+          ) : (
+            <FormField label="Parent Story">
               <ParentStorySelect
                 projectId={item.projectId}
                 currentParentId={item.parentId}
                 onUpdate={(patch) => onUpdate(patch)}
               />
-            )}
-          </FormField>
-        )}
+            </FormField>
+          ))}
 
         {/* Task: time fields */}
         {isTask && (
@@ -819,6 +859,17 @@ function DetailSidebar({
           </FormField>
         )}
 
+        {/* Story/Defect: Task Roll-up (read-only aggregate of child task hours) */}
+        {!isTask && taskTotals && taskTotals.taskCount > 0 && (
+          <FormField label="Task Roll-up">
+            <TaskRollup
+              estimate={taskTotals.estimateHours}
+              todo={taskTotals.todoHours}
+              actual={taskTotals.actualHours}
+            />
+          </FormField>
+        )}
+
         {/* Story/Defect: Iteration + Release */}
         {!isTask && (
           <>
@@ -866,6 +917,24 @@ function DetailSidebar({
             <span>{item.blockedReason ?? 'Reason not provided.'}</span>
           </div>
         )}
+
+        {/* Tags (labels) */}
+        {tags.length > 0 && (
+          <FormField label="Tags">
+            <LabelChips labels={tags} />
+          </FormField>
+        )}
+
+        {/* Creation Date (read-only) */}
+        <FormField label="Creation Date">
+          <span className="block px-1 text-[12px]" style={{ color: '#5c6478' }}>
+            {new Date(item.createdAt).toLocaleDateString(undefined, {
+              year: 'numeric',
+              month: 'short',
+              day: 'numeric',
+            })}
+          </span>
+        </FormField>
 
         {/* Read-only notice */}
         {readOnly && (
@@ -1028,9 +1097,7 @@ export function WorkItemDetailPage() {
             icon: (
               <span className="flex items-center gap-1.5">
                 <ListChecks size={19} />
-                {taskCount > 0 && (
-                  <span className="text-[10px] font-semibold tabular-nums">{taskCount}</span>
-                )}
+                <span className="text-[10px] font-semibold tabular-nums">{taskCount}</span>
               </span>
             ),
             label: 'Tasks',
@@ -1044,9 +1111,7 @@ export function WorkItemDetailPage() {
             icon: (
               <span className="flex items-center gap-1.5">
                 <Bug size={19} />
-                {defectCount > 0 && (
-                  <span className="text-[10px] font-semibold tabular-nums">{defectCount}</span>
-                )}
+                <span className="text-[10px] font-semibold tabular-nums">{defectCount}</span>
               </span>
             ),
             label: 'Defects',

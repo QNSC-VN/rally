@@ -2,9 +2,14 @@ import { Injectable } from '@nestjs/common';
 import { and, eq, isNull, asc, sql, inArray } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
-import { tasks, memberCapacity } from '../../../../../../db/schema/work';
+import {
+  tasks,
+  memberCapacity,
+  teamMembers,
+  projectMembers,
+} from '../../../../../../db/schema/work';
 import { users } from '../../../../../../db/schema/identity';
-import type { RawTeamStatusTaskRow } from '../../domain/team-status.types';
+import type { RawTeamStatusTaskRow, TeamStatusRosterMember } from '../../domain/team-status.types';
 import { ITeamStatusRepository } from '../../domain/ports/team-status.repository';
 
 @Injectable()
@@ -33,10 +38,7 @@ export class TeamStatusDrizzleRepository implements ITeamStatusRepository {
     const taskRows = await this.db
       .select({
         id: tasks.id,
-        itemKey: sql<string | null>`
-          (SELECT p.item_key FROM work.work_items p
-           WHERE p.id = ${tasks.parentId} AND p.deleted_at IS NULL)
-        `.as('item_key'),
+        itemKey: tasks.itemKey,
         title: tasks.title,
         type: sql<string>`'task'`.as('type'),
         scheduleState: tasks.state, // task_state enum
@@ -113,6 +115,47 @@ export class TeamStatusDrizzleRepository implements ITeamStatusRepository {
         rank: r.rank,
       };
     });
+  }
+
+  async getRosterMembers(input: {
+    workspaceId: string;
+    projectId: string;
+    teamId?: string | null;
+  }): Promise<TeamStatusRosterMember[]> {
+    const { workspaceId, projectId, teamId } = input;
+    const columns = {
+      id: users.id,
+      displayName: users.displayName,
+      avatarUrl: users.avatarUrl,
+    };
+
+    if (teamId) {
+      return this.db
+        .select(columns)
+        .from(teamMembers)
+        .innerJoin(users, eq(teamMembers.userId, users.id))
+        .where(
+          and(
+            eq(teamMembers.workspaceId, workspaceId),
+            eq(teamMembers.teamId, teamId),
+            eq(teamMembers.status, 'active'),
+          ),
+        )
+        .orderBy(asc(users.displayName));
+    }
+
+    return this.db
+      .select(columns)
+      .from(projectMembers)
+      .innerJoin(users, eq(projectMembers.userId, users.id))
+      .where(
+        and(
+          eq(projectMembers.workspaceId, workspaceId),
+          eq(projectMembers.projectId, projectId),
+          eq(projectMembers.status, 'active'),
+        ),
+      )
+      .orderBy(asc(users.displayName));
   }
 
   async getCapacities(iterationId: string, userIds: string[]): Promise<Map<string, number>> {

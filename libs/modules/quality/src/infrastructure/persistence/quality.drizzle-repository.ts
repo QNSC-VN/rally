@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
-import { and, eq, isNull, sql, inArray } from 'drizzle-orm';
+import { and, asc, eq, isNull, sql, inArray } from 'drizzle-orm';
 import { workItems, iterations, releases } from '../../../../../../db/schema/work';
 import type {
   DefectSeverity,
@@ -119,7 +119,7 @@ export class QualityDrizzleRepository implements IQualityRepository {
       )
       .leftJoin(sql`work.work_items parent_wi`, sql`parent_wi.id = work_items.parent_id`)
       .where(and(...conditions))
-      .orderBy(workItems.createdAt)
+      .orderBy(asc(workItems.rank), asc(workItems.createdAt))
       .limit(limit)
       .offset(offset);
 

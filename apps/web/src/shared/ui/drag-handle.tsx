@@ -31,10 +31,10 @@ function GripDots() {
 /**
  * Drag-to-reorder grip for rank-ordered data grids (Backlog, Iteration Status).
  *
- * Sits in a fixed left gutter, faintly visible at rest and brightening on row
- * hover, so the reorder affordance is always discoverable without competing
- * with row content. The parent row MUST carry the `group` class for the
- * hover-emphasis to work.
+ * Sits in a fixed left gutter, hidden at rest and revealed on row hover (Rally
+ * parity), so the reorder affordance appears right where the pointer is without
+ * cluttering the grid. The parent row MUST carry the `group` class for the
+ * hover reveal to work.
  *
  * Wire it to dnd-kit's sortable: pass `setActivatorNodeRef` as `ref`, spread
  * `listeners` onto it, and put `attributes` on the row element itself.
@@ -50,7 +50,7 @@ export const DragHandle = forwardRef<HTMLDivElement, DragHandleProps>(function D
       className={`flex w-4 shrink-0 items-center justify-center px-2 ${
         disabled
           ? 'cursor-default opacity-0'
-          : 'cursor-grab opacity-60 transition-opacity duration-100 group-hover:opacity-100 active:cursor-grabbing'
+          : 'cursor-grab opacity-0 transition-opacity duration-100 group-hover:opacity-100 active:cursor-grabbing'
       } ${className}`}
       {...(disabled ? {} : rest)}
     >

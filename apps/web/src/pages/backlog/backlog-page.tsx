@@ -31,13 +31,12 @@ import { useNavigate } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { SkeletonList } from '@/shared/ui/skeleton'
-import { DragHandle } from '@/shared/ui/drag-handle'
+import { RowGutter } from '@/shared/ui/row-gutter'
 import { InlineCellSelect, InlineSelect } from '@/shared/ui/native-select'
 import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { OwnerSelectCell } from '@/shared/ui/owner-cell'
 import { BulkActionBar } from '@/shared/ui/bulk-action-bar'
-import { SelectionCheckbox } from '@/shared/ui/selection-checkbox'
 import { useRowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
@@ -762,15 +761,15 @@ function TableHeaderBar({
       columnDrag={columnDrag}
       leading={
         <>
-          <div className="w-5 shrink-0 px-2">
-            <SelectionCheckbox
-              checked={allSelected}
-              indeterminate={someSelected}
-              onChange={onToggleAll}
-              ariaLabel="Select all"
-            />
-          </div>
-          <div className="w-4 shrink-0 px-2" />
+          <RowGutter
+            dragDisabled
+            checkbox={{
+              checked: allSelected,
+              indeterminate: someSelected,
+              onChange: onToggleAll,
+              ariaLabel: 'Select all',
+            }}
+          />
           <div className="w-6 shrink-0 px-2 text-right">#</div>
         </>
       }
@@ -842,7 +841,7 @@ function BacklogRow({
       className="group flex h-[34px] items-center gap-2 px-3 transition-colors duration-100 hover:bg-[#f1f6fc]"
       style={{
         minWidth: 'max-content',
-        backgroundColor: isDragging ? '#edf2fb' : selected ? '#f3f6fb' : '#ffffff',
+        backgroundColor: isDragging ? '#edf2fb' : selected ? '#f3f6fb' : undefined,
         borderBottom: '1px solid #edf0f4',
         opacity: isDragging ? 0.6 : 1,
         transform: CSS.Transform.toString(transform),
@@ -852,17 +851,18 @@ function BacklogRow({
       }}
       {...attributes}
     >
-      {/* Checkbox */}
-      <div className="w-5 shrink-0 px-2" onClick={stop}>
-        <SelectionCheckbox
-          checked={selected}
-          onChange={onToggleSelect}
-          ariaLabel={`Select ${item.itemKey}`}
-        />
-      </div>
-
-      {/* Drag handle (visible on hover, activates drag) */}
-      <DragHandle ref={setActivatorNodeRef} {...listeners} />
+      {/* Leading gutter (rank grip + selection checkbox) — shared component so
+          the header, rows and any nested rows stay column-aligned. */}
+      <RowGutter
+        ref={setActivatorNodeRef}
+        dragListeners={listeners}
+        stopPropagation
+        checkbox={{
+          checked: selected,
+          onChange: onToggleSelect,
+          ariaLabel: `Select ${item.itemKey}`,
+        }}
+      />
 
       {/* Row number */}
       <div

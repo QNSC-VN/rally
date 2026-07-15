@@ -116,6 +116,32 @@ export const WORK_ITEM_PRIORITY_CONFIG: Record<WorkItemPriority, PriorityStyle> 
   [WorkItemPriority.Urgent]: { label: 'Urgent', color: '#b91c1c' },
 }
 
+// ── Defect severity (SRS labels + colour) ─────────────────────────────────────
+// Single source of truth for defect severity — do not re-declare these labels or
+// colours in pages/features. Rendered by <SeverityBadge/>; option lists derive
+// from DEFECT_SEVERITY_OPTIONS.
+export type DefectSeverity = 'critical' | 'high' | 'medium' | 'low' | 'none'
+
+export interface SeverityStyle {
+  label: string
+  color: string
+  bg: string
+  border: string
+}
+
+export const DEFECT_SEVERITY_CONFIG: Record<DefectSeverity, SeverityStyle> = {
+  critical: { label: 'Critical', color: '#b91c1c', bg: '#fef2f2', border: '#fecaca' },
+  high: { label: 'Major Problem', color: '#9a3412', bg: '#fff7ed', border: '#fed7aa' },
+  medium: { label: 'Minor Problem', color: '#854d0e', bg: '#fefce8', border: '#fef08a' },
+  low: { label: 'Trivial', color: '#475569', bg: '#f1f5f9', border: '#cbd5e1' },
+  none: { label: 'None', color: '#8c94a6', bg: '#f1f5f9', border: '#e2e6eb' },
+}
+
+/** Selectable severity options (value + SRS label) derived from the config. */
+export const DEFECT_SEVERITY_OPTIONS: { value: DefectSeverity; label: string }[] = (
+  Object.keys(DEFECT_SEVERITY_CONFIG) as DefectSeverity[]
+).map((value) => ({ value, label: DEFECT_SEVERITY_CONFIG[value].label }))
+
 // ── Fallback style ────────────────────────────────────────────────────────────
 export const BADGE_FALLBACK: StatusBadgeStyle = { color: '#5c6478', bg: '#edf0f4' }
 

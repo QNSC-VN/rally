@@ -113,12 +113,13 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
     )`;
 
     // Milestones directly assigned to the work item — Rally "Milestones" column.
-    const milestoneNames = sql<string[]>`coalesce((
-      select array_agg(m.name order by m.name)
+    // Returns {id,name} objects so the grid can render names AND edit by id.
+    const milestoneList = sql<Array<{ id: string; name: string }>>`coalesce((
+      select json_agg(json_build_object('id', m.id, 'name', m.name) order by m.name)
       from ${milestoneArtifacts} ma
       join ${milestones} m on m.id = ma.milestone_id
       where ma.work_item_id = ${workItems.id}
-    ), '{}'::text[])`;
+    ), '[]'::json)`;
 
     const sortCol = {
       rank: workItems.rank,
@@ -149,6 +150,7 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
         blockedReason: workItems.blockedReason,
         planEstimate: workItems.storyPoints,
         assigneeId: workItems.assigneeId,
+        devOwnerId: workItems.devOwnerId,
         rank: workItems.rank,
         taskEstimate,
         toDo,
@@ -156,7 +158,7 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
         featureTitle,
         defectCount,
         openDefectCount,
-        milestoneNames,
+        milestoneList,
       })
       .from(workItems)
       .leftJoin(parentItem, eq(parentItem.id, workItems.parentId))
@@ -178,12 +180,13 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
       taskEstimate: Number(r.taskEstimate ?? 0),
       toDo: Number(r.toDo ?? 0),
       assigneeId: r.assigneeId,
+      devOwnerId: r.devOwnerId,
       rank: r.rank,
       featureKey: r.featureKey,
       featureTitle: r.featureTitle,
       defectCount: Number(r.defectCount ?? 0),
       openDefectCount: Number(r.openDefectCount ?? 0),
-      milestones: r.milestoneNames ?? [],
+      milestones: r.milestoneList ?? [],
     }));
 
     return buildPageResult(items, limit, (i) => [i.rank]);

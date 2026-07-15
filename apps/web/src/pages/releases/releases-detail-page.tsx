@@ -51,7 +51,7 @@ function ReleaseArtifactRow({
     <tr
       className="cursor-pointer transition-colors duration-75"
       style={{ borderBottom: '1px solid #edf0f4' }}
-      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f7f8fa')}
+      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f1f6fc')}
       onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
       onClick={onOpen}
     >

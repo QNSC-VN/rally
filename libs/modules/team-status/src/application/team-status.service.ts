@@ -11,6 +11,7 @@ import {
 import type {
   TeamStatusResponse,
   TeamStatusMemberGroup,
+  TeamStatusOwner,
   TeamStatusTaskRow,
   TeamTaskState,
   UpdateCapacityInput,
@@ -70,63 +71,84 @@ export class TeamStatusService {
     // Fetch raw task rows (type=task, assigned to this iteration).
     const rows = await this.repo.getTaskRows(iterationId, actor.workspaceId, teamId);
 
-    // Group by assigneeId.
-    const groupMap = new Map<string, TeamStatusTaskRow[]>();
+    // Group tasks by assignee ('unassigned' bucket for a null assignee).
+    const tasksByUser = new Map<string, TeamStatusTaskRow[]>();
     for (const row of rows) {
-      const assigneeKey = row.assigneeId ?? 'unassigned';
-      const group = groupMap.get(assigneeKey) ?? [];
-      group.push(this.toTaskRow(row));
-      groupMap.set(assigneeKey, group);
+      const key = row.assigneeId ?? 'unassigned';
+      const bucket = tasksByUser.get(key) ?? [];
+      bucket.push(this.toTaskRow(row));
+      tasksByUser.set(key, bucket);
     }
 
-    // Fetch capacities for all assigned users.
-    const userIds = [...groupMap.keys()].filter((id) => id !== 'unassigned');
+    // Full member roster — Rally lists every team member for the iteration,
+    // including those with zero tasks (rendered with an empty load bar). Source
+    // is the iteration's team; falls back to project members when the iteration
+    // is not team-scoped. Task assignees no longer on the roster (e.g. left the
+    // team but still own tasks) are folded in so their work stays visible.
+    const rosterTeamId = teamId ?? iteration.teamId ?? null;
+    const roster = await this.repo.getRosterMembers({
+      workspaceId: actor.workspaceId,
+      projectId,
+      teamId: rosterTeamId,
+    });
+
+    const memberInfo = new Map<string, TeamStatusOwner>();
+    for (const member of roster) {
+      memberInfo.set(member.id, {
+        id: member.id,
+        displayName: member.displayName,
+        avatarUrl: member.avatarUrl,
+      });
+    }
+    for (const [userId, tasks] of tasksByUser) {
+      if (userId !== 'unassigned' && !memberInfo.has(userId)) {
+        memberInfo.set(userId, tasks[0].owner);
+      }
+    }
+
+    // Capacities for every roster member (not just those who own tasks).
+    const memberIds = [...memberInfo.keys()];
     const capacities =
-      userIds.length > 0
-        ? await this.repo.getCapacities(iterationId, userIds)
+      memberIds.length > 0
+        ? await this.repo.getCapacities(iterationId, memberIds)
         : new Map<string, number>();
 
-    // Build member groups.
+    // One group per member (empty task list when they have none), plus an
+    // Unassigned group when unassigned tasks exist.
     const groups: TeamStatusMemberGroup[] = [];
-    let totalCapacity = 0;
-    let totalEstimate = 0;
-    let totalTodo = 0;
-    let totalActual = 0;
-
-    for (const [userId, tasks] of groupMap) {
-      const capacity = capacities.get(userId) ?? 0;
-      const taskEstimate = tasks.reduce((s, t) => s + t.estimateHours, 0);
-      const taskTodo = tasks.reduce((s, t) => s + t.todoHours, 0);
-      const taskActual = tasks.reduce((s, t) => s + t.actualHours, 0);
-      const progress = capacity > 0 ? Math.round((taskEstimate / capacity) * 100) : 0;
-
-      groups.push({
-        owner: {
-          id: userId,
-          displayName: tasks[0].owner.displayName,
-          avatarUrl: tasks[0].owner.avatarUrl,
-        },
-        capacityHours: capacity,
-        taskCount: tasks.length,
-        estimateHours: taskEstimate,
-        todoHours: taskTodo,
-        actualHours: taskActual,
-        progressPercent: progress,
-        tasks,
-      });
-
-      totalCapacity += capacity;
-      totalEstimate += taskEstimate;
-      totalTodo += taskTodo;
-      totalActual += taskActual;
+    for (const [userId, owner] of memberInfo) {
+      groups.push(
+        this.buildMemberGroup(owner, capacities.get(userId) ?? 0, tasksByUser.get(userId) ?? []),
+      );
+    }
+    const unassignedTasks = tasksByUser.get('unassigned');
+    if (unassignedTasks && unassignedTasks.length > 0) {
+      groups.push(
+        this.buildMemberGroup(
+          { id: 'unassigned', displayName: 'Unassigned', avatarUrl: null },
+          0,
+          unassignedTasks,
+        ),
+      );
     }
 
-    // Sort groups by owner displayName, keeping "Unassigned" at the bottom
+    // Sort members alphabetically by displayName; Unassigned pinned to the bottom.
     groups.sort((a, b) => {
       if (a.owner.id === 'unassigned') return 1;
       if (b.owner.id === 'unassigned') return -1;
       return a.owner.displayName.localeCompare(b.owner.displayName);
     });
+
+    // Totals span the whole roster (capacity includes zero-task members).
+    const totals = groups.reduce(
+      (acc, g) => ({
+        capacityHours: acc.capacityHours + g.capacityHours,
+        estimateHours: acc.estimateHours + g.estimateHours,
+        todoHours: acc.todoHours + g.todoHours,
+        actualHours: acc.actualHours + g.actualHours,
+      }),
+      { capacityHours: 0, estimateHours: 0, todoHours: 0, actualHours: 0 },
+    );
 
     return {
       projectId,
@@ -137,12 +159,7 @@ export class TeamStatusService {
         startDate: iteration.startDate,
         endDate: iteration.endDate,
       },
-      totals: {
-        capacityHours: totalCapacity,
-        estimateHours: totalEstimate,
-        todoHours: totalTodo,
-        actualHours: totalActual,
-      },
+      totals,
       groups,
     };
   }
@@ -281,6 +298,29 @@ export class TeamStatusService {
   }
 
   // ── Private helpers ─────────────────────────────────────────────────────
+
+  /** Aggregate a member's tasks into a group row (works for zero-task members). */
+  private buildMemberGroup(
+    owner: TeamStatusOwner,
+    capacityHours: number,
+    tasks: TeamStatusTaskRow[],
+  ): TeamStatusMemberGroup {
+    const estimateHours = tasks.reduce((s, t) => s + t.estimateHours, 0);
+    const todoHours = tasks.reduce((s, t) => s + t.todoHours, 0);
+    const actualHours = tasks.reduce((s, t) => s + t.actualHours, 0);
+    const progressPercent =
+      capacityHours > 0 ? Math.round((estimateHours / capacityHours) * 100) : 0;
+    return {
+      owner,
+      capacityHours,
+      taskCount: tasks.length,
+      estimateHours,
+      todoHours,
+      actualHours,
+      progressPercent,
+      tasks,
+    };
+  }
 
   private toTaskRow(row: RawTeamStatusTaskRow): TeamStatusTaskRow {
     return {

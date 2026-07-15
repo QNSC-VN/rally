@@ -9,6 +9,8 @@ import {
   iterations,
   releases,
   tasks,
+  milestones,
+  milestoneArtifacts,
 } from '../../../../../../db/schema/work';
 import type {
   DefectSeverity,
@@ -699,5 +701,35 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       .where(eq(workItemLabels.workItemId, workItemId))
       .orderBy(labels.name);
     return rows;
+  }
+
+  async listMilestones(workItemId: string): Promise<Array<{ id: string; name: string }>> {
+    const rows = await this.db
+      .select({ id: milestones.id, name: milestones.name })
+      .from(milestoneArtifacts)
+      .innerJoin(milestones, eq(milestoneArtifacts.milestoneId, milestones.id))
+      .where(eq(milestoneArtifacts.workItemId, workItemId))
+      .orderBy(milestones.name);
+    return rows;
+  }
+
+  async setMilestones(workItemId: string, milestoneIds: string[]): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      await tx.delete(milestoneArtifacts).where(eq(milestoneArtifacts.workItemId, workItemId));
+      if (milestoneIds.length > 0) {
+        await tx
+          .insert(milestoneArtifacts)
+          .values(milestoneIds.map((milestoneId) => ({ milestoneId, workItemId })));
+      }
+    });
+  }
+
+  async countMilestonesInProject(milestoneIds: string[], projectId: string): Promise<number> {
+    if (milestoneIds.length === 0) return 0;
+    const rows = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(milestones)
+      .where(and(inArray(milestones.id, milestoneIds), eq(milestones.projectId, projectId)));
+    return Number(rows[0]?.count ?? 0);
   }
 }

@@ -1,9 +1,11 @@
 import {
   BADGE_FALLBACK,
+  DEFECT_SEVERITY_CONFIG,
   SCHEDULE_STATE_CONFIG,
   SCHEDULE_STATE_LABEL,
   WORK_ITEM_PRIORITY_CONFIG,
   WORK_ITEM_TYPE_CONFIG,
+  type DefectSeverity,
   type ScheduleState,
   type WorkItemPriority,
   type WorkItemType,
@@ -13,21 +15,31 @@ import {
 
 interface TypeBadgeProps {
   type: WorkItemType | string
+  /** Chip diameter in px (default 18 — the Rally grid size). */
+  size?: number
 }
 
-export function TypeBadge({ type }: TypeBadgeProps) {
+export function TypeBadge({ type, size = 18 }: TypeBadgeProps) {
   const cfg = WORK_ITEM_TYPE_CONFIG[type as WorkItemType] ?? {
     label: type.slice(0, 2).toUpperCase(),
     ...BADGE_FALLBACK,
   }
   const Icon = cfg.icon
+  // Broadcom Rally parity: a circular, solid-colour chip with a white glyph.
+  // Single source for the work-item type mark — reused by IdCell,
+  // WorkItemRefCell, the detail header and every grid's ID column, so the type
+  // icon can never drift between pages.
   return (
     <span
-      className="inline-flex h-5 min-w-[36px] items-center justify-center gap-0.5 rounded-sm px-1.5 text-[9px] font-semibold"
-      style={{ color: cfg.color, backgroundColor: cfg.bg }}
+      className="inline-flex shrink-0 items-center justify-center rounded-full"
+      style={{ width: size, height: size, backgroundColor: cfg.color, color: '#ffffff' }}
+      title={cfg.label}
     >
-      {Icon && <Icon size={10} strokeWidth={2.2} />}
-      {cfg.label}
+      {Icon ? (
+        <Icon size={Math.round(size * 0.58)} strokeWidth={2.4} />
+      ) : (
+        <span style={{ fontSize: Math.round(size * 0.44), fontWeight: 700 }}>{cfg.label}</span>
+      )}
     </span>
   )
 }
@@ -36,30 +48,43 @@ export function TypeBadge({ type }: TypeBadgeProps) {
 
 interface ScheduleStateBadgeProps {
   state: ScheduleState | string
-  /** Render a small leading color dot instead of the tinted background pill. */
-  dot?: boolean
 }
 
-export function ScheduleStateBadge({ state, dot }: ScheduleStateBadgeProps) {
+export function ScheduleStateBadge({ state }: ScheduleStateBadgeProps) {
   const cfg = SCHEDULE_STATE_CONFIG[state as ScheduleState] ?? BADGE_FALLBACK
   const label = SCHEDULE_STATE_LABEL[state as ScheduleState] ?? state
-  if (dot) {
-    return (
-      <span
-        className="inline-flex items-center gap-1 rounded-sm px-2 py-px text-[11px] font-medium whitespace-nowrap"
-        style={{ backgroundColor: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}33` }}
-      >
-        <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: cfg.color }} />
-        {label}
-      </span>
-    )
-  }
   return (
     <span
       className="inline-flex h-5 items-center rounded-sm px-1.5 text-[10px] font-medium"
       style={{ color: cfg.color, backgroundColor: cfg.bg }}
     >
       {label}
+    </span>
+  )
+}
+
+// ── SeverityBadge (defect severity) ───────────────────────────────────────────
+
+interface SeverityBadgeProps {
+  severity: DefectSeverity | string | null | undefined
+}
+
+/** Read-only defect severity pill (SRS labels + colour). Renders `—` for none. */
+export function SeverityBadge({ severity }: SeverityBadgeProps) {
+  if (!severity || severity === 'none') {
+    return (
+      <span className="text-[10px]" style={{ color: '#c4cad4' }}>
+        —
+      </span>
+    )
+  }
+  const cfg = DEFECT_SEVERITY_CONFIG[severity as DefectSeverity] ?? DEFECT_SEVERITY_CONFIG.none
+  return (
+    <span
+      className="inline-flex items-center rounded-sm px-1.5 py-px text-[10px] font-medium"
+      style={{ backgroundColor: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}` }}
+    >
+      {cfg.label}
     </span>
   )
 }

@@ -2,73 +2,66 @@
  * Quality / Defect Tracking — P3.4
  *
  * Shows defect metrics strip + filterable defect table for the active project.
- * 12-column SRS layout: Rank, ID, Name, User Story, Severity, Priority,
- * State, Flow State, Fixed In Build, Iteration, Submitted By, Owner
+ * SRS layout (row-number gutter, then columns): ID, Name, User Story, Severity,
+ * Priority, State, Schedule State, Fixed In Build, Iteration, Submitted By, Owner
  */
-import { useState } from 'react'
+import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
+import { DndContext } from '@dnd-kit/core'
+import { SortableContext, useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { AlertTriangle, PackageOpen, Plus } from 'lucide-react'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
+import { RowGutter } from '@/shared/ui/row-gutter'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { BRAND } from '@/shared/config/brand'
-import { TypeBadge } from '@/entities/work-item/ui/badges'
+import { IdCell } from '@/entities/work-item/ui/id-cell'
+import { WorkItemRefCell } from '@/entities/work-item/ui/work-item-ref-cell'
+import { StateStepper } from '@/entities/work-item/ui/state-stepper'
+import { SCHEDULE_STATE_STEPS } from '@/entities/work-item/ui/state-steps'
+import {
+  WorkItemType,
+  WorkItemPriority,
+  DEFECT_SEVERITY_CONFIG,
+  DEFECT_SEVERITY_OPTIONS,
+  PRIORITY_LABEL,
+  type ScheduleState,
+} from '@/entities/work-item/model/types'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
-import { InlineCellSelect } from '@/shared/ui/native-select'
+import { InlineCellSelect, InlineSelect } from '@/shared/ui/native-select'
+import { BulkActionBar } from '@/shared/ui/bulk-action-bar'
+import { useRowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
-import {
-  useDefects,
-  useCreateDefect,
-  qualityKeys,
-  type DefectSeverity,
-  type DefectRow,
-} from '@/features/quality/api'
+import { useDefects, useCreateDefect, qualityKeys, type DefectRow } from '@/features/quality/api'
 import { useProjectMembers } from '@/features/teams/api'
 import { useReleases } from '@/features/releases/api'
-import { useUpdateWorkItem } from '@/features/work-items/api'
+import { useIterations } from '@/features/iterations/api'
+import {
+  useUpdateWorkItem,
+  useRankAnyWorkItem,
+  useBulkAssignRelease,
+  useBulkAssignIteration,
+} from '@/features/work-items/api'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { useQueryClient } from '@tanstack/react-query'
-import { useColumnLayout, type ColumnDef } from '@/shared/lib/hooks/use-column-layout'
-import { ResizeHandle } from '@/shared/ui/resize-handle'
+import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
+import { OwnerCell } from '@/shared/ui/owner-cell'
+import { DataTableHeader } from '@/shared/ui/data-table-header'
+import { useDataTable, useRowRerank, type ColumnSpec } from '@/shared/ui/table'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
-/** DB key → SRS display label mapping for severity */
-const SEVERITY_STYLE: Record<
-  DefectSeverity,
-  { bg: string; text: string; border: string; label: string }
-> = {
-  critical: { bg: '#fef2f2', text: '#b91c1c', border: '#fecaca', label: 'Critical' },
-  high: { bg: '#fff7ed', text: '#9a3412', border: '#fed7aa', label: 'Major Problem' },
-  medium: { bg: '#fefce8', text: '#854d0e', border: '#fef08a', label: 'Minor Problem' },
-  low: { bg: '#f1f5f9', text: '#475569', border: '#cbd5e1', label: 'Trivial' },
-  none: { bg: '#f1f5f9', text: '#8c94a6', border: '#e2e6eb', label: 'None' },
-}
-
-const SEVERITY_OPTIONS: { value: string; label: string }[] = [
-  { value: 'critical', label: 'Critical' },
-  { value: 'high', label: 'Major Problem' },
-  { value: 'medium', label: 'Minor Problem' },
-  { value: 'low', label: 'Trivial' },
-  { value: 'none', label: 'None' },
-]
+/** Severity labels/colours + option list come from the shared entity config. */
+const SEVERITY_STYLE = DEFECT_SEVERITY_CONFIG
+const SEVERITY_OPTIONS = DEFECT_SEVERITY_OPTIONS
 
 /** Flow State (schedule state) — SRS labels */
-const FLOW_STATE_LABEL: Record<string, string> = {
-  idea: 'Idea',
-  defined: 'Defined',
-  ready: 'Ready',
-  in_progress: 'In-Progress',
-  completed: 'Completed',
-  accepted: 'Accepted',
-  released: 'Released',
-}
-
 const FLOW_STATE_OPTIONS: { value: string; label: string }[] = [
   { value: 'idea', label: 'Idea' },
   { value: 'defined', label: 'Defined' },
@@ -78,13 +71,15 @@ const FLOW_STATE_OPTIONS: { value: string; label: string }[] = [
   { value: 'released', label: 'Released' },
 ]
 
+// Labels sourced from the shared work-item config (single source of truth);
+// order is defect-page specific (most-urgent first).
 const PRIORITY_OPTIONS: { value: string; label: string }[] = [
-  { value: 'none', label: 'None' },
-  { value: 'urgent', label: 'Urgent' },
-  { value: 'high', label: 'High' },
-  { value: 'normal', label: 'Normal' },
-  { value: 'low', label: 'Low' },
-]
+  WorkItemPriority.None,
+  WorkItemPriority.Urgent,
+  WorkItemPriority.High,
+  WorkItemPriority.Normal,
+  WorkItemPriority.Low,
+].map((v) => ({ value: v, label: PRIORITY_LABEL[v] }))
 
 const DEFECT_STATE_STYLE: Record<
   string,
@@ -211,8 +206,38 @@ function FixedInBuildCell({
   )
 }
 
+/**
+ * Flow State cell — the schedule-state segmented stepper, identical to the
+ * Iteration Status grid (shared {@link StateStepper} + {@link SCHEDULE_STATE_STEPS}).
+ * Single visual language for schedule state across every work-item grid.
+ */
+function FlowStateStepperCell({ defect, canEdit }: { defect: DefectRow; canEdit: boolean }) {
+  const qc = useQueryClient()
+  const update = useUpdateWorkItem(defect.id)
+
+  return (
+    <div onClick={(e) => e.stopPropagation()}>
+      <StateStepper
+        steps={SCHEDULE_STATE_STEPS}
+        value={defect.scheduleState as ScheduleState}
+        canEdit={canEdit}
+        onChange={(next) =>
+          update.mutate({ scheduleState: next } as never, {
+            onSuccess: () => {
+              void qc.invalidateQueries({ queryKey: qualityKeys.all })
+            },
+            onError: () => {
+              toast.error('Failed to update flow state')
+            },
+          })
+        }
+        ariaLabel="Flow state"
+      />
+    </div>
+  )
+}
+
 type QualityColKey =
-  | 'rank'
   | 'id'
   | 'name'
   | 'userStory'
@@ -225,19 +250,230 @@ type QualityColKey =
   | 'submittedBy'
   | 'owner'
 
-const QUALITY_COLUMNS: ColumnDef<QualityColKey>[] = [
-  { key: 'rank', label: 'Rank', defaultWidth: 40, locked: true },
-  { key: 'id', label: 'ID', defaultWidth: 104, minWidth: 84, locked: true },
-  { key: 'name', label: 'Name', defaultWidth: 200, minWidth: 120, locked: true },
-  { key: 'userStory', label: 'User Story', defaultWidth: 140, minWidth: 80 },
-  { key: 'severity', label: 'Severity', defaultWidth: 100, minWidth: 70 },
-  { key: 'priority', label: 'Priority', defaultWidth: 80, minWidth: 60 },
-  { key: 'state', label: 'State', defaultWidth: 100, minWidth: 70 },
-  { key: 'flowState', label: 'Flow State', defaultWidth: 90, minWidth: 70 },
-  { key: 'fixedInBuild', label: 'Fixed In Build', defaultWidth: 100, minWidth: 70 },
-  { key: 'iteration', label: 'Iteration', defaultWidth: 100, minWidth: 70 },
-  { key: 'submittedBy', label: 'Submitted By', defaultWidth: 100, minWidth: 70 },
-  { key: 'owner', label: 'Owner', defaultWidth: 100, minWidth: 70 },
+interface QualityCtx {
+  canManage: boolean
+  projectId: string
+  openItem: (itemKey: string) => void
+}
+
+/** Logical (not alphabetical) sort order for the categorical columns. */
+const SEVERITY_SORT: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, none: 4 }
+const PRIORITY_SORT: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3, none: 4 }
+const DEFECT_STATE_SORT: Record<string, number> = {
+  submitted: 0,
+  open: 1,
+  fixed: 2,
+  closed: 3,
+  closed_declined: 4,
+}
+const SCHEDULE_SORT: Record<string, number> = {
+  idea: 0,
+  defined: 1,
+  in_progress: 2,
+  completed: 3,
+  accepted: 4,
+  released: 5,
+}
+
+/** Resolve a comparable value for a defect column key (drives click-to-sort). */
+function defectSortValue(d: DefectRow, col: string): string | number {
+  switch (col) {
+    case 'id':
+      return d.itemKey
+    case 'name':
+      return d.title.toLowerCase()
+    case 'userStory':
+      return (d.parentKey ?? '').toLowerCase()
+    case 'severity':
+      return SEVERITY_SORT[d.severity ?? 'none'] ?? 99
+    case 'priority':
+      return PRIORITY_SORT[d.priority] ?? 99
+    case 'state':
+      return DEFECT_STATE_SORT[d.defectState ?? 'submitted'] ?? 99
+    case 'scheduleState':
+      return SCHEDULE_SORT[d.scheduleState] ?? 99
+    case 'fixedInBuild':
+      return (d.fixedInBuild ?? '').toLowerCase()
+    case 'iteration':
+      return (d.iterationName ?? '').toLowerCase()
+    case 'submittedBy':
+      return (d.createdByName ?? '').toLowerCase()
+    case 'owner':
+      return (d.assigneeName ?? '').toLowerCase()
+    default:
+      return ''
+  }
+}
+
+/**
+ * Column catalog — the single source of truth for the Defects grid. Each entry
+ * declares its layout (width/lock/align) AND its body-cell renderer, so the
+ * shared {@link useDataTable} engine derives the header, resize/reorder/show-hide
+ * behaviour and row cells from this one array (Broadcom-style config-driven grid).
+ */
+const QUALITY_COLUMNS: ColumnSpec<DefectRow, QualityCtx, QualityColKey>[] = [
+  {
+    key: 'id',
+    label: 'ID',
+    sortCol: 'id',
+    defaultWidth: 104,
+    minWidth: 84,
+    locked: true,
+    cellClassName: 'overflow-hidden px-2',
+    cell: (d, ctx) => (
+      <IdCell type={d.type} itemKey={d.itemKey} onOpen={() => ctx.openItem(d.itemKey)} />
+    ),
+  },
+  {
+    key: 'name',
+    label: 'Name',
+    sortCol: 'name',
+    defaultWidth: 200,
+    minWidth: 120,
+    locked: true,
+    cellClassName: 'min-w-0 px-2',
+    cell: (d) => (
+      <span className="block truncate text-[12px] font-medium" style={{ color: '#1a2234' }}>
+        {d.title}
+      </span>
+    ),
+  },
+  {
+    key: 'userStory',
+    label: 'User Story',
+    sortCol: 'userStory',
+    defaultWidth: 140,
+    minWidth: 80,
+    cellClassName: 'flex min-w-0 items-center px-2',
+    cell: (d, ctx) =>
+      d.parentKey ? (
+        <WorkItemRefCell
+          type={WorkItemType.Story}
+          itemKey={d.parentKey}
+          title={d.parentTitle}
+          onOpen={() => ctx.openItem(d.parentKey!)}
+        />
+      ) : (
+        <span className="text-[11px]" style={{ color: '#c4cad4' }}>
+          —
+        </span>
+      ),
+  },
+  {
+    key: 'severity',
+    label: 'Severity',
+    sortCol: 'severity',
+    defaultWidth: 100,
+    minWidth: 70,
+    cellClassName: 'px-2',
+    cell: (d, ctx) => {
+      const sevStyle = d.severity && d.severity !== 'none' ? SEVERITY_STYLE[d.severity] : null
+      return sevStyle ? (
+        <DefectInlineCell
+          defect={d}
+          field="severity"
+          options={SEVERITY_OPTIONS}
+          currentValue={d.severity!}
+          displayValue={sevStyle.label}
+          canEdit={ctx.canManage}
+          projectId={ctx.projectId}
+        />
+      ) : (
+        <div onClick={(e) => e.stopPropagation()}>
+          <span className="text-[10px]" style={{ color: '#c4cad4' }}>
+            —
+          </span>
+        </div>
+      )
+    },
+  },
+  {
+    key: 'priority',
+    label: 'Priority',
+    sortCol: 'priority',
+    defaultWidth: 80,
+    minWidth: 60,
+    cellClassName: 'px-2',
+    cell: (d, ctx) => (
+      <DefectInlineCell
+        defect={d}
+        field="priority"
+        options={PRIORITY_OPTIONS}
+        currentValue={d.priority}
+        displayValue={
+          d.priority === 'none' ? '—' : d.priority.charAt(0).toUpperCase() + d.priority.slice(1)
+        }
+        canEdit={ctx.canManage}
+        projectId={ctx.projectId}
+      />
+    ),
+  },
+  {
+    key: 'state',
+    label: 'State',
+    sortCol: 'state',
+    defaultWidth: 100,
+    minWidth: 70,
+    cellClassName: 'px-2',
+    cell: (d, ctx) => (
+      <DefectStateInlineCell defect={d} canEdit={ctx.canManage} projectId={ctx.projectId} />
+    ),
+  },
+  {
+    key: 'flowState',
+    label: 'Schedule State',
+    sortCol: 'scheduleState',
+    defaultWidth: 132,
+    minWidth: 132,
+    cellClassName: 'flex items-center px-2 select-none',
+    cell: (d, ctx) => <FlowStateStepperCell defect={d} canEdit={ctx.canManage} />,
+  },
+  {
+    key: 'fixedInBuild',
+    label: 'Fixed In Build',
+    sortCol: 'fixedInBuild',
+    defaultWidth: 100,
+    minWidth: 70,
+    cellClassName: 'px-2',
+    cell: (d, ctx) => (
+      <FixedInBuildCell defect={d} canEdit={ctx.canManage} projectId={ctx.projectId} />
+    ),
+  },
+  {
+    key: 'iteration',
+    label: 'Iteration',
+    sortCol: 'iteration',
+    defaultWidth: 100,
+    minWidth: 70,
+    cellClassName: 'min-w-0 px-2 text-[10px]',
+    cell: (d) => (
+      <span className="block truncate" style={{ color: '#5c6478' }} title={d.iterationName ?? ''}>
+        {d.iterationName ?? '—'}
+      </span>
+    ),
+  },
+  {
+    key: 'submittedBy',
+    label: 'Submitted By',
+    sortCol: 'submittedBy',
+    defaultWidth: 100,
+    minWidth: 70,
+    cellClassName: 'min-w-0 px-2 text-[10px]',
+    cell: (d) => (
+      <span className="block truncate" style={{ color: '#5c6478' }} title={d.createdByName ?? ''}>
+        {d.createdByName ?? '—'}
+      </span>
+    ),
+  },
+  {
+    key: 'owner',
+    label: 'Owner',
+    sortCol: 'owner',
+    defaultWidth: 100,
+    minWidth: 70,
+    cellClassName: 'overflow-hidden px-2',
+    cell: (d) => <OwnerCell name={d.assigneeName} />,
+  },
 ]
 
 // ── Metric card ────────────────────────────────────────────────────────────
@@ -532,14 +768,114 @@ function LogDefectModal({ projectId, onClose }: { projectId: string; onClose: ()
   )
 }
 
+// ── Defect row (draggable) ───────────────────────────────────────────────────
+
+interface DefectTableRowProps {
+  defect: DefectRow
+  rowNum: number
+  canManage: boolean
+  projectId: string
+  dragDisabled: boolean
+  selected: boolean
+  onToggleSelect: () => void
+  openItem: (itemKey: string) => void
+  renderCells: (row: DefectRow, ctx: QualityCtx) => ReactNode
+}
+
+/**
+ * One Defects grid row. Owns its DnD wiring (dnd-kit `useSortable`) while the
+ * engine's `renderCells` owns the column cells — so row structure (drag grip,
+ * row nav) stays page-local and the columns stay DRY. Rank persistence + the
+ * optimistic ordering are handled by the shared {@link useRowRerank}.
+ */
+function DefectTableRow({
+  defect,
+  rowNum,
+  canManage,
+  projectId,
+  dragDisabled,
+  selected,
+  onToggleSelect,
+  openItem,
+  renderCells,
+}: DefectTableRowProps) {
+  const {
+    setNodeRef,
+    setActivatorNodeRef,
+    listeners,
+    attributes,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: defect.id })
+  return (
+    <div
+      ref={setNodeRef}
+      className="group flex h-[34px] cursor-pointer items-center gap-2 px-3 transition-colors duration-100 hover:bg-[#f1f6fc]"
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        borderBottom: '1px solid #edf0f4',
+        minWidth: 'max-content',
+        backgroundColor: isDragging ? '#edf2fb' : selected ? '#f3f6fb' : undefined,
+        opacity: isDragging ? 0.6 : 1,
+        zIndex: isDragging ? 1 : undefined,
+        position: isDragging ? 'relative' : undefined,
+      }}
+      onClick={() => openItem(defect.itemKey)}
+      {...attributes}
+    >
+      <RowGutter
+        ref={setActivatorNodeRef}
+        dragListeners={listeners}
+        dragDisabled={dragDisabled}
+        stopPropagation
+        checkbox={{
+          checked: selected,
+          onChange: onToggleSelect,
+          ariaLabel: `Select ${defect.itemKey}`,
+        }}
+      />
+      <div
+        className="w-6 shrink-0 px-2 text-right font-mono text-[10px] tabular-nums"
+        style={{ color: '#8c94a6' }}
+      >
+        {rowNum}
+      </div>
+      {renderCells(defect, { canManage, projectId, openItem })}
+    </div>
+  )
+}
+
 // ── Quality page ───────────────────────────────────────────────────────────
 
 export function QualityPage() {
   const navigate = useNavigate()
+  const qc = useQueryClient()
   const { project } = useAppContext()
   const { can } = useProjectPermissions(project?.projectId)
   const canManage = can('quality:edit')
-  const { startResize, styleFor } = useColumnLayout(QUALITY_COLUMNS, STORAGE_KEYS.QUALITY_COLUMNS)
+  const [sortCol, setSortCol] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  // Toggle asc/desc on the active column, else switch to a new column (asc).
+  // NOTE: never nest a setter inside another setter's updater — StrictMode
+  // double-invokes updaters and would cancel the toggle.
+  const handleSort = useCallback(
+    (col: string) => {
+      if (sortCol === col) {
+        setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+      } else {
+        setSortCol(col)
+        setSortDir('asc')
+      }
+    },
+    [sortCol],
+  )
+  const table = useDataTable<DefectRow, QualityCtx, QualityColKey>(QUALITY_COLUMNS, {
+    storageKey: STORAGE_KEYS.QUALITY_COLUMNS,
+    leadingWidth: 84,
+    sort: { col: sortCol, dir: sortDir, onSort: handleSort },
+  })
   const [search, setSearch] = useState('')
   const [severityFilter, setSeverityFilter] = useState('all')
   const [envFilter, setEnvFilter] = useState('all')
@@ -567,7 +903,83 @@ export function QualityPage() {
     defectState: defectStateFilter,
   })
 
-  const defects = data?.data ?? []
+  const defects = useMemo(() => data?.data ?? [], [data])
+  const sortedDefects = useMemo(() => {
+    if (!sortCol) return defects
+    const dir = sortDir === 'asc' ? 1 : -1
+    return [...defects].sort((a, b) => {
+      const va = defectSortValue(a, sortCol)
+      const vb = defectSortValue(b, sortCol)
+      if (va < vb) return -1 * dir
+      if (va > vb) return 1 * dir
+      return 0
+    })
+  }, [defects, sortCol, sortDir])
+  // Row drag-to-rerank (shared engine capability). Disabled while a column
+  // sort is active — rank only has meaning in natural rank order.
+  const rankMutation = useRankAnyWorkItem()
+  const rerank = useRowRerank({
+    items: sortedDefects,
+    disabled: sortCol !== null,
+    onReorder: ({ id, beforeId, afterId }) =>
+      rankMutation.mutate(
+        {
+          id,
+          projectId: project?.projectId ?? '',
+          beforeId: beforeId ?? undefined,
+          afterId: afterId ?? undefined,
+        },
+        { onError: (err) => toast.error(err.message) },
+      ),
+  })
+
+  // ── Bulk selection (shared pattern: checkbox gutter + BulkActionBar) ────────
+  const { data: iterations = [] } = useIterations(project?.projectId)
+  const {
+    selectedIds,
+    allSelected,
+    someSelected,
+    isSelected,
+    toggle: toggleSelect,
+    toggleAll,
+    clear: clearSelection,
+  } = useRowSelection(sortedDefects)
+  const bulkRelease = useBulkAssignRelease()
+  const bulkIteration = useBulkAssignIteration()
+  const [bulkError, setBulkError] = useState<string | null>(null)
+
+  async function assignReleaseToSelected(releaseId: string | null) {
+    if (!project?.projectId || selectedIds.size === 0) return
+    setBulkError(null)
+    try {
+      await bulkRelease.mutateAsync({
+        projectId: project.projectId,
+        itemIds: [...selectedIds],
+        releaseId,
+      })
+      await qc.invalidateQueries({ queryKey: qualityKeys.all })
+      clearSelection()
+    } catch (e) {
+      setBulkError(e instanceof Error ? e.message : 'Bulk release assignment failed')
+    }
+  }
+
+  async function assignIterationToSelected(iterationId: string | null) {
+    if (!project?.projectId || selectedIds.size === 0) return
+    setBulkError(null)
+    try {
+      await bulkIteration.mutateAsync({
+        projectId: project.projectId,
+        itemIds: [...selectedIds],
+        iterationId,
+      })
+      await qc.invalidateQueries({ queryKey: qualityKeys.all })
+      clearSelection()
+    } catch (e) {
+      setBulkError(e instanceof Error ? e.message : 'Bulk iteration assignment failed')
+    }
+  }
+
   const metrics = data?.metrics ?? {
     openDefects: 0,
     critical: 0,
@@ -739,7 +1151,66 @@ export function QualityPage() {
             />
           </>
         }
+        fields={<ColumnFieldsMenu {...table.fieldsMenuProps} />}
       />
+
+      {/* Bulk action bar — appears when ≥1 defect is selected */}
+      {selectedIds.size > 0 && (
+        <BulkActionBar
+          selectedCount={selectedIds.size}
+          error={bulkError}
+          onClear={() => {
+            clearSelection()
+            setBulkError(null)
+          }}
+        >
+          {canManage && (
+            <>
+              <InlineSelect
+                value=""
+                disabled={bulkRelease.isPending}
+                onChange={(e) => {
+                  if (!e.target.value) return
+                  void assignReleaseToSelected(
+                    e.target.value === '__none__' ? null : e.target.value,
+                  )
+                }}
+                className="w-auto"
+                aria-label="Assign release to selected"
+              >
+                <option value="">Assign Release…</option>
+                <option value="__none__">— Unschedule —</option>
+                {(releases ?? []).map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </InlineSelect>
+
+              <InlineSelect
+                value=""
+                disabled={bulkIteration.isPending}
+                onChange={(e) => {
+                  if (!e.target.value) return
+                  void assignIterationToSelected(
+                    e.target.value === '__none__' ? null : e.target.value,
+                  )
+                }}
+                className="w-auto"
+                aria-label="Assign iteration to selected"
+              >
+                <option value="">Assign Iteration…</option>
+                <option value="__none__">— Unschedule —</option>
+                {iterations.map((it) => (
+                  <option key={it.id} value={it.id}>
+                    {it.name}
+                  </option>
+                ))}
+              </InlineSelect>
+            </>
+          )}
+        </BulkActionBar>
+      )}
 
       {/* Defect table */}
       <div className="flex flex-1 overflow-hidden bg-white">
@@ -760,189 +1231,47 @@ export function QualityPage() {
           </div>
         ) : (
           <div className="flex flex-1 flex-col overflow-hidden">
-            {/* Header */}
-            <div
-              className="flex h-8 shrink-0 items-center overflow-x-auto px-3 select-none"
-              style={{
-                backgroundColor: '#f7f8fa',
-                borderBottom: `1px solid ${BRAND.border}`,
-                minWidth: 'max-content',
-              }}
-            >
-              {QUALITY_COLUMNS.map((col) => (
-                <div
-                  key={col.key}
-                  className="group relative flex items-center gap-1 px-2 text-[9px] font-semibold tracking-wider whitespace-nowrap uppercase"
-                  style={{ ...styleFor(col.key, { flexShrink: 0 }), color: '#8c94a6' }}
-                >
-                  <span>{col.label}</span>
-                  <ResizeHandle
-                    onMouseDown={(e) => startResize(col.key, e)}
-                    ariaLabel={`Resize ${col.label} column`}
-                  />
-                </div>
-              ))}
-            </div>
-            {/* Rows */}
             <div className="flex-1 overflow-auto">
-              {defects.map((d, idx) => {
-                const sevStyle =
-                  d.severity && d.severity !== 'none' ? SEVERITY_STYLE[d.severity] : null
-                const flowLabel = FLOW_STATE_LABEL[d.scheduleState] ?? d.scheduleState
-                const userStory = d.parentKey
-                  ? `${d.parentKey}: ${d.parentTitle ?? ''}`
-                  : (d.parentTitle ?? '')
-
-                return (
-                  <div
-                    key={d.id}
-                    className="flex h-8 cursor-pointer items-center px-3"
-                    style={{ borderBottom: '1px solid #edf0f4', minWidth: 'max-content' }}
-                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f7f8fa')}
-                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-                    onClick={() =>
-                      navigate({ to: '/item/$itemKey', params: { itemKey: d.itemKey } })
-                    }
-                  >
-                    {/* Rank */}
-                    <div
-                      className="shrink-0 px-2 text-center text-[10px]"
-                      style={{ ...styleFor('rank'), color: '#8c94a6' }}
-                    >
-                      {idx + 1}
-                    </div>
-                    {/* ID */}
-                    <div
-                      className="flex shrink-0 items-center gap-1 overflow-hidden px-2"
-                      style={styleFor('id')}
-                    >
-                      <TypeBadge type={d.type} />
-                      <span
-                        className="truncate font-mono text-[10px]"
-                        title={d.itemKey}
-                        style={{ color: '#5c6478' }}
-                      >
-                        {d.itemKey}
-                      </span>
-                    </div>
-                    {/* Name */}
-                    <div className="min-w-0 shrink-0 px-2" style={styleFor('name')}>
-                      <span
-                        className="block truncate text-[12px] font-medium"
-                        style={{ color: '#1a2234' }}
-                      >
-                        {d.title}
-                      </span>
-                    </div>
-                    {/* User Story */}
-                    <div
-                      className="shrink-0 truncate px-2 text-[10px]"
-                      style={{ ...styleFor('userStory'), color: '#5c6478' }}
-                      title={userStory}
-                    >
-                      {userStory || '—'}
-                    </div>
-                    {/* Severity (inline editable) */}
-                    <div
-                      className="shrink-0 px-2"
-                      style={styleFor('severity')}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {sevStyle ? (
-                        <DefectInlineCell
-                          defect={d}
-                          field="severity"
-                          options={SEVERITY_OPTIONS}
-                          currentValue={d.severity!}
-                          displayValue={sevStyle.label}
-                          canEdit={canManage}
-                          projectId={project?.projectId ?? ''}
-                        />
-                      ) : (
-                        <span className="text-[10px]" style={{ color: '#c4cad4' }}>
-                          —
-                        </span>
-                      )}
-                    </div>
-                    {/* Priority (inline editable) */}
-                    <div
-                      className="shrink-0 px-2"
-                      style={styleFor('priority')}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <DefectInlineCell
-                        defect={d}
-                        field="priority"
-                        options={PRIORITY_OPTIONS}
-                        currentValue={d.priority}
-                        displayValue={
-                          d.priority === 'none'
-                            ? '—'
-                            : d.priority.charAt(0).toUpperCase() + d.priority.slice(1)
-                        }
-                        canEdit={canManage}
-                        projectId={project?.projectId ?? ''}
+              <div style={{ width: table.tableWidth, minWidth: '100%' }}>
+                {/* Header */}
+                <DataTableHeader
+                  {...table.headerProps}
+                  className="gap-2 px-3"
+                  leading={
+                    <>
+                      <RowGutter
+                        dragDisabled
+                        checkbox={{
+                          checked: allSelected,
+                          indeterminate: someSelected,
+                          onChange: toggleAll,
+                          ariaLabel: 'Select all',
+                        }}
                       />
-                    </div>
-                    {/* State (defect-specific, inline editable) */}
-                    <div className="shrink-0 px-2" style={styleFor('state')}>
-                      <DefectStateInlineCell
+                      <div className="w-6 shrink-0 px-2 text-right">#</div>
+                    </>
+                  }
+                />
+                {/* Rows */}
+                <DndContext {...rerank.dndContextProps}>
+                  <SortableContext {...rerank.sortableContextProps}>
+                    {rerank.items.map((d, idx) => (
+                      <DefectTableRow
+                        key={d.id}
                         defect={d}
-                        canEdit={canManage}
+                        rowNum={idx + 1}
+                        canManage={canManage}
                         projectId={project?.projectId ?? ''}
+                        dragDisabled={sortCol !== null}
+                        selected={isSelected(d.id)}
+                        onToggleSelect={() => toggleSelect(d.id)}
+                        openItem={(k) => navigate({ to: '/item/$itemKey', params: { itemKey: k } })}
+                        renderCells={table.renderCells}
                       />
-                    </div>
-                    {/* Flow State (inline editable) */}
-                    <div
-                      className="shrink-0 px-2"
-                      style={styleFor('flowState')}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <DefectInlineCell
-                        defect={d}
-                        field="scheduleState"
-                        options={FLOW_STATE_OPTIONS}
-                        currentValue={d.scheduleState}
-                        displayValue={flowLabel}
-                        canEdit={canManage}
-                        projectId={project?.projectId ?? ''}
-                      />
-                    </div>
-                    {/* Fixed In Build */}
-                    <div className="shrink-0 px-2" style={styleFor('fixedInBuild')}>
-                      <FixedInBuildCell
-                        defect={d}
-                        canEdit={canManage}
-                        projectId={project?.projectId ?? ''}
-                      />
-                    </div>
-                    {/* Iteration */}
-                    <div
-                      className="shrink-0 truncate px-2 text-[10px]"
-                      style={{ ...styleFor('iteration'), color: '#5c6478' }}
-                      title={d.iterationName ?? ''}
-                    >
-                      {d.iterationName ?? '—'}
-                    </div>
-                    {/* Submitted By */}
-                    <div
-                      className="shrink-0 truncate px-2 text-[10px]"
-                      style={{ ...styleFor('submittedBy'), color: '#5c6478' }}
-                      title={d.createdByName ?? ''}
-                    >
-                      {d.createdByName ?? '—'}
-                    </div>
-                    {/* Owner */}
-                    <div
-                      className="shrink-0 truncate px-2 text-[10px]"
-                      style={{ ...styleFor('owner'), color: '#5c6478' }}
-                      title={d.assigneeName ?? ''}
-                    >
-                      {d.assigneeName ?? '—'}
-                    </div>
-                  </div>
-                )
-              })}
+                    ))}
+                  </SortableContext>
+                </DndContext>
+              </div>
             </div>
           </div>
         )}

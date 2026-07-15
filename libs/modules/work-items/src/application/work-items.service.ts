@@ -910,6 +910,40 @@ export class WorkItemsService {
     await this.workItemRepo.removeLabel(id, labelId, actor.workspaceId);
   }
 
+  // ── Milestones ──────────────────────────────────────────────────────────────
+
+  async getWorkItemMilestones(
+    actor: JwtPayload,
+    id: string,
+  ): Promise<Array<{ id: string; name: string }>> {
+    await this.getWorkItemForView(actor, id);
+    return this.workItemRepo.listMilestones(id);
+  }
+
+  /**
+   * Replace-set of the milestones assigned to a work item. Every id must belong
+   * to the work item's project (same-project guard, mirrors label validation).
+   */
+  async setWorkItemMilestones(
+    actor: JwtPayload,
+    id: string,
+    milestoneIds: string[],
+  ): Promise<Array<{ id: string; name: string }>> {
+    const item = await this.getWorkItemForWrite(actor, id, PERMISSION.WORK_ITEM_EDIT);
+    const uniqueIds = [...new Set(milestoneIds)];
+    if (uniqueIds.length > 0) {
+      const inProject = await this.workItemRepo.countMilestonesInProject(uniqueIds, item.projectId);
+      if (inProject !== uniqueIds.length) {
+        throw new PreconditionFailedException(
+          'MILESTONE_PROJECT_MISMATCH',
+          'One or more milestones do not belong to this work item\u2019s project',
+        );
+      }
+    }
+    await this.workItemRepo.setMilestones(id, uniqueIds);
+    return this.workItemRepo.listMilestones(id);
+  }
+
   // ── Time Logging ──────────────────────────────────────────────────────────
 
   @Span('work-items.list-time-logs')
