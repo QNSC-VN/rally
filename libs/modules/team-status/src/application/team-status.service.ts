@@ -1,5 +1,5 @@
-import { Inject, Injectable, Logger, BadRequestException } from '@nestjs/common';
-import type { JwtPayload } from '@platform';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { PreconditionFailedException, ValidationException, type JwtPayload } from '@platform';
 import { PERMISSION } from '@shared-kernel';
 import { AccessService } from '@modules/access';
 import { IterationsService } from '@modules/iterations';
@@ -61,7 +61,10 @@ export class TeamStatusService {
     // Validate iteration exists and belongs to the project.
     const iteration = await this.iterationsService.getIteration(actor.workspaceId, iterationId);
     if (iteration.projectId !== projectId) {
-      throw new BadRequestException('Iteration does not belong to this project');
+      throw new PreconditionFailedException(
+        'ITERATION_PROJECT_MISMATCH',
+        'Iteration does not belong to this project',
+      );
     }
 
     // Fetch raw task rows (type=task, assigned to this iteration).
@@ -155,7 +158,7 @@ export class TeamStatusService {
   ): Promise<{ userId: string; capacityHours: number }> {
     await this.assertEditPermission(actor, input.projectId);
     if (input.capacityHours < 0) {
-      throw new BadRequestException('capacityHours must be >= 0');
+      throw new ValidationException('TEAM_STATUS_INVALID_CAPACITY', 'capacityHours must be >= 0');
     }
 
     // Resolve teamId from iteration when not provided (e.g. "All teams" view)
@@ -167,7 +170,8 @@ export class TeamStatusService {
       );
       teamId = iteration.teamId ?? undefined;
       if (!teamId) {
-        throw new BadRequestException(
+        throw new ValidationException(
+          'TEAM_STATUS_TEAM_REQUIRED',
           'Cannot determine team for capacity update — iteration is not team-scoped and no teamId was provided',
         );
       }
@@ -208,7 +212,7 @@ export class TeamStatusService {
     if (input.title !== undefined) {
       const trimmed = input.title.trim();
       if (!trimmed) {
-        throw new BadRequestException('Title must not be empty');
+        throw new ValidationException('TEAM_STATUS_INVALID_TITLE', 'Title must not be empty');
       }
       updateInput.title = trimmed;
     }

@@ -281,6 +281,13 @@
       "when": 1783500000000,
       "tag": "0038_backfill_member_capacity",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1783600000000,
+      "tag": "0039_task_item_keys",
+      "breakpoints": true
     }
   ]
 }

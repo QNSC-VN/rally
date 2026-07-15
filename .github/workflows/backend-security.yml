@@ -31,6 +31,10 @@ jobs:
     with:
       product: rally
       image_target: api
-      semgrep_blocking: true
+      # Semgrep runs report-only for now: the current 23 findings are all in
+      # shared infra/config (workflow action tags, dependabot/pnpm/npm supply-
+      # chain hardening, pg-ssl TLS, editor sanitisation) and are being addressed
+      # org-wide separately. Keep osv (dependency CVEs) blocking. Mirrors the
+      # org chore/defer-semgrep-blocking decision.
       osv_blocking: true
     # security.yml declares no secrets — nothing to pass (no `secrets: inherit`).

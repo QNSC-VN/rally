@@ -75,6 +75,7 @@ export function useDefects(
     releaseId?: string
     rootCause?: string
     resolution?: string
+    defectState?: string
   },
 ) {
   return useQuery({
@@ -94,6 +95,7 @@ export function useDefects(
             releaseId: filters?.releaseId,
             rootCause: filters?.rootCause,
             resolution: filters?.resolution,
+            defectState: filters?.defectState,
           } as never,
         },
       })
@@ -158,5 +160,12 @@ export function useCreateDefect() {
 }
 
 function emptyMetrics(): DefectMetrics {
-  return { openDefects: 0, critical: 0, inProgress: 0, verifiedAccepted: 0, reopened: 0, blockers: 0 }
+  return {
+    openDefects: 0,
+    critical: 0,
+    inProgress: 0,
+    verifiedAccepted: 0,
+    reopened: 0,
+    blockers: 0,
+  }
 }

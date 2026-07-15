@@ -12,8 +12,12 @@ export interface DropIndicator<K extends string> {
 }
 
 interface UseColumnDragOptions<K extends string> {
-  /** Called with (fromKey, toKey) when a column is dropped on a valid target. */
-  onReorder: (fromKey: K, toKey: K) => void
+  /**
+   * Called with (fromKey, toKey, position) when a column is dropped on a valid
+   * target. `position` reflects which half of the target the pointer was over,
+   * so the consumer can insert before OR after `toKey`.
+   */
+  onReorder: (fromKey: K, toKey: K, position: 'before' | 'after') => void
 }
 
 /**
@@ -22,7 +26,7 @@ interface UseColumnDragOptions<K extends string> {
  * `onDrop` closure always reads the freshest value without depending on
  * a stale React-state closure.
  *
- * Consumed by `<DraggableHeaderCell>` but can also be used directly.
+ * Consumed by the shared `<DataTableHeader>` and can also be used directly.
  */
 export function useColumnDrag<K extends string>({ onReorder }: UseColumnDragOptions<K>) {
   // ── Ref-based drag key (avoids stale-closure bugs in onDrop) ──
@@ -49,13 +53,16 @@ export function useColumnDrag<K extends string>({ onReorder }: UseColumnDragOpti
 
   // ── Event handlers ──
 
-  const handleDragStart = useCallback((key: K, e: React.DragEvent) => {
-    dragKeyRef.current = key
-    setActiveDragKey(key)
-    setIndicator(null)
-    e.dataTransfer.effectAllowed = 'move'
-    e.dataTransfer.setData('text/plain', key)
-  }, [setIndicator])
+  const handleDragStart = useCallback(
+    (key: K, e: React.DragEvent) => {
+      dragKeyRef.current = key
+      setActiveDragKey(key)
+      setIndicator(null)
+      e.dataTransfer.effectAllowed = 'move'
+      e.dataTransfer.setData('text/plain', key)
+    },
+    [setIndicator],
+  )
 
   const handleDragOver = useCallback(
     (key: K, e: React.DragEvent) => {
@@ -99,7 +106,7 @@ export function useColumnDrag<K extends string>({ onReorder }: UseColumnDragOpti
         cleanup()
         return
       }
-      onReorder(from, indicator.key)
+      onReorder(from, indicator.key, indicator.type)
       cleanup()
     },
     [onReorder, cleanup],

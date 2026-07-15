@@ -1,5 +1,6 @@
 import { cn } from '@/shared/lib/utils'
 import { BRAND } from '@/shared/config/brand'
+import { InlineCellSelect } from '@/shared/ui/native-select'
 
 interface OwnerCellProps {
   name?: string | null
@@ -41,5 +42,57 @@ export function OwnerCell({ name, className }: OwnerCellProps) {
         {name}
       </span>
     </div>
+  )
+}
+
+/** Minimal member shape accepted by {@link OwnerSelectCell}. */
+export interface OwnerSelectMember {
+  userId: string
+  displayName?: string | null
+  email?: string | null
+}
+
+interface OwnerSelectCellProps {
+  /** Resolved display name for the current assignee (null → unassigned). */
+  ownerName?: string | null
+  /** Current assignee user id (null → unassigned). */
+  assigneeId?: string | null
+  members: OwnerSelectMember[]
+  canEdit: boolean
+  onChange: (userId: string | null) => void
+  ariaLabel?: string
+}
+
+/**
+ * Owner column — single source of truth for the whole Owner cell across every
+ * work-item grid. When editable it renders the shared {@link InlineCellSelect}
+ * (overlay select + truncation + "Unassigned" muted state); when read-only it
+ * falls back to the initials-chip {@link OwnerCell}. Replaces the hand-rolled
+ * `<select>` + `editingOwner` toggles previously duplicated per page.
+ */
+export function OwnerSelectCell({
+  ownerName,
+  assigneeId,
+  members,
+  canEdit,
+  onChange,
+  ariaLabel = 'Owner',
+}: OwnerSelectCellProps) {
+  if (!canEdit) return <OwnerCell name={ownerName} />
+  return (
+    <InlineCellSelect
+      value={assigneeId ?? ''}
+      displayValue={ownerName ?? 'Unassigned'}
+      muted={!assigneeId}
+      onChange={(e) => onChange(e.target.value || null)}
+      aria-label={ariaLabel}
+    >
+      <option value="">Unassigned</option>
+      {members.map((m) => (
+        <option key={m.userId} value={m.userId}>
+          {m.displayName ?? m.email ?? m.userId}
+        </option>
+      ))}
+    </InlineCellSelect>
   )
 }

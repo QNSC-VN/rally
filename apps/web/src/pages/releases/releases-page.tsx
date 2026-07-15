@@ -12,9 +12,7 @@ import {
   AlertTriangle,
   Loader2,
   Plus,
-  Search,
   Trash2,
-  X,
   PackageOpen,
   Pencil,
   ExternalLink,
@@ -22,6 +20,7 @@ import {
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { InlineSelect } from '@/shared/ui/native-select'
 import { BRAND } from '@/shared/config/brand'
+import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
@@ -932,45 +931,17 @@ export function ReleasesPage() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden" style={{ backgroundColor: BRAND.pageBg }}>
       {/* Header */}
-      <div
-        className="flex h-12 shrink-0 items-center justify-between gap-4 px-4"
-        style={{ borderBottom: `1px solid ${BRAND.border}`, backgroundColor: BRAND.surface }}
-      >
-        <h1 className="text-[14px] font-semibold" style={{ color: BRAND.textPrimary }}>
-          Releases
-        </h1>
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search
-              size={12}
-              className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2"
-              style={{ color: BRAND.textMuted }}
-            />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search releases…"
-              aria-label="Search releases"
-              className="h-7 rounded-md border pr-3 pl-7 text-[12px] placeholder:text-gray-400 focus:ring-2 focus:outline-none"
-              style={{
-                borderColor: BRAND.border,
-                backgroundColor: BRAND.surface,
-                color: BRAND.textPrimary,
-                width: 200,
-              }}
-            />
-            {search && (
-              <button
-                onClick={() => setSearch('')}
-                className="absolute top-1/2 right-2 -translate-y-1/2"
-                style={{ color: BRAND.textMuted }}
-              >
-                <X size={11} />
-              </button>
-            )}
-          </div>
-
-          {canManage && (
+      <PageToolbar
+        title="Releases"
+        search={{
+          value: search,
+          onChange: setSearch,
+          placeholder: 'Search releases…',
+          ariaLabel: 'Search releases',
+          width: 200,
+        }}
+        actions={
+          canManage ? (
             <button
               onClick={() => setShowCreate(true)}
               className="flex h-7 items-center gap-1.5 rounded-md px-3 text-[12px] font-semibold text-white transition-opacity hover:opacity-90"
@@ -978,9 +949,9 @@ export function ReleasesPage() {
             >
               <Plus size={13} /> Create Release
             </button>
-          )}
-        </div>
-      </div>
+          ) : undefined
+        }
+      />
 
       {/* Column headers (P3-REL-FR-004/007) — resizable */}
       <div

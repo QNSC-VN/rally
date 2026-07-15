@@ -8,6 +8,7 @@ import type {
   DefectEnvironment,
   DefectRootCause,
   DefectResolution,
+  DefectState,
   WorkItemPriority,
   WorkItemScheduleState,
 } from '../../../../../../db/schema/enums';
@@ -31,6 +32,7 @@ export class QualityDrizzleRepository implements IQualityRepository {
       releaseId?: string;
       rootCause?: string;
       resolution?: string;
+      defectState?: string;
       limit?: number;
       offset?: number;
     } = {},
@@ -63,8 +65,13 @@ export class QualityDrizzleRepository implements IQualityRepository {
     if (opts.rootCause && opts.rootCause !== 'all') {
       conditions.push(eq(workItems.rootCause, opts.rootCause as DefectRootCause));
     }
-    if (opts.resolution && opts.resolution !== 'all') {
+    if (opts.resolution === 'unresolved') {
+      conditions.push(isNull(workItems.resolution));
+    } else if (opts.resolution && opts.resolution !== 'all') {
       conditions.push(eq(workItems.resolution, opts.resolution as DefectResolution));
+    }
+    if (opts.defectState && opts.defectState !== 'all') {
+      conditions.push(eq(workItems.defectState, opts.defectState as DefectState));
     }
     if (opts.search) {
       conditions.push(sql`work_items.title ILIKE ${`%${opts.search}%`}`);

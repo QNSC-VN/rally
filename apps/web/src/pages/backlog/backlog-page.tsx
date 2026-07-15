@@ -28,12 +28,17 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
-import { ChevronLeft, ChevronRight, GripVertical, Plus, X } from 'lucide-react'
-import { SearchInput } from '@/shared/ui/search-input'
+import { Plus } from 'lucide-react'
+import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { SkeletonList } from '@/shared/ui/skeleton'
+import { DragHandle } from '@/shared/ui/drag-handle'
 import { InlineCellSelect, InlineSelect } from '@/shared/ui/native-select'
+import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
-import { OwnerCell } from '@/shared/ui/owner-cell'
+import { OwnerSelectCell } from '@/shared/ui/owner-cell'
+import { BulkActionBar } from '@/shared/ui/bulk-action-bar'
+import { SelectionCheckbox } from '@/shared/ui/selection-checkbox'
+import { useRowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
 import {
@@ -48,19 +53,28 @@ import {
 import { useReleases } from '@/features/releases/api'
 import { useProjectMembers } from '@/features/teams/api'
 import { useIterationOptions } from '@/features/iterations/api'
-import { TypeBadge, ScheduleStateBadge, PriorityBadge } from '@/entities/work-item/ui/badges'
+import { TypeBadge, PriorityBadge } from '@/entities/work-item/ui/badges'
+import { StateStepper } from '@/entities/work-item/ui/state-stepper'
+import { SCHEDULE_STATE_STEPS } from '@/entities/work-item/ui/state-steps'
 import {
   SCHEDULE_STATE_LABEL,
   SCHEDULE_STATE_VALUES,
   PRIORITY_VALUES,
+  PRIORITY_LABEL,
   type ScheduleState,
+  type WorkItemPriority,
 } from '@/entities/work-item/model/types'
 import { BRAND } from '@/shared/config/brand'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { CreateWorkItemModal } from '@/features/work-items/ui/create-work-item-modal'
 import { useColumnLayout, type ColumnDef } from '@/shared/lib/hooks/use-column-layout'
+import { useColumnDrag } from '@/shared/lib/hooks/use-column-drag'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
-import { ResizeHandle } from '@/shared/ui/resize-handle'
+import {
+  DataTableHeader,
+  type DataTableColumnDrag,
+  type DataTableHeaderColumn,
+} from '@/shared/ui/data-table-header'
 
 // ── Column definitions ─────────────────────────────────────────────────────────
 
@@ -128,41 +142,16 @@ const BACKLOG_COLUMNS: ColumnDef<ColumnKey>[] = COLUMNS.map((key) => ({
   label: COLUMN_LABELS[key],
   defaultWidth: DEFAULT_WIDTHS[key],
   minWidth: COLUMN_MINS[key],
-  locked: key === 'id' || key === 'name',
+}))
+
+/** Header descriptors for the shared <DataTableHeader> (no sort on this grid). */
+const BACKLOG_HEADER_COLUMNS: DataTableHeaderColumn<ColumnKey>[] = COLUMNS.map((key) => ({
+  key,
+  label: COLUMN_LABELS[key],
+  align: key === 'estimate' ? ('center' as const) : undefined,
 }))
 
 // ── Resizable column header ────────────────────────────────────────────────────
-
-interface ResizableHeaderProps {
-  column: ColumnKey
-  label: string
-  style: React.CSSProperties
-  align?: 'left' | 'center' | 'right'
-  onResizeStart: (col: ColumnKey, e: React.MouseEvent) => void
-}
-
-function ResizableHeader({
-  column,
-  label,
-  style,
-  align = 'left',
-  onResizeStart,
-}: ResizableHeaderProps) {
-  return (
-    <div
-      className="group relative flex h-full shrink-0 items-center px-2 text-[11px] font-bold select-none"
-      style={{
-        ...style,
-        color: '#4b5563',
-        justifyContent:
-          align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start',
-      }}
-    >
-      <span className="truncate">{label}</span>
-      <ResizeHandle onMouseDown={(e) => onResizeStart(column, e)} ariaLabel={`Resize ${label}`} />
-    </div>
-  )
-}
 
 // ── Owner cell (avatar + name) ─────────────────────────────────────────────────
 
@@ -266,25 +255,14 @@ export function BacklogPage() {
   }
 
   // ── Selection ─────────────────────────────────────────────────────────────────
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const allSelected = items.length > 0 && items.every((i) => selectedIds.has(i.id))
-
-  function toggleSelect(id: string) {
-    setSelectedIds((prev) => {
-      const n = new Set(prev)
-      if (n.has(id)) n.delete(id)
-      else n.add(id)
-      return n
-    })
-  }
-  function toggleAll() {
-    setSelectedIds((prev) => {
-      const n = new Set(prev)
-      if (allSelected) items.forEach((i) => n.delete(i.id))
-      else items.forEach((i) => n.add(i.id))
-      return n
-    })
-  }
+  const {
+    selectedIds,
+    allSelected,
+    someSelected,
+    toggle: toggleSelect,
+    toggleAll,
+    clear: clearSelection,
+  } = useRowSelection(items)
 
   // ── Column resize / order / visibility ──────────────────────────────────────
   const {
@@ -296,6 +274,17 @@ export function BacklogPage() {
     reorder,
     styleFor,
   } = useColumnLayout(BACKLOG_COLUMNS, STORAGE_KEYS.BACKLOG_COLUMN_WIDTHS)
+
+  // Header column drag-to-reorder (persists via useColumnLayout.reorder).
+  const {
+    activeDragKey,
+    dropIndicator,
+    handleDragStart: handleColDragStart,
+    handleDragOver: handleColDragOver,
+    handleDragLeave: handleColDragLeave,
+    handleDrop: handleColDrop,
+    handleDragEnd: handleColDragEnd,
+  } = useColumnDrag<ColumnKey>({ onReorder: reorder })
   const colStyles = useMemo(
     () =>
       Object.fromEntries(COLUMNS.map((k) => [k, styleFor(k)])) as Record<
@@ -338,7 +327,7 @@ export function BacklogPage() {
     setBulkError(null)
     try {
       await bulkRelease.mutateAsync({ projectId, itemIds: [...selectedIds], releaseId })
-      setSelectedIds(new Set())
+      clearSelection()
     } catch (e) {
       setBulkError(e instanceof Error ? e.message : 'Bulk release assignment failed')
     }
@@ -349,7 +338,7 @@ export function BacklogPage() {
     setBulkError(null)
     try {
       await bulkIteration.mutateAsync({ projectId, itemIds: [...selectedIds], iterationId })
-      setSelectedIds(new Set())
+      clearSelection()
     } catch (e) {
       setBulkError(e instanceof Error ? e.message : 'Bulk iteration assignment failed')
     }
@@ -402,19 +391,60 @@ export function BacklogPage() {
       {selectedIds.size > 0 && (
         <BulkActionBar
           selectedCount={selectedIds.size}
-          canEdit={canEdit}
-          releases={releases}
-          iterations={iterations}
-          bulkReleasePending={bulkRelease.isPending}
-          bulkIterationPending={bulkIteration.isPending}
-          onAssignRelease={assignReleaseToSelected}
-          onAssignIteration={assignIterationToSelected}
-          bulkError={bulkError}
+          error={bulkError}
           onClear={() => {
-            setSelectedIds(new Set())
+            clearSelection()
             setBulkError(null)
           }}
-        />
+        >
+          {canEdit && (
+            <>
+              {/* Bulk assign Release */}
+              <InlineSelect
+                value=""
+                disabled={bulkRelease.isPending}
+                onChange={(e) => {
+                  if (!e.target.value) return
+                  void assignReleaseToSelected(
+                    e.target.value === '__none__' ? null : e.target.value,
+                  )
+                }}
+                className="w-auto"
+                aria-label="Assign release to selected"
+              >
+                <option value="">Assign Release…</option>
+                <option value="__none__">— Unschedule —</option>
+                {releases.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </InlineSelect>
+
+              {/* Bulk assign Iteration */}
+              <InlineSelect
+                value=""
+                disabled={bulkIteration.isPending}
+                onChange={(e) => {
+                  if (!e.target.value) return
+                  void assignIterationToSelected(
+                    e.target.value === '__none__' ? null : e.target.value,
+                  )
+                }}
+                className="w-auto"
+                aria-label="Assign iteration to selected"
+              >
+                <option value="">Assign Iteration…</option>
+                <option value="__none__">— Unschedule —</option>
+                {iterations.map((it) => (
+                  <option key={it.id} value={it.id}>
+                    {it.name}
+                  </option>
+                ))}
+              </InlineSelect>
+            </>
+          )}
+        </BulkActionBar>
       )}
 
       {/* Table area */}
@@ -426,8 +456,18 @@ export function BacklogPage() {
               <TableHeaderBar
                 colStyles={colStyles}
                 allSelected={allSelected}
+                someSelected={someSelected}
                 onToggleAll={toggleAll}
                 startResize={startResize}
+                columnDrag={{
+                  activeDragKey,
+                  dropIndicator,
+                  onDragStart: handleColDragStart,
+                  onDragOver: handleColDragOver,
+                  onDragLeave: handleColDragLeave,
+                  onDrop: handleColDrop,
+                  onDragEnd: handleColDragEnd,
+                }}
               />
 
               {/* Loading */}
@@ -496,8 +536,11 @@ export function BacklogPage() {
             pageSize={pageSize}
             setPageSize={setPageSize}
             currentPage={currentPage}
-            itemCount={items.length}
-            pageInfo={pageInfo}
+            rangeStart={(currentPage - 1) * pageSize + 1}
+            rangeEnd={(currentPage - 1) * pageSize + items.length}
+            total={pageInfo?.total}
+            hasPrevPage={currentPage > 1}
+            hasNextPage={!!pageInfo?.hasNextPage}
             onPrevPage={goPrevPage}
             onNextPage={goNextPage}
           />
@@ -574,173 +617,89 @@ function BacklogToolbar({
   toggleVisible,
   reorder,
 }: BacklogToolbarProps) {
+  const activeFilterCount =
+    (filterType ? 1 : 0) +
+    (filterState ? 1 : 0) +
+    (filterOwner ? 1 : 0) +
+    (filterRelease ? 1 : 0) +
+    (filterIteration ? 1 : 0)
+
   return (
-    <div
-      className="flex shrink-0 flex-wrap items-center gap-2 bg-white px-4 py-2"
-      style={{ borderBottom: '1px solid #e2e6eb' }}
-    >
-      {/* Title */}
-      <h2 className="mr-1 shrink-0 text-[13px] font-semibold" style={{ color: '#1a2234' }}>
-        Backlog
-      </h2>
-      <div className="h-4 w-px shrink-0" style={{ backgroundColor: '#dde2ea' }} />
-
-      {/* Search */}
-      <SearchInput
-        value={search}
-        onChange={setSearch}
-        placeholder="Search…"
-        ariaLabel="Search backlog"
-        width={160}
-      />
-
-      {/* Type filter */}
-      <InlineSelect
-        value={filterType}
-        onChange={(e) => setFilterType(e.target.value as '' | 'story' | 'defect')}
-        aria-label="Filter by type"
-        className="w-auto"
-      >
-        <option value="">All Types</option>
-        <option value="story">Story</option>
-        <option value="defect">Defect</option>
-      </InlineSelect>
-
-      {/* Schedule State filter */}
-      <InlineSelect
-        value={filterState}
-        onChange={(e) => setFilterState(e.target.value)}
-        aria-label="Filter by schedule state"
-        className="w-auto"
-      >
-        {SCHEDULE_STATE_OPTS.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </InlineSelect>
-
-      {/* Owner filter (P2-BL-06) */}
-      <InlineSelect
-        value={filterOwner}
-        onChange={(e) => setFilterOwner(e.target.value)}
-        aria-label="Filter by owner"
-        className="w-auto"
-      >
-        <option value="">All Owners</option>
-        {members.map((m) => (
-          <option key={m.userId} value={m.userId}>
-            {m.displayName ?? m.email ?? m.userId}
-          </option>
-        ))}
-      </InlineSelect>
-
-      {/* Release filter (P2-BL-06) */}
-      <InlineSelect
-        value={filterRelease}
-        onChange={(e) => setFilterRelease(e.target.value)}
-        aria-label="Filter by release"
-        className="w-auto"
-      >
-        <option value="">All Releases</option>
-        {releases.map((r) => (
-          <option key={r.id} value={r.id}>
-            {r.name}
-          </option>
-        ))}
-      </InlineSelect>
-
-      {/* Iteration filter (P2-BL-06) */}
-      <InlineSelect
-        value={filterIteration}
-        onChange={(e) => setFilterIteration(e.target.value)}
-        aria-label="Filter by iteration"
-        className="w-auto"
-      >
-        <option value="">All Iterations</option>
-        {iterations.map((it) => (
-          <option key={it.id} value={it.id}>
-            {it.name}
-          </option>
-        ))}
-      </InlineSelect>
-
-      <div className="flex-1" />
-
-      <ColumnFieldsMenu
-        columns={columns}
-        order={order}
-        hidden={hidden}
-        onToggle={toggleVisible}
-        onReorder={reorder}
-      />
-
-      {/* Create Work Item button — right side of toolbar */}
-      <button
-        onClick={onCreate}
-        disabled={!canCreate}
-        title={!canCreate ? 'You do not have permission to create work items' : undefined}
-        className="flex items-center gap-1.5 rounded px-3 py-1 text-[11px] font-semibold text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-        style={{ backgroundColor: BRAND.primary }}
-      >
-        <Plus size={12} />
-        Create Work Item
-      </button>
-    </div>
-  )
-}
-
-// ── Bulk action bar (P2-BL-08) ───────────────────────────────────────────────
-
-interface BulkActionBarProps {
-  selectedCount: number
-  canEdit: boolean
-  releases: Array<{ id: string; name: string }>
-  iterations: Array<{ id: string; name: string }>
-  bulkReleasePending: boolean
-  bulkIterationPending: boolean
-  onAssignRelease: (releaseId: string | null) => void
-  onAssignIteration: (iterationId: string | null) => void
-  bulkError: string | null
-  onClear: () => void
-}
-
-function BulkActionBar({
-  selectedCount,
-  canEdit,
-  releases,
-  iterations,
-  bulkReleasePending,
-  bulkIterationPending,
-  onAssignRelease,
-  onAssignIteration,
-  bulkError,
-  onClear,
-}: BulkActionBarProps) {
-  return (
-    <div
-      className="flex shrink-0 items-center gap-2 px-4 py-1.5"
-      style={{ backgroundColor: '#edf2fb', borderBottom: '1px solid #bdd0ef' }}
-    >
-      <span className="mr-1 text-[11px] font-semibold" style={{ color: '#2558a6' }}>
-        {selectedCount} selected
-      </span>
-
-      {canEdit && (
+    <PageToolbar
+      title="Backlog"
+      search={{
+        value: search,
+        onChange: setSearch,
+        placeholder: 'Search…',
+        ariaLabel: 'Search backlog',
+        width: 160,
+      }}
+      actions={
+        <button
+          onClick={onCreate}
+          disabled={!canCreate}
+          title={!canCreate ? 'You do not have permission to create work items' : undefined}
+          className="flex items-center gap-1.5 rounded px-3 py-1 text-[11px] font-semibold text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          style={{ backgroundColor: BRAND.primary }}
+        >
+          <Plus size={12} />
+          Create Work Item
+        </button>
+      }
+      activeFilterCount={activeFilterCount}
+      defaultFiltersOpen={activeFilterCount > 0}
+      filters={
         <>
-          {/* Bulk assign Release */}
+          {/* Type filter */}
           <InlineSelect
-            value=""
-            disabled={bulkReleasePending}
-            onChange={(e) => {
-              if (!e.target.value) return
-              onAssignRelease(e.target.value === '__none__' ? null : e.target.value)
-            }}
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value as '' | 'story' | 'defect')}
+            aria-label="Filter by type"
             className="w-auto"
-            aria-label="Assign release to selected"
           >
-            <option value="">Assign Release…</option>
-            <option value="__none__">— Unschedule —</option>
+            <option value="">All Types</option>
+            <option value="story">Story</option>
+            <option value="defect">Defect</option>
+          </InlineSelect>
+
+          {/* Schedule State filter */}
+          <InlineSelect
+            value={filterState}
+            onChange={(e) => setFilterState(e.target.value)}
+            aria-label="Filter by schedule state"
+            className="w-auto"
+          >
+            {SCHEDULE_STATE_OPTS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </InlineSelect>
+
+          {/* Owner filter (P2-BL-06) */}
+          <InlineSelect
+            value={filterOwner}
+            onChange={(e) => setFilterOwner(e.target.value)}
+            aria-label="Filter by owner"
+            className="w-auto"
+          >
+            <option value="">All Owners</option>
+            <option value="unassigned">Unassigned</option>
+            {members.map((m) => (
+              <option key={m.userId} value={m.userId}>
+                {m.displayName ?? m.email ?? m.userId}
+              </option>
+            ))}
+          </InlineSelect>
+
+          {/* Release filter (P2-BL-06) */}
+          <InlineSelect
+            value={filterRelease}
+            onChange={(e) => setFilterRelease(e.target.value)}
+            aria-label="Filter by release"
+            className="w-auto"
+          >
+            <option value="">All Releases</option>
             {releases.map((r) => (
               <option key={r.id} value={r.id}>
                 {r.name}
@@ -748,19 +707,14 @@ function BulkActionBar({
             ))}
           </InlineSelect>
 
-          {/* Bulk assign Iteration */}
+          {/* Iteration filter (P2-BL-06) */}
           <InlineSelect
-            value=""
-            disabled={bulkIterationPending}
-            onChange={(e) => {
-              if (!e.target.value) return
-              onAssignIteration(e.target.value === '__none__' ? null : e.target.value)
-            }}
+            value={filterIteration}
+            onChange={(e) => setFilterIteration(e.target.value)}
+            aria-label="Filter by iteration"
             className="w-auto"
-            aria-label="Assign iteration to selected"
           >
-            <option value="">Assign Iteration…</option>
-            <option value="__none__">— Unschedule —</option>
+            <option value="">All Iterations</option>
             {iterations.map((it) => (
               <option key={it.id} value={it.id}>
                 {it.name}
@@ -768,24 +722,17 @@ function BulkActionBar({
             ))}
           </InlineSelect>
         </>
-      )}
-
-      {bulkError && (
-        <span className="text-[11px]" style={{ color: '#b91c1c' }}>
-          {bulkError}
-        </span>
-      )}
-
-      <div className="flex-1" />
-      <button
-        onClick={onClear}
-        className="p-0.5"
-        style={{ color: '#5c6478' }}
-        aria-label="Clear selection"
-      >
-        <X size={13} />
-      </button>
-    </div>
+      }
+      fields={
+        <ColumnFieldsMenu
+          columns={columns}
+          order={order}
+          hidden={hidden}
+          onToggle={toggleVisible}
+          onReorder={reorder}
+        />
+      }
+    />
   )
 }
 
@@ -794,123 +741,40 @@ function BulkActionBar({
 function TableHeaderBar({
   colStyles,
   allSelected,
+  someSelected,
   onToggleAll,
   startResize,
+  columnDrag,
 }: {
   colStyles: Record<ColumnKey, React.CSSProperties>
   allSelected: boolean
+  someSelected: boolean
   onToggleAll: () => void
   startResize: (col: ColumnKey, e: React.MouseEvent) => void
+  columnDrag: DataTableColumnDrag<ColumnKey>
 }) {
   return (
-    <div
-      className="sticky top-0 z-10 flex h-[34px] items-center gap-2 px-3 select-none"
-      style={{
-        backgroundColor: '#f3f4f6',
-        borderBottom: '1px solid #e2e8f0',
-        minWidth: 'max-content',
-      }}
-    >
-      <div className="w-5 shrink-0 px-2">
-        <input
-          type="checkbox"
-          checked={allSelected}
-          onChange={onToggleAll}
-          className="h-3.5 w-3.5 rounded"
-          style={{ accentColor: '#1d3f73' }}
-          aria-label="Select all"
-        />
-      </div>
-      <div className="w-4 shrink-0 px-2" />
-      <div
-        className="w-6 shrink-0 px-2 text-right text-[11px] font-bold"
-        style={{ color: '#4b5563' }}
-      >
-        #
-      </div>
-      {COLUMNS.map((col) => (
-        <ResizableHeader
-          key={col}
-          column={col}
-          label={COLUMN_LABELS[col]}
-          style={colStyles[col]}
-          align={col === 'estimate' ? 'center' : 'left'}
-          onResizeStart={startResize}
-        />
-      ))}
-    </div>
-  )
-}
-
-// ── Pagination footer ────────────────────────────────────────────────────────
-
-function PaginationFooter({
-  pageSize,
-  setPageSize,
-  currentPage,
-  itemCount,
-  pageInfo,
-  onPrevPage,
-  onNextPage,
-}: {
-  pageSize: number
-  setPageSize: (n: number) => void
-  currentPage: number
-  itemCount: number
-  pageInfo:
-    { hasNextPage: boolean; nextCursor: string | null; limit: number; total?: number } | undefined
-  onPrevPage: () => void
-  onNextPage: () => void
-}) {
-  return (
-    <div
-      className="flex h-10 shrink-0 items-center justify-between bg-white px-3"
-      style={{ borderTop: '1px solid #e2e6eb' }}
-    >
-      <div className="flex items-center gap-2 text-[11px]" style={{ color: '#5c6478' }}>
-        <span>Rows per page</span>
-        <InlineSelect
-          aria-label="Rows per page"
-          value={pageSize}
-          onChange={(e) => setPageSize(Number(e.target.value))}
-          className="w-auto"
-        >
-          {[10, 25, 50, 100].map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </InlineSelect>
-        <span style={{ color: '#8c94a6' }}>
-          {pageInfo
-            ? `${(currentPage - 1) * pageSize + 1}–${(currentPage - 1) * pageSize + itemCount} ${pageInfo.total ? `of ${pageInfo.total}` : ''}`
-            : ''}
-        </span>
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="text-[11px] tabular-nums" style={{ color: '#5c6478' }}>
-          Page {currentPage}
-        </span>
-        <button
-          aria-label="Previous page"
-          disabled={currentPage === 1}
-          onClick={onPrevPage}
-          className="rounded p-1.5 disabled:opacity-35"
-          style={{ border: '1px solid #dde2ea', color: '#5c6478' }}
-        >
-          <ChevronLeft size={13} />
-        </button>
-        <button
-          aria-label="Next page"
-          disabled={!pageInfo?.hasNextPage}
-          onClick={onNextPage}
-          className="rounded p-1.5 disabled:opacity-35"
-          style={{ border: '1px solid #dde2ea', color: '#5c6478' }}
-        >
-          <ChevronRight size={13} />
-        </button>
-      </div>
-    </div>
+    <DataTableHeader
+      columns={BACKLOG_HEADER_COLUMNS}
+      colStyles={colStyles}
+      onResize={startResize}
+      className="gap-2 px-3"
+      columnDrag={columnDrag}
+      leading={
+        <>
+          <div className="w-5 shrink-0 px-2">
+            <SelectionCheckbox
+              checked={allSelected}
+              indeterminate={someSelected}
+              onChange={onToggleAll}
+              ariaLabel="Select all"
+            />
+          </div>
+          <div className="w-4 shrink-0 px-2" />
+          <div className="w-6 shrink-0 px-2 text-right">#</div>
+        </>
+      }
+    />
   )
 }
 
@@ -990,24 +854,15 @@ function BacklogRow({
     >
       {/* Checkbox */}
       <div className="w-5 shrink-0 px-2" onClick={stop}>
-        <input
-          type="checkbox"
+        <SelectionCheckbox
           checked={selected}
           onChange={onToggleSelect}
-          className="h-3.5 w-3.5 rounded"
-          style={{ accentColor: '#1d3f73' }}
-          aria-label={`Select ${item.itemKey}`}
+          ariaLabel={`Select ${item.itemKey}`}
         />
       </div>
 
       {/* Drag handle (visible on hover, activates drag) */}
-      <div
-        ref={setActivatorNodeRef}
-        className="w-4 shrink-0 cursor-grab px-2 opacity-0 group-hover:opacity-100 active:cursor-grabbing"
-        {...listeners}
-      >
-        <GripVertical size={11} style={{ color: '#8c94a6' }} />
-      </div>
+      <DragHandle ref={setActivatorNodeRef} {...listeners} />
 
       {/* Row number */}
       <div
@@ -1057,28 +912,17 @@ function BacklogRow({
         )}
       </div>
 
-      {/* Schedule State — inline select */}
+      {/* Schedule State — Rally-style segmented stepper */}
       <div className="shrink-0 overflow-hidden px-2" style={colStyles.scheduleState} onClick={stop}>
-        {canEdit ? (
-          <InlineCellSelect
-            value={item.scheduleState}
-            displayValue={
-              SCHEDULE_STATE_LABEL[item.scheduleState as ScheduleState] ?? item.scheduleState
-            }
-            onChange={(e) =>
-              patch({ scheduleState: e.target.value as UpdateWorkItemInput['scheduleState'] })
-            }
-            aria-label="Schedule state"
-          >
-            {SCHEDULE_STATE_VALUES.map((s) => (
-              <option key={s} value={s}>
-                {SCHEDULE_STATE_LABEL[s as ScheduleState] ?? s}
-              </option>
-            ))}
-          </InlineCellSelect>
-        ) : (
-          <ScheduleStateBadge state={item.scheduleState} />
-        )}
+        <StateStepper
+          steps={SCHEDULE_STATE_STEPS}
+          value={item.scheduleState as ScheduleState}
+          canEdit={canEdit}
+          onChange={(next) =>
+            patch({ scheduleState: next as UpdateWorkItemInput['scheduleState'] })
+          }
+          ariaLabel="Schedule state"
+        />
       </div>
 
       {/* Priority — defects only */}
@@ -1087,7 +931,7 @@ function BacklogRow({
           canEdit ? (
             <InlineCellSelect
               value={item.priority ?? ''}
-              displayValue={item.priority ?? '—'}
+              displayValue={item.priority ? PRIORITY_LABEL[item.priority as WorkItemPriority] : '—'}
               onChange={(e) =>
                 patch({ priority: e.target.value as UpdateWorkItemInput['priority'] })
               }
@@ -1095,7 +939,7 @@ function BacklogRow({
             >
               {PRIORITY_VALUES.map((p) => (
                 <option key={p} value={p}>
-                  {p}
+                  {PRIORITY_LABEL[p]}
                 </option>
               ))}
             </InlineCellSelect>
@@ -1134,24 +978,13 @@ function BacklogRow({
 
       {/* Owner — inline select */}
       <div className="shrink-0 overflow-hidden px-2" style={colStyles.owner} onClick={stop}>
-        {canEdit ? (
-          <InlineCellSelect
-            value={item.assigneeId ?? ''}
-            displayValue={ownerName ?? 'Unassigned'}
-            muted={!item.assigneeId}
-            onChange={(e) => patch({ assigneeId: e.target.value || null })}
-            aria-label="Owner"
-          >
-            <option value="">Unassigned</option>
-            {members.map((m) => (
-              <option key={m.userId} value={m.userId}>
-                {m.displayName ?? m.email ?? m.userId}
-              </option>
-            ))}
-          </InlineCellSelect>
-        ) : (
-          <OwnerCell name={ownerName} />
-        )}
+        <OwnerSelectCell
+          ownerName={ownerName}
+          assigneeId={item.assigneeId}
+          members={members}
+          canEdit={canEdit}
+          onChange={(id) => patch({ assigneeId: id })}
+        />
       </div>
 
       {/* Release — inline select */}

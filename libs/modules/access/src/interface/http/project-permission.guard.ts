@@ -2,7 +2,6 @@ import {
   applyDecorators,
   CanActivate,
   ExecutionContext,
-  ForbiddenException,
   Injectable,
   Logger,
   SetMetadata,
@@ -10,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ApiBearerAuth } from '@nestjs/swagger';
-import { JwtAuthGuard, PermissionGuard } from '@platform';
+import { JwtAuthGuard, PermissionGuard, PermissionDeniedException } from '@platform';
 import type { JwtPayload } from '@platform';
 import { permissionGrants, type ProjectPermission } from '@shared-kernel';
 import { AccessService } from '../../application/access.service';
@@ -83,7 +82,7 @@ export class ProjectPermissionGuard implements CanActivate {
     // missing user here means the guard ordering is wrong — fail closed.
     if (!user) {
       this.logger.error('ProjectPermissionGuard ran before JwtAuthGuard — check guard order');
-      throw new ForbiddenException('Insufficient permissions');
+      throw new PermissionDeniedException('PROJECT_PERMISSION_DENIED', 'Insufficient permissions');
     }
 
     // Fast path: a workspace-wide grant already in the JWT covers every project,
@@ -96,7 +95,7 @@ export class ProjectPermissionGuard implements CanActivate {
         { from: meta.from, field: meta.field, permission: meta.permission },
         'ProjectPermissionGuard: could not resolve project id from request',
       );
-      throw new ForbiddenException('Insufficient permissions');
+      throw new PermissionDeniedException('PROJECT_PERMISSION_DENIED', 'Insufficient permissions');
     }
 
     const effective = await this.accessService.getProjectPermissions(
@@ -111,7 +110,13 @@ export class ProjectPermissionGuard implements CanActivate {
       { userId: user.sub, projectId, permission: meta.permission },
       'ProjectPermissionGuard: access denied',
     );
-    throw new ForbiddenException('Insufficient permissions');
+    // Same logical failure as AccessService.assertProjectPermission — emit the
+    // identical domain code so the FE branches on one code regardless of whether
+    // the denial is caught at the guard or in the service.
+    throw new PermissionDeniedException(
+      'PROJECT_PERMISSION_DENIED',
+      'You do not have permission to perform this action on this project',
+    );
   }
 
   private extractProjectId(

@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { JwtPayload, CursorPayload, PagedResult } from '@platform';
+import { PreconditionFailedException } from '@platform';
 import { WorkItemsService } from '@modules/work-items';
 import type { WorkItemType } from '@modules/work-items';
 import { IterationsService } from './iterations.service';
@@ -81,8 +82,17 @@ export class IterationStatusService {
   /**
    * Create a new story or defect directly in the given iteration. The item is
    * created in the iteration's project (and team, when the iteration is
-   * team-scoped) so it also appears in Backlog, then assigned to the iteration
-   * through the validated assignment path.
+   * team-scoped) with the iteration already assigned — all in the SINGLE
+   * transaction owned by `createWorkItem`.
+   *
+   * This is deliberately a create-and-assign in one step rather than
+   * create-then-bulk-assign: creating an item inside an iteration is a *create*
+   * action, so it requires only `work_item:create`. The previous two-step flow
+   * additionally required `work_item:edit` (via the bulk-assignment path) and
+   * was non-atomic — a caller with create-but-not-edit would leave an orphaned
+   * backlog item and then fail, surfacing a confusing error. Because the item
+   * inherits the iteration's own project (and team), iteration scope is
+   * satisfied by construction, so no separate scope re-validation is needed.
    */
   async createItemInIteration(
     actor: JwtPayload,
@@ -94,6 +104,15 @@ export class IterationStatusService {
       planEstimate?: number;
     },
   ): Promise<{ workItemId: string; itemKey: string }> {
+    // Only stories and defects can live in an iteration (SRS P2.1). Enforced at
+    // the DTO too; kept here as a service-layer invariant (defense in depth).
+    if (input.type !== 'story' && input.type !== 'defect') {
+      throw new PreconditionFailedException(
+        'WORK_ITEM_NOT_BACKLOG_TYPE',
+        'Only stories and defects can be assigned to an iteration',
+      );
+    }
+
     const iteration = await this.iterationsService.getIteration(actor.workspaceId, iterationId);
 
     const created = await this.workItemsService.createWorkItem(
@@ -105,16 +124,9 @@ export class IterationStatusService {
         teamId: iteration.teamId ?? undefined,
         assigneeId: input.assigneeId,
         storyPoints: input.planEstimate,
+        iterationId,
         // scheduleState defaults to 'defined' in the work-items service (SRS §9.4).
       },
-    );
-
-    // Reuse the validated bulk-assignment path (project/team scope enforced).
-    await this.workItemsService.bulkAssignIteration(
-      actor,
-      iteration.projectId,
-      [created.id],
-      iterationId,
     );
 
     return { workItemId: created.id, itemKey: created.itemKey };

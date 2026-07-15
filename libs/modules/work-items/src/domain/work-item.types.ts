@@ -5,6 +5,13 @@ import type {
 } from '../../../../../db/schema/enums';
 export type { WorkItemType, WorkItemPriority, WorkItemScheduleState };
 
+/**
+ * Sentinel value for {@link WorkItemFilters.assigneeId} that matches work items
+ * with no assignee (owner IS NULL). Not a UUID, so it never collides with a
+ * real user id.
+ */
+export const UNASSIGNED_FILTER = 'unassigned';
+
 export interface WorkItem {
   id: string;
   workspaceId: string;
@@ -55,6 +62,10 @@ export interface WorkItemFilters {
   statusId?: string;
   scheduleState?: WorkItemScheduleState;
   priority?: WorkItemPriority;
+  /**
+   * Filter by assignee. A UUID matches that user; the {@link UNASSIGNED_FILTER}
+   * sentinel matches work items with no owner (assignee IS NULL).
+   */
   assigneeId?: string;
   teamId?: string;
   iterationId?: string;

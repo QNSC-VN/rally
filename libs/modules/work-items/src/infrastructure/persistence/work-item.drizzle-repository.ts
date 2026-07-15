@@ -10,7 +10,13 @@ import {
   releases,
   tasks,
 } from '../../../../../../db/schema/work';
-import type { DefectSeverity, DefectEnvironment, DefectRootCause, DefectResolution, DefectState } from '../../../../../../db/schema/enums';
+import type {
+  DefectSeverity,
+  DefectEnvironment,
+  DefectRootCause,
+  DefectResolution,
+  DefectState,
+} from '../../../../../../db/schema/enums';
 import type {
   WorkItem,
   CreateWorkItemInput,
@@ -18,6 +24,7 @@ import type {
   WorkItemFilters,
   TaskTotals,
 } from '../../domain/work-item.types';
+import { UNASSIGNED_FILTER } from '../../domain/work-item.types';
 import { IWorkItemRepository, IterationScope } from '../../domain/ports/work-item.repository';
 
 @Injectable()
@@ -30,7 +37,13 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     const rows = await exec
       .select()
       .from(workItems)
-      .where(and(eq(workItems.id, id), eq(workItems.workspaceId, workspaceId), isNull(workItems.deletedAt)))
+      .where(
+        and(
+          eq(workItems.id, id),
+          eq(workItems.workspaceId, workspaceId),
+          isNull(workItems.deletedAt),
+        ),
+      )
       .limit(1);
     if (rows.length > 0) return rows[0] as WorkItem;
 
@@ -45,12 +58,17 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         id: t.id,
         workspaceId: t.workspaceId,
         projectId: t.projectId,
-        itemKey: '',
+        itemKey: t.itemKey,
         type: 'task',
         title: t.title,
         description: t.description,
         statusId: '',
-        scheduleState: t.state === 'in_progress' ? 'in_progress' : t.state === 'completed' ? 'completed' : 'defined',
+        scheduleState:
+          t.state === 'in_progress'
+            ? 'in_progress'
+            : t.state === 'completed'
+              ? 'completed'
+              : 'defined',
         priority: 'normal',
         assigneeId: t.assigneeId,
         reporterId: null,
@@ -181,7 +199,13 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     if (filters.statusId) conditions.push(eq(workItems.statusId, filters.statusId));
     if (filters.scheduleState) conditions.push(eq(workItems.scheduleState, filters.scheduleState));
     if (filters.priority) conditions.push(eq(workItems.priority, filters.priority));
-    if (filters.assigneeId) conditions.push(eq(workItems.assigneeId, filters.assigneeId));
+    if (filters.assigneeId) {
+      conditions.push(
+        filters.assigneeId === UNASSIGNED_FILTER
+          ? isNull(workItems.assigneeId)
+          : eq(workItems.assigneeId, filters.assigneeId),
+      );
+    }
     if (filters.teamId) {
       conditions.push(eq(workItems.teamId, filters.teamId));
     }
@@ -256,7 +280,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         id: tasks.id,
         workspaceId: tasks.workspaceId,
         projectId: tasks.projectId,
-        itemKey: sql<string>`''`.as('item_key'),
+        itemKey: tasks.itemKey,
         type: sql<string>`'task'`.as('type'),
         title: tasks.title,
         description: tasks.description,
@@ -315,7 +339,13 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       const rows = await this.db
         .select({ rank: tasks.rank })
         .from(tasks)
-        .where(and(eq(tasks.parentId, scope.parentId), eq(tasks.workspaceId, workspaceId), isNull(tasks.deletedAt)))
+        .where(
+          and(
+            eq(tasks.parentId, scope.parentId),
+            eq(tasks.workspaceId, workspaceId),
+            isNull(tasks.deletedAt),
+          ),
+        )
         .orderBy(desc(tasks.rank))
         .limit(1);
       return rows[0]?.rank ?? null;
@@ -332,10 +362,17 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     return rows[0]?.rank ?? null;
   }
 
-  async areAllTasksComplete(parentId: string, workspaceId: string, executor?: DbExecutor): Promise<boolean> {
+  async areAllTasksComplete(
+    parentId: string,
+    workspaceId: string,
+    executor?: DbExecutor,
+  ): Promise<boolean> {
     const exec = executor ?? this.db;
     const rows = await exec
-      .select({ count: sql<number>`count(*)::int`, allDone: sql<boolean>`bool_and(state = 'completed')` })
+      .select({
+        count: sql<number>`count(*)::int`,
+        allDone: sql<boolean>`bool_and(state = 'completed')`,
+      })
       .from(tasks)
       .where(
         and(
@@ -396,9 +433,11 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
           workspaceId: input.workspaceId,
           projectId: input.projectId,
           parentId: input.parentId!,
+          itemKey: input.itemKey,
           title: input.title,
           description: input.description,
-          state: (stateMap[input.scheduleState ?? 'defined'] ?? 'defined') as 'defined' | 'in_progress' | 'completed',
+          state: (stateMap[input.scheduleState ?? 'defined'] ?? 'defined') as
+            'defined' | 'in_progress' | 'completed',
           assigneeId: input.assigneeId,
           teamId: input.teamId,
           iterationId: input.iterationId,
@@ -415,12 +454,17 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         id: t.id,
         workspaceId: t.workspaceId,
         projectId: t.projectId,
-        itemKey: '',
+        itemKey: t.itemKey,
         type: 'task',
         title: t.title,
         description: t.description,
         statusId: '',
-        scheduleState: t.state === 'in_progress' ? 'in_progress' : t.state === 'completed' ? 'completed' : 'defined',
+        scheduleState:
+          t.state === 'in_progress'
+            ? 'in_progress'
+            : t.state === 'completed'
+              ? 'completed'
+              : 'defined',
         priority: 'normal',
         assigneeId: t.assigneeId,
         reporterId: null,
@@ -495,7 +539,12 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     return rows[0] as WorkItem;
   }
 
-  async update(id: string, input: UpdateWorkItemInput, workspaceId: string, executor?: DbExecutor): Promise<WorkItem> {
+  async update(
+    id: string,
+    input: UpdateWorkItemInput,
+    workspaceId: string,
+    executor?: DbExecutor,
+  ): Promise<WorkItem> {
     const exec = executor ?? this.db;
 
     // P3: If this is a task (exists in tasks table), update there instead.
@@ -517,7 +566,8 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       const setFields: Record<string, unknown> = { updatedAt: new Date() };
       if (input.title !== undefined) setFields.title = input.title;
       if (input.description !== undefined) setFields.description = input.description;
-      if (input.scheduleState !== undefined) setFields.state = stateMap[input.scheduleState] ?? 'defined';
+      if (input.scheduleState !== undefined)
+        setFields.state = stateMap[input.scheduleState] ?? 'defined';
       if (input.assigneeId !== undefined) setFields.assigneeId = input.assigneeId;
       if (input.teamId !== undefined) setFields.teamId = input.teamId;
       if (input.iterationId !== undefined) setFields.iterationId = input.iterationId;
@@ -566,12 +616,20 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         ...(input.updatedBy !== undefined && { updatedBy: input.updatedBy }),
         // P3.4 — Defect-specific fields
         ...(input.severity !== undefined && { severity: input.severity as DefectSeverity | null }),
-        ...(input.foundInEnvironment !== undefined && { foundInEnvironment: input.foundInEnvironment as DefectEnvironment | null }),
+        ...(input.foundInEnvironment !== undefined && {
+          foundInEnvironment: input.foundInEnvironment as DefectEnvironment | null,
+        }),
         ...(input.foundInReleaseId !== undefined && { foundInReleaseId: input.foundInReleaseId }),
-        ...(input.rootCause !== undefined && { rootCause: input.rootCause as DefectRootCause | null }),
-        ...(input.resolution !== undefined && { resolution: input.resolution as DefectResolution | null }),
+        ...(input.rootCause !== undefined && {
+          rootCause: input.rootCause as DefectRootCause | null,
+        }),
+        ...(input.resolution !== undefined && {
+          resolution: input.resolution as DefectResolution | null,
+        }),
         ...(input.devOwnerId !== undefined && { devOwnerId: input.devOwnerId }),
-        ...(input.defectState !== undefined && { defectState: input.defectState as DefectState | null }),
+        ...(input.defectState !== undefined && {
+          defectState: input.defectState as DefectState | null,
+        }),
         ...(input.fixedInBuild !== undefined && { fixedInBuild: input.fixedInBuild }),
         updatedAt: new Date(),
       })
@@ -628,12 +686,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
   async removeLabel(workItemId: string, labelId: string, _workspaceId: string): Promise<void> {
     await this.db
       .delete(workItemLabels)
-      .where(
-        and(
-          eq(workItemLabels.workItemId, workItemId),
-          eq(workItemLabels.labelId, labelId),
-        ),
-      );
+      .where(and(eq(workItemLabels.workItemId, workItemId), eq(workItemLabels.labelId, labelId)));
   }
 
   async listLabels(

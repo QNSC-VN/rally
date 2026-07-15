@@ -145,7 +145,7 @@ const timeboxesRoute = createRoute({
 const iterationStatusRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/iteration-status',
-  staticData: { breadcrumb: 'Iteration' },
+  staticData: { breadcrumb: 'Iteration Status' },
   component: lazyPage(
     () => import('@/pages/iteration-status/iteration-status-page'),
     'IterationStatusPage',
@@ -177,7 +177,10 @@ const milestoneDetailRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/milestones/$milestoneId',
   staticData: { breadcrumb: 'Milestone Detail' },
-  component: lazyPage(() => import('@/pages/milestones/milestones-detail-page'), 'MilestoneDetailPage'),
+  component: lazyPage(
+    () => import('@/pages/milestones/milestones-detail-page'),
+    'MilestoneDetailPage',
+  ),
 })
 
 const qualityRedirectRoute = createRoute({
@@ -199,10 +202,7 @@ const teamStatusRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/team-status',
   staticData: { breadcrumb: 'Team Status' },
-  component: lazyPage(
-    () => import('@/pages/team-status/team-status-page'),
-    'TeamStatusPage',
-  ),
+  component: lazyPage(() => import('@/pages/team-status/team-status-page'), 'TeamStatusPage'),
 })
 
 // ── Not found ─────────────────────────────────────────────────────────────────

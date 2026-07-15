@@ -20,7 +20,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import { pgOptions } from '../pg-ssl';
 import { uuidv7 } from 'uuidv7';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import * as schema from '../schema';
 // Direct imports to avoid barrel tsx/CJS resolution edge cases at runtime.
 import {
@@ -36,6 +36,7 @@ import {
   milestones,
   milestoneReleases,
   milestoneProjects,
+  milestoneArtifacts,
   memberCapacity,
   releaseDailySnapshots,
   iterationDailySnapshots,
@@ -117,6 +118,12 @@ const NXP_STORY_8_ID = '00000000-0000-7000-8000-000000000071';
 const NXP_STORY_9_ID = '00000000-0000-7000-8000-000000000072';
 const NXP_STORY_10_ID = '00000000-0000-7000-8000-000000000073';
 const NXP_DEFECT_11_ID = '00000000-0000-7000-8000-000000000074';
+
+// Feature parent + child defects that demo the Feature / Defects / Defect Status columns.
+const NXP_FEATURE_ID = '00000000-0000-7000-8000-000000000075';
+const NXP_CHILD_DEFECT_1_ID = '00000000-0000-7000-8000-000000000076'; // child of US000005 (closed)
+const NXP_CHILD_DEFECT_2_ID = '00000000-0000-7000-8000-000000000077'; // child of US000006 (open)
+const NXP_CHILD_DEFECT_3_ID = '00000000-0000-7000-8000-000000000078'; // child of US000006 (closed)
 
 // ── Seed data constants ───────────────────────────────────────────────────────
 // Format: { id, key, name, description }
@@ -303,7 +310,7 @@ async function seedWorkItems() {
       },
       // Feature
       {
-        id: uuidv7(),
+        id: NXP_FEATURE_ID,
         itemKey: 'FE000001',
         type: 'feature' as const,
         title: 'Shared ESLint flat-config across all apps',
@@ -356,6 +363,7 @@ async function seedWorkItems() {
           ...t,
           workspaceId: WORKSPACE_ID,
           projectId: nxpId,
+          itemKey: `TA${String(i + 1).padStart(6, '0')}`,
           rank: getDeterministicRank(`TA${String(i + 1).padStart(6, '0')}`),
           createdBy: ADMIN_USER_ID,
         })
@@ -450,6 +458,7 @@ async function seedWorkItems() {
           ...t,
           workspaceId: WORKSPACE_ID,
           projectId: mobId,
+          itemKey: `TA${String(i + 1).padStart(6, '0')}`,
           rank: getDeterministicRank(`TA${String(i + 1).padStart(6, '0')}`),
           createdBy: ADMIN_USER_ID,
         })
@@ -727,6 +736,7 @@ async function seedExtendedWorkItems() {
       priority: 'high' as const,
       storyPoints: 5,
       assigneeId: ADMIN_USER_ID,
+      parentId: NXP_FEATURE_ID,
       iterationId: NXP_ITER_CURRENT_ID,
       releaseId: NXP_RELEASE_1_ID,
     },
@@ -740,6 +750,9 @@ async function seedExtendedWorkItems() {
       priority: 'normal' as const,
       storyPoints: 3,
       assigneeId: DEVELOPER_ID,
+      parentId: NXP_FEATURE_ID,
+      isBlocked: true,
+      blockedReason: 'Waiting on upstream API contract from Platform team',
       iterationId: NXP_ITER_CURRENT_ID,
       releaseId: NXP_RELEASE_1_ID,
     },
@@ -781,6 +794,41 @@ async function seedExtendedWorkItems() {
       priority: 'urgent' as const,
       assigneeId: ADMIN_USER_ID,
       iterationId: NXP_ITER_CURRENT_ID,
+    },
+    // Child defects (rollup only — no iteration, so they surface as Defects /
+    // Defect Status counts on their parent story rather than as their own rows).
+    {
+      id: NXP_CHILD_DEFECT_1_ID,
+      itemKey: 'DE000003',
+      type: 'defect' as const,
+      title: 'Flat-config migration breaks the legacy import/order rule',
+      statusId: nxpDone,
+      scheduleState: 'accepted' as const,
+      priority: 'normal' as const,
+      assigneeId: ADMIN_USER_ID,
+      parentId: NXP_STORY_7_ID,
+    },
+    {
+      id: NXP_CHILD_DEFECT_2_ID,
+      itemKey: 'DE000004',
+      type: 'defect' as const,
+      title: 'noUncheckedIndexedAccess surfaces 40+ latent nulls',
+      statusId: nxpInProgress,
+      scheduleState: 'in_progress' as const,
+      priority: 'high' as const,
+      assigneeId: DEVELOPER_ID,
+      parentId: NXP_STORY_8_ID,
+    },
+    {
+      id: NXP_CHILD_DEFECT_3_ID,
+      itemKey: 'DE000005',
+      type: 'defect' as const,
+      title: 'strictNullChecks regression in the shared logger',
+      statusId: nxpDone,
+      scheduleState: 'accepted' as const,
+      priority: 'normal' as const,
+      assigneeId: DEVELOPER_ID,
+      parentId: NXP_STORY_8_ID,
     },
     // Backlog items (no iteration)
     {
@@ -827,8 +875,76 @@ async function seedExtendedWorkItems() {
     .where(and(eq(projectCounters.projectId, nxpId), eq(projectCounters.itemType, 'story')));
   await db
     .update(projectCounters)
-    .set({ lastItemNumber: sql`GREATEST(${projectCounters.lastItemNumber}, 2)` })
+    .set({ lastItemNumber: sql`GREATEST(${projectCounters.lastItemNumber}, 5)` })
     .where(and(eq(projectCounters.projectId, nxpId), eq(projectCounters.itemType, 'defect')));
+
+  // Converge the Feature parent link for the two current-sprint stories.
+  // The insert above is skipped (onConflictDoNothing) when the rows already
+  // exist, so set parentId explicitly — resolved by itemKey so it works whether
+  // the feature row carries the seed's fixed id or a pre-existing one.
+  const nxpFeature = await db
+    .select({ id: workItems.id })
+    .from(workItems)
+    .where(and(eq(workItems.projectId, nxpId), eq(workItems.itemKey, 'FE000001')))
+    .limit(1);
+  if (nxpFeature[0]) {
+    await db
+      .update(workItems)
+      .set({ parentId: nxpFeature[0].id })
+      .where(inArray(workItems.id, [NXP_STORY_7_ID, NXP_STORY_8_ID]));
+  }
+
+  // Child tasks for the two current-sprint stories so the Tasks % column renders
+  // a real completion bar (rollup of task estimate vs. remaining to-do hours).
+  const nxpExtendedTasks = [
+    {
+      id: '00000000-0000-7000-8000-000000000079' as const,
+      title: 'Rewrite root eslint config as flat config',
+      state: 'completed' as const,
+      parentId: NXP_STORY_7_ID,
+      assigneeId: ADMIN_USER_ID,
+      estimateHours: '5',
+      todoHours: '0',
+      actualHours: '5',
+    },
+    {
+      id: '00000000-0000-7000-8000-00000000007a' as const,
+      title: 'Migrate per-app overrides',
+      state: 'in_progress' as const,
+      parentId: NXP_STORY_7_ID,
+      assigneeId: DEVELOPER_ID,
+      estimateHours: '3',
+      todoHours: '2',
+    },
+    {
+      id: '00000000-0000-7000-8000-00000000007b' as const,
+      title: 'Turn on strict compiler flags',
+      state: 'defined' as const,
+      parentId: NXP_STORY_8_ID,
+      assigneeId: DEVELOPER_ID,
+      estimateHours: '4',
+      todoHours: '4',
+    },
+  ];
+  for (let i = 0; i < nxpExtendedTasks.length; i++) {
+    const t = nxpExtendedTasks[i];
+    const itemKey = `TA${String(i + 3).padStart(6, '0')}`;
+    await db
+      .insert(tasks)
+      .values({
+        ...t,
+        workspaceId: WORKSPACE_ID,
+        projectId: nxpId,
+        itemKey,
+        rank: getDeterministicRank(itemKey),
+        createdBy: ADMIN_USER_ID,
+      })
+      .onConflictDoNothing();
+  }
+  await db
+    .update(projectCounters)
+    .set({ lastItemNumber: sql`GREATEST(${projectCounters.lastItemNumber}, 5)` })
+    .where(and(eq(projectCounters.projectId, nxpId), eq(projectCounters.itemType, 'task')));
 
   // MOB extended items (with iteration)
   if (mobTodo && mobInProgress) {
@@ -1243,6 +1359,17 @@ async function seedPhase3() {
     .values([
       { milestoneId: MS_1, projectId: NXP },
       { milestoneId: MS_2, projectId: NXP },
+    ])
+    .onConflictDoNothing();
+
+  // Assign milestones directly to current-sprint stories so the Iteration
+  // Status "Milestones" column renders (US000006 shows two → "+1" overflow).
+  await db
+    .insert(milestoneArtifacts)
+    .values([
+      { milestoneId: MS_1, workItemId: NXP_STORY_7_ID },
+      { milestoneId: MS_1, workItemId: NXP_STORY_8_ID },
+      { milestoneId: MS_2, workItemId: NXP_STORY_8_ID },
     ])
     .onConflictDoNothing();
 

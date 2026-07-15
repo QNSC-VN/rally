@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { and, asc, desc, eq, ilike, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { InjectDrizzle, buildPageResult } from '@platform';
 import type { DrizzleDB, CursorPayload, PagedResult } from '@platform';
-import { workItems, tasks } from '../../../../../../db/schema/work';
+import { workItems, tasks, milestones, milestoneArtifacts } from '../../../../../../db/schema/work';
 import type {
   IterationStatusItem,
   IterationStatusFilters,
@@ -62,7 +63,8 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
 
     if (filters.type) conditions.push(eq(workItems.type, filters.type));
     if (filters.scheduleState) conditions.push(eq(workItems.scheduleState, filters.scheduleState));
-    if (filters.isBlocked !== undefined) conditions.push(eq(workItems.isBlocked, filters.isBlocked));
+    if (filters.isBlocked !== undefined)
+      conditions.push(eq(workItems.isBlocked, filters.isBlocked));
     if (filters.assigneeId) conditions.push(eq(workItems.assigneeId, filters.assigneeId));
     if (filters.q) {
       const term = filters.q.trim();
@@ -86,6 +88,37 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
       where t.parent_id = ${workItems.id}
         and t.deleted_at is null
     )`;
+
+    // Nearest ancestor Feature (story→feature, defect→story→feature) — Rally "Feature" column.
+    const parentItem = alias(workItems, 'wi_parent');
+    const grandparentItem = alias(workItems, 'wi_grandparent');
+    const featureKey = sql<string | null>`case
+      when ${parentItem.type} = 'feature' then ${parentItem.itemKey}
+      when ${grandparentItem.type} = 'feature' then ${grandparentItem.itemKey}
+      else null end`;
+    const featureTitle = sql<string | null>`case
+      when ${parentItem.type} = 'feature' then ${parentItem.title}
+      when ${grandparentItem.type} = 'feature' then ${grandparentItem.title}
+      else null end`;
+
+    // Child-defect rollup — Rally "Defects" (count) + "Defect Status" (open summary).
+    const defectCount = sql<number>`(
+      select count(*)::int from ${workItems} d
+      where d.parent_id = ${workItems.id} and d.type = 'defect' and d.deleted_at is null
+    )`;
+    const openDefectCount = sql<number>`(
+      select count(*)::int from ${workItems} d
+      where d.parent_id = ${workItems.id} and d.type = 'defect' and d.deleted_at is null
+        and d.schedule_state not in ('accepted', 'released')
+    )`;
+
+    // Milestones directly assigned to the work item — Rally "Milestones" column.
+    const milestoneNames = sql<string[]>`coalesce((
+      select array_agg(m.name order by m.name)
+      from ${milestoneArtifacts} ma
+      join ${milestones} m on m.id = ma.milestone_id
+      where ma.work_item_id = ${workItems.id}
+    ), '{}'::text[])`;
 
     const sortCol = {
       rank: workItems.rank,
@@ -113,13 +146,21 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
         scheduleState: workItems.scheduleState,
         iterationId: workItems.iterationId,
         isBlocked: workItems.isBlocked,
+        blockedReason: workItems.blockedReason,
         planEstimate: workItems.storyPoints,
         assigneeId: workItems.assigneeId,
         rank: workItems.rank,
         taskEstimate,
         toDo,
+        featureKey,
+        featureTitle,
+        defectCount,
+        openDefectCount,
+        milestoneNames,
       })
       .from(workItems)
+      .leftJoin(parentItem, eq(parentItem.id, workItems.parentId))
+      .leftJoin(grandparentItem, eq(grandparentItem.id, parentItem.parentId))
       .where(and(...conditions))
       .orderBy(filters.sortBy ? dir(sortCol) : asc(workItems.rank))
       .limit(limit + 1);
@@ -132,11 +173,17 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
       scheduleState: r.scheduleState,
       iterationId: r.iterationId,
       isBlocked: r.isBlocked,
+      blockedReason: r.blockedReason,
       planEstimate: r.planEstimate,
       taskEstimate: Number(r.taskEstimate ?? 0),
       toDo: Number(r.toDo ?? 0),
       assigneeId: r.assigneeId,
       rank: r.rank,
+      featureKey: r.featureKey,
+      featureTitle: r.featureTitle,
+      defectCount: Number(r.defectCount ?? 0),
+      openDefectCount: Number(r.openDefectCount ?? 0),
+      milestones: r.milestoneNames ?? [],
     }));
 
     return buildPageResult(items, limit, (i) => [i.rank]);
