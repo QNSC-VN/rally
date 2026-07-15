@@ -22,13 +22,30 @@ export function useResizableColumns<K extends string>(
   const { min = 30, max = 1000, storageKey } = options
 
   const [widths, setWidths] = useState<Record<K, number>>(() => {
-    if (!storageKey) return defaults
-    try {
-      const raw = localStorage.getItem(storageKey)
-      return raw ? { ...defaults, ...(JSON.parse(raw) as Partial<Record<K, number>>) } : defaults
-    } catch {
-      return defaults
+    // Clamp a width into the column's current [min, max] bounds. A persisted
+    // width can violate the current bounds — e.g. a column resized narrow in an
+    // earlier session, then given a larger `minWidth` in code — so clamping on
+    // load prevents a stale value from rendering below its minimum (which makes
+    // fixed-width content like the schedule-state stepper overflow).
+    const clamp = (col: K, w: number) => {
+      const lo = typeof min === 'number' ? min : (min[col] ?? 30)
+      const hi = typeof max === 'number' ? max : (max[col] ?? 1000)
+      return Math.min(hi, Math.max(lo, w))
     }
+    let stored: Partial<Record<K, number>> = {}
+    if (storageKey) {
+      try {
+        const raw = localStorage.getItem(storageKey)
+        if (raw) stored = JSON.parse(raw) as Partial<Record<K, number>>
+      } catch {
+        stored = {}
+      }
+    }
+    // Keep only currently-known columns (drops widths for removed columns) and
+    // clamp each persisted/default width into bounds.
+    return Object.fromEntries(
+      (Object.keys(defaults) as K[]).map((k) => [k, clamp(k, stored[k] ?? defaults[k])]),
+    ) as Record<K, number>
   })
 
   const [resizedKeys, setResizedKeys] = useState<Set<K>>(() => {
@@ -58,7 +75,10 @@ export function useResizableColumns<K extends string>(
   useEffect(() => () => cleanupRef.current?.(), [])
 
   const minFor = useCallback((col: K) => (typeof min === 'number' ? min : (min[col] ?? 30)), [min])
-  const maxFor = useCallback((col: K) => (typeof max === 'number' ? max : (max[col] ?? 1000)), [max])
+  const maxFor = useCallback(
+    (col: K) => (typeof max === 'number' ? max : (max[col] ?? 1000)),
+    [max],
+  )
 
   const startResize = useCallback(
     (col: K, e: React.MouseEvent) => {
@@ -72,7 +92,7 @@ export function useResizableColumns<K extends string>(
         if (!resizingRef.current) return
         const { col: c, startX, startW: sw } = resizingRef.current
         const next = Math.min(maxFor(c), Math.max(minFor(c), sw + ev.clientX - startX))
-        
+
         setResizedKeys((prev) => {
           if (prev.has(c)) return prev
           const nextSet = new Set(prev)

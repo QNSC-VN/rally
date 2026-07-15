@@ -49,6 +49,17 @@ export interface TeamStatusTaskRow {
   rank: string | null;
 }
 
+/**
+ * Roster member identity — every active member of the iteration's team (or the
+ * project when the iteration is not team-scoped). Used to render zero-task
+ * members alongside members who have tasks (Rally parity).
+ */
+export interface TeamStatusRosterMember {
+  id: string;
+  displayName: string;
+  avatarUrl: string | null;
+}
+
 /** One member group (aggregated over that member's tasks). */
 export interface TeamStatusMemberGroup {
   owner: TeamStatusOwner;

@@ -143,6 +143,9 @@ const makeScopedWorkItemRepo = (items: WorkItem[]) => ({
   addLabel: vi.fn().mockResolvedValue(undefined),
   removeLabel: vi.fn().mockResolvedValue(undefined),
   listLabels: vi.fn().mockResolvedValue([]),
+  listMilestones: vi.fn().mockResolvedValue([]),
+  setMilestones: vi.fn().mockResolvedValue(undefined),
+  countMilestonesInProject: vi.fn().mockResolvedValue(0),
 });
 
 const makeScopedTimeLogRepo = (logs: TimeLog[]) => ({

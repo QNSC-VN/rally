@@ -59,16 +59,28 @@ export interface IWorkItemRepository {
    * list, or top-level project items when parentId is omitted). Null if the
    * scope is empty. Used to append newly-created items at the end of order.
    */
-  findMaxRank(scope: { projectId: string; parentId?: string | null }, workspaceId: string): Promise<string | null>;
+  findMaxRank(
+    scope: { projectId: string; parentId?: string | null },
+    workspaceId: string,
+  ): Promise<string | null>;
   /** Server-side aggregated totals for a parent's tasks (totals row). */
   getTaskTotals(parentId: string, workspaceId: string): Promise<TaskTotals>;
   /**
    * Check whether ALL non-deleted child tasks of a parent are in 'completed' state.
    * Returns true if the parent has zero tasks (nothing to block completion).
    */
-  areAllTasksComplete(parentId: string, workspaceId: string, executor?: DbExecutor): Promise<boolean>;
+  areAllTasksComplete(
+    parentId: string,
+    workspaceId: string,
+    executor?: DbExecutor,
+  ): Promise<boolean>;
   create(input: CreateWorkItemInput, executor?: DbExecutor): Promise<WorkItem>;
-  update(id: string, input: UpdateWorkItemInput, workspaceId: string, executor?: DbExecutor): Promise<WorkItem>;
+  update(
+    id: string,
+    input: UpdateWorkItemInput,
+    workspaceId: string,
+    executor?: DbExecutor,
+  ): Promise<WorkItem>;
   softDelete(id: string, workspaceId: string, executor?: DbExecutor): Promise<void>;
   reorderItems(
     items: Array<{ id: string; rank: string }>,
@@ -78,4 +90,8 @@ export interface IWorkItemRepository {
   addLabel(workItemId: string, labelId: string, workspaceId: string): Promise<void>;
   removeLabel(workItemId: string, labelId: string, workspaceId: string): Promise<void>;
   listLabels(workItemId: string): Promise<Array<{ id: string; name: string; color: string }>>;
+  listMilestones(workItemId: string): Promise<Array<{ id: string; name: string }>>;
+  setMilestones(workItemId: string, milestoneIds: string[]): Promise<void>;
+  /** Count of the given milestone ids that belong to `projectId` (same-project guard). */
+  countMilestonesInProject(milestoneIds: string[], projectId: string): Promise<number>;
 }

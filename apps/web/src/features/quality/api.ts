@@ -4,8 +4,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
+// Single source of truth for severity lives in the entity layer.
+export type { DefectSeverity } from '@/entities/work-item/model/types'
+import type { DefectSeverity } from '@/entities/work-item/model/types'
 
-export type DefectSeverity = 'critical' | 'high' | 'medium' | 'low' | 'none'
 export type DefectEnvironment = 'development' | 'staging' | 'production' | 'testing'
 
 export interface DefectMetrics {

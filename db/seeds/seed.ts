@@ -521,6 +521,36 @@ async function seedTeams() {
         userId: DEVELOPER_ID,
         status: 'active',
       },
+      // Additional Team Alpha members with no tasks this iteration — exercises
+      // the Team Status roster (zero-task members render with an empty load bar).
+      {
+        id: '00000000-0000-7000-8000-000000000084',
+        workspaceId: WORKSPACE_ID,
+        teamId: TEAM_ALPHA_ID,
+        userId: VIEWER_ID,
+        status: 'active',
+      },
+      {
+        id: '00000000-0000-7000-8000-000000000085',
+        workspaceId: WORKSPACE_ID,
+        teamId: TEAM_ALPHA_ID,
+        userId: PROJECT_ADMIN_ID,
+        status: 'active',
+      },
+      {
+        id: '00000000-0000-7000-8000-000000000086',
+        workspaceId: WORKSPACE_ID,
+        teamId: TEAM_ALPHA_ID,
+        userId: WORKSPACE_MEMBER_ID,
+        status: 'active',
+      },
+      {
+        id: '00000000-0000-7000-8000-000000000087',
+        workspaceId: WORKSPACE_ID,
+        teamId: TEAM_ALPHA_ID,
+        userId: PROJECT_LEAD_ID,
+        status: 'active',
+      },
       {
         id: '00000000-0000-7000-8000-000000000082',
         workspaceId: WORKSPACE_ID,

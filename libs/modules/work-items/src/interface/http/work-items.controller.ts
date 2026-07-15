@@ -8,6 +8,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
@@ -34,6 +35,7 @@ import {
   BulkAssignReleaseDto,
   BulkAssignIterationDto,
   AddLabelDto,
+  SetWorkItemMilestonesDto,
   CreateTimeLogDto,
   UpdateTimeLogDto,
   TimeLogQueryDto,
@@ -536,6 +538,51 @@ export class WorkItemsController {
     @Param('labelId', ParseUUIDPipe) labelId: string,
   ): Promise<void> {
     await this.workItemsService.removeLabelFromWorkItem(user, id, labelId);
+  }
+
+  // ── Milestones ──────────────────────────────────────────────────────────────
+
+  @Get(':id/milestones')
+  @ApiOperation({ summary: 'List milestones assigned to a work item' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: { id: { type: 'string' }, name: { type: 'string' } },
+      },
+    },
+  })
+  @ApiCommonErrors(401, 404)
+  async listWorkItemMilestones(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<Array<{ id: string; name: string }>> {
+    return this.workItemsService.getWorkItemMilestones(user, id);
+  }
+
+  @Put(':id/milestones')
+  @ApiOperation({ summary: 'Replace the set of milestones assigned to a work item' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: { id: { type: 'string' }, name: { type: 'string' } },
+      },
+    },
+  })
+  @ApiCommonErrors(400, 401, 404, 422)
+  async setWorkItemMilestones(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetWorkItemMilestonesDto,
+  ): Promise<Array<{ id: string; name: string }>> {
+    return this.workItemsService.setWorkItemMilestones(user, id, dto.ids);
   }
 
   // ── Time Logs ───────────────────────────────────────────────────────────────

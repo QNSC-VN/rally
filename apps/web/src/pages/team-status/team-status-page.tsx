@@ -11,7 +11,8 @@ import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
 import { ChevronDown, ChevronLeft, ChevronRight, Inbox } from 'lucide-react'
 import { SkeletonList } from '@/shared/ui/skeleton'
-import { TypeBadge } from '@/entities/work-item/ui/badges'
+import { WorkItemRefCell } from '@/entities/work-item/ui/work-item-ref-cell'
+import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { DataTableHeader, type DataTableHeaderColumn } from '@/shared/ui/data-table-header'
 import { BRAND } from '@/shared/config/brand'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
@@ -29,9 +30,15 @@ import { Avatar } from '@/shared/ui/avatar'
 import { useColumnLayout, type ColumnDef } from '@/shared/lib/hooks/use-column-layout'
 import { useColumnDrag } from '@/shared/lib/hooks/use-column-drag'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
+import { PaginationFooter } from '@/shared/ui/pagination-footer'
+import { NESTED_ROW_INDENT } from '@/shared/config/layout'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { useProjectMembers, type ProjectMember } from '@/features/teams/api'
-import { SIMPLIFIED_STATE_CONFIG, type SimplifiedState } from '@/entities/work-item/model/types'
+import {
+  SIMPLIFIED_STATE_CONFIG,
+  WorkItemType,
+  type SimplifiedState,
+} from '@/entities/work-item/model/types'
 import { StateStepper } from '@/entities/work-item/ui/state-stepper'
 import { type StateStep } from '@/entities/work-item/ui/state-steps'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
@@ -54,7 +61,7 @@ type ColKey =
 
 const TEAM_STATUS_COLUMNS: ColumnDef<ColKey>[] = [
   { key: 'rank', label: 'Rank', defaultWidth: 45, locked: true },
-  { key: 'id', label: 'ID', defaultWidth: 104, minWidth: 84, locked: true },
+  { key: 'id', label: 'ID', defaultWidth: 132, minWidth: 120, locked: true },
   { key: 'name', label: 'Task Name', defaultWidth: 240, minWidth: 150, locked: true },
   { key: 'workProduct', label: 'Work Product', defaultWidth: 140 },
   { key: 'release', label: 'Release', defaultWidth: 96 },
@@ -79,6 +86,32 @@ function fmtRange(it: Pick<Iteration, 'startDate' | 'endDate'>) {
   const s = it.startDate ?? '—'
   const e = it.endDate ?? '—'
   return `${s} → ${e}`
+}
+
+/**
+ * Member capacity load bar — Rally Team Status style: a percentage label above
+ * a fill bar that is green when at/under capacity (≤100%) and red when over
+ * (>100%). Rendered in the State column of each member group row.
+ */
+function LoadBar({ percent }: { percent: number }) {
+  const over = percent > 100
+  const color = over ? '#dc2626' : '#2a8c3f'
+  return (
+    <div className="flex w-full flex-col gap-[3px]">
+      <span className="text-[10px] leading-none font-semibold tabular-nums" style={{ color }}>
+        {percent}%
+      </span>
+      <div
+        className="h-1.5 w-full overflow-hidden rounded-full"
+        style={{ backgroundColor: '#e4e8ed' }}
+      >
+        <div
+          className="h-full rounded-full"
+          style={{ width: `${Math.min(percent, 100)}%`, backgroundColor: color }}
+        />
+      </div>
+    </div>
+  )
 }
 
 export function TeamStatusPage() {
@@ -123,6 +156,7 @@ export function TeamStatusPage() {
   const { data: members = [] } = useProjectMembers(projectId)
   const [chosenId, setChosenId] = useState<string | null>(null)
   const [selectorOpen, setSelectorOpen] = useState(false)
+  const [search, setSearch] = useState('')
 
   useEffect(() => {
     if (projectId) {
@@ -167,6 +201,22 @@ export function TeamStatusPage() {
     if (next >= 0 && next < iterations.length) setSelectedId(iterations[next].id)
   }
 
+  // ── Client-side pagination over member groups (Rally parity, 10/page) ──
+  // The team-status response is a bounded per-iteration dataset, so we paginate
+  // the loaded/filtered member groups client-side. Totals remain across the
+  // whole roster (computed server-side), independent of the visible page.
+  const [pageSize, setPageSize] = useState(10)
+  const [page, setPage] = useState(1)
+  // Snap back to the first page whenever the view identity changes.
+  const pageResetKey = `${selectedId ?? ''}|${search}|${pageSize}`
+  const [syncedPageKey, setSyncedPageKey] = useState(pageResetKey)
+  if (syncedPageKey !== pageResetKey) {
+    setSyncedPageKey(pageResetKey)
+    setPage(1)
+  }
+  const goPrevPage = useCallback(() => setPage((p) => Math.max(1, p - 1)), [])
+  const goNextPage = useCallback(() => setPage((p) => p + 1), [])
+
   // ── Empty / guard states ─────────────────────────────────────────────
 
   if (!projectId) {
@@ -199,7 +249,28 @@ export function TeamStatusPage() {
   }
 
   const totals = status?.totals
-  const groups = status?.groups ?? []
+  const allGroups = status?.groups ?? []
+  const totalWorkItems = allGroups.reduce((sum, g) => sum + g.taskCount, 0)
+  const q = search.trim().toLowerCase()
+  const groups = q
+    ? allGroups
+        .map((g) => ({
+          ...g,
+          tasks: g.tasks.filter(
+            (t) =>
+              t.title.toLowerCase().includes(q) ||
+              t.taskKey.toLowerCase().includes(q) ||
+              t.workProduct.title.toLowerCase().includes(q) ||
+              t.workProduct.key.toLowerCase().includes(q),
+          ),
+        }))
+        .filter((g) => g.tasks.length > 0)
+    : allGroups
+
+  // Paginate the visible member groups (see hook block above).
+  const pageCount = Math.max(1, Math.ceil(groups.length / pageSize))
+  const currentPage = Math.min(page, pageCount)
+  const pagedGroups = groups.slice((currentPage - 1) * pageSize, currentPage * pageSize)
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -289,7 +360,22 @@ export function TeamStatusPage() {
             <ChevronRight size={14} />
           </button>
         </div>
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search Tasks"
+          aria-label="Search Tasks"
+          className="h-7 w-56 rounded px-2 text-[12px] focus:outline-none"
+          style={{ border: '1px solid #bdd0ef', color: BRAND.textPrimary }}
+        />
         <div className="flex-1" />
+        <span className="text-[11px] whitespace-nowrap" style={{ color: BRAND.textSecondary }}>
+          Total Work Items:{' '}
+          <span className="font-semibold" style={{ color: BRAND.textPrimary }}>
+            {totalWorkItems}
+          </span>
+        </span>
         <ColumnFieldsMenu
           columns={TEAM_STATUS_COLUMNS}
           order={order}
@@ -336,23 +422,21 @@ export function TeamStatusPage() {
             <div className="w-6 shrink-0" />
             <div className="shrink-0" style={colStyles.rank} />
             <div className="shrink-0" style={colStyles.id} />
-            <div className="min-w-[180px] flex-1" style={colStyles.name}>
-              Totals
-            </div>
+            <div className="min-w-[180px] flex-1" style={colStyles.name} />
             <div className="shrink-0" style={colStyles.workProduct} />
             <div className="shrink-0" style={colStyles.release} />
             <div className="shrink-0" style={colStyles.state} />
             <div className="shrink-0 text-right font-mono tabular-nums" style={colStyles.capacity}>
-              {totals.capacityHours}
+              {totals.capacityHours} Hours
             </div>
             <div className="shrink-0 text-right font-mono tabular-nums" style={colStyles.estimate}>
-              {totals.estimateHours}
+              {totals.estimateHours} Hours
             </div>
             <div className="shrink-0 text-right font-mono tabular-nums" style={colStyles.todo}>
-              {totals.todoHours}
+              {totals.todoHours} Hours
             </div>
             <div className="shrink-0 text-right font-mono tabular-nums" style={colStyles.actuals}>
-              {totals.actualHours}
+              {totals.actualHours} Hours
             </div>
             <div className="shrink-0" style={colStyles.owner} />
           </div>
@@ -374,7 +458,7 @@ export function TeamStatusPage() {
         {/* Member groups (P3-TS-FR-014) */}
         {!isLoading &&
           !isError &&
-          groups.map((group) => (
+          pagedGroups.map((group) => (
             <MemberGroup
               key={group.owner.id}
               group={group}
@@ -384,9 +468,9 @@ export function TeamStatusPage() {
               canEdit={canEdit}
               colStyles={colStyles}
               members={members}
-              onOpenTask={(task) =>
-                navigate({ to: '/item/$itemKey', params: { itemKey: task.workProduct.key } })
-              }
+              onOpenItem={(itemKey) => {
+                if (itemKey) navigate({ to: '/item/$itemKey', params: { itemKey } })
+              }}
             />
           ))}
 
@@ -400,6 +484,23 @@ export function TeamStatusPage() {
           </div>
         )}
       </div>
+
+      {/* Pagination footer (P3-TS-FR-014, Rally parity) — paginates member groups */}
+      {!isLoading && !isError && status && (
+        <PaginationFooter
+          pageSize={pageSize}
+          setPageSize={setPageSize}
+          currentPage={currentPage}
+          rangeStart={groups.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}
+          rangeEnd={(currentPage - 1) * pageSize + pagedGroups.length}
+          total={groups.length}
+          pageCount={pageCount}
+          hasPrevPage={currentPage > 1}
+          hasNextPage={currentPage < pageCount}
+          onPrevPage={goPrevPage}
+          onNextPage={goNextPage}
+        />
+      )}
     </div>
   )
 }
@@ -414,7 +515,7 @@ function MemberGroup({
   canEdit,
   colStyles,
   members,
-  onOpenTask,
+  onOpenItem,
 }: {
   group: TeamStatusMemberGroup
   projectId: string
@@ -423,9 +524,9 @@ function MemberGroup({
   canEdit: boolean
   colStyles: Record<string, React.CSSProperties>
   members: ProjectMember[]
-  onOpenTask: (task: TeamStatusTaskRow) => void
+  onOpenItem: (itemKey: string) => void
 }) {
-  const [expanded, setExpanded] = useState(true)
+  const [expanded, setExpanded] = useState(false)
   const updateCapacity = useUpdateCapacity(projectId, teamId, iterationId)
 
   function commitCapacity(raw: string) {
@@ -455,53 +556,35 @@ function MemberGroup({
         }}
         onClick={() => setExpanded((e) => !e)}
       >
-        {/* Expand/collapse — arrow only, no bordered square (P3-TS-FR-016) */}
-        <div className="flex w-6 shrink-0 items-center justify-center">
-          {expanded ? (
-            <ChevronDown size={12} style={{ color: BRAND.textSecondary }} />
-          ) : (
-            <ChevronRight size={12} style={{ color: BRAND.textSecondary }} />
-          )}
-        </div>
+        {/* Leading gutter (aligns with task-row drag/checkbox area) */}
+        <div className="w-6 shrink-0" />
         <div className="shrink-0" style={colStyles.rank} /> {/* Rank column spacer */}
-        <div className="shrink-0" style={colStyles.id} /> {/* ID column spacer */}
-        {/* Owner info */}
-        <div className="flex min-w-[180px] flex-1 items-center gap-2" style={colStyles.name}>
+        {/* Member label — caret + avatar + name clustered at the ID column,
+            matching Rally. Spans the ID + Task Name width (order 1, after rank).
+            Caret only renders for expandable members (P3-TS-FR-016). */}
+        <div className="flex min-w-0 flex-1 items-center gap-2 pl-2" style={{ order: 1 }}>
+          <span className="flex w-3 shrink-0 items-center justify-center">
+            {group.taskCount > 0 &&
+              (expanded ? (
+                <ChevronDown size={12} style={{ color: BRAND.textSecondary }} />
+              ) : (
+                <ChevronRight size={12} style={{ color: BRAND.textSecondary }} />
+              ))}
+          </span>
           <Avatar name={group.owner.displayName} size={20} />
           <span className="truncate text-[11px] font-semibold" style={{ color: BRAND.textPrimary }}>
             {group.owner.displayName}
           </span>
           <span className="shrink-0 text-[10px]" style={{ color: BRAND.textMuted }}>
-            ({group.taskCount} tasks)
-          </span>
-          {/* Progress bar */}
-          <div
-            className="ml-2 h-1.5 w-16 shrink-0 overflow-hidden rounded-full"
-            style={{ backgroundColor: '#e4e8ed' }}
-          >
-            <div
-              className="h-full rounded-full"
-              style={{
-                width: `${Math.min(group.progressPercent, 100)}%`,
-                backgroundColor:
-                  group.progressPercent > 100
-                    ? '#dc2626'
-                    : group.progressPercent >= 70
-                      ? '#2a8c3f'
-                      : BRAND.primaryLight,
-              }}
-            />
-          </div>
-          <span
-            className="shrink-0 text-[10px] tabular-nums"
-            style={{ color: group.progressPercent > 100 ? '#dc2626' : BRAND.textSecondary }}
-          >
-            {group.progressPercent}%
+            ({group.taskCount} Tasks)
           </span>
         </div>
         <div className="shrink-0" style={colStyles.workProduct} />
         <div className="shrink-0" style={colStyles.release} />
-        <div className="shrink-0" style={colStyles.state} />
+        {/* State column shows the member capacity load bar (Rally-style). */}
+        <div className="flex shrink-0 flex-col justify-center px-2" style={colStyles.state}>
+          <LoadBar percent={group.progressPercent} />
+        </div>
         {/* Capacity (editable on group row — P3-TS-FR-017) */}
         <div
           className="shrink-0 text-right"
@@ -547,18 +630,17 @@ function MemberGroup({
 
       {/* Task rows */}
       {expanded &&
-        group.tasks.map((task, idx) => (
+        group.tasks.map((task) => (
           <TaskRow
             key={task.id}
             task={task}
-            idx={idx}
             projectId={projectId}
             teamId={teamId ?? ''}
             iterationId={iterationId}
             canEdit={canEdit}
             colStyles={colStyles}
             members={members}
-            onOpen={() => onOpenTask(task)}
+            onOpenItem={onOpenItem}
           />
         ))}
     </div>
@@ -569,24 +651,22 @@ function MemberGroup({
 
 function TaskRow({
   task,
-  idx,
   projectId,
   teamId,
   iterationId,
   canEdit,
   colStyles,
   members,
-  onOpen,
+  onOpenItem,
 }: {
   task: TeamStatusTaskRow
-  idx: number
   projectId: string
   teamId: string
   iterationId: string
   canEdit: boolean
   colStyles: Record<string, React.CSSProperties>
   members: ProjectMember[]
-  onOpen: () => void
+  onOpenItem: (itemKey: string) => void
 }) {
   const updateTask = useUpdateTeamTask(projectId, teamId, iterationId)
 
@@ -676,28 +756,22 @@ function TaskRow({
     <div
       className="flex h-[34px] items-center bg-white px-3 text-[11px] transition-colors duration-100 hover:bg-[#f1f6fc]"
       style={{ borderBottom: `1px solid ${BRAND.borderInner}`, minWidth: 'max-content' }}
-      onClick={onOpen}
+      onClick={() => onOpenItem(task.taskKey)}
     >
       <div className="w-6 shrink-0" /> {/* Spacer for expand arrow */}
-      {/* Rank column */}
-      {/* ponytail: use index + 1 as rank rather than a complex drag-and-drop ordering system since reordering is out of scope for Phase 3.1 */}
+      {/* Rank column — empty on task rows; tasks nest under the member (Rally-style). */}
+      <div className="shrink-0" style={colStyles.rank} />
+      {/* ID (P3-TS-FR-023) — nested under the member via the shared indent token. */}
       <div
-        className="shrink-0 px-2 font-mono text-[10px]"
-        style={{ ...colStyles.rank, color: BRAND.textSecondary }}
+        className={`flex shrink-0 items-center overflow-hidden pr-2 ${NESTED_ROW_INDENT}`}
+        style={colStyles.id}
       >
-        {idx + 1}
+        <IdCell
+          type={WorkItemType.Task}
+          itemKey={task.taskKey}
+          onOpen={() => onOpenItem(task.taskKey)}
+        />
       </div>
-      {/* ID (P3-TS-FR-023) */}
-      <button
-        className="shrink-0 cursor-pointer truncate px-2 text-left font-mono hover:underline"
-        style={{ ...colStyles.id, color: BRAND.primaryLight }}
-        onClick={(e) => {
-          e.stopPropagation()
-          onOpen()
-        }}
-      >
-        {task.taskKey}
-      </button>
       {/* Task Name (P3-TS-FR-019 — inline editable) */}
       <div
         className="min-w-[180px] flex-1 px-2"
@@ -724,14 +798,21 @@ function TaskRow({
       </div>
       {/* Work Product (P3-TS-FR-024) */}
       <div
-        className="flex shrink-0 items-center gap-1 truncate px-2"
-        style={{ ...colStyles.workProduct, color: BRAND.textSecondary }}
+        className="flex shrink-0 items-center overflow-hidden px-2"
+        style={colStyles.workProduct}
       >
-        <TypeBadge type={(task.workProduct.type || 'story').toLowerCase()} />
-        <span className="font-mono text-[10px]">{task.workProduct.key}: </span>
-        <span className="truncate" title={task.workProduct.title}>
-          {task.workProduct.title}
-        </span>
+        {task.workProduct.key ? (
+          <WorkItemRefCell
+            type={(task.workProduct.type || 'story').toLowerCase() as WorkItemType}
+            itemKey={task.workProduct.key}
+            title={task.workProduct.title}
+            onOpen={() => onOpenItem(task.workProduct.key)}
+          />
+        ) : (
+          <span className="text-[10px]" style={{ color: '#c4cad4' }}>
+            —
+          </span>
+        )}
       </div>
       {/* Release (P3-TS-FR-025) */}
       <div

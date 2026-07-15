@@ -7,15 +7,16 @@
  * work-item list. Sourced from /v1/iterations/:id/status.
  */
 /* eslint-disable react-hooks/set-state-in-effect */
-import { useMemo, useState, useCallback, useEffect } from 'react'
+import { useMemo, useState, useCallback, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useColumnLayout, type ColumnDef } from '@/shared/lib/hooks/use-column-layout'
 import { useColumnDrag } from '@/shared/lib/hooks/use-column-drag'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { DataTableHeader, type DataTableHeaderColumn } from '@/shared/ui/data-table-header'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
-import { OwnerCell, OwnerSelectCell } from '@/shared/ui/owner-cell'
-import { DragHandle } from '@/shared/ui/drag-handle'
+import { OwnerSelectCell } from '@/shared/ui/owner-cell'
+import { RowGutter } from '@/shared/ui/row-gutter'
 import { MetricCard } from '@/shared/ui/metric-card'
 import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
@@ -48,12 +49,12 @@ import {
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { BRAND } from '@/shared/config/brand'
-import { TypeBadge } from '@/entities/work-item/ui/badges'
+import { NESTED_ROW_INDENT } from '@/shared/config/layout'
+import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { InlineSelect } from '@/shared/ui/native-select'
 import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { BulkActionBar } from '@/shared/ui/bulk-action-bar'
-import { SelectionCheckbox } from '@/shared/ui/selection-checkbox'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { useRowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { FormField } from '@/shared/ui/form-field'
@@ -74,9 +75,11 @@ import {
   useBulkAssignIteration,
   useTasks,
   useRankAnyWorkItem,
+  useSetWorkItemMilestones,
   type WorkItem,
 } from '@/features/work-items/api'
 import { useProjectMembers } from '@/features/teams/api'
+import { useMilestones } from '@/features/milestones/api'
 import {
   SCHEDULE_STATE_LABEL,
   SCHEDULE_STATE_VALUES,
@@ -85,12 +88,12 @@ import {
   SIMPLIFIED_STATE_TO_SCHEDULE_STATE,
 } from '@/entities/work-item/model/types'
 import { StateStepper } from '@/entities/work-item/ui/state-stepper'
+import { FeatureCell } from '@/entities/work-item/ui/feature-cell'
 import { SCHEDULE_STATE_STEPS, SIMPLIFIED_STATE_STEPS } from '@/entities/work-item/ui/state-steps'
 
 // ── Accent palette (Rally navy brand; neutral Azure-style layout kept) ──────
 const AZ = {
   primary: '#1d3f73',
-  primaryHover: '#162d56',
   primaryLight: '#edf2fb',
   textPrimary: '#1a1a1a',
   textSecondary: '#666666',
@@ -99,7 +102,6 @@ const AZ = {
   bgHeader: '#f4f4f4',
   bgAlt: '#f8f8f8',
   border: '#e8e8e8',
-  borderLight: '#eeeeee',
   font: "'Segoe UI', -apple-system, BlinkMacSystemFont, 'Roboto', sans-serif",
 }
 
@@ -127,11 +129,11 @@ type ColKey =
 
 const ITERATION_STATUS_COLUMNS: ColumnDef<ColKey>[] = [
   { key: 'rank', label: 'Rank', defaultWidth: 45 },
-  { key: 'id', label: 'ID', defaultWidth: 112, minWidth: 100 },
+  { key: 'id', label: 'ID', defaultWidth: 132, minWidth: 120 },
   { key: 'name', label: 'Name', defaultWidth: 240, minWidth: 150 },
-  { key: 'feature', label: 'Feature', defaultWidth: 130, minWidth: 90 },
-  { key: 'state', label: 'State', defaultWidth: 112 },
-  { key: 'block', label: 'Block', defaultWidth: 42 },
+  { key: 'feature', label: 'Feature', defaultWidth: 200, minWidth: 120 },
+  { key: 'state', label: 'Schedule State', defaultWidth: 132, minWidth: 132 },
+  { key: 'block', label: 'Block', defaultWidth: 60, minWidth: 56 },
   { key: 'blockedReason', label: 'Blocked Reason', defaultWidth: 160, minWidth: 100 },
   { key: 'planEstimate', label: 'Plan Estimate', defaultWidth: 80 },
   { key: 'taskEstimate', label: 'Task Estimate', defaultWidth: 80 },
@@ -171,44 +173,210 @@ function computeTotalDays(it: Iteration | undefined): number {
 
 // ── Cell primitives (Rally-style chips / pills / progress) ──────────────────
 
-/** Compact chip used by the Feature and Milestones columns. */
-function Chip({
-  label,
-  title,
-  onClick,
-  tone = 'neutral',
+/**
+ * Milestones cell — read-only chip summary, or (when editable) a click-to-open
+ * checkbox popover to add/remove the work item's milestones. Each toggle
+ * commits immediately (one PUT), matching the grid's inline-edit ethos.
+ */
+function MilestoneSelectCell({
+  selected,
+  options,
+  canEdit,
+  saving,
+  onCommit,
 }: {
-  label: string
-  title?: string
-  onClick?: () => void
-  tone?: 'neutral' | 'accent'
+  selected: readonly { id: string; name: string }[]
+  options: readonly { id: string; name: string }[]
+  canEdit: boolean
+  saving: boolean
+  onCommit: (ids: string[]) => void
 }) {
-  const accent = tone === 'accent'
+  const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState<{
+    left: number
+    width: number
+    top: number | null
+    bottom: number | null
+  } | null>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const popRef = useRef<HTMLDivElement>(null)
+  const selectedIds = useMemo(() => new Set(selected.map((s) => s.id)), [selected])
+
+  // The popover must escape the grid's overflow-hidden cells, so it renders in
+  // a portal with fixed positioning anchored to the trigger's viewport rect.
+  const computePos = useCallback(() => {
+    const el = triggerRef.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    const spaceBelow = window.innerHeight - r.bottom
+    const flipUp = spaceBelow < 200 && r.top > spaceBelow
+    setPos({
+      left: r.left,
+      width: r.width,
+      top: flipUp ? null : r.bottom + 4,
+      bottom: flipUp ? window.innerHeight - r.top + 4 : null,
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!open) return
+    computePos()
+    function reposition() {
+      computePos()
+    }
+    function onDocDown(e: MouseEvent) {
+      const t = e.target as Node
+      if (triggerRef.current?.contains(t)) return
+      if (popRef.current?.contains(t)) return
+      setOpen(false)
+    }
+    window.addEventListener('scroll', reposition, true)
+    window.addEventListener('resize', reposition)
+    document.addEventListener('mousedown', onDocDown)
+    return () => {
+      window.removeEventListener('scroll', reposition, true)
+      window.removeEventListener('resize', reposition)
+      document.removeEventListener('mousedown', onDocDown)
+    }
+  }, [open, computePos])
+
+  function toggle(id: string) {
+    const next = new Set(selectedIds)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    onCommit([...next])
+  }
+
+  // Span-based chip (not the <Chip> button) so it can live inside the trigger
+  // <button> without nesting interactive elements (invalid HTML / hydration).
+  const summary =
+    selected.length > 0 ? (
+      <>
+        <span
+          className="min-w-0 flex-1 truncate"
+          title={selected.map((m) => m.name).join(', ')}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            maxWidth: '100%',
+            height: 18,
+            padding: '0 6px',
+            borderRadius: 3,
+            fontSize: 11,
+            fontWeight: 600,
+            lineHeight: '18px',
+            border: `1px solid ${AZ.border}`,
+            backgroundColor: AZ.bgAlt,
+            color: AZ.textSecondary,
+            fontFamily: AZ.font,
+          }}
+        >
+          <span className="truncate">{selected[0].name}</span>
+        </span>
+        {selected.length > 1 && (
+          <span
+            className="shrink-0"
+            style={{ fontSize: 11, color: AZ.textMuted, whiteSpace: 'nowrap' }}
+            title={selected.map((m) => m.name).join(', ')}
+          >
+            +{selected.length - 1}
+          </span>
+        )}
+      </>
+    ) : (
+      <span style={{ color: AZ.textMuted, fontSize: 12 }}>&mdash;</span>
+    )
+
+  if (!canEdit) {
+    return <div className="flex items-center gap-1 overflow-hidden">{summary}</div>
+  }
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title ?? label}
-      disabled={!onClick}
-      style={{
-        maxWidth: '100%',
-        display: 'inline-flex',
-        alignItems: 'center',
-        height: 18,
-        padding: '0 6px',
-        borderRadius: 3,
-        fontSize: 11,
-        fontWeight: 600,
-        lineHeight: '18px',
-        border: `1px solid ${accent ? '#c7d6ee' : AZ.border}`,
-        backgroundColor: accent ? AZ.primaryLight : AZ.bgAlt,
-        color: accent ? AZ.primary : AZ.textSecondary,
-        cursor: onClick ? 'pointer' : 'default',
-        fontFamily: AZ.font,
-      }}
-    >
-      <span className="truncate">{label}</span>
-    </button>
+    <div style={{ width: '100%' }}>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          setOpen((v) => !v)
+        }}
+        disabled={saving}
+        title="Edit milestones"
+        className="flex w-full items-center gap-1 overflow-hidden rounded"
+        style={{
+          background: open ? AZ.primaryLight : 'none',
+          border: 'none',
+          padding: '2px 4px',
+          cursor: saving ? 'default' : 'pointer',
+          opacity: saving ? 0.6 : 1,
+          textAlign: 'left',
+        }}
+      >
+        <span className="flex min-w-0 flex-1 items-center gap-1">{summary}</span>
+        <ChevronDown size={12} style={{ color: AZ.textMuted, flexShrink: 0 }} />
+      </button>
+      {open &&
+        pos &&
+        createPortal(
+          <div
+            ref={popRef}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: 'fixed',
+              top: pos.top ?? undefined,
+              bottom: pos.bottom ?? undefined,
+              left: pos.left,
+              zIndex: 50,
+              minWidth: Math.max(200, pos.width),
+              maxWidth: 280,
+              maxHeight: 260,
+              overflowY: 'auto',
+              backgroundColor: AZ.bg,
+              border: `1px solid ${AZ.border}`,
+              borderRadius: 4,
+              boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
+              padding: 4,
+            }}
+          >
+            {options.length === 0 ? (
+              <div style={{ padding: '8px 10px', fontSize: 12, color: AZ.textMuted }}>
+                No milestones in this project
+              </div>
+            ) : (
+              options.map((opt) => {
+                const checked = selectedIds.has(opt.id)
+                return (
+                  <label
+                    key={opt.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '5px 8px',
+                      borderRadius: 3,
+                      fontSize: 12,
+                      color: AZ.textPrimary,
+                      cursor: 'pointer',
+                      fontFamily: AZ.font,
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = AZ.bgAlt)}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggle(opt.id)}
+                      style={{ accentColor: AZ.primary, cursor: 'pointer' }}
+                    />
+                    <span className="truncate">{opt.name}</span>
+                  </label>
+                )
+              })
+            )}
+          </div>,
+          document.body,
+        )}
+    </div>
   )
 }
 
@@ -286,6 +454,7 @@ export function IterationStatusPage() {
 
   const { data: iterations = [] } = useIterations(projectId)
   const { data: members = [] } = useProjectMembers(projectId)
+  const { data: milestoneOptions = [] } = useMilestones(projectId)
 
   const memberMap = useMemo(() => new Map(members.map((m) => [m.userId, m])), [members])
 
@@ -779,17 +948,15 @@ export function IterationStatusPage() {
           onResize={startResize}
           className="pr-3 pl-1"
           leading={
-            <>
-              <div className="w-5 shrink-0 px-2">
-                <SelectionCheckbox
-                  checked={selection.allSelected}
-                  indeterminate={selection.someSelected}
-                  onChange={selection.toggleAll}
-                  ariaLabel="Select all"
-                />
-              </div>
-              <div className="w-4 shrink-0 px-2" />
-            </>
+            <RowGutter
+              dragDisabled
+              checkbox={{
+                checked: selection.allSelected,
+                indeterminate: selection.someSelected,
+                onChange: selection.toggleAll,
+                ariaLabel: 'Select all',
+              }}
+            />
           }
           sort={{ col: sortCol, dir: sortDir, onSort: toggleSort }}
           columnDrag={{
@@ -831,6 +998,7 @@ export function IterationStatusPage() {
                   item={item}
                   rank={(currentPage - 1) * pageSize + idx + 1}
                   memberMap={memberMap}
+                  milestoneOptions={milestoneOptions}
                   selectedIterationId={selectedId!}
                   canEdit={canEdit}
                   colStyles={colStyles}
@@ -1377,7 +1545,7 @@ const HEADER_META: DataTableHeaderColumn<ColKey>[] = [
   { key: 'id', label: 'ID', sortCol: 'id' },
   { key: 'name', label: 'Name', sortCol: 'name' },
   { key: 'feature', label: 'Feature' },
-  { key: 'state', label: 'State', sortCol: 'scheduleState' },
+  { key: 'state', label: 'Schedule State', sortCol: 'scheduleState' },
   { key: 'block', label: 'Block', sortCol: 'block', align: 'center' },
   { key: 'blockedReason', label: 'Blocked Reason' },
   { key: 'planEstimate', label: 'Plan Est', sortCol: 'planEstimate', align: 'right' },
@@ -1453,6 +1621,7 @@ function StatusRow({
   item,
   rank,
   memberMap,
+  milestoneOptions,
   selectedIterationId,
   canEdit,
   colStyles,
@@ -1464,6 +1633,7 @@ function StatusRow({
   item: IterationStatusItem
   rank: number
   memberMap: Map<string, import('@/features/teams/api').ProjectMember>
+  milestoneOptions: readonly { id: string; name: string }[]
   selectedIterationId: string
   canEdit: boolean
   colStyles: Record<string, React.CSSProperties>
@@ -1474,8 +1644,11 @@ function StatusRow({
 }) {
   const navigate = useNavigate()
   const update = useUpdateWorkItem(item.id)
+  const setMilestones = useSetWorkItemMilestones(item.id)
   const member = item.assigneeId ? memberMap.get(item.assigneeId) : undefined
   const ownerName = member?.displayName ?? member?.email ?? null
+  const devOwner = item.devOwnerId ? memberMap.get(item.devOwnerId) : undefined
+  const devOwnerName = devOwner?.displayName ?? devOwner?.email ?? null
 
   // Narrowed locals so closures below keep the non-null type.
   const featureKey = item.featureKey
@@ -1560,6 +1733,23 @@ function StatusRow({
     )
   }
 
+  function handleDevOwnerChange(userId: string | null) {
+    update.mutate(
+      { devOwnerId: userId },
+      {
+        onSuccess: () => toast.success('Dev owner updated'),
+        onError: (err) => toast.error(err.message),
+      },
+    )
+  }
+
+  function handleMilestonesChange(ids: string[]) {
+    setMilestones.mutate(ids, {
+      onSuccess: () => toast.success('Milestones updated'),
+      onError: (err) => toast.error(err.message),
+    })
+  }
+
   function toggleBlocked() {
     update.mutate(
       { isBlocked: !item.isBlocked },
@@ -1594,20 +1784,18 @@ function StatusRow({
           e.currentTarget.style.backgroundColor = AZ.bg
         }}
       >
-        {/* Selection checkbox */}
-        <div className="w-5 shrink-0 px-2" onClick={(e) => e.stopPropagation()}>
-          <SelectionCheckbox
-            checked={selected}
-            onChange={onToggleSelect}
-            ariaLabel={`Select ${item.itemKey}`}
-          />
-        </div>
-
-        {/* Drag handle — left gutter, reveals on row hover */}
-        <DragHandle
+        {/* Leading gutter (rank grip + selection checkbox) — shared component so
+            the header, rows and nested child rows stay column-aligned. */}
+        <RowGutter
           ref={setActivatorNodeRef}
-          disabled={!dragEnabled || !canEdit}
-          {...(dragEnabled && canEdit ? listeners : {})}
+          dragDisabled={!dragEnabled || !canEdit}
+          dragListeners={dragEnabled && canEdit ? listeners : undefined}
+          stopPropagation
+          checkbox={{
+            checked: selected,
+            onChange: onToggleSelect,
+            ariaLabel: `Select ${item.itemKey}`,
+          }}
         />
 
         {/* Rank number + expand toggle */}
@@ -1642,32 +1830,8 @@ function StatusRow({
         </div>
 
         {/* ID */}
-        <div style={colStyles.id} className="flex items-center gap-1 px-2">
-          <TypeBadge type={item.type} />
-          <button
-            onClick={onOpen}
-            title={item.itemKey}
-            style={{
-              minWidth: 0,
-              fontSize: 12,
-              fontFamily: 'Consolas, Monaco, "Courier New", monospace',
-              color: AZ.primary,
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              padding: 0,
-              textAlign: 'left',
-              whiteSpace: 'nowrap',
-            }}
-            onMouseOver={(e) => {
-              e.currentTarget.style.textDecoration = 'underline'
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.textDecoration = 'none'
-            }}
-          >
-            {item.itemKey}
-          </button>
+        <div style={colStyles.id} className="px-2">
+          <IdCell type={item.type} itemKey={item.itemKey} onOpen={onOpen} />
         </div>
 
         {/* Name — click to edit inline (Rally parity); use the ID link to open */}
@@ -1700,11 +1864,10 @@ function StatusRow({
         {/* Feature */}
         <div style={colStyles.feature} className="flex items-center overflow-hidden px-2">
           {featureKey ? (
-            <Chip
-              label={featureKey}
-              title={featureTitle ?? featureKey}
-              tone="accent"
-              onClick={() => navigate({ to: '/item/$itemKey', params: { itemKey: featureKey } })}
+            <FeatureCell
+              featureKey={featureKey}
+              featureTitle={featureTitle}
+              onOpen={() => navigate({ to: '/item/$itemKey', params: { itemKey: featureKey } })}
             />
           ) : (
             <span style={{ color: AZ.textMuted, fontSize: 12 }}>&mdash;</span>
@@ -1902,40 +2065,51 @@ function StatusRow({
           <DefectStatusPill total={item.defectCount} open={item.openDefectCount} />
         </div>
 
-        {/* Milestones */}
-        <div style={colStyles.milestones} className="flex items-center gap-1 overflow-hidden px-2">
-          {milestones.length > 0 ? (
-            <>
-              <span className="min-w-0 flex-1">
-                <Chip label={milestones[0]} title={milestones.join(', ')} />
-              </span>
-              {milestones.length > 1 && (
-                <span
-                  className="shrink-0"
-                  style={{ fontSize: 11, color: AZ.textMuted, whiteSpace: 'nowrap' }}
-                  title={milestones.join(', ')}
-                >
-                  +{milestones.length - 1}
-                </span>
-              )}
-            </>
-          ) : (
-            <span style={{ color: AZ.textMuted, fontSize: 12 }}>&mdash;</span>
-          )}
+        {/* Milestones — inline multi-select (add/remove) */}
+        <div
+          style={colStyles.milestones}
+          className="flex items-center overflow-hidden px-2"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <MilestoneSelectCell
+            selected={milestones}
+            options={milestoneOptions}
+            canEdit={canEdit}
+            saving={setMilestones.isPending}
+            onCommit={handleMilestonesChange}
+          />
         </div>
 
-        {/* DEV O — assignee name */}
-        <div style={colStyles.devOwner} className="overflow-hidden px-2">
-          <OwnerCell name={ownerName} />
+        {/* Dev Owner — editable assignee (distinct from Owner) */}
+        <div
+          style={colStyles.devOwner}
+          className="overflow-hidden px-2"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <OwnerSelectCell
+            ownerName={devOwnerName}
+            assigneeId={item.devOwnerId}
+            members={membersList}
+            canEdit={canEdit}
+            onChange={handleDevOwnerChange}
+            ariaLabel="Dev owner"
+          />
         </div>
 
         {/* selectedIterationId kept for future refetch semantics */}
         <span hidden>{selectedIterationId}</span>
       </div>
 
-      {/* Child Tasks List */}
+      {/* Child Tasks List — the 2px hierarchy rail is an inset shadow (not a
+          border) so it never shifts the child columns out of alignment with
+          the parent row / header. */}
       {tasksExpanded && (
-        <div style={{ borderLeft: `2px solid ${AZ.primaryLight}`, backgroundColor: '#fafbfc' }}>
+        <div
+          style={{
+            backgroundColor: '#fafbfc',
+            boxShadow: `inset 2px 0 0 ${AZ.primaryLight}`,
+          }}
+        >
           {isLoadingTasks && (
             <div
               style={{
@@ -2073,12 +2247,27 @@ function ChildTaskRow({
     )
   }
 
+  function handleDevOwnerChange(userId: string | null) {
+    updateTask.mutate(
+      { devOwnerId: userId },
+      {
+        onSuccess: () => toast.success('Dev owner updated'),
+        onError: (err) => toast.error(err.message),
+      },
+    )
+  }
+
+  const devOwnerMember = task.devOwnerId
+    ? membersList.find((m) => m.userId === task.devOwnerId)
+    : undefined
+  const taskDevOwnerName = devOwnerMember?.displayName ?? devOwnerMember?.email ?? null
+
   return (
     <div
       className="flex items-center"
       style={{
         height: 30,
-        paddingLeft: 44,
+        paddingLeft: 4,
         paddingRight: 12,
         borderBottom: `1px dashed ${AZ.border}`,
         fontSize: 11,
@@ -2092,34 +2281,14 @@ function ChildTaskRow({
         e.currentTarget.style.backgroundColor = 'transparent'
       }}
     >
-      <div className="w-5 shrink-0 px-2" />
-      <div className="w-4 shrink-0 px-2" />
+      {/* Leading gutter mirrors the parent row exactly (grip · checkbox · rank)
+          via the shared component, so every child cell lines up under the same
+          column. */}
+      <RowGutter dragDisabled />
       <div style={colStyles.rank} className="px-2" />
-      <div style={colStyles.id} className="flex items-center gap-1 px-2">
-        <TypeBadge type={task.type} />
-        <button
-          onClick={onOpen}
-          title={task.itemKey}
-          style={{
-            fontSize: 11,
-            fontFamily: 'Consolas, Monaco, monospace',
-            color: AZ.primary,
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            padding: 0,
-            textAlign: 'left',
-            whiteSpace: 'nowrap',
-          }}
-          onMouseOver={(e) => {
-            e.currentTarget.style.textDecoration = 'underline'
-          }}
-          onMouseOut={(e) => {
-            e.currentTarget.style.textDecoration = 'none'
-          }}
-        >
-          {task.itemKey}
-        </button>
+      {/* ID nested under the parent via the shared indent token. */}
+      <div style={colStyles.id} className={`pr-2 ${NESTED_ROW_INDENT}`}>
+        <IdCell type={task.type} itemKey={task.itemKey} onOpen={onOpen} />
       </div>
       <div
         style={colStyles.name}
@@ -2249,12 +2418,12 @@ function ChildTaskRow({
         onClick={(e) => e.stopPropagation()}
       >
         <OwnerSelectCell
-          ownerName={task.assigneeId ? taskOwner : null}
-          assigneeId={task.assigneeId}
+          ownerName={taskDevOwnerName}
+          assigneeId={task.devOwnerId}
           members={membersList}
           canEdit={canEdit}
-          onChange={handleOwnerChange}
-          ariaLabel="Dev Owner"
+          onChange={handleDevOwnerChange}
+          ariaLabel="Dev owner"
         />
       </div>
     </div>

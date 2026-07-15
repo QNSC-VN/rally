@@ -913,6 +913,24 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v1/work-items/{id}/milestones': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List milestones assigned to a work item */
+    get: operations['WorkItemsController_listWorkItemMilestones']
+    /** Replace the set of milestones assigned to a work item */
+    put: operations['WorkItemsController_setWorkItemMilestones']
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v1/work-items/{id}/time-logs': {
     parameters: {
       query?: never
@@ -2219,6 +2237,9 @@ export interface components {
       /** Format: uuid */
       labelId: string
     }
+    SetWorkItemMilestonesDto: {
+      ids: string[]
+    }
     TimeLogResponseDto: {
       /** Format: uuid */
       id: string
@@ -2394,12 +2415,17 @@ export interface components {
         taskEstimate: number
         toDo: number
         assigneeId: string | null
+        devOwnerId: string | null
         rank: string
         featureKey: string | null
         featureTitle: string | null
         defectCount: number
         openDefectCount: number
-        milestones: string[]
+        milestones: {
+          /** Format: uuid */
+          id: string
+          name: string
+        }[]
       }[]
       pageInfo: {
         nextCursor: string | null
@@ -5910,6 +5936,100 @@ export interface operations {
       }
       /** @description Not Found */
       404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  WorkItemsController_listWorkItemMilestones: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': {
+            id?: string
+            name?: string
+          }[]
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  WorkItemsController_setWorkItemMilestones: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SetWorkItemMilestonesDto']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': {
+            id?: string
+            name?: string
+          }[]
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
         headers: {
           [name: string]: unknown
         }

@@ -71,6 +71,7 @@ const makeRawRow = (overrides: Partial<RawTeamStatusTaskRow> = {}): RawTeamStatu
 
 const makeRepo = () => ({
   getTaskRows: vi.fn().mockResolvedValue([]),
+  getRosterMembers: vi.fn().mockResolvedValue([]),
   getCapacities: vi.fn().mockResolvedValue(new Map()),
   upsertCapacity: vi.fn().mockResolvedValue({ userId: 'user-1', capacityHours: 40 }),
 });
@@ -202,6 +203,51 @@ describe('TeamStatusService', () => {
       expect(result.groups.some((g) => g.owner.id === 'alice')).toBe(true);
       expect(result.groups.some((g) => g.owner.id === 'bob')).toBe(true);
       expect(result.groups.some((g) => g.owner.id === 'unassigned')).toBe(true);
+    });
+
+    it('includes roster members with zero tasks (empty group, roster capacity, 0% load)', async () => {
+      repo.getTaskRows.mockResolvedValue([
+        makeRawRow({
+          id: 't1',
+          assigneeId: 'alice',
+          assigneeDisplayName: 'Alice Smith',
+          estimateHours: '4',
+          todoHours: '2',
+          actualHours: '1',
+        }),
+      ]);
+      repo.getRosterMembers.mockResolvedValue([
+        { id: 'alice', displayName: 'Alice Smith', avatarUrl: null },
+        { id: 'bob', displayName: 'Bob Ray', avatarUrl: null },
+      ]);
+      repo.getCapacities.mockResolvedValue(
+        new Map([
+          ['alice', 40],
+          ['bob', 20],
+        ]),
+      );
+
+      const result = await service.getTeamStatus(actor, 'proj-1', 'team-a', 'it-1');
+
+      // Both roster members present, even though bob has no tasks.
+      expect(result.groups).toHaveLength(2);
+      const bob = result.groups.find((g) => g.owner.id === 'bob')!;
+      expect(bob.taskCount).toBe(0);
+      expect(bob.tasks).toEqual([]);
+      expect(bob.capacityHours).toBe(20);
+      expect(bob.estimateHours).toBe(0);
+      expect(bob.progressPercent).toBe(0);
+
+      // Totals include the zero-task member's capacity (whole-roster sum).
+      expect(result.totals.capacityHours).toBe(60);
+      expect(result.totals.estimateHours).toBe(4);
+
+      // Roster resolves from the iteration's team.
+      expect(repo.getRosterMembers).toHaveBeenCalledWith({
+        workspaceId: 'ws-1',
+        projectId: 'proj-1',
+        teamId: 'team-a',
+      });
     });
 
     it('sorts groups alphabetically by owner displayName', async () => {

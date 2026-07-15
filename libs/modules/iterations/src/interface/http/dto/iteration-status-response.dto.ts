@@ -26,12 +26,13 @@ export const IterationStatusItemSchema = z.object({
   taskEstimate: z.number(),
   toDo: z.number(),
   assigneeId: z.string().uuid().nullable(),
+  devOwnerId: z.string().uuid().nullable(),
   rank: z.string(),
   featureKey: z.string().nullable(),
   featureTitle: z.string().nullable(),
   defectCount: z.number().int(),
   openDefectCount: z.number().int(),
-  milestones: z.array(z.string()),
+  milestones: z.array(z.object({ id: z.string().uuid(), name: z.string() })),
 });
 
 export const IterationSummarySchema = z.object({

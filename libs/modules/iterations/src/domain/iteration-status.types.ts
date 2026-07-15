@@ -43,6 +43,8 @@ export interface IterationStatusItem {
   /** Rollup: sum of child task to-do hours. */
   toDo: number;
   assigneeId: string | null;
+  /** work_items.dev_owner_id — Rally "Dev Owner" (distinct from Owner/assignee). */
+  devOwnerId: string | null;
   rank: string;
   /** Nearest ancestor Feature key (Rally "Feature" column); null when none. */
   featureKey: string | null;
@@ -52,8 +54,8 @@ export interface IterationStatusItem {
   defectCount: number;
   /** Count of child defects not yet accepted/released (Rally "Defect Status"). */
   openDefectCount: number;
-  /** Names of milestones directly assigned to this item (Rally "Milestones"). */
-  milestones: string[];
+  /** Milestones directly assigned to this item (Rally "Milestones"). */
+  milestones: { id: string; name: string }[];
 }
 
 /** Sort keys for the Iteration Status list (mirrors the backlog list). */

@@ -49,6 +49,7 @@ export const workItemKeys = {
   taskTotals: (workItemId: string) => [...workItemKeys.all, 'task-totals', workItemId] as const,
   activity: (workItemId: string) => [...workItemKeys.all, 'activity', workItemId] as const,
   watchers: (workItemId: string) => [...workItemKeys.all, 'watchers', workItemId] as const,
+  labels: (workItemId: string) => [...workItemKeys.all, 'labels', workItemId] as const,
 } as const
 
 // ── Backlog list ──────────────────────────────────────────────────────────────
@@ -215,6 +216,58 @@ export function useActivityLog(workItemId: string | undefined) {
     },
     enabled: !!workItemId,
     staleTime: 15_000,
+  })
+}
+
+// ── Labels (Tags) ─────────────────────────────────────────────────────────────
+
+/** A label/tag attached to a work item (from the labels endpoint). */
+export interface WorkItemLabel {
+  id: string
+  name: string
+  color: string
+}
+
+export function useWorkItemLabels(workItemId: string | undefined) {
+  return useQuery({
+    queryKey: workItemKeys.labels(workItemId ?? ''),
+    queryFn: async () => {
+      if (!workItemId) return []
+      const { data, error, response } = await apiClient.GET('/v1/work-items/{id}/labels', {
+        params: { path: { id: workItemId } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return (data ?? []) as WorkItemLabel[]
+    },
+    enabled: !!workItemId,
+    staleTime: 15_000,
+  })
+}
+
+export interface WorkItemMilestone {
+  id: string
+  name: string
+}
+
+/**
+ * Replace-set the milestones assigned to a work item. Mirrors the label
+ * association pattern; the read-models that surface milestones (iteration
+ * status, backlog) are refreshed on success.
+ */
+export function useSetWorkItemMilestones(workItemId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (milestoneIds: string[]) => {
+      const { data, error, response } = await apiClient.PUT('/v1/work-items/{id}/milestones', {
+        params: { path: { id: workItemId } },
+        body: { ids: milestoneIds },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return (data ?? []) as WorkItemMilestone[]
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: iterationKeys.statusAll })
+    },
   })
 }
 

@@ -216,6 +216,14 @@ export const AddLabelSchema = z.object({
 
 export class AddLabelDto extends createZodDto(AddLabelSchema) {}
 
+// ── Set milestones (replace-set) ──────────────────────────────────────────────
+
+export const SetWorkItemMilestonesSchema = z.object({
+  ids: z.array(z.string().uuid()),
+});
+
+export class SetWorkItemMilestonesDto extends createZodDto(SetWorkItemMilestonesSchema) {}
+
 // ── Time log ──────────────────────────────────────────────────────────────────
 
 export const CreateTimeLogSchema = z.object({

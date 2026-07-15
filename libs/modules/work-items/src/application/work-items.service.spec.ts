@@ -110,6 +110,9 @@ const makeWorkItemRepo = () => ({
   addLabel: vi.fn().mockResolvedValue(undefined),
   removeLabel: vi.fn().mockResolvedValue(undefined),
   listLabels: vi.fn(),
+  listMilestones: vi.fn().mockResolvedValue([]),
+  setMilestones: vi.fn().mockResolvedValue(undefined),
+  countMilestonesInProject: vi.fn().mockResolvedValue(0),
 });
 
 const makeActivityRepo = () => ({

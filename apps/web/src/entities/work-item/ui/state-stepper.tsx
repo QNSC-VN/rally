@@ -5,10 +5,20 @@ import type { StateStep } from './state-steps'
 // its letter. Single source of truth for the state column across every
 // work-item grid (iteration status, backlog, team status) so the whole app
 // speaks one visual language. Step data lives in ./state-steps.
+//
+// Colours mirror Broadcom Rally: a uniform blue scale (soft blue for states
+// already passed, solid blue for the current state) rather than per-state
+// hues, so the control reads as one progress track at a glance. Cells are
+// fixed-size squares packed left-to-right (not stretched to the column) so the
+// track reads as discrete steps; every square — including empty future ones —
+// is outlined with the same visible border so the whole set reads as a
+// countable row of squares, exactly like the Rally state control.
 
-const STEPPER_BORDER = '#e8e8e8'
-const STEPPER_REACHED = '#edf2fb'
-const STEPPER_SEP = '#ffffff'
+const STEPPER_BORDER = '#9db4d4'
+const STEPPER_REACHED = '#bcd3ef'
+const STEPPER_CURRENT = '#2558a6'
+const STEPPER_SEP = '#9db4d4'
+const CELL = 16
 
 export function StateStepper<T extends string>({
   steps,
@@ -28,8 +38,8 @@ export function StateStepper<T extends string>({
     <div
       role="group"
       aria-label={ariaLabel}
-      className="flex w-full overflow-hidden rounded"
-      style={{ border: `1px solid ${STEPPER_BORDER}`, height: 20 }}
+      className="inline-flex overflow-hidden rounded-[2px]"
+      style={{ border: `1px solid ${STEPPER_BORDER}`, height: CELL }}
     >
       {steps.map((step, i) => {
         const isCurrent = i === idx
@@ -42,16 +52,16 @@ export function StateStepper<T extends string>({
             disabled={!canEdit || isCurrent}
             onClick={canEdit && !isCurrent ? () => onChange(step.value) : undefined}
             style={{
-              flex: 1,
-              minWidth: 0,
+              width: CELL,
+              flex: 'none',
               border: 'none',
               borderLeft: i > 0 ? `1px solid ${STEPPER_SEP}` : 'none',
               padding: 0,
-              fontSize: 9,
+              fontSize: 10,
               fontWeight: 700,
-              lineHeight: '18px',
+              lineHeight: `${CELL - 2}px`,
               cursor: canEdit && !isCurrent ? 'pointer' : 'default',
-              backgroundColor: isCurrent ? step.activeBg : reached ? STEPPER_REACHED : '#ffffff',
+              backgroundColor: isCurrent ? STEPPER_CURRENT : reached ? STEPPER_REACHED : '#ffffff',
               color: isCurrent ? '#ffffff' : 'transparent',
             }}
           >
