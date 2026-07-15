@@ -1,5 +1,5 @@
 # =============================================================================
-# CI — fast quality gates on every PR and push to main/develop
+# CI — fast quality gates on every PR and push to main
 # Gate: lint → typecheck → unit tests → build → pr-title
 # Security scans live in the Security · Scan workflow — independently runnable.
 # =============================================================================
@@ -7,9 +7,9 @@ name: Web · CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
-    branches: [main, develop]
+    branches: [main]
     types: [opened, synchronize, reopened, edited]
 
 concurrency:
@@ -31,6 +31,9 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────
   quality:
     name: Lint & typecheck
+    # A PR title/body edit fires pull_request:edited — only pr-title needs that.
+    # Skip the heavy gates on edited; build cascade-skips via `needs`.
+    if: github.event.action != 'edited'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -39,7 +42,7 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
 
-      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1.3.0
+      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1.3.3
         with:
           node-version: ${{ env.NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}
@@ -55,6 +58,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────
   test:
     name: Unit tests
+    if: github.event.action != 'edited'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -65,7 +69,7 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
 
-      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1.3.0
+      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1.3.3
         with:
           node-version: ${{ env.NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}
@@ -104,6 +108,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────
   e2e:
     name: E2E (Playwright)
+    if: github.event.action != 'edited'
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
@@ -161,7 +166,7 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
 
-      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1.3.0
+      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1.3.3
         with:
           node-version: ${{ env.NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}
@@ -237,7 +242,7 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
 
-      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1.3.0
+      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1.3.3
         with:
           node-version: ${{ env.NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}

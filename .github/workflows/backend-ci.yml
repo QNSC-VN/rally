@@ -31,6 +31,9 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────
   quality:
     name: Lint & typecheck
+    # A PR title/body edit fires pull_request:edited — only pr-title needs that.
+    # Skip the heavy gates on edited; build/openapi cascade-skip via `needs`.
+    if: github.event.action != 'edited'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -39,7 +42,7 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
 
-      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1.3.0
+      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1.3.3
         with:
           node-version: ${{ env.NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}
@@ -55,6 +58,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────
   test:
     name: Tests
+    if: github.event.action != 'edited'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -87,7 +91,7 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
 
-      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1.3.0
+      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1.3.3
         with:
           node-version: ${{ env.NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}
@@ -186,6 +190,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────
   migrations:
     name: Migration upgrade path
+    if: github.event.action != 'edited'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -234,7 +239,7 @@ jobs:
             echo "No backward-incompatible DDL detected."
           fi
 
-      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1.3.0
+      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1.3.3
         with:
           node-version: ${{ env.NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}
@@ -338,7 +343,7 @@ jobs:
           # Fetch full history so we can compare against the base branch
           fetch-depth: 0
 
-      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1.3.0
+      - uses: QNSC-VN/qnsc-ci/actions/setup-node-pnpm@v1.3.3
         with:
           node-version: ${{ env.NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}
@@ -402,7 +407,7 @@ jobs:
           ENTRA_REDIRECT_URI: http://localhost:3000/v1/bff/callback
 
       - name: Upload OpenAPI spec artifact
-        uses: QNSC-VN/qnsc-ci/actions/publish-openapi-spec@v1.3.0
+        uses: QNSC-VN/qnsc-ci/actions/publish-openapi-spec@v1.3.3
         with:
           spec-path: openapi.json
           artifact-name: openapi-spec-${{ github.sha }}
@@ -421,7 +426,7 @@ jobs:
 
       - name: Breaking change check
         if: github.event_name == 'pull_request'
-        uses: QNSC-VN/qnsc-ci/actions/validate-openapi-contract@v1.3.0
+        uses: QNSC-VN/qnsc-ci/actions/validate-openapi-contract@v1.3.3
         with:
           current-spec-path: openapi.json
           base-spec-path: base-spec/openapi.json

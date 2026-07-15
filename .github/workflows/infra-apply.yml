@@ -52,14 +52,11 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0   # v7.0.0
 
-      - uses: QNSC-VN/qnsc-ci/actions/setup-tofu-aws@v1.3.0
+      - uses: QNSC-VN/qnsc-ci/actions/setup-tofu-aws@v1.3.3
         with:
           role-arn: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/rally-github-infra-apply
           aws-region: ${{ env.AWS_REGION }}
           tofu-version: ${{ env.TOFU_VERSION }}
-
-      - name: Configure git for public modules
-        run: git config --global url."https://github.com".insteadOf "https://github.com"
 
       - name: tofu init
         working-directory: infra/live/_shared
@@ -86,14 +83,11 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0   # v7.0.0
 
-      - uses: QNSC-VN/qnsc-ci/actions/setup-tofu-aws@v1.3.0
+      - uses: QNSC-VN/qnsc-ci/actions/setup-tofu-aws@v1.3.3
         with:
           role-arn: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/rally-github-infra-apply
           aws-region: ${{ env.AWS_REGION }}
           tofu-version: ${{ env.TOFU_VERSION }}
-
-      - name: Configure git for public modules
-        run: git config --global url."https://github.com".insteadOf "https://github.com"
 
       - name: tofu init
         working-directory: infra/live/develop
@@ -161,14 +155,11 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0   # v7.0.0
 
-      - uses: QNSC-VN/qnsc-ci/actions/setup-tofu-aws@v1.3.0
+      - uses: QNSC-VN/qnsc-ci/actions/setup-tofu-aws@v1.3.3
         with:
           role-arn: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/rally-github-infra-apply
           aws-region: ${{ env.AWS_REGION }}
           tofu-version: ${{ env.TOFU_VERSION }}
-
-      - name: Configure git for public modules
-        run: git config --global url."https://github.com".insteadOf "https://github.com"
 
       - name: tofu init
         working-directory: infra/live/prod
