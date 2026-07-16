@@ -366,29 +366,11 @@ module "worker" {
   tags = { Environment = local.env, Service = "worker" }
 }
 
-# ── S3 — Attachments bucket (TRANSITIONAL) ────────────────────────────
-# Attachments now live in Cloudflare R2 (see the api/worker STORAGE_* wiring and
-# the storage-dev remote state above). This S3 bucket is retained ONLY as a
-# rollback path during the R2 cutover — nothing writes to it once STORAGE_ENDPOINT
-# is set. Remove this module (and its outputs) in a follow-up once the dev R2
-# round-trip is verified, so we don't leave an orphaned bucket behind.
-module "app_bucket" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/app-bucket?ref=app-bucket-v1.0.0"
-
-  name          = "${local.name}-attachments"
-  kms_key_arn   = local.kms_key_arn
-  force_destroy = true # dev: attachments are ephemeral, allow clean teardown
-
-  cors_rules = [{
-    allowed_headers = ["Content-Type", "Content-Disposition"]
-    allowed_methods = ["PUT"]
-    allowed_origins = [local.app_base_url, "http://localhost:5173"]
-    expose_headers  = ["ETag"]
-    max_age_seconds = 3600
-  }]
-
-  tags = { Environment = local.env }
-}
+# Attachments object storage now lives entirely in Cloudflare R2 (platform
+# storage-dev stack; see the api/worker STORAGE_* wiring and the storage remote
+# state above). The transitional rollback S3 bucket was retired here after the
+# dev R2 round-trip was verified. The prod stack still keeps its S3 rollback
+# bucket until the prod R2 cutover is verified.
 
 # ── Migrator (one-shot, run manually or via CI) ───────────────────────────────
 # Runs `pnpm migration:run` then exits. Never scheduled as a service; deploy
