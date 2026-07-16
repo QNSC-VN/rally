@@ -19,6 +19,7 @@ import type {
   DefectResolution,
   DefectState,
 } from '../../../../../../db/schema/enums';
+import { acceptedScheduleStatesSql } from '../../../../../../db/schema/enums';
 import type {
   WorkItem,
   CreateWorkItemInput,
@@ -387,6 +388,45 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     // If there are no tasks, return true (nothing blocks parent completion).
     if (!r || Number(r.count) === 0) return true;
     return r.allDone === true;
+  }
+
+  async autoAcceptIterationIfComplete(
+    iterationId: string,
+    workspaceId: string,
+    executor?: DbExecutor,
+  ): Promise<boolean> {
+    const exec = executor ?? this.db;
+    // Are all assigned Story/Defect items accepted, with at least one present?
+    const rows = await exec
+      .select({
+        total: sql<number>`count(*)::int`,
+        allAccepted: sql<boolean>`bool_and(${workItems.scheduleState} in (${acceptedScheduleStatesSql()}))`,
+      })
+      .from(workItems)
+      .where(
+        and(
+          eq(workItems.iterationId, iterationId),
+          eq(workItems.workspaceId, workspaceId),
+          inArray(workItems.type, ['story', 'defect']),
+          isNull(workItems.deletedAt),
+        ),
+      );
+    const r = rows[0];
+    if (!r || Number(r.total) === 0 || r.allAccepted !== true) return false;
+
+    // Idempotent transition — only a committed iteration flips to accepted.
+    const updated = await exec
+      .update(iterations)
+      .set({ state: 'accepted', completedAt: new Date(), updatedAt: new Date() })
+      .where(
+        and(
+          eq(iterations.id, iterationId),
+          eq(iterations.workspaceId, workspaceId),
+          eq(iterations.state, 'committed'),
+        ),
+      )
+      .returning({ id: iterations.id });
+    return updated.length > 0;
   }
 
   async getTaskTotals(parentId: string, workspaceId: string): Promise<TaskTotals> {

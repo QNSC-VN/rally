@@ -288,6 +288,27 @@
       "when": 1783600000000,
       "tag": "0039_task_item_keys",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1783700000000,
+      "tag": "0040_defect_severity_align",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1783800000000,
+      "tag": "0041_schedule_state_align",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1783900000000,
+      "tag": "0042_work_item_relations",
+      "breakpoints": true
     }
   ]
 }

@@ -7,6 +7,7 @@ import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
 import { PERMISSION } from '@shared-kernel';
 import { workItems, milestones, milestoneReleases, releases } from '../../../../../db/schema/work';
+import { completedScheduleStatesSql } from '../../../../../db/schema/enums';
 import { IMilestoneRepository, MILESTONE_REPOSITORY } from '../domain/ports/milestone.repository';
 import type { Milestone, MilestoneStatus, UpdateMilestoneInput } from '../domain/milestone.types';
 
@@ -201,9 +202,9 @@ export class MilestonesService {
       .select({
         releaseId: workItems.releaseId,
         totalItems: sql<number>`COUNT(*)`,
-        completedItems: sql<number>`COUNT(*) FILTER (WHERE schedule_state IN ('completed', 'accepted', 'released'))`,
+        completedItems: sql<number>`COUNT(*) FILTER (WHERE schedule_state IN (${completedScheduleStatesSql()}))`,
         totalPoints: sql<number>`COALESCE(SUM(CASE WHEN story_points IS NOT NULL THEN story_points ELSE 0 END), 0)`,
-        completedPoints: sql<number>`COALESCE(SUM(CASE WHEN schedule_state IN ('completed', 'accepted', 'released') THEN story_points ELSE 0 END), 0)`,
+        completedPoints: sql<number>`COALESCE(SUM(CASE WHEN schedule_state IN (${completedScheduleStatesSql()}) THEN story_points ELSE 0 END), 0)`,
       })
       .from(workItems)
       .where(

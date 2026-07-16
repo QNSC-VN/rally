@@ -58,6 +58,7 @@ const makeAttachmentRepo = () => ({
 // getWorkItem resolves the item so the service can read its projectId.
 const makeWorkItemsService = () => ({
   getWorkItem: vi.fn().mockResolvedValue({ id: 'wi-1', projectId: 'proj-9', workspaceId: 'ws-1' }),
+  notifyCommentAdded: vi.fn().mockResolvedValue(undefined),
 });
 
 const makeAccessService = () => ({

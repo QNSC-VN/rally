@@ -74,16 +74,14 @@ locals {
   ecr_worker_url   = "${local.ecr_base}/rally-worker:latest"
   ecr_migrator_url = "${local.ecr_base}/rally-migrator:latest"
 
-  # Dev cache: a Valkey sidecar per task (localhost:6379) instead of a shared
-  # ElastiCache node — $0 in dev. Each task gets its own in-task instance
-  # (accepted dev tradeoff); prod uses the shared runtime-prod cache node.
-  valkey_sidecar = {
-    name         = "valkey"
-    image        = "valkey/valkey:8-alpine"
-    essential    = false
-    portMappings = [{ containerPort = 6379, protocol = "tcp" }]
-    environment  = []
-  }
+  # Dev cache: a single small ElastiCache node shared by the api + worker tasks
+  # (see aws_elasticache_cluster.cache below). Replaces the former per-task Valkey
+  # sidecars, whose data died with the task on every deploy/recycle — evaporating
+  # all BFF sessions (which live only in Valkey) and logging every user out. A
+  # standalone node survives task replacement, so sessions persist across deploys,
+  # matching prod (which consumes the shared runtime-prod cache node). Still one
+  # small $ line item in dev, kept minimal via cache.t4g.micro + a single node.
+  redis_url = "redis://${aws_elasticache_cluster.cache.cache_nodes[0].address}:6379"
 }
 
 # ── Shared runtime layer (VPC + NAT + ALB) ────────────────────────────────────
@@ -158,9 +156,30 @@ module "rds" {
   tags = { Environment = local.env }
 }
 
-# ── Cache ─────────────────────────────────────────────────────────────────────
-# Dev has no ElastiCache node — each Fargate task runs a Valkey sidecar at
-# localhost:6379 (see local.valkey_sidecar, wired into module.api/worker).
+# ── Cache (shared ElastiCache node) ───────────────────────────────────────────
+# A single-node ElastiCache (Redis-compatible, Valkey-protocol) shared by the api
+# and worker services. It lives OUTSIDE the ECS tasks so it survives task
+# replacement — the root-cause fix for "users logged out on every dev deploy":
+# BFF sessions are stored only in the cache, and the old per-task Valkey sidecars
+# were destroyed with the task on each deploy. Reuses the cache SG + data subnets
+# already provisioned by runtime-dev (sg_cache_id was created for exactly this).
+resource "aws_elasticache_subnet_group" "cache" {
+  name       = "${local.name}-cache"
+  subnet_ids = data.terraform_remote_state.runtime.outputs.data_subnet_ids
+  tags       = { Environment = local.env }
+}
+
+resource "aws_elasticache_cluster" "cache" {
+  cluster_id         = "${local.name}-cache"
+  engine             = "redis"
+  node_type          = "cache.t4g.micro" # smallest node — dev cost stays low
+  num_cache_nodes    = 1
+  port               = 6379
+  subnet_group_name  = aws_elasticache_subnet_group.cache.name
+  security_group_ids = [data.terraform_remote_state.runtime.outputs.sg_cache_id]
+  apply_immediately  = true # dev: no maintenance-window wait
+  tags               = { Environment = local.env }
+}
 
 # ── Messaging (SQS + SNS) ─────────────────────────────────────────────────────
 module "messaging" {
@@ -228,8 +247,8 @@ module "api" {
   alb_host_headers  = ["rally-api-dev.qnsc.vn"] # host-based routing on the shared ALB
   health_check_path = "/v1/healthz"
 
-  # Dev Valkey sidecar (localhost:6379) — replaces the ElastiCache node.
-  additional_containers = [local.valkey_sidecar]
+  # Cache is the shared ElastiCache node (aws_elasticache_cluster.cache), not an
+  # in-task sidecar — so sessions in Valkey survive api deploys/recycles.
 
   secret_arns = values(module.secrets.secret_arns)
   kms_key_arn = local.kms_key_arn
@@ -247,7 +266,7 @@ module "api" {
   environment_vars = [
     { name = "NODE_ENV", value = "production" },
     { name = "PORT", value = "3000" },
-    { name = "REDIS_URL", value = "redis://localhost:6379" }, # dev: Valkey sidecar
+    { name = "REDIS_URL", value = local.redis_url }, # dev: shared ElastiCache node
     { name = "AWS_REGION", value = local.region },
     { name = "CORS_ORIGINS", value = local.app_base_url },
     { name = "APP_BASE_URL", value = local.app_base_url },
@@ -318,8 +337,10 @@ module "worker" {
   health_check_command = "pgrep -x node || exit 1"
   container_port       = 3001
 
-  # Dev Valkey sidecar (localhost:6379) — worker has its own in-task cache.
-  additional_containers = [local.valkey_sidecar]
+  # Cache is the shared ElastiCache node (aws_elasticache_cluster.cache) — the
+  # worker and api now share one cache, so their Redis pub/sub (notification
+  # wake-ups) actually connects across tasks instead of each hitting its own
+  # isolated sidecar.
 
   secret_arns = values(module.secrets.secret_arns)
   kms_key_arn = local.kms_key_arn
@@ -338,7 +359,7 @@ module "worker" {
 
   environment_vars = [
     { name = "NODE_ENV", value = "production" },
-    { name = "REDIS_URL", value = "redis://localhost:6379" }, # dev: Valkey sidecar
+    { name = "REDIS_URL", value = local.redis_url }, # dev: shared ElastiCache node
     { name = "AWS_REGION", value = local.region },
     # Entra SSO — the worker validates the shared env schema, so these are required to boot.
     { name = "ENTRA_TENANT_ID", value = var.entra_tenant_id },

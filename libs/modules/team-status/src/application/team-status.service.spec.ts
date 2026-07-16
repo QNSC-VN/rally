@@ -430,45 +430,59 @@ describe('TeamStatusService', () => {
       expect(result.state).toBe('Completed');
     });
 
-    it('propagates completion to parent work product (P3-TS-05)', async () => {
-      workItems.getWorkItem.mockResolvedValue({
+    it('never force-completes the parent — reports the parent status decided by the gated roll-up', async () => {
+      workItems.getWorkItem
+        .mockResolvedValueOnce({ id: 'task-1', projectId: 'proj-1', workspaceId: 'ws-1' })
+        .mockResolvedValueOnce({ id: 'story-1', itemKey: 'PROJ-5', scheduleState: 'in_progress' });
+      workItems.updateWorkItem.mockResolvedValue({
         id: 'task-1',
-        projectId: 'proj-1',
-        workspaceId: 'ws-1',
+        itemKey: 'PROJ-10',
+        title: 'Task',
+        scheduleState: 'completed',
+        parentId: 'story-1',
       });
-      workItems.listTasks.mockResolvedValue([{ id: 'task-1', scheduleState: 'completed' }]);
-      workItems.updateWorkItem
-        .mockResolvedValueOnce({
-          id: 'task-1',
-          itemKey: 'PROJ-10',
-          title: 'Task',
-          scheduleState: 'completed',
-          parentId: 'story-1',
-        })
-        .mockResolvedValueOnce({
-          id: 'story-1',
-          itemKey: 'PROJ-5',
-          scheduleState: 'completed',
-        });
 
       const result = await service.updateTask(actor, 'task-1', { state: 'Completed' });
-      expect(workItems.updateWorkItem).toHaveBeenCalledTimes(2);
-      expect(workItems.updateWorkItem).toHaveBeenNthCalledWith(2, actor, 'story-1', {
+
+      // Only the task is updated; the parent is NEVER updated from here.
+      expect(workItems.updateWorkItem).toHaveBeenCalledTimes(1);
+      expect(workItems.updateWorkItem).toHaveBeenCalledWith(actor, 'task-1', {
         scheduleState: 'completed',
       });
+      // workProduct reflects the parent's ACTUAL status (still in_progress).
       expect(result.workProduct).toEqual({
         id: 'story-1',
         key: 'PROJ-5',
-        status: 'Completed',
+        status: 'in_progress',
       });
     });
 
-    it('does NOT propagate when state is not Completed', async () => {
-      workItems.getWorkItem.mockResolvedValue({
+    it('reports parent as completed when the gated roll-up completed it', async () => {
+      workItems.getWorkItem
+        .mockResolvedValueOnce({ id: 'task-1', projectId: 'proj-1', workspaceId: 'ws-1' })
+        .mockResolvedValueOnce({ id: 'story-1', itemKey: 'PROJ-5', scheduleState: 'completed' });
+      workItems.updateWorkItem.mockResolvedValue({
         id: 'task-1',
-        projectId: 'proj-1',
-        workspaceId: 'ws-1',
+        itemKey: 'PROJ-10',
+        title: 'Task',
+        scheduleState: 'completed',
+        parentId: 'story-1',
       });
+
+      const result = await service.updateTask(actor, 'task-1', { state: 'Completed' });
+
+      expect(workItems.updateWorkItem).toHaveBeenCalledTimes(1);
+      expect(result.workProduct).toEqual({
+        id: 'story-1',
+        key: 'PROJ-5',
+        status: 'completed',
+      });
+    });
+
+    it('re-reads parent on non-Completed edits too, without updating it', async () => {
+      workItems.getWorkItem
+        .mockResolvedValueOnce({ id: 'task-1', projectId: 'proj-1', workspaceId: 'ws-1' })
+        .mockResolvedValueOnce({ id: 'story-1', itemKey: 'PROJ-5', scheduleState: 'in_progress' });
       workItems.updateWorkItem.mockResolvedValue({
         id: 'task-1',
         itemKey: 'PROJ-10',
@@ -481,24 +495,21 @@ describe('TeamStatusService', () => {
       expect(workItems.updateWorkItem).toHaveBeenCalledTimes(1);
     });
 
-    it('gracefully handles parent propagation failure (logs warning)', async () => {
-      workItems.getWorkItem.mockResolvedValue({
+    it('gracefully handles a parent re-read failure (logs warning, non-fatal)', async () => {
+      // Task load succeeds; parent re-read throws.
+      workItems.getWorkItem
+        .mockResolvedValueOnce({ id: 'task-1', projectId: 'proj-1', workspaceId: 'ws-1' })
+        .mockRejectedValueOnce(new Error('Parent read failed'));
+      workItems.updateWorkItem.mockResolvedValue({
         id: 'task-1',
-        projectId: 'proj-1',
-        workspaceId: 'ws-1',
+        itemKey: 'PROJ-10',
+        title: 'Task',
+        scheduleState: 'completed',
+        parentId: 'story-1',
       });
-      workItems.updateWorkItem
-        .mockResolvedValueOnce({
-          id: 'task-1',
-          itemKey: 'PROJ-10',
-          title: 'Task',
-          scheduleState: 'completed',
-          parentId: 'story-1',
-        })
-        .mockRejectedValueOnce(new Error('Parent update failed'));
 
       const result = await service.updateTask(actor, 'task-1', { state: 'Completed' });
-      // Should NOT throw — propagation failure is non-fatal
+      // Should NOT throw — the re-read is best-effort.
       expect(result.workProduct).toBeUndefined();
     });
   });

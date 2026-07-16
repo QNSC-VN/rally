@@ -74,6 +74,16 @@ export interface IWorkItemRepository {
     workspaceId: string,
     executor?: DbExecutor,
   ): Promise<boolean>;
+  /**
+   * BA F1 — auto-accept an iteration when EVERY assigned Story/Defect is in an
+   * accepted state and there is at least one such item. Idempotent: only a
+   * 'committed' iteration transitions to 'accepted'. Returns true if it flipped.
+   */
+  autoAcceptIterationIfComplete(
+    iterationId: string,
+    workspaceId: string,
+    executor?: DbExecutor,
+  ): Promise<boolean>;
   create(input: CreateWorkItemInput, executor?: DbExecutor): Promise<WorkItem>;
   update(
     id: string,

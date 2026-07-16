@@ -6,6 +6,8 @@ import { ACTIVITY_LOG_REPOSITORY } from '../domain/ports/activity-log.repository
 import { TIME_LOG_REPOSITORY } from '../domain/ports/time-log.repository';
 import { WATCHER_REPOSITORY } from '../domain/ports/watcher.repository';
 import { ATTACHMENT_REPOSITORY } from '../domain/ports/attachment.repository';
+import { WORK_ITEM_RELATION_REPOSITORY } from '../domain/ports/work-item-relation.repository';
+import { NotificationSchedulerService } from '@platform/notifications/notification-scheduler.service';
 import { StorageService } from '@platform';
 import type { WorkItem } from '../domain/work-item.types';
 import { NotFoundException, PreconditionFailedException, UnitOfWork } from '@platform';
@@ -113,6 +115,17 @@ const makeWorkItemRepo = () => ({
   listMilestones: vi.fn().mockResolvedValue([]),
   setMilestones: vi.fn().mockResolvedValue(undefined),
   countMilestonesInProject: vi.fn().mockResolvedValue(0),
+  areAllTasksComplete: vi.fn().mockResolvedValue(false),
+  autoAcceptIterationIfComplete: vi.fn().mockResolvedValue(false),
+});
+
+const makeRelationRepo = () => ({
+  listForItem: vi.fn().mockResolvedValue([]),
+  exists: vi.fn().mockResolvedValue(false),
+  create: vi.fn().mockResolvedValue({ id: 'rel-1' }),
+  findById: vi.fn(),
+  delete: vi.fn().mockResolvedValue(undefined),
+  wouldCreateCycle: vi.fn().mockResolvedValue(false),
 });
 
 const makeActivityRepo = () => ({
@@ -190,6 +203,7 @@ describe('WorkItemsService', () => {
   let watcherRepo: ReturnType<typeof makeWatcherRepo>;
   let attachmentRepo: ReturnType<typeof makeAttachmentRepo>;
   let storageService: ReturnType<typeof makeStorageService>;
+  let relationRepo: ReturnType<typeof makeRelationRepo>;
 
   beforeEach(async () => {
     workItemRepo = makeWorkItemRepo();
@@ -201,6 +215,7 @@ describe('WorkItemsService', () => {
     watcherRepo = makeWatcherRepo();
     attachmentRepo = makeAttachmentRepo();
     storageService = makeStorageService();
+    relationRepo = makeRelationRepo();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -210,6 +225,11 @@ describe('WorkItemsService', () => {
         { provide: TIME_LOG_REPOSITORY, useValue: timeLogRepo },
         { provide: WATCHER_REPOSITORY, useValue: watcherRepo },
         { provide: ATTACHMENT_REPOSITORY, useValue: attachmentRepo },
+        { provide: WORK_ITEM_RELATION_REPOSITORY, useValue: relationRepo },
+        {
+          provide: NotificationSchedulerService,
+          useValue: { schedule: vi.fn().mockResolvedValue(undefined) },
+        },
         { provide: StorageService, useValue: storageService },
         { provide: ProjectsService, useValue: projectsService },
         { provide: AccessService, useValue: accessService },
@@ -372,6 +392,94 @@ describe('WorkItemsService', () => {
     it('throws when work item not found', async () => {
       workItemRepo.findById.mockResolvedValue(null);
       await expect(service.deleteWorkItem(mockActor, 'missing')).rejects.toThrow(NotFoundException);
+    });
+
+    it('refuses to delete a defect (BA P3.4 — resolve via Closed state instead)', async () => {
+      workItemRepo.findById.mockResolvedValue(
+        mockWorkItem({ type: 'defect', defectState: 'open' }),
+      );
+
+      await expect(service.deleteWorkItem(mockActor, 'wi-1')).rejects.toThrow(
+        PreconditionFailedException,
+      );
+      expect(workItemRepo.softDelete).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── Relations (F6) ─────────────────────────────────────────────────────────
+
+  describe('linkWorkItem', () => {
+    it('rejects linking an item to itself', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ id: 'wi-1' }));
+      await expect(service.linkWorkItem(mockActor, 'wi-1', 'wi-1', 'blocks')).rejects.toThrow(
+        PreconditionFailedException,
+      );
+      expect(relationRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects a duplicate relation', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem());
+      relationRepo.exists.mockResolvedValue(true);
+      await expect(service.linkWorkItem(mockActor, 'wi-1', 'wi-2', 'relates_to')).rejects.toThrow(
+        PreconditionFailedException,
+      );
+      expect(relationRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects a relation that would create a dependency cycle (blocks)', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem());
+      relationRepo.exists.mockResolvedValue(false);
+      relationRepo.wouldCreateCycle.mockResolvedValue(true);
+      await expect(service.linkWorkItem(mockActor, 'wi-1', 'wi-2', 'blocks')).rejects.toThrow(
+        PreconditionFailedException,
+      );
+      expect(relationRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('does NOT cycle-check associative relations (relates_to)', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem());
+      relationRepo.exists.mockResolvedValue(false);
+      await service.linkWorkItem(mockActor, 'wi-1', 'wi-2', 'relates_to');
+      expect(relationRepo.wouldCreateCycle).not.toHaveBeenCalled();
+      expect(relationRepo.create).toHaveBeenCalled();
+    });
+
+    it('creates the relation and returns the refreshed list', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem());
+      relationRepo.exists.mockResolvedValue(false);
+      relationRepo.listForItem.mockResolvedValue([{ id: 'rel-1' }]);
+      const result = await service.linkWorkItem(mockActor, 'wi-1', 'wi-2', 'depends_on');
+      expect(relationRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourceItemId: 'wi-1',
+          targetItemId: 'wi-2',
+          relationType: 'depends_on',
+        }),
+        'ws-1',
+      );
+      expect(result).toEqual([{ id: 'rel-1' }]);
+    });
+  });
+
+  describe('unlinkWorkItem', () => {
+    it('throws when the relation does not exist', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem());
+      relationRepo.findById.mockResolvedValue(null);
+      await expect(service.unlinkWorkItem(mockActor, 'wi-1', 'rel-x')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('deletes a relation that touches the item', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ id: 'wi-1' }));
+      relationRepo.findById.mockResolvedValue({
+        id: 'rel-1',
+        sourceItemId: 'wi-1',
+        targetItemId: 'wi-2',
+        relationType: 'blocks',
+      });
+      await service.unlinkWorkItem(mockActor, 'wi-1', 'rel-1');
+      expect(relationRepo.delete).toHaveBeenCalledWith('rel-1', 'ws-1');
     });
   });
 

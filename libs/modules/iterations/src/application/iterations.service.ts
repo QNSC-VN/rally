@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
-import { and, eq, isNull, ne } from 'drizzle-orm';
+import { and, eq, isNull, ne, inArray, sql } from 'drizzle-orm';
 import {
   NotFoundException,
   ConflictException,
@@ -12,6 +12,7 @@ import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
 import { PERMISSION } from '@shared-kernel';
 import { workItems, workflowStatuses } from '../../../../../db/schema/work';
+import { acceptedScheduleStatesSql } from '../../../../../db/schema/enums';
 import { IIterationRepository, ITERATION_REPOSITORY } from '../domain/ports/iteration.repository';
 import type {
   Iteration,
@@ -154,7 +155,31 @@ export class IterationsService {
     const endDate = input.endDate !== undefined ? input.endDate : current.endDate;
     this.assertDateRange(startDate ?? undefined, endDate ?? undefined);
 
-    return this.iterationRepo.update(id, input);
+    // State is a lifecycle transition, not a free-form field. Route it through
+    // the SAME gated actions as commit/accept so PATCH cannot bypass the F1 rule
+    // (e.g. set state='accepted' while items are still open). Forward transitions
+    // only; no reverse-force (BA F1).
+    let stateResult: Iteration | undefined;
+    if (input.state !== undefined && input.state !== current.state) {
+      if (current.state === 'planning' && input.state === 'committed') {
+        stateResult = await this.commitIteration(actor, id);
+      } else if (current.state === 'committed' && input.state === 'accepted') {
+        stateResult = await this.acceptIteration(actor, id);
+      } else {
+        throw new PreconditionFailedException(
+          'ITERATION_INVALID_STATE_TRANSITION',
+          `Invalid iteration state transition: ${current.state} → ${input.state}`,
+        );
+      }
+    }
+
+    // Apply the remaining (non-state) field updates, if any.
+    const fields = { ...input };
+    delete fields.state;
+    if (Object.keys(fields).length > 0) {
+      return this.iterationRepo.update(id, fields);
+    }
+    return stateResult ?? current;
   }
 
   // ── Delete ────────────────────────────────────────────────────────────────
@@ -206,13 +231,13 @@ export class IterationsService {
     return updated;
   }
 
-  // ── Accept (committed → accepted) — moves unfinished items out ──────────────
+  // ── Accept (committed → accepted) ───────────────────────────────────────────
+  // BA F1: manual-first. An iteration can be accepted ONLY when it has at least
+  // one assigned Story/Defect and EVERY assigned Story/Defect is in an accepted
+  // state. Accept does NOT move unfinished items — use rolloverUnfinished() for
+  // that, as a separate, explicit action.
 
-  async acceptIteration(
-    actor: JwtPayload,
-    id: string,
-    opts: { moveToIterationId?: string } = {},
-  ): Promise<Iteration> {
+  async acceptIteration(actor: JwtPayload, id: string): Promise<Iteration> {
     const workspaceId = actor.workspaceId;
     const iteration = await this.getIteration(workspaceId, id);
     await this.accessService.assertProjectPermission(
@@ -228,7 +253,60 @@ export class IterationsService {
       );
     }
 
-    // Validate the carry-over target belongs to the same project.
+    const [agg] = await this.db
+      .select({
+        total: sql<number>`count(*)::int`,
+        allAccepted: sql<boolean>`bool_and(${workItems.scheduleState} in (${acceptedScheduleStatesSql()}))`,
+      })
+      .from(workItems)
+      .where(
+        and(
+          eq(workItems.iterationId, id),
+          eq(workItems.workspaceId, workspaceId),
+          inArray(workItems.type, ['story', 'defect']),
+          isNull(workItems.deletedAt),
+        ),
+      );
+
+    if (Number(agg?.total ?? 0) === 0) {
+      throw new PreconditionFailedException(
+        'ITERATION_EMPTY',
+        'Cannot accept an iteration with no assigned Story or Defect items',
+      );
+    }
+    if (agg?.allAccepted !== true) {
+      throw new PreconditionFailedException(
+        'ITERATION_NOT_ALL_ACCEPTED',
+        'All assigned Story and Defect items must be Accepted before the iteration can be accepted',
+      );
+    }
+
+    const updated = await this.iterationRepo.update(id, {
+      state: 'accepted',
+      completedAt: new Date(),
+    });
+    this.logger.log({ iterationId: id }, 'Iteration accepted');
+    return updated;
+  }
+
+  // ── Rollover — move unfinished items out (explicit, separate from accept) ────
+  // Moves every work item whose workflow status is NOT in a 'done' category to a
+  // target iteration (same project) or back to the backlog (null). Returns the
+  // number of items moved.
+
+  async rolloverUnfinished(
+    actor: JwtPayload,
+    id: string,
+    opts: { moveToIterationId?: string } = {},
+  ): Promise<{ movedCount: number }> {
+    const workspaceId = actor.workspaceId;
+    const iteration = await this.getIteration(workspaceId, id);
+    await this.accessService.assertProjectPermission(
+      actor,
+      iteration.projectId,
+      PERMISSION.ITERATION_MANAGE,
+    );
+
     if (opts.moveToIterationId) {
       const target = await this.getIteration(workspaceId, opts.moveToIterationId);
       if (target.projectId !== iteration.projectId) {
@@ -250,36 +328,32 @@ export class IterationsService {
         ),
       );
     const doneStatusIds = doneStatuses.map((s) => s.id);
+    if (doneStatusIds.length === 0) return { movedCount: 0 };
 
-    // Move unfinished (non-done) items to the target iteration or back to backlog.
-    if (doneStatusIds.length > 0) {
-      const whereConditions = [
-        eq(workItems.iterationId, id),
-        eq(workItems.workspaceId, workspaceId),
-        isNull(workItems.deletedAt),
-        ...(doneStatusIds.length === 1
-          ? [ne(workItems.statusId, doneStatusIds[0])]
-          : [and(...doneStatusIds.map((sid) => ne(workItems.statusId, sid)))!]),
-      ];
+    const moved = await this.db
+      .update(workItems)
+      .set({ iterationId: opts.moveToIterationId ?? null, updatedAt: new Date() })
+      .where(
+        and(
+          eq(workItems.iterationId, id),
+          eq(workItems.workspaceId, workspaceId),
+          isNull(workItems.deletedAt),
+          ...(doneStatusIds.length === 1
+            ? [ne(workItems.statusId, doneStatusIds[0])]
+            : [and(...doneStatusIds.map((sid) => ne(workItems.statusId, sid)))!]),
+        ),
+      )
+      .returning({ id: workItems.id });
 
-      await this.db
-        .update(workItems)
-        .set({
-          iterationId: opts.moveToIterationId ?? null,
-          updatedAt: new Date(),
-        })
-        .where(and(...whereConditions));
-    }
-
-    const updated = await this.iterationRepo.update(id, {
-      state: 'accepted',
-      completedAt: new Date(),
-    });
     this.logger.log(
-      { iterationId: id, moveToIterationId: opts.moveToIterationId ?? null },
-      'Iteration accepted',
+      {
+        iterationId: id,
+        moveToIterationId: opts.moveToIterationId ?? null,
+        movedCount: moved.length,
+      },
+      'Iteration unfinished items rolled over',
     );
-    return updated;
+    return { movedCount: moved.length };
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────────

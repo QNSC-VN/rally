@@ -78,13 +78,7 @@ export function useBacklog(projectId: string | undefined, filters: BacklogFilter
             projectId,
             type: filters.type as 'story' | 'defect' | undefined,
             scheduleState: filters.scheduleState as
-              | 'idea'
-              | 'defined'
-              | 'in_progress'
-              | 'completed'
-              | 'accepted'
-              | 'released'
-              | undefined,
+              'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'release' | undefined,
             assigneeId: filters.assigneeId,
             iterationId: filters.iterationId,
             releaseId: filters.releaseId,
@@ -650,6 +644,90 @@ export function useRankAnyWorkItem() {
       void qc.invalidateQueries({ queryKey: workItemKeys.list(item.projectId) })
       void qc.invalidateQueries({ queryKey: iterationKeys.statusAll })
       void qc.invalidateQueries({ queryKey: ['team-status'] })
+    },
+  })
+}
+
+// ── Relations (F6 — work-item linking) ────────────────────────────────────────
+// New endpoints; called via raw fetch (mirrors the attachment-upload pattern)
+// until the generated OpenAPI client is regenerated against the live API.
+
+export type WorkItemRelationType = 'blocks' | 'duplicates' | 'relates_to' | 'depends_on' | 'causes'
+
+export interface WorkItemRelationView {
+  id: string
+  relationType: WorkItemRelationType
+  direction: 'outbound' | 'inbound'
+  label: string
+  relatedItem: {
+    id: string
+    itemKey: string
+    title: string
+    type: string
+    scheduleState: string
+  }
+  createdAt: string
+}
+
+const relationKeys = {
+  list: (workItemId: string) => ['work-item-relations', workItemId] as const,
+}
+
+export function useRelations(workItemId: string | undefined) {
+  return useQuery({
+    queryKey: relationKeys.list(workItemId ?? ''),
+    queryFn: async (): Promise<WorkItemRelationView[]> => {
+      if (!workItemId) return []
+      const res = await fetch(`/v1/work-items/${workItemId}/relations`, {
+        credentials: 'include',
+      })
+      if (!res.ok) throw new Error(`Failed to load linked items (${res.status})`)
+      return (await res.json()) as WorkItemRelationView[]
+    },
+    enabled: !!workItemId,
+    staleTime: 15_000,
+  })
+}
+
+export function useLinkWorkItem(workItemId: string | undefined) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: {
+      targetId: string
+      relationType: WorkItemRelationType
+    }): Promise<WorkItemRelationView[]> => {
+      if (!workItemId) throw new Error('workItemId required')
+      const res = await fetch(`/v1/work-items/${workItemId}/relations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(input),
+      })
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { message?: string } | null
+        throw new Error(body?.message ?? `Failed to link item (${res.status})`)
+      }
+      return (await res.json()) as WorkItemRelationView[]
+    },
+    onSuccess: () => {
+      if (workItemId) void qc.invalidateQueries({ queryKey: relationKeys.list(workItemId) })
+    },
+  })
+}
+
+export function useUnlinkWorkItem(workItemId: string | undefined) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (relationId: string): Promise<void> => {
+      if (!workItemId) throw new Error('workItemId required')
+      const res = await fetch(`/v1/work-items/${workItemId}/relations/${relationId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+      if (!res.ok) throw new Error(`Failed to remove link (${res.status})`)
+    },
+    onSuccess: () => {
+      if (workItemId) void qc.invalidateQueries({ queryKey: relationKeys.list(workItemId) })
     },
   })
 }

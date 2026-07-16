@@ -50,10 +50,32 @@ describe('IterationsService', () => {
     update: ReturnType<typeof vi.fn>;
     delete: ReturnType<typeof vi.fn>;
   };
-  let projects: { getProject: ReturnType<typeof vi.fn>; listProjectTeams: ReturnType<typeof vi.fn> };
+  let projects: {
+    getProject: ReturnType<typeof vi.fn>;
+    listProjectTeams: ReturnType<typeof vi.fn>;
+  };
   let access: { assertProjectPermission: ReturnType<typeof vi.fn> };
+  // Chainable Drizzle mock. Tests set the resolved rows before invoking.
+  let dbSelectResult: unknown[];
+  let dbUpdateReturning: unknown[];
+  let db: {
+    select: ReturnType<typeof vi.fn>;
+    update: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(async () => {
+    dbSelectResult = [];
+    dbUpdateReturning = [];
+    db = {
+      select: vi.fn(() => ({
+        from: vi.fn(() => ({ where: vi.fn(() => Promise.resolve(dbSelectResult)) })),
+      })),
+      update: vi.fn(() => ({
+        set: vi.fn(() => ({
+          where: vi.fn(() => ({ returning: vi.fn(() => Promise.resolve(dbUpdateReturning)) })),
+        })),
+      })),
+    };
     repo = {
       findById: vi.fn(),
       findCommitted: vi.fn().mockResolvedValue(null),
@@ -61,7 +83,9 @@ describe('IterationsService', () => {
       listAssignmentOptions: vi.fn().mockResolvedValue([]),
       nextKeyNumber: vi.fn().mockResolvedValue(1),
       create: vi.fn().mockImplementation((i) => Promise.resolve(mockIteration(i))),
-      update: vi.fn().mockImplementation((id, patch) => Promise.resolve(mockIteration({ id, ...patch }))),
+      update: vi
+        .fn()
+        .mockImplementation((id, patch) => Promise.resolve(mockIteration({ id, ...patch }))),
       delete: vi.fn().mockResolvedValue(undefined),
     };
     projects = {
@@ -76,7 +100,7 @@ describe('IterationsService', () => {
         { provide: ITERATION_REPOSITORY, useValue: repo },
         { provide: ProjectsService, useValue: projects },
         { provide: AccessService, useValue: access },
-        { provide: DRIZZLE, useValue: {} },
+        { provide: DRIZZLE, useValue: db },
       ],
     }).compile();
 
@@ -152,14 +176,22 @@ describe('IterationsService', () => {
     });
   });
 
-  describe('acceptIteration — carry-over validation', () => {
-    it('rejects carry-over target from a different project', async () => {
+  describe('rolloverUnfinished', () => {
+    it('rejects a carry-over target from a different project', async () => {
       repo.findById
         .mockResolvedValueOnce(mockIteration({ state: 'committed', projectId: 'proj-1' }))
         .mockResolvedValueOnce(mockIteration({ id: 'it-2', projectId: 'proj-2' }));
       await expect(
-        service.acceptIteration(actor, 'it-1', { moveToIterationId: 'it-2' }),
+        service.rolloverUnfinished(actor, 'it-1', { moveToIterationId: 'it-2' }),
       ).rejects.toBeInstanceOf(PreconditionFailedException);
+    });
+
+    it('moves unfinished items and returns the moved count', async () => {
+      repo.findById.mockResolvedValue(mockIteration({ state: 'committed' }));
+      dbSelectResult = [{ id: 'done-status' }]; // done-category statuses exist
+      dbUpdateReturning = [{ id: 'wi-1' }, { id: 'wi-2' }];
+      const res = await service.rolloverUnfinished(actor, 'it-1');
+      expect(res).toEqual({ movedCount: 2 });
     });
   });
 
@@ -193,9 +225,7 @@ describe('IterationsService', () => {
   describe('getIteration', () => {
     it('throws when not found or cross-workspace', async () => {
       repo.findById.mockResolvedValue(mockIteration({ workspaceId: 'other' }));
-      await expect(service.getIteration('ws-1', 'it-1')).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expect(service.getIteration('ws-1', 'it-1')).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 
@@ -220,6 +250,33 @@ describe('IterationsService', () => {
       repo.findById.mockResolvedValue(mockIteration({ state: 'planning' }));
       await expect(service.acceptIteration(actor, 'it-1')).rejects.toBeInstanceOf(
         PreconditionFailedException,
+      );
+    });
+
+    it('rejects accepting an iteration with no assigned Story/Defect (ITERATION_EMPTY)', async () => {
+      repo.findById.mockResolvedValue(mockIteration({ state: 'committed' }));
+      dbSelectResult = [{ total: 0, allAccepted: null }];
+      await expect(service.acceptIteration(actor, 'it-1')).rejects.toMatchObject({
+        code: 'ITERATION_EMPTY',
+      });
+    });
+
+    it('rejects accepting when not all items are accepted (ITERATION_NOT_ALL_ACCEPTED)', async () => {
+      repo.findById.mockResolvedValue(mockIteration({ state: 'committed' }));
+      dbSelectResult = [{ total: 3, allAccepted: false }];
+      await expect(service.acceptIteration(actor, 'it-1')).rejects.toMatchObject({
+        code: 'ITERATION_NOT_ALL_ACCEPTED',
+      });
+    });
+
+    it('accepts when there is ≥1 item and all are accepted', async () => {
+      repo.findById.mockResolvedValue(mockIteration({ state: 'committed' }));
+      dbSelectResult = [{ total: 3, allAccepted: true }];
+      const updated = await service.acceptIteration(actor, 'it-1');
+      expect(updated.state).toBe('accepted');
+      expect(repo.update).toHaveBeenCalledWith(
+        'it-1',
+        expect.objectContaining({ state: 'accepted' }),
       );
     });
   });

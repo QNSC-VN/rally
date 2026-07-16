@@ -12,15 +12,15 @@ export const WorkItemType = {
 } as const
 export type WorkItemType = (typeof WorkItemType)[keyof typeof WorkItemType]
 
-/** Schedule State — business readiness dimension (BA design §P1-05) */
+/** Schedule State — business readiness dimension (BA design §P1-05).
+ * Aligned to BA flow-state vocabulary: 6 states, terminal state 'release'. */
 export const ScheduleState = {
   Idea: 'idea',
   Defined: 'defined',
-  Ready: 'ready',
   InProgress: 'in_progress',
   Completed: 'completed',
   Accepted: 'accepted',
-  Released: 'released',
+  Release: 'release',
 } as const
 export type ScheduleState = (typeof ScheduleState)[keyof typeof ScheduleState]
 
@@ -67,11 +67,10 @@ export const WORK_ITEM_TYPE_CONFIG: Record<WorkItemType, BadgeStyle> = {
 export const SCHEDULE_STATE_LABEL: Record<ScheduleState, string> = {
   [ScheduleState.Idea]: 'Idea',
   [ScheduleState.Defined]: 'Defined',
-  [ScheduleState.Ready]: 'Ready',
   [ScheduleState.InProgress]: 'In Progress',
   [ScheduleState.Completed]: 'Completed',
   [ScheduleState.Accepted]: 'Accepted',
-  [ScheduleState.Released]: 'Released',
+  [ScheduleState.Release]: 'Release',
 }
 
 /**
@@ -96,11 +95,10 @@ export interface StatusBadgeStyle {
 export const SCHEDULE_STATE_CONFIG: Record<ScheduleState, StatusBadgeStyle> = {
   [ScheduleState.Idea]: { color: '#6b7280', bg: '#f3f4f6' },
   [ScheduleState.Defined]: { color: '#5c6478', bg: '#edf0f4' },
-  [ScheduleState.Ready]: { color: '#0f766e', bg: '#e6f6f3' },
   [ScheduleState.InProgress]: { color: '#1d6f9e', bg: '#e5f2fb' },
   [ScheduleState.Completed]: { color: '#3d7a4e', bg: '#eef6f0' },
   [ScheduleState.Accepted]: { color: '#1e6930', bg: '#eaf5ed' },
-  [ScheduleState.Released]: { color: '#7c3aed', bg: '#f3effd' },
+  [ScheduleState.Release]: { color: '#7c3aed', bg: '#f3effd' },
 }
 
 export interface PriorityStyle {
@@ -120,7 +118,7 @@ export const WORK_ITEM_PRIORITY_CONFIG: Record<WorkItemPriority, PriorityStyle> 
 // Single source of truth for defect severity — do not re-declare these labels or
 // colours in pages/features. Rendered by <SeverityBadge/>; option lists derive
 // from DEFECT_SEVERITY_OPTIONS.
-export type DefectSeverity = 'critical' | 'high' | 'medium' | 'low' | 'none'
+export type DefectSeverity = 'critical' | 'major' | 'minor' | 'trivial' | 'none'
 
 export interface SeverityStyle {
   label: string
@@ -131,9 +129,9 @@ export interface SeverityStyle {
 
 export const DEFECT_SEVERITY_CONFIG: Record<DefectSeverity, SeverityStyle> = {
   critical: { label: 'Critical', color: '#b91c1c', bg: '#fef2f2', border: '#fecaca' },
-  high: { label: 'Major Problem', color: '#9a3412', bg: '#fff7ed', border: '#fed7aa' },
-  medium: { label: 'Minor Problem', color: '#854d0e', bg: '#fefce8', border: '#fef08a' },
-  low: { label: 'Trivial', color: '#475569', bg: '#f1f5f9', border: '#cbd5e1' },
+  major: { label: 'Major Problem', color: '#9a3412', bg: '#fff7ed', border: '#fed7aa' },
+  minor: { label: 'Minor Problem', color: '#854d0e', bg: '#fefce8', border: '#fef08a' },
+  trivial: { label: 'Trivial', color: '#475569', bg: '#f1f5f9', border: '#cbd5e1' },
   none: { label: 'None', color: '#8c94a6', bg: '#f1f5f9', border: '#e2e6eb' },
 }
 
@@ -173,9 +171,9 @@ export const SIMPLIFIED_STATE_CONFIG: Record<SimplifiedState, SimplifiedStateSty
 export const SIMPLIFIED_STATE_ORDER: SimplifiedState[] = ['define', 'in_progress', 'complete']
 
 const SIMPLIFIED_STATE_GROUPS: Record<SimplifiedState, ScheduleState[]> = {
-  define: [ScheduleState.Idea, ScheduleState.Defined, ScheduleState.Ready],
+  define: [ScheduleState.Idea, ScheduleState.Defined],
   in_progress: [ScheduleState.InProgress],
-  complete: [ScheduleState.Completed, ScheduleState.Accepted, ScheduleState.Released],
+  complete: [ScheduleState.Completed, ScheduleState.Accepted, ScheduleState.Release],
 }
 
 export function getSimplifiedState(state: ScheduleState): SimplifiedState {

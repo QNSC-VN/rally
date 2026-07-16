@@ -24,7 +24,9 @@ export type ActivityAction =
   | 'task.todo_updated'
   | 'task.actual_updated'
   | 'attachment.uploaded'
-  | 'attachment.deleted';
+  | 'attachment.deleted'
+  | 'work_item.relation_added'
+  | 'work_item.relation_removed';
 
 /** Short, scalar before/after for one field. Never a rich-text body. */
 export interface ActivityChange {

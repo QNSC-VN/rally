@@ -2088,8 +2088,7 @@ export interface components {
       /** Format: uuid */
       statusId?: string
       /** @enum {string} */
-      scheduleState?:
-        'idea' | 'defined' | 'ready' | 'in_progress' | 'completed' | 'accepted' | 'released'
+      scheduleState?: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'release'
       /**
        * @default none
        * @enum {string}
@@ -2111,7 +2110,7 @@ export interface components {
       notes?: string
       releaseNotes?: string
       /** @enum {string} */
-      severity?: 'none' | 'critical' | 'high' | 'medium' | 'low'
+      severity?: 'none' | 'critical' | 'major' | 'minor' | 'trivial'
       /** @enum {string} */
       foundInEnvironment?: 'development' | 'staging' | 'production' | 'testing'
       foundInReleaseId?: string | null
@@ -2143,8 +2142,7 @@ export interface components {
       /** Format: uuid */
       statusId?: string
       /** @enum {string} */
-      scheduleState?:
-        'idea' | 'defined' | 'ready' | 'in_progress' | 'completed' | 'accepted' | 'released'
+      scheduleState?: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'release'
       /** @enum {string} */
       priority?: 'none' | 'low' | 'normal' | 'high' | 'urgent'
       assigneeId?: string | null
@@ -2165,7 +2163,7 @@ export interface components {
       customFields?: {
         [key: string]: unknown
       }
-      severity?: ('none' | 'critical' | 'high' | 'medium' | 'low') | null
+      severity?: ('none' | 'critical' | 'major' | 'minor' | 'trivial') | null
       foundInEnvironment?: ('development' | 'staging' | 'production' | 'testing') | null
       foundInReleaseId?: string | null
       rootCause?: ('requirements' | 'design' | 'code' | 'test' | 'integration' | 'other') | null
@@ -2406,8 +2404,7 @@ export interface components {
         type: 'initiative' | 'feature' | 'story' | 'task' | 'defect'
         title: string
         /** @enum {string} */
-        scheduleState:
-          'idea' | 'defined' | 'ready' | 'in_progress' | 'completed' | 'accepted' | 'released'
+        scheduleState: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'release'
         iterationId: string | null
         isBlocked: boolean
         blockedReason: string | null
@@ -5090,8 +5087,7 @@ export interface operations {
         type?: 'initiative' | 'feature' | 'story' | 'task' | 'defect'
         parentId?: string
         statusId?: string
-        scheduleState?:
-          'idea' | 'defined' | 'ready' | 'in_progress' | 'completed' | 'accepted' | 'released'
+        scheduleState?: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'release'
         priority?: 'none' | 'low' | 'normal' | 'high' | 'urgent'
         assigneeId?: string | 'unassigned'
         teamId?: string
@@ -5214,8 +5210,7 @@ export interface operations {
         type?: 'initiative' | 'feature' | 'story' | 'task' | 'defect'
         parentId?: string
         statusId?: string
-        scheduleState?:
-          'idea' | 'defined' | 'ready' | 'in_progress' | 'completed' | 'accepted' | 'released'
+        scheduleState?: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'release'
         priority?: 'none' | 'low' | 'normal' | 'high' | 'urgent'
         assigneeId?: string | 'unassigned'
         teamId?: string
@@ -6978,8 +6973,7 @@ export interface operations {
         sort?: string
         q?: string
         type?: 'initiative' | 'feature' | 'story' | 'task' | 'defect'
-        scheduleState?:
-          'idea' | 'defined' | 'ready' | 'in_progress' | 'completed' | 'accepted' | 'released'
+        scheduleState?: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'release'
         isBlocked?: boolean
         assigneeId?: string
         sortBy?:
@@ -8850,18 +8844,11 @@ export interface operations {
         sort?: string
         projectId: string
         search?: string
-        severity?: 'all' | 'critical' | 'high' | 'medium' | 'low'
+        severity?: 'all' | 'critical' | 'major' | 'minor' | 'trivial'
         environment?: 'all' | 'development' | 'staging' | 'production' | 'testing'
         priority?: 'all' | 'none' | 'low' | 'normal' | 'high' | 'urgent'
         scheduleState?:
-          | 'all'
-          | 'idea'
-          | 'defined'
-          | 'ready'
-          | 'in_progress'
-          | 'completed'
-          | 'accepted'
-          | 'released'
+          'all' | 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'release'
         assigneeId?: string
         releaseId?: string
         rootCause?: 'all' | 'requirements' | 'design' | 'code' | 'test' | 'integration' | 'other'

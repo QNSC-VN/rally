@@ -21,7 +21,7 @@ import {
   IterationQueryDto,
   CreateIterationDto,
   UpdateIterationDto,
-  AcceptIterationDto,
+  RolloverIterationDto,
   IterationAssignmentOptionsQueryDto,
 } from './dto/iteration-request.dto';
 import { IterationResponseDto, IterationOptionDto } from './dto/iteration-response.dto';
@@ -205,19 +205,33 @@ export class IterationsController {
 
   @Post(':id/accept')
   @ApiOperation({
-    summary: 'Accept an iteration (committed → accepted); moves unfinished items out',
+    summary:
+      'Accept an iteration (committed → accepted). Requires ≥1 assigned Story/Defect and all of them accepted.',
   })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiCommonErrors(400, 401, 403, 404, 422)
   async acceptIteration(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: AcceptIterationDto,
   ): Promise<IterationResponseDto> {
-    const iteration = await this.iterationsService.acceptIteration(user, id, {
+    const iteration = await this.iterationsService.acceptIteration(user, id);
+    return toIterationDto(iteration);
+  }
+
+  @Post(':id/rollover')
+  @ApiOperation({
+    summary: 'Move unfinished items out of an iteration to another iteration or the backlog',
+  })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiCommonErrors(400, 401, 403, 404, 422)
+  async rolloverIteration(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RolloverIterationDto,
+  ): Promise<{ movedCount: number }> {
+    return this.iterationsService.rolloverUnfinished(user, id, {
       moveToIterationId: dto.moveToIterationId,
     });
-    return toIterationDto(iteration);
   }
 
   // ── Iteration Status read-model (P2.3) ──────────────────────────────────────

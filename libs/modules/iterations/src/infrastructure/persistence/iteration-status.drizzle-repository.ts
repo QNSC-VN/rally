@@ -4,6 +4,7 @@ import { alias } from 'drizzle-orm/pg-core';
 import { InjectDrizzle, buildPageResult } from '@platform';
 import type { DrizzleDB, CursorPayload, PagedResult } from '@platform';
 import { workItems, tasks, milestones, milestoneArtifacts } from '../../../../../../db/schema/work';
+import { acceptedScheduleStatesSql } from '../../../../../../db/schema/enums';
 import type {
   IterationStatusItem,
   IterationStatusFilters,
@@ -109,7 +110,7 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
     const openDefectCount = sql<number>`(
       select count(*)::int from ${workItems} d
       where d.parent_id = ${workItems.id} and d.type = 'defect' and d.deleted_at is null
-        and d.schedule_state not in ('accepted', 'released')
+        and d.schedule_state not in (${acceptedScheduleStatesSql()})
     )`;
 
     // Milestones directly assigned to the work item — Rally "Milestones" column.

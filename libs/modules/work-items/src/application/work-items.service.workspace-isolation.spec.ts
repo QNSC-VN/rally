@@ -6,6 +6,8 @@ import { ACTIVITY_LOG_REPOSITORY } from '../domain/ports/activity-log.repository
 import { TIME_LOG_REPOSITORY } from '../domain/ports/time-log.repository';
 import { WATCHER_REPOSITORY } from '../domain/ports/watcher.repository';
 import { ATTACHMENT_REPOSITORY } from '../domain/ports/attachment.repository';
+import { WORK_ITEM_RELATION_REPOSITORY } from '../domain/ports/work-item-relation.repository';
+import { NotificationSchedulerService } from '@platform/notifications/notification-scheduler.service';
 import { StorageService } from '@platform';
 import type { WorkItem } from '../domain/work-item.types';
 import type { TimeLog } from '../domain/time-log.types';
@@ -237,6 +239,21 @@ describe('WorkItemsService — workspace isolation', () => {
         { provide: TIME_LOG_REPOSITORY, useValue: tlRepo },
         { provide: WATCHER_REPOSITORY, useValue: watcherRepo },
         { provide: ATTACHMENT_REPOSITORY, useValue: atRepo },
+        {
+          provide: WORK_ITEM_RELATION_REPOSITORY,
+          useValue: {
+            listForItem: vi.fn().mockResolvedValue([]),
+            exists: vi.fn().mockResolvedValue(false),
+            create: vi.fn().mockResolvedValue({ id: 'rel-1' }),
+            findById: vi.fn(),
+            delete: vi.fn().mockResolvedValue(undefined),
+            wouldCreateCycle: vi.fn().mockResolvedValue(false),
+          },
+        },
+        {
+          provide: NotificationSchedulerService,
+          useValue: { schedule: vi.fn().mockResolvedValue(undefined) },
+        },
         { provide: StorageService, useValue: makeStorageService() },
         { provide: ProjectsService, useValue: projectsService },
         {

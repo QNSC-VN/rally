@@ -1329,7 +1329,7 @@ async function seedPhase3() {
   await db
     .update(workItems)
     .set({
-      severity: 'high',
+      severity: 'major',
       foundInEnvironment: 'staging',
       rootCause: 'code',
       defectState: 'open',
