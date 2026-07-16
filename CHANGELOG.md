@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.2](https://github.com/QNSC-VN/rally/compare/v0.2.1...v0.2.2) (2026-07-16)
+
+
+### 🐛 Bug Fixes
+
+* **infra:** grant ecr:DescribeImages to rally ecr-push role ([#91](https://github.com/QNSC-VN/rally/issues/91)) ([cbf64f3](https://github.com/QNSC-VN/rally/commit/cbf64f3f689b8fa95408aad1792478f6e603b081))
+* **infra:** surface prod infra-ID publish failures loudly instead of silent green ([#93](https://github.com/QNSC-VN/rally/issues/93)) ([f7d93ff](https://github.com/QNSC-VN/rally/commit/f7d93ff0715a6cd0b153c56ccf8f5f7f754aa068))
+
 ## [0.2.1](https://github.com/QNSC-VN/rally/compare/v0.2.0...v0.2.1) (2026-07-16)
 
 
