@@ -13,7 +13,18 @@
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type NotificationTemplateName = 'WORKSPACE_INVITATION' | 'WORKSPACE_INVITATION_ACCEPTED';
+export type NotificationTemplateName =
+  | 'WORKSPACE_INVITATION'
+  | 'WORKSPACE_INVITATION_ACCEPTED'
+  | 'WORK_ITEM_ASSIGNED'
+  | 'WORK_ITEM_STATE_CHANGED'
+  | 'WORK_ITEM_COMMENTED'
+  | 'WORK_ITEM_MENTIONED';
+
+interface WorkItemNotificationVars {
+  itemKey: string;
+  itemTitle: string;
+}
 
 export interface NotificationTemplateVars {
   WORKSPACE_INVITATION: {
@@ -25,6 +36,10 @@ export interface NotificationTemplateVars {
     workspaceName: string;
     accepteeName: string;
   };
+  WORK_ITEM_ASSIGNED: WorkItemNotificationVars;
+  WORK_ITEM_STATE_CHANGED: WorkItemNotificationVars & { newState: string };
+  WORK_ITEM_COMMENTED: WorkItemNotificationVars;
+  WORK_ITEM_MENTIONED: WorkItemNotificationVars;
 }
 
 /**
@@ -59,6 +74,38 @@ export function renderNotification<K extends NotificationTemplateName>(
       return {
         title: `${v.accepteeName} accepted your invitation to ${v.workspaceName}`,
         resourceType: 'workspace',
+      };
+    }
+    case 'WORK_ITEM_ASSIGNED': {
+      const v = vars as NotificationTemplateVars['WORK_ITEM_ASSIGNED'];
+      return {
+        title: `You were assigned ${v.itemKey}`,
+        body: v.itemTitle,
+        resourceType: 'work_item',
+      };
+    }
+    case 'WORK_ITEM_STATE_CHANGED': {
+      const v = vars as NotificationTemplateVars['WORK_ITEM_STATE_CHANGED'];
+      return {
+        title: `${v.itemKey} moved to ${v.newState}`,
+        body: v.itemTitle,
+        resourceType: 'work_item',
+      };
+    }
+    case 'WORK_ITEM_COMMENTED': {
+      const v = vars as NotificationTemplateVars['WORK_ITEM_COMMENTED'];
+      return {
+        title: `New comment on ${v.itemKey}`,
+        body: v.itemTitle,
+        resourceType: 'work_item',
+      };
+    }
+    case 'WORK_ITEM_MENTIONED': {
+      const v = vars as NotificationTemplateVars['WORK_ITEM_MENTIONED'];
+      return {
+        title: `You were mentioned in ${v.itemKey}`,
+        body: v.itemTitle,
+        resourceType: 'work_item',
       };
     }
     default: {

@@ -48,6 +48,7 @@ import {
   defectResolutionEnum,
   defectStateEnum,
   taskStateEnum,
+  workItemRelationTypeEnum,
 } from './enums';
 
 export const workSchema = pgSchema('work');
@@ -540,6 +541,28 @@ export const timeLogs = workSchema.table(
 // ── work_item_watchers ────────────────────────────────────────────────────────
 // Follower/subscriber list for notification fan-out (added in migration 0012).
 // Composite primary key: one row per (workItem, user) pair.
+
+// F6 — directed links between work items (blocks / duplicates / relates_to /
+// depends_on / causes). Stored once on the canonical source→target direction;
+// the app derives the inverse label for the target side.
+export const workItemRelations = workSchema.table(
+  'work_item_relations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id').notNull(),
+    sourceItemId: uuid('source_item_id').notNull(),
+    targetItemId: uuid('target_item_id').notNull(),
+    relationType: workItemRelationTypeEnum('relation_type').notNull(),
+    createdBy: uuid('created_by').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    uq: uniqueIndex('uq_wir_source_target_type').on(t.sourceItemId, t.targetItemId, t.relationType),
+    sourceIdx: index('ix_wir_source').on(t.sourceItemId),
+    targetIdx: index('ix_wir_target').on(t.targetItemId),
+    workspaceIdx: index('ix_wir_workspace').on(t.workspaceId),
+  }),
+);
 
 export const workItemWatchers = workSchema.table(
   'work_item_watchers',

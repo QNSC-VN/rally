@@ -12,9 +12,7 @@ export const IterationQuerySchema = PageQuerySchema.extend({
   teamId: z.string().uuid().optional(),
   state: z.enum(iterationStateEnum.enumValues).optional(),
   q: z.string().max(255).optional(),
-  sortBy: z
-    .enum(['name', 'theme', 'startDate', 'endDate', 'state', 'plannedVelocity'])
-    .optional(),
+  sortBy: z.enum(['name', 'theme', 'startDate', 'endDate', 'state', 'plannedVelocity']).optional(),
   sortDirection: z.enum(['asc', 'desc']).optional(),
 });
 
@@ -55,15 +53,15 @@ export class UpdateIterationDto extends createZodDto(UpdateIterationSchema) {}
 
 // ── Accept iteration (carry-over target for unfinished items) ────────────────────
 
-export const AcceptIterationSchema = z.object({
+export const RolloverIterationSchema = z.object({
   /**
-   * Optional target iteration for unfinished items.
+   * Optional target iteration for the unfinished items.
    * If omitted, unfinished items are moved back to the backlog (iterationId = null).
    */
   moveToIterationId: z.string().uuid().optional(),
 });
 
-export class AcceptIterationDto extends createZodDto(AcceptIterationSchema) {}
+export class RolloverIterationDto extends createZodDto(RolloverIterationSchema) {}
 
 // ── Assignment options query (P2-IT-10) ──────────────────────────────────
 

@@ -3,6 +3,7 @@ import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { and, asc, eq, isNull, sql, inArray } from 'drizzle-orm';
 import { workItems, iterations, releases } from '../../../../../../db/schema/work';
+import { COMPLETED_SCHEDULE_STATES } from '../../../../../../db/schema/enums';
 import type {
   DefectSeverity,
   DefectEnvironment,
@@ -207,21 +208,21 @@ export class QualityDrizzleRepository implements IQualityRepository {
     let reopened = 0;
     let blockers = 0;
 
+    // Open = in-flight defect states (excludes 'idea' backlog and completed/accepted).
+    const OPEN_DEFECT_STATES: readonly WorkItemScheduleState[] = ['defined', 'in_progress'];
+    const isOpen = (s: WorkItemScheduleState) => OPEN_DEFECT_STATES.includes(s);
+    const isCompleted = (s: WorkItemScheduleState) =>
+      (COMPLETED_SCHEDULE_STATES as readonly WorkItemScheduleState[]).includes(s);
+
     for (const r of rows) {
-      // Open = currently in-flight states (not done)
-      if (['defined', 'ready', 'in_progress'].includes(r.scheduleState)) openDefects++;
+      if (isOpen(r.scheduleState)) openDefects++;
       if (r.severity === 'critical') critical++;
-      // In-progress includes testing-like states
-      if (['in_progress', 'ready'].includes(r.scheduleState)) inProgress++;
-      if (['completed', 'accepted', 'released'].includes(r.scheduleState)) verifiedAccepted++;
+      if (r.scheduleState === 'in_progress') inProgress++;
+      if (isCompleted(r.scheduleState)) verifiedAccepted++;
       if (r.isBlocked) blockers++;
 
-      // Reopened heuristic: currently open but was previously resolved/closed
-      // Evidence: has a resolution set but scheduleState is NOT completed/accepted/released
-      // OR was created long ago, updated recently, and is back in an open state
-      if (r.resolution && ['defined', 'ready', 'in_progress'].includes(r.scheduleState)) {
-        reopened++;
-      }
+      // Reopened heuristic: has a resolution set but is back in an open state.
+      if (r.resolution && isOpen(r.scheduleState)) reopened++;
     }
 
     return { openDefects, critical, inProgress, verifiedAccepted, reopened, blockers };

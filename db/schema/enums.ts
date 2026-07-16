@@ -7,6 +7,7 @@
  * Naming convention: <context>_<field>_enum  → pgEnum('<context>_<field>', [...])
  */
 import { pgEnum } from 'drizzle-orm/pg-core';
+import { sql, type SQL } from 'drizzle-orm';
 
 // ── identity ───────────────────────────────────────────────────────────────
 
@@ -71,14 +72,16 @@ export const workItemPriorityEnum = pgEnum('work_item_priority', [
 
 // Rally-style ScheduleState: orthogonal business-maturity dimension, separate
 // from the per-project workflow engine (status_id → workflow_statuses).
+// Aligned to BA flow-state vocabulary (mini-rally): 6 states, no 'ready',
+// terminal state spelled 'release'. Migration 0041 backfills 'ready'→'defined'
+// and renames 'released'→'release'.
 export const workItemScheduleStateEnum = pgEnum('work_item_schedule_state', [
   'idea',
   'defined',
-  'ready',
   'in_progress',
   'completed',
   'accepted',
-  'released',
+  'release',
 ]);
 
 export const workflowStatusCategoryEnum = pgEnum('workflow_status_category', [
@@ -89,11 +92,7 @@ export const workflowStatusCategoryEnum = pgEnum('workflow_status_category', [
 
 // Rally Iteration State — a planning-maturity dimension on the timebox itself:
 // Planning (being shaped) → Committed (team committed) → Accepted (completed).
-export const iterationStateEnum = pgEnum('iteration_state', [
-  'planning',
-  'committed',
-  'accepted',
-]);
+export const iterationStateEnum = pgEnum('iteration_state', ['planning', 'committed', 'accepted']);
 
 export const releaseStatusEnum = pgEnum('release_status', ['planning', 'active', 'accepted']);
 
@@ -119,13 +118,14 @@ export const notificationJobStatusEnum = pgEnum('notification_job_status', [
   'failed',
 ]);
 
-// P3.4 — Defect severity (separate from priority).
-// P3.4 — 'none' added for P3.4 compliance (app layer maps labels: critical→Critical, high→Major Problem, medium→Minor Problem, low→Trivial, none→None).
+// P3.4 — Defect severity (separate from priority). Aligned to BA taxonomy
+// (mini-rally): tokens now equal labels (Critical / Major / Minor / Trivial /
+// None). Migration 0040 renames high→major, medium→minor, low→trivial.
 export const defectSeverityEnum = pgEnum('defect_severity', [
   'critical',
-  'high',
-  'medium',
-  'low',
+  'major',
+  'minor',
+  'trivial',
   'none',
 ]);
 
@@ -167,10 +167,16 @@ export const defectStateEnum = pgEnum('defect_state', [
 ]);
 
 // Task schedule state (subset for task table)
-export const taskStateEnum = pgEnum('task_state', [
-  'defined',
-  'in_progress',
-  'completed',
+export const taskStateEnum = pgEnum('task_state', ['defined', 'in_progress', 'completed']);
+
+// F6 — Work-item relation types (BA linking set). Stored on the canonical
+// (source → target) direction; the inverse label is derived in the app layer.
+export const workItemRelationTypeEnum = pgEnum('work_item_relation_type', [
+  'blocks',
+  'duplicates',
+  'relates_to',
+  'depends_on',
+  'causes',
 ]);
 
 // P3.3 — Milestone states aligned with BA spec.
@@ -211,3 +217,51 @@ export type DefectRootCause = (typeof defectRootCauseEnum.enumValues)[number];
 export type DefectResolution = (typeof defectResolutionEnum.enumValues)[number];
 export type DefectState = (typeof defectStateEnum.enumValues)[number];
 export type TaskState = (typeof taskStateEnum.enumValues)[number];
+export type WorkItemRelationType = (typeof workItemRelationTypeEnum.enumValues)[number];
+
+// ── Semantic groupings (single source of truth for roll-up / progress logic) ──
+// Used by reporting, releases, milestones, quality and iteration-status so the
+// definition of "done" / "accepted" / "open" lives in exactly one place.
+
+/** Schedule states that count as completed for progress & velocity roll-ups. */
+export const COMPLETED_SCHEDULE_STATES = [
+  'completed',
+  'accepted',
+  'release',
+] as const satisfies readonly WorkItemScheduleState[];
+
+/** Schedule states that count as accepted (a work item the team has signed off). */
+export const ACCEPTED_SCHEDULE_STATES = [
+  'accepted',
+  'release',
+] as const satisfies readonly WorkItemScheduleState[];
+
+/** Schedule states that are still open / in-flight (not yet completed). */
+export const OPEN_SCHEDULE_STATES = [
+  'idea',
+  'defined',
+  'in_progress',
+] as const satisfies readonly WorkItemScheduleState[];
+
+/** Type guard: is this schedule state counted as completed for roll-ups? */
+export const isCompletedScheduleState = (s: WorkItemScheduleState): boolean =>
+  (COMPLETED_SCHEDULE_STATES as readonly WorkItemScheduleState[]).includes(s);
+
+/** Type guard: is this schedule state counted as accepted? */
+export const isAcceptedScheduleState = (s: WorkItemScheduleState): boolean =>
+  (ACCEPTED_SCHEDULE_STATES as readonly WorkItemScheduleState[]).includes(s);
+
+// SQL fragment factories — inline the grouping into a raw `sql` IN (...) list so
+// aggregate/FILTER queries share the exact same definition of "done"/"accepted".
+// Factories (not shared instances) so each call yields a fresh, safely-bound chunk.
+const toSqlList = (values: readonly string[]): SQL =>
+  sql.join(
+    values.map((v) => sql`${v}`),
+    sql`, `,
+  );
+
+/** `'completed', 'accepted', 'release'` bound for use inside `schedule_state IN (...)`. */
+export const completedScheduleStatesSql = (): SQL => toSqlList(COMPLETED_SCHEDULE_STATES);
+
+/** `'accepted', 'release'` bound for use inside `schedule_state IN (...)`. */
+export const acceptedScheduleStatesSql = (): SQL => toSqlList(ACCEPTED_SCHEDULE_STATES);

@@ -1,5 +1,11 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
+import {
+  defectSeverityEnum,
+  defectEnvironmentEnum,
+  defectRootCauseEnum,
+  defectResolutionEnum,
+} from '../../../../../../../db/schema/enums';
 
 export const DefectMetricsSchema = z.object({
   openDefects: z.number(),
@@ -16,10 +22,10 @@ export const DefectRowSchema = z.object({
   title: z.string(),
   type: z.string(),
   priority: z.string(),
-  severity: z.enum(['critical', 'high', 'medium', 'low']).nullable(),
-  foundInEnvironment: z.enum(['development', 'staging', 'production', 'testing']).nullable(),
-  rootCause: z.enum(['requirements', 'design', 'code', 'test', 'integration', 'other']).nullable(),
-  resolution: z.enum(['fixed', 'wont_fix', 'duplicate', 'cannot_reproduce', 'deferred', 'by_design']).nullable(),
+  severity: z.enum(defectSeverityEnum.enumValues).nullable(),
+  foundInEnvironment: z.enum(defectEnvironmentEnum.enumValues).nullable(),
+  rootCause: z.enum(defectRootCauseEnum.enumValues).nullable(),
+  resolution: z.enum(defectResolutionEnum.enumValues).nullable(),
   foundInReleaseId: z.string().uuid().nullable(),
   foundInReleaseName: z.string().nullable(),
   assigneeId: z.string().uuid().nullable(),

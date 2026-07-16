@@ -70,6 +70,8 @@ import { NativeSelect } from '@/shared/ui/native-select'
 import { AddTaskModal } from '@/features/work-items/ui/add-task-modal'
 import { RichTextEditor } from '@/shared/ui/rich-text-editor'
 import { AttachmentBlock } from '@/features/collaboration/ui/attachment-block'
+import { LinkedItemsBlock } from '@/features/work-items/ui/linked-items-block'
+import { CommentThread } from '@/features/collaboration/ui/comment-thread'
 import { Spinner } from '@/shared/ui/spinner'
 import { useSaveState } from '@/shared/lib/hooks/use-save-state'
 import { SaveIndicator } from '@/shared/ui/save-indicator'
@@ -185,6 +187,8 @@ function DetailsTab({
 
       <AttachmentBlock workItemId={item.id} readOnly={readOnly} />
 
+      <LinkedItemsBlock workItemId={item.id} projectId={item.projectId} readOnly={readOnly} />
+
       <RichTextEditor
         title="Notes"
         value={item.notes}
@@ -203,6 +207,8 @@ function DetailsTab({
           onSave={handleSave('releaseNotes')}
         />
       )}
+
+      <CommentThread workItemId={item.id} projectId={item.projectId} readOnly={readOnly} />
     </div>
   )
 }
@@ -1181,20 +1187,21 @@ export function WorkItemDetailPage() {
             <span>{isWatching ? 'Watching' : 'Watch'}</span>
           </button>
 
-          <div ref={moreRef} className="relative">
-            <button
-              aria-label="More actions"
-              onClick={() => setMoreOpen((o) => !o)}
-              className="rounded p-1.5 hover:bg-white/10"
-            >
-              <MoreHorizontal size={17} />
-            </button>
-            {moreOpen && (
-              <div
-                className="absolute top-full right-0 z-50 mt-1 w-44 overflow-hidden rounded shadow-lg"
-                style={{ backgroundColor: 'white', border: '1px solid #d7dde7' }}
+          {/* BA rule (P3.4): defects are never deleted — hide the whole menu for them. */}
+          {!readOnly && itemByKey.type !== 'defect' && (
+            <div ref={moreRef} className="relative">
+              <button
+                aria-label="More actions"
+                onClick={() => setMoreOpen((o) => !o)}
+                className="rounded p-1.5 hover:bg-white/10"
               >
-                {!readOnly && (
+                <MoreHorizontal size={17} />
+              </button>
+              {moreOpen && (
+                <div
+                  className="absolute top-full right-0 z-50 mt-1 w-44 overflow-hidden rounded shadow-lg"
+                  style={{ backgroundColor: 'white', border: '1px solid #d7dde7' }}
+                >
                   <button
                     onClick={() => void handleDelete()}
                     disabled={deleteMutation.isPending}
@@ -1204,10 +1211,10 @@ export function WorkItemDetailPage() {
                     <Trash2 size={13} />
                     Delete work item
                   </button>
-                )}
-              </div>
-            )}
-          </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Tab row */}

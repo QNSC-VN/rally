@@ -5,12 +5,24 @@ import {
   workItemTypeEnum,
   workItemPriorityEnum,
   workItemScheduleStateEnum,
+  defectSeverityEnum,
+  defectEnvironmentEnum,
+  defectRootCauseEnum,
+  defectResolutionEnum,
+  defectStateEnum,
+  workItemRelationTypeEnum,
 } from '../../../../../../../db/schema/enums';
 import { UNASSIGNED_FILTER } from '../../../domain/work-item.types';
 
 const WORK_ITEM_TYPES = workItemTypeEnum.enumValues;
 const WORK_ITEM_PRIORITIES = workItemPriorityEnum.enumValues;
 const SCHEDULE_STATES = workItemScheduleStateEnum.enumValues;
+// Defect enums are all derived from the drizzle enums (single source of truth).
+const DEFECT_SEVERITIES = defectSeverityEnum.enumValues;
+const DEFECT_ENVIRONMENTS = defectEnvironmentEnum.enumValues;
+const DEFECT_ROOT_CAUSES = defectRootCauseEnum.enumValues;
+const DEFECT_RESOLUTIONS = defectResolutionEnum.enumValues;
+const DEFECT_STATES = defectStateEnum.enumValues;
 
 // Hours: accept a non-negative number, persist as fixed(2) string (Drizzle numeric).
 const hoursOptional = z.coerce
@@ -69,15 +81,13 @@ export const CreateWorkItemSchema = z.object({
   notes: z.string().max(50000).optional(),
   releaseNotes: z.string().max(50000).optional(),
   // P3.4 — Defect-specific fields (only meaningful when type='defect')
-  severity: z.enum(['none', 'critical', 'high', 'medium', 'low']).optional(),
-  foundInEnvironment: z.enum(['development', 'staging', 'production', 'testing']).optional(),
+  severity: z.enum(DEFECT_SEVERITIES).optional(),
+  foundInEnvironment: z.enum(DEFECT_ENVIRONMENTS).optional(),
   foundInReleaseId: z.string().uuid().nullable().optional(),
-  rootCause: z.enum(['requirements', 'design', 'code', 'test', 'integration', 'other']).optional(),
-  resolution: z
-    .enum(['fixed', 'wont_fix', 'duplicate', 'cannot_reproduce', 'deferred', 'by_design'])
-    .optional(),
+  rootCause: z.enum(DEFECT_ROOT_CAUSES).optional(),
+  resolution: z.enum(DEFECT_RESOLUTIONS).optional(),
   devOwnerId: z.string().uuid().nullable().optional(),
-  defectState: z.enum(['submitted', 'open', 'fixed', 'closed', 'closed_declined']).optional(),
+  defectState: z.enum(DEFECT_STATES).optional(),
   fixedInBuild: z.string().max(255).nullable().optional(),
 });
 
@@ -108,25 +118,13 @@ export const UpdateWorkItemSchema = z.object({
   blockedReason: z.string().max(1000).nullable().optional(),
   customFields: z.record(z.string(), z.unknown()).optional(),
   // P3.4 — Defect-specific fields
-  severity: z.enum(['none', 'critical', 'high', 'medium', 'low']).nullable().optional(),
-  foundInEnvironment: z
-    .enum(['development', 'staging', 'production', 'testing'])
-    .nullable()
-    .optional(),
+  severity: z.enum(DEFECT_SEVERITIES).nullable().optional(),
+  foundInEnvironment: z.enum(DEFECT_ENVIRONMENTS).nullable().optional(),
   foundInReleaseId: z.string().uuid().nullable().optional(),
-  rootCause: z
-    .enum(['requirements', 'design', 'code', 'test', 'integration', 'other'])
-    .nullable()
-    .optional(),
-  resolution: z
-    .enum(['fixed', 'wont_fix', 'duplicate', 'cannot_reproduce', 'deferred', 'by_design'])
-    .nullable()
-    .optional(),
+  rootCause: z.enum(DEFECT_ROOT_CAUSES).nullable().optional(),
+  resolution: z.enum(DEFECT_RESOLUTIONS).nullable().optional(),
   devOwnerId: z.string().uuid().nullable().optional(),
-  defectState: z
-    .enum(['submitted', 'open', 'fixed', 'closed', 'closed_declined'])
-    .nullable()
-    .optional(),
+  defectState: z.enum(DEFECT_STATES).nullable().optional(),
   fixedInBuild: z.string().max(255).nullable().optional(),
 });
 
@@ -274,3 +272,12 @@ export const PresignAttachmentSchema = z.object({
 });
 
 export class PresignAttachmentDto extends createZodDto(PresignAttachmentSchema) {}
+
+// ── Relations (F6 — work-item linking) ────────────────────────────────────────
+
+export const CreateRelationSchema = z.object({
+  targetId: z.string().uuid(),
+  relationType: z.enum(workItemRelationTypeEnum.enumValues),
+});
+
+export class CreateRelationDto extends createZodDto(CreateRelationSchema) {}

@@ -25,11 +25,10 @@ export interface StateStep<T extends string = string> {
 const SCHEDULE_STATE_ABBR: Record<ScheduleState, string> = {
   [ScheduleState.Idea]: 'I',
   [ScheduleState.Defined]: 'D',
-  [ScheduleState.Ready]: 'R',
   [ScheduleState.InProgress]: 'P',
   [ScheduleState.Completed]: 'C',
   [ScheduleState.Accepted]: 'A',
-  [ScheduleState.Released]: 'L',
+  [ScheduleState.Release]: 'L',
 }
 
 /** Story/defect-level steps — every canonical schedule state. */

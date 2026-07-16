@@ -49,6 +49,7 @@ export class CollaborationService {
     workItemId: string,
     body: string,
     parentId?: string,
+    mentionedUserIds: string[] = [],
   ): Promise<Comment> {
     await this.assertCanCollaborate(actor, workItemId);
     const comment = await this.commentRepo.create({
@@ -60,6 +61,11 @@ export class CollaborationService {
       parentId,
     });
     this.logger.log({ commentId: comment.id, workItemId }, 'Comment created');
+    // F7 — notify watchers/assignee (comment) and any @mentioned users. Best-effort:
+    // a notification failure must never fail the comment write.
+    void this.workItemsService
+      .notifyCommentAdded(actor, workItemId, mentionedUserIds)
+      .catch(() => undefined);
     return comment;
   }
 

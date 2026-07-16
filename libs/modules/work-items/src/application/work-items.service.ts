@@ -10,6 +10,12 @@ import {
 } from '@platform';
 import type { JwtPayload, CursorPayload, PagedResult, DbExecutor } from '@platform';
 import { PERMISSION, type ProjectPermission } from '@shared-kernel';
+import { isAcceptedScheduleState } from '../../../../../db/schema/enums';
+import { NotificationSchedulerService } from '@platform/notifications/notification-scheduler.service';
+import type {
+  NotificationTemplateName,
+  NotificationTemplateVars,
+} from '@platform/notifications/notification.templates';
 import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
 import { IWorkItemRepository, WORK_ITEM_REPOSITORY } from '../domain/ports/work-item.repository';
@@ -23,6 +29,15 @@ import {
   IAttachmentRepository,
   ATTACHMENT_REPOSITORY,
 } from '../domain/ports/attachment.repository';
+import {
+  IWorkItemRelationRepository,
+  WORK_ITEM_RELATION_REPOSITORY,
+} from '../domain/ports/work-item-relation.repository';
+import {
+  isAcyclicRelationType,
+  type WorkItemRelationView,
+} from '../domain/work-item-relation.types';
+import type { WorkItemRelationType } from '../../../../../db/schema/enums';
 import type {
   WorkItem,
   WorkItemType,
@@ -106,6 +121,9 @@ export class WorkItemsService {
     @Inject(TIME_LOG_REPOSITORY) private readonly timeLogRepo: ITimeLogRepository,
     @Inject(WATCHER_REPOSITORY) private readonly watcherRepo: IWatcherRepository,
     @Inject(ATTACHMENT_REPOSITORY) private readonly attachmentRepo: IAttachmentRepository,
+    @Inject(WORK_ITEM_RELATION_REPOSITORY)
+    private readonly relationRepo: IWorkItemRelationRepository,
+    private readonly notificationScheduler: NotificationSchedulerService,
     private readonly storageService: StorageService,
     private readonly projectsService: ProjectsService,
     private readonly accessService: AccessService,
@@ -529,13 +547,14 @@ export class WorkItemsService {
 
     const entries = diffWorkItem(item, input, isTask);
 
-    return this.uow.run(async (tx) => {
-      const updated = await this.workItemRepo.update(
+    const updated = await this.uow.run(async (tx) => {
+      const updatedInTx = await this.workItemRepo.update(
         id,
         { ...input, updatedBy: actor.sub },
         actor.workspaceId,
         tx,
       );
+      const updated = updatedInTx;
 
       // Build all diff entries then flush in ONE multi-row INSERT — avoids N
       // sequential round-trips for edits that touch multiple fields at once.
@@ -544,6 +563,30 @@ export class WorkItemsService {
         this.buildActivityInput(updated, entityType, actor.sub, e.action, e.change),
       );
       await this.activityRepo.appendMany(activityInputs, tx);
+
+      // ── Auto-accept iteration when ALL assigned Story/Defect are accepted (BA F1) ──
+      // Fires when this Story/Defect transitions INTO an accepted state and is
+      // assigned to an iteration. The repo guards idempotency (committed → accepted
+      // only) and the ≥1-item / all-accepted rule.
+      if (
+        !isTask &&
+        input.scheduleState !== undefined &&
+        isAcceptedScheduleState(input.scheduleState) &&
+        !isAcceptedScheduleState(item.scheduleState) &&
+        updated.iterationId
+      ) {
+        const flipped = await this.workItemRepo.autoAcceptIterationIfComplete(
+          updated.iterationId,
+          actor.workspaceId,
+          tx,
+        );
+        if (flipped) {
+          this.logger.log(
+            { iterationId: updated.iterationId },
+            'Iteration auto-accepted — all assigned Story/Defect items are accepted',
+          );
+        }
+      }
 
       // ── Auto-complete parent US/DE when ALL tasks are completed ──
       // NOTE: We use input.scheduleState (not updated.scheduleState) because the
@@ -596,15 +639,250 @@ export class WorkItemsService {
 
       return updated;
     });
+
+    // ── F7 notifications (best-effort, post-commit) ──
+    // Assignment: notify (and auto-watch) the new assignee.
+    const assigneeChanged =
+      input.assigneeId !== undefined &&
+      !!updated.assigneeId &&
+      updated.assigneeId !== item.assigneeId;
+    if (assigneeChanged && updated.assigneeId) {
+      await this.watcherRepo
+        .watch(updated.id, updated.assigneeId, actor.workspaceId)
+        .catch(() => undefined);
+      if (updated.assigneeId !== actor.sub) {
+        await this.emitWorkItemNotification(
+          'WORK_ITEM_ASSIGNED',
+          updated,
+          actor.sub,
+          [updated.assigneeId],
+          { itemKey: updated.itemKey, itemTitle: updated.title },
+          updated.assigneeId,
+        );
+      }
+    }
+
+    // Schedule-state change: notify watchers ∪ assignee (minus the actor).
+    if (input.scheduleState !== undefined && updated.scheduleState !== item.scheduleState) {
+      const recipients = await this.resolveRecipients(updated.id, [updated.assigneeId], actor.sub);
+      if (recipients.length > 0) {
+        await this.emitWorkItemNotification(
+          'WORK_ITEM_STATE_CHANGED',
+          updated,
+          actor.sub,
+          recipients,
+          {
+            itemKey: updated.itemKey,
+            itemTitle: updated.title,
+            newState: updated.scheduleState,
+          },
+          updated.scheduleState,
+        );
+      }
+    }
+
+    return updated;
   }
 
   // ── Delete ────────────────────────────────────────────────────────────────
 
   @Span('work-items.delete')
   async deleteWorkItem(actor: JwtPayload, id: string): Promise<void> {
-    await this.getWorkItemForWrite(actor, id, PERMISSION.WORK_ITEM_DELETE);
+    const item = await this.getWorkItemForWrite(actor, id, PERMISSION.WORK_ITEM_DELETE);
+    // BA rule (P3.4): defects are never deleted — they are resolved by moving to
+    // the 'closed' / 'closed_declined' defect state so the audit trail survives.
+    if (item.type === 'defect') {
+      throw new PreconditionFailedException(
+        'DEFECT_DELETE_FORBIDDEN',
+        'Defects cannot be deleted. Resolve the defect by setting its state to Closed or Closed Declined.',
+      );
+    }
     await this.workItemRepo.softDelete(id, actor.workspaceId);
     this.logger.log({ workItemId: id }, 'Work item soft-deleted');
+  }
+
+  // ── Notifications (F7) ──────────────────────────────────────────────────────
+  // Producers enqueue in-app notifications for the item's watchers + assignee
+  // (minus the actor). The Worker relay applies each recipient's preference and
+  // handles delivery/SSE — this layer only fans out candidates.
+
+  /** Watchers ∪ extra recipients, de-duplicated, with the actor removed. */
+  private async resolveRecipients(
+    workItemId: string,
+    extra: (string | null | undefined)[],
+    actorId: string,
+  ): Promise<string[]> {
+    const watchers = await this.watcherRepo.listUserIds(workItemId);
+    const set = new Set<string>(watchers);
+    for (const id of extra) if (id) set.add(id);
+    set.delete(actorId);
+    return [...set];
+  }
+
+  private async emitWorkItemNotification<K extends NotificationTemplateName>(
+    template: K,
+    item: WorkItem,
+    actorId: string,
+    recipientIds: string[],
+    vars: NotificationTemplateVars[K],
+    discriminator: string,
+  ): Promise<void> {
+    await Promise.all(
+      recipientIds.map((recipientId) =>
+        this.notificationScheduler
+          .schedule({
+            workspaceId: item.workspaceId,
+            recipientId,
+            actorId,
+            template,
+            vars,
+            resourceId: item.id,
+            idempotencyKey: `${template}:${item.id}:${recipientId}:${discriminator}`,
+          })
+          .catch((err: unknown) =>
+            this.logger.warn(
+              { err, template, workItemId: item.id, recipientId },
+              'Failed to enqueue work-item notification',
+            ),
+          ),
+      ),
+    );
+  }
+
+  /**
+   * F7 — fan out comment + mention notifications. Called by CollaborationService
+   * after a comment is persisted. Auto-watches the commenter (BA rule).
+   */
+  async notifyCommentAdded(
+    actor: JwtPayload,
+    workItemId: string,
+    mentionedUserIds: string[] = [],
+  ): Promise<void> {
+    const item = await this.getWorkItem(actor.workspaceId, workItemId);
+    // Commenter auto-watches the item so they receive follow-up activity.
+    await this.watcherRepo.watch(workItemId, actor.sub, actor.workspaceId).catch(() => undefined);
+
+    const vars = { itemKey: item.itemKey, itemTitle: item.title };
+    const mentioned = mentionedUserIds.filter((id) => id && id !== actor.sub);
+
+    // Mentions take precedence — a mentioned watcher gets the mention, not the
+    // generic comment notification.
+    if (mentioned.length > 0) {
+      await this.emitWorkItemNotification(
+        'WORK_ITEM_MENTIONED',
+        item,
+        actor.sub,
+        mentioned,
+        vars,
+        workItemId,
+      );
+    }
+    const commentRecipients = (
+      await this.resolveRecipients(workItemId, [item.assigneeId], actor.sub)
+    ).filter((id) => !mentioned.includes(id));
+    if (commentRecipients.length > 0) {
+      await this.emitWorkItemNotification(
+        'WORK_ITEM_COMMENTED',
+        item,
+        actor.sub,
+        commentRecipients,
+        vars,
+        workItemId,
+      );
+    }
+  }
+
+  // ── Relations (F6 — work-item linking) ──────────────────────────────────────
+
+  @Span('work-items.list-relations')
+  async listRelations(actor: JwtPayload, id: string): Promise<WorkItemRelationView[]> {
+    // Authorize a read on the item's own project (project isolation).
+    await this.getWorkItemForView(actor, id);
+    return this.relationRepo.listForItem(id, actor.workspaceId);
+  }
+
+  @Span('work-items.link')
+  async linkWorkItem(
+    actor: JwtPayload,
+    sourceId: string,
+    targetId: string,
+    relationType: WorkItemRelationType,
+  ): Promise<WorkItemRelationView[]> {
+    // Editing the source item's links requires edit on its project.
+    await this.getWorkItemForWrite(actor, sourceId, PERMISSION.WORK_ITEM_EDIT);
+
+    if (sourceId === targetId) {
+      throw new PreconditionFailedException(
+        'WORK_ITEM_RELATION_SELF',
+        'A work item cannot be linked to itself',
+      );
+    }
+
+    // Target must exist within the same workspace (cross-project allowed).
+    await this.getWorkItem(actor.workspaceId, targetId);
+
+    if (await this.relationRepo.exists(sourceId, targetId, relationType, actor.workspaceId)) {
+      throw new PreconditionFailedException(
+        'WORK_ITEM_RELATION_EXISTS',
+        'This relation already exists',
+      );
+    }
+
+    // Guard against dependency cycles for ordering relations (blocks/depends_on).
+    if (isAcyclicRelationType(relationType)) {
+      const cycle = await this.relationRepo.wouldCreateCycle(
+        sourceId,
+        targetId,
+        relationType,
+        actor.workspaceId,
+      );
+      if (cycle) {
+        throw new PreconditionFailedException(
+          'WORK_ITEM_RELATION_CYCLE',
+          `Adding this ${relationType} relation would create a dependency cycle`,
+        );
+      }
+    }
+
+    await this.relationRepo.create(
+      { sourceItemId: sourceId, targetItemId: targetId, relationType, createdBy: actor.sub },
+      actor.workspaceId,
+    );
+
+    const source = await this.getWorkItem(actor.workspaceId, sourceId);
+    void this.activityRepo.append(
+      this.buildActivityInput(source, 'work_item', actor.sub, 'work_item.relation_added', null, {
+        relationType,
+        targetId,
+      }),
+    );
+
+    return this.relationRepo.listForItem(sourceId, actor.workspaceId);
+  }
+
+  @Span('work-items.unlink')
+  async unlinkWorkItem(actor: JwtPayload, sourceId: string, relationId: string): Promise<void> {
+    await this.getWorkItemForWrite(actor, sourceId, PERMISSION.WORK_ITEM_EDIT);
+    const relation = await this.relationRepo.findById(relationId, actor.workspaceId);
+    if (!relation) {
+      throw new NotFoundException('WORK_ITEM_RELATION_NOT_FOUND', 'Relation not found');
+    }
+    // The relation must actually touch the source item (either end).
+    if (relation.sourceItemId !== sourceId && relation.targetItemId !== sourceId) {
+      throw new NotFoundException(
+        'WORK_ITEM_RELATION_NOT_FOUND',
+        'Relation does not belong to this work item',
+      );
+    }
+    await this.relationRepo.delete(relationId, actor.workspaceId);
+
+    const source = await this.getWorkItem(actor.workspaceId, sourceId);
+    void this.activityRepo.append(
+      this.buildActivityInput(source, 'work_item', actor.sub, 'work_item.relation_removed', null, {
+        relationType: relation.relationType,
+        relationId,
+      }),
+    );
   }
 
   // ── Move (board transition) ───────────────────────────────────────────────

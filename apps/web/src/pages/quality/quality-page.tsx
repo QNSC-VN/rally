@@ -26,6 +26,8 @@ import {
   DEFECT_SEVERITY_CONFIG,
   DEFECT_SEVERITY_OPTIONS,
   PRIORITY_LABEL,
+  SCHEDULE_STATE_VALUES,
+  SCHEDULE_STATE_LABEL,
   type ScheduleState,
 } from '@/entities/work-item/model/types'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
@@ -61,15 +63,12 @@ import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 const SEVERITY_STYLE = DEFECT_SEVERITY_CONFIG
 const SEVERITY_OPTIONS = DEFECT_SEVERITY_OPTIONS
 
-/** Flow State (schedule state) — SRS labels */
-const FLOW_STATE_OPTIONS: { value: string; label: string }[] = [
-  { value: 'idea', label: 'Idea' },
-  { value: 'defined', label: 'Defined' },
-  { value: 'in_progress', label: 'In-Progress' },
-  { value: 'completed', label: 'Completed' },
-  { value: 'accepted', label: 'Accepted' },
-  { value: 'released', label: 'Released' },
-]
+/** Flow State (schedule state) options — derived from the shared entity config
+ * so the defect page can never drift from the canonical schedule-state set. */
+const FLOW_STATE_OPTIONS: { value: string; label: string }[] = SCHEDULE_STATE_VALUES.map((v) => ({
+  value: v,
+  label: SCHEDULE_STATE_LABEL[v],
+}))
 
 // Labels sourced from the shared work-item config (single source of truth);
 // order is defect-page specific (most-urgent first).

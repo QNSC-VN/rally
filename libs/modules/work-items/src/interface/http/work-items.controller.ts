@@ -40,6 +40,7 @@ import {
   UpdateTimeLogDto,
   TimeLogQueryDto,
   PresignAttachmentDto,
+  CreateRelationDto,
 } from './dto/work-item-request.dto';
 import {
   WorkItemResponseDto,
@@ -538,6 +539,45 @@ export class WorkItemsController {
     @Param('labelId', ParseUUIDPipe) labelId: string,
   ): Promise<void> {
     await this.workItemsService.removeLabelFromWorkItem(user, id, labelId);
+  }
+
+  // ── Relations (F6 — work-item linking) ──────────────────────────────────────
+
+  @Get(':id/relations')
+  @ApiOperation({ summary: 'List work items linked to this work item' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, description: 'Resolved relation views (outbound + inbound)' })
+  @ApiCommonErrors(401, 404)
+  async listRelations(@CurrentUser() user: JwtPayload, @Param('id', ParseUUIDPipe) id: string) {
+    return this.workItemsService.listRelations(user, id);
+  }
+
+  @Post(':id/relations')
+  @ApiOperation({ summary: 'Link this work item to another (blocks/duplicates/relates/…)' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 201, description: 'Relation created; returns the updated relation list' })
+  @ApiCommonErrors(400, 401, 404, 422)
+  async createRelation(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateRelationDto,
+  ) {
+    return this.workItemsService.linkWorkItem(user, id, dto.targetId, dto.relationType);
+  }
+
+  @Delete(':id/relations/:relationId')
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Remove a link between work items' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiParam({ name: 'relationId', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 204, description: 'Relation removed' })
+  @ApiCommonErrors(401, 404)
+  async deleteRelation(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('relationId', ParseUUIDPipe) relationId: string,
+  ): Promise<void> {
+    await this.workItemsService.unlinkWorkItem(user, id, relationId);
   }
 
   // ── Milestones ──────────────────────────────────────────────────────────────

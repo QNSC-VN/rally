@@ -68,6 +68,7 @@ export class CollaborationController {
       workItemId,
       dto.body,
       dto.parentId,
+      dto.mentionedUserIds,
     );
     return toCommentDto(comment);
   }

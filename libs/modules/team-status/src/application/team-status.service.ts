@@ -207,7 +207,10 @@ export class TeamStatusService {
   /**
    * Update a task from Team Status (P3-TS-FR-019 … P3-TS-FR-023).
    * Accepts partial patch for title and/or state.
-   * When state = Completed, propagates to parent work product (P3-TS-05).
+   * Parent roll-up (P3-TS-05) is owned by WorkItemsService.updateWorkItem, which
+   * auto-completes the parent US/DE ONLY when every child task is completed; this
+   * method never force-completes the parent. It re-reads the parent afterwards so
+   * the returned workProduct reflects the parent's actual status.
    * P3 refactor: updates the `tasks` table via work-items service.
    */
   async updateTask(
@@ -275,21 +278,23 @@ export class TeamStatusService {
       state: STATE_NORMALIZE[updated.scheduleState] ?? 'Defined',
     };
 
-    // Propagate completion to parent work product (P3-TS-05).
-    if (input.state === 'Completed' && updated.parentId) {
+    // Parent roll-up (BA P3-TS-05) is owned centrally by
+    // WorkItemsService.updateWorkItem, which auto-completes the parent US/DE
+    // ONLY when every child task is completed. We must NOT force-complete the
+    // parent here — a single completed task does not complete the work product.
+    // Re-read the parent so the UI reflects its actual resulting status.
+    if (updated.parentId) {
       try {
-        const parent = await this.workItemsService.updateWorkItem(actor, updated.parentId, {
-          scheduleState: 'completed',
-        });
+        const parent = await this.workItemsService.getWorkItem(actor.workspaceId, updated.parentId);
         result.workProduct = {
           id: parent.id,
           key: parent.itemKey,
-          status: 'Completed',
+          status: parent.scheduleState,
         };
       } catch {
         this.logger.warn(
           { taskId, parentId: updated.parentId },
-          'Failed to check/propagate completion to parent work product',
+          'Failed to read parent work product status after task update',
         );
       }
     }
