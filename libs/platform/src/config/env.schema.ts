@@ -57,6 +57,16 @@ export const EnvSchema = z.object({
   S3_ATTACHMENTS_BUCKET: z.string().default('rally-attachments'),
   CDN_ATTACHMENTS_BASE_URL: z.string().url().optional(),
 
+  // Object-storage backend selection (provider-neutral). All optional:
+  //  - unset          → AWS S3 via the default credential chain (ECS task role).
+  //  - STORAGE_ENDPOINT set → S3-compatible backend (Cloudflare R2, MinIO).
+  // R2 requires STORAGE_ENDPOINT + STORAGE_ACCESS_KEY_ID + STORAGE_SECRET_ACCESS_KEY
+  // + STORAGE_FORCE_PATH_STYLE=true. Bucket name stays S3_ATTACHMENTS_BUCKET.
+  STORAGE_ENDPOINT: z.string().url().optional(),
+  STORAGE_ACCESS_KEY_ID: z.string().optional(),
+  STORAGE_SECRET_ACCESS_KEY: z.string().optional(),
+  STORAGE_FORCE_PATH_STYLE: booleanish(false),
+
   // ── Email ──────────────────────────────────────────────────────────────────
   /**
    * Which email transport to use. Defaults to 'dev' (logs to stdout).
