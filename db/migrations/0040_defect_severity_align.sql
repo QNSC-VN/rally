@@ -9,8 +9,8 @@
 -- medium   → minor
 -- low      → trivial
 -- none     → none (unchanged)
-ALTER TYPE "public"."defect_severity" RENAME VALUE 'high' TO 'major';
+ALTER TYPE "work"."defect_severity" RENAME VALUE 'high' TO 'major';
 --> statement-breakpoint
-ALTER TYPE "public"."defect_severity" RENAME VALUE 'medium' TO 'minor';
+ALTER TYPE "work"."defect_severity" RENAME VALUE 'medium' TO 'minor';
 --> statement-breakpoint
-ALTER TYPE "public"."defect_severity" RENAME VALUE 'low' TO 'trivial';
+ALTER TYPE "work"."defect_severity" RENAME VALUE 'low' TO 'trivial';

@@ -1,5 +1,19 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { uuidv7 } from 'uuidv7';
+
+/**
+ * Deterministic UUID (v5-style, SHA-1) from an arbitrary business-event key.
+ * Used for notification idempotency: the same event → same UUID → the relay's
+ * source_event_id unique index de-dupes, while satisfying the UUID column type.
+ */
+function stableEventId(name: string): string {
+  const b = createHash('sha1').update(name).digest().subarray(0, 16);
+  b[6] = (b[6] & 0x0f) | 0x50; // version 5
+  b[8] = (b[8] & 0x3f) | 0x80; // RFC-4122 variant
+  const h = b.toString('hex');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
+}
 import {
   NotFoundException,
   PermissionDeniedException,
@@ -737,7 +751,10 @@ export class WorkItemsService {
             template,
             vars,
             resourceId: item.id,
-            idempotencyKey: `${template}:${item.id}:${recipientId}:${discriminator}`,
+            // The relay writes idempotencyKey into in_app_notifications.source_event_id
+            // (a UUID). Derive a deterministic UUID from the business-event key so
+            // dedup still holds while satisfying the column type.
+            idempotencyKey: stableEventId(`${template}:${item.id}:${recipientId}:${discriminator}`),
           })
           .catch((err: unknown) =>
             this.logger.warn(
