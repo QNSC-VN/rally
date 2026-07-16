@@ -10,7 +10,6 @@ output "rds_endpoint" { value = module.rds.endpoint }
 output "rds_master_secret_arn" { value = module.rds.master_secret_arn }
 output "cache_endpoint" { value = local.cache_endpoint }
 output "secret_arns" { value = module.secrets.secret_arns }
-output "attachments_bucket" { value = module.app_bucket.bucket }
 
 # Networking — needed for ECS run-task (migrator) and GitHub env vars.
 # Sourced from the shared runtime layer (runtime-prod) so the CI output-sync stays correct.

@@ -349,29 +349,12 @@ module "worker" {
   tags = { Environment = local.env, Service = "worker" }
 }
 
-# ── S3 — Attachments bucket (TRANSITIONAL) ────────────────────────────
-# Attachments now live in Cloudflare R2 (see the api/worker STORAGE_* wiring and
-# the storage-prod remote state above). This S3 bucket is retained ONLY as a
-# rollback path during the R2 cutover — nothing writes to it once STORAGE_ENDPOINT
-# is set. Remove this module (and its outputs) in a follow-up once the prod R2
-# round-trip is verified. force_destroy stays false so the rollback data is safe.
-module "app_bucket" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/app-bucket?ref=app-bucket-v1.0.0"
-
-  name          = "${local.name}-attachments"
-  kms_key_arn   = local.kms_key_arn
-  force_destroy = false # prod: retain attachments — never allow accidental bucket wipe
-
-  cors_rules = [{
-    allowed_headers = ["Content-Type", "Content-Disposition"]
-    allowed_methods = ["PUT"]
-    allowed_origins = [local.app_base_url]
-    expose_headers  = ["ETag"]
-    max_age_seconds = 3600
-  }]
-
-  tags = { Environment = local.env }
-}
+# Attachments object storage lives entirely in Cloudflare R2 (platform
+# storage-prod stack; see the api/worker STORAGE_* wiring and the storage remote
+# state above). Prod launches R2-native — there is no transitional S3 rollback
+# bucket: this environment is greenfield (no pre-existing attachment data to roll
+# back to) and the R2 path was verified end-to-end in develop first. This keeps
+# dev/prod parity (develop has no app_bucket either).
 
 # ── Migrator (one-shot, run by the deploy pipeline before the service update) ─
 # Runs `pnpm migration:run` then exits. Never scheduled as a service; the
