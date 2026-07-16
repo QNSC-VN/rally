@@ -58,7 +58,7 @@ module "ecr" {
 # The web SPA deploys to Cloudflare Pages (see live/*/main.tf module "web"), so
 # it needs no AWS deploy role here.
 module "iam_oidc" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/iam-oidc?ref=iam-oidc-v1.2.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/iam-oidc?ref=iam-oidc-v2.0.1"
 
   product           = "rally"
   github_org        = local.github_org
@@ -85,6 +85,22 @@ module "iam_oidc" {
   ecr_repository_pattern = "rally-*"
   ecs_passrole_pattern   = "rally-*" # shared ecs-service names roles <cluster>-<service>-task
   tags                   = { Layer = "shared" }
+
+  # infra_plan_subjects / infra_apply_subjects: rally's infra-apply jobs run in
+  # the shared/develop/production GitHub Environments (see infra-apply.yml), which
+  # exactly match the module defaults — so no override is needed.
+
+  # Blast-radius guardrail: explicit-Deny on the rally infra-apply role so a buggy
+  # rally apply cannot destroy the platform's own foundations (state bucket, lock
+  # table, OIDC provider, CMK) or mint IAM users — all of which are owned by
+  # qnsc-infra bootstrap, never by rally.
+  infra_apply_guardrail = {
+    state_bucket_arn     = "arn:aws:s3:::qnsc-tofu-state"
+    lock_table_arn       = "arn:aws:dynamodb:ap-southeast-1:${data.aws_caller_identity.current.account_id}:table/qnsc-tofu-locks"
+    oidc_provider_arn    = data.terraform_remote_state.platform.outputs.oidc_provider_arn
+    kms_key_arn          = data.terraform_remote_state.platform.outputs.kms_key_arn
+    artifacts_bucket_arn = data.terraform_remote_state.platform.outputs.artifacts_bucket_arn
+  }
 }
 
 # ── RDS dev-cost-saver guard — develop deploy role only ──────────────────────
@@ -122,59 +138,10 @@ resource "aws_iam_role_policy" "deploy_rds_dev_guard" {
   })
 }
 
-# ── ECS deploy verification — both deploy roles ────────────────────────────
-# verify-ecs-deploy enumerates running tasks (aws ecs list-tasks) to confirm the
-# new image tag is live after a deploy. Without ecs:ListTasks the call is denied,
-# the action swallows the error, and verification always times out. The baseline
-# iam-oidc module (main / next release) grants this, but this stack still pins
-# iam-oidc-v1.2.0 — adopting the newer module also changes the infra-apply OIDC
-# trust, so we grant it here (both envs) until that bump is done deliberately.
-resource "aws_iam_role_policy" "deploy_ecs_verify" {
-  for_each = toset(["develop", "production"])
-
-  name = "rally-deploy-${each.key}-ecs-verify"
-  role = split("/", module.iam_oidc.deploy_role_arns[each.key])[1]
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid      = "ECSVerifyListTasks"
-        Effect   = "Allow"
-        Action   = ["ecs:ListTasks"]
-        Resource = "*"
-      }
-    ]
-  })
-}
-
-# ── ECR digest resolve — ecr-push role (tag→prod promote) ──────────────────
-# The promote job (github.ref_type == 'tag') resolves the promoted image digest
-# via `aws ecr describe-images` ("Resolve promoted API digest" step). The
-# ecr-push role's baseline policy (iam-oidc-v1.2.0) grants push/pull + batch-get
-# + put-image but NOT ecr:DescribeImages, so the resolve fails AccessDenied and
-# the whole prod deploy aborts. Dev never hits this: dev builds and deploys in a
-# single job and never runs the promote path, so the gap only surfaces on the
-# first tag release to prod.
-# Granted here (scoped to the rally-* repos) rather than via a module bump, for
-# the same reason as deploy_ecs_verify above: adopting a newer iam-oidc also
-# changes the infra-apply OIDC trust. The baseline module is being fixed in
-# parallel (iam-oidc next release); drop this once this stack adopts it.
-resource "aws_iam_role_policy" "ecr_push_describe_images" {
-  name = "rally-ecr-push-describe-images"
-  role = split("/", module.iam_oidc.ecr_push_role_arn)[1]
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid      = "ECRDescribeImagesForPromote"
-        Effect   = "Allow"
-        Action   = ["ecr:DescribeImages"]
-        Resource = "arn:aws:ecr:ap-southeast-1:${data.aws_caller_identity.current.account_id}:repository/rally-*"
-      }
-    ]
-  })
-}
+# NOTE: the former inline patches `deploy_ecs_verify` (ecs:ListTasks) and
+# `ecr_push_describe_images` (ecr:DescribeImages) were removed when this stack
+# adopted iam-oidc-v2.0.1 — the module now grants both permissions on the deploy
+# and ecr-push roles respectively, so the module is once again the single source
+# of truth for these roles.
 
 
