@@ -148,7 +148,33 @@ resource "aws_iam_role_policy" "deploy_ecs_verify" {
   })
 }
 
+# ── ECR digest resolve — ecr-push role (tag→prod promote) ──────────────────
+# The promote job (github.ref_type == 'tag') resolves the promoted image digest
+# via `aws ecr describe-images` ("Resolve promoted API digest" step). The
+# ecr-push role's baseline policy (iam-oidc-v1.2.0) grants push/pull + batch-get
+# + put-image but NOT ecr:DescribeImages, so the resolve fails AccessDenied and
+# the whole prod deploy aborts. Dev never hits this: dev builds and deploys in a
+# single job and never runs the promote path, so the gap only surfaces on the
+# first tag release to prod.
+# Granted here (scoped to the rally-* repos) rather than via a module bump, for
+# the same reason as deploy_ecs_verify above: adopting a newer iam-oidc also
+# changes the infra-apply OIDC trust. The baseline module is being fixed in
+# parallel (iam-oidc next release); drop this once this stack adopts it.
+resource "aws_iam_role_policy" "ecr_push_describe_images" {
+  name = "rally-ecr-push-describe-images"
+  role = split("/", module.iam_oidc.ecr_push_role_arn)[1]
 
-
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "ECRDescribeImagesForPromote"
+        Effect   = "Allow"
+        Action   = ["ecr:DescribeImages"]
+        Resource = "arn:aws:ecr:ap-southeast-1:${data.aws_caller_identity.current.account_id}:repository/rally-*"
+      }
+    ]
+  })
+}
 
 
