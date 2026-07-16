@@ -26,9 +26,22 @@ jobs:
     uses: QNSC-VN/qnsc-ci/.github/workflows/infra-plan.yml@v1.3.3
     with:
       product: rally
+      # Mirror the apply-time NON-secret TF_VARs so plan ≈ apply. Without
+      # cloudflare_account_id the count-gated Cloudflare Pages module resolves to
+      # 0, so every plan shows a phantom `module.web[0]` destroy; without the
+      # entra_* ids the api/worker task defs show spurious env diffs. Omitting
+      # these turns real destroys into noise a reviewer can miss. image_tag is
+      # deliberately NOT passed — it's only known at release/apply time (prod
+      # pins the release tag), so a task-def revision bump on plan is expected.
+      tf_vars_json: |
+        {
+          "entra_tenant_id": "${{ vars.ENTRA_TENANT_ID }}",
+          "entra_client_id": "${{ vars.ENTRA_CLIENT_ID }}",
+          "cloudflare_account_id": "${{ vars.CLOUDFLARE_ACCOUNT_ID }}"
+        }
     secrets:
       AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
-      # Mirror the apply-time TF_VARs so plan ≈ apply (masked inside the reusable).
+      # Secret half of the apply-time TF_VARs (masked inside the reusable).
       tf_secret_vars_json: |
         {
           "cloudflare_api_token": "${{ secrets.CLOUDFLARE_API_TOKEN }}"
