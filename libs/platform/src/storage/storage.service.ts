@@ -36,8 +36,17 @@ export class StorageService {
     this.bucket = config.get('S3_ATTACHMENTS_BUCKET');
     this.cdnBaseUrl = config.get('CDN_ATTACHMENTS_BASE_URL') ?? null;
 
+    // Provider-neutral client: no endpoint → AWS S3 (task-role credential chain);
+    // endpoint set → S3-compatible backend (Cloudflare R2, MinIO) with static
+    // credentials and path-style addressing. Same SDK, selected by config.
+    const endpoint = config.get('STORAGE_ENDPOINT');
+    const accessKeyId = config.get('STORAGE_ACCESS_KEY_ID');
+    const secretAccessKey = config.get('STORAGE_SECRET_ACCESS_KEY');
+
     this.s3 = new S3Client({
-      region: config.get('AWS_REGION'),
+      region: endpoint ? 'auto' : config.get('AWS_REGION'),
+      ...(endpoint ? { endpoint, forcePathStyle: config.get('STORAGE_FORCE_PATH_STYLE') } : {}),
+      ...(accessKeyId && secretAccessKey ? { credentials: { accessKeyId, secretAccessKey } } : {}),
     });
   }
 
