@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.2.1](https://github.com/QNSC-VN/rally/compare/v0.2.0...v0.2.1) (2026-07-16)
+
+
+### ✨ Features
+
+* **infra:** consume R2 attachment storage via remote state (dev+prod) ([#87](https://github.com/QNSC-VN/rally/issues/87)) ([d69aa2f](https://github.com/QNSC-VN/rally/commit/d69aa2fdf81b57187ae7b8ea3bb8c5c46acbbbbf))
+* **platform:** make StorageService endpoint-aware for S3-compatible backends ([#86](https://github.com/QNSC-VN/rally/issues/86)) ([4768485](https://github.com/QNSC-VN/rally/commit/47684854a9c8585282ebf788da3843bc2b853ac3))
+* **tracking:** add TA-prefixed task keys and shared work-item grid UI ([#81](https://github.com/QNSC-VN/rally/issues/81)) ([3ac95d6](https://github.com/QNSC-VN/rally/commit/3ac95d6b53c50ce1753ccb6c122ac784bd2de55d))
+* **web:** work-item grid suite with shared table engine and track-page enhancements ([#85](https://github.com/QNSC-VN/rally/issues/85)) ([485a88e](https://github.com/QNSC-VN/rally/commit/485a88e484a74cb41fd3165273df8bcc4da090bb))
+
+
+### 🐛 Bug Fixes
+
+* **ci:** serialize deploys by environment to prevent concurrent prod migrations ([#75](https://github.com/QNSC-VN/rally/issues/75)) ([f3227e6](https://github.com/QNSC-VN/rally/commit/f3227e62e8ec23e320c9aabbb070cd316095bb68))
+
+
+### ♻️ Refactors
+
+* **identity:** adopt shared @qnsc-vn/identity BFF mechanism ([#73](https://github.com/QNSC-VN/rally/issues/73)) ([cea7756](https://github.com/QNSC-VN/rally/commit/cea7756d58be126a83e8aabfb6bf07139eec5bf2))
+
 ## [0.2.0](https://github.com/QNSC-VN/rally/compare/v0.1.0...v0.2.0) (2026-07-14)
 
 
