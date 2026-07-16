@@ -116,7 +116,7 @@ data "terraform_remote_state" "storage" {
 
 # ── Secrets (scaffolding only — fill values in Secrets Manager console) ───────
 module "secrets" {
-  source      = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/secrets?ref=secrets-v1.0.0"
+  source      = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/secrets?ref=secrets-v1.1.0"
   prefix      = "rally/${local.env}"
   kms_key_arn = local.kms_key_arn
 
@@ -376,7 +376,7 @@ module "worker" {
 # Runs `pnpm migration:run` then exits. Never scheduled as a service; deploy
 # pipelines trigger it with: aws ecs run-task ...
 module "migrator" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/oneshot-task?ref=oneshot-task-v1.0.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/oneshot-task?ref=oneshot-task-v1.0.1"
 
   name               = "${local.name}-migrator"
   container_name     = "migrator"
@@ -421,7 +421,7 @@ module "migrator" {
 # wired.
 module "web" {
   count  = var.cloudflare_account_id != "" ? 1 : 0
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/pages-web?ref=pages-web-v1.0.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/pages-web?ref=pages-web-v1.0.1"
 
   account_id  = var.cloudflare_account_id
   name        = "rally-develop-web"
