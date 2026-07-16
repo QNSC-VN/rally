@@ -99,6 +99,21 @@ data "terraform_remote_state" "runtime" {
   }
 }
 
+# ── Object storage layer (Cloudflare R2 attachment bucket) ────────────────
+# The attachments bucket lives in the platform storage-dev stack (v5 Cloudflare
+# provider, isolated from this v4 stack). We consume its name + S3-compatible
+# endpoint via remote state — no Cloudflare provider or R2 resource here. The
+# bucket-scoped runtime credentials come from Secrets Manager (r2-* below).
+# Dependency: platform/storage-dev must be applied before this environment stack.
+data "terraform_remote_state" "storage" {
+  backend = "s3"
+  config = {
+    bucket = "qnsc-tofu-state"
+    key    = "platform/storage-dev/terraform.tfstate"
+    region = "ap-southeast-1"
+  }
+}
+
 # ── Secrets (scaffolding only — fill values in Secrets Manager console) ───────
 module "secrets" {
   source      = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/secrets?ref=secrets-v1.0.0"
@@ -111,11 +126,13 @@ module "secrets" {
   recovery_window_days = 0
 
   secret_names = {
-    "db-url"              = "PostgreSQL connection URL for the app"
-    "jwt-private"         = "EC P-256 (ES256) private key (PEM, base64-encoded)"
-    "jwt-public"          = "EC P-256 (ES256) public key (PEM, base64-encoded)"
-    "csrf-secret"         = "CSRF token signing secret"
-    "entra-client-secret" = "Microsoft Entra confidential-client secret (BFF OIDC)"
+    "db-url"               = "PostgreSQL connection URL for the app"
+    "jwt-private"          = "EC P-256 (ES256) private key (PEM, base64-encoded)"
+    "jwt-public"           = "EC P-256 (ES256) public key (PEM, base64-encoded)"
+    "csrf-secret"          = "CSRF token signing secret"
+    "entra-client-secret"  = "Microsoft Entra confidential-client secret (BFF OIDC)"
+    "r2-access-key-id"     = "Cloudflare R2 bucket-scoped access key ID (attachments)"
+    "r2-secret-access-key" = "Cloudflare R2 bucket-scoped secret access key (attachments)"
   }
 
   tags = { Environment = local.env }
@@ -222,6 +239,9 @@ module "api" {
     { name = "JWT_PUBLIC_KEY", secret_arn = module.secrets.secret_arns["jwt-public"] },
     { name = "CSRF_SECRET", secret_arn = module.secrets.secret_arns["csrf-secret"] },
     { name = "ENTRA_CLIENT_SECRET", secret_arn = module.secrets.secret_arns["entra-client-secret"] },
+    # Cloudflare R2 bucket-scoped credentials (S3-compatible SigV4).
+    { name = "STORAGE_ACCESS_KEY_ID", secret_arn = module.secrets.secret_arns["r2-access-key-id"] },
+    { name = "STORAGE_SECRET_ACCESS_KEY", secret_arn = module.secrets.secret_arns["r2-secret-access-key"] },
   ]
 
   environment_vars = [
@@ -248,8 +268,12 @@ module "api" {
     { name = "SQS_REPORTING_URL", value = module.messaging.queue_urls["reporting"] },
     { name = "SQS_SEARCH_URL", value = module.messaging.queue_urls["search"] },
     { name = "SNS_TOPIC_ARN", value = module.messaging.topic_arns["domain-events"] },
-    # S3 attachments bucket
-    { name = "S3_ATTACHMENTS_BUCKET", value = module.app_bucket.bucket },
+    # Attachments object storage — Cloudflare R2 (S3-compatible) from the platform
+    # storage-dev stack. Bucket name still travels as S3_ATTACHMENTS_BUCKET; the
+    # presence of STORAGE_ENDPOINT flips StorageService to the R2 endpoint + keys.
+    { name = "S3_ATTACHMENTS_BUCKET", value = data.terraform_remote_state.storage.outputs.rally_attachments_name },
+    { name = "STORAGE_ENDPOINT", value = data.terraform_remote_state.storage.outputs.rally_attachments_endpoint },
+    { name = "STORAGE_FORCE_PATH_STYLE", value = "true" },
     # Email — SES in production
     { name = "EMAIL_PROVIDER", value = "ses" },
     # Observability
@@ -307,6 +331,9 @@ module "worker" {
     { name = "CSRF_SECRET", secret_arn = module.secrets.secret_arns["csrf-secret"] },
     # Shared schema also validates the Entra client secret at boot (worker runs the same env schema).
     { name = "ENTRA_CLIENT_SECRET", secret_arn = module.secrets.secret_arns["entra-client-secret"] },
+    # Cloudflare R2 bucket-scoped credentials (worker also reads/writes attachments).
+    { name = "STORAGE_ACCESS_KEY_ID", secret_arn = module.secrets.secret_arns["r2-access-key-id"] },
+    { name = "STORAGE_SECRET_ACCESS_KEY", secret_arn = module.secrets.secret_arns["r2-secret-access-key"] },
   ]
 
   environment_vars = [
@@ -322,7 +349,10 @@ module "worker" {
     { name = "SQS_REPORTING_URL", value = module.messaging.queue_urls["reporting"] },
     { name = "SQS_SEARCH_URL", value = module.messaging.queue_urls["search"] },
     { name = "SNS_TOPIC_ARN", value = module.messaging.topic_arns["domain-events"] },
-    { name = "S3_ATTACHMENTS_BUCKET", value = module.app_bucket.bucket },
+    # Attachments object storage — Cloudflare R2 (see api service for rationale).
+    { name = "S3_ATTACHMENTS_BUCKET", value = data.terraform_remote_state.storage.outputs.rally_attachments_name },
+    { name = "STORAGE_ENDPOINT", value = data.terraform_remote_state.storage.outputs.rally_attachments_endpoint },
+    { name = "STORAGE_FORCE_PATH_STYLE", value = "true" },
     { name = "EMAIL_PROVIDER", value = "ses" },
     { name = "LOG_LEVEL", value = "info" },
     { name = "LOG_PRETTY", value = "false" },
@@ -336,7 +366,12 @@ module "worker" {
   tags = { Environment = local.env, Service = "worker" }
 }
 
-# ── S3 — Attachments bucket ───────────────────────────────────────────────────
+# ── S3 — Attachments bucket (TRANSITIONAL) ────────────────────────────
+# Attachments now live in Cloudflare R2 (see the api/worker STORAGE_* wiring and
+# the storage-dev remote state above). This S3 bucket is retained ONLY as a
+# rollback path during the R2 cutover — nothing writes to it once STORAGE_ENDPOINT
+# is set. Remove this module (and its outputs) in a follow-up once the dev R2
+# round-trip is verified, so we don't leave an orphaned bucket behind.
 module "app_bucket" {
   source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/app-bucket?ref=app-bucket-v1.0.0"
 
