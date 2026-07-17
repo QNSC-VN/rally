@@ -558,6 +558,8 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         reporterId: input.reporterId,
         parentId: input.parentId,
         teamId: input.teamId,
+        iterationId: input.iterationId,
+        releaseId: input.releaseId,
         storyPoints: input.storyPoints,
         estimateHours: input.estimateHours,
         todoHours: input.todoHours,

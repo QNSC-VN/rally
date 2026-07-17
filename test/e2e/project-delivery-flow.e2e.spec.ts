@@ -1,0 +1,222 @@
+/**
+ * BA business-flow E2E — project foundation → work items → tasks → iteration.
+ *
+ * Encodes flows E2E-001 … E2E-007 from
+ * product-docs/projects/mini-rally/testing/E2E_BUSINESS_FLOW_COVERAGE.md,
+ * driving the REAL application services against the seeded DB. Each flow proves
+ * that the shipped codebase honours the BA project scope and rules.
+ */
+import type { NestFastifyApplication } from '@nestjs/platform-fastify';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+import { IterationsService, IterationStatusService } from '@modules/iterations';
+import type { IterationStatusFilters } from '@modules/iterations';
+import { ProjectsService } from '@modules/projects';
+import { WorkItemsService } from '@modules/work-items';
+import type { WorkItemFilters } from '@modules/work-items';
+
+import { ALL, ADMIN_USER_ID, adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
+
+const NO_WI_FILTERS = {} as WorkItemFilters;
+const NO_IS_FILTERS = {} as IterationStatusFilters;
+
+describe('BA flows: project foundation → work items → iteration (real AppModule + seeded DB)', () => {
+  let app: NestFastifyApplication;
+  let projects: ProjectsService;
+  let workItems: WorkItemsService;
+  let iterations: IterationsService;
+  let iterationStatus: IterationStatusService;
+  const actor = adminActor();
+
+  beforeAll(async () => {
+    app = await bootRallyApp();
+    projects = app.get(ProjectsService);
+    workItems = app.get(WorkItemsService);
+    iterations = app.get(IterationsService);
+    iterationStatus = app.get(IterationStatusService);
+  });
+
+  afterAll(async () => {
+    await app?.close();
+  });
+
+  // ── E2E-001: Admin creates the project foundation ───────────────────────────
+  describe('E2E-001 project foundation', () => {
+    it('creates a project with a normalised, immutable key', async () => {
+      const key = uniqueKey();
+      const project = await projects.createProject(actor, key.toLowerCase(), 'Foundation Project');
+
+      // Key is normalised to upper-case and the lead defaults to the actor.
+      expect(project.key).toBe(key.toUpperCase());
+      expect(project.leadId).toBe(ADMIN_USER_ID);
+
+      // Foundation is queryable and its key is unchanged (immutable identity).
+      const fetched = await projects.getProject(actor.workspaceId, project.id);
+      expect(fetched.key).toBe(key.toUpperCase());
+    });
+
+    it('rejects a duplicate project key with PROJECT_KEY_TAKEN', async () => {
+      const key = uniqueKey();
+      await projects.createProject(actor, key, 'First');
+      await expect(projects.createProject(actor, key, 'Second')).rejects.toMatchObject({
+        code: 'PROJECT_KEY_TAKEN',
+      });
+    });
+
+    it('rejects a project whose lead is not an active workspace member', async () => {
+      const notAMember = '00000000-0000-7000-8000-0000000009ff';
+      await expect(
+        projects.createProject(actor, uniqueKey(), 'Bad Lead', undefined, notAMember),
+      ).rejects.toMatchObject({ code: 'PROJECT_LEAD_NOT_MEMBER' });
+    });
+  });
+
+  // ── E2E-003: Create a Story and manage its detail ───────────────────────────
+  describe('E2E-003 story create + detail', () => {
+    it('persists description / owner / scheduleState / planEstimate on a story', async () => {
+      const project = await projects.createProject(actor, uniqueKey(), 'Story Project');
+      const story = await workItems.createWorkItem(
+        actor,
+        project.id,
+        'story',
+        'As a user I can log in',
+      );
+
+      const updated = await workItems.updateWorkItem(actor, story.id, {
+        description: 'Login with SSO',
+        assigneeId: ADMIN_USER_ID,
+        scheduleState: 'in_progress',
+        storyPoints: 5,
+      });
+
+      expect(updated.description).toBe('Login with SSO');
+      expect(updated.assigneeId).toBe(ADMIN_USER_ID);
+      expect(updated.scheduleState).toBe('in_progress');
+      expect(updated.storyPoints).toBe(5);
+
+      // Re-read proves the writes are durable (not just the returned copy).
+      const reread = await workItems.getWorkItem(actor.workspaceId, story.id);
+      expect(reread.description).toBe('Login with SSO');
+      expect(reread.scheduleState).toBe('in_progress');
+    });
+
+    it('rejects a priority on a story (stories carry no priority)', async () => {
+      const project = await projects.createProject(actor, uniqueKey(), 'Story Priority');
+      const story = await workItems.createWorkItem(actor, project.id, 'story', 'No priority story');
+      await expect(
+        workItems.updateWorkItem(actor, story.id, { priority: 'high' }),
+      ).rejects.toMatchObject({ code: 'WORK_ITEM_STORY_HAS_NO_PRIORITY' });
+    });
+  });
+
+  // ── E2E-004: Create a Defect + defect-specific behaviour ────────────────────
+  describe('E2E-004 defect create', () => {
+    it('creates a top-level defect carrying a priority', async () => {
+      const project = await projects.createProject(actor, uniqueKey(), 'Defect Project');
+      const defect = await workItems.createWorkItem(actor, project.id, 'defect', 'Login crashes', {
+        priority: 'high',
+      });
+      expect(defect.type).toBe('defect');
+      expect(defect.priority).toBe('high');
+    });
+
+    it('allows a defect under a story parent but rejects a defect under a defect', async () => {
+      const project = await projects.createProject(actor, uniqueKey(), 'Defect Parent');
+      const story = await workItems.createWorkItem(actor, project.id, 'story', 'Parent story');
+      const parentDefect = await workItems.createWorkItem(
+        actor,
+        project.id,
+        'defect',
+        'Parent defect',
+      );
+
+      const child = await workItems.createWorkItem(actor, project.id, 'defect', 'Child defect', {
+        parentId: story.id,
+      });
+      expect(child.parentId).toBe(story.id);
+
+      await expect(
+        workItems.createWorkItem(actor, project.id, 'defect', 'Bad child', {
+          parentId: parentDefect.id,
+        }),
+      ).rejects.toMatchObject({ code: 'WORK_ITEM_INVALID_PARENT_TYPE' });
+    });
+  });
+
+  // ── E2E-005: Add a Task under a Story + track time ──────────────────────────
+  describe('E2E-005 task under story + time tracking', () => {
+    it('creates a child task (not a backlog item) and totals its hours', async () => {
+      const project = await projects.createProject(actor, uniqueKey(), 'Task Project');
+      const story = await workItems.createWorkItem(actor, project.id, 'story', 'Story with tasks');
+
+      // actual (5) deliberately exceeds estimate (2) — the BA allows over-run.
+      const task = await workItems.createTask(actor, story.id, 'Implement endpoint', {
+        estimateHours: '2',
+        actualHours: '5',
+      });
+      expect(task.type).toBe('task');
+      expect(task.parentId).toBe(story.id);
+
+      const totals = await workItems.getTaskTotals(actor, story.id);
+      expect(totals.taskCount).toBe(1);
+      expect(totals.estimateHours).toBe(2);
+      expect(totals.actualHours).toBe(5);
+
+      // A task is NOT a backlog item — backlog holds stories + defects only.
+      const backlog = await workItems.listBacklog(actor, project.id, NO_WI_FILTERS, ALL);
+      expect(backlog.data.some((w) => w.id === task.id)).toBe(false);
+      expect(backlog.data.some((w) => w.id === story.id)).toBe(true);
+    });
+  });
+
+  // ── E2E-006: A backlog item enters an Iteration → appears in Iteration Status
+  describe('E2E-006 backlog item enters an iteration', () => {
+    it('assigns a story to an iteration and surfaces it in Iteration Status (same item)', async () => {
+      const project = await projects.createProject(actor, uniqueKey(), 'Iteration Project');
+      const iteration = await iterations.createIteration(actor, project.id, 'Sprint 1');
+      const story = await workItems.createWorkItem(actor, project.id, 'story', 'Sprint story');
+
+      const assigned = await workItems.updateWorkItem(actor, story.id, {
+        iterationId: iteration.id,
+      });
+      expect(assigned.iterationId).toBe(iteration.id);
+
+      const status = await iterationStatus.getStatus(actor, iteration.id, NO_IS_FILTERS, ALL);
+      const found = status.items.data.find((i) => i.id === story.id);
+      expect(found).toBeDefined();
+      expect(found?.itemKey).toBe(story.itemKey);
+    });
+  });
+
+  // ── E2E-007: Create an item directly in Iteration Status ────────────────────
+  describe('E2E-007 create directly in iteration status', () => {
+    it('creates a story in the iteration (also visible in the backlog, no duplicate)', async () => {
+      const project = await projects.createProject(actor, uniqueKey(), 'Direct Iteration');
+      const iteration = await iterations.createIteration(actor, project.id, 'Sprint A');
+
+      const { workItemId } = await iterationStatus.createItemInIteration(actor, iteration.id, {
+        type: 'story',
+        title: 'Created in iteration',
+      });
+
+      // Visible in the iteration…
+      const status = await iterationStatus.getStatus(actor, iteration.id, NO_IS_FILTERS, ALL);
+      expect(status.items.data.some((i) => i.id === workItemId)).toBe(true);
+
+      // …and exactly once in the project backlog (single source of truth).
+      const backlog = await workItems.listBacklog(actor, project.id, NO_WI_FILTERS, ALL);
+      expect(backlog.data.filter((w) => w.id === workItemId)).toHaveLength(1);
+    });
+
+    it('rejects a task created directly in an iteration (stories/defects only)', async () => {
+      const project = await projects.createProject(actor, uniqueKey(), 'Iteration Task Guard');
+      const iteration = await iterations.createIteration(actor, project.id, 'Sprint B');
+      await expect(
+        iterationStatus.createItemInIteration(actor, iteration.id, {
+          type: 'task',
+          title: 'Illegal task',
+        }),
+      ).rejects.toMatchObject({ code: 'WORK_ITEM_NOT_BACKLOG_TYPE' });
+    });
+  });
+});
