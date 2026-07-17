@@ -28,6 +28,9 @@ import {
   Search,
   Clock,
   ChevronLeft,
+  ChevronUp,
+  ChevronDown,
+  Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { BRAND } from '@/shared/config/brand'
@@ -48,7 +51,15 @@ import {
   type Team,
 } from '@/features/teams/api'
 import { useWorkspaces, useUpdateWorkspace } from '@/features/workspaces/api'
-import { useProjects, useUpdateProject } from '@/features/projects/api'
+import {
+  useProjects,
+  useUpdateProject,
+  useProjectStatuses,
+  useCreateStatus,
+  useDeleteStatus,
+  useReorderStatuses,
+  type ProjectStatus,
+} from '@/features/projects/api'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
@@ -949,6 +960,287 @@ function ProjectSettingsTab() {
         </button>
       </div>
     </form>
+  )
+}
+
+// ── Workflow status tab ────────────────────────────────────────────────────────
+
+const STATUS_CATEGORIES = [
+  { value: 'to_do', label: 'To Do' },
+  { value: 'in_progress', label: 'In Progress' },
+  { value: 'done', label: 'Done' },
+] as const
+
+type StatusCategory = (typeof STATUS_CATEGORIES)[number]['value']
+
+/** Brand-consistent badge colours for a workflow-status category. */
+function statusCategoryStyle(category: StatusCategory): { bg: string; text: string } {
+  switch (category) {
+    case 'in_progress':
+      return { bg: BRAND.warningBg, text: BRAND.warning }
+    case 'done':
+      return { bg: BRAND.successBg, text: BRAND.success }
+    case 'to_do':
+    default:
+      return { bg: BRAND.surfaceSubtle, text: BRAND.textSecondary }
+  }
+}
+
+function categoryLabel(category: string): string {
+  return STATUS_CATEGORIES.find((c) => c.value === category)?.label ?? category
+}
+
+function AddStatusModal({ projectId, onClose }: { projectId: string; onClose: () => void }) {
+  const [name, setName] = useState('')
+  const [category, setCategory] = useState<StatusCategory>('to_do')
+  const [color, setColor] = useState('#6b7280')
+  const create = useCreateStatus(projectId)
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!name.trim()) return
+    try {
+      await create.mutateAsync({ name: name.trim(), category, color })
+      toast.success(`Status "${name.trim()}" added`)
+      onClose()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to add status')
+    }
+  }
+
+  return (
+    <AppModal open onClose={onClose} title="Add Status" width={420}>
+      <form
+        onSubmit={(e) => {
+          void handleSubmit(e)
+        }}
+      >
+        <ModalBody className="space-y-4">
+          <FormField label="Status name" required>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="In Review"
+              autoFocus
+            />
+          </FormField>
+          <FormField label="Category" required>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value as StatusCategory)}
+              className="w-full rounded-md bg-white px-3 py-2 text-[13px] focus:outline-none"
+              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textPrimary }}
+            >
+              {STATUS_CATEGORIES.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          </FormField>
+          <FormField label="Colour">
+            <input
+              type="color"
+              value={color}
+              onChange={(e) => setColor(e.target.value)}
+              className="h-9 w-16 cursor-pointer rounded-md bg-white p-1"
+              style={{ border: `1px solid ${BRAND.border}` }}
+            />
+          </FormField>
+        </ModalBody>
+        <ModalFooter>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md px-4 py-2 text-[13px] font-semibold"
+            style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={create.isPending || !name.trim()}
+            className="flex items-center gap-2 rounded-md px-4 py-2 text-[13px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+            style={{ backgroundColor: BRAND.primary }}
+          >
+            {create.isPending && <Loader2 size={12} className="animate-spin" />}
+            Add Status
+          </button>
+        </ModalFooter>
+      </form>
+    </AppModal>
+  )
+}
+
+function WorkflowTab() {
+  const activeProject = useAppContext((s) => s.project)
+  const { hasPermission } = useAuthStore()
+  const canManage = hasPermission(PERMISSION.PROJECT_EDIT)
+  const projectId = activeProject?.projectId
+
+  const { data: statuses = [], isLoading, isError } = useProjectStatuses(projectId)
+  const reorder = useReorderStatuses(projectId)
+  const remove = useDeleteStatus(projectId)
+  const [showAdd, setShowAdd] = useState(false)
+
+  if (!activeProject) {
+    return (
+      <p className="text-[13px]" style={{ color: BRAND.textMuted }}>
+        No project selected. Navigate into a project first.
+      </p>
+    )
+  }
+
+  const ordered = [...statuses].sort((a, b) => a.position - b.position)
+
+  async function move(index: number, direction: -1 | 1) {
+    const target = index + direction
+    if (target < 0 || target >= ordered.length) return
+    const ids = ordered.map((s) => s.id)
+    ;[ids[index], ids[target]] = [ids[target], ids[index]]
+    try {
+      await reorder.mutateAsync(ids)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to reorder statuses')
+    }
+  }
+
+  async function handleDelete(status: ProjectStatus) {
+    if (!window.confirm(`Delete status "${status.name}"? Work items must not be using it.`)) return
+    try {
+      await remove.mutateAsync(status.id)
+      toast.success(`Status "${status.name}" deleted`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete status')
+    }
+  }
+
+  return (
+    <div className="max-w-3xl">
+      <div className="mb-3 flex items-center justify-between">
+        <p className="text-[13px]" style={{ color: BRAND.textSecondary }}>
+          Define the statuses work items move through in{' '}
+          <span className="font-semibold" style={{ color: BRAND.textPrimary }}>
+            {activeProject.projectKey}
+          </span>
+          .
+        </p>
+        {canManage && (
+          <button
+            type="button"
+            onClick={() => setShowAdd(true)}
+            className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-semibold"
+            style={{ border: `1px solid ${BRAND.primary}`, color: BRAND.primary }}
+          >
+            <Plus size={13} /> Add Status
+          </button>
+        )}
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-20">
+          <Loader2 size={18} className="animate-spin" style={{ color: BRAND.textMuted }} />
+        </div>
+      ) : isError ? (
+        <p className="py-20 text-center text-[13px]" style={{ color: BRAND.textSecondary }}>
+          Unable to load statuses. Please try again.
+        </p>
+      ) : ordered.length === 0 ? (
+        <p className="py-20 text-center text-[13px]" style={{ color: BRAND.textMuted }}>
+          No statuses defined yet.
+        </p>
+      ) : (
+        <div className="overflow-hidden rounded-md" style={{ border: `1px solid ${BRAND.border}` }}>
+          <div
+            className="flex items-center gap-2 px-3 py-2 text-[10px] font-semibold tracking-wider uppercase"
+            style={{ backgroundColor: BRAND.surfaceHover, color: BRAND.textMuted }}
+          >
+            <div className="flex-1">Status Name</div>
+            <div className="w-28">Category</div>
+            <div className="w-16 text-center">Default</div>
+            <div className="w-24 text-right">Actions</div>
+          </div>
+          {ordered.map((status, index) => {
+            const badge = statusCategoryStyle(status.category as StatusCategory)
+            return (
+              <div
+                key={status.id}
+                className="flex items-center gap-2 px-3 py-2.5"
+                style={{ borderTop: `1px solid ${BRAND.borderInner}` }}
+              >
+                <div className="flex flex-1 items-center gap-2">
+                  <span
+                    className="h-3 w-3 shrink-0 rounded-full"
+                    style={{ backgroundColor: status.color ?? BRAND.textMuted }}
+                  />
+                  <span className="text-[13px] font-medium" style={{ color: BRAND.textPrimary }}>
+                    {status.name}
+                  </span>
+                </div>
+                <div className="w-28">
+                  <span
+                    className="rounded px-2 py-0.5 text-[10px] font-semibold"
+                    style={{ backgroundColor: badge.bg, color: badge.text }}
+                  >
+                    {categoryLabel(status.category)}
+                  </span>
+                </div>
+                <div className="w-16 text-center">
+                  {status.isDefault && (
+                    <span
+                      className="rounded-full px-1.5 py-0.5 text-[9px] font-medium tracking-wide uppercase"
+                      style={{ backgroundColor: BRAND.surfaceHover, color: BRAND.textSecondary }}
+                    >
+                      Default
+                    </span>
+                  )}
+                </div>
+                <div className="flex w-24 items-center justify-end gap-0.5">
+                  {canManage && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => void move(index, -1)}
+                        disabled={index === 0 || reorder.isPending}
+                        className="rounded p-1 disabled:opacity-30"
+                        style={{ color: BRAND.textMuted }}
+                        title="Move up"
+                      >
+                        <ChevronUp size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void move(index, 1)}
+                        disabled={index === ordered.length - 1 || reorder.isPending}
+                        className="rounded p-1 disabled:opacity-30"
+                        style={{ color: BRAND.textMuted }}
+                        title="Move down"
+                      >
+                        <ChevronDown size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleDelete(status)}
+                        disabled={remove.isPending}
+                        className="rounded p-1 disabled:opacity-30"
+                        style={{ color: BRAND.textMuted }}
+                        title="Delete status"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {showAdd && projectId && (
+        <AddStatusModal projectId={projectId} onClose={() => setShowAdd(false)} />
+      )}
+    </div>
   )
 }
 
@@ -1939,6 +2231,8 @@ export function SettingsPage() {
           <WorkspaceSettingsTab />
         ) : activeTab === 'project' ? (
           <ProjectSettingsTab />
+        ) : activeTab === 'workflow' ? (
+          <WorkflowTab />
         ) : activeTab === 'audit' ? (
           <AuditLogTab />
         ) : activeTab === 'roles' ? (
