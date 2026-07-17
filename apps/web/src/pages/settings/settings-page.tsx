@@ -1673,6 +1673,185 @@ function AuditLogTab() {
   )
 }
 
+// ── Roles & Permissions tab ───────────────────────────────────────────────────
+
+type Role = {
+  id: string
+  name: string
+  slug: string
+  description: string | null
+  isSystem: boolean
+  permissions: string[]
+}
+
+/** Group a role's flat permission codes by their `namespace:action` prefix. */
+function groupPermissions(permissions: string[]): { namespace: string; actions: string[] }[] {
+  const groups = new Map<string, string[]>()
+  for (const perm of [...permissions].sort()) {
+    const [namespace, action = '*'] = perm.split(':')
+    const actions = groups.get(namespace) ?? []
+    actions.push(action)
+    groups.set(namespace, actions)
+  }
+  return [...groups.entries()].map(([namespace, actions]) => ({ namespace, actions }))
+}
+
+/** Turn `workspace_admin` / `workspace.manage_members` into `Workspace Admin`. */
+function humanizeSlug(value: string): string {
+  return value.replace(/[._:]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+function RolesTab() {
+  const {
+    data: roles = [],
+    isLoading,
+    isError,
+  } = useQuery({
+    queryKey: ['system-roles'],
+    queryFn: async () => {
+      const res = await apiClient.GET('/v1/roles')
+      return (res.data ?? []) as Role[]
+    },
+  })
+
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const selected = roles.find((r) => r.id === selectedId) ?? roles[0] ?? null
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 size={18} className="animate-spin" style={{ color: BRAND.textMuted }} />
+      </div>
+    )
+  }
+
+  if (isError) {
+    return (
+      <p className="py-20 text-center text-[13px]" style={{ color: BRAND.textSecondary }}>
+        Unable to load roles. Please try again.
+      </p>
+    )
+  }
+
+  if (roles.length === 0) {
+    return (
+      <p className="py-20 text-center text-[13px]" style={{ color: BRAND.textSecondary }}>
+        No roles are defined for this workspace.
+      </p>
+    )
+  }
+
+  return (
+    <div className="flex gap-6">
+      {/* ── Role list ── */}
+      <div className="w-64 shrink-0 space-y-1">
+        <p
+          className="mb-2 text-[10px] font-semibold tracking-widest uppercase"
+          style={{ color: BRAND.textMuted }}
+        >
+          Roles
+        </p>
+        {roles.map((r) => {
+          const isActive = selected?.id === r.id
+          return (
+            <button
+              key={r.id}
+              type="button"
+              onClick={() => setSelectedId(r.id)}
+              className="w-full rounded px-3 py-2 text-left"
+              style={{
+                backgroundColor: isActive ? BRAND.surfaceHover : 'transparent',
+                border: `1px solid ${isActive ? BRAND.border : 'transparent'}`,
+              }}
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-[12px] font-semibold" style={{ color: BRAND.textPrimary }}>
+                  {humanizeSlug(r.name)}
+                </span>
+                {r.isSystem && (
+                  <span
+                    className="rounded-full px-1.5 py-0.5 text-[9px] font-medium tracking-wide uppercase"
+                    style={{ backgroundColor: BRAND.surfaceHover, color: BRAND.textMuted }}
+                  >
+                    System
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 font-mono text-[10px]" style={{ color: BRAND.textMuted }}>
+                {r.slug}
+              </p>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* ── Permissions for the selected role ── */}
+      <div className="min-w-0 flex-1">
+        {selected && (
+          <>
+            <div className="mb-4 flex items-center gap-2">
+              <Shield size={15} style={{ color: BRAND.textSecondary }} />
+              <h3 className="text-[14px] font-semibold" style={{ color: BRAND.textPrimary }}>
+                {humanizeSlug(selected.name)}
+              </h3>
+              <span
+                className="rounded-full px-2 py-0.5 text-[10px] font-medium"
+                style={{ backgroundColor: BRAND.surfaceHover, color: BRAND.textSecondary }}
+              >
+                {selected.permissions.length} permissions
+              </span>
+            </div>
+
+            {selected.description && (
+              <p className="mb-5 text-[12px]" style={{ color: BRAND.textSecondary }}>
+                {selected.description}
+              </p>
+            )}
+
+            {selected.permissions.length === 0 ? (
+              <p className="text-[12px]" style={{ color: BRAND.textMuted }}>
+                This role has no explicit permissions.
+              </p>
+            ) : (
+              <div className="space-y-4">
+                {groupPermissions(selected.permissions).map(({ namespace, actions }) => (
+                  <div key={namespace}>
+                    <p
+                      className="mb-1.5 text-[11px] font-semibold"
+                      style={{ color: BRAND.textPrimary }}
+                    >
+                      {humanizeSlug(namespace)}
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {actions.map((action) => (
+                        <span
+                          key={`${namespace}:${action}`}
+                          className="rounded px-2 py-1 font-mono text-[11px]"
+                          style={{
+                            backgroundColor: BRAND.surfaceHover,
+                            color: BRAND.textSecondary,
+                            border: `1px solid ${BRAND.border}`,
+                          }}
+                        >
+                          {action === '*' ? 'All actions' : action}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <p className="mt-6 text-[11px]" style={{ color: BRAND.textMuted }}>
+              Roles are managed by the platform. Assign roles to users from User Management.
+            </p>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Coming soon tab ───────────────────────────────────────────────────────────
 
 function ComingSoonTab({ label }: { label: string }) {
@@ -1762,6 +1941,8 @@ export function SettingsPage() {
           <ProjectSettingsTab />
         ) : activeTab === 'audit' ? (
           <AuditLogTab />
+        ) : activeTab === 'roles' ? (
+          <RolesTab />
         ) : (
           <ComingSoonTab label={activeLabel} />
         )}
