@@ -97,7 +97,7 @@ export function AttachmentBlock({ workItemId, readOnly = false }: AttachmentBloc
       <div
         className="flex items-center gap-2 px-4 py-2 text-[11px] font-semibold select-none"
         style={{
-          color: '#475569',
+          color: BRAND.textSecondary,
           backgroundColor: BRAND.surfaceHover,
           borderBottom: `1px solid ${BRAND.border}`,
         }}
@@ -107,7 +107,7 @@ export function AttachmentBlock({ workItemId, readOnly = false }: AttachmentBloc
         {attachments.length > 0 && (
           <span
             className="ml-1 rounded-full px-1.5 py-px text-[10px] font-bold"
-            style={{ backgroundColor: BRAND.avatarBg, color: '#475569' }}
+            style={{ backgroundColor: BRAND.avatarBg, color: BRAND.textSecondary }}
           >
             {attachments.length}
           </span>
@@ -117,12 +117,12 @@ export function AttachmentBlock({ workItemId, readOnly = false }: AttachmentBloc
       {/* File list */}
       <div className="divide-y" style={{ borderColor: BRAND.primaryLighter }}>
         {isLoading && (
-          <div className="px-4 py-3 text-[12px]" style={{ color: '#94a3b8' }}>
+          <div className="px-4 py-3 text-[12px]" style={{ color: BRAND.textMuted }}>
             Loading…
           </div>
         )}
         {!isLoading && attachments.length === 0 && (
-          <div className="px-4 py-3 text-[12px]" style={{ color: '#94a3b8' }}>
+          <div className="px-4 py-3 text-[12px]" style={{ color: BRAND.textMuted }}>
             No attachments.
           </div>
         )}
@@ -136,7 +136,7 @@ export function AttachmentBlock({ workItemId, readOnly = false }: AttachmentBloc
               className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-slate-50"
               style={{ opacity: isDeleting ? 0.5 : 1 }}
             >
-              <FileText size={15} style={{ color: '#64748b', flexShrink: 0 }} />
+              <FileText size={15} style={{ color: BRAND.textSecondary, flexShrink: 0 }} />
               <div className="min-w-0 flex-1">
                 <a
                   href={downloadUrl}
@@ -147,7 +147,7 @@ export function AttachmentBlock({ workItemId, readOnly = false }: AttachmentBloc
                 >
                   {a.filename}
                 </a>
-                <span className="text-[10px]" style={{ color: '#94a3b8' }}>
+                <span className="text-[10px]" style={{ color: BRAND.textMuted }}>
                   {formatBytes(a.sizeBytes)} · {formatDate(a.createdAt)}
                 </span>
               </div>
@@ -158,12 +158,12 @@ export function AttachmentBlock({ workItemId, readOnly = false }: AttachmentBloc
                   onClick={() => void handleDelete(a.id)}
                   disabled={isDeleting}
                   className="rounded p-1 transition-colors hover:bg-red-50"
-                  style={{ color: '#94a3b8' }}
+                  style={{ color: BRAND.textMuted }}
                   onMouseEnter={(e) =>
                     ((e.currentTarget as HTMLButtonElement).style.color = '#ef4444')
                   }
                   onMouseLeave={(e) =>
-                    ((e.currentTarget as HTMLButtonElement).style.color = '#94a3b8')
+                    ((e.currentTarget as HTMLButtonElement).style.color = BRAND.textMuted)
                   }
                 >
                   {isDeleting ? (
@@ -181,7 +181,7 @@ export function AttachmentBlock({ workItemId, readOnly = false }: AttachmentBloc
         {isUploading && (
           <div className="flex items-center gap-3 px-4 py-2.5">
             <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
-            <span className="text-[12px]" style={{ color: '#64748b' }}>
+            <span className="text-[12px]" style={{ color: BRAND.textSecondary }}>
               Uploading…
             </span>
           </div>
@@ -193,7 +193,7 @@ export function AttachmentBlock({ workItemId, readOnly = false }: AttachmentBloc
         <div
           className="m-3 rounded-lg transition-all"
           style={{
-            border: `2px dashed ${dragging ? BRAND.primaryLight : '#d1d5db'}`,
+            border: `2px dashed ${dragging ? BRAND.primaryLight : BRAND.border}`,
             backgroundColor: dragging ? BRAND.primaryLighter : BRAND.surfaceHover,
             padding: '16px 12px',
           }}
@@ -217,14 +217,14 @@ export function AttachmentBlock({ workItemId, readOnly = false }: AttachmentBloc
             onClick={() => inputRef.current?.click()}
             className="flex w-full flex-col items-center gap-1.5"
           >
-            <Upload size={18} style={{ color: dragging ? BRAND.primaryLight : '#94a3b8' }} />
+            <Upload size={18} style={{ color: dragging ? BRAND.primaryLight : BRAND.textMuted }} />
             <span
               className="text-[11px]"
-              style={{ color: dragging ? BRAND.primaryLight : '#6b7280' }}
+              style={{ color: dragging ? BRAND.primaryLight : BRAND.textSecondary }}
             >
               {dragging ? 'Drop to upload' : 'Drag & drop or click to upload'}
             </span>
-            <span className="text-[10px]" style={{ color: '#9ca3af' }}>
+            <span className="text-[10px]" style={{ color: BRAND.textMuted }}>
               Any file · max 10 MB
             </span>
           </button>

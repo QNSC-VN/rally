@@ -94,7 +94,9 @@ export function LinkedItemsBlock({
         <div className="flex items-center gap-1.5 text-[12px] font-semibold text-muted-foreground">
           <Link2 size={13} />
           Linked Items
-          {relations.length > 0 && <span className="text-[#9ca3af]">({relations.length})</span>}
+          {relations.length > 0 && (
+            <span className="text-foreground-subtle">({relations.length})</span>
+          )}
         </div>
         {!readOnly && !adding && (
           <button
@@ -124,7 +126,7 @@ export function LinkedItemsBlock({
             <button
               aria-label="Cancel"
               onClick={() => setAdding(false)}
-              className="p-1 text-[#9ca3af]"
+              className="p-1 text-foreground-subtle"
             >
               <X size={14} />
             </button>
@@ -157,9 +159,9 @@ export function LinkedItemsBlock({
       )}
 
       {isLoading ? (
-        <p className="text-[12px] text-[#9ca3af]">Loading…</p>
+        <p className="text-[12px] text-foreground-subtle">Loading…</p>
       ) : relations.length === 0 ? (
-        <p className="text-[12px] text-[#9ca3af]">No linked items.</p>
+        <p className="text-[12px] text-foreground-subtle">No linked items.</p>
       ) : (
         <div className="space-y-2">
           {grouped.map(([label, items]) => (
@@ -180,7 +182,7 @@ export function LinkedItemsBlock({
                         aria-label="Remove link"
                         onClick={() => void unlinkMutation.mutate(r.id)}
                         disabled={unlinkMutation.isPending}
-                        className="p-1 text-[#b0b6c0] hover:text-destructive disabled:opacity-50"
+                        className="p-1 text-foreground-disabled hover:text-destructive disabled:opacity-50"
                       >
                         <Trash2 size={12} />
                       </button>

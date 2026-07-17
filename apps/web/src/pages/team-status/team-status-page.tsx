@@ -477,7 +477,7 @@ export function TeamStatusPage() {
         {/* Empty state (P3-TS-TS-020) */}
         {!isLoading && !isError && groups.length === 0 && (
           <div className="flex flex-col items-center justify-center gap-3 px-8 py-16">
-            <Inbox size={36} style={{ color: '#c4cad4' }} />
+            <Inbox size={36} style={{ color: BRAND.textFaint }} />
             <p className="text-[13px]" style={{ color: BRAND.textMuted }}>
               No tasks found for this iteration
             </p>
@@ -809,7 +809,7 @@ function TaskRow({
             onOpen={() => onOpenItem(task.workProduct.key)}
           />
         ) : (
-          <span className="text-[10px]" style={{ color: '#c4cad4' }}>
+          <span className="text-[10px]" style={{ color: BRAND.textFaint }}>
             —
           </span>
         )}

@@ -39,6 +39,7 @@
   --muted-foreground: #5c6478; /* textSecondary */
   --foreground-subtle: #8c94a6; /* textMuted — column headers, placeholders */
   --foreground-disabled: #a0a7b5; /* textDisabled */
+  --foreground-faint: #c4cad4; /* textFaint — faint hints, empty-state glyphs */
   --accent: #dce3ee;
   --accent-foreground: #1a2234;
   --accent-blue: #edf2fb;
@@ -127,6 +128,7 @@
   --muted-foreground: #8c94a6;
   --foreground-subtle: #6b7488;
   --foreground-disabled: #565e70;
+  --foreground-faint: #454c5c;
   --accent: #1e2a40;
   --accent-foreground: #e8ecf4;
   --accent-blue: #1e3a5f;
@@ -184,6 +186,7 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-foreground-subtle: var(--foreground-subtle);
   --color-foreground-disabled: var(--foreground-disabled);
+  --color-foreground-faint: var(--foreground-faint);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent-blue: var(--accent-blue);

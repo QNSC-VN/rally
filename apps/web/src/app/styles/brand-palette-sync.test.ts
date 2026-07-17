@@ -38,6 +38,7 @@ const PAIRS: ReadonlyArray<readonly [keyof typeof BRAND, string]> = [
   ['textSecondary', '--muted-foreground'],
   ['textMuted', '--foreground-subtle'],
   ['textDisabled', '--foreground-disabled'],
+  ['textFaint', '--foreground-faint'],
   ['border', '--border-strong'],
   ['borderSubtle', '--border-subtle'],
   ['borderInner', '--border-inner'],

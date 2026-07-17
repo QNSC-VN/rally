@@ -97,7 +97,7 @@ function ToolButton({ label, disabled, active, onAction, children }: ToolButtonP
         }}
         className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-sm transition-colors disabled:cursor-not-allowed"
         style={{
-          color: active ? BRAND.primaryLight : '#475569',
+          color: active ? BRAND.primaryLight : BRAND.textSecondary,
           backgroundColor: active ? BRAND.primaryLighter : 'transparent',
           opacity: disabled ? 0.35 : 1,
           cursor: disabled ? 'not-allowed' : 'pointer',
@@ -221,7 +221,7 @@ export function RichTextEditor({
       <div
         className="flex items-center justify-between px-4 py-2 text-[11px] font-semibold select-none"
         style={{
-          color: '#475569',
+          color: BRAND.textSecondary,
           backgroundColor: BRAND.surfaceHover,
           borderBottom: `1px solid ${BRAND.border}`,
           flexShrink: 0,
@@ -234,7 +234,7 @@ export function RichTextEditor({
             aria-label={expanded ? 'Collapse editor' : 'Expand editor'}
             onClick={() => setExpanded((v) => !v)}
             className="cursor-pointer rounded p-0.5 hover:bg-slate-200"
-            style={{ color: '#64748b' }}
+            style={{ color: BRAND.textSecondary }}
           >
             {expanded ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
           </button>
@@ -263,7 +263,7 @@ export function RichTextEditor({
             onChange={handleFormatBlock}
             defaultValue="p"
             className="h-7 w-28 rounded-sm bg-white px-2 text-[11px] focus:outline-none"
-            style={{ color: '#334155', border: `1px solid ${BRAND.borderInput}` }}
+            style={{ color: BRAND.textPrimary, border: `1px solid ${BRAND.borderInput}` }}
             onMouseDown={(e) => e.stopPropagation()}
           >
             <option value="p">Paragraph</option>
@@ -310,7 +310,7 @@ export function RichTextEditor({
           className="prose prose-sm max-w-none px-4 py-3 text-[13px] leading-6"
           style={{
             minHeight,
-            color: '#334155',
+            color: BRAND.textPrimary,
             backgroundColor: BRAND.surfaceHover,
             overflowY: expanded ? 'auto' : undefined,
             flex: expanded ? '1' : undefined,
@@ -328,7 +328,7 @@ export function RichTextEditor({
           className="prose prose-sm max-w-none px-4 py-3 text-[13px] leading-6 focus:outline-none"
           style={{
             minHeight,
-            color: '#334155',
+            color: BRAND.textPrimary,
             backgroundColor: 'white',
             overflowY: expanded ? 'auto' : undefined,
             flex: expanded ? '1' : undefined,
@@ -342,7 +342,7 @@ export function RichTextEditor({
         <div
           className="px-4 py-1 text-[10px] select-none"
           style={{
-            color: '#94a3b8',
+            color: BRAND.textMuted,
             borderTop: `1px solid ${BRAND.primaryLighter}`,
             flexShrink: 0,
           }}

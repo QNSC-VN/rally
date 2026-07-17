@@ -144,7 +144,7 @@ function RelatedItemField({
       ) : (
         <span
           className="block rounded px-3 py-2 text-[12px]"
-          style={{ border: `1px solid ${BRAND.borderInput}`, color: '#9ca3af' }}
+          style={{ border: `1px solid ${BRAND.borderInput}`, color: BRAND.textMuted }}
         >
           {emptyText}
         </span>
@@ -173,7 +173,7 @@ function DetailsTab({
 
   return (
     <div className="w-full space-y-5">
-      <h2 className="text-[20px] font-semibold" style={{ color: '#273449' }}>
+      <h2 className="text-[20px] font-semibold" style={{ color: BRAND.textPrimary }}>
         Details
       </h2>
 
@@ -256,10 +256,10 @@ function TasksTab({ workItemId, projectId }: { workItemId: string; projectId: st
       {/* Header */}
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h2 className="text-[20px] font-semibold" style={{ color: '#273449' }}>
+          <h2 className="text-[20px] font-semibold" style={{ color: BRAND.textPrimary }}>
             Tasks
           </h2>
-          <p className="mt-1 text-[11px]" style={{ color: '#64748b' }}>
+          <p className="mt-1 text-[11px]" style={{ color: BRAND.textSecondary }}>
             Break this work item into trackable delivery tasks.
           </p>
         </div>
@@ -297,8 +297,9 @@ function TasksTab({ workItemId, projectId }: { workItemId: string; projectId: st
                   key={i}
                   className="flex h-full items-center px-3 text-[12px] font-semibold"
                   style={{
-                    color: '#1f2937',
-                    borderRight: i < TASK_COLS.length - 1 ? '1px dashed #8c99ad' : undefined,
+                    color: BRAND.textPrimary,
+                    borderRight:
+                      i < TASK_COLS.length - 1 ? `1px dashed ${BRAND.textMuted}` : undefined,
                   }}
                 >
                   {col}
@@ -314,7 +315,7 @@ function TasksTab({ workItemId, projectId }: { workItemId: string; projectId: st
                   gridTemplateColumns: TASK_GRID,
                   backgroundColor: BRAND.surfaceSubtle,
                   borderBottom: `1px solid ${BRAND.borderInput}`,
-                  color: '#1f2937',
+                  color: BRAND.textPrimary,
                 }}
               >
                 <span />
@@ -355,7 +356,7 @@ function TasksTab({ workItemId, projectId }: { workItemId: string; projectId: st
                 style={{
                   gridTemplateColumns: TASK_GRID,
                   borderBottom: `1px solid ${BRAND.borderInner}`,
-                  color: '#334155',
+                  color: BRAND.textPrimary,
                 }}
                 onClick={() => openTask(task)}
               >
@@ -424,10 +425,10 @@ function HistoryTab({ workItemId }: { workItemId: string }) {
   return (
     <div className="w-full space-y-5">
       <div>
-        <h2 className="text-[20px] font-semibold" style={{ color: '#273449' }}>
+        <h2 className="text-[20px] font-semibold" style={{ color: BRAND.textPrimary }}>
           Revision History
         </h2>
-        <p className="mt-1 text-[12px]" style={{ color: '#64748b' }}>
+        <p className="mt-1 text-[12px]" style={{ color: BRAND.textSecondary }}>
           Activity log for field changes, task updates, and work item creation.
         </p>
       </div>
@@ -440,7 +441,7 @@ function HistoryTab({ workItemId }: { workItemId: string }) {
           className="grid px-4 py-2 text-[10px] font-semibold tracking-wider uppercase"
           style={{
             gridTemplateColumns: GRID,
-            color: '#64748b',
+            color: BRAND.textSecondary,
             backgroundColor: BRAND.surfaceHover,
             borderBottom: `1px solid ${BRAND.border}`,
           }}
@@ -472,7 +473,7 @@ function HistoryTab({ workItemId }: { workItemId: string }) {
               style={{
                 gridTemplateColumns: GRID,
                 borderBottom: `1px solid ${BRAND.borderInner}`,
-                color: '#334155',
+                color: BRAND.textPrimary,
               }}
             >
               <span
@@ -481,8 +482,8 @@ function HistoryTab({ workItemId }: { workItemId: string }) {
               >
                 {revision}
               </span>
-              <span style={{ color: '#334155' }}>{describeActivity(log)}</span>
-              <span className="font-mono text-[11px]" style={{ color: '#64748b' }}>
+              <span style={{ color: BRAND.textPrimary }}>{describeActivity(log)}</span>
+              <span className="font-mono text-[11px]" style={{ color: BRAND.textSecondary }}>
                 {new Date(log.createdAt).toLocaleString()}
               </span>
               <span className="flex min-w-0 items-center gap-2">
@@ -530,10 +531,10 @@ function DefectsTab({ workItemId, projectId }: { workItemId: string; projectId: 
     <div className="w-full">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h2 className="text-[20px] font-semibold" style={{ color: '#273449' }}>
+          <h2 className="text-[20px] font-semibold" style={{ color: BRAND.textPrimary }}>
             Defects
           </h2>
-          <p className="mt-0.5 text-[12px]" style={{ color: '#6b7280' }}>
+          <p className="mt-0.5 text-[12px]" style={{ color: BRAND.textSecondary }}>
             {defects.length} defect{defects.length !== 1 ? 's' : ''} linked to this story
           </p>
         </div>
@@ -545,10 +546,10 @@ function DefectsTab({ workItemId, projectId }: { workItemId: string; projectId: 
           style={{ border: `1px dashed ${BRAND.borderInput}` }}
         >
           <Bug size={28} style={{ color: '#c0c7d1', margin: '0 auto 8px' }} />
-          <p className="text-[13px] font-medium" style={{ color: '#6b7280' }}>
+          <p className="text-[13px] font-medium" style={{ color: BRAND.textSecondary }}>
             No defects linked to this story
           </p>
-          <p className="mt-1 text-[11px]" style={{ color: '#9ca3af' }}>
+          <p className="mt-1 text-[11px]" style={{ color: BRAND.textMuted }}>
             Create a defect and assign it as a child of this story
           </p>
         </div>
@@ -563,7 +564,7 @@ function DefectsTab({ workItemId, projectId }: { workItemId: string; projectId: 
               className="grid items-center bg-surface-hover px-3 py-1.5 text-[10px] font-semibold tracking-wider uppercase"
               style={{
                 gridTemplateColumns: DEFECT_GRID,
-                color: '#6b7280',
+                color: BRAND.textSecondary,
                 borderBottom: `1px solid ${BRAND.borderInput}`,
               }}
             >
@@ -585,7 +586,7 @@ function DefectsTab({ workItemId, projectId }: { workItemId: string; projectId: 
                 <span className="flex items-center overflow-hidden">
                   <IdCell type={d.type} itemKey={d.itemKey} onOpen={() => openDefect(d)} />
                 </span>
-                <span className="truncate font-medium" style={{ color: '#273449' }}>
+                <span className="truncate font-medium" style={{ color: BRAND.textPrimary }}>
                   {d.title}
                 </span>
                 <ScheduleStateBadge state={d.scheduleState} />
@@ -664,7 +665,7 @@ function DetailSidebar({
       >
         <span
           className="text-[11px] font-semibold tracking-wide uppercase"
-          style={{ color: '#6b7280' }}
+          style={{ color: BRAND.textSecondary }}
         >
           Details
         </span>
@@ -675,7 +676,7 @@ function DetailSidebar({
             title="Hide sidebar"
             className="rounded p-1 transition-colors hover:bg-surface-subtle"
           >
-            <PanelRightClose size={14} style={{ color: '#6b7280' }} />
+            <PanelRightClose size={14} style={{ color: BRAND.textSecondary }} />
           </button>
         </div>
       </div>
@@ -971,7 +972,7 @@ function DetailSidebar({
             style={{
               backgroundColor: BRAND.surfaceHover,
               border: `1px solid ${BRAND.avatarBg}`,
-              color: '#64748b',
+              color: BRAND.textSecondary,
             }}
           >
             You have read-only access to this item.
@@ -1309,7 +1310,7 @@ export function WorkItemDetailPage() {
               backgroundColor: BRAND.surfaceSubtle,
             }}
           >
-            <PanelRightOpen size={14} style={{ color: '#6b7280' }} />
+            <PanelRightOpen size={14} style={{ color: BRAND.textSecondary }} />
           </button>
         )}
       </div>

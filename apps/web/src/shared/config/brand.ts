@@ -29,6 +29,7 @@ export const BRAND = {
   textSecondary: '#5c6478',
   textMuted: '#8c94a6',
   textDisabled: '#a0a7b5', // placeholder / disabled text
+  textFaint: '#c4cad4', // faint hints, empty-state glyphs
   columnHeader: '#8c94a6', // table column header text
 
   // ── Borders ─────────────────────────────────────────────────────────────────

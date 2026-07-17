@@ -163,7 +163,7 @@ function ReleaseArtifactsTab({ releaseId }: { releaseId: string }) {
           <SkeletonList rows={8} />
         ) : items.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 p-8">
-            <Layers size={32} style={{ color: '#c4cad4' }} />
+            <Layers size={32} style={{ color: BRAND.textFaint }} />
             <p className="text-xs" style={{ color: BRAND.textMuted }}>
               {search ? 'No artifacts match your search' : 'No artifacts linked to this release'}
             </p>

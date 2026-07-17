@@ -556,7 +556,7 @@ function IterationDetail({
           style={{ backgroundColor: BRAND.surfaceSubtle }}
         >
           <div className="space-y-5">
-            <h2 className="text-[18px] font-semibold" style={{ color: '#273449' }}>
+            <h2 className="text-[18px] font-semibold" style={{ color: BRAND.textPrimary }}>
               Details
             </h2>
             <section

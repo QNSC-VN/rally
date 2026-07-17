@@ -74,7 +74,7 @@ interface SeverityBadgeProps {
 export function SeverityBadge({ severity }: SeverityBadgeProps) {
   if (!severity || severity === 'none') {
     return (
-      <span className="text-[10px]" style={{ color: '#c4cad4' }}>
+      <span className="text-[10px]" style={{ color: BRAND.textFaint }}>
         —
       </span>
     )

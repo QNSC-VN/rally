@@ -95,13 +95,13 @@ import { SCHEDULE_STATE_STEPS, SIMPLIFIED_STATE_STEPS } from '@/entities/work-it
 const AZ = {
   primary: BRAND.primary,
   primaryLight: BRAND.primaryLighter,
-  textPrimary: '#1a1a1a',
-  textSecondary: '#666666',
-  textMuted: '#999999',
+  textPrimary: BRAND.textPrimary,
+  textSecondary: BRAND.textSecondary,
+  textMuted: BRAND.textMuted,
   bg: BRAND.surface,
   bgHeader: BRAND.pageBg,
   bgAlt: BRAND.surfaceHover,
-  border: '#e8e8e8',
+  border: BRAND.borderSubtle,
   font: "'Segoe UI', -apple-system, BlinkMacSystemFont, 'Roboto', sans-serif",
 }
 
@@ -1891,7 +1891,7 @@ function StatusRow({
                   borderRadius: 2,
                   fontSize: 11,
                   fontWeight: 500,
-                  border: '1px dashed #cccccc',
+                  border: `1px dashed ${BRAND.border}`,
                   color: AZ.textMuted,
                   fontFamily: AZ.font,
                 }}

@@ -476,7 +476,7 @@ export function MilestonesPage() {
           <SkeletonList rows={6} />
         ) : filtered.length === 0 ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8">
-            <PackageOpen size={40} style={{ color: '#c4cad4' }} />
+            <PackageOpen size={40} style={{ color: BRAND.textFaint }} />
             <p className="text-sm" style={{ color: BRAND.textMuted }}>
               {search ? 'No milestones match your search' : 'No milestones yet'}
             </p>

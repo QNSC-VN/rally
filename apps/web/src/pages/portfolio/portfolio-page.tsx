@@ -372,7 +372,7 @@ function TreeRow({
               {rollup.blockedCount}
             </span>
           ) : (
-            <span className="text-[10px]" style={{ color: '#c4cad4' }}>
+            <span className="text-[10px]" style={{ color: BRAND.textFaint }}>
               —
             </span>
           )}

@@ -89,7 +89,12 @@ const DEFECT_STATE_STYLE: Record<
   submitted: { bg: BRAND.primaryLighter, text: '#1d4ed8', border: '#bfdbfe', label: 'Submitted' },
   open: { bg: '#fff7ed', text: '#9a3412', border: '#fed7aa', label: 'Open' },
   fixed: { bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0', label: 'Fixed' },
-  closed: { bg: BRAND.primaryLighter, text: '#475569', border: '#cbd5e1', label: 'Closed' },
+  closed: {
+    bg: BRAND.primaryLighter,
+    text: BRAND.textSecondary,
+    border: BRAND.border,
+    label: 'Closed',
+  },
   closed_declined: {
     bg: BRAND.dangerBg,
     text: BRAND.danger,
@@ -360,7 +365,7 @@ const QUALITY_COLUMNS: ColumnSpec<DefectRow, QualityCtx, QualityColKey>[] = [
           onOpen={() => ctx.openItem(d.parentKey!)}
         />
       ) : (
-        <span className="text-[11px]" style={{ color: '#c4cad4' }}>
+        <span className="text-[11px]" style={{ color: BRAND.textFaint }}>
           —
         </span>
       ),
@@ -386,7 +391,7 @@ const QUALITY_COLUMNS: ColumnSpec<DefectRow, QualityCtx, QualityColKey>[] = [
         />
       ) : (
         <div onClick={(e) => e.stopPropagation()}>
-          <span className="text-[10px]" style={{ color: '#c4cad4' }}>
+          <span className="text-[10px]" style={{ color: BRAND.textFaint }}>
             —
           </span>
         </div>
@@ -1237,7 +1242,7 @@ export function QualityPage() {
           <SkeletonList rows={8} />
         ) : defects.length === 0 ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8">
-            <PackageOpen size={40} style={{ color: '#c4cad4' }} />
+            <PackageOpen size={40} style={{ color: BRAND.textFaint }} />
             <p className="text-sm" style={{ color: BRAND.textMuted }}>
               {search ||
               severityFilter !== 'all' ||

@@ -425,7 +425,7 @@ export function AppShell() {
                     disabled={!project}
                     className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left"
                     style={{
-                      color: project ? BRAND.textPrimary : '#9aa3b2',
+                      color: project ? BRAND.textPrimary : BRAND.textMuted,
                       opacity: project ? 1 : 0.65,
                       cursor: project ? 'pointer' : 'not-allowed',
                     }}
@@ -440,7 +440,7 @@ export function AppShell() {
                     <Layers
                       size={12}
                       className="shrink-0"
-                      style={{ color: project ? BRAND.textSecondary : '#9aa3b2' }}
+                      style={{ color: project ? BRAND.textSecondary : BRAND.textMuted }}
                     />
                     <span className="text-[11px]">View workspace</span>
                   </button>
@@ -560,7 +560,7 @@ export function AppShell() {
                         </button>
                       ))}
                       {activeTeams.length === 0 && (
-                        <div className="px-1.5 py-1 text-[10px]" style={{ color: '#9aa3b2' }}>
+                        <div className="px-1.5 py-1 text-[10px]" style={{ color: BRAND.textMuted }}>
                           No teams in this project yet
                         </div>
                       )}

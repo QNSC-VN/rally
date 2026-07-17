@@ -116,13 +116,13 @@ export function CommentThread({ workItemId, projectId, readOnly = false }: Comme
       <div className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold text-muted-foreground">
         <MessageSquare size={13} />
         Comments
-        {comments.length > 0 && <span className="text-[#9ca3af]">({comments.length})</span>}
+        {comments.length > 0 && <span className="text-foreground-subtle">({comments.length})</span>}
       </div>
 
       {isLoading ? (
-        <p className="text-[12px] text-[#9ca3af]">Loading…</p>
+        <p className="text-[12px] text-foreground-subtle">Loading…</p>
       ) : comments.length === 0 ? (
-        <p className="text-[12px] text-[#9ca3af]">No comments yet.</p>
+        <p className="text-[12px] text-foreground-subtle">No comments yet.</p>
       ) : (
         <ul className="space-y-3">
           {[...comments]
@@ -151,14 +151,14 @@ export function CommentThread({ workItemId, projectId, readOnly = false }: Comme
                               setEditingId(c.id)
                               setEditBody(c.body)
                             }}
-                            className="text-[#b0b6c0] hover:text-primary-light"
+                            className="text-foreground-disabled hover:text-primary-light"
                           >
                             <Pencil size={11} />
                           </button>
                           <button
                             aria-label="Delete comment"
                             onClick={() => void deleteMutation.mutate(c.id)}
-                            className="text-[#b0b6c0] hover:text-destructive"
+                            className="text-foreground-disabled hover:text-destructive"
                           >
                             <Trash2 size={11} />
                           </button>

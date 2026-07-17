@@ -40,7 +40,10 @@ export function TaskRollup({ estimate, todo, actual }: TaskRollupProps) {
           >
             {label}
           </div>
-          <div className="text-[13px] font-semibold tabular-nums" style={{ color: '#273449' }}>
+          <div
+            className="text-[13px] font-semibold tabular-nums"
+            style={{ color: BRAND.textPrimary }}
+          >
             {values[key]}
           </div>
         </div>

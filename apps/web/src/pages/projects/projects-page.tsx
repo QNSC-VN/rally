@@ -140,14 +140,14 @@ function ProjectStatusBadge({ status }: { status: 'active' | 'archived' }) {
     <span
       className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] font-semibold"
       style={{
-        color: active ? BRAND.success : '#64748b',
+        color: active ? BRAND.success : BRAND.textSecondary,
         backgroundColor: active ? BRAND.successBg : BRAND.primaryLighter,
         border: `1px solid ${active ? BRAND.successBorder : BRAND.border}`,
       }}
     >
       <span
         className="h-1.5 w-1.5 rounded-full"
-        style={{ backgroundColor: active ? '#2a8c3f' : '#94a3b8' }}
+        style={{ backgroundColor: active ? '#2a8c3f' : BRAND.textMuted }}
       />
       {active ? 'Active' : 'Archived'}
     </span>

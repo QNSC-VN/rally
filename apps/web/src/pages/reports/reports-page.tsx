@@ -331,7 +331,7 @@ export function ReportsPage() {
                   <Area
                     type="monotone"
                     dataKey="ideal"
-                    stroke="#c4cad4"
+                    stroke={BRAND.textFaint}
                     fill="none"
                     strokeDasharray="4 3"
                     strokeWidth={1.5}

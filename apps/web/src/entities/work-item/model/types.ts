@@ -1,3 +1,4 @@
+import { BRAND } from '@/shared/config/brand'
 import type { LucideIcon } from 'lucide-react'
 import { BookOpen, Target, Layers, ClipboardList, Bug } from 'lucide-react'
 
@@ -93,7 +94,7 @@ export interface StatusBadgeStyle {
 }
 
 export const SCHEDULE_STATE_CONFIG: Record<ScheduleState, StatusBadgeStyle> = {
-  [ScheduleState.Idea]: { color: '#6b7280', bg: '#f3f4f6' },
+  [ScheduleState.Idea]: { color: BRAND.textSecondary, bg: '#f3f4f6' },
   [ScheduleState.Defined]: { color: '#5c6478', bg: '#edf0f4' },
   [ScheduleState.InProgress]: { color: '#1d6f9e', bg: '#e5f2fb' },
   [ScheduleState.Completed]: { color: '#3d7a4e', bg: '#eef6f0' },
@@ -107,7 +108,7 @@ export interface PriorityStyle {
 }
 
 export const WORK_ITEM_PRIORITY_CONFIG: Record<WorkItemPriority, PriorityStyle> = {
-  [WorkItemPriority.None]: { label: '—', color: '#9ca3af' },
+  [WorkItemPriority.None]: { label: '—', color: BRAND.textMuted },
   [WorkItemPriority.Low]: { label: 'Low', color: '#8c94a6' },
   [WorkItemPriority.Normal]: { label: 'Normal', color: '#5c6478' },
   [WorkItemPriority.High]: { label: 'High', color: '#d97706' },
@@ -131,7 +132,7 @@ export const DEFECT_SEVERITY_CONFIG: Record<DefectSeverity, SeverityStyle> = {
   critical: { label: 'Critical', color: '#b91c1c', bg: '#fef2f2', border: '#fecaca' },
   major: { label: 'Major Problem', color: '#9a3412', bg: '#fff7ed', border: '#fed7aa' },
   minor: { label: 'Minor Problem', color: '#854d0e', bg: '#fefce8', border: '#fef08a' },
-  trivial: { label: 'Trivial', color: '#475569', bg: '#f1f5f9', border: '#cbd5e1' },
+  trivial: { label: 'Trivial', color: BRAND.textSecondary, bg: '#f1f5f9', border: BRAND.border },
   none: { label: 'None', color: '#8c94a6', bg: '#f1f5f9', border: '#e2e6eb' },
 }
 

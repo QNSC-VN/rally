@@ -13,7 +13,7 @@ interface ColumnFieldsMenuProps<K extends string> {
 }
 
 const PANEL_BG = BRAND.surface
-const PANEL_BORDER = '#e1e1e1'
+const PANEL_BORDER = BRAND.borderSubtle
 const ACCENT = BRAND.primary
 
 /**
@@ -97,7 +97,7 @@ export function ColumnFieldsMenu<K extends string>({
         className="flex items-center gap-1.5"
         style={{
           fontSize: 12,
-          color: open ? ACCENT : '#333333',
+          color: open ? ACCENT : BRAND.textPrimary,
           background: open ? BRAND.primaryLighter : 'none',
           border: 'none',
           borderRadius: 2,
@@ -138,7 +138,7 @@ export function ColumnFieldsMenu<K extends string>({
                   padding: '5px 6px',
                   borderRadius: 3,
                   fontSize: 12.5,
-                  color: '#333333',
+                  color: BRAND.textPrimary,
                   background: isDropTarget
                     ? BRAND.primaryLighter
                     : isActive
@@ -178,7 +178,7 @@ export function ColumnFieldsMenu<K extends string>({
                   <GripVertical
                     size={13}
                     style={{
-                      color: isActive ? ACCENT : '#a0a0a0',
+                      color: isActive ? ACCENT : BRAND.textDisabled,
                       transition: 'color 0.12s ease',
                     }}
                   />

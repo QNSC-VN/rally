@@ -1,3 +1,4 @@
+import { BRAND } from '@/shared/config/brand'
 import { StrictMode, Component } from 'react'
 import type { ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -15,7 +16,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
       return (
         <div style={{ padding: '2rem', fontFamily: 'sans-serif' }}>
           <h1 style={{ color: '#dc2626' }}>Something went wrong</h1>
-          <pre style={{ color: '#64748b', fontSize: '0.875rem' }}>
+          <pre style={{ color: BRAND.textSecondary, fontSize: '0.875rem' }}>
             {(this.state.error as Error).message}
           </pre>
           <button onClick={() => this.setState({ error: null })}>Try again</button>

@@ -12,8 +12,8 @@ import { ResizeHandle } from '@/shared/ui/resize-handle'
  */
 const HEADER_BG = BRAND.pageBg
 const HEADER_BORDER = BRAND.avatarBg
-const HEADER_TEXT = '#4b5563'
-const SEPARATOR = '#d0d5dd'
+const HEADER_TEXT = BRAND.textSecondary
+const SEPARATOR = BRAND.border
 const INDICATOR_COLOR = BRAND.primary
 const INDICATOR_GLOW = '0 0 6px rgba(29,63,115,0.45)'
 
