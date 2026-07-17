@@ -974,6 +974,19 @@ function WorkspaceSettingsTab() {
   const current = workspaces.find((w) => w.id === workspaceId)
   const update = useUpdateWorkspace(workspaceId)
 
+  // Read-only workspace admins, derived from the members-with-profile surface.
+  const { data: admins = [] } = useQuery({
+    queryKey: ['workspace-admins', workspaceId],
+    queryFn: async () => {
+      if (!workspaceId) return []
+      const res = await apiClient.GET('/v1/workspaces/{id}/members-with-profile', {
+        params: { path: { id: workspaceId } },
+      })
+      return (res.data ?? []).filter((m) => m.roleSlug === 'workspace_admin')
+    },
+    enabled: !!workspaceId,
+  })
+
   const [name, setName] = useState(current?.name ?? workspace?.workspaceName ?? '')
   const [description, setDescription] = useState(current?.description ?? '')
 
@@ -1012,6 +1025,20 @@ function WorkspaceSettingsTab() {
       }}
       className="max-w-lg space-y-5"
     >
+      {/* ── Read-only identity ── */}
+      <div className="rounded-md" style={{ border: `1px solid ${BRAND.border}` }}>
+        <dl className="grid grid-cols-[130px_1fr] gap-x-3 gap-y-2.5 p-4 text-[13px]">
+          <dt style={{ color: BRAND.textMuted }}>Slug</dt>
+          <dd className="font-mono" style={{ color: BRAND.textPrimary }}>
+            {current?.slug ?? workspace?.workspaceSlug ?? '—'}
+          </dd>
+          <dt style={{ color: BRAND.textMuted }}>Workspace admin</dt>
+          <dd style={{ color: BRAND.textPrimary }}>
+            {admins.length === 0 ? '—' : admins.map((a) => a.displayName).join(', ')}
+          </dd>
+        </dl>
+      </div>
+
       <FormField label="Workspace name" required>
         <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Acme Corp" />
       </FormField>
