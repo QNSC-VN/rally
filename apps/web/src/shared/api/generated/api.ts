@@ -7855,6 +7855,7 @@ export interface operations {
     parameters: {
       query?: {
         unreadOnly?: string
+        category?: 'assigned' | 'mentions'
         limit?: number
       }
       header?: never

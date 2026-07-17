@@ -68,7 +68,7 @@ function NotificationRow({
       <div className="min-w-0 flex-1" onClick={onClose} role="presentation">
         {notification.resourceType && (
           <span
-            className="mb-0.5 inline-block rounded-sm px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide"
+            className="mb-0.5 inline-block rounded-sm px-1.5 py-0.5 text-[9px] font-semibold tracking-wide uppercase"
             style={{ backgroundColor: '#e5ebf4', color: BRAND.primary }}
           >
             {notification.resourceType}
@@ -112,7 +112,7 @@ export function NotificationPopover({ open, onClose }: NotificationPopoverProps)
   const [unreadOnly, setUnreadOnly] = useState(false)
 
   const { data: unreadCount = 0 } = useNotificationUnreadCount()
-  const { data: notifications = [], isLoading } = useNotifications(unreadOnly)
+  const { data: notifications = [], isLoading } = useNotifications({ unreadOnly })
   const markRead = useMarkNotificationRead()
   const markAll = useMarkAllNotificationsRead()
 
@@ -160,7 +160,10 @@ export function NotificationPopover({ open, onClose }: NotificationPopoverProps)
       {/* ── Header ── */}
       <div
         className="flex shrink-0 items-center justify-between px-4 py-3"
-        style={{ borderBottom: `1px solid ${BRAND.borderSubtle}`, backgroundColor: BRAND.surfaceSubtle }}
+        style={{
+          borderBottom: `1px solid ${BRAND.borderSubtle}`,
+          backgroundColor: BRAND.surfaceSubtle,
+        }}
       >
         <div className="flex items-center gap-2">
           <span className="text-[13px] font-semibold" style={{ color: BRAND.textPrimary }}>
@@ -245,7 +248,10 @@ export function NotificationPopover({ open, onClose }: NotificationPopoverProps)
       {/* ── Footer ── */}
       <div
         className="flex shrink-0 items-center justify-between px-4 py-2.5"
-        style={{ borderTop: `1px solid ${BRAND.borderSubtle}`, backgroundColor: BRAND.surfaceSubtle }}
+        style={{
+          borderTop: `1px solid ${BRAND.borderSubtle}`,
+          backgroundColor: BRAND.surfaceSubtle,
+        }}
       >
         <span className="text-[10px]" style={{ color: BRAND.textMuted }}>
           Showing {displayed.length} of {notifications.length}

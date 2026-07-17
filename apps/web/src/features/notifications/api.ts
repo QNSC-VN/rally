@@ -42,12 +42,21 @@ export function useNotificationUnreadCount() {
 
 // ── Notification list ─────────────────────────────────────────────────────────
 
-export function useNotifications(unreadOnly = false) {
+/** Notification Center category tabs (server maps these to notification types). */
+export type NotificationCategory = 'assigned' | 'mentions'
+
+export function useNotifications(
+  filter: { unreadOnly?: boolean; category?: NotificationCategory } = {},
+) {
+  const { unreadOnly = false, category } = filter
   return useQuery({
-    queryKey: ['notifications', 'list', unreadOnly],
+    queryKey: ['notifications', 'list', unreadOnly, category ?? 'all'],
     queryFn: async () => {
+      const query: { unreadOnly?: string; category?: NotificationCategory } = {}
+      if (unreadOnly) query.unreadOnly = 'true'
+      if (category) query.category = category
       const { data, error, response } = await apiClient.GET('/v1/notifications', {
-        params: { query: unreadOnly ? { unreadOnly: 'true' } : {} },
+        params: { query },
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return (data as Notification[]) ?? []

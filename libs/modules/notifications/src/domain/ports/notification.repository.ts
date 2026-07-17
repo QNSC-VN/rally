@@ -1,4 +1,8 @@
-import type { Notification, CreateNotificationInput } from '../notification.types';
+import type {
+  Notification,
+  CreateNotificationInput,
+  NotificationListFilter,
+} from '../notification.types';
 
 export const NOTIFICATION_REPOSITORY = Symbol('NOTIFICATION_REPOSITORY');
 
@@ -7,8 +11,7 @@ export interface INotificationRepository {
   listForRecipient(
     workspaceId: string,
     recipientId: string,
-    unreadOnly: boolean,
-    limit: number,
+    filter: NotificationListFilter,
   ): Promise<Notification[]>;
   /**
    * Returns unread notifications newer than afterId (exclusive), ordered oldest-first.

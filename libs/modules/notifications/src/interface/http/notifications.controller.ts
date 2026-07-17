@@ -46,11 +46,11 @@ export class NotificationsController {
     @CurrentUser() user: JwtPayload,
     @Query() query: ListNotificationsDto,
   ): Promise<NotificationResponseDto[]> {
-    const notifications = await this.notificationsService.listNotifications(
-      user,
-      Boolean(query.unreadOnly),
-      Number(query.limit),
-    );
+    const notifications = await this.notificationsService.listNotifications(user, {
+      unreadOnly: Boolean(query.unreadOnly),
+      category: query.category,
+      limit: Number(query.limit),
+    });
     return notifications.map(toDto);
   }
 

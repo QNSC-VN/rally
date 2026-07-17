@@ -10,16 +10,40 @@ import {
   useMarkAllNotificationsRead,
 } from '@/features/notifications/api'
 
+const TABS = [
+  { key: 'all', label: 'All' },
+  { key: 'unread', label: 'Unread' },
+  { key: 'assigned', label: 'Assigned' },
+  { key: 'mentions', label: 'Mentions' },
+] as const
+
+type NotificationTab = (typeof TABS)[number]['key']
+
+const TAB_FILTER: Record<
+  NotificationTab,
+  { unreadOnly?: boolean; category?: 'assigned' | 'mentions' }
+> = {
+  all: {},
+  unread: { unreadOnly: true },
+  assigned: { category: 'assigned' },
+  mentions: { category: 'mentions' },
+}
+
 export function NotificationsPage() {
   const navigate = useNavigate()
-  const [unreadOnly, setUnreadOnly] = useState(false)
-  const { data: notifications = [], isLoading, isError } = useNotifications(unreadOnly)
+  const [tab, setTab] = useState<NotificationTab>('all')
+  const { data: notifications = [], isLoading, isError } = useNotifications(TAB_FILTER[tab])
   const markRead = useMarkNotificationRead()
   const markAll = useMarkAllNotificationsRead()
 
   const unreadCount = notifications.filter((n) => !n.isRead).length
 
-  function handleNotificationClick(n: { resourceType: string | null; resourceId: string | null; id: string; isRead: boolean }) {
+  function handleNotificationClick(n: {
+    resourceType: string | null
+    resourceId: string | null
+    id: string
+    isRead: boolean
+  }) {
     // Mark as read then navigate
     if (!n.isRead) {
       void markRead.mutateAsync(n.id)
@@ -35,7 +59,10 @@ export function NotificationsPage() {
       }
       const route = routeMap[n.resourceType]
       if (route) {
-        void navigate({ to: route, params: { itemKey: n.resourceId, releaseId: n.resourceId, milestoneId: n.resourceId } })
+        void navigate({
+          to: route,
+          params: { itemKey: n.resourceId, releaseId: n.resourceId, milestoneId: n.resourceId },
+        })
       }
     }
   }
@@ -71,17 +98,25 @@ export function NotificationsPage() {
           )}
         </div>
         <div className="flex items-center gap-3">
-          <label className="flex cursor-pointer items-center gap-1.5 select-none">
-            <input
-              type="checkbox"
-              checked={unreadOnly}
-              onChange={(e) => setUnreadOnly(e.target.checked)}
-              className="rounded"
-            />
-            <span className="text-[12px]" style={{ color: BRAND.textSecondary }}>
-              Unread only
-            </span>
-          </label>
+          <div className="flex items-center gap-1">
+            {TABS.map((t) => {
+              const active = tab === t.key
+              return (
+                <button
+                  key={t.key}
+                  onClick={() => setTab(t.key)}
+                  className="rounded px-3 py-1.5 text-[12px] font-medium transition-colors"
+                  style={{
+                    backgroundColor: active ? BRAND.primary : 'transparent',
+                    color: active ? '#ffffff' : BRAND.textSecondary,
+                    border: `1px solid ${active ? BRAND.primary : BRAND.border}`,
+                  }}
+                >
+                  {t.label}
+                </button>
+              )
+            })}
+          </div>
           {unreadCount > 0 && (
             <button
               onClick={() => void handleMarkAll()}
@@ -126,12 +161,12 @@ export function NotificationsPage() {
             </div>
             <div className="text-center">
               <p className="text-[15px] font-semibold" style={{ color: BRAND.textPrimary }}>
-                {unreadOnly ? 'No unread notifications' : "You're all caught up"}
+                {tab === 'unread' ? 'No unread notifications' : "You're all caught up"}
               </p>
               <p className="mt-1 text-[12px]" style={{ color: BRAND.textMuted }}>
-                {unreadOnly
-                  ? 'Switch off "Unread only" to see all.'
-                  : 'New notifications will appear here.'}
+                {tab === 'all'
+                  ? 'New notifications will appear here.'
+                  : 'Switch to the All tab to see everything.'}
               </p>
             </div>
           </div>
@@ -140,7 +175,7 @@ export function NotificationsPage() {
             {notifications.map((n) => (
               <li
                 key={n.id}
-                className="flex items-start gap-3 px-6 py-4 transition-colors hover:bg-[#f7f8fa] cursor-pointer"
+                className="flex cursor-pointer items-start gap-3 px-6 py-4 transition-colors hover:bg-[#f7f8fa]"
                 style={{
                   borderBottom: `1px solid ${BRAND.borderInner}`,
                   backgroundColor: n.isRead ? undefined : '#f5f8ff',
@@ -151,7 +186,10 @@ export function NotificationsPage() {
                 <button
                   title={n.isRead ? 'Read' : 'Mark as read'}
                   disabled={n.isRead || markRead.isPending}
-                  onClick={(e) => { e.stopPropagation(); void markRead.mutateAsync(n.id) }}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    void markRead.mutateAsync(n.id)
+                  }}
                   className="mt-0.5 shrink-0 transition-opacity hover:opacity-70 disabled:cursor-default"
                 >
                   {n.isRead ? (
