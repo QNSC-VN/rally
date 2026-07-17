@@ -8,7 +8,7 @@
  *
  * The semantic tokens below (primary, surfaces, text, borders, danger, success,
  * warning) are kept byte-for-byte in sync with their `--css-var` counterparts by
- * `brand.sync.test.ts` — update both together or the test fails.
+ * `app/styles/brand-palette-sync.test.ts` — update both together or the test fails.
  */
 export const BRAND = {
   // ── Core palette ────────────────────────────────────────────────────────────

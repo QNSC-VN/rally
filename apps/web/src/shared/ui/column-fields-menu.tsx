@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { GripVertical, Columns } from 'lucide-react'
 import type { ColumnDef } from '@/shared/lib/hooks/use-column-layout'
+import { BRAND } from '@/shared/config/brand'
 
 interface ColumnFieldsMenuProps<K extends string> {
   columns: ColumnDef<K>[]
@@ -11,10 +12,9 @@ interface ColumnFieldsMenuProps<K extends string> {
   buttonStyle?: React.CSSProperties
 }
 
-const PANEL_BG = '#ffffff'
+const PANEL_BG = BRAND.surface
 const PANEL_BORDER = '#e1e1e1'
-// Brand navy primary (matches --primary in globals.css), not Fluent blue.
-const ACCENT = '#1d3f73'
+const ACCENT = BRAND.primary
 
 /**
  * "Show Fields" trigger button + dropdown panel: checkbox to toggle a

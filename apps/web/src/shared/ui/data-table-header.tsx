@@ -14,7 +14,7 @@ const HEADER_BG = '#f3f4f6'
 const HEADER_BORDER = '#e2e8f0'
 const HEADER_TEXT = '#4b5563'
 const SEPARATOR = '#d0d5dd'
-const INDICATOR_COLOR = '#1d3f73'
+const INDICATOR_COLOR = BRAND.primary
 const INDICATOR_GLOW = '0 0 6px rgba(29,63,115,0.45)'
 
 /** Column descriptor consumed by {@link DataTableHeader}. */
@@ -224,9 +224,9 @@ function SortHeader({ label, col, activeCol, dir, onSort, rightAlign }: SortHead
       </span>
       {isActive ? (
         dir === 'desc' ? (
-          <ChevronDown size={11} className="shrink-0 text-[#1d3f73]" />
+          <ChevronDown size={11} className="shrink-0 text-primary" />
         ) : (
-          <ChevronUp size={11} className="shrink-0 text-[#1d3f73]" />
+          <ChevronUp size={11} className="shrink-0 text-primary" />
         )
       ) : (
         <ChevronsUpDown
