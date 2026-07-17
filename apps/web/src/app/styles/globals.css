@@ -14,7 +14,7 @@
   /* Brand */
   --primary: #1d3f73;
   --primary-foreground: #ffffff;
-  --primary-hover: #162d56;
+  --primary-hover: #163260;
 
   /* Surface */
   --background: #f0f2f5;
@@ -24,21 +24,34 @@
   --popover: #ffffff;
   --popover-foreground: #1a2234;
 
+  /* Brand tints (mirror brand.ts) */
+  --primary-light: #2558a6; /* links, secondary actions */
+  --primary-lighter: #eef3fb; /* subtle tinted backgrounds */
+
+  /* Surface tints */
+  --surface-hover: #f7f8fa;
+  --surface-subtle: #f4f6f9;
+
   /* Secondary / muted */
   --secondary: #ebedf2;
   --secondary-foreground: #1a2234;
   --muted: #e4e8ed;
-  --muted-foreground: #5c6478;
+  --muted-foreground: #5c6478; /* textSecondary */
+  --foreground-subtle: #8c94a6; /* textMuted — column headers, placeholders */
+  --foreground-disabled: #a0a7b5; /* textDisabled */
   --accent: #dce3ee;
   --accent-foreground: #1a2234;
   --accent-blue: #edf2fb;
   --accent-blue-foreground: #1d3f73;
 
-  /* Semantic — kept in exact sync with brand.ts (guarded by brand.sync.test.ts) */
+  /* Semantic — kept in exact sync with brand.ts (guarded by brand-palette-sync.test.ts) */
   --destructive: #b91c1c;
   --destructive-foreground: #ffffff;
+  --destructive-bg: #fef2f2;
+  --destructive-border: #f0c7c1;
   --success: #1e6930;
   --success-bg: #eaf5ed;
+  --success-border: #c7e4ce;
   --warning: #d97706;
   --warning-bg: #fef5e4;
   --info: #1e40af;
@@ -47,9 +60,15 @@
   /* Border / input */
   --border: rgba(0, 0, 0, 0.08);
   --border-strong: #d9dee7;
+  --border-subtle: #e2e6eb;
+  --border-inner: #edf0f4;
   --input: #d7dde7; /* form-control border — used by shadcn Input/Textarea */
   --input-background: #f4f6f9;
   --ring: #1d3f73;
+
+  /* Avatar / initials */
+  --avatar: #e5ebf4;
+  --avatar-foreground: #1d3f73;
 
   /* Sidebar — navy */
   --sidebar: #162d56;
@@ -98,21 +117,38 @@
   --primary: #4a80d4;
   --primary-foreground: #ffffff;
   --primary-hover: #5a90e4;
+  --primary-light: #6a9be8;
+  --primary-lighter: #1e3a5f;
+  --surface-hover: #1e2a40;
+  --surface-subtle: #1a2234;
   --secondary: #1e2a40;
   --secondary-foreground: #e8ecf4;
   --muted: #1e2a40;
   --muted-foreground: #8c94a6;
+  --foreground-subtle: #6b7488;
+  --foreground-disabled: #565e70;
   --accent: #1e2a40;
   --accent-foreground: #e8ecf4;
   --accent-blue: #1e3a5f;
   --accent-blue-foreground: #93b4e0;
   --destructive: #ef4444;
   --destructive-foreground: #ffffff;
+  --destructive-bg: #2a1416;
+  --destructive-border: #5a2a2a;
+  --success: #3fb950;
+  --success-bg: #12261a;
+  --success-border: #2a4a32;
+  --warning: #e3a008;
+  --warning-bg: #2a2110;
   --border: rgba(255, 255, 255, 0.08);
   --border-strong: #2a3a54;
+  --border-subtle: #243149;
+  --border-inner: #1e2a40;
   --input: #2a3a54; /* dark-mode form-control border */
   --input-background: #1a2234;
   --ring: #4a80d4;
+  --avatar: #1e3a5f;
+  --avatar-foreground: #93b4e0;
   --sidebar: #0f1623;
   --sidebar-foreground: rgba(255, 255, 255, 0.75);
   --sidebar-primary: #4a80d4;
@@ -137,21 +173,41 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-light: var(--primary-light);
+  --color-primary-lighter: var(--primary-lighter);
+  --color-surface-hover: var(--surface-hover);
+  --color-surface-subtle: var(--surface-subtle);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+  --color-foreground-subtle: var(--foreground-subtle);
+  --color-foreground-disabled: var(--foreground-disabled);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent-blue: var(--accent-blue);
   --color-accent-blue-foreground: var(--accent-blue-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-bg: var(--destructive-bg);
+  --color-destructive-border: var(--destructive-border);
+  --color-success: var(--success);
+  --color-success-bg: var(--success-bg);
+  --color-success-border: var(--success-border);
+  --color-warning: var(--warning);
+  --color-warning-bg: var(--warning-bg);
+  --color-info: var(--info);
+  --color-info-bg: var(--info-bg);
   --color-border: var(--border);
   --color-border-strong: var(--border-strong);
+  --color-border-subtle: var(--border-subtle);
+  --color-border-inner: var(--border-inner);
   --color-input: var(--input);
   --color-input-background: var(--input-background);
   --color-ring: var(--ring);
+  --color-avatar: var(--avatar);
+  --color-avatar-foreground: var(--avatar-foreground);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
