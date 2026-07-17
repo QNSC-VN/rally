@@ -20,6 +20,19 @@ import { describe, expect, it } from 'vitest'
  * To migrate: replace the hex with the matching token (className utility, or
  * `BRAND.*` where a class can't reach), then set `MAX_RAW_HEX` to the number this
  * test reports. Never raise it.
+ *
+ * Progress 732 → 49. The remaining 49 are deliberately NOT auto-collapsed — each
+ * needs a human/design call, not a codemod guess:
+ *   • Microsoft SSO logo squares in `pages/login` (#f25022 #7fba00 #00a4ef #ffb900)
+ *     — third-party brand assets, not our palette. Keep verbatim.
+ *   • `pages/settings` label-colour defaults (#6b7280 ×2) — user-editable DATA, not
+ *     chrome; tokenising would change the colour-picker's default value.
+ *   • `--muted` neutral (#e4e8ed ×3) — has a CSS var but no BRAND key yet.
+ *   • Blue-tint selection/hover/depth secondary palette (~40: #bdd0ef #9fb5d5
+ *     #d7e4f7 #c7d4f5 #9db4d4 #1e2740 #173f78 #3a4252 …) — an intentional set of
+ *     selected/hover/focus border + depth shades with no brand equivalent.
+ *     Needs a named token family + visual QA before collapsing, or it flattens
+ *     intended interactive-state hierarchy. Do NOT blind-map to primary/border.
  */
 
 // ── Ratchet baseline — LOWER as files migrate, NEVER raise ────────────────────
