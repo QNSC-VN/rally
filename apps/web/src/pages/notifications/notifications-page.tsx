@@ -173,7 +173,7 @@ export function NotificationsPage() {
             {notifications.map((n) => (
               <li
                 key={n.id}
-                className="flex cursor-pointer items-start gap-3 px-6 py-4 transition-colors hover:bg-[#f7f8fa]"
+                className="flex cursor-pointer items-start gap-3 px-6 py-4 transition-colors hover:bg-surface-hover"
                 style={{
                   borderBottom: `1px solid ${BRAND.borderInner}`,
                   backgroundColor: n.isRead ? undefined : '#f5f8ff',

@@ -43,7 +43,7 @@ function NotificationRow({
 }) {
   return (
     <li
-      className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-[#f7f8fa]"
+      className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-surface-hover"
       style={{
         borderBottom: `1px solid ${BRAND.borderInner}`,
         backgroundColor: notification.isRead ? undefined : BRAND.primaryLighter,
@@ -186,7 +186,7 @@ export function NotificationPopover({ open, onClose }: NotificationPopoverProps)
               type="checkbox"
               checked={unreadOnly}
               onChange={(e) => setUnreadOnly(e.target.checked)}
-              className="h-3 w-3 rounded accent-[#1d3f73]"
+              className="h-3 w-3 rounded accent-primary"
             />
             <span className="text-[10px]" style={{ color: BRAND.textSecondary }}>
               Unread only

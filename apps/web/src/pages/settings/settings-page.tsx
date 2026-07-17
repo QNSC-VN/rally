@@ -621,7 +621,7 @@ function MembersTab() {
                       onClick={() => cancelInvite.mutate(inv.id)}
                       disabled={cancelInvite.isPending}
                       title="Cancel invitation"
-                      className="shrink-0 rounded p-0.5 hover:bg-[#f0f2f5] disabled:opacity-50"
+                      className="shrink-0 rounded p-0.5 hover:bg-background disabled:opacity-50"
                     >
                       <X size={13} style={{ color: BRAND.textMuted }} />
                     </button>
@@ -655,7 +655,7 @@ function MembersTab() {
               <tr
                 key={m.id}
                 style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
-                className="hover:bg-[#f7f8fa]"
+                className="hover:bg-surface-hover"
               >
                 {/* Avatar + name */}
                 <td className="py-3 pr-4">
@@ -907,7 +907,7 @@ function InvitePanel({
         <h4 className="text-[13px] font-semibold" style={{ color: BRAND.textPrimary }}>
           Invite a new member
         </h4>
-        <button onClick={onClose} className="rounded p-0.5 hover:bg-[#f0f2f5]">
+        <button onClick={onClose} className="rounded p-0.5 hover:bg-background">
           <X size={14} style={{ color: BRAND.textMuted }} />
         </button>
       </div>

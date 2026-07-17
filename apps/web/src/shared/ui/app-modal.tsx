@@ -72,7 +72,7 @@ export function AppModal({
         {/* ── Card ─────────────────────────────────────────────────────────── */}
         <DialogPrimitive.Content
           className={cn(
-            'fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2',
+            'fixed top-1/2 left-1/2 z-50 -translate-x-1/2 -translate-y-1/2',
             'flex flex-col overflow-hidden rounded bg-white shadow-2xl',
             'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95',
             'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95',
@@ -108,7 +108,7 @@ export function AppModal({
 
             <DialogPrimitive.Close asChild>
               <button
-                className="rounded p-0.5 transition-colors hover:bg-[#edf0f4]"
+                className="rounded p-0.5 transition-colors hover:bg-border-inner"
                 aria-label="Close"
                 style={{ color: BRAND.textMuted }}
               >
@@ -133,11 +133,7 @@ interface ModalBodyProps {
 
 /** Scrollable content area with standard 20px padding. */
 export function ModalBody({ children, className }: ModalBodyProps) {
-  return (
-    <div className={cn('flex-1 overflow-y-auto p-5', className)}>
-      {children}
-    </div>
-  )
+  return <div className={cn('flex-1 overflow-y-auto p-5', className)}>{children}</div>
 }
 
 // ── ModalFooter ───────────────────────────────────────────────────────────────

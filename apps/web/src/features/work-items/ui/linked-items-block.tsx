@@ -91,7 +91,7 @@ export function LinkedItemsBlock({
   return (
     <div className="mt-4">
       <div className="mb-2 flex items-center justify-between">
-        <div className="flex items-center gap-1.5 text-[12px] font-semibold text-[#5c6478]">
+        <div className="flex items-center gap-1.5 text-[12px] font-semibold text-muted-foreground">
           <Link2 size={13} />
           Linked Items
           {relations.length > 0 && <span className="text-[#9ca3af]">({relations.length})</span>}
@@ -99,7 +99,7 @@ export function LinkedItemsBlock({
         {!readOnly && !adding && (
           <button
             onClick={() => setAdding(true)}
-            className="flex items-center gap-1 rounded px-2 py-1 text-[11px] text-[#2558a6] hover:bg-[#eef3fb]"
+            className="flex items-center gap-1 rounded px-2 py-1 text-[11px] text-primary-light hover:bg-primary-lighter"
           >
             <Plus size={12} />
             Link item
@@ -108,12 +108,12 @@ export function LinkedItemsBlock({
       </div>
 
       {adding && (
-        <div className="mb-3 rounded border border-[#d7dde7] p-2">
+        <div className="mb-3 rounded border border-input p-2">
           <div className="flex items-center justify-between">
             <select
               value={relationType}
               onChange={(e) => setRelationType(e.target.value as WorkItemRelationType)}
-              className="rounded border border-[#d7dde7] px-2 py-1 text-[12px]"
+              className="rounded border border-input px-2 py-1 text-[12px]"
             >
               {RELATION_TYPE_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
@@ -134,7 +134,7 @@ export function LinkedItemsBlock({
             value={search}
             onChange={(e) => void runSearch(e.target.value)}
             placeholder="Search work item by key or title…"
-            className="mt-2 w-full rounded border border-[#d7dde7] px-2 py-1 text-[12px]"
+            className="mt-2 w-full rounded border border-input px-2 py-1 text-[12px]"
           />
           {hits.length > 0 && (
             <ul className="mt-1 max-h-48 overflow-y-auto rounded border border-[#eef0f4]">
@@ -145,14 +145,14 @@ export function LinkedItemsBlock({
                     disabled={linkMutation.isPending}
                     className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-[12px] hover:bg-[#f6f8fb] disabled:opacity-50"
                   >
-                    <span className="font-mono text-[#2558a6]">{h.itemKey}</span>
-                    <span className="truncate text-[#5c6478]">{h.title}</span>
+                    <span className="font-mono text-primary-light">{h.itemKey}</span>
+                    <span className="truncate text-muted-foreground">{h.title}</span>
                   </button>
                 </li>
               ))}
             </ul>
           )}
-          {error && <p className="mt-1 text-[11px] text-[#b91c1c]">{error}</p>}
+          {error && <p className="mt-1 text-[11px] text-destructive">{error}</p>}
         </div>
       )}
 
@@ -164,7 +164,7 @@ export function LinkedItemsBlock({
         <div className="space-y-2">
           {grouped.map(([label, items]) => (
             <div key={label}>
-              <div className="text-[11px] font-medium text-[#8c94a6]">{label}</div>
+              <div className="text-[11px] font-medium text-foreground-subtle">{label}</div>
               <ul className="mt-0.5 space-y-0.5">
                 {items.map((r) => (
                   <li
@@ -172,7 +172,7 @@ export function LinkedItemsBlock({
                     className="flex items-center justify-between rounded px-1.5 py-1 hover:bg-[#f6f8fb]"
                   >
                     <span className="flex items-center gap-2 text-[12px]">
-                      <span className="font-mono text-[#2558a6]">{r.relatedItem.itemKey}</span>
+                      <span className="font-mono text-primary-light">{r.relatedItem.itemKey}</span>
                       <span className="truncate text-[#3a4252]">{r.relatedItem.title}</span>
                     </span>
                     {!readOnly && (
@@ -180,7 +180,7 @@ export function LinkedItemsBlock({
                         aria-label="Remove link"
                         onClick={() => void unlinkMutation.mutate(r.id)}
                         disabled={unlinkMutation.isPending}
-                        className="p-1 text-[#b0b6c0] hover:text-[#b91c1c] disabled:opacity-50"
+                        className="p-1 text-[#b0b6c0] hover:text-destructive disabled:opacity-50"
                       >
                         <Trash2 size={12} />
                       </button>

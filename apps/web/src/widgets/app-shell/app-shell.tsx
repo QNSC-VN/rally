@@ -381,7 +381,7 @@ export function AppShell() {
                             closeAll()
                             window.location.reload()
                           }}
-                          className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left hover:bg-[#f4f6f9] disabled:opacity-50"
+                          className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left hover:bg-surface-subtle disabled:opacity-50"
                         >
                           <div
                             className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[9px] font-bold"
@@ -456,7 +456,7 @@ export function AppShell() {
                             setTeam(null)
                             closeAll()
                           }}
-                          className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left hover:bg-[#f4f6f9]"
+                          className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left hover:bg-surface-subtle"
                           style={{
                             color: project?.projectId === p.id ? BRAND.primary : BRAND.textPrimary,
                             fontWeight: project?.projectId === p.id ? 600 : 400,
@@ -495,7 +495,7 @@ export function AppShell() {
                           setTeam(null)
                           closeAll()
                         }}
-                        className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left hover:bg-[#f4f6f9]"
+                        className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left hover:bg-surface-subtle"
                         style={{
                           color: !team ? BRAND.primary : BRAND.textPrimary,
                           fontWeight: !team ? 600 : 400,
@@ -522,7 +522,7 @@ export function AppShell() {
                             setTeam({ teamId: t.id, teamName: t.name })
                             closeAll()
                           }}
-                          className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left hover:bg-[#f4f6f9]"
+                          className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left hover:bg-surface-subtle"
                           style={{
                             color: team?.teamId === t.id ? BRAND.primary : BRAND.textPrimary,
                             fontWeight: team?.teamId === t.id ? 600 : 400,
@@ -839,7 +839,7 @@ export function AppShell() {
                 <div className="py-1">
                   <Link
                     to={'/settings' as '/'}
-                    className="flex w-full items-center gap-2.5 px-3 py-2 text-[11px] hover:bg-[#f4f6f9]"
+                    className="flex w-full items-center gap-2.5 px-3 py-2 text-[11px] hover:bg-surface-subtle"
                     style={{ color: BRAND.textPrimary }}
                     onClick={closeAll}
                   >
@@ -848,7 +848,7 @@ export function AppShell() {
                   </Link>
                   <Link
                     to={'/settings' as '/'}
-                    className="flex w-full items-center gap-2.5 px-3 py-2 text-[11px] hover:bg-[#f4f6f9]"
+                    className="flex w-full items-center gap-2.5 px-3 py-2 text-[11px] hover:bg-surface-subtle"
                     style={{ color: BRAND.textPrimary }}
                     onClick={closeAll}
                   >

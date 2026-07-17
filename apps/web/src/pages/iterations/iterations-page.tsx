@@ -252,7 +252,7 @@ export function IterationsPage() {
                 <div
                   key={it.id}
                   onClick={() => setDetailId(it.id)}
-                  className="flex h-8 cursor-pointer items-center px-3 transition-colors hover:bg-[#f4f6f9]"
+                  className="flex h-8 cursor-pointer items-center px-3 transition-colors hover:bg-surface-subtle"
                   style={{
                     width: tableWidth,
                     minWidth: '100%',
@@ -461,7 +461,7 @@ function CreateIterationModal({
         <button
           type="button"
           onClick={onClose}
-          className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-[#f0f2f5]"
+          className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-background"
           style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
         >
           Cancel

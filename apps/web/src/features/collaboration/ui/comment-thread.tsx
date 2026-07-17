@@ -113,7 +113,7 @@ export function CommentThread({ workItemId, projectId, readOnly = false }: Comme
 
   return (
     <div className="mt-5">
-      <div className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold text-[#5c6478]">
+      <div className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold text-muted-foreground">
         <MessageSquare size={13} />
         Comments
         {comments.length > 0 && <span className="text-[#9ca3af]">({comments.length})</span>}
@@ -139,7 +139,7 @@ export function CommentThread({ workItemId, projectId, readOnly = false }: Comme
                     {initials(author)}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 text-[11px] text-[#8c94a6]">
+                    <div className="flex items-center gap-2 text-[11px] text-foreground-subtle">
                       <span className="font-medium text-[#3a4252]">{author}</span>
                       <span>{relativeTime(c.createdAt)}</span>
                       {c.isEdited && <span className="italic">(edited)</span>}
@@ -151,14 +151,14 @@ export function CommentThread({ workItemId, projectId, readOnly = false }: Comme
                               setEditingId(c.id)
                               setEditBody(c.body)
                             }}
-                            className="text-[#b0b6c0] hover:text-[#2558a6]"
+                            className="text-[#b0b6c0] hover:text-primary-light"
                           >
                             <Pencil size={11} />
                           </button>
                           <button
                             aria-label="Delete comment"
                             onClick={() => void deleteMutation.mutate(c.id)}
-                            className="text-[#b0b6c0] hover:text-[#b91c1c]"
+                            className="text-[#b0b6c0] hover:text-destructive"
                           >
                             <Trash2 size={11} />
                           </button>
@@ -170,19 +170,19 @@ export function CommentThread({ workItemId, projectId, readOnly = false }: Comme
                         <textarea
                           value={editBody}
                           onChange={(e) => setEditBody(e.target.value)}
-                          className="w-full rounded border border-[#d7dde7] px-2 py-1 text-[12px]"
+                          className="w-full rounded border border-input px-2 py-1 text-[12px]"
                           rows={2}
                         />
                         <div className="mt-1 flex gap-2">
                           <button
                             onClick={() => void saveEdit(c.id)}
-                            className="rounded bg-[#2558a6] px-2 py-0.5 text-[11px] text-white"
+                            className="rounded bg-primary-light px-2 py-0.5 text-[11px] text-white"
                           >
                             Save
                           </button>
                           <button
                             onClick={() => setEditingId(null)}
-                            className="text-[11px] text-[#8c94a6]"
+                            className="text-[11px] text-foreground-subtle"
                           >
                             Cancel
                           </button>
@@ -208,10 +208,10 @@ export function CommentThread({ workItemId, projectId, readOnly = false }: Comme
             onChange={(e) => onDraftChange(e.target.value)}
             placeholder="Add a comment… use @ to mention a teammate"
             rows={2}
-            className="w-full rounded border border-[#d7dde7] px-2 py-1.5 text-[12px]"
+            className="w-full rounded border border-input px-2 py-1.5 text-[12px]"
           />
           {showPicker && memberMatches.length > 0 && (
-            <ul className="absolute z-50 mt-0.5 max-h-44 w-64 overflow-y-auto rounded border border-[#d7dde7] bg-white shadow-lg">
+            <ul className="absolute z-50 mt-0.5 max-h-44 w-64 overflow-y-auto rounded border border-input bg-white shadow-lg">
               {memberMatches.map((m) => (
                 <li key={m.userId}>
                   <button
@@ -228,7 +228,7 @@ export function CommentThread({ workItemId, projectId, readOnly = false }: Comme
             <button
               onClick={() => void post()}
               disabled={!draft.trim() || createMutation.isPending}
-              className="rounded bg-[#2558a6] px-3 py-1 text-[12px] text-white disabled:opacity-50"
+              className="rounded bg-primary-light px-3 py-1 text-[12px] text-white disabled:opacity-50"
             >
               Comment
             </button>

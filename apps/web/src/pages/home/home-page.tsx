@@ -73,7 +73,7 @@ function ProjectHealthRow({
 
   return (
     <div
-      className="flex h-9 items-center gap-3 px-4 transition-colors hover:bg-[#f7f8fa]"
+      className="flex h-9 items-center gap-3 px-4 transition-colors hover:bg-surface-hover"
       style={{
         borderBottom: `1px solid ${BRAND.borderInner}`,
         backgroundColor: isSelected ? '#edf2fb' : undefined,
@@ -273,7 +273,7 @@ export function HomePage() {
               borderLeft: i > 0 ? `1px solid ${BRAND.borderSubtle}` : undefined,
             }
             const sharedClass =
-              'flex flex-1 flex-col justify-center px-5 py-3 text-left transition-colors hover:bg-[#f7f8fa]'
+              'flex flex-1 flex-col justify-center px-5 py-3 text-left transition-colors hover:bg-surface-hover'
             return (
               <Link key={m.label} to={m.path as '/'} className={sharedClass} style={sharedStyle}>
                 {inner}
@@ -346,7 +346,7 @@ export function HomePage() {
               return (
                 <div
                   key={item.id}
-                  className="flex h-8 items-center gap-2 px-3 hover:bg-[#f7f8fa]"
+                  className="flex h-8 items-center gap-2 px-3 hover:bg-surface-hover"
                   style={{ borderBottom: `1px solid ${BRAND.borderInner}` }}
                 >
                   <div

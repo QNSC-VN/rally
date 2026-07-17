@@ -58,7 +58,7 @@ export function ConfirmDialog({
           type="button"
           onClick={onCancel}
           disabled={pending}
-          className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-[#f0f2f5] disabled:opacity-50"
+          className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-background disabled:opacity-50"
           style={{ color: BRAND.textSecondary }}
         >
           {cancelLabel}

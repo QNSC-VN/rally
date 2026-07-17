@@ -327,7 +327,7 @@ export function TeamStatusPage() {
                       setSelectedId(it.id)
                       setSelectorOpen(false)
                     }}
-                    className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-[#f4f6f9]"
+                    className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-surface-subtle"
                     style={{
                       backgroundColor: selectedId === it.id ? '#edf2fb' : 'transparent',
                     }}

@@ -216,7 +216,7 @@ function CreateReleaseModal({ projectId, onClose }: { projectId: string; onClose
         <button
           type="button"
           onClick={onClose}
-          className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-[#f0f2f5]"
+          className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-background"
           style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
         >
           Cancel
@@ -467,7 +467,7 @@ function ReleaseDetailModal({
         <button
           type="button"
           onClick={onClose}
-          className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-[#f0f2f5]"
+          className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-background"
           style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
         >
           Cancel

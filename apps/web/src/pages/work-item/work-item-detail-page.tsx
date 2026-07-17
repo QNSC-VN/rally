@@ -548,7 +548,7 @@ function DefectsTab({ workItemId, projectId }: { workItemId: string; projectId: 
           <div className="min-w-[600px]">
             {/* Header */}
             <div
-              className="grid items-center bg-[#f7f8fa] px-3 py-1.5 text-[10px] font-semibold tracking-wider uppercase"
+              className="grid items-center bg-surface-hover px-3 py-1.5 text-[10px] font-semibold tracking-wider uppercase"
               style={{
                 gridTemplateColumns: DEFECT_GRID,
                 color: '#6b7280',

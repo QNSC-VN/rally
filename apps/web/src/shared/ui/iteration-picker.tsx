@@ -98,7 +98,7 @@ export function IterationPicker({
                     onSelect(it.id)
                     setOpen(false)
                   }}
-                  className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left hover:bg-[#f0f2f5]"
+                  className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left hover:bg-background"
                   style={{
                     backgroundColor: it.id === selectedId ? BRAND.primaryLighter : 'transparent',
                   }}

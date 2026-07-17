@@ -112,7 +112,7 @@ function ArchiveConfirmModal({
         <button
           type="button"
           onClick={onClose}
-          className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-[#f0f2f5]"
+          className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-background"
           style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
         >
           Cancel
@@ -221,7 +221,7 @@ function EditProjectModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-[#f0f2f5]"
+            className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-background"
             style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
           >
             Cancel
@@ -342,7 +342,7 @@ function NewProjectModal({ workspaceId, onClose }: { workspaceId: string; onClos
           <button
             type="button"
             onClick={onClose}
-            className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-[#f0f2f5]"
+            className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-background"
             style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
           >
             Cancel
@@ -591,7 +591,7 @@ export function ProjectsPage() {
               filtered.map((project) => (
                 <div
                   key={project.id}
-                  className="relative flex h-12 cursor-default items-center gap-3 px-4 transition-colors hover:bg-[#f7f8fa]"
+                  className="relative flex h-12 cursor-default items-center gap-3 px-4 transition-colors hover:bg-surface-hover"
                   style={{
                     borderBottom: `1px solid ${BRAND.borderInner}`,
                     opacity: project.status === 'archived' ? 0.7 : 1,
@@ -685,7 +685,7 @@ export function ProjectsPage() {
                         e.stopPropagation()
                         setOpenMenu(openMenu === project.id ? null : project.id)
                       }}
-                      className="flex h-6 w-6 items-center justify-center rounded hover:bg-[#e5ebf4]"
+                      className="flex h-6 w-6 items-center justify-center rounded hover:bg-avatar"
                       style={{ color: BRAND.textMuted }}
                       aria-label="Project actions"
                     >
@@ -698,7 +698,7 @@ export function ProjectsPage() {
                         style={{ border: `1px solid ${BRAND.border}` }}
                       >
                         <button
-                          className="flex w-full items-center gap-2 px-3 py-2 text-[11px] hover:bg-[#f4f6f9]"
+                          className="flex w-full items-center gap-2 px-3 py-2 text-[11px] hover:bg-surface-subtle"
                           style={{ color: BRAND.textPrimary }}
                           onClick={() => {
                             setEditingProject(project)
@@ -709,7 +709,7 @@ export function ProjectsPage() {
                           Edit project
                         </button>
                         <button
-                          className="flex w-full items-center gap-2 px-3 py-2 text-[11px] hover:bg-[#f4f6f9]"
+                          className="flex w-full items-center gap-2 px-3 py-2 text-[11px] hover:bg-surface-subtle"
                           style={{
                             color: project.status === 'active' ? BRAND.danger : BRAND.textPrimary,
                           }}

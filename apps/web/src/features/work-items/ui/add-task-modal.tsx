@@ -107,7 +107,7 @@ export function AddTaskModal({ workItemId, onClose }: Props) {
           type="button"
           onClick={onClose}
           disabled={submitting}
-          className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-[#f0f2f5] disabled:opacity-50"
+          className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-background disabled:opacity-50"
           style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
         >
           Cancel
