@@ -8,6 +8,7 @@ const UserProfileSchema = z.object({
   avatarUrl: z.string().nullable(),
   locale: z.string(),
   timezone: z.string(),
+  phone: z.string().nullable(),
 });
 
 const WorkspaceMembershipSchema = z.object({

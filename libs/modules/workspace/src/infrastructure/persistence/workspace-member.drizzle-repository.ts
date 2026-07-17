@@ -26,7 +26,7 @@ export class WorkspaceMemberDrizzleRepository implements IWorkspaceMemberReposit
         and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, userId)),
       )
       .limit(1);
-    return (rows[0]) ?? null;
+    return rows[0] ?? null;
   }
 
   async findMemberById(id: string): Promise<WorkspaceMember | null> {
@@ -35,7 +35,7 @@ export class WorkspaceMemberDrizzleRepository implements IWorkspaceMemberReposit
       .from(workspaceMembers)
       .where(eq(workspaceMembers.id, id))
       .limit(1);
-    return (rows[0]) ?? null;
+    return rows[0] ?? null;
   }
 
   /** Active workspace memberships for a user, most-recently-active first (login switcher). */
@@ -106,6 +106,8 @@ export class WorkspaceMemberDrizzleRepository implements IWorkspaceMemberReposit
         displayName: users.displayName,
         email: users.email,
         avatarUrl: users.avatarUrl,
+        phone: users.phone,
+        lastLoginAt: users.lastLoginAt,
         roleAssignmentId: userRoleAssignments.id,
         roleId: userRoleAssignments.roleId,
         roleSlug: systemRoles.slug,
@@ -134,6 +136,8 @@ export class WorkspaceMemberDrizzleRepository implements IWorkspaceMemberReposit
       displayName: r.displayName ?? r.email ?? r.userId,
       email: r.email ?? '',
       avatarUrl: r.avatarUrl ?? null,
+      phone: r.phone ?? null,
+      lastLoginAt: r.lastLoginAt ?? null,
       roleAssignmentId: r.roleAssignmentId ?? null,
       roleId: r.roleId ?? null,
       roleSlug: r.roleSlug ?? null,
@@ -157,7 +161,11 @@ export class WorkspaceMemberDrizzleRepository implements IWorkspaceMemberReposit
     return rows[0];
   }
 
-  async updateMember(id: string, input: UpdateMemberInput, tx?: DbExecutor): Promise<WorkspaceMember> {
+  async updateMember(
+    id: string,
+    input: UpdateMemberInput,
+    tx?: DbExecutor,
+  ): Promise<WorkspaceMember> {
     const rows = await (tx ?? this.db)
       .update(workspaceMembers)
       .set({
@@ -209,13 +217,13 @@ export class WorkspaceMemberDrizzleRepository implements IWorkspaceMemberReposit
       )
       .innerJoin(
         systemRoles,
-        and(eq(systemRoles.id, userRoleAssignments.roleId), eq(systemRoles.slug, 'workspace_admin')),
+        and(
+          eq(systemRoles.id, userRoleAssignments.roleId),
+          eq(systemRoles.slug, 'workspace_admin'),
+        ),
       )
       .where(
-        and(
-          eq(workspaceMembers.workspaceId, workspaceId),
-          eq(workspaceMembers.status, 'active'),
-        ),
+        and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.status, 'active')),
       );
     return Number(rows[0]?.cnt ?? 0);
   }
@@ -234,7 +242,10 @@ export class WorkspaceMemberDrizzleRepository implements IWorkspaceMemberReposit
       )
       .innerJoin(
         systemRoles,
-        and(eq(systemRoles.id, userRoleAssignments.roleId), eq(systemRoles.slug, 'workspace_admin')),
+        and(
+          eq(systemRoles.id, userRoleAssignments.roleId),
+          eq(systemRoles.slug, 'workspace_admin'),
+        ),
       )
       .where(
         and(

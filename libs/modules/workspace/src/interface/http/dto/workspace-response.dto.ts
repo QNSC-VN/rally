@@ -61,6 +61,8 @@ export const MemberWithProfileResponseSchema = z.object({
   displayName: z.string(),
   email: z.string().email(),
   avatarUrl: z.string().nullable(),
+  phone: z.string().nullable(),
+  lastLoginAt: z.string().datetime().nullable(),
   roleAssignmentId: z.string().uuid().nullable(),
   roleId: z.string().uuid().nullable(),
   roleSlug: z.string().nullable(),

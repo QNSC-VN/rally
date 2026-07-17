@@ -1736,6 +1736,7 @@ export interface components {
       avatarUrl?: string | null
       locale?: string
       timezone?: string
+      phone?: string | null
     }
     UserProfileResponseDto: {
       id: string
@@ -1744,6 +1745,7 @@ export interface components {
       avatarUrl: string | null
       locale: string
       timezone: string
+      phone: string | null
       role: string
       permissions: string[]
       emailVerified: boolean
@@ -1861,6 +1863,9 @@ export interface components {
       /** Format: email */
       email: string
       avatarUrl: string | null
+      phone: string | null
+      /** Format: date-time */
+      lastLoginAt: string | null
       roleAssignmentId: string | null
       roleId: string | null
       roleSlug: string | null

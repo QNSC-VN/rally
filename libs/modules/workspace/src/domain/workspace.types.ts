@@ -49,6 +49,8 @@ export interface WorkspaceMemberWithProfile {
   displayName: string;
   email: string;
   avatarUrl: string | null;
+  phone: string | null;
+  lastLoginAt: Date | null;
   roleAssignmentId: string | null;
   roleId: string | null;
   roleSlug: string | null;

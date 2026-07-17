@@ -38,6 +38,7 @@ import { PERMISSION, type Permission } from '@/shared/config/permissions'
 import type { ComponentType } from 'react'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
+import type { components } from '@/shared/api/generated/api'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useNavigate } from '@tanstack/react-router'
@@ -143,6 +144,7 @@ const profileSchema = z.object({
   avatarUrl: z.string().optional(),
   locale: z.string().min(2).max(10),
   timezone: z.string().min(1).max(100),
+  phone: z.string().max(32).trim().optional(),
 })
 type ProfileForm = z.infer<typeof profileSchema>
 
@@ -159,6 +161,7 @@ function ProfileTab() {
       avatarUrl: user?.avatarUrl ?? '',
       locale: user?.locale ?? 'en',
       timezone: user?.timezone ?? 'UTC',
+      phone: user?.phone ?? '',
     },
   })
 
@@ -169,6 +172,7 @@ function ProfileTab() {
         avatarUrl: data.avatarUrl?.trim() || null,
         locale: data.locale,
         timezone: data.timezone,
+        phone: data.phone?.trim() || null,
       }
       const {
         data: updated,
@@ -188,6 +192,7 @@ function ProfileTab() {
         avatarUrl: string | null
         locale: string
         timezone: string
+        phone: string | null
         role: string
         permissions: string[]
         emailVerified: boolean
@@ -243,6 +248,14 @@ function ProfileTab() {
               className="w-full rounded-md px-3 py-2 text-[13px] focus:outline-none"
               style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textPrimary }}
               placeholder="https://..."
+            />
+          </Field>
+          <Field label="Phone" error={profile.formState.errors.phone?.message}>
+            <input
+              {...profile.register('phone')}
+              className="w-full rounded-md px-3 py-2 text-[13px] focus:outline-none"
+              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textPrimary }}
+              placeholder="+84 ..."
             />
           </Field>
           <Field label="Locale">
@@ -396,11 +409,14 @@ type InviteForm = z.infer<typeof inviteSchema>
 
 // ── Members tab (User Management) ─────────────────────────────────────────────
 
+type MemberWithProfile = components['schemas']['MemberWithProfileResponseDto']
+
 function MembersTab() {
   const qc = useQueryClient()
   const { user } = useAuthStore()
   const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
   const [showInvitePanel, setShowInvitePanel] = useState(false)
+  const [selectedMember, setSelectedMember] = useState<MemberWithProfile | null>(null)
 
   // Load members with profile + role info
   const { data: members = [], isLoading: membersLoading } = useQuery({
@@ -475,6 +491,22 @@ function MembersTab() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['workspace-invitations', workspaceId] })
       toast.success('Invitation cancelled')
+    },
+    onError: (err) => toast.error(apiErrorMessage(err)),
+  })
+
+  // Remove member (revoke workspace access)
+  const removeMember = useMutation({
+    mutationFn: async (userId: string) => {
+      if (!workspaceId) return
+      await apiClient.DELETE('/v1/workspaces/{id}/members/{userId}', {
+        params: { path: { id: workspaceId, userId } },
+      })
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['workspace-members-profile', workspaceId] })
+      setSelectedMember(null)
+      toast.success('Member removed')
     },
     onError: (err) => toast.error(apiErrorMessage(err)),
   })
@@ -597,7 +629,7 @@ function MembersTab() {
       <table className="w-full border-collapse text-[13px]">
         <thead>
           <tr style={{ borderBottom: `1px solid ${BRAND.border}` }}>
-            {['Member', 'Email', 'Role', 'Joined'].map((h) => (
+            {['Member', 'Phone', 'Role', 'Status', 'Last Login', 'Joined'].map((h) => (
               <th
                 key={h}
                 className="pb-2 text-left text-[11px] font-semibold tracking-wide uppercase"
@@ -619,7 +651,11 @@ function MembersTab() {
               >
                 {/* Avatar + name */}
                 <td className="py-3 pr-4">
-                  <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMember(m)}
+                    className="flex items-center gap-2 text-left hover:underline"
+                  >
                     <div
                       className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white"
                       style={{ backgroundColor: BRAND.primary }}
@@ -640,11 +676,11 @@ function MembersTab() {
                         </span>
                       )}
                     </span>
-                  </div>
+                  </button>
                 </td>
-                {/* Email */}
+                {/* Phone */}
                 <td className="py-3 pr-4" style={{ color: BRAND.textSecondary }}>
-                  {m.email}
+                  {m.phone || '—'}
                 </td>
                 {/* Role dropdown */}
                 <td className="py-3 pr-4">
@@ -677,6 +713,14 @@ function MembersTab() {
                     ))}
                   </select>
                 </td>
+                {/* Status */}
+                <td className="py-3 pr-4">
+                  <MemberStatusBadge status={m.status} />
+                </td>
+                {/* Last login */}
+                <td className="py-3 pr-4" style={{ color: BRAND.textMuted }}>
+                  {m.lastLoginAt ? new Date(m.lastLoginAt).toLocaleDateString() : 'Never'}
+                </td>
                 {/* Joined date */}
                 <td className="py-3" style={{ color: BRAND.textMuted }}>
                   {new Date(m.joinedAt).toLocaleDateString()}
@@ -686,7 +730,128 @@ function MembersTab() {
           })}
         </tbody>
       </table>
+
+      {selectedMember && (
+        <UserDetailModal
+          member={selectedMember}
+          roles={roles}
+          isCurrentUser={selectedMember.userId === user?.id}
+          onClose={() => setSelectedMember(null)}
+          onRemove={() => removeMember.mutate(selectedMember.userId)}
+          isRemoving={removeMember.isPending}
+        />
+      )}
     </div>
+  )
+}
+
+// ── Member status badge ───────────────────────────────────────────────────────
+
+function MemberStatusBadge({ status }: { status: string }) {
+  const map: Record<string, { label: string; color: string; bg: string }> = {
+    active: { label: 'Active', color: BRAND.success, bg: BRAND.successBg },
+    invited: { label: 'Invited', color: BRAND.warning, bg: BRAND.warningBg },
+    suspended: { label: 'Suspended', color: BRAND.danger, bg: BRAND.dangerBg },
+  }
+  const s = map[status] ?? { label: status, color: BRAND.textMuted, bg: BRAND.surfaceSubtle }
+  return (
+    <span
+      className="rounded px-2 py-0.5 text-[11px] font-semibold capitalize"
+      style={{ color: s.color, backgroundColor: s.bg }}
+    >
+      {s.label}
+    </span>
+  )
+}
+
+// ── User detail modal ─────────────────────────────────────────────────────────
+
+function UserDetailModal({
+  member,
+  roles,
+  isCurrentUser,
+  onClose,
+  onRemove,
+  isRemoving,
+}: {
+  member: MemberWithProfile
+  roles: { id: string; name: string }[]
+  isCurrentUser: boolean
+  onClose: () => void
+  onRemove: () => void
+  isRemoving: boolean
+}) {
+  const roleName = roles.find((r) => r.id === member.roleId)?.name ?? member.roleName ?? '—'
+  const isWorkspaceAdmin = member.roleSlug === 'workspace_admin'
+  const canRemove = !isCurrentUser && !isWorkspaceAdmin
+
+  return (
+    <AppModal open onClose={onClose} title="Member details" width={440}>
+      <ModalBody className="space-y-4">
+        <div className="flex items-center gap-3">
+          <div
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[15px] font-bold text-white"
+            style={{ backgroundColor: BRAND.primary }}
+          >
+            {member.displayName?.charAt(0)?.toUpperCase() ?? '?'}
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-[14px] font-semibold" style={{ color: BRAND.textPrimary }}>
+              {member.displayName}
+            </p>
+            <p className="truncate text-[12px]" style={{ color: BRAND.textMuted }}>
+              {member.email}
+            </p>
+          </div>
+        </div>
+
+        <dl className="grid grid-cols-[110px_1fr] gap-x-3 gap-y-2 text-[13px]">
+          <dt style={{ color: BRAND.textMuted }}>Phone</dt>
+          <dd style={{ color: BRAND.textPrimary }}>{member.phone || '—'}</dd>
+          <dt style={{ color: BRAND.textMuted }}>Role</dt>
+          <dd style={{ color: BRAND.textPrimary }}>{roleName}</dd>
+          <dt style={{ color: BRAND.textMuted }}>Status</dt>
+          <dd>
+            <MemberStatusBadge status={member.status} />
+          </dd>
+          <dt style={{ color: BRAND.textMuted }}>Last login</dt>
+          <dd style={{ color: BRAND.textPrimary }}>
+            {member.lastLoginAt ? new Date(member.lastLoginAt).toLocaleString() : 'Never'}
+          </dd>
+          <dt style={{ color: BRAND.textMuted }}>Joined</dt>
+          <dd style={{ color: BRAND.textPrimary }}>
+            {new Date(member.joinedAt).toLocaleDateString()}
+          </dd>
+        </dl>
+      </ModalBody>
+      <ModalFooter>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-md px-4 py-2 text-[13px] font-semibold"
+          style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
+        >
+          Close
+        </button>
+        <button
+          type="button"
+          onClick={onRemove}
+          disabled={!canRemove || isRemoving}
+          title={
+            isCurrentUser
+              ? 'You cannot remove yourself'
+              : isWorkspaceAdmin
+                ? 'Workspace admins cannot be removed here'
+                : 'Remove workspace access'
+          }
+          className="flex items-center gap-2 rounded-md px-4 py-2 text-[13px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+          style={{ backgroundColor: BRAND.danger }}
+        >
+          {isRemoving && <Loader2 size={12} className="animate-spin" />}
+          Remove access
+        </button>
+      </ModalFooter>
+    </AppModal>
   )
 }
 

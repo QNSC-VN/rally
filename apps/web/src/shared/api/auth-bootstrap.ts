@@ -58,6 +58,7 @@ interface MeResponse {
   avatarUrl?: string | null
   locale: string
   timezone: string
+  phone?: string | null
   role: string
   permissions: string[]
   emailVerified: boolean
