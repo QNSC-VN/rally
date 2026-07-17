@@ -82,7 +82,7 @@ function toWorkItemDto(w: WorkItem): WorkItemResponseDto {
     teamId: w.teamId,
     iterationId: w.iterationId,
     releaseId: w.releaseId,
-    storyPoints: w.storyPoints,
+    storyPoints: numOrNull(w.storyPoints),
     estimateHours: numOrNull(w.estimateHours),
     todoHours: numOrNull(w.todoHours),
     actualHours: numOrNull(w.actualHours),

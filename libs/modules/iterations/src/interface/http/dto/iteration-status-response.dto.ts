@@ -4,10 +4,10 @@ import { workItemTypeEnum, workItemScheduleStateEnum } from '../../../../../../.
 
 export const IterationStatusMetricsSchema = z.object({
   plannedVelocityPercent: z.number().int(),
-  acceptedPoints: z.number().int(),
+  acceptedPoints: z.number(),
   plannedVelocity: z.number().int(),
   acceptedPercent: z.number().int(),
-  totalPlanEstimate: z.number().int(),
+  totalPlanEstimate: z.number(),
   daysLeft: z.number().int().nullable(),
   defectCount: z.number().int(),
   taskCount: z.number().int(),
@@ -22,7 +22,7 @@ export const IterationStatusItemSchema = z.object({
   iterationId: z.string().uuid().nullable(),
   isBlocked: z.boolean(),
   blockedReason: z.string().nullable(),
-  planEstimate: z.number().int().nullable(),
+  planEstimate: z.number().nullable(),
   taskEstimate: z.number(),
   toDo: z.number(),
   assigneeId: z.string().uuid().nullable(),

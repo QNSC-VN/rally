@@ -296,7 +296,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         teamId: tasks.teamId,
         iterationId: tasks.iterationId,
         releaseId: sql<string | null>`null`.as('release_id'),
-        storyPoints: sql<number | null>`null`.as('story_points'),
+        storyPoints: sql<string | null>`null`.as('story_points'),
         estimateHours: tasks.estimateHours,
         todoHours: tasks.todoHours,
         actualHours: tasks.actualHours,

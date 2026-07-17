@@ -106,8 +106,8 @@ export class SnapshotCronService {
       .select({
         totalItems: sql<number>`count(*)::int`,
         completedItems: sql<number>`count(*) filter (where ${workflowStatuses.category} = 'done')::int`,
-        totalPoints: sql<number>`coalesce(sum(${workItems.storyPoints}), 0)::int`,
-        completedPoints: sql<number>`coalesce(sum(${workItems.storyPoints}) filter (where ${workflowStatuses.category} = 'done'), 0)::int`,
+        totalPoints: sql<number>`coalesce(sum(${workItems.storyPoints}), 0)::float8`,
+        completedPoints: sql<number>`coalesce(sum(${workItems.storyPoints}) filter (where ${workflowStatuses.category} = 'done'), 0)::float8`,
       })
       .from(workItems)
       .innerJoin(

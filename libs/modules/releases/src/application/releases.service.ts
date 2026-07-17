@@ -280,7 +280,7 @@ export class ReleasesService {
         assigneeId: workItems.assigneeId,
         iterationId: workItems.iterationId,
         releaseId: workItems.releaseId,
-        storyPoints: workItems.storyPoints,
+        storyPoints: sql<number | null>`${workItems.storyPoints}::float8`,
         createdAt: workItems.createdAt,
         updatedAt: workItems.updatedAt,
       })

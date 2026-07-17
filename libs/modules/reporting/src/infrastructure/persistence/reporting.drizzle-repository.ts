@@ -23,10 +23,17 @@ export class ReportingDrizzleRepository implements IReportingRepository {
       )
       .orderBy(asc(iterationDailySnapshots.snapshotDate));
     // Reporting domain still speaks "sprintId" (Phase 5 rename); map the renamed
-    // physical column back onto the domain field.
+    // physical column back onto the domain field. Points are numeric (string from
+    // Drizzle) — coerce to number for the domain contract.
     return rows.map((r) => {
       const { iterationId, ...rest } = r;
-      return { ...rest, sprintId: iterationId };
+      return {
+        ...rest,
+        totalPoints: Number(r.totalPoints),
+        completedPoints: Number(r.completedPoints),
+        remainingPoints: Number(r.remainingPoints),
+        sprintId: iterationId,
+      };
     });
   }
 
@@ -78,7 +85,7 @@ export class ReportingDrizzleRepository implements IReportingRepository {
         return {
           sprintId: sprint.id,
           sprintName: sprint.name,
-          completedPoints: last?.completedPoints ?? 0,
+          completedPoints: Number(last?.completedPoints ?? 0),
           completedItems: last?.completedItems ?? 0,
         };
       })
@@ -93,9 +100,9 @@ export class ReportingDrizzleRepository implements IReportingRepository {
         workspaceId: snapshot.workspaceId,
         iterationId: snapshot.sprintId,
         snapshotDate: snapshot.snapshotDate,
-        totalPoints: snapshot.totalPoints,
-        completedPoints: snapshot.completedPoints,
-        remainingPoints: snapshot.remainingPoints,
+        totalPoints: String(snapshot.totalPoints),
+        completedPoints: String(snapshot.completedPoints),
+        remainingPoints: String(snapshot.remainingPoints),
         totalItems: snapshot.totalItems,
         completedItems: snapshot.completedItems,
       })

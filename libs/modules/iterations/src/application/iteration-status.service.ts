@@ -101,7 +101,7 @@ export class IterationStatusService {
       type: WorkItemType;
       title: string;
       assigneeId?: string;
-      planEstimate?: number;
+      planEstimate?: string;
     },
   ): Promise<{ workItemId: string; itemKey: string }> {
     // Only stories and defects can live in an iteration (SRS P2.1). Enforced at
