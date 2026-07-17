@@ -13,6 +13,7 @@ import {
   ConflictException,
   PreconditionFailedException,
   UnitOfWork,
+  AuditProducer,
 } from '@platform';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -155,6 +156,7 @@ describe('ProjectsService', () => {
         { provide: PROJECT_MEMBER_REPOSITORY, useValue: projectMemberRepo },
         { provide: WORKSPACE_MEMBER_REPOSITORY, useValue: workspaceMemberRepo },
         { provide: UnitOfWork, useValue: uow },
+        { provide: AuditProducer, useValue: { emit: vi.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
 

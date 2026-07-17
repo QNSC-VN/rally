@@ -6,6 +6,9 @@ import {
   PreconditionFailedException,
   PermissionDeniedException,
   UnitOfWork,
+  AuditProducer,
+  AUDIT_ACTION,
+  AUDIT_RESOURCE,
 } from '@platform';
 import type { JwtPayload, CursorPayload, PagedResult } from '@platform';
 import { IProjectRepository, PROJECT_REPOSITORY } from '../domain/ports/project.repository';
@@ -52,6 +55,7 @@ export class ProjectsService {
     @Inject(WORKSPACE_MEMBER_REPOSITORY)
     private readonly workspaceMemberRepo: IWorkspaceMemberRepository,
     private readonly uow: UnitOfWork,
+    private readonly audit: AuditProducer,
   ) {}
 
   // ── Projects ──────────────────────────────────────────────────────────────
@@ -136,6 +140,19 @@ export class ProjectsService {
         );
       }
 
+      await this.audit.emit(
+        {
+          action: AUDIT_ACTION.PROJECT_CREATED,
+          resourceType: AUDIT_RESOURCE.PROJECT,
+          resourceId: projectId,
+          workspaceId: actor.workspaceId,
+          actor: { id: actor.sub },
+          projectId,
+          changes: { after: { key: normalizedKey, name, leadId: resolvedLeadId } },
+        },
+        tx,
+      );
+
       return created;
     });
 
@@ -193,7 +210,24 @@ export class ProjectsService {
       }
     }
 
-    return this.projectRepo.update(projectId, input, actor.workspaceId);
+    const isArchiving = project.status !== 'archived' && input.status === 'archived';
+
+    return this.uow.run(async (tx) => {
+      const after = await this.projectRepo.update(projectId, input, actor.workspaceId, tx);
+      await this.audit.emit(
+        {
+          action: isArchiving ? AUDIT_ACTION.PROJECT_ARCHIVED : AUDIT_ACTION.PROJECT_UPDATED,
+          resourceType: AUDIT_RESOURCE.PROJECT,
+          resourceId: projectId,
+          workspaceId: actor.workspaceId,
+          actor: { id: actor.sub },
+          projectId,
+          changes: { before: project, after },
+        },
+        tx,
+      );
+      return after;
+    });
   }
 
   async deleteProject(workspaceId: string, projectId: string): Promise<void> {
@@ -266,7 +300,11 @@ export class ProjectsService {
     defect: 'DE',
   };
 
-  async generateItemKey(workspaceId: string, projectId: string, type: WorkItemType): Promise<string> {
+  async generateItemKey(
+    workspaceId: string,
+    projectId: string,
+    type: WorkItemType,
+  ): Promise<string> {
     const project = await this.getProject(workspaceId, projectId);
     // PRJ-FR-010: archived projects are read-only; block new work item creation
     if (project.status === 'archived') {
@@ -310,7 +348,11 @@ export class ProjectsService {
     await this.statusRepo.delete(statusId);
   }
 
-  async reorderStatuses(workspaceId: string, projectId: string, orderedIds: string[]): Promise<void> {
+  async reorderStatuses(
+    workspaceId: string,
+    projectId: string,
+    orderedIds: string[],
+  ): Promise<void> {
     await this.getProject(workspaceId, projectId);
     await this.statusRepo.updatePositions(projectId, orderedIds);
   }
@@ -333,7 +375,11 @@ export class ProjectsService {
     });
   }
 
-  async deleteTransition(workspaceId: string, projectId: string, transitionId: string): Promise<void> {
+  async deleteTransition(
+    workspaceId: string,
+    projectId: string,
+    transitionId: string,
+  ): Promise<void> {
     await this.getProject(workspaceId, projectId);
     const transition = await this.statusRepo.findTransitionById(transitionId);
     if (!transition || transition.projectId !== projectId) {

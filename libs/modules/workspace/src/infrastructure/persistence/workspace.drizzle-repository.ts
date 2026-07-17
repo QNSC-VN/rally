@@ -88,8 +88,8 @@ export class WorkspaceDrizzleRepository implements IWorkspaceRepository {
     return rows[0] as Workspace;
   }
 
-  async update(id: string, input: UpdateWorkspaceInput): Promise<Workspace> {
-    const rows = await this.db
+  async update(id: string, input: UpdateWorkspaceInput, tx?: DbExecutor): Promise<Workspace> {
+    const rows = await (tx ?? this.db)
       .update(workspaces)
       .set({
         ...(input.name !== undefined && { name: input.name }),
@@ -103,8 +103,8 @@ export class WorkspaceDrizzleRepository implements IWorkspaceRepository {
     return rows[0] as Workspace;
   }
 
-  async softDelete(id: string): Promise<void> {
-    await this.db
+  async softDelete(id: string, tx?: DbExecutor): Promise<void> {
+    await (tx ?? this.db)
       .update(workspaces)
       .set({ deletedAt: new Date(), updatedAt: new Date() })
       .where(eq(workspaces.id, id));

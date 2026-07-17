@@ -4,6 +4,7 @@ import type {
   ScopeType,
   EffectiveAssignment,
 } from '../access.types';
+import type { DbExecutor } from '@platform';
 
 export const ROLE_ASSIGNMENT_REPOSITORY = Symbol('ROLE_ASSIGNMENT_REPOSITORY');
 
@@ -22,6 +23,6 @@ export interface IRoleAssignmentRepository {
    * set, in a single query. Used by permission resolution to avoid N+1 lookups.
    */
   listEffectiveForUser(workspaceId: string, userId: string): Promise<EffectiveAssignment[]>;
-  create(input: AssignRoleInput): Promise<UserRoleAssignment>;
-  delete(id: string): Promise<void>;
+  create(input: AssignRoleInput, tx?: DbExecutor): Promise<UserRoleAssignment>;
+  delete(id: string, tx?: DbExecutor): Promise<void>;
 }

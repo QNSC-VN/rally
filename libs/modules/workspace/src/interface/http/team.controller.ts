@@ -115,6 +115,7 @@ export class TeamController {
       dto.key,
       dto.description,
       dto.leadId,
+      user.sub,
     );
     return toTeamDto(team);
   }
@@ -141,7 +142,7 @@ export class TeamController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateTeamDto,
   ) {
-    const team = await this.teamService.updateTeam(id, dto, user.workspaceId);
+    const team = await this.teamService.updateTeam(id, dto, user.workspaceId, user.sub);
     return toTeamDto(team);
   }
 
@@ -167,7 +168,7 @@ export class TeamController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: AddTeamMemberDto,
   ) {
-    const member = await this.teamService.addTeamMember(id, dto.userId, user.workspaceId);
+    const member = await this.teamService.addTeamMember(id, dto.userId, user.workspaceId, user.sub);
     return toTeamMemberDto(member);
   }
 
@@ -184,6 +185,6 @@ export class TeamController {
     @Param('id', ParseUUIDPipe) id: string,
     @Param('userId', ParseUUIDPipe) userId: string,
   ) {
-    await this.teamService.removeTeamMember(id, userId, user.workspaceId);
+    await this.teamService.removeTeamMember(id, userId, user.workspaceId, user.sub);
   }
 }

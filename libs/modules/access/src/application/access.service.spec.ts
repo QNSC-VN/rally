@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mocked } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
+import { UnitOfWork, AuditProducer } from '@platform';
 import { AccessService } from './access.service';
 import { ROLE_REPOSITORY, IRoleRepository } from '../domain/ports/role.repository';
 import {
@@ -81,6 +82,8 @@ describe('AccessService — scope-aware permission resolution', () => {
             delete: vi.fn(),
           },
         },
+        { provide: UnitOfWork, useValue: { run: vi.fn((fn: (tx: unknown) => unknown) => fn({})) } },
+        { provide: AuditProducer, useValue: { emit: vi.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
 
@@ -222,6 +225,7 @@ describe('AccessService — scope-aware permission resolution', () => {
       const result = await service.assignProjectRole(actor, 'proj-9', 'user-2', 'role-x');
       expect(assignmentRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({ scopeType: 'project', scopeId: 'proj-9', userId: 'user-2' }),
+        expect.anything(),
       );
       expect(result.scopeType).toBe('project');
       expect(result.scopeId).toBe('proj-9');
@@ -253,7 +257,7 @@ describe('AccessService — scope-aware permission resolution', () => {
       assignmentRepo.findById.mockResolvedValue(assignment('role-x', 'project', 'proj-9'));
 
       await service.revokeProjectRole(actor, 'proj-9', 'a-1');
-      expect(assignmentRepo.delete).toHaveBeenCalledWith('a-1');
+      expect(assignmentRepo.delete).toHaveBeenCalledWith('a-1', expect.anything());
     });
   });
 });

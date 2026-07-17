@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
-import type { DrizzleDB } from '@platform';
+import type { DrizzleDB, DbExecutor } from '@platform';
 import { userRoleAssignments, systemRoles } from '../../../../../../db/schema/access';
 import type {
   UserRoleAssignment,
@@ -87,8 +87,8 @@ export class RoleAssignmentDrizzleRepository implements IRoleAssignmentRepositor
     }));
   }
 
-  async create(input: AssignRoleInput): Promise<UserRoleAssignment> {
-    const rows = await this.db
+  async create(input: AssignRoleInput, tx?: DbExecutor): Promise<UserRoleAssignment> {
+    const rows = await (tx ?? this.db)
       .insert(userRoleAssignments)
       .values({
         id: input.id,
@@ -103,7 +103,7 @@ export class RoleAssignmentDrizzleRepository implements IRoleAssignmentRepositor
     return rows[0];
   }
 
-  async delete(id: string): Promise<void> {
-    await this.db.delete(userRoleAssignments).where(eq(userRoleAssignments.id, id));
+  async delete(id: string, tx?: DbExecutor): Promise<void> {
+    await (tx ?? this.db).delete(userRoleAssignments).where(eq(userRoleAssignments.id, id));
   }
 }

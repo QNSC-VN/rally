@@ -1,6 +1,14 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
-import { NotFoundException, ConflictException, PermissionDeniedException } from '@platform';
+import {
+  NotFoundException,
+  ConflictException,
+  PermissionDeniedException,
+  UnitOfWork,
+  AuditProducer,
+  AUDIT_ACTION,
+  AUDIT_RESOURCE,
+} from '@platform';
 import {
   SYSTEM_ROLE,
   PERMISSION,
@@ -29,6 +37,8 @@ export class AccessService {
     @Inject(ROLE_REPOSITORY) private readonly roleRepo: IRoleRepository,
     @Inject(ROLE_ASSIGNMENT_REPOSITORY)
     private readonly assignmentRepo: IRoleAssignmentRepository,
+    private readonly uow: UnitOfWork,
+    private readonly audit: AuditProducer,
   ) {}
 
   // ── Roles ─────────────────────────────────────────────────────────────────
@@ -80,7 +90,22 @@ export class AccessService {
       grantedBy: actor.sub,
     };
 
-    const assignment = await this.assignmentRepo.create(input);
+    const assignment = await this.uow.run(async (tx) => {
+      const created = await this.assignmentRepo.create(input, tx);
+      await this.audit.emit(
+        {
+          action: AUDIT_ACTION.ROLE_ASSIGNED,
+          resourceType: AUDIT_RESOURCE.ROLE_ASSIGNMENT,
+          resourceId: created.id,
+          workspaceId: actor.workspaceId,
+          actor: { id: actor.sub },
+          ...(scopeType === 'project' && scopeId ? { projectId: scopeId } : {}),
+          changes: { after: { userId, roleId, scopeType, scopeId: scopeId ?? null } },
+        },
+        tx,
+      );
+      return created;
+    });
     this.logger.log(
       { assignmentId: assignment.id, userId, roleId, scopeType, scopeId },
       'Role assigned',
@@ -93,7 +118,30 @@ export class AccessService {
     if (!assignment) {
       throw new NotFoundException('ROLE_ASSIGNMENT_NOT_FOUND', 'Role assignment not found');
     }
-    await this.assignmentRepo.delete(assignmentId);
+    await this.uow.run(async (tx) => {
+      await this.assignmentRepo.delete(assignmentId, tx);
+      await this.audit.emit(
+        {
+          action: AUDIT_ACTION.ROLE_REVOKED,
+          resourceType: AUDIT_RESOURCE.ROLE_ASSIGNMENT,
+          resourceId: assignmentId,
+          workspaceId: actor.workspaceId,
+          actor: { id: actor.sub },
+          ...(assignment.scopeType === 'project' && assignment.scopeId
+            ? { projectId: assignment.scopeId }
+            : {}),
+          changes: {
+            before: {
+              userId: assignment.userId,
+              roleId: assignment.roleId,
+              scopeType: assignment.scopeType,
+              scopeId: assignment.scopeId,
+            },
+          },
+        },
+        tx,
+      );
+    });
     this.logger.log({ assignmentId, revokedBy: actor.sub }, 'Role revoked');
   }
 
@@ -144,7 +192,28 @@ export class AccessService {
     if (!assignment || assignment.scopeType !== 'project' || assignment.scopeId !== projectId) {
       throw new NotFoundException('ROLE_ASSIGNMENT_NOT_FOUND', 'Role assignment not found');
     }
-    await this.assignmentRepo.delete(assignmentId);
+    await this.uow.run(async (tx) => {
+      await this.assignmentRepo.delete(assignmentId, tx);
+      await this.audit.emit(
+        {
+          action: AUDIT_ACTION.ROLE_REVOKED,
+          resourceType: AUDIT_RESOURCE.ROLE_ASSIGNMENT,
+          resourceId: assignmentId,
+          workspaceId: actor.workspaceId,
+          actor: { id: actor.sub },
+          projectId,
+          changes: {
+            before: {
+              userId: assignment.userId,
+              roleId: assignment.roleId,
+              scopeType: assignment.scopeType,
+              scopeId: assignment.scopeId,
+            },
+          },
+        },
+        tx,
+      );
+    });
     this.logger.log({ assignmentId, projectId, revokedBy: actor.sub }, 'Project role revoked');
   }
 

@@ -23,7 +23,11 @@ export class ProjectDrizzleRepository implements IProjectRepository {
   constructor(@InjectDrizzle() private readonly db: DrizzleDB) {}
 
   async findById(id: string, workspaceId: string): Promise<Project | null> {
-    const rows = await this.db.select().from(projects).where(and(eq(projects.id, id), eq(projects.workspaceId, workspaceId))).limit(1);
+    const rows = await this.db
+      .select()
+      .from(projects)
+      .where(and(eq(projects.id, id), eq(projects.workspaceId, workspaceId)))
+      .limit(1);
     return (rows[0] as Project | undefined) ?? null;
   }
 
@@ -32,7 +36,11 @@ export class ProjectDrizzleRepository implements IProjectRepository {
       .select()
       .from(projects)
       .where(
-        and(eq(projects.workspaceId, workspaceId), eq(projects.key, key), isNull(projects.deletedAt)),
+        and(
+          eq(projects.workspaceId, workspaceId),
+          eq(projects.key, key),
+          isNull(projects.deletedAt),
+        ),
       )
       .limit(1);
     return (rows[0] as Project | undefined) ?? null;
@@ -42,10 +50,7 @@ export class ProjectDrizzleRepository implements IProjectRepository {
     workspaceId: string,
     { limit, cursor }: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<Project>> {
-    const conditions = [
-      eq(projects.workspaceId, workspaceId),
-      isNull(projects.deletedAt),
-    ];
+    const conditions = [eq(projects.workspaceId, workspaceId), isNull(projects.deletedAt)];
 
     if (cursor) {
       conditions.push(lt(projects.createdAt, new Date(cursor.k[0] as string)));
@@ -65,10 +70,7 @@ export class ProjectDrizzleRepository implements IProjectRepository {
     workspaceId: string,
     { limit, cursor }: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<ProjectWithStats>> {
-    const conditions = [
-      eq(projects.workspaceId, workspaceId),
-      isNull(projects.deletedAt),
-    ];
+    const conditions = [eq(projects.workspaceId, workspaceId), isNull(projects.deletedAt)];
 
     if (cursor) {
       conditions.push(lt(projects.createdAt, new Date(cursor.k[0] as string)));
@@ -159,8 +161,13 @@ export class ProjectDrizzleRepository implements IProjectRepository {
     return rows[0] as Project;
   }
 
-  async update(id: string, input: UpdateProjectInput, workspaceId: string): Promise<Project> {
-    const rows = await this.db
+  async update(
+    id: string,
+    input: UpdateProjectInput,
+    workspaceId: string,
+    tx?: DbExecutor,
+  ): Promise<Project> {
+    const rows = await (tx ?? this.db)
       .update(projects)
       .set({
         ...(input.name !== undefined && { name: input.name }),
@@ -194,7 +201,12 @@ export class ProjectDrizzleRepository implements IProjectRepository {
     }
   }
 
-  async incrementCounter(projectId: string, workspaceId: string, itemType: WorkItemType, tx?: DbExecutor): Promise<number> {
+  async incrementCounter(
+    projectId: string,
+    workspaceId: string,
+    itemType: WorkItemType,
+    tx?: DbExecutor,
+  ): Promise<number> {
     const db = tx ?? this.db;
     const rows = await db
       .update(projectCounters)
@@ -213,7 +225,11 @@ export class ProjectDrizzleRepository implements IProjectRepository {
     return rows[0].lastItemNumber;
   }
 
-  async getMaxItemNumber(projectId: string, workspaceId: string, itemType: WorkItemType): Promise<number> {
+  async getMaxItemNumber(
+    projectId: string,
+    workspaceId: string,
+    itemType: WorkItemType,
+  ): Promise<number> {
     const row = await this.db
       .select({ max: sql<number>`COALESCE(MAX(${projectCounters.lastItemNumber}), 0)` })
       .from(projectCounters)

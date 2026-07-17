@@ -10,6 +10,7 @@ export * from './http/index';
 export * from './auth/index';
 export * from './rate-limit/index';
 export * from './outbox/index';
+export * from './audit/index';
 export * from './email/index';
 export * from './pipes/index';
 export * from './utils/index';
