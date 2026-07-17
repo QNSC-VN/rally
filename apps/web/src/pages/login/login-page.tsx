@@ -202,7 +202,7 @@ export function LoginPage() {
                 </div>
                 <div
                   className="flex h-10 w-10 items-center justify-center rounded-full"
-                  style={{ backgroundColor: '#edf2fb', color: BRAND.primary }}
+                  style={{ backgroundColor: BRAND.primaryLighter, color: BRAND.primary }}
                 >
                   <ShieldCheck size={19} />
                 </div>
@@ -241,7 +241,7 @@ export function LoginPage() {
                   boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = '#f5f7fa'
+                  e.currentTarget.style.backgroundColor = BRAND.surfaceSubtle
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.backgroundColor = BRAND.surface

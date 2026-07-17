@@ -272,7 +272,7 @@ function TreeRow({
         className="flex h-9 items-center gap-2 px-3 hover:bg-surface-hover"
         style={{
           borderBottom: `1px solid ${BRAND.borderSubtle}`,
-          backgroundColor: level === 0 ? BRAND.surface : '#fcfdfe',
+          backgroundColor: level === 0 ? BRAND.surface : BRAND.surface,
           cursor: hasChildren ? 'pointer' : 'default',
         }}
         onClick={hasChildren ? () => onToggle(item.id) : undefined}
@@ -495,7 +495,11 @@ function CreateInitiativeModal({
           disabled={create.isPending}
           onClick={() => submit(true)}
           className="rounded px-4 py-1.5 text-[11px] font-semibold transition-colors hover:opacity-90 disabled:opacity-50"
-          style={{ border: '1px solid #9fb5d5', color: BRAND.primary, backgroundColor: '#f5f8fc' }}
+          style={{
+            border: '1px solid #9fb5d5',
+            color: BRAND.primary,
+            backgroundColor: BRAND.surfaceHover,
+          }}
         >
           Create with details
         </button>

@@ -51,7 +51,7 @@ function ReleaseArtifactRow({
     <tr
       className="cursor-pointer transition-colors duration-75"
       style={{ borderBottom: `1px solid ${BRAND.borderInner}` }}
-      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f1f6fc')}
+      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = BRAND.primaryLighter)}
       onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
       onClick={onOpen}
     >
@@ -264,7 +264,7 @@ function ReleaseArtifactsTab({ releaseId }: { releaseId: string }) {
               disabled={currentPage === 1}
               onClick={onPrevPage}
               className="rounded p-1.5 disabled:opacity-35"
-              style={{ border: '1px solid #dde2ea', color: BRAND.textSecondary }}
+              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
             >
               <ChevronLeft size={13} />
             </button>
@@ -273,7 +273,7 @@ function ReleaseArtifactsTab({ releaseId }: { releaseId: string }) {
               disabled={!pageInfo?.hasNextPage}
               onClick={onNextPage}
               className="rounded p-1.5 disabled:opacity-35"
-              style={{ border: '1px solid #dde2ea', color: BRAND.textSecondary }}
+              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
             >
               <ChevronRight size={13} />
             </button>
@@ -685,7 +685,10 @@ export function ReleaseDetailPage() {
             {rollup && (
               <div
                 className="space-y-3 rounded-md p-3"
-                style={{ backgroundColor: '#f8fafc', border: `1px solid ${BRAND.borderSubtle}` }}
+                style={{
+                  backgroundColor: BRAND.surfaceHover,
+                  border: `1px solid ${BRAND.borderSubtle}`,
+                }}
               >
                 <h3
                   className="text-[10px] font-bold tracking-wider uppercase"
@@ -704,7 +707,7 @@ export function ReleaseDetailPage() {
                   </div>
                   <div
                     className="h-2 w-full overflow-hidden rounded-full"
-                    style={{ backgroundColor: '#e2e8f0' }}
+                    style={{ backgroundColor: BRAND.avatarBg }}
                   >
                     <div
                       className="h-full rounded-full transition-all"
@@ -809,7 +812,10 @@ export function ReleaseDetailPage() {
             {/* Burndown Section */}
             <div
               className="space-y-3 rounded-md p-4"
-              style={{ backgroundColor: '#f8fafc', border: `1px solid ${BRAND.borderSubtle}` }}
+              style={{
+                backgroundColor: BRAND.surfaceHover,
+                border: `1px solid ${BRAND.borderSubtle}`,
+              }}
             >
               <h3
                 className="flex items-center gap-1.5 text-[10px] font-bold tracking-wider uppercase"

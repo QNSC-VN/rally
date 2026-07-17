@@ -141,7 +141,7 @@ function ProjectStatusBadge({ status }: { status: 'active' | 'archived' }) {
       className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] font-semibold"
       style={{
         color: active ? BRAND.success : '#64748b',
-        backgroundColor: active ? BRAND.successBg : '#f1f5f9',
+        backgroundColor: active ? BRAND.successBg : BRAND.primaryLighter,
         border: `1px solid ${active ? BRAND.successBorder : BRAND.border}`,
       }}
     >

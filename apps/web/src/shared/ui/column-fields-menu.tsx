@@ -98,7 +98,7 @@ export function ColumnFieldsMenu<K extends string>({
         style={{
           fontSize: 12,
           color: open ? ACCENT : '#333333',
-          background: open ? '#eef6fc' : 'none',
+          background: open ? BRAND.primaryLighter : 'none',
           border: 'none',
           borderRadius: 2,
           padding: '4px 8px',
@@ -139,7 +139,11 @@ export function ColumnFieldsMenu<K extends string>({
                   borderRadius: 3,
                   fontSize: 12.5,
                   color: '#333333',
-                  background: isDropTarget ? '#f0f6fc' : isActive ? '#f3f3f3' : 'transparent',
+                  background: isDropTarget
+                    ? BRAND.primaryLighter
+                    : isActive
+                      ? BRAND.pageBg
+                      : 'transparent',
                   cursor: 'default',
                   opacity: isActive ? 0.4 : 1,
                   transition: 'background-color 0.12s ease, opacity 0.12s ease',

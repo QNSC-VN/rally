@@ -23,15 +23,15 @@ export function TaskRollup({ estimate, todo, actual }: TaskRollupProps) {
   return (
     <div
       className="grid grid-cols-3 overflow-hidden rounded"
-      style={{ border: '1px solid #e2e8f0' }}
+      style={{ border: `1px solid ${BRAND.avatarBg}` }}
     >
       {CELLS.map(({ label, key }, i) => (
         <div
           key={key}
           className="px-2 py-1.5 text-center"
           style={{
-            backgroundColor: '#f8fafc',
-            borderLeft: i === 0 ? undefined : '1px solid #e2e8f0',
+            backgroundColor: BRAND.surfaceHover,
+            borderLeft: i === 0 ? undefined : `1px solid ${BRAND.avatarBg}`,
           }}
         >
           <div

@@ -542,7 +542,10 @@ export function AppShell() {
                         >
                           <span
                             className="inline-flex h-4 w-8 shrink-0 items-center justify-center rounded-sm font-mono text-[9px] font-bold"
-                            style={{ backgroundColor: '#eef0f4', color: BRAND.textSecondary }}
+                            style={{
+                              backgroundColor: BRAND.borderInner,
+                              color: BRAND.textSecondary,
+                            }}
                           >
                             {t.key}
                           </span>
@@ -682,7 +685,9 @@ export function AppShell() {
                             className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px]"
                             style={{
                               color: isActive(child.path) ? BRAND.primary : BRAND.textPrimary,
-                              backgroundColor: isActive(child.path) ? '#edf2fb' : 'transparent',
+                              backgroundColor: isActive(child.path)
+                                ? BRAND.primaryLighter
+                                : 'transparent',
                               fontWeight: isActive(child.path) ? 600 : 400,
                             }}
                           >
@@ -878,7 +883,7 @@ export function AppShell() {
                 <div style={{ borderTop: `1px solid ${BRAND.borderSubtle}` }} className="py-1">
                   <button
                     onClick={handleSignOut}
-                    className="flex w-full items-center gap-2.5 px-3 py-2 text-[11px] hover:bg-[#fff0ef]"
+                    className="flex w-full items-center gap-2.5 px-3 py-2 text-[11px] hover:bg-destructive-bg"
                     style={{ color: BRAND.danger }}
                   >
                     <LogOut size={13} />

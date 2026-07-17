@@ -216,7 +216,7 @@ export function CommentThread({ workItemId, projectId, readOnly = false }: Comme
                 <li key={m.userId}>
                   <button
                     onClick={() => pickMention(m.userId, m.displayName ?? m.userId.slice(0, 8))}
-                    className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-[12px] hover:bg-[#f6f8fb]"
+                    className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-[12px] hover:bg-surface-hover"
                   >
                     {m.displayName ?? m.userId.slice(0, 8)}
                   </button>

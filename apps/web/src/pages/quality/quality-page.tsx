@@ -86,10 +86,10 @@ const DEFECT_STATE_STYLE: Record<
   string,
   { bg: string; text: string; border: string; label: string }
 > = {
-  submitted: { bg: '#eff6ff', text: '#1d4ed8', border: '#bfdbfe', label: 'Submitted' },
+  submitted: { bg: BRAND.primaryLighter, text: '#1d4ed8', border: '#bfdbfe', label: 'Submitted' },
   open: { bg: '#fff7ed', text: '#9a3412', border: '#fed7aa', label: 'Open' },
   fixed: { bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0', label: 'Fixed' },
-  closed: { bg: '#f1f5f9', text: '#475569', border: '#cbd5e1', label: 'Closed' },
+  closed: { bg: BRAND.primaryLighter, text: '#475569', border: '#cbd5e1', label: 'Closed' },
   closed_declined: {
     bg: BRAND.dangerBg,
     text: BRAND.danger,
@@ -804,13 +804,17 @@ function DefectTableRow({
   return (
     <div
       ref={setNodeRef}
-      className="group flex h-[34px] cursor-pointer items-center gap-2 px-3 transition-colors duration-100 hover:bg-[#f1f6fc]"
+      className="group flex h-[34px] cursor-pointer items-center gap-2 px-3 transition-colors duration-100 hover:bg-primary-lighter"
       style={{
         transform: CSS.Transform.toString(transform),
         transition,
         borderBottom: `1px solid ${BRAND.borderInner}`,
         minWidth: 'max-content',
-        backgroundColor: isDragging ? '#edf2fb' : selected ? '#f3f6fb' : undefined,
+        backgroundColor: isDragging
+          ? BRAND.primaryLighter
+          : selected
+            ? BRAND.surfaceSubtle
+            : undefined,
         opacity: isDragging ? 0.6 : 1,
         zIndex: isDragging ? 1 : undefined,
         position: isDragging ? 'relative' : undefined,

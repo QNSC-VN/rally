@@ -76,7 +76,7 @@ function ProjectHealthRow({
       className="flex h-9 items-center gap-3 px-4 transition-colors hover:bg-surface-hover"
       style={{
         borderBottom: `1px solid ${BRAND.borderInner}`,
-        backgroundColor: isSelected ? '#edf2fb' : undefined,
+        backgroundColor: isSelected ? BRAND.primaryLighter : undefined,
       }}
     >
       {/* Key */}

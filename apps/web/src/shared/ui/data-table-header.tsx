@@ -10,8 +10,8 @@ import { ResizeHandle } from '@/shared/ui/resize-handle'
  * here guarantees the header bar, separators and drop-indicator look identical
  * across pages.
  */
-const HEADER_BG = '#f3f4f6'
-const HEADER_BORDER = '#e2e8f0'
+const HEADER_BG = BRAND.pageBg
+const HEADER_BORDER = BRAND.avatarBg
 const HEADER_TEXT = '#4b5563'
 const SEPARATOR = '#d0d5dd'
 const INDICATOR_COLOR = BRAND.primary

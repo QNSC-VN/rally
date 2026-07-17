@@ -189,7 +189,7 @@ export function IterationsPage() {
             {stateFilter !== 'all' && (
               <button
                 onClick={() => setStateFilter('all')}
-                className="cursor-pointer rounded px-2.5 py-1 text-[11px] hover:bg-[#f0f4fb]"
+                className="cursor-pointer rounded px-2.5 py-1 text-[11px] hover:bg-primary-lighter"
                 style={{ color: BRAND.primaryLight }}
               >
                 Clear filters
@@ -332,7 +332,7 @@ export function IterationsPage() {
               aria-label="Previous page"
               disabled={activePage === 1}
               onClick={() => setPage(activePage - 1)}
-              className="cursor-pointer rounded p-1.5 transition-colors hover:bg-[#f0f4fb] disabled:cursor-not-allowed disabled:opacity-35"
+              className="cursor-pointer rounded p-1.5 transition-colors hover:bg-primary-lighter disabled:cursor-not-allowed disabled:opacity-35"
               style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
             >
               <ChevronLeft size={13} />
@@ -341,7 +341,7 @@ export function IterationsPage() {
               aria-label="Next page"
               disabled={activePage === totalPages}
               onClick={() => setPage(activePage + 1)}
-              className="cursor-pointer rounded p-1.5 transition-colors hover:bg-[#f0f4fb] disabled:cursor-not-allowed disabled:opacity-35"
+              className="cursor-pointer rounded p-1.5 transition-colors hover:bg-primary-lighter disabled:cursor-not-allowed disabled:opacity-35"
               style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
             >
               <ChevronLeft size={13} className="rotate-180" />
@@ -471,7 +471,11 @@ function CreateIterationModal({
           disabled={create.isPending}
           onClick={() => submit(true)}
           className="rounded px-4 py-1.5 text-[11px] font-semibold transition-colors hover:opacity-90 disabled:opacity-50"
-          style={{ border: '1px solid #9fb5d5', color: BRAND.primary, backgroundColor: '#f5f8fc' }}
+          style={{
+            border: '1px solid #9fb5d5',
+            color: BRAND.primary,
+            backgroundColor: BRAND.surfaceHover,
+          }}
         >
           Create with details
         </button>
@@ -546,8 +550,11 @@ function IterationDetail({
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 gap-2" style={{ backgroundColor: '#e7ebf0' }}>
-        <main className="flex-1 overflow-y-auto p-6" style={{ backgroundColor: '#f3f5f8' }}>
+      <div className="flex min-h-0 flex-1 gap-2" style={{ backgroundColor: BRAND.avatarBg }}>
+        <main
+          className="flex-1 overflow-y-auto p-6"
+          style={{ backgroundColor: BRAND.surfaceSubtle }}
+        >
           <div className="space-y-5">
             <h2 className="text-[18px] font-semibold" style={{ color: '#273449' }}>
               Details

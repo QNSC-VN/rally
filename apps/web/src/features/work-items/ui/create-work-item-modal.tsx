@@ -235,7 +235,7 @@ export function CreateWorkItemModal({
             style={{
               border: '1px solid #9fb5d5',
               color: BRAND.primary,
-              backgroundColor: '#f5f8fc',
+              backgroundColor: BRAND.surfaceHover,
             }}
           >
             Create with details

@@ -838,10 +838,14 @@ function BacklogRow({
   return (
     <div
       ref={setNodeRef}
-      className="group flex h-[34px] items-center gap-2 px-3 transition-colors duration-100 hover:bg-[#f1f6fc]"
+      className="group flex h-[34px] items-center gap-2 px-3 transition-colors duration-100 hover:bg-primary-lighter"
       style={{
         minWidth: 'max-content',
-        backgroundColor: isDragging ? '#edf2fb' : selected ? '#f3f6fb' : undefined,
+        backgroundColor: isDragging
+          ? BRAND.primaryLighter
+          : selected
+            ? BRAND.surfaceSubtle
+            : undefined,
         borderBottom: `1px solid ${BRAND.borderInner}`,
         opacity: isDragging ? 0.6 : 1,
         transform: CSS.Transform.toString(transform),
@@ -966,7 +970,7 @@ function BacklogRow({
               if (next !== (item.storyPoints ?? null)) patch({ storyPoints: next, todoHours: next })
             }}
             className="w-12 rounded px-1 py-0.5 text-center font-mono text-[10px] focus:outline-none"
-            style={{ border: '1px solid #dde2ea', color: BRAND.textSecondary }}
+            style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
             aria-label="Plan estimate"
           />
         ) : (

@@ -94,13 +94,13 @@ import { SCHEDULE_STATE_STEPS, SIMPLIFIED_STATE_STEPS } from '@/entities/work-it
 // ── Accent palette (Rally navy brand; neutral Azure-style layout kept) ──────
 const AZ = {
   primary: BRAND.primary,
-  primaryLight: '#edf2fb',
+  primaryLight: BRAND.primaryLighter,
   textPrimary: '#1a1a1a',
   textSecondary: '#666666',
   textMuted: '#999999',
   bg: BRAND.surface,
-  bgHeader: '#f4f4f4',
-  bgAlt: '#f8f8f8',
+  bgHeader: BRAND.pageBg,
+  bgAlt: BRAND.surfaceHover,
   border: '#e8e8e8',
   font: "'Segoe UI', -apple-system, BlinkMacSystemFont, 'Roboto', sans-serif",
 }
@@ -386,7 +386,7 @@ function DefectStatusPill({ total, open }: { total: number; open: number }) {
     return <span style={{ fontSize: 12, color: AZ.textMuted }}>None</span>
   }
   const closed = open === 0
-  const bg = closed ? '#eaf7ee' : '#fdf3e7'
+  const bg = closed ? BRAND.successBg : BRAND.warningBg
   const fg = closed ? '#1c7a3f' : '#9a6410'
   const bd = closed ? '#bfe6cd' : '#f0d9b5'
   return (
@@ -1727,7 +1727,7 @@ function StatusRow({
     <>
       <div
         ref={setNodeRef}
-        className="group flex items-center transition-colors duration-100 hover:bg-[#f1f6fc]"
+        className="group flex items-center transition-colors duration-100 hover:bg-primary-lighter"
         style={{
           height: 34,
           paddingLeft: 4,
@@ -1740,7 +1740,7 @@ function StatusRow({
         }}
         {...(dragEnabled && canEdit ? attributes : {})}
         onMouseOver={(e) => {
-          e.currentTarget.style.backgroundColor = '#f1f6fc'
+          e.currentTarget.style.backgroundColor = BRAND.primaryLighter
         }}
         onMouseOut={(e) => {
           e.currentTarget.style.backgroundColor = AZ.bg
@@ -2068,7 +2068,7 @@ function StatusRow({
       {tasksExpanded && (
         <div
           style={{
-            backgroundColor: '#fafbfc',
+            backgroundColor: BRAND.surfaceHover,
             boxShadow: `inset 2px 0 0 ${AZ.primaryLight}`,
           }}
         >
@@ -2237,7 +2237,7 @@ function ChildTaskRow({
         minWidth: 'max-content',
       }}
       onMouseOver={(e) => {
-        e.currentTarget.style.backgroundColor = '#f1f6fc'
+        e.currentTarget.style.backgroundColor = BRAND.primaryLighter
       }}
       onMouseOut={(e) => {
         e.currentTarget.style.backgroundColor = 'transparent'
@@ -2548,7 +2548,11 @@ function AddItemModal({
           disabled={create.isPending}
           onClick={() => submit(true)}
           className="rounded px-4 py-1.5 text-[11px] font-semibold transition-colors hover:opacity-90 disabled:opacity-50"
-          style={{ border: '1px solid #9fb5d5', color: BRAND.primary, backgroundColor: '#f5f8fc' }}
+          style={{
+            border: '1px solid #9fb5d5',
+            color: BRAND.primary,
+            backgroundColor: BRAND.surfaceHover,
+          }}
         >
           Create with details
         </button>

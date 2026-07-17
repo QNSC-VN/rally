@@ -98,7 +98,7 @@ function ToolButton({ label, disabled, active, onAction, children }: ToolButtonP
         className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-sm transition-colors disabled:cursor-not-allowed"
         style={{
           color: active ? BRAND.primaryLight : '#475569',
-          backgroundColor: active ? '#edf2fb' : 'transparent',
+          backgroundColor: active ? BRAND.primaryLighter : 'transparent',
           opacity: disabled ? 0.35 : 1,
           cursor: disabled ? 'not-allowed' : 'pointer',
         }}
@@ -106,11 +106,11 @@ function ToolButton({ label, disabled, active, onAction, children }: ToolButtonP
           if (!disabled)
             (e.currentTarget as HTMLButtonElement).style.backgroundColor = active
               ? '#dbeafe'
-              : '#edf2f7'
+              : BRAND.pageBg
         }}
         onMouseLeave={(e) => {
           ;(e.currentTarget as HTMLButtonElement).style.backgroundColor = active
-            ? '#edf2fb'
+            ? BRAND.primaryLighter
             : 'transparent'
         }}
       >
@@ -203,7 +203,7 @@ export function RichTextEditor({
     <section
       className={`overflow-hidden rounded bg-white transition-[border-color,box-shadow] ${className}`}
       style={{
-        border: focused ? '1px solid var(--ring)' : '1px solid #dde2ea',
+        border: focused ? '1px solid var(--ring)' : `1px solid ${BRAND.border}`,
         boxShadow: focused ? '0 0 0 3px color-mix(in srgb, var(--ring) 50%, transparent)' : 'none',
         ...(expanded
           ? {
@@ -222,8 +222,8 @@ export function RichTextEditor({
         className="flex items-center justify-between px-4 py-2 text-[11px] font-semibold select-none"
         style={{
           color: '#475569',
-          backgroundColor: '#f8fafc',
-          borderBottom: '1px solid #dde2ea',
+          backgroundColor: BRAND.surfaceHover,
+          borderBottom: `1px solid ${BRAND.border}`,
           flexShrink: 0,
         }}
       >
@@ -245,7 +245,11 @@ export function RichTextEditor({
       {!readOnly && (
         <div
           className="flex flex-wrap items-center gap-0.5 overflow-x-auto px-2 py-1.5"
-          style={{ borderBottom: '1px solid #dde2ea', backgroundColor: 'white', flexShrink: 0 }}
+          style={{
+            borderBottom: `1px solid ${BRAND.border}`,
+            backgroundColor: 'white',
+            flexShrink: 0,
+          }}
         >
           <ToolButton label="Undo" onAction={() => exec('undo')}>
             <Undo2 size={13} />
@@ -307,7 +311,7 @@ export function RichTextEditor({
           style={{
             minHeight,
             color: '#334155',
-            backgroundColor: '#f8fafc',
+            backgroundColor: BRAND.surfaceHover,
             overflowY: expanded ? 'auto' : undefined,
             flex: expanded ? '1' : undefined,
           }}
@@ -339,7 +343,7 @@ export function RichTextEditor({
           className="px-4 py-1 text-[10px] select-none"
           style={{
             color: '#94a3b8',
-            borderTop: '1px solid #f1f5f9',
+            borderTop: `1px solid ${BRAND.primaryLighter}`,
             flexShrink: 0,
           }}
         >

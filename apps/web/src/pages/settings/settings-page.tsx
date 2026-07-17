@@ -676,7 +676,7 @@ function MembersTab() {
                         <span
                           className="ml-2 rounded px-1 py-0.5 text-[10px]"
                           style={{
-                            backgroundColor: '#edf2fb',
+                            backgroundColor: BRAND.primaryLighter,
                             color: BRAND.primary,
                           }}
                         >
@@ -2834,7 +2834,7 @@ export function SettingsPage() {
                   title={locked ? 'Requires admin role' : undefined}
                   className="mb-0.5 flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[12px] transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                   style={{
-                    backgroundColor: isActive ? '#edf2fb' : 'transparent',
+                    backgroundColor: isActive ? BRAND.primaryLighter : 'transparent',
                     color: isActive ? BRAND.primary : BRAND.textSecondary,
                     fontWeight: isActive ? 600 : 400,
                   }}

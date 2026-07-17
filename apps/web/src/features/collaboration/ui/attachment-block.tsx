@@ -89,18 +89,25 @@ export function AttachmentBlock({ workItemId, readOnly = false }: AttachmentBloc
   const isUploading = uploadMutation.isPending
 
   return (
-    <section className="overflow-hidden rounded bg-white" style={{ border: '1px solid #dde2ea' }}>
+    <section
+      className="overflow-hidden rounded bg-white"
+      style={{ border: `1px solid ${BRAND.border}` }}
+    >
       {/* Header */}
       <div
         className="flex items-center gap-2 px-4 py-2 text-[11px] font-semibold select-none"
-        style={{ color: '#475569', backgroundColor: '#f8fafc', borderBottom: '1px solid #dde2ea' }}
+        style={{
+          color: '#475569',
+          backgroundColor: BRAND.surfaceHover,
+          borderBottom: `1px solid ${BRAND.border}`,
+        }}
       >
         <Paperclip size={12} />
         <span>Attachments</span>
         {attachments.length > 0 && (
           <span
             className="ml-1 rounded-full px-1.5 py-px text-[10px] font-bold"
-            style={{ backgroundColor: '#e2e8f0', color: '#475569' }}
+            style={{ backgroundColor: BRAND.avatarBg, color: '#475569' }}
           >
             {attachments.length}
           </span>
@@ -108,7 +115,7 @@ export function AttachmentBlock({ workItemId, readOnly = false }: AttachmentBloc
       </div>
 
       {/* File list */}
-      <div className="divide-y" style={{ borderColor: '#f1f5f9' }}>
+      <div className="divide-y" style={{ borderColor: BRAND.primaryLighter }}>
         {isLoading && (
           <div className="px-4 py-3 text-[12px]" style={{ color: '#94a3b8' }}>
             Loading…
@@ -187,7 +194,7 @@ export function AttachmentBlock({ workItemId, readOnly = false }: AttachmentBloc
           className="m-3 rounded-lg transition-all"
           style={{
             border: `2px dashed ${dragging ? BRAND.primaryLight : '#d1d5db'}`,
-            backgroundColor: dragging ? '#edf2fb' : '#f9fafb',
+            backgroundColor: dragging ? BRAND.primaryLighter : BRAND.surfaceHover,
             padding: '16px 12px',
           }}
           onDragOver={(e) => {

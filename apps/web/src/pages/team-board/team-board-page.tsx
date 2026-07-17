@@ -796,7 +796,11 @@ function AddItemModal({
           disabled={create.isPending}
           onClick={() => submit(true)}
           className="rounded px-4 py-1.5 text-[11px] font-semibold transition-colors hover:opacity-90 disabled:opacity-50"
-          style={{ border: '1px solid #9fb5d5', color: BRAND.primary, backgroundColor: '#f5f8fc' }}
+          style={{
+            border: '1px solid #9fb5d5',
+            color: BRAND.primary,
+            backgroundColor: BRAND.surfaceHover,
+          }}
         >
           Create with details
         </button>

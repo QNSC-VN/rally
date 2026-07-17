@@ -278,7 +278,10 @@ function TasksTab({ workItemId, projectId }: { workItemId: string; projectId: st
           <Spinner />
         </div>
       ) : (
-        <div className="overflow-x-auto rounded bg-white" style={{ border: '1px solid #dde2ea' }}>
+        <div
+          className="overflow-x-auto rounded bg-white"
+          style={{ border: `1px solid ${BRAND.border}` }}
+        >
           <div style={{ minWidth: 1216 }}>
             {/* Header row */}
             <div
@@ -309,7 +312,7 @@ function TasksTab({ workItemId, projectId }: { workItemId: string; projectId: st
                 className="grid h-8 items-center text-[12px] font-semibold"
                 style={{
                   gridTemplateColumns: TASK_GRID,
-                  backgroundColor: '#f3f6fa',
+                  backgroundColor: BRAND.surfaceSubtle,
                   borderBottom: `1px solid ${BRAND.borderInput}`,
                   color: '#1f2937',
                 }}
@@ -348,7 +351,7 @@ function TasksTab({ workItemId, projectId }: { workItemId: string; projectId: st
             {tasks.map((task) => (
               <div
                 key={task.id}
-                className="grid min-h-10 cursor-pointer items-center text-[12px] hover:bg-[#f1f6fc]"
+                className="grid min-h-10 cursor-pointer items-center text-[12px] hover:bg-primary-lighter"
                 style={{
                   gridTemplateColumns: TASK_GRID,
                   borderBottom: `1px solid ${BRAND.borderInner}`,
@@ -429,14 +432,17 @@ function HistoryTab({ workItemId }: { workItemId: string }) {
         </p>
       </div>
 
-      <section className="overflow-hidden rounded bg-white" style={{ border: '1px solid #dde2ea' }}>
+      <section
+        className="overflow-hidden rounded bg-white"
+        style={{ border: `1px solid ${BRAND.border}` }}
+      >
         <div
           className="grid px-4 py-2 text-[10px] font-semibold tracking-wider uppercase"
           style={{
             gridTemplateColumns: GRID,
             color: '#64748b',
-            backgroundColor: '#f8fafc',
-            borderBottom: '1px solid #dde2ea',
+            backgroundColor: BRAND.surfaceHover,
+            borderBottom: `1px solid ${BRAND.border}`,
           }}
         >
           <span>Revision</span>
@@ -569,7 +575,7 @@ function DefectsTab({ workItemId, projectId }: { workItemId: string; projectId: 
             {defects.map((d) => (
               <div
                 key={d.id}
-                className="grid cursor-pointer items-center px-3 py-2 text-[12px] transition-colors hover:bg-[#f1f6fc]"
+                className="grid cursor-pointer items-center px-3 py-2 text-[12px] transition-colors hover:bg-primary-lighter"
                 style={{
                   gridTemplateColumns: DEFECT_GRID,
                   borderBottom: `1px solid ${BRAND.borderInner}`,
@@ -654,7 +660,7 @@ function DetailSidebar({
       {/* Collapse toggle header */}
       <div
         className="sticky top-0 z-10 flex items-center justify-between bg-white px-3 py-2"
-        style={{ borderBottom: '1px solid #e7ebf0' }}
+        style={{ borderBottom: `1px solid ${BRAND.avatarBg}` }}
       >
         <span
           className="text-[11px] font-semibold tracking-wide uppercase"
@@ -667,7 +673,7 @@ function DetailSidebar({
           <button
             onClick={onToggleCollapse}
             title="Hide sidebar"
-            className="rounded p-1 transition-colors hover:bg-[#f3f5f8]"
+            className="rounded p-1 transition-colors hover:bg-surface-subtle"
           >
             <PanelRightClose size={14} style={{ color: '#6b7280' }} />
           </button>
@@ -962,7 +968,11 @@ function DetailSidebar({
         {readOnly && (
           <div
             className="rounded px-3 py-2 text-[10px]"
-            style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', color: '#64748b' }}
+            style={{
+              backgroundColor: BRAND.surfaceHover,
+              border: `1px solid ${BRAND.avatarBg}`,
+              color: '#64748b',
+            }}
           >
             You have read-only access to this item.
           </div>
@@ -1253,9 +1263,12 @@ export function WorkItemDetailPage() {
       </div>
 
       {/* Content area */}
-      <div className="flex min-h-0 flex-1" style={{ backgroundColor: '#e7ebf0' }}>
+      <div className="flex min-h-0 flex-1" style={{ backgroundColor: BRAND.avatarBg }}>
         {/* Main content */}
-        <main className="flex-1 overflow-y-auto p-6" style={{ backgroundColor: '#f3f5f8' }}>
+        <main
+          className="flex-1 overflow-y-auto p-6"
+          style={{ backgroundColor: BRAND.surfaceSubtle }}
+        >
           {activeTab === 'details' && (
             <DetailsTab
               item={item}
@@ -1290,8 +1303,11 @@ export function WorkItemDetailPage() {
           <button
             onClick={toggleSidebar}
             title="Show sidebar"
-            className="flex w-6 shrink-0 items-center justify-center transition-colors hover:bg-[#e0e4ea]"
-            style={{ borderLeft: `1px solid ${BRAND.borderInput}`, backgroundColor: '#f3f5f8' }}
+            className="flex w-6 shrink-0 items-center justify-center transition-colors hover:bg-border-subtle"
+            style={{
+              borderLeft: `1px solid ${BRAND.borderInput}`,
+              backgroundColor: BRAND.surfaceSubtle,
+            }}
           >
             <PanelRightOpen size={14} style={{ color: '#6b7280' }} />
           </button>

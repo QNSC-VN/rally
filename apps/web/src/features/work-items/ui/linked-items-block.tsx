@@ -137,13 +137,13 @@ export function LinkedItemsBlock({
             className="mt-2 w-full rounded border border-input px-2 py-1 text-[12px]"
           />
           {hits.length > 0 && (
-            <ul className="mt-1 max-h-48 overflow-y-auto rounded border border-[#eef0f4]">
+            <ul className="mt-1 max-h-48 overflow-y-auto rounded border border-border-inner">
               {hits.map((h) => (
                 <li key={h.id}>
                   <button
                     onClick={() => void addLink(h.id)}
                     disabled={linkMutation.isPending}
-                    className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-[12px] hover:bg-[#f6f8fb] disabled:opacity-50"
+                    className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-[12px] hover:bg-surface-hover disabled:opacity-50"
                   >
                     <span className="font-mono text-primary-light">{h.itemKey}</span>
                     <span className="truncate text-muted-foreground">{h.title}</span>
@@ -169,7 +169,7 @@ export function LinkedItemsBlock({
                 {items.map((r) => (
                   <li
                     key={r.id}
-                    className="flex items-center justify-between rounded px-1.5 py-1 hover:bg-[#f6f8fb]"
+                    className="flex items-center justify-between rounded px-1.5 py-1 hover:bg-surface-hover"
                   >
                     <span className="flex items-center gap-2 text-[12px]">
                       <span className="font-mono text-primary-light">{r.relatedItem.itemKey}</span>

@@ -228,7 +228,11 @@ function CreateReleaseModal({ projectId, onClose }: { projectId: string; onClose
             void submit(true)
           }}
           className="rounded px-4 py-1.5 text-[11px] font-semibold transition-colors hover:opacity-90 disabled:opacity-50"
-          style={{ border: '1px solid #9fb5d5', color: BRAND.primary, backgroundColor: '#f5f8fc' }}
+          style={{
+            border: '1px solid #9fb5d5',
+            color: BRAND.primary,
+            backgroundColor: BRAND.surfaceHover,
+          }}
         >
           Create with details
         </button>
@@ -626,7 +630,7 @@ function ReleaseRow({
   return (
     <div
       onClick={() => navigate({ to: '/releases/$releaseId', params: { releaseId: release.id } })}
-      className="group flex h-8 cursor-pointer items-center px-3 text-[11px] hover:bg-[#f9fafb]"
+      className="group flex h-8 cursor-pointer items-center px-3 text-[11px] hover:bg-surface-hover"
       style={{ borderBottom: `1px solid ${BRAND.borderInner}` }}
     >
       {/* Name — inline editable (P3-REL-FR-005) */}

@@ -485,7 +485,7 @@ function ArtifactsTab({ milestoneId }: { milestoneId: string }) {
               disabled={currentPage === 1}
               onClick={onPrevPage}
               className="rounded p-1.5 disabled:opacity-35"
-              style={{ border: '1px solid #dde2ea', color: BRAND.textSecondary }}
+              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
             >
               <ChevronLeft size={13} />
             </button>
@@ -494,7 +494,7 @@ function ArtifactsTab({ milestoneId }: { milestoneId: string }) {
               disabled={!pageInfo?.hasNextPage}
               onClick={onNextPage}
               className="rounded p-1.5 disabled:opacity-35"
-              style={{ border: '1px solid #dde2ea', color: BRAND.textSecondary }}
+              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
             >
               <ChevronRight size={13} />
             </button>
@@ -932,7 +932,10 @@ export function MilestoneDetailPage() {
             {milestone.progress && (
               <div
                 className="space-y-2 rounded-md p-3"
-                style={{ backgroundColor: '#f8fafc', border: `1px solid ${BRAND.borderSubtle}` }}
+                style={{
+                  backgroundColor: BRAND.surfaceHover,
+                  border: `1px solid ${BRAND.borderSubtle}`,
+                }}
               >
                 <h3
                   className="text-[10px] font-bold tracking-wider uppercase"
@@ -950,7 +953,7 @@ export function MilestoneDetailPage() {
                   </div>
                   <div
                     className="h-2 w-full overflow-hidden rounded-full"
-                    style={{ backgroundColor: '#e2e8f0' }}
+                    style={{ backgroundColor: BRAND.avatarBg }}
                   >
                     <div
                       className="h-full rounded-full transition-all"

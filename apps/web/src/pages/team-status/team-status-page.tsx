@@ -292,7 +292,7 @@ export function TeamStatusPage() {
           <button
             disabled={selectedIndex <= 0}
             onClick={() => move(-1)}
-            className="flex h-full cursor-pointer items-center px-2 hover:bg-[#f0f4fb] disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-full cursor-pointer items-center px-2 hover:bg-primary-lighter disabled:cursor-not-allowed disabled:opacity-40"
             style={{
               color: BRAND.primaryLight,
               borderRight: `1px solid ${BRAND.borderSubtle}`,
@@ -303,7 +303,7 @@ export function TeamStatusPage() {
           <div className="relative h-full">
             <button
               onClick={() => setSelectorOpen((o) => !o)}
-              className="flex h-full cursor-pointer items-center gap-3 bg-white px-3 text-left hover:bg-[#f7f9fc]"
+              className="flex h-full cursor-pointer items-center gap-3 bg-white px-3 text-left hover:bg-surface-hover"
               style={{ minWidth: 280, color: BRAND.textPrimary }}
             >
               <span className="text-[12px] font-semibold whitespace-nowrap">{selected?.name}</span>
@@ -329,7 +329,7 @@ export function TeamStatusPage() {
                     }}
                     className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-surface-subtle"
                     style={{
-                      backgroundColor: selectedId === it.id ? '#edf2fb' : 'transparent',
+                      backgroundColor: selectedId === it.id ? BRAND.primaryLighter : 'transparent',
                     }}
                   >
                     <span
@@ -351,7 +351,7 @@ export function TeamStatusPage() {
           <button
             disabled={selectedIndex >= iterations.length - 1}
             onClick={() => move(1)}
-            className="flex h-full cursor-pointer items-center px-2 hover:bg-[#f0f4fb] disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-full cursor-pointer items-center px-2 hover:bg-primary-lighter disabled:cursor-not-allowed disabled:opacity-40"
             style={{
               color: BRAND.primaryLight,
               borderLeft: `1px solid ${BRAND.borderSubtle}`,
@@ -548,7 +548,7 @@ function MemberGroup({
     <div>
       {/* Group header row (P3-TS-FR-015) */}
       <div
-        className="flex h-9 cursor-pointer items-center px-3 hover:bg-[#f9fafb]"
+        className="flex h-9 cursor-pointer items-center px-3 hover:bg-surface-hover"
         style={{
           backgroundColor: BRAND.surfaceHover,
           borderBottom: `1px solid ${BRAND.borderInner}`,
@@ -754,7 +754,7 @@ function TaskRow({
 
   return (
     <div
-      className="flex h-[34px] items-center bg-white px-3 text-[11px] transition-colors duration-100 hover:bg-[#f1f6fc]"
+      className="flex h-[34px] items-center bg-white px-3 text-[11px] transition-colors duration-100 hover:bg-primary-lighter"
       style={{ borderBottom: `1px solid ${BRAND.borderInner}`, minWidth: 'max-content' }}
       onClick={() => onOpenItem(task.taskKey)}
     >
