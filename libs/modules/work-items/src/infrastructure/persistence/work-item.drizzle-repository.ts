@@ -219,7 +219,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       const term = filters.q.trim();
       if (term) {
         // Use Postgres full-text search (GIN index on search_vector, migration 0012).
-        // ILIKE with % wildcards on item_key for prefix/substring key lookups (e.g. "US", "DE", "US000001").
+        // ILIKE with % wildcards on item_key for prefix/substring key lookups (e.g. "US", "DE", "US-1").
         // plainto_tsquery handles multi-word title searches.
         conditions.push(
           or(

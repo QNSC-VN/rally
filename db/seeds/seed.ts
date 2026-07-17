@@ -121,9 +121,9 @@ const NXP_DEFECT_11_ID = '00000000-0000-7000-8000-000000000074';
 
 // Feature parent + child defects that demo the Feature / Defects / Defect Status columns.
 const NXP_FEATURE_ID = '00000000-0000-7000-8000-000000000075';
-const NXP_CHILD_DEFECT_1_ID = '00000000-0000-7000-8000-000000000076'; // child of US000005 (closed)
-const NXP_CHILD_DEFECT_2_ID = '00000000-0000-7000-8000-000000000077'; // child of US000006 (open)
-const NXP_CHILD_DEFECT_3_ID = '00000000-0000-7000-8000-000000000078'; // child of US000006 (closed)
+const NXP_CHILD_DEFECT_1_ID = '00000000-0000-7000-8000-000000000076'; // child of US-5 (closed)
+const NXP_CHILD_DEFECT_2_ID = '00000000-0000-7000-8000-000000000077'; // child of US-6 (open)
+const NXP_CHILD_DEFECT_3_ID = '00000000-0000-7000-8000-000000000078'; // child of US-6 (closed)
 
 // ── Seed data constants ───────────────────────────────────────────────────────
 // Format: { id, key, name, description }
@@ -277,7 +277,7 @@ async function seedWorkItems() {
       // Stories
       {
         id: NXP_STORY_1_ID,
-        itemKey: 'US000001',
+        itemKey: 'US-1',
         type: 'story' as const,
         title: 'Upgrade NX workspace to v21',
         statusId: nxp.inProgress,
@@ -288,7 +288,7 @@ async function seedWorkItems() {
       },
       {
         id: NXP_STORY_2_ID,
-        itemKey: 'US000002',
+        itemKey: 'US-2',
         type: 'story' as const,
         title: 'Integrate Storybook 8 into shared UI library',
         statusId: nxp.todo,
@@ -300,7 +300,7 @@ async function seedWorkItems() {
       // Defect
       {
         id: uuidv7(),
-        itemKey: 'DE000001',
+        itemKey: 'DE-1',
         type: 'defect' as const,
         title: 'CI pipeline fails intermittently on Windows build agents',
         statusId: nxp.inProgress,
@@ -311,7 +311,7 @@ async function seedWorkItems() {
       // Feature
       {
         id: NXP_FEATURE_ID,
-        itemKey: 'FE000001',
+        itemKey: 'FE-1',
         type: 'feature' as const,
         title: 'Shared ESLint flat-config across all apps',
         statusId: nxp.todo,
@@ -363,8 +363,8 @@ async function seedWorkItems() {
           ...t,
           workspaceId: WORKSPACE_ID,
           projectId: nxpId,
-          itemKey: `TA${String(i + 1).padStart(6, '0')}`,
-          rank: getDeterministicRank(`TA${String(i + 1).padStart(6, '0')}`),
+          itemKey: `TA-${i + 1}`,
+          rank: getDeterministicRank(`TA-${i + 1}`),
           createdBy: ADMIN_USER_ID,
         })
         .onConflictDoNothing();
@@ -395,7 +395,7 @@ async function seedWorkItems() {
     const mobItems = [
       {
         id: MOB_STORY_1_ID,
-        itemKey: 'US000001',
+        itemKey: 'US-1',
         type: 'story' as const,
         title: 'Implement biometric authentication (Face ID / Fingerprint)',
         statusId: mob.todo,
@@ -406,7 +406,7 @@ async function seedWorkItems() {
       },
       {
         id: uuidv7(),
-        itemKey: 'US000002',
+        itemKey: 'US-2',
         type: 'story' as const,
         title: 'Dark mode support across all screens',
         statusId: mob.inProgress,
@@ -417,7 +417,7 @@ async function seedWorkItems() {
       },
       {
         id: uuidv7(),
-        itemKey: 'DE000001',
+        itemKey: 'DE-1',
         type: 'defect' as const,
         title: 'App crashes on Android 14 when rotating to landscape on Home screen',
         statusId: mob.todo,
@@ -458,8 +458,8 @@ async function seedWorkItems() {
           ...t,
           workspaceId: WORKSPACE_ID,
           projectId: mobId,
-          itemKey: `TA${String(i + 1).padStart(6, '0')}`,
-          rank: getDeterministicRank(`TA${String(i + 1).padStart(6, '0')}`),
+          itemKey: `TA-${i + 1}`,
+          rank: getDeterministicRank(`TA-${i + 1}`),
           createdBy: ADMIN_USER_ID,
         })
         .onConflictDoNothing();
@@ -758,7 +758,7 @@ async function seedExtendedWorkItems() {
     // Iteration-assigned stories (Sprint 26.1 — committed)
     {
       id: NXP_STORY_7_ID,
-      itemKey: 'US000005',
+      itemKey: 'US-5',
       type: 'story' as const,
       title: 'Migrate all apps to ESLint flat-config',
       statusId: nxpInProgress,
@@ -772,7 +772,7 @@ async function seedExtendedWorkItems() {
     },
     {
       id: NXP_STORY_8_ID,
-      itemKey: 'US000006',
+      itemKey: 'US-6',
       type: 'story' as const,
       title: 'Enforce strict TypeScript settings across workspace',
       statusId: nxpTodo,
@@ -788,7 +788,7 @@ async function seedExtendedWorkItems() {
     },
     {
       id: NXP_STORY_9_ID,
-      itemKey: 'US000007',
+      itemKey: 'US-7',
       type: 'story' as const,
       title: 'Add Storybook 8 to component library',
       statusId: nxpTodo,
@@ -802,7 +802,7 @@ async function seedExtendedWorkItems() {
     // Accepted item (from previous sprint)
     {
       id: NXP_STORY_10_ID,
-      itemKey: 'US000008',
+      itemKey: 'US-8',
       type: 'story' as const,
       title: 'Setup shared tsconfig base with path aliases',
       statusId: nxpDone,
@@ -816,7 +816,7 @@ async function seedExtendedWorkItems() {
     // Defect in current sprint
     {
       id: NXP_DEFECT_11_ID,
-      itemKey: 'DE000002',
+      itemKey: 'DE-2',
       type: 'defect' as const,
       title: 'ESLint rule conflicts between root and app-level configs',
       statusId: nxpInProgress,
@@ -829,7 +829,7 @@ async function seedExtendedWorkItems() {
     // Defect Status counts on their parent story rather than as their own rows).
     {
       id: NXP_CHILD_DEFECT_1_ID,
-      itemKey: 'DE000003',
+      itemKey: 'DE-3',
       type: 'defect' as const,
       title: 'Flat-config migration breaks the legacy import/order rule',
       statusId: nxpDone,
@@ -840,7 +840,7 @@ async function seedExtendedWorkItems() {
     },
     {
       id: NXP_CHILD_DEFECT_2_ID,
-      itemKey: 'DE000004',
+      itemKey: 'DE-4',
       type: 'defect' as const,
       title: 'noUncheckedIndexedAccess surfaces 40+ latent nulls',
       statusId: nxpInProgress,
@@ -851,7 +851,7 @@ async function seedExtendedWorkItems() {
     },
     {
       id: NXP_CHILD_DEFECT_3_ID,
-      itemKey: 'DE000005',
+      itemKey: 'DE-5',
       type: 'defect' as const,
       title: 'strictNullChecks regression in the shared logger',
       statusId: nxpDone,
@@ -863,7 +863,7 @@ async function seedExtendedWorkItems() {
     // Backlog items (no iteration)
     {
       id: uuidv7(),
-      itemKey: 'US000009',
+      itemKey: 'US-9',
       type: 'story' as const,
       title: 'Automate dependency graph visualisation in CI',
       statusId: nxpTodo,
@@ -874,7 +874,7 @@ async function seedExtendedWorkItems() {
     },
     {
       id: uuidv7(),
-      itemKey: 'US000010',
+      itemKey: 'US-10',
       type: 'story' as const,
       title: 'Integrate Chromatic for visual regression testing',
       statusId: nxpTodo,
@@ -915,7 +915,7 @@ async function seedExtendedWorkItems() {
   const nxpFeature = await db
     .select({ id: workItems.id })
     .from(workItems)
-    .where(and(eq(workItems.projectId, nxpId), eq(workItems.itemKey, 'FE000001')))
+    .where(and(eq(workItems.projectId, nxpId), eq(workItems.itemKey, 'FE-1')))
     .limit(1);
   if (nxpFeature[0]) {
     await db
@@ -958,7 +958,7 @@ async function seedExtendedWorkItems() {
   ];
   for (let i = 0; i < nxpExtendedTasks.length; i++) {
     const t = nxpExtendedTasks[i];
-    const itemKey = `TA${String(i + 3).padStart(6, '0')}`;
+    const itemKey = `TA-${i + 3}`;
     await db
       .insert(tasks)
       .values({
@@ -981,7 +981,7 @@ async function seedExtendedWorkItems() {
     const mobExtended = [
       {
         id: uuidv7(),
-        itemKey: 'US000003',
+        itemKey: 'US-3',
         type: 'story' as const,
         title: 'Implement Face ID login flow (iOS)',
         statusId: mobInProgress,
@@ -993,7 +993,7 @@ async function seedExtendedWorkItems() {
       },
       {
         id: uuidv7(),
-        itemKey: 'US000004',
+        itemKey: 'US-4',
         type: 'story' as const,
         title: 'Dark mode — apply theme tokens to navigation screens',
         statusId: mobTodo,
@@ -1005,7 +1005,7 @@ async function seedExtendedWorkItems() {
       },
       {
         id: uuidv7(),
-        itemKey: 'DE000002',
+        itemKey: 'DE-2',
         type: 'defect' as const,
         title: 'Push notifications not delivered on iOS 18.1 background state',
         statusId: mobTodo,
@@ -1393,7 +1393,7 @@ async function seedPhase3() {
     .onConflictDoNothing();
 
   // Assign milestones directly to current-sprint stories so the Iteration
-  // Status "Milestones" column renders (US000006 shows two → "+1" overflow).
+  // Status "Milestones" column renders (US-6 shows two → "+1" overflow).
   await db
     .insert(milestoneArtifacts)
     .values([
