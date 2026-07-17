@@ -1,13 +1,20 @@
 /**
  * Rally brand color palette as JS constants.
- * Single source of truth — mirrors CSS custom properties in globals.css.
- * Use these in inline `style` props where Tailwind classes cannot reach.
+ *
+ * Typed mirror of the CSS custom properties in `app/styles/globals.css`.
+ * Use these in inline `style` props / SVG `fill`/`stroke` where Tailwind classes
+ * (and `var()`) cannot reliably reach; use the Tailwind token utilities
+ * (`bg-card`, `text-muted-foreground`, `border-border-strong`, …) everywhere else.
+ *
+ * The semantic tokens below (primary, surfaces, text, borders, danger, success,
+ * warning) are kept byte-for-byte in sync with their `--css-var` counterparts by
+ * `brand.sync.test.ts` — update both together or the test fails.
  */
 export const BRAND = {
   // ── Core palette ────────────────────────────────────────────────────────────
-  primary: '#1d3f73',        // navy — buttons, active states
+  primary: '#1d3f73', // navy — buttons, active states
   primaryHover: '#163260',
-  primaryLight: '#2558a6',   // links, secondary actions
+  primaryLight: '#2558a6', // links, secondary actions
   primaryLighter: '#eef3fb', // subtle tinted backgrounds
 
   // ── Backgrounds ─────────────────────────────────────────────────────────────
@@ -15,20 +22,20 @@ export const BRAND = {
   surface: '#ffffff',
   surfaceHover: '#f7f8fa',
   surfaceSubtle: '#f4f6f9',
-  inputBg: '#f4f6f9',        // form control backgrounds
+  inputBg: '#f4f6f9', // form control backgrounds
 
   // ── Text ────────────────────────────────────────────────────────────────────
   textPrimary: '#1a2234',
   textSecondary: '#5c6478',
   textMuted: '#8c94a6',
-  textDisabled: '#a0a7b5',   // placeholder / disabled text
-  columnHeader: '#8c94a6',   // table column header text
+  textDisabled: '#a0a7b5', // placeholder / disabled text
+  columnHeader: '#8c94a6', // table column header text
 
   // ── Borders ─────────────────────────────────────────────────────────────────
   border: '#d9dee7',
   borderSubtle: '#e2e6eb',
   borderInner: '#edf0f4',
-  borderInput: '#d7dde7',    // form control borders
+  borderInput: '#d7dde7', // form control borders
 
   // ── Avatar / initials ───────────────────────────────────────────────────────
   avatarBg: '#e5ebf4',

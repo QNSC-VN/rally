@@ -34,13 +34,13 @@
   --accent-blue: #edf2fb;
   --accent-blue-foreground: #1d3f73;
 
-  /* Semantic */
-  --destructive: #c41d2e;
+  /* Semantic — kept in exact sync with brand.ts (guarded by brand.sync.test.ts) */
+  --destructive: #b91c1c;
   --destructive-foreground: #ffffff;
   --success: #1e6930;
   --success-bg: #eaf5ed;
-  --warning: #92400e;
-  --warning-bg: #fef3c7;
+  --warning: #d97706;
+  --warning-bg: #fef5e4;
   --info: #1e40af;
   --info-bg: #eff6ff;
 
