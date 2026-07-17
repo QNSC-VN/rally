@@ -842,7 +842,7 @@ function BacklogRow({
       style={{
         minWidth: 'max-content',
         backgroundColor: isDragging ? '#edf2fb' : selected ? '#f3f6fb' : undefined,
-        borderBottom: '1px solid #edf0f4',
+        borderBottom: `1px solid ${BRAND.borderInner}`,
         opacity: isDragging ? 0.6 : 1,
         transform: CSS.Transform.toString(transform),
         transition,

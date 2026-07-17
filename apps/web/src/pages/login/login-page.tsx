@@ -178,10 +178,13 @@ export function LoginPage() {
           {/* Card */}
           <div
             className="overflow-hidden rounded-md bg-white shadow-sm"
-            style={{ border: '1px solid #d9dee7' }}
+            style={{ border: `1px solid ${BRAND.border}` }}
           >
             {/* Card header */}
-            <div className="px-7 pt-7 pb-5" style={{ borderBottom: '1px solid #edf0f4' }}>
+            <div
+              className="px-7 pt-7 pb-5"
+              style={{ borderBottom: `1px solid ${BRAND.borderInner}` }}
+            >
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <p
@@ -218,7 +221,7 @@ export function LoginPage() {
                   style={{
                     color: BRAND.danger,
                     backgroundColor: BRAND.dangerBg,
-                    border: '1px solid #f0c7c1',
+                    border: `1px solid ${BRAND.dangerBorder}`,
                   }}
                 >
                   <AlertCircle size={14} className="mt-px shrink-0" />
@@ -233,7 +236,7 @@ export function LoginPage() {
                 className="flex w-full items-center justify-center gap-3 rounded py-3 text-[13px] font-medium transition-colors disabled:opacity-60"
                 style={{
                   backgroundColor: BRAND.surface,
-                  border: '1px solid #d9dee7',
+                  border: `1px solid ${BRAND.border}`,
                   color: BRAND.textPrimary,
                   boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
                 }}
@@ -247,7 +250,7 @@ export function LoginPage() {
                 {ssoLoading ? (
                   <span
                     className="h-5 w-5 animate-spin rounded-full"
-                    style={{ border: '2px solid #d9dee7', borderTopColor: BRAND.primary }}
+                    style={{ border: `2px solid ${BRAND.border}`, borderTopColor: BRAND.primary }}
                     aria-label="Signing in…"
                   />
                 ) : (
@@ -273,7 +276,7 @@ export function LoginPage() {
                       style={{
                         color: BRAND.danger,
                         backgroundColor: BRAND.dangerBg,
-                        border: '1px solid #f0c7c1',
+                        border: `1px solid ${BRAND.dangerBorder}`,
                       }}
                     >
                       <AlertCircle size={14} className="mt-px shrink-0" />
@@ -296,7 +299,7 @@ export function LoginPage() {
                       value={devEmail}
                       onChange={(e) => setDevEmail(e.target.value)}
                       className="h-10 w-full rounded px-3 text-[13px] outline-none"
-                      style={{ border: '1px solid #d9dee7', color: BRAND.textPrimary }}
+                      style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textPrimary }}
                       placeholder="you@acme.dev"
                     />
                   </div>

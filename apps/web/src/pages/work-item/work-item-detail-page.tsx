@@ -144,7 +144,7 @@ function RelatedItemField({
       ) : (
         <span
           className="block rounded px-3 py-2 text-[12px]"
-          style={{ border: '1px solid #d7dde7', color: '#9ca3af' }}
+          style={{ border: `1px solid ${BRAND.borderInput}`, color: '#9ca3af' }}
         >
           {emptyText}
         </span>
@@ -310,7 +310,7 @@ function TasksTab({ workItemId, projectId }: { workItemId: string; projectId: st
                 style={{
                   gridTemplateColumns: TASK_GRID,
                   backgroundColor: '#f3f6fa',
-                  borderBottom: '1px solid #d7dde7',
+                  borderBottom: `1px solid ${BRAND.borderInput}`,
                   color: '#1f2937',
                 }}
               >
@@ -351,7 +351,7 @@ function TasksTab({ workItemId, projectId }: { workItemId: string; projectId: st
                 className="grid min-h-10 cursor-pointer items-center text-[12px] hover:bg-[#f1f6fc]"
                 style={{
                   gridTemplateColumns: TASK_GRID,
-                  borderBottom: '1px solid #edf0f4',
+                  borderBottom: `1px solid ${BRAND.borderInner}`,
                   color: '#334155',
                 }}
                 onClick={() => openTask(task)}
@@ -465,7 +465,7 @@ function HistoryTab({ workItemId }: { workItemId: string }) {
               className="grid items-start px-4 py-3 text-[12px]"
               style={{
                 gridTemplateColumns: GRID,
-                borderBottom: '1px solid #edf0f4',
+                borderBottom: `1px solid ${BRAND.borderInner}`,
                 color: '#334155',
               }}
             >
@@ -534,7 +534,10 @@ function DefectsTab({ workItemId, projectId }: { workItemId: string; projectId: 
       </div>
 
       {defects.length === 0 ? (
-        <div className="rounded py-12 text-center" style={{ border: '1px dashed #d7dde7' }}>
+        <div
+          className="rounded py-12 text-center"
+          style={{ border: `1px dashed ${BRAND.borderInput}` }}
+        >
           <Bug size={28} style={{ color: '#c0c7d1', margin: '0 auto 8px' }} />
           <p className="text-[13px] font-medium" style={{ color: '#6b7280' }}>
             No defects linked to this story
@@ -544,7 +547,10 @@ function DefectsTab({ workItemId, projectId }: { workItemId: string; projectId: 
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded" style={{ border: '1px solid #d7dde7' }}>
+        <div
+          className="overflow-x-auto rounded"
+          style={{ border: `1px solid ${BRAND.borderInput}` }}
+        >
           <div className="min-w-[600px]">
             {/* Header */}
             <div
@@ -552,7 +558,7 @@ function DefectsTab({ workItemId, projectId }: { workItemId: string; projectId: 
               style={{
                 gridTemplateColumns: DEFECT_GRID,
                 color: '#6b7280',
-                borderBottom: '1px solid #d7dde7',
+                borderBottom: `1px solid ${BRAND.borderInput}`,
               }}
             >
               {DEFECT_COLS.map((col) => (
@@ -564,7 +570,10 @@ function DefectsTab({ workItemId, projectId }: { workItemId: string; projectId: 
               <div
                 key={d.id}
                 className="grid cursor-pointer items-center px-3 py-2 text-[12px] transition-colors hover:bg-[#f1f6fc]"
-                style={{ gridTemplateColumns: DEFECT_GRID, borderBottom: '1px solid #edf0f4' }}
+                style={{
+                  gridTemplateColumns: DEFECT_GRID,
+                  borderBottom: `1px solid ${BRAND.borderInner}`,
+                }}
                 onClick={() => openDefect(d)}
               >
                 <span className="flex items-center overflow-hidden">
@@ -640,7 +649,7 @@ function DetailSidebar({
   return (
     <aside
       className="w-[300px] shrink-0 overflow-y-auto bg-white"
-      style={{ borderLeft: '1px solid #d7dde7' }}
+      style={{ borderLeft: `1px solid ${BRAND.borderInput}` }}
     >
       {/* Collapse toggle header */}
       <div
@@ -1207,7 +1216,7 @@ export function WorkItemDetailPage() {
               {moreOpen && (
                 <div
                   className="absolute top-full right-0 z-50 mt-1 w-44 overflow-hidden rounded shadow-lg"
-                  style={{ backgroundColor: 'white', border: '1px solid #d7dde7' }}
+                  style={{ backgroundColor: 'white', border: `1px solid ${BRAND.borderInput}` }}
                 >
                   <button
                     onClick={() => void handleDelete()}
@@ -1282,7 +1291,7 @@ export function WorkItemDetailPage() {
             onClick={toggleSidebar}
             title="Show sidebar"
             className="flex w-6 shrink-0 items-center justify-center transition-colors hover:bg-[#e0e4ea]"
-            style={{ borderLeft: '1px solid #d7dde7', backgroundColor: '#f3f5f8' }}
+            style={{ borderLeft: `1px solid ${BRAND.borderInput}`, backgroundColor: '#f3f5f8' }}
           >
             <PanelRightOpen size={14} style={{ color: '#6b7280' }} />
           </button>

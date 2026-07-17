@@ -47,7 +47,11 @@ export function WorkItemRefCell({
         onClick={open}
         title={label}
         className="flex w-full items-center gap-1.5 truncate rounded px-2.5 py-1.5 text-[12px] hover:bg-slate-50"
-        style={{ border: '1px solid #d7dde7', color: BRAND.primaryLight, cursor: 'pointer' }}
+        style={{
+          border: `1px solid ${BRAND.borderInput}`,
+          color: BRAND.primaryLight,
+          cursor: 'pointer',
+        }}
       >
         <TypeBadge type={type} size={16} />
         <span className="truncate">{label}</span>

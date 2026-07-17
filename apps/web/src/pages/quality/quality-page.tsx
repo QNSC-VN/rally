@@ -808,7 +808,7 @@ function DefectTableRow({
       style={{
         transform: CSS.Transform.toString(transform),
         transition,
-        borderBottom: '1px solid #edf0f4',
+        borderBottom: `1px solid ${BRAND.borderInner}`,
         minWidth: 'max-content',
         backgroundColor: isDragging ? '#edf2fb' : selected ? '#f3f6fb' : undefined,
         opacity: isDragging ? 0.6 : 1,

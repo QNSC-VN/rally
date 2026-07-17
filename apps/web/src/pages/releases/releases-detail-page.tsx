@@ -50,7 +50,7 @@ function ReleaseArtifactRow({
   return (
     <tr
       className="cursor-pointer transition-colors duration-75"
-      style={{ borderBottom: '1px solid #edf0f4' }}
+      style={{ borderBottom: `1px solid ${BRAND.borderInner}` }}
       onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f1f6fc')}
       onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
       onClick={onOpen}
@@ -230,7 +230,7 @@ function ReleaseArtifactsTab({ releaseId }: { releaseId: string }) {
       {items.length > 0 && (
         <div
           className="flex h-9 shrink-0 items-center justify-between bg-white px-3"
-          style={{ borderTop: '1px solid #e2e6eb' }}
+          style={{ borderTop: `1px solid ${BRAND.borderSubtle}` }}
         >
           <div
             className="flex items-center gap-2 text-[11px]"

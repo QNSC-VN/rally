@@ -259,7 +259,7 @@ export function RichTextEditor({
             onChange={handleFormatBlock}
             defaultValue="p"
             className="h-7 w-28 rounded-sm bg-white px-2 text-[11px] focus:outline-none"
-            style={{ color: '#334155', border: '1px solid #d7dde7' }}
+            style={{ color: '#334155', border: `1px solid ${BRAND.borderInput}` }}
             onMouseDown={(e) => e.stopPropagation()}
           >
             <option value="p">Paragraph</option>

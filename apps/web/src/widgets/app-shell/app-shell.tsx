@@ -324,12 +324,15 @@ export function AppShell() {
             {wsOpen && (
               <div
                 className="absolute top-full left-0 mt-1 w-72 overflow-hidden rounded bg-white py-1.5 shadow-xl"
-                style={{ border: '1px solid #d9dee7' }}
+                style={{ border: `1px solid ${BRAND.border}` }}
               >
                 {/* Active organization header */}
                 <div
                   className="flex items-center gap-2.5 px-3 py-2.5"
-                  style={{ borderBottom: '1px solid #e2e6eb', backgroundColor: BRAND.surfaceHover }}
+                  style={{
+                    borderBottom: `1px solid ${BRAND.borderSubtle}`,
+                    backgroundColor: BRAND.surfaceHover,
+                  }}
                 >
                   <div
                     className="flex h-7 w-7 items-center justify-center rounded"
@@ -363,7 +366,10 @@ export function AppShell() {
 
                 {/* Switch organization — only when user has multiple workspaces */}
                 {memberships.length > 1 && (
-                  <div className="px-3 pt-2 pb-1" style={{ borderBottom: '1px solid #e2e6eb' }}>
+                  <div
+                    className="px-3 pt-2 pb-1"
+                    style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
+                  >
                     <div
                       className="mb-1 text-[9px] font-semibold tracking-widest uppercase"
                       style={{ color: BRAND.textMuted }}
@@ -438,7 +444,10 @@ export function AppShell() {
                     />
                     <span className="text-[11px]">View workspace</span>
                   </button>
-                  <div className="my-1.5" style={{ borderTop: '1px solid #e2e6eb' }} />
+                  <div
+                    className="my-1.5"
+                    style={{ borderTop: `1px solid ${BRAND.borderSubtle}` }}
+                  />
                   {/* Project list */}
                   {navProjects.length > 0 && (
                     <>
@@ -478,7 +487,10 @@ export function AppShell() {
                           )}
                         </button>
                       ))}
-                      <div className="my-1.5" style={{ borderTop: '1px solid #e2e6eb' }} />
+                      <div
+                        className="my-1.5"
+                        style={{ borderTop: `1px solid ${BRAND.borderSubtle}` }}
+                      />
                     </>
                   )}
                   {/* Team list — scoped to the selected project (SHELL-FR-006) */}
@@ -549,7 +561,10 @@ export function AppShell() {
                           No teams in this project yet
                         </div>
                       )}
-                      <div className="my-1.5" style={{ borderTop: '1px solid #e2e6eb' }} />
+                      <div
+                        className="my-1.5"
+                        style={{ borderTop: `1px solid ${BRAND.borderSubtle}` }}
+                      />
                     </>
                   )}
                   <Link
@@ -622,7 +637,7 @@ export function AppShell() {
                   {!comingSoon && openMenu === label && (
                     <div
                       className="absolute top-full left-0 z-50 mt-1 w-44 rounded bg-white py-1 shadow-lg"
-                      style={{ border: '1px solid #d9dee7' }}
+                      style={{ border: `1px solid ${BRAND.border}` }}
                     >
                       <div
                         className="px-3 py-1.5 text-[9px] font-semibold tracking-widest uppercase"
@@ -814,12 +829,15 @@ export function AppShell() {
             {userOpen && (
               <div
                 className="absolute top-full right-0 z-50 mt-1 w-56 overflow-hidden rounded bg-white shadow-xl"
-                style={{ border: '1px solid #d9dee7' }}
+                style={{ border: `1px solid ${BRAND.border}` }}
               >
                 {/* Profile info */}
                 <div
                   className="flex items-center gap-2.5 px-3 py-3"
-                  style={{ borderBottom: '1px solid #e2e6eb', backgroundColor: BRAND.surfaceHover }}
+                  style={{
+                    borderBottom: `1px solid ${BRAND.borderSubtle}`,
+                    backgroundColor: BRAND.surfaceHover,
+                  }}
                 >
                   <Avatar name={user?.displayName ?? 'U'} size={32} />
                   <div className="min-w-0 flex-1">
@@ -857,7 +875,7 @@ export function AppShell() {
                   </Link>
                 </div>
 
-                <div style={{ borderTop: '1px solid #e2e6eb' }} className="py-1">
+                <div style={{ borderTop: `1px solid ${BRAND.borderSubtle}` }} className="py-1">
                   <button
                     onClick={handleSignOut}
                     className="flex w-full items-center gap-2.5 px-3 py-2 text-[11px] hover:bg-[#fff0ef]"
@@ -877,7 +895,10 @@ export function AppShell() {
       {crumbs.length > 0 && (
         <div
           className="flex h-8 shrink-0 items-center gap-1.5 px-4 text-[11px]"
-          style={{ backgroundColor: BRAND.surface, borderBottom: '1px solid #e2e6eb' }}
+          style={{
+            backgroundColor: BRAND.surface,
+            borderBottom: `1px solid ${BRAND.borderSubtle}`,
+          }}
         >
           <span style={{ color: BRAND.textSecondary }}>
             {workspace?.workspaceName ?? 'Workspace'}

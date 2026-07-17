@@ -521,7 +521,7 @@ export function MilestonesPage() {
               <div
                 key={ms.id}
                 className="flex h-8 cursor-pointer items-center px-3"
-                style={{ borderBottom: '1px solid #edf0f4', minWidth: 'max-content' }}
+                style={{ borderBottom: `1px solid ${BRAND.borderInner}`, minWidth: 'max-content' }}
                 onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = BRAND.surfaceHover)}
                 onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
                 onClick={() =>
