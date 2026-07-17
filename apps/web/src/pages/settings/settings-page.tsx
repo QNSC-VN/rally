@@ -25,6 +25,9 @@ import {
   ChevronRight,
   ArrowLeft,
   Archive,
+  Search,
+  Clock,
+  ChevronLeft,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { BRAND } from '@/shared/config/brand'
@@ -1497,6 +1500,179 @@ function TeamsTab() {
   )
 }
 
+// ── Audit Log tab ─────────────────────────────────────────────────────────────
+
+const AUDIT_PAGE_SIZE = 50
+
+function formatAuditTime(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+}
+
+/** Audit action codes are dotted/underscored (e.g. `workspace.member.invited`). */
+function humanizeAuditAction(action: string): string {
+  return action.replace(/[._]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+function AuditLogTab() {
+  const [offset, setOffset] = useState(0)
+  const [search, setSearch] = useState('')
+
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['audit-logs', offset],
+    queryFn: async () => {
+      const res = await apiClient.GET('/v1/audit-logs', {
+        params: { query: { limit: AUDIT_PAGE_SIZE, offset } },
+      })
+      return res.data
+    },
+    placeholderData: (prev) => prev,
+  })
+
+  const rows = data?.data ?? []
+  const hasNextPage = data?.pageInfo?.hasNextPage ?? false
+
+  // Server paginates; this box narrows the loaded page by actor / action / resource.
+  const q = search.trim().toLowerCase()
+  const filtered = q
+    ? rows.filter(
+        (a) =>
+          (a.actorEmail ?? '').toLowerCase().includes(q) ||
+          a.action.toLowerCase().includes(q) ||
+          a.resourceType.toLowerCase().includes(q),
+      )
+    : rows
+
+  return (
+    <div>
+      {/* ── Header: note + search ── */}
+      <div className="mb-3 flex items-end justify-between gap-3">
+        <p className="text-[12px]" style={{ color: BRAND.textMuted }}>
+          Administrative and settings changes for this workspace.
+        </p>
+        <div className="relative">
+          <Search
+            size={12}
+            className="absolute top-1/2 left-2.5 -translate-y-1/2"
+            style={{ color: BRAND.textMuted }}
+          />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Filter actor, action, resource…"
+            className="w-64 rounded py-1.5 pr-3 pl-7 text-[11px] focus:outline-none"
+            style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textPrimary }}
+          />
+        </div>
+      </div>
+
+      {/* ── Table ── */}
+      <div className="overflow-hidden rounded" style={{ border: `1px solid ${BRAND.border}` }}>
+        <div
+          className="flex h-8 items-center gap-2 px-3"
+          style={{ backgroundColor: BRAND.pageBg, borderBottom: `1px solid ${BRAND.border}` }}
+        >
+          {[
+            ['w-44', 'Time'],
+            ['w-48', 'Actor'],
+            ['w-40', 'Action'],
+            ['flex-1', 'Detail'],
+          ].map(([c, l]) => (
+            <div
+              key={l}
+              className={`${c} text-[9px] font-semibold tracking-wider uppercase`}
+              style={{ color: BRAND.textMuted }}
+            >
+              {l}
+            </div>
+          ))}
+        </div>
+
+        {isLoading ? (
+          <div
+            className="flex items-center justify-center gap-2 py-10"
+            style={{ color: BRAND.textMuted }}
+          >
+            <Loader2 size={16} className="animate-spin" />
+            <span className="text-[12px]">Loading audit log…</span>
+          </div>
+        ) : isError ? (
+          <div className="px-3 py-6 text-center text-[11px]" style={{ color: BRAND.danger }}>
+            Failed to load audit log. Please try again.
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="px-3 py-6 text-center text-[11px]" style={{ color: BRAND.textMuted }}>
+            No audit events found.
+          </div>
+        ) : (
+          filtered.map((a) => {
+            const changeKeys =
+              a.changes && typeof a.changes === 'object' ? Object.keys(a.changes) : []
+            return (
+              <div
+                key={a.id}
+                className="flex min-h-10 items-center gap-2 px-3 py-1.5"
+                style={{ borderBottom: `1px solid ${BRAND.borderInner}` }}
+              >
+                <div
+                  className="flex w-44 items-center gap-1 text-[10px]"
+                  style={{ color: BRAND.textMuted }}
+                >
+                  <Clock size={10} />
+                  {formatAuditTime(a.occurredAt)}
+                </div>
+                <div
+                  className="w-48 truncate text-[11px] font-medium"
+                  style={{ color: BRAND.textPrimary }}
+                  title={a.actorEmail ?? a.actorId ?? undefined}
+                >
+                  {a.actorEmail ?? a.actorId ?? 'System'}
+                </div>
+                <div className="w-40 truncate text-[11px]" style={{ color: BRAND.textSecondary }}>
+                  {humanizeAuditAction(a.action)}
+                </div>
+                <div className="flex-1 truncate text-[11px]" style={{ color: BRAND.textSecondary }}>
+                  {a.resourceType} · {a.resourceId}
+                  {changeKeys.length > 0 && (
+                    <span style={{ color: BRAND.textMuted }}>
+                      {' '}
+                      ({changeKeys.length} field
+                      {changeKeys.length !== 1 ? 's' : ''} changed)
+                    </span>
+                  )}
+                </div>
+              </div>
+            )
+          })
+        )}
+      </div>
+
+      {/* ── Pagination ── */}
+      {(offset > 0 || hasNextPage) && (
+        <div className="mt-3 flex items-center justify-end gap-2">
+          <button
+            onClick={() => setOffset((o) => Math.max(0, o - AUDIT_PAGE_SIZE))}
+            disabled={offset === 0}
+            className="flex items-center gap-1 rounded px-2.5 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+            style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
+          >
+            <ChevronLeft size={12} />
+            Prev
+          </button>
+          <button
+            onClick={() => setOffset((o) => o + AUDIT_PAGE_SIZE)}
+            disabled={!hasNextPage}
+            className="flex items-center gap-1 rounded px-2.5 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+            style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
+          >
+            Next
+            <ChevronRight size={12} />
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Coming soon tab ───────────────────────────────────────────────────────────
 
 function ComingSoonTab({ label }: { label: string }) {
@@ -1584,6 +1760,8 @@ export function SettingsPage() {
           <WorkspaceSettingsTab />
         ) : activeTab === 'project' ? (
           <ProjectSettingsTab />
+        ) : activeTab === 'audit' ? (
+          <AuditLogTab />
         ) : (
           <ComingSoonTab label={activeLabel} />
         )}
