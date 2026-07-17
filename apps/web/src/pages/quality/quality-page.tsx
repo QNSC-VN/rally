@@ -15,6 +15,8 @@ import { AlertTriangle, PackageOpen, Plus } from 'lucide-react'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { RowGutter } from '@/shared/ui/row-gutter'
 import { SkeletonList } from '@/shared/ui/skeleton'
+import { MetricCard } from '@/shared/ui/metric-card'
+import { MetricStrip } from '@/shared/ui/metric-strip'
 import { BRAND } from '@/shared/config/brand'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { WorkItemRefCell } from '@/entities/work-item/ui/work-item-ref-cell'
@@ -474,27 +476,6 @@ const QUALITY_COLUMNS: ColumnSpec<DefectRow, QualityCtx, QualityColKey>[] = [
     cell: (d) => <OwnerCell name={d.assigneeName} />,
   },
 ]
-
-// ── Metric card ────────────────────────────────────────────────────────────
-
-function MetricCard({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <div
-      className="flex flex-col justify-center gap-0.5 px-5"
-      style={{ borderLeft: `1px solid ${BRAND.border}` }}
-    >
-      <span
-        className="text-[9px] font-semibold tracking-widest uppercase"
-        style={{ color: '#8c94a6' }}
-      >
-        {label}
-      </span>
-      <span className="text-[17px] leading-none font-semibold" style={{ color }}>
-        {value}
-      </span>
-    </div>
-  )
-}
 
 // ── Small filter select ───────────────────────────────────────────────────
 
@@ -1002,22 +983,44 @@ export function QualityPage() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Metrics strip */}
-      <div
-        className="flex shrink-0 items-stretch bg-white"
-        style={{ borderBottom: `1px solid ${BRAND.border}`, height: 52 }}
-      >
-        <MetricCard label="Open Defects" value={metrics.openDefects} color="#8a5808" />
-        <MetricCard label="Critical" value={metrics.critical} color="#b91c1c" />
-        <MetricCard label="In Progress" value={metrics.inProgress} color="#7e22ce" />
-        <MetricCard label="Verified / Accepted" value={metrics.verifiedAccepted} color="#1e6930" />
-        <MetricCard label="Reopened" value={metrics.reopened} color="#1a2234" />
+      <MetricStrip>
+        <MetricCard
+          label="Open Defects"
+          value={metrics.openDefects}
+          valueColor={BRAND.warning}
+          minWidth={100}
+        />
+        <MetricCard
+          label="Critical"
+          value={metrics.critical}
+          valueColor={BRAND.danger}
+          minWidth={80}
+        />
+        <MetricCard
+          label="In Progress"
+          value={metrics.inProgress}
+          valueColor={BRAND.primaryLight}
+          minWidth={90}
+        />
+        <MetricCard
+          label="Verified / Accepted"
+          value={metrics.verifiedAccepted}
+          valueColor={BRAND.success}
+          minWidth={130}
+        />
+        <MetricCard
+          label="Reopened"
+          value={metrics.reopened}
+          valueColor={BRAND.textPrimary}
+          minWidth={90}
+        />
         <MetricCard
           label="Blockers"
           value={metrics.blockers}
-          color={metrics.blockers > 0 ? '#b91c1c' : '#1a2234'}
+          valueColor={metrics.blockers > 0 ? BRAND.danger : BRAND.textPrimary}
+          minWidth={80}
         />
-        <div className="flex-1" style={{ borderLeft: `1px solid ${BRAND.border}` }} />
-      </div>
+      </MetricStrip>
 
       {/* Toolbar */}
       <PageToolbar
