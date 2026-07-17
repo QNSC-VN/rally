@@ -12,7 +12,7 @@ export const FEATURE_FLAGS: Record<string, boolean> = {
   'feature.timeboxes': true,
   'feature.iteration-status': true,
   'feature.team-status': true,
-  'feature.team-board': false,
+  'feature.team-board': true,
   'feature.board': false,
   'feature.quality': true,
   'feature.portfolio': false,

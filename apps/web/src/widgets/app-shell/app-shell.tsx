@@ -93,7 +93,7 @@ const NAV_ITEMS: NavItem[] = [
       {
         path: '/team-board',
         label: 'Team Board',
-        featureFlag: 'feature.team-board', // Not active or disabled by feature flag
+        featureFlag: 'feature.team-board',
         permission: 'work_item:view',
       },
     ],

@@ -205,6 +205,13 @@ const teamStatusRoute = createRoute({
   component: lazyPage(() => import('@/pages/team-status/team-status-page'), 'TeamStatusPage'),
 })
 
+const teamBoardRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: '/team-board',
+  staticData: { breadcrumb: 'Team Board' },
+  component: lazyPage(() => import('@/pages/team-board/team-board-page'), 'TeamBoardPage'),
+})
+
 // ── Not found ─────────────────────────────────────────────────────────────────
 
 const notFoundRoute = createRoute({
@@ -233,6 +240,7 @@ const routeTree = rootRoute.addChildren([
     qualityRedirectRoute,
     qualityDefectsRoute,
     teamStatusRoute,
+    teamBoardRoute,
     workItemDetailRoute,
     notFoundRoute,
   ]),
