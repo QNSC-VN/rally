@@ -1,3 +1,4 @@
+import { BRAND } from '@/shared/config/brand'
 /**
  * `<TaskRollup>` — read-only aggregate of a work item's child-task hours
  * (Estimate / To Do / Actual), rendered as a compact 3-cell grid (Broadcom
@@ -35,7 +36,7 @@ export function TaskRollup({ estimate, todo, actual }: TaskRollupProps) {
         >
           <div
             className="text-[9px] font-semibold tracking-wide uppercase"
-            style={{ color: '#8c94a6' }}
+            style={{ color: BRAND.textMuted }}
           >
             {label}
           </div>

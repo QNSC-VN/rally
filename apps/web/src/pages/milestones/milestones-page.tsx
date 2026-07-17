@@ -102,7 +102,7 @@ function MilestoneFormFields({
           value={status}
           onChange={(e) => setStatus(e.target.value as MilestoneStatus)}
           className="w-full rounded-md border px-3 py-1.5 text-sm"
-          style={{ borderColor: BRAND.border, color: '#1a2234' }}
+          style={{ borderColor: BRAND.border, color: BRAND.textPrimary }}
         >
           {MILESTONE_STATUSES.map((s) => (
             <option key={s} value={s}>
@@ -132,7 +132,7 @@ function MilestoneFormFields({
           value={ownerId}
           onChange={(e) => setOwnerId(e.target.value)}
           className="w-full rounded-md border px-3 py-1.5 text-sm"
-          style={{ borderColor: BRAND.border, color: '#1a2234' }}
+          style={{ borderColor: BRAND.border, color: BRAND.textPrimary }}
         >
           <option value="">Unassigned</option>
           {(members ?? []).map((m) => (
@@ -146,22 +146,28 @@ function MilestoneFormFields({
         <FormField label="Target Start">
           <div
             className="w-full rounded-md border bg-gray-50 px-3 py-1.5 text-sm"
-            style={{ borderColor: BRAND.border, color: targetStartDate ? '#1a2234' : '#8c94a6' }}
+            style={{
+              borderColor: BRAND.border,
+              color: targetStartDate ? BRAND.textPrimary : BRAND.textMuted,
+            }}
           >
             {targetStartDate || 'Not set'}
           </div>
-          <p className="mt-0.5 text-[10px]" style={{ color: '#8c94a6' }}>
+          <p className="mt-0.5 text-[10px]" style={{ color: BRAND.textMuted }}>
             Derived from linked Releases
           </p>
         </FormField>
         <FormField label="Target End">
           <div
             className="w-full rounded-md border bg-gray-50 px-3 py-1.5 text-sm"
-            style={{ borderColor: BRAND.border, color: targetEndDate ? '#1a2234' : '#8c94a6' }}
+            style={{
+              borderColor: BRAND.border,
+              color: targetEndDate ? BRAND.textPrimary : BRAND.textMuted,
+            }}
           >
             {targetEndDate || 'Not set'}
           </div>
-          <p className="mt-0.5 text-[10px]" style={{ color: '#8c94a6' }}>
+          <p className="mt-0.5 text-[10px]" style={{ color: BRAND.textMuted }}>
             Derived from linked Releases
           </p>
         </FormField>
@@ -267,7 +273,7 @@ function CreateMilestoneModal({ projectId, onClose }: { projectId: string; onClo
             type="button"
             onClick={onClose}
             className="cursor-pointer rounded-md px-4 py-1.5 text-sm"
-            style={{ border: `1px solid ${BRAND.border}`, color: '#5c6478' }}
+            style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
           >
             Cancel
           </button>
@@ -358,7 +364,7 @@ function EditMilestoneModal({ milestone, onClose }: { milestone: Milestone; onCl
             type="button"
             onClick={onClose}
             className="cursor-pointer rounded-md px-4 py-1.5 text-sm"
-            style={{ border: `1px solid ${BRAND.border}`, color: '#5c6478' }}
+            style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
           >
             Cancel
           </button>
@@ -429,7 +435,7 @@ export function MilestonesPage() {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8">
         <AlertTriangle size={32} style={{ color: BRAND.danger }} />
-        <p className="text-sm" style={{ color: '#5c6478' }}>
+        <p className="text-sm" style={{ color: BRAND.textSecondary }}>
           {error instanceof Error ? error.message : 'Failed to load milestones'}
         </p>
       </div>
@@ -471,7 +477,7 @@ export function MilestonesPage() {
         ) : filtered.length === 0 ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8">
             <PackageOpen size={40} style={{ color: '#c4cad4' }} />
-            <p className="text-sm" style={{ color: '#8c94a6' }}>
+            <p className="text-sm" style={{ color: BRAND.textMuted }}>
               {search ? 'No milestones match your search' : 'No milestones yet'}
             </p>
             {canManage && !search && (
@@ -491,7 +497,7 @@ export function MilestonesPage() {
             <div
               className="flex h-8 shrink-0 items-center px-3 select-none"
               style={{
-                backgroundColor: '#f7f8fa',
+                backgroundColor: BRAND.surfaceHover,
                 borderBottom: `1px solid ${BRAND.border}`,
                 minWidth: 'max-content',
               }}
@@ -500,7 +506,7 @@ export function MilestonesPage() {
                 <div
                   key={col.key}
                   className="group relative flex items-center gap-1 px-2 text-[9px] font-semibold tracking-wider whitespace-nowrap uppercase"
-                  style={{ ...styleFor(col.key, { flexShrink: 0 }), color: '#8c94a6' }}
+                  style={{ ...styleFor(col.key, { flexShrink: 0 }), color: BRAND.textMuted }}
                 >
                   <span>{col.label}</span>
                   <ResizeHandle
@@ -516,7 +522,7 @@ export function MilestonesPage() {
                 key={ms.id}
                 className="flex h-8 cursor-pointer items-center px-3"
                 style={{ borderBottom: '1px solid #edf0f4', minWidth: 'max-content' }}
-                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f7f8fa')}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = BRAND.surfaceHover)}
                 onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
                 onClick={() =>
                   navigate({ to: '/milestones/$milestoneId', params: { milestoneId: ms.id } })
@@ -524,21 +530,24 @@ export function MilestonesPage() {
               >
                 {/* Name */}
                 <div className="shrink-0 px-2" style={styleFor('name')}>
-                  <span className="block truncate text-xs font-medium" style={{ color: '#1a2234' }}>
+                  <span
+                    className="block truncate text-xs font-medium"
+                    style={{ color: BRAND.textPrimary }}
+                  >
                     {ms.name}
                   </span>
                 </div>
                 {/* Target Start Date */}
                 <div
                   className="shrink-0 px-2 text-xs"
-                  style={{ ...styleFor('targetStartDate'), color: '#5c6478' }}
+                  style={{ ...styleFor('targetStartDate'), color: BRAND.textSecondary }}
                 >
                   {ms.targetStartDate ?? '\u2014'}
                 </div>
                 {/* Target End Date */}
                 <div
                   className="shrink-0 px-2 text-xs"
-                  style={{ ...styleFor('targetEndDate'), color: '#5c6478' }}
+                  style={{ ...styleFor('targetEndDate'), color: BRAND.textSecondary }}
                 >
                   {ms.targetEndDate ?? '\u2014'}
                 </div>
@@ -555,7 +564,7 @@ export function MilestonesPage() {
                         className="rounded p-1 hover:bg-gray-100"
                         title="Edit"
                       >
-                        <Pencil size={13} style={{ color: '#5c6478' }} />
+                        <Pencil size={13} style={{ color: BRAND.textSecondary }} />
                       </button>
                       {deleting === ms.id ? (
                         <div className="flex items-center gap-1">
@@ -565,8 +574,8 @@ export function MilestonesPage() {
                             }}
                             className="rounded px-1.5 py-0.5 text-[10px] font-medium"
                             style={{
-                              backgroundColor: '#fef2f2',
-                              color: '#b91c1c',
+                              backgroundColor: BRAND.dangerBg,
+                              color: BRAND.danger,
                               border: '1px solid #fecaca',
                             }}
                           >
@@ -575,7 +584,10 @@ export function MilestonesPage() {
                           <button
                             onClick={() => setDeleting(null)}
                             className="rounded px-1.5 py-0.5 text-[10px]"
-                            style={{ border: `1px solid ${BRAND.border}`, color: '#5c6478' }}
+                            style={{
+                              border: `1px solid ${BRAND.border}`,
+                              color: BRAND.textSecondary,
+                            }}
                           >
                             Cancel
                           </button>
@@ -586,7 +598,7 @@ export function MilestonesPage() {
                           className="rounded p-1 hover:bg-red-50"
                           title="Delete"
                         >
-                          <Trash2 size={13} style={{ color: '#b91c1c' }} />
+                          <Trash2 size={13} style={{ color: BRAND.danger }} />
                         </button>
                       )}
                     </div>

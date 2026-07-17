@@ -93,12 +93,12 @@ import { SCHEDULE_STATE_STEPS, SIMPLIFIED_STATE_STEPS } from '@/entities/work-it
 
 // ── Accent palette (Rally navy brand; neutral Azure-style layout kept) ──────
 const AZ = {
-  primary: '#1d3f73',
+  primary: BRAND.primary,
   primaryLight: '#edf2fb',
   textPrimary: '#1a1a1a',
   textSecondary: '#666666',
   textMuted: '#999999',
-  bg: '#ffffff',
+  bg: BRAND.surface,
   bgHeader: '#f4f4f4',
   bgAlt: '#f8f8f8',
   border: '#e8e8e8',
@@ -768,7 +768,7 @@ export function IterationStatusPage() {
         ? {
             value: String(Math.abs(metrics.daysLeft)),
             label: metrics.daysLeft === -1 ? 'day overdue' : 'days overdue',
-            color: '#b91c1c',
+            color: BRAND.danger,
           }
         : { value: String(metrics.daysLeft), label: `of ${tDays} days left`, color: '#8a5808' }
 
@@ -973,7 +973,7 @@ export function IterationStatusPage() {
         {!isLoading && isError && (
           <div
             className="flex items-center justify-center"
-            style={{ height: 160, fontSize: 12, color: '#b91c1c' }}
+            style={{ height: 160, fontSize: 12, color: BRAND.danger }}
           >
             Failed to load iteration status. Please try again.
           </div>
@@ -1298,10 +1298,10 @@ function MetricsStrip({
         <MetricCard
           label="Accepted"
           value={`${acceptedPct}%`}
-          valueColor="#1e6930"
+          valueColor={BRAND.success}
           caption={`${metrics?.acceptedPoints ?? 0} of ${metrics?.totalPlanEstimate ?? 0} Points`}
           progressPct={acceptedPct}
-          progressColor="#1e6930"
+          progressColor={BRAND.success}
           minWidth={140}
         />
       </div>
@@ -1871,8 +1871,8 @@ function StatusRow({
                   borderRadius: 2,
                   fontSize: 11,
                   fontWeight: 700,
-                  backgroundColor: '#fef2f2',
-                  color: '#b91c1c',
+                  backgroundColor: BRAND.dangerBg,
+                  color: BRAND.danger,
                   border: '1px solid #fecaca',
                   fontFamily: AZ.font,
                 }}
@@ -2503,7 +2503,7 @@ function AddItemModal({
                 onClick={() => setType(o)}
                 className="flex-1 rounded-sm py-1.5 text-[11px] font-semibold capitalize transition-colors"
                 style={{
-                  backgroundColor: type === o ? '#eef3fb' : 'transparent',
+                  backgroundColor: type === o ? BRAND.primaryLighter : 'transparent',
                   color: type === o ? BRAND.primary : BRAND.textSecondary,
                   border: `1px solid ${type === o ? '#bdd0ef' : BRAND.borderSubtle}`,
                 }}

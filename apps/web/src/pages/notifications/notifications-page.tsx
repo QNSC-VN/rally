@@ -105,7 +105,7 @@ export function NotificationsPage() {
                     className="rounded px-3 py-1.5 text-[12px] font-medium transition-colors"
                     style={{
                       backgroundColor: active ? BRAND.primary : 'transparent',
-                      color: active ? '#ffffff' : BRAND.textSecondary,
+                      color: active ? BRAND.surface : BRAND.textSecondary,
                       border: `1px solid ${active ? BRAND.primary : BRAND.border}`,
                     }}
                   >
@@ -153,7 +153,7 @@ export function NotificationsPage() {
           <div className="flex flex-col items-center justify-center gap-4 py-20">
             <div
               className="flex h-14 w-14 items-center justify-center rounded-xl"
-              style={{ backgroundColor: '#e5ebf4' }}
+              style={{ backgroundColor: BRAND.avatarBg }}
             >
               <Bell size={26} style={{ color: BRAND.primary }} />
             </div>

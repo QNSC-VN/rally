@@ -99,7 +99,9 @@ export function IterationPicker({
                     setOpen(false)
                   }}
                   className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left hover:bg-[#f0f2f5]"
-                  style={{ backgroundColor: it.id === selectedId ? '#eef3fb' : 'transparent' }}
+                  style={{
+                    backgroundColor: it.id === selectedId ? BRAND.primaryLighter : 'transparent',
+                  }}
                 >
                   <span className="text-[12px] font-medium" style={{ color: BRAND.textPrimary }}>
                     {it.name}

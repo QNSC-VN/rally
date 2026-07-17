@@ -601,7 +601,7 @@ export function ProjectsPage() {
                   <div className="w-16 shrink-0">
                     <span
                       className="inline-flex h-5 items-center rounded-sm px-1.5 font-mono text-[10px] font-semibold"
-                      style={{ backgroundColor: '#e5ebf4', color: BRAND.primary }}
+                      style={{ backgroundColor: BRAND.avatarBg, color: BRAND.primary }}
                     >
                       {project.key}
                     </span>

@@ -482,7 +482,7 @@ function BoardColumn({
         ref={setNodeRef}
         className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto rounded-b-sm p-2"
         style={{
-          backgroundColor: isOver ? '#dfeafa' : '#f7f8fa',
+          backgroundColor: isOver ? '#dfeafa' : BRAND.surfaceHover,
           border: `1px solid ${isOver ? '#7ca1d8' : BRAND.border}`,
           borderTop: 'none',
         }}
@@ -652,7 +652,7 @@ function BoardCard({
       <div className="mt-2 flex items-center gap-2">
         <span
           className="rounded-sm px-1.5 py-0.5 text-[10px] font-semibold"
-          style={{ backgroundColor: '#eef3fb', color: BRAND.primaryLight }}
+          style={{ backgroundColor: BRAND.primaryLighter, color: BRAND.primaryLight }}
         >
           {item.planEstimate ?? 0} pt
         </span>
@@ -740,7 +740,7 @@ function AddItemModal({
                 onClick={() => setType(o)}
                 className="flex-1 rounded-sm py-1.5 text-[11px] font-semibold capitalize transition-colors"
                 style={{
-                  backgroundColor: type === o ? '#eef3fb' : 'transparent',
+                  backgroundColor: type === o ? BRAND.primaryLighter : 'transparent',
                   color: type === o ? BRAND.primary : BRAND.textSecondary,
                   border: `1px solid ${type === o ? '#bdd0ef' : BRAND.borderSubtle}`,
                 }}

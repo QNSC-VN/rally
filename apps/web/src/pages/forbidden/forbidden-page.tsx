@@ -16,14 +16,14 @@ export function ForbiddenPage() {
     >
       <div
         className="flex h-16 w-16 items-center justify-center rounded-full"
-        style={{ backgroundColor: '#fef2f2' }}
+        style={{ backgroundColor: BRAND.dangerBg }}
       >
         <ShieldOff size={30} style={{ color: '#dc2626' }} />
       </div>
       <div className="text-center">
         <p
           id="forbidden-heading"
-          className="text-[42px] font-bold leading-none"
+          className="text-[42px] leading-none font-bold"
           style={{ color: BRAND.textPrimary }}
         >
           403

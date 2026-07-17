@@ -90,7 +90,12 @@ const DEFECT_STATE_STYLE: Record<
   open: { bg: '#fff7ed', text: '#9a3412', border: '#fed7aa', label: 'Open' },
   fixed: { bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0', label: 'Fixed' },
   closed: { bg: '#f1f5f9', text: '#475569', border: '#cbd5e1', label: 'Closed' },
-  closed_declined: { bg: '#fef2f2', text: '#b91c1c', border: '#fecaca', label: 'Closed Declined' },
+  closed_declined: {
+    bg: BRAND.dangerBg,
+    text: BRAND.danger,
+    border: '#fecaca',
+    label: 'Closed Declined',
+  },
 }
 
 const DEFECT_STATE_OPTIONS: { value: string; label: string }[] = [
@@ -193,7 +198,7 @@ function FixedInBuildCell({
         trigger="dblclick"
         displayValue={defect.fixedInBuild ?? '—'}
         className="truncate text-[10px] hover:underline"
-        style={{ color: '#5c6478' }}
+        style={{ color: BRAND.textSecondary }}
         inputClassName="text-[10px] px-1 py-0.5 rounded focus:outline-none"
         inputStyle={{
           border: `1px solid ${BRAND.borderInput}`,
@@ -334,7 +339,7 @@ const QUALITY_COLUMNS: ColumnSpec<DefectRow, QualityCtx, QualityColKey>[] = [
     locked: true,
     cellClassName: 'min-w-0 px-2',
     cell: (d) => (
-      <span className="block truncate text-[12px] font-medium" style={{ color: '#1a2234' }}>
+      <span className="block truncate text-[12px] font-medium" style={{ color: BRAND.textPrimary }}>
         {d.title}
       </span>
     ),
@@ -448,7 +453,11 @@ const QUALITY_COLUMNS: ColumnSpec<DefectRow, QualityCtx, QualityColKey>[] = [
     minWidth: 70,
     cellClassName: 'min-w-0 px-2 text-[10px]',
     cell: (d) => (
-      <span className="block truncate" style={{ color: '#5c6478' }} title={d.iterationName ?? ''}>
+      <span
+        className="block truncate"
+        style={{ color: BRAND.textSecondary }}
+        title={d.iterationName ?? ''}
+      >
         {d.iterationName ?? '—'}
       </span>
     ),
@@ -461,7 +470,11 @@ const QUALITY_COLUMNS: ColumnSpec<DefectRow, QualityCtx, QualityColKey>[] = [
     minWidth: 70,
     cellClassName: 'min-w-0 px-2 text-[10px]',
     cell: (d) => (
-      <span className="block truncate" style={{ color: '#5c6478' }} title={d.createdByName ?? ''}>
+      <span
+        className="block truncate"
+        style={{ color: BRAND.textSecondary }}
+        title={d.createdByName ?? ''}
+      >
         {d.createdByName ?? '—'}
       </span>
     ),
@@ -495,7 +508,7 @@ function FilterSelect({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       className="rounded bg-white px-1.5 py-1 text-[11px] focus:outline-none"
-      style={{ border: `1px solid ${BRAND.border}`, color: '#5c6478' }}
+      style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
       aria-label={label}
     >
       {options.map((o) => (
@@ -633,7 +646,7 @@ function LogDefectModal({ projectId, onClose }: { projectId: string; onClose: ()
                 value={severity}
                 onChange={(e) => setSeverity(e.target.value)}
                 className="w-full rounded-md border px-3 py-1.5 text-sm"
-                style={{ borderColor: BRAND.border, color: '#1a2234' }}
+                style={{ borderColor: BRAND.border, color: BRAND.textPrimary }}
               >
                 <option value="">—</option>
                 {SEVERITY_OPTIONS.map((s) => (
@@ -648,7 +661,7 @@ function LogDefectModal({ projectId, onClose }: { projectId: string; onClose: ()
                 value={priority}
                 onChange={(e) => setPriority(e.target.value)}
                 className="w-full rounded-md border px-3 py-1.5 text-sm"
-                style={{ borderColor: BRAND.border, color: '#1a2234' }}
+                style={{ borderColor: BRAND.border, color: BRAND.textPrimary }}
               >
                 {PRIORITY_OPTIONS.map((p) => (
                   <option key={p.value} value={p.value}>
@@ -664,7 +677,7 @@ function LogDefectModal({ projectId, onClose }: { projectId: string; onClose: ()
                 value={environment}
                 onChange={(e) => setEnvironment(e.target.value)}
                 className="w-full rounded-md border px-3 py-1.5 text-sm"
-                style={{ borderColor: BRAND.border, color: '#1a2234' }}
+                style={{ borderColor: BRAND.border, color: BRAND.textPrimary }}
               >
                 <option value="">—</option>
                 {(['development', 'staging', 'production', 'testing'] as const).map((e) => (
@@ -679,7 +692,7 @@ function LogDefectModal({ projectId, onClose }: { projectId: string; onClose: ()
                 value={rootCause}
                 onChange={(e) => setRootCause(e.target.value)}
                 className="w-full rounded-md border px-3 py-1.5 text-sm"
-                style={{ borderColor: BRAND.border, color: '#1a2234' }}
+                style={{ borderColor: BRAND.border, color: BRAND.textPrimary }}
               >
                 <option value="">—</option>
                 {(['requirements', 'design', 'code', 'test', 'integration', 'other'] as const).map(
@@ -698,7 +711,7 @@ function LogDefectModal({ projectId, onClose }: { projectId: string; onClose: ()
                 value={assigneeId}
                 onChange={(e) => setAssigneeId(e.target.value)}
                 className="w-full rounded-md border px-3 py-1.5 text-sm"
-                style={{ borderColor: BRAND.border, color: '#1a2234' }}
+                style={{ borderColor: BRAND.border, color: BRAND.textPrimary }}
               >
                 <option value="">Unassigned</option>
                 {(members ?? []).map((m) => (
@@ -713,7 +726,7 @@ function LogDefectModal({ projectId, onClose }: { projectId: string; onClose: ()
                 value={releaseId}
                 onChange={(e) => setReleaseId(e.target.value)}
                 className="w-full rounded-md border px-3 py-1.5 text-sm"
-                style={{ borderColor: BRAND.border, color: '#1a2234' }}
+                style={{ borderColor: BRAND.border, color: BRAND.textPrimary }}
               >
                 <option value="">—</option>
                 {(releases ?? []).map((r) => (
@@ -730,7 +743,7 @@ function LogDefectModal({ projectId, onClose }: { projectId: string; onClose: ()
             type="button"
             onClick={onClose}
             className="cursor-pointer rounded-md px-4 py-1.5 text-sm"
-            style={{ border: `1px solid ${BRAND.border}`, color: '#5c6478' }}
+            style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
           >
             Cancel
           </button>
@@ -818,7 +831,7 @@ function DefectTableRow({
       />
       <div
         className="w-6 shrink-0 px-2 text-right font-mono text-[10px] tabular-nums"
-        style={{ color: '#8c94a6' }}
+        style={{ color: BRAND.textMuted }}
       >
         {rowNum}
       </div>
@@ -973,7 +986,7 @@ export function QualityPage() {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8">
         <AlertTriangle size={32} style={{ color: BRAND.danger }} />
-        <p className="text-sm" style={{ color: '#5c6478' }}>
+        <p className="text-sm" style={{ color: BRAND.textSecondary }}>
           {error instanceof Error ? error.message : 'Failed to load defects'}
         </p>
       </div>
@@ -1221,7 +1234,7 @@ export function QualityPage() {
         ) : defects.length === 0 ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8">
             <PackageOpen size={40} style={{ color: '#c4cad4' }} />
-            <p className="text-sm" style={{ color: '#8c94a6' }}>
+            <p className="text-sm" style={{ color: BRAND.textMuted }}>
               {search ||
               severityFilter !== 'all' ||
               envFilter !== 'all' ||

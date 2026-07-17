@@ -10,6 +10,7 @@
  * - readOnly prop disables all editing and shows a flat read view.
  * - Keyboard shortcut: Ctrl/Cmd+Enter saves immediately.
  */
+import { BRAND } from '@/shared/config/brand'
 import { useRef, useCallback, useEffect, useState } from 'react'
 import DOMPurify from 'dompurify'
 import { Tooltip } from './tooltip'
@@ -96,7 +97,7 @@ function ToolButton({ label, disabled, active, onAction, children }: ToolButtonP
         }}
         className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-sm transition-colors disabled:cursor-not-allowed"
         style={{
-          color: active ? '#2558a6' : '#475569',
+          color: active ? BRAND.primaryLight : '#475569',
           backgroundColor: active ? '#edf2fb' : 'transparent',
           opacity: disabled ? 0.35 : 1,
           cursor: disabled ? 'not-allowed' : 'pointer',
@@ -120,7 +121,7 @@ function ToolButton({ label, disabled, active, onAction, children }: ToolButtonP
 }
 
 function Divider() {
-  return <span className="mx-1 h-5 w-px shrink-0" style={{ backgroundColor: '#d7dde7' }} />
+  return <span className="mx-1 h-5 w-px shrink-0" style={{ backgroundColor: BRAND.borderInput }} />
 }
 
 // ── Main component ────────────────────────────────────────────────────────────

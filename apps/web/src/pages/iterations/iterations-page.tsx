@@ -35,9 +35,9 @@ const STATE_LABEL: Record<IterationState, string> = {
   accepted: 'Accepted',
 }
 const STATE_STYLE: Record<IterationState, { bg: string; text: string; border: string }> = {
-  planning: { bg: '#eef3fb', text: '#1d3f73', border: '#bdd0ef' },
-  committed: { bg: '#fef5e4', text: '#8a5808', border: '#f4d28d' },
-  accepted: { bg: '#eaf5ed', text: '#1e6930', border: '#b9dec2' },
+  planning: { bg: BRAND.primaryLighter, text: BRAND.primary, border: '#bdd0ef' },
+  committed: { bg: BRAND.warningBg, text: '#8a5808', border: '#f4d28d' },
+  accepted: { bg: BRAND.successBg, text: BRAND.success, border: '#b9dec2' },
 }
 
 function StateBadge({ state }: { state: IterationState }) {
@@ -536,7 +536,7 @@ function IterationDetail({
           </button>
           <span
             className="rounded-sm px-1.5 py-px text-[10px] font-semibold"
-            style={{ backgroundColor: '#eef3fb', color: '#1d3f73' }}
+            style={{ backgroundColor: BRAND.primaryLighter, color: BRAND.primary }}
           >
             Iteration
           </span>

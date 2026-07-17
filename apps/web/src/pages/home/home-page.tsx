@@ -84,8 +84,8 @@ function ProjectHealthRow({
         <span
           className="rounded-sm px-1.5 py-px font-mono text-[10px] font-semibold"
           style={{
-            backgroundColor: isSelected ? '#d8e5f7' : '#f0f2f5',
-            color: isSelected ? BRAND.primaryLight : '#5c6478',
+            backgroundColor: isSelected ? '#d8e5f7' : BRAND.pageBg,
+            color: isSelected ? BRAND.primaryLight : BRAND.textSecondary,
           }}
         >
           {project.key}

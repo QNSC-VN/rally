@@ -23,7 +23,7 @@ import { describe, expect, it } from 'vitest'
  */
 
 // ── Ratchet baseline — LOWER as files migrate, NEVER raise ────────────────────
-const MAX_RAW_HEX = 639
+const MAX_RAW_HEX = 385
 
 // src/ root (this file lives in src/app/styles/)
 const SRC = join(import.meta.dirname, '../../')

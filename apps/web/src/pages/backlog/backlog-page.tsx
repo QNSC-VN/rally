@@ -352,7 +352,7 @@ export function BacklogPage() {
   if (!projectId) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <p className="text-sm" style={{ color: '#8c94a6' }}>
+        <p className="text-sm" style={{ color: BRAND.textMuted }}>
           Select a project to view the backlog.
         </p>
       </div>
@@ -475,7 +475,7 @@ export function BacklogPage() {
               {/* Error */}
               {isError && !isLoading && (
                 <div className="flex h-32 items-center justify-center">
-                  <p className="text-sm" style={{ color: '#b91c1c' }}>
+                  <p className="text-sm" style={{ color: BRAND.danger }}>
                     {error instanceof Error ? error.message : 'Failed to load backlog.'}
                   </p>
                 </div>
@@ -484,14 +484,14 @@ export function BacklogPage() {
               {/* Empty */}
               {!isLoading && !isError && items.length === 0 && (
                 <div className="flex h-32 flex-col items-center justify-center gap-2">
-                  <p className="text-sm" style={{ color: '#8c94a6' }}>
+                  <p className="text-sm" style={{ color: BRAND.textMuted }}>
                     No backlog items match your filters.
                   </p>
                   <button
                     onClick={() => setShowCreate(true)}
                     disabled={!canCreate}
                     className="text-xs font-medium disabled:cursor-not-allowed disabled:opacity-40"
-                    style={{ color: '#2558a6' }}
+                    style={{ color: BRAND.primaryLight }}
                   >
                     + Create Work Item
                   </button>
@@ -867,7 +867,7 @@ function BacklogRow({
       {/* Row number */}
       <div
         className="w-6 shrink-0 px-2 text-right font-mono text-[10px] tabular-nums"
-        style={{ color: '#8c94a6' }}
+        style={{ color: BRAND.textMuted }}
       >
         {rowNum}
       </div>
@@ -880,7 +880,7 @@ function BacklogRow({
       {/* ID — opens detail */}
       <button
         className="shrink-0 overflow-hidden px-2 text-left font-mono text-[10px] underline-offset-2 hover:underline"
-        style={{ ...colStyles.id, color: '#2558a6' }}
+        style={{ ...colStyles.id, color: BRAND.primaryLight }}
         onClick={onOpen}
       >
         {item.itemKey}
@@ -894,16 +894,16 @@ function BacklogRow({
             canEdit
             onCommit={commitTitle}
             className="block truncate text-[12px] font-medium"
-            style={{ color: '#1a2234', cursor: 'text' }}
+            style={{ color: BRAND.textPrimary, cursor: 'text' }}
             inputClassName="w-full rounded px-1 py-0.5 text-[12px] focus:outline-none"
-            inputStyle={{ border: '1px solid #9fb5d5', color: '#1a2234' }}
+            inputStyle={{ border: '1px solid #9fb5d5', color: BRAND.textPrimary }}
             ariaLabel="Title"
             title={item.title}
           />
         ) : (
           <span
             className="block truncate text-[12px] font-medium"
-            style={{ color: '#1a2234', cursor: 'pointer' }}
+            style={{ color: BRAND.textPrimary, cursor: 'pointer' }}
             onClick={onOpen}
             title={item.title}
           >
@@ -947,7 +947,7 @@ function BacklogRow({
             <PriorityBadge priority={item.priority} />
           )
         ) : (
-          <span className="font-mono text-[10px]" style={{ color: '#a0a7b5' }}>
+          <span className="font-mono text-[10px]" style={{ color: BRAND.textDisabled }}>
             —
           </span>
         )}
@@ -966,11 +966,14 @@ function BacklogRow({
               if (next !== (item.storyPoints ?? null)) patch({ storyPoints: next, todoHours: next })
             }}
             className="w-12 rounded px-1 py-0.5 text-center font-mono text-[10px] focus:outline-none"
-            style={{ border: '1px solid #dde2ea', color: '#5c6478' }}
+            style={{ border: '1px solid #dde2ea', color: BRAND.textSecondary }}
             aria-label="Plan estimate"
           />
         ) : (
-          <span className="font-mono text-[10px] font-semibold" style={{ color: '#5c6478' }}>
+          <span
+            className="font-mono text-[10px] font-semibold"
+            style={{ color: BRAND.textSecondary }}
+          >
             {item.storyPoints ?? '—'}
           </span>
         )}
@@ -1007,7 +1010,7 @@ function BacklogRow({
         ) : (
           <span
             className="truncate text-[11px]"
-            style={{ color: item.releaseId ? '#1a2234' : '#a0a7b5' }}
+            style={{ color: item.releaseId ? BRAND.textPrimary : BRAND.textDisabled }}
           >
             {releases.find((r) => r.id === item.releaseId)?.name ?? '—'}
           </span>
@@ -1034,7 +1037,7 @@ function BacklogRow({
         ) : (
           <span
             className="truncate text-[11px]"
-            style={{ color: item.iterationId ? '#1a2234' : '#a0a7b5' }}
+            style={{ color: item.iterationId ? BRAND.textPrimary : BRAND.textDisabled }}
           >
             {iterations.find((it) => it.id === item.iterationId)?.name ?? '—'}
           </span>

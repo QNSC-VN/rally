@@ -14,6 +14,7 @@
  *     </BulkActionBar>
  *   )}
  */
+import { BRAND } from '@/shared/config/brand'
 import type { ReactNode } from 'react'
 import { X } from 'lucide-react'
 
@@ -32,14 +33,14 @@ export function BulkActionBar({ selectedCount, onClear, error, children }: BulkA
       className="flex shrink-0 items-center gap-2 px-4 py-1.5"
       style={{ backgroundColor: '#edf2fb', borderBottom: '1px solid #bdd0ef' }}
     >
-      <span className="mr-1 text-[11px] font-semibold" style={{ color: '#2558a6' }}>
+      <span className="mr-1 text-[11px] font-semibold" style={{ color: BRAND.primaryLight }}>
         {selectedCount} selected
       </span>
 
       {children}
 
       {error && (
-        <span className="text-[11px]" style={{ color: '#b91c1c' }}>
+        <span className="text-[11px]" style={{ color: BRAND.danger }}>
           {error}
         </span>
       )}
@@ -48,7 +49,7 @@ export function BulkActionBar({ selectedCount, onClear, error, children }: BulkA
       <button
         onClick={onClear}
         className="p-0.5"
-        style={{ color: '#5c6478' }}
+        style={{ color: BRAND.textSecondary }}
         aria-label="Clear selection"
       >
         <X size={13} />

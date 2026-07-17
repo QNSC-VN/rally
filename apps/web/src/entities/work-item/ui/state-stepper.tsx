@@ -1,3 +1,4 @@
+import { BRAND } from '@/shared/config/brand'
 import type { StateStep } from './state-steps'
 
 // ── Rally-style segmented state stepper ─────────────────────────────────────
@@ -16,7 +17,7 @@ import type { StateStep } from './state-steps'
 
 const STEPPER_BORDER = '#9db4d4'
 const STEPPER_REACHED = '#bcd3ef'
-const STEPPER_CURRENT = '#2558a6'
+const STEPPER_CURRENT = BRAND.primaryLight
 const STEPPER_SEP = '#9db4d4'
 const CELL = 16
 
@@ -61,8 +62,12 @@ export function StateStepper<T extends string>({
               fontWeight: 700,
               lineHeight: `${CELL - 2}px`,
               cursor: canEdit && !isCurrent ? 'pointer' : 'default',
-              backgroundColor: isCurrent ? STEPPER_CURRENT : reached ? STEPPER_REACHED : '#ffffff',
-              color: isCurrent ? '#ffffff' : 'transparent',
+              backgroundColor: isCurrent
+                ? STEPPER_CURRENT
+                : reached
+                  ? STEPPER_REACHED
+                  : BRAND.surface,
+              color: isCurrent ? BRAND.surface : 'transparent',
             }}
           >
             {isCurrent ? step.letter : ''}

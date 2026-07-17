@@ -192,7 +192,7 @@ function SelectionModal({
           type="button"
           onClick={onClose}
           className="cursor-pointer rounded-md px-4 py-1.5 text-sm"
-          style={{ border: `1px solid ${BRAND.border}`, color: '#5c6478' }}
+          style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
         >
           Cancel
         </button>
@@ -263,14 +263,14 @@ function ArtifactRow({
     <tr
       className="cursor-pointer transition-colors duration-75"
       style={{ borderBottom: '1px solid #edf0f4' }}
-      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f7f8fa')}
+      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = BRAND.surfaceHover)}
       onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
       onClick={onOpen}
     >
       {/* Rank */}
       <td
         className="h-8 px-3 text-center font-mono text-[10px] tabular-nums"
-        style={{ color: '#8c94a6' }}
+        style={{ color: BRAND.textMuted }}
       >
         {index + 1}
       </td>
@@ -307,7 +307,10 @@ function ArtifactRow({
         <OwnerCell name={item.assigneeName} />
       </td>
       {/* Estimate */}
-      <td className="h-8 px-3 text-center font-mono text-[10px]" style={{ color: '#5c6478' }}>
+      <td
+        className="h-8 px-3 text-center font-mono text-[10px]"
+        style={{ color: BRAND.textSecondary }}
+      >
         {item.storyPoints ?? '—'}
       </td>
     </tr>
@@ -391,30 +394,39 @@ function ArtifactsTab({ milestoneId }: { milestoneId: string }) {
             <thead>
               <tr
                 className="text-[9px] font-semibold tracking-wider uppercase select-none"
-                style={{ backgroundColor: '#f7f8fa', borderBottom: `1px solid ${BRAND.border}` }}
+                style={{
+                  backgroundColor: BRAND.surfaceHover,
+                  borderBottom: `1px solid ${BRAND.border}`,
+                }}
               >
-                <th className="h-7 w-12 px-3 text-center font-medium" style={{ color: '#8c94a6' }}>
+                <th
+                  className="h-7 w-12 px-3 text-center font-medium"
+                  style={{ color: BRAND.textMuted }}
+                >
                   #
                 </th>
-                <th className="h-7 w-20 px-3 font-medium" style={{ color: '#8c94a6' }}>
+                <th className="h-7 w-20 px-3 font-medium" style={{ color: BRAND.textMuted }}>
                   ID
                 </th>
-                <th className="h-7 px-3 font-medium" style={{ color: '#8c94a6' }}>
+                <th className="h-7 px-3 font-medium" style={{ color: BRAND.textMuted }}>
                   Name
                 </th>
-                <th className="h-7 w-14 px-3 font-medium" style={{ color: '#8c94a6' }}>
+                <th className="h-7 w-14 px-3 font-medium" style={{ color: BRAND.textMuted }}>
                   Type
                 </th>
-                <th className="h-7 w-24 px-3 font-medium" style={{ color: '#8c94a6' }}>
+                <th className="h-7 w-24 px-3 font-medium" style={{ color: BRAND.textMuted }}>
                   Schedule State
                 </th>
-                <th className="h-7 w-16 px-3 font-medium" style={{ color: '#8c94a6' }}>
+                <th className="h-7 w-16 px-3 font-medium" style={{ color: BRAND.textMuted }}>
                   Priority
                 </th>
-                <th className="h-7 w-28 px-3 font-medium" style={{ color: '#8c94a6' }}>
+                <th className="h-7 w-28 px-3 font-medium" style={{ color: BRAND.textMuted }}>
                   Owner
                 </th>
-                <th className="h-7 w-14 px-3 text-center font-medium" style={{ color: '#8c94a6' }}>
+                <th
+                  className="h-7 w-14 px-3 text-center font-medium"
+                  style={{ color: BRAND.textMuted }}
+                >
                   Est.
                 </th>
               </tr>
@@ -441,7 +453,10 @@ function ArtifactsTab({ milestoneId }: { milestoneId: string }) {
           className="flex h-9 shrink-0 items-center justify-between bg-white px-3"
           style={{ borderTop: '1px solid #e2e6eb' }}
         >
-          <div className="flex items-center gap-2 text-[11px]" style={{ color: '#5c6478' }}>
+          <div
+            className="flex items-center gap-2 text-[11px]"
+            style={{ color: BRAND.textSecondary }}
+          >
             <span>Rows per page</span>
             <InlineSelect
               aria-label="Rows per page"
@@ -455,14 +470,14 @@ function ArtifactsTab({ milestoneId }: { milestoneId: string }) {
                 </option>
               ))}
             </InlineSelect>
-            <span style={{ color: '#8c94a6' }}>
+            <span style={{ color: BRAND.textMuted }}>
               {pageInfo
                 ? `${(currentPage - 1) * pageSize + 1}–${(currentPage - 1) * pageSize + items.length}${pageInfo.total ? ` of ${pageInfo.total}` : ''}`
                 : ''}
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-[11px] tabular-nums" style={{ color: '#5c6478' }}>
+            <span className="text-[11px] tabular-nums" style={{ color: BRAND.textSecondary }}>
               Page {currentPage}
             </span>
             <button
@@ -470,7 +485,7 @@ function ArtifactsTab({ milestoneId }: { milestoneId: string }) {
               disabled={currentPage === 1}
               onClick={onPrevPage}
               className="rounded p-1.5 disabled:opacity-35"
-              style={{ border: '1px solid #dde2ea', color: '#5c6478' }}
+              style={{ border: '1px solid #dde2ea', color: BRAND.textSecondary }}
             >
               <ChevronLeft size={13} />
             </button>
@@ -479,7 +494,7 @@ function ArtifactsTab({ milestoneId }: { milestoneId: string }) {
               disabled={!pageInfo?.hasNextPage}
               onClick={onNextPage}
               className="rounded p-1.5 disabled:opacity-35"
-              style={{ border: '1px solid #dde2ea', color: '#5c6478' }}
+              style={{ border: '1px solid #dde2ea', color: BRAND.textSecondary }}
             >
               <ChevronRight size={13} />
             </button>

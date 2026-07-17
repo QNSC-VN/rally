@@ -413,7 +413,7 @@ export function TeamStatusPage() {
           <div
             className="flex h-7 items-center px-3 text-[11px] font-semibold"
             style={{
-              backgroundColor: '#f4f6f9',
+              backgroundColor: BRAND.surfaceSubtle,
               borderBottom: `1px solid ${BRAND.borderSubtle}`,
               color: BRAND.textSecondary,
               minWidth: 'max-content',
@@ -449,7 +449,7 @@ export function TeamStatusPage() {
         {!isLoading && isError && (
           <div
             className="flex h-40 items-center justify-center text-[12px]"
-            style={{ color: '#b91c1c' }}
+            style={{ color: BRAND.danger }}
           >
             Failed to load team status. Please try again.
           </div>
@@ -550,7 +550,7 @@ function MemberGroup({
       <div
         className="flex h-9 cursor-pointer items-center px-3 hover:bg-[#f9fafb]"
         style={{
-          backgroundColor: '#f7f8fa',
+          backgroundColor: BRAND.surfaceHover,
           borderBottom: `1px solid ${BRAND.borderInner}`,
           minWidth: 'max-content',
         }}

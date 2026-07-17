@@ -7,6 +7,7 @@
  * mentionedUserIds so the backend fires mention notifications (F7).
  * Read-only mode (viewers) hides the composer and edit/delete controls.
  */
+import { BRAND } from '@/shared/config/brand'
 import { useMemo, useRef, useState } from 'react'
 import { MessageSquare, Pencil, Trash2 } from 'lucide-react'
 import {
@@ -133,7 +134,7 @@ export function CommentThread({ workItemId, projectId, readOnly = false }: Comme
                 <li key={c.id} className="flex gap-2">
                   <div
                     className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white"
-                    style={{ backgroundColor: '#5c6478' }}
+                    style={{ backgroundColor: BRAND.textSecondary }}
                   >
                     {initials(author)}
                   </div>

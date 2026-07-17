@@ -53,7 +53,7 @@ export class PageErrorBoundary extends Component<Props, State> {
         >
           <div
             className="flex h-16 w-16 items-center justify-center rounded-full"
-            style={{ backgroundColor: '#fef2f2' }}
+            style={{ backgroundColor: BRAND.dangerBg }}
           >
             <AlertTriangle size={30} style={{ color: '#dc2626' }} />
           </div>

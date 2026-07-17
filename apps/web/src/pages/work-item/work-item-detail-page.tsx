@@ -331,12 +331,12 @@ function TasksTab({ workItemId, projectId }: { workItemId: string; projectId: st
             {/* Empty */}
             {tasks.length === 0 && (
               <div className="flex h-20 items-center justify-center">
-                <p className="text-sm" style={{ color: '#8c94a6' }}>
+                <p className="text-sm" style={{ color: BRAND.textMuted }}>
                   No tasks yet.{' '}
                   <button
                     onClick={() => setShowAdd(true)}
                     className="font-medium"
-                    style={{ color: '#2558a6' }}
+                    style={{ color: BRAND.primaryLight }}
                   >
                     Add one
                   </button>
@@ -364,7 +364,7 @@ function TasksTab({ workItemId, projectId }: { workItemId: string; projectId: st
                     onClick={(e) => e.stopPropagation()}
                   />
                 </div>
-                <span className="px-3 font-mono text-[11px]" style={{ color: '#5c6478' }}>
+                <span className="px-3 font-mono text-[11px]" style={{ color: BRAND.textSecondary }}>
                   {task.rank ?? '—'}
                 </span>
                 <span className="flex items-center overflow-hidden px-3">
@@ -377,10 +377,10 @@ function TasksTab({ workItemId, projectId }: { workItemId: string; projectId: st
                 <span className="flex items-center overflow-hidden px-3">
                   <OwnerCell name={task.assigneeId ? ownerName(task.assigneeId) : null} />
                 </span>
-                <span className="truncate px-3" style={{ color: '#5c6478' }}>
+                <span className="truncate px-3" style={{ color: BRAND.textSecondary }}>
                   {projectLabel}
                 </span>
-                <span className="truncate px-3" style={{ color: '#5c6478' }}>
+                <span className="truncate px-3" style={{ color: BRAND.textSecondary }}>
                   {teamName(task.teamId)}
                 </span>
                 <span className="px-3 text-right font-mono">
@@ -446,7 +446,7 @@ function HistoryTab({ workItemId }: { workItemId: string }) {
         </div>
 
         {logs.length === 0 && (
-          <div className="px-4 py-6 text-center text-sm" style={{ color: '#8c94a6' }}>
+          <div className="px-4 py-6 text-center text-sm" style={{ color: BRAND.textMuted }}>
             No activity recorded yet.
           </div>
         )}
@@ -469,7 +469,10 @@ function HistoryTab({ workItemId }: { workItemId: string }) {
                 color: '#334155',
               }}
             >
-              <span className="font-mono text-[11px] tabular-nums" style={{ color: '#2558a6' }}>
+              <span
+                className="font-mono text-[11px] tabular-nums"
+                style={{ color: BRAND.primaryLight }}
+              >
                 {revision}
               </span>
               <span style={{ color: '#334155' }}>{describeActivity(log)}</span>
@@ -479,7 +482,7 @@ function HistoryTab({ workItemId }: { workItemId: string }) {
               <span className="flex min-w-0 items-center gap-2">
                 <span
                   className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[8px] font-bold"
-                  style={{ backgroundColor: '#e5ebf4', color: '#1d3f73' }}
+                  style={{ backgroundColor: BRAND.avatarBg, color: BRAND.primary }}
                 >
                   {initials}
                 </span>
@@ -917,7 +920,11 @@ function DetailSidebar({
         {item.isBlocked && (
           <div
             className="flex items-start gap-2 rounded p-2 text-[11px]"
-            style={{ backgroundColor: '#fef2f2', border: '1px solid #fcc5c0', color: '#b91c1c' }}
+            style={{
+              backgroundColor: BRAND.dangerBg,
+              border: '1px solid #fcc5c0',
+              color: BRAND.danger,
+            }}
           >
             <span className="font-semibold">Blocked:</span>
             <span>{item.blockedReason ?? 'Reason not provided.'}</span>
@@ -933,7 +940,7 @@ function DetailSidebar({
 
         {/* Creation Date (read-only) */}
         <FormField label="Creation Date">
-          <span className="block px-1 text-[12px]" style={{ color: '#5c6478' }}>
+          <span className="block px-1 text-[12px]" style={{ color: BRAND.textSecondary }}>
             {new Date(item.createdAt).toLocaleDateString(undefined, {
               year: 'numeric',
               month: 'short',
@@ -1056,13 +1063,13 @@ export function WorkItemDetailPage() {
   if (!itemByKey) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3">
-        <p className="text-sm font-medium" style={{ color: '#5c6478' }}>
+        <p className="text-sm font-medium" style={{ color: BRAND.textSecondary }}>
           Work item "{itemKey}" not found.
         </p>
         <button
           onClick={() => void navigate({ to: '/backlog' })}
           className="text-xs font-medium"
-          style={{ color: '#2558a6' }}
+          style={{ color: BRAND.primaryLight }}
         >
           ← Back to Backlog
         </button>
@@ -1206,7 +1213,7 @@ export function WorkItemDetailPage() {
                     onClick={() => void handleDelete()}
                     disabled={deleteMutation.isPending}
                     className="flex w-full items-center gap-2 px-3 py-2 text-[12px] transition-colors hover:bg-red-50 disabled:opacity-50"
-                    style={{ color: '#b91c1c' }}
+                    style={{ color: BRAND.danger }}
                   >
                     <Trash2 size={13} />
                     Delete work item

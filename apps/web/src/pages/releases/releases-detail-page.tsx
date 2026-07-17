@@ -57,7 +57,7 @@ function ReleaseArtifactRow({
     >
       <td
         className="h-8 px-3 text-center font-mono text-[10px] tabular-nums"
-        style={{ color: '#8c94a6' }}
+        style={{ color: BRAND.textMuted }}
       >
         {index + 1}
       </td>
@@ -87,7 +87,10 @@ function ReleaseArtifactRow({
       <td className="h-8 px-3">
         <OwnerCell name={item.assigneeName} />
       </td>
-      <td className="h-8 px-3 text-center font-mono text-[10px]" style={{ color: '#5c6478' }}>
+      <td
+        className="h-8 px-3 text-center font-mono text-[10px]"
+        style={{ color: BRAND.textSecondary }}
+      >
         {item.storyPoints ?? '—'}
       </td>
     </tr>
@@ -170,30 +173,39 @@ function ReleaseArtifactsTab({ releaseId }: { releaseId: string }) {
             <thead>
               <tr
                 className="text-[9px] font-semibold tracking-wider uppercase select-none"
-                style={{ backgroundColor: '#f7f8fa', borderBottom: `1px solid ${BRAND.border}` }}
+                style={{
+                  backgroundColor: BRAND.surfaceHover,
+                  borderBottom: `1px solid ${BRAND.border}`,
+                }}
               >
-                <th className="h-7 w-12 px-3 text-center font-medium" style={{ color: '#8c94a6' }}>
+                <th
+                  className="h-7 w-12 px-3 text-center font-medium"
+                  style={{ color: BRAND.textMuted }}
+                >
                   #
                 </th>
-                <th className="h-7 w-20 px-3 font-medium" style={{ color: '#8c94a6' }}>
+                <th className="h-7 w-20 px-3 font-medium" style={{ color: BRAND.textMuted }}>
                   ID
                 </th>
-                <th className="h-7 px-3 font-medium" style={{ color: '#8c94a6' }}>
+                <th className="h-7 px-3 font-medium" style={{ color: BRAND.textMuted }}>
                   Name
                 </th>
-                <th className="h-7 w-14 px-3 font-medium" style={{ color: '#8c94a6' }}>
+                <th className="h-7 w-14 px-3 font-medium" style={{ color: BRAND.textMuted }}>
                   Type
                 </th>
-                <th className="h-7 w-24 px-3 font-medium" style={{ color: '#8c94a6' }}>
+                <th className="h-7 w-24 px-3 font-medium" style={{ color: BRAND.textMuted }}>
                   Schedule State
                 </th>
-                <th className="h-7 w-16 px-3 font-medium" style={{ color: '#8c94a6' }}>
+                <th className="h-7 w-16 px-3 font-medium" style={{ color: BRAND.textMuted }}>
                   Priority
                 </th>
-                <th className="h-7 w-28 px-3 font-medium" style={{ color: '#8c94a6' }}>
+                <th className="h-7 w-28 px-3 font-medium" style={{ color: BRAND.textMuted }}>
                   Owner
                 </th>
-                <th className="h-7 w-14 px-3 text-center font-medium" style={{ color: '#8c94a6' }}>
+                <th
+                  className="h-7 w-14 px-3 text-center font-medium"
+                  style={{ color: BRAND.textMuted }}
+                >
                   Est.
                 </th>
               </tr>
@@ -220,7 +232,10 @@ function ReleaseArtifactsTab({ releaseId }: { releaseId: string }) {
           className="flex h-9 shrink-0 items-center justify-between bg-white px-3"
           style={{ borderTop: '1px solid #e2e6eb' }}
         >
-          <div className="flex items-center gap-2 text-[11px]" style={{ color: '#5c6478' }}>
+          <div
+            className="flex items-center gap-2 text-[11px]"
+            style={{ color: BRAND.textSecondary }}
+          >
             <span>Rows per page</span>
             <InlineSelect
               aria-label="Rows per page"
@@ -234,14 +249,14 @@ function ReleaseArtifactsTab({ releaseId }: { releaseId: string }) {
                 </option>
               ))}
             </InlineSelect>
-            <span style={{ color: '#8c94a6' }}>
+            <span style={{ color: BRAND.textMuted }}>
               {pageInfo
                 ? `${(currentPage - 1) * pageSize + 1}–${(currentPage - 1) * pageSize + items.length}${pageInfo.total ? ` of ${pageInfo.total}` : ''}`
                 : ''}
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-[11px] tabular-nums" style={{ color: '#5c6478' }}>
+            <span className="text-[11px] tabular-nums" style={{ color: BRAND.textSecondary }}>
               Page {currentPage}
             </span>
             <button
@@ -249,7 +264,7 @@ function ReleaseArtifactsTab({ releaseId }: { releaseId: string }) {
               disabled={currentPage === 1}
               onClick={onPrevPage}
               className="rounded p-1.5 disabled:opacity-35"
-              style={{ border: '1px solid #dde2ea', color: '#5c6478' }}
+              style={{ border: '1px solid #dde2ea', color: BRAND.textSecondary }}
             >
               <ChevronLeft size={13} />
             </button>
@@ -258,7 +273,7 @@ function ReleaseArtifactsTab({ releaseId }: { releaseId: string }) {
               disabled={!pageInfo?.hasNextPage}
               onClick={onNextPage}
               className="rounded p-1.5 disabled:opacity-35"
-              style={{ border: '1px solid #dde2ea', color: '#5c6478' }}
+              style={{ border: '1px solid #dde2ea', color: BRAND.textSecondary }}
             >
               <ChevronRight size={13} />
             </button>
@@ -704,10 +719,13 @@ export function ReleaseDetailPage() {
                 <div className="space-y-2 pt-1">
                   {/* Estimate / To Do / Actual — points */}
                   <div className="grid grid-cols-3 gap-1 text-center">
-                    <div className="rounded-sm py-1.5" style={{ backgroundColor: '#eef3fb' }}>
+                    <div
+                      className="rounded-sm py-1.5"
+                      style={{ backgroundColor: BRAND.primaryLighter }}
+                    >
                       <div
                         className="text-[9px] font-semibold tracking-wider uppercase"
-                        style={{ color: '#1d3f73' }}
+                        style={{ color: BRAND.primary }}
                       >
                         Estimate
                       </div>
@@ -732,10 +750,10 @@ export function ReleaseDetailPage() {
                         {rollup.toDoPoints}
                       </div>
                     </div>
-                    <div className="rounded-sm py-1.5" style={{ backgroundColor: '#eaf5ed' }}>
+                    <div className="rounded-sm py-1.5" style={{ backgroundColor: BRAND.successBg }}>
                       <div
                         className="text-[9px] font-semibold tracking-wider uppercase"
-                        style={{ color: '#1e6930' }}
+                        style={{ color: BRAND.success }}
                       >
                         Actual
                       </div>
@@ -770,15 +788,18 @@ export function ReleaseDetailPage() {
                 {/* Accepted count (read-only) */}
                 <div
                   className="mt-1 flex items-center justify-between rounded-sm px-3 py-2"
-                  style={{ backgroundColor: '#eaf5ed', border: '1px solid #b9dec2' }}
+                  style={{ backgroundColor: BRAND.successBg, border: '1px solid #b9dec2' }}
                 >
                   <span
                     className="text-[10px] font-semibold tracking-wider uppercase"
-                    style={{ color: '#1e6930' }}
+                    style={{ color: BRAND.success }}
                   >
                     Accepted
                   </span>
-                  <span className="font-mono text-[14px] font-bold" style={{ color: '#1e6930' }}>
+                  <span
+                    className="font-mono text-[14px] font-bold"
+                    style={{ color: BRAND.success }}
+                  >
                     {rollup.acceptedItems}
                   </span>
                 </div>
@@ -849,7 +870,7 @@ export function ReleaseDetailPage() {
                           </td>
                           <td
                             className="py-1 pr-2 text-right font-mono"
-                            style={{ color: '#1e6930' }}
+                            style={{ color: BRAND.success }}
                           >
                             {pt.completedPoints}
                           </td>

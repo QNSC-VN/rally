@@ -69,7 +69,7 @@ function NotificationRow({
         {notification.resourceType && (
           <span
             className="mb-0.5 inline-block rounded-sm px-1.5 py-0.5 text-[9px] font-semibold tracking-wide uppercase"
-            style={{ backgroundColor: '#e5ebf4', color: BRAND.primary }}
+            style={{ backgroundColor: BRAND.avatarBg, color: BRAND.primary }}
           >
             {notification.resourceType}
           </span>
@@ -222,7 +222,7 @@ export function NotificationPopover({ open, onClose }: NotificationPopoverProps)
           <div className="flex flex-col items-center justify-center gap-3 py-12">
             <div
               className="flex h-10 w-10 items-center justify-center rounded-xl"
-              style={{ backgroundColor: '#e5ebf4' }}
+              style={{ backgroundColor: BRAND.avatarBg }}
             >
               <Bell size={20} style={{ color: BRAND.primary }} />
             </div>

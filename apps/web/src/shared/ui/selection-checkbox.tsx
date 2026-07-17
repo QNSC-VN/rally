@@ -6,6 +6,7 @@
  * Shared by Backlog and Iteration Status so the control looks and behaves
  * identically everywhere.
  */
+import { BRAND } from '@/shared/config/brand'
 import { useEffect, useRef } from 'react'
 import { cn } from '@/shared/lib/utils'
 
@@ -39,7 +40,7 @@ export function SelectionCheckbox({
       checked={checked}
       onChange={onChange}
       className={cn('h-3.5 w-3.5 cursor-pointer rounded', className)}
-      style={{ accentColor: '#1d3f73' }}
+      style={{ accentColor: BRAND.primary }}
       aria-label={ariaLabel}
     />
   )

@@ -142,7 +142,7 @@ function CreateReleaseModal({ projectId, onClose }: { projectId: string; onClose
                 disabled={t !== 'Release'}
                 className="flex-1 rounded-sm py-1.5 text-[11px] font-semibold transition-colors"
                 style={{
-                  backgroundColor: t === 'Release' ? '#eef3fb' : 'transparent',
+                  backgroundColor: t === 'Release' ? BRAND.primaryLighter : 'transparent',
                   color: t === 'Release' ? BRAND.primary : BRAND.textMuted,
                   border: `1px solid ${t === 'Release' ? '#bdd0ef' : BRAND.borderSubtle}`,
                   opacity: t === 'Release' ? 1 : 0.4,
@@ -305,7 +305,10 @@ function ReleaseDetailModal({
         {rollup && (
           <div
             className="flex items-center gap-4 rounded-md p-3"
-            style={{ backgroundColor: '#f7f8fa', border: `1px solid ${BRAND.borderSubtle}` }}
+            style={{
+              backgroundColor: BRAND.surfaceHover,
+              border: `1px solid ${BRAND.borderSubtle}`,
+            }}
           >
             <div className="flex-1">
               <div
@@ -317,7 +320,7 @@ function ReleaseDetailModal({
               <div className="flex items-center gap-2">
                 <div
                   className="h-2 flex-1 overflow-hidden rounded-full"
-                  style={{ backgroundColor: '#e2e6eb' }}
+                  style={{ backgroundColor: BRAND.borderSubtle }}
                 >
                   <div
                     className="h-full rounded-full"
@@ -325,7 +328,7 @@ function ReleaseDetailModal({
                       width: `${rollup.progressPercent}%`,
                       backgroundColor:
                         rollup.progressPercent === 100
-                          ? '#1e6930'
+                          ? BRAND.success
                           : rollup.progressPercent > 50
                             ? '#1d6f9e'
                             : '#92400e',
@@ -786,14 +789,14 @@ function ReleaseRow({
           <>
             <div
               className="h-1.5 flex-1 overflow-hidden rounded-full"
-              style={{ backgroundColor: '#edf0f4' }}
+              style={{ backgroundColor: BRAND.borderInner }}
             >
               <div
                 className="h-full rounded-full transition-all"
                 style={{
                   width: `${release.taskRollup.progressPercent}%`,
                   backgroundColor:
-                    release.taskRollup.progressPercent === 100 ? '#1e6930' : '#1d6f9e',
+                    release.taskRollup.progressPercent === 100 ? BRAND.success : '#1d6f9e',
                 }}
               />
             </div>

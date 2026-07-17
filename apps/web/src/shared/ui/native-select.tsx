@@ -8,6 +8,7 @@
  *     <option value="a">Option A</option>
  *   </NativeSelect>
  */
+import { BRAND } from '@/shared/config/brand'
 import { forwardRef } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
@@ -22,7 +23,7 @@ export const NativeSelect = forwardRef<HTMLSelectElement, NativeSelectProps>(
       <select
         ref={ref}
         className={cn(
-          'w-full cursor-pointer rounded border border-input bg-white px-3 py-2 text-[12px] text-foreground outline-none transition-colors',
+          'w-full cursor-pointer rounded border border-input bg-white px-3 py-2 text-[12px] text-foreground transition-colors outline-none',
           'focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50',
           'disabled:cursor-not-allowed disabled:bg-input-background disabled:opacity-60',
           className,
@@ -43,7 +44,7 @@ export const InlineSelect = forwardRef<HTMLSelectElement, NativeSelectProps>(
       <select
         ref={ref}
         className={cn(
-          'w-full cursor-pointer rounded border border-transparent bg-transparent px-1 py-0.5 text-[11px] text-foreground outline-none transition-colors',
+          'w-full cursor-pointer rounded border border-transparent bg-transparent px-1 py-0.5 text-[11px] text-foreground transition-colors outline-none',
           'hover:border-input hover:bg-white',
           'focus-visible:border-ring focus-visible:bg-white focus-visible:ring-[3px] focus-visible:ring-ring/50',
           'disabled:cursor-not-allowed disabled:opacity-60',
@@ -84,11 +85,11 @@ export const InlineCellSelect = forwardRef<HTMLSelectElement, InlineCellSelectPr
         <span className="pointer-events-none flex min-w-0 flex-1 items-center gap-0.5 px-1 py-0.5">
           <span
             className="min-w-0 flex-1 truncate text-[11px]"
-            style={{ color: muted ? '#a0a7b5' : 'inherit' }}
+            style={{ color: muted ? BRAND.textDisabled : 'inherit' }}
           >
             {displayValue}
           </span>
-          <ChevronDown size={9} className="shrink-0" style={{ color: '#8c94a6' }} />
+          <ChevronDown size={9} className="shrink-0" style={{ color: BRAND.textMuted }} />
         </span>
         <select
           ref={ref}
