@@ -33,3 +33,14 @@ export const ProjectPermissionsResponseSchema = z.object({
 });
 
 export class ProjectPermissionsResponseDto extends createZodDto(ProjectPermissionsResponseSchema) {}
+
+export const PermissionCatalogResponseSchema = z.object({
+  permissions: z.array(
+    z.object({
+      code: z.string(),
+      tier: z.enum(['workspace', 'project']),
+    }),
+  ),
+});
+
+export class PermissionCatalogResponseDto extends createZodDto(PermissionCatalogResponseSchema) {}

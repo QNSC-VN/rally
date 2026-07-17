@@ -106,6 +106,40 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v1/roles/{roleId}/permissions': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    /** Replace a custom role’s permission set (workspace admin only) */
+    patch: operations['AccessController_updateRolePermissions']
+    trace?: never
+  }
+  '/v1/permissions': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List assignable permissions with their scope tier (workspace admin only) */
+    get: operations['AccessController_getPermissionCatalog']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v1/users/{userId}/role-assignments': {
     parameters: {
       query?: never
@@ -1799,6 +1833,16 @@ export interface components {
       /** Format: uuid */
       scopeId?: string
     }
+    UpdateRolePermissionsDto: {
+      permissions: string[]
+    }
+    PermissionCatalogResponseDto: {
+      permissions: {
+        code: string
+        /** @enum {string} */
+        tier: 'workspace' | 'project'
+      }[]
+    }
     ProjectPermissionsResponseDto: {
       /** Format: uuid */
       projectId: string
@@ -2970,6 +3014,99 @@ export interface operations {
       }
       /** @description Unauthorized — missing or invalid authentication */
       401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  AccessController_updateRolePermissions: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        roleId: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateRolePermissionsDto']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['RoleResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  AccessController_getPermissionCatalog: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['PermissionCatalogResponseDto']
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
         headers: {
           [name: string]: unknown
         }

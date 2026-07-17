@@ -69,7 +69,7 @@ describe('AccessService — scope-aware permission resolution', () => {
         AccessService,
         {
           provide: ROLE_REPOSITORY,
-          useValue: { findById: vi.fn(), listForWorkspace: vi.fn() },
+          useValue: { findById: vi.fn(), listForWorkspace: vi.fn(), updatePermissions: vi.fn() },
         },
         {
           provide: ROLE_ASSIGNMENT_REPOSITORY,
@@ -258,6 +258,76 @@ describe('AccessService — scope-aware permission resolution', () => {
 
       await service.revokeProjectRole(actor, 'proj-9', 'a-1');
       expect(assignmentRepo.delete).toHaveBeenCalledWith('a-1', expect.anything());
+    });
+  });
+
+  describe('updateRolePermissions', () => {
+    const actor = { sub: USER, workspaceId: WORKSPACE, permissions: [] } as never;
+    const customRole = (overrides: Partial<SystemRole> = {}): SystemRole => ({
+      id: 'role-custom',
+      workspaceId: WORKSPACE,
+      name: 'Custom',
+      slug: 'custom',
+      description: null,
+      isSystem: false,
+      permissions: ['project:view'],
+      createdAt: new Date(),
+      ...overrides,
+    });
+
+    it('throws ROLE_NOT_FOUND when the role does not exist', async () => {
+      roleRepo.findById.mockResolvedValue(null);
+      await expect(
+        service.updateRolePermissions(actor, 'role-custom', ['project:edit']),
+      ).rejects.toMatchObject({ code: 'ROLE_NOT_FOUND' });
+      expect(roleRepo.updatePermissions).not.toHaveBeenCalled();
+    });
+
+    it('throws ROLE_NOT_FOUND when the role belongs to another workspace', async () => {
+      roleRepo.findById.mockResolvedValue(customRole({ workspaceId: 'ws-OTHER' }));
+      await expect(
+        service.updateRolePermissions(actor, 'role-custom', ['project:edit']),
+      ).rejects.toMatchObject({ code: 'ROLE_NOT_FOUND' });
+      expect(roleRepo.updatePermissions).not.toHaveBeenCalled();
+    });
+
+    it('throws ROLE_IMMUTABLE for built-in system roles', async () => {
+      roleRepo.findById.mockResolvedValue(customRole({ isSystem: true }));
+      await expect(
+        service.updateRolePermissions(actor, 'role-custom', ['project:edit']),
+      ).rejects.toMatchObject({ code: 'ROLE_IMMUTABLE' });
+      expect(roleRepo.updatePermissions).not.toHaveBeenCalled();
+    });
+
+    it('throws ROLE_IMMUTABLE for global (workspaceId=null) roles', async () => {
+      roleRepo.findById.mockResolvedValue(customRole({ workspaceId: null, isSystem: false }));
+      await expect(
+        service.updateRolePermissions(actor, 'role-custom', ['project:edit']),
+      ).rejects.toMatchObject({ code: 'ROLE_IMMUTABLE' });
+      expect(roleRepo.updatePermissions).not.toHaveBeenCalled();
+    });
+
+    it('dedupes + sorts the permission set and persists it for a custom role', async () => {
+      const existing = customRole();
+      roleRepo.findById.mockResolvedValue(existing);
+      roleRepo.updatePermissions.mockImplementation(async (id, permissions) => ({
+        ...existing,
+        id,
+        permissions,
+      }));
+
+      const result = await service.updateRolePermissions(actor, 'role-custom', [
+        'project:edit',
+        'project:view',
+        'project:edit',
+      ]);
+
+      expect(roleRepo.updatePermissions).toHaveBeenCalledWith(
+        'role-custom',
+        ['project:edit', 'project:view'],
+        expect.anything(),
+      );
+      expect(result.permissions).toEqual(['project:edit', 'project:view']);
     });
   });
 });

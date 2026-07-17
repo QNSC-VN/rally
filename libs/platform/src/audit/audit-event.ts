@@ -21,6 +21,7 @@ export const AUDIT_ACTION = {
   // ── Access / RBAC ──
   ROLE_ASSIGNED: 'role.assigned',
   ROLE_REVOKED: 'role.revoked',
+  ROLE_PERMISSIONS_UPDATED: 'role.permissions.updated',
   // ── Projects ──
   PROJECT_CREATED: 'project.created',
   PROJECT_UPDATED: 'project.updated',
@@ -44,6 +45,7 @@ export const AUDIT_RESOURCE = {
   WORKSPACE_MEMBER: 'workspace_member',
   WORKSPACE_INVITATION: 'workspace_invitation',
   ROLE_ASSIGNMENT: 'role_assignment',
+  ROLE: 'role',
   PROJECT: 'project',
   TEAM: 'team',
   TEAM_MEMBER: 'team_member',

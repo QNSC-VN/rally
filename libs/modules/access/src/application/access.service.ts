@@ -12,6 +12,7 @@ import {
 import {
   SYSTEM_ROLE,
   PERMISSION,
+  PERMISSION_TIER,
   permissionGrants,
   isProjectTierPermission,
   type ProjectPermission,
@@ -45,6 +46,61 @@ export class AccessService {
 
   async listRoles(workspaceId: string): Promise<SystemRole[]> {
     return this.roleRepo.listForWorkspace(workspaceId);
+  }
+
+  /**
+   * The catalogue of concrete permissions that can be granted to a custom role,
+   * with each code's scope tier. Sourced directly from the canonical PERMISSION
+   * catalogue so the editable role matrix never drifts from the guards.
+   * Wildcard codes (e.g. `workspace:*`) are excluded — they are reserved for
+   * built-in system roles and are not individually assignable.
+   */
+  getPermissionCatalog(): { code: string; tier: 'workspace' | 'project' }[] {
+    return Object.values(PERMISSION)
+      .filter((code) => !code.endsWith(':*'))
+      .map((code) => ({ code, tier: PERMISSION_TIER[code] }));
+  }
+
+  /**
+   * Replace a custom role's permission set. System roles (`isSystem`) are
+   * immutable — their permissions are seeded from the canonical catalogue and
+   * must not drift. Global roles (workspaceId = null) are likewise off-limits to
+   * a single workspace's admin. The incoming codes are validated at the DTO
+   * boundary against the PERMISSION catalogue, deduplicated here, and the change
+   * is written + audited in a single transaction.
+   */
+  async updateRolePermissions(
+    actor: JwtPayload,
+    roleId: string,
+    permissions: string[],
+  ): Promise<SystemRole> {
+    const role = await this.roleRepo.findById(roleId);
+    if (!role || (role.workspaceId !== null && role.workspaceId !== actor.workspaceId)) {
+      throw new NotFoundException('ROLE_NOT_FOUND', 'Role not found');
+    }
+    if (role.isSystem || role.workspaceId === null) {
+      throw new ConflictException('ROLE_IMMUTABLE', 'Built-in system roles cannot be edited');
+    }
+
+    const next = [...new Set(permissions)].sort();
+
+    const updated = await this.uow.run(async (tx) => {
+      const saved = await this.roleRepo.updatePermissions(roleId, next, tx);
+      await this.audit.emit(
+        {
+          action: AUDIT_ACTION.ROLE_PERMISSIONS_UPDATED,
+          resourceType: AUDIT_RESOURCE.ROLE,
+          resourceId: roleId,
+          workspaceId: actor.workspaceId,
+          actor: { id: actor.sub },
+          changes: { before: { permissions: role.permissions }, after: { permissions: next } },
+        },
+        tx,
+      );
+      return saved;
+    });
+    this.logger.log({ roleId, updatedBy: actor.sub }, 'Role permissions updated');
+    return updated;
   }
 
   // ── Assignments ───────────────────────────────────────────────────────────

@@ -31,6 +31,8 @@ import {
   ChevronUp,
   ChevronDown,
   Trash2,
+  Check,
+  Save,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { BRAND } from '@/shared/config/brand'
@@ -2413,6 +2415,7 @@ function AuditLogTab() {
 
 type Role = {
   id: string
+  workspaceId: string | null
   name: string
   slug: string
   description: string | null
@@ -2437,7 +2440,19 @@ function humanizeSlug(value: string): string {
   return value.replace(/[._:]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
+/** A single assignable permission with its scope tier. */
+type CatalogPermission = { code: string; tier: 'workspace' | 'project' }
+
+/** A workspace-custom role can be edited; built-in/global roles are read-only. */
+function isRoleEditable(role: Role): boolean {
+  return !role.isSystem && role.workspaceId !== null
+}
+
 function RolesTab() {
+  const qc = useQueryClient()
+  const { hasPermission } = useAuthStore()
+  const canManage = hasPermission(PERMISSION.WORKSPACE_MANAGE_MEMBERS)
+
   const {
     data: roles = [],
     isLoading,
@@ -2448,6 +2463,33 @@ function RolesTab() {
       const res = await apiClient.GET('/v1/roles')
       return (res.data ?? []) as Role[]
     },
+  })
+
+  // The assignable-permission catalogue is the single source of truth for the
+  // editable matrix; only workspace admins may fetch or act on it.
+  const { data: catalog = [] } = useQuery({
+    queryKey: ['permission-catalog'],
+    enabled: canManage,
+    queryFn: async () => {
+      const res = await apiClient.GET('/v1/permissions')
+      return (res.data?.permissions ?? []) as CatalogPermission[]
+    },
+  })
+
+  const updatePermissions = useMutation({
+    mutationFn: async (vars: { roleId: string; permissions: string[] }) => {
+      const res = await apiClient.PATCH('/v1/roles/{roleId}/permissions', {
+        params: { path: { roleId: vars.roleId } },
+        body: { permissions: vars.permissions },
+      })
+      if (res.error) throw new Error(apiErrorMessage(res.error))
+      return res.data
+    },
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['system-roles'] })
+      toast.success('Role permissions updated')
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to update role'),
   })
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -2476,6 +2518,8 @@ function RolesTab() {
       </p>
     )
   }
+
+  const editable = selected != null && canManage && isRoleEditable(selected)
 
   return (
     <div className="flex gap-6">
@@ -2544,45 +2588,190 @@ function RolesTab() {
               </p>
             )}
 
-            {selected.permissions.length === 0 ? (
-              <p className="text-[12px]" style={{ color: BRAND.textMuted }}>
-                This role has no explicit permissions.
-              </p>
+            {editable ? (
+              <RolePermissionEditor
+                key={selected.id}
+                role={selected}
+                catalog={catalog}
+                saving={updatePermissions.isPending}
+                onSave={(permissions) =>
+                  updatePermissions.mutate({ roleId: selected.id, permissions })
+                }
+              />
             ) : (
-              <div className="space-y-4">
-                {groupPermissions(selected.permissions).map(({ namespace, actions }) => (
-                  <div key={namespace}>
-                    <p
-                      className="mb-1.5 text-[11px] font-semibold"
-                      style={{ color: BRAND.textPrimary }}
-                    >
-                      {humanizeSlug(namespace)}
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {actions.map((action) => (
-                        <span
-                          key={`${namespace}:${action}`}
-                          className="rounded px-2 py-1 font-mono text-[11px]"
-                          style={{
-                            backgroundColor: BRAND.surfaceHover,
-                            color: BRAND.textSecondary,
-                            border: `1px solid ${BRAND.border}`,
-                          }}
+              <>
+                {selected.permissions.length === 0 ? (
+                  <p className="text-[12px]" style={{ color: BRAND.textMuted }}>
+                    This role has no explicit permissions.
+                  </p>
+                ) : (
+                  <div className="space-y-4">
+                    {groupPermissions(selected.permissions).map(({ namespace, actions }) => (
+                      <div key={namespace}>
+                        <p
+                          className="mb-1.5 text-[11px] font-semibold"
+                          style={{ color: BRAND.textPrimary }}
                         >
-                          {action === '*' ? 'All actions' : action}
-                        </span>
-                      ))}
-                    </div>
+                          {humanizeSlug(namespace)}
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {actions.map((action) => (
+                            <span
+                              key={`${namespace}:${action}`}
+                              className="rounded px-2 py-1 font-mono text-[11px]"
+                              style={{
+                                backgroundColor: BRAND.surfaceHover,
+                                color: BRAND.textSecondary,
+                                border: `1px solid ${BRAND.border}`,
+                              }}
+                            >
+                              {action === '*' ? 'All actions' : action}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            )}
+                )}
 
-            <p className="mt-6 text-[11px]" style={{ color: BRAND.textMuted }}>
-              Roles are managed by the platform. Assign roles to users from User Management.
-            </p>
+                <p className="mt-6 text-[11px]" style={{ color: BRAND.textMuted }}>
+                  {selected.isSystem
+                    ? 'Built-in system roles are read-only. Assign roles to users from User Management.'
+                    : 'You need workspace member management permission to edit this role.'}
+                </p>
+              </>
+            )}
           </>
         )}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Editable permission matrix for a custom role. Draft state is keyed on the
+ * role id (via the parent `key`) so switching roles resets cleanly. Codes the
+ * role holds that are not in the catalogue (e.g. a wildcard) are preserved on
+ * save rather than silently dropped.
+ */
+function RolePermissionEditor({
+  role,
+  catalog,
+  saving,
+  onSave,
+}: {
+  role: Role
+  catalog: CatalogPermission[]
+  saving: boolean
+  onSave: (permissions: string[]) => void
+}) {
+  const initial = new Set(role.permissions)
+  const [draft, setDraft] = useState<Set<string>>(() => new Set(role.permissions))
+
+  const catalogCodes = new Set(catalog.map((c) => c.code))
+  // Codes held by the role but absent from the catalogue (e.g. wildcards) are
+  // not rendered as toggles, but must survive a save.
+  const preserved = [...initial].filter((code) => !catalogCodes.has(code))
+
+  const groups = new Map<string, CatalogPermission[]>()
+  for (const perm of catalog) {
+    const namespace = perm.code.split(':')[0]
+    const list = groups.get(namespace) ?? []
+    list.push(perm)
+    groups.set(namespace, list)
+  }
+
+  const dirty = draft.size !== initial.size || [...draft].some((code) => !initial.has(code))
+
+  function toggle(code: string) {
+    setDraft((prev) => {
+      const next = new Set(prev)
+      if (next.has(code)) next.delete(code)
+      else next.add(code)
+      return next
+    })
+  }
+
+  function handleSave() {
+    const selectedCatalog = [...draft].filter((code) => catalogCodes.has(code))
+    onSave([...new Set([...preserved, ...selectedCatalog])].sort())
+  }
+
+  return (
+    <div className="space-y-4">
+      {[...groups.entries()].map(([namespace, perms]) => (
+        <div key={namespace}>
+          <p className="mb-1.5 text-[11px] font-semibold" style={{ color: BRAND.textPrimary }}>
+            {humanizeSlug(namespace)}
+          </p>
+          <div className="grid grid-cols-2 gap-1.5">
+            {perms.map((perm) => {
+              const checked = draft.has(perm.code)
+              const action = perm.code.split(':')[1] ?? perm.code
+              return (
+                <button
+                  key={perm.code}
+                  type="button"
+                  onClick={() => toggle(perm.code)}
+                  className="flex items-center gap-2 rounded px-2 py-1.5 text-left"
+                  style={{
+                    backgroundColor: checked ? BRAND.surfaceHover : 'transparent',
+                    border: `1px solid ${BRAND.border}`,
+                  }}
+                >
+                  <span
+                    className="flex h-4 w-4 shrink-0 items-center justify-center rounded"
+                    style={{
+                      backgroundColor: checked ? BRAND.primary : 'transparent',
+                      border: `1px solid ${checked ? BRAND.primary : BRAND.border}`,
+                    }}
+                  >
+                    {checked && <Check size={11} style={{ color: BRAND.surface }} />}
+                  </span>
+                  <span className="font-mono text-[11px]" style={{ color: BRAND.textSecondary }}>
+                    {action}
+                  </span>
+                  <span
+                    className="ml-auto text-[9px] tracking-wide uppercase"
+                    style={{ color: BRAND.textMuted }}
+                  >
+                    {perm.tier}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      ))}
+
+      <div
+        className="flex items-center justify-between pt-3"
+        style={{ borderTop: `1px solid ${BRAND.border}` }}
+      >
+        <p className="text-[11px]" style={{ color: BRAND.textMuted }}>
+          {draft.size} permission{draft.size === 1 ? '' : 's'} selected
+        </p>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setDraft(new Set(role.permissions))}
+            disabled={!dirty || saving}
+            className="rounded px-3 py-1.5 text-[12px] font-medium disabled:opacity-40"
+            style={{ color: BRAND.textSecondary, border: `1px solid ${BRAND.border}` }}
+          >
+            Reset
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={!dirty || saving}
+            className="flex items-center gap-1.5 rounded px-3 py-1.5 text-[12px] font-medium disabled:opacity-40"
+            style={{ backgroundColor: BRAND.primary, color: BRAND.surface }}
+          >
+            {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+            Save changes
+          </button>
+        </div>
       </div>
     </div>
   )
