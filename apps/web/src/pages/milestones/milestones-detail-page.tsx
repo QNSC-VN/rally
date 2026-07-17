@@ -960,7 +960,9 @@ export function MilestoneDetailPage() {
                       style={{
                         width: `${milestone.progress.progressPercent}%`,
                         backgroundColor:
-                          milestone.progress.progressPercent === 100 ? '#16a34a' : '#2563eb',
+                          milestone.progress.progressPercent === 100
+                            ? BRAND.success
+                            : BRAND.primaryLight,
                       }}
                     />
                   </div>

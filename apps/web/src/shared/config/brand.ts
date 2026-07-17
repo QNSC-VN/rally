@@ -59,4 +59,5 @@ export const BRAND = {
   successBorder: '#c7e4ce',
   warning: '#d97706',
   warningBg: '#fef5e4',
+  warningBorder: '#f0d9a5',
 } as const

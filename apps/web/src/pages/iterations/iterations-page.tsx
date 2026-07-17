@@ -36,8 +36,8 @@ const STATE_LABEL: Record<IterationState, string> = {
 }
 const STATE_STYLE: Record<IterationState, { bg: string; text: string; border: string }> = {
   planning: { bg: BRAND.primaryLighter, text: BRAND.primary, border: '#bdd0ef' },
-  committed: { bg: BRAND.warningBg, text: '#8a5808', border: '#f4d28d' },
-  accepted: { bg: BRAND.successBg, text: BRAND.success, border: '#b9dec2' },
+  committed: { bg: BRAND.warningBg, text: BRAND.warning, border: BRAND.warningBorder },
+  accepted: { bg: BRAND.successBg, text: BRAND.success, border: BRAND.successBorder },
 }
 
 function StateBadge({ state }: { state: IterationState }) {

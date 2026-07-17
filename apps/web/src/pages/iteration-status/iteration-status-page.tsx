@@ -387,8 +387,8 @@ function DefectStatusPill({ total, open }: { total: number; open: number }) {
   }
   const closed = open === 0
   const bg = closed ? BRAND.successBg : BRAND.warningBg
-  const fg = closed ? '#1c7a3f' : '#9a6410'
-  const bd = closed ? '#bfe6cd' : '#f0d9b5'
+  const fg = closed ? BRAND.success : BRAND.warning
+  const bd = closed ? BRAND.successBorder : BRAND.warningBorder
   return (
     <span
       style={{
@@ -431,7 +431,7 @@ function TasksProgress({ estimate, toDo }: { estimate: number; toDo: number }) {
           style={{
             width: `${pct}%`,
             height: '100%',
-            backgroundColor: pct >= 100 ? '#1c7a3f' : AZ.primary,
+            backgroundColor: pct >= 100 ? BRAND.success : AZ.primary,
           }}
         />
       </div>
@@ -761,16 +761,16 @@ export function IterationStatusPage() {
   // Single source of truth for the "Iteration End" widget value/label/colour so
   // Done and Overdue states never degrade to a misleading "0 days left".
   const iterationEnd: { value: string; label: string; color: string } = iterationDone
-    ? { value: 'Done', label: 'Completed', color: '#15803d' }
+    ? { value: 'Done', label: 'Completed', color: BRAND.success }
     : metrics?.daysLeft == null
-      ? { value: '—', label: 'no end date', color: '#8a5808' }
+      ? { value: '—', label: 'no end date', color: BRAND.warning }
       : metrics.daysLeft < 0
         ? {
             value: String(Math.abs(metrics.daysLeft)),
             label: metrics.daysLeft === -1 ? 'day overdue' : 'days overdue',
             color: BRAND.danger,
           }
-        : { value: String(metrics.daysLeft), label: `of ${tDays} days left`, color: '#8a5808' }
+        : { value: String(metrics.daysLeft), label: `of ${tDays} days left`, color: BRAND.warning }
 
   const colStyles = useMemo(
     () => ({
@@ -1873,7 +1873,7 @@ function StatusRow({
                   fontWeight: 700,
                   backgroundColor: BRAND.dangerBg,
                   color: BRAND.danger,
-                  border: '1px solid #fecaca',
+                  border: `1px solid ${BRAND.dangerBorder}`,
                   fontFamily: AZ.font,
                 }}
                 title="Blocked - Click to Unblock"

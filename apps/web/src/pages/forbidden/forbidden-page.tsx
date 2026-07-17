@@ -18,7 +18,7 @@ export function ForbiddenPage() {
         className="flex h-16 w-16 items-center justify-center rounded-full"
         style={{ backgroundColor: BRAND.dangerBg }}
       >
-        <ShieldOff size={30} style={{ color: '#dc2626' }} />
+        <ShieldOff size={30} style={{ color: BRAND.danger }} />
       </div>
       <div className="text-center">
         <p

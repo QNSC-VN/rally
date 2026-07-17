@@ -95,7 +95,7 @@ function fmtRange(it: Pick<Iteration, 'startDate' | 'endDate'>) {
  */
 function LoadBar({ percent }: { percent: number }) {
   const over = percent > 100
-  const color = over ? '#dc2626' : '#2a8c3f'
+  const color = over ? BRAND.danger : BRAND.success
   return (
     <div className="flex w-full flex-col gap-[3px]">
       <span className="text-[10px] leading-none font-semibold tabular-nums" style={{ color }}>

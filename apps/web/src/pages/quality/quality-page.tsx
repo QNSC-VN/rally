@@ -86,9 +86,14 @@ const DEFECT_STATE_STYLE: Record<
   string,
   { bg: string; text: string; border: string; label: string }
 > = {
-  submitted: { bg: BRAND.primaryLighter, text: '#1d4ed8', border: '#bfdbfe', label: 'Submitted' },
-  open: { bg: '#fff7ed', text: '#9a3412', border: '#fed7aa', label: 'Open' },
-  fixed: { bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0', label: 'Fixed' },
+  submitted: {
+    bg: BRAND.primaryLighter,
+    text: BRAND.primaryLight,
+    border: BRAND.primaryLighter,
+    label: 'Submitted',
+  },
+  open: { bg: BRAND.warningBg, text: BRAND.warning, border: BRAND.warningBorder, label: 'Open' },
+  fixed: { bg: BRAND.successBg, text: BRAND.success, border: BRAND.successBorder, label: 'Fixed' },
   closed: {
     bg: BRAND.primaryLighter,
     text: BRAND.textSecondary,
@@ -98,7 +103,7 @@ const DEFECT_STATE_STYLE: Record<
   closed_declined: {
     bg: BRAND.dangerBg,
     text: BRAND.danger,
-    border: '#fecaca',
+    border: BRAND.dangerBorder,
     label: 'Closed Declined',
   },
 }

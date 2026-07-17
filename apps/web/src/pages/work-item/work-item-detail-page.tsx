@@ -938,7 +938,7 @@ function DetailSidebar({
             className="flex items-start gap-2 rounded p-2 text-[11px]"
             style={{
               backgroundColor: BRAND.dangerBg,
-              border: '1px solid #fcc5c0',
+              border: `1px solid ${BRAND.dangerBorder}`,
               color: BRAND.danger,
             }}
           >
@@ -1252,7 +1252,7 @@ export function WorkItemDetailPage() {
               onClick={() => setActiveTab(id)}
               className="flex flex-col items-center justify-center gap-1 px-4 text-[11px] font-medium"
               style={{
-                backgroundColor: activeTab === id ? '#2f6fc5' : 'transparent',
+                backgroundColor: activeTab === id ? BRAND.primaryLight : 'transparent',
                 color: activeTab === id ? 'white' : '#d7e4f7',
               }}
             >

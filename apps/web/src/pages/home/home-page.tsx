@@ -69,7 +69,8 @@ function ProjectHealthRow({
   ).length
   const blocked = workItems.filter((i) => i.isBlocked).length
   const progress = workItems.length > 0 ? Math.round((done / workItems.length) * 100) : 0
-  const progressColor = progress >= 70 ? '#2a8c3f' : progress >= 40 ? BRAND.primaryLight : '#e59f0c'
+  const progressColor =
+    progress >= 70 ? BRAND.success : progress >= 40 ? BRAND.primaryLight : BRAND.warning
 
   return (
     <div
@@ -130,7 +131,7 @@ function ProjectHealthRow({
       <div className="w-24 shrink-0">
         <span
           className="text-[12px] font-semibold tabular-nums"
-          style={{ color: defects > 0 ? BRAND.danger : '#2a8c3f' }}
+          style={{ color: defects > 0 ? BRAND.danger : BRAND.success }}
         >
           {defects}
         </span>
@@ -149,7 +150,7 @@ function ProjectHealthRow({
             {blocked} blocked
           </span>
         ) : (
-          <span className="text-[10px]" style={{ color: '#2a8c3f' }}>
+          <span className="text-[10px]" style={{ color: BRAND.success }}>
             None
           </span>
         )}

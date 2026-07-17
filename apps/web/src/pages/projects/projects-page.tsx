@@ -57,7 +57,7 @@ function ArchiveConfirmModal({
         style={{ backgroundColor: BRAND.dangerBg, borderBottom: `1px solid ${BRAND.dangerBorder}` }}
       >
         <AlertTriangle size={16} style={{ color: BRAND.danger, flexShrink: 0 }} />
-        <p className="text-[11px]" style={{ color: '#7f1d1d' }}>
+        <p className="text-[11px]" style={{ color: BRAND.danger }}>
           This project will become read-only. Work items and iterations will still be visible.
         </p>
       </div>
@@ -147,7 +147,7 @@ function ProjectStatusBadge({ status }: { status: 'active' | 'archived' }) {
     >
       <span
         className="h-1.5 w-1.5 rounded-full"
-        style={{ backgroundColor: active ? '#2a8c3f' : BRAND.textMuted }}
+        style={{ backgroundColor: active ? BRAND.success : BRAND.textMuted }}
       />
       {active ? 'Active' : 'Archived'}
     </span>

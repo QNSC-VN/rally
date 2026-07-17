@@ -54,6 +54,7 @@ const PAIRS: ReadonlyArray<readonly [keyof typeof BRAND, string]> = [
   ['dangerBorder', '--destructive-border'],
   ['warning', '--warning'],
   ['warningBg', '--warning-bg'],
+  ['warningBorder', '--warning-border'],
 ]
 
 describe('brand.ts ↔ globals.css palette sync', () => {

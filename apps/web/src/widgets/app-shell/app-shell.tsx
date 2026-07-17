@@ -786,7 +786,7 @@ export function AppShell() {
               {unreadCount > 0 && (
                 <span
                   className="absolute top-0.5 right-0.5 flex h-3.5 min-w-[14px] items-center justify-center rounded-full px-0.5 text-[8px] leading-none font-bold text-white"
-                  style={{ backgroundColor: '#e5484d' }}
+                  style={{ backgroundColor: BRAND.danger }}
                 >
                   {unreadCount > 99 ? '99+' : unreadCount}
                 </span>

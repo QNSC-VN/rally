@@ -172,7 +172,7 @@ export function NotificationPopover({ open, onClose }: NotificationPopoverProps)
           {unreadCount > 0 && (
             <span
               className="rounded-full px-1.5 py-0.5 text-[10px] font-bold text-white"
-              style={{ backgroundColor: '#e5484d' }}
+              style={{ backgroundColor: BRAND.danger }}
             >
               {unreadCount > 99 ? '99+' : unreadCount}
             </span>

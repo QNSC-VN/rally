@@ -96,7 +96,7 @@ export interface StatusBadgeStyle {
 export const SCHEDULE_STATE_CONFIG: Record<ScheduleState, StatusBadgeStyle> = {
   [ScheduleState.Idea]: { color: BRAND.textSecondary, bg: '#f3f4f6' },
   [ScheduleState.Defined]: { color: '#5c6478', bg: '#edf0f4' },
-  [ScheduleState.InProgress]: { color: '#1d6f9e', bg: '#e5f2fb' },
+  [ScheduleState.InProgress]: { color: BRAND.primaryLight, bg: '#e5f2fb' },
   [ScheduleState.Completed]: { color: '#3d7a4e', bg: '#eef6f0' },
   [ScheduleState.Accepted]: { color: '#1e6930', bg: '#eaf5ed' },
   [ScheduleState.Release]: { color: '#7c3aed', bg: '#f3effd' },
@@ -129,8 +129,13 @@ export interface SeverityStyle {
 }
 
 export const DEFECT_SEVERITY_CONFIG: Record<DefectSeverity, SeverityStyle> = {
-  critical: { label: 'Critical', color: '#b91c1c', bg: '#fef2f2', border: '#fecaca' },
-  major: { label: 'Major Problem', color: '#9a3412', bg: '#fff7ed', border: '#fed7aa' },
+  critical: { label: 'Critical', color: '#b91c1c', bg: '#fef2f2', border: BRAND.dangerBorder },
+  major: {
+    label: 'Major Problem',
+    color: BRAND.warning,
+    bg: BRAND.warningBg,
+    border: BRAND.warningBorder,
+  },
   minor: { label: 'Minor Problem', color: '#854d0e', bg: '#fefce8', border: '#fef08a' },
   trivial: { label: 'Trivial', color: BRAND.textSecondary, bg: '#f1f5f9', border: BRAND.border },
   none: { label: 'None', color: '#8c94a6', bg: '#f1f5f9', border: '#e2e6eb' },
@@ -164,7 +169,7 @@ export interface SimplifiedStateStyle extends StatusBadgeStyle {
 
 export const SIMPLIFIED_STATE_CONFIG: Record<SimplifiedState, SimplifiedStateStyle> = {
   define: { color: '#5c6478', bg: '#edf0f4', activeBg: '#4a5568' },
-  in_progress: { color: '#1d6f9e', bg: '#e5f2fb', activeBg: '#1a5c8a' },
+  in_progress: { color: BRAND.primaryLight, bg: '#e5f2fb', activeBg: '#1a5c8a' },
   complete: { color: '#3d7a4e', bg: '#eef6f0', activeBg: '#2d603c' },
 }
 

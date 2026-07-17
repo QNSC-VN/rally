@@ -105,7 +105,7 @@ function ToolButton({ label, disabled, active, onAction, children }: ToolButtonP
         onMouseEnter={(e) => {
           if (!disabled)
             (e.currentTarget as HTMLButtonElement).style.backgroundColor = active
-              ? '#dbeafe'
+              ? BRAND.primaryLighter
               : BRAND.pageBg
         }}
         onMouseLeave={(e) => {

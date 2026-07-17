@@ -334,8 +334,8 @@ function ReleaseDetailModal({
                         rollup.progressPercent === 100
                           ? BRAND.success
                           : rollup.progressPercent > 50
-                            ? '#1d6f9e'
-                            : '#92400e',
+                            ? BRAND.primaryLight
+                            : BRAND.warning,
                     }}
                   />
                 </div>
@@ -800,7 +800,7 @@ function ReleaseRow({
                 style={{
                   width: `${release.taskRollup.progressPercent}%`,
                   backgroundColor:
-                    release.taskRollup.progressPercent === 100 ? BRAND.success : '#1d6f9e',
+                    release.taskRollup.progressPercent === 100 ? BRAND.success : BRAND.primaryLight,
                 }}
               />
             </div>

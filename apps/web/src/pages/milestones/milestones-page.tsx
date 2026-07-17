@@ -576,7 +576,7 @@ export function MilestonesPage() {
                             style={{
                               backgroundColor: BRAND.dangerBg,
                               color: BRAND.danger,
-                              border: '1px solid #fecaca',
+                              border: `1px solid ${BRAND.dangerBorder}`,
                             }}
                           >
                             Confirm

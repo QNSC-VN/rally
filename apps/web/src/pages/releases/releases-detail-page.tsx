@@ -713,7 +713,8 @@ export function ReleaseDetailPage() {
                       className="h-full rounded-full transition-all"
                       style={{
                         width: `${rollup.progressPercent}%`,
-                        backgroundColor: rollup.progressPercent === 100 ? '#16a34a' : '#2563eb',
+                        backgroundColor:
+                          rollup.progressPercent === 100 ? BRAND.success : BRAND.primaryLight,
                       }}
                     />
                   </div>
@@ -739,10 +740,10 @@ export function ReleaseDetailPage() {
                         {rollup.totalPoints}
                       </div>
                     </div>
-                    <div className="rounded-sm py-1.5" style={{ backgroundColor: '#fff7ed' }}>
+                    <div className="rounded-sm py-1.5" style={{ backgroundColor: BRAND.warningBg }}>
                       <div
                         className="text-[9px] font-semibold tracking-wider uppercase"
-                        style={{ color: '#92400e' }}
+                        style={{ color: BRAND.warning }}
                       >
                         To Do
                       </div>
@@ -791,7 +792,10 @@ export function ReleaseDetailPage() {
                 {/* Accepted count (read-only) */}
                 <div
                   className="mt-1 flex items-center justify-between rounded-sm px-3 py-2"
-                  style={{ backgroundColor: BRAND.successBg, border: '1px solid #b9dec2' }}
+                  style={{
+                    backgroundColor: BRAND.successBg,
+                    border: `1px solid ${BRAND.successBorder}`,
+                  }}
                 >
                   <span
                     className="text-[10px] font-semibold tracking-wider uppercase"

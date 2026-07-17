@@ -55,6 +55,7 @@
   --success-border: #c7e4ce;
   --warning: #d97706;
   --warning-bg: #fef5e4;
+  --warning-border: #f0d9a5;
   --info: #1e40af;
   --info-bg: #eff6ff;
 
@@ -142,6 +143,7 @@
   --success-border: #2a4a32;
   --warning: #e3a008;
   --warning-bg: #2a2110;
+  --warning-border: #4a3a14;
   --border: rgba(255, 255, 255, 0.08);
   --border-strong: #2a3a54;
   --border-subtle: #243149;
@@ -200,6 +202,7 @@
   --color-success-border: var(--success-border);
   --color-warning: var(--warning);
   --color-warning-bg: var(--warning-bg);
+  --color-warning-border: var(--warning-border);
   --color-info: var(--info);
   --color-info-bg: var(--info-bg);
   --color-border: var(--border);
