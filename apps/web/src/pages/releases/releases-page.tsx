@@ -20,6 +20,7 @@ import {
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { InlineSelect } from '@/shared/ui/native-select'
 import { MetricCard } from '@/shared/ui/metric-card'
+import { MetricStrip } from '@/shared/ui/metric-strip'
 import { BRAND } from '@/shared/config/brand'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
@@ -965,14 +966,7 @@ export function ReleasesPage() {
       />
 
       {/* Summary metric strip */}
-      <div
-        className="flex items-center gap-6 px-4"
-        style={{
-          height: 58,
-          backgroundColor: BRAND.surface,
-          borderBottom: `1px solid ${BRAND.border}`,
-        }}
-      >
+      <MetricStrip>
         <MetricCard label="Total Releases" value={stats.total} minWidth={100} />
         <MetricCard
           label="Active"
@@ -987,7 +981,7 @@ export function ReleasesPage() {
           minWidth={90}
         />
         <MetricCard label="Planning" value={stats.planning} minWidth={90} />
-      </div>
+      </MetricStrip>
 
       {/* Column headers (P3-REL-FR-004/007) — resizable */}
       <div

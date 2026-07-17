@@ -16,6 +16,7 @@ import { toast } from 'sonner'
 import { BRAND } from '@/shared/config/brand'
 import { SearchInput } from '@/shared/ui/search-input'
 import { MetricCard } from '@/shared/ui/metric-card'
+import { MetricStrip } from '@/shared/ui/metric-strip'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
@@ -482,10 +483,7 @@ export function ProjectsPage() {
       </div>
 
       {/* Summary metric strip */}
-      <div
-        className="flex shrink-0 items-center gap-6 bg-white px-6"
-        style={{ height: 58, borderBottom: `1px solid ${BRAND.borderSubtle}` }}
-      >
+      <MetricStrip>
         <MetricCard label="Total" value={stats.total} minWidth={80} />
         <MetricCard
           label="Active"
@@ -495,7 +493,7 @@ export function ProjectsPage() {
         />
         <MetricCard label="Archived" value={stats.archived} minWidth={90} />
         <MetricCard label="Linked Teams" value={stats.linkedTeams} minWidth={110} />
-      </div>
+      </MetricStrip>
 
       {/* Toolbar */}
       <div

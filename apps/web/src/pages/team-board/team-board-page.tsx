@@ -28,7 +28,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
-import { Search, Plus, GripVertical, AlertTriangle, Loader2, Eye } from 'lucide-react'
+import { Search, Plus, GripVertical, AlertTriangle, Loader2 } from 'lucide-react'
 
 import { BRAND } from '@/shared/config/brand'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
@@ -53,6 +53,8 @@ import {
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { OwnerCell } from '@/shared/ui/owner-cell'
 import { MetricCard } from '@/shared/ui/metric-card'
+import { MetricStrip } from '@/shared/ui/metric-strip'
+import { ViewOnlyBadge } from '@/shared/ui/view-only-badge'
 import { IterationPicker } from '@/shared/ui/iteration-picker'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { NativeSelect } from '@/shared/ui/native-select'
@@ -240,25 +242,11 @@ export function TeamBoardPage() {
         <span className="ml-auto text-[12px] font-semibold" style={{ color: BRAND.textPrimary }}>
           Board
         </span>
-        {!canEdit && (
-          <span
-            className="flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] font-medium"
-            style={{ backgroundColor: '#f0f2f5', color: BRAND.textMuted }}
-          >
-            <Eye size={11} /> View only
-          </span>
-        )}
+        {!canEdit && <ViewOnlyBadge />}
       </div>
 
       {/* ── Metric strip ─────────────────────────────────────────────────── */}
-      <div
-        className="flex items-center gap-6 px-4"
-        style={{
-          height: 58,
-          backgroundColor: BRAND.surface,
-          borderBottom: `1px solid ${BRAND.border}`,
-        }}
-      >
+      <MetricStrip>
         <MetricCard label="Cards" value={metrics.cards} minWidth={70} />
         <MetricCard
           label="Active"
@@ -287,7 +275,7 @@ export function TeamBoardPage() {
           valueColor={metrics.blocked > 0 ? BRAND.danger : undefined}
           minWidth={80}
         />
-      </div>
+      </MetricStrip>
 
       {/* ── Filter bar ───────────────────────────────────────────────────── */}
       <div

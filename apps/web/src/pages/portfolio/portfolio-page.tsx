@@ -12,7 +12,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { ChevronDown, ChevronRight, AlertTriangle, Plus, Loader2, Eye } from 'lucide-react'
+import { ChevronDown, ChevronRight, AlertTriangle, Plus, Loader2 } from 'lucide-react'
 
 import { BRAND } from '@/shared/config/brand'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
@@ -25,6 +25,8 @@ import { TypeBadge, ScheduleStateBadge } from '@/entities/work-item/ui/badges'
 import { WORK_ITEM_TYPE_CONFIG, type WorkItemType } from '@/entities/work-item/model/types'
 import { OwnerCell } from '@/shared/ui/owner-cell'
 import { MetricCard } from '@/shared/ui/metric-card'
+import { MetricStrip } from '@/shared/ui/metric-strip'
+import { ViewOnlyBadge } from '@/shared/ui/view-only-badge'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { NativeSelect } from '@/shared/ui/native-select'
 import { FormField } from '@/shared/ui/form-field'
@@ -105,14 +107,7 @@ export function PortfolioPage() {
   return (
     <div className="flex h-full flex-col" style={{ backgroundColor: BRAND.pageBg }}>
       {/* ── Metric strip ─────────────────────────────────────────────────── */}
-      <div
-        className="flex items-center gap-6 px-4"
-        style={{
-          height: 58,
-          backgroundColor: BRAND.surface,
-          borderBottom: `1px solid ${BRAND.border}`,
-        }}
-      >
+      <MetricStrip>
         <MetricCard label="Initiatives" value={metrics?.initiatives ?? 0} minWidth={90} />
         <MetricCard label="Features" value={metrics?.features ?? 0} minWidth={90} />
         <MetricCard label="Total Stories" value={metrics?.totalStories ?? 0} minWidth={100} />
@@ -128,7 +123,7 @@ export function PortfolioPage() {
           valueColor={BRAND.primaryLight}
           minWidth={100}
         />
-      </div>
+      </MetricStrip>
 
       {/* ── Toolbar ──────────────────────────────────────────────────────── */}
       <div
@@ -146,14 +141,7 @@ export function PortfolioPage() {
           {project.projectName}
           {team ? ` · ${team.teamName}` : ''}
         </span>
-        {!canCreate && (
-          <span
-            className="flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] font-medium"
-            style={{ backgroundColor: '#f0f2f5', color: BRAND.textMuted }}
-          >
-            <Eye size={11} /> View only
-          </span>
-        )}
+        {!canCreate && <ViewOnlyBadge />}
         {canCreate && (
           <button
             type="button"
