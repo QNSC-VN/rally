@@ -4,13 +4,10 @@ import { AlertTriangle, ArrowUpRight, Clock, Inbox } from 'lucide-react'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { BRAND } from '@/shared/config/brand'
+import { PageHeader } from '@/shared/ui/page-header'
 import { TypeBadge, ScheduleStateBadge, PriorityBadge } from '@/entities/work-item/ui/badges'
 import { WorkItemType, WorkItemPriority } from '@/entities/work-item/model/types'
-import {
-  type Project,
-  useProjects,
-  useProjectStatuses,
-} from '@/features/projects/api'
+import { type Project, useProjects, useProjectStatuses } from '@/features/projects/api'
 import { useWorkItems, useMyWorkItems, useWorkItemCounts } from '@/features/work-items/api'
 import { useIterations, useCommittedIterationsCount } from '@/features/iterations/api'
 
@@ -200,7 +197,6 @@ export function HomePage() {
     () => activeProjects.map((p) => ({ id: p.id, key: p.key, name: p.name })),
     [activeProjects],
   )
-  
 
   const { data: counts = { total: 0, blocked: 0, defects: 0 } } =
     useWorkItemCounts(projectsForStats)
@@ -218,72 +214,73 @@ export function HomePage() {
 
   return (
     <div className="flex flex-1 flex-col" style={{ backgroundColor: BRAND.pageBg }}>
-      {/* Page header */}
-      <div
-        className="flex shrink-0 items-center justify-between bg-white px-6 py-3"
-        style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
-      >
-        <h1 className="text-[14px] font-semibold" style={{ color: BRAND.textPrimary }}>
-          Home
-        </h1>
-        <div className="text-[11px]" style={{ color: BRAND.textSecondary }}>
-          {getGreeting()},{' '}
-          <span className="font-medium" style={{ color: BRAND.textPrimary }}>
-            {user?.displayName ?? 'User'}
-          </span>{' '}
-          ·{' '}
-          <span className="font-medium" style={{ color: BRAND.textPrimary }}>
-            {now}
-          </span>
-        </div>
-      </div>
+      <PageHeader
+        title="Home"
+        actions={
+          <div className="text-[11px]" style={{ color: BRAND.textSecondary }}>
+            {getGreeting()},{' '}
+            <span className="font-medium" style={{ color: BRAND.textPrimary }}>
+              {user?.displayName ?? 'User'}
+            </span>{' '}
+            ·{' '}
+            <span className="font-medium" style={{ color: BRAND.textPrimary }}>
+              {now}
+            </span>
+          </div>
+        }
+      />
 
       {/* Summary strip */}
       {loadingProjects ? (
-        <div className="flex shrink-0 bg-white" style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}>
+        <div
+          className="flex shrink-0 bg-white"
+          style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
+        >
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="flex flex-1 flex-col justify-center gap-2 px-5 py-3" style={i > 0 ? { borderLeft: `1px solid ${BRAND.borderSubtle}` } : undefined}>
+            <div
+              key={i}
+              className="flex flex-1 flex-col justify-center gap-2 px-5 py-3"
+              style={i > 0 ? { borderLeft: `1px solid ${BRAND.borderSubtle}` } : undefined}
+            >
               <div className="h-3 w-20 animate-pulse rounded bg-gray-200" />
               <div className="h-6 w-8 animate-pulse rounded bg-gray-200" />
             </div>
           ))}
         </div>
       ) : (
-      <div
-        className="flex shrink-0 bg-white"
-        style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
-      >
-        {summaryMetrics.map((m, i) => {
-          const inner = (
-            <>
-              <span
-                className="text-[9px] font-semibold tracking-widest uppercase"
-                style={{ color: BRAND.textMuted }}
-              >
-                {m.label}
-              </span>
-              <span
-                className="text-[20px] leading-tight font-semibold"
-                style={{ color: m.alert ? BRAND.danger : BRAND.textPrimary }}
-              >
-                {m.value}
-              </span>
-            </>
-          )
-          const sharedStyle = { borderLeft: i > 0 ? `1px solid ${BRAND.borderSubtle}` : undefined }
-          const sharedClass = 'flex flex-1 flex-col justify-center px-5 py-3 text-left transition-colors hover:bg-[#f7f8fa]'
-          return (
-            <Link
-              key={m.label}
-              to={m.path as '/'}
-              className={sharedClass}
-              style={sharedStyle}
-            >
-              {inner}
-            </Link>
-          )
-        })}
-      </div>
+        <div
+          className="flex shrink-0 bg-white"
+          style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
+        >
+          {summaryMetrics.map((m, i) => {
+            const inner = (
+              <>
+                <span
+                  className="text-[9px] font-semibold tracking-widest uppercase"
+                  style={{ color: BRAND.textMuted }}
+                >
+                  {m.label}
+                </span>
+                <span
+                  className="text-[20px] leading-tight font-semibold"
+                  style={{ color: m.alert ? BRAND.danger : BRAND.textPrimary }}
+                >
+                  {m.value}
+                </span>
+              </>
+            )
+            const sharedStyle = {
+              borderLeft: i > 0 ? `1px solid ${BRAND.borderSubtle}` : undefined,
+            }
+            const sharedClass =
+              'flex flex-1 flex-col justify-center px-5 py-3 text-left transition-colors hover:bg-[#f7f8fa]'
+            return (
+              <Link key={m.label} to={m.path as '/'} className={sharedClass} style={sharedStyle}>
+                {inner}
+              </Link>
+            )
+          })}
+        </div>
       )}
 
       {/* Body grid */}

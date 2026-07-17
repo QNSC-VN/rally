@@ -4,6 +4,7 @@ import { AlertTriangle, Bell, CheckCheck, Circle, CircleDot } from 'lucide-react
 import { toast } from 'sonner'
 import { BRAND } from '@/shared/config/brand'
 import { relativeTime } from '@/shared/lib/utils'
+import { PageHeader } from '@/shared/ui/page-header'
 import {
   useNotifications,
   useMarkNotificationRead,
@@ -79,61 +80,58 @@ export function NotificationsPage() {
   return (
     <div className="flex flex-1 flex-col" style={{ backgroundColor: BRAND.pageBg, minHeight: 0 }}>
       {/* ── Header ── */}
-      <div
-        className="flex shrink-0 items-center justify-between px-6 py-4"
-        style={{ borderBottom: `1px solid ${BRAND.border}`, backgroundColor: BRAND.surface }}
-      >
-        <div className="flex items-center gap-3">
-          <Bell size={16} style={{ color: BRAND.textSecondary }} />
-          <h1 className="text-[15px] font-semibold" style={{ color: BRAND.textPrimary }}>
-            Notifications
-          </h1>
-          {unreadCount > 0 && (
+      <PageHeader
+        icon={<Bell size={16} style={{ color: BRAND.textSecondary }} />}
+        title="Notifications"
+        badge={
+          unreadCount > 0 ? (
             <span
               className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-white"
               style={{ backgroundColor: BRAND.primary }}
             >
               {unreadCount}
             </span>
-          )}
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1">
-            {TABS.map((t) => {
-              const active = tab === t.key
-              return (
-                <button
-                  key={t.key}
-                  onClick={() => setTab(t.key)}
-                  className="rounded px-3 py-1.5 text-[12px] font-medium transition-colors"
-                  style={{
-                    backgroundColor: active ? BRAND.primary : 'transparent',
-                    color: active ? '#ffffff' : BRAND.textSecondary,
-                    border: `1px solid ${active ? BRAND.primary : BRAND.border}`,
-                  }}
-                >
-                  {t.label}
-                </button>
-              )
-            })}
-          </div>
-          {unreadCount > 0 && (
-            <button
-              onClick={() => void handleMarkAll()}
-              disabled={markAll.isPending}
-              className="flex items-center gap-1.5 rounded px-3 py-1.5 text-[12px] font-medium transition-colors hover:opacity-80"
-              style={{
-                border: `1px solid ${BRAND.border}`,
-                color: BRAND.textSecondary,
-                backgroundColor: BRAND.surface,
-              }}
-            >
-              <CheckCheck size={13} />
-              Mark all read
-            </button>
-          )}
-        </div>
-      </div>
+          ) : undefined
+        }
+        actions={
+          <>
+            <div className="flex items-center gap-1">
+              {TABS.map((t) => {
+                const active = tab === t.key
+                return (
+                  <button
+                    key={t.key}
+                    onClick={() => setTab(t.key)}
+                    className="rounded px-3 py-1.5 text-[12px] font-medium transition-colors"
+                    style={{
+                      backgroundColor: active ? BRAND.primary : 'transparent',
+                      color: active ? '#ffffff' : BRAND.textSecondary,
+                      border: `1px solid ${active ? BRAND.primary : BRAND.border}`,
+                    }}
+                  >
+                    {t.label}
+                  </button>
+                )
+              })}
+            </div>
+            {unreadCount > 0 && (
+              <button
+                onClick={() => void handleMarkAll()}
+                disabled={markAll.isPending}
+                className="flex items-center gap-1.5 rounded px-3 py-1.5 text-[12px] font-medium transition-colors hover:opacity-80"
+                style={{
+                  border: `1px solid ${BRAND.border}`,
+                  color: BRAND.textSecondary,
+                  backgroundColor: BRAND.surface,
+                }}
+              >
+                <CheckCheck size={13} />
+                Mark all read
+              </button>
+            )}
+          </>
+        }
+      />
 
       {/* ── List ── */}
       <div className="flex-1 overflow-y-auto">

@@ -42,6 +42,7 @@ import { relativeTime } from '@/shared/lib/utils'
 import { MetricCard } from '@/shared/ui/metric-card'
 import { Avatar } from '@/shared/ui/avatar'
 import { IterationPicker } from '@/shared/ui/iteration-picker'
+import { PageHeader } from '@/shared/ui/page-header'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import {
   SCHEDULE_STATE_CONFIG,
@@ -228,37 +229,29 @@ export function ReportsPage() {
   return (
     <div className="flex-1 overflow-auto" style={{ backgroundColor: BRAND.pageBg }}>
       {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <div
-        className="flex shrink-0 items-center justify-between px-6 py-3"
-        style={{ backgroundColor: BRAND.surface, borderBottom: `1px solid ${BRAND.border}` }}
-      >
-        <div>
-          <h2 className="text-[14px] font-semibold" style={{ color: BRAND.textPrimary }}>
-            Reports
-          </h2>
-          <p className="text-[11px]" style={{ color: BRAND.textSecondary }}>
-            {project.projectName}
-            {team ? ` · ${team.teamName}` : ''} · Last 6 iterations
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <IterationPicker
-            iterations={iterations}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-          />
-          {canExport && (
-            <button
-              type="button"
-              onClick={exportCsv}
-              className="flex items-center gap-1.5 rounded px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:opacity-90"
-              style={{ backgroundColor: BRAND.primary }}
-            >
-              <Download size={12} /> Export
-            </button>
-          )}
-        </div>
-      </div>
+      <PageHeader
+        title="Reports"
+        subtitle={`${project.projectName}${team ? ` · ${team.teamName}` : ''} · Last 6 iterations`}
+        actions={
+          <>
+            <IterationPicker
+              iterations={iterations}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+            />
+            {canExport && (
+              <button
+                type="button"
+                onClick={exportCsv}
+                className="flex items-center gap-1.5 rounded px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:opacity-90"
+                style={{ backgroundColor: BRAND.primary }}
+              >
+                <Download size={12} /> Export
+              </button>
+            )}
+          </>
+        }
+      />
 
       {statusLoading ? (
         <div className="p-4">
