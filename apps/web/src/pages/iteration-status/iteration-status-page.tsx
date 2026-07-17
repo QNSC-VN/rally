@@ -462,7 +462,6 @@ export function IterationStatusPage() {
   const [selectorOpen, setSelectorOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [showAdd, setShowAdd] = useState(false)
-  const [viewMode, setViewMode] = useState<'list' | 'board' | 'compact'>('list')
   const [sortCol, setSortCol] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [stateFilter, setStateFilter] = useState<ScheduleState | 'all'>('all')
@@ -844,7 +843,7 @@ export function IterationStatusPage() {
       className="flex flex-1 flex-col overflow-hidden"
       style={{ fontFamily: AZ.font, backgroundColor: AZ.bg, color: AZ.textPrimary, fontSize: 12 }}
     >
-      {/* ── Single page header: title + iteration picker + view toggle ────── */}
+      {/* ── Single page header: title + iteration picker ────────────────── */}
       <IterationHeader
         iterations={iterations}
         selected={selected}
@@ -854,8 +853,6 @@ export function IterationStatusPage() {
         move={move}
         selectorOpen={selectorOpen}
         setSelectorOpen={setSelectorOpen}
-        viewMode={viewMode}
-        setViewMode={setViewMode}
       />
 
       <MetricsStrip
@@ -1074,9 +1071,9 @@ export function IterationStatusPage() {
 //
 // Rally's Iteration Status page leads with the iteration picker and a progress
 // banner — it does NOT stack a redundant in-page breadcrumb (the app shell
-// already renders "Project › Iteration"). We fold the page title, the sprint
-// selector (prev/next + dropdown + date range) and the list/board/compact
-// toggle into a SINGLE header row so "Iteration" isn't repeated four times.
+// already renders "Project › Iteration"). We fold the page title and the sprint
+// selector (prev/next + dropdown + date range) into a SINGLE header row so
+// "Iteration" isn't repeated four times.
 
 function IterationHeader({
   iterations,
@@ -1087,8 +1084,6 @@ function IterationHeader({
   move,
   selectorOpen,
   setSelectorOpen,
-  viewMode,
-  setViewMode,
 }: {
   iterations: Iteration[]
   selected: Iteration | undefined
@@ -1098,8 +1093,6 @@ function IterationHeader({
   move: (dir: -1 | 1) => void
   selectorOpen: boolean
   setSelectorOpen: React.Dispatch<React.SetStateAction<boolean>>
-  viewMode: 'list' | 'board' | 'compact'
-  setViewMode: (mode: 'list' | 'board' | 'compact') => void
 }) {
   return (
     <div
@@ -1255,37 +1248,6 @@ function IterationHeader({
         </button>
       </div>
       <div className="flex-1" />
-      {/* View-mode toggle (list / board / compact) */}
-      <div
-        className="flex items-center"
-        style={{ border: `1px solid ${AZ.border}`, borderRadius: 2, overflow: 'hidden' }}
-      >
-        {(['list', 'board', 'compact'] as const).map((mode) => (
-          <button
-            key={mode}
-            onClick={() => setViewMode(mode)}
-            style={{
-              padding: '3px 12px',
-              fontSize: 11,
-              fontWeight: 600,
-              border: 'none',
-              cursor: 'pointer',
-              backgroundColor: viewMode === mode ? AZ.primary : 'transparent',
-              color: viewMode === mode ? '#fff' : AZ.textSecondary,
-              fontFamily: AZ.font,
-              textTransform: 'capitalize' as const,
-            }}
-            onMouseOver={(e) => {
-              if (viewMode !== mode) e.currentTarget.style.backgroundColor = AZ.bgAlt
-            }}
-            onMouseOut={(e) => {
-              if (viewMode !== mode) e.currentTarget.style.backgroundColor = 'transparent'
-            }}
-          >
-            {mode}
-          </button>
-        ))}
-      </div>
     </div>
   )
 }

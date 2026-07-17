@@ -28,17 +28,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
-import {
-  ChevronLeft,
-  ChevronRight,
-  ChevronDown,
-  Search,
-  Plus,
-  GripVertical,
-  AlertTriangle,
-  Loader2,
-  Eye,
-} from 'lucide-react'
+import { Search, Plus, GripVertical, AlertTriangle, Loader2, Eye } from 'lucide-react'
 
 import { BRAND } from '@/shared/config/brand'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
@@ -63,6 +53,7 @@ import {
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { OwnerCell } from '@/shared/ui/owner-cell'
 import { MetricCard } from '@/shared/ui/metric-card'
+import { IterationPicker } from '@/shared/ui/iteration-picker'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { NativeSelect } from '@/shared/ui/native-select'
 import { FormField } from '@/shared/ui/form-field'
@@ -100,7 +91,6 @@ export function TeamBoardPage() {
   const memberMap = useMemo(() => new Map(members.map((m) => [m.userId, m])), [members])
 
   const [chosenId, setChosenId] = useState<string | null>(null)
-  const [selectorOpen, setSelectorOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState<WorkItemType | 'all'>('all')
   const [ownerFilter, setOwnerFilter] = useState<string>('all')
@@ -140,11 +130,7 @@ export function TeamBoardPage() {
 
   const updateItem = useUpdateAnyWorkItem()
 
-  const selectedIndex = useMemo(
-    () => iterations.findIndex((i) => i.id === selectedId),
-    [iterations, selectedId],
-  )
-  const selected = iterations[selectedIndex]
+  const selected = iterations.find((i) => i.id === selectedId)
 
   const allItems = status?.items ?? EMPTY_ITEMS
 
@@ -220,11 +206,6 @@ export function TeamBoardPage() {
     }
   }
 
-  function move(dir: -1 | 1) {
-    const next = selectedIndex + dir
-    if (next >= 0 && next < iterations.length) setSelectedId(iterations[next].id)
-  }
-
   const openItem = useCallback(
     (itemKey: string) => void navigate({ to: '/item/$itemKey', params: { itemKey } }),
     [navigate],
@@ -249,98 +230,7 @@ export function TeamBoardPage() {
           borderBottom: `1px solid ${BRAND.border}`,
         }}
       >
-        <div
-          className="flex items-center"
-          style={{ border: `1px solid ${BRAND.border}`, borderRadius: 2, height: 28 }}
-        >
-          <button
-            type="button"
-            disabled={selectedIndex <= 0}
-            onClick={() => move(-1)}
-            className="flex h-full items-center px-1.5 disabled:opacity-40"
-            style={{ borderRight: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
-            aria-label="Previous iteration"
-          >
-            <ChevronLeft size={14} />
-          </button>
-          <div className="relative h-full">
-            <button
-              type="button"
-              onClick={() => setSelectorOpen((o) => !o)}
-              className="flex h-full items-center gap-2.5 px-2.5 text-left"
-              style={{ minWidth: 280, color: BRAND.textPrimary }}
-            >
-              <span className="text-[12px] font-semibold whitespace-nowrap">
-                {selected?.name ?? 'No iteration'}
-              </span>
-              {selected && (
-                <span
-                  className="text-[11px] whitespace-nowrap"
-                  style={{ color: BRAND.textSecondary }}
-                >
-                  {fmtRange(selected)}
-                </span>
-              )}
-              <ChevronDown size={12} style={{ marginLeft: 'auto', color: BRAND.textMuted }} />
-            </button>
-            {selectorOpen && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setSelectorOpen(false)} />
-                <div
-                  className="absolute top-full left-0 z-50 mt-1 overflow-y-auto py-1"
-                  style={{
-                    width: 360,
-                    maxHeight: 300,
-                    backgroundColor: BRAND.surface,
-                    borderRadius: 2,
-                    border: `1px solid ${BRAND.border}`,
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                  }}
-                >
-                  {iterations.length === 0 && (
-                    <div className="px-3 py-2 text-[11px]" style={{ color: BRAND.textMuted }}>
-                      No iterations
-                    </div>
-                  )}
-                  {iterations.map((it) => (
-                    <button
-                      key={it.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedId(it.id)
-                        setSelectorOpen(false)
-                      }}
-                      className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left hover:bg-[#f0f2f5]"
-                      style={{
-                        backgroundColor: it.id === selectedId ? '#eef3fb' : 'transparent',
-                      }}
-                    >
-                      <span
-                        className="text-[12px] font-medium"
-                        style={{ color: BRAND.textPrimary }}
-                      >
-                        {it.name}
-                      </span>
-                      <span className="text-[11px]" style={{ color: BRAND.textMuted }}>
-                        {fmtRange(it)}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-          <button
-            type="button"
-            disabled={selectedIndex < 0 || selectedIndex >= iterations.length - 1}
-            onClick={() => move(1)}
-            className="flex h-full items-center px-1.5 disabled:opacity-40"
-            style={{ borderLeft: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
-            aria-label="Next iteration"
-          >
-            <ChevronRight size={14} />
-          </button>
-        </div>
+        <IterationPicker iterations={iterations} selectedId={selectedId} onSelect={setSelectedId} />
 
         <span className="text-[12px]" style={{ color: BRAND.textSecondary }}>
           {project.projectName}
