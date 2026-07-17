@@ -15,6 +15,7 @@ import {
 import { toast } from 'sonner'
 import { BRAND } from '@/shared/config/brand'
 import { SearchInput } from '@/shared/ui/search-input'
+import { MetricCard } from '@/shared/ui/metric-card'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
@@ -429,6 +430,12 @@ export function ProjectsPage() {
 
   const activeCount = projects.filter((p) => p.status === 'active').length
 
+  const stats = {
+    total: projects.length,
+    active: activeCount,
+    archived: projects.filter((p) => p.status === 'archived').length,
+    linkedTeams: projects.reduce((sum, p) => sum + (p.teamCount ?? 0), 0),
+  }
   return (
     <div className="flex flex-1 flex-col" style={{ backgroundColor: BRAND.pageBg }}>
       {showNewModal && workspaceId && (
@@ -472,6 +479,22 @@ export function ProjectsPage() {
           <Plus size={13} />
           New Project
         </button>
+      </div>
+
+      {/* Summary metric strip */}
+      <div
+        className="flex shrink-0 items-center gap-6 bg-white px-6"
+        style={{ height: 58, borderBottom: `1px solid ${BRAND.borderSubtle}` }}
+      >
+        <MetricCard label="Total" value={stats.total} minWidth={80} />
+        <MetricCard
+          label="Active"
+          value={stats.active}
+          valueColor={BRAND.primaryLight}
+          minWidth={80}
+        />
+        <MetricCard label="Archived" value={stats.archived} minWidth={90} />
+        <MetricCard label="Linked Teams" value={stats.linkedTeams} minWidth={110} />
       </div>
 
       {/* Toolbar */}

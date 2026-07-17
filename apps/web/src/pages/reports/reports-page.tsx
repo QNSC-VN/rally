@@ -36,7 +36,11 @@ import { useIterations } from '@/features/iterations/api'
 import { useIterationStatus } from '@/features/iterations/api'
 import { useReleases } from '@/features/releases/api'
 import { useSprintBurndown, useProjectVelocity } from '@/features/reporting/api'
+import { useDefects } from '@/features/quality/api'
+import { useNotifications } from '@/features/notifications/api'
+import { relativeTime } from '@/shared/lib/utils'
 import { MetricCard } from '@/shared/ui/metric-card'
+import { Avatar } from '@/shared/ui/avatar'
 import { IterationPicker } from '@/shared/ui/iteration-picker'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import {
@@ -113,6 +117,8 @@ export function ReportsPage() {
   const { data: burndown, isLoading: burndownLoading } = useSprintBurndown(selectedId ?? undefined)
   const { data: velocity, isLoading: velocityLoading } = useProjectVelocity(projectId, 6)
   const { data: releases = [] } = useReleases(projectId)
+  const { data: defects } = useDefects(projectId)
+  const { data: notifications = [] } = useNotifications({})
 
   const items = status?.items ?? EMPTY_ITEMS
   const metrics = status?.metrics
@@ -177,6 +183,18 @@ export function ReportsPage() {
   }, [items, memberMap])
 
   const blockedItems = useMemo(() => items.filter((i) => i.isBlocked), [items])
+
+  // ── Defect summary (real defect read-model for this project) ──────────────
+  const defectRows = useMemo(() => {
+    const m = defects?.metrics
+    return [
+      { label: 'Open', value: m?.openDefects ?? 0, color: BRAND.warning },
+      { label: 'Critical', value: m?.critical ?? 0, color: BRAND.danger },
+      { label: 'In Progress', value: m?.inProgress ?? 0, color: BRAND.primaryLight },
+      { label: 'Resolved', value: m?.verifiedAccepted ?? 0, color: BRAND.success },
+      { label: 'Blockers', value: m?.blockers ?? 0, color: BRAND.danger },
+    ]
+  }, [defects])
 
   function exportCsv() {
     const lines: string[] = []
@@ -418,6 +436,32 @@ export function ReportsPage() {
             )}
           </Widget>
 
+          {/* Defect summary */}
+          <Widget title="Defect Summary">
+            <div className="space-y-2.5 pt-1">
+              {defectRows.map((d) => (
+                <div key={d.label} className="flex items-center justify-between">
+                  <span
+                    className="flex items-center gap-2 text-[12px]"
+                    style={{ color: BRAND.textSecondary }}
+                  >
+                    <span
+                      className="h-2.5 w-2.5 rounded-full"
+                      style={{ backgroundColor: d.color }}
+                    />
+                    {d.label}
+                  </span>
+                  <span
+                    className="text-[13px] font-semibold tabular-nums"
+                    style={{ color: d.color }}
+                  >
+                    {d.value}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </Widget>
+
           {/* Workload by owner */}
           <Widget title="Workload by Owner">
             {workloadData.length === 0 ? (
@@ -605,6 +649,38 @@ export function ReportsPage() {
                     </p>
                   </button>
                 ))
+              )}
+            </div>
+          </Widget>
+
+          {/* Recent activity */}
+          <Widget title="Recent Activity">
+            <div className="space-y-2.5 pt-1">
+              {notifications.length === 0 ? (
+                <p className="text-[11px]" style={{ color: BRAND.textMuted }}>
+                  No recent activity.
+                </p>
+              ) : (
+                notifications.slice(0, 6).map((n) => {
+                  const actor = n.actorId ? memberMap.get(n.actorId) : undefined
+                  const actorName = actor?.displayName ?? actor?.email ?? 'System'
+                  return (
+                    <div key={n.id} className="flex items-start gap-2">
+                      <Avatar name={actorName} size={20} />
+                      <div className="min-w-0">
+                        <p
+                          className="truncate text-[11px] leading-snug"
+                          style={{ color: BRAND.textSecondary }}
+                        >
+                          {n.body ?? n.title}
+                        </p>
+                        <p className="mt-0.5 text-[10px]" style={{ color: BRAND.textMuted }}>
+                          {relativeTime(n.createdAt)}
+                        </p>
+                      </div>
+                    </div>
+                  )
+                })
               )}
             </div>
           </Widget>

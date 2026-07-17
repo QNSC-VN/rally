@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { InlineSelect } from '@/shared/ui/native-select'
+import { MetricCard } from '@/shared/ui/metric-card'
 import { BRAND } from '@/shared/config/brand'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
@@ -905,6 +906,16 @@ export function ReleasesPage() {
     )
   }, [releases, search])
 
+  const stats = useMemo(
+    () => ({
+      total: releases.length,
+      active: releases.filter((r) => r.status === 'active').length,
+      accepted: releases.filter((r) => r.status === 'accepted').length,
+      planning: releases.filter((r) => r.status === 'planning').length,
+    }),
+    [releases],
+  )
+
   async function handleDelete(id: string) {
     if (!confirm('Delete this release? Work items will keep their release assignment.')) return
     try {
@@ -952,6 +963,31 @@ export function ReleasesPage() {
           ) : undefined
         }
       />
+
+      {/* Summary metric strip */}
+      <div
+        className="flex items-center gap-6 px-4"
+        style={{
+          height: 58,
+          backgroundColor: BRAND.surface,
+          borderBottom: `1px solid ${BRAND.border}`,
+        }}
+      >
+        <MetricCard label="Total Releases" value={stats.total} minWidth={100} />
+        <MetricCard
+          label="Active"
+          value={stats.active}
+          valueColor={BRAND.primaryLight}
+          minWidth={80}
+        />
+        <MetricCard
+          label="Accepted"
+          value={stats.accepted}
+          valueColor={BRAND.success}
+          minWidth={90}
+        />
+        <MetricCard label="Planning" value={stats.planning} minWidth={90} />
+      </div>
 
       {/* Column headers (P3-REL-FR-004/007) — resizable */}
       <div
