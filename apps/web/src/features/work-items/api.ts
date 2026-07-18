@@ -62,6 +62,8 @@ export interface BacklogFilters {
   releaseId?: string
   teamId?: string
   q?: string
+  /** Server-side sort as `"<field>[:asc|:desc]"`; omit for the default rank order. */
+  sort?: string
   limit?: number
   cursor?: string
 }
@@ -84,6 +86,7 @@ export function useBacklog(projectId: string | undefined, filters: BacklogFilter
             releaseId: filters.releaseId,
             teamId: filters.teamId,
             q: filters.q,
+            sort: filters.sort,
             limit: filters.limit ?? 50,
             cursor: filters.cursor,
           },

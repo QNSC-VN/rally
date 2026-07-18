@@ -73,7 +73,30 @@ export interface WorkItemFilters {
   parentId?: string;
   /** Free-text search: item_key exact (case-insensitive) or title ILIKE. */
   q?: string;
+  /** Explicit backlog sort column. Omit to use the default rank order. */
+  sortBy?: WorkItemSortBy;
+  sortDirection?: 'asc' | 'desc';
 }
+
+/**
+ * Sortable backlog columns. Mirrors the Iteration Status list
+ * ({@link IterationStatusSortBy}) so the two work-item grids stay consistent.
+ * `planEstimate` maps to `story_points`. Enum columns (`scheduleState`,
+ * `priority`) sort by their semantic Postgres enum declaration order.
+ */
+export type WorkItemSortBy =
+  'rank' | 'itemKey' | 'type' | 'title' | 'scheduleState' | 'priority' | 'planEstimate';
+
+/** Whitelist of backlog sort fields accepted from the `sort` query param. */
+export const BACKLOG_SORT_FIELDS = [
+  'rank',
+  'itemKey',
+  'type',
+  'title',
+  'scheduleState',
+  'priority',
+  'planEstimate',
+] as const satisfies readonly WorkItemSortBy[];
 
 export interface CreateWorkItemInput {
   id: string;

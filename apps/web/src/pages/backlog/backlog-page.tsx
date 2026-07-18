@@ -10,7 +10,7 @@
  *  - "Create Work Item" modal
  */
 /* eslint-disable react-hooks/set-state-in-effect */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   DndContext,
   PointerSensor,
@@ -72,6 +72,7 @@ import {
   DataTableHeader,
   type DataTableColumnDrag,
   type DataTableHeaderColumn,
+  type DataTableSort,
 } from '@/shared/ui/data-table-header'
 
 // ── Column definitions ─────────────────────────────────────────────────────────
@@ -142,11 +143,25 @@ const BACKLOG_COLUMNS: ColumnDef<ColumnKey>[] = COLUMNS.map((key) => ({
   minWidth: COLUMN_MINS[key],
 }))
 
-/** Header descriptors for the shared <DataTableHeader> (no sort on this grid). */
+/**
+ * Server-side sort field per column (backend `WorkItemSortBy`). Columns absent
+ * from this map are not sortable (owner/release/iteration would sort by UUID).
+ */
+const COLUMN_SORT_FIELD: Partial<Record<ColumnKey, string>> = {
+  type: 'type',
+  id: 'itemKey',
+  name: 'title',
+  scheduleState: 'scheduleState',
+  priority: 'priority',
+  estimate: 'planEstimate',
+}
+
+/** Header descriptors for the shared <DataTableHeader>; sortable where mapped. */
 const BACKLOG_HEADER_COLUMNS: DataTableHeaderColumn<ColumnKey>[] = COLUMNS.map((key) => ({
   key,
   label: COLUMN_LABELS[key],
   align: key === 'estimate' ? ('center' as const) : undefined,
+  sortCol: COLUMN_SORT_FIELD[key],
 }))
 
 // ── Resizable column header ────────────────────────────────────────────────────
@@ -180,6 +195,22 @@ export function BacklogPage() {
   const [cursorHistory, setCursorHistory] = useState<string[]>([])
   const currentPage = cursorHistory.length + 1
 
+  // ── Sort ───────────────────────────────────────────────────────────────────
+  // Server-side column sort. `null` = default rank order (drag-and-drop enabled).
+  const [sortCol, setSortCol] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const toggleSort = useCallback(
+    (col: string) => {
+      if (sortCol === col) {
+        setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+      } else {
+        setSortCol(col)
+        setSortDir('asc')
+      }
+    },
+    [sortCol],
+  )
+
   // Reference lists for the P2.1 filters, inline selects and id→name lookups.
   const { data: members = [] } = useProjectMembers(projectId)
   const { data: releases = [] } = useReleases(projectId)
@@ -204,6 +235,8 @@ export function BacklogPage() {
     filterIteration,
     pageSize,
     projectId,
+    sortCol,
+    sortDir,
   ])
 
   const { data, isLoading, isError, error } = useBacklog(projectId, {
@@ -214,6 +247,7 @@ export function BacklogPage() {
     iterationId: filterIteration || undefined,
     teamId: team?.teamId || undefined,
     q: search || undefined,
+    sort: sortCol ? `${sortCol}:${sortDir}` : undefined,
     limit: pageSize,
     cursor,
   })
@@ -235,6 +269,9 @@ export function BacklogPage() {
   const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
 
   function handleDragEnd(event: DragEndEvent) {
+    // Rank reorder is only meaningful in the default rank order; a column sort
+    // detaches the visual order from rank, so drag is disabled while sorting.
+    if (sortCol) return
     const { active, over } = event
     if (!over || active.id === over.id) return
     const oldIndex = localItems.findIndex((it) => it.id === active.id)
@@ -381,6 +418,7 @@ export function BacklogPage() {
                 someSelected={someSelected}
                 onToggleAll={toggleAll}
                 startResize={startResize}
+                sort={{ col: sortCol, dir: sortDir, onSort: toggleSort }}
                 columnDrag={{
                   activeDragKey,
                   dropIndicator,
@@ -665,6 +703,7 @@ function TableHeaderBar({
   someSelected,
   onToggleAll,
   startResize,
+  sort,
   columnDrag,
 }: {
   colStyles: Record<ColumnKey, React.CSSProperties>
@@ -672,6 +711,7 @@ function TableHeaderBar({
   someSelected: boolean
   onToggleAll: () => void
   startResize: (col: ColumnKey, e: React.MouseEvent) => void
+  sort: DataTableSort
   columnDrag: DataTableColumnDrag<ColumnKey>
 }) {
   return (
@@ -680,6 +720,7 @@ function TableHeaderBar({
       colStyles={colStyles}
       onResize={startResize}
       className="gap-2 px-3"
+      sort={sort}
       columnDrag={columnDrag}
       leading={
         <>

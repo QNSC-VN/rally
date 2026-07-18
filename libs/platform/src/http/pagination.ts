@@ -101,6 +101,23 @@ export function buildPageArgs(query: PageQuery): {
   return { limit, cursor };
 }
 
+/**
+ * Parse the shared `sort` query param (`"<field>[:asc|:desc]"`) into a
+ * `{ sortBy, sortDirection }` pair, validated against a whitelist of allowed
+ * fields. Returns `null` when unset or the field is not allowed, so callers
+ * fall back to their default ordering. Single source of truth for `sort`
+ * string handling across every list endpoint using {@link PageQuerySchema}.
+ */
+export function parseSort<F extends string>(
+  sort: string | undefined,
+  allowed: readonly F[],
+): { sortBy: F; sortDirection: 'asc' | 'desc' } | null {
+  if (!sort) return null;
+  const [field, dir] = sort.split(':');
+  if (!allowed.includes(field as F)) return null;
+  return { sortBy: field as F, sortDirection: dir === 'desc' ? 'desc' : 'asc' };
+}
+
 // ── DTO class for NestJS controllers ─────────────────────────────────────────
 
 export class PageQueryDto extends createZodDto(PageQuerySchema) {}

@@ -16,6 +16,7 @@ import {
   ApiCommonErrors,
   ApiPagedResponse,
   buildPageArgs,
+  parseSort,
   UseIdempotency,
   RateLimit,
 } from '@platform';
@@ -53,6 +54,7 @@ import {
   DownloadUrlResponseDto,
 } from './dto/work-item-response.dto';
 import type { WorkItem } from '../../domain/work-item.types';
+import { BACKLOG_SORT_FIELDS } from '../../domain/work-item.types';
 import type { ActivityLog } from '../../domain/activity-log.types';
 import type { TimeLog } from '../../domain/time-log.types';
 import type { Watcher } from '../../domain/watcher.types';
@@ -208,6 +210,7 @@ export class WorkItemsController {
     @Query() query: WorkItemQueryDto,
   ): Promise<PagedResult<WorkItemResponseDto>> {
     const args = buildPageArgs(query);
+    const sort = parseSort(query.sort, BACKLOG_SORT_FIELDS);
     const page = await this.workItemsService.listBacklog(
       user,
       query.projectId,
@@ -222,6 +225,8 @@ export class WorkItemsController {
         iterationId: query.iterationId,
         releaseId: query.releaseId,
         q: query.q,
+        sortBy: sort?.sortBy,
+        sortDirection: sort?.sortDirection,
       },
       args,
     );
