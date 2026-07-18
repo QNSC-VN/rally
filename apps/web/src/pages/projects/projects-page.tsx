@@ -15,6 +15,7 @@ import {
 import { toast } from 'sonner'
 import { BRAND } from '@/shared/config/brand'
 import { SearchInput } from '@/shared/ui/search-input'
+import { EmptyState } from '@/shared/ui/empty-state'
 import { MetricCard } from '@/shared/ui/metric-card'
 import { MetricStrip } from '@/shared/ui/metric-strip'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
@@ -548,16 +549,17 @@ export function ProjectsPage() {
 
           {/* Empty state */}
           {!isLoading && filtered.length === 0 && (
-            <div
-              className="flex flex-col items-center justify-center py-16"
-              style={{ color: BRAND.textMuted }}
-            >
-              <FolderKanban size={32} strokeWidth={1.25} className="mb-3 opacity-40" />
-              <p className="text-[13px] font-medium" style={{ color: BRAND.textSecondary }}>
-                No projects found
-              </p>
-              <p className="mt-1 text-[11px]">Try adjusting your search or filter.</p>
-            </div>
+            <EmptyState
+              icon={
+                <FolderKanban
+                  size={32}
+                  strokeWidth={1.25}
+                  className="text-foreground-subtle opacity-40"
+                />
+              }
+              title="No projects found"
+              description="Try adjusting your search or filter."
+            />
           )}
 
           {/* Rows */}

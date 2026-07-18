@@ -11,6 +11,7 @@ import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
 import { ChevronDown, ChevronLeft, ChevronRight, Inbox } from 'lucide-react'
 import { SkeletonList } from '@/shared/ui/skeleton'
+import { EmptyState } from '@/shared/ui/empty-state'
 import { WorkItemRefCell } from '@/entities/work-item/ui/work-item-ref-cell'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { DataTableHeader, type DataTableHeaderColumn } from '@/shared/ui/data-table-header'
@@ -476,12 +477,10 @@ export function TeamStatusPage() {
 
         {/* Empty state (P3-TS-TS-020) */}
         {!isLoading && !isError && groups.length === 0 && (
-          <div className="flex flex-col items-center justify-center gap-3 px-8 py-16">
-            <Inbox size={36} style={{ color: BRAND.textFaint }} />
-            <p className="text-[13px]" style={{ color: BRAND.textMuted }}>
-              No tasks found for this iteration
-            </p>
-          </div>
+          <EmptyState
+            icon={<Inbox size={36} className="text-foreground-faint" />}
+            title="No tasks found for this iteration"
+          />
         )}
       </div>
 

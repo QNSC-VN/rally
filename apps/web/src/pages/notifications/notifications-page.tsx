@@ -4,6 +4,7 @@ import { AlertTriangle, Bell, CheckCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import { BRAND } from '@/shared/config/brand'
 import { PageHeader } from '@/shared/ui/page-header'
+import { EmptyState } from '@/shared/ui/empty-state'
 import {
   useNotifications,
   useMarkNotificationRead,
@@ -143,12 +144,10 @@ export function NotificationsPage() {
             />
           </div>
         ) : isError ? (
-          <div className="flex flex-col items-center justify-center gap-3 py-20">
-            <AlertTriangle size={28} style={{ color: BRAND.danger }} />
-            <p className="text-[13px] font-medium" style={{ color: BRAND.textSecondary }}>
-              Failed to load notifications. Please try again.
-            </p>
-          </div>
+          <EmptyState
+            icon={<AlertTriangle size={28} className="text-destructive" />}
+            title="Failed to load notifications. Please try again."
+          />
         ) : notifications.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-4 py-20">
             <div

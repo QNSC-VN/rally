@@ -69,6 +69,7 @@ import {
   type ProjectLabel,
 } from '@/features/projects/api'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
+import { EmptyState } from '@/shared/ui/empty-state'
 import { ConfirmDeleteModal } from '@/shared/ui/confirm-delete-modal'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
@@ -2781,15 +2782,11 @@ function RolePermissionEditor({
 
 function ComingSoonTab({ label }: { label: string }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 py-20">
-      <Lock size={22} style={{ color: BRAND.border }} />
-      <p className="text-[13px] font-medium" style={{ color: BRAND.textSecondary }}>
-        {label}
-      </p>
-      <p className="text-[12px]" style={{ color: BRAND.textMuted }}>
-        Available in a future release.
-      </p>
-    </div>
+    <EmptyState
+      icon={<Lock size={22} className="text-border-strong" />}
+      title={label}
+      description="Available in a future release."
+    />
   )
 }
 

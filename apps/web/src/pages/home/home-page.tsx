@@ -5,6 +5,7 @@ import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { BRAND } from '@/shared/config/brand'
 import { PageHeader } from '@/shared/ui/page-header'
+import { EmptyState } from '@/shared/ui/empty-state'
 import { TypeBadge, ScheduleStateBadge, PriorityBadge } from '@/entities/work-item/ui/badges'
 import { WorkItemType, WorkItemPriority } from '@/entities/work-item/model/types'
 import { type Project, useProjects, useProjectStatuses } from '@/features/projects/api'
@@ -339,12 +340,11 @@ export function HomePage() {
 
           {/* Rows */}
           {myItems.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <Inbox size={28} style={{ color: BRAND.textMuted }} className="mb-2" />
-              <p className="text-[12px]" style={{ color: BRAND.textSecondary }}>
-                No items assigned to you
-              </p>
-            </div>
+            <EmptyState
+              size="sm"
+              icon={<Inbox size={28} className="text-foreground-subtle" />}
+              title="No items assigned to you"
+            />
           ) : (
             myItems.map((item) => {
               return (
@@ -409,15 +409,12 @@ export function HomePage() {
             </Link>
           </div>
           {activity.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <Clock size={28} style={{ color: BRAND.textMuted }} className="mb-2" />
-              <p className="text-[12px]" style={{ color: BRAND.textSecondary }}>
-                No recent activity
-              </p>
-              <p className="mt-1 text-[11px]" style={{ color: BRAND.textMuted }}>
-                Work item updates will appear here
-              </p>
-            </div>
+            <EmptyState
+              size="sm"
+              icon={<Clock size={28} className="text-foreground-subtle" />}
+              title="No recent activity"
+              description="Work item updates will appear here"
+            />
           ) : (
             <ul className="flex flex-col">
               {activity.slice(0, 8).map((n) => (
@@ -475,11 +472,7 @@ export function HomePage() {
           </div>
           {/* Rows */}
           {activeProjects.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-10">
-              <p className="text-[12px]" style={{ color: BRAND.textSecondary }}>
-                No active projects
-              </p>
-            </div>
+            <EmptyState size="sm" title="No active projects" />
           ) : (
             activeProjects.map((p) => (
               <ProjectHealthRow
