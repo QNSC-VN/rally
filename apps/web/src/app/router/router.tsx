@@ -9,6 +9,7 @@ import { TanStackRouterDevtools } from '@tanstack/router-devtools'
 import type { QueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { bootstrapAuth } from '@/shared/api/auth-bootstrap'
+import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 
 // ── Extend staticData for breadcrumb support (SHELL-FR-007) ──────────────────
 declare module '@tanstack/react-router' {
@@ -205,11 +206,22 @@ const teamStatusRoute = createRoute({
   component: lazyPage(() => import('@/pages/team-status/team-status-page'), 'TeamStatusPage'),
 })
 
+// Team Board was consolidated into the Iteration Status List/Board toggle — the
+// BA design has no separate board screen, and both surfaces render the same
+// iteration read-model via the shared IterationBoard widget. The old URL is
+// preserved as a redirect that lands on Iteration Status in Board mode.
 const teamBoardRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/team-board',
-  staticData: { breadcrumb: 'Team Board' },
-  component: lazyPage(() => import('@/pages/team-board/team-board-page'), 'TeamBoardPage'),
+  beforeLoad: () => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.ITERATION_STATUS_VIEW_MODE, 'board')
+    } catch {
+      // localStorage unavailable (e.g. private mode) — Iteration Status will
+      // simply open in its default (list) view.
+    }
+    throw redirect({ to: '/iteration-status' })
+  },
 })
 
 const portfolioRoute = createRoute({

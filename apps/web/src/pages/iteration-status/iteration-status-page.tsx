@@ -13,6 +13,7 @@ import { useColumnLayout, type ColumnDef } from '@/shared/lib/hooks/use-column-l
 import { useColumnDrag } from '@/shared/lib/hooks/use-column-drag'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
+import { IterationBoard } from '@/widgets/iteration-board/iteration-board'
 import { DataTableHeader, type DataTableHeaderColumn } from '@/shared/ui/data-table-header'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { OwnerSelectCell } from '@/shared/ui/owner-cell'
@@ -45,6 +46,8 @@ import {
   ListChecks,
   BarChart3,
   Trash2,
+  List,
+  LayoutGrid,
 } from 'lucide-react'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { SkeletonList } from '@/shared/ui/skeleton'
@@ -471,6 +474,17 @@ export function IterationStatusPage() {
   const [pageSize, setPageSize] = useState<number>(25)
   const [page, setPage] = useState<number>(1)
 
+  // List (grid) vs Board (Kanban) view — the BA-spec toggle for Iteration
+  // Status. Persisted so the choice survives navigation/reload. The Board view
+  // reuses the shared IterationBoard widget over the SAME read-model.
+  const [viewMode, setViewMode] = useState<'list' | 'board'>(() =>
+    localStorage.getItem(STORAGE_KEYS.ITERATION_STATUS_VIEW_MODE) === 'board' ? 'board' : 'list',
+  )
+  const setViewModePersisted = useCallback((mode: 'list' | 'board') => {
+    setViewMode(mode)
+    localStorage.setItem(STORAGE_KEYS.ITERATION_STATUS_VIEW_MODE, mode)
+  }, [])
+
   const { startResize, order, hidden, toggleVisible, reorder, styleFor } = useColumnLayout(
     ITERATION_STATUS_COLUMNS,
     STORAGE_KEYS.ITERATION_STATUS_COLUMNS,
@@ -854,6 +868,8 @@ export function IterationStatusPage() {
         move={move}
         selectorOpen={selectorOpen}
         setSelectorOpen={setSelectorOpen}
+        viewMode={viewMode}
+        setViewMode={setViewModePersisted}
       />
 
       <MetricsStrip
@@ -938,98 +954,132 @@ export function IterationStatusPage() {
         </BulkActionBar>
       )}
 
-      {/* ── 6. Table ─────────────────────────────────────────────────────── */}
-      <div className="flex flex-1 flex-col overflow-auto" style={{ backgroundColor: AZ.bg }}>
-        <DataTableHeader
-          columns={HEADER_META}
-          colStyles={colStyles}
-          onResize={startResize}
-          className="pr-3 pl-1"
-          leading={
-            <RowGutter
-              dragDisabled
-              checkbox={{
-                checked: selection.allSelected,
-                indeterminate: selection.someSelected,
-                onChange: selection.toggleAll,
-                ariaLabel: 'Select all',
-              }}
-            />
-          }
-          sort={{ col: sortCol, dir: sortDir, onSort: toggleSort }}
-          columnDrag={{
-            activeDragKey,
-            dropIndicator,
-            onDragStart: handleColDragStart,
-            onDragOver: handleColDragOver,
-            onDragLeave: handleColDragLeave,
-            onDrop: handleColDrop,
-            onDragEnd: handleColDragEnd,
-          }}
-        />
-
-        {/* Rows */}
-        {isLoading && <SkeletonList rows={10} cols={12} />}
-
-        {!isLoading && isError && (
-          <div
-            className="flex items-center justify-center"
-            style={{ height: 160, fontSize: 12, color: BRAND.danger }}
-          >
-            Failed to load iteration status. Please try again.
-          </div>
-        )}
-
-        {!isLoading && !isError && (
-          <DndContext
-            sensors={dndSensors}
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
-          >
-            <SortableContext
-              items={localItems.map((it) => it.id)}
-              strategy={verticalListSortingStrategy}
+      {/* ── 6. Table (List view) or Board view ───────────────────────────── */}
+      {viewMode === 'board' ? (
+        <div className="min-h-0 flex-1 overflow-auto p-3">
+          {isLoading ? (
+            <SkeletonList rows={6} cols={6} />
+          ) : isError ? (
+            <div
+              className="flex h-full items-center justify-center text-[13px]"
+              style={{ color: BRAND.danger }}
             >
-              {localItems.map((item, idx) => (
-                <StatusRow
-                  key={item.id}
-                  item={item}
-                  rank={(currentPage - 1) * pageSize + idx + 1}
-                  memberMap={memberMap}
-                  milestoneOptions={milestoneOptions}
-                  selectedIterationId={selectedId!}
-                  canEdit={canEdit}
-                  colStyles={colStyles}
-                  dragEnabled={!sortCol}
-                  selected={selection.isSelected(item.id)}
-                  onToggleSelect={() => selection.toggle(item.id)}
-                  onOpen={() =>
-                    navigate({
-                      to: '/item/$itemKey',
-                      params: { itemKey: item.itemKey },
-                    })
-                  }
-                />
-              ))}
-            </SortableContext>
-          </DndContext>
-        )}
+              Failed to load board data.
+            </div>
+          ) : filteredItems.length === 0 ? (
+            <div
+              className="flex h-full items-center justify-center text-[13px]"
+              style={{ color: AZ.textMuted }}
+            >
+              No items assigned to this iteration
+            </div>
+          ) : (
+            <IterationBoard
+              items={filteredItems}
+              memberMap={memberMap}
+              canEdit={canEdit}
+              onOpen={(itemKey) => navigate({ to: '/item/$itemKey', params: { itemKey } })}
+              onMove={(id, target) =>
+                bulkUpdate
+                  .mutateAsync({ id, input: { scheduleState: target } })
+                  .then(() => undefined)
+              }
+            />
+          )}
+        </div>
+      ) : (
+        <div className="flex flex-1 flex-col overflow-auto" style={{ backgroundColor: AZ.bg }}>
+          <DataTableHeader
+            columns={HEADER_META}
+            colStyles={colStyles}
+            onResize={startResize}
+            className="pr-3 pl-1"
+            leading={
+              <RowGutter
+                dragDisabled
+                checkbox={{
+                  checked: selection.allSelected,
+                  indeterminate: selection.someSelected,
+                  onChange: selection.toggleAll,
+                  ariaLabel: 'Select all',
+                }}
+              />
+            }
+            sort={{ col: sortCol, dir: sortDir, onSort: toggleSort }}
+            columnDrag={{
+              activeDragKey,
+              dropIndicator,
+              onDragStart: handleColDragStart,
+              onDragOver: handleColDragOver,
+              onDragLeave: handleColDragLeave,
+              onDrop: handleColDrop,
+              onDragEnd: handleColDragEnd,
+            }}
+          />
 
-        {!isLoading && !isError && items.length === 0 && (
-          <div
-            className="flex items-center justify-center"
-            style={{ height: 160, fontSize: 12, color: AZ.textMuted }}
-          >
-            No items assigned to this iteration
-          </div>
-        )}
+          {/* Rows */}
+          {isLoading && <SkeletonList rows={10} cols={12} />}
 
-        {!isLoading && !isError && items.length > 0 && (
-          <TableFooterTotals colStyles={colStyles} totals={totals} />
-        )}
-      </div>
+          {!isLoading && isError && (
+            <div
+              className="flex items-center justify-center"
+              style={{ height: 160, fontSize: 12, color: BRAND.danger }}
+            >
+              Failed to load iteration status. Please try again.
+            </div>
+          )}
 
-      {!isLoading && !isError && sortedItems.length > 0 && (
+          {!isLoading && !isError && (
+            <DndContext
+              sensors={dndSensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={localItems.map((it) => it.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                {localItems.map((item, idx) => (
+                  <StatusRow
+                    key={item.id}
+                    item={item}
+                    rank={(currentPage - 1) * pageSize + idx + 1}
+                    memberMap={memberMap}
+                    milestoneOptions={milestoneOptions}
+                    selectedIterationId={selectedId!}
+                    canEdit={canEdit}
+                    colStyles={colStyles}
+                    dragEnabled={!sortCol}
+                    selected={selection.isSelected(item.id)}
+                    onToggleSelect={() => selection.toggle(item.id)}
+                    onOpen={() =>
+                      navigate({
+                        to: '/item/$itemKey',
+                        params: { itemKey: item.itemKey },
+                      })
+                    }
+                  />
+                ))}
+              </SortableContext>
+            </DndContext>
+          )}
+
+          {!isLoading && !isError && items.length === 0 && (
+            <div
+              className="flex items-center justify-center"
+              style={{ height: 160, fontSize: 12, color: AZ.textMuted }}
+            >
+              No items assigned to this iteration
+            </div>
+          )}
+
+          {!isLoading && !isError && items.length > 0 && (
+            <TableFooterTotals colStyles={colStyles} totals={totals} />
+          )}
+        </div>
+      )}
+
+      {viewMode === 'list' && !isLoading && !isError && sortedItems.length > 0 && (
         <PaginationFooter
           pageSize={pageSize}
           setPageSize={setPageSize}
@@ -1085,6 +1135,8 @@ function IterationHeader({
   move,
   selectorOpen,
   setSelectorOpen,
+  viewMode,
+  setViewMode,
 }: {
   iterations: Iteration[]
   selected: Iteration | undefined
@@ -1094,6 +1146,8 @@ function IterationHeader({
   move: (dir: -1 | 1) => void
   selectorOpen: boolean
   setSelectorOpen: React.Dispatch<React.SetStateAction<boolean>>
+  viewMode: 'list' | 'board'
+  setViewMode: (mode: 'list' | 'board') => void
 }) {
   return (
     <div
@@ -1249,6 +1303,50 @@ function IterationHeader({
         </button>
       </div>
       <div className="flex-1" />
+      {/* ── List / Board view toggle (BA spec) ──────────────────────────── */}
+      <div
+        className="flex items-center"
+        style={{
+          border: `1px solid ${AZ.border}`,
+          borderRadius: 2,
+          height: 28,
+          overflow: 'hidden',
+        }}
+      >
+        {(
+          [
+            { mode: 'list', Icon: List, label: 'List' },
+            { mode: 'board', Icon: LayoutGrid, label: 'Board' },
+          ] as const
+        ).map(({ mode, Icon, label }, i) => {
+          const active = viewMode === mode
+          return (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setViewMode(mode)}
+              aria-pressed={active}
+              title={`${label} view`}
+              className="flex items-center gap-1.5"
+              style={{
+                height: '100%',
+                padding: '0 10px',
+                fontSize: 11,
+                fontWeight: 600,
+                fontFamily: AZ.font,
+                cursor: 'pointer',
+                border: 'none',
+                borderLeft: i === 0 ? 'none' : `1px solid ${AZ.border}`,
+                backgroundColor: active ? AZ.primary : 'transparent',
+                color: active ? '#fff' : AZ.textSecondary,
+              }}
+            >
+              <Icon size={13} />
+              {label}
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }
