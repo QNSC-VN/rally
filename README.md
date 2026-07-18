@@ -31,6 +31,15 @@ rally/
 
 ## Develop
 
+The shared `@qnsc-vn/*` libraries (e.g. `@qnsc-vn/identity`) are hosted on **GitHub Packages**, which requires read auth. **Do not mint a personal PAT** — reuse your existing GitHub CLI login (needs the `read:packages` scope):
+
+```bash
+gh auth login                                        # one-time, if not already
+export NODE_AUTH_TOKEN="$(gh auth token)"            # per shell (or wire via direnv)
+```
+
+CI needs no setup — workflows authenticate with the built-in `GITHUB_TOKEN` (`packages: read`).
+
 ```bash
 pnpm install                 # installs root (backend) + apps/web
 docker compose -f docker-compose.dev.yml up -d   # local Postgres + Redis
