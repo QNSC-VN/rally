@@ -152,13 +152,9 @@ export function IterationsPage() {
         }}
         actions={
           canManage ? (
-            <button
-              onClick={() => setShowCreate(true)}
-              className="flex items-center gap-1.5 rounded px-3 py-1 text-[11px] font-semibold text-white"
-              style={{ backgroundColor: BRAND.primary }}
-            >
+            <Button size="sm" onClick={() => setShowCreate(true)}>
               <Plus size={12} /> Create Iteration
-            </button>
+            </Button>
           ) : undefined
         }
         activeFilterCount={stateFilter !== 'all' ? 1 : 0}

@@ -685,19 +685,14 @@ export function MilestoneDetailPage() {
             <Loader2 size={12} className="animate-spin" style={{ color: BRAND.primary }} />
           )}
           {canManage && (
-            <button
-              onClick={handleFieldSave}
-              disabled={update.isPending || saving}
-              className="flex h-7 items-center gap-1.5 rounded-md px-3 text-[12px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-              style={{ backgroundColor: BRAND.primary }}
-            >
+            <Button size="sm" onClick={handleFieldSave} disabled={update.isPending || saving}>
               {update.isPending || saving ? (
                 <Loader2 size={12} className="animate-spin" />
               ) : (
                 <Save size={12} />
               )}
               Save Changes
-            </button>
+            </Button>
           )}
         </div>
       </div>

@@ -30,6 +30,7 @@ import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
+import { Button } from '@/shared/ui/button'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { RowGutter } from '@/shared/ui/row-gutter'
 import { InlineCellSelect, InlineSelect } from '@/shared/ui/native-select'
@@ -556,16 +557,15 @@ function BacklogToolbar({
         width: 160,
       }}
       actions={
-        <button
+        <Button
+          size="sm"
           onClick={onCreate}
           disabled={!canCreate}
           title={!canCreate ? 'You do not have permission to create work items' : undefined}
-          className="flex items-center gap-1.5 rounded px-3 py-1 text-[11px] font-semibold text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-          style={{ backgroundColor: BRAND.primary }}
         >
           <Plus size={12} />
           Create Work Item
-        </button>
+        </Button>
       }
       activeFilterCount={activeFilterCount}
       defaultFiltersOpen={activeFilterCount > 0}

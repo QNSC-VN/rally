@@ -144,14 +144,9 @@ export function PortfolioPage() {
         </span>
         {!canCreate && <ViewOnlyBadge />}
         {canCreate && (
-          <button
-            type="button"
-            onClick={() => setShowCreate(true)}
-            className="ml-auto flex items-center gap-1.5 rounded px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:opacity-90"
-            style={{ backgroundColor: BRAND.primary }}
-          >
+          <Button size="sm" type="button" className="ml-auto" onClick={() => setShowCreate(true)}>
             <Plus size={13} /> New Initiative
-          </button>
+          </Button>
         )}
       </div>
 

@@ -448,14 +448,10 @@ export function ProjectsPage() {
             {activeCount === 1 ? 'project' : 'projects'}
           </p>
         </div>
-        <button
-          onClick={() => setShowNewModal(true)}
-          className="flex items-center gap-1.5 rounded px-3 py-1.5 text-[11px] font-semibold text-white transition-opacity hover:opacity-90"
-          style={{ backgroundColor: BRAND.primary }}
-        >
+        <Button size="sm" onClick={() => setShowNewModal(true)}>
           <Plus size={13} />
           New Project
-        </button>
+        </Button>
       </div>
 
       {/* Summary metric strip */}

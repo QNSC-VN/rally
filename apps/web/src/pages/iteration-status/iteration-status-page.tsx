@@ -1406,13 +1406,9 @@ function Toolbar({
       }}
       actions={
         canCreate ? (
-          <button
-            onClick={onAddNew}
-            className="flex items-center gap-1.5 rounded px-3 py-1 text-[11px] font-semibold text-white"
-            style={{ backgroundColor: BRAND.primary }}
-          >
+          <Button size="sm" onClick={onAddNew}>
             <Plus size={14} /> Add New
-          </button>
+          </Button>
         ) : undefined
       }
       activeFilterCount={activeFilterCount}

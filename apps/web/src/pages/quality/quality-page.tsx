@@ -1012,14 +1012,10 @@ export function QualityPage() {
         }}
         actions={
           canManage ? (
-            <button
-              onClick={() => setShowLogDefect(true)}
-              className="flex cursor-pointer items-center gap-1.5 rounded px-3 py-1 text-[11px] font-semibold text-white hover:brightness-95"
-              style={{ backgroundColor: BRAND.primary }}
-            >
+            <Button size="sm" onClick={() => setShowLogDefect(true)}>
               <Plus size={12} />
               Log Defect
-            </button>
+            </Button>
           ) : undefined
         }
         activeFilterCount={

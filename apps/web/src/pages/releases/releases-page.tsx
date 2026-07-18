@@ -944,13 +944,9 @@ export function ReleasesPage() {
         }}
         actions={
           canManage ? (
-            <button
-              onClick={() => setShowCreate(true)}
-              className="flex h-7 items-center gap-1.5 rounded-md px-3 text-[12px] font-semibold text-white transition-opacity hover:opacity-90"
-              style={{ backgroundColor: BRAND.primary }}
-            >
+            <Button size="sm" onClick={() => setShowCreate(true)}>
               <Plus size={13} /> Create Release
-            </button>
+            </Button>
           ) : undefined
         }
       />

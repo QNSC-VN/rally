@@ -55,6 +55,7 @@ import { LabelChips } from '@/entities/work-item/ui/label-chips'
 import { TaskRollup } from '@/entities/work-item/ui/task-rollup'
 import { describeActivity } from '@/entities/work-item/model/activity'
 import { OwnerCell } from '@/shared/ui/owner-cell'
+import { Button } from '@/shared/ui/button'
 import { StateStepper } from '@/entities/work-item/ui/state-stepper'
 import { SCHEDULE_STATE_STEPS } from '@/entities/work-item/ui/state-steps'
 import {
@@ -263,14 +264,10 @@ function TasksTab({ workItemId, projectId }: { workItemId: string; projectId: st
             Break this work item into trackable delivery tasks.
           </p>
         </div>
-        <button
-          onClick={() => setShowAdd(true)}
-          className="flex items-center gap-1.5 rounded px-3 py-2 text-[11px] font-semibold text-white transition-colors hover:opacity-90"
-          style={{ backgroundColor: BRAND.primary }}
-        >
+        <Button size="sm" onClick={() => setShowAdd(true)}>
           <Plus size={13} />
           Add Task
-        </button>
+        </Button>
       </div>
 
       {isLoading ? (

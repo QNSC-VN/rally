@@ -40,6 +40,7 @@ import { useDefects } from '@/features/quality/api'
 import { useNotifications } from '@/features/notifications/api'
 import { relativeTime } from '@/shared/lib/utils'
 import { MetricCard } from '@/shared/ui/metric-card'
+import { Button } from '@/shared/ui/button'
 import { Avatar } from '@/shared/ui/avatar'
 import { IterationPicker } from '@/shared/ui/iteration-picker'
 import { PageHeader } from '@/shared/ui/page-header'
@@ -240,14 +241,9 @@ export function ReportsPage() {
               onSelect={setSelectedId}
             />
             {canExport && (
-              <button
-                type="button"
-                onClick={exportCsv}
-                className="flex items-center gap-1.5 rounded px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:opacity-90"
-                style={{ backgroundColor: BRAND.primary }}
-              >
+              <Button size="sm" type="button" onClick={exportCsv}>
                 <Download size={12} /> Export
-              </button>
+              </Button>
             )}
           </>
         }

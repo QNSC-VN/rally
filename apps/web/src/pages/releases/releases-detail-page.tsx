@@ -12,6 +12,7 @@ import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import { ChevronLeft, ChevronRight, Layers, Loader2, Save, TrendingDown } from 'lucide-react'
 import { BRAND } from '@/shared/config/brand'
 import { InlineSelect } from '@/shared/ui/native-select'
+import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
 import { SkeletonList } from '@/shared/ui/skeleton'
@@ -429,15 +430,10 @@ export function ReleaseDetailPage() {
         </div>
 
         {canManage && (
-          <button
-            onClick={handleSave}
-            disabled={update.isPending}
-            className="flex h-7 items-center gap-1.5 rounded-md px-3 text-[12px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-            style={{ backgroundColor: BRAND.primary }}
-          >
+          <Button size="sm" onClick={handleSave} disabled={update.isPending}>
             {update.isPending ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
             Save Changes
-          </button>
+          </Button>
         )}
       </div>
 

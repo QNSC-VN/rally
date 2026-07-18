@@ -360,15 +360,15 @@ export function TeamBoardPage() {
         )}
 
         {canCreate && (
-          <button
+          <Button
+            size="sm"
             type="button"
-            onClick={() => setShowAdd(true)}
+            className="ml-auto"
             disabled={!selected}
-            className="ml-auto flex items-center gap-1.5 rounded px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:opacity-90 disabled:opacity-50"
-            style={{ backgroundColor: BRAND.primary }}
+            onClick={() => setShowAdd(true)}
           >
             <Plus size={13} /> Add Item
-          </button>
+          </Button>
         )}
       </div>
 

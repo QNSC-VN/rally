@@ -18,6 +18,7 @@ import { SkeletonList } from '@/shared/ui/skeleton'
 import { BRAND } from '@/shared/config/brand'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
+import { EmptyState } from '@/shared/ui/empty-state'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
@@ -437,16 +438,10 @@ export function MilestonesPage() {
         }}
         actions={
           canManage ? (
-            <button
-              onClick={() => setShowCreate(true)}
-              className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-white"
-              style={{ backgroundColor: BRAND.primary }}
-              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = BRAND.primaryHover)}
-              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = BRAND.primary)}
-            >
+            <Button size="sm" onClick={() => setShowCreate(true)}>
               <Plus size={14} />
               New Milestone
-            </button>
+            </Button>
           ) : undefined
         }
       />
@@ -456,22 +451,19 @@ export function MilestonesPage() {
         {isLoading ? (
           <SkeletonList rows={6} />
         ) : filtered.length === 0 ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8">
-            <PackageOpen size={40} style={{ color: BRAND.textFaint }} />
-            <p className="text-sm" style={{ color: BRAND.textMuted }}>
-              {search ? 'No milestones match your search' : 'No milestones yet'}
-            </p>
-            {canManage && !search && (
-              <button
-                onClick={() => setShowCreate(true)}
-                className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-white"
-                style={{ backgroundColor: BRAND.primary }}
-              >
-                <Plus size={14} />
-                Create Milestone
-              </button>
-            )}
-          </div>
+          <EmptyState
+            className="flex-1"
+            icon={<PackageOpen size={40} className="text-foreground-faint" />}
+            title={search ? 'No milestones match your search' : 'No milestones yet'}
+            action={
+              canManage && !search ? (
+                <Button size="sm" onClick={() => setShowCreate(true)}>
+                  <Plus size={14} />
+                  Create Milestone
+                </Button>
+              ) : undefined
+            }
+          />
         ) : (
           <div className="flex-1 overflow-auto">
             {/* Header */}
