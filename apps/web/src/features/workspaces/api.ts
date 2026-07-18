@@ -4,6 +4,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
+import type { components } from '@/shared/api/generated/api'
 
 export interface Workspace {
   id: string
@@ -14,6 +15,31 @@ export interface Workspace {
   settings: Record<string, unknown>
   createdAt: string
   updatedAt: string
+}
+
+/** A workspace member enriched with the user's profile + effective role. */
+export type WorkspaceMember = components['schemas']['MemberWithProfileResponseDto']
+
+/**
+ * Single source of truth for the workspace member roster (profile + role).
+ * Shared by Settings (members/admins management) and the Projects owner picker.
+ * Keyed by `workspace-members-profile` so all consumers share one cache entry.
+ */
+export function useWorkspaceMembers(workspaceId: string | undefined) {
+  return useQuery({
+    queryKey: ['workspace-members-profile', workspaceId],
+    queryFn: async () => {
+      if (!workspaceId) return []
+      const { data, error, response } = await apiClient.GET(
+        '/v1/workspaces/{id}/members-with-profile',
+        { params: { path: { id: workspaceId } } },
+      )
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return (data as WorkspaceMember[]) ?? []
+    },
+    enabled: !!workspaceId,
+    staleTime: 30_000,
+  })
 }
 
 export function useWorkspaces() {

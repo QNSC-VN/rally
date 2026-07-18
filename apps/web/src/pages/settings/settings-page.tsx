@@ -53,7 +53,7 @@ import {
   useRemoveTeamMember,
   type Team,
 } from '@/features/teams/api'
-import { useWorkspaces, useUpdateWorkspace } from '@/features/workspaces/api'
+import { useWorkspaces, useUpdateWorkspace, useWorkspaceMembers } from '@/features/workspaces/api'
 import {
   useProjects,
   useUpdateProject,
@@ -423,18 +423,8 @@ function MembersTab() {
   const [showInvitePanel, setShowInvitePanel] = useState(false)
   const [selectedMember, setSelectedMember] = useState<MemberWithProfile | null>(null)
 
-  // Load members with profile + role info
-  const { data: members = [], isLoading: membersLoading } = useQuery({
-    queryKey: ['workspace-members-profile', workspaceId],
-    queryFn: async () => {
-      if (!workspaceId) return []
-      const res = await apiClient.GET('/v1/workspaces/{id}/members-with-profile', {
-        params: { path: { id: workspaceId } },
-      })
-      return res.data ?? []
-    },
-    enabled: !!workspaceId,
-  })
+  // Load members with profile + role info (shared workspace-member roster)
+  const { data: members = [], isLoading: membersLoading } = useWorkspaceMembers(workspaceId)
 
   // Load pending invitations
   const { data: invitations = [] } = useQuery({
@@ -953,18 +943,9 @@ function WorkspaceSettingsTab() {
   const current = workspaces.find((w) => w.id === workspaceId)
   const update = useUpdateWorkspace(workspaceId)
 
-  // Read-only workspace admins, derived from the members-with-profile surface.
-  const { data: admins = [] } = useQuery({
-    queryKey: ['workspace-admins', workspaceId],
-    queryFn: async () => {
-      if (!workspaceId) return []
-      const res = await apiClient.GET('/v1/workspaces/{id}/members-with-profile', {
-        params: { path: { id: workspaceId } },
-      })
-      return (res.data ?? []).filter((m) => m.roleSlug === 'workspace_admin')
-    },
-    enabled: !!workspaceId,
-  })
+  // Read-only workspace admins, derived from the shared members-with-profile roster.
+  const { data: allMembers = [] } = useWorkspaceMembers(workspaceId)
+  const admins = allMembers.filter((m) => m.roleSlug === 'workspace_admin')
 
   const [name, setName] = useState(current?.name ?? workspace?.workspaceName ?? '')
   const [description, setDescription] = useState(current?.description ?? '')
@@ -1797,24 +1778,8 @@ function AddMemberModal({ teamId, onClose }: { teamId: string; onClose: () => vo
   const addMember = useAddTeamMember(teamId)
   const { data: members = [] } = useTeamMembers(teamId)
 
-  // Load workspace members for the dropdown
-  const { data: workspaceMembers = [] } = useQuery({
-    queryKey: ['workspace-members-profile', workspaceId],
-    queryFn: async () => {
-      if (!workspaceId) return []
-      const { data, error, response } = await apiClient.GET('/v1/workspaces/{id}/members', {
-        params: { path: { id: workspaceId } },
-      })
-      if (error) throw new Error(apiErrorMessage(error, response.status))
-      return ((data as { data?: unknown[] })?.data ?? []) as Array<{
-        userId: string
-        displayName?: string
-        email?: string
-      }>
-    },
-    enabled: !!workspaceId,
-    staleTime: 30_000,
-  })
+  // Load workspace members for the dropdown (shared roster)
+  const { data: workspaceMembers = [] } = useWorkspaceMembers(workspaceId)
 
   const alreadyAdded = new Set(members.map((m) => m.userId))
   const available = workspaceMembers.filter((m) => !alreadyAdded.has(m.userId))
