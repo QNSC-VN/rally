@@ -10,7 +10,7 @@ import { cn } from '@/shared/lib/utils'
  * Encodes the de-facto enterprise spec (compact 11px, navy primary, 4px radius)
  * as dark-mode-aware Tailwind classes backed by the semantic design tokens in
  * globals.css. Prefer this over hand-rolled `<button style={{ backgroundColor:
- * BRAND.primary }}>`, which cannot follow the `.dark` token overrides.
+ * BRAND.primary }}>` so button styling stays consistent from a single source.
  *
  * Variants:
  *  - default      navy primary — the main call-to-action

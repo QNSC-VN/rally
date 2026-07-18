@@ -15,7 +15,7 @@ import { useColumnLayout, type ColumnDef } from '@/shared/lib/hooks/use-column-l
 import { ResizeHandle } from '@/shared/ui/resize-handle'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { SkeletonList } from '@/shared/ui/skeleton'
-import { BRAND } from '@/shared/config/brand'
+import { cn } from '@/shared/lib/utils'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
 import { EmptyState } from '@/shared/ui/empty-state'
@@ -103,8 +103,7 @@ function MilestoneFormFields({
         <select
           value={status}
           onChange={(e) => setStatus(e.target.value as MilestoneStatus)}
-          className="w-full rounded-md border px-3 py-1.5 text-sm"
-          style={{ borderColor: BRAND.border, color: BRAND.textPrimary }}
+          className="w-full rounded-md border border-border-strong px-3 py-1.5 text-sm text-foreground"
         >
           {MILESTONE_STATUSES.map((s) => (
             <option key={s} value={s}>
@@ -133,8 +132,7 @@ function MilestoneFormFields({
         <select
           value={ownerId}
           onChange={(e) => setOwnerId(e.target.value)}
-          className="w-full rounded-md border px-3 py-1.5 text-sm"
-          style={{ borderColor: BRAND.border, color: BRAND.textPrimary }}
+          className="w-full rounded-md border border-border-strong px-3 py-1.5 text-sm text-foreground"
         >
           <option value="">Unassigned</option>
           {(members ?? []).map((m) => (
@@ -147,38 +145,29 @@ function MilestoneFormFields({
       <div className="grid grid-cols-2 gap-3">
         <FormField label="Target Start">
           <div
-            className="w-full rounded-md border bg-gray-50 px-3 py-1.5 text-sm"
-            style={{
-              borderColor: BRAND.border,
-              color: targetStartDate ? BRAND.textPrimary : BRAND.textMuted,
-            }}
+            className={cn(
+              'w-full rounded-md border border-border-strong bg-surface-subtle px-3 py-1.5 text-sm',
+              targetStartDate ? 'text-foreground' : 'text-foreground-subtle',
+            )}
           >
             {targetStartDate || 'Not set'}
           </div>
-          <p className="mt-0.5 text-[10px]" style={{ color: BRAND.textMuted }}>
-            Derived from linked Releases
-          </p>
+          <p className="mt-0.5 text-[10px] text-foreground-subtle">Derived from linked Releases</p>
         </FormField>
         <FormField label="Target End">
           <div
-            className="w-full rounded-md border bg-gray-50 px-3 py-1.5 text-sm"
-            style={{
-              borderColor: BRAND.border,
-              color: targetEndDate ? BRAND.textPrimary : BRAND.textMuted,
-            }}
+            className={cn(
+              'w-full rounded-md border border-border-strong bg-surface-subtle px-3 py-1.5 text-sm',
+              targetEndDate ? 'text-foreground' : 'text-foreground-subtle',
+            )}
           >
             {targetEndDate || 'Not set'}
           </div>
-          <p className="mt-0.5 text-[10px]" style={{ color: BRAND.textMuted }}>
-            Derived from linked Releases
-          </p>
+          <p className="mt-0.5 text-[10px] text-foreground-subtle">Derived from linked Releases</p>
         </FormField>
       </div>
       <FormField label="Associated Releases">
-        <div
-          className="flex max-h-32 flex-col gap-1.5 overflow-y-auto rounded-md border p-2"
-          style={{ borderColor: BRAND.border }}
-        >
+        <div className="flex max-h-32 flex-col gap-1.5 overflow-y-auto rounded-md border border-border-strong p-2">
           {releases && releases.length > 0 ? (
             releases.map((r) => (
               <label
@@ -194,7 +183,7 @@ function MilestoneFormFields({
               </label>
             ))
           ) : (
-            <span className="text-xs text-gray-400">No releases available</span>
+            <span className="text-xs text-foreground-subtle">No releases available</span>
           )}
         </div>
       </FormField>
@@ -416,8 +405,8 @@ export function MilestonesPage() {
   if (error) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8">
-        <AlertTriangle size={32} style={{ color: BRAND.danger }} />
-        <p className="text-sm" style={{ color: BRAND.textSecondary }}>
+        <AlertTriangle size={32} className="text-destructive" />
+        <p className="text-sm text-muted-foreground">
           {error instanceof Error ? error.message : 'Failed to load milestones'}
         </p>
       </div>
@@ -447,7 +436,7 @@ export function MilestonesPage() {
       />
 
       {/* Table */}
-      <div className="flex flex-1 overflow-hidden bg-white">
+      <div className="flex flex-1 overflow-hidden bg-card">
         {isLoading ? (
           <SkeletonList rows={6} />
         ) : filtered.length === 0 ? (
@@ -468,18 +457,14 @@ export function MilestonesPage() {
           <div className="flex-1 overflow-auto">
             {/* Header */}
             <div
-              className="flex h-8 shrink-0 items-center px-3 select-none"
-              style={{
-                backgroundColor: BRAND.surfaceHover,
-                borderBottom: `1px solid ${BRAND.border}`,
-                minWidth: 'max-content',
-              }}
+              className="flex h-8 shrink-0 items-center border-b border-border-strong bg-surface-hover px-3 select-none"
+              style={{ minWidth: 'max-content' }}
             >
               {MILESTONES_COLUMNS.map((col) => (
                 <div
                   key={col.key}
-                  className="group relative flex items-center gap-1 px-2 text-[9px] font-semibold tracking-wider whitespace-nowrap uppercase"
-                  style={{ ...styleFor(col.key, { flexShrink: 0 }), color: BRAND.textMuted }}
+                  className="group relative flex items-center gap-1 px-2 text-[9px] font-semibold tracking-wider whitespace-nowrap text-foreground-subtle uppercase"
+                  style={styleFor(col.key, { flexShrink: 0 })}
                 >
                   <span>{col.label}</span>
                   <ResizeHandle
@@ -493,34 +478,29 @@ export function MilestonesPage() {
             {filtered.map((ms) => (
               <div
                 key={ms.id}
-                className="flex h-8 cursor-pointer items-center px-3"
-                style={{ borderBottom: `1px solid ${BRAND.borderInner}`, minWidth: 'max-content' }}
-                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = BRAND.surfaceHover)}
-                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                className="flex h-8 cursor-pointer items-center border-b border-border-inner px-3 hover:bg-surface-hover"
+                style={{ minWidth: 'max-content' }}
                 onClick={() =>
                   navigate({ to: '/milestones/$milestoneId', params: { milestoneId: ms.id } })
                 }
               >
                 {/* Name */}
                 <div className="shrink-0 px-2" style={styleFor('name')}>
-                  <span
-                    className="block truncate text-xs font-medium"
-                    style={{ color: BRAND.textPrimary }}
-                  >
+                  <span className="block truncate text-xs font-medium text-foreground">
                     {ms.name}
                   </span>
                 </div>
                 {/* Target Start Date */}
                 <div
-                  className="shrink-0 px-2 text-xs"
-                  style={{ ...styleFor('targetStartDate'), color: BRAND.textSecondary }}
+                  className="shrink-0 px-2 text-xs text-muted-foreground"
+                  style={styleFor('targetStartDate')}
                 >
                   {ms.targetStartDate ?? '\u2014'}
                 </div>
                 {/* Target End Date */}
                 <div
-                  className="shrink-0 px-2 text-xs"
-                  style={{ ...styleFor('targetEndDate'), color: BRAND.textSecondary }}
+                  className="shrink-0 px-2 text-xs text-muted-foreground"
+                  style={styleFor('targetEndDate')}
                 >
                   {ms.targetEndDate ?? '\u2014'}
                 </div>
@@ -534,10 +514,10 @@ export function MilestonesPage() {
                     <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                       <button
                         onClick={() => setEditing(ms)}
-                        className="rounded p-1 hover:bg-gray-100"
+                        className="rounded p-1 hover:bg-surface-hover"
                         title="Edit"
                       >
-                        <Pencil size={13} style={{ color: BRAND.textSecondary }} />
+                        <Pencil size={13} className="text-muted-foreground" />
                       </button>
                       {deleting === ms.id ? (
                         <div className="flex items-center gap-1">
@@ -545,22 +525,13 @@ export function MilestonesPage() {
                             onClick={() => {
                               void handleDelete(ms.id)
                             }}
-                            className="rounded px-1.5 py-0.5 text-[10px] font-medium"
-                            style={{
-                              backgroundColor: BRAND.dangerBg,
-                              color: BRAND.danger,
-                              border: `1px solid ${BRAND.dangerBorder}`,
-                            }}
+                            className="rounded border border-destructive-border bg-destructive-bg px-1.5 py-0.5 text-[10px] font-medium text-destructive"
                           >
                             Confirm
                           </button>
                           <button
                             onClick={() => setDeleting(null)}
-                            className="rounded px-1.5 py-0.5 text-[10px]"
-                            style={{
-                              border: `1px solid ${BRAND.border}`,
-                              color: BRAND.textSecondary,
-                            }}
+                            className="rounded border border-border-strong px-1.5 py-0.5 text-[10px] text-muted-foreground"
                           >
                             Cancel
                           </button>
@@ -568,10 +539,10 @@ export function MilestonesPage() {
                       ) : (
                         <button
                           onClick={() => setDeleting(ms.id)}
-                          className="rounded p-1 hover:bg-red-50"
+                          className="rounded p-1 hover:bg-destructive-bg"
                           title="Delete"
                         >
-                          <Trash2 size={13} style={{ color: BRAND.danger }} />
+                          <Trash2 size={13} className="text-destructive" />
                         </button>
                       )}
                     </div>
