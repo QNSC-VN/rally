@@ -45,6 +45,31 @@ export type ProjectStatus = (typeof ProjectStatus)[keyof typeof ProjectStatus]
 /** All schedule state values in display order. */
 export const SCHEDULE_STATE_VALUES = Object.values(ScheduleState) as ScheduleState[]
 
+/**
+ * Canonical schedule-state groupings — FE mirror of db/schema/enums.ts
+ * (COMPLETED/ACCEPTED_SCHEDULE_STATES). Single source of truth for the FE:
+ * pages/features MUST import these instead of re-declaring inline sets, so the
+ * terminal `release` state can never be dropped from an accepted/completed
+ * rollup again.
+ */
+export const ACCEPTED_SCHEDULE_STATES: readonly ScheduleState[] = [
+  ScheduleState.Accepted,
+  ScheduleState.Release,
+]
+export const COMPLETED_SCHEDULE_STATES: readonly ScheduleState[] = [
+  ScheduleState.Completed,
+  ScheduleState.Accepted,
+  ScheduleState.Release,
+]
+
+/** True when a story/defect is Accepted OR Release (fully accepted). */
+export const isAcceptedScheduleState = (s: ScheduleState): boolean =>
+  ACCEPTED_SCHEDULE_STATES.includes(s)
+
+/** True when an item is Completed, Accepted, OR Release (done). */
+export const isCompletedScheduleState = (s: ScheduleState): boolean =>
+  COMPLETED_SCHEDULE_STATES.includes(s)
+
 /** All priority values in display order. */
 export const PRIORITY_VALUES = Object.values(WorkItemPriority) as WorkItemPriority[]
 
@@ -190,7 +215,7 @@ export function getSimplifiedState(state: ScheduleState): SimplifiedState {
 }
 
 /** Representative canonical ScheduleState written back to the API when a
- * simplified rectangle is clicked (tasks don't use idea/accepted/released). */
+ * simplified rectangle is clicked (tasks don't use idea/accepted/release). */
 export const SIMPLIFIED_STATE_TO_SCHEDULE_STATE: Record<SimplifiedState, ScheduleState> = {
   define: ScheduleState.Defined,
   in_progress: ScheduleState.InProgress,

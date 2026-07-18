@@ -8,6 +8,7 @@ import {
   ITeamStatusRepository,
   TEAM_STATUS_REPOSITORY,
 } from '../domain/ports/team-status.repository';
+import type { WorkItemScheduleState } from '../../../../../db/schema/enums';
 import type {
   TeamStatusResponse,
   TeamStatusMemberGroup,
@@ -20,22 +21,18 @@ import type {
 } from '../domain/team-status.types';
 
 /**
- * Task state → Team Status display mapping (SRS §8.5).
- * Maps both work_item schedule_state and task_state enum values.
+ * schedule_state (D1) → Team Status display bucket (SRS §8.5). Exhaustively
+ * keyed on WorkItemScheduleState so a future state addition/rename is a compile
+ * error. The three task_state values (defined/in_progress/completed) are a
+ * subset of these keys, so the same map covers dedicated-task rows too.
  */
-const STATE_NORMALIZE: Record<string, TeamTaskState> = {
-  // work_item schedule_state values
+const STATE_NORMALIZE: Record<WorkItemScheduleState, TeamTaskState> = {
   idea: 'Defined',
   defined: 'Defined',
-  ready: 'Defined',
   in_progress: 'In-Progress',
-  code_review: 'In-Progress',
-  testing: 'In-Progress',
   completed: 'Completed',
   accepted: 'Completed',
-  released: 'Completed',
-  // task_state enum values (dedicated tasks table)
-  // 'defined' and 'in_progress' and 'completed' already covered above
+  release: 'Completed',
 };
 
 @Injectable()
@@ -341,7 +338,7 @@ export class TeamStatusService {
         status: row.parentScheduleState ?? '',
       },
       release: row.releaseId ? { id: row.releaseId, name: row.releaseName ?? '' } : null,
-      state: STATE_NORMALIZE[row.scheduleState] ?? 'Defined',
+      state: STATE_NORMALIZE[row.scheduleState as WorkItemScheduleState] ?? 'Defined',
       estimateHours: Number(row.estimateHours ?? 0),
       todoHours: Number(row.todoHours ?? 0),
       actualHours: Number(row.actualHours ?? 0),

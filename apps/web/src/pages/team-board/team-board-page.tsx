@@ -48,6 +48,7 @@ import {
   SCHEDULE_STATE_LABEL,
   SCHEDULE_STATE_VALUES,
   ScheduleState,
+  isAcceptedScheduleState,
   type WorkItemType,
 } from '@/entities/work-item/model/types'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
@@ -169,10 +170,12 @@ export function TeamBoardPage() {
   // Metric strip — derived from the loaded (unfiltered) iteration items so the
   // KPIs reflect the whole iteration, not the current filter view.
   const metrics = useMemo(() => {
-    const done = new Set<string>([ScheduleState.Accepted, ScheduleState.Release])
-    const active = allItems.filter((i) => !done.has(i.scheduleState)).length
+    // "Accepted" = Accepted OR Release (canonical ACCEPTED_SCHEDULE_STATES).
+    const active = allItems.filter(
+      (i) => !isAcceptedScheduleState(i.scheduleState as ScheduleState),
+    ).length
     const accepted = allItems
-      .filter((i) => i.scheduleState === ScheduleState.Accepted)
+      .filter((i) => isAcceptedScheduleState(i.scheduleState as ScheduleState))
       .reduce((s, i) => s + (i.planEstimate ?? 0), 0)
     const toDo = allItems.reduce((s, i) => s + (i.toDo ?? 0), 0)
     const blocked = allItems.filter((i) => i.isBlocked).length

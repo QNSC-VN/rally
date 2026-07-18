@@ -11,7 +11,7 @@ import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
 import type { WorkItem } from '@/features/work-items/api'
-import { ScheduleState } from '@/entities/work-item/model/types'
+import { ScheduleState, isAcceptedScheduleState } from '@/entities/work-item/model/types'
 
 export type PortfolioItemType = 'initiative' | 'feature' | 'story'
 
@@ -42,11 +42,10 @@ export interface PortfolioData {
   }
 }
 
-const DONE_STATES = new Set<string>([ScheduleState.Accepted, ScheduleState.Release])
-
-/** A story counts as "accepted" once it reaches Accepted or Release. */
+/** A story counts as "accepted" once it reaches Accepted or Release (canonical
+ * ACCEPTED_SCHEDULE_STATES). */
 export function isStoryAccepted(story: WorkItem): boolean {
-  return DONE_STATES.has(story.scheduleState)
+  return isAcceptedScheduleState(story.scheduleState as ScheduleState)
 }
 
 function emptyRollup(): PortfolioRollup {

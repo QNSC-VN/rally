@@ -29,7 +29,7 @@ test.describe('P2.1 Backlog Enhancement', () => {
     const stepper = steppers.first()
     // Pick a target segment that isn't the current one (current is disabled, and
     // its accessible name is the letter — not the label — so it won't match here).
-    const candidates = ['Completed', 'In Progress', 'Accepted', 'Ready', 'Defined']
+    const candidates = ['Completed', 'In Progress', 'Accepted', 'Defined']
     let targetLabel = ''
     for (const label of candidates) {
       const btn = stepper.getByRole('button', { name: label })

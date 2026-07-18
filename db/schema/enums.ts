@@ -222,6 +222,34 @@ export type WorkItemRelationType = (typeof workItemRelationTypeEnum.enumValues)[
 // ── Semantic groupings (single source of truth for roll-up / progress logic) ──
 // Used by reporting, releases, milestones, quality and iteration-status so the
 // definition of "done" / "accepted" / "open" lives in exactly one place.
+//
+// THREE ORTHOGONAL "DONE" DIMENSIONS — do NOT conflate them (BA source of truth:
+// product-docs/projects/mini-rally). Each metric MUST use the dimension its
+// spec names, and callers MUST reuse the helpers below rather than inline a
+// string literal:
+//
+//   D1 — work_items.schedule_state  (business readiness / acceptance)
+//        idea → defined → in_progress → completed → accepted → release
+//        • "Accepted" metric  = ACCEPTED_SCHEDULE_STATES  (accepted OR release)
+//        • "Completed" roll-up = COMPLETED_SCHEDULE_STATES (completed/accepted/release)
+//        Drives: iteration-status Accepted %/points, release & milestone
+//        progress, portfolio acceptance, iteration accept-gate & auto-accept.
+//        Ref: Phase 2/03 Iteration Status SRS — "Accepted means Schedule State
+//        equals Accepted, unless backend has a final accepted status mapping"
+//        (that mapping is ACCEPTED_SCHEDULE_STATES — release is post-acceptance).
+//
+//   D2 — workflow_statuses.category  (kanban board column: to_do/in_progress/done)
+//        • "board + burndown 'done'" — Ref: 05_Architecture/DATABASE_SCHEMA.md
+//          (workflow_statuses.category "drives board grouping + burndown done").
+//        Drives: sprint burndown/velocity snapshots, board columns, Home
+//        project-progress. Use WORKFLOW_DONE_CATEGORY / isWorkflowDoneCategory.
+//        NOTE: D2 is intentionally NOT the same as D1 acceptance — a board-done
+//        item may not yet be business-accepted, and vice-versa.
+//
+//   D3 — tasks.state  (execution sub-state: defined/in_progress/completed)
+//        Task terminal is `completed`; a parent US/DE auto-completes only when
+//        every child task is `completed`, and is NEVER auto-reverted from a more
+//        mature D1 terminal (Ref: BA-alignment F3 + Phase 3 P3-TS-009).
 
 /** Schedule states that count as completed for progress & velocity roll-ups. */
 export const COMPLETED_SCHEDULE_STATES = [
@@ -243,6 +271,20 @@ export const OPEN_SCHEDULE_STATES = [
   'in_progress',
 ] as const satisfies readonly WorkItemScheduleState[];
 
+/**
+ * Defect "open" states for the Quality dashboard — intentionally NARROWER than
+ * OPEN_SCHEDULE_STATES: a defect in `idea` is not yet an actionable open defect,
+ * so backlog `idea` is excluded (BA Quality rule). Kept here next to the other
+ * groupings so the two "open" definitions can never silently drift apart.
+ */
+export const OPEN_DEFECT_SCHEDULE_STATES = [
+  'defined',
+  'in_progress',
+] as const satisfies readonly WorkItemScheduleState[];
+
+/** D2 workflow-board category that counts as "done" for board + burndown/velocity. */
+export const WORKFLOW_DONE_CATEGORY = 'done' as const satisfies WorkflowStatusCategory;
+
 /** Type guard: is this schedule state counted as completed for roll-ups? */
 export const isCompletedScheduleState = (s: WorkItemScheduleState): boolean =>
   (COMPLETED_SCHEDULE_STATES as readonly WorkItemScheduleState[]).includes(s);
@@ -250,6 +292,14 @@ export const isCompletedScheduleState = (s: WorkItemScheduleState): boolean =>
 /** Type guard: is this schedule state counted as accepted? */
 export const isAcceptedScheduleState = (s: WorkItemScheduleState): boolean =>
   (ACCEPTED_SCHEDULE_STATES as readonly WorkItemScheduleState[]).includes(s);
+
+/** Type guard: is this schedule state an actionable open defect (excludes `idea`)? */
+export const isOpenDefectScheduleState = (s: WorkItemScheduleState): boolean =>
+  (OPEN_DEFECT_SCHEDULE_STATES as readonly WorkItemScheduleState[]).includes(s);
+
+/** Type guard: does this workflow-status category count as board/burndown "done"? */
+export const isWorkflowDoneCategory = (c: WorkflowStatusCategory): boolean =>
+  c === WORKFLOW_DONE_CATEGORY;
 
 // SQL fragment factories — inline the grouping into a raw `sql` IN (...) list so
 // aggregate/FILTER queries share the exact same definition of "done"/"accepted".

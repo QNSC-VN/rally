@@ -18,6 +18,8 @@ import type {
   DefectRootCause,
   DefectResolution,
   DefectState,
+  WorkItemScheduleState,
+  TaskState,
 } from '../../../../../../db/schema/enums';
 import { acceptedScheduleStatesSql } from '../../../../../../db/schema/enums';
 import type {
@@ -29,6 +31,22 @@ import type {
 } from '../../domain/work-item.types';
 import { UNASSIGNED_FILTER } from '../../domain/work-item.types';
 import { IWorkItemRepository, IterationScope } from '../../domain/ports/work-item.repository';
+
+/**
+ * Canonical projection of a work-item schedule_state (D1) onto the task_state
+ * (D3) lifecycle used by the `tasks` table. Exhaustively keyed on the enum so a
+ * future schedule-state addition/rename is a compile error (no silent fallback).
+ * `idea`/`defined` → defined, `in_progress` → in_progress, and every completed
+ * state (`completed`/`accepted`/`release`) → completed.
+ */
+const SCHEDULE_STATE_TO_TASK_STATE: Record<WorkItemScheduleState, TaskState> = {
+  idea: 'defined',
+  defined: 'defined',
+  in_progress: 'in_progress',
+  completed: 'completed',
+  accepted: 'completed',
+  release: 'completed',
+};
 
 @Injectable()
 export class WorkItemDrizzleRepository implements IWorkItemRepository {
@@ -460,14 +478,6 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
 
     // P3: Route task-type items to the dedicated `tasks` table.
     if (input.type === 'task') {
-      const stateMap: Record<string, string> = {
-        defined: 'defined',
-        ready: 'defined',
-        in_progress: 'in_progress',
-        completed: 'completed',
-        accepted: 'completed',
-        released: 'completed',
-      };
       const rows = await exec
         .insert(tasks)
         .values({
@@ -478,8 +488,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
           itemKey: input.itemKey,
           title: input.title,
           description: input.description,
-          state: (stateMap[input.scheduleState ?? 'defined'] ?? 'defined') as
-            'defined' | 'in_progress' | 'completed',
+          state: SCHEDULE_STATE_TO_TASK_STATE[input.scheduleState ?? 'defined'],
           assigneeId: input.assigneeId,
           teamId: input.teamId,
           iterationId: input.iterationId,
@@ -599,19 +608,11 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       .limit(1);
 
     if (taskCheck.length > 0) {
-      const stateMap: Record<string, 'defined' | 'in_progress' | 'completed'> = {
-        defined: 'defined',
-        ready: 'defined',
-        in_progress: 'in_progress',
-        completed: 'completed',
-        accepted: 'completed',
-        released: 'completed',
-      };
       const setFields: Record<string, unknown> = { updatedAt: new Date() };
       if (input.title !== undefined) setFields.title = input.title;
       if (input.description !== undefined) setFields.description = input.description;
       if (input.scheduleState !== undefined)
-        setFields.state = stateMap[input.scheduleState] ?? 'defined';
+        setFields.state = SCHEDULE_STATE_TO_TASK_STATE[input.scheduleState];
       if (input.assigneeId !== undefined) setFields.assigneeId = input.assigneeId;
       if (input.teamId !== undefined) setFields.teamId = input.teamId;
       if (input.iterationId !== undefined) setFields.iterationId = input.iterationId;

@@ -186,9 +186,10 @@ describe('IterationsService', () => {
       ).rejects.toBeInstanceOf(PreconditionFailedException);
     });
 
-    it('moves unfinished items and returns the moved count', async () => {
+    it('moves not-yet-accepted items and returns the moved count', async () => {
       repo.findById.mockResolvedValue(mockIteration({ state: 'committed' }));
-      dbSelectResult = [{ id: 'done-status' }]; // done-category statuses exist
+      // Rollover uses the same D1 acceptance predicate as the accept-gate
+      // (schedule_state ∉ {accepted, release}) — no workflow-status lookup.
       dbUpdateReturning = [{ id: 'wi-1' }, { id: 'wi-2' }];
       const res = await service.rolloverUnfinished(actor, 'it-1');
       expect(res).toEqual({ movedCount: 2 });

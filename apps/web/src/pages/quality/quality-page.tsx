@@ -278,14 +278,6 @@ const DEFECT_STATE_SORT: Record<string, number> = {
   closed: 3,
   closed_declined: 4,
 }
-const SCHEDULE_SORT: Record<string, number> = {
-  idea: 0,
-  defined: 1,
-  in_progress: 2,
-  completed: 3,
-  accepted: 4,
-  released: 5,
-}
 
 /** Resolve a comparable value for a defect column key (drives click-to-sort). */
 function defectSortValue(d: DefectRow, col: string): string | number {
@@ -302,8 +294,11 @@ function defectSortValue(d: DefectRow, col: string): string | number {
       return PRIORITY_SORT[d.priority] ?? 99
     case 'state':
       return DEFECT_STATE_SORT[d.defectState ?? 'submitted'] ?? 99
-    case 'scheduleState':
-      return SCHEDULE_SORT[d.scheduleState] ?? 99
+    case 'scheduleState': {
+      // Sort by canonical maturity order; unknown states sort last.
+      const idx = SCHEDULE_STATE_VALUES.indexOf(d.scheduleState as ScheduleState)
+      return idx === -1 ? 99 : idx
+    }
     case 'fixedInBuild':
       return (d.fixedInBuild ?? '').toLowerCase()
     case 'iteration':
