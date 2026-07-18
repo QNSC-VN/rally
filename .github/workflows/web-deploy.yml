@@ -46,7 +46,7 @@ concurrency:
 
 jobs:
   deploy:
-    uses: QNSC-VN/qnsc-ci/.github/workflows/web-deploy.yml@v1.3.3
+    uses: QNSC-VN/qnsc-ci/.github/workflows/web-deploy.yml@v1.4.0
     with:
       product: rally
       # Monorepo: run wrangler from the web package dir so it discovers the
