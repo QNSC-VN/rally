@@ -1,15 +1,15 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { AlertTriangle, Bell, CheckCheck, Circle, CircleDot } from 'lucide-react'
+import { AlertTriangle, Bell, CheckCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import { BRAND } from '@/shared/config/brand'
-import { relativeTime } from '@/shared/lib/utils'
 import { PageHeader } from '@/shared/ui/page-header'
 import {
   useNotifications,
   useMarkNotificationRead,
   useMarkAllNotificationsRead,
 } from '@/features/notifications/api'
+import { NotificationItem } from '@/features/notifications/ui/notification-item'
 
 const TABS = [
   { key: 'all', label: 'All' },
@@ -171,53 +171,13 @@ export function NotificationsPage() {
         ) : (
           <ul>
             {notifications.map((n) => (
-              <li
+              <NotificationItem
                 key={n.id}
-                className="flex cursor-pointer items-start gap-3 px-6 py-4 transition-colors hover:bg-surface-hover"
-                style={{
-                  borderBottom: `1px solid ${BRAND.borderInner}`,
-                  backgroundColor: n.isRead ? undefined : BRAND.accentBgSubtle,
-                }}
-                onClick={() => handleNotificationClick(n)}
-              >
-                {/* Read indicator */}
-                <button
-                  title={n.isRead ? 'Read' : 'Mark as read'}
-                  disabled={n.isRead || markRead.isPending}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    void markRead.mutateAsync(n.id)
-                  }}
-                  className="mt-0.5 shrink-0 transition-opacity hover:opacity-70 disabled:cursor-default"
-                >
-                  {n.isRead ? (
-                    <Circle size={8} style={{ color: BRAND.border }} />
-                  ) : (
-                    <CircleDot size={8} style={{ color: BRAND.primary }} />
-                  )}
-                </button>
-
-                {/* Content */}
-                <div className="min-w-0 flex-1">
-                  <p
-                    className="text-[13px] leading-5"
-                    style={{ color: BRAND.textPrimary, fontWeight: n.isRead ? 400 : 600 }}
-                  >
-                    {n.title}
-                  </p>
-                  {n.body && (
-                    <p
-                      className="mt-0.5 line-clamp-2 text-[12px] leading-4"
-                      style={{ color: BRAND.textSecondary }}
-                    >
-                      {n.body}
-                    </p>
-                  )}
-                  <p className="mt-1 text-[11px]" style={{ color: BRAND.textMuted }}>
-                    {relativeTime(n.createdAt)}
-                  </p>
-                </div>
-              </li>
+                notification={n}
+                onMarkRead={(id) => void markRead.mutateAsync(id)}
+                isMarkingRead={markRead.isPending}
+                onActivate={() => handleNotificationClick(n)}
+              />
             ))}
           </ul>
         )}

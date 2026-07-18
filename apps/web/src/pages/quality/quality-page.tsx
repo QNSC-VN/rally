@@ -36,8 +36,8 @@ import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
-import { InlineCellSelect, InlineSelect } from '@/shared/ui/native-select'
-import { BulkActionBar } from '@/shared/ui/bulk-action-bar'
+import { InlineCellSelect } from '@/shared/ui/native-select'
+import { BulkScheduleBar } from '@/features/work-items/ui/bulk-schedule-bar'
 import { useRowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
@@ -45,12 +45,7 @@ import { useDefects, useCreateDefect, qualityKeys, type DefectRow } from '@/feat
 import { useProjectMembers } from '@/features/teams/api'
 import { useReleases } from '@/features/releases/api'
 import { useIterations } from '@/features/iterations/api'
-import {
-  useUpdateWorkItem,
-  useRankAnyWorkItem,
-  useBulkAssignRelease,
-  useBulkAssignIteration,
-} from '@/features/work-items/api'
+import { useUpdateWorkItem, useRankAnyWorkItem } from '@/features/work-items/api'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { useQueryClient } from '@tanstack/react-query'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
@@ -940,7 +935,7 @@ export function QualityPage() {
       ),
   })
 
-  // ── Bulk selection (shared pattern: checkbox gutter + BulkActionBar) ────────
+  // ── Bulk selection (shared pattern: checkbox gutter + BulkScheduleBar) ────────
   const { data: iterations = [] } = useIterations(project?.projectId)
   const {
     selectedIds,
@@ -951,41 +946,6 @@ export function QualityPage() {
     toggleAll,
     clear: clearSelection,
   } = useRowSelection(sortedDefects)
-  const bulkRelease = useBulkAssignRelease()
-  const bulkIteration = useBulkAssignIteration()
-  const [bulkError, setBulkError] = useState<string | null>(null)
-
-  async function assignReleaseToSelected(releaseId: string | null) {
-    if (!project?.projectId || selectedIds.size === 0) return
-    setBulkError(null)
-    try {
-      await bulkRelease.mutateAsync({
-        projectId: project.projectId,
-        itemIds: [...selectedIds],
-        releaseId,
-      })
-      await qc.invalidateQueries({ queryKey: qualityKeys.all })
-      clearSelection()
-    } catch (e) {
-      setBulkError(e instanceof Error ? e.message : 'Bulk release assignment failed')
-    }
-  }
-
-  async function assignIterationToSelected(iterationId: string | null) {
-    if (!project?.projectId || selectedIds.size === 0) return
-    setBulkError(null)
-    try {
-      await bulkIteration.mutateAsync({
-        projectId: project.projectId,
-        itemIds: [...selectedIds],
-        iterationId,
-      })
-      await qc.invalidateQueries({ queryKey: qualityKeys.all })
-      clearSelection()
-    } catch (e) {
-      setBulkError(e instanceof Error ? e.message : 'Bulk iteration assignment failed')
-    }
-  }
 
   const metrics = data?.metrics ?? {
     openDefects: 0,
@@ -1184,62 +1144,15 @@ export function QualityPage() {
       />
 
       {/* Bulk action bar — appears when ≥1 defect is selected */}
-      {selectedIds.size > 0 && (
-        <BulkActionBar
-          selectedCount={selectedIds.size}
-          error={bulkError}
-          onClear={() => {
-            clearSelection()
-            setBulkError(null)
-          }}
-        >
-          {canManage && (
-            <>
-              <InlineSelect
-                value=""
-                disabled={bulkRelease.isPending}
-                onChange={(e) => {
-                  if (!e.target.value) return
-                  void assignReleaseToSelected(
-                    e.target.value === '__none__' ? null : e.target.value,
-                  )
-                }}
-                className="w-auto"
-                aria-label="Assign release to selected"
-              >
-                <option value="">Assign Release…</option>
-                <option value="__none__">— Unschedule —</option>
-                {(releases ?? []).map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                  </option>
-                ))}
-              </InlineSelect>
-
-              <InlineSelect
-                value=""
-                disabled={bulkIteration.isPending}
-                onChange={(e) => {
-                  if (!e.target.value) return
-                  void assignIterationToSelected(
-                    e.target.value === '__none__' ? null : e.target.value,
-                  )
-                }}
-                className="w-auto"
-                aria-label="Assign iteration to selected"
-              >
-                <option value="">Assign Iteration…</option>
-                <option value="__none__">— Unschedule —</option>
-                {iterations.map((it) => (
-                  <option key={it.id} value={it.id}>
-                    {it.name}
-                  </option>
-                ))}
-              </InlineSelect>
-            </>
-          )}
-        </BulkActionBar>
-      )}
+      <BulkScheduleBar
+        projectId={project?.projectId}
+        selectedIds={selectedIds}
+        clearSelection={clearSelection}
+        releases={releases ?? []}
+        iterations={iterations}
+        canEdit={canManage}
+        onAssigned={() => qc.invalidateQueries({ queryKey: qualityKeys.all })}
+      />
 
       {/* Defect table */}
       <div className="flex flex-1 overflow-hidden bg-white">

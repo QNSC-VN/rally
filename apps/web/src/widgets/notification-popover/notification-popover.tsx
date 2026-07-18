@@ -11,93 +11,15 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { Bell, CheckCheck, Circle, CircleDot, ExternalLink } from 'lucide-react'
+import { Bell, CheckCheck, ExternalLink } from 'lucide-react'
 import { BRAND } from '@/shared/config/brand'
-import { relativeTime } from '@/shared/lib/utils'
 import {
   useNotifications,
   useNotificationUnreadCount,
   useMarkNotificationRead,
   useMarkAllNotificationsRead,
 } from '@/features/notifications/api'
-
-// ── Sub-components ────────────────────────────────────────────────────────────
-
-function NotificationRow({
-  notification,
-  onRead,
-  isPending,
-  onClose,
-}: {
-  notification: {
-    id: string
-    title: string
-    body: string | null
-    isRead: boolean
-    resourceType: string | null
-    createdAt: string
-  }
-  onRead: (id: string) => void
-  isPending: boolean
-  onClose: () => void
-}) {
-  return (
-    <li
-      className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-surface-hover"
-      style={{
-        borderBottom: `1px solid ${BRAND.borderInner}`,
-        backgroundColor: notification.isRead ? undefined : BRAND.primaryLighter,
-      }}
-    >
-      {/* Read / unread dot */}
-      <button
-        title={notification.isRead ? 'Already read' : 'Mark as read'}
-        disabled={notification.isRead || isPending}
-        onClick={() => onRead(notification.id)}
-        className="mt-1 shrink-0 transition-opacity hover:opacity-70 disabled:cursor-default"
-        aria-label={notification.isRead ? 'Read' : 'Mark as read'}
-      >
-        {notification.isRead ? (
-          <Circle size={7} style={{ color: BRAND.border }} />
-        ) : (
-          <CircleDot size={7} style={{ color: BRAND.primary }} />
-        )}
-      </button>
-
-      {/* Content */}
-      <div className="min-w-0 flex-1" onClick={onClose} role="presentation">
-        {notification.resourceType && (
-          <span
-            className="mb-0.5 inline-block rounded-sm px-1.5 py-0.5 text-[9px] font-semibold tracking-wide uppercase"
-            style={{ backgroundColor: BRAND.avatarBg, color: BRAND.primary }}
-          >
-            {notification.resourceType}
-          </span>
-        )}
-        <p
-          className="text-[12px] leading-[1.4]"
-          style={{
-            color: BRAND.textPrimary,
-            fontWeight: notification.isRead ? 400 : 600,
-          }}
-        >
-          {notification.title}
-        </p>
-        {notification.body && (
-          <p
-            className="mt-0.5 line-clamp-2 text-[11px] leading-[1.4]"
-            style={{ color: BRAND.textSecondary }}
-          >
-            {notification.body}
-          </p>
-        )}
-        <p className="mt-1 text-[10px]" style={{ color: BRAND.textMuted }}>
-          {relativeTime(notification.createdAt)}
-        </p>
-      </div>
-    </li>
-  )
-}
+import { NotificationItem } from '@/features/notifications/ui/notification-item'
 
 // ── Main component ────────────────────────────────────────────────────────────
 
@@ -233,12 +155,14 @@ export function NotificationPopover({ open, onClose }: NotificationPopoverProps)
         ) : (
           <ul>
             {displayed.map((n) => (
-              <NotificationRow
+              <NotificationItem
                 key={n.id}
                 notification={n}
-                onRead={(id) => void markRead.mutateAsync(id)}
-                isPending={markRead.isPending}
-                onClose={onClose}
+                onMarkRead={(id) => void markRead.mutateAsync(id)}
+                isMarkingRead={markRead.isPending}
+                onActivate={onClose}
+                showBadge
+                dense
               />
             ))}
           </ul>

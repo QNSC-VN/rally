@@ -36,7 +36,7 @@ import { InlineCellSelect, InlineSelect } from '@/shared/ui/native-select'
 import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { OwnerSelectCell } from '@/shared/ui/owner-cell'
-import { BulkActionBar } from '@/shared/ui/bulk-action-bar'
+import { BulkScheduleBar } from '@/features/work-items/ui/bulk-schedule-bar'
 import { useRowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
@@ -44,8 +44,6 @@ import {
   useBacklog,
   useUpdateWorkItem,
   useRankAnyWorkItem,
-  useBulkAssignRelease,
-  useBulkAssignIteration,
   type WorkItem,
   type UpdateWorkItemInput,
 } from '@/features/work-items/api'
@@ -316,32 +314,6 @@ export function BacklogPage() {
   const [showCreate, setShowCreate] = useState(false)
   const canCreate = can('work_item:create')
 
-  // ── Bulk assignment (P2-BL-08) ────────────────────────────────────────────────
-  const bulkRelease = useBulkAssignRelease()
-  const bulkIteration = useBulkAssignIteration()
-  const [bulkError, setBulkError] = useState<string | null>(null)
-
-  async function assignReleaseToSelected(releaseId: string | null) {
-    if (!projectId || selectedIds.size === 0) return
-    setBulkError(null)
-    try {
-      await bulkRelease.mutateAsync({ projectId, itemIds: [...selectedIds], releaseId })
-      clearSelection()
-    } catch (e) {
-      setBulkError(e instanceof Error ? e.message : 'Bulk release assignment failed')
-    }
-  }
-
-  async function assignIterationToSelected(iterationId: string | null) {
-    if (!projectId || selectedIds.size === 0) return
-    setBulkError(null)
-    try {
-      await bulkIteration.mutateAsync({ projectId, itemIds: [...selectedIds], iterationId })
-      clearSelection()
-    } catch (e) {
-      setBulkError(e instanceof Error ? e.message : 'Bulk iteration assignment failed')
-    }
-  }
   // ── Table width ───────────────────────────────────────────────────────────────
   const totalColWidth = Object.values(colWidths).reduce((a, b) => a + b, 0)
   // Row layout: px-3 padding (24px) + checkbox w-5 (20px) + grip w-4 (16px) + row# w-6 (24px) +
@@ -387,64 +359,14 @@ export function BacklogPage() {
       />
 
       {/* Bulk action bar (P2-BL-08) */}
-      {selectedIds.size > 0 && (
-        <BulkActionBar
-          selectedCount={selectedIds.size}
-          error={bulkError}
-          onClear={() => {
-            clearSelection()
-            setBulkError(null)
-          }}
-        >
-          {canEdit && (
-            <>
-              {/* Bulk assign Release */}
-              <InlineSelect
-                value=""
-                disabled={bulkRelease.isPending}
-                onChange={(e) => {
-                  if (!e.target.value) return
-                  void assignReleaseToSelected(
-                    e.target.value === '__none__' ? null : e.target.value,
-                  )
-                }}
-                className="w-auto"
-                aria-label="Assign release to selected"
-              >
-                <option value="">Assign Release…</option>
-                <option value="__none__">— Unschedule —</option>
-                {releases.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                  </option>
-                ))}
-              </InlineSelect>
-
-              {/* Bulk assign Iteration */}
-              <InlineSelect
-                value=""
-                disabled={bulkIteration.isPending}
-                onChange={(e) => {
-                  if (!e.target.value) return
-                  void assignIterationToSelected(
-                    e.target.value === '__none__' ? null : e.target.value,
-                  )
-                }}
-                className="w-auto"
-                aria-label="Assign iteration to selected"
-              >
-                <option value="">Assign Iteration…</option>
-                <option value="__none__">— Unschedule —</option>
-                {iterations.map((it) => (
-                  <option key={it.id} value={it.id}>
-                    {it.name}
-                  </option>
-                ))}
-              </InlineSelect>
-            </>
-          )}
-        </BulkActionBar>
-      )}
+      <BulkScheduleBar
+        projectId={projectId}
+        selectedIds={selectedIds}
+        clearSelection={clearSelection}
+        releases={releases}
+        iterations={iterations}
+        canEdit={canEdit}
+      />
 
       {/* Table area */}
       <div className="flex flex-1 overflow-hidden">

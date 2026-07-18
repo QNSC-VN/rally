@@ -10,6 +10,8 @@ import { WorkItemType, WorkItemPriority } from '@/entities/work-item/model/types
 import { type Project, useProjects, useProjectStatuses } from '@/features/projects/api'
 import { useWorkItems, useMyWorkItems, useWorkItemCounts } from '@/features/work-items/api'
 import { useIterations, useCommittedIterationsCount } from '@/features/iterations/api'
+import { useNotifications } from '@/features/notifications/api'
+import { NotificationItem } from '@/features/notifications/ui/notification-item'
 
 // ── Type mapping helpers ───────────────────────────────────────────────────────
 
@@ -203,6 +205,7 @@ export function HomePage() {
     useWorkItemCounts(projectsForStats)
   const { data: activeSprintsCount = 0 } = useCommittedIterationsCount(projectsForStats)
   const { data: myItems = [] } = useMyWorkItems(projectsForMyWork, user?.id)
+  const { data: activity = [] } = useNotifications({})
 
   const summaryMetrics = [
     { label: 'Active Projects', value: String(activeProjects.length), path: '/projects' },
@@ -385,7 +388,7 @@ export function HomePage() {
           )}
         </div>
 
-        {/* Activity feed — empty state (audit log integration is out of scope) */}
+        {/* Recent Activity — sourced from the notification feed (assignments/mentions) */}
         <div
           className="overflow-hidden rounded bg-white"
           style={{ border: `1px solid ${BRAND.borderSubtle}` }}
@@ -405,15 +408,23 @@ export function HomePage() {
               All <ArrowUpRight size={11} />
             </Link>
           </div>
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <Clock size={28} style={{ color: BRAND.textMuted }} className="mb-2" />
-            <p className="text-[12px]" style={{ color: BRAND.textSecondary }}>
-              Activity feed coming soon
-            </p>
-            <p className="mt-1 text-[11px]" style={{ color: BRAND.textMuted }}>
-              Work item updates will appear here
-            </p>
-          </div>
+          {activity.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <Clock size={28} style={{ color: BRAND.textMuted }} className="mb-2" />
+              <p className="text-[12px]" style={{ color: BRAND.textSecondary }}>
+                No recent activity
+              </p>
+              <p className="mt-1 text-[11px]" style={{ color: BRAND.textMuted }}>
+                Work item updates will appear here
+              </p>
+            </div>
+          ) : (
+            <ul className="flex flex-col">
+              {activity.slice(0, 8).map((n) => (
+                <NotificationItem key={n.id} notification={n} dense />
+              ))}
+            </ul>
+          )}
         </div>
 
         {/* Project Health table */}
