@@ -1,4 +1,6 @@
 export * from './notifications.module';
+export * from './application/notifications.service';
+export * from './application/notification-preferences.service';
 export * from './domain/notification.types';
 export * from './domain/notification-preference.types';
 export * from './domain/ports/notification.repository';
