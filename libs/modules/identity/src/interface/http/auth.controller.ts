@@ -49,6 +49,7 @@ export class AuthController {
       avatarUrl: profile.avatarUrl,
       locale: profile.locale,
       timezone: profile.timezone,
+      phone: profile.phone ?? null,
       role,
       permissions,
       emailVerified: profile.emailVerified,

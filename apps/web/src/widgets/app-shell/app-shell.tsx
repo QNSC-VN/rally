@@ -1,3 +1,4 @@
+import { BRAND } from '@/shared/config/brand'
 import { useEffect, useState } from 'react'
 import { Link, Outlet, useMatches, useNavigate, useRouterState } from '@tanstack/react-router'
 import {
@@ -93,7 +94,7 @@ const NAV_ITEMS: NavItem[] = [
       {
         path: '/team-board',
         label: 'Team Board',
-        featureFlag: 'feature.team-board', // Not active or disabled by feature flag
+        featureFlag: 'feature.team-board',
         permission: 'work_item:view',
       },
     ],
@@ -285,7 +286,7 @@ export function AppShell() {
       {/* ── Top nav ─────────────────────────────────────────────────────────── */}
       <header
         className="relative z-30 flex h-10 shrink-0 items-center px-3"
-        style={{ backgroundColor: '#1d3f73', borderBottom: '1px solid rgba(255,255,255,0.08)' }}
+        style={{ backgroundColor: BRAND.primary, borderBottom: '1px solid rgba(255,255,255,0.08)' }}
       >
         {/* Logo + workspace selector */}
         <div className="mr-4 flex items-center gap-2">
@@ -323,29 +324,32 @@ export function AppShell() {
             {wsOpen && (
               <div
                 className="absolute top-full left-0 mt-1 w-72 overflow-hidden rounded bg-white py-1.5 shadow-xl"
-                style={{ border: '1px solid #d9dee7' }}
+                style={{ border: `1px solid ${BRAND.border}` }}
               >
                 {/* Active organization header */}
                 <div
                   className="flex items-center gap-2.5 px-3 py-2.5"
-                  style={{ borderBottom: '1px solid #e2e6eb', backgroundColor: '#f7f8fa' }}
+                  style={{
+                    borderBottom: `1px solid ${BRAND.borderSubtle}`,
+                    backgroundColor: BRAND.surfaceHover,
+                  }}
                 >
                   <div
                     className="flex h-7 w-7 items-center justify-center rounded"
-                    style={{ backgroundColor: '#e5ebf4', color: '#1d3f73' }}
+                    style={{ backgroundColor: BRAND.avatarBg, color: BRAND.primary }}
                   >
                     <Layers size={14} />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div
                       className="text-[9px] font-semibold tracking-widest uppercase"
-                      style={{ color: '#8c94a6' }}
+                      style={{ color: BRAND.textMuted }}
                     >
                       Organization
                     </div>
                     <div
                       className="truncate text-[13px] font-semibold"
-                      style={{ color: '#1a2234' }}
+                      style={{ color: BRAND.textPrimary }}
                     >
                       {memberships.find((m) => m.workspaceId === activeWorkspaceId)?.name ??
                         workspace?.workspaceName ??
@@ -354,7 +358,7 @@ export function AppShell() {
                   </div>
                   <span
                     className="rounded-sm px-1.5 py-0.5 text-[9px] font-semibold"
-                    style={{ color: '#1e6930', backgroundColor: '#eaf5ed' }}
+                    style={{ color: BRAND.success, backgroundColor: BRAND.successBg }}
                   >
                     Active
                   </span>
@@ -362,10 +366,13 @@ export function AppShell() {
 
                 {/* Switch organization — only when user has multiple workspaces */}
                 {memberships.length > 1 && (
-                  <div className="px-3 pt-2 pb-1" style={{ borderBottom: '1px solid #e2e6eb' }}>
+                  <div
+                    className="px-3 pt-2 pb-1"
+                    style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
+                  >
                     <div
                       className="mb-1 text-[9px] font-semibold tracking-widest uppercase"
-                      style={{ color: '#8c94a6' }}
+                      style={{ color: BRAND.textMuted }}
                     >
                       Switch Organization
                     </div>
@@ -380,20 +387,23 @@ export function AppShell() {
                             closeAll()
                             window.location.reload()
                           }}
-                          className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left hover:bg-[#f4f6f9] disabled:opacity-50"
+                          className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left hover:bg-surface-subtle disabled:opacity-50"
                         >
                           <div
                             className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[9px] font-bold"
-                            style={{ backgroundColor: '#e5ebf4', color: '#1d3f73' }}
+                            style={{ backgroundColor: BRAND.avatarBg, color: BRAND.primary }}
                           >
                             {m.name[0].toUpperCase()}
                           </div>
                           <div className="min-w-0 flex-1">
-                            <div className="truncate text-[12px]" style={{ color: '#1a2234' }}>
+                            <div
+                              className="truncate text-[12px]"
+                              style={{ color: BRAND.textPrimary }}
+                            >
                               {m.name}
                             </div>
                             {m.roleName && (
-                              <div className="text-[10px]" style={{ color: '#8c94a6' }}>
+                              <div className="text-[10px]" style={{ color: BRAND.textMuted }}>
                                 {m.roleName}
                               </div>
                             )}
@@ -403,7 +413,7 @@ export function AppShell() {
                   </div>
                 )}
 
-                <div className="px-3 py-2 text-[11px]" style={{ color: '#5c6478' }}>
+                <div className="px-3 py-2 text-[11px]" style={{ color: BRAND.textSecondary }}>
                   {/* View workspace (deselect project) */}
                   <button
                     onClick={() => {
@@ -415,13 +425,13 @@ export function AppShell() {
                     disabled={!project}
                     className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left"
                     style={{
-                      color: project ? '#1a2234' : '#9aa3b2',
+                      color: project ? BRAND.textPrimary : BRAND.textMuted,
                       opacity: project ? 1 : 0.65,
                       cursor: project ? 'pointer' : 'not-allowed',
                     }}
                     onMouseEnter={(e) => {
                       if (!project) return
-                      e.currentTarget.style.backgroundColor = '#f4f6f9'
+                      e.currentTarget.style.backgroundColor = BRAND.surfaceSubtle
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.backgroundColor = 'transparent'
@@ -430,17 +440,20 @@ export function AppShell() {
                     <Layers
                       size={12}
                       className="shrink-0"
-                      style={{ color: project ? '#5c6478' : '#9aa3b2' }}
+                      style={{ color: project ? BRAND.textSecondary : BRAND.textMuted }}
                     />
                     <span className="text-[11px]">View workspace</span>
                   </button>
-                  <div className="my-1.5" style={{ borderTop: '1px solid #e2e6eb' }} />
+                  <div
+                    className="my-1.5"
+                    style={{ borderTop: `1px solid ${BRAND.borderSubtle}` }}
+                  />
                   {/* Project list */}
                   {navProjects.length > 0 && (
                     <>
                       <div
                         className="mb-1 text-[9px] font-semibold tracking-widest uppercase"
-                        style={{ color: '#8c94a6' }}
+                        style={{ color: BRAND.textMuted }}
                       >
                         Projects
                       </div>
@@ -452,15 +465,15 @@ export function AppShell() {
                             setTeam(null)
                             closeAll()
                           }}
-                          className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left hover:bg-[#f4f6f9]"
+                          className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left hover:bg-surface-subtle"
                           style={{
-                            color: project?.projectId === p.id ? '#1d3f73' : '#1a2234',
+                            color: project?.projectId === p.id ? BRAND.primary : BRAND.textPrimary,
                             fontWeight: project?.projectId === p.id ? 600 : 400,
                           }}
                         >
                           <span
                             className="inline-flex h-4 w-8 shrink-0 items-center justify-center rounded-sm font-mono text-[9px] font-bold"
-                            style={{ backgroundColor: '#e5ebf4', color: '#1d3f73' }}
+                            style={{ backgroundColor: BRAND.avatarBg, color: BRAND.primary }}
                           >
                             {p.key}
                           </span>
@@ -469,12 +482,15 @@ export function AppShell() {
                             <Check
                               size={10}
                               className="ml-auto shrink-0"
-                              style={{ color: '#1d3f73' }}
+                              style={{ color: BRAND.primary }}
                             />
                           )}
                         </button>
                       ))}
-                      <div className="my-1.5" style={{ borderTop: '1px solid #e2e6eb' }} />
+                      <div
+                        className="my-1.5"
+                        style={{ borderTop: `1px solid ${BRAND.borderSubtle}` }}
+                      />
                     </>
                   )}
                   {/* Team list — scoped to the selected project (SHELL-FR-006) */}
@@ -482,7 +498,7 @@ export function AppShell() {
                     <>
                       <div
                         className="mb-1 text-[9px] font-semibold tracking-widest uppercase"
-                        style={{ color: '#8c94a6' }}
+                        style={{ color: BRAND.textMuted }}
                       >
                         Team
                       </div>
@@ -491,19 +507,23 @@ export function AppShell() {
                           setTeam(null)
                           closeAll()
                         }}
-                        className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left hover:bg-[#f4f6f9]"
+                        className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left hover:bg-surface-subtle"
                         style={{
-                          color: !team ? '#1d3f73' : '#1a2234',
+                          color: !team ? BRAND.primary : BRAND.textPrimary,
                           fontWeight: !team ? 600 : 400,
                         }}
                       >
-                        <Users size={12} className="shrink-0" style={{ color: '#5c6478' }} />
+                        <Users
+                          size={12}
+                          className="shrink-0"
+                          style={{ color: BRAND.textSecondary }}
+                        />
                         <span className="truncate text-[11px]">All Teams</span>
                         {!team && (
                           <Check
                             size={10}
                             className="ml-auto shrink-0"
-                            style={{ color: '#1d3f73' }}
+                            style={{ color: BRAND.primary }}
                           />
                         )}
                       </button>
@@ -514,15 +534,18 @@ export function AppShell() {
                             setTeam({ teamId: t.id, teamName: t.name })
                             closeAll()
                           }}
-                          className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left hover:bg-[#f4f6f9]"
+                          className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left hover:bg-surface-subtle"
                           style={{
-                            color: team?.teamId === t.id ? '#1d3f73' : '#1a2234',
+                            color: team?.teamId === t.id ? BRAND.primary : BRAND.textPrimary,
                             fontWeight: team?.teamId === t.id ? 600 : 400,
                           }}
                         >
                           <span
                             className="inline-flex h-4 w-8 shrink-0 items-center justify-center rounded-sm font-mono text-[9px] font-bold"
-                            style={{ backgroundColor: '#eef0f4', color: '#5c6478' }}
+                            style={{
+                              backgroundColor: BRAND.borderInner,
+                              color: BRAND.textSecondary,
+                            }}
                           >
                             {t.key}
                           </span>
@@ -531,17 +554,20 @@ export function AppShell() {
                             <Check
                               size={10}
                               className="ml-auto shrink-0"
-                              style={{ color: '#1d3f73' }}
+                              style={{ color: BRAND.primary }}
                             />
                           )}
                         </button>
                       ))}
                       {activeTeams.length === 0 && (
-                        <div className="px-1.5 py-1 text-[10px]" style={{ color: '#9aa3b2' }}>
+                        <div className="px-1.5 py-1 text-[10px]" style={{ color: BRAND.textMuted }}>
                           No teams in this project yet
                         </div>
                       )}
-                      <div className="my-1.5" style={{ borderTop: '1px solid #e2e6eb' }} />
+                      <div
+                        className="my-1.5"
+                        style={{ borderTop: `1px solid ${BRAND.borderSubtle}` }}
+                      />
                     </>
                   )}
                   <Link
@@ -586,7 +612,7 @@ export function AppShell() {
                     className="flex items-center gap-1.5 rounded py-1 pr-2 pl-2.5 text-[13px] font-medium transition-colors"
                     style={{
                       backgroundColor: isActive(path) ? 'rgba(255,255,255,0.16)' : 'transparent',
-                      color: isActive(path) ? '#ffffff' : 'rgba(255,255,255,0.72)',
+                      color: isActive(path) ? BRAND.surface : 'rgba(255,255,255,0.72)',
                     }}
                   >
                     {label}
@@ -604,7 +630,7 @@ export function AppShell() {
                       <ChevronDown
                         size={9}
                         style={{
-                          color: isActive(path) ? '#ffffff' : 'rgba(255,255,255,0.55)',
+                          color: isActive(path) ? BRAND.surface : 'rgba(255,255,255,0.55)',
                           transform: openMenu === label ? 'rotate(180deg)' : 'none',
                           transition: 'transform 0.15s',
                         }}
@@ -614,11 +640,11 @@ export function AppShell() {
                   {!comingSoon && openMenu === label && (
                     <div
                       className="absolute top-full left-0 z-50 mt-1 w-44 rounded bg-white py-1 shadow-lg"
-                      style={{ border: '1px solid #d9dee7' }}
+                      style={{ border: `1px solid ${BRAND.border}` }}
                     >
                       <div
                         className="px-3 py-1.5 text-[9px] font-semibold tracking-widest uppercase"
-                        style={{ color: '#8c94a6' }}
+                        style={{ color: BRAND.textMuted }}
                       >
                         {label}
                       </div>
@@ -633,7 +659,7 @@ export function AppShell() {
                               onClick={() => handleComingSoon(child.label)}
                               className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px]"
                               style={{
-                                color: '#1a2234',
+                                color: BRAND.textPrimary,
                                 backgroundColor: 'transparent',
                                 fontWeight: 400,
                               }}
@@ -641,7 +667,10 @@ export function AppShell() {
                               <span className="flex-1">{child.label}</span>
                               <span
                                 className="rounded-sm px-1 py-px text-[8px] font-semibold tracking-wide uppercase"
-                                style={{ backgroundColor: '#edf0f4', color: '#8c94a6' }}
+                                style={{
+                                  backgroundColor: BRAND.borderInner,
+                                  color: BRAND.textMuted,
+                                }}
                               >
                                 Soon
                               </span>
@@ -655,8 +684,10 @@ export function AppShell() {
                             onClick={() => setOpenMenu(null)}
                             className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px]"
                             style={{
-                              color: isActive(child.path) ? '#1d3f73' : '#1a2234',
-                              backgroundColor: isActive(child.path) ? '#edf2fb' : 'transparent',
+                              color: isActive(child.path) ? BRAND.primary : BRAND.textPrimary,
+                              backgroundColor: isActive(child.path)
+                                ? BRAND.primaryLighter
+                                : 'transparent',
                               fontWeight: isActive(child.path) ? 600 : 400,
                             }}
                           >
@@ -700,7 +731,7 @@ export function AppShell() {
                 className="flex items-center rounded px-2.5 py-1 text-[13px] font-medium transition-colors"
                 style={{
                   backgroundColor: isActive(path) ? 'rgba(255,255,255,0.16)' : 'transparent',
-                  color: isActive(path) ? '#ffffff' : 'rgba(255,255,255,0.72)',
+                  color: isActive(path) ? BRAND.surface : 'rgba(255,255,255,0.72)',
                 }}
               >
                 {label}
@@ -747,7 +778,7 @@ export function AppShell() {
               }}
               className="relative rounded p-1.5 transition-colors"
               style={{
-                color: notifOpen ? '#fff' : 'rgba(255,255,255,0.65)',
+                color: notifOpen ? BRAND.surface : 'rgba(255,255,255,0.65)',
                 backgroundColor: notifOpen ? 'rgba(255,255,255,0.16)' : 'transparent',
               }}
             >
@@ -755,7 +786,7 @@ export function AppShell() {
               {unreadCount > 0 && (
                 <span
                   className="absolute top-0.5 right-0.5 flex h-3.5 min-w-[14px] items-center justify-center rounded-full px-0.5 text-[8px] leading-none font-bold text-white"
-                  style={{ backgroundColor: '#e5484d' }}
+                  style={{ backgroundColor: BRAND.danger }}
                 >
                   {unreadCount > 99 ? '99+' : unreadCount}
                 </span>
@@ -779,7 +810,7 @@ export function AppShell() {
           <Link
             to={'/settings' as '/'}
             className="rounded p-1.5"
-            style={{ color: isActive('/settings') ? '#fff' : 'rgba(255,255,255,0.65)' }}
+            style={{ color: isActive('/settings') ? BRAND.surface : 'rgba(255,255,255,0.65)' }}
             onClick={closeAll}
           >
             <Settings size={14} />
@@ -803,22 +834,25 @@ export function AppShell() {
             {userOpen && (
               <div
                 className="absolute top-full right-0 z-50 mt-1 w-56 overflow-hidden rounded bg-white shadow-xl"
-                style={{ border: '1px solid #d9dee7' }}
+                style={{ border: `1px solid ${BRAND.border}` }}
               >
                 {/* Profile info */}
                 <div
                   className="flex items-center gap-2.5 px-3 py-3"
-                  style={{ borderBottom: '1px solid #e2e6eb', backgroundColor: '#f7f8fa' }}
+                  style={{
+                    borderBottom: `1px solid ${BRAND.borderSubtle}`,
+                    backgroundColor: BRAND.surfaceHover,
+                  }}
                 >
                   <Avatar name={user?.displayName ?? 'U'} size={32} />
                   <div className="min-w-0 flex-1">
                     <div
                       className="truncate text-[12px] font-semibold"
-                      style={{ color: '#1a2234' }}
+                      style={{ color: BRAND.textPrimary }}
                     >
                       {user?.displayName}
                     </div>
-                    <div className="truncate text-[10px]" style={{ color: '#8c94a6' }}>
+                    <div className="truncate text-[10px]" style={{ color: BRAND.textMuted }}>
                       {user?.email}
                     </div>
                   </div>
@@ -828,29 +862,29 @@ export function AppShell() {
                 <div className="py-1">
                   <Link
                     to={'/settings' as '/'}
-                    className="flex w-full items-center gap-2.5 px-3 py-2 text-[11px] hover:bg-[#f4f6f9]"
-                    style={{ color: '#1a2234' }}
+                    className="flex w-full items-center gap-2.5 px-3 py-2 text-[11px] hover:bg-surface-subtle"
+                    style={{ color: BRAND.textPrimary }}
                     onClick={closeAll}
                   >
-                    <User size={13} style={{ color: '#5c6478' }} />
+                    <User size={13} style={{ color: BRAND.textSecondary }} />
                     My profile
                   </Link>
                   <Link
                     to={'/settings' as '/'}
-                    className="flex w-full items-center gap-2.5 px-3 py-2 text-[11px] hover:bg-[#f4f6f9]"
-                    style={{ color: '#1a2234' }}
+                    className="flex w-full items-center gap-2.5 px-3 py-2 text-[11px] hover:bg-surface-subtle"
+                    style={{ color: BRAND.textPrimary }}
                     onClick={closeAll}
                   >
-                    <Settings size={13} style={{ color: '#5c6478' }} />
+                    <Settings size={13} style={{ color: BRAND.textSecondary }} />
                     Settings
                   </Link>
                 </div>
 
-                <div style={{ borderTop: '1px solid #e2e6eb' }} className="py-1">
+                <div style={{ borderTop: `1px solid ${BRAND.borderSubtle}` }} className="py-1">
                   <button
                     onClick={handleSignOut}
-                    className="flex w-full items-center gap-2.5 px-3 py-2 text-[11px] hover:bg-[#fff0ef]"
-                    style={{ color: '#b91c1c' }}
+                    className="flex w-full items-center gap-2.5 px-3 py-2 text-[11px] hover:bg-destructive-bg"
+                    style={{ color: BRAND.danger }}
                   >
                     <LogOut size={13} />
                     Sign out
@@ -866,15 +900,20 @@ export function AppShell() {
       {crumbs.length > 0 && (
         <div
           className="flex h-8 shrink-0 items-center gap-1.5 px-4 text-[11px]"
-          style={{ backgroundColor: '#ffffff', borderBottom: '1px solid #e2e6eb' }}
+          style={{
+            backgroundColor: BRAND.surface,
+            borderBottom: `1px solid ${BRAND.borderSubtle}`,
+          }}
         >
-          <span style={{ color: '#5c6478' }}>{workspace?.workspaceName ?? 'Workspace'}</span>
+          <span style={{ color: BRAND.textSecondary }}>
+            {workspace?.workspaceName ?? 'Workspace'}
+          </span>
           {crumbs.map((crumb, i) => (
             <span key={i} className="flex items-center gap-1.5">
-              <ChevronRight size={11} style={{ color: '#c1c8d4' }} />
+              <ChevronRight size={11} style={{ color: BRAND.textFaint }} />
               <span
                 style={{
-                  color: i === crumbs.length - 1 ? '#1a2234' : '#5c6478',
+                  color: i === crumbs.length - 1 ? BRAND.textPrimary : BRAND.textSecondary,
                   fontWeight: i === crumbs.length - 1 ? 600 : 400,
                 }}
               >
@@ -889,7 +928,7 @@ export function AppShell() {
       <main
         id="main-content"
         className="flex flex-1 flex-col overflow-auto"
-        style={{ backgroundColor: '#f0f2f5' }}
+        style={{ backgroundColor: BRAND.pageBg }}
         aria-label="Main content"
       >
         <PageErrorBoundary>

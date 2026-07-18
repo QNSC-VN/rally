@@ -24,7 +24,11 @@ import {
 } from '@platform';
 import type { JwtPayload, CursorPayload, PagedResult, DbExecutor } from '@platform';
 import { PERMISSION, type ProjectPermission } from '@shared-kernel';
-import { isAcceptedScheduleState } from '../../../../../db/schema/enums';
+import {
+  isAcceptedScheduleState,
+  isCompletedScheduleState,
+  type DefectState,
+} from '../../../../../db/schema/enums';
 import { NotificationSchedulerService } from '@platform/notifications/notification-scheduler.service';
 import type {
   NotificationTemplateName,
@@ -534,15 +538,15 @@ export class WorkItemsService {
 
     // P3.4 — Validate defect state transitions
     if (input.defectState !== undefined && input.defectState !== null && item.defectState) {
-      const validTransitions: Record<string, string[]> = {
+      const validTransitions: Record<DefectState, DefectState[]> = {
         submitted: ['open', 'closed_declined'],
         open: ['fixed'],
         fixed: ['closed'],
         closed: ['open'],
         closed_declined: ['open'],
       };
-      const allowed = validTransitions[item.defectState] ?? [];
-      if (!allowed.includes(input.defectState)) {
+      const allowed = validTransitions[item.defectState as DefectState] ?? [];
+      if (!allowed.includes(input.defectState as DefectState)) {
         throw new PreconditionFailedException(
           'WORK_ITEM_INVALID_TRANSITION',
           `Invalid defect state transition: ${item.defectState} → ${input.defectState}. Allowed: ${allowed.join(', ') || 'none'}`,
@@ -619,7 +623,9 @@ export class WorkItemsService {
             actor.workspaceId,
             tx,
           );
-          if (parentBefore && parentBefore.scheduleState !== 'completed') {
+          // Only advance a parent that is still open — never DOWNGRADE a parent
+          // already at a more mature terminal (accepted/release) back to completed.
+          if (parentBefore && !isCompletedScheduleState(parentBefore.scheduleState)) {
             await this.workItemRepo.update(
               item.parentId,
               { scheduleState: 'completed', updatedBy: actor.sub },

@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
-import { and, eq, isNull, ne, inArray, sql } from 'drizzle-orm';
+import { and, eq, isNull, inArray, sql } from 'drizzle-orm';
 import {
   NotFoundException,
   ConflictException,
@@ -11,7 +11,7 @@ import type { JwtPayload, CursorPayload, PagedResult, DrizzleDB } from '@platfor
 import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
 import { PERMISSION } from '@shared-kernel';
-import { workItems, workflowStatuses } from '../../../../../db/schema/work';
+import { workItems } from '../../../../../db/schema/work';
 import { acceptedScheduleStatesSql } from '../../../../../db/schema/enums';
 import { IIterationRepository, ITERATION_REPOSITORY } from '../domain/ports/iteration.repository';
 import type {
@@ -290,9 +290,14 @@ export class IterationsService {
   }
 
   // ── Rollover — move unfinished items out (explicit, separate from accept) ────
-  // Moves every work item whose workflow status is NOT in a 'done' category to a
-  // target iteration (same project) or back to the backlog (null). Returns the
-  // number of items moved.
+  // Rollover is the mirror of the accept-gate: it moves out exactly the items
+  // that BLOCK acceptance — the Story/Defect items NOT yet accepted
+  // (schedule_state ∉ {accepted, release}, the SAME D1 predicate the accept-gate
+  // uses). After a rollover only accepted items remain, so the iteration can be
+  // accepted. (Burndown's board-'done' D2 dimension is a reporting concern and
+  // is deliberately NOT used here — the two definitions of "finished" must not
+  // diverge.) Moves to a target iteration (same project) or back to the backlog
+  // (null). Returns the number of items moved.
 
   async rolloverUnfinished(
     actor: JwtPayload,
@@ -317,19 +322,6 @@ export class IterationsService {
       }
     }
 
-    // Find 'done'-category statuses for this project.
-    const doneStatuses = await this.db
-      .select({ id: workflowStatuses.id })
-      .from(workflowStatuses)
-      .where(
-        and(
-          eq(workflowStatuses.projectId, iteration.projectId),
-          eq(workflowStatuses.category, 'done'),
-        ),
-      );
-    const doneStatusIds = doneStatuses.map((s) => s.id);
-    if (doneStatusIds.length === 0) return { movedCount: 0 };
-
     const moved = await this.db
       .update(workItems)
       .set({ iterationId: opts.moveToIterationId ?? null, updatedAt: new Date() })
@@ -337,10 +329,9 @@ export class IterationsService {
         and(
           eq(workItems.iterationId, id),
           eq(workItems.workspaceId, workspaceId),
+          inArray(workItems.type, ['story', 'defect']),
           isNull(workItems.deletedAt),
-          ...(doneStatusIds.length === 1
-            ? [ne(workItems.statusId, doneStatusIds[0])]
-            : [and(...doneStatusIds.map((sid) => ne(workItems.statusId, sid)))!]),
+          sql`${workItems.scheduleState} not in (${acceptedScheduleStatesSql()})`,
         ),
       )
       .returning({ id: workItems.id });

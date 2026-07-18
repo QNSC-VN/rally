@@ -1,3 +1,4 @@
+import { BRAND } from '@/shared/config/brand'
 import { useState } from 'react'
 import { Layers, ShieldCheck, Check, AlertCircle } from 'lucide-react'
 import { ENV } from '@/shared/config/env'
@@ -76,12 +77,12 @@ export function LoginPage() {
   return (
     <main
       className="grid min-h-svh lg:grid-cols-[minmax(420px,0.9fr)_minmax(560px,1.1fr)]"
-      style={{ fontFamily: "'Inter', system-ui, sans-serif", backgroundColor: '#f0f2f5' }}
+      style={{ fontFamily: "'Inter', system-ui, sans-serif", backgroundColor: BRAND.pageBg }}
     >
       {/* ── Left panel ─────────────────────────────────────────────────────── */}
       <section
         className="relative hidden flex-col justify-between overflow-hidden p-10 text-white lg:flex xl:p-14"
-        style={{ backgroundColor: '#1d3f73' }}
+        style={{ backgroundColor: BRAND.primary }}
       >
         <div
           className="absolute inset-0 opacity-20"
@@ -160,15 +161,15 @@ export function LoginPage() {
           <div className="mb-8 flex items-center gap-2 lg:hidden">
             <div
               className="flex h-8 w-8 items-center justify-center rounded text-white"
-              style={{ backgroundColor: '#1d3f73' }}
+              style={{ backgroundColor: BRAND.primary }}
             >
               <Layers size={16} />
             </div>
             <div>
-              <div className="text-[14px] font-semibold" style={{ color: '#1a2234' }}>
+              <div className="text-[14px] font-semibold" style={{ color: BRAND.textPrimary }}>
                 Mini Rally
               </div>
-              <div className="text-[9px]" style={{ color: '#8c94a6' }}>
+              <div className="text-[9px]" style={{ color: BRAND.textMuted }}>
                 Work Management Platform
               </div>
             </div>
@@ -177,33 +178,36 @@ export function LoginPage() {
           {/* Card */}
           <div
             className="overflow-hidden rounded-md bg-white shadow-sm"
-            style={{ border: '1px solid #d9dee7' }}
+            style={{ border: `1px solid ${BRAND.border}` }}
           >
             {/* Card header */}
-            <div className="px-7 pt-7 pb-5" style={{ borderBottom: '1px solid #edf0f4' }}>
+            <div
+              className="px-7 pt-7 pb-5"
+              style={{ borderBottom: `1px solid ${BRAND.borderInner}` }}
+            >
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <p
                     className="mb-1 text-[10px] font-semibold tracking-widest uppercase"
-                    style={{ color: '#8c94a6' }}
+                    style={{ color: BRAND.textMuted }}
                   >
                     Admin access
                   </p>
                   <h2
                     className="text-[21px] font-semibold tracking-tight"
-                    style={{ color: '#1a2234' }}
+                    style={{ color: BRAND.textPrimary }}
                   >
                     Sign in to Mini Rally
                   </h2>
                 </div>
                 <div
                   className="flex h-10 w-10 items-center justify-center rounded-full"
-                  style={{ backgroundColor: '#edf2fb', color: '#1d3f73' }}
+                  style={{ backgroundColor: BRAND.primaryLighter, color: BRAND.primary }}
                 >
                   <ShieldCheck size={19} />
                 </div>
               </div>
-              <p className="mt-2 text-[12px]" style={{ color: '#5c6478' }}>
+              <p className="mt-2 text-[12px]" style={{ color: BRAND.textSecondary }}>
                 Use your organisational account to continue.
               </p>
             </div>
@@ -215,9 +219,9 @@ export function LoginPage() {
                   role="alert"
                   className="mb-4 flex items-start gap-2 rounded px-3 py-2.5 text-[11px]"
                   style={{
-                    color: '#b91c1c',
-                    backgroundColor: '#fef2f2',
-                    border: '1px solid #f0c7c1',
+                    color: BRAND.danger,
+                    backgroundColor: BRAND.dangerBg,
+                    border: `1px solid ${BRAND.dangerBorder}`,
                   }}
                 >
                   <AlertCircle size={14} className="mt-px shrink-0" />
@@ -231,22 +235,22 @@ export function LoginPage() {
                 disabled={ssoLoading}
                 className="flex w-full items-center justify-center gap-3 rounded py-3 text-[13px] font-medium transition-colors disabled:opacity-60"
                 style={{
-                  backgroundColor: '#fff',
-                  border: '1px solid #d9dee7',
-                  color: '#1a2234',
+                  backgroundColor: BRAND.surface,
+                  border: `1px solid ${BRAND.border}`,
+                  color: BRAND.textPrimary,
                   boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = '#f5f7fa'
+                  e.currentTarget.style.backgroundColor = BRAND.surfaceSubtle
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = '#fff'
+                  e.currentTarget.style.backgroundColor = BRAND.surface
                 }}
               >
                 {ssoLoading ? (
                   <span
                     className="h-5 w-5 animate-spin rounded-full"
-                    style={{ border: '2px solid #d9dee7', borderTopColor: '#1d3f73' }}
+                    style={{ border: `2px solid ${BRAND.border}`, borderTopColor: BRAND.primary }}
                     aria-label="Signing in…"
                   />
                 ) : (
@@ -260,7 +264,7 @@ export function LoginPage() {
                   Entra tenant. Never enabled in production. */}
               {ENV.DEV_LOGIN_ENABLED && (
                 <form onSubmit={handleDevLogin} className="flex flex-col gap-4">
-                  <p className="text-[12px]" style={{ color: '#5c6478' }}>
+                  <p className="text-[12px]" style={{ color: BRAND.textSecondary }}>
                     Development only: sign in with a seeded account (mints a server-side BFF
                     session).
                   </p>
@@ -270,9 +274,9 @@ export function LoginPage() {
                       role="alert"
                       className="flex items-start gap-2 rounded px-3 py-2.5 text-[11px]"
                       style={{
-                        color: '#b91c1c',
-                        backgroundColor: '#fef2f2',
-                        border: '1px solid #f0c7c1',
+                        color: BRAND.danger,
+                        backgroundColor: BRAND.dangerBg,
+                        border: `1px solid ${BRAND.dangerBorder}`,
                       }}
                     >
                       <AlertCircle size={14} className="mt-px shrink-0" />
@@ -284,7 +288,7 @@ export function LoginPage() {
                     <label
                       htmlFor="dev-email"
                       className="text-[11px] font-medium"
-                      style={{ color: '#5c6478' }}
+                      style={{ color: BRAND.textSecondary }}
                     >
                       Email
                     </label>
@@ -295,7 +299,7 @@ export function LoginPage() {
                       value={devEmail}
                       onChange={(e) => setDevEmail(e.target.value)}
                       className="h-10 w-full rounded px-3 text-[13px] outline-none"
-                      style={{ border: '1px solid #d9dee7', color: '#1a2234' }}
+                      style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textPrimary }}
                       placeholder="you@acme.dev"
                     />
                   </div>
@@ -304,7 +308,7 @@ export function LoginPage() {
                     type="submit"
                     disabled={devLoading}
                     className="flex w-full items-center justify-center gap-2 rounded py-3 text-[13px] font-medium text-white transition-colors disabled:opacity-60"
-                    style={{ backgroundColor: '#1d3f73' }}
+                    style={{ backgroundColor: BRAND.primary }}
                   >
                     {devLoading ? 'Signing in…' : 'Sign in'}
                   </button>
@@ -313,12 +317,12 @@ export function LoginPage() {
             </div>
           </div>
 
-          <p className="mt-5 text-center text-[10px]" style={{ color: '#8c94a6' }}>
+          <p className="mt-5 text-center text-[10px]" style={{ color: BRAND.textMuted }}>
             Need access?{' '}
             <a
               href="mailto:admin@minirallyapp.com"
               className="font-medium"
-              style={{ color: '#2558a6' }}
+              style={{ color: BRAND.primaryLight }}
             >
               Contact your administrator
             </a>

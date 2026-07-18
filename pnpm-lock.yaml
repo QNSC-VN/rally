@@ -103,8 +103,8 @@ importers:
         specifier: ^1.41.1
         version: 1.41.1
       '@qnsc-vn/identity':
-        specifier: ^5.3.0
-        version: 5.3.0(43549fe51188c5e9a9899e722fb74733)
+        specifier: ^5.4.0
+        version: 5.4.0(43549fe51188c5e9a9899e722fb74733)
       '@qnsc-vn/platform-cache':
         specifier: ^2.1.0
         version: 2.1.0(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(ioredis@5.11.1)
@@ -2417,8 +2417,8 @@ packages:
   '@protobufjs/utf8@1.1.1':
     resolution: {integrity: sha512-oOAWABowe8EAbMyWKM0tYDKi8Yaox52D+HWZhAIJqQXbqe0xI/GV7FhLWqlEKreMkfDjshR5FKgi3mnle0h6Eg==}
 
-  '@qnsc-vn/identity@5.3.0':
-    resolution: {integrity: sha512-PeptZQZPUbhcAKUMi3v895hTgHx5qUJk5HmL3GbZMwXdXjONtECdj9y0IJUnkpfIf8rZohiW3soyt3B3kTTrsg==, tarball: https://npm.pkg.github.com/download/@qnsc-vn/identity/5.3.0/c4a2953d011a8125419258fb0f8b03ee2dc4bff1}
+  '@qnsc-vn/identity@5.4.0':
+    resolution: {integrity: sha512-7vEZmlGcdgMnGA4EAym9/2O82M1sVI0x5qZ5ozDVDEXssG80baI0x61Pb8tO1MbsooQw8wxuzkZE6LxfwlhTbA==, tarball: https://npm.pkg.github.com/download/@qnsc-vn/identity/5.4.0/88658c8adfd62752bf4c1886e641a48e5793711f}
     peerDependencies:
       '@fastify/cookie': '>=11'
       '@nestjs/common': '>=11'
@@ -10257,7 +10257,7 @@ snapshots:
 
   '@protobufjs/utf8@1.1.1': {}
 
-  '@qnsc-vn/identity@5.3.0(43549fe51188c5e9a9899e722fb74733)':
+  '@qnsc-vn/identity@5.4.0(43549fe51188c5e9a9899e722fb74733)':
     dependencies:
       '@fastify/cookie': 11.0.2
       '@nestjs/common': 11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2)

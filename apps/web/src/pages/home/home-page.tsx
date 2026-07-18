@@ -4,15 +4,15 @@ import { AlertTriangle, ArrowUpRight, Clock, Inbox } from 'lucide-react'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { BRAND } from '@/shared/config/brand'
+import { PageHeader } from '@/shared/ui/page-header'
+import { EmptyState } from '@/shared/ui/empty-state'
 import { TypeBadge, ScheduleStateBadge, PriorityBadge } from '@/entities/work-item/ui/badges'
 import { WorkItemType, WorkItemPriority } from '@/entities/work-item/model/types'
-import {
-  type Project,
-  useProjects,
-  useProjectStatuses,
-} from '@/features/projects/api'
+import { type Project, useProjects, useProjectStatuses } from '@/features/projects/api'
 import { useWorkItems, useMyWorkItems, useWorkItemCounts } from '@/features/work-items/api'
 import { useIterations, useCommittedIterationsCount } from '@/features/iterations/api'
+import { useNotifications } from '@/features/notifications/api'
+import { NotificationItem } from '@/features/notifications/ui/notification-item'
 
 // ── Type mapping helpers ───────────────────────────────────────────────────────
 
@@ -72,14 +72,15 @@ function ProjectHealthRow({
   ).length
   const blocked = workItems.filter((i) => i.isBlocked).length
   const progress = workItems.length > 0 ? Math.round((done / workItems.length) * 100) : 0
-  const progressColor = progress >= 70 ? '#2a8c3f' : progress >= 40 ? BRAND.primaryLight : '#e59f0c'
+  const progressColor =
+    progress >= 70 ? BRAND.success : progress >= 40 ? BRAND.primaryLight : BRAND.warning
 
   return (
     <div
-      className="flex h-9 items-center gap-3 px-4 transition-colors hover:bg-[#f7f8fa]"
+      className="flex h-9 items-center gap-3 px-4 transition-colors hover:bg-surface-hover"
       style={{
         borderBottom: `1px solid ${BRAND.borderInner}`,
-        backgroundColor: isSelected ? '#edf2fb' : undefined,
+        backgroundColor: isSelected ? BRAND.primaryLighter : undefined,
       }}
     >
       {/* Key */}
@@ -87,8 +88,8 @@ function ProjectHealthRow({
         <span
           className="rounded-sm px-1.5 py-px font-mono text-[10px] font-semibold"
           style={{
-            backgroundColor: isSelected ? '#d8e5f7' : '#f0f2f5',
-            color: isSelected ? BRAND.primaryLight : '#5c6478',
+            backgroundColor: isSelected ? BRAND.accentBg : BRAND.pageBg,
+            color: isSelected ? BRAND.primaryLight : BRAND.textSecondary,
           }}
         >
           {project.key}
@@ -115,7 +116,7 @@ function ProjectHealthRow({
       <div className="flex w-36 shrink-0 items-center gap-2">
         <div
           className="h-1.5 w-20 overflow-hidden rounded-full"
-          style={{ backgroundColor: '#e4e8ed' }}
+          style={{ backgroundColor: BRAND.borderSubtle }}
         >
           <div
             className="h-full rounded-full"
@@ -133,7 +134,7 @@ function ProjectHealthRow({
       <div className="w-24 shrink-0">
         <span
           className="text-[12px] font-semibold tabular-nums"
-          style={{ color: defects > 0 ? BRAND.danger : '#2a8c3f' }}
+          style={{ color: defects > 0 ? BRAND.danger : BRAND.success }}
         >
           {defects}
         </span>
@@ -152,7 +153,7 @@ function ProjectHealthRow({
             {blocked} blocked
           </span>
         ) : (
-          <span className="text-[10px]" style={{ color: '#2a8c3f' }}>
+          <span className="text-[10px]" style={{ color: BRAND.success }}>
             None
           </span>
         )}
@@ -200,12 +201,12 @@ export function HomePage() {
     () => activeProjects.map((p) => ({ id: p.id, key: p.key, name: p.name })),
     [activeProjects],
   )
-  
 
   const { data: counts = { total: 0, blocked: 0, defects: 0 } } =
     useWorkItemCounts(projectsForStats)
   const { data: activeSprintsCount = 0 } = useCommittedIterationsCount(projectsForStats)
   const { data: myItems = [] } = useMyWorkItems(projectsForMyWork, user?.id)
+  const { data: activity = [] } = useNotifications({})
 
   const summaryMetrics = [
     { label: 'Active Projects', value: String(activeProjects.length), path: '/projects' },
@@ -218,72 +219,73 @@ export function HomePage() {
 
   return (
     <div className="flex flex-1 flex-col" style={{ backgroundColor: BRAND.pageBg }}>
-      {/* Page header */}
-      <div
-        className="flex shrink-0 items-center justify-between bg-white px-6 py-3"
-        style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
-      >
-        <h1 className="text-[14px] font-semibold" style={{ color: BRAND.textPrimary }}>
-          Home
-        </h1>
-        <div className="text-[11px]" style={{ color: BRAND.textSecondary }}>
-          {getGreeting()},{' '}
-          <span className="font-medium" style={{ color: BRAND.textPrimary }}>
-            {user?.displayName ?? 'User'}
-          </span>{' '}
-          ·{' '}
-          <span className="font-medium" style={{ color: BRAND.textPrimary }}>
-            {now}
-          </span>
-        </div>
-      </div>
+      <PageHeader
+        title="Home"
+        actions={
+          <div className="text-[11px]" style={{ color: BRAND.textSecondary }}>
+            {getGreeting()},{' '}
+            <span className="font-medium" style={{ color: BRAND.textPrimary }}>
+              {user?.displayName ?? 'User'}
+            </span>{' '}
+            ·{' '}
+            <span className="font-medium" style={{ color: BRAND.textPrimary }}>
+              {now}
+            </span>
+          </div>
+        }
+      />
 
       {/* Summary strip */}
       {loadingProjects ? (
-        <div className="flex shrink-0 bg-white" style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}>
+        <div
+          className="flex shrink-0 bg-white"
+          style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
+        >
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="flex flex-1 flex-col justify-center gap-2 px-5 py-3" style={i > 0 ? { borderLeft: `1px solid ${BRAND.borderSubtle}` } : undefined}>
+            <div
+              key={i}
+              className="flex flex-1 flex-col justify-center gap-2 px-5 py-3"
+              style={i > 0 ? { borderLeft: `1px solid ${BRAND.borderSubtle}` } : undefined}
+            >
               <div className="h-3 w-20 animate-pulse rounded bg-gray-200" />
               <div className="h-6 w-8 animate-pulse rounded bg-gray-200" />
             </div>
           ))}
         </div>
       ) : (
-      <div
-        className="flex shrink-0 bg-white"
-        style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
-      >
-        {summaryMetrics.map((m, i) => {
-          const inner = (
-            <>
-              <span
-                className="text-[9px] font-semibold tracking-widest uppercase"
-                style={{ color: BRAND.textMuted }}
-              >
-                {m.label}
-              </span>
-              <span
-                className="text-[20px] leading-tight font-semibold"
-                style={{ color: m.alert ? BRAND.danger : BRAND.textPrimary }}
-              >
-                {m.value}
-              </span>
-            </>
-          )
-          const sharedStyle = { borderLeft: i > 0 ? `1px solid ${BRAND.borderSubtle}` : undefined }
-          const sharedClass = 'flex flex-1 flex-col justify-center px-5 py-3 text-left transition-colors hover:bg-[#f7f8fa]'
-          return (
-            <Link
-              key={m.label}
-              to={m.path as '/'}
-              className={sharedClass}
-              style={sharedStyle}
-            >
-              {inner}
-            </Link>
-          )
-        })}
-      </div>
+        <div
+          className="flex shrink-0 bg-white"
+          style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
+        >
+          {summaryMetrics.map((m, i) => {
+            const inner = (
+              <>
+                <span
+                  className="text-[9px] font-semibold tracking-widest uppercase"
+                  style={{ color: BRAND.textMuted }}
+                >
+                  {m.label}
+                </span>
+                <span
+                  className="text-[20px] leading-tight font-semibold"
+                  style={{ color: m.alert ? BRAND.danger : BRAND.textPrimary }}
+                >
+                  {m.value}
+                </span>
+              </>
+            )
+            const sharedStyle = {
+              borderLeft: i > 0 ? `1px solid ${BRAND.borderSubtle}` : undefined,
+            }
+            const sharedClass =
+              'flex flex-1 flex-col justify-center px-5 py-3 text-left transition-colors hover:bg-surface-hover'
+            return (
+              <Link key={m.label} to={m.path as '/'} className={sharedClass} style={sharedStyle}>
+                {inner}
+              </Link>
+            )
+          })}
+        </div>
       )}
 
       {/* Body grid */}
@@ -338,18 +340,17 @@ export function HomePage() {
 
           {/* Rows */}
           {myItems.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <Inbox size={28} style={{ color: BRAND.textMuted }} className="mb-2" />
-              <p className="text-[12px]" style={{ color: BRAND.textSecondary }}>
-                No items assigned to you
-              </p>
-            </div>
+            <EmptyState
+              size="sm"
+              icon={<Inbox size={28} className="text-foreground-subtle" />}
+              title="No items assigned to you"
+            />
           ) : (
             myItems.map((item) => {
               return (
                 <div
                   key={item.id}
-                  className="flex h-8 items-center gap-2 px-3 hover:bg-[#f7f8fa]"
+                  className="flex h-8 items-center gap-2 px-3 hover:bg-surface-hover"
                   style={{ borderBottom: `1px solid ${BRAND.borderInner}` }}
                 >
                   <div
@@ -387,7 +388,7 @@ export function HomePage() {
           )}
         </div>
 
-        {/* Activity feed — empty state (audit log integration is out of scope) */}
+        {/* Recent Activity — sourced from the notification feed (assignments/mentions) */}
         <div
           className="overflow-hidden rounded bg-white"
           style={{ border: `1px solid ${BRAND.borderSubtle}` }}
@@ -407,15 +408,20 @@ export function HomePage() {
               All <ArrowUpRight size={11} />
             </Link>
           </div>
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <Clock size={28} style={{ color: BRAND.textMuted }} className="mb-2" />
-            <p className="text-[12px]" style={{ color: BRAND.textSecondary }}>
-              Activity feed coming soon
-            </p>
-            <p className="mt-1 text-[11px]" style={{ color: BRAND.textMuted }}>
-              Work item updates will appear here
-            </p>
-          </div>
+          {activity.length === 0 ? (
+            <EmptyState
+              size="sm"
+              icon={<Clock size={28} className="text-foreground-subtle" />}
+              title="No recent activity"
+              description="Work item updates will appear here"
+            />
+          ) : (
+            <ul className="flex flex-col">
+              {activity.slice(0, 8).map((n) => (
+                <NotificationItem key={n.id} notification={n} dense />
+              ))}
+            </ul>
+          )}
         </div>
 
         {/* Project Health table */}
@@ -466,11 +472,7 @@ export function HomePage() {
           </div>
           {/* Rows */}
           {activeProjects.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-10">
-              <p className="text-[12px]" style={{ color: BRAND.textSecondary }}>
-                No active projects
-              </p>
-            </div>
+            <EmptyState size="sm" title="No active projects" />
           ) : (
             activeProjects.map((p) => (
               <ProjectHealthRow

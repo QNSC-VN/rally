@@ -6,7 +6,12 @@ import {
   INotificationRepository,
   NOTIFICATION_REPOSITORY,
 } from '../domain/ports/notification.repository';
-import type { Notification, CreateNotificationInput } from '../domain/notification.types';
+import {
+  NOTIFICATION_CATEGORY_TYPES,
+  type Notification,
+  type CreateNotificationInput,
+  type NotificationCategory,
+} from '../domain/notification.types';
 
 @Injectable()
 export class NotificationsService {
@@ -18,10 +23,14 @@ export class NotificationsService {
 
   async listNotifications(
     actor: JwtPayload,
-    unreadOnly: boolean,
-    limit = 50,
+    filter: { unreadOnly: boolean; category?: NotificationCategory; limit?: number },
   ): Promise<Notification[]> {
-    return this.notificationRepo.listForRecipient(actor.workspaceId, actor.sub, unreadOnly, limit);
+    const types = filter.category ? NOTIFICATION_CATEGORY_TYPES[filter.category] : undefined;
+    return this.notificationRepo.listForRecipient(actor.workspaceId, actor.sub, {
+      unreadOnly: filter.unreadOnly,
+      types,
+      limit: filter.limit ?? 50,
+    });
   }
 
   async markRead(actor: JwtPayload, notificationId: string): Promise<void> {

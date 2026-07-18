@@ -27,6 +27,7 @@ import { SearchInput } from '@/shared/ui/search-input'
 import { OwnerCell } from '@/shared/ui/owner-cell'
 import { MILESTONE_STATUS_STYLE } from '@/features/milestones/status-colors'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
+import { Button } from '@/shared/ui/button'
 import { useProjectPermissions } from '@/features/access/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import {
@@ -188,26 +189,19 @@ function SelectionModal({
         </div>
       </ModalBody>
       <ModalFooter>
-        <button
-          type="button"
-          onClick={onClose}
-          className="cursor-pointer rounded-md px-4 py-1.5 text-sm"
-          style={{ border: `1px solid ${BRAND.border}`, color: '#5c6478' }}
-        >
+        <Button variant="outline" type="button" onClick={onClose}>
           Cancel
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           onClick={() => {
             void handleSave()
           }}
           disabled={saving}
-          className="flex cursor-pointer items-center gap-1.5 rounded-md px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-          style={{ backgroundColor: BRAND.primary }}
         >
           {saving ? <Loader2 size={12} className="animate-spin" /> : null}
           Save
-        </button>
+        </Button>
       </ModalFooter>
     </AppModal>
   )
@@ -262,15 +256,15 @@ function ArtifactRow({
   return (
     <tr
       className="cursor-pointer transition-colors duration-75"
-      style={{ borderBottom: '1px solid #edf0f4' }}
-      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f7f8fa')}
+      style={{ borderBottom: `1px solid ${BRAND.borderInner}` }}
+      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = BRAND.surfaceHover)}
       onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
       onClick={onOpen}
     >
       {/* Rank */}
       <td
         className="h-8 px-3 text-center font-mono text-[10px] tabular-nums"
-        style={{ color: '#8c94a6' }}
+        style={{ color: BRAND.textMuted }}
       >
         {index + 1}
       </td>
@@ -307,7 +301,10 @@ function ArtifactRow({
         <OwnerCell name={item.assigneeName} />
       </td>
       {/* Estimate */}
-      <td className="h-8 px-3 text-center font-mono text-[10px]" style={{ color: '#5c6478' }}>
+      <td
+        className="h-8 px-3 text-center font-mono text-[10px]"
+        style={{ color: BRAND.textSecondary }}
+      >
         {item.storyPoints ?? '—'}
       </td>
     </tr>
@@ -381,7 +378,7 @@ function ArtifactsTab({ milestoneId }: { milestoneId: string }) {
           <SkeletonList rows={8} />
         ) : items.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 p-8">
-            <Layers size={32} style={{ color: '#c4cad4' }} />
+            <Layers size={32} style={{ color: BRAND.textFaint }} />
             <p className="text-xs" style={{ color: BRAND.textMuted }}>
               {search ? 'No artifacts match your search' : 'No artifacts linked to this milestone'}
             </p>
@@ -391,30 +388,39 @@ function ArtifactsTab({ milestoneId }: { milestoneId: string }) {
             <thead>
               <tr
                 className="text-[9px] font-semibold tracking-wider uppercase select-none"
-                style={{ backgroundColor: '#f7f8fa', borderBottom: `1px solid ${BRAND.border}` }}
+                style={{
+                  backgroundColor: BRAND.surfaceHover,
+                  borderBottom: `1px solid ${BRAND.border}`,
+                }}
               >
-                <th className="h-7 w-12 px-3 text-center font-medium" style={{ color: '#8c94a6' }}>
+                <th
+                  className="h-7 w-12 px-3 text-center font-medium"
+                  style={{ color: BRAND.textMuted }}
+                >
                   #
                 </th>
-                <th className="h-7 w-20 px-3 font-medium" style={{ color: '#8c94a6' }}>
+                <th className="h-7 w-20 px-3 font-medium" style={{ color: BRAND.textMuted }}>
                   ID
                 </th>
-                <th className="h-7 px-3 font-medium" style={{ color: '#8c94a6' }}>
+                <th className="h-7 px-3 font-medium" style={{ color: BRAND.textMuted }}>
                   Name
                 </th>
-                <th className="h-7 w-14 px-3 font-medium" style={{ color: '#8c94a6' }}>
+                <th className="h-7 w-14 px-3 font-medium" style={{ color: BRAND.textMuted }}>
                   Type
                 </th>
-                <th className="h-7 w-24 px-3 font-medium" style={{ color: '#8c94a6' }}>
+                <th className="h-7 w-24 px-3 font-medium" style={{ color: BRAND.textMuted }}>
                   Schedule State
                 </th>
-                <th className="h-7 w-16 px-3 font-medium" style={{ color: '#8c94a6' }}>
+                <th className="h-7 w-16 px-3 font-medium" style={{ color: BRAND.textMuted }}>
                   Priority
                 </th>
-                <th className="h-7 w-28 px-3 font-medium" style={{ color: '#8c94a6' }}>
+                <th className="h-7 w-28 px-3 font-medium" style={{ color: BRAND.textMuted }}>
                   Owner
                 </th>
-                <th className="h-7 w-14 px-3 text-center font-medium" style={{ color: '#8c94a6' }}>
+                <th
+                  className="h-7 w-14 px-3 text-center font-medium"
+                  style={{ color: BRAND.textMuted }}
+                >
                   Est.
                 </th>
               </tr>
@@ -439,9 +445,12 @@ function ArtifactsTab({ milestoneId }: { milestoneId: string }) {
       {items.length > 0 && (
         <div
           className="flex h-9 shrink-0 items-center justify-between bg-white px-3"
-          style={{ borderTop: '1px solid #e2e6eb' }}
+          style={{ borderTop: `1px solid ${BRAND.borderSubtle}` }}
         >
-          <div className="flex items-center gap-2 text-[11px]" style={{ color: '#5c6478' }}>
+          <div
+            className="flex items-center gap-2 text-[11px]"
+            style={{ color: BRAND.textSecondary }}
+          >
             <span>Rows per page</span>
             <InlineSelect
               aria-label="Rows per page"
@@ -455,14 +464,14 @@ function ArtifactsTab({ milestoneId }: { milestoneId: string }) {
                 </option>
               ))}
             </InlineSelect>
-            <span style={{ color: '#8c94a6' }}>
+            <span style={{ color: BRAND.textMuted }}>
               {pageInfo
                 ? `${(currentPage - 1) * pageSize + 1}–${(currentPage - 1) * pageSize + items.length}${pageInfo.total ? ` of ${pageInfo.total}` : ''}`
                 : ''}
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-[11px] tabular-nums" style={{ color: '#5c6478' }}>
+            <span className="text-[11px] tabular-nums" style={{ color: BRAND.textSecondary }}>
               Page {currentPage}
             </span>
             <button
@@ -470,7 +479,7 @@ function ArtifactsTab({ milestoneId }: { milestoneId: string }) {
               disabled={currentPage === 1}
               onClick={onPrevPage}
               className="rounded p-1.5 disabled:opacity-35"
-              style={{ border: '1px solid #dde2ea', color: '#5c6478' }}
+              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
             >
               <ChevronLeft size={13} />
             </button>
@@ -479,7 +488,7 @@ function ArtifactsTab({ milestoneId }: { milestoneId: string }) {
               disabled={!pageInfo?.hasNextPage}
               onClick={onNextPage}
               className="rounded p-1.5 disabled:opacity-35"
-              style={{ border: '1px solid #dde2ea', color: '#5c6478' }}
+              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
             >
               <ChevronRight size={13} />
             </button>
@@ -676,19 +685,14 @@ export function MilestoneDetailPage() {
             <Loader2 size={12} className="animate-spin" style={{ color: BRAND.primary }} />
           )}
           {canManage && (
-            <button
-              onClick={handleFieldSave}
-              disabled={update.isPending || saving}
-              className="flex h-7 items-center gap-1.5 rounded-md px-3 text-[12px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-              style={{ backgroundColor: BRAND.primary }}
-            >
+            <Button size="sm" onClick={handleFieldSave} disabled={update.isPending || saving}>
               {update.isPending || saving ? (
                 <Loader2 size={12} className="animate-spin" />
               ) : (
                 <Save size={12} />
               )}
               Save Changes
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -917,7 +921,10 @@ export function MilestoneDetailPage() {
             {milestone.progress && (
               <div
                 className="space-y-2 rounded-md p-3"
-                style={{ backgroundColor: '#f8fafc', border: `1px solid ${BRAND.borderSubtle}` }}
+                style={{
+                  backgroundColor: BRAND.surfaceHover,
+                  border: `1px solid ${BRAND.borderSubtle}`,
+                }}
               >
                 <h3
                   className="text-[10px] font-bold tracking-wider uppercase"
@@ -935,14 +942,16 @@ export function MilestoneDetailPage() {
                   </div>
                   <div
                     className="h-2 w-full overflow-hidden rounded-full"
-                    style={{ backgroundColor: '#e2e8f0' }}
+                    style={{ backgroundColor: BRAND.avatarBg }}
                   >
                     <div
                       className="h-full rounded-full transition-all"
                       style={{
                         width: `${milestone.progress.progressPercent}%`,
                         backgroundColor:
-                          milestone.progress.progressPercent === 100 ? '#16a34a' : '#2563eb',
+                          milestone.progress.progressPercent === 100
+                            ? BRAND.success
+                            : BRAND.primaryLight,
                       }}
                     />
                   </div>

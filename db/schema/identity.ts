@@ -33,6 +33,7 @@ export const users = identitySchema.table(
     mfaSecret: text('mfa_secret'),
     locale: varchar('locale', { length: 10 }).notNull().default('en'),
     timezone: varchar('timezone', { length: 64 }).notNull().default('UTC'),
+    phone: varchar('phone', { length: 32 }),
     sessionVersion: integer('session_version').notNull().default(1),
     lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

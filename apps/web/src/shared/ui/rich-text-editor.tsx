@@ -10,6 +10,7 @@
  * - readOnly prop disables all editing and shows a flat read view.
  * - Keyboard shortcut: Ctrl/Cmd+Enter saves immediately.
  */
+import { BRAND } from '@/shared/config/brand'
 import { useRef, useCallback, useEffect, useState } from 'react'
 import DOMPurify from 'dompurify'
 import { Tooltip } from './tooltip'
@@ -96,20 +97,20 @@ function ToolButton({ label, disabled, active, onAction, children }: ToolButtonP
         }}
         className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-sm transition-colors disabled:cursor-not-allowed"
         style={{
-          color: active ? '#2558a6' : '#475569',
-          backgroundColor: active ? '#edf2fb' : 'transparent',
+          color: active ? BRAND.primaryLight : BRAND.textSecondary,
+          backgroundColor: active ? BRAND.primaryLighter : 'transparent',
           opacity: disabled ? 0.35 : 1,
           cursor: disabled ? 'not-allowed' : 'pointer',
         }}
         onMouseEnter={(e) => {
           if (!disabled)
             (e.currentTarget as HTMLButtonElement).style.backgroundColor = active
-              ? '#dbeafe'
-              : '#edf2f7'
+              ? BRAND.primaryLighter
+              : BRAND.pageBg
         }}
         onMouseLeave={(e) => {
           ;(e.currentTarget as HTMLButtonElement).style.backgroundColor = active
-            ? '#edf2fb'
+            ? BRAND.primaryLighter
             : 'transparent'
         }}
       >
@@ -120,7 +121,7 @@ function ToolButton({ label, disabled, active, onAction, children }: ToolButtonP
 }
 
 function Divider() {
-  return <span className="mx-1 h-5 w-px shrink-0" style={{ backgroundColor: '#d7dde7' }} />
+  return <span className="mx-1 h-5 w-px shrink-0" style={{ backgroundColor: BRAND.borderInput }} />
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -202,7 +203,7 @@ export function RichTextEditor({
     <section
       className={`overflow-hidden rounded bg-white transition-[border-color,box-shadow] ${className}`}
       style={{
-        border: focused ? '1px solid var(--ring)' : '1px solid #dde2ea',
+        border: focused ? '1px solid var(--ring)' : `1px solid ${BRAND.border}`,
         boxShadow: focused ? '0 0 0 3px color-mix(in srgb, var(--ring) 50%, transparent)' : 'none',
         ...(expanded
           ? {
@@ -220,9 +221,9 @@ export function RichTextEditor({
       <div
         className="flex items-center justify-between px-4 py-2 text-[11px] font-semibold select-none"
         style={{
-          color: '#475569',
-          backgroundColor: '#f8fafc',
-          borderBottom: '1px solid #dde2ea',
+          color: BRAND.textSecondary,
+          backgroundColor: BRAND.surfaceHover,
+          borderBottom: `1px solid ${BRAND.border}`,
           flexShrink: 0,
         }}
       >
@@ -233,7 +234,7 @@ export function RichTextEditor({
             aria-label={expanded ? 'Collapse editor' : 'Expand editor'}
             onClick={() => setExpanded((v) => !v)}
             className="cursor-pointer rounded p-0.5 hover:bg-slate-200"
-            style={{ color: '#64748b' }}
+            style={{ color: BRAND.textSecondary }}
           >
             {expanded ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
           </button>
@@ -244,7 +245,11 @@ export function RichTextEditor({
       {!readOnly && (
         <div
           className="flex flex-wrap items-center gap-0.5 overflow-x-auto px-2 py-1.5"
-          style={{ borderBottom: '1px solid #dde2ea', backgroundColor: 'white', flexShrink: 0 }}
+          style={{
+            borderBottom: `1px solid ${BRAND.border}`,
+            backgroundColor: 'white',
+            flexShrink: 0,
+          }}
         >
           <ToolButton label="Undo" onAction={() => exec('undo')}>
             <Undo2 size={13} />
@@ -258,7 +263,7 @@ export function RichTextEditor({
             onChange={handleFormatBlock}
             defaultValue="p"
             className="h-7 w-28 rounded-sm bg-white px-2 text-[11px] focus:outline-none"
-            style={{ color: '#334155', border: '1px solid #d7dde7' }}
+            style={{ color: BRAND.textPrimary, border: `1px solid ${BRAND.borderInput}` }}
             onMouseDown={(e) => e.stopPropagation()}
           >
             <option value="p">Paragraph</option>
@@ -305,8 +310,8 @@ export function RichTextEditor({
           className="prose prose-sm max-w-none px-4 py-3 text-[13px] leading-6"
           style={{
             minHeight,
-            color: '#334155',
-            backgroundColor: '#f8fafc',
+            color: BRAND.textPrimary,
+            backgroundColor: BRAND.surfaceHover,
             overflowY: expanded ? 'auto' : undefined,
             flex: expanded ? '1' : undefined,
           }}
@@ -323,7 +328,7 @@ export function RichTextEditor({
           className="prose prose-sm max-w-none px-4 py-3 text-[13px] leading-6 focus:outline-none"
           style={{
             minHeight,
-            color: '#334155',
+            color: BRAND.textPrimary,
             backgroundColor: 'white',
             overflowY: expanded ? 'auto' : undefined,
             flex: expanded ? '1' : undefined,
@@ -337,8 +342,8 @@ export function RichTextEditor({
         <div
           className="px-4 py-1 text-[10px] select-none"
           style={{
-            color: '#94a3b8',
-            borderTop: '1px solid #f1f5f9',
+            color: BRAND.textMuted,
+            borderTop: `1px solid ${BRAND.primaryLighter}`,
             flexShrink: 0,
           }}
         >

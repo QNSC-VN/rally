@@ -1,3 +1,4 @@
+import { BRAND } from '@/shared/config/brand'
 import type { LucideIcon } from 'lucide-react'
 import { BookOpen, Target, Layers, ClipboardList, Bug } from 'lucide-react'
 
@@ -43,6 +44,31 @@ export type ProjectStatus = (typeof ProjectStatus)[keyof typeof ProjectStatus]
 
 /** All schedule state values in display order. */
 export const SCHEDULE_STATE_VALUES = Object.values(ScheduleState) as ScheduleState[]
+
+/**
+ * Canonical schedule-state groupings — FE mirror of db/schema/enums.ts
+ * (COMPLETED/ACCEPTED_SCHEDULE_STATES). Single source of truth for the FE:
+ * pages/features MUST import these instead of re-declaring inline sets, so the
+ * terminal `release` state can never be dropped from an accepted/completed
+ * rollup again.
+ */
+export const ACCEPTED_SCHEDULE_STATES: readonly ScheduleState[] = [
+  ScheduleState.Accepted,
+  ScheduleState.Release,
+]
+export const COMPLETED_SCHEDULE_STATES: readonly ScheduleState[] = [
+  ScheduleState.Completed,
+  ScheduleState.Accepted,
+  ScheduleState.Release,
+]
+
+/** True when a story/defect is Accepted OR Release (fully accepted). */
+export const isAcceptedScheduleState = (s: ScheduleState): boolean =>
+  ACCEPTED_SCHEDULE_STATES.includes(s)
+
+/** True when an item is Completed, Accepted, OR Release (done). */
+export const isCompletedScheduleState = (s: ScheduleState): boolean =>
+  COMPLETED_SCHEDULE_STATES.includes(s)
 
 /** All priority values in display order. */
 export const PRIORITY_VALUES = Object.values(WorkItemPriority) as WorkItemPriority[]
@@ -93,9 +119,9 @@ export interface StatusBadgeStyle {
 }
 
 export const SCHEDULE_STATE_CONFIG: Record<ScheduleState, StatusBadgeStyle> = {
-  [ScheduleState.Idea]: { color: '#6b7280', bg: '#f3f4f6' },
+  [ScheduleState.Idea]: { color: BRAND.textSecondary, bg: '#f3f4f6' },
   [ScheduleState.Defined]: { color: '#5c6478', bg: '#edf0f4' },
-  [ScheduleState.InProgress]: { color: '#1d6f9e', bg: '#e5f2fb' },
+  [ScheduleState.InProgress]: { color: BRAND.primaryLight, bg: '#e5f2fb' },
   [ScheduleState.Completed]: { color: '#3d7a4e', bg: '#eef6f0' },
   [ScheduleState.Accepted]: { color: '#1e6930', bg: '#eaf5ed' },
   [ScheduleState.Release]: { color: '#7c3aed', bg: '#f3effd' },
@@ -107,7 +133,7 @@ export interface PriorityStyle {
 }
 
 export const WORK_ITEM_PRIORITY_CONFIG: Record<WorkItemPriority, PriorityStyle> = {
-  [WorkItemPriority.None]: { label: '—', color: '#9ca3af' },
+  [WorkItemPriority.None]: { label: '—', color: BRAND.textMuted },
   [WorkItemPriority.Low]: { label: 'Low', color: '#8c94a6' },
   [WorkItemPriority.Normal]: { label: 'Normal', color: '#5c6478' },
   [WorkItemPriority.High]: { label: 'High', color: '#d97706' },
@@ -128,10 +154,15 @@ export interface SeverityStyle {
 }
 
 export const DEFECT_SEVERITY_CONFIG: Record<DefectSeverity, SeverityStyle> = {
-  critical: { label: 'Critical', color: '#b91c1c', bg: '#fef2f2', border: '#fecaca' },
-  major: { label: 'Major Problem', color: '#9a3412', bg: '#fff7ed', border: '#fed7aa' },
+  critical: { label: 'Critical', color: '#b91c1c', bg: '#fef2f2', border: BRAND.dangerBorder },
+  major: {
+    label: 'Major Problem',
+    color: BRAND.warning,
+    bg: BRAND.warningBg,
+    border: BRAND.warningBorder,
+  },
   minor: { label: 'Minor Problem', color: '#854d0e', bg: '#fefce8', border: '#fef08a' },
-  trivial: { label: 'Trivial', color: '#475569', bg: '#f1f5f9', border: '#cbd5e1' },
+  trivial: { label: 'Trivial', color: BRAND.textSecondary, bg: '#f1f5f9', border: BRAND.border },
   none: { label: 'None', color: '#8c94a6', bg: '#f1f5f9', border: '#e2e6eb' },
 }
 
@@ -163,7 +194,7 @@ export interface SimplifiedStateStyle extends StatusBadgeStyle {
 
 export const SIMPLIFIED_STATE_CONFIG: Record<SimplifiedState, SimplifiedStateStyle> = {
   define: { color: '#5c6478', bg: '#edf0f4', activeBg: '#4a5568' },
-  in_progress: { color: '#1d6f9e', bg: '#e5f2fb', activeBg: '#1a5c8a' },
+  in_progress: { color: BRAND.primaryLight, bg: '#e5f2fb', activeBg: '#1a5c8a' },
   complete: { color: '#3d7a4e', bg: '#eef6f0', activeBg: '#2d603c' },
 }
 
@@ -184,7 +215,7 @@ export function getSimplifiedState(state: ScheduleState): SimplifiedState {
 }
 
 /** Representative canonical ScheduleState written back to the API when a
- * simplified rectangle is clicked (tasks don't use idea/accepted/released). */
+ * simplified rectangle is clicked (tasks don't use idea/accepted/release). */
 export const SIMPLIFIED_STATE_TO_SCHEDULE_STATE: Record<SimplifiedState, ScheduleState> = {
   define: ScheduleState.Defined,
   in_progress: ScheduleState.InProgress,

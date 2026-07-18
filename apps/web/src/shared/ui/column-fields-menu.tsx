@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { GripVertical, Columns } from 'lucide-react'
 import type { ColumnDef } from '@/shared/lib/hooks/use-column-layout'
+import { BRAND } from '@/shared/config/brand'
 
 interface ColumnFieldsMenuProps<K extends string> {
   columns: ColumnDef<K>[]
@@ -11,10 +12,9 @@ interface ColumnFieldsMenuProps<K extends string> {
   buttonStyle?: React.CSSProperties
 }
 
-const PANEL_BG = '#ffffff'
-const PANEL_BORDER = '#e1e1e1'
-// Brand navy primary (matches --primary in globals.css), not Fluent blue.
-const ACCENT = '#1d3f73'
+const PANEL_BG = BRAND.surface
+const PANEL_BORDER = BRAND.borderSubtle
+const ACCENT = BRAND.primary
 
 /**
  * "Show Fields" trigger button + dropdown panel: checkbox to toggle a
@@ -97,8 +97,8 @@ export function ColumnFieldsMenu<K extends string>({
         className="flex items-center gap-1.5"
         style={{
           fontSize: 12,
-          color: open ? ACCENT : '#333333',
-          background: open ? '#eef6fc' : 'none',
+          color: open ? ACCENT : BRAND.textPrimary,
+          background: open ? BRAND.primaryLighter : 'none',
           border: 'none',
           borderRadius: 2,
           padding: '4px 8px',
@@ -138,8 +138,12 @@ export function ColumnFieldsMenu<K extends string>({
                   padding: '5px 6px',
                   borderRadius: 3,
                   fontSize: 12.5,
-                  color: '#333333',
-                  background: isDropTarget ? '#f0f6fc' : isActive ? '#f3f3f3' : 'transparent',
+                  color: BRAND.textPrimary,
+                  background: isDropTarget
+                    ? BRAND.primaryLighter
+                    : isActive
+                      ? BRAND.pageBg
+                      : 'transparent',
                   cursor: 'default',
                   opacity: isActive ? 0.4 : 1,
                   transition: 'background-color 0.12s ease, opacity 0.12s ease',
@@ -174,7 +178,7 @@ export function ColumnFieldsMenu<K extends string>({
                   <GripVertical
                     size={13}
                     style={{
-                      color: isActive ? ACCENT : '#a0a0a0',
+                      color: isActive ? ACCENT : BRAND.textDisabled,
                       transition: 'color 0.12s ease',
                     }}
                   />

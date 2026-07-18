@@ -50,6 +50,19 @@ export const EnvSchema = z.object({
   // AWS
   AWS_REGION: z.string().default('ap-southeast-1'),
   AWS_ACCOUNT_ID: z.string().optional(),
+  /**
+   * Custom AWS service endpoint. Set ONLY in local dev / CI to target an
+   * emulator such as LocalStack (e.g. http://localhost:4566). Leave UNSET in
+   * real AWS environments so the SDK uses the default regional endpoints.
+   */
+  AWS_ENDPOINT_URL: z.string().url().optional(),
+  /**
+   * Static AWS credentials. Set ONLY alongside AWS_ENDPOINT_URL for local dev /
+   * CI (LocalStack accepts any value, conventionally "test"). In real AWS the
+   * ECS task role / instance profile supplies credentials — leave these UNSET.
+   */
+  AWS_ACCESS_KEY_ID: z.string().optional(),
+  AWS_SECRET_ACCESS_KEY: z.string().optional(),
   SNS_TOPIC_ARN: z.string().optional(),
   SQS_AUDIT_URL: z.string().optional(),
   SQS_REPORTING_URL: z.string().optional(),

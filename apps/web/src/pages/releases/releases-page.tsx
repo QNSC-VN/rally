@@ -19,6 +19,10 @@ import {
 } from 'lucide-react'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { InlineSelect } from '@/shared/ui/native-select'
+import { MetricCard } from '@/shared/ui/metric-card'
+import { MetricStrip } from '@/shared/ui/metric-strip'
+import { Button } from '@/shared/ui/button'
+import { EmptyState } from '@/shared/ui/empty-state'
 import { BRAND } from '@/shared/config/brand'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
@@ -140,9 +144,9 @@ function CreateReleaseModal({ projectId, onClose }: { projectId: string; onClose
                 disabled={t !== 'Release'}
                 className="flex-1 rounded-sm py-1.5 text-[11px] font-semibold transition-colors"
                 style={{
-                  backgroundColor: t === 'Release' ? '#eef3fb' : 'transparent',
+                  backgroundColor: t === 'Release' ? BRAND.primaryLighter : 'transparent',
                   color: t === 'Release' ? BRAND.primary : BRAND.textMuted,
-                  border: `1px solid ${t === 'Release' ? '#bdd0ef' : BRAND.borderSubtle}`,
+                  border: `1px solid ${t === 'Release' ? BRAND.accentBorder : BRAND.borderSubtle}`,
                   opacity: t === 'Release' ? 1 : 0.4,
                   cursor: t === 'Release' ? 'default' : 'not-allowed',
                 }}
@@ -211,37 +215,29 @@ function CreateReleaseModal({ projectId, onClose }: { projectId: string; onClose
       </ModalBody>
 
       <ModalFooter>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-[#f0f2f5]"
-          style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
-        >
+        <Button variant="outline" type="button" onClick={onClose}>
           Cancel
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="secondary"
           type="button"
           disabled={create.isPending || !name.trim()}
           onClick={() => {
             void submit(true)
           }}
-          className="rounded px-4 py-1.5 text-[11px] font-semibold transition-colors hover:opacity-90 disabled:opacity-50"
-          style={{ border: '1px solid #9fb5d5', color: BRAND.primary, backgroundColor: '#f5f8fc' }}
         >
           Create with details
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           disabled={create.isPending || !name.trim()}
           onClick={() => {
             void submit(false)
           }}
-          className="flex items-center gap-1.5 rounded px-4 py-1.5 text-[11px] font-semibold text-white transition-colors hover:opacity-90 disabled:opacity-50"
-          style={{ backgroundColor: BRAND.primary }}
         >
           {create.isPending && <Loader2 size={11} className="animate-spin" />}
           Create Release
-        </button>
+        </Button>
       </ModalFooter>
     </AppModal>
   )
@@ -303,7 +299,10 @@ function ReleaseDetailModal({
         {rollup && (
           <div
             className="flex items-center gap-4 rounded-md p-3"
-            style={{ backgroundColor: '#f7f8fa', border: `1px solid ${BRAND.borderSubtle}` }}
+            style={{
+              backgroundColor: BRAND.surfaceHover,
+              border: `1px solid ${BRAND.borderSubtle}`,
+            }}
           >
             <div className="flex-1">
               <div
@@ -315,7 +314,7 @@ function ReleaseDetailModal({
               <div className="flex items-center gap-2">
                 <div
                   className="h-2 flex-1 overflow-hidden rounded-full"
-                  style={{ backgroundColor: '#e2e6eb' }}
+                  style={{ backgroundColor: BRAND.borderSubtle }}
                 >
                   <div
                     className="h-full rounded-full"
@@ -323,10 +322,10 @@ function ReleaseDetailModal({
                       width: `${rollup.progressPercent}%`,
                       backgroundColor:
                         rollup.progressPercent === 100
-                          ? '#1e6930'
+                          ? BRAND.success
                           : rollup.progressPercent > 50
-                            ? '#1d6f9e'
-                            : '#92400e',
+                            ? BRAND.primaryLight
+                            : BRAND.warning,
                     }}
                   />
                 </div>
@@ -459,26 +458,19 @@ function ReleaseDetailModal({
       </ModalBody>
 
       <ModalFooter>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-[#f0f2f5]"
-          style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
-        >
+        <Button variant="outline" type="button" onClick={onClose}>
           Cancel
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           disabled={update.isPending || !name.trim()}
           onClick={() => {
             void handleSubmit()
           }}
-          className="flex items-center gap-1.5 rounded px-4 py-1.5 text-[11px] font-semibold text-white transition-colors hover:opacity-90 disabled:opacity-50"
-          style={{ backgroundColor: BRAND.primary }}
         >
           {update.isPending && <Loader2 size={11} className="animate-spin" />}
           Save
-        </button>
+        </Button>
       </ModalFooter>
     </AppModal>
   )
@@ -621,7 +613,7 @@ function ReleaseRow({
   return (
     <div
       onClick={() => navigate({ to: '/releases/$releaseId', params: { releaseId: release.id } })}
-      className="group flex h-8 cursor-pointer items-center px-3 text-[11px] hover:bg-[#f9fafb]"
+      className="group flex h-8 cursor-pointer items-center px-3 text-[11px] hover:bg-surface-hover"
       style={{ borderBottom: `1px solid ${BRAND.borderInner}` }}
     >
       {/* Name — inline editable (P3-REL-FR-005) */}
@@ -784,14 +776,14 @@ function ReleaseRow({
           <>
             <div
               className="h-1.5 flex-1 overflow-hidden rounded-full"
-              style={{ backgroundColor: '#edf0f4' }}
+              style={{ backgroundColor: BRAND.borderInner }}
             >
               <div
                 className="h-full rounded-full transition-all"
                 style={{
                   width: `${release.taskRollup.progressPercent}%`,
                   backgroundColor:
-                    release.taskRollup.progressPercent === 100 ? '#1e6930' : '#1d6f9e',
+                    release.taskRollup.progressPercent === 100 ? BRAND.success : BRAND.primaryLight,
                 }}
               />
             </div>
@@ -905,6 +897,16 @@ export function ReleasesPage() {
     )
   }, [releases, search])
 
+  const stats = useMemo(
+    () => ({
+      total: releases.length,
+      active: releases.filter((r) => r.status === 'active').length,
+      accepted: releases.filter((r) => r.status === 'accepted').length,
+      planning: releases.filter((r) => r.status === 'planning').length,
+    }),
+    [releases],
+  )
+
   async function handleDelete(id: string) {
     if (!confirm('Delete this release? Work items will keep their release assignment.')) return
     try {
@@ -942,16 +944,30 @@ export function ReleasesPage() {
         }}
         actions={
           canManage ? (
-            <button
-              onClick={() => setShowCreate(true)}
-              className="flex h-7 items-center gap-1.5 rounded-md px-3 text-[12px] font-semibold text-white transition-opacity hover:opacity-90"
-              style={{ backgroundColor: BRAND.primary }}
-            >
+            <Button size="sm" onClick={() => setShowCreate(true)}>
               <Plus size={13} /> Create Release
-            </button>
+            </Button>
           ) : undefined
         }
       />
+
+      {/* Summary metric strip */}
+      <MetricStrip>
+        <MetricCard label="Total Releases" value={stats.total} minWidth={100} />
+        <MetricCard
+          label="Active"
+          value={stats.active}
+          valueColor={BRAND.primaryLight}
+          minWidth={80}
+        />
+        <MetricCard
+          label="Accepted"
+          value={stats.accepted}
+          valueColor={BRAND.success}
+          minWidth={90}
+        />
+        <MetricCard label="Planning" value={stats.planning} minWidth={90} />
+      </MetricStrip>
 
       {/* Column headers (P3-REL-FR-004/007) — resizable */}
       <div
@@ -1039,30 +1055,24 @@ export function ReleasesPage() {
         {isLoading && <SkeletonList rows={8} cols={7} />}
 
         {!isLoading && isError && (
-          <div className="flex flex-col items-center justify-center gap-3 py-20">
-            <AlertTriangle size={28} style={{ color: BRAND.danger }} />
-            <p className="text-[13px] font-medium" style={{ color: BRAND.textSecondary }}>
-              Failed to load releases. Please try again.
-            </p>
-          </div>
+          <EmptyState
+            icon={<AlertTriangle size={28} className="text-destructive" />}
+            title="Failed to load releases. Please try again."
+          />
         )}
 
         {!isLoading && !isError && filtered.length === 0 && (
-          <div className="flex flex-col items-center justify-center gap-3 py-20">
-            <PackageOpen size={32} style={{ color: BRAND.border }} />
-            <p className="text-[13px] font-medium" style={{ color: BRAND.textSecondary }}>
-              {search ? 'No releases match your search.' : 'No releases yet.'}
-            </p>
-            {!search && canManage && (
-              <button
-                onClick={() => setShowCreate(true)}
-                className="text-[12px] font-medium"
-                style={{ color: BRAND.primary }}
-              >
-                + Create first release
-              </button>
-            )}
-          </div>
+          <EmptyState
+            icon={<PackageOpen size={32} className="text-border-strong" />}
+            title={search ? 'No releases match your search.' : 'No releases yet.'}
+            action={
+              !search && canManage ? (
+                <Button variant="link" size="xs" onClick={() => setShowCreate(true)}>
+                  + Create first release
+                </Button>
+              ) : undefined
+            }
+          />
         )}
 
         {!isLoading &&

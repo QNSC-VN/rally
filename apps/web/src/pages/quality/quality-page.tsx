@@ -15,6 +15,8 @@ import { AlertTriangle, PackageOpen, Plus } from 'lucide-react'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { RowGutter } from '@/shared/ui/row-gutter'
 import { SkeletonList } from '@/shared/ui/skeleton'
+import { MetricCard } from '@/shared/ui/metric-card'
+import { MetricStrip } from '@/shared/ui/metric-strip'
 import { BRAND } from '@/shared/config/brand'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { WorkItemRefCell } from '@/entities/work-item/ui/work-item-ref-cell'
@@ -31,11 +33,12 @@ import {
   type ScheduleState,
 } from '@/entities/work-item/model/types'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
+import { Button } from '@/shared/ui/button'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
-import { InlineCellSelect, InlineSelect } from '@/shared/ui/native-select'
-import { BulkActionBar } from '@/shared/ui/bulk-action-bar'
+import { InlineCellSelect } from '@/shared/ui/native-select'
+import { BulkScheduleBar } from '@/features/work-items/ui/bulk-schedule-bar'
 import { useRowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
@@ -43,12 +46,7 @@ import { useDefects, useCreateDefect, qualityKeys, type DefectRow } from '@/feat
 import { useProjectMembers } from '@/features/teams/api'
 import { useReleases } from '@/features/releases/api'
 import { useIterations } from '@/features/iterations/api'
-import {
-  useUpdateWorkItem,
-  useRankAnyWorkItem,
-  useBulkAssignRelease,
-  useBulkAssignIteration,
-} from '@/features/work-items/api'
+import { useUpdateWorkItem, useRankAnyWorkItem } from '@/features/work-items/api'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { useQueryClient } from '@tanstack/react-query'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
@@ -84,11 +82,26 @@ const DEFECT_STATE_STYLE: Record<
   string,
   { bg: string; text: string; border: string; label: string }
 > = {
-  submitted: { bg: '#eff6ff', text: '#1d4ed8', border: '#bfdbfe', label: 'Submitted' },
-  open: { bg: '#fff7ed', text: '#9a3412', border: '#fed7aa', label: 'Open' },
-  fixed: { bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0', label: 'Fixed' },
-  closed: { bg: '#f1f5f9', text: '#475569', border: '#cbd5e1', label: 'Closed' },
-  closed_declined: { bg: '#fef2f2', text: '#b91c1c', border: '#fecaca', label: 'Closed Declined' },
+  submitted: {
+    bg: BRAND.primaryLighter,
+    text: BRAND.primaryLight,
+    border: BRAND.primaryLighter,
+    label: 'Submitted',
+  },
+  open: { bg: BRAND.warningBg, text: BRAND.warning, border: BRAND.warningBorder, label: 'Open' },
+  fixed: { bg: BRAND.successBg, text: BRAND.success, border: BRAND.successBorder, label: 'Fixed' },
+  closed: {
+    bg: BRAND.primaryLighter,
+    text: BRAND.textSecondary,
+    border: BRAND.border,
+    label: 'Closed',
+  },
+  closed_declined: {
+    bg: BRAND.dangerBg,
+    text: BRAND.danger,
+    border: BRAND.dangerBorder,
+    label: 'Closed Declined',
+  },
 }
 
 const DEFECT_STATE_OPTIONS: { value: string; label: string }[] = [
@@ -191,7 +204,7 @@ function FixedInBuildCell({
         trigger="dblclick"
         displayValue={defect.fixedInBuild ?? '—'}
         className="truncate text-[10px] hover:underline"
-        style={{ color: '#5c6478' }}
+        style={{ color: BRAND.textSecondary }}
         inputClassName="text-[10px] px-1 py-0.5 rounded focus:outline-none"
         inputStyle={{
           border: `1px solid ${BRAND.borderInput}`,
@@ -265,14 +278,6 @@ const DEFECT_STATE_SORT: Record<string, number> = {
   closed: 3,
   closed_declined: 4,
 }
-const SCHEDULE_SORT: Record<string, number> = {
-  idea: 0,
-  defined: 1,
-  in_progress: 2,
-  completed: 3,
-  accepted: 4,
-  released: 5,
-}
 
 /** Resolve a comparable value for a defect column key (drives click-to-sort). */
 function defectSortValue(d: DefectRow, col: string): string | number {
@@ -289,8 +294,11 @@ function defectSortValue(d: DefectRow, col: string): string | number {
       return PRIORITY_SORT[d.priority] ?? 99
     case 'state':
       return DEFECT_STATE_SORT[d.defectState ?? 'submitted'] ?? 99
-    case 'scheduleState':
-      return SCHEDULE_SORT[d.scheduleState] ?? 99
+    case 'scheduleState': {
+      // Sort by canonical maturity order; unknown states sort last.
+      const idx = SCHEDULE_STATE_VALUES.indexOf(d.scheduleState as ScheduleState)
+      return idx === -1 ? 99 : idx
+    }
     case 'fixedInBuild':
       return (d.fixedInBuild ?? '').toLowerCase()
     case 'iteration':
@@ -332,7 +340,7 @@ const QUALITY_COLUMNS: ColumnSpec<DefectRow, QualityCtx, QualityColKey>[] = [
     locked: true,
     cellClassName: 'min-w-0 px-2',
     cell: (d) => (
-      <span className="block truncate text-[12px] font-medium" style={{ color: '#1a2234' }}>
+      <span className="block truncate text-[12px] font-medium" style={{ color: BRAND.textPrimary }}>
         {d.title}
       </span>
     ),
@@ -353,7 +361,7 @@ const QUALITY_COLUMNS: ColumnSpec<DefectRow, QualityCtx, QualityColKey>[] = [
           onOpen={() => ctx.openItem(d.parentKey!)}
         />
       ) : (
-        <span className="text-[11px]" style={{ color: '#c4cad4' }}>
+        <span className="text-[11px]" style={{ color: BRAND.textFaint }}>
           —
         </span>
       ),
@@ -379,7 +387,7 @@ const QUALITY_COLUMNS: ColumnSpec<DefectRow, QualityCtx, QualityColKey>[] = [
         />
       ) : (
         <div onClick={(e) => e.stopPropagation()}>
-          <span className="text-[10px]" style={{ color: '#c4cad4' }}>
+          <span className="text-[10px]" style={{ color: BRAND.textFaint }}>
             —
           </span>
         </div>
@@ -446,7 +454,11 @@ const QUALITY_COLUMNS: ColumnSpec<DefectRow, QualityCtx, QualityColKey>[] = [
     minWidth: 70,
     cellClassName: 'min-w-0 px-2 text-[10px]',
     cell: (d) => (
-      <span className="block truncate" style={{ color: '#5c6478' }} title={d.iterationName ?? ''}>
+      <span
+        className="block truncate"
+        style={{ color: BRAND.textSecondary }}
+        title={d.iterationName ?? ''}
+      >
         {d.iterationName ?? '—'}
       </span>
     ),
@@ -459,7 +471,11 @@ const QUALITY_COLUMNS: ColumnSpec<DefectRow, QualityCtx, QualityColKey>[] = [
     minWidth: 70,
     cellClassName: 'min-w-0 px-2 text-[10px]',
     cell: (d) => (
-      <span className="block truncate" style={{ color: '#5c6478' }} title={d.createdByName ?? ''}>
+      <span
+        className="block truncate"
+        style={{ color: BRAND.textSecondary }}
+        title={d.createdByName ?? ''}
+      >
         {d.createdByName ?? '—'}
       </span>
     ),
@@ -474,27 +490,6 @@ const QUALITY_COLUMNS: ColumnSpec<DefectRow, QualityCtx, QualityColKey>[] = [
     cell: (d) => <OwnerCell name={d.assigneeName} />,
   },
 ]
-
-// ── Metric card ────────────────────────────────────────────────────────────
-
-function MetricCard({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <div
-      className="flex flex-col justify-center gap-0.5 px-5"
-      style={{ borderLeft: `1px solid ${BRAND.border}` }}
-    >
-      <span
-        className="text-[9px] font-semibold tracking-widest uppercase"
-        style={{ color: '#8c94a6' }}
-      >
-        {label}
-      </span>
-      <span className="text-[17px] leading-none font-semibold" style={{ color }}>
-        {value}
-      </span>
-    </div>
-  )
-}
 
 // ── Small filter select ───────────────────────────────────────────────────
 
@@ -514,7 +509,7 @@ function FilterSelect({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       className="rounded bg-white px-1.5 py-1 text-[11px] focus:outline-none"
-      style={{ border: `1px solid ${BRAND.border}`, color: '#5c6478' }}
+      style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
       aria-label={label}
     >
       {options.map((o) => (
@@ -652,7 +647,7 @@ function LogDefectModal({ projectId, onClose }: { projectId: string; onClose: ()
                 value={severity}
                 onChange={(e) => setSeverity(e.target.value)}
                 className="w-full rounded-md border px-3 py-1.5 text-sm"
-                style={{ borderColor: BRAND.border, color: '#1a2234' }}
+                style={{ borderColor: BRAND.border, color: BRAND.textPrimary }}
               >
                 <option value="">—</option>
                 {SEVERITY_OPTIONS.map((s) => (
@@ -667,7 +662,7 @@ function LogDefectModal({ projectId, onClose }: { projectId: string; onClose: ()
                 value={priority}
                 onChange={(e) => setPriority(e.target.value)}
                 className="w-full rounded-md border px-3 py-1.5 text-sm"
-                style={{ borderColor: BRAND.border, color: '#1a2234' }}
+                style={{ borderColor: BRAND.border, color: BRAND.textPrimary }}
               >
                 {PRIORITY_OPTIONS.map((p) => (
                   <option key={p.value} value={p.value}>
@@ -683,7 +678,7 @@ function LogDefectModal({ projectId, onClose }: { projectId: string; onClose: ()
                 value={environment}
                 onChange={(e) => setEnvironment(e.target.value)}
                 className="w-full rounded-md border px-3 py-1.5 text-sm"
-                style={{ borderColor: BRAND.border, color: '#1a2234' }}
+                style={{ borderColor: BRAND.border, color: BRAND.textPrimary }}
               >
                 <option value="">—</option>
                 {(['development', 'staging', 'production', 'testing'] as const).map((e) => (
@@ -698,7 +693,7 @@ function LogDefectModal({ projectId, onClose }: { projectId: string; onClose: ()
                 value={rootCause}
                 onChange={(e) => setRootCause(e.target.value)}
                 className="w-full rounded-md border px-3 py-1.5 text-sm"
-                style={{ borderColor: BRAND.border, color: '#1a2234' }}
+                style={{ borderColor: BRAND.border, color: BRAND.textPrimary }}
               >
                 <option value="">—</option>
                 {(['requirements', 'design', 'code', 'test', 'integration', 'other'] as const).map(
@@ -717,7 +712,7 @@ function LogDefectModal({ projectId, onClose }: { projectId: string; onClose: ()
                 value={assigneeId}
                 onChange={(e) => setAssigneeId(e.target.value)}
                 className="w-full rounded-md border px-3 py-1.5 text-sm"
-                style={{ borderColor: BRAND.border, color: '#1a2234' }}
+                style={{ borderColor: BRAND.border, color: BRAND.textPrimary }}
               >
                 <option value="">Unassigned</option>
                 {(members ?? []).map((m) => (
@@ -732,7 +727,7 @@ function LogDefectModal({ projectId, onClose }: { projectId: string; onClose: ()
                 value={releaseId}
                 onChange={(e) => setReleaseId(e.target.value)}
                 className="w-full rounded-md border px-3 py-1.5 text-sm"
-                style={{ borderColor: BRAND.border, color: '#1a2234' }}
+                style={{ borderColor: BRAND.border, color: BRAND.textPrimary }}
               >
                 <option value="">—</option>
                 {(releases ?? []).map((r) => (
@@ -745,22 +740,12 @@ function LogDefectModal({ projectId, onClose }: { projectId: string; onClose: ()
           </div>
         </ModalBody>
         <ModalFooter>
-          <button
-            type="button"
-            onClick={onClose}
-            className="cursor-pointer rounded-md px-4 py-1.5 text-sm"
-            style={{ border: `1px solid ${BRAND.border}`, color: '#5c6478' }}
-          >
+          <Button variant="outline" type="button" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={createDefect.isPending || !title.trim()}
-            className="cursor-pointer rounded-md px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-            style={{ backgroundColor: BRAND.primary }}
-          >
+          </Button>
+          <Button type="submit" disabled={createDefect.isPending || !title.trim()}>
             {createDefect.isPending ? 'Logging...' : 'Log Defect'}
-          </button>
+          </Button>
         </ModalFooter>
       </form>
     </AppModal>
@@ -810,13 +795,17 @@ function DefectTableRow({
   return (
     <div
       ref={setNodeRef}
-      className="group flex h-[34px] cursor-pointer items-center gap-2 px-3 transition-colors duration-100 hover:bg-[#f1f6fc]"
+      className="group flex h-[34px] cursor-pointer items-center gap-2 px-3 transition-colors duration-100 hover:bg-primary-lighter"
       style={{
         transform: CSS.Transform.toString(transform),
         transition,
-        borderBottom: '1px solid #edf0f4',
+        borderBottom: `1px solid ${BRAND.borderInner}`,
         minWidth: 'max-content',
-        backgroundColor: isDragging ? '#edf2fb' : selected ? '#f3f6fb' : undefined,
+        backgroundColor: isDragging
+          ? BRAND.primaryLighter
+          : selected
+            ? BRAND.surfaceSubtle
+            : undefined,
         opacity: isDragging ? 0.6 : 1,
         zIndex: isDragging ? 1 : undefined,
         position: isDragging ? 'relative' : undefined,
@@ -837,7 +826,7 @@ function DefectTableRow({
       />
       <div
         className="w-6 shrink-0 px-2 text-right font-mono text-[10px] tabular-nums"
-        style={{ color: '#8c94a6' }}
+        style={{ color: BRAND.textMuted }}
       >
         {rowNum}
       </div>
@@ -932,7 +921,7 @@ export function QualityPage() {
       ),
   })
 
-  // ── Bulk selection (shared pattern: checkbox gutter + BulkActionBar) ────────
+  // ── Bulk selection (shared pattern: checkbox gutter + BulkScheduleBar) ────────
   const { data: iterations = [] } = useIterations(project?.projectId)
   const {
     selectedIds,
@@ -943,41 +932,6 @@ export function QualityPage() {
     toggleAll,
     clear: clearSelection,
   } = useRowSelection(sortedDefects)
-  const bulkRelease = useBulkAssignRelease()
-  const bulkIteration = useBulkAssignIteration()
-  const [bulkError, setBulkError] = useState<string | null>(null)
-
-  async function assignReleaseToSelected(releaseId: string | null) {
-    if (!project?.projectId || selectedIds.size === 0) return
-    setBulkError(null)
-    try {
-      await bulkRelease.mutateAsync({
-        projectId: project.projectId,
-        itemIds: [...selectedIds],
-        releaseId,
-      })
-      await qc.invalidateQueries({ queryKey: qualityKeys.all })
-      clearSelection()
-    } catch (e) {
-      setBulkError(e instanceof Error ? e.message : 'Bulk release assignment failed')
-    }
-  }
-
-  async function assignIterationToSelected(iterationId: string | null) {
-    if (!project?.projectId || selectedIds.size === 0) return
-    setBulkError(null)
-    try {
-      await bulkIteration.mutateAsync({
-        projectId: project.projectId,
-        itemIds: [...selectedIds],
-        iterationId,
-      })
-      await qc.invalidateQueries({ queryKey: qualityKeys.all })
-      clearSelection()
-    } catch (e) {
-      setBulkError(e instanceof Error ? e.message : 'Bulk iteration assignment failed')
-    }
-  }
 
   const metrics = data?.metrics ?? {
     openDefects: 0,
@@ -992,7 +946,7 @@ export function QualityPage() {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8">
         <AlertTriangle size={32} style={{ color: BRAND.danger }} />
-        <p className="text-sm" style={{ color: '#5c6478' }}>
+        <p className="text-sm" style={{ color: BRAND.textSecondary }}>
           {error instanceof Error ? error.message : 'Failed to load defects'}
         </p>
       </div>
@@ -1002,22 +956,44 @@ export function QualityPage() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Metrics strip */}
-      <div
-        className="flex shrink-0 items-stretch bg-white"
-        style={{ borderBottom: `1px solid ${BRAND.border}`, height: 52 }}
-      >
-        <MetricCard label="Open Defects" value={metrics.openDefects} color="#8a5808" />
-        <MetricCard label="Critical" value={metrics.critical} color="#b91c1c" />
-        <MetricCard label="In Progress" value={metrics.inProgress} color="#7e22ce" />
-        <MetricCard label="Verified / Accepted" value={metrics.verifiedAccepted} color="#1e6930" />
-        <MetricCard label="Reopened" value={metrics.reopened} color="#1a2234" />
+      <MetricStrip>
+        <MetricCard
+          label="Open Defects"
+          value={metrics.openDefects}
+          valueColor={BRAND.warning}
+          minWidth={100}
+        />
+        <MetricCard
+          label="Critical"
+          value={metrics.critical}
+          valueColor={BRAND.danger}
+          minWidth={80}
+        />
+        <MetricCard
+          label="In Progress"
+          value={metrics.inProgress}
+          valueColor={BRAND.primaryLight}
+          minWidth={90}
+        />
+        <MetricCard
+          label="Verified / Accepted"
+          value={metrics.verifiedAccepted}
+          valueColor={BRAND.success}
+          minWidth={130}
+        />
+        <MetricCard
+          label="Reopened"
+          value={metrics.reopened}
+          valueColor={BRAND.textPrimary}
+          minWidth={90}
+        />
         <MetricCard
           label="Blockers"
           value={metrics.blockers}
-          color={metrics.blockers > 0 ? '#b91c1c' : '#1a2234'}
+          valueColor={metrics.blockers > 0 ? BRAND.danger : BRAND.textPrimary}
+          minWidth={80}
         />
-        <div className="flex-1" style={{ borderLeft: `1px solid ${BRAND.border}` }} />
-      </div>
+      </MetricStrip>
 
       {/* Toolbar */}
       <PageToolbar
@@ -1031,14 +1007,10 @@ export function QualityPage() {
         }}
         actions={
           canManage ? (
-            <button
-              onClick={() => setShowLogDefect(true)}
-              className="flex cursor-pointer items-center gap-1.5 rounded px-3 py-1 text-[11px] font-semibold text-white hover:brightness-95"
-              style={{ backgroundColor: BRAND.primary }}
-            >
+            <Button size="sm" onClick={() => setShowLogDefect(true)}>
               <Plus size={12} />
               Log Defect
-            </button>
+            </Button>
           ) : undefined
         }
         activeFilterCount={
@@ -1154,62 +1126,15 @@ export function QualityPage() {
       />
 
       {/* Bulk action bar — appears when ≥1 defect is selected */}
-      {selectedIds.size > 0 && (
-        <BulkActionBar
-          selectedCount={selectedIds.size}
-          error={bulkError}
-          onClear={() => {
-            clearSelection()
-            setBulkError(null)
-          }}
-        >
-          {canManage && (
-            <>
-              <InlineSelect
-                value=""
-                disabled={bulkRelease.isPending}
-                onChange={(e) => {
-                  if (!e.target.value) return
-                  void assignReleaseToSelected(
-                    e.target.value === '__none__' ? null : e.target.value,
-                  )
-                }}
-                className="w-auto"
-                aria-label="Assign release to selected"
-              >
-                <option value="">Assign Release…</option>
-                <option value="__none__">— Unschedule —</option>
-                {(releases ?? []).map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                  </option>
-                ))}
-              </InlineSelect>
-
-              <InlineSelect
-                value=""
-                disabled={bulkIteration.isPending}
-                onChange={(e) => {
-                  if (!e.target.value) return
-                  void assignIterationToSelected(
-                    e.target.value === '__none__' ? null : e.target.value,
-                  )
-                }}
-                className="w-auto"
-                aria-label="Assign iteration to selected"
-              >
-                <option value="">Assign Iteration…</option>
-                <option value="__none__">— Unschedule —</option>
-                {iterations.map((it) => (
-                  <option key={it.id} value={it.id}>
-                    {it.name}
-                  </option>
-                ))}
-              </InlineSelect>
-            </>
-          )}
-        </BulkActionBar>
-      )}
+      <BulkScheduleBar
+        projectId={project?.projectId}
+        selectedIds={selectedIds}
+        clearSelection={clearSelection}
+        releases={releases ?? []}
+        iterations={iterations}
+        canEdit={canManage}
+        onAssigned={() => qc.invalidateQueries({ queryKey: qualityKeys.all })}
+      />
 
       {/* Defect table */}
       <div className="flex flex-1 overflow-hidden bg-white">
@@ -1217,8 +1142,8 @@ export function QualityPage() {
           <SkeletonList rows={8} />
         ) : defects.length === 0 ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8">
-            <PackageOpen size={40} style={{ color: '#c4cad4' }} />
-            <p className="text-sm" style={{ color: '#8c94a6' }}>
+            <PackageOpen size={40} style={{ color: BRAND.textFaint }} />
+            <p className="text-sm" style={{ color: BRAND.textMuted }}>
               {search ||
               severityFilter !== 'all' ||
               envFilter !== 'all' ||

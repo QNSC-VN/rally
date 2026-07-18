@@ -7,8 +7,8 @@ import { Loader2 } from 'lucide-react'
 import { useCreateTask } from '@/features/work-items/api'
 import { useProjectMembers } from '@/features/teams/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
-import { BRAND } from '@/shared/config/brand'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
+import { Button } from '@/shared/ui/button'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { NativeSelect } from '@/shared/ui/native-select'
@@ -103,25 +103,13 @@ export function AddTaskModal({ workItemId, onClose }: Props) {
       </ModalBody>
 
       <ModalFooter>
-        <button
-          type="button"
-          onClick={onClose}
-          disabled={submitting}
-          className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-[#f0f2f5] disabled:opacity-50"
-          style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
-        >
+        <Button variant="outline" type="button" onClick={onClose} disabled={submitting}>
           Cancel
-        </button>
-        <button
-          type="button"
-          onClick={() => void submit()}
-          disabled={submitting || !name.trim()}
-          className="flex items-center gap-1.5 rounded px-4 py-1.5 text-[11px] font-semibold text-white transition-colors hover:opacity-90 disabled:opacity-50"
-          style={{ backgroundColor: BRAND.primary }}
-        >
+        </Button>
+        <Button type="button" onClick={() => void submit()} disabled={submitting || !name.trim()}>
           {submitting && <Loader2 size={11} className="animate-spin" />}
           {submitting ? 'Creating…' : 'Create Task'}
-        </button>
+        </Button>
       </ModalFooter>
     </AppModal>
   )

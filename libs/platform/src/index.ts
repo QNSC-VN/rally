@@ -1,6 +1,7 @@
 export * from './platform.module';
 export * from './config/app-config.service';
 export * from './config/env.schema';
+export * from './aws/index';
 export * from './context/request-context';
 export * from './context/als.middleware';
 export * from './database/index';
@@ -10,6 +11,7 @@ export * from './http/index';
 export * from './auth/index';
 export * from './rate-limit/index';
 export * from './outbox/index';
+export * from './audit/index';
 export * from './email/index';
 export * from './pipes/index';
 export * from './utils/index';

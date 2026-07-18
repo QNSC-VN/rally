@@ -44,7 +44,13 @@ export class UserDrizzleRepository implements IUserRepository<DbExecutor> {
 
   async updateProfile(
     id: string,
-    input: { displayName?: string; avatarUrl?: string | null; locale?: string; timezone?: string },
+    input: {
+      displayName?: string;
+      avatarUrl?: string | null;
+      locale?: string;
+      timezone?: string;
+      phone?: string | null;
+    },
   ): Promise<User> {
     const rows = await this.db
       .update(users)
@@ -53,6 +59,7 @@ export class UserDrizzleRepository implements IUserRepository<DbExecutor> {
         ...(input.avatarUrl !== undefined && { avatarUrl: input.avatarUrl }),
         ...(input.locale !== undefined && { locale: input.locale }),
         ...(input.timezone !== undefined && { timezone: input.timezone }),
+        ...(input.phone !== undefined && { phone: input.phone }),
         updatedAt: new Date(),
       })
       .where(eq(users.id, id))

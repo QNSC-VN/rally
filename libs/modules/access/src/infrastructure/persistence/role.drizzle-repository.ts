@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { eq, or, isNull } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
-import type { DrizzleDB } from '@platform';
+import type { DrizzleDB, DbExecutor } from '@platform';
 import { systemRoles } from '../../../../../../db/schema/access';
 import type { SystemRole } from '../../domain/access.types';
 import { IRoleRepository } from '../../domain/ports/role.repository';
@@ -22,6 +22,15 @@ export class RoleDrizzleRepository implements IRoleRepository {
       .from(systemRoles)
       .where(or(isNull(systemRoles.workspaceId), eq(systemRoles.workspaceId, workspaceId)));
     return rows.map((r) => this.toRole(r));
+  }
+
+  async updatePermissions(id: string, permissions: string[], tx?: DbExecutor): Promise<SystemRole> {
+    const rows = await (tx ?? this.db)
+      .update(systemRoles)
+      .set({ permissions })
+      .where(eq(systemRoles.id, id))
+      .returning();
+    return this.toRole(rows[0]);
   }
 
   private toRole(row: typeof systemRoles.$inferSelect): SystemRole {

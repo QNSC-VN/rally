@@ -1,9 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, count, desc, eq, gt } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, inArray } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { inAppNotifications } from '../../../../../../db/schema/notifications';
-import type { Notification, CreateNotificationInput } from '../../domain/notification.types';
+import type {
+  Notification,
+  CreateNotificationInput,
+  NotificationListFilter,
+} from '../../domain/notification.types';
 import { INotificationRepository } from '../../domain/ports/notification.repository';
 
 @Injectable()
@@ -22,15 +26,17 @@ export class NotificationDrizzleRepository implements INotificationRepository {
   async listForRecipient(
     workspaceId: string,
     recipientId: string,
-    unreadOnly: boolean,
-    limit: number,
+    filter: NotificationListFilter,
   ): Promise<Notification[]> {
     const conditions = [
       eq(inAppNotifications.workspaceId, workspaceId),
       eq(inAppNotifications.recipientId, recipientId),
     ];
-    if (unreadOnly) {
+    if (filter.unreadOnly) {
       conditions.push(eq(inAppNotifications.isRead, false));
+    }
+    if (filter.types && filter.types.length > 0) {
+      conditions.push(inArray(inAppNotifications.type, [...filter.types]));
     }
 
     const rows = await this.db
@@ -38,7 +44,7 @@ export class NotificationDrizzleRepository implements INotificationRepository {
       .from(inAppNotifications)
       .where(and(...conditions))
       .orderBy(desc(inAppNotifications.createdAt))
-      .limit(limit);
+      .limit(filter.limit);
     return rows as Notification[];
   }
 

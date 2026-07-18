@@ -15,6 +15,6 @@ export interface IWorkspaceRepository {
   listAll(): Promise<Workspace[]>;
   count(): Promise<number>;
   create(input: CreateWorkspaceInput, tx?: DbExecutor): Promise<Workspace>;
-  update(id: string, input: UpdateWorkspaceInput): Promise<Workspace>;
-  softDelete(id: string): Promise<void>;
+  update(id: string, input: UpdateWorkspaceInput, tx?: DbExecutor): Promise<Workspace>;
+  softDelete(id: string, tx?: DbExecutor): Promise<void>;
 }

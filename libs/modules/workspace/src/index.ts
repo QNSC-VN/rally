@@ -5,3 +5,7 @@ export * from './domain/ports/workspace-member.repository';
 export * from './application/workspace.service';
 export * from './interface/http/dto/workspace-request.dto';
 export * from './interface/http/dto/workspace-response.dto';
+export * from './domain/team.types';
+export * from './domain/ports/team.repository';
+export * from './domain/ports/team-member.repository';
+export * from './application/team.service';

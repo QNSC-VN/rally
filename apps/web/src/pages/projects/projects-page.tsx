@@ -15,7 +15,11 @@ import {
 import { toast } from 'sonner'
 import { BRAND } from '@/shared/config/brand'
 import { SearchInput } from '@/shared/ui/search-input'
+import { EmptyState } from '@/shared/ui/empty-state'
+import { MetricCard } from '@/shared/ui/metric-card'
+import { MetricStrip } from '@/shared/ui/metric-strip'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
+import { Button } from '@/shared/ui/button'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
@@ -55,7 +59,7 @@ function ArchiveConfirmModal({
         style={{ backgroundColor: BRAND.dangerBg, borderBottom: `1px solid ${BRAND.dangerBorder}` }}
       >
         <AlertTriangle size={16} style={{ color: BRAND.danger, flexShrink: 0 }} />
-        <p className="text-[11px]" style={{ color: '#7f1d1d' }}>
+        <p className="text-[11px]" style={{ color: BRAND.danger }}>
           This project will become read-only. Work items and iterations will still be visible.
         </p>
       </div>
@@ -107,24 +111,18 @@ function ArchiveConfirmModal({
       </ModalBody>
 
       <ModalFooter>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-[#f0f2f5]"
-          style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
-        >
+        <Button variant="outline" type="button" onClick={onClose}>
           Cancel
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="destructive"
           type="button"
           onClick={onConfirm}
           disabled={!confirmed || isPending}
-          className="flex items-center gap-1.5 rounded px-3.5 py-1.5 text-[11px] font-semibold text-white disabled:opacity-50"
-          style={{ backgroundColor: BRAND.danger }}
         >
           {isPending && <Loader2 size={12} className="animate-spin" />}
           Archive project
-        </button>
+        </Button>
       </ModalFooter>
     </AppModal>
   )
@@ -138,14 +136,14 @@ function ProjectStatusBadge({ status }: { status: 'active' | 'archived' }) {
     <span
       className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] font-semibold"
       style={{
-        color: active ? BRAND.success : '#64748b',
-        backgroundColor: active ? BRAND.successBg : '#f1f5f9',
+        color: active ? BRAND.success : BRAND.textSecondary,
+        backgroundColor: active ? BRAND.successBg : BRAND.primaryLighter,
         border: `1px solid ${active ? BRAND.successBorder : BRAND.border}`,
       }}
     >
       <span
         className="h-1.5 w-1.5 rounded-full"
-        style={{ backgroundColor: active ? '#2a8c3f' : '#94a3b8' }}
+        style={{ backgroundColor: active ? BRAND.success : BRAND.textMuted }}
       />
       {active ? 'Active' : 'Archived'}
     </span>
@@ -216,23 +214,13 @@ function EditProjectModal({
           </FormField>
         </ModalBody>
         <ModalFooter>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-[#f0f2f5]"
-            style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
-          >
+          <Button variant="outline" type="button" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={isPending || !name.trim()}
-            className="flex items-center gap-1.5 rounded px-3.5 py-1.5 text-[11px] font-semibold text-white disabled:opacity-60"
-            style={{ backgroundColor: BRAND.primary }}
-          >
+          </Button>
+          <Button type="submit" disabled={isPending || !name.trim()}>
             {isPending && <Loader2 size={12} className="animate-spin" />}
             Save Changes
-          </button>
+          </Button>
         </ModalFooter>
       </form>
     </AppModal>
@@ -337,23 +325,13 @@ function NewProjectModal({ workspaceId, onClose }: { workspaceId: string; onClos
           </FormField>
         </ModalBody>
         <ModalFooter>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-[#f0f2f5]"
-            style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
-          >
+          <Button variant="outline" type="button" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={isPending || !name.trim() || !key.trim()}
-            className="flex items-center gap-1.5 rounded px-3.5 py-1.5 text-[11px] font-semibold text-white disabled:opacity-60"
-            style={{ backgroundColor: BRAND.primary }}
-          >
+          </Button>
+          <Button type="submit" disabled={isPending || !name.trim() || !key.trim()}>
             {isPending && <Loader2 size={12} className="animate-spin" />}
             Create Project
-          </button>
+          </Button>
         </ModalFooter>
       </form>
     </AppModal>
@@ -429,6 +407,12 @@ export function ProjectsPage() {
 
   const activeCount = projects.filter((p) => p.status === 'active').length
 
+  const stats = {
+    total: projects.length,
+    active: activeCount,
+    archived: projects.filter((p) => p.status === 'archived').length,
+    linkedTeams: projects.reduce((sum, p) => sum + (p.teamCount ?? 0), 0),
+  }
   return (
     <div className="flex flex-1 flex-col" style={{ backgroundColor: BRAND.pageBg }}>
       {showNewModal && workspaceId && (
@@ -464,15 +448,24 @@ export function ProjectsPage() {
             {activeCount === 1 ? 'project' : 'projects'}
           </p>
         </div>
-        <button
-          onClick={() => setShowNewModal(true)}
-          className="flex items-center gap-1.5 rounded px-3 py-1.5 text-[11px] font-semibold text-white transition-opacity hover:opacity-90"
-          style={{ backgroundColor: BRAND.primary }}
-        >
+        <Button size="sm" onClick={() => setShowNewModal(true)}>
           <Plus size={13} />
           New Project
-        </button>
+        </Button>
       </div>
+
+      {/* Summary metric strip */}
+      <MetricStrip>
+        <MetricCard label="Total" value={stats.total} minWidth={80} />
+        <MetricCard
+          label="Active"
+          value={stats.active}
+          valueColor={BRAND.primaryLight}
+          minWidth={80}
+        />
+        <MetricCard label="Archived" value={stats.archived} minWidth={90} />
+        <MetricCard label="Linked Teams" value={stats.linkedTeams} minWidth={110} />
+      </MetricStrip>
 
       {/* Toolbar */}
       <div
@@ -552,16 +545,17 @@ export function ProjectsPage() {
 
           {/* Empty state */}
           {!isLoading && filtered.length === 0 && (
-            <div
-              className="flex flex-col items-center justify-center py-16"
-              style={{ color: BRAND.textMuted }}
-            >
-              <FolderKanban size={32} strokeWidth={1.25} className="mb-3 opacity-40" />
-              <p className="text-[13px] font-medium" style={{ color: BRAND.textSecondary }}>
-                No projects found
-              </p>
-              <p className="mt-1 text-[11px]">Try adjusting your search or filter.</p>
-            </div>
+            <EmptyState
+              icon={
+                <FolderKanban
+                  size={32}
+                  strokeWidth={1.25}
+                  className="text-foreground-subtle opacity-40"
+                />
+              }
+              title="No projects found"
+              description="Try adjusting your search or filter."
+            />
           )}
 
           {/* Rows */}
@@ -570,7 +564,7 @@ export function ProjectsPage() {
               filtered.map((project) => (
                 <div
                   key={project.id}
-                  className="relative flex h-12 cursor-default items-center gap-3 px-4 transition-colors hover:bg-[#f7f8fa]"
+                  className="relative flex h-12 cursor-default items-center gap-3 px-4 transition-colors hover:bg-surface-hover"
                   style={{
                     borderBottom: `1px solid ${BRAND.borderInner}`,
                     opacity: project.status === 'archived' ? 0.7 : 1,
@@ -580,7 +574,7 @@ export function ProjectsPage() {
                   <div className="w-16 shrink-0">
                     <span
                       className="inline-flex h-5 items-center rounded-sm px-1.5 font-mono text-[10px] font-semibold"
-                      style={{ backgroundColor: '#e5ebf4', color: BRAND.primary }}
+                      style={{ backgroundColor: BRAND.avatarBg, color: BRAND.primary }}
                     >
                       {project.key}
                     </span>
@@ -664,7 +658,7 @@ export function ProjectsPage() {
                         e.stopPropagation()
                         setOpenMenu(openMenu === project.id ? null : project.id)
                       }}
-                      className="flex h-6 w-6 items-center justify-center rounded hover:bg-[#e5ebf4]"
+                      className="flex h-6 w-6 items-center justify-center rounded hover:bg-avatar"
                       style={{ color: BRAND.textMuted }}
                       aria-label="Project actions"
                     >
@@ -677,7 +671,7 @@ export function ProjectsPage() {
                         style={{ border: `1px solid ${BRAND.border}` }}
                       >
                         <button
-                          className="flex w-full items-center gap-2 px-3 py-2 text-[11px] hover:bg-[#f4f6f9]"
+                          className="flex w-full items-center gap-2 px-3 py-2 text-[11px] hover:bg-surface-subtle"
                           style={{ color: BRAND.textPrimary }}
                           onClick={() => {
                             setEditingProject(project)
@@ -688,7 +682,7 @@ export function ProjectsPage() {
                           Edit project
                         </button>
                         <button
-                          className="flex w-full items-center gap-2 px-3 py-2 text-[11px] hover:bg-[#f4f6f9]"
+                          className="flex w-full items-center gap-2 px-3 py-2 text-[11px] hover:bg-surface-subtle"
                           style={{
                             color: project.status === 'active' ? BRAND.danger : BRAND.textPrimary,
                           }}

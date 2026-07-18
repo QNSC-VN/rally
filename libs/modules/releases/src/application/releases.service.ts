@@ -15,12 +15,13 @@ import { releaseDailySnapshots, workItems } from '../../../../../db/schema/work'
 import {
   completedScheduleStatesSql,
   acceptedScheduleStatesSql,
+  type ReleaseStatus,
 } from '../../../../../db/schema/enums';
 import { IReleaseRepository, RELEASE_REPOSITORY } from '../domain/ports/release.repository';
 import type { Release, UpdateReleaseInput } from '../domain/release.types';
 
 /** Valid release status transitions (Rally-aligned lifecycle). */
-const RELEASE_TRANSITIONS: Record<string, string[]> = {
+const RELEASE_TRANSITIONS: Record<ReleaseStatus, ReleaseStatus[]> = {
   planning: ['active', 'planning'],
   active: ['accepted', 'planning', 'active'],
   accepted: ['active', 'accepted'],

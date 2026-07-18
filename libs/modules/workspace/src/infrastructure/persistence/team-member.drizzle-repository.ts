@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
-import type { DrizzleDB } from '@platform';
+import type { DrizzleDB, DbExecutor } from '@platform';
 import { teamMembers } from '../../../../../../db/schema/work';
 import type { TeamMember } from '../../domain/team.types';
 import { ITeamMemberRepository } from '../../domain/ports/team-member.repository';
@@ -22,7 +22,7 @@ export class TeamMemberDrizzleRepository implements ITeamMemberRepository {
         ),
       )
       .limit(1);
-    return (rows[0]) ?? null;
+    return rows[0] ?? null;
   }
 
   async listByTeam(teamId: string): Promise<TeamMember[]> {
@@ -39,8 +39,9 @@ export class TeamMemberDrizzleRepository implements ITeamMemberRepository {
     workspaceId: string,
     teamId: string,
     userId: string,
+    tx?: DbExecutor,
   ): Promise<TeamMember> {
-    const rows = await this.db
+    const rows = await (tx ?? this.db)
       .insert(teamMembers)
       .values({
         id,
@@ -54,8 +55,8 @@ export class TeamMemberDrizzleRepository implements ITeamMemberRepository {
     return rows[0];
   }
 
-  async removeMember(teamId: string, userId: string): Promise<void> {
-    await this.db
+  async removeMember(teamId: string, userId: string, tx?: DbExecutor): Promise<void> {
+    await (tx ?? this.db)
       .update(teamMembers)
       .set({ status: 'removed' })
       .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId)));

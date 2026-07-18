@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 import { InlineSelect } from '@/shared/ui/native-select'
+import { BRAND } from '@/shared/config/brand'
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
 
@@ -43,9 +44,9 @@ export function PaginationFooter({
   return (
     <div
       className="flex h-10 shrink-0 items-center justify-between bg-white px-3"
-      style={{ borderTop: '1px solid #e2e6eb' }}
+      style={{ borderTop: `1px solid ${BRAND.borderSubtle}` }}
     >
-      <div className="flex items-center gap-2 text-[11px]" style={{ color: '#5c6478' }}>
+      <div className="flex items-center gap-2 text-[11px]" style={{ color: BRAND.textSecondary }}>
         <span>Rows per page</span>
         <InlineSelect
           aria-label="Rows per page"
@@ -59,12 +60,12 @@ export function PaginationFooter({
             </option>
           ))}
         </InlineSelect>
-        <span className="tabular-nums" style={{ color: '#8c94a6' }}>
+        <span className="tabular-nums" style={{ color: BRAND.textMuted }}>
           {hasRange ? `${rangeStart}–${rangeEnd}${total != null ? ` of ${total}` : ''}` : ''}
         </span>
       </div>
       <div className="flex items-center gap-2">
-        <span className="text-[11px] tabular-nums" style={{ color: '#5c6478' }}>
+        <span className="text-[11px] tabular-nums" style={{ color: BRAND.textSecondary }}>
           {`Page ${currentPage}${pageCount != null ? ` of ${pageCount}` : ''}`}
         </span>
         <button
@@ -73,7 +74,7 @@ export function PaginationFooter({
           disabled={!hasPrevPage}
           onClick={onPrevPage}
           className="rounded p-1.5 disabled:opacity-35"
-          style={{ border: '1px solid #dde2ea', color: '#5c6478' }}
+          style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
         >
           <ChevronLeft size={13} />
         </button>
@@ -83,7 +84,7 @@ export function PaginationFooter({
           disabled={!hasNextPage}
           onClick={onNextPage}
           className="rounded p-1.5 disabled:opacity-35"
-          style={{ border: '1px solid #dde2ea', color: '#5c6478' }}
+          style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
         >
           <ChevronRight size={13} />
         </button>

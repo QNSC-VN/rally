@@ -10,6 +10,9 @@ import {
   Span,
   EmailSchedulerService,
   UnitOfWork,
+  AuditProducer,
+  AUDIT_ACTION,
+  AUDIT_RESOURCE,
   addDays,
 } from '@platform';
 import type { JwtPayload, CursorPayload, PagedResult } from '@platform';
@@ -52,6 +55,7 @@ export class WorkspaceService {
     private readonly config: AppConfigService,
     private readonly emailScheduler: EmailSchedulerService,
     private readonly uow: UnitOfWork,
+    private readonly audit: AuditProducer,
   ) {}
 
   // ── Bootstrap ─────────────────────────────────────────────────────────────
@@ -113,7 +117,10 @@ export class WorkspaceService {
     const slug = `${this.slugify(name)}-${randomBytes(3).toString('hex')}`.slice(0, 63);
     return this.uow.run(async (tx) => {
       const workspace = await this.workspaceRepo.create({ id: uuidv7(), slug, name }, tx);
-      await this.memberRepo.addMember({ id: uuidv7(), workspaceId: workspace.id, userId: creatorUserId }, tx);
+      await this.memberRepo.addMember(
+        { id: uuidv7(), workspaceId: workspace.id, userId: creatorUserId },
+        tx,
+      );
       this.logger.log({ workspaceId: workspace.id, creatorUserId }, 'Workspace provisioned');
       return workspace;
     });
@@ -181,14 +188,29 @@ export class WorkspaceService {
   async updateWorkspace(
     workspaceId: string,
     input: UpdateWorkspaceInput,
+    actorId: string,
   ): Promise<Workspace> {
-    await this.getWorkspace(workspaceId);
+    const before = await this.getWorkspace(workspaceId);
 
     if (input.name !== undefined && input.name.trim().length === 0) {
       throw new PreconditionFailedException('VALIDATION_FAILED', 'Workspace name cannot be empty');
     }
 
-    return this.workspaceRepo.update(workspaceId, input);
+    return this.uow.run(async (tx) => {
+      const after = await this.workspaceRepo.update(workspaceId, input, tx);
+      await this.audit.emit(
+        {
+          action: AUDIT_ACTION.WORKSPACE_UPDATED,
+          resourceType: AUDIT_RESOURCE.WORKSPACE,
+          resourceId: workspaceId,
+          workspaceId,
+          actor: { id: actorId },
+          changes: { before, after },
+        },
+        tx,
+      );
+      return after;
+    });
   }
 
   async deleteWorkspace(workspaceId: string): Promise<void> {
@@ -224,11 +246,28 @@ export class WorkspaceService {
       );
     }
 
-    const member = await this.memberRepo.addMember({
-      id: uuidv7(),
-      workspaceId,
-      userId,
-      roleId: undefined,
+    const member = await this.uow.run(async (tx) => {
+      const created = await this.memberRepo.addMember(
+        {
+          id: uuidv7(),
+          workspaceId,
+          userId,
+          roleId: undefined,
+        },
+        tx,
+      );
+      await this.audit.emit(
+        {
+          action: AUDIT_ACTION.WORKSPACE_MEMBER_ADDED,
+          resourceType: AUDIT_RESOURCE.WORKSPACE_MEMBER,
+          resourceId: created.id,
+          workspaceId,
+          actor: { id: actorId },
+          changes: { after: created },
+        },
+        tx,
+      );
+      return created;
     });
 
     this.logger.log({ workspaceId, userId, actorId }, 'Member added to workspace');
@@ -245,7 +284,10 @@ export class WorkspaceService {
 
     const member = await this.memberRepo.findMemberById(memberId);
     if (!member || member.workspaceId !== workspaceId) {
-      throw new NotFoundException('WORKSPACE_MEMBER_NOT_FOUND', 'Member not found in this workspace');
+      throw new NotFoundException(
+        'WORKSPACE_MEMBER_NOT_FOUND',
+        'Member not found in this workspace',
+      );
     }
 
     // Sole-admin invariant: cannot suspend/remove the last active admin. Admin
@@ -263,7 +305,21 @@ export class WorkspaceService {
       }
     }
 
-    const updated = await this.memberRepo.updateMember(memberId, input);
+    const updated = await this.uow.run(async (tx) => {
+      const next = await this.memberRepo.updateMember(memberId, input, tx);
+      await this.audit.emit(
+        {
+          action: AUDIT_ACTION.WORKSPACE_MEMBER_UPDATED,
+          resourceType: AUDIT_RESOURCE.WORKSPACE_MEMBER,
+          resourceId: memberId,
+          workspaceId,
+          actor: { id: actorId },
+          changes: { before: member, after: next },
+        },
+        tx,
+      );
+      return next;
+    });
     this.logger.log({ workspaceId, memberId, actorId }, 'Member updated');
     return updated;
   }
@@ -273,7 +329,10 @@ export class WorkspaceService {
 
     const existing = await this.memberRepo.findMember(workspaceId, userId);
     if (!existing) {
-      throw new NotFoundException('WORKSPACE_MEMBER_NOT_FOUND', 'Member not found in this workspace');
+      throw new NotFoundException(
+        'WORKSPACE_MEMBER_NOT_FOUND',
+        'Member not found in this workspace',
+      );
     }
 
     const isAdmin = await this.memberRepo.isActiveAdmin(workspaceId, userId);
@@ -287,7 +346,20 @@ export class WorkspaceService {
       }
     }
 
-    await this.memberRepo.removeMember(workspaceId, userId);
+    await this.uow.run(async (tx) => {
+      await this.memberRepo.removeMember(workspaceId, userId, tx);
+      await this.audit.emit(
+        {
+          action: AUDIT_ACTION.WORKSPACE_MEMBER_REMOVED,
+          resourceType: AUDIT_RESOURCE.WORKSPACE_MEMBER,
+          resourceId: existing.id,
+          workspaceId,
+          actor: { id: actorId },
+          changes: { before: existing },
+        },
+        tx,
+      );
+    });
     this.logger.log({ workspaceId, userId, actorId }, 'Member removed from workspace');
   }
 
@@ -345,6 +417,18 @@ export class WorkspaceService {
         tx,
       );
 
+      await this.audit.emit(
+        {
+          action: AUDIT_ACTION.WORKSPACE_MEMBER_INVITED,
+          resourceType: AUDIT_RESOURCE.WORKSPACE_INVITATION,
+          resourceId: inv.id,
+          workspaceId,
+          actor: { id: actorId },
+          changes: { after: { email: normalizedEmail, roleId } },
+        },
+        tx,
+      );
+
       return inv;
     });
 
@@ -369,10 +453,26 @@ export class WorkspaceService {
     }
 
     if (invitation.status !== 'pending') {
-      throw new PreconditionFailedException('INVITATION_NOT_PENDING', 'Invitation is no longer pending');
+      throw new PreconditionFailedException(
+        'INVITATION_NOT_PENDING',
+        'Invitation is no longer pending',
+      );
     }
 
-    await this.invitationRepo.updateStatus(invitationId, 'cancelled');
+    await this.uow.run(async (tx) => {
+      await this.invitationRepo.updateStatus(invitationId, 'cancelled', undefined, tx);
+      await this.audit.emit(
+        {
+          action: AUDIT_ACTION.WORKSPACE_INVITATION_CANCELLED,
+          resourceType: AUDIT_RESOURCE.WORKSPACE_INVITATION,
+          resourceId: invitationId,
+          workspaceId,
+          actor: { id: actorId },
+          changes: { before: { email: invitation.email, status: invitation.status } },
+        },
+        tx,
+      );
+    });
     this.logger.log({ invitationId, actorId }, 'Invitation cancelled');
   }
 
@@ -415,6 +515,18 @@ export class WorkspaceService {
       }
 
       await this.invitationRepo.updateStatus(invitation.id, 'accepted', acceptingUserId, tx);
+
+      await this.audit.emit(
+        {
+          action: AUDIT_ACTION.WORKSPACE_INVITATION_ACCEPTED,
+          resourceType: AUDIT_RESOURCE.WORKSPACE_INVITATION,
+          resourceId: invitation.id,
+          workspaceId: invitation.workspaceId,
+          actor: { id: acceptingUserId },
+          changes: { after: { email: invitation.email, status: 'accepted' } },
+        },
+        tx,
+      );
     });
 
     this.logger.log({ invitationId: invitation.id, acceptingUserId }, 'Invitation accepted');
@@ -442,8 +554,24 @@ export class WorkspaceService {
   async updateSettings(
     workspaceId: string,
     input: UpdateWorkspaceSettingsInput,
+    actorId: string,
   ): Promise<WorkspaceSettings> {
     await this.getWorkspace(workspaceId);
-    return this.settingsRepo.upsert(workspaceId, input);
+    const before = await this.settingsRepo.findByWorkspace(workspaceId);
+    return this.uow.run(async (tx) => {
+      const after = await this.settingsRepo.upsert(workspaceId, input, tx);
+      await this.audit.emit(
+        {
+          action: AUDIT_ACTION.WORKSPACE_SETTINGS_UPDATED,
+          resourceType: AUDIT_RESOURCE.WORKSPACE,
+          resourceId: workspaceId,
+          workspaceId,
+          actor: { id: actorId },
+          changes: { before, after },
+        },
+        tx,
+      );
+      return after;
+    });
   }
 }

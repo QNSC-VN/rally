@@ -1,3 +1,4 @@
+import { BRAND } from '@/shared/config/brand'
 import type { StateStep } from './state-steps'
 
 // ── Rally-style segmented state stepper ─────────────────────────────────────
@@ -14,10 +15,10 @@ import type { StateStep } from './state-steps'
 // is outlined with the same visible border so the whole set reads as a
 // countable row of squares, exactly like the Rally state control.
 
-const STEPPER_BORDER = '#9db4d4'
-const STEPPER_REACHED = '#bcd3ef'
-const STEPPER_CURRENT = '#2558a6'
-const STEPPER_SEP = '#9db4d4'
+const STEPPER_BORDER = BRAND.accentBorderStrong
+const STEPPER_REACHED = BRAND.accentBorder
+const STEPPER_CURRENT = BRAND.primaryLight
+const STEPPER_SEP = BRAND.accentBorderStrong
 const CELL = 16
 
 export function StateStepper<T extends string>({
@@ -61,8 +62,12 @@ export function StateStepper<T extends string>({
               fontWeight: 700,
               lineHeight: `${CELL - 2}px`,
               cursor: canEdit && !isCurrent ? 'pointer' : 'default',
-              backgroundColor: isCurrent ? STEPPER_CURRENT : reached ? STEPPER_REACHED : '#ffffff',
-              color: isCurrent ? '#ffffff' : 'transparent',
+              backgroundColor: isCurrent
+                ? STEPPER_CURRENT
+                : reached
+                  ? STEPPER_REACHED
+                  : BRAND.surface,
+              color: isCurrent ? BRAND.surface : 'transparent',
             }}
           >
             {isCurrent ? step.letter : ''}

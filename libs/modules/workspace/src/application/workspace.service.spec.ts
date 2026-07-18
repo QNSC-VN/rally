@@ -23,6 +23,7 @@ import {
   AppConfigService,
   EmailSchedulerService,
   UnitOfWork,
+  AuditProducer,
 } from '@platform';
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -161,6 +162,7 @@ describe('WorkspaceService', () => {
         { provide: AppConfigService, useValue: makeConfig() },
         { provide: EmailSchedulerService, useValue: emailScheduler },
         { provide: UnitOfWork, useValue: makeUow() },
+        { provide: AuditProducer, useValue: { emit: vi.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
 
@@ -291,13 +293,15 @@ describe('WorkspaceService', () => {
       workspaceRepo.findById.mockResolvedValue(mockWorkspace());
       workspaceRepo.update.mockResolvedValue(mockWorkspace({ name: 'Updated' }));
 
-      const result = await service.updateWorkspace('ws-1', { name: 'Updated' });
+      const result = await service.updateWorkspace('ws-1', { name: 'Updated' }, 'actor-1');
       expect(result.name).toBe('Updated');
     });
 
     it('throws when workspace not found', async () => {
       workspaceRepo.findById.mockResolvedValue(null);
-      await expect(service.updateWorkspace('missing', {})).rejects.toThrow(NotFoundException);
+      await expect(service.updateWorkspace('missing', {}, 'actor-1')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -379,7 +383,7 @@ describe('WorkspaceService', () => {
       memberRepo.findMember.mockResolvedValue(mockMember());
 
       await service.removeMember('ws-1', 'user-1', 'actor-1');
-      expect(memberRepo.removeMember).toHaveBeenCalledWith('ws-1', 'user-1');
+      expect(memberRepo.removeMember).toHaveBeenCalledWith('ws-1', 'user-1', expect.anything());
     });
 
     it('throws NotFoundException if user is not a member', async () => {
@@ -455,7 +459,12 @@ describe('WorkspaceService', () => {
 
       await service.cancelInvitation('ws-1', 'inv-1', 'actor-1');
 
-      expect(invitationRepo.updateStatus).toHaveBeenCalledWith('inv-1', 'cancelled');
+      expect(invitationRepo.updateStatus).toHaveBeenCalledWith(
+        'inv-1',
+        'cancelled',
+        undefined,
+        expect.anything(),
+      );
     });
 
     it('throws NotFoundException when invitation not found', async () => {

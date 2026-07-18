@@ -3,8 +3,8 @@
  * Separate from permissions: a feature can be permission-gated (who can use it)
  * AND feature-flagged (whether it's deployed/built at all).
  *
- * Phase 0: planning, iteration, quality, portfolio, releases, reports are not yet built.
- * Flip to `true` when the feature ships in a later phase.
+ * Phase 0: planning, iteration, quality, portfolio, releases, reports are now built.
+ * Flip to `false` to withdraw a feature from a given deployment.
  */
 export const FEATURE_FLAGS: Record<string, boolean> = {
   'feature.backlog': true,
@@ -12,13 +12,13 @@ export const FEATURE_FLAGS: Record<string, boolean> = {
   'feature.timeboxes': true,
   'feature.iteration-status': true,
   'feature.team-status': true,
-  'feature.team-board': false,
+  'feature.team-board': true,
   'feature.board': false,
   'feature.quality': true,
-  'feature.portfolio': false,
+  'feature.portfolio': true,
   'feature.releases': true,
   'feature.milestones': true,
-  'feature.reports': false,
+  'feature.reports': true,
   // Phase 0 features that are live:
   'feature.home': true,
   'feature.projects': true,

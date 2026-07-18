@@ -1,6 +1,13 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
-import { NotFoundException, ConflictException } from '@platform';
+import {
+  NotFoundException,
+  ConflictException,
+  UnitOfWork,
+  AuditProducer,
+  AUDIT_ACTION,
+  AUDIT_RESOURCE,
+} from '@platform';
 import { ITeamRepository, TEAM_REPOSITORY } from '../domain/ports/team.repository';
 import {
   ITeamMemberRepository,
@@ -17,6 +24,8 @@ export class TeamService {
     @Inject(TEAM_REPOSITORY) private readonly teamRepo: ITeamRepository,
     @Inject(TEAM_MEMBER_REPOSITORY) private readonly teamMemberRepo: ITeamMemberRepository,
     @Inject(WORKSPACE_REPOSITORY) private readonly workspaceRepo: IWorkspaceRepository,
+    private readonly uow: UnitOfWork,
+    private readonly audit: AuditProducer,
   ) {}
 
   async listTeams(workspaceId: string): Promise<Team[]> {
@@ -27,8 +36,9 @@ export class TeamService {
     workspaceId: string,
     name: string,
     key: string,
-    description?: string,
-    leadId?: string,
+    description: string | undefined,
+    leadId: string | undefined,
+    actorId: string,
   ): Promise<Team> {
     const workspace = await this.workspaceRepo.findById(workspaceId);
     if (!workspace) {
@@ -43,13 +53,31 @@ export class TeamService {
       );
     }
 
-    const team = await this.teamRepo.create({
-      id: uuidv7(),
-      workspaceId,
-      name,
-      key: key.toUpperCase(),
-      description,
-      leadId,
+    const teamId = uuidv7();
+    const team = await this.uow.run(async (tx) => {
+      const created = await this.teamRepo.create(
+        {
+          id: teamId,
+          workspaceId,
+          name,
+          key: key.toUpperCase(),
+          description,
+          leadId,
+        },
+        tx,
+      );
+      await this.audit.emit(
+        {
+          action: AUDIT_ACTION.TEAM_CREATED,
+          resourceType: AUDIT_RESOURCE.TEAM,
+          resourceId: teamId,
+          workspaceId,
+          actor: { id: actorId },
+          changes: { after: { name, key: key.toUpperCase(), leadId } },
+        },
+        tx,
+      );
+      return created;
     });
 
     this.logger.log({ teamId: team.id, workspaceId }, 'Team created');
@@ -66,14 +94,33 @@ export class TeamService {
     return team;
   }
 
-  async updateTeam(id: string, input: UpdateTeamInput, workspaceId: string): Promise<Team> {
+  async updateTeam(
+    id: string,
+    input: UpdateTeamInput,
+    workspaceId: string,
+    actorId: string,
+  ): Promise<Team> {
     const team = await this.getTeam(id, workspaceId);
 
     if (input.status === 'archived' && team.status === 'archived') {
       throw new ConflictException('TEAM_ALREADY_ARCHIVED', 'Team is already archived');
     }
 
-    return this.teamRepo.update(id, input);
+    return this.uow.run(async (tx) => {
+      const after = await this.teamRepo.update(id, input, tx);
+      await this.audit.emit(
+        {
+          action: AUDIT_ACTION.TEAM_UPDATED,
+          resourceType: AUDIT_RESOURCE.TEAM,
+          resourceId: id,
+          workspaceId,
+          actor: { id: actorId },
+          changes: { before: team, after },
+        },
+        tx,
+      );
+      return after;
+    });
   }
 
   async listTeamMembers(teamId: string, workspaceId: string): Promise<TeamMember[]> {
@@ -81,7 +128,12 @@ export class TeamService {
     return this.teamMemberRepo.listByTeam(teamId);
   }
 
-  async addTeamMember(teamId: string, userId: string, workspaceId: string): Promise<TeamMember> {
+  async addTeamMember(
+    teamId: string,
+    userId: string,
+    workspaceId: string,
+    actorId: string,
+  ): Promise<TeamMember> {
     // Pass workspaceId so a team from another workspace can't be targeted (was a gap).
     await this.getTeam(teamId, workspaceId);
 
@@ -93,12 +145,38 @@ export class TeamService {
       );
     }
 
-    const member = await this.teamMemberRepo.addMember(uuidv7(), workspaceId, teamId, userId);
+    const memberId = uuidv7();
+    const member = await this.uow.run(async (tx) => {
+      const created = await this.teamMemberRepo.addMember(
+        memberId,
+        workspaceId,
+        teamId,
+        userId,
+        tx,
+      );
+      await this.audit.emit(
+        {
+          action: AUDIT_ACTION.TEAM_MEMBER_ADDED,
+          resourceType: AUDIT_RESOURCE.TEAM_MEMBER,
+          resourceId: memberId,
+          workspaceId,
+          actor: { id: actorId },
+          changes: { after: { teamId, userId } },
+        },
+        tx,
+      );
+      return created;
+    });
     this.logger.log({ teamId, userId }, 'Team member added');
     return member;
   }
 
-  async removeTeamMember(teamId: string, userId: string, workspaceId: string): Promise<void> {
+  async removeTeamMember(
+    teamId: string,
+    userId: string,
+    workspaceId: string,
+    actorId: string,
+  ): Promise<void> {
     await this.getTeam(teamId, workspaceId);
 
     const existing = await this.teamMemberRepo.findMember(teamId, userId);
@@ -106,7 +184,20 @@ export class TeamService {
       throw new NotFoundException('TEAM_MEMBER_NOT_FOUND', 'User is not a member of this team');
     }
 
-    await this.teamMemberRepo.removeMember(teamId, userId);
+    await this.uow.run(async (tx) => {
+      await this.teamMemberRepo.removeMember(teamId, userId, tx);
+      await this.audit.emit(
+        {
+          action: AUDIT_ACTION.TEAM_MEMBER_REMOVED,
+          resourceType: AUDIT_RESOURCE.TEAM_MEMBER,
+          resourceId: existing.id,
+          workspaceId,
+          actor: { id: actorId },
+          changes: { before: { teamId, userId } },
+        },
+        tx,
+      );
+    });
     this.logger.log({ teamId, userId }, 'Team member removed');
   }
 }

@@ -3,7 +3,10 @@ import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { and, asc, eq, isNull, sql, inArray } from 'drizzle-orm';
 import { workItems, iterations, releases } from '../../../../../../db/schema/work';
-import { COMPLETED_SCHEDULE_STATES } from '../../../../../../db/schema/enums';
+import {
+  isCompletedScheduleState,
+  isOpenDefectScheduleState,
+} from '../../../../../../db/schema/enums';
 import type {
   DefectSeverity,
   DefectEnvironment,
@@ -208,11 +211,10 @@ export class QualityDrizzleRepository implements IQualityRepository {
     let reopened = 0;
     let blockers = 0;
 
-    // Open = in-flight defect states (excludes 'idea' backlog and completed/accepted).
-    const OPEN_DEFECT_STATES: readonly WorkItemScheduleState[] = ['defined', 'in_progress'];
-    const isOpen = (s: WorkItemScheduleState) => OPEN_DEFECT_STATES.includes(s);
-    const isCompleted = (s: WorkItemScheduleState) =>
-      (COMPLETED_SCHEDULE_STATES as readonly WorkItemScheduleState[]).includes(s);
+    // Open = actionable in-flight defect states (excludes `idea` backlog and
+    // completed/accepted). Canonical set lives in db/schema/enums.ts.
+    const isOpen = isOpenDefectScheduleState;
+    const isCompleted = isCompletedScheduleState;
 
     for (const r of rows) {
       if (isOpen(r.scheduleState)) openDefects++;

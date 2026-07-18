@@ -115,6 +115,7 @@ export interface ProjectStatus {
   category: 'to_do' | 'in_progress' | 'done'
   color: string | null
   position: number
+  isDefault: boolean
 }
 
 export function useProjectStatuses(projectId: string | undefined) {
@@ -157,5 +158,164 @@ export function useStatusMap(projectIds: string[]) {
     },
     enabled: projectIds.length > 0,
     staleTime: 5 * 60_000,
+  })
+}
+
+// ── Workflow status mutations ──────────────────────────────────────────────────
+
+export interface CreateStatusInput {
+  name: string
+  category: 'to_do' | 'in_progress' | 'done'
+  color?: string
+  isDefault?: boolean
+}
+
+export function useCreateStatus(projectId: string | undefined) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: CreateStatusInput) => {
+      if (!projectId) throw new Error('No project selected')
+      const { data, error, response } = await apiClient.POST('/v1/projects/{projectId}/statuses', {
+        params: { path: { projectId } },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        body: input as any,
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as ProjectStatus
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['project-statuses', projectId] })
+    },
+  })
+}
+
+export function useDeleteStatus(projectId: string | undefined) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (statusId: string) => {
+      if (!projectId) throw new Error('No project selected')
+      const { error, response } = await apiClient.DELETE(
+        '/v1/projects/{projectId}/statuses/{statusId}',
+        {
+          params: { path: { projectId, statusId } },
+        },
+      )
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['project-statuses', projectId] })
+    },
+  })
+}
+
+export function useReorderStatuses(projectId: string | undefined) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (orderedIds: string[]) => {
+      if (!projectId) throw new Error('No project selected')
+      const { error, response } = await apiClient.PATCH(
+        '/v1/projects/{projectId}/statuses/reorder',
+        {
+          params: { path: { projectId } },
+          body: { orderedIds },
+        },
+      )
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['project-statuses', projectId] })
+    },
+  })
+}
+
+// ── Project Labels ─────────────────────────────────────────────────────────────
+
+export interface ProjectLabel {
+  id: string
+  projectId: string
+  name: string
+  color: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CreateLabelInput {
+  name: string
+  color?: string
+}
+
+export interface UpdateLabelInput {
+  name?: string
+  color?: string
+}
+
+export function useProjectLabels(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ['project-labels', projectId],
+    queryFn: async () => {
+      if (!projectId) return []
+      const { data, error, response } = await apiClient.GET('/v1/projects/{id}/labels', {
+        params: { path: { id: projectId } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return (data as ProjectLabel[]) ?? []
+    },
+    enabled: !!projectId,
+    staleTime: 5 * 60_000,
+  })
+}
+
+export function useCreateLabel(projectId: string | undefined) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: CreateLabelInput) => {
+      if (!projectId) throw new Error('No project selected')
+      const { data, error, response } = await apiClient.POST('/v1/projects/{id}/labels', {
+        params: { path: { id: projectId } },
+        body: input,
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as ProjectLabel
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['project-labels', projectId] })
+    },
+  })
+}
+
+export function useUpdateLabel(projectId: string | undefined) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ labelId, input }: { labelId: string; input: UpdateLabelInput }) => {
+      if (!projectId) throw new Error('No project selected')
+      const { data, error, response } = await apiClient.PATCH(
+        '/v1/projects/{id}/labels/{labelId}',
+        {
+          params: { path: { id: projectId, labelId } },
+          body: input,
+        },
+      )
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as ProjectLabel
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['project-labels', projectId] })
+    },
+  })
+}
+
+export function useDeleteLabel(projectId: string | undefined) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (labelId: string) => {
+      if (!projectId) throw new Error('No project selected')
+      const { error, response } = await apiClient.DELETE('/v1/projects/{id}/labels/{labelId}', {
+        params: { path: { id: projectId, labelId } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['project-labels', projectId] })
+    },
   })
 }

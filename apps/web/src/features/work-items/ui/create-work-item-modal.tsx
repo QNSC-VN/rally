@@ -13,6 +13,7 @@ import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { BRAND } from '@/shared/config/brand'
 import { WORK_ITEM_TYPE_CONFIG } from '@/entities/work-item/model/types'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
+import { Button } from '@/shared/ui/button'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { NativeSelect } from '@/shared/ui/native-select'
@@ -26,7 +27,12 @@ interface Props {
   onCreatedWithDetails?: (item: WorkItem) => void
 }
 
-export function CreateWorkItemModal({ projectId, onClose, onCreated, onCreatedWithDetails }: Props) {
+export function CreateWorkItemModal({
+  projectId,
+  onClose,
+  onCreated,
+  onCreatedWithDetails,
+}: Props) {
   const { team } = useAppContext()
   const [type, setType] = useState<CreatableType>('story')
   const [title, setTitle] = useState('')
@@ -50,10 +56,15 @@ export function CreateWorkItemModal({ projectId, onClose, onCreated, onCreatedWi
   useEffect(() => {
     submitRef.current = submit
   })
-  useEffect(() => { titleRef.current?.focus() }, [])
+  useEffect(() => {
+    titleRef.current?.focus()
+  }, [])
 
   async function submit(withDetails: boolean) {
-    if (!title.trim()) { setError('Title is required.'); return }
+    if (!title.trim()) {
+      setError('Title is required.')
+      return
+    }
     setError(null)
     setSubmitting(true)
     try {
@@ -65,7 +76,7 @@ export function CreateWorkItemModal({ projectId, onClose, onCreated, onCreatedWi
         teamId: teamId || undefined,
         assigneeId: assigneeId || undefined,
         storyPoints: storyPoints ? Number(storyPoints) : undefined,
-        parentId: type === 'defect' ? (parentStoryId || undefined) : undefined,
+        parentId: type === 'defect' ? parentStoryId || undefined : undefined,
       })
       if (withDetails) {
         onCreatedWithDetails?.(item)
@@ -115,7 +126,7 @@ export function CreateWorkItemModal({ projectId, onClose, onCreated, onCreatedWi
                   key={value}
                   type="button"
                   onClick={() => setType(value)}
-                  className="flex items-center justify-center gap-1 flex-1 py-1.5 text-[11px] font-semibold rounded-sm transition-colors"
+                  className="flex flex-1 items-center justify-center gap-1 rounded-sm py-1.5 text-[11px] font-semibold transition-colors"
                   style={{
                     backgroundColor: active ? cfg.bg : 'transparent',
                     color: active ? cfg.color : BRAND.textSecondary,
@@ -146,10 +157,16 @@ export function CreateWorkItemModal({ projectId, onClose, onCreated, onCreatedWi
         {/* Parent Story — Defect only */}
         {type === 'defect' && (
           <FormField label="Parent Story" htmlFor="wi-parent-story">
-            <NativeSelect id="wi-parent-story" value={parentStoryId} onChange={(e) => setParentStoryId(e.target.value)}>
+            <NativeSelect
+              id="wi-parent-story"
+              value={parentStoryId}
+              onChange={(e) => setParentStoryId(e.target.value)}
+            >
               <option value="">No parent story</option>
               {stories.map((s) => (
-                <option key={s.id} value={s.id}>{s.itemKey} — {s.title}</option>
+                <option key={s.id} value={s.id}>
+                  {s.itemKey} — {s.title}
+                </option>
               ))}
             </NativeSelect>
           </FormField>
@@ -161,12 +178,18 @@ export function CreateWorkItemModal({ projectId, onClose, onCreated, onCreatedWi
             <NativeSelect id="wi-team" value={teamId} onChange={(e) => setTeamId(e.target.value)}>
               <option value="">No team</option>
               {teams.map((t) => (
-                <option key={t.id} value={t.id}>{t.name}</option>
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
               ))}
             </NativeSelect>
           </FormField>
           <FormField label="Owner" htmlFor="wi-owner">
-            <NativeSelect id="wi-owner" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
+            <NativeSelect
+              id="wi-owner"
+              value={assigneeId}
+              onChange={(e) => setAssigneeId(e.target.value)}
+            >
               <option value="">Unassigned</option>
               {members.map((m) => (
                 <option key={m.userId} value={m.userId}>
@@ -196,34 +219,25 @@ export function CreateWorkItemModal({ projectId, onClose, onCreated, onCreatedWi
           Ctrl+Enter to save
         </span>
         <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
-            className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-[#f0f2f5] disabled:opacity-50"
-            style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
-          >
+          <Button variant="outline" type="button" onClick={onClose} disabled={submitting}>
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="secondary"
             type="button"
             onClick={() => void submit(true)}
             disabled={submitting || !title.trim()}
-            className="rounded px-4 py-1.5 text-[11px] font-semibold transition-colors hover:opacity-90 disabled:opacity-50"
-            style={{ border: '1px solid #9fb5d5', color: BRAND.primary, backgroundColor: '#f5f8fc' }}
           >
             Create with details
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             onClick={() => void submit(false)}
             disabled={submitting || !title.trim()}
-            className="flex items-center gap-1.5 rounded px-4 py-1.5 text-[11px] font-semibold text-white transition-colors hover:opacity-90 disabled:opacity-50"
-            style={{ backgroundColor: BRAND.primary }}
           >
             {submitting && <Loader2 size={11} className="animate-spin" />}
             {submitting ? 'Creating…' : 'Create Item'}
-          </button>
+          </Button>
         </div>
       </ModalFooter>
     </AppModal>

@@ -20,12 +20,14 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
 
   async getMetrics(iterationId: string, workspaceId: string): Promise<RawIterationMetrics> {
     // Single pass over the iteration's non-deleted items. story_points is a
-    // nullable numeric; sums coalesce to 0. 'accepted' uses the schedule_state
-    // maturity dimension per SRS §8.
+    // nullable numeric (fractional points); sums coalesce to 0. "Accepted" is
+    // the canonical ACCEPTED_SCHEDULE_STATES set (accepted OR release) — a story
+    // stays accepted once it advances to the terminal 'release' state — so this
+    // shares the exact same definition as every other roll-up (SRS §8).
     const rows = await this.db
       .select({
         totalPlanEstimate: sql<number>`coalesce(sum(${workItems.storyPoints}), 0)::numeric`,
-        acceptedPoints: sql<number>`coalesce(sum(${workItems.storyPoints}) filter (where ${workItems.scheduleState} = 'accepted'), 0)::numeric`,
+        acceptedPoints: sql<number>`coalesce(sum(${workItems.storyPoints}) filter (where ${workItems.scheduleState} in (${acceptedScheduleStatesSql()})), 0)::numeric`,
         defectCount: sql<number>`(count(*) filter (where ${workItems.type} = 'defect'))::int`,
         taskCount: sql<number>`(select count(*)::int from ${tasks} t where t.parent_id = ${workItems.id} and t.deleted_at is null)`,
       })

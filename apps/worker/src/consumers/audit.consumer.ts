@@ -26,7 +26,7 @@
  */
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { SQSClient, ReceiveMessageCommand, DeleteMessageCommand } from '@aws-sdk/client-sqs';
-import { AppConfigService } from '@platform';
+import { AppConfigService, buildAwsClientConfig } from '@platform';
 import { AuditService } from '@modules/audit';
 
 interface DomainEventMessage {
@@ -55,11 +55,7 @@ export class AuditConsumer implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
-    const endpoint = process.env['AWS_ENDPOINT_URL'];
-    this.sqs = new SQSClient({
-      region: this.config.get('AWS_REGION'),
-      ...(endpoint ? { endpoint } : {}),
-    });
+    this.sqs = new SQSClient(buildAwsClientConfig(this.config));
 
     this.queueUrl = this.config.get('SQS_AUDIT_URL') ?? undefined;
 

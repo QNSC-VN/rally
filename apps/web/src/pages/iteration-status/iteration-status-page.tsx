@@ -52,6 +52,7 @@ import { BRAND } from '@/shared/config/brand'
 import { NESTED_ROW_INDENT } from '@/shared/config/layout'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
+import { Button } from '@/shared/ui/button'
 import { InlineSelect } from '@/shared/ui/native-select'
 import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { BulkActionBar } from '@/shared/ui/bulk-action-bar'
@@ -93,15 +94,15 @@ import { SCHEDULE_STATE_STEPS, SIMPLIFIED_STATE_STEPS } from '@/entities/work-it
 
 // ── Accent palette (Rally navy brand; neutral Azure-style layout kept) ──────
 const AZ = {
-  primary: '#1d3f73',
-  primaryLight: '#edf2fb',
-  textPrimary: '#1a1a1a',
-  textSecondary: '#666666',
-  textMuted: '#999999',
-  bg: '#ffffff',
-  bgHeader: '#f4f4f4',
-  bgAlt: '#f8f8f8',
-  border: '#e8e8e8',
+  primary: BRAND.primary,
+  primaryLight: BRAND.primaryLighter,
+  textPrimary: BRAND.textPrimary,
+  textSecondary: BRAND.textSecondary,
+  textMuted: BRAND.textMuted,
+  bg: BRAND.surface,
+  bgHeader: BRAND.pageBg,
+  bgAlt: BRAND.surfaceHover,
+  border: BRAND.borderSubtle,
   font: "'Segoe UI', -apple-system, BlinkMacSystemFont, 'Roboto', sans-serif",
 }
 
@@ -386,9 +387,9 @@ function DefectStatusPill({ total, open }: { total: number; open: number }) {
     return <span style={{ fontSize: 12, color: AZ.textMuted }}>None</span>
   }
   const closed = open === 0
-  const bg = closed ? '#eaf7ee' : '#fdf3e7'
-  const fg = closed ? '#1c7a3f' : '#9a6410'
-  const bd = closed ? '#bfe6cd' : '#f0d9b5'
+  const bg = closed ? BRAND.successBg : BRAND.warningBg
+  const fg = closed ? BRAND.success : BRAND.warning
+  const bd = closed ? BRAND.successBorder : BRAND.warningBorder
   return (
     <span
       style={{
@@ -431,7 +432,7 @@ function TasksProgress({ estimate, toDo }: { estimate: number; toDo: number }) {
           style={{
             width: `${pct}%`,
             height: '100%',
-            backgroundColor: pct >= 100 ? '#1c7a3f' : AZ.primary,
+            backgroundColor: pct >= 100 ? BRAND.success : AZ.primary,
           }}
         />
       </div>
@@ -462,7 +463,6 @@ export function IterationStatusPage() {
   const [selectorOpen, setSelectorOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [showAdd, setShowAdd] = useState(false)
-  const [viewMode, setViewMode] = useState<'list' | 'board' | 'compact'>('list')
   const [sortCol, setSortCol] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [stateFilter, setStateFilter] = useState<ScheduleState | 'all'>('all')
@@ -762,16 +762,16 @@ export function IterationStatusPage() {
   // Single source of truth for the "Iteration End" widget value/label/colour so
   // Done and Overdue states never degrade to a misleading "0 days left".
   const iterationEnd: { value: string; label: string; color: string } = iterationDone
-    ? { value: 'Done', label: 'Completed', color: '#15803d' }
+    ? { value: 'Done', label: 'Completed', color: BRAND.success }
     : metrics?.daysLeft == null
-      ? { value: '—', label: 'no end date', color: '#8a5808' }
+      ? { value: '—', label: 'no end date', color: BRAND.warning }
       : metrics.daysLeft < 0
         ? {
             value: String(Math.abs(metrics.daysLeft)),
             label: metrics.daysLeft === -1 ? 'day overdue' : 'days overdue',
-            color: '#b91c1c',
+            color: BRAND.danger,
           }
-        : { value: String(metrics.daysLeft), label: `of ${tDays} days left`, color: '#8a5808' }
+        : { value: String(metrics.daysLeft), label: `of ${tDays} days left`, color: BRAND.warning }
 
   const colStyles = useMemo(
     () => ({
@@ -844,7 +844,7 @@ export function IterationStatusPage() {
       className="flex flex-1 flex-col overflow-hidden"
       style={{ fontFamily: AZ.font, backgroundColor: AZ.bg, color: AZ.textPrimary, fontSize: 12 }}
     >
-      {/* ── Single page header: title + iteration picker + view toggle ────── */}
+      {/* ── Single page header: title + iteration picker ────────────────── */}
       <IterationHeader
         iterations={iterations}
         selected={selected}
@@ -854,8 +854,6 @@ export function IterationStatusPage() {
         move={move}
         selectorOpen={selectorOpen}
         setSelectorOpen={setSelectorOpen}
-        viewMode={viewMode}
-        setViewMode={setViewMode}
       />
 
       <MetricsStrip
@@ -976,7 +974,7 @@ export function IterationStatusPage() {
         {!isLoading && isError && (
           <div
             className="flex items-center justify-center"
-            style={{ height: 160, fontSize: 12, color: '#b91c1c' }}
+            style={{ height: 160, fontSize: 12, color: BRAND.danger }}
           >
             Failed to load iteration status. Please try again.
           </div>
@@ -1074,9 +1072,9 @@ export function IterationStatusPage() {
 //
 // Rally's Iteration Status page leads with the iteration picker and a progress
 // banner — it does NOT stack a redundant in-page breadcrumb (the app shell
-// already renders "Project › Iteration"). We fold the page title, the sprint
-// selector (prev/next + dropdown + date range) and the list/board/compact
-// toggle into a SINGLE header row so "Iteration" isn't repeated four times.
+// already renders "Project › Iteration"). We fold the page title and the sprint
+// selector (prev/next + dropdown + date range) into a SINGLE header row so
+// "Iteration" isn't repeated four times.
 
 function IterationHeader({
   iterations,
@@ -1087,8 +1085,6 @@ function IterationHeader({
   move,
   selectorOpen,
   setSelectorOpen,
-  viewMode,
-  setViewMode,
 }: {
   iterations: Iteration[]
   selected: Iteration | undefined
@@ -1098,8 +1094,6 @@ function IterationHeader({
   move: (dir: -1 | 1) => void
   selectorOpen: boolean
   setSelectorOpen: React.Dispatch<React.SetStateAction<boolean>>
-  viewMode: 'list' | 'board' | 'compact'
-  setViewMode: (mode: 'list' | 'board' | 'compact') => void
 }) {
   return (
     <div
@@ -1255,37 +1249,6 @@ function IterationHeader({
         </button>
       </div>
       <div className="flex-1" />
-      {/* View-mode toggle (list / board / compact) */}
-      <div
-        className="flex items-center"
-        style={{ border: `1px solid ${AZ.border}`, borderRadius: 2, overflow: 'hidden' }}
-      >
-        {(['list', 'board', 'compact'] as const).map((mode) => (
-          <button
-            key={mode}
-            onClick={() => setViewMode(mode)}
-            style={{
-              padding: '3px 12px',
-              fontSize: 11,
-              fontWeight: 600,
-              border: 'none',
-              cursor: 'pointer',
-              backgroundColor: viewMode === mode ? AZ.primary : 'transparent',
-              color: viewMode === mode ? '#fff' : AZ.textSecondary,
-              fontFamily: AZ.font,
-              textTransform: 'capitalize' as const,
-            }}
-            onMouseOver={(e) => {
-              if (viewMode !== mode) e.currentTarget.style.backgroundColor = AZ.bgAlt
-            }}
-            onMouseOut={(e) => {
-              if (viewMode !== mode) e.currentTarget.style.backgroundColor = 'transparent'
-            }}
-          >
-            {mode}
-          </button>
-        ))}
-      </div>
     </div>
   )
 }
@@ -1336,10 +1299,10 @@ function MetricsStrip({
         <MetricCard
           label="Accepted"
           value={`${acceptedPct}%`}
-          valueColor="#1e6930"
+          valueColor={BRAND.success}
           caption={`${metrics?.acceptedPoints ?? 0} of ${metrics?.totalPlanEstimate ?? 0} Points`}
           progressPct={acceptedPct}
-          progressColor="#1e6930"
+          progressColor={BRAND.success}
           minWidth={140}
         />
       </div>
@@ -1443,13 +1406,9 @@ function Toolbar({
       }}
       actions={
         canCreate ? (
-          <button
-            onClick={onAddNew}
-            className="flex items-center gap-1.5 rounded px-3 py-1 text-[11px] font-semibold text-white"
-            style={{ backgroundColor: BRAND.primary }}
-          >
+          <Button size="sm" onClick={onAddNew}>
             <Plus size={14} /> Add New
-          </button>
+          </Button>
         ) : undefined
       }
       activeFilterCount={activeFilterCount}
@@ -1765,7 +1724,7 @@ function StatusRow({
     <>
       <div
         ref={setNodeRef}
-        className="group flex items-center transition-colors duration-100 hover:bg-[#f1f6fc]"
+        className="group flex items-center transition-colors duration-100 hover:bg-primary-lighter"
         style={{
           height: 34,
           paddingLeft: 4,
@@ -1778,7 +1737,7 @@ function StatusRow({
         }}
         {...(dragEnabled && canEdit ? attributes : {})}
         onMouseOver={(e) => {
-          e.currentTarget.style.backgroundColor = '#f1f6fc'
+          e.currentTarget.style.backgroundColor = BRAND.primaryLighter
         }}
         onMouseOut={(e) => {
           e.currentTarget.style.backgroundColor = AZ.bg
@@ -1909,9 +1868,9 @@ function StatusRow({
                   borderRadius: 2,
                   fontSize: 11,
                   fontWeight: 700,
-                  backgroundColor: '#fef2f2',
-                  color: '#b91c1c',
-                  border: '1px solid #fecaca',
+                  backgroundColor: BRAND.dangerBg,
+                  color: BRAND.danger,
+                  border: `1px solid ${BRAND.dangerBorder}`,
                   fontFamily: AZ.font,
                 }}
                 title="Blocked - Click to Unblock"
@@ -1929,7 +1888,7 @@ function StatusRow({
                   borderRadius: 2,
                   fontSize: 11,
                   fontWeight: 500,
-                  border: '1px dashed #cccccc',
+                  border: `1px dashed ${BRAND.border}`,
                   color: AZ.textMuted,
                   fontFamily: AZ.font,
                 }}
@@ -2106,7 +2065,7 @@ function StatusRow({
       {tasksExpanded && (
         <div
           style={{
-            backgroundColor: '#fafbfc',
+            backgroundColor: BRAND.surfaceHover,
             boxShadow: `inset 2px 0 0 ${AZ.primaryLight}`,
           }}
         >
@@ -2275,7 +2234,7 @@ function ChildTaskRow({
         minWidth: 'max-content',
       }}
       onMouseOver={(e) => {
-        e.currentTarget.style.backgroundColor = '#f1f6fc'
+        e.currentTarget.style.backgroundColor = BRAND.primaryLighter
       }}
       onMouseOut={(e) => {
         e.currentTarget.style.backgroundColor = 'transparent'
@@ -2541,9 +2500,9 @@ function AddItemModal({
                 onClick={() => setType(o)}
                 className="flex-1 rounded-sm py-1.5 text-[11px] font-semibold capitalize transition-colors"
                 style={{
-                  backgroundColor: type === o ? '#eef3fb' : 'transparent',
+                  backgroundColor: type === o ? BRAND.primaryLighter : 'transparent',
                   color: type === o ? BRAND.primary : BRAND.textSecondary,
-                  border: `1px solid ${type === o ? '#bdd0ef' : BRAND.borderSubtle}`,
+                  border: `1px solid ${type === o ? BRAND.accentBorder : BRAND.borderSubtle}`,
                 }}
               >
                 {o}
@@ -2573,33 +2532,21 @@ function AddItemModal({
       </ModalBody>
 
       <ModalFooter>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-[#f0f2f5]"
-          style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
-        >
+        <Button variant="outline" type="button" onClick={onClose}>
           Cancel
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="secondary"
           type="button"
           disabled={create.isPending}
           onClick={() => submit(true)}
-          className="rounded px-4 py-1.5 text-[11px] font-semibold transition-colors hover:opacity-90 disabled:opacity-50"
-          style={{ border: '1px solid #9fb5d5', color: BRAND.primary, backgroundColor: '#f5f8fc' }}
         >
           Create with details
-        </button>
-        <button
-          type="button"
-          disabled={create.isPending}
-          onClick={() => submit(false)}
-          className="flex items-center gap-1.5 rounded px-4 py-1.5 text-[11px] font-semibold text-white transition-colors hover:opacity-90 disabled:opacity-50"
-          style={{ backgroundColor: BRAND.primary }}
-        >
+        </Button>
+        <Button type="button" disabled={create.isPending} onClick={() => submit(false)}>
           {create.isPending && <Loader2 size={11} className="animate-spin" />}
           Create Item
-        </button>
+        </Button>
       </ModalFooter>
     </AppModal>
   )

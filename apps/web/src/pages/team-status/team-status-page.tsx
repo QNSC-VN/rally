@@ -11,6 +11,7 @@ import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
 import { ChevronDown, ChevronLeft, ChevronRight, Inbox } from 'lucide-react'
 import { SkeletonList } from '@/shared/ui/skeleton'
+import { EmptyState } from '@/shared/ui/empty-state'
 import { WorkItemRefCell } from '@/entities/work-item/ui/work-item-ref-cell'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { DataTableHeader, type DataTableHeaderColumn } from '@/shared/ui/data-table-header'
@@ -95,7 +96,7 @@ function fmtRange(it: Pick<Iteration, 'startDate' | 'endDate'>) {
  */
 function LoadBar({ percent }: { percent: number }) {
   const over = percent > 100
-  const color = over ? '#dc2626' : '#2a8c3f'
+  const color = over ? BRAND.danger : BRAND.success
   return (
     <div className="flex w-full flex-col gap-[3px]">
       <span className="text-[10px] leading-none font-semibold tabular-nums" style={{ color }}>
@@ -103,7 +104,7 @@ function LoadBar({ percent }: { percent: number }) {
       </span>
       <div
         className="h-1.5 w-full overflow-hidden rounded-full"
-        style={{ backgroundColor: '#e4e8ed' }}
+        style={{ backgroundColor: BRAND.borderSubtle }}
       >
         <div
           className="h-full rounded-full"
@@ -287,12 +288,12 @@ export function TeamStatusPage() {
         </span>
         <div
           className="flex items-center overflow-visible rounded"
-          style={{ border: '1px solid #bdd0ef', height: 28 }}
+          style={{ border: `1px solid ${BRAND.accentBorder}`, height: 28 }}
         >
           <button
             disabled={selectedIndex <= 0}
             onClick={() => move(-1)}
-            className="flex h-full cursor-pointer items-center px-2 hover:bg-[#f0f4fb] disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-full cursor-pointer items-center px-2 hover:bg-primary-lighter disabled:cursor-not-allowed disabled:opacity-40"
             style={{
               color: BRAND.primaryLight,
               borderRight: `1px solid ${BRAND.borderSubtle}`,
@@ -303,7 +304,7 @@ export function TeamStatusPage() {
           <div className="relative h-full">
             <button
               onClick={() => setSelectorOpen((o) => !o)}
-              className="flex h-full cursor-pointer items-center gap-3 bg-white px-3 text-left hover:bg-[#f7f9fc]"
+              className="flex h-full cursor-pointer items-center gap-3 bg-white px-3 text-left hover:bg-surface-hover"
               style={{ minWidth: 280, color: BRAND.textPrimary }}
             >
               <span className="text-[12px] font-semibold whitespace-nowrap">{selected?.name}</span>
@@ -327,9 +328,9 @@ export function TeamStatusPage() {
                       setSelectedId(it.id)
                       setSelectorOpen(false)
                     }}
-                    className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-[#f4f6f9]"
+                    className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-surface-subtle"
                     style={{
-                      backgroundColor: selectedId === it.id ? '#edf2fb' : 'transparent',
+                      backgroundColor: selectedId === it.id ? BRAND.primaryLighter : 'transparent',
                     }}
                   >
                     <span
@@ -351,7 +352,7 @@ export function TeamStatusPage() {
           <button
             disabled={selectedIndex >= iterations.length - 1}
             onClick={() => move(1)}
-            className="flex h-full cursor-pointer items-center px-2 hover:bg-[#f0f4fb] disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-full cursor-pointer items-center px-2 hover:bg-primary-lighter disabled:cursor-not-allowed disabled:opacity-40"
             style={{
               color: BRAND.primaryLight,
               borderLeft: `1px solid ${BRAND.borderSubtle}`,
@@ -367,7 +368,7 @@ export function TeamStatusPage() {
           placeholder="Search Tasks"
           aria-label="Search Tasks"
           className="h-7 w-56 rounded px-2 text-[12px] focus:outline-none"
-          style={{ border: '1px solid #bdd0ef', color: BRAND.textPrimary }}
+          style={{ border: `1px solid ${BRAND.accentBorder}`, color: BRAND.textPrimary }}
         />
         <div className="flex-1" />
         <span className="text-[11px] whitespace-nowrap" style={{ color: BRAND.textSecondary }}>
@@ -413,7 +414,7 @@ export function TeamStatusPage() {
           <div
             className="flex h-7 items-center px-3 text-[11px] font-semibold"
             style={{
-              backgroundColor: '#f4f6f9',
+              backgroundColor: BRAND.surfaceSubtle,
               borderBottom: `1px solid ${BRAND.borderSubtle}`,
               color: BRAND.textSecondary,
               minWidth: 'max-content',
@@ -449,7 +450,7 @@ export function TeamStatusPage() {
         {!isLoading && isError && (
           <div
             className="flex h-40 items-center justify-center text-[12px]"
-            style={{ color: '#b91c1c' }}
+            style={{ color: BRAND.danger }}
           >
             Failed to load team status. Please try again.
           </div>
@@ -476,12 +477,10 @@ export function TeamStatusPage() {
 
         {/* Empty state (P3-TS-TS-020) */}
         {!isLoading && !isError && groups.length === 0 && (
-          <div className="flex flex-col items-center justify-center gap-3 px-8 py-16">
-            <Inbox size={36} style={{ color: '#c4cad4' }} />
-            <p className="text-[13px]" style={{ color: BRAND.textMuted }}>
-              No tasks found for this iteration
-            </p>
-          </div>
+          <EmptyState
+            icon={<Inbox size={36} className="text-foreground-faint" />}
+            title="No tasks found for this iteration"
+          />
         )}
       </div>
 
@@ -548,9 +547,9 @@ function MemberGroup({
     <div>
       {/* Group header row (P3-TS-FR-015) */}
       <div
-        className="flex h-9 cursor-pointer items-center px-3 hover:bg-[#f9fafb]"
+        className="flex h-9 cursor-pointer items-center px-3 hover:bg-surface-hover"
         style={{
-          backgroundColor: '#f7f8fa',
+          backgroundColor: BRAND.surfaceHover,
           borderBottom: `1px solid ${BRAND.borderInner}`,
           minWidth: 'max-content',
         }}
@@ -754,7 +753,7 @@ function TaskRow({
 
   return (
     <div
-      className="flex h-[34px] items-center bg-white px-3 text-[11px] transition-colors duration-100 hover:bg-[#f1f6fc]"
+      className="flex h-[34px] items-center bg-white px-3 text-[11px] transition-colors duration-100 hover:bg-primary-lighter"
       style={{ borderBottom: `1px solid ${BRAND.borderInner}`, minWidth: 'max-content' }}
       onClick={() => onOpenItem(task.taskKey)}
     >
@@ -809,7 +808,7 @@ function TaskRow({
             onOpen={() => onOpenItem(task.workProduct.key)}
           />
         ) : (
-          <span className="text-[10px]" style={{ color: '#c4cad4' }}>
+          <span className="text-[10px]" style={{ color: BRAND.textFaint }}>
             —
           </span>
         )}

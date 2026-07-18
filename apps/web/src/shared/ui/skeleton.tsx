@@ -6,12 +6,7 @@ interface SkeletonProps {
 
 /** Single pulsing block */
 export function Skeleton({ className }: SkeletonProps) {
-  return (
-    <div
-      className={cn('animate-pulse rounded bg-[#e8ecf1]', className)}
-      aria-hidden="true"
-    />
-  )
+  return <div className={cn('animate-pulse rounded bg-avatar', className)} aria-hidden="true" />
 }
 
 /** A single table-row skeleton — matches Rally's h-8 list rows */
@@ -29,7 +24,11 @@ export function SkeletonRow({ cols = 6 }: { cols?: number }) {
 /** Stack of skeleton rows for list loading states */
 export function SkeletonList({ rows = 8, cols = 6 }: { rows?: number; cols?: number }) {
   return (
-    <div className="flex flex-col divide-y divide-[#f1f4f8]" aria-label="Loading…" role="status">
+    <div
+      className="flex flex-col divide-y divide-primary-lighter"
+      aria-label="Loading…"
+      role="status"
+    >
       {Array.from({ length: rows }).map((_, i) => (
         <SkeletonRow key={i} cols={cols} />
       ))}

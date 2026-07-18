@@ -8,6 +8,8 @@ export const ListNotificationsSchema = z.object({
     .transform((v) => v === 'true')
     .optional()
     .default(() => false),
+  // Notification Center category tabs (Assigned / Mentions). Omitted = All.
+  category: z.enum(['assigned', 'mentions']).optional(),
   limit: PageQuerySchema.shape.limit,
 });
 export class ListNotificationsDto extends createZodDto(ListNotificationsSchema) {}

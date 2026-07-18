@@ -1,3 +1,4 @@
+import { BRAND } from '@/shared/config/brand'
 /**
  * `<TaskRollup>` — read-only aggregate of a work item's child-task hours
  * (Estimate / To Do / Actual), rendered as a compact 3-cell grid (Broadcom
@@ -22,24 +23,27 @@ export function TaskRollup({ estimate, todo, actual }: TaskRollupProps) {
   return (
     <div
       className="grid grid-cols-3 overflow-hidden rounded"
-      style={{ border: '1px solid #e2e8f0' }}
+      style={{ border: `1px solid ${BRAND.avatarBg}` }}
     >
       {CELLS.map(({ label, key }, i) => (
         <div
           key={key}
           className="px-2 py-1.5 text-center"
           style={{
-            backgroundColor: '#f8fafc',
-            borderLeft: i === 0 ? undefined : '1px solid #e2e8f0',
+            backgroundColor: BRAND.surfaceHover,
+            borderLeft: i === 0 ? undefined : `1px solid ${BRAND.avatarBg}`,
           }}
         >
           <div
             className="text-[9px] font-semibold tracking-wide uppercase"
-            style={{ color: '#8c94a6' }}
+            style={{ color: BRAND.textMuted }}
           >
             {label}
           </div>
-          <div className="text-[13px] font-semibold tabular-nums" style={{ color: '#273449' }}>
+          <div
+            className="text-[13px] font-semibold tabular-nums"
+            style={{ color: BRAND.textPrimary }}
+          >
             {values[key]}
           </div>
         </div>

@@ -1,3 +1,4 @@
+import { BRAND } from '@/shared/config/brand'
 import type { StatusStyle } from '@/shared/config/status-colors'
 import type { ReleaseStatus } from './api'
 
@@ -7,6 +8,11 @@ import type { ReleaseStatus } from './api'
  */
 export const RELEASE_STATUS_STYLE: Record<ReleaseStatus, StatusStyle> = {
   planning: { bg: '#eef3fb', text: '#1d3f73', border: '#bdd0ef', label: 'Planning' },
-  active: { bg: '#fff7ed', text: '#92400e', border: '#fed7aa', label: 'Active' },
-  accepted: { bg: '#eaf5ed', text: '#1e6930', border: '#b9dec2', label: 'Accepted' },
+  active: {
+    bg: BRAND.warningBg,
+    text: BRAND.warning,
+    border: BRAND.warningBorder,
+    label: 'Active',
+  },
+  accepted: { bg: '#eaf5ed', text: '#1e6930', border: BRAND.successBorder, label: 'Accepted' },
 }

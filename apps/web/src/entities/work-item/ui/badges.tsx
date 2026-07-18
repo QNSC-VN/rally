@@ -1,3 +1,4 @@
+import { BRAND } from '@/shared/config/brand'
 import {
   BADGE_FALLBACK,
   DEFECT_SEVERITY_CONFIG,
@@ -32,7 +33,7 @@ export function TypeBadge({ type, size = 18 }: TypeBadgeProps) {
   return (
     <span
       className="inline-flex shrink-0 items-center justify-center rounded-full"
-      style={{ width: size, height: size, backgroundColor: cfg.color, color: '#ffffff' }}
+      style={{ width: size, height: size, backgroundColor: cfg.color, color: BRAND.surface }}
       title={cfg.label}
     >
       {Icon ? (
@@ -73,7 +74,7 @@ interface SeverityBadgeProps {
 export function SeverityBadge({ severity }: SeverityBadgeProps) {
   if (!severity || severity === 'none') {
     return (
-      <span className="text-[10px]" style={{ color: '#c4cad4' }}>
+      <span className="text-[10px]" style={{ color: BRAND.textFaint }}>
         —
       </span>
     )
@@ -98,7 +99,7 @@ interface PriorityBadgeProps {
 export function PriorityBadge({ priority }: PriorityBadgeProps) {
   const cfg = WORK_ITEM_PRIORITY_CONFIG[priority as WorkItemPriority] ?? {
     label: priority,
-    color: '#5c6478',
+    color: BRAND.textSecondary,
   }
   return (
     <span className="text-[10px] font-medium" style={{ color: cfg.color }}>

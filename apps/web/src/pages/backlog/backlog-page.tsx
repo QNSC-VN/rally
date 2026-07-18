@@ -30,13 +30,14 @@ import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
+import { Button } from '@/shared/ui/button'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { RowGutter } from '@/shared/ui/row-gutter'
 import { InlineCellSelect, InlineSelect } from '@/shared/ui/native-select'
 import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { OwnerSelectCell } from '@/shared/ui/owner-cell'
-import { BulkActionBar } from '@/shared/ui/bulk-action-bar'
+import { BulkScheduleBar } from '@/features/work-items/ui/bulk-schedule-bar'
 import { useRowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
@@ -44,8 +45,6 @@ import {
   useBacklog,
   useUpdateWorkItem,
   useRankAnyWorkItem,
-  useBulkAssignRelease,
-  useBulkAssignIteration,
   type WorkItem,
   type UpdateWorkItemInput,
 } from '@/features/work-items/api'
@@ -316,32 +315,6 @@ export function BacklogPage() {
   const [showCreate, setShowCreate] = useState(false)
   const canCreate = can('work_item:create')
 
-  // ── Bulk assignment (P2-BL-08) ────────────────────────────────────────────────
-  const bulkRelease = useBulkAssignRelease()
-  const bulkIteration = useBulkAssignIteration()
-  const [bulkError, setBulkError] = useState<string | null>(null)
-
-  async function assignReleaseToSelected(releaseId: string | null) {
-    if (!projectId || selectedIds.size === 0) return
-    setBulkError(null)
-    try {
-      await bulkRelease.mutateAsync({ projectId, itemIds: [...selectedIds], releaseId })
-      clearSelection()
-    } catch (e) {
-      setBulkError(e instanceof Error ? e.message : 'Bulk release assignment failed')
-    }
-  }
-
-  async function assignIterationToSelected(iterationId: string | null) {
-    if (!projectId || selectedIds.size === 0) return
-    setBulkError(null)
-    try {
-      await bulkIteration.mutateAsync({ projectId, itemIds: [...selectedIds], iterationId })
-      clearSelection()
-    } catch (e) {
-      setBulkError(e instanceof Error ? e.message : 'Bulk iteration assignment failed')
-    }
-  }
   // ── Table width ───────────────────────────────────────────────────────────────
   const totalColWidth = Object.values(colWidths).reduce((a, b) => a + b, 0)
   // Row layout: px-3 padding (24px) + checkbox w-5 (20px) + grip w-4 (16px) + row# w-6 (24px) +
@@ -352,7 +325,7 @@ export function BacklogPage() {
   if (!projectId) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <p className="text-sm" style={{ color: '#8c94a6' }}>
+        <p className="text-sm" style={{ color: BRAND.textMuted }}>
           Select a project to view the backlog.
         </p>
       </div>
@@ -387,64 +360,14 @@ export function BacklogPage() {
       />
 
       {/* Bulk action bar (P2-BL-08) */}
-      {selectedIds.size > 0 && (
-        <BulkActionBar
-          selectedCount={selectedIds.size}
-          error={bulkError}
-          onClear={() => {
-            clearSelection()
-            setBulkError(null)
-          }}
-        >
-          {canEdit && (
-            <>
-              {/* Bulk assign Release */}
-              <InlineSelect
-                value=""
-                disabled={bulkRelease.isPending}
-                onChange={(e) => {
-                  if (!e.target.value) return
-                  void assignReleaseToSelected(
-                    e.target.value === '__none__' ? null : e.target.value,
-                  )
-                }}
-                className="w-auto"
-                aria-label="Assign release to selected"
-              >
-                <option value="">Assign Release…</option>
-                <option value="__none__">— Unschedule —</option>
-                {releases.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                  </option>
-                ))}
-              </InlineSelect>
-
-              {/* Bulk assign Iteration */}
-              <InlineSelect
-                value=""
-                disabled={bulkIteration.isPending}
-                onChange={(e) => {
-                  if (!e.target.value) return
-                  void assignIterationToSelected(
-                    e.target.value === '__none__' ? null : e.target.value,
-                  )
-                }}
-                className="w-auto"
-                aria-label="Assign iteration to selected"
-              >
-                <option value="">Assign Iteration…</option>
-                <option value="__none__">— Unschedule —</option>
-                {iterations.map((it) => (
-                  <option key={it.id} value={it.id}>
-                    {it.name}
-                  </option>
-                ))}
-              </InlineSelect>
-            </>
-          )}
-        </BulkActionBar>
-      )}
+      <BulkScheduleBar
+        projectId={projectId}
+        selectedIds={selectedIds}
+        clearSelection={clearSelection}
+        releases={releases}
+        iterations={iterations}
+        canEdit={canEdit}
+      />
 
       {/* Table area */}
       <div className="flex flex-1 overflow-hidden">
@@ -475,7 +398,7 @@ export function BacklogPage() {
               {/* Error */}
               {isError && !isLoading && (
                 <div className="flex h-32 items-center justify-center">
-                  <p className="text-sm" style={{ color: '#b91c1c' }}>
+                  <p className="text-sm" style={{ color: BRAND.danger }}>
                     {error instanceof Error ? error.message : 'Failed to load backlog.'}
                   </p>
                 </div>
@@ -484,14 +407,14 @@ export function BacklogPage() {
               {/* Empty */}
               {!isLoading && !isError && items.length === 0 && (
                 <div className="flex h-32 flex-col items-center justify-center gap-2">
-                  <p className="text-sm" style={{ color: '#8c94a6' }}>
+                  <p className="text-sm" style={{ color: BRAND.textMuted }}>
                     No backlog items match your filters.
                   </p>
                   <button
                     onClick={() => setShowCreate(true)}
                     disabled={!canCreate}
                     className="text-xs font-medium disabled:cursor-not-allowed disabled:opacity-40"
-                    style={{ color: '#2558a6' }}
+                    style={{ color: BRAND.primaryLight }}
                   >
                     + Create Work Item
                   </button>
@@ -634,16 +557,15 @@ function BacklogToolbar({
         width: 160,
       }}
       actions={
-        <button
+        <Button
+          size="sm"
           onClick={onCreate}
           disabled={!canCreate}
           title={!canCreate ? 'You do not have permission to create work items' : undefined}
-          className="flex items-center gap-1.5 rounded px-3 py-1 text-[11px] font-semibold text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-          style={{ backgroundColor: BRAND.primary }}
         >
           <Plus size={12} />
           Create Work Item
-        </button>
+        </Button>
       }
       activeFilterCount={activeFilterCount}
       defaultFiltersOpen={activeFilterCount > 0}
@@ -838,11 +760,15 @@ function BacklogRow({
   return (
     <div
       ref={setNodeRef}
-      className="group flex h-[34px] items-center gap-2 px-3 transition-colors duration-100 hover:bg-[#f1f6fc]"
+      className="group flex h-[34px] items-center gap-2 px-3 transition-colors duration-100 hover:bg-primary-lighter"
       style={{
         minWidth: 'max-content',
-        backgroundColor: isDragging ? '#edf2fb' : selected ? '#f3f6fb' : undefined,
-        borderBottom: '1px solid #edf0f4',
+        backgroundColor: isDragging
+          ? BRAND.primaryLighter
+          : selected
+            ? BRAND.surfaceSubtle
+            : undefined,
+        borderBottom: `1px solid ${BRAND.borderInner}`,
         opacity: isDragging ? 0.6 : 1,
         transform: CSS.Transform.toString(transform),
         transition,
@@ -867,7 +793,7 @@ function BacklogRow({
       {/* Row number */}
       <div
         className="w-6 shrink-0 px-2 text-right font-mono text-[10px] tabular-nums"
-        style={{ color: '#8c94a6' }}
+        style={{ color: BRAND.textMuted }}
       >
         {rowNum}
       </div>
@@ -880,7 +806,7 @@ function BacklogRow({
       {/* ID — opens detail */}
       <button
         className="shrink-0 overflow-hidden px-2 text-left font-mono text-[10px] underline-offset-2 hover:underline"
-        style={{ ...colStyles.id, color: '#2558a6' }}
+        style={{ ...colStyles.id, color: BRAND.primaryLight }}
         onClick={onOpen}
       >
         {item.itemKey}
@@ -894,16 +820,19 @@ function BacklogRow({
             canEdit
             onCommit={commitTitle}
             className="block truncate text-[12px] font-medium"
-            style={{ color: '#1a2234', cursor: 'text' }}
+            style={{ color: BRAND.textPrimary, cursor: 'text' }}
             inputClassName="w-full rounded px-1 py-0.5 text-[12px] focus:outline-none"
-            inputStyle={{ border: '1px solid #9fb5d5', color: '#1a2234' }}
+            inputStyle={{
+              border: `1px solid ${BRAND.accentBorderStrong}`,
+              color: BRAND.textPrimary,
+            }}
             ariaLabel="Title"
             title={item.title}
           />
         ) : (
           <span
             className="block truncate text-[12px] font-medium"
-            style={{ color: '#1a2234', cursor: 'pointer' }}
+            style={{ color: BRAND.textPrimary, cursor: 'pointer' }}
             onClick={onOpen}
             title={item.title}
           >
@@ -947,7 +876,7 @@ function BacklogRow({
             <PriorityBadge priority={item.priority} />
           )
         ) : (
-          <span className="font-mono text-[10px]" style={{ color: '#a0a7b5' }}>
+          <span className="font-mono text-[10px]" style={{ color: BRAND.textDisabled }}>
             —
           </span>
         )}
@@ -966,11 +895,14 @@ function BacklogRow({
               if (next !== (item.storyPoints ?? null)) patch({ storyPoints: next, todoHours: next })
             }}
             className="w-12 rounded px-1 py-0.5 text-center font-mono text-[10px] focus:outline-none"
-            style={{ border: '1px solid #dde2ea', color: '#5c6478' }}
+            style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
             aria-label="Plan estimate"
           />
         ) : (
-          <span className="font-mono text-[10px] font-semibold" style={{ color: '#5c6478' }}>
+          <span
+            className="font-mono text-[10px] font-semibold"
+            style={{ color: BRAND.textSecondary }}
+          >
             {item.storyPoints ?? '—'}
           </span>
         )}
@@ -1007,7 +939,7 @@ function BacklogRow({
         ) : (
           <span
             className="truncate text-[11px]"
-            style={{ color: item.releaseId ? '#1a2234' : '#a0a7b5' }}
+            style={{ color: item.releaseId ? BRAND.textPrimary : BRAND.textDisabled }}
           >
             {releases.find((r) => r.id === item.releaseId)?.name ?? '—'}
           </span>
@@ -1034,7 +966,7 @@ function BacklogRow({
         ) : (
           <span
             className="truncate text-[11px]"
-            style={{ color: item.iterationId ? '#1a2234' : '#a0a7b5' }}
+            style={{ color: item.iterationId ? BRAND.textPrimary : BRAND.textDisabled }}
           >
             {iterations.find((it) => it.id === item.iterationId)?.name ?? '—'}
           </span>

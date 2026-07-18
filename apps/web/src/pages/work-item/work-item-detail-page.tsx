@@ -55,6 +55,7 @@ import { LabelChips } from '@/entities/work-item/ui/label-chips'
 import { TaskRollup } from '@/entities/work-item/ui/task-rollup'
 import { describeActivity } from '@/entities/work-item/model/activity'
 import { OwnerCell } from '@/shared/ui/owner-cell'
+import { Button } from '@/shared/ui/button'
 import { StateStepper } from '@/entities/work-item/ui/state-stepper'
 import { SCHEDULE_STATE_STEPS } from '@/entities/work-item/ui/state-steps'
 import {
@@ -144,7 +145,7 @@ function RelatedItemField({
       ) : (
         <span
           className="block rounded px-3 py-2 text-[12px]"
-          style={{ border: '1px solid #d7dde7', color: '#9ca3af' }}
+          style={{ border: `1px solid ${BRAND.borderInput}`, color: BRAND.textMuted }}
         >
           {emptyText}
         </span>
@@ -173,7 +174,7 @@ function DetailsTab({
 
   return (
     <div className="w-full space-y-5">
-      <h2 className="text-[20px] font-semibold" style={{ color: '#273449' }}>
+      <h2 className="text-[20px] font-semibold" style={{ color: BRAND.textPrimary }}>
         Details
       </h2>
 
@@ -256,21 +257,17 @@ function TasksTab({ workItemId, projectId }: { workItemId: string; projectId: st
       {/* Header */}
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h2 className="text-[20px] font-semibold" style={{ color: '#273449' }}>
+          <h2 className="text-[20px] font-semibold" style={{ color: BRAND.textPrimary }}>
             Tasks
           </h2>
-          <p className="mt-1 text-[11px]" style={{ color: '#64748b' }}>
+          <p className="mt-1 text-[11px]" style={{ color: BRAND.textSecondary }}>
             Break this work item into trackable delivery tasks.
           </p>
         </div>
-        <button
-          onClick={() => setShowAdd(true)}
-          className="flex items-center gap-1.5 rounded px-3 py-2 text-[11px] font-semibold text-white transition-colors hover:opacity-90"
-          style={{ backgroundColor: BRAND.primary }}
-        >
+        <Button size="sm" onClick={() => setShowAdd(true)}>
           <Plus size={13} />
           Add Task
-        </button>
+        </Button>
       </div>
 
       {isLoading ? (
@@ -278,7 +275,10 @@ function TasksTab({ workItemId, projectId }: { workItemId: string; projectId: st
           <Spinner />
         </div>
       ) : (
-        <div className="overflow-x-auto rounded bg-white" style={{ border: '1px solid #dde2ea' }}>
+        <div
+          className="overflow-x-auto rounded bg-white"
+          style={{ border: `1px solid ${BRAND.border}` }}
+        >
           <div style={{ minWidth: 1216 }}>
             {/* Header row */}
             <div
@@ -286,7 +286,7 @@ function TasksTab({ workItemId, projectId }: { workItemId: string; projectId: st
               style={{
                 gridTemplateColumns: TASK_GRID,
                 backgroundColor: 'white',
-                borderBottom: '2px solid #9fb4d1',
+                borderBottom: `2px solid ${BRAND.accentBorderStrong}`,
               }}
             >
               {TASK_COLS.map((col, i) => (
@@ -294,8 +294,9 @@ function TasksTab({ workItemId, projectId }: { workItemId: string; projectId: st
                   key={i}
                   className="flex h-full items-center px-3 text-[12px] font-semibold"
                   style={{
-                    color: '#1f2937',
-                    borderRight: i < TASK_COLS.length - 1 ? '1px dashed #8c99ad' : undefined,
+                    color: BRAND.textPrimary,
+                    borderRight:
+                      i < TASK_COLS.length - 1 ? `1px dashed ${BRAND.textMuted}` : undefined,
                   }}
                 >
                   {col}
@@ -309,9 +310,9 @@ function TasksTab({ workItemId, projectId }: { workItemId: string; projectId: st
                 className="grid h-8 items-center text-[12px] font-semibold"
                 style={{
                   gridTemplateColumns: TASK_GRID,
-                  backgroundColor: '#f3f6fa',
-                  borderBottom: '1px solid #d7dde7',
-                  color: '#1f2937',
+                  backgroundColor: BRAND.surfaceSubtle,
+                  borderBottom: `1px solid ${BRAND.borderInput}`,
+                  color: BRAND.textPrimary,
                 }}
               >
                 <span />
@@ -331,12 +332,12 @@ function TasksTab({ workItemId, projectId }: { workItemId: string; projectId: st
             {/* Empty */}
             {tasks.length === 0 && (
               <div className="flex h-20 items-center justify-center">
-                <p className="text-sm" style={{ color: '#8c94a6' }}>
+                <p className="text-sm" style={{ color: BRAND.textMuted }}>
                   No tasks yet.{' '}
                   <button
                     onClick={() => setShowAdd(true)}
                     className="font-medium"
-                    style={{ color: '#2558a6' }}
+                    style={{ color: BRAND.primaryLight }}
                   >
                     Add one
                   </button>
@@ -348,11 +349,11 @@ function TasksTab({ workItemId, projectId }: { workItemId: string; projectId: st
             {tasks.map((task) => (
               <div
                 key={task.id}
-                className="grid min-h-10 cursor-pointer items-center text-[12px] hover:bg-[#f1f6fc]"
+                className="grid min-h-10 cursor-pointer items-center text-[12px] hover:bg-primary-lighter"
                 style={{
                   gridTemplateColumns: TASK_GRID,
-                  borderBottom: '1px solid #edf0f4',
-                  color: '#334155',
+                  borderBottom: `1px solid ${BRAND.borderInner}`,
+                  color: BRAND.textPrimary,
                 }}
                 onClick={() => openTask(task)}
               >
@@ -364,7 +365,7 @@ function TasksTab({ workItemId, projectId }: { workItemId: string; projectId: st
                     onClick={(e) => e.stopPropagation()}
                   />
                 </div>
-                <span className="px-3 font-mono text-[11px]" style={{ color: '#5c6478' }}>
+                <span className="px-3 font-mono text-[11px]" style={{ color: BRAND.textSecondary }}>
                   {task.rank ?? '—'}
                 </span>
                 <span className="flex items-center overflow-hidden px-3">
@@ -377,10 +378,10 @@ function TasksTab({ workItemId, projectId }: { workItemId: string; projectId: st
                 <span className="flex items-center overflow-hidden px-3">
                   <OwnerCell name={task.assigneeId ? ownerName(task.assigneeId) : null} />
                 </span>
-                <span className="truncate px-3" style={{ color: '#5c6478' }}>
+                <span className="truncate px-3" style={{ color: BRAND.textSecondary }}>
                   {projectLabel}
                 </span>
-                <span className="truncate px-3" style={{ color: '#5c6478' }}>
+                <span className="truncate px-3" style={{ color: BRAND.textSecondary }}>
                   {teamName(task.teamId)}
                 </span>
                 <span className="px-3 text-right font-mono">
@@ -421,22 +422,25 @@ function HistoryTab({ workItemId }: { workItemId: string }) {
   return (
     <div className="w-full space-y-5">
       <div>
-        <h2 className="text-[20px] font-semibold" style={{ color: '#273449' }}>
+        <h2 className="text-[20px] font-semibold" style={{ color: BRAND.textPrimary }}>
           Revision History
         </h2>
-        <p className="mt-1 text-[12px]" style={{ color: '#64748b' }}>
+        <p className="mt-1 text-[12px]" style={{ color: BRAND.textSecondary }}>
           Activity log for field changes, task updates, and work item creation.
         </p>
       </div>
 
-      <section className="overflow-hidden rounded bg-white" style={{ border: '1px solid #dde2ea' }}>
+      <section
+        className="overflow-hidden rounded bg-white"
+        style={{ border: `1px solid ${BRAND.border}` }}
+      >
         <div
           className="grid px-4 py-2 text-[10px] font-semibold tracking-wider uppercase"
           style={{
             gridTemplateColumns: GRID,
-            color: '#64748b',
-            backgroundColor: '#f8fafc',
-            borderBottom: '1px solid #dde2ea',
+            color: BRAND.textSecondary,
+            backgroundColor: BRAND.surfaceHover,
+            borderBottom: `1px solid ${BRAND.border}`,
           }}
         >
           <span>Revision</span>
@@ -446,7 +450,7 @@ function HistoryTab({ workItemId }: { workItemId: string }) {
         </div>
 
         {logs.length === 0 && (
-          <div className="px-4 py-6 text-center text-sm" style={{ color: '#8c94a6' }}>
+          <div className="px-4 py-6 text-center text-sm" style={{ color: BRAND.textMuted }}>
             No activity recorded yet.
           </div>
         )}
@@ -465,21 +469,24 @@ function HistoryTab({ workItemId }: { workItemId: string }) {
               className="grid items-start px-4 py-3 text-[12px]"
               style={{
                 gridTemplateColumns: GRID,
-                borderBottom: '1px solid #edf0f4',
-                color: '#334155',
+                borderBottom: `1px solid ${BRAND.borderInner}`,
+                color: BRAND.textPrimary,
               }}
             >
-              <span className="font-mono text-[11px] tabular-nums" style={{ color: '#2558a6' }}>
+              <span
+                className="font-mono text-[11px] tabular-nums"
+                style={{ color: BRAND.primaryLight }}
+              >
                 {revision}
               </span>
-              <span style={{ color: '#334155' }}>{describeActivity(log)}</span>
-              <span className="font-mono text-[11px]" style={{ color: '#64748b' }}>
+              <span style={{ color: BRAND.textPrimary }}>{describeActivity(log)}</span>
+              <span className="font-mono text-[11px]" style={{ color: BRAND.textSecondary }}>
                 {new Date(log.createdAt).toLocaleString()}
               </span>
               <span className="flex min-w-0 items-center gap-2">
                 <span
                   className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[8px] font-bold"
-                  style={{ backgroundColor: '#e5ebf4', color: '#1d3f73' }}
+                  style={{ backgroundColor: BRAND.avatarBg, color: BRAND.primary }}
                 >
                   {initials}
                 </span>
@@ -521,35 +528,41 @@ function DefectsTab({ workItemId, projectId }: { workItemId: string; projectId: 
     <div className="w-full">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h2 className="text-[20px] font-semibold" style={{ color: '#273449' }}>
+          <h2 className="text-[20px] font-semibold" style={{ color: BRAND.textPrimary }}>
             Defects
           </h2>
-          <p className="mt-0.5 text-[12px]" style={{ color: '#6b7280' }}>
+          <p className="mt-0.5 text-[12px]" style={{ color: BRAND.textSecondary }}>
             {defects.length} defect{defects.length !== 1 ? 's' : ''} linked to this story
           </p>
         </div>
       </div>
 
       {defects.length === 0 ? (
-        <div className="rounded py-12 text-center" style={{ border: '1px dashed #d7dde7' }}>
-          <Bug size={28} style={{ color: '#c0c7d1', margin: '0 auto 8px' }} />
-          <p className="text-[13px] font-medium" style={{ color: '#6b7280' }}>
+        <div
+          className="rounded py-12 text-center"
+          style={{ border: `1px dashed ${BRAND.borderInput}` }}
+        >
+          <Bug size={28} style={{ color: BRAND.textFaint, margin: '0 auto 8px' }} />
+          <p className="text-[13px] font-medium" style={{ color: BRAND.textSecondary }}>
             No defects linked to this story
           </p>
-          <p className="mt-1 text-[11px]" style={{ color: '#9ca3af' }}>
+          <p className="mt-1 text-[11px]" style={{ color: BRAND.textMuted }}>
             Create a defect and assign it as a child of this story
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded" style={{ border: '1px solid #d7dde7' }}>
+        <div
+          className="overflow-x-auto rounded"
+          style={{ border: `1px solid ${BRAND.borderInput}` }}
+        >
           <div className="min-w-[600px]">
             {/* Header */}
             <div
-              className="grid items-center bg-[#f7f8fa] px-3 py-1.5 text-[10px] font-semibold tracking-wider uppercase"
+              className="grid items-center bg-surface-hover px-3 py-1.5 text-[10px] font-semibold tracking-wider uppercase"
               style={{
                 gridTemplateColumns: DEFECT_GRID,
-                color: '#6b7280',
-                borderBottom: '1px solid #d7dde7',
+                color: BRAND.textSecondary,
+                borderBottom: `1px solid ${BRAND.borderInput}`,
               }}
             >
               {DEFECT_COLS.map((col) => (
@@ -560,14 +573,17 @@ function DefectsTab({ workItemId, projectId }: { workItemId: string; projectId: 
             {defects.map((d) => (
               <div
                 key={d.id}
-                className="grid cursor-pointer items-center px-3 py-2 text-[12px] transition-colors hover:bg-[#f1f6fc]"
-                style={{ gridTemplateColumns: DEFECT_GRID, borderBottom: '1px solid #edf0f4' }}
+                className="grid cursor-pointer items-center px-3 py-2 text-[12px] transition-colors hover:bg-primary-lighter"
+                style={{
+                  gridTemplateColumns: DEFECT_GRID,
+                  borderBottom: `1px solid ${BRAND.borderInner}`,
+                }}
                 onClick={() => openDefect(d)}
               >
                 <span className="flex items-center overflow-hidden">
                   <IdCell type={d.type} itemKey={d.itemKey} onOpen={() => openDefect(d)} />
                 </span>
-                <span className="truncate font-medium" style={{ color: '#273449' }}>
+                <span className="truncate font-medium" style={{ color: BRAND.textPrimary }}>
                   {d.title}
                 </span>
                 <ScheduleStateBadge state={d.scheduleState} />
@@ -637,16 +653,16 @@ function DetailSidebar({
   return (
     <aside
       className="w-[300px] shrink-0 overflow-y-auto bg-white"
-      style={{ borderLeft: '1px solid #d7dde7' }}
+      style={{ borderLeft: `1px solid ${BRAND.borderInput}` }}
     >
       {/* Collapse toggle header */}
       <div
         className="sticky top-0 z-10 flex items-center justify-between bg-white px-3 py-2"
-        style={{ borderBottom: '1px solid #e7ebf0' }}
+        style={{ borderBottom: `1px solid ${BRAND.avatarBg}` }}
       >
         <span
           className="text-[11px] font-semibold tracking-wide uppercase"
-          style={{ color: '#6b7280' }}
+          style={{ color: BRAND.textSecondary }}
         >
           Details
         </span>
@@ -655,9 +671,9 @@ function DetailSidebar({
           <button
             onClick={onToggleCollapse}
             title="Hide sidebar"
-            className="rounded p-1 transition-colors hover:bg-[#f3f5f8]"
+            className="rounded p-1 transition-colors hover:bg-surface-subtle"
           >
-            <PanelRightClose size={14} style={{ color: '#6b7280' }} />
+            <PanelRightClose size={14} style={{ color: BRAND.textSecondary }} />
           </button>
         </div>
       </div>
@@ -917,7 +933,11 @@ function DetailSidebar({
         {item.isBlocked && (
           <div
             className="flex items-start gap-2 rounded p-2 text-[11px]"
-            style={{ backgroundColor: '#fef2f2', border: '1px solid #fcc5c0', color: '#b91c1c' }}
+            style={{
+              backgroundColor: BRAND.dangerBg,
+              border: `1px solid ${BRAND.dangerBorder}`,
+              color: BRAND.danger,
+            }}
           >
             <span className="font-semibold">Blocked:</span>
             <span>{item.blockedReason ?? 'Reason not provided.'}</span>
@@ -933,7 +953,7 @@ function DetailSidebar({
 
         {/* Creation Date (read-only) */}
         <FormField label="Creation Date">
-          <span className="block px-1 text-[12px]" style={{ color: '#5c6478' }}>
+          <span className="block px-1 text-[12px]" style={{ color: BRAND.textSecondary }}>
             {new Date(item.createdAt).toLocaleDateString(undefined, {
               year: 'numeric',
               month: 'short',
@@ -946,7 +966,11 @@ function DetailSidebar({
         {readOnly && (
           <div
             className="rounded px-3 py-2 text-[10px]"
-            style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', color: '#64748b' }}
+            style={{
+              backgroundColor: BRAND.surfaceHover,
+              border: `1px solid ${BRAND.avatarBg}`,
+              color: BRAND.textSecondary,
+            }}
           >
             You have read-only access to this item.
           </div>
@@ -1056,13 +1080,13 @@ export function WorkItemDetailPage() {
   if (!itemByKey) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3">
-        <p className="text-sm font-medium" style={{ color: '#5c6478' }}>
+        <p className="text-sm font-medium" style={{ color: BRAND.textSecondary }}>
           Work item "{itemKey}" not found.
         </p>
         <button
           onClick={() => void navigate({ to: '/backlog' })}
           className="text-xs font-medium"
-          style={{ color: '#2558a6' }}
+          style={{ color: BRAND.primaryLight }}
         >
           ← Back to Backlog
         </button>
@@ -1134,7 +1158,7 @@ export function WorkItemDetailPage() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-white">
       {/* Header bar */}
-      <div className="shrink-0 text-white" style={{ backgroundColor: '#173f78' }}>
+      <div className="shrink-0 text-white" style={{ backgroundColor: BRAND.primaryDark }}>
         {/* Title row */}
         <div
           className="flex h-12 items-center gap-3 px-4"
@@ -1157,7 +1181,7 @@ export function WorkItemDetailPage() {
           {watchers.length > 0 && (
             <div
               className="flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium"
-              style={{ backgroundColor: 'rgba(255,255,255,0.12)', color: '#d7e4f7' }}
+              style={{ backgroundColor: 'rgba(255,255,255,0.12)', color: BRAND.accentBg }}
               title={`${watchers.length} watcher${watchers.length !== 1 ? 's' : ''}`}
             >
               <Users size={12} />
@@ -1178,7 +1202,7 @@ export function WorkItemDetailPage() {
             className="flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[11px] font-medium transition-colors"
             style={{
               backgroundColor: isWatching ? 'rgba(255,255,255,0.18)' : 'transparent',
-              color: isWatching ? 'white' : '#d7e4f7',
+              color: isWatching ? 'white' : BRAND.accentBg,
               border: '1px solid',
               borderColor: isWatching ? 'rgba(255,255,255,0.3)' : 'transparent',
             }}
@@ -1200,13 +1224,13 @@ export function WorkItemDetailPage() {
               {moreOpen && (
                 <div
                   className="absolute top-full right-0 z-50 mt-1 w-44 overflow-hidden rounded shadow-lg"
-                  style={{ backgroundColor: 'white', border: '1px solid #d7dde7' }}
+                  style={{ backgroundColor: 'white', border: `1px solid ${BRAND.borderInput}` }}
                 >
                   <button
                     onClick={() => void handleDelete()}
                     disabled={deleteMutation.isPending}
                     className="flex w-full items-center gap-2 px-3 py-2 text-[12px] transition-colors hover:bg-red-50 disabled:opacity-50"
-                    style={{ color: '#b91c1c' }}
+                    style={{ color: BRAND.danger }}
                   >
                     <Trash2 size={13} />
                     Delete work item
@@ -1225,8 +1249,8 @@ export function WorkItemDetailPage() {
               onClick={() => setActiveTab(id)}
               className="flex flex-col items-center justify-center gap-1 px-4 text-[11px] font-medium"
               style={{
-                backgroundColor: activeTab === id ? '#2f6fc5' : 'transparent',
-                color: activeTab === id ? 'white' : '#d7e4f7',
+                backgroundColor: activeTab === id ? BRAND.primaryLight : 'transparent',
+                color: activeTab === id ? 'white' : BRAND.accentBg,
               }}
             >
               <span className="flex h-5 items-center justify-center">{icon}</span>
@@ -1237,9 +1261,12 @@ export function WorkItemDetailPage() {
       </div>
 
       {/* Content area */}
-      <div className="flex min-h-0 flex-1" style={{ backgroundColor: '#e7ebf0' }}>
+      <div className="flex min-h-0 flex-1" style={{ backgroundColor: BRAND.avatarBg }}>
         {/* Main content */}
-        <main className="flex-1 overflow-y-auto p-6" style={{ backgroundColor: '#f3f5f8' }}>
+        <main
+          className="flex-1 overflow-y-auto p-6"
+          style={{ backgroundColor: BRAND.surfaceSubtle }}
+        >
           {activeTab === 'details' && (
             <DetailsTab
               item={item}
@@ -1274,10 +1301,13 @@ export function WorkItemDetailPage() {
           <button
             onClick={toggleSidebar}
             title="Show sidebar"
-            className="flex w-6 shrink-0 items-center justify-center transition-colors hover:bg-[#e0e4ea]"
-            style={{ borderLeft: '1px solid #d7dde7', backgroundColor: '#f3f5f8' }}
+            className="flex w-6 shrink-0 items-center justify-center transition-colors hover:bg-border-subtle"
+            style={{
+              borderLeft: `1px solid ${BRAND.borderInput}`,
+              backgroundColor: BRAND.surfaceSubtle,
+            }}
           >
-            <PanelRightOpen size={14} style={{ color: '#6b7280' }} />
+            <PanelRightOpen size={14} style={{ color: BRAND.textSecondary }} />
           </button>
         )}
       </div>

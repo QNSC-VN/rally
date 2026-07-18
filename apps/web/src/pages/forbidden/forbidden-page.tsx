@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { ShieldOff } from 'lucide-react'
 import { BRAND } from '@/shared/config/brand'
+import { Button } from '@/shared/ui/button'
 
 /**
  * 403 Access Denied page (SHELL-FR-014, P0-08).
@@ -16,14 +17,14 @@ export function ForbiddenPage() {
     >
       <div
         className="flex h-16 w-16 items-center justify-center rounded-full"
-        style={{ backgroundColor: '#fef2f2' }}
+        style={{ backgroundColor: BRAND.dangerBg }}
       >
-        <ShieldOff size={30} style={{ color: '#dc2626' }} />
+        <ShieldOff size={30} style={{ color: BRAND.danger }} />
       </div>
       <div className="text-center">
         <p
           id="forbidden-heading"
-          className="text-[42px] font-bold leading-none"
+          className="text-[42px] leading-none font-bold"
           style={{ color: BRAND.textPrimary }}
         >
           403
@@ -39,13 +40,9 @@ export function ForbiddenPage() {
           this is a mistake.
         </p>
       </div>
-      <Link
-        to="/"
-        className="mt-2 flex items-center gap-1.5 rounded px-4 py-2 text-[13px] font-semibold text-white transition-opacity hover:opacity-90"
-        style={{ backgroundColor: BRAND.primary }}
-      >
-        Back to Home
-      </Link>
+      <Button asChild className="mt-2">
+        <Link to="/">Back to Home</Link>
+      </Button>
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { FileQuestion, Home } from 'lucide-react'
 import { BRAND } from '@/shared/config/brand'
+import { Button } from '@/shared/ui/button'
 
 export function NotFoundPage() {
   return (
@@ -15,7 +16,7 @@ export function NotFoundPage() {
         <FileQuestion size={30} style={{ color: BRAND.primaryLight }} />
       </div>
       <div className="text-center">
-        <p className="text-[42px] font-bold leading-none" style={{ color: BRAND.textPrimary }}>
+        <p className="text-[42px] leading-none font-bold" style={{ color: BRAND.textPrimary }}>
           404
         </p>
         <p className="mt-1 text-[14px] font-medium" style={{ color: BRAND.textSecondary }}>
@@ -25,14 +26,12 @@ export function NotFoundPage() {
           The page you requested doesn't exist or you don't have access.
         </p>
       </div>
-      <Link
-        to="/"
-        className="mt-2 flex items-center gap-2 rounded px-4 py-2 text-[12px] font-semibold text-white transition-opacity hover:opacity-90"
-        style={{ backgroundColor: BRAND.primary }}
-      >
-        <Home size={14} />
-        Back to Home
-      </Link>
+      <Button asChild className="mt-2">
+        <Link to="/">
+          <Home size={14} />
+          Back to Home
+        </Link>
+      </Button>
     </div>
   )
 }

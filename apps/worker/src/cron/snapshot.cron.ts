@@ -20,6 +20,7 @@ import { InjectDrizzle, CacheService } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { ReportingService } from '@modules/reporting';
 import { iterations, workItems, workflowStatuses } from '../../../../db/schema/work';
+import { WORKFLOW_DONE_CATEGORY } from '../../../../db/schema/enums';
 
 @Injectable()
 export class SnapshotCronService {
@@ -105,9 +106,13 @@ export class SnapshotCronService {
     const result = await this.db
       .select({
         totalItems: sql<number>`count(*)::int`,
-        completedItems: sql<number>`count(*) filter (where ${workflowStatuses.category} = 'done')::int`,
+        // Burndown/velocity "done" is the D2 workflow-board dimension
+        // (workflow_statuses.category = 'done') per DATABASE_SCHEMA.md — this is
+        // intentionally distinct from D1 schedule_state acceptance. story_points
+        // is numeric (fractional points), so point sums cast to float8.
+        completedItems: sql<number>`count(*) filter (where ${workflowStatuses.category} = ${WORKFLOW_DONE_CATEGORY})::int`,
         totalPoints: sql<number>`coalesce(sum(${workItems.storyPoints}), 0)::float8`,
-        completedPoints: sql<number>`coalesce(sum(${workItems.storyPoints}) filter (where ${workflowStatuses.category} = 'done'), 0)::float8`,
+        completedPoints: sql<number>`coalesce(sum(${workItems.storyPoints}) filter (where ${workflowStatuses.category} = ${WORKFLOW_DONE_CATEGORY}), 0)::float8`,
       })
       .from(workItems)
       .innerJoin(

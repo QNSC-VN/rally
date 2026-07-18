@@ -6,6 +6,7 @@ import {
   HttpCode,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
@@ -14,11 +15,16 @@ import type { JwtPayload } from '@platform';
 import { CurrentUser } from '@platform';
 import { AccessService } from '../../application/access.service';
 import { AuthProjectScoped, RequireProjectPermission } from './project-permission.guard';
-import { AssignRoleDto, AssignProjectRoleDto } from './dto/access-request.dto';
+import {
+  AssignRoleDto,
+  AssignProjectRoleDto,
+  UpdateRolePermissionsDto,
+} from './dto/access-request.dto';
 import {
   RoleResponseDto,
   RoleAssignmentResponseDto,
   ProjectPermissionsResponseDto,
+  PermissionCatalogResponseDto,
 } from './dto/access-response.dto';
 import type { SystemRole, UserRoleAssignment } from '../../domain/access.types';
 
@@ -63,6 +69,32 @@ export class AccessController {
   async listRoles(@CurrentUser() user: JwtPayload): Promise<RoleResponseDto[]> {
     const roles = await this.accessService.listRoles(user.workspaceId);
     return roles.map(toRoleDto);
+  }
+
+  @Get('permissions')
+  @RequirePermission('workspace:manage_members')
+  @ApiOperation({
+    summary: 'List assignable permissions with their scope tier (workspace admin only)',
+  })
+  @ApiResponse({ status: 200, type: PermissionCatalogResponseDto })
+  @ApiCommonErrors(401, 403)
+  getPermissionCatalog(): PermissionCatalogResponseDto {
+    return { permissions: this.accessService.getPermissionCatalog() };
+  }
+
+  @Patch('roles/:roleId/permissions')
+  @RequirePermission('workspace:manage_members')
+  @ApiOperation({ summary: 'Replace a custom role\u2019s permission set (workspace admin only)' })
+  @ApiParam({ name: 'roleId', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: RoleResponseDto })
+  @ApiCommonErrors(400, 401, 403, 404, 409, 422)
+  async updateRolePermissions(
+    @CurrentUser() user: JwtPayload,
+    @Param('roleId', ParseUUIDPipe) roleId: string,
+    @Body() dto: UpdateRolePermissionsDto,
+  ): Promise<RoleResponseDto> {
+    const role = await this.accessService.updateRolePermissions(user, roleId, dto.permissions);
+    return toRoleDto(role);
   }
 
   // ── Role assignments ───────────────────────────────────────────────────────

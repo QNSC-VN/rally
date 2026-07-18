@@ -194,7 +194,7 @@ export class WorkspaceController {
     @Body() dto: UpdateWorkspaceDto,
   ): Promise<WorkspaceResponseDto> {
     this.assertActive(user, id);
-    const workspace = await this.workspaceService.updateWorkspace(id, dto);
+    const workspace = await this.workspaceService.updateWorkspace(id, dto, user.sub);
     return toWorkspaceDto(workspace);
   }
 
@@ -286,12 +286,7 @@ export class WorkspaceController {
     @Body() dto: UpdateMemberDto,
   ): Promise<MemberResponseDto> {
     this.assertActive(user, id);
-    const member = await this.workspaceService.updateMember(
-      id,
-      memberId,
-      dto,
-      user.sub,
-    );
+    const member = await this.workspaceService.updateMember(id, memberId, dto, user.sub);
     return toMemberDto(member);
   }
 
@@ -402,7 +397,7 @@ export class WorkspaceController {
     @Body() dto: UpdateWorkspaceSettingsDto,
   ): Promise<WorkspaceSettingsResponseDto> {
     this.assertActive(user, id);
-    const settings = await this.workspaceService.updateSettings(id, dto);
+    const settings = await this.workspaceService.updateSettings(id, dto, user.sub);
     return toSettingsDto(settings);
   }
 }

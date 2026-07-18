@@ -14,6 +14,7 @@ import { SkeletonList } from '@/shared/ui/skeleton'
 import { NativeSelect, InlineSelect } from '@/shared/ui/native-select'
 import { BRAND } from '@/shared/config/brand'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
+import { Button } from '@/shared/ui/button'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
@@ -35,9 +36,9 @@ const STATE_LABEL: Record<IterationState, string> = {
   accepted: 'Accepted',
 }
 const STATE_STYLE: Record<IterationState, { bg: string; text: string; border: string }> = {
-  planning: { bg: '#eef3fb', text: '#1d3f73', border: '#bdd0ef' },
-  committed: { bg: '#fef5e4', text: '#8a5808', border: '#f4d28d' },
-  accepted: { bg: '#eaf5ed', text: '#1e6930', border: '#b9dec2' },
+  planning: { bg: BRAND.primaryLighter, text: BRAND.primary, border: BRAND.accentBorder },
+  committed: { bg: BRAND.warningBg, text: BRAND.warning, border: BRAND.warningBorder },
+  accepted: { bg: BRAND.successBg, text: BRAND.success, border: BRAND.successBorder },
 }
 
 function StateBadge({ state }: { state: IterationState }) {
@@ -151,13 +152,9 @@ export function IterationsPage() {
         }}
         actions={
           canManage ? (
-            <button
-              onClick={() => setShowCreate(true)}
-              className="flex items-center gap-1.5 rounded px-3 py-1 text-[11px] font-semibold text-white"
-              style={{ backgroundColor: BRAND.primary }}
-            >
+            <Button size="sm" onClick={() => setShowCreate(true)}>
               <Plus size={12} /> Create Iteration
-            </button>
+            </Button>
           ) : undefined
         }
         activeFilterCount={stateFilter !== 'all' ? 1 : 0}
@@ -189,7 +186,7 @@ export function IterationsPage() {
             {stateFilter !== 'all' && (
               <button
                 onClick={() => setStateFilter('all')}
-                className="cursor-pointer rounded px-2.5 py-1 text-[11px] hover:bg-[#f0f4fb]"
+                className="cursor-pointer rounded px-2.5 py-1 text-[11px] hover:bg-primary-lighter"
                 style={{ color: BRAND.primaryLight }}
               >
                 Clear filters
@@ -252,7 +249,7 @@ export function IterationsPage() {
                 <div
                   key={it.id}
                   onClick={() => setDetailId(it.id)}
-                  className="flex h-8 cursor-pointer items-center px-3 transition-colors hover:bg-[#f4f6f9]"
+                  className="flex h-8 cursor-pointer items-center px-3 transition-colors hover:bg-surface-subtle"
                   style={{
                     width: tableWidth,
                     minWidth: '100%',
@@ -332,7 +329,7 @@ export function IterationsPage() {
               aria-label="Previous page"
               disabled={activePage === 1}
               onClick={() => setPage(activePage - 1)}
-              className="cursor-pointer rounded p-1.5 transition-colors hover:bg-[#f0f4fb] disabled:cursor-not-allowed disabled:opacity-35"
+              className="cursor-pointer rounded p-1.5 transition-colors hover:bg-primary-lighter disabled:cursor-not-allowed disabled:opacity-35"
               style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
             >
               <ChevronLeft size={13} />
@@ -341,7 +338,7 @@ export function IterationsPage() {
               aria-label="Next page"
               disabled={activePage === totalPages}
               onClick={() => setPage(activePage + 1)}
-              className="cursor-pointer rounded p-1.5 transition-colors hover:bg-[#f0f4fb] disabled:cursor-not-allowed disabled:opacity-35"
+              className="cursor-pointer rounded p-1.5 transition-colors hover:bg-primary-lighter disabled:cursor-not-allowed disabled:opacity-35"
               style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
             >
               <ChevronLeft size={13} className="rotate-180" />
@@ -458,33 +455,21 @@ function CreateIterationModal({
       </ModalBody>
 
       <ModalFooter>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-[#f0f2f5]"
-          style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
-        >
+        <Button variant="outline" type="button" onClick={onClose}>
           Cancel
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="secondary"
           type="button"
           disabled={create.isPending}
           onClick={() => submit(true)}
-          className="rounded px-4 py-1.5 text-[11px] font-semibold transition-colors hover:opacity-90 disabled:opacity-50"
-          style={{ border: '1px solid #9fb5d5', color: BRAND.primary, backgroundColor: '#f5f8fc' }}
         >
           Create with details
-        </button>
-        <button
-          type="button"
-          disabled={create.isPending}
-          onClick={() => submit(false)}
-          className="flex items-center gap-1.5 rounded px-4 py-1.5 text-[11px] font-semibold text-white transition-colors hover:opacity-90 disabled:opacity-50"
-          style={{ backgroundColor: BRAND.primary }}
-        >
+        </Button>
+        <Button type="button" disabled={create.isPending} onClick={() => submit(false)}>
           {create.isPending && <Loader2 size={11} className="animate-spin" />}
           Create Iteration
-        </button>
+        </Button>
       </ModalFooter>
     </AppModal>
   )
@@ -529,14 +514,14 @@ function IterationDetail({
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-white">
-      <div className="shrink-0 text-white" style={{ backgroundColor: '#173f78' }}>
+      <div className="shrink-0 text-white" style={{ backgroundColor: BRAND.primaryDark }}>
         <div className="flex h-12 items-center gap-3 px-4">
           <button aria-label="Back" onClick={onBack} className="rounded p-1.5 hover:bg-white/10">
             <ChevronLeft size={18} />
           </button>
           <span
             className="rounded-sm px-1.5 py-px text-[10px] font-semibold"
-            style={{ backgroundColor: '#eef3fb', color: '#1d3f73' }}
+            style={{ backgroundColor: BRAND.primaryLighter, color: BRAND.primary }}
           >
             Iteration
           </span>
@@ -546,10 +531,13 @@ function IterationDetail({
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 gap-2" style={{ backgroundColor: '#e7ebf0' }}>
-        <main className="flex-1 overflow-y-auto p-6" style={{ backgroundColor: '#f3f5f8' }}>
+      <div className="flex min-h-0 flex-1 gap-2" style={{ backgroundColor: BRAND.avatarBg }}>
+        <main
+          className="flex-1 overflow-y-auto p-6"
+          style={{ backgroundColor: BRAND.surfaceSubtle }}
+        >
           <div className="space-y-5">
-            <h2 className="text-[18px] font-semibold" style={{ color: '#273449' }}>
+            <h2 className="text-[18px] font-semibold" style={{ color: BRAND.textPrimary }}>
               Details
             </h2>
             <section

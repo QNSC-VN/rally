@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
-import type { DrizzleDB } from '@platform';
+import type { DrizzleDB, DbExecutor } from '@platform';
 import { teams } from '../../../../../../db/schema/work';
 import type { Team, CreateTeamInput, UpdateTeamInput } from '../../domain/team.types';
 import { ITeamRepository } from '../../domain/ports/team.repository';
@@ -20,7 +20,7 @@ export class TeamDrizzleRepository implements ITeamRepository {
       .from(teams)
       .where(and(eq(teams.id, id), eq(teams.workspaceId, workspaceId)))
       .limit(1);
-    return (rows[0]) ?? null;
+    return rows[0] ?? null;
   }
 
   async findByKey(workspaceId: string, key: string): Promise<Team | null> {
@@ -29,7 +29,7 @@ export class TeamDrizzleRepository implements ITeamRepository {
       .from(teams)
       .where(and(eq(teams.workspaceId, workspaceId), eq(teams.key, key)))
       .limit(1);
-    return (rows[0]) ?? null;
+    return rows[0] ?? null;
   }
 
   async listByWorkspace(workspaceId: string): Promise<Team[]> {
@@ -41,8 +41,8 @@ export class TeamDrizzleRepository implements ITeamRepository {
     return rows;
   }
 
-  async create(input: CreateTeamInput): Promise<Team> {
-    const rows = await this.db
+  async create(input: CreateTeamInput, tx?: DbExecutor): Promise<Team> {
+    const rows = await (tx ?? this.db)
       .insert(teams)
       .values({
         id: input.id,
@@ -59,8 +59,8 @@ export class TeamDrizzleRepository implements ITeamRepository {
     return rows[0];
   }
 
-  async update(id: string, input: UpdateTeamInput): Promise<Team> {
-    const rows = await this.db
+  async update(id: string, input: UpdateTeamInput, tx?: DbExecutor): Promise<Team> {
+    const rows = await (tx ?? this.db)
       .update(teams)
       .set({
         ...(input.name !== undefined && { name: input.name }),

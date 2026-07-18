@@ -1,25 +1,51 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { AlertTriangle, Bell, CheckCheck, Circle, CircleDot } from 'lucide-react'
+import { AlertTriangle, Bell, CheckCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import { BRAND } from '@/shared/config/brand'
-import { relativeTime } from '@/shared/lib/utils'
+import { PageHeader } from '@/shared/ui/page-header'
+import { EmptyState } from '@/shared/ui/empty-state'
 import {
   useNotifications,
   useMarkNotificationRead,
   useMarkAllNotificationsRead,
 } from '@/features/notifications/api'
+import { NotificationItem } from '@/features/notifications/ui/notification-item'
+
+const TABS = [
+  { key: 'all', label: 'All' },
+  { key: 'unread', label: 'Unread' },
+  { key: 'assigned', label: 'Assigned' },
+  { key: 'mentions', label: 'Mentions' },
+] as const
+
+type NotificationTab = (typeof TABS)[number]['key']
+
+const TAB_FILTER: Record<
+  NotificationTab,
+  { unreadOnly?: boolean; category?: 'assigned' | 'mentions' }
+> = {
+  all: {},
+  unread: { unreadOnly: true },
+  assigned: { category: 'assigned' },
+  mentions: { category: 'mentions' },
+}
 
 export function NotificationsPage() {
   const navigate = useNavigate()
-  const [unreadOnly, setUnreadOnly] = useState(false)
-  const { data: notifications = [], isLoading, isError } = useNotifications(unreadOnly)
+  const [tab, setTab] = useState<NotificationTab>('all')
+  const { data: notifications = [], isLoading, isError } = useNotifications(TAB_FILTER[tab])
   const markRead = useMarkNotificationRead()
   const markAll = useMarkAllNotificationsRead()
 
   const unreadCount = notifications.filter((n) => !n.isRead).length
 
-  function handleNotificationClick(n: { resourceType: string | null; resourceId: string | null; id: string; isRead: boolean }) {
+  function handleNotificationClick(n: {
+    resourceType: string | null
+    resourceId: string | null
+    id: string
+    isRead: boolean
+  }) {
     // Mark as read then navigate
     if (!n.isRead) {
       void markRead.mutateAsync(n.id)
@@ -35,7 +61,10 @@ export function NotificationsPage() {
       }
       const route = routeMap[n.resourceType]
       if (route) {
-        void navigate({ to: route, params: { itemKey: n.resourceId, releaseId: n.resourceId, milestoneId: n.resourceId } })
+        void navigate({
+          to: route,
+          params: { itemKey: n.resourceId, releaseId: n.resourceId, milestoneId: n.resourceId },
+        })
       }
     }
   }
@@ -52,53 +81,58 @@ export function NotificationsPage() {
   return (
     <div className="flex flex-1 flex-col" style={{ backgroundColor: BRAND.pageBg, minHeight: 0 }}>
       {/* ── Header ── */}
-      <div
-        className="flex shrink-0 items-center justify-between px-6 py-4"
-        style={{ borderBottom: `1px solid ${BRAND.border}`, backgroundColor: BRAND.surface }}
-      >
-        <div className="flex items-center gap-3">
-          <Bell size={16} style={{ color: BRAND.textSecondary }} />
-          <h1 className="text-[15px] font-semibold" style={{ color: BRAND.textPrimary }}>
-            Notifications
-          </h1>
-          {unreadCount > 0 && (
+      <PageHeader
+        icon={<Bell size={16} style={{ color: BRAND.textSecondary }} />}
+        title="Notifications"
+        badge={
+          unreadCount > 0 ? (
             <span
               className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-white"
               style={{ backgroundColor: BRAND.primary }}
             >
               {unreadCount}
             </span>
-          )}
-        </div>
-        <div className="flex items-center gap-3">
-          <label className="flex cursor-pointer items-center gap-1.5 select-none">
-            <input
-              type="checkbox"
-              checked={unreadOnly}
-              onChange={(e) => setUnreadOnly(e.target.checked)}
-              className="rounded"
-            />
-            <span className="text-[12px]" style={{ color: BRAND.textSecondary }}>
-              Unread only
-            </span>
-          </label>
-          {unreadCount > 0 && (
-            <button
-              onClick={() => void handleMarkAll()}
-              disabled={markAll.isPending}
-              className="flex items-center gap-1.5 rounded px-3 py-1.5 text-[12px] font-medium transition-colors hover:opacity-80"
-              style={{
-                border: `1px solid ${BRAND.border}`,
-                color: BRAND.textSecondary,
-                backgroundColor: BRAND.surface,
-              }}
-            >
-              <CheckCheck size={13} />
-              Mark all read
-            </button>
-          )}
-        </div>
-      </div>
+          ) : undefined
+        }
+        actions={
+          <>
+            <div className="flex items-center gap-1">
+              {TABS.map((t) => {
+                const active = tab === t.key
+                return (
+                  <button
+                    key={t.key}
+                    onClick={() => setTab(t.key)}
+                    className="rounded px-3 py-1.5 text-[12px] font-medium transition-colors"
+                    style={{
+                      backgroundColor: active ? BRAND.primary : 'transparent',
+                      color: active ? BRAND.surface : BRAND.textSecondary,
+                      border: `1px solid ${active ? BRAND.primary : BRAND.border}`,
+                    }}
+                  >
+                    {t.label}
+                  </button>
+                )
+              })}
+            </div>
+            {unreadCount > 0 && (
+              <button
+                onClick={() => void handleMarkAll()}
+                disabled={markAll.isPending}
+                className="flex items-center gap-1.5 rounded px-3 py-1.5 text-[12px] font-medium transition-colors hover:opacity-80"
+                style={{
+                  border: `1px solid ${BRAND.border}`,
+                  color: BRAND.textSecondary,
+                  backgroundColor: BRAND.surface,
+                }}
+              >
+                <CheckCheck size={13} />
+                Mark all read
+              </button>
+            )}
+          </>
+        }
+      />
 
       {/* ── List ── */}
       <div className="flex-1 overflow-y-auto">
@@ -110,78 +144,39 @@ export function NotificationsPage() {
             />
           </div>
         ) : isError ? (
-          <div className="flex flex-col items-center justify-center gap-3 py-20">
-            <AlertTriangle size={28} style={{ color: BRAND.danger }} />
-            <p className="text-[13px] font-medium" style={{ color: BRAND.textSecondary }}>
-              Failed to load notifications. Please try again.
-            </p>
-          </div>
+          <EmptyState
+            icon={<AlertTriangle size={28} className="text-destructive" />}
+            title="Failed to load notifications. Please try again."
+          />
         ) : notifications.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-4 py-20">
             <div
               className="flex h-14 w-14 items-center justify-center rounded-xl"
-              style={{ backgroundColor: '#e5ebf4' }}
+              style={{ backgroundColor: BRAND.avatarBg }}
             >
               <Bell size={26} style={{ color: BRAND.primary }} />
             </div>
             <div className="text-center">
               <p className="text-[15px] font-semibold" style={{ color: BRAND.textPrimary }}>
-                {unreadOnly ? 'No unread notifications' : "You're all caught up"}
+                {tab === 'unread' ? 'No unread notifications' : "You're all caught up"}
               </p>
               <p className="mt-1 text-[12px]" style={{ color: BRAND.textMuted }}>
-                {unreadOnly
-                  ? 'Switch off "Unread only" to see all.'
-                  : 'New notifications will appear here.'}
+                {tab === 'all'
+                  ? 'New notifications will appear here.'
+                  : 'Switch to the All tab to see everything.'}
               </p>
             </div>
           </div>
         ) : (
           <ul>
             {notifications.map((n) => (
-              <li
+              <NotificationItem
                 key={n.id}
-                className="flex items-start gap-3 px-6 py-4 transition-colors hover:bg-[#f7f8fa] cursor-pointer"
-                style={{
-                  borderBottom: `1px solid ${BRAND.borderInner}`,
-                  backgroundColor: n.isRead ? undefined : '#f5f8ff',
-                }}
-                onClick={() => handleNotificationClick(n)}
-              >
-                {/* Read indicator */}
-                <button
-                  title={n.isRead ? 'Read' : 'Mark as read'}
-                  disabled={n.isRead || markRead.isPending}
-                  onClick={(e) => { e.stopPropagation(); void markRead.mutateAsync(n.id) }}
-                  className="mt-0.5 shrink-0 transition-opacity hover:opacity-70 disabled:cursor-default"
-                >
-                  {n.isRead ? (
-                    <Circle size={8} style={{ color: BRAND.border }} />
-                  ) : (
-                    <CircleDot size={8} style={{ color: BRAND.primary }} />
-                  )}
-                </button>
-
-                {/* Content */}
-                <div className="min-w-0 flex-1">
-                  <p
-                    className="text-[13px] leading-5"
-                    style={{ color: BRAND.textPrimary, fontWeight: n.isRead ? 400 : 600 }}
-                  >
-                    {n.title}
-                  </p>
-                  {n.body && (
-                    <p
-                      className="mt-0.5 line-clamp-2 text-[12px] leading-4"
-                      style={{ color: BRAND.textSecondary }}
-                    >
-                      {n.body}
-                    </p>
-                  )}
-                  <p className="mt-1 text-[11px]" style={{ color: BRAND.textMuted }}>
-                    {relativeTime(n.createdAt)}
-                  </p>
-                </div>
-              </li>
+                notification={n}
+                onMarkRead={(id) => void markRead.mutateAsync(id)}
+                isMarkingRead={markRead.isPending}
+                onActivate={() => handleNotificationClick(n)}
+              />
             ))}
           </ul>
         )}
