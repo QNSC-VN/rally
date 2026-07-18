@@ -13,6 +13,7 @@ import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { BRAND } from '@/shared/config/brand'
 import { WORK_ITEM_TYPE_CONFIG } from '@/entities/work-item/model/types'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
+import { Button } from '@/shared/ui/button'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { NativeSelect } from '@/shared/ui/native-select'
@@ -218,38 +219,25 @@ export function CreateWorkItemModal({
           Ctrl+Enter to save
         </span>
         <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
-            className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-background disabled:opacity-50"
-            style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
-          >
+          <Button variant="outline" type="button" onClick={onClose} disabled={submitting}>
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="secondary"
             type="button"
             onClick={() => void submit(true)}
             disabled={submitting || !title.trim()}
-            className="rounded px-4 py-1.5 text-[11px] font-semibold transition-colors hover:opacity-90 disabled:opacity-50"
-            style={{
-              border: `1px solid ${BRAND.accentBorderStrong}`,
-              color: BRAND.primary,
-              backgroundColor: BRAND.surfaceHover,
-            }}
           >
             Create with details
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             onClick={() => void submit(false)}
             disabled={submitting || !title.trim()}
-            className="flex items-center gap-1.5 rounded px-4 py-1.5 text-[11px] font-semibold text-white transition-colors hover:opacity-90 disabled:opacity-50"
-            style={{ backgroundColor: BRAND.primary }}
           >
             {submitting && <Loader2 size={11} className="animate-spin" />}
             {submitting ? 'Creating…' : 'Create Item'}
-          </button>
+          </Button>
         </div>
       </ModalFooter>
     </AppModal>

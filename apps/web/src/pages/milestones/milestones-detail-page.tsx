@@ -27,6 +27,7 @@ import { SearchInput } from '@/shared/ui/search-input'
 import { OwnerCell } from '@/shared/ui/owner-cell'
 import { MILESTONE_STATUS_STYLE } from '@/features/milestones/status-colors'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
+import { Button } from '@/shared/ui/button'
 import { useProjectPermissions } from '@/features/access/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import {
@@ -188,26 +189,19 @@ function SelectionModal({
         </div>
       </ModalBody>
       <ModalFooter>
-        <button
-          type="button"
-          onClick={onClose}
-          className="cursor-pointer rounded-md px-4 py-1.5 text-sm"
-          style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
-        >
+        <Button variant="outline" type="button" onClick={onClose}>
           Cancel
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           onClick={() => {
             void handleSave()
           }}
           disabled={saving}
-          className="flex cursor-pointer items-center gap-1.5 rounded-md px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-          style={{ backgroundColor: BRAND.primary }}
         >
           {saving ? <Loader2 size={12} className="animate-spin" /> : null}
           Save
-        </button>
+        </Button>
       </ModalFooter>
     </AppModal>
   )

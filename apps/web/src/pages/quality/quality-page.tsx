@@ -33,6 +33,7 @@ import {
   type ScheduleState,
 } from '@/entities/work-item/model/types'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
+import { Button } from '@/shared/ui/button'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
@@ -744,22 +745,12 @@ function LogDefectModal({ projectId, onClose }: { projectId: string; onClose: ()
           </div>
         </ModalBody>
         <ModalFooter>
-          <button
-            type="button"
-            onClick={onClose}
-            className="cursor-pointer rounded-md px-4 py-1.5 text-sm"
-            style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
-          >
+          <Button variant="outline" type="button" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={createDefect.isPending || !title.trim()}
-            className="cursor-pointer rounded-md px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-            style={{ backgroundColor: BRAND.primary }}
-          >
+          </Button>
+          <Button type="submit" disabled={createDefect.isPending || !title.trim()}>
             {createDefect.isPending ? 'Logging...' : 'Log Defect'}
-          </button>
+          </Button>
         </ModalFooter>
       </form>
     </AppModal>

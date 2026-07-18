@@ -57,6 +57,7 @@ import { MetricStrip } from '@/shared/ui/metric-strip'
 import { ViewOnlyBadge } from '@/shared/ui/view-only-badge'
 import { IterationPicker } from '@/shared/ui/iteration-picker'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
+import { Button } from '@/shared/ui/button'
 import { NativeSelect } from '@/shared/ui/native-select'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
@@ -783,37 +784,21 @@ function AddItemModal({
       </ModalBody>
 
       <ModalFooter>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-background"
-          style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
-        >
+        <Button variant="outline" type="button" onClick={onClose}>
           Cancel
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="secondary"
           type="button"
           disabled={create.isPending}
           onClick={() => submit(true)}
-          className="rounded px-4 py-1.5 text-[11px] font-semibold transition-colors hover:opacity-90 disabled:opacity-50"
-          style={{
-            border: `1px solid ${BRAND.accentBorderStrong}`,
-            color: BRAND.primary,
-            backgroundColor: BRAND.surfaceHover,
-          }}
         >
           Create with details
-        </button>
-        <button
-          type="button"
-          disabled={create.isPending}
-          onClick={() => submit(false)}
-          className="flex items-center gap-1.5 rounded px-4 py-1.5 text-[11px] font-semibold text-white transition-colors hover:opacity-90 disabled:opacity-50"
-          style={{ backgroundColor: BRAND.primary }}
-        >
+        </Button>
+        <Button type="button" disabled={create.isPending} onClick={() => submit(false)}>
           {create.isPending && <Loader2 size={11} className="animate-spin" />}
           Create Item
-        </button>
+        </Button>
       </ModalFooter>
     </AppModal>
   )

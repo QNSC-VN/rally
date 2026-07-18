@@ -17,6 +17,7 @@ import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { BRAND } from '@/shared/config/brand'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
+import { Button } from '@/shared/ui/button'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
@@ -269,22 +270,12 @@ function CreateMilestoneModal({ projectId, onClose }: { projectId: string; onClo
           />
         </ModalBody>
         <ModalFooter>
-          <button
-            type="button"
-            onClick={onClose}
-            className="cursor-pointer rounded-md px-4 py-1.5 text-sm"
-            style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
-          >
+          <Button variant="outline" type="button" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={create.isPending || !name.trim()}
-            className="cursor-pointer rounded-md px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-            style={{ backgroundColor: BRAND.primary }}
-          >
+          </Button>
+          <Button type="submit" disabled={create.isPending || !name.trim()}>
             {create.isPending ? 'Creating...' : 'Create Milestone'}
-          </button>
+          </Button>
         </ModalFooter>
       </form>
     </AppModal>
@@ -360,22 +351,12 @@ function EditMilestoneModal({ milestone, onClose }: { milestone: Milestone; onCl
           />
         </ModalBody>
         <ModalFooter>
-          <button
-            type="button"
-            onClick={onClose}
-            className="cursor-pointer rounded-md px-4 py-1.5 text-sm"
-            style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
-          >
+          <Button variant="outline" type="button" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={update.isPending || !name.trim()}
-            className="cursor-pointer rounded-md px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-            style={{ backgroundColor: BRAND.primary }}
-          >
+          </Button>
+          <Button type="submit" disabled={update.isPending || !name.trim()}>
             {update.isPending ? 'Saving...' : 'Save'}
-          </button>
+          </Button>
         </ModalFooter>
       </form>
     </AppModal>

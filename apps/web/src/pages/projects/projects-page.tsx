@@ -18,6 +18,7 @@ import { SearchInput } from '@/shared/ui/search-input'
 import { MetricCard } from '@/shared/ui/metric-card'
 import { MetricStrip } from '@/shared/ui/metric-strip'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
+import { Button } from '@/shared/ui/button'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
@@ -109,24 +110,18 @@ function ArchiveConfirmModal({
       </ModalBody>
 
       <ModalFooter>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-background"
-          style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
-        >
+        <Button variant="outline" type="button" onClick={onClose}>
           Cancel
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="destructive"
           type="button"
           onClick={onConfirm}
           disabled={!confirmed || isPending}
-          className="flex items-center gap-1.5 rounded px-3.5 py-1.5 text-[11px] font-semibold text-white disabled:opacity-50"
-          style={{ backgroundColor: BRAND.danger }}
         >
           {isPending && <Loader2 size={12} className="animate-spin" />}
           Archive project
-        </button>
+        </Button>
       </ModalFooter>
     </AppModal>
   )
@@ -218,23 +213,13 @@ function EditProjectModal({
           </FormField>
         </ModalBody>
         <ModalFooter>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-background"
-            style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
-          >
+          <Button variant="outline" type="button" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={isPending || !name.trim()}
-            className="flex items-center gap-1.5 rounded px-3.5 py-1.5 text-[11px] font-semibold text-white disabled:opacity-60"
-            style={{ backgroundColor: BRAND.primary }}
-          >
+          </Button>
+          <Button type="submit" disabled={isPending || !name.trim()}>
             {isPending && <Loader2 size={12} className="animate-spin" />}
             Save Changes
-          </button>
+          </Button>
         </ModalFooter>
       </form>
     </AppModal>
@@ -339,23 +324,13 @@ function NewProjectModal({ workspaceId, onClose }: { workspaceId: string; onClos
           </FormField>
         </ModalBody>
         <ModalFooter>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-background"
-            style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
-          >
+          <Button variant="outline" type="button" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={isPending || !name.trim() || !key.trim()}
-            className="flex items-center gap-1.5 rounded px-3.5 py-1.5 text-[11px] font-semibold text-white disabled:opacity-60"
-            style={{ backgroundColor: BRAND.primary }}
-          >
+          </Button>
+          <Button type="submit" disabled={isPending || !name.trim() || !key.trim()}>
             {isPending && <Loader2 size={12} className="animate-spin" />}
             Create Project
-          </button>
+          </Button>
         </ModalFooter>
       </form>
     </AppModal>
