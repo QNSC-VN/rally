@@ -17,7 +17,14 @@ import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { SNSClient, PublishCommand } from '@aws-sdk/client-sns';
 import { and, asc, lt, eq } from 'drizzle-orm';
-import { InjectDrizzle, AppConfigService, ResilienceService, ResiliencePreset, Span } from '@platform';
+import {
+  InjectDrizzle,
+  AppConfigService,
+  ResilienceService,
+  ResiliencePreset,
+  Span,
+  buildAwsClientConfig,
+} from '@platform';
 import type { DrizzleDB, DrizzleTx } from '@platform';
 import { AbstractOutboxRelay } from '@platform/outbox';
 import { outboxEvents } from '../../../../db/schema/messaging';
@@ -50,11 +57,7 @@ export class OutboxRelayService
   }
 
   onModuleInit(): void {
-    const endpoint = process.env['AWS_ENDPOINT_URL'];
-    this.sns = new SNSClient({
-      region: this.config.get('AWS_REGION'),
-      ...(endpoint ? { endpoint } : {}),
-    });
+    this.sns = new SNSClient(buildAwsClientConfig(this.config));
 
     this.topicArn = this.config.get('SNS_TOPIC_ARN') ?? undefined;
 
@@ -105,36 +108,37 @@ export class OutboxRelayService
 
     await this.resilience.execute(
       'sns.publishOutboxEvent',
-      () => this.sns.send(
-        new PublishCommand({
-          TopicArn: this.topicArn,
-          Message: JSON.stringify({
-            // eventId is the deduplication key for downstream consumers.
-            // Including it allows idempotent processing via ON CONFLICT DO NOTHING.
-            eventId: row.id,
-            eventType: row.eventType,
-            aggregateType: row.aggregateType,
-            aggregateId: row.aggregateId,
-            workspaceId: row.workspaceId,
-            payload: row.payload,
-            occurredAt: row.occurredAt,
+      () =>
+        this.sns.send(
+          new PublishCommand({
+            TopicArn: this.topicArn,
+            Message: JSON.stringify({
+              // eventId is the deduplication key for downstream consumers.
+              // Including it allows idempotent processing via ON CONFLICT DO NOTHING.
+              eventId: row.id,
+              eventType: row.eventType,
+              aggregateType: row.aggregateType,
+              aggregateId: row.aggregateId,
+              workspaceId: row.workspaceId,
+              payload: row.payload,
+              occurredAt: row.occurredAt,
+            }),
+            MessageAttributes: {
+              eventType: {
+                DataType: 'String',
+                StringValue: row.eventType,
+              },
+              aggregateType: {
+                DataType: 'String',
+                StringValue: row.aggregateType,
+              },
+              workspaceId: {
+                DataType: 'String',
+                StringValue: row.workspaceId,
+              },
+            },
           }),
-          MessageAttributes: {
-            eventType: {
-              DataType: 'String',
-              StringValue: row.eventType,
-            },
-            aggregateType: {
-              DataType: 'String',
-              StringValue: row.aggregateType,
-            },
-            workspaceId: {
-              DataType: 'String',
-              StringValue: row.workspaceId,
-            },
-          },
-        }),
-      ),
+        ),
       ResiliencePreset.EXTERNAL_API,
     );
   }

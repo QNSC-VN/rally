@@ -1,6 +1,7 @@
 export * from './platform.module';
 export * from './config/app-config.service';
 export * from './config/env.schema';
+export * from './aws/index';
 export * from './context/request-context';
 export * from './context/als.middleware';
 export * from './database/index';

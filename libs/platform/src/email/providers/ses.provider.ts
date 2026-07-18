@@ -19,6 +19,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses';
 import { AppConfigService } from '../../config/app-config.service';
+import { buildAwsClientConfig } from '../../aws';
 import type { IEmailProvider, EmailPayload } from '../email.provider';
 import { buildFromAddress } from './shared';
 
@@ -33,11 +34,7 @@ export class SesEmailProvider implements IEmailProvider {
     this.fromAddress = buildFromAddress(config);
     this.replyTo = config.get('MAIL_REPLY_TO');
 
-    const endpoint = process.env['AWS_ENDPOINT_URL'];
-    this.ses = new SESClient({
-      region: config.get('AWS_REGION'),
-      ...(endpoint ? { endpoint } : {}),
-    });
+    this.ses = new SESClient(buildAwsClientConfig(config));
   }
 
   async send(payload: EmailPayload): Promise<void> {
