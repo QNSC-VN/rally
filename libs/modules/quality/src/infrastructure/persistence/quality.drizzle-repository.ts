@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
-import { and, asc, eq, isNull, sql, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm';
+import type { SQL, SQLWrapper } from 'drizzle-orm';
 import { workItems, iterations, releases } from '../../../../../../db/schema/work';
 import {
   isCompletedScheduleState,
@@ -16,7 +17,12 @@ import type {
   WorkItemPriority,
   WorkItemScheduleState,
 } from '../../../../../../db/schema/enums';
-import type { DefectMetrics, DefectRow } from '../../domain/quality.types';
+import type {
+  DefectMetrics,
+  DefectRow,
+  ListDefectsOptions,
+  QualitySortBy,
+} from '../../domain/quality.types';
 import { IQualityRepository } from '../../domain/ports/quality.repository';
 
 @Injectable()
@@ -26,20 +32,7 @@ export class QualityDrizzleRepository implements IQualityRepository {
   async listDefects(
     workspaceId: string,
     projectId: string,
-    opts: {
-      search?: string;
-      severity?: string;
-      environment?: string;
-      priority?: string;
-      scheduleState?: string;
-      assigneeId?: string;
-      releaseId?: string;
-      rootCause?: string;
-      resolution?: string;
-      defectState?: string;
-      limit?: number;
-      offset?: number;
-    } = {},
+    opts: ListDefectsOptions = {},
   ): Promise<{ rows: DefectRow[] }> {
     const conditions = [
       eq(workItems.workspaceId, workspaceId),
@@ -84,6 +77,29 @@ export class QualityDrizzleRepository implements IQualityRepository {
     const limit = Math.min(opts.limit ?? 100, 200);
     const offset = opts.offset ?? 0;
 
+    // Sortable columns → SQL expression. Enum columns sort by their semantic
+    // Postgres declaration order; joined columns (names/parent) sort by the
+    // joined value. Keyed by the FE column id so the two stay in lock-step.
+    const sortColumns: Record<QualitySortBy, SQLWrapper> = {
+      id: workItems.itemKey,
+      name: workItems.title,
+      userStory: sql`parent_wi.item_key`,
+      severity: workItems.severity,
+      priority: workItems.priority,
+      state: workItems.defectState,
+      scheduleState: workItems.scheduleState,
+      fixedInBuild: workItems.fixedInBuild,
+      iteration: iterations.name,
+      submittedBy: sql`creator_user.display_name`,
+      owner: sql`assignee_user.display_name`,
+    };
+    const dir = opts.sortDirection === 'desc' ? desc : asc;
+    // Default (no explicit sort) keeps the natural backlog rank order; an
+    // explicit sort leads, with rank as a stable tie-breaker.
+    const orderBy: SQL[] = opts.sortBy
+      ? [dir(sortColumns[opts.sortBy]), asc(workItems.rank)]
+      : [asc(workItems.rank), asc(workItems.createdAt)];
+
     const rows = await this.db
       .select({
         id: workItems.id,
@@ -113,6 +129,8 @@ export class QualityDrizzleRepository implements IQualityRepository {
         foundInReleaseName: sql<string>`found_in_release.name`,
         parentKey: sql<string>`parent_wi.item_key`,
         parentTitle: sql<string>`parent_wi.title`,
+        assigneeName: sql<string | null>`assignee_user.display_name`,
+        createdByName: sql<string | null>`creator_user.display_name`,
       })
       .from(workItems)
       .leftJoin(iterations, eq(workItems.iterationId, iterations.id))
@@ -122,32 +140,12 @@ export class QualityDrizzleRepository implements IQualityRepository {
         sql`found_in_release.id = work_items.found_in_release_id`,
       )
       .leftJoin(sql`work.work_items parent_wi`, sql`parent_wi.id = work_items.parent_id`)
+      .leftJoin(sql`identity.users assignee_user`, sql`assignee_user.id = work_items.assignee_id`)
+      .leftJoin(sql`identity.users creator_user`, sql`creator_user.id = work_items.created_by`)
       .where(and(...conditions))
-      .orderBy(asc(workItems.rank), asc(workItems.createdAt))
+      .orderBy(...orderBy)
       .limit(limit)
       .offset(offset);
-
-    // Batch-fetch assignee names
-    const assigneeIds = [...new Set(rows.map((r) => r.assigneeId).filter(Boolean))] as string[];
-    let assigneeMap: Record<string, string> = {};
-    if (assigneeIds.length > 0) {
-      const userRows = await this.db
-        .select({ id: sql<string>`id`, displayName: sql<string>`display_name` })
-        .from(sql`identity.users`)
-        .where(inArray(sql`id`, assigneeIds));
-      assigneeMap = Object.fromEntries(userRows.map((u) => [u.id, u.displayName]));
-    }
-
-    // Batch-fetch creator names
-    const creatorIds = [...new Set(rows.map((r) => r.createdById).filter(Boolean))] as string[];
-    let creatorMap: Record<string, string> = {};
-    if (creatorIds.length > 0) {
-      const creatorRows = await this.db
-        .select({ id: sql<string>`id`, displayName: sql<string>`display_name` })
-        .from(sql`identity.users`)
-        .where(inArray(sql`id`, creatorIds));
-      creatorMap = Object.fromEntries(creatorRows.map((u) => [u.id, u.displayName]));
-    }
 
     const data: DefectRow[] = rows.map((r) => ({
       id: r.id,
@@ -162,7 +160,7 @@ export class QualityDrizzleRepository implements IQualityRepository {
       foundInReleaseId: r.foundInReleaseId,
       foundInReleaseName: r.foundInReleaseName,
       assigneeId: r.assigneeId,
-      assigneeName: r.assigneeId ? (assigneeMap[r.assigneeId] ?? null) : null,
+      assigneeName: r.assigneeName,
       scheduleState: r.scheduleState,
       iterationId: r.iterationId,
       iterationName: r.iterationName,
@@ -176,7 +174,7 @@ export class QualityDrizzleRepository implements IQualityRepository {
       defectState: r.defectState,
       fixedInBuild: r.fixedInBuild,
       createdById: r.createdById,
-      createdByName: r.createdById ? (creatorMap[r.createdById] ?? null) : null,
+      createdByName: r.createdByName,
       createdAt: r.createdAt.toISOString(),
       updatedAt: r.updatedAt.toISOString(),
     }));

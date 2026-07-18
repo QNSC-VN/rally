@@ -78,6 +78,8 @@ export function useDefects(
     rootCause?: string
     resolution?: string
     defectState?: string
+    /** Server-side sort as `"<field>[:asc|:desc]"`; omit for the default rank order. */
+    sort?: string
   },
 ) {
   return useQuery({
@@ -98,6 +100,7 @@ export function useDefects(
             rootCause: filters?.rootCause,
             resolution: filters?.resolution,
             defectState: filters?.defectState,
+            sort: filters?.sort,
           } as never,
         },
       })
