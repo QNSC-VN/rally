@@ -64,6 +64,7 @@ export const projects = workSchema.table(
     name: varchar('name', { length: 255 }).notNull(),
     description: text('description'),
     leadId: uuid('lead_id'),
+    startDate: date('start_date'),
     status: projectStatusEnum('status').notNull().default('active'),
     settings: jsonb('settings').notNull().default({}),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

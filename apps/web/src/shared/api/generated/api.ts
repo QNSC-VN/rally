@@ -1995,6 +1995,8 @@ export interface components {
       description: string | null
       leadId: string | null
       leadName: string | null
+      /** @description YYYY-MM-DD */
+      startDate: string | null
       /**
        * @description Project status: active | archived
        * @enum {string}
@@ -2016,11 +2018,14 @@ export interface components {
       description?: string
       /** Format: uuid */
       leadId?: string
+      startDate?: string
+      teamIds?: string[]
     }
     UpdateProjectDto: {
       name?: string
       description?: string | null
       leadId?: string | null
+      startDate?: string | null
       /** @enum {string} */
       status?: 'active' | 'archived'
       settings?: {

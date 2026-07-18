@@ -28,6 +28,7 @@ import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { useProjects, useUpdateProject, useCreateProject } from '@/features/projects/api'
 import type { Project } from '@/features/projects/api'
 import { useWorkspaceMembers } from '@/features/workspaces/api'
+import { useWorkspaceTeams } from '@/features/teams/api'
 
 /** Extract a human-readable message from an API error response. */
 function parseApiError(err: unknown): string {
@@ -185,6 +186,48 @@ function OwnerSelect({
   )
 }
 
+// Reusable teams multi-select — links teams to a project on creation.
+function TeamMultiSelect({
+  workspaceId,
+  value,
+  onChange,
+}: {
+  workspaceId: string
+  value: string[]
+  onChange: (teamIds: string[]) => void
+}) {
+  const { data: teams = [], isLoading } = useWorkspaceTeams(workspaceId)
+  function toggle(id: string) {
+    onChange(value.includes(id) ? value.filter((t) => t !== id) : [...value, id])
+  }
+  if (isLoading)
+    return (
+      <div className="text-[12px]" style={{ color: BRAND.textMuted }}>
+        Loading…
+      </div>
+    )
+  if (teams.length === 0)
+    return (
+      <div className="text-[12px]" style={{ color: BRAND.textMuted }}>
+        No teams in this workspace yet.
+      </div>
+    )
+  return (
+    <div className="flex max-h-32 flex-col gap-1 overflow-y-auto rounded border border-input bg-input-background p-2">
+      {teams.map((t) => (
+        <label
+          key={t.id}
+          className="flex cursor-pointer items-center gap-2 text-[12px]"
+          style={{ color: BRAND.textPrimary }}
+        >
+          <input type="checkbox" checked={value.includes(t.id)} onChange={() => toggle(t.id)} />
+          {t.name}
+        </label>
+      ))}
+    </div>
+  )
+}
+
 // ── Edit Project modal ───────────────────────────────────────────────────────
 
 function EditProjectModal({
@@ -200,6 +243,7 @@ function EditProjectModal({
   const [name, setName] = useState(project.name)
   const [desc, setDesc] = useState(project.description ?? '')
   const [leadId, setLeadId] = useState(project.leadId ?? '')
+  const [startDate, setStartDate] = useState(project.startDate ?? '')
   const { mutateAsync, isPending } = useUpdateProject(workspaceId)
 
   async function handleSubmit(e: React.FormEvent) {
@@ -212,6 +256,7 @@ function EditProjectModal({
           name: name.trim(),
           description: desc.trim() || undefined,
           leadId: leadId || null,
+          startDate: startDate || null,
         },
       })
       toast.success(`Project "${name}" updated`)
@@ -252,6 +297,9 @@ function EditProjectModal({
               currentUserId={user?.id}
             />
           </FormField>
+          <FormField label="Start Date" hint="When work on this project begins">
+            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+          </FormField>
         </ModalBody>
         <ModalFooter>
           <Button variant="outline" type="button" onClick={onClose}>
@@ -275,6 +323,8 @@ function NewProjectModal({ workspaceId, onClose }: { workspaceId: string; onClos
   const [key, setKey] = useState('')
   const [desc, setDesc] = useState('')
   const [leadId, setLeadId] = useState(user?.id ?? '')
+  const [startDate, setStartDate] = useState('')
+  const [teamIds, setTeamIds] = useState<string[]>([])
   const { mutateAsync, isPending } = useCreateProject()
 
   const autoKey = (n: string) =>
@@ -305,6 +355,8 @@ function NewProjectModal({ workspaceId, onClose }: { workspaceId: string; onClos
         key: trimmedKey,
         description: desc.trim() || undefined,
         leadId: leadId || user?.id,
+        startDate: startDate || undefined,
+        teamIds: teamIds.length > 0 ? teamIds : undefined,
       })
       toast.success(`Project "${name}" created`)
       onClose()
@@ -351,6 +403,12 @@ function NewProjectModal({ workspaceId, onClose }: { workspaceId: string; onClos
               onChange={setLeadId}
               currentUserId={user?.id}
             />
+          </FormField>
+          <FormField label="Start Date" hint="When work on this project begins">
+            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+          </FormField>
+          <FormField label="Teams" hint="Link teams that will work on this project">
+            <TeamMultiSelect workspaceId={workspaceId} value={teamIds} onChange={setTeamIds} />
           </FormField>
           <FormField label="Description">
             <Textarea

@@ -156,6 +156,7 @@ export class ProjectDrizzleRepository implements IProjectRepository {
         name: input.name,
         description: input.description,
         leadId: input.leadId,
+        startDate: input.startDate ?? null,
       })
       .returning();
     return rows[0] as Project;
@@ -173,6 +174,7 @@ export class ProjectDrizzleRepository implements IProjectRepository {
         ...(input.name !== undefined && { name: input.name }),
         ...(input.description !== undefined && { description: input.description }),
         ...(input.leadId !== undefined && { leadId: input.leadId }),
+        ...(input.startDate !== undefined && { startDate: input.startDate }),
         ...(input.status !== undefined && { status: input.status }),
         ...(input.settings !== undefined && { settings: input.settings }),
         updatedAt: new Date(),

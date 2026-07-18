@@ -25,7 +25,11 @@ import {
   IProjectMemberRepository,
   PROJECT_MEMBER_REPOSITORY,
 } from '../domain/ports/project-member.repository';
-import { IWorkspaceMemberRepository, WORKSPACE_MEMBER_REPOSITORY } from '@modules/workspace';
+import {
+  IWorkspaceMemberRepository,
+  WORKSPACE_MEMBER_REPOSITORY,
+  TeamService,
+} from '@modules/workspace';
 import type {
   Project,
   ProjectWithStats,
@@ -33,6 +37,7 @@ import type {
   WorkflowTransition,
   ProjectTeamLink,
   ProjectMember,
+  CreateProjectRequest,
   UpdateProjectInput,
   CreateWorkflowStatusInput,
   CreateWorkflowTransitionInput,
@@ -54,6 +59,7 @@ export class ProjectsService {
     @Inject(PROJECT_MEMBER_REPOSITORY) private readonly projectMemberRepo: IProjectMemberRepository,
     @Inject(WORKSPACE_MEMBER_REPOSITORY)
     private readonly workspaceMemberRepo: IWorkspaceMemberRepository,
+    private readonly teamService: TeamService,
     private readonly uow: UnitOfWork,
     private readonly audit: AuditProducer,
   ) {}
@@ -67,14 +73,8 @@ export class ProjectsService {
     return this.projectRepo.listByWorkspaceWithStats(actor.workspaceId, args);
   }
 
-  async createProject(
-    actor: JwtPayload,
-    key: string,
-    name: string,
-    description?: string,
-    leadId?: string,
-  ): Promise<Project> {
-    const normalizedKey = key.toUpperCase().trim();
+  async createProject(actor: JwtPayload, input: CreateProjectRequest): Promise<Project> {
+    const normalizedKey = input.key.toUpperCase().trim();
 
     const existing = await this.projectRepo.findByKey(actor.workspaceId, normalizedKey);
     if (existing) {
@@ -85,7 +85,7 @@ export class ProjectsService {
     }
 
     // PRJ-FR-002/006: owner is required; default to the authenticated actor
-    const resolvedLeadId = leadId ?? actor.sub;
+    const resolvedLeadId = input.leadId ?? actor.sub;
 
     // PRJ-FR-006: validate that the resolved lead is an active workspace member
     const lead = await this.workspaceMemberRepo.findMember(actor.workspaceId, resolvedLeadId);
@@ -96,20 +96,37 @@ export class ProjectsService {
       );
     }
 
+    // Validate any teams to link on create belong to this workspace (mirrors the
+    // leadId scope check). Dedupe so a repeated id can't violate the unique link.
+    const teamIds = [...new Set(input.teamIds ?? [])];
+    if (teamIds.length > 0) {
+      const workspaceTeams = await this.teamService.listTeams(actor.workspaceId);
+      const validTeamIds = new Set(workspaceTeams.map((t) => t.id));
+      const missing = teamIds.filter((id) => !validTeamIds.has(id));
+      if (missing.length > 0) {
+        throw new PreconditionFailedException(
+          'PROJECT_TEAM_NOT_FOUND',
+          'One or more teams do not belong to this workspace',
+        );
+      }
+    }
+
     const projectId = uuidv7();
 
-    // PRJ-FR-003: create the project and seed its counter, owner membership and
-    // default workflow statuses in ONE transaction. A partial failure here would
-    // otherwise leave a project with no statuses or no owner — unusable state.
+    // PRJ-FR-003: create the project and seed its counter, owner membership,
+    // default workflow statuses and team links in ONE transaction. A partial
+    // failure here would otherwise leave a project with no statuses or no owner —
+    // an unusable state.
     const project = await this.uow.run(async (tx) => {
       const created = await this.projectRepo.create(
         {
           id: projectId,
           workspaceId: actor.workspaceId,
           key: normalizedKey,
-          name,
-          description,
+          name: input.name,
+          description: input.description,
           leadId: resolvedLeadId,
+          startDate: input.startDate ?? null,
         },
         tx,
       );
@@ -140,6 +157,10 @@ export class ProjectsService {
         );
       }
 
+      for (const teamId of teamIds) {
+        await this.projectTeamRepo.linkTeam(uuidv7(), actor.workspaceId, projectId, teamId, tx);
+      }
+
       await this.audit.emit(
         {
           action: AUDIT_ACTION.PROJECT_CREATED,
@@ -148,7 +169,15 @@ export class ProjectsService {
           workspaceId: actor.workspaceId,
           actor: { id: actor.sub },
           projectId,
-          changes: { after: { key: normalizedKey, name, leadId: resolvedLeadId } },
+          changes: {
+            after: {
+              key: normalizedKey,
+              name: input.name,
+              leadId: resolvedLeadId,
+              startDate: input.startDate ?? null,
+              teamIds,
+            },
+          },
         },
         tx,
       );
@@ -157,7 +186,7 @@ export class ProjectsService {
     });
 
     this.logger.log(
-      { projectId, key: normalizedKey, leadId: resolvedLeadId, userId: actor.sub },
+      { projectId, key: normalizedKey, leadId: resolvedLeadId, teamCount: teamIds.length },
       'Project created',
     );
     return project;

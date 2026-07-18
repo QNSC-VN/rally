@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
-import type { DrizzleDB } from '@platform';
+import type { DrizzleDB, DbExecutor } from '@platform';
 import { projectTeams, teams } from '../../../../../../db/schema/work';
 import type { ProjectTeamLink } from '../../domain/project.types';
 import { IProjectTeamRepository } from '../../domain/ports/project-team.repository';
@@ -22,7 +22,7 @@ export class ProjectTeamDrizzleRepository implements IProjectTeamRepository {
         ),
       )
       .limit(1);
-    return (rows[0]) ?? null;
+    return rows[0] ?? null;
   }
 
   async listByProject(projectId: string): Promise<ProjectTeamLink[]> {
@@ -54,8 +54,9 @@ export class ProjectTeamDrizzleRepository implements IProjectTeamRepository {
     workspaceId: string,
     projectId: string,
     teamId: string,
+    tx?: DbExecutor,
   ): Promise<ProjectTeamLink> {
-    const rows = await this.db
+    const rows = await (tx ?? this.db)
       .insert(projectTeams)
       .values({
         id,

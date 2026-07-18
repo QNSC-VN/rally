@@ -1,4 +1,5 @@
 import type { ProjectTeamLink } from '../project.types';
+import type { DbExecutor } from '@platform';
 
 export const PROJECT_TEAM_REPOSITORY = Symbol('PROJECT_TEAM_REPOSITORY');
 
@@ -10,6 +11,7 @@ export interface IProjectTeamRepository {
     workspaceId: string,
     projectId: string,
     teamId: string,
+    tx?: DbExecutor,
   ): Promise<ProjectTeamLink>;
   unlinkTeam(projectId: string, teamId: string): Promise<void>;
 }

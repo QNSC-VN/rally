@@ -11,12 +11,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import {
-  ApiCommonErrors,
-  ApiPagedResponse,
-  buildPageArgs,
-  RequirePermission,
-} from '@platform';
+import { ApiCommonErrors, ApiPagedResponse, buildPageArgs, RequirePermission } from '@platform';
 import type { JwtPayload, PagedResult } from '@platform';
 import { CurrentUser } from '@modules/identity';
 import { RequireProjectPermission, AuthProjectScoped } from '@modules/access';
@@ -51,6 +46,7 @@ function toProjectDto(
     description: p.description,
     leadId: p.leadId,
     leadName: p.leadName ?? null,
+    startDate: p.startDate ?? null,
     status: p.status,
     memberCount: p.memberCount ?? 0,
     teamCount: p.teamCount ?? 0,
@@ -131,13 +127,14 @@ export class ProjectsController {
     @CurrentUser() user: JwtPayload,
     @Body() dto: CreateProjectDto,
   ): Promise<ProjectResponseDto> {
-    const project = await this.projectsService.createProject(
-      user,
-      dto.key,
-      dto.name,
-      dto.description,
-      dto.leadId,
-    );
+    const project = await this.projectsService.createProject(user, {
+      key: dto.key,
+      name: dto.name,
+      description: dto.description,
+      leadId: dto.leadId,
+      startDate: dto.startDate,
+      teamIds: dto.teamIds,
+    });
     return toProjectDto(project);
   }
 

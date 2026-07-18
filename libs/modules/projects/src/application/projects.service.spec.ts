@@ -6,7 +6,7 @@ import { WORKFLOW_STATUS_REPOSITORY } from '../domain/ports/workflow-status.repo
 import { LABEL_REPOSITORY } from '../domain/ports/label.repository';
 import { PROJECT_TEAM_REPOSITORY } from '../domain/ports/project-team.repository';
 import { PROJECT_MEMBER_REPOSITORY } from '../domain/ports/project-member.repository';
-import { WORKSPACE_MEMBER_REPOSITORY } from '@modules/workspace';
+import { WORKSPACE_MEMBER_REPOSITORY, TeamService } from '@modules/workspace';
 import type { Project, WorkflowStatus } from '../domain/project.types';
 import {
   NotFoundException,
@@ -27,6 +27,7 @@ const mockProject = (o: Partial<Project> = {}): Project => ({
   name: 'Test Project',
   description: null,
   leadId: null,
+  startDate: null,
   status: 'active',
   settings: {},
   createdAt: now,
@@ -98,9 +99,10 @@ const makeLabelRepo = () => ({
 });
 
 const makeProjectTeamRepo = () => ({
+  findLink: vi.fn().mockResolvedValue(null),
   listByProject: vi.fn().mockResolvedValue([]),
-  addTeam: vi.fn().mockResolvedValue(undefined),
-  removeTeam: vi.fn().mockResolvedValue(undefined),
+  linkTeam: vi.fn().mockResolvedValue(undefined),
+  unlinkTeam: vi.fn().mockResolvedValue(undefined),
 });
 
 const makeProjectMemberRepo = () => ({
@@ -135,6 +137,7 @@ describe('ProjectsService', () => {
   let projectTeamRepo: ReturnType<typeof makeProjectTeamRepo>;
   let projectMemberRepo: ReturnType<typeof makeProjectMemberRepo>;
   let workspaceMemberRepo: ReturnType<typeof makeWorkspaceMemberRepo>;
+  let teamService: { listTeams: ReturnType<typeof vi.fn> };
   let uow: ReturnType<typeof makeUow>;
 
   beforeEach(async () => {
@@ -144,6 +147,7 @@ describe('ProjectsService', () => {
     projectTeamRepo = makeProjectTeamRepo();
     projectMemberRepo = makeProjectMemberRepo();
     workspaceMemberRepo = makeWorkspaceMemberRepo();
+    teamService = { listTeams: vi.fn().mockResolvedValue([]) };
     uow = makeUow();
 
     const module: TestingModule = await Test.createTestingModule({
@@ -155,6 +159,7 @@ describe('ProjectsService', () => {
         { provide: PROJECT_TEAM_REPOSITORY, useValue: projectTeamRepo },
         { provide: PROJECT_MEMBER_REPOSITORY, useValue: projectMemberRepo },
         { provide: WORKSPACE_MEMBER_REPOSITORY, useValue: workspaceMemberRepo },
+        { provide: TeamService, useValue: teamService },
         { provide: UnitOfWork, useValue: uow },
         { provide: AuditProducer, useValue: { emit: vi.fn().mockResolvedValue(undefined) } },
       ],
@@ -170,7 +175,7 @@ describe('ProjectsService', () => {
       projectRepo.create.mockResolvedValue(mockProject());
       statusRepo.create.mockResolvedValue(mockStatus());
 
-      const result = await service.createProject(mockActor, 'proj', 'Test Project');
+      const result = await service.createProject(mockActor, { key: 'proj', name: 'Test Project' });
 
       expect(result.key).toBe('PROJ');
       expect(projectRepo.create).toHaveBeenCalledWith(
@@ -185,7 +190,7 @@ describe('ProjectsService', () => {
       projectRepo.create.mockResolvedValue(mockProject({ key: 'MYKEY' }));
       statusRepo.create.mockResolvedValue(mockStatus());
 
-      await service.createProject(mockActor, 'mykey', 'My Project');
+      await service.createProject(mockActor, { key: 'mykey', name: 'My Project' });
 
       expect(projectRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({ key: 'MYKEY' }),
@@ -196,9 +201,50 @@ describe('ProjectsService', () => {
     it('throws ConflictException when key is already taken', async () => {
       projectRepo.findByKey.mockResolvedValue(mockProject());
 
-      await expect(service.createProject(mockActor, 'PROJ', 'Duplicate')).rejects.toThrow(
-        ConflictException,
+      await expect(
+        service.createProject(mockActor, { key: 'PROJ', name: 'Duplicate' }),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('persists startDate and links the requested teams inside the transaction', async () => {
+      projectRepo.create.mockResolvedValue(mockProject());
+      statusRepo.create.mockResolvedValue(mockStatus());
+      teamService.listTeams.mockResolvedValue([{ id: 'team-1' }, { id: 'team-2' }]);
+
+      await service.createProject(mockActor, {
+        key: 'proj',
+        name: 'Test Project',
+        startDate: '2026-01-01',
+        teamIds: ['team-1', 'team-2', 'team-1'], // duplicate must be deduped
+      });
+
+      expect(projectRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ startDate: '2026-01-01' }),
+        expect.anything(),
       );
+      // Deduped to two links, each carrying the tx argument
+      expect(projectTeamRepo.linkTeam).toHaveBeenCalledTimes(2);
+      expect(projectTeamRepo.linkTeam).toHaveBeenCalledWith(
+        expect.any(String),
+        mockActor.workspaceId,
+        expect.any(String),
+        'team-1',
+        expect.anything(),
+      );
+    });
+
+    it('rejects teams that do not belong to the workspace', async () => {
+      projectRepo.create.mockResolvedValue(mockProject());
+      teamService.listTeams.mockResolvedValue([{ id: 'team-1' }]);
+
+      await expect(
+        service.createProject(mockActor, {
+          key: 'proj',
+          name: 'Test Project',
+          teamIds: ['team-1', 'team-unknown'],
+        }),
+      ).rejects.toThrow(PreconditionFailedException);
+      expect(projectTeamRepo.linkTeam).not.toHaveBeenCalled();
     });
   });
 
