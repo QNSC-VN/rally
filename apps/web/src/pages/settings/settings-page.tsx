@@ -69,6 +69,7 @@ import {
   type ProjectLabel,
 } from '@/features/projects/api'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
+import { Button } from '@/shared/ui/button'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { ConfirmDeleteModal } from '@/shared/ui/confirm-delete-modal'
 import { FormField } from '@/shared/ui/form-field'
@@ -306,17 +307,12 @@ function ProfileTab() {
             </p>
           )}
           <div>
-            <button
-              type="submit"
-              disabled={profile.formState.isSubmitting}
-              className="flex items-center gap-2 rounded-md px-4 py-2 text-[13px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-              style={{ backgroundColor: BRAND.primary }}
-            >
+            <Button type="submit" disabled={profile.formState.isSubmitting}>
               {profile.formState.isSubmitting ? (
                 <Loader2 size={13} className="animate-spin" />
               ) : null}
               Save changes
-            </button>
+            </Button>
           </div>
         </form>
       </section>
@@ -549,14 +545,10 @@ function MembersTab() {
             </span>
           )}
         </p>
-        <button
-          onClick={() => setShowInvitePanel((v) => !v)}
-          className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-semibold text-white transition-opacity hover:opacity-90"
-          style={{ backgroundColor: BRAND.primary }}
-        >
+        <Button size="sm" onClick={() => setShowInvitePanel((v) => !v)}>
           <UserPlus size={13} />
           Invite member
-        </button>
+        </Button>
       </div>
 
       {/* ── Invite panel ── */}
@@ -834,16 +826,12 @@ function UserDetailModal({
         </dl>
       </ModalBody>
       <ModalFooter>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-md px-4 py-2 text-[13px] font-semibold"
-          style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
-        >
+        <Button type="button" variant="outline" onClick={onClose}>
           Close
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="destructive"
           onClick={onRemove}
           disabled={!canRemove || isRemoving}
           title={
@@ -853,12 +841,10 @@ function UserDetailModal({
                 ? 'Workspace admins cannot be removed here'
                 : 'Remove workspace access'
           }
-          className="flex items-center gap-2 rounded-md px-4 py-2 text-[13px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-          style={{ backgroundColor: BRAND.danger }}
         >
           {isRemoving && <Loader2 size={12} className="animate-spin" />}
           Remove access
-        </button>
+        </Button>
       </ModalFooter>
     </AppModal>
   )
@@ -944,23 +930,13 @@ function InvitePanel({
           </p>
         )}
         <div className="flex items-center gap-3">
-          <button
-            type="submit"
-            disabled={invite.isPending}
-            className="flex items-center gap-2 rounded-md px-4 py-2 text-[13px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-            style={{ backgroundColor: BRAND.primary }}
-          >
+          <Button type="submit" disabled={invite.isPending}>
             {invite.isPending ? <Loader2 size={13} className="animate-spin" /> : <Mail size={13} />}
             Send invitation
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md px-4 py-2 text-[13px] font-medium transition-opacity hover:opacity-80"
-            style={{ color: BRAND.textSecondary, border: `1px solid ${BRAND.border}` }}
-          >
+          </Button>
+          <Button type="button" variant="outline" onClick={onClose}>
             Cancel
-          </button>
+          </Button>
         </div>
       </form>
     </div>
@@ -1054,15 +1030,10 @@ function WorkspaceSettingsTab() {
         />
       </FormField>
       <div className="flex items-center gap-3 pt-1">
-        <button
-          type="submit"
-          disabled={update.isPending || !name.trim()}
-          className="flex items-center gap-2 rounded-md px-4 py-2 text-[13px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-          style={{ backgroundColor: BRAND.primary }}
-        >
+        <Button type="submit" disabled={update.isPending || !name.trim()}>
           {update.isPending && <Loader2 size={12} className="animate-spin" />}
           Save changes
-        </button>
+        </Button>
       </div>
     </form>
   )
@@ -1150,15 +1121,10 @@ function ProjectSettingsTab() {
         />
       </FormField>
       <div className="flex items-center gap-3 pt-1">
-        <button
-          type="submit"
-          disabled={update.isPending || !name.trim()}
-          className="flex items-center gap-2 rounded-md px-4 py-2 text-[13px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-          style={{ backgroundColor: BRAND.primary }}
-        >
+        <Button type="submit" disabled={update.isPending || !name.trim()}>
           {update.isPending && <Loader2 size={12} className="animate-spin" />}
           Save changes
-        </button>
+        </Button>
       </div>
     </form>
   )
@@ -1250,23 +1216,13 @@ function AddStatusModal({ projectId, onClose }: { projectId: string; onClose: ()
           </FormField>
         </ModalBody>
         <ModalFooter>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md px-4 py-2 text-[13px] font-semibold"
-            style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
-          >
+          <Button type="button" variant="outline" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={create.isPending || !name.trim()}
-            className="flex items-center gap-2 rounded-md px-4 py-2 text-[13px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-            style={{ backgroundColor: BRAND.primary }}
-          >
+          </Button>
+          <Button type="submit" disabled={create.isPending || !name.trim()}>
             {create.isPending && <Loader2 size={12} className="animate-spin" />}
             Add Status
-          </button>
+          </Button>
         </ModalFooter>
       </form>
     </AppModal>
@@ -1328,14 +1284,9 @@ function WorkflowTab() {
           .
         </p>
         {canManage && (
-          <button
-            type="button"
-            onClick={() => setShowAdd(true)}
-            className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-semibold"
-            style={{ border: `1px solid ${BRAND.primary}`, color: BRAND.primary }}
-          >
+          <Button variant="secondary" size="sm" type="button" onClick={() => setShowAdd(true)}>
             <Plus size={13} /> Add Status
-          </button>
+          </Button>
         )}
       </div>
 
@@ -1504,14 +1455,9 @@ function LabelsTab() {
           .
         </p>
         {canManage && (
-          <button
-            type="button"
-            onClick={() => setShowAdd(true)}
-            className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-semibold"
-            style={{ border: `1px solid ${BRAND.primary}`, color: BRAND.primary }}
-          >
+          <Button variant="secondary" size="sm" type="button" onClick={() => setShowAdd(true)}>
             <Plus size={13} /> Add Label
-          </button>
+          </Button>
         )}
       </div>
 
@@ -1668,23 +1614,13 @@ function LabelModal({
           </FormField>
         </ModalBody>
         <ModalFooter>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md px-4 py-2 text-[13px] font-semibold"
-            style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
-          >
+          <Button type="button" variant="outline" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={pending || !name.trim()}
-            className="flex items-center gap-2 rounded-md px-4 py-2 text-[13px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-            style={{ backgroundColor: BRAND.primary }}
-          >
+          </Button>
+          <Button type="submit" disabled={pending || !name.trim()}>
             {pending && <Loader2 size={12} className="animate-spin" />}
             {isEdit ? 'Save Label' : 'Add Label'}
-          </button>
+          </Button>
         </ModalFooter>
       </form>
     </AppModal>
@@ -1767,23 +1703,13 @@ function CreateTeamModal({ workspaceId, onClose }: { workspaceId: string; onClos
           </FormField>
         </ModalBody>
         <ModalFooter>
-          <button
-            type="submit"
-            disabled={create.isPending || !name.trim() || !key.trim()}
-            className="flex items-center gap-2 rounded-md px-4 py-2 text-[13px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-            style={{ backgroundColor: BRAND.primary }}
-          >
+          <Button type="submit" disabled={create.isPending || !name.trim() || !key.trim()}>
             {create.isPending ? <Loader2 size={12} className="animate-spin" /> : null}
             Create team
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md px-4 py-2 text-[13px] font-medium transition-opacity hover:opacity-80"
-            style={{ color: BRAND.textSecondary, border: `1px solid ${BRAND.border}` }}
-          >
+          </Button>
+          <Button type="button" variant="outline" onClick={onClose}>
             Cancel
-          </button>
+          </Button>
         </ModalFooter>
       </form>
     </AppModal>
@@ -1852,23 +1778,13 @@ function EditTeamModal({ team, onClose }: { team: Team; onClose: () => void }) {
           </FormField>
         </ModalBody>
         <ModalFooter>
-          <button
-            type="submit"
-            disabled={update.isPending || !name.trim()}
-            className="flex items-center gap-2 rounded-md px-4 py-2 text-[13px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-            style={{ backgroundColor: BRAND.primary }}
-          >
+          <Button type="submit" disabled={update.isPending || !name.trim()}>
             {update.isPending ? <Loader2 size={12} className="animate-spin" /> : null}
             Save
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md px-4 py-2 text-[13px] font-medium"
-            style={{ color: BRAND.textSecondary, border: `1px solid ${BRAND.border}` }}
-          >
+          </Button>
+          <Button type="button" variant="outline" onClick={onClose}>
             Cancel
-          </button>
+          </Button>
         </ModalFooter>
       </form>
     </AppModal>
@@ -1950,11 +1866,9 @@ function AddMemberModal({ teamId, onClose }: { teamId: string; onClose: () => vo
           )}
         </ModalBody>
         <ModalFooter>
-          <button
+          <Button
             type="submit"
             disabled={addMember.isPending || !selectedUserId || available.length === 0}
-            className="flex items-center gap-2 rounded-md px-4 py-2 text-[13px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-            style={{ backgroundColor: BRAND.primary }}
           >
             {addMember.isPending ? (
               <Loader2 size={12} className="animate-spin" />
@@ -1962,15 +1876,10 @@ function AddMemberModal({ teamId, onClose }: { teamId: string; onClose: () => vo
               <UserPlus size={13} />
             )}
             Add to team
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md px-4 py-2 text-[13px] font-medium"
-            style={{ color: BRAND.textSecondary, border: `1px solid ${BRAND.border}` }}
-          >
+          </Button>
+          <Button type="button" variant="outline" onClick={onClose}>
             Cancel
-          </button>
+          </Button>
         </ModalFooter>
       </form>
     </AppModal>
@@ -2039,20 +1948,16 @@ function TeamDetail({ team, onBack }: { team: Team; onBack: () => void }) {
         >
           {team.status}
         </span>
-        <button
-          onClick={() => setShowEdit(true)}
-          className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-medium transition-colors hover:bg-gray-100"
-          style={{ color: BRAND.textSecondary, border: `1px solid ${BRAND.border}` }}
-        >
+        <Button variant="outline" size="sm" onClick={() => setShowEdit(true)}>
           <Pencil size={12} /> Edit
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
           onClick={() => {
             void handleToggleStatus()
           }}
           disabled={update.isPending}
-          className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-medium transition-colors hover:bg-gray-100 disabled:opacity-60"
-          style={{ color: BRAND.textSecondary, border: `1px solid ${BRAND.border}` }}
         >
           {update.isPending ? (
             <Loader2 size={12} className="animate-spin" />
@@ -2060,7 +1965,7 @@ function TeamDetail({ team, onBack }: { team: Team; onBack: () => void }) {
             <Archive size={12} />
           )}
           {team.status === 'active' ? 'Archive' : 'Restore'}
-        </button>
+        </Button>
       </div>
 
       {team.description && (
@@ -2074,13 +1979,9 @@ function TeamDetail({ team, onBack }: { team: Team; onBack: () => void }) {
         <h3 className="text-[13px] font-semibold" style={{ color: BRAND.textPrimary }}>
           Members ({members.length})
         </h3>
-        <button
-          onClick={() => setShowAddMember(true)}
-          className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-semibold text-white transition-opacity hover:opacity-90"
-          style={{ backgroundColor: BRAND.primary }}
-        >
+        <Button size="sm" onClick={() => setShowAddMember(true)}>
           <Plus size={12} /> Add member
-        </button>
+        </Button>
       </div>
 
       {isLoading ? (
@@ -2168,13 +2069,9 @@ function TeamsTab() {
         <p className="text-[13px]" style={{ color: BRAND.textSecondary }}>
           Teams group members who collaborate on the same projects.
         </p>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] font-semibold text-white transition-opacity hover:opacity-90"
-          style={{ backgroundColor: BRAND.primary }}
-        >
+        <Button size="sm" onClick={() => setShowCreate(true)}>
           <Plus size={13} /> New team
-        </button>
+        </Button>
       </div>
 
       {isLoading ? (
@@ -2753,25 +2650,19 @@ function RolePermissionEditor({
           {draft.size} permission{draft.size === 1 ? '' : 's'} selected
         </p>
         <div className="flex items-center gap-2">
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="sm"
             onClick={() => setDraft(new Set(role.permissions))}
             disabled={!dirty || saving}
-            className="rounded px-3 py-1.5 text-[12px] font-medium disabled:opacity-40"
-            style={{ color: BRAND.textSecondary, border: `1px solid ${BRAND.border}` }}
           >
             Reset
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={!dirty || saving}
-            className="flex items-center gap-1.5 rounded px-3 py-1.5 text-[12px] font-medium disabled:opacity-40"
-            style={{ backgroundColor: BRAND.primary, color: BRAND.surface }}
-          >
+          </Button>
+          <Button type="button" size="sm" onClick={handleSave} disabled={!dirty || saving}>
             {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
             Save changes
-          </button>
+          </Button>
         </div>
       </div>
     </div>
