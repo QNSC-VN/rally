@@ -139,6 +139,19 @@ jobs:
           JWT_REFRESH_EXPIRY: 30d
           CSRF_SECRET: ci-test-csrf-secret-min-32-characters-ok
 
+      # The BA flow e2e specs boot the real AppModule with a synthetic admin
+      # actor (no SSO login), so they need the demo admin to already be an
+      # active workspace member. That row is created by the full seed, not by
+      # db:migrate's minimal seedTenantBootstrap. Run the same seed devs use
+      # locally so CI ↔ local share one fixture source of truth. Idempotent.
+      - name: Seed e2e fixtures
+        run: pnpm db:seed
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rally_test?sslmode=disable
+          ENTRA_TENANT_ID: dev-tenant
+          SSO_ALLOWED_EMAIL_DOMAINS: qnsc.vn
+
       - name: E2E tests
         run: pnpm test:e2e
         env:
