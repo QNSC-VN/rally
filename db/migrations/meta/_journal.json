@@ -309,6 +309,20 @@
       "when": 1783900000000,
       "tag": "0042_work_item_relations",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1784000000000,
+      "tag": "0043_item_key_format",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1784100000000,
+      "tag": "0044_story_points_decimal",
+      "breakpoints": true
     }
   ]
 }

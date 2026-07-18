@@ -117,7 +117,9 @@ export const workItems = workSchema.table(
     teamId: uuid('team_id'),
     iterationId: uuid('iteration_id'),
     releaseId: uuid('release_id'),
-    storyPoints: integer('story_points'),
+    // Plan Estimate. numeric(6,2) allows fractional points (e.g. 0.5) per SRS §8;
+    // Drizzle returns numeric as a string to preserve precision.
+    storyPoints: numeric('story_points', { precision: 6, scale: 2 }),
     // Task time tracking (hours). actual is manual entry in Phase 1.
     estimateHours: numeric('estimate_hours', { precision: 8, scale: 2 }),
     todoHours: numeric('todo_hours', { precision: 8, scale: 2 }),
@@ -266,9 +268,11 @@ export const iterationDailySnapshots = workSchema.table(
     workspaceId: uuid('workspace_id').notNull(),
     iterationId: uuid('iteration_id').notNull(),
     snapshotDate: date('snapshot_date').notNull(),
-    totalPoints: integer('total_points').notNull().default(0),
-    completedPoints: integer('completed_points').notNull().default(0),
-    remainingPoints: integer('remaining_points').notNull().default(0),
+    // numeric(8,2) mirrors release_daily_snapshots so fractional story points
+    // survive the burndown read model (matches work_items.story_points).
+    totalPoints: numeric('total_points', { precision: 8, scale: 2 }).notNull().default('0'),
+    completedPoints: numeric('completed_points', { precision: 8, scale: 2 }).notNull().default('0'),
+    remainingPoints: numeric('remaining_points', { precision: 8, scale: 2 }).notNull().default('0'),
     totalItems: integer('total_items').notNull().default(0),
     completedItems: integer('completed_items').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

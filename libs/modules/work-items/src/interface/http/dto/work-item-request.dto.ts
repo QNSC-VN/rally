@@ -40,6 +40,23 @@ const hoursNullable = z.coerce
   .optional()
   .transform((v) => (v === undefined || v === null ? v : v.toFixed(2)));
 
+// Story points (Plan Estimate): non-negative, fractional allowed (e.g. 0.5),
+// persisted as fixed(2) string (Drizzle numeric). Mirrors the hours handling.
+const pointsOptional = z.coerce
+  .number()
+  .min(0)
+  .max(999)
+  .optional()
+  .transform((v) => (v === undefined ? undefined : v.toFixed(2)));
+
+const pointsNullable = z.coerce
+  .number()
+  .min(0)
+  .max(999)
+  .nullable()
+  .optional()
+  .transform((v) => (v === undefined || v === null ? v : v.toFixed(2)));
+
 // ── List query ────────────────────────────────────────────────────────────────
 
 export const WorkItemQuerySchema = PageQuerySchema.extend({
@@ -73,7 +90,7 @@ export const CreateWorkItemSchema = z.object({
   reporterId: z.string().uuid().optional(),
   parentId: z.string().uuid().optional(),
   teamId: z.string().uuid().optional(),
-  storyPoints: z.coerce.number().int().min(0).max(999).optional(),
+  storyPoints: pointsOptional,
   estimateHours: hoursOptional,
   todoHours: hoursOptional,
   actualHours: hoursOptional,
@@ -107,7 +124,7 @@ export const UpdateWorkItemSchema = z.object({
   teamId: z.string().uuid().nullable().optional(),
   iterationId: z.string().uuid().nullable().optional(),
   releaseId: z.string().uuid().nullable().optional(),
-  storyPoints: z.coerce.number().int().min(0).max(999).nullable().optional(),
+  storyPoints: pointsNullable,
   estimateHours: hoursNullable,
   todoHours: hoursNullable,
   actualHours: hoursNullable,
