@@ -140,7 +140,7 @@ export function CommentThread({ workItemId, projectId, readOnly = false }: Comme
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 text-[11px] text-foreground-subtle">
-                      <span className="font-medium text-[#3a4252]">{author}</span>
+                      <span className="font-medium text-foreground">{author}</span>
                       <span>{relativeTime(c.createdAt)}</span>
                       {c.isEdited && <span className="italic">(edited)</span>}
                       {mine && !readOnly && editingId !== c.id && (
@@ -189,7 +189,7 @@ export function CommentThread({ workItemId, projectId, readOnly = false }: Comme
                         </div>
                       </div>
                     ) : (
-                      <p className="mt-0.5 text-[12px] whitespace-pre-wrap text-[#3a4252]">
+                      <p className="mt-0.5 text-[12px] whitespace-pre-wrap text-foreground">
                         {c.body}
                       </p>
                     )}

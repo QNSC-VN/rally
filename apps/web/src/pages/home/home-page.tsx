@@ -85,7 +85,7 @@ function ProjectHealthRow({
         <span
           className="rounded-sm px-1.5 py-px font-mono text-[10px] font-semibold"
           style={{
-            backgroundColor: isSelected ? '#d8e5f7' : BRAND.pageBg,
+            backgroundColor: isSelected ? BRAND.accentBg : BRAND.pageBg,
             color: isSelected ? BRAND.primaryLight : BRAND.textSecondary,
           }}
         >
@@ -113,7 +113,7 @@ function ProjectHealthRow({
       <div className="flex w-36 shrink-0 items-center gap-2">
         <div
           className="h-1.5 w-20 overflow-hidden rounded-full"
-          style={{ backgroundColor: '#e4e8ed' }}
+          style={{ backgroundColor: BRAND.borderSubtle }}
         >
           <div
             className="h-full rounded-full"

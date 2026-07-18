@@ -175,7 +175,7 @@ export function LinkedItemsBlock({
                   >
                     <span className="flex items-center gap-2 text-[12px]">
                       <span className="font-mono text-primary-light">{r.relatedItem.itemKey}</span>
-                      <span className="truncate text-[#3a4252]">{r.relatedItem.title}</span>
+                      <span className="truncate text-foreground">{r.relatedItem.title}</span>
                     </span>
                     {!readOnly && (
                       <button

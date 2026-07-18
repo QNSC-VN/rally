@@ -31,7 +31,10 @@ export function BulkActionBar({ selectedCount, onClear, error, children }: BulkA
   return (
     <div
       className="flex shrink-0 items-center gap-2 px-4 py-1.5"
-      style={{ backgroundColor: BRAND.primaryLighter, borderBottom: '1px solid #bdd0ef' }}
+      style={{
+        backgroundColor: BRAND.primaryLighter,
+        borderBottom: `1px solid ${BRAND.accentBorder}`,
+      }}
     >
       <span className="mr-1 text-[11px] font-semibold" style={{ color: BRAND.primaryLight }}>
         {selectedCount} selected

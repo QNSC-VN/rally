@@ -910,7 +910,7 @@ export function AppShell() {
           </span>
           {crumbs.map((crumb, i) => (
             <span key={i} className="flex items-center gap-1.5">
-              <ChevronRight size={11} style={{ color: '#c1c8d4' }} />
+              <ChevronRight size={11} style={{ color: BRAND.textFaint }} />
               <span
                 style={{
                   color: i === crumbs.length - 1 ? BRAND.textPrimary : BRAND.textSecondary,

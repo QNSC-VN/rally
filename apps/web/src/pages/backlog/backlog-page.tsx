@@ -900,7 +900,10 @@ function BacklogRow({
             className="block truncate text-[12px] font-medium"
             style={{ color: BRAND.textPrimary, cursor: 'text' }}
             inputClassName="w-full rounded px-1 py-0.5 text-[12px] focus:outline-none"
-            inputStyle={{ border: '1px solid #9fb5d5', color: BRAND.textPrimary }}
+            inputStyle={{
+              border: `1px solid ${BRAND.accentBorderStrong}`,
+              color: BRAND.textPrimary,
+            }}
             ariaLabel="Title"
             title={item.title}
           />

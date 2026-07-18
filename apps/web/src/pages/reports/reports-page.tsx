@@ -374,7 +374,12 @@ export function ReportsPage() {
                     tickLine={false}
                   />
                   <Tooltip contentStyle={TOOLTIP_STYLE} />
-                  <Bar dataKey="planned" fill="#dde3ee" radius={[2, 2, 0, 0]} name="Planned" />
+                  <Bar
+                    dataKey="planned"
+                    fill={BRAND.borderSubtle}
+                    radius={[2, 2, 0, 0]}
+                    name="Planned"
+                  />
                   <Bar
                     dataKey="accepted"
                     fill={BRAND.primary}
@@ -476,7 +481,7 @@ export function ReportsPage() {
                       tickLine={false}
                     />
                     <Tooltip contentStyle={TOOLTIP_STYLE} />
-                    <Bar dataKey="define" stackId="w" fill="#c7d4f5" name="Define" />
+                    <Bar dataKey="define" stackId="w" fill={BRAND.accentBorder} name="Define" />
                     <Bar
                       dataKey="in_progress"
                       stackId="w"
@@ -499,7 +504,7 @@ export function ReportsPage() {
                   <span className="flex items-center gap-1">
                     <span
                       className="inline-block h-2 w-2.5 rounded-sm"
-                      style={{ backgroundColor: '#c7d4f5' }}
+                      style={{ backgroundColor: BRAND.accentBorder }}
                     />{' '}
                     Define
                   </span>
@@ -545,7 +550,7 @@ export function ReportsPage() {
                   <Area
                     type="monotone"
                     dataKey="planned"
-                    stroke="#b0b8c8"
+                    stroke={BRAND.textFaint}
                     fill="rgba(176,184,200,0.15)"
                     strokeWidth={1.5}
                     dot={false}

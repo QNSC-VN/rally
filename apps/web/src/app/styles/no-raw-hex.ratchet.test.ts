@@ -11,32 +11,22 @@ import { describe, expect, it } from 'vitest'
  *   • the typed `BRAND` mirror in `shared/config/brand.ts` (inline style / SVG paint)
  *
  * Raw hex literals (`#5c6478`, `text-[#1d3f73]`, `style={{ color: '#fff' }}`) bypass
- * that source and are how the palette drifts. We cannot delete all 591 pre-existing
- * uses in one blind commit (a mix of exact-token duplicates, off-brand slate/gray,
- * and one-off logo/status colours) without per-screen visual QA — so instead we
- * RATCHET: the count may only ever go DOWN. Any new raw hex fails CI; every
- * migration PR must LOWER `MAX_RAW_HEX` to its new actual value.
+ * that source and are how the palette drifts. The whole consumer surface has been
+ * migrated to tokens (732 → 0): exact-brand duplicates, off-brand neutrals, status
+ * colours, and the accent-blue interaction tints all now resolve through `BRAND`
+ * / the `@theme` utilities. The ratchet locks that in — any new raw hex in a
+ * consumer file fails CI. Never raise `MAX_RAW_HEX`; if a legitimately new palette
+ * colour is needed, add it to the token layer (brand.ts + globals.css) instead.
  *
- * To migrate: replace the hex with the matching token (className utility, or
- * `BRAND.*` where a class can't reach), then set `MAX_RAW_HEX` to the number this
- * test reports. Never raise it.
- *
- * Progress 732 → 49. The remaining 49 are deliberately NOT auto-collapsed — each
- * needs a human/design call, not a codemod guess:
- *   • Microsoft SSO logo squares in `pages/login` (#f25022 #7fba00 #00a4ef #ffb900)
- *     — third-party brand assets, not our palette. Keep verbatim.
- *   • `pages/settings` label-colour defaults (#6b7280 ×2) — user-editable DATA, not
- *     chrome; tokenising would change the colour-picker's default value.
- *   • `--muted` neutral (#e4e8ed ×3) — has a CSS var but no BRAND key yet.
- *   • Blue-tint selection/hover/depth secondary palette (~40: #bdd0ef #9fb5d5
- *     #d7e4f7 #c7d4f5 #9db4d4 #1e2740 #173f78 #3a4252 …) — an intentional set of
- *     selected/hover/focus border + depth shades with no brand equivalent.
- *     Needs a named token family + visual QA before collapsing, or it flattens
- *     intended interactive-state hierarchy. Do NOT blind-map to primary/border.
+ * The only hex that still lives in source is in the palette-DEFINITION layer and
+ * the brand-ART exemption below — both are the source of truth for their values,
+ * not drift. `pages/login` is exempt because it carries the official Microsoft SSO
+ * logo mark (#f25022 #7fba00 #00a4ef #ffb900 — a third-party asset that must stay
+ * verbatim) plus one decorative hero-gradient; neither is a reusable palette colour.
  */
 
 // ── Ratchet baseline — LOWER as files migrate, NEVER raise ────────────────────
-const MAX_RAW_HEX = 49
+const MAX_RAW_HEX = 0
 
 // src/ root (this file lives in src/app/styles/)
 const SRC = join(import.meta.dirname, '../../')
@@ -51,6 +41,7 @@ const EXEMPT_FILES = new Set([
   'entities/work-item/model/types.ts', //     work-item type/state/priority/severity badge palette
   'features/milestones/status-colors.ts', //  milestone status badge palette
   'features/releases/status-colors.ts', //    release status badge palette
+  'pages/login/login-page.tsx', //            brand art: official Microsoft SSO logo + decorative hero gradient
 ])
 
 const HEX = /#[0-9a-fA-F]{3,8}\b/g

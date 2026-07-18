@@ -15,10 +15,10 @@ import type { StateStep } from './state-steps'
 // is outlined with the same visible border so the whole set reads as a
 // countable row of squares, exactly like the Rally state control.
 
-const STEPPER_BORDER = '#9db4d4'
-const STEPPER_REACHED = '#bcd3ef'
+const STEPPER_BORDER = BRAND.accentBorderStrong
+const STEPPER_REACHED = BRAND.accentBorder
 const STEPPER_CURRENT = BRAND.primaryLight
-const STEPPER_SEP = '#9db4d4'
+const STEPPER_SEP = BRAND.accentBorderStrong
 const CELL = 16
 
 export function StateStepper<T extends string>({

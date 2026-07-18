@@ -144,7 +144,7 @@ function CreateReleaseModal({ projectId, onClose }: { projectId: string; onClose
                 style={{
                   backgroundColor: t === 'Release' ? BRAND.primaryLighter : 'transparent',
                   color: t === 'Release' ? BRAND.primary : BRAND.textMuted,
-                  border: `1px solid ${t === 'Release' ? '#bdd0ef' : BRAND.borderSubtle}`,
+                  border: `1px solid ${t === 'Release' ? BRAND.accentBorder : BRAND.borderSubtle}`,
                   opacity: t === 'Release' ? 1 : 0.4,
                   cursor: t === 'Release' ? 'default' : 'not-allowed',
                 }}
@@ -229,7 +229,7 @@ function CreateReleaseModal({ projectId, onClose }: { projectId: string; onClose
           }}
           className="rounded px-4 py-1.5 text-[11px] font-semibold transition-colors hover:opacity-90 disabled:opacity-50"
           style={{
-            border: '1px solid #9fb5d5',
+            border: `1px solid ${BRAND.accentBorderStrong}`,
             color: BRAND.primary,
             backgroundColor: BRAND.surfaceHover,
           }}

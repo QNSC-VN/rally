@@ -14,8 +14,17 @@ export const BRAND = {
   // ── Core palette ────────────────────────────────────────────────────────────
   primary: '#1d3f73', // navy — buttons, active states
   primaryHover: '#163260',
+  primaryDark: '#173f78', // darker navy — detail/header bars on white
   primaryLight: '#2558a6', // links, secondary actions
   primaryLighter: '#eef3fb', // subtle tinted backgrounds
+
+  // ── Accent blue (interactive tints: selection / hover / drag-over) ────────────
+  accentBg: '#d8e5f7', // selected / drag-over tint surface
+  accentBgSubtle: '#f5f8ff', // faint hover / unread tint
+  accentBorder: '#bdd0ef', // accent border on tinted surfaces (selection)
+  accentBorderStrong: '#9fb5d5', // accent border on white panels
+  accentBorderActive: '#7ca1d8', // accent border — active / drag-over
+  tooltipBg: '#1e2740', // dark tooltip / inverse surface
 
   // ── Backgrounds ─────────────────────────────────────────────────────────────
   pageBg: '#f0f2f5',
@@ -60,4 +69,5 @@ export const BRAND = {
   warning: '#d97706',
   warningBg: '#fef5e4',
   warningBorder: '#f0d9a5',
+  statusDefault: '#6b7280', // default swatch for a new custom status (to-do grey)
 } as const

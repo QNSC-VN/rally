@@ -1193,7 +1193,7 @@ function categoryLabel(category: string): string {
 function AddStatusModal({ projectId, onClose }: { projectId: string; onClose: () => void }) {
   const [name, setName] = useState('')
   const [category, setCategory] = useState<StatusCategory>('to_do')
-  const [color, setColor] = useState('#6b7280')
+  const [color, setColor] = useState<string>(BRAND.statusDefault)
   const create = useCreateStatus(projectId)
 
   async function handleSubmit(e: React.FormEvent) {
@@ -1458,7 +1458,7 @@ function WorkflowTab() {
 
 // ── Labels tab ────────────────────────────────────────────────────────────────
 
-const DEFAULT_LABEL_COLOR = '#6b7280'
+const DEFAULT_LABEL_COLOR = BRAND.statusDefault
 
 function LabelsTab() {
   const activeProject = useAppContext((s) => s.project)

@@ -35,7 +35,7 @@ const STATE_LABEL: Record<IterationState, string> = {
   accepted: 'Accepted',
 }
 const STATE_STYLE: Record<IterationState, { bg: string; text: string; border: string }> = {
-  planning: { bg: BRAND.primaryLighter, text: BRAND.primary, border: '#bdd0ef' },
+  planning: { bg: BRAND.primaryLighter, text: BRAND.primary, border: BRAND.accentBorder },
   committed: { bg: BRAND.warningBg, text: BRAND.warning, border: BRAND.warningBorder },
   accepted: { bg: BRAND.successBg, text: BRAND.success, border: BRAND.successBorder },
 }
@@ -472,7 +472,7 @@ function CreateIterationModal({
           onClick={() => submit(true)}
           className="rounded px-4 py-1.5 text-[11px] font-semibold transition-colors hover:opacity-90 disabled:opacity-50"
           style={{
-            border: '1px solid #9fb5d5',
+            border: `1px solid ${BRAND.accentBorderStrong}`,
             color: BRAND.primary,
             backgroundColor: BRAND.surfaceHover,
           }}
@@ -533,7 +533,7 @@ function IterationDetail({
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-white">
-      <div className="shrink-0 text-white" style={{ backgroundColor: '#173f78' }}>
+      <div className="shrink-0 text-white" style={{ backgroundColor: BRAND.primaryDark }}>
         <div className="flex h-12 items-center gap-3 px-4">
           <button aria-label="Back" onClick={onBack} className="rounded p-1.5 hover:bg-white/10">
             <ChevronLeft size={18} />

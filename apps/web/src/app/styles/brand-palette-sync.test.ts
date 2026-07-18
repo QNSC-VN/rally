@@ -27,8 +27,15 @@ function rootVar(name: string): string {
 const PAIRS: ReadonlyArray<readonly [keyof typeof BRAND, string]> = [
   ['primary', '--primary'],
   ['primaryHover', '--primary-hover'],
+  ['primaryDark', '--primary-dark'],
   ['primaryLight', '--primary-light'],
   ['primaryLighter', '--primary-lighter'],
+  ['accentBg', '--accent-bg'],
+  ['accentBgSubtle', '--accent-bg-subtle'],
+  ['accentBorder', '--accent-border'],
+  ['accentBorderStrong', '--accent-border-strong'],
+  ['accentBorderActive', '--accent-border-active'],
+  ['tooltipBg', '--tooltip-bg'],
   ['pageBg', '--background'],
   ['surface', '--card'],
   ['surfaceHover', '--surface-hover'],
@@ -55,6 +62,7 @@ const PAIRS: ReadonlyArray<readonly [keyof typeof BRAND, string]> = [
   ['warning', '--warning'],
   ['warningBg', '--warning-bg'],
   ['warningBorder', '--warning-border'],
+  ['statusDefault', '--status-default'],
 ]
 
 describe('brand.ts ↔ globals.css palette sync', () => {

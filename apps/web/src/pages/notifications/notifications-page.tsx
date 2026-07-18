@@ -176,7 +176,7 @@ export function NotificationsPage() {
                 className="flex cursor-pointer items-start gap-3 px-6 py-4 transition-colors hover:bg-surface-hover"
                 style={{
                   borderBottom: `1px solid ${BRAND.borderInner}`,
-                  backgroundColor: n.isRead ? undefined : '#f5f8ff',
+                  backgroundColor: n.isRead ? undefined : BRAND.accentBgSubtle,
                 }}
                 onClick={() => handleNotificationClick(n)}
               >

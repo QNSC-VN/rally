@@ -333,7 +333,7 @@ function TreeRow({
         <div className={`${COLS.progress} flex items-center gap-2`}>
           <div
             className="h-1.5 w-16 overflow-hidden rounded-full"
-            style={{ backgroundColor: '#e4e8ed' }}
+            style={{ backgroundColor: BRAND.borderSubtle }}
           >
             <div
               className="h-full rounded-full"
@@ -496,7 +496,7 @@ function CreateInitiativeModal({
           onClick={() => submit(true)}
           className="rounded px-4 py-1.5 text-[11px] font-semibold transition-colors hover:opacity-90 disabled:opacity-50"
           style={{
-            border: '1px solid #9fb5d5',
+            border: `1px solid ${BRAND.accentBorderStrong}`,
             color: BRAND.primary,
             backgroundColor: BRAND.surfaceHover,
           }}

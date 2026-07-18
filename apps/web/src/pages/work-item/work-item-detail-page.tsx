@@ -289,7 +289,7 @@ function TasksTab({ workItemId, projectId }: { workItemId: string; projectId: st
               style={{
                 gridTemplateColumns: TASK_GRID,
                 backgroundColor: 'white',
-                borderBottom: '2px solid #9fb4d1',
+                borderBottom: `2px solid ${BRAND.accentBorderStrong}`,
               }}
             >
               {TASK_COLS.map((col, i) => (
@@ -545,7 +545,7 @@ function DefectsTab({ workItemId, projectId }: { workItemId: string; projectId: 
           className="rounded py-12 text-center"
           style={{ border: `1px dashed ${BRAND.borderInput}` }}
         >
-          <Bug size={28} style={{ color: '#c0c7d1', margin: '0 auto 8px' }} />
+          <Bug size={28} style={{ color: BRAND.textFaint, margin: '0 auto 8px' }} />
           <p className="text-[13px] font-medium" style={{ color: BRAND.textSecondary }}>
             No defects linked to this story
           </p>
@@ -1161,7 +1161,7 @@ export function WorkItemDetailPage() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-white">
       {/* Header bar */}
-      <div className="shrink-0 text-white" style={{ backgroundColor: '#173f78' }}>
+      <div className="shrink-0 text-white" style={{ backgroundColor: BRAND.primaryDark }}>
         {/* Title row */}
         <div
           className="flex h-12 items-center gap-3 px-4"
@@ -1184,7 +1184,7 @@ export function WorkItemDetailPage() {
           {watchers.length > 0 && (
             <div
               className="flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium"
-              style={{ backgroundColor: 'rgba(255,255,255,0.12)', color: '#d7e4f7' }}
+              style={{ backgroundColor: 'rgba(255,255,255,0.12)', color: BRAND.accentBg }}
               title={`${watchers.length} watcher${watchers.length !== 1 ? 's' : ''}`}
             >
               <Users size={12} />
@@ -1205,7 +1205,7 @@ export function WorkItemDetailPage() {
             className="flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[11px] font-medium transition-colors"
             style={{
               backgroundColor: isWatching ? 'rgba(255,255,255,0.18)' : 'transparent',
-              color: isWatching ? 'white' : '#d7e4f7',
+              color: isWatching ? 'white' : BRAND.accentBg,
               border: '1px solid',
               borderColor: isWatching ? 'rgba(255,255,255,0.3)' : 'transparent',
             }}
@@ -1253,7 +1253,7 @@ export function WorkItemDetailPage() {
               className="flex flex-col items-center justify-center gap-1 px-4 text-[11px] font-medium"
               style={{
                 backgroundColor: activeTab === id ? BRAND.primaryLight : 'transparent',
-                color: activeTab === id ? 'white' : '#d7e4f7',
+                color: activeTab === id ? 'white' : BRAND.accentBg,
               }}
             >
               <span className="flex h-5 items-center justify-center">{icon}</span>

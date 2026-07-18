@@ -482,8 +482,8 @@ function BoardColumn({
         ref={setNodeRef}
         className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto rounded-b-sm p-2"
         style={{
-          backgroundColor: isOver ? '#dfeafa' : BRAND.surfaceHover,
-          border: `1px solid ${isOver ? '#7ca1d8' : BRAND.border}`,
+          backgroundColor: isOver ? BRAND.accentBg : BRAND.surfaceHover,
+          border: `1px solid ${isOver ? BRAND.accentBorderActive : BRAND.border}`,
           borderTop: 'none',
         }}
       >
@@ -742,7 +742,7 @@ function AddItemModal({
                 style={{
                   backgroundColor: type === o ? BRAND.primaryLighter : 'transparent',
                   color: type === o ? BRAND.primary : BRAND.textSecondary,
-                  border: `1px solid ${type === o ? '#bdd0ef' : BRAND.borderSubtle}`,
+                  border: `1px solid ${type === o ? BRAND.accentBorder : BRAND.borderSubtle}`,
                 }}
               >
                 {o}
@@ -797,7 +797,7 @@ function AddItemModal({
           onClick={() => submit(true)}
           className="rounded px-4 py-1.5 text-[11px] font-semibold transition-colors hover:opacity-90 disabled:opacity-50"
           style={{
-            border: '1px solid #9fb5d5',
+            border: `1px solid ${BRAND.accentBorderStrong}`,
             color: BRAND.primary,
             backgroundColor: BRAND.surfaceHover,
           }}

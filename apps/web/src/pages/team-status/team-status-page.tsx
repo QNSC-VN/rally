@@ -103,7 +103,7 @@ function LoadBar({ percent }: { percent: number }) {
       </span>
       <div
         className="h-1.5 w-full overflow-hidden rounded-full"
-        style={{ backgroundColor: '#e4e8ed' }}
+        style={{ backgroundColor: BRAND.borderSubtle }}
       >
         <div
           className="h-full rounded-full"
@@ -287,7 +287,7 @@ export function TeamStatusPage() {
         </span>
         <div
           className="flex items-center overflow-visible rounded"
-          style={{ border: '1px solid #bdd0ef', height: 28 }}
+          style={{ border: `1px solid ${BRAND.accentBorder}`, height: 28 }}
         >
           <button
             disabled={selectedIndex <= 0}
@@ -367,7 +367,7 @@ export function TeamStatusPage() {
           placeholder="Search Tasks"
           aria-label="Search Tasks"
           className="h-7 w-56 rounded px-2 text-[12px] focus:outline-none"
-          style={{ border: '1px solid #bdd0ef', color: BRAND.textPrimary }}
+          style={{ border: `1px solid ${BRAND.accentBorder}`, color: BRAND.textPrimary }}
         />
         <div className="flex-1" />
         <span className="text-[11px] whitespace-nowrap" style={{ color: BRAND.textSecondary }}>

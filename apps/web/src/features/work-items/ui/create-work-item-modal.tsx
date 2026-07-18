@@ -233,7 +233,7 @@ export function CreateWorkItemModal({
             disabled={submitting || !title.trim()}
             className="rounded px-4 py-1.5 text-[11px] font-semibold transition-colors hover:opacity-90 disabled:opacity-50"
             style={{
-              border: '1px solid #9fb5d5',
+              border: `1px solid ${BRAND.accentBorderStrong}`,
               color: BRAND.primary,
               backgroundColor: BRAND.surfaceHover,
             }}
