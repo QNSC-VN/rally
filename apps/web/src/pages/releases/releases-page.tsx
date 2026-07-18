@@ -21,6 +21,8 @@ import { SkeletonList } from '@/shared/ui/skeleton'
 import { InlineSelect } from '@/shared/ui/native-select'
 import { MetricCard } from '@/shared/ui/metric-card'
 import { MetricStrip } from '@/shared/ui/metric-strip'
+import { Button } from '@/shared/ui/button'
+import { EmptyState } from '@/shared/ui/empty-state'
 import { BRAND } from '@/shared/config/brand'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
@@ -213,41 +215,29 @@ function CreateReleaseModal({ projectId, onClose }: { projectId: string; onClose
       </ModalBody>
 
       <ModalFooter>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-background"
-          style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
-        >
+        <Button variant="outline" type="button" onClick={onClose}>
           Cancel
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="secondary"
           type="button"
           disabled={create.isPending || !name.trim()}
           onClick={() => {
             void submit(true)
           }}
-          className="rounded px-4 py-1.5 text-[11px] font-semibold transition-colors hover:opacity-90 disabled:opacity-50"
-          style={{
-            border: `1px solid ${BRAND.accentBorderStrong}`,
-            color: BRAND.primary,
-            backgroundColor: BRAND.surfaceHover,
-          }}
         >
           Create with details
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           disabled={create.isPending || !name.trim()}
           onClick={() => {
             void submit(false)
           }}
-          className="flex items-center gap-1.5 rounded px-4 py-1.5 text-[11px] font-semibold text-white transition-colors hover:opacity-90 disabled:opacity-50"
-          style={{ backgroundColor: BRAND.primary }}
         >
           {create.isPending && <Loader2 size={11} className="animate-spin" />}
           Create Release
-        </button>
+        </Button>
       </ModalFooter>
     </AppModal>
   )
@@ -468,26 +458,19 @@ function ReleaseDetailModal({
       </ModalBody>
 
       <ModalFooter>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-background"
-          style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
-        >
+        <Button variant="outline" type="button" onClick={onClose}>
           Cancel
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           disabled={update.isPending || !name.trim()}
           onClick={() => {
             void handleSubmit()
           }}
-          className="flex items-center gap-1.5 rounded px-4 py-1.5 text-[11px] font-semibold text-white transition-colors hover:opacity-90 disabled:opacity-50"
-          style={{ backgroundColor: BRAND.primary }}
         >
           {update.isPending && <Loader2 size={11} className="animate-spin" />}
           Save
-        </button>
+        </Button>
       </ModalFooter>
     </AppModal>
   )
@@ -1076,30 +1059,24 @@ export function ReleasesPage() {
         {isLoading && <SkeletonList rows={8} cols={7} />}
 
         {!isLoading && isError && (
-          <div className="flex flex-col items-center justify-center gap-3 py-20">
-            <AlertTriangle size={28} style={{ color: BRAND.danger }} />
-            <p className="text-[13px] font-medium" style={{ color: BRAND.textSecondary }}>
-              Failed to load releases. Please try again.
-            </p>
-          </div>
+          <EmptyState
+            icon={<AlertTriangle size={28} className="text-destructive" />}
+            title="Failed to load releases. Please try again."
+          />
         )}
 
         {!isLoading && !isError && filtered.length === 0 && (
-          <div className="flex flex-col items-center justify-center gap-3 py-20">
-            <PackageOpen size={32} style={{ color: BRAND.border }} />
-            <p className="text-[13px] font-medium" style={{ color: BRAND.textSecondary }}>
-              {search ? 'No releases match your search.' : 'No releases yet.'}
-            </p>
-            {!search && canManage && (
-              <button
-                onClick={() => setShowCreate(true)}
-                className="text-[12px] font-medium"
-                style={{ color: BRAND.primary }}
-              >
-                + Create first release
-              </button>
-            )}
-          </div>
+          <EmptyState
+            icon={<PackageOpen size={32} className="text-border-strong" />}
+            title={search ? 'No releases match your search.' : 'No releases yet.'}
+            action={
+              !search && canManage ? (
+                <Button variant="link" size="xs" onClick={() => setShowCreate(true)}>
+                  + Create first release
+                </Button>
+              ) : undefined
+            }
+          />
         )}
 
         {!isLoading &&
