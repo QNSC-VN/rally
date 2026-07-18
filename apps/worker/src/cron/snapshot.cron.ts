@@ -108,10 +108,11 @@ export class SnapshotCronService {
         totalItems: sql<number>`count(*)::int`,
         // Burndown/velocity "done" is the D2 workflow-board dimension
         // (workflow_statuses.category = 'done') per DATABASE_SCHEMA.md — this is
-        // intentionally distinct from D1 schedule_state acceptance.
+        // intentionally distinct from D1 schedule_state acceptance. story_points
+        // is numeric (fractional points), so point sums cast to float8.
         completedItems: sql<number>`count(*) filter (where ${workflowStatuses.category} = ${WORKFLOW_DONE_CATEGORY})::int`,
-        totalPoints: sql<number>`coalesce(sum(${workItems.storyPoints}), 0)::int`,
-        completedPoints: sql<number>`coalesce(sum(${workItems.storyPoints}) filter (where ${workflowStatuses.category} = ${WORKFLOW_DONE_CATEGORY}), 0)::int`,
+        totalPoints: sql<number>`coalesce(sum(${workItems.storyPoints}), 0)::float8`,
+        completedPoints: sql<number>`coalesce(sum(${workItems.storyPoints}) filter (where ${workflowStatuses.category} = ${WORKFLOW_DONE_CATEGORY}), 0)::float8`,
       })
       .from(workItems)
       .innerJoin(

@@ -111,7 +111,7 @@ interface CreateWorkItemOpts {
   teamId?: string;
   iterationId?: string;
   releaseId?: string;
-  storyPoints?: number;
+  storyPoints?: string;
   estimateHours?: string;
   todoHours?: string;
   actualHours?: string;

@@ -272,21 +272,21 @@ describe('ProjectsService', () => {
   // ── generateItemKey ───────────────────────────────────────────────────────
 
   describe('generateItemKey', () => {
-    it('generates a type-prefixed zero-padded key like US000042 for story', async () => {
+    it('generates a type-prefixed hyphenated key like US-42 for story', async () => {
       projectRepo.findById.mockResolvedValue(mockProject({ key: 'PROJ' }));
       projectRepo.incrementCounter.mockResolvedValue(42);
 
       const key = await service.generateItemKey('ws-1', 'proj-1', 'story');
-      expect(key).toBe('US000042');
+      expect(key).toBe('US-42');
       expect(projectRepo.incrementCounter).toHaveBeenCalledWith('proj-1', 'ws-1', 'story');
     });
 
-    it('generates DE000001 for defect', async () => {
+    it('generates DE-1 for defect', async () => {
       projectRepo.findById.mockResolvedValue(mockProject({ key: 'PROJ' }));
       projectRepo.incrementCounter.mockResolvedValue(1);
 
       const key = await service.generateItemKey('ws-1', 'proj-1', 'defect');
-      expect(key).toBe('DE000001');
+      expect(key).toBe('DE-1');
     });
   });
 

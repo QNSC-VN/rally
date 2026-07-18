@@ -163,7 +163,7 @@ describe('IterationStatusService', () => {
       const res = await service.createItemInIteration(actor, 'it-1', {
         type: 'story',
         title: 'New story',
-        planEstimate: 3,
+        planEstimate: '3.00',
       });
       expect(res).toEqual({ workItemId: 'wi-new' });
       expect(workItemsService.createWorkItem).toHaveBeenCalledWith(
@@ -171,7 +171,7 @@ describe('IterationStatusService', () => {
         'proj-1',
         'story',
         'New story',
-        expect.objectContaining({ teamId: 'team-a', storyPoints: 3, iterationId: 'it-1' }),
+        expect.objectContaining({ teamId: 'team-a', storyPoints: '3.00', iterationId: 'it-1' }),
       );
       // Single-permission create-and-assign: no separate bulk-assignment step.
       expect(workItemsService.bulkAssignIteration).not.toHaveBeenCalled();

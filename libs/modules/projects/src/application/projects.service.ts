@@ -291,7 +291,7 @@ export class ProjectsService {
     }
   }
 
-  /** Used by work-items to generate the next sequential item key (e.g. "US000042"). */
+  /** Used by work-items to generate the next sequential item key (e.g. "US-42"). */
   private static readonly TYPE_PREFIX: Record<WorkItemType, string> = {
     initiative: 'IN',
     feature: 'FE',
@@ -315,7 +315,9 @@ export class ProjectsService {
     }
     const prefix = ProjectsService.TYPE_PREFIX[type];
     const seq = await this.projectRepo.incrementCounter(projectId, workspaceId, type);
-    return `${prefix}${String(seq).padStart(6, '0')}`;
+    // Item keys follow the type-prefix + hyphen convention (e.g. US-42, DE-1), matching
+    // the product UI/UX. The per-type counter provides the sequence; no zero-padding.
+    return `${prefix}-${seq}`;
   }
 
   // ── Workflow status mutations ──────────────────────────────────────────────

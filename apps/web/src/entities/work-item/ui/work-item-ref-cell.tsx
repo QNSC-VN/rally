@@ -5,7 +5,7 @@ import type { WorkItemType } from '@/entities/work-item/model/types'
 interface WorkItemRefCellProps {
   /** Referenced work-item type — drives the leading glyph + colour. */
   type: WorkItemType
-  /** Referenced item key, e.g. `FE000001` / `US000006`. */
+  /** Referenced item key, e.g. `FE-1` / `US-6`. */
   itemKey: string
   /** Optional title; when present it is appended as `KEY: Title` (Rally parity). */
   title?: string | null

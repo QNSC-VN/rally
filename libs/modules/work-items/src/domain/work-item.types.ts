@@ -29,8 +29,8 @@ export interface WorkItem {
   teamId: string | null;
   iterationId: string | null;
   releaseId: string | null;
-  storyPoints: number | null;
   // Drizzle returns numeric columns as strings to preserve precision.
+  storyPoints: string | null;
   estimateHours: string | null;
   todoHours: string | null;
   actualHours: string | null;
@@ -92,7 +92,7 @@ export interface CreateWorkItemInput {
   teamId?: string;
   iterationId?: string;
   releaseId?: string;
-  storyPoints?: number;
+  storyPoints?: string;
   estimateHours?: string;
   todoHours?: string;
   actualHours?: string;
@@ -124,7 +124,7 @@ export interface UpdateWorkItemInput {
   teamId?: string | null;
   iterationId?: string | null;
   releaseId?: string | null;
-  storyPoints?: number | null;
+  storyPoints?: string | null;
   estimateHours?: string | null;
   todoHours?: string | null;
   actualHours?: string | null;

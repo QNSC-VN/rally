@@ -1,10 +1,7 @@
 import { z } from 'zod';
 import { createZodDto } from 'nestjs-zod';
 import { PageQuerySchema } from '@platform';
-import {
-  workItemTypeEnum,
-  workItemScheduleStateEnum,
-} from '../../../../../../../db/schema/enums';
+import { workItemTypeEnum, workItemScheduleStateEnum } from '../../../../../../../db/schema/enums';
 
 // ── Iteration Status list query (P2-IS-04) ──────────────────────────────────────
 
@@ -15,7 +12,16 @@ export const IterationStatusQuerySchema = PageQuerySchema.extend({
   isBlocked: z.coerce.boolean().optional(),
   assigneeId: z.string().uuid().optional(),
   sortBy: z
-    .enum(['rank', 'itemKey', 'type', 'title', 'scheduleState', 'planEstimate', 'taskEstimate', 'toDo'])
+    .enum([
+      'rank',
+      'itemKey',
+      'type',
+      'title',
+      'scheduleState',
+      'planEstimate',
+      'taskEstimate',
+      'toDo',
+    ])
     .optional(),
   sortDirection: z.enum(['asc', 'desc']).optional(),
 });
@@ -29,7 +35,14 @@ export const CreateIterationItemSchema = z.object({
   type: z.enum(['story', 'defect']),
   title: z.string().min(1).max(500).trim(),
   assigneeId: z.string().uuid().optional(),
-  planEstimate: z.coerce.number().int().min(0).max(999).optional(),
+  // story_points is numeric(6,2): accept fractional plan estimates and normalise
+  // to a 2dp string for the numeric column (SRS §9.4).
+  planEstimate: z.coerce
+    .number()
+    .min(0)
+    .max(999)
+    .transform((v) => v.toFixed(2))
+    .optional(),
 });
 
 export class CreateIterationItemDto extends createZodDto(CreateIterationItemSchema) {}
