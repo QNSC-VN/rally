@@ -92,7 +92,10 @@ describe('BA flows: project foundation → work items → iteration (real AppMod
       expect(updated.description).toBe('Login with SSO');
       expect(updated.assigneeId).toBe(ADMIN_USER_ID);
       expect(updated.scheduleState).toBe('in_progress');
-      expect(updated.storyPoints).toBe(5);
+      // WorkItemsService surfaces numeric columns as strings to preserve
+      // precision (see WorkItem.storyPoints); the HTTP boundary coerces to a
+      // number. Assert the numeric value to honour that service contract.
+      expect(Number(updated.storyPoints)).toBe(5);
 
       // Re-read proves the writes are durable (not just the returned copy).
       const reread = await workItems.getWorkItem(actor.workspaceId, story.id);
