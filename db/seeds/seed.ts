@@ -53,6 +53,7 @@ import {
   ROLE_PERMISSIONS,
   ROLE_NAMES,
   SYSTEM_ROLE,
+  PRESET_WORKSPACE_ROLES,
   type SystemRoleSlug,
 } from '../permissions.catalog';
 // Inlined from libs/modules/projects/src/domain/project.constants.ts
@@ -1642,10 +1643,27 @@ async function seedTenantBootstrapInto(
       set: { name: workspaceName },
     });
 
+  // Seed the BA job-function preset roles as EDITABLE workspace-scoped custom
+  // roles (isSystem:false). onConflictDoNothing → created once, never clobbering
+  // a workspace admin's later permission edits. See PRESET_WORKSPACE_ROLES.
+  await database
+    .insert(schema.systemRoles)
+    .values(
+      PRESET_WORKSPACE_ROLES.map((role) => ({
+        workspaceId: WORKSPACE_ID,
+        name: role.name,
+        slug: role.slug,
+        description: role.description,
+        isSystem: false,
+        permissions: role.permissions,
+      })),
+    )
+    .onConflictDoNothing({ target: schema.systemRoles.slug });
+
   const entraTid = process.env['ENTRA_TENANT_ID'];
   if (!entraTid) {
     console.log(
-      `\u2705  Tenant bootstrap: workspace "${workspaceName}" ensured ` +
+      `\u2705  Tenant bootstrap: workspace "${workspaceName}" + ${PRESET_WORKSPACE_ROLES.length} preset roles ensured ` +
         `(no ENTRA_TENANT_ID \u2014 SSO connection skipped, dev-login only)`,
     );
     return;
@@ -1686,7 +1704,7 @@ async function seedTenantBootstrapInto(
     });
 
   console.log(
-    `\u2705  Tenant bootstrap: workspace "${workspaceName}" + Entra SSO connection ` +
+    `\u2705  Tenant bootstrap: workspace "${workspaceName}" + ${PRESET_WORKSPACE_ROLES.length} preset roles + Entra SSO connection ` +
       `reconciled (tid ${entraTid}, domains: ${ssoAllowedDomains.join(', ') || 'any'})`,
   );
 }

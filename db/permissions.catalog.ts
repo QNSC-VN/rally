@@ -273,3 +273,112 @@ export const ROLE_NAMES: Record<SystemRoleSlug, string> = {
   [SYSTEM_ROLE.PROJECT_VIEWER]: 'Project Viewer',
   [SYSTEM_ROLE.WORKSPACE_MEMBER]: 'Workspace Member',
 };
+
+/**
+ * PRESET FUNCTIONAL roles — seeded PER WORKSPACE as ordinary, EDITABLE custom
+ * roles (`isSystem: false`, `workspaceId` set), NOT part of the enforcement
+ * backbone above.
+ *
+ * Why they exist: the five SYSTEM roles are capability TIERS (viewer ⊆ member ⊆
+ * admin) — the drift-proof authorization ladder. Real teams, however, think in
+ * JOB FUNCTIONS. The BA role model (mini_rally_usecase_role_mapping) enumerates
+ * Scrum Master / Product Owner / Developer / QA, so every workspace is seeded
+ * with matching ready-to-assign roles. Because they are plain custom roles they:
+ *   - appear in Settings → Roles & Permissions as EDITABLE rows (admins tune them),
+ *   - carry ONLY concrete project-tier permissions (no wildcards) — deny-by-default,
+ *   - never affect the tier ladder or any guard's fast-path.
+ *
+ * Each permission set is derived directly from the BA use-case matrix and obeys
+ * the catalogue's "manage/edit implies view" invariant. Workspace Admin, PM and
+ * Viewer are intentionally omitted — they map 1:1 onto the existing system tiers
+ * (`workspace_admin`, `project_admin`, `project_viewer`).
+ *
+ * Slugs are globally unique (matching the `uq_system_roles_slug` constraint) and
+ * seeded with onConflictDoNothing, so they are created once and never clobber a
+ * workspace admin's later edits.
+ */
+export type PresetWorkspaceRole = {
+  slug: string;
+  name: string;
+  description: string;
+  permissions: Permission[];
+};
+
+export const PRESET_WORKSPACE_ROLES: readonly PresetWorkspaceRole[] = [
+  {
+    slug: 'scrum_master',
+    name: 'Scrum Master',
+    description:
+      'Runs the delivery process: manages iterations, releases, the board and team capacity; full work-item control. Mirrors the BA "PM / Scrum Master" role.',
+    permissions: [
+      PERMISSION.PROJECT_VIEW,
+      PERMISSION.PROJECT_MANAGE_MEMBERS,
+      PERMISSION.WORK_ITEM_VIEW,
+      PERMISSION.WORK_ITEM_CREATE,
+      PERMISSION.WORK_ITEM_EDIT,
+      PERMISSION.WORK_ITEM_DELETE,
+      PERMISSION.ITERATION_VIEW,
+      PERMISSION.ITERATION_MANAGE,
+      PERMISSION.RELEASE_VIEW,
+      PERMISSION.RELEASE_MANAGE,
+      PERMISSION.TEAM_STATUS_VIEW,
+      PERMISSION.TEAM_STATUS_EDIT,
+      PERMISSION.QUALITY_VIEW,
+      PERMISSION.QUALITY_EDIT,
+      PERMISSION.MILESTONE_VIEW,
+      PERMISSION.MILESTONE_MANAGE,
+    ],
+  },
+  {
+    slug: 'product_owner',
+    name: 'Product Owner',
+    description:
+      'Owns the backlog and requirements: creates, grooms, prioritizes and assigns work items. Reads iterations, releases and milestones. Mirrors the BA "Product Owner / BA" role.',
+    permissions: [
+      PERMISSION.PROJECT_VIEW,
+      PERMISSION.WORK_ITEM_VIEW,
+      PERMISSION.WORK_ITEM_CREATE,
+      PERMISSION.WORK_ITEM_EDIT,
+      PERMISSION.ITERATION_VIEW,
+      PERMISSION.RELEASE_VIEW,
+      PERMISSION.TEAM_STATUS_VIEW,
+      PERMISSION.QUALITY_VIEW,
+      PERMISSION.MILESTONE_VIEW,
+    ],
+  },
+  {
+    slug: 'developer',
+    name: 'Developer',
+    description:
+      'Delivers work: updates assigned work items and reports team progress. No create/delete or planning powers. Mirrors the BA "Developer" role.',
+    permissions: [
+      PERMISSION.PROJECT_VIEW,
+      PERMISSION.WORK_ITEM_VIEW,
+      PERMISSION.WORK_ITEM_EDIT,
+      PERMISSION.ITERATION_VIEW,
+      PERMISSION.RELEASE_VIEW,
+      PERMISSION.TEAM_STATUS_VIEW,
+      PERMISSION.TEAM_STATUS_EDIT,
+      PERMISSION.QUALITY_VIEW,
+      PERMISSION.MILESTONE_VIEW,
+    ],
+  },
+  {
+    slug: 'qa_engineer',
+    name: 'QA Engineer',
+    description:
+      'Owns quality: raises and verifies defects, updates work-item status. Mirrors the BA "Tester / QA" role.',
+    permissions: [
+      PERMISSION.PROJECT_VIEW,
+      PERMISSION.WORK_ITEM_VIEW,
+      PERMISSION.WORK_ITEM_CREATE,
+      PERMISSION.WORK_ITEM_EDIT,
+      PERMISSION.ITERATION_VIEW,
+      PERMISSION.RELEASE_VIEW,
+      PERMISSION.TEAM_STATUS_VIEW,
+      PERMISSION.QUALITY_VIEW,
+      PERMISSION.QUALITY_EDIT,
+      PERMISSION.MILESTONE_VIEW,
+    ],
+  },
+];
