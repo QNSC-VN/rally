@@ -1,8 +1,14 @@
 /**
- * ConfirmDialog — reusable confirmation modal built on AppModal.
+ * ConfirmDialog — the single source of truth for confirmation modals.
  *
- * Use for destructive or irreversible actions (bulk delete, etc.) so every
- * confirmation shares the same shell, focus trap, and button styling.
+ * Use for any confirm/cancel decision, destructive or not, so every dialog
+ * shares the same shell, focus trap, and Button styling. Two modes:
+ *
+ *  1. Simple confirm — just a message + Confirm/Cancel buttons.
+ *  2. Typed confirmation — pass `confirmText` and the Confirm button stays
+ *     disabled until the user types that exact string (case-sensitive). This
+ *     guards irreversible operations (deleting a status/label, removing access)
+ *     against accidental clicks. Supplying `confirmText` implies `destructive`.
  *
  * Usage:
  *   <ConfirmDialog
@@ -15,21 +21,40 @@
  *     onConfirm={handleDelete}
  *     onCancel={() => setOpen(false)}
  *   />
+ *
+ *   <ConfirmDialog
+ *     open={!!target}
+ *     title="Delete label"
+ *     message="This permanently removes the label from every work item."
+ *     confirmText={target?.name ?? ''}
+ *     confirmLabel="Delete label"
+ *     pending={remove.isPending}
+ *     onConfirm={() => remove.mutate(target.id)}
+ *     onCancel={() => setTarget(null)}
+ *   />
  */
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
+import { Loader2 } from 'lucide-react'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
+import { Button } from '@/shared/ui/button'
 import { BRAND } from '@/shared/config/brand'
 
 interface ConfirmDialogProps {
   open: boolean
   title: string
-  message: ReactNode
+  message?: ReactNode
   confirmLabel?: string
   cancelLabel?: string
-  /** Style the confirm button as a destructive (red) action. */
+  /** Style the confirm button as a destructive (red) action. Implied by `confirmText`. */
   destructive?: boolean
   /** Disable the buttons while the action is in flight. */
   pending?: boolean
+  /**
+   * When provided, the user must type this exact string to enable the confirm
+   * button. Presence of this prop switches the dialog into typed-confirmation
+   * mode and implies a destructive action.
+   */
+  confirmText?: string
   onConfirm: () => void
   onCancel: () => void
 }
@@ -42,36 +67,65 @@ export function ConfirmDialog({
   cancelLabel = 'Cancel',
   destructive = false,
   pending = false,
+  confirmText,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
-  const confirmBg = destructive ? BRAND.danger : BRAND.primary
+  const typedMode = confirmText !== undefined
+  const isDestructive = destructive || typedMode
+
+  const [value, setValue] = useState('')
+  const matches = !typedMode || value === confirmText
+
+  function handleCancel() {
+    setValue('')
+    onCancel()
+  }
+
   return (
-    <AppModal open={open} onClose={onCancel} title={title} width={420}>
-      <ModalBody>
-        <p className="text-[13px] leading-relaxed" style={{ color: BRAND.textSecondary }}>
-          {message}
-        </p>
+    <AppModal open={open} onClose={handleCancel} title={title} width={typedMode ? 440 : 420}>
+      <ModalBody className={typedMode ? 'space-y-4' : undefined}>
+        {message && (
+          <p className="text-[13px] leading-relaxed" style={{ color: BRAND.textSecondary }}>
+            {message}
+          </p>
+        )}
+        {typedMode && (
+          <>
+            <p className="text-[13px]" style={{ color: BRAND.textSecondary }}>
+              Type{' '}
+              <span className="font-semibold" style={{ color: BRAND.textPrimary }}>
+                {confirmText}
+              </span>{' '}
+              to confirm.
+            </p>
+            <input
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              autoFocus
+              spellCheck={false}
+              autoComplete="off"
+              disabled={pending}
+              className="w-full rounded-md px-3 py-2 text-[13px] focus:outline-none"
+              style={{ border: `1px solid ${BRAND.borderInput}`, color: BRAND.textPrimary }}
+              placeholder={confirmText}
+            />
+          </>
+        )}
       </ModalBody>
       <ModalFooter>
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={pending}
-          className="rounded px-3.5 py-1.5 text-[11px] font-medium transition-colors hover:bg-background disabled:opacity-50"
-          style={{ color: BRAND.textSecondary }}
-        >
+        <Button type="button" variant="outline" onClick={handleCancel} disabled={pending}>
           {cancelLabel}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant={isDestructive ? 'destructive' : 'default'}
           onClick={onConfirm}
-          disabled={pending}
-          className="rounded px-3.5 py-1.5 text-[11px] font-semibold text-white transition-opacity disabled:opacity-50"
-          style={{ backgroundColor: confirmBg }}
+          disabled={pending || !matches}
         >
-          {pending ? 'Working…' : confirmLabel}
-        </button>
+          {pending && <Loader2 size={12} className="animate-spin" />}
+          {confirmLabel}
+        </Button>
       </ModalFooter>
     </AppModal>
   )

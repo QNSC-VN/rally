@@ -71,7 +71,7 @@ import {
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
 import { EmptyState } from '@/shared/ui/empty-state'
-import { ConfirmDeleteModal } from '@/shared/ui/confirm-delete-modal'
+import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
@@ -1394,15 +1394,15 @@ function WorkflowTab() {
         <AddStatusModal projectId={projectId} onClose={() => setShowAdd(false)} />
       )}
 
-      <ConfirmDeleteModal
+      <ConfirmDialog
         open={!!deleteTarget}
         title="Delete status"
         confirmText={deleteTarget?.name ?? ''}
-        description="Work items in this status must be moved elsewhere first. This cannot be undone."
+        message="Work items in this status must be moved elsewhere first. This cannot be undone."
         confirmLabel="Delete status"
-        isPending={remove.isPending}
+        pending={remove.isPending}
         onConfirm={() => deleteTarget && void handleDelete(deleteTarget)}
-        onClose={() => setDeleteTarget(null)}
+        onCancel={() => setDeleteTarget(null)}
       />
     </div>
   )
@@ -1540,15 +1540,15 @@ function LabelsTab() {
         <LabelModal projectId={projectId} label={editTarget} onClose={() => setEditTarget(null)} />
       )}
 
-      <ConfirmDeleteModal
+      <ConfirmDialog
         open={!!deleteTarget}
         title="Delete label"
         confirmText={deleteTarget?.name ?? ''}
-        description="This permanently removes the label from every work item that uses it."
+        message="This permanently removes the label from every work item that uses it."
         confirmLabel="Delete label"
-        isPending={remove.isPending}
+        pending={remove.isPending}
         onConfirm={() => deleteTarget && void handleDelete(deleteTarget)}
-        onClose={() => setDeleteTarget(null)}
+        onCancel={() => setDeleteTarget(null)}
       />
     </div>
   )
