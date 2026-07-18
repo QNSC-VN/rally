@@ -20,12 +20,12 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
 
   async getMetrics(iterationId: string, workspaceId: string): Promise<RawIterationMetrics> {
     // Single pass over the iteration's non-deleted items. story_points is a
-    // nullable integer; sums coalesce to 0. 'accepted' uses the schedule_state
+    // nullable numeric; sums coalesce to 0. 'accepted' uses the schedule_state
     // maturity dimension per SRS §8.
     const rows = await this.db
       .select({
-        totalPlanEstimate: sql<number>`coalesce(sum(${workItems.storyPoints}), 0)::int`,
-        acceptedPoints: sql<number>`coalesce(sum(${workItems.storyPoints}) filter (where ${workItems.scheduleState} = 'accepted'), 0)::int`,
+        totalPlanEstimate: sql<number>`coalesce(sum(${workItems.storyPoints}), 0)::numeric`,
+        acceptedPoints: sql<number>`coalesce(sum(${workItems.storyPoints}) filter (where ${workItems.scheduleState} = 'accepted'), 0)::numeric`,
         defectCount: sql<number>`(count(*) filter (where ${workItems.type} = 'defect'))::int`,
         taskCount: sql<number>`(select count(*)::int from ${tasks} t where t.parent_id = ${workItems.id} and t.deleted_at is null)`,
       })
@@ -149,7 +149,7 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
         iterationId: workItems.iterationId,
         isBlocked: workItems.isBlocked,
         blockedReason: workItems.blockedReason,
-        planEstimate: workItems.storyPoints,
+        planEstimate: sql<number | null>`${workItems.storyPoints}::float8`,
         assigneeId: workItems.assigneeId,
         devOwnerId: workItems.devOwnerId,
         rank: workItems.rank,

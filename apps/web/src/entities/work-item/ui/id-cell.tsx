@@ -5,7 +5,7 @@ import type { WorkItemType } from '@/entities/work-item/model/types'
 interface IdCellProps {
   /** Work-item type — drives the leading {@link TypeBadge} glyph. */
   type: WorkItemType | string
-  /** Human item key (US000005 / TA000003 / DE000012 …). */
+  /** Human item key (US-5 / TA-3 / DE-12 …). */
   itemKey: string
   /** Opens the item detail. Fired from the key link (row click is left intact). */
   onOpen: () => void

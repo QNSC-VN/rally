@@ -257,7 +257,7 @@ export class ProjectsService {
     }
   }
 
-  /** Used by work-items to generate the next sequential item key (e.g. "US000042"). */
+  /** Used by work-items to generate the next sequential item key (e.g. "US-42"). */
   private static readonly TYPE_PREFIX: Record<WorkItemType, string> = {
     initiative: 'IN',
     feature: 'FE',
@@ -266,7 +266,11 @@ export class ProjectsService {
     defect: 'DE',
   };
 
-  async generateItemKey(workspaceId: string, projectId: string, type: WorkItemType): Promise<string> {
+  async generateItemKey(
+    workspaceId: string,
+    projectId: string,
+    type: WorkItemType,
+  ): Promise<string> {
     const project = await this.getProject(workspaceId, projectId);
     // PRJ-FR-010: archived projects are read-only; block new work item creation
     if (project.status === 'archived') {
@@ -277,7 +281,9 @@ export class ProjectsService {
     }
     const prefix = ProjectsService.TYPE_PREFIX[type];
     const seq = await this.projectRepo.incrementCounter(projectId, workspaceId, type);
-    return `${prefix}${String(seq).padStart(6, '0')}`;
+    // Item keys follow the type-prefix + hyphen convention (e.g. US-42, DE-1), matching
+    // the product UI/UX. The per-type counter provides the sequence; no zero-padding.
+    return `${prefix}-${seq}`;
   }
 
   // ── Workflow status mutations ──────────────────────────────────────────────
@@ -310,7 +316,11 @@ export class ProjectsService {
     await this.statusRepo.delete(statusId);
   }
 
-  async reorderStatuses(workspaceId: string, projectId: string, orderedIds: string[]): Promise<void> {
+  async reorderStatuses(
+    workspaceId: string,
+    projectId: string,
+    orderedIds: string[],
+  ): Promise<void> {
     await this.getProject(workspaceId, projectId);
     await this.statusRepo.updatePositions(projectId, orderedIds);
   }
@@ -333,7 +343,11 @@ export class ProjectsService {
     });
   }
 
-  async deleteTransition(workspaceId: string, projectId: string, transitionId: string): Promise<void> {
+  async deleteTransition(
+    workspaceId: string,
+    projectId: string,
+    transitionId: string,
+  ): Promise<void> {
     await this.getProject(workspaceId, projectId);
     const transition = await this.statusRepo.findTransitionById(transitionId);
     if (!transition || transition.projectId !== projectId) {

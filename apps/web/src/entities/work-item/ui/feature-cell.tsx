@@ -2,7 +2,7 @@ import { WorkItemType } from '@/entities/work-item/model/types'
 import { WorkItemRefCell } from '@/entities/work-item/ui/work-item-ref-cell'
 
 interface FeatureCellProps {
-  /** Parent feature key, e.g. `FE000001`. */
+  /** Parent feature key, e.g. `FE-1`. */
   featureKey: string
   /** Feature title; when present it is appended as `KEY: Title` (Rally parity). */
   featureTitle?: string | null

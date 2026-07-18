@@ -28,7 +28,7 @@ const SCHEDULE_STATE_ABBR: Record<ScheduleState, string> = {
   [ScheduleState.InProgress]: 'P',
   [ScheduleState.Completed]: 'C',
   [ScheduleState.Accepted]: 'A',
-  [ScheduleState.Release]: 'L',
+  [ScheduleState.Release]: 'R',
 }
 
 /** Story/defect-level steps — every canonical schedule state. */

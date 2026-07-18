@@ -219,7 +219,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       const term = filters.q.trim();
       if (term) {
         // Use Postgres full-text search (GIN index on search_vector, migration 0012).
-        // ILIKE with % wildcards on item_key for prefix/substring key lookups (e.g. "US", "DE", "US000001").
+        // ILIKE with % wildcards on item_key for prefix/substring key lookups (e.g. "US", "DE", "US-1").
         // plainto_tsquery handles multi-word title searches.
         conditions.push(
           or(
@@ -296,7 +296,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         teamId: tasks.teamId,
         iterationId: tasks.iterationId,
         releaseId: sql<string | null>`null`.as('release_id'),
-        storyPoints: sql<number | null>`null`.as('story_points'),
+        storyPoints: sql<string | null>`null`.as('story_points'),
         estimateHours: tasks.estimateHours,
         todoHours: tasks.todoHours,
         actualHours: tasks.actualHours,
