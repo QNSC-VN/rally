@@ -101,8 +101,6 @@ export class IterationsController {
         teamId: query.teamId,
         state: query.state,
         q: query.q,
-        sortBy: query.sortBy,
-        sortDirection: query.sortDirection,
       },
       args,
     );
@@ -256,8 +254,6 @@ export class IterationsController {
         scheduleState: query.scheduleState,
         isBlocked: query.isBlocked,
         assigneeId: query.assigneeId,
-        sortBy: query.sortBy,
-        sortDirection: query.sortDirection,
       },
       args,
     );

@@ -59,20 +59,9 @@ export interface IterationOption {
   state: IterationState;
 }
 
-/** Sort keys supported by the iteration list endpoint. */
-export type IterationSortBy =
-  | 'name'
-  | 'theme'
-  | 'startDate'
-  | 'endDate'
-  | 'state'
-  | 'plannedVelocity';
-
 export interface IterationFilters {
   teamId?: string;
   state?: IterationState;
   /** Free-text search over name/theme. */
   q?: string;
-  sortBy?: IterationSortBy;
-  sortDirection?: 'asc' | 'desc';
 }

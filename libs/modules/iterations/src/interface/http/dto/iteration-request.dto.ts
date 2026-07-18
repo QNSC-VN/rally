@@ -12,8 +12,6 @@ export const IterationQuerySchema = PageQuerySchema.extend({
   teamId: z.string().uuid().optional(),
   state: z.enum(iterationStateEnum.enumValues).optional(),
   q: z.string().max(255).optional(),
-  sortBy: z.enum(['name', 'theme', 'startDate', 'endDate', 'state', 'plannedVelocity']).optional(),
-  sortDirection: z.enum(['asc', 'desc']).optional(),
 });
 
 export class IterationQueryDto extends createZodDto(IterationQuerySchema) {}

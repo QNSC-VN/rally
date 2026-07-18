@@ -11,19 +11,6 @@ export const IterationStatusQuerySchema = PageQuerySchema.extend({
   scheduleState: z.enum(workItemScheduleStateEnum.enumValues).optional(),
   isBlocked: z.coerce.boolean().optional(),
   assigneeId: z.string().uuid().optional(),
-  sortBy: z
-    .enum([
-      'rank',
-      'itemKey',
-      'type',
-      'title',
-      'scheduleState',
-      'planEstimate',
-      'taskEstimate',
-      'toDo',
-    ])
-    .optional(),
-  sortDirection: z.enum(['asc', 'desc']).optional(),
 });
 
 export class IterationStatusQueryDto extends createZodDto(IterationStatusQuerySchema) {}

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, ilike, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, ilike, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { InjectDrizzle, buildPageResult } from '@platform';
 import type { DrizzleDB, CursorPayload, PagedResult } from '@platform';
@@ -124,18 +124,6 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
       where ma.work_item_id = ${workItems.id}
     ), '[]'::json)`;
 
-    const sortCol = {
-      rank: workItems.rank,
-      itemKey: workItems.itemKey,
-      type: workItems.type,
-      title: workItems.title,
-      scheduleState: workItems.scheduleState,
-      planEstimate: workItems.storyPoints,
-      taskEstimate: workItems.rank, // rollups are computed; fall back to rank for stability
-      toDo: workItems.rank,
-    }[filters.sortBy ?? 'rank'];
-    const dir = filters.sortDirection === 'desc' ? desc : asc;
-
     // Keyset pagination on rank (stable, matches default backlog ordering).
     if (cursor) {
       conditions.push(lt(workItems.rank, cursor.k[0] as string));
@@ -167,7 +155,7 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
       .leftJoin(parentItem, eq(parentItem.id, workItems.parentId))
       .leftJoin(grandparentItem, eq(grandparentItem.id, parentItem.parentId))
       .where(and(...conditions))
-      .orderBy(filters.sortBy ? dir(sortCol) : asc(workItems.rank))
+      .orderBy(asc(workItems.rank))
       .limit(limit + 1);
 
     const items: IterationStatusItem[] = rows.map((r) => ({
