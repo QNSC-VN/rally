@@ -2309,6 +2309,8 @@ function AuditLogTab() {
   const [pageSize, setPageSize] = useState(AUDIT_DEFAULT_PAGE_SIZE)
   const [offset, setOffset] = useState(0)
   const [search, setSearch] = useState('')
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
 
   const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
   const { data: members = [] } = useWorkspaceMembers(workspaceId)
@@ -2322,11 +2324,17 @@ function AuditLogTab() {
   })
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['audit-logs', offset, pageSize],
+    queryKey: ['audit-logs', offset, pageSize, from, to],
     queryFn: async () => {
-      const res = await apiClient.GET('/v1/audit-logs', {
-        params: { query: { limit: pageSize, offset } },
-      })
+      // Server-side date filtering (occurred_at). from = start-of-day,
+      // to = end-of-day so both bounds are inclusive of the picked calendar day.
+      const query: { limit: number; offset: number; from?: string; to?: string } = {
+        limit: pageSize,
+        offset,
+      }
+      if (from) query.from = `${from}T00:00:00`
+      if (to) query.to = `${to}T23:59:59`
+      const res = await apiClient.GET('/v1/audit-logs', { params: { query } })
       return res.data
     },
     placeholderData: (prev) => prev,
@@ -2370,19 +2378,62 @@ function AuditLogTab() {
         <p className="text-[12px]" style={{ color: BRAND.textMuted }}>
           Administrative and settings changes for this workspace.
         </p>
-        <div className="relative">
-          <Search
-            size={12}
-            className="absolute top-1/2 left-2.5 -translate-y-1/2"
-            style={{ color: BRAND.textMuted }}
-          />
+        <div className="flex items-center gap-2">
+          {/* Server-side date range filter (occurred_at). */}
           <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search actor or description…"
-            className="w-64 rounded py-1.5 pr-3 pl-7 text-[11px] focus:outline-none"
+            type="date"
+            value={from}
+            max={to || undefined}
+            onChange={(e) => {
+              setFrom(e.target.value)
+              setOffset(0)
+            }}
+            aria-label="From date"
+            className="rounded px-2 py-1.5 text-[11px] focus:outline-none"
             style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textPrimary }}
           />
+          <span className="text-[11px]" style={{ color: BRAND.textMuted }}>
+            –
+          </span>
+          <input
+            type="date"
+            value={to}
+            min={from || undefined}
+            onChange={(e) => {
+              setTo(e.target.value)
+              setOffset(0)
+            }}
+            aria-label="To date"
+            className="rounded px-2 py-1.5 text-[11px] focus:outline-none"
+            style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textPrimary }}
+          />
+          {(from || to) && (
+            <button
+              onClick={() => {
+                setFrom('')
+                setTo('')
+                setOffset(0)
+              }}
+              className="rounded px-2 py-1.5 text-[11px] transition-colors hover:opacity-80"
+              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
+            >
+              Clear
+            </button>
+          )}
+          <div className="relative">
+            <Search
+              size={12}
+              className="absolute top-1/2 left-2.5 -translate-y-1/2"
+              style={{ color: BRAND.textMuted }}
+            />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search actor or description…"
+              className="w-64 rounded py-1.5 pr-3 pl-7 text-[11px] focus:outline-none"
+              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textPrimary }}
+            />
+          </div>
         </div>
       </div>
 
