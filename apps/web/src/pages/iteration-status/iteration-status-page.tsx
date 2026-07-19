@@ -56,7 +56,7 @@ import { NESTED_ROW_INDENT } from '@/shared/config/layout'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
-import { InlineSelect } from '@/shared/ui/native-select'
+import { InlineSelect, NativeSelect } from '@/shared/ui/native-select'
 import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { BulkActionBar } from '@/shared/ui/bulk-action-bar'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
@@ -1100,6 +1100,7 @@ export function IterationStatusPage() {
       {showAdd && selected && (
         <AddItemModal
           iteration={selected}
+          projectId={projectId}
           onClose={() => setShowAdd(false)}
           onCreated={() => setShowAdd(false)}
         />
@@ -2539,18 +2540,22 @@ function SimplifiedStateControl({
 
 function AddItemModal({
   iteration,
+  projectId,
   onClose,
   onCreated,
 }: {
   iteration: Iteration
+  projectId: string | undefined
   onClose: () => void
   onCreated: () => void
 }) {
   const navigate = useNavigate()
   const create = useCreateIterationItem(iteration.id)
+  const { data: members = [] } = useProjectMembers(projectId)
   const [type, setType] = useState<'story' | 'defect'>('story')
   const [title, setTitle] = useState('')
   const [planEstimate, setPlanEstimate] = useState('')
+  const [assigneeId, setAssigneeId] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   async function submit(openDetail = false) {
@@ -2564,6 +2569,7 @@ function AddItemModal({
         type,
         title: title.trim(),
         planEstimate: planEstimate === '' ? undefined : Number(planEstimate),
+        assigneeId: assigneeId || undefined,
       })
       toast.success(
         `${type === 'defect' ? 'Defect' : 'Story'} "${title.trim()}" added to iteration`,
@@ -2627,6 +2633,17 @@ function AddItemModal({
             onChange={(e) => setPlanEstimate(e.target.value)}
             placeholder="0"
           />
+        </FormField>
+
+        <FormField label="Owner">
+          <NativeSelect value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
+            <option value="">Unassigned</option>
+            {members.map((m) => (
+              <option key={m.userId} value={m.userId}>
+                {m.displayName ?? m.email ?? m.userId}
+              </option>
+            ))}
+          </NativeSelect>
         </FormField>
       </ModalBody>
 
