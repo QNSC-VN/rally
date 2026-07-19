@@ -20,6 +20,7 @@ import { MetricCard } from '@/shared/ui/metric-card'
 import { MetricStrip } from '@/shared/ui/metric-strip'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
+import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
@@ -445,6 +446,8 @@ export function ProjectsPage() {
 
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<'All' | 'active' | 'archived'>('active')
+  const [pageSize, setPageSize] = useState(25)
+  const [currentPage, setCurrentPage] = useState(1)
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const [showNewModal, setShowNewModal] = useState(false)
@@ -469,6 +472,20 @@ export function ProjectsPage() {
       (p.name.toLowerCase().includes(search.toLowerCase()) ||
         p.key.toLowerCase().includes(search.toLowerCase())),
   )
+
+  // Client-side pagination over the filtered set. Reset to page 1 (during
+  // render, not in an effect) whenever the filtered shape changes so the visible
+  // range never lands past the last page.
+  const resetKey = `${search}|${filter}|${pageSize}`
+  const [prevResetKey, setPrevResetKey] = useState(resetKey)
+  if (prevResetKey !== resetKey) {
+    setPrevResetKey(resetKey)
+    setCurrentPage(1)
+  }
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize))
+  const safePage = Math.min(currentPage, pageCount)
+  const paged = filtered.slice((safePage - 1) * pageSize, safePage * pageSize)
 
   async function toggleArchive(project: Project) {
     if (project.status === 'active') {
@@ -656,7 +673,7 @@ export function ProjectsPage() {
           {/* Rows */}
           <div ref={menuRef}>
             {!isLoading &&
-              filtered.map((project) => (
+              paged.map((project) => (
                 <div
                   key={project.id}
                   className="relative flex h-12 cursor-default items-center gap-3 px-4 transition-colors hover:bg-surface-hover"
@@ -796,6 +813,23 @@ export function ProjectsPage() {
                 </div>
               ))}
           </div>
+
+          {/* Pagination footer */}
+          {!isLoading && filtered.length > 0 && (
+            <PaginationFooter
+              pageSize={pageSize}
+              setPageSize={setPageSize}
+              currentPage={safePage}
+              rangeStart={(safePage - 1) * pageSize + 1}
+              rangeEnd={(safePage - 1) * pageSize + paged.length}
+              total={filtered.length}
+              pageCount={pageCount}
+              hasPrevPage={safePage > 1}
+              hasNextPage={safePage < pageCount}
+              onPrevPage={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              onNextPage={() => setCurrentPage((p) => Math.min(pageCount, p + 1))}
+            />
+          )}
         </div>
       </div>
     </div>
