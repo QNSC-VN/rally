@@ -20,7 +20,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import { pgOptions } from '../pg-ssl';
 import { uuidv7 } from 'uuidv7';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import * as schema from '../schema';
 // Direct imports to avoid barrel tsx/CJS resolution edge cases at runtime.
 import {
@@ -1590,7 +1590,7 @@ async function seedSystemRolesInto(
         permissions,
       })
       .onConflictDoUpdate({
-        target: schema.systemRoles.slug,
+        target: [schema.systemRoles.workspaceId, schema.systemRoles.slug],
         set: { permissions, name },
       });
   }
@@ -1658,12 +1658,81 @@ async function seedTenantBootstrapInto(
         permissions: role.permissions,
       })),
     )
-    .onConflictDoNothing({ target: schema.systemRoles.slug });
+    .onConflictDoNothing({
+      target: [schema.systemRoles.workspaceId, schema.systemRoles.slug],
+    });
+
+  // Seed a per-workspace EDITABLE copy of every tier role EXCEPT Workspace Admin.
+  // The four operational tiers (Project Admin / Member / Viewer, Workspace
+  // Member) become ordinary workspace-owned roles (isSystem:false) so an admin
+  // can tune their permissions without rewriting the shared global template.
+  // Workspace Admin is deliberately omitted — it stays the single global,
+  // immutable lockout anchor (isSystem:true) that guarantees a recovery path.
+  const EDITABLE_TIER_SLUGS = [
+    SYSTEM_ROLE.PROJECT_ADMIN,
+    SYSTEM_ROLE.PROJECT_MEMBER,
+    SYSTEM_ROLE.PROJECT_VIEWER,
+    SYSTEM_ROLE.WORKSPACE_MEMBER,
+  ] as const;
+  await database
+    .insert(schema.systemRoles)
+    .values(
+      EDITABLE_TIER_SLUGS.map((slug) => ({
+        workspaceId: WORKSPACE_ID,
+        name: ROLE_NAMES[slug],
+        slug,
+        isSystem: false,
+        permissions: ROLE_PERMISSIONS[slug],
+      })),
+    )
+    .onConflictDoNothing({
+      target: [schema.systemRoles.workspaceId, schema.systemRoles.slug],
+    });
+
+  // Re-point any EXISTING assignment that still references a global tier
+  // template onto this workspace's editable copy, so a workspace admin's later
+  // permission edits actually take effect for already-provisioned users (and so
+  // re-seeding never leaves a user holding both the template and the copy).
+  // Idempotent: once re-pointed there are no template-scoped rows left to move.
+  const tierRoleRows = await database
+    .select({
+      id: schema.systemRoles.id,
+      slug: schema.systemRoles.slug,
+      workspaceId: schema.systemRoles.workspaceId,
+    })
+    .from(schema.systemRoles)
+    .where(inArray(schema.systemRoles.slug, [...EDITABLE_TIER_SLUGS]));
+  for (const slug of EDITABLE_TIER_SLUGS) {
+    const globalId = tierRoleRows.find((r) => r.slug === slug && r.workspaceId === null)?.id;
+    const copyId = tierRoleRows.find((r) => r.slug === slug && r.workspaceId === WORKSPACE_ID)?.id;
+    if (!globalId || !copyId) continue;
+    // Drop template-scoped assignments that already have a copy twin (would
+    // otherwise collide on the (user, role, scope) unique key), then move the rest.
+    await database.execute(sql`
+      DELETE FROM access.user_role_assignments a
+      WHERE a.role_id = ${globalId}
+        AND a.workspace_id = ${WORKSPACE_ID}
+        AND EXISTS (
+          SELECT 1 FROM access.user_role_assignments b
+          WHERE b.user_id = a.user_id
+            AND b.role_id = ${copyId}
+            AND b.scope_type = a.scope_type
+            AND b.scope_id IS NOT DISTINCT FROM a.scope_id
+        )
+    `);
+    await database.execute(sql`
+      UPDATE access.user_role_assignments
+      SET role_id = ${copyId}
+      WHERE role_id = ${globalId}
+        AND workspace_id = ${WORKSPACE_ID}
+    `);
+  }
 
   const entraTid = process.env['ENTRA_TENANT_ID'];
   if (!entraTid) {
     console.log(
-      `\u2705  Tenant bootstrap: workspace "${workspaceName}" + ${PRESET_WORKSPACE_ROLES.length} preset roles ensured ` +
+      `\u2705  Tenant bootstrap: workspace "${workspaceName}" + ${PRESET_WORKSPACE_ROLES.length} preset roles ` +
+        `+ ${EDITABLE_TIER_SLUGS.length} editable tier roles ensured ` +
         `(no ENTRA_TENANT_ID \u2014 SSO connection skipped, dev-login only)`,
     );
     return;
@@ -1704,7 +1773,8 @@ async function seedTenantBootstrapInto(
     });
 
   console.log(
-    `\u2705  Tenant bootstrap: workspace "${workspaceName}" + ${PRESET_WORKSPACE_ROLES.length} preset roles + Entra SSO connection ` +
+    `\u2705  Tenant bootstrap: workspace "${workspaceName}" + ${PRESET_WORKSPACE_ROLES.length} preset roles ` +
+      `+ ${EDITABLE_TIER_SLUGS.length} editable tier roles + Entra SSO connection ` +
       `reconciled (tid ${entraTid}, domains: ${ssoAllowedDomains.join(', ') || 'any'})`,
   );
 }
@@ -1821,20 +1891,35 @@ export async function seed(connectionUrl?: string): Promise<void> {
     // standalone entrypoint so dev seeds and production deploys stay in lock-step.
     await seedSystemRolesInto(db);
 
-    // ── Admin user role assignment (workspace_admin for the default workspace) ──
-    const adminRoleRow = await db
-      .select({ id: schema.systemRoles.id })
-      .from(schema.systemRoles)
-      .where(eq(schema.systemRoles.slug, 'workspace_admin'))
-      .limit(1);
+    // Resolve a role id preferring the workspace-owned editable copy over the
+    // global template (both share a slug after migration 0047). Workspace Admin
+    // has no per-workspace copy, so it resolves to the global immutable anchor.
+    const resolveRoleId = async (slug: string): Promise<string | undefined> => {
+      const rows = await db
+        .select({ id: schema.systemRoles.id, workspaceId: schema.systemRoles.workspaceId })
+        .from(schema.systemRoles)
+        .where(
+          and(
+            eq(schema.systemRoles.slug, slug),
+            or(
+              isNull(schema.systemRoles.workspaceId),
+              eq(schema.systemRoles.workspaceId, WORKSPACE_ID),
+            ),
+          ),
+        );
+      return (rows.find((r) => r.workspaceId === WORKSPACE_ID) ?? rows[0])?.id;
+    };
 
-    if (adminRoleRow[0]) {
+    // ── Admin user role assignment (workspace_admin for the default workspace) ──
+    const adminRoleId = await resolveRoleId('workspace_admin');
+
+    if (adminRoleId) {
       await db
         .insert(userRoleAssignments)
         .values({
           workspaceId: WORKSPACE_ID,
           userId: ADMIN_USER_ID,
-          roleId: adminRoleRow[0].id,
+          roleId: adminRoleId,
           scopeType: 'workspace',
           scopeId: WORKSPACE_ID,
           grantedBy: ADMIN_USER_ID,
@@ -1843,19 +1928,15 @@ export async function seed(connectionUrl?: string): Promise<void> {
     }
 
     // ── Developer role assignment (project_member) ────────────────────────────
-    const [memberRoleRow] = await db
-      .select({ id: schema.systemRoles.id })
-      .from(schema.systemRoles)
-      .where(eq(schema.systemRoles.slug, 'project_member'))
-      .limit(1);
+    const memberRoleId = await resolveRoleId('project_member');
 
-    if (memberRoleRow) {
+    if (memberRoleId) {
       await db
         .insert(userRoleAssignments)
         .values({
           workspaceId: WORKSPACE_ID,
           userId: DEVELOPER_ID,
-          roleId: memberRoleRow.id,
+          roleId: memberRoleId,
           scopeType: 'workspace',
           scopeId: WORKSPACE_ID,
           grantedBy: ADMIN_USER_ID,
@@ -1864,19 +1945,15 @@ export async function seed(connectionUrl?: string): Promise<void> {
     }
 
     // ── Viewer role assignment (project_viewer) ───────────────────────────────
-    const [viewerRoleRow] = await db
-      .select({ id: schema.systemRoles.id })
-      .from(schema.systemRoles)
-      .where(eq(schema.systemRoles.slug, 'project_viewer'))
-      .limit(1);
+    const viewerRoleId = await resolveRoleId('project_viewer');
 
-    if (viewerRoleRow) {
+    if (viewerRoleId) {
       await db
         .insert(userRoleAssignments)
         .values({
           workspaceId: WORKSPACE_ID,
           userId: VIEWER_ID,
-          roleId: viewerRoleRow.id,
+          roleId: viewerRoleId,
           scopeType: 'workspace',
           scopeId: WORKSPACE_ID,
           grantedBy: ADMIN_USER_ID,
@@ -1974,11 +2051,25 @@ async function seedRbacDemoUsers(): Promise<void> {
     .values(demoUsers.map((u) => ({ workspaceId: WORKSPACE_ID, userId: u.id })))
     .onConflictDoNothing();
 
-  // role slug → id (roles were seeded earlier in seed())
+  // role slug → id (roles were seeded earlier in seed()). Prefer the
+  // workspace-owned editable copy over the global template so demo assignments
+  // point at the row an admin can actually edit.
   const roleRows = await db
-    .select({ id: schema.systemRoles.id, slug: schema.systemRoles.slug })
-    .from(schema.systemRoles);
-  const roleIdBySlug = new Map(roleRows.map((r) => [r.slug, r.id]));
+    .select({
+      id: schema.systemRoles.id,
+      slug: schema.systemRoles.slug,
+      workspaceId: schema.systemRoles.workspaceId,
+    })
+    .from(schema.systemRoles)
+    .where(
+      or(isNull(schema.systemRoles.workspaceId), eq(schema.systemRoles.workspaceId, WORKSPACE_ID)),
+    );
+  const roleIdBySlug = new Map<string, string>();
+  for (const r of roleRows) {
+    if (r.workspaceId === WORKSPACE_ID || !roleIdBySlug.has(r.slug)) {
+      roleIdBySlug.set(r.slug, r.id);
+    }
+  }
 
   const assign = async (
     userId: string,

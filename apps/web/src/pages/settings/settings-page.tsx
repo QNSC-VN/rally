@@ -2286,18 +2286,6 @@ type Role = {
   permissions: string[]
 }
 
-/** Group a role's flat permission codes by their `namespace:action` prefix. */
-function groupPermissions(permissions: string[]): { namespace: string; actions: string[] }[] {
-  const groups = new Map<string, string[]>()
-  for (const perm of [...permissions].sort()) {
-    const [namespace, action = '*'] = perm.split(':')
-    const actions = groups.get(namespace) ?? []
-    actions.push(action)
-    groups.set(namespace, actions)
-  }
-  return [...groups.entries()].map(([namespace, actions]) => ({ namespace, actions }))
-}
-
 /** Turn `workspace_admin` / `workspace.manage_members` into `Workspace Admin`. */
 function humanizeSlug(value: string): string {
   return value.replace(/[._:]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
@@ -2451,58 +2439,24 @@ function RolesTab() {
               </p>
             )}
 
-            {editable ? (
-              <RolePermissionEditor
-                key={selected.id}
-                role={selected}
-                catalog={catalog}
-                saving={updatePermissions.isPending}
-                onSave={(permissions) =>
-                  updatePermissions.mutate({ roleId: selected.id, permissions })
-                }
-              />
-            ) : (
-              <>
-                {selected.permissions.length === 0 ? (
-                  <p className="text-[12px]" style={{ color: BRAND.textMuted }}>
-                    This role has no explicit permissions.
-                  </p>
-                ) : (
-                  <div className="space-y-4">
-                    {groupPermissions(selected.permissions).map(({ namespace, actions }) => (
-                      <div key={namespace}>
-                        <p
-                          className="mb-1.5 text-[11px] font-semibold"
-                          style={{ color: BRAND.textPrimary }}
-                        >
-                          {humanizeSlug(namespace)}
-                        </p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {actions.map((action) => (
-                            <span
-                              key={`${namespace}:${action}`}
-                              className="rounded px-2 py-1 font-mono text-[11px]"
-                              style={{
-                                backgroundColor: BRAND.surfaceHover,
-                                color: BRAND.textSecondary,
-                                border: `1px solid ${BRAND.border}`,
-                              }}
-                            >
-                              {action === '*' ? 'All actions' : action}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+            {/* Every role renders the same full permission grid; protected roles
+                (Workspace Admin) are simply shown read-only. This keeps the view
+                consistent instead of a separate chip layout for system roles. */}
+            <RolePermissionEditor
+              key={selected.id}
+              role={selected}
+              catalog={catalog}
+              saving={updatePermissions.isPending}
+              readOnly={!editable}
+              onSave={(permissions) =>
+                updatePermissions.mutate({ roleId: selected.id, permissions })
+              }
+            />
 
-                <p className="mt-6 text-[11px]" style={{ color: BRAND.textMuted }}>
-                  {selected.isSystem
-                    ? 'Built-in system roles are read-only. Assign roles to users from User Management.'
-                    : 'You need workspace member management permission to edit this role.'}
-                </p>
-              </>
+            {!editable && !canManage && (
+              <p className="mt-3 text-[11px]" style={{ color: BRAND.textMuted }}>
+                You need workspace member management permission to edit roles.
+              </p>
             )}
           </>
         )}
@@ -2522,11 +2476,13 @@ function RolePermissionEditor({
   catalog,
   saving,
   onSave,
+  readOnly = false,
 }: {
   role: Role
   catalog: CatalogPermission[]
   saving: boolean
   onSave: (permissions: string[]) => void
+  readOnly?: boolean
 }) {
   const initial = new Set(role.permissions)
   const [draft, setDraft] = useState<Set<string>>(() => new Set(role.permissions))
@@ -2575,11 +2531,15 @@ function RolePermissionEditor({
                 <button
                   key={perm.code}
                   type="button"
-                  onClick={() => toggle(perm.code)}
+                  onClick={() => !readOnly && toggle(perm.code)}
+                  disabled={readOnly}
+                  aria-pressed={checked}
                   className="flex items-center gap-2 rounded px-2 py-1.5 text-left"
                   style={{
                     backgroundColor: checked ? BRAND.surfaceHover : 'transparent',
                     border: `1px solid ${BRAND.border}`,
+                    cursor: readOnly ? 'default' : 'pointer',
+                    opacity: readOnly && !checked ? 0.55 : 1,
                   }}
                 >
                   <span
@@ -2612,23 +2572,33 @@ function RolePermissionEditor({
         style={{ borderTop: `1px solid ${BRAND.border}` }}
       >
         <p className="text-[11px]" style={{ color: BRAND.textMuted }}>
-          {draft.size} permission{draft.size === 1 ? '' : 's'} selected
+          {draft.size} permission{draft.size === 1 ? '' : 's'}
+          {readOnly ? '' : ' selected'}
         </p>
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setDraft(new Set(role.permissions))}
-            disabled={!dirty || saving}
-          >
-            Reset
-          </Button>
-          <Button type="button" size="sm" onClick={handleSave} disabled={!dirty || saving}>
-            {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-            Save changes
-          </Button>
-        </div>
+        {readOnly ? (
+          <div className="flex items-center gap-1.5">
+            <Lock size={11} style={{ color: BRAND.textMuted }} />
+            <p className="text-[11px]" style={{ color: BRAND.textMuted }}>
+              Protected role — permissions are fixed and cannot be edited.
+            </p>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setDraft(new Set(role.permissions))}
+              disabled={!dirty || saving}
+            >
+              Reset
+            </Button>
+            <Button type="button" size="sm" onClick={handleSave} disabled={!dirty || saving}>
+              {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+              Save changes
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   )

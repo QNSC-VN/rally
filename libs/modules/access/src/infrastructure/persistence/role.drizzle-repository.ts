@@ -16,12 +16,23 @@ export class RoleDrizzleRepository implements IRoleRepository {
   }
 
   async listForWorkspace(workspaceId: string): Promise<SystemRole[]> {
-    // Return global system roles (workspaceId IS NULL) + workspace-specific roles
+    // Global template roles (workspaceId IS NULL) + this workspace's own roles.
+    // A workspace may own an EDITABLE copy of a tier role that shares a slug with
+    // the global template — collapse by slug, always preferring the workspace
+    // copy so the admin sees (and edits) the row that actually governs the
+    // workspace. Slugs unique to the global set (e.g. workspace_admin, which has
+    // no per-workspace copy) fall through unchanged.
     const rows = await this.db
       .select()
       .from(systemRoles)
       .where(or(isNull(systemRoles.workspaceId), eq(systemRoles.workspaceId, workspaceId)));
-    return rows.map((r) => this.toRole(r));
+
+    const bySlug = new Map<string, typeof systemRoles.$inferSelect>();
+    for (const row of rows) {
+      const existing = bySlug.get(row.slug);
+      if (!existing || row.workspaceId === workspaceId) bySlug.set(row.slug, row);
+    }
+    return [...bySlug.values()].map((r) => this.toRole(r));
   }
 
   async updatePermissions(id: string, permissions: string[], tx?: DbExecutor): Promise<SystemRole> {
