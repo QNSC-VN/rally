@@ -218,4 +218,33 @@ describe('BA flows: Phase 4.1 notifications (real AppModule + seeded DB)', () =>
       expect(await notifications.getUnreadCount(ownerReader)).toBe(1);
     });
   });
+
+  // ── E2E-017d: FR-019 recipient access gating ────────────────────────────────
+  describe('E2E-017d notifications reach only users allowed to access the item', () => {
+    it('drops mentioned users without project access (FR-019)', async () => {
+      const project = await projects.createProject(admin, {
+        key: uniqueKey(),
+        name: 'FR-019 Project',
+      });
+      const story = await workItems.createWorkItem(admin, project.id, 'story', 'Mention gating');
+      // DEVELOPER_ID holds a workspace-scoped role → access to every project.
+      // A fresh uuid has no role assignment → no access, must be filtered out.
+      const outsider = randomUUID();
+
+      await workItems.notifyCommentAdded(admin, story.id, [DEVELOPER_ID, outsider]);
+
+      const rows = await db
+        .select()
+        .from(notificationOutbox)
+        .where(
+          and(
+            eq(notificationOutbox.resourceId, story.id),
+            eq(notificationOutbox.type, 'WORK_ITEM_MENTIONED'),
+          ),
+        );
+      const recipients = rows.map((r) => r.recipientId);
+      expect(recipients).toContain(DEVELOPER_ID);
+      expect(recipients).not.toContain(outsider);
+    });
+  });
 });

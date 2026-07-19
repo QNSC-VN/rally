@@ -23,7 +23,7 @@ import {
   between,
 } from '@platform';
 import type { JwtPayload, CursorPayload, PagedResult, DbExecutor } from '@platform';
-import { PERMISSION, type ProjectPermission } from '@shared-kernel';
+import { PERMISSION, permissionGrants, type ProjectPermission } from '@shared-kernel';
 import {
   isAcceptedScheduleState,
   isCompletedScheduleState,
@@ -729,7 +729,7 @@ export class WorkItemsService {
 
     // Schedule-state change: notify watchers ∪ assignee (minus the actor).
     if (input.scheduleState !== undefined && updated.scheduleState !== item.scheduleState) {
-      const recipients = await this.resolveRecipients(updated.id, [updated.assigneeId], actor.sub);
+      const recipients = await this.resolveRecipients(updated, [updated.assigneeId], actor.sub);
       if (recipients.length > 0) {
         await this.emitWorkItemNotification(
           'WORK_ITEM_STATE_CHANGED',
@@ -772,17 +772,43 @@ export class WorkItemsService {
   // (minus the actor). The Worker relay applies each recipient's preference and
   // handles delivery/SSE — this layer only fans out candidates.
 
-  /** Watchers ∪ extra recipients, de-duplicated, with the actor removed. */
+  /** Watchers ∪ extra recipients, de-duplicated, actor removed, access-gated. */
   private async resolveRecipients(
-    workItemId: string,
+    item: WorkItem,
     extra: (string | null | undefined)[],
     actorId: string,
   ): Promise<string[]> {
-    const watchers = await this.watcherRepo.listUserIds(workItemId);
+    const watchers = await this.watcherRepo.listUserIds(item.id);
     const set = new Set<string>(watchers);
     for (const id of extra) if (id) set.add(id);
     set.delete(actorId);
-    return [...set];
+    return this.filterByProjectAccess(item.workspaceId, item.projectId, [...set]);
+  }
+
+  /**
+   * FR-019 — restrict notification recipients to users allowed to access the
+   * item's project. Effective per-project permissions are resolved from role
+   * assignments (a workspace-scoped role grants access without a membership
+   * row), so this is NOT a project_members lookup. Users lacking
+   * `work_item:view` on the project are dropped.
+   */
+  private async filterByProjectAccess(
+    workspaceId: string,
+    projectId: string,
+    userIds: string[],
+  ): Promise<string[]> {
+    if (userIds.length === 0) return [];
+    const results = await Promise.all(
+      userIds.map(async (userId) => {
+        const perms = await this.accessService.getProjectPermissions(
+          userId,
+          workspaceId,
+          projectId,
+        );
+        return permissionGrants(perms, PERMISSION.WORK_ITEM_VIEW) ? userId : null;
+      }),
+    );
+    return results.filter((id): id is string => id !== null);
   }
 
   private async emitWorkItemNotification<K extends NotificationTemplateName>(
@@ -832,7 +858,12 @@ export class WorkItemsService {
     await this.watcherRepo.watch(workItemId, actor.sub, actor.workspaceId).catch(() => undefined);
 
     const vars = { itemKey: item.itemKey, itemTitle: item.title, projectId: item.projectId };
-    const mentioned = mentionedUserIds.filter((id) => id && id !== actor.sub);
+    // FR-019: mentions may name anyone; keep only users who can access the project.
+    const mentioned = await this.filterByProjectAccess(
+      item.workspaceId,
+      item.projectId,
+      mentionedUserIds.filter((id) => id && id !== actor.sub),
+    );
 
     // Mentions take precedence — a mentioned watcher gets the mention, not the
     // generic comment notification.
@@ -847,7 +878,7 @@ export class WorkItemsService {
       );
     }
     const commentRecipients = (
-      await this.resolveRecipients(workItemId, [item.assigneeId], actor.sub)
+      await this.resolveRecipients(item, [item.assigneeId], actor.sub)
     ).filter((id) => !mentioned.includes(id));
     if (commentRecipients.length > 0) {
       await this.emitWorkItemNotification(
