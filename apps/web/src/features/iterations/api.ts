@@ -157,6 +157,75 @@ export function useUpdateIteration(id: string) {
   })
 }
 
+// ── Lifecycle transitions (BA F1 — gated, single-source) ─────────────────────
+// Commit (Planning → Committed) and Accept (Committed → Accepted) are guarded
+// server-side (one committed iteration per project; accept needs ≥1 assigned
+// Story/Defect all accepted). Rollover moves the unfinished (not-accepted)
+// items out to another iteration or the backlog — the mirror of the accept
+// gate. These replace free-form state edits so the FE cannot bypass the rules.
+
+export type RolloverIterationInput = components['schemas']['RolloverIterationDto']
+
+/** Invalidate every cached view a lifecycle transition can affect. */
+function invalidateIterationViews(qc: ReturnType<typeof useQueryClient>, id: string) {
+  void qc.invalidateQueries({ queryKey: iterationKeys.detail(id) })
+  void qc.invalidateQueries({ queryKey: iterationKeys.all })
+  void qc.invalidateQueries({ queryKey: iterationKeys.statusAll })
+  void qc.invalidateQueries({ queryKey: ['iteration-options'] })
+}
+
+export function useCommitIteration(id: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async () => {
+      const { data, error, response } = await apiClient.POST('/v1/iterations/{id}/commit', {
+        params: { path: { id } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as Iteration
+    },
+    onSuccess: (iteration) => {
+      qc.setQueryData(iterationKeys.detail(id), iteration)
+      invalidateIterationViews(qc, id)
+    },
+  })
+}
+
+export function useAcceptIteration(id: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async () => {
+      const { data, error, response } = await apiClient.POST('/v1/iterations/{id}/accept', {
+        params: { path: { id } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as Iteration
+    },
+    onSuccess: (iteration) => {
+      qc.setQueryData(iterationKeys.detail(id), iteration)
+      invalidateIterationViews(qc, id)
+    },
+  })
+}
+
+export function useRolloverIteration(id: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: RolloverIterationInput) => {
+      const { data, error, response } = await apiClient.POST('/v1/iterations/{id}/rollover', {
+        params: { path: { id } },
+        body: input,
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      // The endpoint returns a bare `{ movedCount }` with no response DTO, so the
+      // generated client types the body as `undefined`; the value is present at
+      // runtime, hence the cast through `unknown`.
+      return data as unknown as { movedCount: number }
+    },
+    onSuccess: () => invalidateIterationViews(qc, id),
+  })
+}
+
 // ── Iteration Status (P2.3) ─────────────────────────────────────────────────
 
 export interface IterationStatusFilters {

@@ -106,23 +106,6 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  '/v1/roles/{roleId}/permissions': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    /** Replace a custom role’s permission set (workspace admin only) */
-    patch: operations['AccessController_updateRolePermissions']
-    trace?: never
-  }
   '/v1/permissions': {
     parameters: {
       query?: never
@@ -138,6 +121,23 @@ export interface paths {
     options?: never
     head?: never
     patch?: never
+    trace?: never
+  }
+  '/v1/roles/{roleId}/permissions': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    /** Replace a custom role’s permission set (workspace admin only) */
+    patch: operations['AccessController_updateRolePermissions']
     trace?: never
   }
   '/v1/users/{userId}/role-assignments': {
@@ -756,6 +756,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v1/work-items/by-key': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Get a work item by its item key within a project */
+    get: operations['WorkItemsController_getWorkItemByKey']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v1/work-items/{id}': {
     parameters: {
       query?: never
@@ -942,6 +959,41 @@ export interface paths {
     post?: never
     /** Remove a label from a work item */
     delete: operations['WorkItemsController_removeLabel']
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/work-items/{id}/relations': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List work items linked to this work item */
+    get: operations['WorkItemsController_listRelations']
+    put?: never
+    /** Link this work item to another (blocks/duplicates/relates/…) */
+    post: operations['WorkItemsController_createRelation']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/work-items/{id}/relations/{relationId}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    /** Remove a link between work items */
+    delete: operations['WorkItemsController_deleteRelation']
     options?: never
     head?: never
     patch?: never
@@ -1185,8 +1237,25 @@ export interface paths {
     }
     get?: never
     put?: never
-    /** Accept an iteration (committed → accepted); moves unfinished items out */
+    /** Accept an iteration (committed → accepted). Requires ≥1 assigned Story/Defect and all of them accepted. */
     post: operations['IterationsController_acceptIteration']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/iterations/{id}/rollover': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Move unfinished items out of an iteration to another iteration or the backlog */
+    post: operations['IterationsController_rolloverIteration']
     delete?: never
     options?: never
     head?: never
@@ -1808,6 +1877,48 @@ export interface components {
       /** Format: date-time */
       createdAt: string
     }
+    PermissionCatalogResponseDto: {
+      permissions: {
+        code: string
+        /** @enum {string} */
+        tier: 'workspace' | 'project'
+      }[]
+    }
+    UpdateRolePermissionsDto: {
+      permissions: (
+        | 'workspace:*'
+        | 'workspace:view'
+        | 'workspace:create'
+        | 'workspace:manage_members'
+        | 'workspace:manage_teams'
+        | 'project:view'
+        | 'project:create'
+        | 'project:edit'
+        | 'project:archive'
+        | 'project:restore'
+        | 'project:delete'
+        | 'project:manage_members'
+        | 'work_item:view'
+        | 'work_item:create'
+        | 'work_item:edit'
+        | 'work_item:delete'
+        | 'iteration:view'
+        | 'iteration:create'
+        | 'iteration:edit'
+        | 'iteration:delete'
+        | 'release:view'
+        | 'release:create'
+        | 'release:edit'
+        | 'release:delete'
+        | 'team_status:view'
+        | 'team_status:edit'
+        | 'quality:view'
+        | 'milestone:view'
+        | 'milestone:create'
+        | 'milestone:edit'
+        | 'milestone:delete'
+      )[]
+    }
     RoleAssignmentResponseDto: {
       /** Format: uuid */
       id: string
@@ -1832,16 +1943,6 @@ export interface components {
       scopeType: 'global' | 'workspace' | 'project'
       /** Format: uuid */
       scopeId?: string
-    }
-    UpdateRolePermissionsDto: {
-      permissions: string[]
-    }
-    PermissionCatalogResponseDto: {
-      permissions: {
-        code: string
-        /** @enum {string} */
-        tier: 'workspace' | 'project'
-      }[]
     }
     ProjectPermissionsResponseDto: {
       /** Format: uuid */
@@ -1908,7 +2009,6 @@ export interface components {
       email: string
       avatarUrl: string | null
       phone: string | null
-      /** Format: date-time */
       lastLoginAt: string | null
       roleAssignmentId: string | null
       roleId: string | null
@@ -2164,7 +2264,7 @@ export interface components {
       notes?: string
       releaseNotes?: string
       /** @enum {string} */
-      severity?: 'none' | 'critical' | 'major' | 'minor' | 'trivial'
+      severity?: 'critical' | 'major' | 'minor' | 'trivial' | 'none'
       /** @enum {string} */
       foundInEnvironment?: 'development' | 'staging' | 'production' | 'testing'
       foundInReleaseId?: string | null
@@ -2217,7 +2317,7 @@ export interface components {
       customFields?: {
         [key: string]: unknown
       }
-      severity?: ('none' | 'critical' | 'major' | 'minor' | 'trivial') | null
+      severity?: ('critical' | 'major' | 'minor' | 'trivial' | 'none') | null
       foundInEnvironment?: ('development' | 'staging' | 'production' | 'testing') | null
       foundInReleaseId?: string | null
       rootCause?: ('requirements' | 'design' | 'code' | 'test' | 'integration' | 'other') | null
@@ -2288,6 +2388,12 @@ export interface components {
     AddLabelDto: {
       /** Format: uuid */
       labelId: string
+    }
+    CreateRelationDto: {
+      /** Format: uuid */
+      targetId: string
+      /** @enum {string} */
+      relationType: 'blocks' | 'duplicates' | 'relates_to' | 'depends_on' | 'causes'
     }
     SetWorkItemMilestonesDto: {
       ids: string[]
@@ -2426,7 +2532,7 @@ export interface components {
       endDate?: string | null
       plannedVelocity?: number | null
     }
-    AcceptIterationDto: {
+    RolloverIterationDto: {
       /** Format: uuid */
       moveToIterationId?: string
     }
@@ -2601,6 +2707,7 @@ export interface components {
       body: string
       /** Format: uuid */
       parentId?: string
+      mentionedUserIds?: string[]
     }
     UpdateCommentDto: {
       body: string
@@ -3026,6 +3133,39 @@ export interface operations {
       }
     }
   }
+  AccessController_getPermissionCatalog: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['PermissionCatalogResponseDto']
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
   AccessController_updateRolePermissions: {
     parameters: {
       query?: never
@@ -3077,41 +3217,15 @@ export interface operations {
         }
         content?: never
       }
-      /** @description Conflict */
+      /** @description Conflict — duplicate record or state conflict */
       409: {
         headers: {
           [name: string]: unknown
         }
         content?: never
       }
-    }
-  }
-  AccessController_getPermissionCatalog: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['PermissionCatalogResponseDto']
-        }
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Forbidden — insufficient permissions */
-      403: {
+      /** @description Unprocessable — business rule violation */
+      422: {
         headers: {
           [name: string]: unknown
         }
@@ -5412,6 +5526,49 @@ export interface operations {
       }
     }
   }
+  WorkItemsController_getWorkItemByKey: {
+    parameters: {
+      query: {
+        projectId: string
+        itemKey: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['WorkItemResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
   WorkItemsController_getWorkItem: {
     parameters: {
       query?: never
@@ -6063,6 +6220,127 @@ export interface operations {
     requestBody?: never
     responses: {
       /** @description Label removed */
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  WorkItemsController_listRelations: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Resolved relation views (outbound + inbound) */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  WorkItemsController_createRelation: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateRelationDto']
+      }
+    }
+    responses: {
+      /** @description Relation created; returns the updated relation list */
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  WorkItemsController_deleteRelation: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+        relationId: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Relation removed */
       204: {
         headers: {
           [name: string]: unknown
@@ -7059,11 +7337,7 @@ export interface operations {
       }
       cookie?: never
     }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['AcceptIterationDto']
-      }
-    }
+    requestBody?: never
     responses: {
       201: {
         headers: {
@@ -7072,6 +7346,64 @@ export interface operations {
         content: {
           'application/json': components['schemas']['IterationResponseDto']
         }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  IterationsController_rolloverIteration: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['RolloverIterationDto']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
       }
       /** @description Bad Request — validation error or malformed input */
       400: {
@@ -8980,7 +9312,7 @@ export interface operations {
         sort?: string
         projectId: string
         search?: string
-        severity?: 'all' | 'critical' | 'major' | 'minor' | 'trivial'
+        severity?: 'all' | 'critical' | 'major' | 'minor' | 'trivial' | 'none'
         environment?: 'all' | 'development' | 'staging' | 'production' | 'testing'
         priority?: 'all' | 'none' | 'low' | 'normal' | 'high' | 'urgent'
         scheduleState?:

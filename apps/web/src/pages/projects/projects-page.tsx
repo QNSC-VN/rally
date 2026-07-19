@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   AlertTriangle,
@@ -22,7 +22,11 @@ import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
 import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { OwnerCell } from '@/shared/ui/owner-cell'
-import { Tooltip } from '@/shared/ui/tooltip'
+import { TeamCell } from '@/shared/ui/team-cell'
+import { DataTableHeader } from '@/shared/ui/data-table-header'
+import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
+import { useDataTable, type ColumnSpec } from '@/shared/ui/table'
+import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
@@ -541,7 +545,7 @@ function NewProjectModal({ workspaceId, onClose }: { workspaceId: string; onClos
   )
 }
 
-// ── Teams cell (linked team name chips) ──────────────────────────────────────
+// ── Teams cell (linked team names, one per line) ─────────────────────────────
 
 function ProjectTeamsCell({ projectId, teamCount }: { projectId: string; teamCount: number }) {
   // Only fetch team names for rows that actually have linked teams.
@@ -555,51 +559,222 @@ function ProjectTeamsCell({ projectId, teamCount }: { projectId: string; teamCou
     )
   }
 
-  const shown = teams.slice(0, 2)
-  const overflow = teamCount - shown.length
-
-  const chips = (
-    <div className="flex items-center gap-1">
-      {shown.length > 0 ? (
-        shown.map((t) => (
-          <span
-            key={t.id}
-            className="inline-flex max-w-[5rem] items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] font-medium"
-            style={{ backgroundColor: BRAND.avatarBg, color: BRAND.textSecondary }}
-          >
-            <UsersRound size={9} style={{ color: BRAND.textMuted }} />
-            <span className="truncate">{t.name}</span>
-          </span>
-        ))
-      ) : (
+  // Names still loading — show a compact count placeholder.
+  if (teams.length === 0) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 text-[11px]"
+        style={{ color: BRAND.textSecondary }}
+      >
         <UsersRound size={11} style={{ color: BRAND.textMuted }} />
-      )}
-      {overflow > 0 && (
-        <span className="text-[10px] font-medium" style={{ color: BRAND.textMuted }}>
-          +{overflow}
-        </span>
+        {teamCount}
+      </span>
+    )
+  }
+
+  // Every linked team on its own line (row grows to fit).
+  return (
+    <div className="flex w-full flex-col gap-1 py-1">
+      {teams.map((t) => (
+        <TeamCell key={t.id} teamKey={t.key} name={t.name} className="self-start" />
+      ))}
+    </div>
+  )
+}
+
+// ── Table columns (shared useDataTable engine) ───────────────────────────────
+
+type ProjectColKey =
+  'key' | 'name' | 'status' | 'owner' | 'teams' | 'members' | 'startDate' | 'updated' | 'actions'
+
+/** Per-render context handed to each column cell (lookups + row callbacks). */
+interface ProjectCtx {
+  currentUserId?: string
+  currentUserName?: string
+  openMenu: string | null
+  setOpenMenu: (id: string | null) => void
+  onEdit: (project: Project) => void
+  onToggleArchive: (project: Project) => void
+}
+
+const fmtDate = (iso: string) =>
+  new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+
+/** Row actions dropdown — page-local interactivity kept out of the column spec. */
+function ProjectActionsCell({ project, ctx }: { project: Project; ctx: ProjectCtx }) {
+  const { openMenu, setOpenMenu, onEdit, onToggleArchive } = ctx
+  return (
+    <div className="relative" onClick={(e) => e.stopPropagation()}>
+      <button
+        onClick={() => setOpenMenu(openMenu === project.id ? null : project.id)}
+        className="flex h-6 w-6 items-center justify-center rounded hover:bg-avatar"
+        style={{ color: BRAND.textMuted }}
+        aria-label="Project actions"
+      >
+        <MoreHorizontal size={14} />
+      </button>
+
+      {openMenu === project.id && (
+        <div
+          className="absolute top-7 right-0 z-20 w-44 overflow-hidden rounded bg-white py-1 shadow-lg"
+          style={{ border: `1px solid ${BRAND.border}` }}
+        >
+          <button
+            className="flex w-full items-center gap-2 px-3 py-2 text-[11px] hover:bg-surface-subtle"
+            style={{ color: BRAND.textPrimary }}
+            onClick={() => {
+              onEdit(project)
+              setOpenMenu(null)
+            }}
+          >
+            <Edit3 size={12} style={{ color: BRAND.textSecondary }} />
+            Edit project
+          </button>
+          <button
+            className="flex w-full items-center gap-2 px-3 py-2 text-[11px] hover:bg-surface-subtle"
+            style={{ color: project.status === 'active' ? BRAND.danger : BRAND.textPrimary }}
+            onClick={() => onToggleArchive(project)}
+          >
+            {project.status === 'active' ? (
+              <Archive size={12} style={{ color: BRAND.danger }} />
+            ) : (
+              <RotateCcw size={12} style={{ color: BRAND.textSecondary }} />
+            )}
+            {project.status === 'active' ? 'Archive project' : 'Restore project'}
+          </button>
+        </div>
       )}
     </div>
   )
-
-  // Once the names load, reveal the full list on hover so every linked team is
-  // discoverable without breaking the fixed-height row.
-  if (teams.length === 0) return chips
-
-  return (
-    <Tooltip
-      content={
-        <div className="flex flex-col gap-0.5">
-          {teams.map((t) => (
-            <span key={t.id}>{t.name}</span>
-          ))}
-        </div>
-      }
-    >
-      {chips}
-    </Tooltip>
-  )
 }
+
+/**
+ * Single per-column source of truth. The shared {@link useDataTable} engine
+ * derives the header, resize / reorder / show-hide behaviour and body cells
+ * from this array — identical to the Backlog / Quality / Team-Status grids.
+ */
+const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] = [
+  {
+    key: 'key',
+    label: 'Key',
+    sortCol: 'key',
+    defaultWidth: 76,
+    minWidth: 60,
+    locked: true,
+    cellClassName: 'flex items-center',
+    cell: (p) => (
+      <span
+        className="inline-flex h-5 items-center rounded-sm px-1.5 font-mono text-[10px] font-semibold"
+        style={{ backgroundColor: BRAND.avatarBg, color: BRAND.primary }}
+      >
+        {p.key}
+      </span>
+    ),
+  },
+  {
+    key: 'name',
+    label: 'Project',
+    sortCol: 'name',
+    defaultWidth: 280,
+    minWidth: 160,
+    locked: true,
+    cellClassName: 'flex min-w-0 flex-col justify-center',
+    cell: (p) => (
+      <>
+        <div className="truncate text-[12px] font-semibold" style={{ color: BRAND.textPrimary }}>
+          {p.name}
+        </div>
+        {p.description && (
+          <div className="truncate text-[10px]" style={{ color: BRAND.textMuted }}>
+            {p.description}
+          </div>
+        )}
+      </>
+    ),
+  },
+  {
+    key: 'status',
+    label: 'Status',
+    sortCol: 'status',
+    defaultWidth: 96,
+    minWidth: 80,
+    cellClassName: 'flex items-center',
+    cell: (p) => <ProjectStatusBadge status={p.status} />,
+  },
+  {
+    key: 'owner',
+    label: 'Owner',
+    defaultWidth: 140,
+    minWidth: 90,
+    cellClassName: 'flex items-center',
+    cell: (p, ctx) => (
+      <OwnerCell
+        name={
+          p.leadId
+            ? (p.leadName ?? (p.leadId === ctx.currentUserId ? ctx.currentUserName : null))
+            : null
+        }
+      />
+    ),
+  },
+  {
+    key: 'teams',
+    label: 'Teams',
+    defaultWidth: 190,
+    minWidth: 120,
+    cellClassName: 'flex items-center',
+    cell: (p) => <ProjectTeamsCell projectId={p.id} teamCount={p.teamCount} />,
+  },
+  {
+    key: 'members',
+    label: 'Members',
+    sortCol: 'members',
+    defaultWidth: 96,
+    minWidth: 70,
+    cellClassName: 'flex items-center text-[11px]',
+    cell: (p) =>
+      p.memberCount > 0 ? (
+        <span className="inline-flex items-center gap-1" style={{ color: BRAND.textSecondary }}>
+          <Users size={11} style={{ color: BRAND.textMuted }} />
+          {p.memberCount}
+        </span>
+      ) : (
+        <span style={{ color: BRAND.textMuted }}>—</span>
+      ),
+  },
+  {
+    key: 'startDate',
+    label: 'Start Date',
+    sortCol: 'startDate',
+    defaultWidth: 116,
+    minWidth: 90,
+    cellClassName: 'flex items-center text-[11px]',
+    cell: (p) =>
+      p.startDate ? (
+        <span style={{ color: BRAND.textSecondary }}>{fmtDate(p.startDate)}</span>
+      ) : (
+        <span style={{ color: BRAND.textMuted }}>—</span>
+      ),
+  },
+  {
+    key: 'updated',
+    label: 'Updated',
+    sortCol: 'updated',
+    defaultWidth: 128,
+    minWidth: 100,
+    cellClassName: 'flex items-center text-[11px]',
+    cell: (p) => <span style={{ color: BRAND.textSecondary }}>{fmtDate(p.updatedAt)}</span>,
+  },
+  {
+    key: 'actions',
+    label: '',
+    defaultWidth: 52,
+    minWidth: 52,
+    locked: true,
+    cellClassName: 'flex items-center justify-end',
+    cell: (p, ctx) => <ProjectActionsCell project={p} ctx={ctx} />,
+  },
+]
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
@@ -615,9 +790,30 @@ export function ProjectsPage() {
   const [filter, setFilter] = useState<'All' | 'active' | 'archived'>('active')
   const [pageSize, setPageSize] = useState(25)
   const [currentPage, setCurrentPage] = useState(1)
+  const [sortCol, setSortCol] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const [showNewModal, setShowNewModal] = useState(false)
+
+  const handleSort = useCallback(
+    (col: string) => {
+      if (sortCol === col) {
+        setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+      } else {
+        setSortCol(col)
+        setSortDir('asc')
+      }
+    },
+    [sortCol],
+  )
+
+  // Shared table engine: header + resize / reorder / show-hide + click-to-sort,
+  // persisted per-user. Rows stay page-owned (row-click, actions menu).
+  const table = useDataTable<Project, ProjectCtx, ProjectColKey>(PROJECT_COLUMNS, {
+    storageKey: STORAGE_KEYS.PROJECTS_COLUMNS,
+    sort: { col: sortCol, dir: sortDir, onSort: handleSort },
+  })
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -633,16 +829,51 @@ export function ProjectsPage() {
   const [editingProject, setEditingProject] = useState<Project | null>(null)
   const [archivingProject, setArchivingProject] = useState<Project | null>(null)
 
-  const filtered = projects.filter(
-    (p) =>
-      (filter === 'All' || p.status === filter) &&
-      (p.name.toLowerCase().includes(search.toLowerCase()) ||
-        p.key.toLowerCase().includes(search.toLowerCase())),
+  const filtered = useMemo(
+    () =>
+      projects.filter(
+        (p) =>
+          (filter === 'All' || p.status === filter) &&
+          (p.name.toLowerCase().includes(search.toLowerCase()) ||
+            p.key.toLowerCase().includes(search.toLowerCase())),
+      ),
+    [projects, filter, search],
   )
 
-  // Client-side pagination over the filtered set. Reset to page 1 (during
-  // render, not in an effect) whenever the filtered shape changes so the visible
-  // range never lands past the last page.
+  // Client-side sort over the filtered set (the projects list is fully loaded).
+  const sorted = useMemo(() => {
+    if (!sortCol) return filtered
+    const dir = sortDir === 'asc' ? 1 : -1
+    const keyOf = (p: Project): string | number => {
+      switch (sortCol) {
+        case 'key':
+          return p.key.toLowerCase()
+        case 'name':
+          return p.name.toLowerCase()
+        case 'status':
+          return p.status
+        case 'members':
+          return p.memberCount
+        case 'startDate':
+          return p.startDate ?? ''
+        case 'updated':
+          return p.updatedAt
+        default:
+          return ''
+      }
+    }
+    return [...filtered].sort((a, b) => {
+      const av = keyOf(a)
+      const bv = keyOf(b)
+      if (av < bv) return -1 * dir
+      if (av > bv) return 1 * dir
+      return 0
+    })
+  }, [filtered, sortCol, sortDir])
+
+  // Client-side pagination over the sorted set. Reset to page 1 (during render,
+  // not in an effect) whenever the filtered shape changes so the visible range
+  // never lands past the last page.
   const resetKey = `${search}|${filter}|${pageSize}`
   const [prevResetKey, setPrevResetKey] = useState(resetKey)
   if (prevResetKey !== resetKey) {
@@ -652,7 +883,7 @@ export function ProjectsPage() {
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize))
   const safePage = Math.min(currentPage, pageCount)
-  const paged = filtered.slice((safePage - 1) * pageSize, safePage * pageSize)
+  const paged = sorted.slice((safePage - 1) * pageSize, safePage * pageSize)
 
   async function toggleArchive(project: Project) {
     if (project.status === 'active') {
@@ -691,6 +922,15 @@ export function ProjectsPage() {
     active: activeCount,
     archived: projects.filter((p) => p.status === 'archived').length,
     linkedTeams: projects.reduce((sum, p) => sum + (p.teamCount ?? 0), 0),
+  }
+
+  const cellCtx: ProjectCtx = {
+    currentUserId: currentUser?.id,
+    currentUserName: currentUser?.displayName,
+    openMenu,
+    setOpenMenu,
+    onEdit: setEditingProject,
+    onToggleArchive: (p) => void toggleArchive(p),
   }
   return (
     <div className="flex flex-1 flex-col" style={{ backgroundColor: BRAND.pageBg }}>
@@ -777,6 +1017,11 @@ export function ProjectsPage() {
             </button>
           ))}
         </div>
+
+        {/* Column show/hide + reorder (shared engine) */}
+        <div className="ml-auto">
+          <ColumnFieldsMenu {...table.fieldsMenuProps} />
+        </div>
       </div>
 
       {/* Table */}
@@ -785,202 +1030,53 @@ export function ProjectsPage() {
           className="overflow-hidden rounded bg-white"
           style={{ border: `1px solid ${BRAND.borderSubtle}` }}
         >
-          {/* Table header */}
-          <div
-            className="flex h-7 items-center gap-3 px-4 select-none"
-            style={{
-              backgroundColor: BRAND.surfaceHover,
-              borderBottom: `1px solid ${BRAND.borderSubtle}`,
-            }}
-          >
-            {(
-              [
-                ['w-16 shrink-0', 'Key'],
-                ['flex-1 min-w-0', 'Project'],
-                ['w-20 shrink-0', 'Status'],
-                ['w-28 shrink-0', 'Owner'],
-                ['w-44 shrink-0', 'Teams'],
-                ['w-16 shrink-0', 'Members'],
-                ['w-24 shrink-0', 'Start Date'],
-                ['w-28 shrink-0', 'Updated'],
-                ['w-8 shrink-0', ''],
-              ] as [string, string][]
-            ).map(([cls, label]) => (
-              <div
-                key={label}
-                className={`${cls} text-[9px] font-semibold tracking-widest uppercase`}
-                style={{ color: BRAND.textMuted }}
-              >
-                {label}
-              </div>
-            ))}
-          </div>
+          {/* Horizontal-scroll region: shared header + page-owned rows */}
+          <div className="overflow-x-auto">
+            <div style={{ width: table.tableWidth, minWidth: '100%' }}>
+              {/* Table header (shared engine: resize / reorder / sort) */}
+              <DataTableHeader {...table.headerProps} className="gap-2 px-3" />
 
-          {/* Loading state */}
-          {isLoading && (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 size={22} className="animate-spin" style={{ color: BRAND.textMuted }} />
-            </div>
-          )}
-
-          {/* Empty state */}
-          {!isLoading && filtered.length === 0 && (
-            <EmptyState
-              icon={
-                <FolderKanban
-                  size={32}
-                  strokeWidth={1.25}
-                  className="text-foreground-subtle opacity-40"
-                />
-              }
-              title="No projects found"
-              description="Try adjusting your search or filter."
-            />
-          )}
-
-          {/* Rows */}
-          <div ref={menuRef}>
-            {!isLoading &&
-              paged.map((project) => (
-                <div
-                  key={project.id}
-                  onClick={() => setEditingProject(project)}
-                  className="relative flex h-12 cursor-pointer items-center gap-3 px-4 transition-colors hover:bg-surface-hover"
-                  style={{
-                    borderBottom: `1px solid ${BRAND.borderInner}`,
-                    opacity: project.status === 'archived' ? 0.7 : 1,
-                  }}
-                >
-                  {/* Key */}
-                  <div className="w-16 shrink-0">
-                    <span
-                      className="inline-flex h-5 items-center rounded-sm px-1.5 font-mono text-[10px] font-semibold"
-                      style={{ backgroundColor: BRAND.avatarBg, color: BRAND.primary }}
-                    >
-                      {project.key}
-                    </span>
-                  </div>
-
-                  {/* Name + desc */}
-                  <div className="min-w-0 flex-1">
-                    <div
-                      className="truncate text-[12px] font-semibold"
-                      style={{ color: BRAND.textPrimary }}
-                    >
-                      {project.name}
-                    </div>
-                    {project.description && (
-                      <div className="truncate text-[10px]" style={{ color: BRAND.textMuted }}>
-                        {project.description}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Status */}
-                  <div className="w-20 shrink-0">
-                    <ProjectStatusBadge status={project.status} />
-                  </div>
-
-                  {/* Owner */}
-                  <div className="w-28 shrink-0">
-                    <OwnerCell
-                      name={
-                        project.leadId
-                          ? (project.leadName ??
-                            (project.leadId === currentUser?.id ? currentUser.displayName : null))
-                          : null
-                      }
-                    />
-                  </div>
-
-                  {/* Teams */}
-                  <div className="w-44 shrink-0">
-                    <ProjectTeamsCell projectId={project.id} teamCount={project.teamCount} />
-                  </div>
-
-                  {/* Members */}
-                  <div className="w-16 shrink-0 text-[11px]" style={{ color: BRAND.textSecondary }}>
-                    {project.memberCount > 0 ? (
-                      <span className="inline-flex items-center gap-1">
-                        <Users size={11} style={{ color: BRAND.textMuted }} />
-                        {project.memberCount}
-                      </span>
-                    ) : (
-                      <span style={{ color: BRAND.textMuted }}>—</span>
-                    )}
-                  </div>
-
-                  {/* Start Date */}
-                  <div className="w-24 shrink-0 text-[11px]" style={{ color: BRAND.textSecondary }}>
-                    {project.startDate ? (
-                      new Date(project.startDate).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
-                      })
-                    ) : (
-                      <span style={{ color: BRAND.textMuted }}>—</span>
-                    )}
-                  </div>
-
-                  {/* Updated */}
-                  <div className="w-28 shrink-0 text-[11px]" style={{ color: BRAND.textSecondary }}>
-                    {new Date(project.updatedAt).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                    })}
-                  </div>
-
-                  {/* Row actions */}
-                  <div className="relative w-8 shrink-0" onClick={(e) => e.stopPropagation()}>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setOpenMenu(openMenu === project.id ? null : project.id)
-                      }}
-                      className="flex h-6 w-6 items-center justify-center rounded hover:bg-avatar"
-                      style={{ color: BRAND.textMuted }}
-                      aria-label="Project actions"
-                    >
-                      <MoreHorizontal size={14} />
-                    </button>
-
-                    {openMenu === project.id && (
-                      <div
-                        className="absolute top-7 right-0 z-20 w-44 overflow-hidden rounded bg-white py-1 shadow-lg"
-                        style={{ border: `1px solid ${BRAND.border}` }}
-                      >
-                        <button
-                          className="flex w-full items-center gap-2 px-3 py-2 text-[11px] hover:bg-surface-subtle"
-                          style={{ color: BRAND.textPrimary }}
-                          onClick={() => {
-                            setEditingProject(project)
-                            setOpenMenu(null)
-                          }}
-                        >
-                          <Edit3 size={12} style={{ color: BRAND.textSecondary }} />
-                          Edit project
-                        </button>
-                        <button
-                          className="flex w-full items-center gap-2 px-3 py-2 text-[11px] hover:bg-surface-subtle"
-                          style={{
-                            color: project.status === 'active' ? BRAND.danger : BRAND.textPrimary,
-                          }}
-                          onClick={() => void toggleArchive(project)}
-                        >
-                          {project.status === 'active' ? (
-                            <Archive size={12} style={{ color: BRAND.danger }} />
-                          ) : (
-                            <RotateCcw size={12} style={{ color: BRAND.textSecondary }} />
-                          )}
-                          {project.status === 'active' ? 'Archive project' : 'Restore project'}
-                        </button>
-                      </div>
-                    )}
-                  </div>
+              {/* Loading state */}
+              {isLoading && (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 size={22} className="animate-spin" style={{ color: BRAND.textMuted }} />
                 </div>
-              ))}
+              )}
+
+              {/* Empty state */}
+              {!isLoading && filtered.length === 0 && (
+                <EmptyState
+                  icon={
+                    <FolderKanban
+                      size={32}
+                      strokeWidth={1.25}
+                      className="text-foreground-subtle opacity-40"
+                    />
+                  }
+                  title="No projects found"
+                  description="Try adjusting your search or filter."
+                />
+              )}
+
+              {/* Rows */}
+              <div ref={menuRef}>
+                {!isLoading &&
+                  paged.map((project) => (
+                    <div
+                      key={project.id}
+                      onClick={() => setEditingProject(project)}
+                      className="flex min-h-12 cursor-pointer items-center gap-2 px-3 transition-colors hover:bg-surface-hover"
+                      style={{
+                        borderBottom: `1px solid ${BRAND.borderInner}`,
+                        opacity: project.status === 'archived' ? 0.7 : 1,
+                        minWidth: 'max-content',
+                      }}
+                    >
+                      {table.renderCells(project, cellCtx)}
+                    </div>
+                  ))}
+              </div>
+            </div>
           </div>
 
           {/* Pagination footer */}

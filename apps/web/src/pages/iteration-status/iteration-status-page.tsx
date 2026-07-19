@@ -133,7 +133,7 @@ type ColKey =
   | 'devOwner'
 
 const ITERATION_STATUS_COLUMNS: ColumnDef<ColKey>[] = [
-  { key: 'rank', label: 'Rank', defaultWidth: 45 },
+  { key: 'rank', label: 'Rank', defaultWidth: 60, minWidth: 56 },
   { key: 'id', label: 'ID', defaultWidth: 132, minWidth: 120 },
   { key: 'name', label: 'Name', defaultWidth: 240, minWidth: 150 },
   { key: 'feature', label: 'Feature', defaultWidth: 200, minWidth: 120 },

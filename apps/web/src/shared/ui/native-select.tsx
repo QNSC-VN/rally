@@ -69,10 +69,12 @@ InlineSelect.displayName = 'InlineSelect'
 export interface InlineCellSelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   displayValue: string
   muted?: boolean
+  /** Optional leading node (e.g. an owner initials chip) rendered before the value. */
+  leading?: React.ReactNode
 }
 
 export const InlineCellSelect = forwardRef<HTMLSelectElement, InlineCellSelectProps>(
-  ({ className, children, displayValue, muted, ...props }, ref) => {
+  ({ className, children, displayValue, muted, leading, ...props }, ref) => {
     return (
       <div
         className={cn(
@@ -82,7 +84,8 @@ export const InlineCellSelect = forwardRef<HTMLSelectElement, InlineCellSelectPr
           className,
         )}
       >
-        <span className="pointer-events-none flex min-w-0 flex-1 items-center gap-0.5 px-1 py-0.5">
+        <span className="pointer-events-none flex min-w-0 flex-1 items-center gap-1 px-1 py-0.5">
+          {leading}
           <span
             className="min-w-0 flex-1 truncate text-[11px]"
             style={{ color: muted ? BRAND.textDisabled : 'inherit' }}

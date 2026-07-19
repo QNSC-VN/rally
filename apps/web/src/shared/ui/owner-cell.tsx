@@ -15,12 +15,29 @@ interface OwnerCellProps {
  *
  * (Distinct from the larger dark `Avatar` used in headers/menus.)
  */
-export function OwnerCell({ name, className }: OwnerCellProps) {
-  if (!name) {
+/** Initials chip shared by the read-only {@link OwnerCell} and the editable owner select. */
+export function OwnerAvatar({
+  name,
+  avatarUrl,
+  size = 20,
+  className,
+}: {
+  name: string
+  /** Optional profile image; falls back to initials when absent or it fails to load. */
+  avatarUrl?: string | null
+  /** Diameter in px (font scales with it). */
+  size?: number
+  className?: string
+}) {
+  if (avatarUrl) {
     return (
-      <span className="text-[10px]" style={{ color: BRAND.textDisabled }}>
-        —
-      </span>
+      <img
+        src={avatarUrl}
+        alt={name}
+        loading="lazy"
+        className={cn('shrink-0 rounded-full object-cover', className)}
+        style={{ width: size, height: size }}
+      />
     )
   }
 
@@ -31,13 +48,36 @@ export function OwnerCell({ name, className }: OwnerCellProps) {
     .join('')
 
   return (
-    <div className={cn('flex items-center gap-1 overflow-hidden', className)}>
-      <span
-        className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[8px] font-bold"
-        style={{ backgroundColor: BRAND.avatarBg, color: BRAND.avatarText }}
-      >
-        {initials}
+    <span
+      className={cn(
+        'inline-flex shrink-0 items-center justify-center rounded-full font-bold',
+        className,
+      )}
+      style={{
+        width: size,
+        height: size,
+        fontSize: Math.round(size * 0.4),
+        backgroundColor: BRAND.avatarBg,
+        color: BRAND.avatarText,
+      }}
+    >
+      {initials}
+    </span>
+  )
+}
+
+export function OwnerCell({ name, className }: OwnerCellProps) {
+  if (!name) {
+    return (
+      <span className="text-[10px]" style={{ color: BRAND.textDisabled }}>
+        —
       </span>
+    )
+  }
+
+  return (
+    <div className={cn('flex items-center gap-1 overflow-hidden', className)}>
+      <OwnerAvatar name={name} />
       <span className="truncate text-[10px]" style={{ color: BRAND.textSecondary }}>
         {name}
       </span>
@@ -84,6 +124,7 @@ export function OwnerSelectCell({
       value={assigneeId ?? ''}
       displayValue={ownerName ?? 'Unassigned'}
       muted={!assigneeId}
+      leading={ownerName ? <OwnerAvatar name={ownerName} /> : undefined}
       onChange={(e) => onChange(e.target.value || null)}
       aria-label={ariaLabel}
     >
