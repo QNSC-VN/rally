@@ -1,6 +1,12 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { Auth, ApiCommonErrors, ApiPagedResponse, CurrentUser } from '@platform';
+import {
+  Auth,
+  ApiCommonErrors,
+  ApiPagedResponse,
+  CurrentUser,
+  RequirePermission,
+} from '@platform';
 import type { JwtPayload, PagedResult } from '@platform';
 import { AuditService } from '../../application/audit.service';
 import { AuditQueryDto } from './dto/audit-request.dto';
@@ -30,9 +36,10 @@ export class AuditController {
   constructor(private readonly auditService: AuditService) {}
 
   @Get()
+  @RequirePermission('workspace:*')
   @ApiOperation({ summary: 'Query audit logs for the workspace' })
   @ApiPagedResponse(AuditLogResponseDto)
-  @ApiCommonErrors(401, 422)
+  @ApiCommonErrors(401, 403, 422)
   async list(
     @CurrentUser() user: JwtPayload,
     @Query() query: AuditQueryDto,

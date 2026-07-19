@@ -93,6 +93,10 @@ describe('BA flows: Phase 4.1 notifications (real AppModule + seeded DB)', () =>
       expect(rows[0]?.recipientId).toBe(DEVELOPER_ID);
       expect(rows[0]?.actorId).toBe(admin.sub);
       expect(rows[0]?.workspaceId).toBe(WORKSPACE_ID);
+      // Deep-link contract: the producer threads the owning project id + item key
+      // into vars so the relay can stamp metadata the client uses to open the item
+      // in its OWN project context (notifications are workspace-wide).
+      expect(rows[0]?.vars).toMatchObject({ itemKey: story.itemKey, projectId: project.id });
     });
 
     it('does NOT notify the actor when they assign the item to themselves', async () => {
@@ -159,6 +163,28 @@ describe('BA flows: Phase 4.1 notifications (real AppModule + seeded DB)', () =>
       // Mark all as read → count zero.
       await notifications.markAllRead(reader);
       expect(await notifications.getUnreadCount(reader)).toBe(0);
+    });
+
+    it('round-trips deep-link metadata through the read model', async () => {
+      const recipient = freshRecipient();
+      const reader = { ...admin, sub: recipient };
+      const metadata = { itemKey: 'NXP-42', projectId: randomUUID() };
+
+      const sent = await notifications.send({
+        workspaceId: WORKSPACE_ID,
+        recipientId: recipient,
+        actorId: admin.sub,
+        type: 'WORK_ITEM_ASSIGNED',
+        title: 'You were assigned NXP-42',
+        resourceType: 'work_item',
+        metadata,
+      });
+      expect(sent).not.toBeNull();
+      expect(sent!.metadata).toMatchObject(metadata);
+
+      // The list read model exposes it too — this is what the client deep-links on.
+      const [listed] = await notifications.listNotifications(reader, { unreadOnly: false });
+      expect(listed?.metadata).toMatchObject(metadata);
     });
   });
 

@@ -318,7 +318,28 @@ export class MilestonesService {
       milestone.projectId,
       PERMISSION.MILESTONE_EDIT,
     );
-    await this.milestoneRepo.setArtifactLinks(milestoneId, workItemIds);
+    const uniqueIds = [...new Set(workItemIds)];
+    if (uniqueIds.length > 0) {
+      const rows = await this.db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(workItems)
+        .where(
+          and(
+            inArray(workItems.id, uniqueIds),
+            eq(workItems.projectId, milestone.projectId),
+            eq(workItems.workspaceId, actor.workspaceId),
+            isNull(workItems.deletedAt),
+          ),
+        );
+      const inProject = Number(rows[0]?.count ?? 0);
+      if (inProject !== uniqueIds.length) {
+        throw new PreconditionFailedException(
+          'MILESTONE_PROJECT_MISMATCH',
+          'One or more work items do not belong to this milestone\u2019s project',
+        );
+      }
+    }
+    await this.milestoneRepo.setArtifactLinks(milestoneId, uniqueIds);
     return this.milestoneRepo.getArtifactIds(milestoneId);
   }
 

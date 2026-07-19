@@ -8,6 +8,8 @@ export const NotificationResponseSchema = z.object({
   body: z.string().nullable(),
   resourceType: z.string().nullable(),
   resourceId: z.string().nullable(),
+  /** Structured deep-link payload (e.g. { itemKey, projectId }) for client routing. */
+  metadata: z.record(z.string(), z.unknown()),
   isRead: z.boolean(),
   readAt: z.string().datetime().nullable(),
   actorId: z.string().uuid().nullable(),

@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
 import { AlertTriangle, Bell, CheckCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import { BRAND } from '@/shared/config/brand'
@@ -10,6 +9,7 @@ import {
   useMarkNotificationRead,
   useMarkAllNotificationsRead,
 } from '@/features/notifications/api'
+import { useOpenNotification } from '@/features/notifications/use-open-notification'
 import { NotificationItem } from '@/features/notifications/ui/notification-item'
 
 const TABS = [
@@ -32,42 +32,13 @@ const TAB_FILTER: Record<
 }
 
 export function NotificationsPage() {
-  const navigate = useNavigate()
   const [tab, setTab] = useState<NotificationTab>('all')
   const { data: notifications = [], isLoading, isError } = useNotifications(TAB_FILTER[tab])
   const markRead = useMarkNotificationRead()
   const markAll = useMarkAllNotificationsRead()
+  const openNotification = useOpenNotification()
 
   const unreadCount = notifications.filter((n) => !n.isRead).length
-
-  function handleNotificationClick(n: {
-    resourceType: string | null
-    resourceId: string | null
-    id: string
-    isRead: boolean
-  }) {
-    // Mark as read then navigate
-    if (!n.isRead) {
-      void markRead.mutateAsync(n.id)
-    }
-    if (n.resourceType && n.resourceId) {
-      const routeMap: Record<string, string> = {
-        work_item: '/item/$itemKey',
-        task: '/item/$itemKey',
-        iteration: '/timeboxes',
-        release: '/releases/$releaseId',
-        milestone: '/milestones/$milestoneId',
-        project: '/projects',
-      }
-      const route = routeMap[n.resourceType]
-      if (route) {
-        void navigate({
-          to: route,
-          params: { itemKey: n.resourceId, releaseId: n.resourceId, milestoneId: n.resourceId },
-        })
-      }
-    }
-  }
 
   async function handleMarkAll() {
     try {
@@ -175,7 +146,7 @@ export function NotificationsPage() {
                 notification={n}
                 onMarkRead={(id) => void markRead.mutateAsync(id)}
                 isMarkingRead={markRead.isPending}
-                onActivate={() => handleNotificationClick(n)}
+                onActivate={() => openNotification(n)}
               />
             ))}
           </ul>

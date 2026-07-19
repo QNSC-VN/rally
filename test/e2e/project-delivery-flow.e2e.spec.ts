@@ -190,6 +190,54 @@ describe('BA flows: project foundation → work items → iteration (real AppMod
       expect(backlog.data.some((w) => w.id === task.id)).toBe(false);
       expect(backlog.data.some((w) => w.id === story.id)).toBe(true);
     });
+
+    // TASK-FR-012: reassign a task's Work Product within the same project.
+    it('reassigns a task to another work product in the same project', async () => {
+      const project = await projects.createProject(actor, {
+        key: uniqueKey(),
+        name: 'Task Reassign Project',
+      });
+      const storyA = await workItems.createWorkItem(actor, project.id, 'story', 'Story A');
+      const storyB = await workItems.createWorkItem(actor, project.id, 'story', 'Story B');
+      const task = await workItems.createTask(actor, storyA.id, 'Movable task');
+      expect(task.parentId).toBe(storyA.id);
+
+      const moved = await workItems.updateWorkItem(actor, task.id, { parentId: storyB.id });
+      expect(moved.parentId).toBe(storyB.id);
+
+      // The move is durable and the task follows its new Work Product's roll-up.
+      const refetched = await workItems.getWorkItem(actor.workspaceId, task.id);
+      expect(refetched.parentId).toBe(storyB.id);
+      expect((await workItems.getTaskTotals(actor, storyA.id)).taskCount).toBe(0);
+      expect((await workItems.getTaskTotals(actor, storyB.id)).taskCount).toBe(1);
+    });
+
+    it('rejects reassigning a task to a work product in a different project', async () => {
+      const projectA = await projects.createProject(actor, {
+        key: uniqueKey(),
+        name: 'Reassign Scope A',
+      });
+      const projectB = await projects.createProject(actor, {
+        key: uniqueKey(),
+        name: 'Reassign Scope B',
+      });
+      const storyA = await workItems.createWorkItem(actor, projectA.id, 'story', 'In-scope story');
+      const foreignStory = await workItems.createWorkItem(
+        actor,
+        projectB.id,
+        'story',
+        'Out-of-scope story',
+      );
+      const task = await workItems.createTask(actor, storyA.id, 'Scoped task');
+
+      await expect(
+        workItems.updateWorkItem(actor, task.id, { parentId: foreignStory.id }),
+      ).rejects.toMatchObject({ code: 'WORK_ITEM_PARENT_SCOPE_MISMATCH' });
+
+      // No partial move — the task keeps its original Work Product.
+      const refetched = await workItems.getWorkItem(actor.workspaceId, task.id);
+      expect(refetched.parentId).toBe(storyA.id);
+    });
   });
 
   // ── E2E-006: A backlog item enters an Iteration → appears in Iteration Status

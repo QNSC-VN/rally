@@ -529,6 +529,32 @@ export class WorkItemsService {
       await this.projectsService.assertWorkspaceMember(project.workspaceId, input.assigneeId);
     }
 
+    // TASK-FR-012: a task's Work Product (parent) can be reassigned, but the new
+    // parent must be a valid work product (US/DE, never a task) in the SAME
+    // project — the same scope rules enforced at task creation. A task always
+    // belongs to a Work Product, so clearing the parent is rejected.
+    if (item.type === 'task' && input.parentId !== undefined && input.parentId !== item.parentId) {
+      if (input.parentId === null) {
+        throw new PreconditionFailedException(
+          'WORK_ITEM_INVALID_PARENT_TYPE',
+          'A task must belong to a work product',
+        );
+      }
+      const newParent = await this.getWorkItem(actor.workspaceId, input.parentId);
+      if (newParent.projectId !== item.projectId) {
+        throw new PreconditionFailedException(
+          'WORK_ITEM_PARENT_SCOPE_MISMATCH',
+          'Work product does not belong to the same project',
+        );
+      }
+      if (newParent.type === 'task') {
+        throw new PreconditionFailedException(
+          'WORK_ITEM_INVALID_PARENT_TYPE',
+          'A task cannot be moved under another task',
+        );
+      }
+    }
+
     // Validate status transition if statusId is changing
     if (input.statusId && input.statusId !== item.statusId) {
       await this.projectsService.assertTransitionAllowed(
@@ -695,7 +721,7 @@ export class WorkItemsService {
           updated,
           actor.sub,
           [updated.assigneeId],
-          { itemKey: updated.itemKey, itemTitle: updated.title },
+          { itemKey: updated.itemKey, itemTitle: updated.title, projectId: updated.projectId },
           updated.assigneeId,
         );
       }
@@ -714,6 +740,7 @@ export class WorkItemsService {
             itemKey: updated.itemKey,
             itemTitle: updated.title,
             newState: updated.scheduleState,
+            projectId: updated.projectId,
           },
           updated.scheduleState,
         );
@@ -804,7 +831,7 @@ export class WorkItemsService {
     // Commenter auto-watches the item so they receive follow-up activity.
     await this.watcherRepo.watch(workItemId, actor.sub, actor.workspaceId).catch(() => undefined);
 
-    const vars = { itemKey: item.itemKey, itemTitle: item.title };
+    const vars = { itemKey: item.itemKey, itemTitle: item.title, projectId: item.projectId };
     const mentioned = mentionedUserIds.filter((id) => id && id !== actor.sub);
 
     // Mentions take precedence — a mentioned watcher gets the mention, not the

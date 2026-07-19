@@ -162,6 +162,9 @@ export class NotificationRelayService
       body: rendered.body,
       resourceType: rendered.resourceType,
       resourceId: row.resourceId ?? undefined,
+      // Structured deep-link payload (e.g. { itemKey, projectId }) so the client
+      // can open the resource in its own context, not the active one.
+      metadata: rendered.metadata,
       // Stable deduplication key: same UUID on every retry for this outbox row.
       // ON CONFLICT DO NOTHING on source_event_id makes retries safe no-ops.
       sourceEventId: row.idempotencyKey ?? row.id,

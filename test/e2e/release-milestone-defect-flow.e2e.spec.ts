@@ -139,6 +139,37 @@ describe('BA flows: releases + milestones + defect lifecycle (real AppModule + s
         workItems.setWorkItemMilestones(actor, story.id, [milestoneB.id]),
       ).rejects.toMatchObject({ code: 'MILESTONE_PROJECT_MISMATCH' });
     });
+
+    it('rejects an out-of-scope work item on the milestone-side artifact write', async () => {
+      // Symmetric guard: PUT /milestones/:id/artifacts must also reject items
+      // that do not belong to the milestone's project (FR-023 / AC12).
+      const projectA = await projects.createProject(actor, {
+        key: uniqueKey(),
+        name: 'MS Side A',
+      });
+      const projectB = await projects.createProject(actor, {
+        key: uniqueKey(),
+        name: 'MS Side B',
+      });
+      const milestoneA = await milestones.createMilestone(actor, projectA.id, 'Scoped MS');
+      const inScope = await workItems.createWorkItem(actor, projectA.id, 'story', 'In-scope story');
+      const outOfScope = await workItems.createWorkItem(
+        actor,
+        projectB.id,
+        'story',
+        'Foreign story',
+      );
+
+      // A foreign work item is rejected — no partial write.
+      await expect(
+        milestones.setMilestoneArtifacts(actor, milestoneA.id, [inScope.id, outOfScope.id]),
+      ).rejects.toMatchObject({ code: 'MILESTONE_PROJECT_MISMATCH' });
+      expect(await milestones.getMilestoneArtifacts(actor, milestoneA.id)).toHaveLength(0);
+
+      // An in-scope work item is accepted.
+      const linked = await milestones.setMilestoneArtifacts(actor, milestoneA.id, [inScope.id]);
+      expect(linked).toContain(inScope.id);
+    });
   });
 
   // ── E2E-015: quality defect lifecycle shares the backlog source ─────────────

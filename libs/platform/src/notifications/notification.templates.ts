@@ -24,6 +24,9 @@ export type NotificationTemplateName =
 interface WorkItemNotificationVars {
   itemKey: string;
   itemTitle: string;
+  /** Owning project id — threaded into the rendered `metadata` so the client can
+   * resolve the correct project context for a cross-project deep link. */
+  projectId: string;
 }
 
 export interface NotificationTemplateVars {
@@ -52,6 +55,10 @@ export interface RenderedNotification {
   body?: string;
   /** Maps to in_app_notifications.resource_type — constant per template. */
   resourceType?: string;
+  /** Structured deep-link payload persisted to in_app_notifications.metadata.
+   * For work-item templates this carries `{ itemKey, projectId }` so the client
+   * can open the item in its own project context (not the active one). */
+  metadata?: Record<string, unknown>;
 }
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
@@ -82,6 +89,7 @@ export function renderNotification<K extends NotificationTemplateName>(
         title: `You were assigned ${v.itemKey}`,
         body: v.itemTitle,
         resourceType: 'work_item',
+        metadata: { itemKey: v.itemKey, projectId: v.projectId },
       };
     }
     case 'WORK_ITEM_STATE_CHANGED': {
@@ -90,6 +98,7 @@ export function renderNotification<K extends NotificationTemplateName>(
         title: `${v.itemKey} moved to ${v.newState}`,
         body: v.itemTitle,
         resourceType: 'work_item',
+        metadata: { itemKey: v.itemKey, projectId: v.projectId },
       };
     }
     case 'WORK_ITEM_COMMENTED': {
@@ -98,6 +107,7 @@ export function renderNotification<K extends NotificationTemplateName>(
         title: `New comment on ${v.itemKey}`,
         body: v.itemTitle,
         resourceType: 'work_item',
+        metadata: { itemKey: v.itemKey, projectId: v.projectId },
       };
     }
     case 'WORK_ITEM_MENTIONED': {
@@ -106,6 +116,7 @@ export function renderNotification<K extends NotificationTemplateName>(
         title: `You were mentioned in ${v.itemKey}`,
         body: v.itemTitle,
         resourceType: 'work_item',
+        metadata: { itemKey: v.itemKey, projectId: v.projectId },
       };
     }
     default: {
