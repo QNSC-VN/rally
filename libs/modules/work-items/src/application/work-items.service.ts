@@ -581,14 +581,18 @@ export class WorkItemsService {
       await this.assertReleaseAssignable(actor.workspaceId, item.projectId, input.releaseId);
     }
 
-    // P3.4 — Validate defect state transitions
+    // P3.4 — Validate defect state transitions.
+    // SRS §6 (Quality/Defect) confirmed lifecycle:
+    //   Submitted → Open → Fixed → Closed, and Submitted/Open → Closed Declined.
+    // FR-017: reopen from Closed / Closed Declined is DEFERRED and must be
+    // rejected in Phase 3.4 until BA confirms permission + reason + audit rules.
     if (input.defectState !== undefined && input.defectState !== null && item.defectState) {
       const validTransitions: Record<DefectState, DefectState[]> = {
         submitted: ['open', 'closed_declined'],
-        open: ['fixed'],
+        open: ['fixed', 'closed_declined'],
         fixed: ['closed'],
-        closed: ['open'],
-        closed_declined: ['open'],
+        closed: [],
+        closed_declined: [],
       };
       const allowed = validTransitions[item.defectState as DefectState] ?? [];
       if (!allowed.includes(input.defectState as DefectState)) {

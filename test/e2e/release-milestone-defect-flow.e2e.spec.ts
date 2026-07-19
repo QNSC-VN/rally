@@ -279,15 +279,40 @@ describe('BA flows: releases + milestones + defect lifecycle (real AppModule + s
       const closed = await workItems.updateWorkItem(actor, defect.id, { defectState: 'closed' });
       expect(closed.defectState).toBe('closed');
 
-      // Invalid transition: closed → fixed (closed may only reopen to open).
+      // Invalid transition: closed → fixed (Closed is terminal in Phase 3.4).
       await expect(
         workItems.updateWorkItem(actor, defect.id, { defectState: 'fixed' }),
+      ).rejects.toMatchObject({ code: 'WORK_ITEM_INVALID_TRANSITION' });
+
+      // FR-017: reopen from Closed is DEFERRED — must be rejected in Phase 3.4.
+      await expect(
+        workItems.updateWorkItem(actor, defect.id, { defectState: 'open' }),
       ).rejects.toMatchObject({ code: 'WORK_ITEM_INVALID_TRANSITION' });
 
       // Defects cannot be deleted — they are resolved via state.
       await expect(workItems.deleteWorkItem(actor, defect.id)).rejects.toMatchObject({
         code: 'DEFECT_DELETE_FORBIDDEN',
       });
+    });
+
+    it('declines a defect after triage (Open → Closed Declined) and treats it as terminal', async () => {
+      const project = await projects.createProject(actor, {
+        key: uniqueKey(),
+        name: 'Defect Decline',
+      });
+      const defect = await workItems.createWorkItem(actor, project.id, 'defect', 'Declined defect');
+
+      // Submitted → Open → Closed Declined (declined after triage, SRS §6).
+      await workItems.updateWorkItem(actor, defect.id, { defectState: 'open' });
+      const declined = await workItems.updateWorkItem(actor, defect.id, {
+        defectState: 'closed_declined',
+      });
+      expect(declined.defectState).toBe('closed_declined');
+
+      // FR-017: reopen from Closed Declined is DEFERRED — must be rejected.
+      await expect(
+        workItems.updateWorkItem(actor, defect.id, { defectState: 'open' }),
+      ).rejects.toMatchObject({ code: 'WORK_ITEM_INVALID_TRANSITION' });
     });
   });
 });
