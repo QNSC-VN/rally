@@ -320,23 +320,40 @@ export class MilestonesService {
     );
     const uniqueIds = [...new Set(workItemIds)];
     if (uniqueIds.length > 0) {
+      // Milestone scope per SRS §5.2 / FR-021/023: an artifact must belong to
+      // one of the milestone's selected Projects and, when Team scope is
+      // selected, one of its selected Teams. The owning project is always part
+      // of the project scope alongside any additionally linked projects.
+      const projectScope = new Set<string>([milestone.projectId, ...(milestone.projectIds ?? [])]);
+      const teamScope = milestone.teamIds ?? [];
       const rows = await this.db
-        .select({ count: sql<number>`count(*)::int` })
+        .select({
+          id: workItems.id,
+          projectId: workItems.projectId,
+          teamId: workItems.teamId,
+        })
         .from(workItems)
         .where(
           and(
             inArray(workItems.id, uniqueIds),
-            eq(workItems.projectId, milestone.projectId),
             eq(workItems.workspaceId, actor.workspaceId),
             isNull(workItems.deletedAt),
           ),
         );
-      const inProject = Number(rows[0]?.count ?? 0);
-      if (inProject !== uniqueIds.length) {
+      if (rows.length !== uniqueIds.length || rows.some((r) => !projectScope.has(r.projectId))) {
         throw new PreconditionFailedException(
           'MILESTONE_PROJECT_MISMATCH',
-          'One or more work items do not belong to this milestone\u2019s project',
+          'One or more work items do not belong to this milestone\u2019s project scope',
         );
+      }
+      if (teamScope.length > 0) {
+        const teamSet = new Set(teamScope);
+        if (rows.some((r) => r.teamId === null || !teamSet.has(r.teamId))) {
+          throw new PreconditionFailedException(
+            'MILESTONE_TEAM_MISMATCH',
+            'One or more work items are outside this milestone\u2019s team scope',
+          );
+        }
       }
     }
     await this.milestoneRepo.setArtifactLinks(milestoneId, uniqueIds);

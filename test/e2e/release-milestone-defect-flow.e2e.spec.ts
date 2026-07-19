@@ -18,6 +18,7 @@ import { MilestonesService } from '@modules/milestones';
 import { ProjectsService } from '@modules/projects';
 import { ReleasesService } from '@modules/releases';
 import { WorkItemsService } from '@modules/work-items';
+import { TeamService } from '@modules/workspace';
 
 import { ALL, adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
 
@@ -28,6 +29,7 @@ describe('BA flows: releases + milestones + defect lifecycle (real AppModule + s
   let releases: ReleasesService;
   let milestones: MilestonesService;
   let iterations: IterationsService;
+  let teams: TeamService;
   const actor = adminActor();
 
   beforeAll(async () => {
@@ -37,6 +39,7 @@ describe('BA flows: releases + milestones + defect lifecycle (real AppModule + s
     releases = app.get(ReleasesService);
     milestones = app.get(MilestonesService);
     iterations = app.get(IterationsService);
+    teams = app.get(TeamService);
   });
 
   afterAll(async () => {
@@ -169,6 +172,61 @@ describe('BA flows: releases + milestones + defect lifecycle (real AppModule + s
       // An in-scope work item is accepted.
       const linked = await milestones.setMilestoneArtifacts(actor, milestoneA.id, [inScope.id]);
       expect(linked).toContain(inScope.id);
+    });
+
+    it('rejects a work item outside the milestone team scope (FR-021/023 / SRS §5.2)', async () => {
+      // When a milestone selects Team scope, an artifact must belong to one of
+      // its selected teams; items on any other team (or no team) are rejected.
+      const project = await projects.createProject(actor, {
+        key: uniqueKey(),
+        name: 'MS Team Scope',
+      });
+      const teamIn = await teams.createTeam(
+        actor.workspaceId,
+        'Team In Scope',
+        uniqueKey('T'),
+        undefined,
+        undefined,
+        actor.sub,
+      );
+      const teamOut = await teams.createTeam(
+        actor.workspaceId,
+        'Team Out Scope',
+        uniqueKey('T'),
+        undefined,
+        undefined,
+        actor.sub,
+      );
+      // Work items can only join teams linked to their project.
+      await projects.linkTeam(actor.workspaceId, project.id, teamIn.id);
+      await projects.linkTeam(actor.workspaceId, project.id, teamOut.id);
+
+      const milestone = await milestones.createMilestone(actor, project.id, 'Team-scoped MS');
+      await milestones.setMilestoneTeams(actor, milestone.id, [teamIn.id]);
+
+      // A work item on the wrong team is rejected — no partial write.
+      const foreignTeamItem = await workItems.createWorkItem(
+        actor,
+        project.id,
+        'story',
+        'Wrong-team story',
+        { teamId: teamOut.id },
+      );
+      await expect(
+        milestones.setMilestoneArtifacts(actor, milestone.id, [foreignTeamItem.id]),
+      ).rejects.toMatchObject({ code: 'MILESTONE_TEAM_MISMATCH' });
+      expect(await milestones.getMilestoneArtifacts(actor, milestone.id)).toHaveLength(0);
+
+      // A work item on an in-scope team is accepted.
+      const inTeamItem = await workItems.createWorkItem(
+        actor,
+        project.id,
+        'story',
+        'Right-team story',
+        { teamId: teamIn.id },
+      );
+      const linked = await milestones.setMilestoneArtifacts(actor, milestone.id, [inTeamItem.id]);
+      expect(linked).toContain(inTeamItem.id);
     });
   });
 
