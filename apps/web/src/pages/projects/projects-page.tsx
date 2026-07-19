@@ -9,7 +9,6 @@ import {
   MoreHorizontal,
   Plus,
   RotateCcw,
-  User,
   Users,
   UsersRound,
 } from 'lucide-react'
@@ -22,6 +21,8 @@ import { MetricStrip } from '@/shared/ui/metric-strip'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
 import { PaginationFooter } from '@/shared/ui/pagination-footer'
+import { OwnerCell } from '@/shared/ui/owner-cell'
+import { Tooltip } from '@/shared/ui/tooltip'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
@@ -557,7 +558,7 @@ function ProjectTeamsCell({ projectId, teamCount }: { projectId: string; teamCou
   const shown = teams.slice(0, 2)
   const overflow = teamCount - shown.length
 
-  return (
+  const chips = (
     <div className="flex items-center gap-1">
       {shown.length > 0 ? (
         shown.map((t) => (
@@ -579,6 +580,24 @@ function ProjectTeamsCell({ projectId, teamCount }: { projectId: string; teamCou
         </span>
       )}
     </div>
+  )
+
+  // Once the names load, reveal the full list on hover so every linked team is
+  // discoverable without breaking the fixed-height row.
+  if (teams.length === 0) return chips
+
+  return (
+    <Tooltip
+      content={
+        <div className="flex flex-col gap-0.5">
+          {teams.map((t) => (
+            <span key={t.id}>{t.name}</span>
+          ))}
+        </div>
+      }
+    >
+      {chips}
+    </Tooltip>
   )
 }
 
@@ -863,21 +882,15 @@ export function ProjectsPage() {
                   </div>
 
                   {/* Owner */}
-                  <div
-                    className="flex w-28 shrink-0 items-center gap-1.5 text-[11px]"
-                    style={{ color: BRAND.textSecondary }}
-                  >
-                    {project.leadId ? (
-                      <>
-                        <User size={11} style={{ color: BRAND.textMuted }} />
-                        <span className="truncate">
-                          {project.leadName ??
-                            (project.leadId === currentUser?.id ? currentUser.displayName : '—')}
-                        </span>
-                      </>
-                    ) : (
-                      <span style={{ color: BRAND.textMuted }}>—</span>
-                    )}
+                  <div className="w-28 shrink-0">
+                    <OwnerCell
+                      name={
+                        project.leadId
+                          ? (project.leadName ??
+                            (project.leadId === currentUser?.id ? currentUser.displayName : null))
+                          : null
+                      }
+                    />
                   </div>
 
                   {/* Teams */}
