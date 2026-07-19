@@ -27,6 +27,8 @@ import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { useProjects, useUpdateProject, useCreateProject } from '@/features/projects/api'
 import type { Project } from '@/features/projects/api'
+import { useWorkspaceMembers } from '@/features/workspaces/api'
+import { useWorkspaceTeams } from '@/features/teams/api'
 
 /** Extract a human-readable message from an API error response. */
 function parseApiError(err: unknown): string {
@@ -150,6 +152,82 @@ function ProjectStatusBadge({ status }: { status: 'active' | 'archived' }) {
   )
 }
 
+// ── Owner (project lead) picker ──────────────────────────────────────────────
+// Shared by the New Project and Edit Project modals. Backed by the single-source
+// workspace-member roster (useWorkspaceMembers) so the owner list never drifts.
+
+function OwnerSelect({
+  workspaceId,
+  value,
+  onChange,
+  currentUserId,
+}: {
+  workspaceId: string
+  value: string
+  onChange: (userId: string) => void
+  currentUserId?: string
+}) {
+  const { data: members = [], isLoading } = useWorkspaceMembers(workspaceId)
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      disabled={isLoading || members.length === 0}
+      className="w-full rounded border border-input bg-input-background px-3 py-2 text-[12px] outline-none focus:ring-2"
+      style={{ color: BRAND.textPrimary }}
+    >
+      {members.length === 0 && <option value="">{isLoading ? 'Loading…' : '—'}</option>}
+      {members.map((m) => (
+        <option key={m.userId} value={m.userId}>
+          {(m.displayName || m.email || m.userId) + (m.userId === currentUserId ? ' (you)' : '')}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+// Reusable teams multi-select — links teams to a project on creation.
+function TeamMultiSelect({
+  workspaceId,
+  value,
+  onChange,
+}: {
+  workspaceId: string
+  value: string[]
+  onChange: (teamIds: string[]) => void
+}) {
+  const { data: teams = [], isLoading } = useWorkspaceTeams(workspaceId)
+  function toggle(id: string) {
+    onChange(value.includes(id) ? value.filter((t) => t !== id) : [...value, id])
+  }
+  if (isLoading)
+    return (
+      <div className="text-[12px]" style={{ color: BRAND.textMuted }}>
+        Loading…
+      </div>
+    )
+  if (teams.length === 0)
+    return (
+      <div className="text-[12px]" style={{ color: BRAND.textMuted }}>
+        No teams in this workspace yet.
+      </div>
+    )
+  return (
+    <div className="flex max-h-32 flex-col gap-1 overflow-y-auto rounded border border-input bg-input-background p-2">
+      {teams.map((t) => (
+        <label
+          key={t.id}
+          className="flex cursor-pointer items-center gap-2 text-[12px]"
+          style={{ color: BRAND.textPrimary }}
+        >
+          <input type="checkbox" checked={value.includes(t.id)} onChange={() => toggle(t.id)} />
+          {t.name}
+        </label>
+      ))}
+    </div>
+  )
+}
+
 // ── Edit Project modal ───────────────────────────────────────────────────────
 
 function EditProjectModal({
@@ -161,8 +239,11 @@ function EditProjectModal({
   workspaceId: string
   onClose: () => void
 }) {
+  const { user } = useAuthStore()
   const [name, setName] = useState(project.name)
   const [desc, setDesc] = useState(project.description ?? '')
+  const [leadId, setLeadId] = useState(project.leadId ?? '')
+  const [startDate, setStartDate] = useState(project.startDate ?? '')
   const { mutateAsync, isPending } = useUpdateProject(workspaceId)
 
   async function handleSubmit(e: React.FormEvent) {
@@ -171,7 +252,12 @@ function EditProjectModal({
     try {
       await mutateAsync({
         id: project.id,
-        input: { name: name.trim(), description: desc.trim() || undefined },
+        input: {
+          name: name.trim(),
+          description: desc.trim() || undefined,
+          leadId: leadId || null,
+          startDate: startDate || null,
+        },
       })
       toast.success(`Project "${name}" updated`)
       onClose()
@@ -203,14 +289,16 @@ function EditProjectModal({
           <FormField label="Description">
             <Textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={3} />
           </FormField>
-          <FormField label="Project Lead" hint="Change via Project Members screen">
-            <div
-              className="flex items-center gap-2 rounded border border-input bg-input-background px-3 py-2 text-[12px]"
-              style={{ color: BRAND.textSecondary }}
-            >
-              <User size={12} style={{ color: BRAND.textMuted, flexShrink: 0 }} />
-              <span className="truncate">{project.leadName ?? '—'}</span>
-            </div>
+          <FormField label="Project Owner" hint="The person accountable for this project">
+            <OwnerSelect
+              workspaceId={workspaceId}
+              value={leadId}
+              onChange={setLeadId}
+              currentUserId={user?.id}
+            />
+          </FormField>
+          <FormField label="Start Date" hint="When work on this project begins">
+            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
           </FormField>
         </ModalBody>
         <ModalFooter>
@@ -230,11 +318,14 @@ function EditProjectModal({
 // ── New Project modal ─────────────────────────────────────────────────────────
 
 function NewProjectModal({ workspaceId, onClose }: { workspaceId: string; onClose: () => void }) {
+  const { user } = useAuthStore()
   const [name, setName] = useState('')
   const [key, setKey] = useState('')
   const [desc, setDesc] = useState('')
+  const [leadId, setLeadId] = useState(user?.id ?? '')
+  const [startDate, setStartDate] = useState('')
+  const [teamIds, setTeamIds] = useState<string[]>([])
   const { mutateAsync, isPending } = useCreateProject()
-  const { user } = useAuthStore()
 
   const autoKey = (n: string) =>
     n
@@ -263,7 +354,9 @@ function NewProjectModal({ workspaceId, onClose }: { workspaceId: string; onClos
         name: name.trim(),
         key: trimmedKey,
         description: desc.trim() || undefined,
-        leadId: user?.id,
+        leadId: leadId || user?.id,
+        startDate: startDate || undefined,
+        teamIds: teamIds.length > 0 ? teamIds : undefined,
       })
       toast.success(`Project "${name}" created`)
       onClose()
@@ -303,17 +396,19 @@ function NewProjectModal({ workspaceId, onClose }: { workspaceId: string; onClos
               className="font-mono"
             />
           </FormField>
-          <FormField label="Project Lead" required>
-            <div
-              className="flex items-center gap-2 rounded border border-input bg-input-background px-3 py-2"
-              style={{ color: BRAND.textPrimary }}
-            >
-              <User size={13} style={{ color: BRAND.textMuted }} />
-              <span className="text-[12px]">{user?.displayName ?? '—'}</span>
-              <span className="ml-1 text-[10px]" style={{ color: BRAND.textMuted }}>
-                (you)
-              </span>
-            </div>
+          <FormField label="Project Owner" required hint="Defaults to you — change if delegating">
+            <OwnerSelect
+              workspaceId={workspaceId}
+              value={leadId}
+              onChange={setLeadId}
+              currentUserId={user?.id}
+            />
+          </FormField>
+          <FormField label="Start Date" hint="When work on this project begins">
+            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+          </FormField>
+          <FormField label="Teams" hint="Link teams that will work on this project">
+            <TeamMultiSelect workspaceId={workspaceId} value={teamIds} onChange={setTeamIds} />
           </FormField>
           <FormField label="Description">
             <Textarea

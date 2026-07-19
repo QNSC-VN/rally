@@ -3,6 +3,8 @@ import { createZodDto } from 'nestjs-zod';
 import { PageQuerySchema } from '@platform';
 import { projectStatusEnum, projectMemberStatusEnum } from '../../../../../../../db/schema/enums';
 
+const ISO_DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be a date in YYYY-MM-DD format');
+
 // ── Create Project ───────────────────────────────────────────────────────────
 
 export const CreateProjectSchema = z.object({
@@ -14,6 +16,8 @@ export const CreateProjectSchema = z.object({
   name: z.string().min(1).max(255).trim(),
   description: z.string().max(2000).trim().optional(),
   leadId: z.string().uuid().optional(),
+  startDate: ISO_DATE.optional(),
+  teamIds: z.array(z.string().uuid()).optional(),
 });
 
 export class CreateProjectDto extends createZodDto(CreateProjectSchema) {}
@@ -24,6 +28,7 @@ export const UpdateProjectSchema = z.object({
   name: z.string().min(1).max(255).trim().optional(),
   description: z.string().max(2000).trim().optional().nullable(),
   leadId: z.string().uuid().optional().nullable(),
+  startDate: ISO_DATE.nullable().optional(),
   status: z.enum(projectStatusEnum.enumValues).optional(),
   settings: z.record(z.string(), z.unknown()).optional(),
 });

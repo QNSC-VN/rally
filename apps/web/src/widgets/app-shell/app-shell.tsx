@@ -91,12 +91,6 @@ const NAV_ITEMS: NavItem[] = [
         featureFlag: 'feature.team-status',
         permission: 'work_item:view',
       },
-      {
-        path: '/team-board',
-        label: 'Team Board',
-        featureFlag: 'feature.team-board',
-        permission: 'work_item:view',
-      },
     ],
   },
   {

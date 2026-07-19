@@ -18,7 +18,7 @@ export class IterationDrizzleRepository implements IIterationRepository {
 
   async findById(id: string): Promise<Iteration | null> {
     const rows = await this.db.select().from(iterations).where(eq(iterations.id, id)).limit(1);
-    return (rows[0]) ?? null;
+    return rows[0] ?? null;
   }
 
   async findCommitted(projectId: string): Promise<Iteration | null> {
@@ -27,7 +27,7 @@ export class IterationDrizzleRepository implements IIterationRepository {
       .from(iterations)
       .where(and(eq(iterations.projectId, projectId), eq(iterations.state, 'committed')))
       .limit(1);
-    return (rows[0]) ?? null;
+    return rows[0] ?? null;
   }
 
   async listByProject(
@@ -48,17 +48,6 @@ export class IterationDrizzleRepository implements IIterationRepository {
       conditions.push(or(ilike(iterations.name, term), ilike(iterations.theme, term))!);
     }
 
-    // Explicit sort column, else stable createdAt keyset pagination.
-    const dir = filters.sortDirection === 'desc' ? desc : asc;
-    const sortCol = {
-      name: iterations.name,
-      theme: iterations.theme,
-      startDate: iterations.startDate,
-      endDate: iterations.endDate,
-      state: iterations.state,
-      plannedVelocity: iterations.plannedVelocity,
-    }[filters.sortBy ?? 'startDate'];
-
     if (cursor) {
       conditions.push(lt(iterations.createdAt, new Date(cursor.k[0] as string)));
     }
@@ -67,7 +56,7 @@ export class IterationDrizzleRepository implements IIterationRepository {
       .select()
       .from(iterations)
       .where(and(...conditions))
-      .orderBy(filters.sortBy ? dir(sortCol) : asc(iterations.createdAt))
+      .orderBy(asc(iterations.createdAt))
       .limit(limit + 1);
 
     return buildPageResult(rows as Iteration[], limit, (i) => [i.createdAt.toISOString()]);

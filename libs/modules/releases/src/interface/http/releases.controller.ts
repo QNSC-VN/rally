@@ -11,11 +11,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import {
-  ApiCommonErrors,
-  ApiPagedResponse,
-  buildPageArgs,
-} from '@platform';
+import { ApiCommonErrors, ApiPagedResponse, buildPageArgs } from '@platform';
 import type { JwtPayload, PagedResult } from '@platform';
 import { CurrentUser } from '@modules/identity';
 import { RequireProjectPermission, AuthProjectScoped } from '@modules/access';
@@ -24,7 +20,20 @@ import { ReleaseQueryDto, CreateReleaseDto, UpdateReleaseDto } from './dto/relea
 import { ReleaseResponseDto } from './dto/release-response.dto';
 import type { Release } from '../../domain/release.types';
 
-function toReleaseDto(r: Release & { taskRollup?: { totalItems: number; completedItems: number; acceptedItems: number; toDoItems: number; totalPoints: number; completedPoints: number; toDoPoints: number; progressPercent: number } }): ReleaseResponseDto {
+function toReleaseDto(
+  r: Release & {
+    taskRollup?: {
+      totalItems: number;
+      completedItems: number;
+      acceptedItems: number;
+      toDoItems: number;
+      totalPoints: number;
+      completedPoints: number;
+      toDoPoints: number;
+      progressPercent: number;
+    };
+  },
+): ReleaseResponseDto {
   return {
     id: r.id,
     workspaceId: r.workspaceId,
@@ -67,7 +76,7 @@ export class ReleasesController {
   }
 
   @Post()
-  @RequireProjectPermission('release:manage', 'body', 'projectId')
+  @RequireProjectPermission('release:create', 'body', 'projectId')
   @ApiOperation({ summary: 'Create a release' })
   @ApiResponse({ status: 201, type: ReleaseResponseDto })
   @ApiCommonErrors(400, 401, 404, 422)

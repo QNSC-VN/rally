@@ -12,6 +12,7 @@ import {
   jsonb,
   index,
   uniqueIndex,
+  unique,
 } from 'drizzle-orm/pg-core';
 import { scopeTypeEnum } from './enums';
 
@@ -30,7 +31,12 @@ export const systemRoles = accessSchema.table(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    slugIdx: uniqueIndex('uq_system_roles_slug').on(t.slug),
+    // Uniqueness is per-workspace so each workspace can own an editable copy of
+    // a tier role alongside the global template (workspace_id IS NULL). NULLS
+    // NOT DISTINCT keeps the global rows themselves deduplicated by slug.
+    workspaceSlugUq: unique('uq_system_roles_workspace_slug')
+      .on(t.workspaceId, t.slug)
+      .nullsNotDistinct(),
     workspaceIdx: index('ix_system_roles_workspace').on(t.workspaceId),
   }),
 );

@@ -330,6 +330,34 @@
       "when": 1784200000000,
       "tag": "0045_user_phone",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1784300000000,
+      "tag": "0046_project_start_date",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1784400000000,
+      "tag": "0047_per_workspace_roles",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1784500000000,
+      "tag": "0048_split_manage_permissions",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1784600000000,
+      "tag": "0049_drop_quality_edit",
+      "breakpoints": true
     }
   ]
 }

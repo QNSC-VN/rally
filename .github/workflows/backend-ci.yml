@@ -257,14 +257,20 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}
 
-      # Baseline: swap in main's migration files, apply + COMMIT them so the DB
-      # mirrors a real deployed environment, then restore this PR's files.
+      # Baseline: check out main's ENTIRE db/ tree (migrations, seed AND the
+      # Drizzle schema) and run it end-to-end, so the DB mirrors a real deployed
+      # environment exactly as the last release produced it. Then restore this
+      # PR's files. Pinning the whole tree — not just db/migrations — is
+      # essential because `db:migrate` also runs the seed, and the seed builds
+      # its INSERTs from the Drizzle schema: a PR that adds a column or changes
+      # an ON CONFLICT target would otherwise run HEAD's seed/schema against
+      # main's older tables and fail spuriously.
       # (On push-to-main this is a no-op: origin/main == HEAD.)
       - name: Apply baseline (main) migrations
         run: |
-          git checkout origin/main -- db/migrations
+          git checkout origin/main -- db
           pnpm db:migrate
-          git checkout HEAD -- db/migrations
+          git checkout HEAD -- db
 
       # Upgrade: apply only the migrations this PR adds, on the committed
       # baseline. Reproduces the committed-enum restriction and any other

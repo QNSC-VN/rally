@@ -47,23 +47,31 @@ export const PERMISSION = {
 
   // ── iteration namespace ────────────────────────────────────────────────────
   ITERATION_VIEW: 'iteration:view',
-  ITERATION_MANAGE: 'iteration:manage',
+  ITERATION_CREATE: 'iteration:create',
+  ITERATION_EDIT: 'iteration:edit',
+  ITERATION_DELETE: 'iteration:delete',
 
   // ── release namespace ──────────────────────────────────────────────────────
   RELEASE_VIEW: 'release:view',
-  RELEASE_MANAGE: 'release:manage',
+  RELEASE_CREATE: 'release:create',
+  RELEASE_EDIT: 'release:edit',
+  RELEASE_DELETE: 'release:delete',
 
   // ── team-status namespace (P3.1) ───────────────────────────────────────────
   TEAM_STATUS_VIEW: 'team_status:view',
   TEAM_STATUS_EDIT: 'team_status:edit',
 
   // ── quality namespace (P3.4) ───────────────────────────────────────────────
+  // Quality is a read-only reporting surface (defect dashboard + metrics).
+  // Defects ARE work items, so their create/edit/delete flows through the
+  // work_item namespace — there is no separate quality write permission.
   QUALITY_VIEW: 'quality:view',
-  QUALITY_EDIT: 'quality:edit',
 
   // ── milestone namespace (P3.3) ─────────────────────────────────────────────
   MILESTONE_VIEW: 'milestone:view',
-  MILESTONE_MANAGE: 'milestone:manage',
+  MILESTONE_CREATE: 'milestone:create',
+  MILESTONE_EDIT: 'milestone:edit',
+  MILESTONE_DELETE: 'milestone:delete',
 } as const;
 
 /** Union of every valid permission code. */
@@ -110,15 +118,20 @@ export const PERMISSION_TIER = {
   [PERMISSION.WORK_ITEM_EDIT]: 'project',
   [PERMISSION.WORK_ITEM_DELETE]: 'project',
   [PERMISSION.ITERATION_VIEW]: 'project',
-  [PERMISSION.ITERATION_MANAGE]: 'project',
+  [PERMISSION.ITERATION_CREATE]: 'project',
+  [PERMISSION.ITERATION_EDIT]: 'project',
+  [PERMISSION.ITERATION_DELETE]: 'project',
   [PERMISSION.RELEASE_VIEW]: 'project',
-  [PERMISSION.RELEASE_MANAGE]: 'project',
+  [PERMISSION.RELEASE_CREATE]: 'project',
+  [PERMISSION.RELEASE_EDIT]: 'project',
+  [PERMISSION.RELEASE_DELETE]: 'project',
   [PERMISSION.TEAM_STATUS_VIEW]: 'project',
   [PERMISSION.TEAM_STATUS_EDIT]: 'project',
   [PERMISSION.QUALITY_VIEW]: 'project',
-  [PERMISSION.QUALITY_EDIT]: 'project',
   [PERMISSION.MILESTONE_VIEW]: 'project',
-  [PERMISSION.MILESTONE_MANAGE]: 'project',
+  [PERMISSION.MILESTONE_CREATE]: 'project',
+  [PERMISSION.MILESTONE_EDIT]: 'project',
+  [PERMISSION.MILESTONE_DELETE]: 'project',
 } as const satisfies Record<Permission, 'workspace' | 'project'>;
 
 /** Permissions enforced against the workspace-wide JWT baseline. */
@@ -195,15 +208,20 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
     PERMISSION.WORK_ITEM_EDIT,
     PERMISSION.WORK_ITEM_DELETE,
     PERMISSION.ITERATION_VIEW,
-    PERMISSION.ITERATION_MANAGE,
+    PERMISSION.ITERATION_CREATE,
+    PERMISSION.ITERATION_EDIT,
+    PERMISSION.ITERATION_DELETE,
     PERMISSION.RELEASE_VIEW,
-    PERMISSION.RELEASE_MANAGE,
+    PERMISSION.RELEASE_CREATE,
+    PERMISSION.RELEASE_EDIT,
+    PERMISSION.RELEASE_DELETE,
     PERMISSION.TEAM_STATUS_VIEW,
     PERMISSION.TEAM_STATUS_EDIT,
     PERMISSION.QUALITY_VIEW,
-    PERMISSION.QUALITY_EDIT,
     PERMISSION.MILESTONE_VIEW,
-    PERMISSION.MILESTONE_MANAGE,
+    PERMISSION.MILESTONE_CREATE,
+    PERMISSION.MILESTONE_EDIT,
+    PERMISSION.MILESTONE_DELETE,
   ],
   // Full control of an EXISTING project. No project:create / project:delete
   // (workspace-tier) and no workspace admin powers.
@@ -218,15 +236,20 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
     PERMISSION.WORK_ITEM_EDIT,
     PERMISSION.WORK_ITEM_DELETE,
     PERMISSION.ITERATION_VIEW,
-    PERMISSION.ITERATION_MANAGE,
+    PERMISSION.ITERATION_CREATE,
+    PERMISSION.ITERATION_EDIT,
+    PERMISSION.ITERATION_DELETE,
     PERMISSION.RELEASE_VIEW,
-    PERMISSION.RELEASE_MANAGE,
+    PERMISSION.RELEASE_CREATE,
+    PERMISSION.RELEASE_EDIT,
+    PERMISSION.RELEASE_DELETE,
     PERMISSION.TEAM_STATUS_VIEW,
     PERMISSION.TEAM_STATUS_EDIT,
     PERMISSION.QUALITY_VIEW,
-    PERMISSION.QUALITY_EDIT,
     PERMISSION.MILESTONE_VIEW,
-    PERMISSION.MILESTONE_MANAGE,
+    PERMISSION.MILESTONE_CREATE,
+    PERMISSION.MILESTONE_EDIT,
+    PERMISSION.MILESTONE_DELETE,
   ],
   // Contributor: creates/edits work items & defects; reads everything else.
   // No delete, no manage (iterations/releases/milestones/team capacity).
@@ -239,7 +262,6 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
     PERMISSION.RELEASE_VIEW,
     PERMISSION.TEAM_STATUS_VIEW,
     PERMISSION.QUALITY_VIEW,
-    PERMISSION.QUALITY_EDIT,
     PERMISSION.MILESTONE_VIEW,
   ],
   // Read-only across one project.
@@ -273,3 +295,116 @@ export const ROLE_NAMES: Record<SystemRoleSlug, string> = {
   [SYSTEM_ROLE.PROJECT_VIEWER]: 'Project Viewer',
   [SYSTEM_ROLE.WORKSPACE_MEMBER]: 'Workspace Member',
 };
+
+/**
+ * PRESET FUNCTIONAL roles — seeded PER WORKSPACE as ordinary, EDITABLE custom
+ * roles (`isSystem: false`, `workspaceId` set), NOT part of the enforcement
+ * backbone above.
+ *
+ * Why they exist: the five SYSTEM roles are capability TIERS (viewer ⊆ member ⊆
+ * admin) — the drift-proof authorization ladder. Real teams, however, think in
+ * JOB FUNCTIONS. The BA role model (mini_rally_usecase_role_mapping) enumerates
+ * Scrum Master / Product Owner / Developer / QA, so every workspace is seeded
+ * with matching ready-to-assign roles. Because they are plain custom roles they:
+ *   - appear in Settings → Roles & Permissions as EDITABLE rows (admins tune them),
+ *   - carry ONLY concrete project-tier permissions (no wildcards) — deny-by-default,
+ *   - never affect the tier ladder or any guard's fast-path.
+ *
+ * Each permission set is derived directly from the BA use-case matrix and obeys
+ * the catalogue's "manage/edit implies view" invariant. Workspace Admin, PM and
+ * Viewer are intentionally omitted — they map 1:1 onto the existing system tiers
+ * (`workspace_admin`, `project_admin`, `project_viewer`).
+ *
+ * Slugs are globally unique (matching the `uq_system_roles_slug` constraint) and
+ * seeded with onConflictDoNothing, so they are created once and never clobber a
+ * workspace admin's later edits.
+ */
+export type PresetWorkspaceRole = {
+  slug: string;
+  name: string;
+  description: string;
+  permissions: Permission[];
+};
+
+export const PRESET_WORKSPACE_ROLES: readonly PresetWorkspaceRole[] = [
+  {
+    slug: 'scrum_master',
+    name: 'Scrum Master',
+    description:
+      'Runs the delivery process: manages iterations, releases, the board and team capacity; full work-item control. Mirrors the BA "PM / Scrum Master" role.',
+    permissions: [
+      PERMISSION.PROJECT_VIEW,
+      PERMISSION.PROJECT_MANAGE_MEMBERS,
+      PERMISSION.WORK_ITEM_VIEW,
+      PERMISSION.WORK_ITEM_CREATE,
+      PERMISSION.WORK_ITEM_EDIT,
+      PERMISSION.WORK_ITEM_DELETE,
+      PERMISSION.ITERATION_VIEW,
+      PERMISSION.ITERATION_CREATE,
+      PERMISSION.ITERATION_EDIT,
+      PERMISSION.ITERATION_DELETE,
+      PERMISSION.RELEASE_VIEW,
+      PERMISSION.RELEASE_CREATE,
+      PERMISSION.RELEASE_EDIT,
+      PERMISSION.RELEASE_DELETE,
+      PERMISSION.TEAM_STATUS_VIEW,
+      PERMISSION.TEAM_STATUS_EDIT,
+      PERMISSION.QUALITY_VIEW,
+      PERMISSION.MILESTONE_VIEW,
+      PERMISSION.MILESTONE_CREATE,
+      PERMISSION.MILESTONE_EDIT,
+      PERMISSION.MILESTONE_DELETE,
+    ],
+  },
+  {
+    slug: 'product_owner',
+    name: 'Product Owner',
+    description:
+      'Owns the backlog and requirements: creates, grooms, prioritizes and assigns work items. Reads iterations, releases and milestones. Mirrors the BA "Product Owner / BA" role.',
+    permissions: [
+      PERMISSION.PROJECT_VIEW,
+      PERMISSION.WORK_ITEM_VIEW,
+      PERMISSION.WORK_ITEM_CREATE,
+      PERMISSION.WORK_ITEM_EDIT,
+      PERMISSION.ITERATION_VIEW,
+      PERMISSION.RELEASE_VIEW,
+      PERMISSION.TEAM_STATUS_VIEW,
+      PERMISSION.QUALITY_VIEW,
+      PERMISSION.MILESTONE_VIEW,
+    ],
+  },
+  {
+    slug: 'developer',
+    name: 'Developer',
+    description:
+      'Delivers work: updates assigned work items and reports team progress. No create/delete or planning powers. Mirrors the BA "Developer" role.',
+    permissions: [
+      PERMISSION.PROJECT_VIEW,
+      PERMISSION.WORK_ITEM_VIEW,
+      PERMISSION.WORK_ITEM_EDIT,
+      PERMISSION.ITERATION_VIEW,
+      PERMISSION.RELEASE_VIEW,
+      PERMISSION.TEAM_STATUS_VIEW,
+      PERMISSION.TEAM_STATUS_EDIT,
+      PERMISSION.QUALITY_VIEW,
+      PERMISSION.MILESTONE_VIEW,
+    ],
+  },
+  {
+    slug: 'qa_engineer',
+    name: 'QA Engineer',
+    description:
+      'Owns quality: raises and verifies defects, updates work-item status. Mirrors the BA "Tester / QA" role.',
+    permissions: [
+      PERMISSION.PROJECT_VIEW,
+      PERMISSION.WORK_ITEM_VIEW,
+      PERMISSION.WORK_ITEM_CREATE,
+      PERMISSION.WORK_ITEM_EDIT,
+      PERMISSION.ITERATION_VIEW,
+      PERMISSION.RELEASE_VIEW,
+      PERMISSION.TEAM_STATUS_VIEW,
+      PERMISSION.QUALITY_VIEW,
+      PERMISSION.MILESTONE_VIEW,
+    ],
+  },
+];

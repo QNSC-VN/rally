@@ -268,50 +268,6 @@ interface QualityCtx {
   openItem: (itemKey: string) => void
 }
 
-/** Logical (not alphabetical) sort order for the categorical columns. */
-const SEVERITY_SORT: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, none: 4 }
-const PRIORITY_SORT: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3, none: 4 }
-const DEFECT_STATE_SORT: Record<string, number> = {
-  submitted: 0,
-  open: 1,
-  fixed: 2,
-  closed: 3,
-  closed_declined: 4,
-}
-
-/** Resolve a comparable value for a defect column key (drives click-to-sort). */
-function defectSortValue(d: DefectRow, col: string): string | number {
-  switch (col) {
-    case 'id':
-      return d.itemKey
-    case 'name':
-      return d.title.toLowerCase()
-    case 'userStory':
-      return (d.parentKey ?? '').toLowerCase()
-    case 'severity':
-      return SEVERITY_SORT[d.severity ?? 'none'] ?? 99
-    case 'priority':
-      return PRIORITY_SORT[d.priority] ?? 99
-    case 'state':
-      return DEFECT_STATE_SORT[d.defectState ?? 'submitted'] ?? 99
-    case 'scheduleState': {
-      // Sort by canonical maturity order; unknown states sort last.
-      const idx = SCHEDULE_STATE_VALUES.indexOf(d.scheduleState as ScheduleState)
-      return idx === -1 ? 99 : idx
-    }
-    case 'fixedInBuild':
-      return (d.fixedInBuild ?? '').toLowerCase()
-    case 'iteration':
-      return (d.iterationName ?? '').toLowerCase()
-    case 'submittedBy':
-      return (d.createdByName ?? '').toLowerCase()
-    case 'owner':
-      return (d.assigneeName ?? '').toLowerCase()
-    default:
-      return ''
-  }
-}
-
 /**
  * Column catalog — the single source of truth for the Defects grid. Each entry
  * declares its layout (width/lock/align) AND its body-cell renderer, so the
@@ -842,7 +798,9 @@ export function QualityPage() {
   const qc = useQueryClient()
   const { project } = useAppContext()
   const { can } = useProjectPermissions(project?.projectId)
-  const canManage = can('quality:edit')
+  // Defects are work items; the backend enforces defect mutations via
+  // work_item:edit, so the page's inline-edit affordances gate on the same.
+  const canManage = can('work_item:edit')
   const [sortCol, setSortCol] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   // Toggle asc/desc on the active column, else switch to a new column (asc).
@@ -889,25 +847,17 @@ export function QualityPage() {
     rootCause: rootCauseFilter,
     resolution: resolutionFilter,
     defectState: defectStateFilter,
+    sort: sortCol ? `${sortCol}:${sortDir}` : undefined,
   })
 
+  // Server-side sorted (the `sort` param drives the ORDER BY), so the rows are
+  // already in display order — no client re-sort.
   const defects = useMemo(() => data?.data ?? [], [data])
-  const sortedDefects = useMemo(() => {
-    if (!sortCol) return defects
-    const dir = sortDir === 'asc' ? 1 : -1
-    return [...defects].sort((a, b) => {
-      const va = defectSortValue(a, sortCol)
-      const vb = defectSortValue(b, sortCol)
-      if (va < vb) return -1 * dir
-      if (va > vb) return 1 * dir
-      return 0
-    })
-  }, [defects, sortCol, sortDir])
   // Row drag-to-rerank (shared engine capability). Disabled while a column
   // sort is active — rank only has meaning in natural rank order.
   const rankMutation = useRankAnyWorkItem()
   const rerank = useRowRerank({
-    items: sortedDefects,
+    items: defects,
     disabled: sortCol !== null,
     onReorder: ({ id, beforeId, afterId }) =>
       rankMutation.mutate(
@@ -931,7 +881,7 @@ export function QualityPage() {
     toggle: toggleSelect,
     toggleAll,
     clear: clearSelection,
-  } = useRowSelection(sortedDefects)
+  } = useRowSelection(defects)
 
   const metrics = data?.metrics ?? {
     openDefects: 0,

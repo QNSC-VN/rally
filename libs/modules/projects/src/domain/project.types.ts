@@ -13,6 +13,7 @@ export interface Project {
   name: string;
   description: string | null;
   leadId: string | null;
+  startDate: string | null;
   status: ProjectStatus;
   settings: Record<string, unknown>;
   createdAt: Date;
@@ -50,12 +51,28 @@ export interface CreateProjectInput {
   name: string;
   description?: string;
   leadId?: string;
+  startDate?: string | null;
+}
+
+/**
+ * Service-layer input for creating a project. Distinct from the persistence
+ * {@link CreateProjectInput} (which carries the generated id/workspaceId): this
+ * is what the HTTP layer passes in, including the optional team links to seed.
+ */
+export interface CreateProjectRequest {
+  key: string;
+  name: string;
+  description?: string;
+  leadId?: string;
+  startDate?: string | null;
+  teamIds?: string[];
 }
 
 export interface UpdateProjectInput {
   name?: string;
   description?: string | null;
   leadId?: string | null;
+  startDate?: string | null;
   status?: ProjectStatus;
   settings?: Record<string, unknown>;
 }

@@ -374,7 +374,7 @@ export function MilestonesPage() {
     STORAGE_KEYS.MILESTONES_COLUMNS,
   )
   const { can } = useProjectPermissions(project?.projectId)
-  const canManage = can('milestone:manage')
+  const canManage = can('milestone:create') || can('milestone:edit') || can('milestone:delete')
   const { data: milestones, isLoading, error } = useMilestones(project?.projectId)
   const deleteMilestone = useDeleteMilestone()
   const navigate = useNavigate()

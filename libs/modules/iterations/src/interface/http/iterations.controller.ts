@@ -101,8 +101,6 @@ export class IterationsController {
         teamId: query.teamId,
         state: query.state,
         q: query.q,
-        sortBy: query.sortBy,
-        sortDirection: query.sortDirection,
       },
       args,
     );
@@ -110,7 +108,7 @@ export class IterationsController {
   }
 
   @Post()
-  @RequireProjectPermission('iteration:manage', 'body', 'projectId')
+  @RequireProjectPermission('iteration:create', 'body', 'projectId')
   @ApiOperation({ summary: 'Create an iteration' })
   @ApiResponse({ status: 201, type: IterationResponseDto })
   @ApiCommonErrors(400, 401, 404, 422)
@@ -256,8 +254,6 @@ export class IterationsController {
         scheduleState: query.scheduleState,
         isBlocked: query.isBlocked,
         assigneeId: query.assigneeId,
-        sortBy: query.sortBy,
-        sortDirection: query.sortDirection,
       },
       args,
     );

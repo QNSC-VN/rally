@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq, isNull, lt, or, ilike, inArray, sql, desc } from 'drizzle-orm';
+import { and, eq, isNull, lt, or, ilike, inArray, sql, asc, desc } from 'drizzle-orm';
 import { InjectDrizzle, buildPageResult } from '@platform';
 import type { DrizzleDB, DbExecutor, CursorPayload, PagedResult } from '@platform';
 import {
@@ -281,18 +281,32 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     const conditions = this.buildFilters(projectId, workspaceId, filters);
     // Backlog shows only story + defect (tasks live under their parent item).
     conditions.push(inArray(workItems.type, ['story', 'defect']));
+    // Keyset pagination on rank — the backlog's stable default order (matches
+    // the ix_wi_backlog index and the Iteration Status sibling). Enum columns
+    // (scheduleState/priority) sort by their semantic Postgres declaration order.
     if (cursor) {
-      conditions.push(lt(workItems.createdAt, new Date(cursor.k[0] as string)));
+      conditions.push(lt(workItems.rank, cursor.k[0] as string));
     }
+
+    const sortCol = {
+      rank: workItems.rank,
+      itemKey: workItems.itemKey,
+      type: workItems.type,
+      title: workItems.title,
+      scheduleState: workItems.scheduleState,
+      priority: workItems.priority,
+      planEstimate: workItems.storyPoints,
+    }[filters.sortBy ?? 'rank'];
+    const dir = filters.sortDirection === 'desc' ? desc : asc;
 
     const rows = await this.db
       .select()
       .from(workItems)
       .where(and(...conditions))
-      .orderBy(desc(workItems.createdAt))
+      .orderBy(filters.sortBy ? dir(sortCol) : asc(workItems.rank))
       .limit(limit + 1);
 
-    return buildPageResult(rows as WorkItem[], limit, (w) => [w.createdAt.toISOString()]);
+    return buildPageResult(rows as WorkItem[], limit, (w) => [w.rank]);
   }
 
   async listTasksByParent(parentId: string, workspaceId: string): Promise<WorkItem[]> {

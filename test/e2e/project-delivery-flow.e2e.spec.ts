@@ -44,7 +44,10 @@ describe('BA flows: project foundation → work items → iteration (real AppMod
   describe('E2E-001 project foundation', () => {
     it('creates a project with a normalised, immutable key', async () => {
       const key = uniqueKey();
-      const project = await projects.createProject(actor, key.toLowerCase(), 'Foundation Project');
+      const project = await projects.createProject(actor, {
+        key: key.toLowerCase(),
+        name: 'Foundation Project',
+      });
 
       // Key is normalised to upper-case and the lead defaults to the actor.
       expect(project.key).toBe(key.toUpperCase());
@@ -57,8 +60,10 @@ describe('BA flows: project foundation → work items → iteration (real AppMod
 
     it('rejects a duplicate project key with PROJECT_KEY_TAKEN', async () => {
       const key = uniqueKey();
-      await projects.createProject(actor, key, 'First');
-      await expect(projects.createProject(actor, key, 'Second')).rejects.toMatchObject({
+      await projects.createProject(actor, { key: key, name: 'First' });
+      await expect(
+        projects.createProject(actor, { key: key, name: 'Second' }),
+      ).rejects.toMatchObject({
         code: 'PROJECT_KEY_TAKEN',
       });
     });
@@ -66,7 +71,7 @@ describe('BA flows: project foundation → work items → iteration (real AppMod
     it('rejects a project whose lead is not an active workspace member', async () => {
       const notAMember = '00000000-0000-7000-8000-0000000009ff';
       await expect(
-        projects.createProject(actor, uniqueKey(), 'Bad Lead', undefined, notAMember),
+        projects.createProject(actor, { key: uniqueKey(), name: 'Bad Lead', leadId: notAMember }),
       ).rejects.toMatchObject({ code: 'PROJECT_LEAD_NOT_MEMBER' });
     });
   });
@@ -74,7 +79,10 @@ describe('BA flows: project foundation → work items → iteration (real AppMod
   // ── E2E-003: Create a Story and manage its detail ───────────────────────────
   describe('E2E-003 story create + detail', () => {
     it('persists description / owner / scheduleState / planEstimate on a story', async () => {
-      const project = await projects.createProject(actor, uniqueKey(), 'Story Project');
+      const project = await projects.createProject(actor, {
+        key: uniqueKey(),
+        name: 'Story Project',
+      });
       const story = await workItems.createWorkItem(
         actor,
         project.id,
@@ -104,7 +112,10 @@ describe('BA flows: project foundation → work items → iteration (real AppMod
     });
 
     it('rejects a priority on a story (stories carry no priority)', async () => {
-      const project = await projects.createProject(actor, uniqueKey(), 'Story Priority');
+      const project = await projects.createProject(actor, {
+        key: uniqueKey(),
+        name: 'Story Priority',
+      });
       const story = await workItems.createWorkItem(actor, project.id, 'story', 'No priority story');
       await expect(
         workItems.updateWorkItem(actor, story.id, { priority: 'high' }),
@@ -115,7 +126,10 @@ describe('BA flows: project foundation → work items → iteration (real AppMod
   // ── E2E-004: Create a Defect + defect-specific behaviour ────────────────────
   describe('E2E-004 defect create', () => {
     it('creates a top-level defect carrying a priority', async () => {
-      const project = await projects.createProject(actor, uniqueKey(), 'Defect Project');
+      const project = await projects.createProject(actor, {
+        key: uniqueKey(),
+        name: 'Defect Project',
+      });
       const defect = await workItems.createWorkItem(actor, project.id, 'defect', 'Login crashes', {
         priority: 'high',
       });
@@ -124,7 +138,10 @@ describe('BA flows: project foundation → work items → iteration (real AppMod
     });
 
     it('allows a defect under a story parent but rejects a defect under a defect', async () => {
-      const project = await projects.createProject(actor, uniqueKey(), 'Defect Parent');
+      const project = await projects.createProject(actor, {
+        key: uniqueKey(),
+        name: 'Defect Parent',
+      });
       const story = await workItems.createWorkItem(actor, project.id, 'story', 'Parent story');
       const parentDefect = await workItems.createWorkItem(
         actor,
@@ -149,7 +166,10 @@ describe('BA flows: project foundation → work items → iteration (real AppMod
   // ── E2E-005: Add a Task under a Story + track time ──────────────────────────
   describe('E2E-005 task under story + time tracking', () => {
     it('creates a child task (not a backlog item) and totals its hours', async () => {
-      const project = await projects.createProject(actor, uniqueKey(), 'Task Project');
+      const project = await projects.createProject(actor, {
+        key: uniqueKey(),
+        name: 'Task Project',
+      });
       const story = await workItems.createWorkItem(actor, project.id, 'story', 'Story with tasks');
 
       // actual (5) deliberately exceeds estimate (2) — the BA allows over-run.
@@ -175,7 +195,10 @@ describe('BA flows: project foundation → work items → iteration (real AppMod
   // ── E2E-006: A backlog item enters an Iteration → appears in Iteration Status
   describe('E2E-006 backlog item enters an iteration', () => {
     it('assigns a story to an iteration and surfaces it in Iteration Status (same item)', async () => {
-      const project = await projects.createProject(actor, uniqueKey(), 'Iteration Project');
+      const project = await projects.createProject(actor, {
+        key: uniqueKey(),
+        name: 'Iteration Project',
+      });
       const iteration = await iterations.createIteration(actor, project.id, 'Sprint 1');
       const story = await workItems.createWorkItem(actor, project.id, 'story', 'Sprint story');
 
@@ -194,7 +217,10 @@ describe('BA flows: project foundation → work items → iteration (real AppMod
   // ── E2E-007: Create an item directly in Iteration Status ────────────────────
   describe('E2E-007 create directly in iteration status', () => {
     it('creates a story in the iteration (also visible in the backlog, no duplicate)', async () => {
-      const project = await projects.createProject(actor, uniqueKey(), 'Direct Iteration');
+      const project = await projects.createProject(actor, {
+        key: uniqueKey(),
+        name: 'Direct Iteration',
+      });
       const iteration = await iterations.createIteration(actor, project.id, 'Sprint A');
 
       const { workItemId } = await iterationStatus.createItemInIteration(actor, iteration.id, {
@@ -212,7 +238,10 @@ describe('BA flows: project foundation → work items → iteration (real AppMod
     });
 
     it('rejects a task created directly in an iteration (stories/defects only)', async () => {
-      const project = await projects.createProject(actor, uniqueKey(), 'Iteration Task Guard');
+      const project = await projects.createProject(actor, {
+        key: uniqueKey(),
+        name: 'Iteration Task Guard',
+      });
       const iteration = await iterations.createIteration(actor, project.id, 'Sprint B');
       await expect(
         iterationStatus.createItemInIteration(actor, iteration.id, {

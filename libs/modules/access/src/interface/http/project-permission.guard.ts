@@ -37,7 +37,7 @@ interface ProjectPermissionMeta {
  * The project id is read from the request; say where:
  *   @RequireProjectPermission('project:edit')                         // route param :id
  *   @RequireProjectPermission('project:edit', 'param', 'projectId')   // route param :projectId
- *   @RequireProjectPermission('release:manage', 'body', 'projectId')  // create — projectId in body
+ *   @RequireProjectPermission('release:create', 'body', 'projectId')  // create — projectId in body
  *   @RequireProjectPermission('iteration:view', 'query', 'projectId') // list — projectId in ?query
  *
  * For routes where the project is only reachable by loading a resource (e.g.

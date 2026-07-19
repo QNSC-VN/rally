@@ -24,18 +24,16 @@ describe('useAuthStore', () => {
 
   describe('setUser / clearAuth', () => {
     it('setUser marks authenticated and picks the first membership workspace', () => {
-      useAuthStore
-        .getState()
-        .setUser(makeUser([]), [
-          {
-            workspaceId: 't1',
-            name: 'Acme',
-            slug: 'acme',
-            lastActiveAt: null,
-            roleSlug: null,
-            roleName: null,
-          },
-        ])
+      useAuthStore.getState().setUser(makeUser([]), [
+        {
+          workspaceId: 't1',
+          name: 'Acme',
+          slug: 'acme',
+          lastActiveAt: null,
+          roleSlug: null,
+          roleName: null,
+        },
+      ])
       const s = useAuthStore.getState()
       expect(s.isAuthenticated).toBe(true)
       expect(s.isLoading).toBe(false)
@@ -84,7 +82,7 @@ describe('useAuthStore', () => {
 
     it('denies when the user holds no matching permission', () => {
       useAuthStore.getState().setUser(makeUser(['work_item:view']), [])
-      expect(useAuthStore.getState().hasPermission('release:manage')).toBe(false)
+      expect(useAuthStore.getState().hasPermission('release:edit')).toBe(false)
     })
   })
 })

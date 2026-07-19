@@ -13,6 +13,7 @@ export interface Project {
   description: string | null
   leadId: string | null
   leadName: string | null
+  startDate: string | null
   status: 'active' | 'archived'
   memberCount: number
   teamCount: number
@@ -27,12 +28,15 @@ export interface CreateProjectInput {
   key: string
   description?: string
   leadId?: string
+  startDate?: string
+  teamIds?: string[]
 }
 
 export interface UpdateProjectInput {
   name?: string
   description?: string
   leadId?: string | null
+  startDate?: string | null
   status?: 'active' | 'archived'
 }
 

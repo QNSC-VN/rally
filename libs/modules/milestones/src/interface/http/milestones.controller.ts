@@ -66,7 +66,7 @@ export class MilestonesController {
   }
 
   @Post()
-  @RequireProjectPermission('milestone:manage', 'body', 'projectId')
+  @RequireProjectPermission('milestone:create', 'body', 'projectId')
   @ApiOperation({ summary: 'Create a milestone' })
   @ApiResponse({ status: 201, type: MilestoneResponseDto })
   @ApiCommonErrors(400, 401, 404, 422)

@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { JwtPayload } from '@platform';
 import { ProjectsService } from '@modules/projects';
 import { IQualityRepository, QUALITY_REPOSITORY } from '../domain/ports/quality.repository';
-import type { DefectListResult } from '../domain/quality.types';
+import type { DefectListResult, ListDefectsOptions } from '../domain/quality.types';
 
 @Injectable()
 export class QualityService {
@@ -16,20 +16,7 @@ export class QualityService {
   async getDefects(
     actor: JwtPayload,
     projectId: string,
-    opts: {
-      search?: string;
-      severity?: string;
-      environment?: string;
-      priority?: string;
-      scheduleState?: string;
-      assigneeId?: string;
-      releaseId?: string;
-      rootCause?: string;
-      resolution?: string;
-      defectState?: string;
-      limit?: number;
-      offset?: number;
-    } = {},
+    opts: ListDefectsOptions = {},
   ): Promise<DefectListResult> {
     await this.projectsService.getProject(actor.workspaceId, projectId);
 

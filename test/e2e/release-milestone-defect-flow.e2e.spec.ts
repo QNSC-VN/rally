@@ -46,7 +46,10 @@ describe('BA flows: releases + milestones + defect lifecycle (real AppModule + s
   // ── E2E-013: single active release assignment; reassignment moves the item ──
   describe('E2E-013 release artifact assignment', () => {
     it('assigns an existing work item to one release and moves it on reassignment', async () => {
-      const project = await projects.createProject(actor, uniqueKey(), 'Release Project');
+      const project = await projects.createProject(actor, {
+        key: uniqueKey(),
+        name: 'Release Project',
+      });
       const releaseA = await releases.createRelease(actor, project.id, 'Release A');
       const releaseB = await releases.createRelease(actor, project.id, 'Release B');
       const story = await workItems.createWorkItem(actor, project.id, 'story', 'Shippable story');
@@ -67,8 +70,14 @@ describe('BA flows: releases + milestones + defect lifecycle (real AppModule + s
     });
 
     it('rejects assigning a work item to a release in a different project', async () => {
-      const projectA = await projects.createProject(actor, uniqueKey(), 'Rel Scope A');
-      const projectB = await projects.createProject(actor, uniqueKey(), 'Rel Scope B');
+      const projectA = await projects.createProject(actor, {
+        key: uniqueKey(),
+        name: 'Rel Scope A',
+      });
+      const projectB = await projects.createProject(actor, {
+        key: uniqueKey(),
+        name: 'Rel Scope B',
+      });
       const releaseB = await releases.createRelease(actor, projectB.id, 'Foreign Release');
       const story = await workItems.createWorkItem(actor, projectA.id, 'story', 'A story');
 
@@ -81,7 +90,10 @@ describe('BA flows: releases + milestones + defect lifecycle (real AppModule + s
   // ── E2E-014: milestone artifacts are independent from release/iteration ──────
   describe('E2E-014 milestone artifact assignment', () => {
     it('adds/removes a milestone artifact without mutating release or iteration', async () => {
-      const project = await projects.createProject(actor, uniqueKey(), 'Milestone Project');
+      const project = await projects.createProject(actor, {
+        key: uniqueKey(),
+        name: 'Milestone Project',
+      });
       const release = await releases.createRelease(actor, project.id, 'MS Release');
       const iteration = await iterations.createIteration(actor, project.id, 'MS Sprint');
       const milestone = await milestones.createMilestone(actor, project.id, 'GA Milestone');
@@ -112,8 +124,14 @@ describe('BA flows: releases + milestones + defect lifecycle (real AppModule + s
     });
 
     it('rejects a milestone artifact outside the work item project scope', async () => {
-      const projectA = await projects.createProject(actor, uniqueKey(), 'MS Scope A');
-      const projectB = await projects.createProject(actor, uniqueKey(), 'MS Scope B');
+      const projectA = await projects.createProject(actor, {
+        key: uniqueKey(),
+        name: 'MS Scope A',
+      });
+      const projectB = await projects.createProject(actor, {
+        key: uniqueKey(),
+        name: 'MS Scope B',
+      });
       const milestoneB = await milestones.createMilestone(actor, projectB.id, 'Foreign MS');
       const story = await workItems.createWorkItem(actor, projectA.id, 'story', 'A story');
 
@@ -126,7 +144,10 @@ describe('BA flows: releases + milestones + defect lifecycle (real AppModule + s
   // ── E2E-015: quality defect lifecycle shares the backlog source ─────────────
   describe('E2E-015 defect lifecycle', () => {
     it('creates a parentless defect, walks the valid state machine, and forbids delete', async () => {
-      const project = await projects.createProject(actor, uniqueKey(), 'Defect Lifecycle');
+      const project = await projects.createProject(actor, {
+        key: uniqueKey(),
+        name: 'Defect Lifecycle',
+      });
       const defect = await workItems.createWorkItem(
         actor,
         project.id,

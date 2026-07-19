@@ -1995,6 +1995,8 @@ export interface components {
       description: string | null
       leadId: string | null
       leadName: string | null
+      /** @description YYYY-MM-DD */
+      startDate: string | null
       /**
        * @description Project status: active | archived
        * @enum {string}
@@ -2016,11 +2018,14 @@ export interface components {
       description?: string
       /** Format: uuid */
       leadId?: string
+      startDate?: string
+      teamIds?: string[]
     }
     UpdateProjectDto: {
       name?: string
       description?: string | null
       leadId?: string | null
+      startDate?: string | null
       /** @enum {string} */
       status?: 'active' | 'archived'
       settings?: {
@@ -6704,8 +6709,6 @@ export interface operations {
         teamId?: string
         state?: 'planning' | 'committed' | 'accepted'
         q?: string
-        sortBy?: 'name' | 'theme' | 'startDate' | 'endDate' | 'state' | 'plannedVelocity'
-        sortDirection?: 'asc' | 'desc'
       }
       header?: never
       path?: never
@@ -7118,16 +7121,6 @@ export interface operations {
         scheduleState?: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'release'
         isBlocked?: boolean
         assigneeId?: string
-        sortBy?:
-          | 'rank'
-          | 'itemKey'
-          | 'type'
-          | 'title'
-          | 'scheduleState'
-          | 'planEstimate'
-          | 'taskEstimate'
-          | 'toDo'
-        sortDirection?: 'asc' | 'desc'
       }
       header?: never
       path: {

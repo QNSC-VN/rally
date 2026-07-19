@@ -58,23 +58,10 @@ export interface IterationStatusItem {
   milestones: { id: string; name: string }[];
 }
 
-/** Sort keys for the Iteration Status list (mirrors the backlog list). */
-export type IterationStatusSortBy =
-  | 'rank'
-  | 'itemKey'
-  | 'type'
-  | 'title'
-  | 'scheduleState'
-  | 'planEstimate'
-  | 'taskEstimate'
-  | 'toDo';
-
 export interface IterationStatusFilters {
   q?: string;
   type?: WorkItemType;
   scheduleState?: WorkItemScheduleState;
   isBlocked?: boolean;
   assigneeId?: string;
-  sortBy?: IterationStatusSortBy;
-  sortDirection?: 'asc' | 'desc';
 }

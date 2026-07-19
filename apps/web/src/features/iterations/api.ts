@@ -31,7 +31,9 @@ export const iterationKeys = {
     ['iterations', 'committed-count', [...projectIds].sort()] as const,
   statusAll: ['iteration-status'] as const,
   status: (id: string, filters?: unknown) =>
-    filters ? ([...iterationKeys.statusAll, id, filters] as const) : ([...iterationKeys.statusAll, id] as const),
+    filters
+      ? ([...iterationKeys.statusAll, id, filters] as const)
+      : ([...iterationKeys.statusAll, id] as const),
 }
 
 // ── Assignment options (P2-IT-10) — compact picker feed ─────────────────────
@@ -54,17 +56,35 @@ export function useIterationOptions(projectId: string | undefined, teamId?: stri
 
 // ── List ────────────────────────────────────────────────────────────────────
 
+/**
+ * Iterations are a bounded working set (a project has a finite number of
+ * timeboxes), so we follow the cursor to load the COMPLETE set instead of a
+ * single 100-item page. This keeps client-side filtering/counting honest —
+ * a silent first-page cap would drop iterations past the 100th. MAX_PAGES is a
+ * safety ceiling against pathological loops.
+ */
+const MAX_PAGES = 50
+
+async function fetchAllIterations(projectId: string, teamId?: string): Promise<Iteration[]> {
+  const out: Iteration[] = []
+  let cursor: string | undefined
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const { data, error, response } = await apiClient.GET('/v1/iterations', {
+      params: { query: { projectId, teamId, limit: 100, cursor } },
+    })
+    if (error) throw new Error(apiErrorMessage(error, response.status))
+    out.push(...((data?.data ?? []) as Iteration[]))
+    const next = data?.pageInfo?.nextCursor
+    if (!next) break
+    cursor = next
+  }
+  return out
+}
+
 export function useIterations(projectId: string | undefined, teamId?: string) {
   return useQuery({
     queryKey: [...iterationKeys.list(projectId ?? ''), teamId ?? null],
-    queryFn: async () => {
-      if (!projectId) return []
-      const { data, error, response } = await apiClient.GET('/v1/iterations', {
-        params: { query: { projectId, teamId, limit: 100 } },
-      })
-      if (error) throw new Error(apiErrorMessage(error, response.status))
-      return (data?.data ?? []) as Iteration[]
-    },
+    queryFn: () => (projectId ? fetchAllIterations(projectId, teamId) : Promise.resolve([])),
     enabled: !!projectId,
     staleTime: 30_000,
   })
@@ -77,12 +97,7 @@ export function useCommittedIterationsCount(projects: Array<{ id: string }>) {
     queryFn: async () => {
       if (projects.length === 0) return 0
       const allIterations = await Promise.all(
-        projects.map(async (project) => {
-          const { data } = await apiClient.GET('/v1/iterations', {
-            params: { query: { projectId: project.id, limit: 100 } },
-          })
-          return (data?.data ?? []) as Iteration[]
-        }),
+        projects.map((project) => fetchAllIterations(project.id)),
       )
       return allIterations.flat().filter((i) => i.state === 'committed').length
     },
@@ -144,35 +159,39 @@ export function useUpdateIteration(id: string) {
 
 // ── Iteration Status (P2.3) ─────────────────────────────────────────────────
 
-export type IterationStatusSortBy =
-  | 'rank'
-  | 'itemKey'
-  | 'type'
-  | 'title'
-  | 'scheduleState'
-  | 'planEstimate'
-  | 'taskEstimate'
-  | 'toDo'
-
 export interface IterationStatusFilters {
   q?: string
   type?: IterationStatusItem['type']
   scheduleState?: IterationStatusItem['scheduleState']
   isBlocked?: boolean
   assigneeId?: string
-  sortBy?: IterationStatusSortBy
-  sortDirection?: 'asc' | 'desc'
 }
 
 export function useIterationStatus(id: string | undefined, filters: IterationStatusFilters = {}) {
   return useQuery({
     queryKey: iterationKeys.status(id ?? '', filters),
     queryFn: async () => {
-      const { data, error, response } = await apiClient.GET('/v1/iterations/{id}/status', {
-        params: { path: { id: id! }, query: { ...filters, limit: 100 } },
-      })
-      if (error) throw new Error(apiErrorMessage(error, response.status))
-      return data as IterationStatus
+      // One iteration is a bounded working set and the Board view needs every
+      // item to allow drag across columns, so we follow the cursor to load the
+      // whole set. `metrics`/`iteration` are full-iteration aggregates computed
+      // server-side (page-independent), so we keep them from the first page and
+      // concatenate items across pages.
+      let result: IterationStatus | undefined
+      const items: IterationStatusItem[] = []
+      let cursor: string | undefined
+      for (let page = 0; page < MAX_PAGES; page++) {
+        const { data, error, response } = await apiClient.GET('/v1/iterations/{id}/status', {
+          params: { path: { id: id! }, query: { ...filters, limit: 100, cursor } },
+        })
+        if (error) throw new Error(apiErrorMessage(error, response.status))
+        const page$ = data as IterationStatus
+        if (!result) result = page$
+        items.push(...page$.items)
+        const next = page$.pageInfo?.nextCursor
+        if (!next) break
+        cursor = next
+      }
+      return { ...result!, items }
     },
     enabled: !!id,
     staleTime: 15_000,
