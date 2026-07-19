@@ -150,10 +150,10 @@ export function useCreateTeam() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async ({ workspaceId, ...body }: CreateTeamInput) => {
-      const { data, error, response } = await apiClient.POST(
-        '/v1/workspaces/{workspaceId}/teams',
-        { params: { path: { workspaceId } }, body: body as never },
-      )
+      const { data, error, response } = await apiClient.POST('/v1/workspaces/{workspaceId}/teams', {
+        params: { path: { workspaceId } },
+        body: body as never,
+      })
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as Team
     },
@@ -216,6 +216,39 @@ export function useRemoveTeamMember(teamId: string) {
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: teamKeys.members(teamId) })
+    },
+  })
+}
+
+// ── Project ⇄ Team links ──────────────────────────────────────────────────────
+
+export function useLinkProjectTeam(projectId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (teamId: string) => {
+      const { error, response } = await apiClient.POST('/v1/projects/{id}/teams', {
+        params: { path: { id: projectId } },
+        body: { teamId } as never,
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: teamKeys.projectTeams(projectId) })
+    },
+  })
+}
+
+export function useUnlinkProjectTeam(projectId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (teamId: string) => {
+      const { error, response } = await apiClient.DELETE('/v1/projects/{id}/teams/{teamId}', {
+        params: { path: { id: projectId, teamId } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: teamKeys.projectTeams(projectId) })
     },
   })
 }
