@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   AlertTriangle,
   Archive,
@@ -8,7 +9,6 @@ import {
   MoreHorizontal,
   Plus,
   RotateCcw,
-  User,
   Users,
   UsersRound,
 } from 'lucide-react'
@@ -21,6 +21,8 @@ import { MetricStrip } from '@/shared/ui/metric-strip'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
 import { PaginationFooter } from '@/shared/ui/pagination-footer'
+import { OwnerCell } from '@/shared/ui/owner-cell'
+import { Tooltip } from '@/shared/ui/tooltip'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
@@ -29,7 +31,12 @@ import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { useProjects, useUpdateProject, useCreateProject } from '@/features/projects/api'
 import type { Project } from '@/features/projects/api'
 import { useWorkspaceMembers } from '@/features/workspaces/api'
-import { useWorkspaceTeams } from '@/features/teams/api'
+import {
+  useWorkspaceTeams,
+  useProjectTeams,
+  useLinkProjectTeam,
+  useUnlinkProjectTeam,
+} from '@/features/teams/api'
 
 /** Extract a human-readable message from an API error response. */
 function parseApiError(err: unknown): string {
@@ -214,18 +221,141 @@ function TeamMultiSelect({
       </div>
     )
   return (
-    <div className="flex max-h-32 flex-col gap-1 overflow-y-auto rounded border border-input bg-input-background p-2">
-      {teams.map((t) => (
-        <label
-          key={t.id}
-          className="flex cursor-pointer items-center gap-2 text-[12px]"
-          style={{ color: BRAND.textPrimary }}
-        >
-          <input type="checkbox" checked={value.includes(t.id)} onChange={() => toggle(t.id)} />
-          {t.name}
-        </label>
-      ))}
+    <div>
+      <div className="mb-1.5 flex items-center justify-between">
+        <span className="text-[11px]" style={{ color: BRAND.textMuted }}>
+          A team can be linked to multiple projects.
+        </span>
+        <span className="text-[11px] font-medium" style={{ color: BRAND.textSecondary }}>
+          {value.length} selected
+        </span>
+      </div>
+      <div className="grid max-h-40 grid-cols-2 gap-1.5 overflow-y-auto rounded border border-input bg-input-background p-2">
+        {teams.map((t) => {
+          const checked = value.includes(t.id)
+          return (
+            <label
+              key={t.id}
+              className="flex cursor-pointer items-center gap-2 rounded border px-2.5 py-2 text-[12px] transition-colors"
+              style={{
+                borderColor: checked ? BRAND.primary : BRAND.border,
+                backgroundColor: checked ? BRAND.primaryLighter : BRAND.surface,
+                color: BRAND.textPrimary,
+              }}
+            >
+              <input type="checkbox" checked={checked} onChange={() => toggle(t.id)} />
+              <UsersRound size={12} style={{ color: BRAND.textMuted }} />
+              <span className="truncate">{t.name}</span>
+            </label>
+          )
+        })}
+      </div>
     </div>
+  )
+}
+
+// ── Shared project form ──────────────────────────────────────────────────────
+// Single source of truth for the create/edit field layout (BA design). The two
+// modals own their state + submit logic (create vs update+team-diff) and share
+// this presentational body so both stay in lockstep.
+
+interface ProjectFormValues {
+  name: string
+  key: string
+  description: string
+  leadId: string
+  startDate: string
+  teamIds: string[]
+}
+
+function ProjectFormFields({
+  workspaceId,
+  values,
+  onPatch,
+  keyEditable,
+  currentUserId,
+  autoFocusName,
+}: {
+  workspaceId: string
+  values: ProjectFormValues
+  onPatch: (patch: Partial<ProjectFormValues>) => void
+  keyEditable: boolean
+  currentUserId?: string
+  autoFocusName?: boolean
+}) {
+  return (
+    <>
+      <div className="grid grid-cols-[1fr_9rem] gap-3">
+        <FormField label="Project Name" required>
+          <Input
+            autoFocus={autoFocusName}
+            type="text"
+            value={values.name}
+            onChange={(e) => onPatch({ name: e.target.value })}
+            placeholder="e.g. NX Platform"
+            required
+          />
+        </FormField>
+        <FormField
+          label="Project Key"
+          required={keyEditable}
+          hint={keyEditable ? '2–6 letters' : 'Immutable'}
+        >
+          <Input
+            type="text"
+            value={values.key}
+            disabled={!keyEditable}
+            readOnly={!keyEditable}
+            onChange={
+              keyEditable
+                ? (e) =>
+                    onPatch({
+                      key: e.target.value
+                        .toUpperCase()
+                        .replace(/[^A-Z0-9]/g, '')
+                        .slice(0, 6),
+                    })
+                : undefined
+            }
+            placeholder="NXP"
+            required={keyEditable}
+            className="font-mono"
+          />
+        </FormField>
+      </div>
+      <FormField label="Description">
+        <Textarea
+          value={values.description}
+          onChange={(e) => onPatch({ description: e.target.value })}
+          placeholder="Brief description of this project…"
+          rows={3}
+        />
+      </FormField>
+      <div className="grid grid-cols-2 gap-3">
+        <FormField label="Project Owner" required>
+          <OwnerSelect
+            workspaceId={workspaceId}
+            value={values.leadId}
+            onChange={(leadId) => onPatch({ leadId })}
+            currentUserId={currentUserId}
+          />
+        </FormField>
+        <FormField label="Start Date">
+          <Input
+            type="date"
+            value={values.startDate}
+            onChange={(e) => onPatch({ startDate: e.target.value })}
+          />
+        </FormField>
+      </div>
+      <FormField label="Teams">
+        <TeamMultiSelect
+          workspaceId={workspaceId}
+          value={values.teamIds}
+          onChange={(teamIds) => onPatch({ teamIds })}
+        />
+      </FormField>
+    </>
   )
 }
 
@@ -241,26 +371,59 @@ function EditProjectModal({
   onClose: () => void
 }) {
   const { user } = useAuthStore()
-  const [name, setName] = useState(project.name)
-  const [desc, setDesc] = useState(project.description ?? '')
-  const [leadId, setLeadId] = useState(project.leadId ?? '')
-  const [startDate, setStartDate] = useState(project.startDate ?? '')
+  const qc = useQueryClient()
+  const { data: linkedTeams = [], isLoading: teamsLoading } = useProjectTeams(project.id)
+
+  const [values, setValues] = useState<ProjectFormValues>({
+    name: project.name,
+    key: project.key,
+    description: project.description ?? '',
+    leadId: project.leadId ?? '',
+    startDate: project.startDate ?? '',
+    teamIds: [],
+  })
+  // Seed the team selection once the linked teams load (during render, not in
+  // an effect), then diff against this original set on save.
+  const [seeded, setSeeded] = useState(false)
+  if (!teamsLoading && !seeded) {
+    setSeeded(true)
+    setValues((v) => ({ ...v, teamIds: linkedTeams.map((t) => t.id) }))
+  }
+  function patch(p: Partial<ProjectFormValues>) {
+    setValues((v) => ({ ...v, ...p }))
+  }
+
   const { mutateAsync, isPending } = useUpdateProject(workspaceId)
+  const linkTeam = useLinkProjectTeam(project.id)
+  const unlinkTeam = useUnlinkProjectTeam(project.id)
+  const saving = isPending || linkTeam.isPending || unlinkTeam.isPending
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!name.trim()) return
+    if (!values.name.trim()) return
     try {
       await mutateAsync({
         id: project.id,
         input: {
-          name: name.trim(),
-          description: desc.trim() || undefined,
-          leadId: leadId || null,
-          startDate: startDate || null,
+          name: values.name.trim(),
+          description: values.description.trim() || undefined,
+          leadId: values.leadId || null,
+          startDate: values.startDate || null,
         },
       })
-      toast.success(`Project "${name}" updated`)
+      // Diff team links against the originally-loaded set.
+      const original = new Set(linkedTeams.map((t) => t.id))
+      const next = new Set(values.teamIds)
+      const toAdd = values.teamIds.filter((id) => !original.has(id))
+      const toRemove = [...original].filter((id) => !next.has(id))
+      await Promise.all([
+        ...toAdd.map((id) => linkTeam.mutateAsync(id)),
+        ...toRemove.map((id) => unlinkTeam.mutateAsync(id)),
+      ])
+      if (toAdd.length || toRemove.length) {
+        void qc.invalidateQueries({ queryKey: ['projects', workspaceId] })
+      }
+      toast.success(`Project "${values.name}" updated`)
       onClose()
     } catch (err) {
       const msg = parseApiError(err)
@@ -269,45 +432,24 @@ function EditProjectModal({
   }
 
   return (
-    <AppModal
-      open
-      onClose={onClose}
-      title="Edit Project"
-      subtitle={`Key: ${project.key} · immutable`}
-      width={440}
-    >
+    <AppModal open onClose={onClose} title="Edit Project" width={560}>
       <form onSubmit={handleSubmit}>
         <ModalBody className="space-y-4">
-          <FormField label="Project Name" required>
-            <Input
-              autoFocus
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
-          </FormField>
-          <FormField label="Description">
-            <Textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={3} />
-          </FormField>
-          <FormField label="Project Owner" hint="The person accountable for this project">
-            <OwnerSelect
-              workspaceId={workspaceId}
-              value={leadId}
-              onChange={setLeadId}
-              currentUserId={user?.id}
-            />
-          </FormField>
-          <FormField label="Start Date" hint="When work on this project begins">
-            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-          </FormField>
+          <ProjectFormFields
+            workspaceId={workspaceId}
+            values={values}
+            onPatch={patch}
+            keyEditable={false}
+            currentUserId={user?.id}
+            autoFocusName
+          />
         </ModalBody>
         <ModalFooter>
           <Button variant="outline" type="button" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" disabled={isPending || !name.trim()}>
-            {isPending && <Loader2 size={12} className="animate-spin" />}
+          <Button type="submit" disabled={saving || !values.name.trim()}>
+            {saving && <Loader2 size={12} className="animate-spin" />}
             Save Changes
           </Button>
         </ModalFooter>
@@ -320,12 +462,14 @@ function EditProjectModal({
 
 function NewProjectModal({ workspaceId, onClose }: { workspaceId: string; onClose: () => void }) {
   const { user } = useAuthStore()
-  const [name, setName] = useState('')
-  const [key, setKey] = useState('')
-  const [desc, setDesc] = useState('')
-  const [leadId, setLeadId] = useState(user?.id ?? '')
-  const [startDate, setStartDate] = useState('')
-  const [teamIds, setTeamIds] = useState<string[]>([])
+  const [values, setValues] = useState<ProjectFormValues>({
+    name: '',
+    key: '',
+    description: '',
+    leadId: user?.id ?? '',
+    startDate: '',
+    teamIds: [],
+  })
   const { mutateAsync, isPending } = useCreateProject()
 
   const autoKey = (n: string) =>
@@ -334,17 +478,21 @@ function NewProjectModal({ workspaceId, onClose }: { workspaceId: string; onClos
       .replace(/[^A-Z0-9]/g, '')
       .slice(0, 4)
 
-  function handleNameChange(v: string) {
-    setName(v)
-    if (!key || key === autoKey(name)) {
-      setKey(autoKey(v))
-    }
+  function patch(p: Partial<ProjectFormValues>) {
+    setValues((v) => {
+      const next = { ...v, ...p }
+      // Auto-derive the key from the name while the user hasn't customised it.
+      if (p.name !== undefined && (!v.key || v.key === autoKey(v.name))) {
+        next.key = autoKey(p.name)
+      }
+      return next
+    })
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    const trimmedKey = key.trim().toUpperCase()
-    if (!name.trim() || !trimmedKey) return
+    const trimmedKey = values.key.trim().toUpperCase()
+    if (!values.name.trim() || !trimmedKey) return
     if (trimmedKey.length < 2) {
       toast.error('Project key must be at least 2 characters')
       return
@@ -352,14 +500,14 @@ function NewProjectModal({ workspaceId, onClose }: { workspaceId: string; onClos
     try {
       await mutateAsync({
         workspaceId,
-        name: name.trim(),
+        name: values.name.trim(),
         key: trimmedKey,
-        description: desc.trim() || undefined,
-        leadId: leadId || user?.id,
-        startDate: startDate || undefined,
-        teamIds: teamIds.length > 0 ? teamIds : undefined,
+        description: values.description.trim() || undefined,
+        leadId: values.leadId || user?.id,
+        startDate: values.startDate || undefined,
+        teamIds: values.teamIds.length > 0 ? values.teamIds : undefined,
       })
-      toast.success(`Project "${name}" created`)
+      toast.success(`Project "${values.name}" created`)
       onClose()
     } catch (err) {
       const msg = parseApiError(err)
@@ -368,69 +516,88 @@ function NewProjectModal({ workspaceId, onClose }: { workspaceId: string; onClos
   }
 
   return (
-    <AppModal open onClose={onClose} title="New Project" width={440}>
+    <AppModal open onClose={onClose} title="New Project" width={560}>
       <form onSubmit={handleSubmit}>
         <ModalBody className="space-y-4">
-          <FormField label="Project Name" required>
-            <Input
-              type="text"
-              value={name}
-              onChange={(e) => handleNameChange(e.target.value)}
-              placeholder="e.g. NX Platform"
-              required
-            />
-          </FormField>
-          <FormField label="Key" required hint="2–6 uppercase letters">
-            <Input
-              type="text"
-              value={key}
-              onChange={(e) =>
-                setKey(
-                  e.target.value
-                    .toUpperCase()
-                    .replace(/[^A-Z0-9]/g, '')
-                    .slice(0, 6),
-                )
-              }
-              placeholder="NXP"
-              required
-              className="font-mono"
-            />
-          </FormField>
-          <FormField label="Project Owner" required hint="Defaults to you — change if delegating">
-            <OwnerSelect
-              workspaceId={workspaceId}
-              value={leadId}
-              onChange={setLeadId}
-              currentUserId={user?.id}
-            />
-          </FormField>
-          <FormField label="Start Date" hint="When work on this project begins">
-            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-          </FormField>
-          <FormField label="Teams" hint="Link teams that will work on this project">
-            <TeamMultiSelect workspaceId={workspaceId} value={teamIds} onChange={setTeamIds} />
-          </FormField>
-          <FormField label="Description">
-            <Textarea
-              value={desc}
-              onChange={(e) => setDesc(e.target.value)}
-              placeholder="Brief description of this project…"
-              rows={3}
-            />
-          </FormField>
+          <ProjectFormFields
+            workspaceId={workspaceId}
+            values={values}
+            onPatch={patch}
+            keyEditable
+            currentUserId={user?.id}
+          />
         </ModalBody>
         <ModalFooter>
           <Button variant="outline" type="button" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" disabled={isPending || !name.trim() || !key.trim()}>
+          <Button type="submit" disabled={isPending || !values.name.trim() || !values.key.trim()}>
             {isPending && <Loader2 size={12} className="animate-spin" />}
             Create Project
           </Button>
         </ModalFooter>
       </form>
     </AppModal>
+  )
+}
+
+// ── Teams cell (linked team name chips) ──────────────────────────────────────
+
+function ProjectTeamsCell({ projectId, teamCount }: { projectId: string; teamCount: number }) {
+  // Only fetch team names for rows that actually have linked teams.
+  const { data: teams = [] } = useProjectTeams(teamCount > 0 ? projectId : undefined)
+
+  if (teamCount === 0) {
+    return (
+      <span className="text-[11px]" style={{ color: BRAND.textMuted }}>
+        —
+      </span>
+    )
+  }
+
+  const shown = teams.slice(0, 2)
+  const overflow = teamCount - shown.length
+
+  const chips = (
+    <div className="flex items-center gap-1">
+      {shown.length > 0 ? (
+        shown.map((t) => (
+          <span
+            key={t.id}
+            className="inline-flex max-w-[5rem] items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] font-medium"
+            style={{ backgroundColor: BRAND.avatarBg, color: BRAND.textSecondary }}
+          >
+            <UsersRound size={9} style={{ color: BRAND.textMuted }} />
+            <span className="truncate">{t.name}</span>
+          </span>
+        ))
+      ) : (
+        <UsersRound size={11} style={{ color: BRAND.textMuted }} />
+      )}
+      {overflow > 0 && (
+        <span className="text-[10px] font-medium" style={{ color: BRAND.textMuted }}>
+          +{overflow}
+        </span>
+      )}
+    </div>
+  )
+
+  // Once the names load, reveal the full list on hover so every linked team is
+  // discoverable without breaking the fixed-height row.
+  if (teams.length === 0) return chips
+
+  return (
+    <Tooltip
+      content={
+        <div className="flex flex-col gap-0.5">
+          {teams.map((t) => (
+            <span key={t.id}>{t.name}</span>
+          ))}
+        </div>
+      }
+    >
+      {chips}
+    </Tooltip>
   )
 }
 
@@ -629,12 +796,13 @@ export function ProjectsPage() {
             {(
               [
                 ['w-16 shrink-0', 'Key'],
-                ['flex-1 min-w-0', 'Project Name'],
+                ['flex-1 min-w-0', 'Project'],
                 ['w-20 shrink-0', 'Status'],
-                ['w-28 shrink-0', 'Lead'],
+                ['w-28 shrink-0', 'Owner'],
+                ['w-44 shrink-0', 'Teams'],
                 ['w-16 shrink-0', 'Members'],
-                ['w-16 shrink-0', 'Teams'],
-                ['w-36 shrink-0', 'Last Updated'],
+                ['w-24 shrink-0', 'Start Date'],
+                ['w-28 shrink-0', 'Updated'],
                 ['w-8 shrink-0', ''],
               ] as [string, string][]
             ).map(([cls, label]) => (
@@ -676,7 +844,8 @@ export function ProjectsPage() {
               paged.map((project) => (
                 <div
                   key={project.id}
-                  className="relative flex h-12 cursor-default items-center gap-3 px-4 transition-colors hover:bg-surface-hover"
+                  onClick={() => setEditingProject(project)}
+                  className="relative flex h-12 cursor-pointer items-center gap-3 px-4 transition-colors hover:bg-surface-hover"
                   style={{
                     borderBottom: `1px solid ${BRAND.borderInner}`,
                     opacity: project.status === 'archived' ? 0.7 : 1,
@@ -712,22 +881,21 @@ export function ProjectsPage() {
                     <ProjectStatusBadge status={project.status} />
                   </div>
 
-                  {/* Lead */}
-                  <div
-                    className="flex w-28 shrink-0 items-center gap-1.5 text-[11px]"
-                    style={{ color: BRAND.textSecondary }}
-                  >
-                    {project.leadId ? (
-                      <>
-                        <User size={11} style={{ color: BRAND.textMuted }} />
-                        <span className="truncate">
-                          {project.leadName ??
-                            (project.leadId === currentUser?.id ? currentUser.displayName : '—')}
-                        </span>
-                      </>
-                    ) : (
-                      <span style={{ color: BRAND.textMuted }}>—</span>
-                    )}
+                  {/* Owner */}
+                  <div className="w-28 shrink-0">
+                    <OwnerCell
+                      name={
+                        project.leadId
+                          ? (project.leadName ??
+                            (project.leadId === currentUser?.id ? currentUser.displayName : null))
+                          : null
+                      }
+                    />
+                  </div>
+
+                  {/* Teams */}
+                  <div className="w-44 shrink-0">
+                    <ProjectTeamsCell projectId={project.id} teamCount={project.teamCount} />
                   </div>
 
                   {/* Members */}
@@ -742,20 +910,21 @@ export function ProjectsPage() {
                     )}
                   </div>
 
-                  {/* Teams */}
-                  <div className="w-16 shrink-0 text-[11px]" style={{ color: BRAND.textSecondary }}>
-                    {project.teamCount > 0 ? (
-                      <span className="inline-flex items-center gap-1">
-                        <UsersRound size={11} style={{ color: BRAND.textMuted }} />
-                        {project.teamCount}
-                      </span>
+                  {/* Start Date */}
+                  <div className="w-24 shrink-0 text-[11px]" style={{ color: BRAND.textSecondary }}>
+                    {project.startDate ? (
+                      new Date(project.startDate).toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                      })
                     ) : (
                       <span style={{ color: BRAND.textMuted }}>—</span>
                     )}
                   </div>
 
                   {/* Updated */}
-                  <div className="w-36 shrink-0 text-[11px]" style={{ color: BRAND.textSecondary }}>
+                  <div className="w-28 shrink-0 text-[11px]" style={{ color: BRAND.textSecondary }}>
                     {new Date(project.updatedAt).toLocaleDateString('en-US', {
                       month: 'short',
                       day: 'numeric',
@@ -764,7 +933,7 @@ export function ProjectsPage() {
                   </div>
 
                   {/* Row actions */}
-                  <div className="relative w-8 shrink-0">
+                  <div className="relative w-8 shrink-0" onClick={(e) => e.stopPropagation()}>
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
