@@ -405,6 +405,13 @@ async function seedWorkItems() {
       .update(projectCounters)
       .set({ lastItemNumber: sql`GREATEST(${projectCounters.lastItemNumber}, 1)` })
       .where(and(eq(projectCounters.projectId, mobId), eq(projectCounters.itemType, 'defect')));
+    // Bump the task counter too — TA-1 was seeded above, so leaving the counter
+    // at 0 would make the next app-created MOB task regenerate TA-1 and collide
+    // on the unique (project_id, item_key) index.
+    await db
+      .update(projectCounters)
+      .set({ lastItemNumber: sql`GREATEST(${projectCounters.lastItemNumber}, ${mobTasks.length})` })
+      .where(and(eq(projectCounters.projectId, mobId), eq(projectCounters.itemType, 'task')));
   }
 
   console.log('✅  Work items seeded');
@@ -1279,6 +1286,16 @@ async function seedPhase3() {
       fixedInBuild: 'v2.0.0-rc3',
     })
     .where(eq(workItems.id, NXP_DEFECT_11_ID));
+  // DE-3 / DE-5 are signed off (scheduleState 'accepted' + done workflow status,
+  // the "closed" child defects in constants.ts). Their defect state must be the
+  // terminal 'closed' with a resolution, not the bulk 'open' default above — an
+  // accepted, verified defect showing as an open defect on the Quality board is
+  // contradictory (computeMetrics counts it as verifiedAccepted, so the State
+  // column must agree). accepted ⇒ not counted as reopened despite resolution.
+  await db
+    .update(workItems)
+    .set({ defectState: 'closed', resolution: 'fixed', fixedInBuild: 'v2.0.0-rc2' })
+    .where(inArray(workItems.id, [NXP_CHILD_DEFECT_1_ID, NXP_CHILD_DEFECT_3_ID]));
 
   // 3. Milestones for NX Platform, linked to its releases + owning project.
   const MS_1 = '00000000-0000-7000-8000-0000000000b0';
