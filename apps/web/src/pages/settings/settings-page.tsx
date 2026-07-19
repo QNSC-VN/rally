@@ -27,7 +27,6 @@ import {
   Archive,
   Search,
   Clock,
-  ChevronLeft,
   ChevronUp,
   ChevronDown,
   Trash2,
@@ -2290,7 +2289,7 @@ function TeamsTab() {
 
 // ── Audit Log tab ─────────────────────────────────────────────────────────────
 
-const AUDIT_PAGE_SIZE = 50
+const AUDIT_DEFAULT_PAGE_SIZE = 50
 
 function formatAuditTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
@@ -2302,14 +2301,15 @@ function humanizeAuditAction(action: string): string {
 }
 
 function AuditLogTab() {
+  const [pageSize, setPageSize] = useState(AUDIT_DEFAULT_PAGE_SIZE)
   const [offset, setOffset] = useState(0)
   const [search, setSearch] = useState('')
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['audit-logs', offset],
+    queryKey: ['audit-logs', offset, pageSize],
     queryFn: async () => {
       const res = await apiClient.GET('/v1/audit-logs', {
-        params: { query: { limit: AUDIT_PAGE_SIZE, offset } },
+        params: { query: { limit: pageSize, offset } },
       })
       return res.data
     },
@@ -2435,26 +2435,25 @@ function AuditLogTab() {
       </div>
 
       {/* ── Pagination ── */}
-      {(offset > 0 || hasNextPage) && (
-        <div className="mt-3 flex items-center justify-end gap-2">
-          <button
-            onClick={() => setOffset((o) => Math.max(0, o - AUDIT_PAGE_SIZE))}
-            disabled={offset === 0}
-            className="flex items-center gap-1 rounded px-2.5 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-            style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
-          >
-            <ChevronLeft size={12} />
-            Prev
-          </button>
-          <button
-            onClick={() => setOffset((o) => o + AUDIT_PAGE_SIZE)}
-            disabled={!hasNextPage}
-            className="flex items-center gap-1 rounded px-2.5 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-            style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
-          >
-            Next
-            <ChevronRight size={12} />
-          </button>
+      {rows.length > 0 && (
+        <div
+          className="mt-3 overflow-hidden rounded-lg"
+          style={{ border: `1px solid ${BRAND.border}` }}
+        >
+          <PaginationFooter
+            pageSize={pageSize}
+            setPageSize={(n) => {
+              setPageSize(n)
+              setOffset(0)
+            }}
+            currentPage={Math.floor(offset / pageSize) + 1}
+            rangeStart={rows.length === 0 ? 0 : offset + 1}
+            rangeEnd={offset + rows.length}
+            hasPrevPage={offset > 0}
+            hasNextPage={hasNextPage}
+            onPrevPage={() => setOffset((o) => Math.max(0, o - pageSize))}
+            onNextPage={() => setOffset((o) => o + pageSize)}
+          />
         </div>
       )}
     </div>
