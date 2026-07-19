@@ -35,6 +35,8 @@ export interface Release {
   targetDate: string | null
   plannedVelocity: number | null
   planEstimate: number | null
+  /** Read-only roll-up: summed estimate hours of assigned work items (SRS FR-004). */
+  taskEstimate: number
   version: string | null
   releasedAt: string | null
   createdAt: string

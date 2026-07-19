@@ -88,6 +88,28 @@ describe('BA flows: releases + milestones + defect lifecycle (real AppModule + s
         workItems.updateWorkItem(actor, story.id, { releaseId: releaseB.id }),
       ).rejects.toMatchObject({ code: 'RELEASE_PROJECT_MISMATCH' });
     });
+
+    // FR-004 §6.1 — Task Estimate is a read-only roll-up of the child tasks'
+    // estimate hours under the release's assigned work items (same definition
+    // as Iteration Status), surfaced on both the list and the detail.
+    it('rolls up child task estimate hours into the release Task Estimate', async () => {
+      const project = await projects.createProject(actor, {
+        key: uniqueKey(),
+        name: 'Estimate Rollup Project',
+      });
+      const release = await releases.createRelease(actor, project.id, 'Estimate Release');
+      const story = await workItems.createWorkItem(actor, project.id, 'story', 'Estimated story');
+      await workItems.updateWorkItem(actor, story.id, { releaseId: release.id });
+      await workItems.createTask(actor, story.id, 'Task 1', { estimateHours: '3' });
+      await workItems.createTask(actor, story.id, 'Task 2', { estimateHours: '5' });
+
+      const detail = await releases.getReleaseDetail(actor, release.id);
+      expect(detail.taskEstimate).toBe(8);
+
+      const page = await releases.listReleases(actor, project.id, { limit: 50, cursor: null });
+      const listed = page.data.find((r) => r.id === release.id);
+      expect(listed?.taskEstimate).toBe(8);
+    });
   });
 
   // ── E2E-014: milestone artifacts are independent from release/iteration ──────

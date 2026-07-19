@@ -22,6 +22,7 @@ import type { Release } from '../../domain/release.types';
 
 function toReleaseDto(
   r: Release & {
+    taskEstimate?: number;
     taskRollup?: {
       totalItems: number;
       completedItems: number;
@@ -48,6 +49,7 @@ function toReleaseDto(
     releaseDate: r.releaseDate,
     plannedVelocity: r.plannedVelocity,
     planEstimate: r.planEstimate ? Number(r.planEstimate) : null,
+    taskEstimate: r.taskEstimate ?? 0,
     version: r.version ?? null,
     releasedAt: r.releasedAt ? r.releasedAt.toISOString() : null,
     createdAt: r.createdAt.toISOString(),
