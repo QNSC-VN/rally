@@ -21,7 +21,7 @@ import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { Avatar } from '@/shared/ui/avatar'
 import { useWorkspaces } from '@/features/workspaces/api'
 import { useProjects } from '@/features/projects/api'
-import { useProjectTeams } from '@/features/teams/api'
+import { useProjectTeams, type Team } from '@/features/teams/api'
 import { useNotificationUnreadCount, useNotificationSse } from '@/features/notifications/api'
 import { ENV } from '@/shared/config/env'
 import { isFeatureEnabled } from '@/shared/config/feature-flags'
@@ -127,6 +127,130 @@ const NAV_ITEMS: NavItem[] = [
   },
 ]
 
+/**
+ * A single row in the workspace-switcher "Projects & Teams" tree. The row can be
+ * expanded to reveal the project's teams, which are fetched lazily (only once the
+ * row is opened) so a workspace with hundreds of projects never fans out into
+ * hundreds of team requests.
+ */
+function ProjectTreeItem({
+  project,
+  selected,
+  expanded,
+  currentTeamId,
+  onToggleExpand,
+  onSelectProject,
+  onSelectTeam,
+}: {
+  project: { id: string; key: string; name: string }
+  selected: boolean
+  expanded: boolean
+  currentTeamId: string | null
+  onToggleExpand: () => void
+  onSelectProject: () => void
+  /** Pass a team to scope to it, or `null` for "All Teams". */
+  onSelectTeam: (team: Team | null) => void
+}) {
+  const { data: teams = [], isLoading } = useProjectTeams(expanded ? project.id : undefined)
+  const activeTeams = teams.filter((t) => t.status === 'active')
+
+  return (
+    <div>
+      <div
+        className="flex items-center gap-1 rounded hover:bg-surface-subtle"
+        style={{ color: selected ? BRAND.primary : BRAND.textPrimary }}
+      >
+        <button
+          type="button"
+          aria-label={expanded ? 'Collapse project' : 'Expand project'}
+          aria-expanded={expanded}
+          onClick={onToggleExpand}
+          className="flex h-6 w-5 shrink-0 items-center justify-center rounded hover:bg-surface-subtle"
+        >
+          <ChevronRight
+            size={12}
+            style={{
+              color: BRAND.textMuted,
+              transform: expanded ? 'rotate(90deg)' : 'none',
+              transition: 'transform 120ms',
+            }}
+          />
+        </button>
+        <button
+          type="button"
+          onClick={onSelectProject}
+          className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pr-1 text-left"
+          style={{ fontWeight: selected ? 600 : 400 }}
+        >
+          <span
+            className="inline-flex h-4 w-8 shrink-0 items-center justify-center rounded-sm font-mono text-[9px] font-bold"
+            style={{ backgroundColor: BRAND.avatarBg, color: BRAND.primary }}
+          >
+            {project.key}
+          </span>
+          <span className="truncate text-[11px]">{project.name}</span>
+          {selected && (
+            <Check size={10} className="ml-auto shrink-0" style={{ color: BRAND.primary }} />
+          )}
+        </button>
+      </div>
+      {expanded && (
+        <div className="mb-0.5 ml-5 border-l pl-1.5" style={{ borderColor: BRAND.borderSubtle }}>
+          <button
+            type="button"
+            onClick={() => onSelectTeam(null)}
+            className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left hover:bg-surface-subtle"
+            style={{
+              color: selected && !currentTeamId ? BRAND.primary : BRAND.textPrimary,
+              fontWeight: selected && !currentTeamId ? 600 : 400,
+            }}
+          >
+            <Users size={11} className="shrink-0" style={{ color: BRAND.textSecondary }} />
+            <span className="truncate text-[11px]">All Teams</span>
+            {selected && !currentTeamId && (
+              <Check size={10} className="ml-auto shrink-0" style={{ color: BRAND.primary }} />
+            )}
+          </button>
+          {isLoading && (
+            <div className="px-1.5 py-1 text-[10px]" style={{ color: BRAND.textMuted }}>
+              Loading teams…
+            </div>
+          )}
+          {!isLoading &&
+            activeTeams.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => onSelectTeam(t)}
+                className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left hover:bg-surface-subtle"
+                style={{
+                  color: currentTeamId === t.id ? BRAND.primary : BRAND.textPrimary,
+                  fontWeight: currentTeamId === t.id ? 600 : 400,
+                }}
+              >
+                <span
+                  className="inline-flex h-4 w-8 shrink-0 items-center justify-center rounded-sm font-mono text-[9px] font-bold"
+                  style={{ backgroundColor: BRAND.borderInner, color: BRAND.textSecondary }}
+                >
+                  {t.key}
+                </span>
+                <span className="truncate text-[11px]">{t.name}</span>
+                {currentTeamId === t.id && (
+                  <Check size={10} className="ml-auto shrink-0" style={{ color: BRAND.primary }} />
+                )}
+              </button>
+            ))}
+          {!isLoading && activeTeams.length === 0 && (
+            <div className="px-1.5 py-1 text-[10px]" style={{ color: BRAND.textMuted }}>
+              No teams in this project yet
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function AppShell() {
   const {
     user,
@@ -149,6 +273,9 @@ export function AppShell() {
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   const [notifOpen, setNotifOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  // Workspace-switcher project tree state (filter + which project is expanded).
+  const [projectSearch, setProjectSearch] = useState('')
+  const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null)
 
   const { data: unreadCount = 0 } = useNotificationUnreadCount()
 
@@ -170,10 +297,16 @@ export function AppShell() {
   const { data: workspaces } = useWorkspaces()
   const { data: activeProjects = [] } = useProjects(workspace?.workspaceId)
   const navProjects = activeProjects.filter((p) => p.status === 'active')
+  // Filter the workspace-switcher project list so the dropdown stays usable even
+  // when a workspace has hundreds of projects.
+  const projectQuery = projectSearch.trim().toLowerCase()
+  const filteredNavProjects = projectQuery
+    ? navProjects.filter(
+        (p) =>
+          p.name.toLowerCase().includes(projectQuery) || p.key.toLowerCase().includes(projectQuery),
+      )
+    : navProjects
 
-  // Teams for the selected project — powers the context Team selector (SHELL-FR-006)
-  const { data: projectTeams = [] } = useProjectTeams(project?.projectId)
-  const activeTeams = projectTeams.filter((t) => t.status === 'active')
   const selectedTeamName = team?.teamName ?? 'All Teams'
   useEffect(() => {
     if (!workspaces || workspaces.length === 0) return
@@ -293,9 +426,15 @@ export function AppShell() {
           <div className="relative">
             <button
               onClick={() => {
-                setWsOpen((o) => !o)
+                const willOpen = !wsOpen
+                setWsOpen(willOpen)
                 setUserOpen(false)
                 setOpenMenu(null)
+                if (willOpen) {
+                  // Expand the active project so its team is visible; reset the filter.
+                  setExpandedProjectId(project?.projectId ?? null)
+                  setProjectSearch('')
+                }
               }}
               className="flex items-center gap-1.5 text-left text-white hover:opacity-90"
             >
@@ -442,122 +581,79 @@ export function AppShell() {
                     className="my-1.5"
                     style={{ borderTop: `1px solid ${BRAND.borderSubtle}` }}
                   />
-                  {/* Project list */}
+                  {/* Projects & Teams — searchable, scrollable accordion tree.
+                      Each project expands to reveal its teams (lazy-loaded). */}
                   {navProjects.length > 0 && (
                     <>
-                      <div
-                        className="mb-1 text-[9px] font-semibold tracking-widest uppercase"
-                        style={{ color: BRAND.textMuted }}
-                      >
-                        Projects
-                      </div>
-                      {navProjects.map((p) => (
-                        <button
-                          key={p.id}
-                          onClick={() => {
-                            setProject({ projectId: p.id, projectKey: p.key, projectName: p.name })
-                            setTeam(null)
-                            closeAll()
-                          }}
-                          className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left hover:bg-surface-subtle"
-                          style={{
-                            color: project?.projectId === p.id ? BRAND.primary : BRAND.textPrimary,
-                            fontWeight: project?.projectId === p.id ? 600 : 400,
-                          }}
+                      <div className="mb-1 flex items-center justify-between">
+                        <div
+                          className="text-[9px] font-semibold tracking-widest uppercase"
+                          style={{ color: BRAND.textMuted }}
                         >
-                          <span
-                            className="inline-flex h-4 w-8 shrink-0 items-center justify-center rounded-sm font-mono text-[9px] font-bold"
-                            style={{ backgroundColor: BRAND.avatarBg, color: BRAND.primary }}
-                          >
-                            {p.key}
-                          </span>
-                          <span className="truncate text-[11px]">{p.name}</span>
-                          {project?.projectId === p.id && (
-                            <Check
-                              size={10}
-                              className="ml-auto shrink-0"
-                              style={{ color: BRAND.primary }}
-                            />
-                          )}
-                        </button>
-                      ))}
-                      <div
-                        className="my-1.5"
-                        style={{ borderTop: `1px solid ${BRAND.borderSubtle}` }}
-                      />
-                    </>
-                  )}
-                  {/* Team list — scoped to the selected project (SHELL-FR-006) */}
-                  {project && (
-                    <>
-                      <div
-                        className="mb-1 text-[9px] font-semibold tracking-widest uppercase"
-                        style={{ color: BRAND.textMuted }}
-                      >
-                        Team
+                          Projects & Teams
+                        </div>
+                        <span className="text-[9px]" style={{ color: BRAND.textMuted }}>
+                          {navProjects.length}
+                        </span>
                       </div>
-                      <button
-                        onClick={() => {
-                          setTeam(null)
-                          closeAll()
-                        }}
-                        className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left hover:bg-surface-subtle"
-                        style={{
-                          color: !team ? BRAND.primary : BRAND.textPrimary,
-                          fontWeight: !team ? 600 : 400,
-                        }}
-                      >
-                        <Users
-                          size={12}
-                          className="shrink-0"
-                          style={{ color: BRAND.textSecondary }}
-                        />
-                        <span className="truncate text-[11px]">All Teams</span>
-                        {!team && (
-                          <Check
-                            size={10}
-                            className="ml-auto shrink-0"
-                            style={{ color: BRAND.primary }}
+                      {/* Filter — only worth surfacing once the list gets long */}
+                      {navProjects.length > 7 && (
+                        <div className="relative mb-1">
+                          <Search
+                            size={11}
+                            className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2"
+                            style={{ color: BRAND.textMuted }}
                           />
-                        )}
-                      </button>
-                      {activeTeams.map((t) => (
-                        <button
-                          key={t.id}
-                          onClick={() => {
-                            setTeam({ teamId: t.id, teamName: t.name })
-                            closeAll()
-                          }}
-                          className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left hover:bg-surface-subtle"
-                          style={{
-                            color: team?.teamId === t.id ? BRAND.primary : BRAND.textPrimary,
-                            fontWeight: team?.teamId === t.id ? 600 : 400,
-                          }}
-                        >
-                          <span
-                            className="inline-flex h-4 w-8 shrink-0 items-center justify-center rounded-sm font-mono text-[9px] font-bold"
-                            style={{
-                              backgroundColor: BRAND.borderInner,
-                              color: BRAND.textSecondary,
-                            }}
-                          >
-                            {t.key}
-                          </span>
-                          <span className="truncate text-[11px]">{t.name}</span>
-                          {team?.teamId === t.id && (
-                            <Check
-                              size={10}
-                              className="ml-auto shrink-0"
-                              style={{ color: BRAND.primary }}
-                            />
-                          )}
-                        </button>
-                      ))}
-                      {activeTeams.length === 0 && (
-                        <div className="px-1.5 py-1 text-[10px]" style={{ color: BRAND.textMuted }}>
-                          No teams in this project yet
+                          <input
+                            value={projectSearch}
+                            onChange={(e) => setProjectSearch(e.target.value)}
+                            placeholder="Filter projects…"
+                            aria-label="Filter projects"
+                            className="w-full rounded border py-1 pr-2 pl-6 text-[11px] outline-none"
+                            style={{ borderColor: BRAND.borderSubtle, color: BRAND.textPrimary }}
+                          />
                         </div>
                       )}
+                      <div className="-mx-0.5 max-h-64 overflow-y-auto px-0.5">
+                        {filteredNavProjects.map((p) => (
+                          <ProjectTreeItem
+                            key={p.id}
+                            project={p}
+                            selected={project?.projectId === p.id}
+                            expanded={expandedProjectId === p.id}
+                            currentTeamId={team?.teamId ?? null}
+                            onToggleExpand={() =>
+                              setExpandedProjectId((cur) => (cur === p.id ? null : p.id))
+                            }
+                            onSelectProject={() => {
+                              setProject({
+                                projectId: p.id,
+                                projectKey: p.key,
+                                projectName: p.name,
+                              })
+                              setTeam(null)
+                              closeAll()
+                            }}
+                            onSelectTeam={(t) => {
+                              setProject({
+                                projectId: p.id,
+                                projectKey: p.key,
+                                projectName: p.name,
+                              })
+                              setTeam(t ? { teamId: t.id, teamName: t.name } : null)
+                              closeAll()
+                            }}
+                          />
+                        ))}
+                        {filteredNavProjects.length === 0 && (
+                          <div
+                            className="px-1.5 py-2 text-center text-[10px]"
+                            style={{ color: BRAND.textMuted }}
+                          >
+                            No projects match “{projectSearch.trim()}”
+                          </div>
+                        )}
+                      </div>
                       <div
                         className="my-1.5"
                         style={{ borderTop: `1px solid ${BRAND.borderSubtle}` }}
