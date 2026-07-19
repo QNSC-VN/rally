@@ -18,6 +18,7 @@
 export const BRAND = {
   // ── Core palette ────────────────────────────────────────────────────────────
   primary: 'var(--primary)', // navy — buttons, active states
+  primaryForeground: 'var(--primary-foreground)', // text/icons on a primary fill
   primaryHover: 'var(--primary-hover)',
   primaryDark: 'var(--primary-dark)', // darker navy — detail/header bars on white
   primaryLight: 'var(--primary-light)', // links, secondary actions

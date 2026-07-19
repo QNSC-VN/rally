@@ -73,7 +73,10 @@ describe('BA flows: Phase 4 governance — RBAC + audit (real AppModule + seeded
   // ── E2E-018a: audit producer contract ───────────────────────────────────────
   describe('E2E-018a administrative mutations record an audit event', () => {
     it('archiving a project emits a project.archived audit event', async () => {
-      const project = await projects.createProject(admin, uniqueKey(), 'Audited Project');
+      const project = await projects.createProject(admin, {
+        key: uniqueKey(),
+        name: 'Audited Project',
+      });
 
       await projects.updateProject(admin, project.id, { status: 'archived' });
 
@@ -137,7 +140,10 @@ describe('BA flows: Phase 4 governance — RBAC + audit (real AppModule + seeded
   // ── E2E-019: RBAC boundary (read-only principal) ────────────────────────────
   describe('E2E-019 a read-only principal is denied destructive and governance actions', () => {
     it('blocks a viewer from deleting a work item', async () => {
-      const project = await projects.createProject(admin, uniqueKey(), 'RBAC Delete Project');
+      const project = await projects.createProject(admin, {
+        key: uniqueKey(),
+        name: 'RBAC Delete Project',
+      });
       const story = await workItems.createWorkItem(admin, project.id, 'story', 'Protected');
 
       await expect(workItems.deleteWorkItem(viewer, story.id)).rejects.toMatchObject({
@@ -146,7 +152,10 @@ describe('BA flows: Phase 4 governance — RBAC + audit (real AppModule + seeded
     });
 
     it('blocks a non-member viewer from archiving a project', async () => {
-      const project = await projects.createProject(admin, uniqueKey(), 'RBAC Archive Project');
+      const project = await projects.createProject(admin, {
+        key: uniqueKey(),
+        name: 'RBAC Archive Project',
+      });
 
       await expect(
         projects.updateProject(viewer, project.id, { status: 'archived' }),

@@ -37,8 +37,8 @@ describe('BA flows: context isolation + read-only RBAC (real AppModule + seeded 
   // ── E2E-008: Project context isolation ──────────────────────────────────────
   describe('E2E-008 context isolation', () => {
     it('does not leak project A work items into project B listings', async () => {
-      const projectA = await projects.createProject(admin, uniqueKey(), 'Project A');
-      const projectB = await projects.createProject(admin, uniqueKey(), 'Project B');
+      const projectA = await projects.createProject(admin, { key: uniqueKey(), name: 'Project A' });
+      const projectB = await projects.createProject(admin, { key: uniqueKey(), name: 'Project B' });
 
       const storyA = await workItems.createWorkItem(admin, projectA.id, 'story', 'A-only story');
       const storyB = await workItems.createWorkItem(admin, projectB.id, 'story', 'B-only story');
@@ -55,8 +55,8 @@ describe('BA flows: context isolation + read-only RBAC (real AppModule + seeded 
     });
 
     it('rejects cross-project parenting (a defect cannot parent onto another project)', async () => {
-      const projectA = await projects.createProject(admin, uniqueKey(), 'Cross A');
-      const projectB = await projects.createProject(admin, uniqueKey(), 'Cross B');
+      const projectA = await projects.createProject(admin, { key: uniqueKey(), name: 'Cross A' });
+      const projectB = await projects.createProject(admin, { key: uniqueKey(), name: 'Cross B' });
       const storyA = await workItems.createWorkItem(admin, projectA.id, 'story', 'A story');
 
       await expect(
@@ -70,7 +70,10 @@ describe('BA flows: context isolation + read-only RBAC (real AppModule + seeded 
   // ── E2E-009: Read-only user behaviour ───────────────────────────────────────
   describe('E2E-009 read-only user', () => {
     it('lets a viewer read but blocks create and edit', async () => {
-      const project = await projects.createProject(admin, uniqueKey(), 'Viewer Project');
+      const project = await projects.createProject(admin, {
+        key: uniqueKey(),
+        name: 'Viewer Project',
+      });
       const story = await workItems.createWorkItem(admin, project.id, 'story', 'Read-only target');
 
       // Viewer CAN view.

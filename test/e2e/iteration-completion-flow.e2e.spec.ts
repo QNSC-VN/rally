@@ -41,7 +41,10 @@ describe('BA flows: task completion → parent + iteration auto-status (real App
   // ── E2E-011: parent auto-completes only when ALL child tasks complete ────────
   describe('E2E-011 parent auto-complete', () => {
     it('completes the parent story only after every child task is completed', async () => {
-      const project = await projects.createProject(actor, uniqueKey(), 'Auto-complete Project');
+      const project = await projects.createProject(actor, {
+        key: uniqueKey(),
+        name: 'Auto-complete Project',
+      });
       const story = await workItems.createWorkItem(
         actor,
         project.id,
@@ -66,7 +69,10 @@ describe('BA flows: task completion → parent + iteration auto-status (real App
   // ── E2E-012: auto-complete is convenience-only; iteration auto-accept ────────
   describe('E2E-012 manual override + iteration auto-accept', () => {
     it('allows a manual schedule-state change after auto-complete (no scope lock)', async () => {
-      const project = await projects.createProject(actor, uniqueKey(), 'Manual Override Project');
+      const project = await projects.createProject(actor, {
+        key: uniqueKey(),
+        name: 'Manual Override Project',
+      });
       const story = await workItems.createWorkItem(actor, project.id, 'story', 'Reopenable story');
       const task = await workItems.createTask(actor, story.id, 'Only task');
 
@@ -83,7 +89,10 @@ describe('BA flows: task completion → parent + iteration auto-status (real App
     });
 
     it('auto-accepts a committed iteration when all its stories are accepted', async () => {
-      const project = await projects.createProject(actor, uniqueKey(), 'Auto-accept Project');
+      const project = await projects.createProject(actor, {
+        key: uniqueKey(),
+        name: 'Auto-accept Project',
+      });
       const iteration = await iterations.createIteration(actor, project.id, 'Sprint AA');
       const story = await workItems.createWorkItem(actor, project.id, 'story', 'Only sprint story');
 

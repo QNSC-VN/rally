@@ -101,6 +101,7 @@ const AZ = {
   primaryLight: BRAND.primaryLighter,
   textPrimary: BRAND.textPrimary,
   textSecondary: BRAND.textSecondary,
+  textInverse: BRAND.primaryForeground,
   textMuted: BRAND.textMuted,
   bg: BRAND.surface,
   bgHeader: BRAND.pageBg,
@@ -1338,7 +1339,7 @@ function IterationHeader({
                 border: 'none',
                 borderLeft: i === 0 ? 'none' : `1px solid ${AZ.border}`,
                 backgroundColor: active ? AZ.primary : 'transparent',
-                color: active ? '#fff' : AZ.textSecondary,
+                color: active ? AZ.textInverse : AZ.textSecondary,
               }}
             >
               <Icon size={13} />

@@ -80,7 +80,10 @@ describe('BA flows: Phase 4.1 notifications (real AppModule + seeded DB)', () =>
   // ── E2E-017a: assignment producer contract ──────────────────────────────────
   describe('E2E-017a assignment enqueues one notification for the assignee', () => {
     it('enqueues a WORK_ITEM_ASSIGNED notification for a new assignee', async () => {
-      const project = await projects.createProject(admin, uniqueKey(), 'Notify Project');
+      const project = await projects.createProject(admin, {
+        key: uniqueKey(),
+        name: 'Notify Project',
+      });
       const story = await workItems.createWorkItem(admin, project.id, 'story', 'Assign me');
 
       await workItems.updateWorkItem(admin, story.id, { assigneeId: DEVELOPER_ID });
@@ -93,7 +96,10 @@ describe('BA flows: Phase 4.1 notifications (real AppModule + seeded DB)', () =>
     });
 
     it('does NOT notify the actor when they assign the item to themselves', async () => {
-      const project = await projects.createProject(admin, uniqueKey(), 'Self Assign Project');
+      const project = await projects.createProject(admin, {
+        key: uniqueKey(),
+        name: 'Self Assign Project',
+      });
       const story = await workItems.createWorkItem(admin, project.id, 'story', 'Mine');
 
       await workItems.updateWorkItem(admin, story.id, { assigneeId: admin.sub });

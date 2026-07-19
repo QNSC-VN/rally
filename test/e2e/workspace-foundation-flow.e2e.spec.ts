@@ -46,7 +46,10 @@ describe('BA flows: Company → Project → Team foundation (real AppModule + se
   // ── PHASE0 P0-PRJ — project lifecycle ───────────────────────────────────────
   describe('P0-PRJ project lifecycle', () => {
     it('makes an archived project read-only, blocks new work items, then restores it', async () => {
-      const project = await projects.createProject(actor, uniqueKey(), 'Lifecycle Project');
+      const project = await projects.createProject(actor, {
+        key: uniqueKey(),
+        name: 'Lifecycle Project',
+      });
 
       // Archive is allowed for a project member (the creator is the lead/member).
       const archived = await projects.updateProject(actor, project.id, { status: 'archived' });
@@ -118,7 +121,10 @@ describe('BA flows: Company → Project → Team foundation (real AppModule + se
   // ── Context backbone: Company → Project → Team ──────────────────────────────
   describe('project ↔ team linkage', () => {
     it('links a team to a project idempotently and unlinks it', async () => {
-      const project = await projects.createProject(actor, uniqueKey(), 'Linkable Project');
+      const project = await projects.createProject(actor, {
+        key: uniqueKey(),
+        name: 'Linkable Project',
+      });
       const team = await teams.createTeam(
         actor.workspaceId,
         'Delivery Team',
