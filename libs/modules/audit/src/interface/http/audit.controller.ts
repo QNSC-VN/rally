@@ -11,6 +11,7 @@ function toDto(a: AuditLog): AuditLogResponseDto {
   return {
     id: a.id,
     actorId: a.actorId,
+    actorName: a.actorName,
     actorEmail: a.actorEmail,
     action: a.action,
     resourceType: a.resourceType,

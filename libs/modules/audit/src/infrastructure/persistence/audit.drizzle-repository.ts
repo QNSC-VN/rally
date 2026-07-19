@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { and, desc, eq, gte, lte } from 'drizzle-orm';
+import { and, desc, eq, gte, lte, sql } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB, PagedResult } from '@platform';
 import { auditLogs } from '../../../../../../db/schema/audit';
+import { users } from '../../../../../../db/schema/identity';
 import type { AuditLog, CreateAuditLogInput } from '../../domain/audit.types';
 import type { IAuditRepository, AuditFilters } from '../../domain/ports/audit.repository';
 
@@ -47,10 +48,31 @@ export class AuditDrizzleRepository implements IAuditRepository {
     if (filters.from) conditions.push(gte(auditLogs.occurredAt, filters.from));
     if (filters.to) conditions.push(lte(auditLogs.occurredAt, filters.to));
 
+    // Resolve the actor's display name/email from the users table at read time
+    // (LEFT JOIN — a removed user leaves the row intact with null name), mirroring
+    // the work-item activity log. A stored actorEmail on the row still wins so a
+    // future write-time capture remains authoritative.
     const limit = args.limit + 1;
     const rows = await this.db
-      .select()
+      .select({
+        id: auditLogs.id,
+        workspaceId: auditLogs.workspaceId,
+        actorId: auditLogs.actorId,
+        actorName: users.displayName,
+        actorEmail: sql<string | null>`coalesce(${auditLogs.actorEmail}, ${users.email})`,
+        action: auditLogs.action,
+        resourceType: auditLogs.resourceType,
+        resourceId: auditLogs.resourceId,
+        projectId: auditLogs.projectId,
+        changes: auditLogs.changes,
+        metadata: auditLogs.metadata,
+        ipAddress: auditLogs.ipAddress,
+        userAgent: auditLogs.userAgent,
+        occurredAt: auditLogs.occurredAt,
+        sourceEventId: auditLogs.sourceEventId,
+      })
       .from(auditLogs)
+      .leftJoin(users, eq(auditLogs.actorId, users.id))
       .where(and(...conditions))
       .orderBy(desc(auditLogs.occurredAt))
       .limit(limit)

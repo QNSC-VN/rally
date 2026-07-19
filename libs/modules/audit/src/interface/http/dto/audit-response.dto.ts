@@ -4,6 +4,7 @@ import { z } from 'zod';
 export const AuditLogResponseSchema = z.object({
   id: z.string().uuid(),
   actorId: z.string().uuid().nullable(),
+  actorName: z.string().nullable(),
   actorEmail: z.string().email().nullable(),
   action: z.string(),
   resourceType: z.string(),

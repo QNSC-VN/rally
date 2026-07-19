@@ -80,6 +80,7 @@ import { TeamAvatar } from '@/shared/ui/team-cell'
 import { NativeSelect } from '@/shared/ui/native-select'
 import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { useClientPagination } from '@/shared/lib/hooks/use-client-pagination'
+import { describeAuditEvent, type AuditNameResolver } from '@/entities/audit/model/describe-audit'
 
 // ── Tab config (mirrors mockup SettingsPage.tsx) ──────────────────────────────
 
@@ -2291,111 +2292,34 @@ function TeamsTab() {
 
 const AUDIT_DEFAULT_PAGE_SIZE = 50
 
+/** Full, unambiguous timestamp for an audit entry (audit trails avoid abbreviations). */
 function formatAuditTime(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
-}
-
-/** Audit action codes are dotted/underscored (e.g. `workspace.member.invited`). */
-function humanizeAuditAction(action: string): string {
-  return action.replace(/[._]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-}
-
-/** Title-case a camelCase / snake / dotted token into readable words. */
-function humanizeWords(s: string): string {
-  return s
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .replace(/[._]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/\b\w/g, (c) => c.toUpperCase())
-}
-
-/** `leadId` → "Lead", `memberIds` → "Member", `name` → "Name". */
-function humanizeFieldName(k: string): string {
-  const base = k.replace(/Ids?$/, '')
-  return humanizeWords(base || k)
-}
-
-function asRecord(v: unknown): Record<string, unknown> | undefined {
-  return v && typeof v === 'object' && !Array.isArray(v)
-    ? (v as Record<string, unknown>)
-    : undefined
-}
-
-type AuditRowLike = {
-  action: string
-  resourceType: string
-  resourceId: string
-  changes: { [key: string]: unknown } | null
-}
-
-/** Render a scalar audit value for display; objects/arrays collapse to an ellipsis. */
-function formatAuditValue(v: unknown): string {
-  if (v === null || v === '') return '—'
-  if (typeof v === 'string') return v.length > 48 ? `${v.slice(0, 48)}…` : v
-  if (typeof v === 'boolean') return v ? 'Yes' : 'No'
-  if (typeof v === 'number') return String(v)
-  return '…'
-}
-
-/**
- * A friendly name for the entity an audit event targeted. Audit `changes` are
- * `{ before?, after? }` snapshots, so prefer the entity's own name/title/email
- * from either side; fall back to the resource type + a short id when unnamed.
- */
-function auditEntityLabel(a: AuditRowLike): string {
-  const changes = asRecord(a.changes)
-  const after = asRecord(changes?.after)
-  const before = asRecord(changes?.before)
-  const named =
-    after?.name ?? before?.name ?? after?.title ?? before?.title ?? after?.email ?? before?.email
-  if (typeof named === 'string' && named.trim()) return named.trim()
-  return `${humanizeWords(a.resourceType)} ${a.resourceId.slice(0, 8)}`
-}
-
-/** Fields that actually differ between the before/after snapshots (or all set-on-create fields). */
-function auditChangedFields(a: AuditRowLike): string[] {
-  const changes = asRecord(a.changes)
-  if (!changes) return []
-  const before = asRecord(changes.before)
-  const after = asRecord(changes.after)
-  if (before && after) {
-    const keys = new Set([...Object.keys(before), ...Object.keys(after)])
-    return [...keys].filter((k) => JSON.stringify(before[k]) !== JSON.stringify(after[k]))
-  }
-  return Object.keys(after ?? before ?? {})
-}
-
-/**
- * Plain-language summary of what an audit event did, complementing the Action
- * column: create/add reads from the entity label alone, destructive verbs say
- * so, and updates name the field(s) that changed (with the new value when a
- * single scalar field changed).
- */
-function describeAuditChange(a: AuditRowLike): string {
-  const { action } = a
-  if (/\.(created|added|invited|assigned|accepted)$/.test(action)) return ''
-  if (action.endsWith('.archived')) return 'Archived'
-  if (/\.(removed|revoked|cancelled)$/.test(action)) return 'Removed'
-
-  const fields = auditChangedFields(a)
-  if (fields.length === 0) return ''
-  if (fields.length === 1) {
-    const key = fields[0]
-    const after = asRecord(asRecord(a.changes)?.after)
-    const value = after ? after[key] : undefined
-    if (value === undefined || (value !== null && typeof value === 'object')) {
-      return `Changed ${humanizeFieldName(key)}`
-    }
-    return `${humanizeFieldName(key)} → ${formatAuditValue(value)}`
-  }
-  return `Changed ${fields.map(humanizeFieldName).join(', ')}`
+  return new Date(iso).toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  })
 }
 
 function AuditLogTab() {
   const [pageSize, setPageSize] = useState(AUDIT_DEFAULT_PAGE_SIZE)
   const [offset, setOffset] = useState(0)
   const [search, setSearch] = useState('')
+
+  const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
+  const { data: members = [] } = useWorkspaceMembers(workspaceId)
+  const { data: teams = [] } = useWorkspaceTeams(workspaceId)
+  const { data: roles = [] } = useQuery({
+    queryKey: ['system-roles'],
+    queryFn: async () => {
+      const res = await apiClient.GET('/v1/roles')
+      return (res.data ?? []) as Role[]
+    },
+  })
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['audit-logs', offset, pageSize],
@@ -2411,14 +2335,31 @@ function AuditLogTab() {
   const rows = data?.data ?? []
   const hasNextPage = data?.pageInfo?.hasNextPage ?? false
 
-  // Server paginates; this box narrows the loaded page by actor / action / resource.
+  // Turn each event into a plain-language sentence. The actor is resolved
+  // authoritatively server-side (actorName); the ids embedded in the payload
+  // (userId / roleId / teamId) are resolved best-effort from workspace reference
+  // data already cached for Settings, and degrade to a short id when absent.
+  const resolver = useMemo<AuditNameResolver>(() => {
+    const userNames = new Map(members.map((m) => [m.userId, m.displayName || m.email]))
+    const teamNames = new Map(teams.map((t) => [t.id, t.name]))
+    const roleNames = new Map(roles.map((r) => [r.id, r.name]))
+    return {
+      user: (id) => userNames.get(id),
+      team: (id) => teamNames.get(id),
+      role: (id) => roleNames.get(id),
+    }
+  }, [members, teams, roles])
+
+  const actorLabel = (a: (typeof rows)[number]): string => a.actorName ?? a.actorEmail ?? 'System'
+
+  // Server paginates; this box narrows the loaded page by actor or by the
+  // rendered description.
   const q = search.trim().toLowerCase()
   const filtered = q
     ? rows.filter(
         (a) =>
-          (a.actorEmail ?? '').toLowerCase().includes(q) ||
-          a.action.toLowerCase().includes(q) ||
-          a.resourceType.toLowerCase().includes(q),
+          actorLabel(a).toLowerCase().includes(q) ||
+          describeAuditEvent(a, resolver).toLowerCase().includes(q),
       )
     : rows
 
@@ -2438,7 +2379,7 @@ function AuditLogTab() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Filter actor, action, resource…"
+            placeholder="Search actor or description…"
             className="w-64 rounded py-1.5 pr-3 pl-7 text-[11px] focus:outline-none"
             style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textPrimary }}
           />
@@ -2452,9 +2393,8 @@ function AuditLogTab() {
           style={{ backgroundColor: BRAND.pageBg, borderBottom: `1px solid ${BRAND.border}` }}
         >
           {[
-            ['w-44', 'Time'],
+            ['w-56', 'Time'],
             ['w-48', 'Actor'],
-            ['w-40', 'Action'],
             ['flex-1', 'Detail'],
           ].map(([c, l]) => (
             <div
@@ -2485,7 +2425,6 @@ function AuditLogTab() {
           </div>
         ) : (
           filtered.map((a) => {
-            const summary = describeAuditChange(a)
             return (
               <div
                 key={a.id}
@@ -2493,7 +2432,7 @@ function AuditLogTab() {
                 style={{ borderBottom: `1px solid ${BRAND.borderInner}` }}
               >
                 <div
-                  className="flex w-44 items-center gap-1 text-[10px]"
+                  className="flex w-56 items-center gap-1 text-[10px]"
                   style={{ color: BRAND.textMuted }}
                 >
                   <Clock size={10} />
@@ -2504,18 +2443,14 @@ function AuditLogTab() {
                   style={{ color: BRAND.textPrimary }}
                   title={a.actorEmail ?? a.actorId ?? undefined}
                 >
-                  {a.actorEmail ?? a.actorId ?? 'System'}
-                </div>
-                <div className="w-40 truncate text-[11px]" style={{ color: BRAND.textSecondary }}>
-                  {humanizeAuditAction(a.action)}
+                  {actorLabel(a)}
                 </div>
                 <div
                   className="min-w-0 flex-1 truncate text-[11px]"
-                  style={{ color: BRAND.textSecondary }}
-                  title={`${a.resourceType} · ${a.resourceId}`}
+                  style={{ color: BRAND.textPrimary }}
+                  title={`${a.action} · ${a.resourceType} · ${a.resourceId}`}
                 >
-                  <span style={{ color: BRAND.textPrimary }}>{auditEntityLabel(a)}</span>
-                  {summary && <span style={{ color: BRAND.textMuted }}> — {summary}</span>}
+                  {describeAuditEvent(a, resolver)}
                 </div>
               </div>
             )

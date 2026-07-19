@@ -2,6 +2,8 @@ export interface AuditLog {
   id: string;
   workspaceId: string;
   actorId: string | null;
+  /** Actor's display name, resolved from the users table at read time. */
+  actorName: string | null;
   actorEmail: string | null;
   action: string;
   resourceType: string;

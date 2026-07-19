@@ -2734,6 +2734,7 @@ export interface components {
       /** Format: uuid */
       id: string
       actorId: string | null
+      actorName: string | null
       actorEmail: string | null
       action: string
       resourceType: string
