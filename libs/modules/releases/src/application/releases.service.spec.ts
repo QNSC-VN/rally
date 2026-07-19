@@ -197,7 +197,7 @@ describe('ReleasesService', () => {
   // ── updateRelease ────────────────────────────────────────────────────────
 
   describe('updateRelease', () => {
-    it('asserts release:manage permission for the release project', async () => {
+    it('asserts release:edit permission for the release project', async () => {
       repo.findById.mockResolvedValue(mockRelease());
       await service.updateRelease(actor, 'rel-1', { name: 'Renamed' });
       expect(access.assertProjectPermission).toHaveBeenCalledWith(

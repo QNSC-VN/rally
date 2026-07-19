@@ -105,11 +105,11 @@ export class ReleasesService {
 
   async updateRelease(actor: JwtPayload, id: string, input: UpdateReleaseInput): Promise<Release> {
     const release = await this.getRelease(actor.workspaceId, id);
-    // Per-project check: the caller must hold release:manage for THIS release's project.
+    // Per-project check: the caller must hold release:edit for THIS release's project.
     await this.accessService.assertProjectPermission(
       actor,
       release.projectId,
-      PERMISSION.RELEASE_MANAGE,
+      PERMISSION.RELEASE_EDIT,
     );
 
     // Validate status transition
@@ -147,7 +147,7 @@ export class ReleasesService {
     await this.accessService.assertProjectPermission(
       actor,
       release.projectId,
-      PERMISSION.RELEASE_MANAGE,
+      PERMISSION.RELEASE_DELETE,
     );
     // Accepted releases cannot be deleted
     if (release.status === 'accepted') {
@@ -167,7 +167,7 @@ export class ReleasesService {
     await this.accessService.assertProjectPermission(
       actor,
       release.projectId,
-      PERMISSION.RELEASE_MANAGE,
+      PERMISSION.RELEASE_EDIT,
     );
     if (release.status === 'accepted') {
       throw new PreconditionFailedException(

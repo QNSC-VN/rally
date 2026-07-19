@@ -73,7 +73,7 @@ export function IterationsPage() {
   const { project } = useAppContext()
   const projectId = project?.projectId
   const { can } = useProjectPermissions(projectId)
-  const canManage = can('iteration:manage')
+  const canManage = can('iteration:create') || can('iteration:edit') || can('iteration:delete')
 
   const { data: iterations = [], isLoading, isError } = useIterations(projectId)
 

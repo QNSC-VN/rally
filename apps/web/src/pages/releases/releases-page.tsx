@@ -873,7 +873,7 @@ export function ReleasesPage() {
   const { project } = useAppContext()
   const projectId = project?.projectId
   const { can } = useProjectPermissions(projectId)
-  const canManage = can('release:manage')
+  const canManage = can('release:create') || can('release:edit') || can('release:delete')
 
   // ── Column layout (resize) ──────────────────────────────────────────
   const { startResize, styleFor } = useColumnLayout(RELEASES_COLUMNS, STORAGE_KEYS.RELEASES_COLUMNS)

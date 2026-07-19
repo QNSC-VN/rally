@@ -260,7 +260,7 @@ describe('MilestonesService', () => {
   // ── updateMilestone ──────────────────────────────────────────────────────
 
   describe('updateMilestone', () => {
-    it('asserts milestone:manage permission', async () => {
+    it('asserts milestone:edit permission', async () => {
       repo.findById.mockResolvedValue(mockMilestone());
       await service.updateMilestone(actor, 'ms-1', { name: 'Renamed' });
       expect(access.assertProjectPermission).toHaveBeenCalledWith(

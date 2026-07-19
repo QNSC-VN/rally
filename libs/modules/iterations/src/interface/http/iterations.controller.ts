@@ -108,7 +108,7 @@ export class IterationsController {
   }
 
   @Post()
-  @RequireProjectPermission('iteration:manage', 'body', 'projectId')
+  @RequireProjectPermission('iteration:create', 'body', 'projectId')
   @ApiOperation({ summary: 'Create an iteration' })
   @ApiResponse({ status: 201, type: IterationResponseDto })
   @ApiCommonErrors(400, 401, 404, 422)

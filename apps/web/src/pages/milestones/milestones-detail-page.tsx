@@ -509,7 +509,7 @@ export function MilestoneDetailPage() {
   const projectId = project?.projectId ?? ''
   const workspaceId = workspace?.workspaceId ?? ''
   const { can } = useProjectPermissions(projectId || undefined)
-  const canManage = can('milestone:manage')
+  const canManage = can('milestone:create') || can('milestone:edit') || can('milestone:delete')
 
   const { data: milestone, isLoading, isError } = useMilestone(milestoneId)
   const update = useUpdateMilestone()

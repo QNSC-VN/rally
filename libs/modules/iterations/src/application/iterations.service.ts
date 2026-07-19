@@ -142,7 +142,7 @@ export class IterationsService {
     await this.accessService.assertProjectPermission(
       actor,
       current.projectId,
-      PERMISSION.ITERATION_MANAGE,
+      PERMISSION.ITERATION_EDIT,
     );
 
     // Team must remain linked to the iteration's project.
@@ -189,7 +189,7 @@ export class IterationsService {
     await this.accessService.assertProjectPermission(
       actor,
       iteration.projectId,
-      PERMISSION.ITERATION_MANAGE,
+      PERMISSION.ITERATION_DELETE,
     );
     if (iteration.state !== 'planning') {
       throw new PreconditionFailedException(
@@ -208,7 +208,7 @@ export class IterationsService {
     await this.accessService.assertProjectPermission(
       actor,
       iteration.projectId,
-      PERMISSION.ITERATION_MANAGE,
+      PERMISSION.ITERATION_EDIT,
     );
 
     if (iteration.state !== 'planning') {
@@ -243,7 +243,7 @@ export class IterationsService {
     await this.accessService.assertProjectPermission(
       actor,
       iteration.projectId,
-      PERMISSION.ITERATION_MANAGE,
+      PERMISSION.ITERATION_EDIT,
     );
 
     if (iteration.state !== 'committed') {
@@ -309,7 +309,7 @@ export class IterationsService {
     await this.accessService.assertProjectPermission(
       actor,
       iteration.projectId,
-      PERMISSION.ITERATION_MANAGE,
+      PERMISSION.ITERATION_EDIT,
     );
 
     if (opts.moveToIterationId) {

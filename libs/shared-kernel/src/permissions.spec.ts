@@ -16,7 +16,7 @@ describe('permissionGrants (shared wildcard-aware check)', () => {
   it('grants everything on the workspace:* wildcard', () => {
     expect(permissionGrants(['workspace:*'], 'work_item:edit')).toBe(true);
     expect(permissionGrants(['workspace:*'], 'project:delete')).toBe(true);
-    expect(permissionGrants(['workspace:*'], 'release:manage')).toBe(true);
+    expect(permissionGrants(['workspace:*'], 'release:edit')).toBe(true);
   });
 
   it('matches an exact permission code', () => {
@@ -32,7 +32,7 @@ describe('permissionGrants (shared wildcard-aware check)', () => {
   });
 
   it('denies when nothing matches', () => {
-    expect(permissionGrants(['work_item:view'], 'release:manage')).toBe(false);
+    expect(permissionGrants(['work_item:view'], 'release:edit')).toBe(false);
   });
 });
 

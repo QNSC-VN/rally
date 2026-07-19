@@ -261,7 +261,7 @@ export class MilestonesService {
     await this.accessService.assertProjectPermission(
       actor,
       milestone.projectId,
-      PERMISSION.MILESTONE_MANAGE,
+      PERMISSION.MILESTONE_EDIT,
     );
 
     // Validate status transition
@@ -316,7 +316,7 @@ export class MilestonesService {
     await this.accessService.assertProjectPermission(
       actor,
       milestone.projectId,
-      PERMISSION.MILESTONE_MANAGE,
+      PERMISSION.MILESTONE_EDIT,
     );
     await this.milestoneRepo.setArtifactLinks(milestoneId, workItemIds);
     return this.milestoneRepo.getArtifactIds(milestoneId);
@@ -336,7 +336,7 @@ export class MilestonesService {
     await this.accessService.assertProjectPermission(
       actor,
       milestone.projectId,
-      PERMISSION.MILESTONE_MANAGE,
+      PERMISSION.MILESTONE_EDIT,
     );
     await this.milestoneRepo.setProjectLinks(milestoneId, projectIds);
     return this.milestoneRepo.getProjectIds(milestoneId);
@@ -356,7 +356,7 @@ export class MilestonesService {
     await this.accessService.assertProjectPermission(
       actor,
       milestone.projectId,
-      PERMISSION.MILESTONE_MANAGE,
+      PERMISSION.MILESTONE_EDIT,
     );
     await this.milestoneRepo.setTeamLinks(milestoneId, teamIds);
     return this.milestoneRepo.getTeamIds(milestoneId);
@@ -369,7 +369,7 @@ export class MilestonesService {
     await this.accessService.assertProjectPermission(
       actor,
       milestone.projectId,
-      PERMISSION.MILESTONE_MANAGE,
+      PERMISSION.MILESTONE_DELETE,
     );
     await this.milestoneRepo.delete(id);
     this.logger.log({ milestoneId: id }, 'Milestone deleted');

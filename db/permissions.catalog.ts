@@ -47,11 +47,15 @@ export const PERMISSION = {
 
   // ── iteration namespace ────────────────────────────────────────────────────
   ITERATION_VIEW: 'iteration:view',
-  ITERATION_MANAGE: 'iteration:manage',
+  ITERATION_CREATE: 'iteration:create',
+  ITERATION_EDIT: 'iteration:edit',
+  ITERATION_DELETE: 'iteration:delete',
 
   // ── release namespace ──────────────────────────────────────────────────────
   RELEASE_VIEW: 'release:view',
-  RELEASE_MANAGE: 'release:manage',
+  RELEASE_CREATE: 'release:create',
+  RELEASE_EDIT: 'release:edit',
+  RELEASE_DELETE: 'release:delete',
 
   // ── team-status namespace (P3.1) ───────────────────────────────────────────
   TEAM_STATUS_VIEW: 'team_status:view',
@@ -63,7 +67,9 @@ export const PERMISSION = {
 
   // ── milestone namespace (P3.3) ─────────────────────────────────────────────
   MILESTONE_VIEW: 'milestone:view',
-  MILESTONE_MANAGE: 'milestone:manage',
+  MILESTONE_CREATE: 'milestone:create',
+  MILESTONE_EDIT: 'milestone:edit',
+  MILESTONE_DELETE: 'milestone:delete',
 } as const;
 
 /** Union of every valid permission code. */
@@ -110,15 +116,21 @@ export const PERMISSION_TIER = {
   [PERMISSION.WORK_ITEM_EDIT]: 'project',
   [PERMISSION.WORK_ITEM_DELETE]: 'project',
   [PERMISSION.ITERATION_VIEW]: 'project',
-  [PERMISSION.ITERATION_MANAGE]: 'project',
+  [PERMISSION.ITERATION_CREATE]: 'project',
+  [PERMISSION.ITERATION_EDIT]: 'project',
+  [PERMISSION.ITERATION_DELETE]: 'project',
   [PERMISSION.RELEASE_VIEW]: 'project',
-  [PERMISSION.RELEASE_MANAGE]: 'project',
+  [PERMISSION.RELEASE_CREATE]: 'project',
+  [PERMISSION.RELEASE_EDIT]: 'project',
+  [PERMISSION.RELEASE_DELETE]: 'project',
   [PERMISSION.TEAM_STATUS_VIEW]: 'project',
   [PERMISSION.TEAM_STATUS_EDIT]: 'project',
   [PERMISSION.QUALITY_VIEW]: 'project',
   [PERMISSION.QUALITY_EDIT]: 'project',
   [PERMISSION.MILESTONE_VIEW]: 'project',
-  [PERMISSION.MILESTONE_MANAGE]: 'project',
+  [PERMISSION.MILESTONE_CREATE]: 'project',
+  [PERMISSION.MILESTONE_EDIT]: 'project',
+  [PERMISSION.MILESTONE_DELETE]: 'project',
 } as const satisfies Record<Permission, 'workspace' | 'project'>;
 
 /** Permissions enforced against the workspace-wide JWT baseline. */
@@ -195,15 +207,21 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
     PERMISSION.WORK_ITEM_EDIT,
     PERMISSION.WORK_ITEM_DELETE,
     PERMISSION.ITERATION_VIEW,
-    PERMISSION.ITERATION_MANAGE,
+    PERMISSION.ITERATION_CREATE,
+    PERMISSION.ITERATION_EDIT,
+    PERMISSION.ITERATION_DELETE,
     PERMISSION.RELEASE_VIEW,
-    PERMISSION.RELEASE_MANAGE,
+    PERMISSION.RELEASE_CREATE,
+    PERMISSION.RELEASE_EDIT,
+    PERMISSION.RELEASE_DELETE,
     PERMISSION.TEAM_STATUS_VIEW,
     PERMISSION.TEAM_STATUS_EDIT,
     PERMISSION.QUALITY_VIEW,
     PERMISSION.QUALITY_EDIT,
     PERMISSION.MILESTONE_VIEW,
-    PERMISSION.MILESTONE_MANAGE,
+    PERMISSION.MILESTONE_CREATE,
+    PERMISSION.MILESTONE_EDIT,
+    PERMISSION.MILESTONE_DELETE,
   ],
   // Full control of an EXISTING project. No project:create / project:delete
   // (workspace-tier) and no workspace admin powers.
@@ -218,15 +236,21 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
     PERMISSION.WORK_ITEM_EDIT,
     PERMISSION.WORK_ITEM_DELETE,
     PERMISSION.ITERATION_VIEW,
-    PERMISSION.ITERATION_MANAGE,
+    PERMISSION.ITERATION_CREATE,
+    PERMISSION.ITERATION_EDIT,
+    PERMISSION.ITERATION_DELETE,
     PERMISSION.RELEASE_VIEW,
-    PERMISSION.RELEASE_MANAGE,
+    PERMISSION.RELEASE_CREATE,
+    PERMISSION.RELEASE_EDIT,
+    PERMISSION.RELEASE_DELETE,
     PERMISSION.TEAM_STATUS_VIEW,
     PERMISSION.TEAM_STATUS_EDIT,
     PERMISSION.QUALITY_VIEW,
     PERMISSION.QUALITY_EDIT,
     PERMISSION.MILESTONE_VIEW,
-    PERMISSION.MILESTONE_MANAGE,
+    PERMISSION.MILESTONE_CREATE,
+    PERMISSION.MILESTONE_EDIT,
+    PERMISSION.MILESTONE_DELETE,
   ],
   // Contributor: creates/edits work items & defects; reads everything else.
   // No delete, no manage (iterations/releases/milestones/team capacity).
@@ -318,15 +342,21 @@ export const PRESET_WORKSPACE_ROLES: readonly PresetWorkspaceRole[] = [
       PERMISSION.WORK_ITEM_EDIT,
       PERMISSION.WORK_ITEM_DELETE,
       PERMISSION.ITERATION_VIEW,
-      PERMISSION.ITERATION_MANAGE,
+      PERMISSION.ITERATION_CREATE,
+      PERMISSION.ITERATION_EDIT,
+      PERMISSION.ITERATION_DELETE,
       PERMISSION.RELEASE_VIEW,
-      PERMISSION.RELEASE_MANAGE,
+      PERMISSION.RELEASE_CREATE,
+      PERMISSION.RELEASE_EDIT,
+      PERMISSION.RELEASE_DELETE,
       PERMISSION.TEAM_STATUS_VIEW,
       PERMISSION.TEAM_STATUS_EDIT,
       PERMISSION.QUALITY_VIEW,
       PERMISSION.QUALITY_EDIT,
       PERMISSION.MILESTONE_VIEW,
-      PERMISSION.MILESTONE_MANAGE,
+      PERMISSION.MILESTONE_CREATE,
+      PERMISSION.MILESTONE_EDIT,
+      PERMISSION.MILESTONE_DELETE,
     ],
   },
   {

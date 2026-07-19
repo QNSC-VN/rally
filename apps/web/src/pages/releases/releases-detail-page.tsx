@@ -292,7 +292,7 @@ export function ReleaseDetailPage() {
   const { project } = useAppContext()
   const projectId = project?.projectId ?? ''
   const { can } = useProjectPermissions(projectId || undefined)
-  const canManage = can('release:manage')
+  const canManage = can('release:create') || can('release:edit') || can('release:delete')
 
   const { data: release, isLoading, isError } = useRelease(releaseId)
   const update = useUpdateRelease(releaseId, projectId)

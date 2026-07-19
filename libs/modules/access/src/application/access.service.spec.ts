@@ -166,30 +166,30 @@ describe('AccessService — scope-aware permission resolution', () => {
 
     it('passes immediately on a JWT wildcard, without a DB lookup', async () => {
       await expect(
-        service.assertProjectPermission(actor(['workspace:*']), 'proj-9', 'release:manage'),
+        service.assertProjectPermission(actor(['workspace:*']), 'proj-9', 'release:edit'),
       ).resolves.toBeUndefined();
       expect(assignmentRepo.listEffectiveForUser).not.toHaveBeenCalled();
     });
 
     it('passes when the project-scoped role grants the permission', async () => {
-      const projectRole = role('project_admin', ['release:manage']);
+      const projectRole = role('project_admin', ['release:edit']);
       assignmentRepo.listEffectiveForUser.mockResolvedValue([
         eff(projectRole, 'project', 'proj-9'),
       ]);
 
       await expect(
-        service.assertProjectPermission(actor([]), 'proj-9', 'release:manage'),
+        service.assertProjectPermission(actor([]), 'proj-9', 'release:edit'),
       ).resolves.toBeUndefined();
     });
 
     it('throws when neither baseline nor project scope grants it', async () => {
-      const otherProjectRole = role('project_admin', ['release:manage']);
+      const otherProjectRole = role('project_admin', ['release:edit']);
       assignmentRepo.listEffectiveForUser.mockResolvedValue([
         eff(otherProjectRole, 'project', 'proj-OTHER'),
       ]);
 
       await expect(
-        service.assertProjectPermission(actor([]), 'proj-9', 'release:manage'),
+        service.assertProjectPermission(actor([]), 'proj-9', 'release:edit'),
       ).rejects.toMatchObject({ code: 'PROJECT_PERMISSION_DENIED' });
     });
   });
