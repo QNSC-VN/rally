@@ -34,7 +34,6 @@ export const PERMISSION = {
   MILESTONE_EDIT: 'milestone:edit',
   MILESTONE_DELETE: 'milestone:delete',
   QUALITY_VIEW: 'quality:view',
-  QUALITY_EDIT: 'quality:edit',
 } as const
 
 export type Permission = (typeof PERMISSION)[keyof typeof PERMISSION]

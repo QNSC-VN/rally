@@ -351,6 +351,13 @@
       "when": 1784500000000,
       "tag": "0048_split_manage_permissions",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1784600000000,
+      "tag": "0049_drop_quality_edit",
+      "breakpoints": true
     }
   ]
 }

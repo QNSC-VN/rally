@@ -798,7 +798,9 @@ export function QualityPage() {
   const qc = useQueryClient()
   const { project } = useAppContext()
   const { can } = useProjectPermissions(project?.projectId)
-  const canManage = can('quality:edit')
+  // Defects are work items; the backend enforces defect mutations via
+  // work_item:edit, so the page's inline-edit affordances gate on the same.
+  const canManage = can('work_item:edit')
   const [sortCol, setSortCol] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   // Toggle asc/desc on the active column, else switch to a new column (asc).

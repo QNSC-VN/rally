@@ -62,8 +62,10 @@ export const PERMISSION = {
   TEAM_STATUS_EDIT: 'team_status:edit',
 
   // ── quality namespace (P3.4) ───────────────────────────────────────────────
+  // Quality is a read-only reporting surface (defect dashboard + metrics).
+  // Defects ARE work items, so their create/edit/delete flows through the
+  // work_item namespace — there is no separate quality write permission.
   QUALITY_VIEW: 'quality:view',
-  QUALITY_EDIT: 'quality:edit',
 
   // ── milestone namespace (P3.3) ─────────────────────────────────────────────
   MILESTONE_VIEW: 'milestone:view',
@@ -126,7 +128,6 @@ export const PERMISSION_TIER = {
   [PERMISSION.TEAM_STATUS_VIEW]: 'project',
   [PERMISSION.TEAM_STATUS_EDIT]: 'project',
   [PERMISSION.QUALITY_VIEW]: 'project',
-  [PERMISSION.QUALITY_EDIT]: 'project',
   [PERMISSION.MILESTONE_VIEW]: 'project',
   [PERMISSION.MILESTONE_CREATE]: 'project',
   [PERMISSION.MILESTONE_EDIT]: 'project',
@@ -217,7 +218,6 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
     PERMISSION.TEAM_STATUS_VIEW,
     PERMISSION.TEAM_STATUS_EDIT,
     PERMISSION.QUALITY_VIEW,
-    PERMISSION.QUALITY_EDIT,
     PERMISSION.MILESTONE_VIEW,
     PERMISSION.MILESTONE_CREATE,
     PERMISSION.MILESTONE_EDIT,
@@ -246,7 +246,6 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
     PERMISSION.TEAM_STATUS_VIEW,
     PERMISSION.TEAM_STATUS_EDIT,
     PERMISSION.QUALITY_VIEW,
-    PERMISSION.QUALITY_EDIT,
     PERMISSION.MILESTONE_VIEW,
     PERMISSION.MILESTONE_CREATE,
     PERMISSION.MILESTONE_EDIT,
@@ -263,7 +262,6 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
     PERMISSION.RELEASE_VIEW,
     PERMISSION.TEAM_STATUS_VIEW,
     PERMISSION.QUALITY_VIEW,
-    PERMISSION.QUALITY_EDIT,
     PERMISSION.MILESTONE_VIEW,
   ],
   // Read-only across one project.
@@ -352,7 +350,6 @@ export const PRESET_WORKSPACE_ROLES: readonly PresetWorkspaceRole[] = [
       PERMISSION.TEAM_STATUS_VIEW,
       PERMISSION.TEAM_STATUS_EDIT,
       PERMISSION.QUALITY_VIEW,
-      PERMISSION.QUALITY_EDIT,
       PERMISSION.MILESTONE_VIEW,
       PERMISSION.MILESTONE_CREATE,
       PERMISSION.MILESTONE_EDIT,
@@ -407,7 +404,6 @@ export const PRESET_WORKSPACE_ROLES: readonly PresetWorkspaceRole[] = [
       PERMISSION.RELEASE_VIEW,
       PERMISSION.TEAM_STATUS_VIEW,
       PERMISSION.QUALITY_VIEW,
-      PERMISSION.QUALITY_EDIT,
       PERMISSION.MILESTONE_VIEW,
     ],
   },
