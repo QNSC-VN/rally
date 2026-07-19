@@ -5,7 +5,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
-import { iterationKeys } from '@/features/iterations/api'
+import { invalidateWorkItemViews } from '@/shared/api/invalidate-work-item-views'
 import type { components } from '@/shared/api/generated/api'
 
 // ── Response types from generated contract ────────────────────────────────────
@@ -14,6 +14,9 @@ export type WorkItem = components['schemas']['WorkItemResponseDto']
 export type ActivityLog = components['schemas']['ActivityResponseDto']
 export type TaskTotals = components['schemas']['TaskTotalsResponseDto']
 export type Watcher = components['schemas']['WatcherResponseDto']
+export type TimeLog = components['schemas']['TimeLogResponseDto']
+export type CreateTimeLogInput = components['schemas']['CreateTimeLogDto']
+export type UpdateTimeLogInput = components['schemas']['UpdateTimeLogDto']
 
 // ── Convenience aliases (BA design names) ─────────────────────────────────────
 
@@ -50,6 +53,7 @@ export const workItemKeys = {
   activity: (workItemId: string) => [...workItemKeys.all, 'activity', workItemId] as const,
   watchers: (workItemId: string) => [...workItemKeys.all, 'watchers', workItemId] as const,
   labels: (workItemId: string) => [...workItemKeys.all, 'labels', workItemId] as const,
+  timeLogs: (workItemId: string) => [...workItemKeys.all, 'time-logs', workItemId] as const,
 } as const
 
 // ── Backlog list ──────────────────────────────────────────────────────────────
@@ -263,7 +267,7 @@ export function useSetWorkItemMilestones(workItemId: string) {
       return (data ?? []) as WorkItemMilestone[]
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: iterationKeys.statusAll })
+      invalidateWorkItemViews(qc)
     },
   })
 }
@@ -282,12 +286,11 @@ export function useCreateWorkItem() {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as WorkItem
     },
-    onSuccess: (item) => {
-      void qc.invalidateQueries({ queryKey: workItemKeys.backlog(item.projectId) })
-      void qc.invalidateQueries({ queryKey: workItemKeys.list(item.projectId) })
-      if (item.parentId) {
-        void qc.invalidateQueries({ queryKey: childDefectsKeys.byParent(item.parentId) })
-      }
+    onSuccess: () => {
+      // Refresh every work-item-derived read-model (Backlog, Iteration Status,
+      // Team Status, Quality, Portfolio, Reports) so the new item appears
+      // everywhere it belongs without a manual reload.
+      invalidateWorkItemViews(qc)
     },
   })
 }
@@ -303,13 +306,12 @@ export function useUpdateWorkItem(id: string) {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as WorkItem
     },
-    onSuccess: (item, variables) => {
+    onSuccess: (item) => {
+      // Instant, flash-free update of the surfaces the user is most likely
+      // looking at when editing inline: the detail page and the backlog row.
       qc.setQueryData(workItemKeys.detail(id), item)
-      // Also update the work-item-by-key cache so WorkItemDetailPage reflects immediately.
       // Must pass projectId to match the exact cache key used by useWorkItemByKey().
       qc.setQueriesData({ queryKey: workItemKeys.byKey(item.itemKey, item.projectId) }, item)
-      // Optimistically update the item inside any cached backlog list so the
-      // inline-edit selects reflect the new value without waiting for the refetch.
       qc.setQueriesData<{ data?: WorkItem[]; pageInfo?: unknown }>(
         { queryKey: workItemKeys.backlog(item.projectId) },
         (old) => {
@@ -317,30 +319,10 @@ export function useUpdateWorkItem(id: string) {
           return { ...old, data: old.data.map((w) => (w.id === item.id ? item : w)) }
         },
       )
-      void qc.invalidateQueries({ queryKey: workItemKeys.backlog(item.projectId) })
-      void qc.invalidateQueries({ queryKey: workItemKeys.activity(id) })
-      // Invalidate iteration-status cache so the Iteration Status page reflects
-      // schedule-state / iteration changes immediately.
-      void qc.invalidateQueries({ queryKey: iterationKeys.statusAll })
-      // If this item is a task, invalidate its parent's task list/rollup so the
-      // expanded task row (e.g. the state segmented control) reflects the change
-      // without waiting for a stale-time refetch.
-      if (item.parentId) {
-        void qc.invalidateQueries({ queryKey: workItemKeys.tasks(item.parentId) })
-        void qc.invalidateQueries({ queryKey: workItemKeys.taskTotals(item.parentId) })
-        // If this item is a defect under a story, invalidate child defects cache
-        if (item.type === 'defect') {
-          void qc.invalidateQueries({ queryKey: childDefectsKeys.byParent(item.parentId) })
-        }
-      }
-      // If parentId changed, also invalidate old parent's child defects
-      if (
-        variables.parentId !== undefined &&
-        variables.parentId !== item.parentId &&
-        variables.parentId
-      ) {
-        void qc.invalidateQueries({ queryKey: childDefectsKeys.byParent(variables.parentId) })
-      }
+      // Then refresh every other work-item-derived read-model (Iteration Status,
+      // Team Status, Quality, Portfolio, Reports, child defects, tasks…) so no
+      // view is ever left showing a stale value after an inline save.
+      invalidateWorkItemViews(qc)
     },
   })
 }
@@ -357,9 +339,7 @@ export function useCreateTask(parentId: string) {
       return data as WorkItem
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: workItemKeys.tasks(parentId) })
-      void qc.invalidateQueries({ queryKey: workItemKeys.taskTotals(parentId) })
-      void qc.invalidateQueries({ queryKey: workItemKeys.activity(parentId) })
+      invalidateWorkItemViews(qc)
     },
   })
 }
@@ -374,11 +354,8 @@ export function useDeleteWorkItem() {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return projectId
     },
-    onSuccess: (projectId) => {
-      void qc.invalidateQueries({ queryKey: workItemKeys.backlog(projectId) })
-      void qc.invalidateQueries({ queryKey: workItemKeys.list(projectId) })
-      // Iteration Status shows work items too — refresh it after a deletion.
-      void qc.invalidateQueries({ queryKey: iterationKeys.statusAll })
+    onSuccess: () => {
+      invalidateWorkItemViews(qc)
     },
   })
 }
@@ -403,13 +380,7 @@ export function useUpdateAnyWorkItem() {
     onSuccess: (item) => {
       qc.setQueryData(workItemKeys.detail(item.id), item)
       qc.setQueriesData({ queryKey: workItemKeys.byKey(item.itemKey, item.projectId) }, item)
-      void qc.invalidateQueries({ queryKey: workItemKeys.backlog(item.projectId) })
-      void qc.invalidateQueries({ queryKey: workItemKeys.list(item.projectId) })
-      void qc.invalidateQueries({ queryKey: iterationKeys.statusAll })
-      if (item.parentId) {
-        void qc.invalidateQueries({ queryKey: workItemKeys.tasks(item.parentId) })
-        void qc.invalidateQueries({ queryKey: workItemKeys.taskTotals(item.parentId) })
-      }
+      invalidateWorkItemViews(qc)
     },
   })
 }
@@ -570,6 +541,65 @@ export function useToggleWatch(workItemId: string | undefined) {
   })
 }
 
+// ── Time logs (Jira-style worklog) ──────────────────────────────────────────────
+// `work_items.actual_hours` is trigger-derived from the SUM of a work item's
+// time logs (trg_sync_actual_hours), so logging time is the single source of
+// truth for Actual hours. Mutations invalidate the whole work-item tree so the
+// derived Actual value + parent task roll-ups refresh everywhere.
+
+export function useTimeLogs(workItemId: string | undefined) {
+  return useQuery({
+    queryKey: workItemKeys.timeLogs(workItemId ?? ''),
+    queryFn: async () => {
+      if (!workItemId) return [] as TimeLog[]
+      const { data, error, response } = await apiClient.GET('/v1/work-items/{id}/time-logs', {
+        params: { path: { id: workItemId }, query: { pageSize: 100 } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      // The controller returns a `{ items, total }` envelope at runtime even
+      // though the generated contract declares a bare array (backend
+      // @ApiResponse decorator omits the envelope) — normalise both shapes.
+      const res = data as unknown as { items?: TimeLog[] } | TimeLog[] | undefined
+      return Array.isArray(res) ? res : (res?.items ?? [])
+    },
+    enabled: !!workItemId,
+    staleTime: 15_000,
+  })
+}
+
+function invalidateAfterTimeLog(qc: ReturnType<typeof useQueryClient>) {
+  // Logged hours roll up into actualHours shown across every work-item view.
+  invalidateWorkItemViews(qc)
+}
+
+export function useLogTime(workItemId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: CreateTimeLogInput) => {
+      const { data, error, response } = await apiClient.POST('/v1/work-items/{id}/time-logs', {
+        params: { path: { id: workItemId } },
+        body: input,
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as TimeLog
+    },
+    onSuccess: () => invalidateAfterTimeLog(qc),
+  })
+}
+
+export function useDeleteTimeLog(workItemId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (logId: string) => {
+      const { error, response } = await apiClient.DELETE('/v1/work-items/{id}/time-logs/{logId}', {
+        params: { path: { id: workItemId, logId } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+    },
+    onSuccess: () => invalidateAfterTimeLog(qc),
+  })
+}
+
 // ── Bulk assignment + reorder (P2-BL-03/04/05) ──────────────────────────────────
 
 export type BulkAssignReleaseInput = components['schemas']['BulkAssignReleaseDto']
@@ -586,9 +616,8 @@ export function useBulkAssignRelease() {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as { updated: number }
     },
-    onSuccess: (_r, input) => {
-      void qc.invalidateQueries({ queryKey: workItemKeys.backlog(input.projectId) })
-      void qc.invalidateQueries({ queryKey: workItemKeys.list(input.projectId) })
+    onSuccess: () => {
+      invalidateWorkItemViews(qc)
     },
   })
 }
@@ -603,10 +632,8 @@ export function useBulkAssignIteration() {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as { updated: number }
     },
-    onSuccess: (_r, input) => {
-      void qc.invalidateQueries({ queryKey: workItemKeys.backlog(input.projectId) })
-      void qc.invalidateQueries({ queryKey: workItemKeys.list(input.projectId) })
-      void qc.invalidateQueries({ queryKey: iterationKeys.statusAll })
+    onSuccess: () => {
+      invalidateWorkItemViews(qc)
     },
   })
 }
@@ -623,10 +650,8 @@ export function useRankWorkItem(id: string) {
       return data as WorkItem
     },
     onSuccess: (item) => {
-      void qc.invalidateQueries({ queryKey: workItemKeys.backlog(item.projectId) })
-      void qc.invalidateQueries({ queryKey: workItemKeys.list(item.projectId) })
-      void qc.invalidateQueries({ queryKey: iterationKeys.statusAll })
-      void qc.invalidateQueries({ queryKey: ['team-status'] })
+      qc.setQueryData(workItemKeys.detail(item.id), item)
+      invalidateWorkItemViews(qc)
     },
   })
 }
@@ -643,10 +668,8 @@ export function useRankAnyWorkItem() {
       return data as WorkItem
     },
     onSuccess: (item) => {
-      void qc.invalidateQueries({ queryKey: workItemKeys.backlog(item.projectId) })
-      void qc.invalidateQueries({ queryKey: workItemKeys.list(item.projectId) })
-      void qc.invalidateQueries({ queryKey: iterationKeys.statusAll })
-      void qc.invalidateQueries({ queryKey: ['team-status'] })
+      qc.setQueryData(workItemKeys.detail(item.id), item)
+      invalidateWorkItemViews(qc)
     },
   })
 }

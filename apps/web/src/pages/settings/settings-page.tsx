@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -27,7 +27,6 @@ import {
   Archive,
   Search,
   Clock,
-  ChevronLeft,
   ChevronUp,
   ChevronDown,
   Trash2,
@@ -52,6 +51,7 @@ import {
   useAddTeamMember,
   useRemoveTeamMember,
   type Team,
+  type TeamMember,
 } from '@/features/teams/api'
 import { useWorkspaces, useUpdateWorkspace, useWorkspaceMembers } from '@/features/workspaces/api'
 import {
@@ -75,6 +75,12 @@ import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
+import { OwnerAvatar } from '@/shared/ui/owner-cell'
+import { TeamAvatar } from '@/shared/ui/team-cell'
+import { NativeSelect } from '@/shared/ui/native-select'
+import { PaginationFooter } from '@/shared/ui/pagination-footer'
+import { useClientPagination } from '@/shared/lib/hooks/use-client-pagination'
+import { describeAuditEvent, type AuditNameResolver } from '@/entities/audit/model/describe-audit'
 
 // ── Tab config (mirrors mockup SettingsPage.tsx) ──────────────────────────────
 
@@ -422,6 +428,7 @@ function MembersTab() {
   const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
   const [showInvitePanel, setShowInvitePanel] = useState(false)
   const [selectedMember, setSelectedMember] = useState<MemberWithProfile | null>(null)
+  const [search, setSearch] = useState('')
 
   // Load members with profile + role info (shared workspace-member roster)
   const { data: members = [], isLoading: membersLoading } = useWorkspaceMembers(workspaceId)
@@ -506,6 +513,20 @@ function MembersTab() {
     onError: (err) => toast.error(apiErrorMessage(err)),
   })
 
+  // Client-side search (name / email / phone) + pagination over the full roster.
+  const filteredMembers = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return members
+    return members.filter(
+      (m) =>
+        m.displayName?.toLowerCase().includes(q) ||
+        m.email?.toLowerCase().includes(q) ||
+        m.phone?.toLowerCase().includes(q),
+    )
+  }, [members, search])
+
+  const { pageItems: pagedMembers, footerProps } = useClientPagination(filteredMembers, 25)
+
   if (!workspaceId) {
     return (
       <p className="text-[13px]" style={{ color: BRAND.textMuted }}>
@@ -525,8 +546,8 @@ function MembersTab() {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* ── Header row: count + invite button ── */}
-      <div className="flex items-center justify-between">
+      {/* ── Header row: count + search + invite button ── */}
+      <div className="flex items-center justify-between gap-3">
         <p className="text-[12px]" style={{ color: BRAND.textMuted }}>
           {members.length} workspace member{members.length !== 1 ? 's' : ''}
           {invitations.length > 0 && (
@@ -535,10 +556,25 @@ function MembersTab() {
             </span>
           )}
         </p>
-        <Button size="sm" onClick={() => setShowInvitePanel((v) => !v)}>
-          <UserPlus size={13} />
-          Invite member
-        </Button>
+        <div className="flex items-center gap-3">
+          <div className="relative w-56">
+            <Search
+              size={13}
+              className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2"
+              style={{ color: BRAND.textMuted }}
+            />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search members…"
+              className="h-8 pl-7 text-[12px]"
+            />
+          </div>
+          <Button size="sm" onClick={() => setShowInvitePanel((v) => !v)}>
+            <UserPlus size={13} />
+            Invite member
+          </Button>
+        </div>
       </div>
 
       {/* ── Invite panel ── */}
@@ -620,7 +656,7 @@ function MembersTab() {
       <table className="w-full border-collapse text-[13px]">
         <thead>
           <tr style={{ borderBottom: `1px solid ${BRAND.border}` }}>
-            {['Member', 'Phone', 'Role', 'Status', 'Last Login', 'Joined'].map((h) => (
+            {['Member', 'Email', 'Phone', 'Role', 'Status', 'Last Login', 'Joined'].map((h) => (
               <th
                 key={h}
                 className="pb-2 text-left text-[11px] font-semibold tracking-wide uppercase"
@@ -632,7 +668,7 @@ function MembersTab() {
           </tr>
         </thead>
         <tbody>
-          {members.map((m) => {
+          {pagedMembers.map((m) => {
             const isCurrentUser = m.userId === user?.id
             return (
               <tr
@@ -647,12 +683,7 @@ function MembersTab() {
                     onClick={() => setSelectedMember(m)}
                     className="flex items-center gap-2 text-left hover:underline"
                   >
-                    <div
-                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white"
-                      style={{ backgroundColor: BRAND.primary }}
-                    >
-                      {m.displayName?.charAt(0)?.toUpperCase() ?? '?'}
-                    </div>
+                    <OwnerAvatar name={m.displayName} avatarUrl={m.avatarUrl} size={28} />
                     <span style={{ color: BRAND.textPrimary }}>
                       {m.displayName}
                       {isCurrentUser && (
@@ -669,21 +700,21 @@ function MembersTab() {
                     </span>
                   </button>
                 </td>
+                {/* Email */}
+                <td className="py-3 pr-4" style={{ color: BRAND.textSecondary }}>
+                  {m.email}
+                </td>
                 {/* Phone */}
                 <td className="py-3 pr-4" style={{ color: BRAND.textSecondary }}>
                   {m.phone || '—'}
                 </td>
                 {/* Role dropdown */}
                 <td className="py-3 pr-4">
-                  <select
-                    className="rounded border px-2 py-1 text-[12px] focus:outline-none"
-                    style={{
-                      borderColor: BRAND.border,
-                      color: BRAND.textPrimary,
-                      backgroundColor: BRAND.surface,
-                    }}
+                  <NativeSelect
+                    className="w-auto px-2 py-1 text-[12px]"
                     value={m.roleId ?? ''}
                     disabled={isCurrentUser || changeRole.isPending}
+                    aria-label={`Role for ${m.displayName}`}
                     onChange={(e) =>
                       changeRole.mutate({
                         userId: m.userId,
@@ -702,7 +733,7 @@ function MembersTab() {
                         {r.name}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </td>
                 {/* Status */}
                 <td className="py-3 pr-4">
@@ -719,8 +750,28 @@ function MembersTab() {
               </tr>
             )
           })}
+          {filteredMembers.length === 0 && (
+            <tr>
+              <td
+                colSpan={7}
+                className="py-8 text-center text-[13px]"
+                style={{ color: BRAND.textMuted }}
+              >
+                {search.trim() ? 'No members match your search.' : 'No members yet.'}
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
+
+      {filteredMembers.length > 0 && (
+        <div
+          className="mt-3 overflow-hidden rounded-lg"
+          style={{ border: `1px solid ${BRAND.border}` }}
+        >
+          <PaginationFooter {...footerProps} />
+        </div>
+      )}
 
       {selectedMember && (
         <UserDetailModal
@@ -780,12 +831,7 @@ function UserDetailModal({
     <AppModal open onClose={onClose} title="Member details" width={440}>
       <ModalBody className="space-y-4">
         <div className="flex items-center gap-3">
-          <div
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[15px] font-bold text-white"
-            style={{ backgroundColor: BRAND.primary }}
-          >
-            {member.displayName?.charAt(0)?.toUpperCase() ?? '?'}
-          </div>
+          <OwnerAvatar name={member.displayName} avatarUrl={member.avatarUrl} size={44} />
           <div className="min-w-0">
             <p className="truncate text-[14px] font-semibold" style={{ color: BRAND.textPrimary }}>
               {member.displayName}
@@ -900,18 +946,14 @@ function InvitePanel({
             />
           </Field>
           <Field label="Role" error={form.formState.errors.roleId?.message}>
-            <select
-              {...form.register('roleId')}
-              className="w-full rounded-md bg-white px-3 py-2 text-[13px] focus:outline-none"
-              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textPrimary }}
-            >
+            <NativeSelect {...form.register('roleId')}>
               <option value="">Select role…</option>
               {roles.map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.name}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </Field>
         </div>
         {form.formState.errors.root && (
@@ -1731,24 +1773,15 @@ function EditTeamModal({ team, onClose }: { team: Team; onClose: () => void }) {
           <FormField label="Team name" required>
             <Input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
           </FormField>
-          <FormField label="Team lead">
-            <select
-              value={leadId}
-              onChange={(e) => setLeadId(e.target.value)}
-              className="w-full rounded-md border px-3 py-2 text-[13px] outline-none focus:ring-2"
-              style={{
-                borderColor: BRAND.border,
-                backgroundColor: BRAND.surface,
-                color: BRAND.textPrimary,
-              }}
-            >
+          <FormField label="Team lead" hint="Choose from current team members">
+            <NativeSelect value={leadId} onChange={(e) => setLeadId(e.target.value)}>
               <option value="">— No lead —</option>
               {members.map((m) => (
                 <option key={m.userId} value={m.userId}>
                   {m.displayName ?? m.email ?? m.userId}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </FormField>
           <FormField label="Description">
             <Textarea
@@ -1810,15 +1843,9 @@ function AddMemberModal({ teamId, onClose }: { teamId: string; onClose: () => vo
             </p>
           ) : (
             <FormField label="Select member" required>
-              <select
+              <NativeSelect
                 value={selectedUserId}
                 onChange={(e) => setSelectedUserId(e.target.value)}
-                className="w-full rounded-md border px-3 py-2 text-[13px] outline-none focus:ring-2"
-                style={{
-                  borderColor: BRAND.border,
-                  backgroundColor: BRAND.surface,
-                  color: BRAND.textPrimary,
-                }}
               >
                 <option value="">— Select a member —</option>
                 {available.map((m) => (
@@ -1826,7 +1853,7 @@ function AddMemberModal({ teamId, onClose }: { teamId: string; onClose: () => vo
                     {m.displayName ?? m.email ?? m.userId}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </FormField>
           )}
         </ModalBody>
@@ -1851,35 +1878,45 @@ function AddMemberModal({ teamId, onClose }: { teamId: string; onClose: () => vo
   )
 }
 
-function TeamDetail({ team, onBack }: { team: Team; onBack: () => void }) {
+function TeamDetail({
+  team,
+  lead,
+  roster,
+  onBack,
+}: {
+  team: Team
+  lead: MemberWithProfile | null
+  roster: Map<string, MemberWithProfile>
+  onBack: () => void
+}) {
   const { data: members = [], isLoading } = useTeamMembers(team.id)
   const remove = useRemoveTeamMember(team.id)
   const update = useUpdateTeam(team.id)
   const [showEdit, setShowEdit] = useState(false)
   const [showAddMember, setShowAddMember] = useState(false)
+  const [confirmArchive, setConfirmArchive] = useState(false)
+  const [memberToRemove, setMemberToRemove] = useState<TeamMember | null>(null)
 
   async function handleRemoveMember(userId: string) {
     try {
       await remove.mutateAsync(userId)
       toast.success('Member removed')
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to remove member')
+      toast.error(err instanceof Error ? err.message : 'Failed to remove team member')
+    } finally {
+      setMemberToRemove(null)
     }
   }
 
   async function handleToggleStatus() {
     const next = team.status === 'active' ? 'archived' : 'active'
-    if (
-      next === 'archived' &&
-      !window.confirm(`Archive team "${team.name}"? It will be hidden from active team lists.`)
-    ) {
-      return
-    }
     try {
       await update.mutateAsync({ status: next })
       toast.success(next === 'archived' ? 'Team archived' : 'Team restored')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to update team status')
+    } finally {
+      setConfirmArchive(false)
     }
   }
 
@@ -1908,36 +1945,69 @@ function TeamDetail({ team, onBack }: { team: Team; onBack: () => void }) {
         >
           {team.key}
         </span>
-        <span
-          className={`ml-auto rounded-full px-2 py-0.5 text-[11px] font-medium capitalize ${team.status === 'active' ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}
-        >
-          {team.status}
-        </span>
-        <Button variant="outline" size="sm" onClick={() => setShowEdit(true)}>
-          <Pencil size={12} /> Edit
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            void handleToggleStatus()
-          }}
-          disabled={update.isPending}
-        >
-          {update.isPending ? (
-            <Loader2 size={12} className="animate-spin" />
-          ) : (
-            <Archive size={12} />
-          )}
-          {team.status === 'active' ? 'Archive' : 'Restore'}
-        </Button>
+        <div className="ml-auto flex items-center gap-3">
+          <TeamStatusBadge status={team.status} />
+          <Button variant="outline" size="sm" onClick={() => setShowEdit(true)}>
+            <Pencil size={12} /> Edit
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              team.status === 'active' ? setConfirmArchive(true) : void handleToggleStatus()
+            }
+            disabled={update.isPending}
+          >
+            {update.isPending ? (
+              <Loader2 size={12} className="animate-spin" />
+            ) : (
+              <Archive size={12} />
+            )}
+            {team.status === 'active' ? 'Archive' : 'Restore'}
+          </Button>
+        </div>
       </div>
 
       {team.description && (
-        <p className="mb-5 text-[13px]" style={{ color: BRAND.textSecondary }}>
+        <p className="mb-4 text-[13px]" style={{ color: BRAND.textSecondary }}>
           {team.description}
         </p>
       )}
+
+      {/* Meta: lead + created date */}
+      <div className="mb-6 flex flex-wrap items-center gap-x-8 gap-y-2">
+        <div className="flex items-center gap-2">
+          <span
+            className="text-[11px] font-semibold tracking-wide uppercase"
+            style={{ color: BRAND.textMuted }}
+          >
+            Lead
+          </span>
+          {lead ? (
+            <span className="flex items-center gap-1.5">
+              <OwnerAvatar name={lead.displayName} avatarUrl={lead.avatarUrl} size={20} />
+              <span className="text-[13px]" style={{ color: BRAND.textPrimary }}>
+                {lead.displayName}
+              </span>
+            </span>
+          ) : (
+            <span className="text-[13px]" style={{ color: BRAND.textDisabled }}>
+              No lead assigned
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <span
+            className="text-[11px] font-semibold tracking-wide uppercase"
+            style={{ color: BRAND.textMuted }}
+          >
+            Created
+          </span>
+          <span className="text-[13px]" style={{ color: BRAND.textPrimary }}>
+            {new Date(team.createdAt).toLocaleDateString()}
+          </span>
+        </div>
+      </div>
 
       {/* Members section */}
       <div className="mb-3 flex items-center justify-between">
@@ -1964,68 +2034,139 @@ function TeamDetail({ team, onBack }: { team: Team; onBack: () => void }) {
         </div>
       ) : (
         <div className="overflow-hidden rounded-lg" style={{ border: `1px solid ${BRAND.border}` }}>
-          {members.map((member, idx) => (
-            <div
-              key={member.id}
-              className="flex items-center gap-3 px-4 py-3"
-              style={{
-                borderTop: idx > 0 ? `1px solid ${BRAND.border}` : undefined,
-              }}
-            >
+          {members.map((member, idx) => {
+            const isLead = member.userId === team.leadId
+            // Prefer the workspace roster (has display name / avatar / email) and
+            // fall back to whatever the team-members endpoint returned.
+            const profile = roster.get(member.userId)
+            const name = profile?.displayName ?? member.displayName ?? member.userId
+            const email = profile?.email ?? member.email
+            const avatarUrl = profile?.avatarUrl ?? member.avatarUrl
+            return (
               <div
-                className="flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-semibold text-white"
-                style={{ backgroundColor: BRAND.primary }}
-              >
-                {(member.displayName ?? member.userId).charAt(0).toUpperCase()}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p
-                  className="truncate text-[13px] font-medium"
-                  style={{ color: BRAND.textPrimary }}
-                >
-                  {member.displayName ?? member.userId}
-                </p>
-                {member.email && (
-                  <p className="truncate text-[11px]" style={{ color: BRAND.textMuted }}>
-                    {member.email}
-                  </p>
-                )}
-              </div>
-              <span className="text-[11px] capitalize" style={{ color: BRAND.textMuted }}>
-                {member.status}
-              </span>
-              <button
-                onClick={() => {
-                  void handleRemoveMember(member.userId)
+                key={member.id}
+                className="flex items-center gap-3 px-4 py-3"
+                style={{
+                  borderTop: idx > 0 ? `1px solid ${BRAND.border}` : undefined,
                 }}
-                disabled={remove.isPending}
-                className="ml-2 rounded p-1 transition-colors hover:bg-red-50 hover:text-red-600"
-                style={{ color: BRAND.textMuted }}
-                title="Remove from team"
               >
-                <X size={13} />
-              </button>
-            </div>
-          ))}
+                <OwnerAvatar name={name} avatarUrl={avatarUrl} size={28} />
+                <div className="min-w-0 flex-1">
+                  <p
+                    className="flex items-center gap-2 truncate text-[13px] font-medium"
+                    style={{ color: BRAND.textPrimary }}
+                  >
+                    {name}
+                    {isLead && (
+                      <span
+                        className="rounded px-1.5 py-0.5 text-[10px] font-semibold"
+                        style={{ backgroundColor: BRAND.primaryLighter, color: BRAND.primary }}
+                      >
+                        Lead
+                      </span>
+                    )}
+                  </p>
+                  {email && (
+                    <p className="truncate text-[11px]" style={{ color: BRAND.textMuted }}>
+                      {email}
+                    </p>
+                  )}
+                </div>
+                <span className="text-[11px] capitalize" style={{ color: BRAND.textMuted }}>
+                  {member.status}
+                </span>
+                <button
+                  onClick={() => setMemberToRemove(member)}
+                  disabled={remove.isPending}
+                  className="ml-2 rounded p-1 transition-colors hover:bg-surface-hover"
+                  style={{ color: BRAND.textMuted }}
+                  title="Remove from team"
+                >
+                  <X size={13} />
+                </button>
+              </div>
+            )
+          })}
         </div>
       )}
 
       {showEdit && <EditTeamModal team={team} onClose={() => setShowEdit(false)} />}
       {showAddMember && <AddMemberModal teamId={team.id} onClose={() => setShowAddMember(false)} />}
+
+      <ConfirmDialog
+        open={confirmArchive}
+        title={`Archive ${team.name}?`}
+        message="The team will be hidden from active team lists. You can restore it later."
+        confirmLabel="Archive team"
+        destructive
+        pending={update.isPending}
+        onConfirm={() => void handleToggleStatus()}
+        onCancel={() => setConfirmArchive(false)}
+      />
+
+      <ConfirmDialog
+        open={memberToRemove !== null}
+        title="Remove team member?"
+        message={
+          memberToRemove
+            ? `${memberToRemove.displayName ?? 'This member'} will be removed from ${team.name}.`
+            : undefined
+        }
+        confirmLabel="Remove"
+        destructive
+        pending={remove.isPending}
+        onConfirm={() => memberToRemove && void handleRemoveMember(memberToRemove.userId)}
+        onCancel={() => setMemberToRemove(null)}
+      />
     </div>
+  )
+}
+
+function TeamStatusBadge({ status }: { status: 'active' | 'archived' }) {
+  const active = status === 'active'
+  return (
+    <span
+      className="rounded-full px-2 py-0.5 text-[11px] font-medium capitalize"
+      style={{
+        color: active ? BRAND.success : BRAND.textMuted,
+        backgroundColor: active ? BRAND.successBg : BRAND.surfaceSubtle,
+      }}
+    >
+      {status}
+    </span>
   )
 }
 
 function TeamsTab() {
   const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
   const { data: teams = [], isLoading } = useWorkspaceTeams(workspaceId)
+  const { data: members = [] } = useWorkspaceMembers(workspaceId)
   const [showCreate, setShowCreate] = useState(false)
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null)
+  const [search, setSearch] = useState('')
+
+  // Single roster map to resolve each team's lead without an N+1 fetch.
+  const memberById = useMemo(() => new Map(members.map((m) => [m.userId, m])), [members])
+
+  const visibleTeams = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return teams
+    return teams.filter((t) => t.name.toLowerCase().includes(q) || t.key.toLowerCase().includes(q))
+  }, [teams, search])
+
+  const { pageItems, footerProps } = useClientPagination(visibleTeams, 25)
 
   if (selectedTeam) {
     // Sync the selected team with live data (in case members change)
     const live = teams.find((t) => t.id === selectedTeam.id) ?? selectedTeam
-    return <TeamDetail team={live} onBack={() => setSelectedTeam(null)} />
+    return (
+      <TeamDetail
+        team={live}
+        lead={live.leadId ? (memberById.get(live.leadId) ?? null) : null}
+        roster={memberById}
+        onBack={() => setSelectedTeam(null)}
+      />
+    )
   }
 
   return (
@@ -2039,18 +2180,35 @@ function TeamsTab() {
         </Button>
       </div>
 
+      {/* Search */}
+      <div className="mb-4 flex items-center justify-end gap-3">
+        <div className="relative w-56">
+          <Search
+            size={13}
+            className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2"
+            style={{ color: BRAND.textMuted }}
+          />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search teams…"
+            className="h-8 pl-7 text-[12px]"
+          />
+        </div>
+      </div>
+
       {isLoading ? (
         <div className="flex items-center justify-center py-16">
           <Loader2 size={20} className="animate-spin" style={{ color: BRAND.textMuted }} />
         </div>
-      ) : teams.length === 0 ? (
+      ) : visibleTeams.length === 0 ? (
         <div
           className="rounded-lg py-16 text-center"
           style={{ border: `1px dashed ${BRAND.border}` }}
         >
           <UsersRound size={28} className="mx-auto mb-3" style={{ color: BRAND.border }} />
           <p className="text-[13px] font-medium" style={{ color: BRAND.textSecondary }}>
-            No teams yet
+            {search.trim() ? 'No teams match your search' : 'No teams yet'}
           </p>
           <p className="mt-1 text-[12px]" style={{ color: BRAND.textMuted }}>
             Create a team to group members and assign work items.
@@ -2058,39 +2216,68 @@ function TeamsTab() {
         </div>
       ) : (
         <div className="overflow-hidden rounded-lg" style={{ border: `1px solid ${BRAND.border}` }}>
-          {teams.map((team, idx) => (
-            <button
-              key={team.id}
-              onClick={() => setSelectedTeam(team)}
-              className="flex w-full items-center gap-4 px-4 py-3 text-left transition-colors hover:bg-gray-50"
-              style={{
-                borderTop: idx > 0 ? `1px solid ${BRAND.border}` : undefined,
-              }}
-            >
-              <div
-                className="flex h-8 w-8 items-center justify-center rounded-md text-[12px] font-bold text-white"
-                style={{ backgroundColor: BRAND.primary }}
+          {pageItems.map((team, idx) => {
+            const lead = team.leadId ? memberById.get(team.leadId) : undefined
+            return (
+              <button
+                key={team.id}
+                onClick={() => setSelectedTeam(team)}
+                className="flex w-full items-center gap-4 px-4 py-3 text-left transition-colors hover:bg-surface-hover"
+                style={{
+                  borderTop: idx > 0 ? `1px solid ${BRAND.border}` : undefined,
+                }}
               >
-                {team.key.slice(0, 2)}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-[13px] font-semibold" style={{ color: BRAND.textPrimary }}>
-                  {team.name}
-                </p>
-                {team.description && (
-                  <p className="truncate text-[12px]" style={{ color: BRAND.textMuted }}>
-                    {team.description}
+                <TeamAvatar teamKey={team.key} size={32} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13px] font-semibold" style={{ color: BRAND.textPrimary }}>
+                    {team.name}
                   </p>
+                  {team.description && (
+                    <p className="truncate text-[12px]" style={{ color: BRAND.textMuted }}>
+                      {team.description}
+                    </p>
+                  )}
+                </div>
+                {/* Lead */}
+                <div className="hidden w-40 shrink-0 items-center gap-1.5 sm:flex">
+                  {lead ? (
+                    <>
+                      <OwnerAvatar name={lead.displayName} avatarUrl={lead.avatarUrl} size={20} />
+                      <span className="truncate text-[12px]" style={{ color: BRAND.textSecondary }}>
+                        {lead.displayName}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-[12px]" style={{ color: BRAND.textDisabled }}>
+                      No lead
+                    </span>
+                  )}
+                </div>
+                {/* Member count (only when the API provides it) */}
+                {typeof team.memberCount === 'number' && (
+                  <div
+                    className="flex shrink-0 items-center gap-1 text-[12px]"
+                    style={{ color: BRAND.textMuted }}
+                    title={`${team.memberCount} member${team.memberCount === 1 ? '' : 's'}`}
+                  >
+                    <Users size={13} />
+                    {team.memberCount}
+                  </div>
                 )}
-              </div>
-              <span
-                className={`rounded-full px-2 py-0.5 text-[11px] font-medium capitalize ${team.status === 'active' ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}
-              >
-                {team.status}
-              </span>
-              <ChevronRight size={14} style={{ color: BRAND.textMuted }} />
-            </button>
-          ))}
+                <TeamStatusBadge status={team.status} />
+                <ChevronRight size={14} style={{ color: BRAND.textMuted }} />
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {!isLoading && visibleTeams.length > 0 && (
+        <div
+          className="mt-3 overflow-hidden rounded-lg"
+          style={{ border: `1px solid ${BRAND.border}` }}
+        >
+          <PaginationFooter {...footerProps} />
         </div>
       )}
 
@@ -2103,26 +2290,42 @@ function TeamsTab() {
 
 // ── Audit Log tab ─────────────────────────────────────────────────────────────
 
-const AUDIT_PAGE_SIZE = 50
+const AUDIT_DEFAULT_PAGE_SIZE = 50
 
+/** Full, unambiguous timestamp for an audit entry (audit trails avoid abbreviations). */
 function formatAuditTime(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
-}
-
-/** Audit action codes are dotted/underscored (e.g. `workspace.member.invited`). */
-function humanizeAuditAction(action: string): string {
-  return action.replace(/[._]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+  return new Date(iso).toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  })
 }
 
 function AuditLogTab() {
+  const [pageSize, setPageSize] = useState(AUDIT_DEFAULT_PAGE_SIZE)
   const [offset, setOffset] = useState(0)
   const [search, setSearch] = useState('')
 
+  const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
+  const { data: members = [] } = useWorkspaceMembers(workspaceId)
+  const { data: teams = [] } = useWorkspaceTeams(workspaceId)
+  const { data: roles = [] } = useQuery({
+    queryKey: ['system-roles'],
+    queryFn: async () => {
+      const res = await apiClient.GET('/v1/roles')
+      return (res.data ?? []) as Role[]
+    },
+  })
+
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['audit-logs', offset],
+    queryKey: ['audit-logs', offset, pageSize],
     queryFn: async () => {
       const res = await apiClient.GET('/v1/audit-logs', {
-        params: { query: { limit: AUDIT_PAGE_SIZE, offset } },
+        params: { query: { limit: pageSize, offset } },
       })
       return res.data
     },
@@ -2132,14 +2335,31 @@ function AuditLogTab() {
   const rows = data?.data ?? []
   const hasNextPage = data?.pageInfo?.hasNextPage ?? false
 
-  // Server paginates; this box narrows the loaded page by actor / action / resource.
+  // Turn each event into a plain-language sentence. The actor is resolved
+  // authoritatively server-side (actorName); the ids embedded in the payload
+  // (userId / roleId / teamId) are resolved best-effort from workspace reference
+  // data already cached for Settings, and degrade to a short id when absent.
+  const resolver = useMemo<AuditNameResolver>(() => {
+    const userNames = new Map(members.map((m) => [m.userId, m.displayName || m.email]))
+    const teamNames = new Map(teams.map((t) => [t.id, t.name]))
+    const roleNames = new Map(roles.map((r) => [r.id, r.name]))
+    return {
+      user: (id) => userNames.get(id),
+      team: (id) => teamNames.get(id),
+      role: (id) => roleNames.get(id),
+    }
+  }, [members, teams, roles])
+
+  const actorLabel = (a: (typeof rows)[number]): string => a.actorName ?? a.actorEmail ?? 'System'
+
+  // Server paginates; this box narrows the loaded page by actor or by the
+  // rendered description.
   const q = search.trim().toLowerCase()
   const filtered = q
     ? rows.filter(
         (a) =>
-          (a.actorEmail ?? '').toLowerCase().includes(q) ||
-          a.action.toLowerCase().includes(q) ||
-          a.resourceType.toLowerCase().includes(q),
+          actorLabel(a).toLowerCase().includes(q) ||
+          describeAuditEvent(a, resolver).toLowerCase().includes(q),
       )
     : rows
 
@@ -2159,7 +2379,7 @@ function AuditLogTab() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Filter actor, action, resource…"
+            placeholder="Search actor or description…"
             className="w-64 rounded py-1.5 pr-3 pl-7 text-[11px] focus:outline-none"
             style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textPrimary }}
           />
@@ -2173,9 +2393,8 @@ function AuditLogTab() {
           style={{ backgroundColor: BRAND.pageBg, borderBottom: `1px solid ${BRAND.border}` }}
         >
           {[
-            ['w-44', 'Time'],
+            ['w-56', 'Time'],
             ['w-48', 'Actor'],
-            ['w-40', 'Action'],
             ['flex-1', 'Detail'],
           ].map(([c, l]) => (
             <div
@@ -2206,8 +2425,6 @@ function AuditLogTab() {
           </div>
         ) : (
           filtered.map((a) => {
-            const changeKeys =
-              a.changes && typeof a.changes === 'object' ? Object.keys(a.changes) : []
             return (
               <div
                 key={a.id}
@@ -2215,7 +2432,7 @@ function AuditLogTab() {
                 style={{ borderBottom: `1px solid ${BRAND.borderInner}` }}
               >
                 <div
-                  className="flex w-44 items-center gap-1 text-[10px]"
+                  className="flex w-56 items-center gap-1 text-[10px]"
                   style={{ color: BRAND.textMuted }}
                 >
                   <Clock size={10} />
@@ -2226,20 +2443,14 @@ function AuditLogTab() {
                   style={{ color: BRAND.textPrimary }}
                   title={a.actorEmail ?? a.actorId ?? undefined}
                 >
-                  {a.actorEmail ?? a.actorId ?? 'System'}
+                  {actorLabel(a)}
                 </div>
-                <div className="w-40 truncate text-[11px]" style={{ color: BRAND.textSecondary }}>
-                  {humanizeAuditAction(a.action)}
-                </div>
-                <div className="flex-1 truncate text-[11px]" style={{ color: BRAND.textSecondary }}>
-                  {a.resourceType} · {a.resourceId}
-                  {changeKeys.length > 0 && (
-                    <span style={{ color: BRAND.textMuted }}>
-                      {' '}
-                      ({changeKeys.length} field
-                      {changeKeys.length !== 1 ? 's' : ''} changed)
-                    </span>
-                  )}
+                <div
+                  className="min-w-0 flex-1 truncate text-[11px]"
+                  style={{ color: BRAND.textPrimary }}
+                  title={`${a.action} · ${a.resourceType} · ${a.resourceId}`}
+                >
+                  {describeAuditEvent(a, resolver)}
                 </div>
               </div>
             )
@@ -2248,26 +2459,25 @@ function AuditLogTab() {
       </div>
 
       {/* ── Pagination ── */}
-      {(offset > 0 || hasNextPage) && (
-        <div className="mt-3 flex items-center justify-end gap-2">
-          <button
-            onClick={() => setOffset((o) => Math.max(0, o - AUDIT_PAGE_SIZE))}
-            disabled={offset === 0}
-            className="flex items-center gap-1 rounded px-2.5 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-            style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
-          >
-            <ChevronLeft size={12} />
-            Prev
-          </button>
-          <button
-            onClick={() => setOffset((o) => o + AUDIT_PAGE_SIZE)}
-            disabled={!hasNextPage}
-            className="flex items-center gap-1 rounded px-2.5 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-            style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
-          >
-            Next
-            <ChevronRight size={12} />
-          </button>
+      {rows.length > 0 && (
+        <div
+          className="mt-3 overflow-hidden rounded-lg"
+          style={{ border: `1px solid ${BRAND.border}` }}
+        >
+          <PaginationFooter
+            pageSize={pageSize}
+            setPageSize={(n) => {
+              setPageSize(n)
+              setOffset(0)
+            }}
+            currentPage={Math.floor(offset / pageSize) + 1}
+            rangeStart={rows.length === 0 ? 0 : offset + 1}
+            rangeEnd={offset + rows.length}
+            hasPrevPage={offset > 0}
+            hasNextPage={hasNextPage}
+            onPrevPage={() => setOffset((o) => Math.max(0, o - pageSize))}
+            onNextPage={() => setOffset((o) => o + pageSize)}
+          />
         </div>
       )}
     </div>
@@ -2331,7 +2541,7 @@ function RolesTab() {
     mutationFn: async (vars: { roleId: string; permissions: string[] }) => {
       const res = await apiClient.PATCH('/v1/roles/{roleId}/permissions', {
         params: { path: { roleId: vars.roleId } },
-        body: { permissions: vars.permissions },
+        body: { permissions: vars.permissions } as never,
       })
       if (res.error) throw new Error(apiErrorMessage(res.error))
       return res.data

@@ -358,6 +358,13 @@
       "when": 1784600000000,
       "tag": "0049_drop_quality_edit",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1784700000000,
+      "tag": "0050_sync_task_actual_hours",
+      "breakpoints": true
     }
   ]
 }

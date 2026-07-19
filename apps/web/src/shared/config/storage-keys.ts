@@ -10,6 +10,7 @@ export const STORAGE_KEYS = {
   RELEASES_COLUMNS: 'rally-releases-columns',
   QUALITY_COLUMNS: 'rally-quality-columns',
   MILESTONES_COLUMNS: 'rally-milestones-columns',
+  PROJECTS_COLUMNS: 'rally-projects-columns',
   LAST_ACCESSED_ITERATION: 'rally-last-accessed-iteration',
   ITERATION_STATUS_VIEW_MODE: 'rally-iteration-status-view-mode',
 } as const

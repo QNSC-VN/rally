@@ -26,6 +26,7 @@ import { CurrentUser } from '@modules/identity';
 import { WorkItemsService } from '../../application/work-items.service';
 import {
   WorkItemQueryDto,
+  WorkItemByKeyQueryDto,
   CreateWorkItemDto,
   UpdateWorkItemDto,
   CreateTaskDto,
@@ -279,6 +280,21 @@ export class WorkItemsController {
   }
 
   // ── Get ────────────────────────────────────────────────────────────────────
+
+  // Declared before @Get(':id') so the static path is not captured as an :id
+  // (which is ParseUUIDPipe-validated and would 400 on the literal "by-key").
+  @Get('by-key')
+  @ApiOperation({ summary: 'Get a work item by its item key within a project' })
+  @RequireProjectPermission('work_item:view', 'query', 'projectId')
+  @ApiResponse({ status: 200, type: WorkItemResponseDto })
+  @ApiCommonErrors(400, 401, 404)
+  async getWorkItemByKey(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: WorkItemByKeyQueryDto,
+  ): Promise<WorkItemResponseDto> {
+    const item = await this.workItemsService.getWorkItemByKey(user, query.projectId, query.itemKey);
+    return toWorkItemDto(item);
+  }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get a work item by ID' })

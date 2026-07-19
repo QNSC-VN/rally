@@ -69,6 +69,7 @@ import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { FormField } from '@/shared/ui/form-field'
 import { NativeSelect } from '@/shared/ui/native-select'
 import { AddTaskModal } from '@/features/work-items/ui/add-task-modal'
+import { TimeLogModal } from '@/features/work-items/ui/time-log-modal'
 import { RichTextEditor } from '@/shared/ui/rich-text-editor'
 import { AttachmentBlock } from '@/features/collaboration/ui/attachment-block'
 import { LinkedItemsBlock } from '@/features/work-items/ui/linked-items-block'
@@ -639,6 +640,11 @@ function DetailSidebar({
   const isTask = item.type === 'task'
   const isDefect = item.type === 'defect'
   const disabled = updating || readOnly
+  const [showTimeLog, setShowTimeLog] = useState(false)
+  const memberName = (userId: string) => {
+    const m = members.find((x) => x.userId === userId)
+    return m?.displayName ?? m?.email ?? userId
+  }
   const navigate = useNavigate()
   const openItem = (itemKey: string) => void navigate({ to: '/item/$itemKey', params: { itemKey } })
 
@@ -852,16 +858,22 @@ function DetailSidebar({
               />
             </FormField>
             <FormField label="Actual (h)">
-              <input
-                type="number"
-                min={0}
-                step={0.5}
-                value={item.actualHours ?? ''}
-                onChange={(e) =>
-                  onUpdate({ actualHours: e.target.value ? Number(e.target.value) : null })
-                }
-                disabled={disabled}
-              />
+              <div className="flex items-center gap-2">
+                <div
+                  className="flex h-9 flex-1 items-center rounded border border-input bg-input-background px-3 font-mono text-[13px]"
+                  style={{ color: BRAND.textPrimary }}
+                >
+                  {item.actualHours ?? 0}h
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setShowTimeLog(true)}
+                >
+                  Log time
+                </Button>
+              </div>
             </FormField>
           </>
         )}
@@ -977,6 +989,14 @@ function DetailSidebar({
         )}
       </div>
       {/* end p-5 space-y-4 */}
+      {showTimeLog && (
+        <TimeLogModal
+          workItemId={item.id}
+          memberName={memberName}
+          canEdit={!readOnly}
+          onClose={() => setShowTimeLog(false)}
+        />
+      )}
     </aside>
   )
 }
@@ -1316,8 +1336,8 @@ export function WorkItemDetailPage() {
 }
 
 // ── useWorkItemByKey hook ─────────────────────────────────────────────────────
-// The API provides GET /v1/work-items?projectId&q=itemKey lookup.
-// We use a lightweight search to resolve the work item from the route key.
+// Resolves a route item key to a work item via GET /v1/work-items/by-key, which
+// falls back to the tasks table server-side so task detail pages are reachable.
 
 import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
@@ -1332,18 +1352,14 @@ function useWorkItemByKey(itemKey: string) {
     queryKey: workItemKeys.byKey(itemKey, projectId),
     queryFn: async (): Promise<WorkItem | null> => {
       if (!projectId) return null
-      const { data, error, response } = await apiClient.GET('/v1/work-items', {
-        params: {
-          query: { projectId, q: itemKey, limit: 5 } as {
-            projectId: string
-            q?: string
-            limit?: number
-          },
-        },
+      const { data, error, response } = await apiClient.GET('/v1/work-items/by-key', {
+        params: { query: { projectId, itemKey } },
       })
-      if (error) throw new Error(apiErrorMessage(error, response.status))
-      const items = (data as { data?: WorkItem[] } | undefined)?.data ?? []
-      return items.find((i) => i.itemKey === itemKey) ?? null
+      if (error) {
+        if (response.status === 404) return null
+        throw new Error(apiErrorMessage(error, response.status))
+      }
+      return (data as WorkItem | undefined) ?? null
     },
     enabled: !!itemKey && !!projectId,
     staleTime: 15_000,

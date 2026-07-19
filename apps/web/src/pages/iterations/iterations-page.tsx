@@ -7,6 +7,7 @@
  */
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
+import { useNavigate } from '@tanstack/react-router'
 import { ChevronLeft, Loader2, Plus } from 'lucide-react'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { Spinner } from '@/shared/ui/spinner'
@@ -19,13 +20,21 @@ import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
-import { useProjectTeams } from '@/features/teams/api'
+import { useProjectTeams, useProjectMembers } from '@/features/teams/api'
+import { TypeBadge, ScheduleStateBadge } from '@/entities/work-item/ui/badges'
 import {
   useIterations,
   useIteration,
+  useIterationStatus,
   useCreateIteration,
   useUpdateIteration,
+  useCommitIteration,
+  useAcceptIteration,
+  useRolloverIteration,
   type IterationState,
+  type Iteration,
+  type IterationStatus,
+  type IterationStatusItem,
 } from '@/features/iterations/api'
 
 // ── State label mapping (DB ↔ UI) ────────────────────────────────────────────
@@ -504,6 +513,39 @@ function IterationDetail({
     void update.mutateAsync(body)
   }
 
+  // Timebox scope + capacity read-model (shared with Iteration Status) and the
+  // gated lifecycle actions (Commit / Accept / Rollover).
+  const navigate = useNavigate()
+  const { data: status } = useIterationStatus(id)
+  const { data: members = [] } = useProjectMembers(it?.projectId)
+  const { data: allIterations = [] } = useIterations(it?.projectId)
+  const commit = useCommitIteration(id)
+  const accept = useAcceptIteration(id)
+  const [showRollover, setShowRollover] = useState(false)
+
+  const memberName = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const p of members) if (p.displayName) m.set(p.userId, p.displayName)
+    return m
+  }, [members])
+
+  async function handleCommit() {
+    try {
+      await commit.mutateAsync()
+      toast.success('Iteration committed')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to commit iteration')
+    }
+  }
+  async function handleAccept() {
+    try {
+      await accept.mutateAsync()
+      toast.success('Iteration accepted')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to accept iteration')
+    }
+  }
+
   if (isLoading || !it) {
     return (
       <div className="flex h-40 items-center justify-center">
@@ -511,6 +553,14 @@ function IterationDetail({
       </div>
     )
   }
+
+  const scopeItems = status?.items ?? []
+  const unfinishedCount = scopeItems.filter(
+    (i) =>
+      (i.type === 'story' || i.type === 'defect') &&
+      i.scheduleState !== 'accepted' &&
+      i.scheduleState !== 'release',
+  ).length
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-white">
@@ -528,8 +578,50 @@ function IterationDetail({
           <span className="font-mono text-[13px] font-semibold">{it.iterationKey ?? 'New'}</span>
           <span className="h-5 w-px bg-white/25" />
           <h1 className="truncate text-[15px] font-semibold">{it.name}</h1>
+          <div className="ml-auto">
+            <StateBadge state={it.state} />
+          </div>
         </div>
       </div>
+
+      {canManage && it.state !== 'accepted' && (
+        <div
+          className="flex shrink-0 items-center justify-between gap-3 px-6 py-2"
+          style={{
+            backgroundColor: BRAND.surface,
+            borderBottom: `1px solid ${BRAND.borderSubtle}`,
+          }}
+        >
+          <span className="text-[12px]" style={{ color: BRAND.textSecondary }}>
+            {it.state === 'planning'
+              ? 'Shape the scope, then commit to start the iteration.'
+              : `${unfinishedCount} unfinished item${unfinishedCount === 1 ? '' : 's'} · all assigned items must be accepted to close.`}
+          </span>
+          <div className="flex items-center gap-2">
+            {it.state === 'committed' && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={unfinishedCount === 0}
+                onClick={() => setShowRollover(true)}
+              >
+                Move Unfinished
+              </Button>
+            )}
+            {it.state === 'planning' ? (
+              <Button size="sm" disabled={commit.isPending} onClick={handleCommit}>
+                {commit.isPending && <Loader2 size={11} className="animate-spin" />} Commit
+                Iteration
+              </Button>
+            ) : (
+              <Button size="sm" disabled={accept.isPending} onClick={handleAccept}>
+                {accept.isPending && <Loader2 size={11} className="animate-spin" />} Accept
+                Iteration
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="flex min-h-0 flex-1 gap-2" style={{ backgroundColor: BRAND.avatarBg }}>
         <main
@@ -537,6 +629,12 @@ function IterationDetail({
           style={{ backgroundColor: BRAND.surfaceSubtle }}
         >
           <div className="space-y-5">
+            <CapacityStrip metrics={status?.metrics} scopeCount={scopeItems.length} />
+            <IterationScope
+              items={scopeItems}
+              memberName={memberName}
+              onOpen={(itemKey) => navigate({ to: '/item/$itemKey', params: { itemKey } })}
+            />
             <h2 className="text-[18px] font-semibold" style={{ color: BRAND.textPrimary }}>
               Details
             </h2>
@@ -618,15 +716,9 @@ function IterationDetail({
             />
           </FormField>
           <FormField label="State">
-            <NativeSelect
-              value={it.state}
-              disabled={disabled}
-              onChange={(e) => patch({ state: e.target.value as IterationState })}
-            >
-              <option value="planning">Planning</option>
-              <option value="committed">Committed</option>
-              <option value="accepted">Accepted</option>
-            </NativeSelect>
+            <div className="flex h-9 items-center rounded border border-input bg-input-background px-3">
+              <StateBadge state={it.state} />
+            </div>
           </FormField>
           <FormField label="Planned Velocity">
             <Input
@@ -642,7 +734,218 @@ function IterationDetail({
           </FormField>
         </aside>
       </div>
+
+      {showRollover && (
+        <RolloverModal
+          iterationId={id}
+          iterations={allIterations}
+          unfinishedCount={unfinishedCount}
+          onClose={() => setShowRollover(false)}
+        />
+      )}
     </div>
+  )
+}
+
+// ── Capacity strip ────────────────────────────────────────────────────────────
+
+function CapacityStrip({
+  metrics,
+  scopeCount,
+}: {
+  metrics: IterationStatus['metrics'] | undefined
+  scopeCount: number
+}) {
+  const committed = metrics?.totalPlanEstimate ?? 0
+  const capacity = metrics?.plannedVelocity ?? 0
+  const capacityPct = capacity > 0 ? Math.round((committed / capacity) * 100) : 0
+  const tiles: Array<{ label: string; value: string; caption?: string }> = [
+    { label: 'Planned Velocity', value: `${capacity} pts` },
+    {
+      label: 'Committed',
+      value: `${committed} pts`,
+      caption: capacity > 0 ? `${capacityPct}% of capacity` : undefined,
+    },
+    {
+      label: 'Accepted',
+      value: `${metrics?.acceptedPoints ?? 0} pts`,
+      caption: `${metrics?.acceptedPercent ?? 0}% of committed`,
+    },
+    { label: 'Days Left', value: metrics?.daysLeft != null ? String(metrics.daysLeft) : '—' },
+    { label: 'Scope Items', value: String(scopeCount) },
+    { label: 'Defects', value: String(metrics?.defectCount ?? 0) },
+    { label: 'Tasks', value: String(metrics?.taskCount ?? 0) },
+  ]
+  return (
+    <section>
+      <h2 className="mb-2 text-[18px] font-semibold" style={{ color: BRAND.textPrimary }}>
+        Capacity
+      </h2>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+        {tiles.map((t) => (
+          <div
+            key={t.label}
+            className="rounded bg-white px-3 py-2.5"
+            style={{ border: `1px solid ${BRAND.borderSubtle}` }}
+          >
+            <div
+              className="text-[10px] font-semibold tracking-wide uppercase"
+              style={{ color: BRAND.textMuted }}
+            >
+              {t.label}
+            </div>
+            <div className="mt-1 text-[16px] font-semibold" style={{ color: BRAND.textPrimary }}>
+              {t.value}
+            </div>
+            {t.caption && (
+              <div className="text-[10px]" style={{ color: BRAND.textMuted }}>
+                {t.caption}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+// ── Committed scope list ────────────────────────────────────────────────────────
+
+function IterationScope({
+  items,
+  memberName,
+  onOpen,
+}: {
+  items: IterationStatusItem[]
+  memberName: Map<string, string>
+  onOpen: (itemKey: string) => void
+}) {
+  return (
+    <section>
+      <h2 className="mb-2 text-[18px] font-semibold" style={{ color: BRAND.textPrimary }}>
+        Scope{' '}
+        <span className="text-[13px] font-normal" style={{ color: BRAND.textMuted }}>
+          ({items.length})
+        </span>
+      </h2>
+      <div
+        className="overflow-hidden rounded bg-white"
+        style={{ border: `1px solid ${BRAND.borderSubtle}` }}
+      >
+        {items.length === 0 ? (
+          <div className="px-4 py-8 text-center text-[13px]" style={{ color: BRAND.textMuted }}>
+            No work items assigned. Assign Stories or Defects from the Backlog.
+          </div>
+        ) : (
+          <table className="w-full text-[12px]">
+            <thead>
+              <tr
+                style={{
+                  borderBottom: `1px solid ${BRAND.borderSubtle}`,
+                  color: BRAND.textSecondary,
+                }}
+              >
+                <th className="px-3 py-2 text-left font-semibold">Type</th>
+                <th className="px-3 py-2 text-left font-semibold">ID</th>
+                <th className="px-3 py-2 text-left font-semibold">Name</th>
+                <th className="px-3 py-2 text-left font-semibold">Schedule State</th>
+                <th className="px-3 py-2 text-right font-semibold">Est.</th>
+                <th className="px-3 py-2 text-left font-semibold">Owner</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((i) => (
+                <tr
+                  key={i.id}
+                  onClick={() => onOpen(i.itemKey)}
+                  className="cursor-pointer hover:bg-primary-lighter"
+                  style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
+                >
+                  <td className="px-3 py-2">
+                    <TypeBadge type={i.type} />
+                  </td>
+                  <td className="px-3 py-2 font-mono" style={{ color: BRAND.primary }}>
+                    {i.itemKey}
+                  </td>
+                  <td className="px-3 py-2" style={{ color: BRAND.textPrimary }}>
+                    {i.title}
+                  </td>
+                  <td className="px-3 py-2">
+                    <ScheduleStateBadge state={i.scheduleState} />
+                  </td>
+                  <td
+                    className="px-3 py-2 text-right font-mono"
+                    style={{ color: BRAND.textSecondary }}
+                  >
+                    {i.planEstimate ?? '—'}
+                  </td>
+                  <td className="px-3 py-2" style={{ color: BRAND.textSecondary }}>
+                    {i.assigneeId ? (memberName.get(i.assigneeId) ?? '—') : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </section>
+  )
+}
+
+// ── Rollover modal (move unfinished items out) ──────────────────────────────────
+
+function RolloverModal({
+  iterationId,
+  iterations,
+  unfinishedCount,
+  onClose,
+}: {
+  iterationId: string
+  iterations: Iteration[]
+  unfinishedCount: number
+  onClose: () => void
+}) {
+  const rollover = useRolloverIteration(iterationId)
+  const [target, setTarget] = useState('') // '' = backlog
+  const targets = iterations.filter((it) => it.id !== iterationId && it.state !== 'accepted')
+
+  async function submit() {
+    try {
+      const res = await rollover.mutateAsync({ moveToIterationId: target || undefined })
+      toast.success(`Moved ${res.movedCount} item${res.movedCount === 1 ? '' : 's'}`)
+      onClose()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to move items')
+    }
+  }
+
+  return (
+    <AppModal open onClose={onClose} title="Move Unfinished Items" width={440}>
+      <ModalBody className="space-y-4">
+        <p className="text-[13px]" style={{ color: BRAND.textSecondary }}>
+          {unfinishedCount} unfinished (not-accepted) Story/Defect item
+          {unfinishedCount === 1 ? '' : 's'} will be moved out of this iteration.
+        </p>
+        <FormField label="Destination">
+          <NativeSelect value={target} onChange={(e) => setTarget(e.target.value)}>
+            <option value="">Backlog (no iteration)</option>
+            {targets.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </NativeSelect>
+        </FormField>
+      </ModalBody>
+      <ModalFooter>
+        <Button variant="outline" type="button" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button type="button" disabled={rollover.isPending} onClick={submit}>
+          {rollover.isPending && <Loader2 size={11} className="animate-spin" />} Move Items
+        </Button>
+      </ModalFooter>
+    </AppModal>
   )
 }
 

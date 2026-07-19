@@ -1,9 +1,14 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB, DbExecutor } from '@platform';
-import { teams } from '../../../../../../db/schema/work';
-import type { Team, CreateTeamInput, UpdateTeamInput } from '../../domain/team.types';
+import { teams, teamMembers } from '../../../../../../db/schema/work';
+import type {
+  Team,
+  TeamWithStats,
+  CreateTeamInput,
+  UpdateTeamInput,
+} from '../../domain/team.types';
 import { ITeamRepository } from '../../domain/ports/team.repository';
 
 @Injectable()
@@ -32,13 +37,34 @@ export class TeamDrizzleRepository implements ITeamRepository {
     return rows[0] ?? null;
   }
 
-  async listByWorkspace(workspaceId: string): Promise<Team[]> {
+  async listByWorkspaceWithStats(workspaceId: string): Promise<TeamWithStats[]> {
     const rows = await this.db
       .select()
       .from(teams)
       .where(and(eq(teams.workspaceId, workspaceId), eq(teams.status, 'active')))
       .orderBy(teams.name);
-    return rows;
+
+    if (rows.length === 0) {
+      return [];
+    }
+
+    // Count active members per team (no N+1: single grouped query).
+    const teamIds = rows.map((t) => t.id);
+    const countRows = await this.db
+      .select({
+        teamId: teamMembers.teamId,
+        count: sql<number>`SUM(CASE WHEN ${teamMembers.status} = 'active' THEN 1 ELSE 0 END)::int`,
+      })
+      .from(teamMembers)
+      .where(inArray(teamMembers.teamId, teamIds))
+      .groupBy(teamMembers.teamId);
+
+    const countMap: Record<string, number> = {};
+    for (const row of countRows) {
+      countMap[row.teamId] = row.count;
+    }
+
+    return rows.map((t) => ({ ...t, memberCount: countMap[t.id] ?? 0 }));
   }
 
   async create(input: CreateTeamInput, tx?: DbExecutor): Promise<Team> {
