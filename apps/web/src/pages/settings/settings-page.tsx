@@ -2300,6 +2300,98 @@ function humanizeAuditAction(action: string): string {
   return action.replace(/[._]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
+/** Title-case a camelCase / snake / dotted token into readable words. */
+function humanizeWords(s: string): string {
+  return s
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[._]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+/** `leadId` → "Lead", `memberIds` → "Member", `name` → "Name". */
+function humanizeFieldName(k: string): string {
+  const base = k.replace(/Ids?$/, '')
+  return humanizeWords(base || k)
+}
+
+function asRecord(v: unknown): Record<string, unknown> | undefined {
+  return v && typeof v === 'object' && !Array.isArray(v)
+    ? (v as Record<string, unknown>)
+    : undefined
+}
+
+type AuditRowLike = {
+  action: string
+  resourceType: string
+  resourceId: string
+  changes: { [key: string]: unknown } | null
+}
+
+/** Render a scalar audit value for display; objects/arrays collapse to an ellipsis. */
+function formatAuditValue(v: unknown): string {
+  if (v === null || v === '') return '—'
+  if (typeof v === 'string') return v.length > 48 ? `${v.slice(0, 48)}…` : v
+  if (typeof v === 'boolean') return v ? 'Yes' : 'No'
+  if (typeof v === 'number') return String(v)
+  return '…'
+}
+
+/**
+ * A friendly name for the entity an audit event targeted. Audit `changes` are
+ * `{ before?, after? }` snapshots, so prefer the entity's own name/title/email
+ * from either side; fall back to the resource type + a short id when unnamed.
+ */
+function auditEntityLabel(a: AuditRowLike): string {
+  const changes = asRecord(a.changes)
+  const after = asRecord(changes?.after)
+  const before = asRecord(changes?.before)
+  const named =
+    after?.name ?? before?.name ?? after?.title ?? before?.title ?? after?.email ?? before?.email
+  if (typeof named === 'string' && named.trim()) return named.trim()
+  return `${humanizeWords(a.resourceType)} ${a.resourceId.slice(0, 8)}`
+}
+
+/** Fields that actually differ between the before/after snapshots (or all set-on-create fields). */
+function auditChangedFields(a: AuditRowLike): string[] {
+  const changes = asRecord(a.changes)
+  if (!changes) return []
+  const before = asRecord(changes.before)
+  const after = asRecord(changes.after)
+  if (before && after) {
+    const keys = new Set([...Object.keys(before), ...Object.keys(after)])
+    return [...keys].filter((k) => JSON.stringify(before[k]) !== JSON.stringify(after[k]))
+  }
+  return Object.keys(after ?? before ?? {})
+}
+
+/**
+ * Plain-language summary of what an audit event did, complementing the Action
+ * column: create/add reads from the entity label alone, destructive verbs say
+ * so, and updates name the field(s) that changed (with the new value when a
+ * single scalar field changed).
+ */
+function describeAuditChange(a: AuditRowLike): string {
+  const { action } = a
+  if (/\.(created|added|invited|assigned|accepted)$/.test(action)) return ''
+  if (action.endsWith('.archived')) return 'Archived'
+  if (/\.(removed|revoked|cancelled)$/.test(action)) return 'Removed'
+
+  const fields = auditChangedFields(a)
+  if (fields.length === 0) return ''
+  if (fields.length === 1) {
+    const key = fields[0]
+    const after = asRecord(asRecord(a.changes)?.after)
+    const value = after ? after[key] : undefined
+    if (value === undefined || (value !== null && typeof value === 'object')) {
+      return `Changed ${humanizeFieldName(key)}`
+    }
+    return `${humanizeFieldName(key)} → ${formatAuditValue(value)}`
+  }
+  return `Changed ${fields.map(humanizeFieldName).join(', ')}`
+}
+
 function AuditLogTab() {
   const [pageSize, setPageSize] = useState(AUDIT_DEFAULT_PAGE_SIZE)
   const [offset, setOffset] = useState(0)
@@ -2393,8 +2485,7 @@ function AuditLogTab() {
           </div>
         ) : (
           filtered.map((a) => {
-            const changeKeys =
-              a.changes && typeof a.changes === 'object' ? Object.keys(a.changes) : []
+            const summary = describeAuditChange(a)
             return (
               <div
                 key={a.id}
@@ -2418,15 +2509,13 @@ function AuditLogTab() {
                 <div className="w-40 truncate text-[11px]" style={{ color: BRAND.textSecondary }}>
                   {humanizeAuditAction(a.action)}
                 </div>
-                <div className="flex-1 truncate text-[11px]" style={{ color: BRAND.textSecondary }}>
-                  {a.resourceType} · {a.resourceId}
-                  {changeKeys.length > 0 && (
-                    <span style={{ color: BRAND.textMuted }}>
-                      {' '}
-                      ({changeKeys.length} field
-                      {changeKeys.length !== 1 ? 's' : ''} changed)
-                    </span>
-                  )}
+                <div
+                  className="min-w-0 flex-1 truncate text-[11px]"
+                  style={{ color: BRAND.textSecondary }}
+                  title={`${a.resourceType} · ${a.resourceId}`}
+                >
+                  <span style={{ color: BRAND.textPrimary }}>{auditEntityLabel(a)}</span>
+                  {summary && <span style={{ color: BRAND.textMuted }}> — {summary}</span>}
                 </div>
               </div>
             )
