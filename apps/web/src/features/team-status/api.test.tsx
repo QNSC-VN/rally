@@ -9,6 +9,7 @@ vi.mock('@/shared/api/http-client', () => ({
 
 import { apiClient } from '@/shared/api/http-client'
 import { teamStatusKeys, useUpdateCapacity, useUpdateTeamTask } from './api'
+import { WORK_ITEM_VIEW_ROOTS } from '@/shared/api/invalidate-work-item-views'
 
 const mockPATCH = apiClient.PATCH as ReturnType<typeof vi.fn>
 
@@ -41,21 +42,27 @@ describe('useUpdateCapacity', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
     expect(mockPATCH).toHaveBeenCalledWith('/v1/team-status/capacity', {
-      body: { projectId: 'proj-1', teamId: 'team-1', iterationId: 'iter-1', userId: 'u-1', capacityHours: 8 },
+      body: {
+        projectId: 'proj-1',
+        teamId: 'team-1',
+        iterationId: 'iter-1',
+        userId: 'u-1',
+        capacityHours: 8,
+      },
     })
-    expect(invalidateSpy).toHaveBeenCalledWith({
-      queryKey: teamStatusKeys.detail('proj-1', 'team-1', 'iter-1'),
-    })
+    // Refreshes every work-item-derived read-model, including Team Status.
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: teamStatusKeys.all })
+    expect(invalidateSpy).toHaveBeenCalledTimes(WORK_ITEM_VIEW_ROOTS.length)
   })
 })
 
 describe('useUpdateTeamTask', () => {
-  it('PATCHes /v1/team-status/tasks/{taskId} and invalidates all related status queries', async () => {
+  it('PATCHes /v1/team-status/tasks/{taskId} and refreshes every work-item read-model', async () => {
     mockPATCH.mockResolvedValue({ data: { ok: true }, error: undefined, response: { status: 200 } })
     const qc = makeClient()
     const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
 
-    const { result } = renderHook(() => useUpdateTeamTask('proj-1', 'team-1', 'iter-1'), {
+    const { result } = renderHook(() => useUpdateTeamTask(), {
       wrapper: makeWrapper(qc),
     })
     result.current.mutate({ taskId: 'task-1', state: 'Completed' })
@@ -65,15 +72,9 @@ describe('useUpdateTeamTask', () => {
       params: { path: { taskId: 'task-1' } },
       body: { state: 'Completed' },
     })
-    expect(invalidateSpy).toHaveBeenCalledTimes(3)
-    expect(invalidateSpy).toHaveBeenCalledWith({
-      queryKey: teamStatusKeys.detail('proj-1', 'team-1', 'iter-1'),
-    })
-    expect(invalidateSpy).toHaveBeenCalledWith({
-      queryKey: ['iteration-status'],
-    })
-    expect(invalidateSpy).toHaveBeenCalledWith({
-      queryKey: ['work-items'],
-    })
+    expect(invalidateSpy).toHaveBeenCalledTimes(WORK_ITEM_VIEW_ROOTS.length)
+    for (const queryKey of WORK_ITEM_VIEW_ROOTS) {
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey })
+    }
   })
 })

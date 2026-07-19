@@ -5,6 +5,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
+import { invalidateWorkItemViews } from '@/shared/api/invalidate-work-item-views'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -119,10 +120,7 @@ export function useUpdateCapacity(
 ) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (input: {
-      userId: string
-      capacityHours: number
-    }) => {
+    mutationFn: async (input: { userId: string; capacityHours: number }) => {
       const { data, error, response } = await client.PATCH('/v1/team-status/capacity', {
         body: { projectId, teamId, iterationId, ...input },
       })
@@ -130,20 +128,12 @@ export function useUpdateCapacity(
       return data
     },
     onSuccess: () => {
-      void qc.invalidateQueries({
-        queryKey: teamStatusKeys.detail(projectId, teamId, iterationId),
-      })
-      void qc.invalidateQueries({ queryKey: ['iteration-status'] })
-      void qc.invalidateQueries({ queryKey: ['work-items'] })
+      invalidateWorkItemViews(qc)
     },
   })
 }
 
-export function useUpdateTeamTask(
-  projectId: string,
-  teamId: string,
-  iterationId: string,
-) {
+export function useUpdateTeamTask() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: {
@@ -156,19 +146,15 @@ export function useUpdateTeamTask(
       assigneeId?: string | null
     }) => {
       const { taskId, ...patch } = input
-      const { data, error, response } = await client.PATCH(
-        '/v1/team-status/tasks/{taskId}',
-        { params: { path: { taskId } }, body: patch },
-      )
+      const { data, error, response } = await client.PATCH('/v1/team-status/tasks/{taskId}', {
+        params: { path: { taskId } },
+        body: patch,
+      })
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data
     },
     onSuccess: () => {
-      void qc.invalidateQueries({
-        queryKey: teamStatusKeys.detail(projectId, teamId, iterationId),
-      })
-      void qc.invalidateQueries({ queryKey: ['iteration-status'] })
-      void qc.invalidateQueries({ queryKey: ['work-items'] })
+      invalidateWorkItemViews(qc)
     },
   })
 }

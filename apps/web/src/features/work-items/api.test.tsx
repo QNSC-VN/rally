@@ -8,7 +8,7 @@ vi.mock('@/shared/api/http-client', () => ({
 }))
 
 import { apiClient } from '@/shared/api/http-client'
-import { iterationKeys } from '@/features/iterations/api'
+import { WORK_ITEM_VIEW_ROOTS } from '@/shared/api/invalidate-work-item-views'
 import {
   workItemKeys,
   useCreateWorkItem,
@@ -38,7 +38,7 @@ beforeEach(() => {
 })
 
 describe('useCreateWorkItem', () => {
-  it('POSTs to /v1/work-items and invalidates backlog + list for the project', async () => {
+  it('POSTs to /v1/work-items and refreshes every work-item read-model', async () => {
     const item = { id: 'wi-1', projectId: 'proj-1' }
     mockPOST.mockResolvedValue({ data: item, error: undefined, response: { status: 201 } })
     const qc = makeClient()
@@ -49,8 +49,10 @@ describe('useCreateWorkItem', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
     expect(mockPOST).toHaveBeenCalledWith('/v1/work-items', { body: { title: 'New' } })
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: workItemKeys.backlog('proj-1') })
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: workItemKeys.list('proj-1') })
+    expect(invalidateSpy).toHaveBeenCalledTimes(WORK_ITEM_VIEW_ROOTS.length)
+    for (const queryKey of WORK_ITEM_VIEW_ROOTS) {
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey })
+    }
   })
 })
 
@@ -70,7 +72,7 @@ describe('useUpdateWorkItem', () => {
     })
   })
 
-  it('invalidates backlog, activity and iteration-status, but NOT task lists when the item has no parent', async () => {
+  it('refreshes every work-item-derived read-model after an update', async () => {
     const item = { id: 'wi-1', projectId: 'proj-1', itemKey: 'RALLY-1', parentId: null }
     mockPATCH.mockResolvedValue({ data: item, error: undefined, response: { status: 200 } })
     const qc = makeClient()
@@ -80,17 +82,18 @@ describe('useUpdateWorkItem', () => {
     result.current.mutate({ title: 'Renamed' } as never)
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: workItemKeys.backlog('proj-1') })
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: workItemKeys.activity('wi-1') })
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: iterationKeys.statusAll })
-    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: workItemKeys.tasks(expect.anything()) })
-    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: workItemKeys.taskTotals(expect.anything()) })
+    // Every read-model root is refreshed exactly once — the single-source fix that
+    // stops inline edits reverting until reload on Quality / Team Status / etc.
+    expect(invalidateSpy).toHaveBeenCalledTimes(WORK_ITEM_VIEW_ROOTS.length)
+    for (const queryKey of WORK_ITEM_VIEW_ROOTS) {
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey })
+    }
   })
 
-  // Regression test: onSuccess previously failed to invalidate the parent task
+  // Regression test: onSuccess previously failed to refresh the parent task
   // list/rollup after a task-state edit, so the expanded task row on the parent
-  // work item didn't refresh. Locks in the fix.
-  it('regression: invalidates the parent task list + totals when the updated item has a parentId', async () => {
+  // work item didn't refresh. The shared work-items root now covers it.
+  it('regression: refreshes the work-items root (covers parent task list) when the item has a parentId', async () => {
     const item = { id: 'task-1', projectId: 'proj-1', itemKey: 'RALLY-2', parentId: 'wi-parent' }
     mockPATCH.mockResolvedValue({ data: item, error: undefined, response: { status: 200 } })
     const qc = makeClient()
@@ -100,12 +103,18 @@ describe('useUpdateWorkItem', () => {
     result.current.mutate({ scheduleState: 'in_progress' } as never)
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: workItemKeys.tasks('wi-parent') })
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: workItemKeys.taskTotals('wi-parent') })
+    // workItemKeys.tasks(...) is nested under this root, so it is invalidated too.
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: workItemKeys.all })
   })
 
   it('updates the detail cache with the returned item', async () => {
-    const item = { id: 'wi-1', projectId: 'proj-1', itemKey: 'RALLY-1', parentId: null, title: 'Renamed' }
+    const item = {
+      id: 'wi-1',
+      projectId: 'proj-1',
+      itemKey: 'RALLY-1',
+      parentId: null,
+      title: 'Renamed',
+    }
     mockPATCH.mockResolvedValue({ data: item, error: undefined, response: { status: 200 } })
     const qc = makeClient()
 
@@ -127,15 +136,23 @@ describe('useDeleteWorkItem', () => {
     result.current.mutate({ id: 'wi-1', projectId: 'proj-1' })
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
-    expect(mockDELETE).toHaveBeenCalledWith('/v1/work-items/{id}', { params: { path: { id: 'wi-1' } } })
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: workItemKeys.backlog('proj-1') })
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: workItemKeys.list('proj-1') })
+    expect(mockDELETE).toHaveBeenCalledWith('/v1/work-items/{id}', {
+      params: { path: { id: 'wi-1' } },
+    })
+    expect(invalidateSpy).toHaveBeenCalledTimes(WORK_ITEM_VIEW_ROOTS.length)
+    for (const queryKey of WORK_ITEM_VIEW_ROOTS) {
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey })
+    }
   })
 })
 
 describe('useCreateTask', () => {
   it('POSTs to /v1/work-items/{id}/tasks and invalidates the parent tasks, totals and activity', async () => {
-    mockPOST.mockResolvedValue({ data: { id: 'task-1' }, error: undefined, response: { status: 201 } })
+    mockPOST.mockResolvedValue({
+      data: { id: 'task-1' },
+      error: undefined,
+      response: { status: 201 },
+    })
     const qc = makeClient()
     const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
 
@@ -147,8 +164,10 @@ describe('useCreateTask', () => {
       params: { path: { id: 'wi-parent' } },
       body: { title: 'Task' },
     })
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: workItemKeys.tasks('wi-parent') })
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: workItemKeys.taskTotals('wi-parent') })
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: workItemKeys.activity('wi-parent') })
+    // Tasks/totals/activity live under the work-items root; Team Status shows the
+    // same task, so all read-models are refreshed via the shared helper.
+    expect(invalidateSpy).toHaveBeenCalledTimes(WORK_ITEM_VIEW_ROOTS.length)
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: workItemKeys.all })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['team-status'] })
   })
 })

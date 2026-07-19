@@ -4,6 +4,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
+import { invalidateWorkItemViews } from '@/shared/api/invalidate-work-item-views'
 // Single source of truth for severity lives in the entity layer.
 export type { DefectSeverity } from '@/entities/work-item/model/types'
 import type { DefectSeverity } from '@/entities/work-item/model/types'
@@ -159,7 +160,7 @@ export function useCreateDefect() {
       return json
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: qualityKeys.all })
+      invalidateWorkItemViews(qc)
     },
   })
 }

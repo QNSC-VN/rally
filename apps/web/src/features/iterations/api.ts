@@ -8,6 +8,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
+import { invalidateWorkItemViews } from '@/shared/api/invalidate-work-item-views'
 import type { components } from '@/shared/api/generated/api'
 
 export type IterationState = 'planning' | 'committed' | 'accepted'
@@ -170,8 +171,10 @@ export type RolloverIterationInput = components['schemas']['RolloverIterationDto
 function invalidateIterationViews(qc: ReturnType<typeof useQueryClient>, id: string) {
   void qc.invalidateQueries({ queryKey: iterationKeys.detail(id) })
   void qc.invalidateQueries({ queryKey: iterationKeys.all })
-  void qc.invalidateQueries({ queryKey: iterationKeys.statusAll })
   void qc.invalidateQueries({ queryKey: ['iteration-options'] })
+  // Commit/accept/rollover move work items between states/iterations, so refresh
+  // every work-item-derived read-model too (this also covers iteration-status).
+  invalidateWorkItemViews(qc)
 }
 
 export function useCommitIteration(id: string) {

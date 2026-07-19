@@ -633,9 +633,6 @@ function MemberGroup({
           <TaskRow
             key={task.id}
             task={task}
-            projectId={projectId}
-            teamId={teamId ?? ''}
-            iterationId={iterationId}
             canEdit={canEdit}
             colStyles={colStyles}
             members={members}
@@ -650,24 +647,18 @@ function MemberGroup({
 
 function TaskRow({
   task,
-  projectId,
-  teamId,
-  iterationId,
   canEdit,
   colStyles,
   members,
   onOpenItem,
 }: {
   task: TeamStatusTaskRow
-  projectId: string
-  teamId: string
-  iterationId: string
   canEdit: boolean
   colStyles: Record<string, React.CSSProperties>
   members: ProjectMember[]
   onOpenItem: (itemKey: string) => void
 }) {
-  const updateTask = useUpdateTeamTask(projectId, teamId, iterationId)
+  const updateTask = useUpdateTeamTask()
 
   function commitTitle(raw: string) {
     const trimmed = raw.trim()
