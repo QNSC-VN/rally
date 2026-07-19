@@ -304,6 +304,9 @@ export class ReleasesService {
       sql`type IN ('story', 'defect')`,
     ];
 
+    // Total artifacts on this release (before cursor/limit) for the footer count.
+    const baseConditions = [...conditions];
+
     if (args.cursor) {
       conditions.push(lt(workItems.createdAt, new Date(args.cursor.k[0] as string)));
     }
@@ -328,7 +331,18 @@ export class ReleasesService {
       .orderBy(desc(workItems.createdAt))
       .limit(args.limit + 1);
 
-    return buildPageResult(rows, args.limit, (w) => [w.createdAt.toISOString()]);
+    const [countRow] = await this.db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(workItems)
+      .where(and(...baseConditions));
+
+    return buildPageResult(
+      rows,
+      args.limit,
+      (w) => [w.createdAt.toISOString()],
+      'desc',
+      Number(countRow?.total ?? 0),
+    );
   }
 
   // ── Burndown ─────────────────────────────────────────────────────────────

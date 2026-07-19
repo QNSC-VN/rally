@@ -89,6 +89,18 @@ describe('BA flow: backlog keyset pagination (real AppModule + seeded DB)', () =
     expect(ids).toEqual(created.map((c) => c.id));
   });
 
+  it('reports the full filtered total on every page, independent of the cursor', async () => {
+    // BL-FR-007 "total đúng": the footer count is the total matching the
+    // filters, not the number of rows on the current page.
+    const first = await workItems.listBacklog(actor, projectId, {}, { limit: 2, cursor: null });
+    expect(first.data).toHaveLength(2); // page-sized
+    expect(first.pageInfo.total).toBe(created.length); // but total is the full set
+
+    const next = decodeCursor(first.pageInfo.nextCursor!);
+    const second = await workItems.listBacklog(actor, projectId, {}, { limit: 2, cursor: next });
+    expect(second.pageInfo.total).toBe(created.length); // stable across pages
+  });
+
   it('pages a title:asc sort in fully sorted order across pages', async () => {
     const ids = await collectOrdered({ sortBy: 'title', sortDirection: 'asc' });
 

@@ -356,6 +356,10 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       : 'asc';
     const orderDir = direction === 'desc' ? desc : asc;
 
+    // Total matching the filters (before the cursor/limit) so the backlog
+    // footer can show an accurate count — SRS BL-FR-007 ("total đúng").
+    const baseConditions = [...conditions];
+
     if (cursor) {
       conditions.push(keysetCondition(sort.column, workItems.id, cursor));
     }
@@ -367,7 +371,18 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       .orderBy(orderDir(sort.column), asc(workItems.id))
       .limit(limit + 1);
 
-    return buildPageResult(rows as WorkItem[], limit, (w) => [sort.value(w)], direction);
+    const [countRow] = await this.db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(workItems)
+      .where(and(...baseConditions));
+
+    return buildPageResult(
+      rows as WorkItem[],
+      limit,
+      (w) => [sort.value(w)],
+      direction,
+      Number(countRow?.total ?? 0),
+    );
   }
 
   async listTasksByParent(parentId: string, workspaceId: string): Promise<WorkItem[]> {

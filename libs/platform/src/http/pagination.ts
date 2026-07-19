@@ -62,6 +62,12 @@ export interface PageInfo {
   nextCursor: string | null;
   hasNextPage: boolean;
   limit: number;
+  /**
+   * Total number of rows matching the query's filters, ignoring the page
+   * cursor/limit. Optional: only endpoints that display a total count compute
+   * it (an extra COUNT query), so keyset lists that don't need it stay cheap.
+   */
+  total?: number;
 }
 
 export interface PagedResult<T> {
@@ -79,6 +85,8 @@ export function buildPageResult<T extends { id: string }>(
   limit: number,
   buildCursorKey: (item: T) => unknown[],
   direction: 'asc' | 'desc' = 'asc',
+  /** Total rows matching the filters (before cursor/limit); omit if not needed. */
+  total?: number,
 ): PagedResult<T> {
   const hasNextPage = rawItems.length > limit;
   const data = hasNextPage ? rawItems.slice(0, limit) : rawItems;
@@ -89,7 +97,10 @@ export function buildPageResult<T extends { id: string }>(
       ? encodeCursor({ v: 1, k: buildCursorKey(last), id: last.id, d: direction })
       : null;
 
-  return { data, pageInfo: { nextCursor, hasNextPage, limit } };
+  return {
+    data,
+    pageInfo: { nextCursor, hasNextPage, limit, ...(total !== undefined ? { total } : {}) },
+  };
 }
 
 /**
@@ -198,6 +209,11 @@ export const ApiPagedResponse = <T>(model: Type<T>) =>
               },
               hasNextPage: { type: 'boolean' },
               limit: { type: 'number', description: 'Number of items returned per page' },
+              total: {
+                type: 'number',
+                description:
+                  'Total rows matching the filters (ignoring cursor/limit); present only on endpoints that expose a count',
+              },
             },
           },
         },
