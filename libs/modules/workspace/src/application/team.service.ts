@@ -14,7 +14,7 @@ import {
   TEAM_MEMBER_REPOSITORY,
 } from '../domain/ports/team-member.repository';
 import { IWorkspaceRepository, WORKSPACE_REPOSITORY } from '../domain/ports/workspace.repository';
-import type { Team, TeamMember, UpdateTeamInput } from '../domain/team.types';
+import type { Team, TeamMember, TeamWithStats, UpdateTeamInput } from '../domain/team.types';
 
 @Injectable()
 export class TeamService {
@@ -28,8 +28,8 @@ export class TeamService {
     private readonly audit: AuditProducer,
   ) {}
 
-  async listTeams(workspaceId: string): Promise<Team[]> {
-    return this.teamRepo.listByWorkspace(workspaceId);
+  async listTeams(workspaceId: string): Promise<TeamWithStats[]> {
+    return this.teamRepo.listByWorkspaceWithStats(workspaceId);
   }
 
   async createTeam(

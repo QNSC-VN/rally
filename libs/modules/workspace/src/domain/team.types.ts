@@ -13,6 +13,10 @@ export interface Team {
   updatedAt: Date;
 }
 
+export interface TeamWithStats extends Team {
+  memberCount: number;
+}
+
 export interface TeamMember {
   id: string;
   workspaceId: string;

@@ -17,7 +17,7 @@ import { TeamService } from '../../application/team.service';
 import { z } from 'zod';
 import { createZodDto } from 'nestjs-zod';
 import { teamStatusEnum } from '../../../../../../db/schema/enums';
-import type { Team, TeamMember } from '../../domain/team.types';
+import type { Team, TeamMember, TeamWithStats } from '../../domain/team.types';
 
 // ── DTOs ──────────────────────────────────────────────────────────────────────
 
@@ -60,6 +60,10 @@ function toTeamDto(t: Team) {
   };
 }
 
+function toTeamWithStatsDto(t: TeamWithStats) {
+  return { ...toTeamDto(t), memberCount: t.memberCount };
+}
+
 function toTeamMemberDto(m: TeamMember) {
   return {
     id: m.id,
@@ -92,7 +96,7 @@ export class TeamController {
       throw new NotFoundException('WORKSPACE_NOT_FOUND', 'Workspace not found');
     }
     const teams = await this.teamService.listTeams(workspaceId);
-    return teams.map(toTeamDto);
+    return teams.map(toTeamWithStatsDto);
   }
 
   @Post('workspaces/:workspaceId/teams')
