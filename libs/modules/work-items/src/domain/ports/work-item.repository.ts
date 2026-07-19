@@ -17,6 +17,8 @@ export interface IterationScope {
 
 export interface IWorkItemRepository {
   findById(id: string, workspaceId: string, executor?: DbExecutor): Promise<WorkItem | null>;
+  /** Resolve a work item by its human item key within a project (work_items→tasks fallback). */
+  findByKey(itemKey: string, projectId: string, workspaceId: string): Promise<WorkItem | null>;
   /** Non-deleted work items for the given ids, scoped to a workspace. */
   findByIds(ids: string[], workspaceId: string): Promise<WorkItem[]>;
   /** Project/team scope of an iteration (any workspace guard is applied by caller). */

@@ -471,6 +471,25 @@ export class WorkItemsService {
     return item;
   }
 
+  /**
+   * Resolve a work item by its human item key within a project. Enables the
+   * `/item/:itemKey` detail route to open any type — including tasks, whose rows
+   * live in `work.tasks` since the Phase 3 split and are therefore invisible to
+   * the work_items search used previously.
+   */
+  async getWorkItemByKey(actor: JwtPayload, projectId: string, itemKey: string): Promise<WorkItem> {
+    const item = await this.workItemRepo.findByKey(itemKey, projectId, actor.workspaceId);
+    if (!item) {
+      throw new NotFoundException('WORK_ITEM_NOT_FOUND', `Work item ${itemKey} not found`);
+    }
+    await this.accessService.assertProjectPermission(
+      actor,
+      item.projectId,
+      PERMISSION.WORK_ITEM_VIEW,
+    );
+    return item;
+  }
+
   // ── Tasks (list + totals) ───────────────────────────────────────────────────
 
   async listTasks(actor: JwtPayload, parentId: string): Promise<WorkItem[]> {

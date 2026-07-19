@@ -74,56 +74,99 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       .where(and(eq(tasks.id, id), eq(tasks.workspaceId, workspaceId), isNull(tasks.deletedAt)))
       .limit(1);
     if (tRows.length > 0) {
-      const t = tRows[0];
-      return {
-        id: t.id,
-        workspaceId: t.workspaceId,
-        projectId: t.projectId,
-        itemKey: t.itemKey,
-        type: 'task',
-        title: t.title,
-        description: t.description,
-        statusId: '',
-        scheduleState:
-          t.state === 'in_progress'
-            ? 'in_progress'
-            : t.state === 'completed'
-              ? 'completed'
-              : 'defined',
-        priority: 'normal',
-        assigneeId: t.assigneeId,
-        reporterId: null,
-        parentId: t.parentId,
-        teamId: t.teamId,
-        iterationId: t.iterationId,
-        releaseId: null,
-        storyPoints: null,
-        estimateHours: t.estimateHours,
-        todoHours: t.todoHours,
-        actualHours: t.actualHours,
-        acceptanceCriteria: null,
-        notes: null,
-        releaseNotes: null,
-        isBlocked: false,
-        blockedReason: null,
-        rank: t.rank,
-        customFields: {},
-        createdBy: t.createdBy,
-        updatedBy: t.updatedBy,
-        createdAt: t.createdAt,
-        updatedAt: t.updatedAt,
-        deletedAt: t.deletedAt,
-        severity: null,
-        foundInEnvironment: null,
-        foundInReleaseId: null,
-        rootCause: null,
-        resolution: null,
-        devOwnerId: null,
-        defectState: null,
-        fixedInBuild: null,
-      };
+      return this.mapTaskRow(tRows[0]);
     }
     return null;
+  }
+
+  /**
+   * Resolve a work item by its human item key within a project. Mirrors
+   * {@link findById}'s work_items→tasks fallback so task detail pages (whose
+   * rows live in `work.tasks` since the Phase 3 split) are reachable by key.
+   */
+  async findByKey(
+    itemKey: string,
+    projectId: string,
+    workspaceId: string,
+  ): Promise<WorkItem | null> {
+    const rows = await this.db
+      .select()
+      .from(workItems)
+      .where(
+        and(
+          eq(workItems.itemKey, itemKey),
+          eq(workItems.projectId, projectId),
+          eq(workItems.workspaceId, workspaceId),
+          isNull(workItems.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (rows.length > 0) return rows[0] as WorkItem;
+
+    const tRows = await this.db
+      .select()
+      .from(tasks)
+      .where(
+        and(
+          eq(tasks.itemKey, itemKey),
+          eq(tasks.projectId, projectId),
+          eq(tasks.workspaceId, workspaceId),
+          isNull(tasks.deletedAt),
+        ),
+      )
+      .limit(1);
+    return tRows.length > 0 ? this.mapTaskRow(tRows[0]) : null;
+  }
+
+  /** Project a `work.tasks` row onto the unified WorkItem shape. */
+  private mapTaskRow(t: typeof tasks.$inferSelect): WorkItem {
+    return {
+      id: t.id,
+      workspaceId: t.workspaceId,
+      projectId: t.projectId,
+      itemKey: t.itemKey,
+      type: 'task',
+      title: t.title,
+      description: t.description,
+      statusId: '',
+      scheduleState:
+        t.state === 'in_progress'
+          ? 'in_progress'
+          : t.state === 'completed'
+            ? 'completed'
+            : 'defined',
+      priority: 'normal',
+      assigneeId: t.assigneeId,
+      reporterId: null,
+      parentId: t.parentId,
+      teamId: t.teamId,
+      iterationId: t.iterationId,
+      releaseId: null,
+      storyPoints: null,
+      estimateHours: t.estimateHours,
+      todoHours: t.todoHours,
+      actualHours: t.actualHours,
+      acceptanceCriteria: null,
+      notes: null,
+      releaseNotes: null,
+      isBlocked: false,
+      blockedReason: null,
+      rank: t.rank,
+      customFields: {},
+      createdBy: t.createdBy,
+      updatedBy: t.updatedBy,
+      createdAt: t.createdAt,
+      updatedAt: t.updatedAt,
+      deletedAt: t.deletedAt,
+      severity: null,
+      foundInEnvironment: null,
+      foundInReleaseId: null,
+      rootCause: null,
+      resolution: null,
+      devOwnerId: null,
+      defectState: null,
+      fixedInBuild: null,
+    };
   }
 
   async findByIds(ids: string[], workspaceId: string): Promise<WorkItem[]> {
