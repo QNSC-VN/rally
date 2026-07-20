@@ -31,7 +31,6 @@ import { useNavigate } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { Button } from '@/shared/ui/button'
-import { SkeletonList } from '@/shared/ui/skeleton'
 import { RowGutter } from '@/shared/ui/row-gutter'
 import { InlineCellSelect, InlineSelect } from '@/shared/ui/native-select'
 import { PaginationFooter } from '@/shared/ui/pagination-footer'
@@ -67,13 +66,8 @@ import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { CreateWorkItemModal } from '@/features/work-items/ui/create-work-item-modal'
 import { type ColumnDef } from '@/shared/lib/hooks/use-column-layout'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
-import { useDataTable } from '@/shared/ui/table'
-import {
-  DataTableHeader,
-  type DataTableColumnDrag,
-  type DataTableHeaderColumn,
-  type DataTableSort,
-} from '@/shared/ui/data-table-header'
+import { useDataTable, DataTableFrame } from '@/shared/ui/table'
+import { type DataTableHeaderColumn } from '@/shared/ui/data-table-header'
 
 // ── Column definitions ─────────────────────────────────────────────────────────
 
@@ -309,7 +303,6 @@ export function BacklogPage() {
     storageKey: STORAGE_KEYS.BACKLOG_COLUMN_WIDTHS,
   })
   const {
-    widths: colWidths,
     startResize,
     order,
     hidden,
@@ -340,12 +333,6 @@ export function BacklogPage() {
   // ── Create modal ─────────────────────────────────────────────────────────────
   const [showCreate, setShowCreate] = useState(false)
   const canCreate = can('work_item:create')
-
-  // ── Table width ───────────────────────────────────────────────────────────────
-  const totalColWidth = Object.values(colWidths).reduce((a, b) => a + b, 0)
-  // Row layout: px-3 padding (24px) + checkbox w-5 (20px) + grip w-4 (16px) + row# w-6 (24px) +
-  // gap-2 between 13 flex items (12 × 8px = 96px) + column widths
-  const tableWidth = 24 + 20 + 16 + 24 + 96 + totalColWidth
 
   // ── Render ────────────────────────────────────────────────────────────────────
   if (!projectId) {
@@ -397,95 +384,99 @@ export function BacklogPage() {
 
       {/* Table area */}
       <div className="flex flex-1 overflow-hidden">
-        <div className="flex flex-1 flex-col overflow-hidden bg-white">
-          <div className="flex-1 overflow-auto">
-            <div style={{ width: tableWidth, minWidth: '100%' }}>
-              {/* Header row */}
-              <TableHeaderBar
-                colStyles={colStyles}
-                allSelected={allSelected}
-                someSelected={someSelected}
-                onToggleAll={toggleAll}
-                startResize={startResize}
-                sort={{ col: sortCol, dir: sortDir, onSort: toggleSort }}
-                columnDrag={table.columnDrag}
+        <DataTableFrame
+          header={{
+            columns: BACKLOG_HEADER_COLUMNS,
+            colStyles,
+            onResize: startResize,
+            sort: { col: sortCol, dir: sortDir, onSort: toggleSort },
+            columnDrag: table.columnDrag,
+          }}
+          padClassName="gap-2 px-3"
+          leading={
+            <>
+              <RowGutter
+                dragDisabled
+                checkbox={{
+                  checked: allSelected,
+                  indeterminate: someSelected,
+                  onChange: toggleAll,
+                  ariaLabel: 'Select all',
+                }}
               />
-
-              {/* Loading */}
-              {isLoading && <SkeletonList rows={10} cols={7} />}
-
-              {/* Error */}
-              {isError && !isLoading && (
-                <div className="flex h-32 items-center justify-center">
-                  <p className="text-sm" style={{ color: BRAND.danger }}>
-                    {error instanceof Error ? error.message : 'Failed to load backlog.'}
-                  </p>
-                </div>
-              )}
-
-              {/* Empty */}
-              {!isLoading && !isError && items.length === 0 && (
-                <div className="flex h-32 flex-col items-center justify-center gap-2">
-                  <p className="text-sm" style={{ color: BRAND.textMuted }}>
-                    No backlog items match your filters.
-                  </p>
-                  <button
-                    onClick={() => setShowCreate(true)}
-                    disabled={!canCreate}
-                    className="text-xs font-medium disabled:cursor-not-allowed disabled:opacity-40"
-                    style={{ color: BRAND.primaryLight }}
-                  >
-                    + Create Work Item
-                  </button>
-                </div>
-              )}
-
-              {/* Rows */}
-              {!isLoading && !isError && (
-                <DndContext
-                  sensors={dndSensors}
-                  collisionDetection={closestCenter}
-                  onDragEnd={handleDragEnd}
+              <div className="w-6 shrink-0 px-2 text-right">#</div>
+            </>
+          }
+          loading={isLoading}
+          skeleton={{ rows: 10, cols: 7 }}
+          error={
+            isError ? (
+              <div className="flex h-32 items-center justify-center">
+                <p className="text-sm" style={{ color: BRAND.danger }}>
+                  {error instanceof Error ? error.message : 'Failed to load backlog.'}
+                </p>
+              </div>
+            ) : undefined
+          }
+          empty={
+            items.length === 0 ? (
+              <div className="flex h-32 flex-col items-center justify-center gap-2">
+                <p className="text-sm" style={{ color: BRAND.textMuted }}>
+                  No backlog items match your filters.
+                </p>
+                <button
+                  onClick={() => setShowCreate(true)}
+                  disabled={!canCreate}
+                  className="text-xs font-medium disabled:cursor-not-allowed disabled:opacity-40"
+                  style={{ color: BRAND.primaryLight }}
                 >
-                  <SortableContext
-                    items={localItems.map((it) => it.id)}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    {localItems.map((item, idx) => (
-                      <BacklogRow
-                        key={item.id}
-                        item={item}
-                        rowNum={(currentPage - 1) * pageSize + idx + 1}
-                        selected={selectedIds.has(item.id)}
-                        onToggleSelect={() => toggleSelect(item.id)}
-                        onOpen={() => openItem(item)}
-                        colStyles={colStyles}
-                        canEdit={canEdit}
-                        members={members}
-                        releases={releases}
-                        iterations={iterations}
-                      />
-                    ))}
-                  </SortableContext>
-                </DndContext>
-              )}
-            </div>
-          </div>
-
-          {/* Pagination footer */}
-          <PaginationFooter
-            pageSize={pageSize}
-            setPageSize={setPageSize}
-            currentPage={currentPage}
-            rangeStart={(currentPage - 1) * pageSize + 1}
-            rangeEnd={(currentPage - 1) * pageSize + items.length}
-            total={pageInfo?.total}
-            hasPrevPage={currentPage > 1}
-            hasNextPage={!!pageInfo?.hasNextPage}
-            onPrevPage={goPrevPage}
-            onNextPage={goNextPage}
-          />
-        </div>
+                  + Create Work Item
+                </button>
+              </div>
+            ) : undefined
+          }
+          footer={
+            <PaginationFooter
+              pageSize={pageSize}
+              setPageSize={setPageSize}
+              currentPage={currentPage}
+              rangeStart={(currentPage - 1) * pageSize + 1}
+              rangeEnd={(currentPage - 1) * pageSize + items.length}
+              total={pageInfo?.total}
+              hasPrevPage={currentPage > 1}
+              hasNextPage={!!pageInfo?.hasNextPage}
+              onPrevPage={goPrevPage}
+              onNextPage={goNextPage}
+            />
+          }
+        >
+          <DndContext
+            sensors={dndSensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={localItems.map((it) => it.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              {localItems.map((item, idx) => (
+                <BacklogRow
+                  key={item.id}
+                  item={item}
+                  rowNum={(currentPage - 1) * pageSize + idx + 1}
+                  selected={selectedIds.has(item.id)}
+                  onToggleSelect={() => toggleSelect(item.id)}
+                  onOpen={() => openItem(item)}
+                  colStyles={colStyles}
+                  canEdit={canEdit}
+                  members={members}
+                  releases={releases}
+                  iterations={iterations}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
+        </DataTableFrame>
       </div>
 
       {/* Create modal */}
@@ -671,51 +662,6 @@ function BacklogToolbar({
           onToggle={toggleVisible}
           onReorder={reorder}
         />
-      }
-    />
-  )
-}
-
-// ── Table header bar (select-all + resizable column headers) ───────────────
-
-function TableHeaderBar({
-  colStyles,
-  allSelected,
-  someSelected,
-  onToggleAll,
-  startResize,
-  sort,
-  columnDrag,
-}: {
-  colStyles: Record<ColumnKey, React.CSSProperties>
-  allSelected: boolean
-  someSelected: boolean
-  onToggleAll: () => void
-  startResize: (col: ColumnKey, e: React.MouseEvent) => void
-  sort: DataTableSort
-  columnDrag: DataTableColumnDrag<ColumnKey>
-}) {
-  return (
-    <DataTableHeader
-      columns={BACKLOG_HEADER_COLUMNS}
-      colStyles={colStyles}
-      onResize={startResize}
-      className="gap-2 px-3"
-      sort={sort}
-      columnDrag={columnDrag}
-      leading={
-        <>
-          <RowGutter
-            dragDisabled
-            checkbox={{
-              checked: allSelected,
-              indeterminate: someSelected,
-              onChange: onToggleAll,
-              ariaLabel: 'Select all',
-            }}
-          />
-          <div className="w-6 shrink-0 px-2 text-right">#</div>
-        </>
       }
     />
   )
