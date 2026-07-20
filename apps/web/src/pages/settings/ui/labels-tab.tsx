@@ -1,0 +1,221 @@
+import { useState } from 'react'
+import { Plus, Pencil, Trash2, Loader2 } from 'lucide-react'
+
+import { BRAND } from '@/shared/config/brand'
+import { PERMISSION } from '@/shared/config/permissions'
+import { useAppContext } from '@/shared/lib/stores/app-context.store'
+import { useAuthStore } from '@/shared/lib/stores/auth.store'
+import {
+  useProjectLabels,
+  useCreateLabel,
+  useUpdateLabel,
+  useDeleteLabel,
+  type ProjectLabel,
+} from '@/features/projects/api'
+import { notify } from '@/shared/lib/toast'
+import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
+import { Button } from '@/shared/ui/button'
+import { IconButton } from '@/shared/ui/icon-button'
+import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
+import { EmptyState } from '@/shared/ui/empty-state'
+import { FormField } from '@/shared/ui/form-field'
+import { Input } from '@/shared/ui/input'
+import { Spinner } from '@/shared/ui/spinner'
+
+const DEFAULT_LABEL_COLOR = BRAND.statusDefault
+
+export function LabelsTab() {
+  const activeProject = useAppContext((s) => s.project)
+  const { hasPermission } = useAuthStore()
+  const canManage = hasPermission(PERMISSION.PROJECT_EDIT)
+  const projectId = activeProject?.projectId
+
+  const { data: labels = [], isLoading, isError } = useProjectLabels(projectId)
+  const remove = useDeleteLabel(projectId)
+  const [showAdd, setShowAdd] = useState(false)
+  const [editTarget, setEditTarget] = useState<ProjectLabel | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<ProjectLabel | null>(null)
+
+  if (!activeProject) {
+    return (
+      <p className="text-ui-lg text-foreground-subtle">
+        No project selected. Navigate into a project first.
+      </p>
+    )
+  }
+
+  const ordered = [...labels].sort((a, b) => a.name.localeCompare(b.name))
+
+  async function handleDelete(label: ProjectLabel) {
+    try {
+      await remove.mutateAsync(label.id)
+      notify.success(`Label "${label.name}" deleted`)
+      setDeleteTarget(null)
+    } catch (err) {
+      notify.fromError(err, 'Failed to delete label')
+    }
+  }
+
+  return (
+    <div className="max-w-3xl">
+      <div className="mb-3 flex items-center justify-between">
+        <p className="text-ui-lg text-muted-foreground">
+          Labels categorise work items in{' '}
+          <span className="font-semibold text-foreground">{activeProject.projectKey}</span>.
+        </p>
+        {canManage && (
+          <Button variant="secondary" size="sm" type="button" onClick={() => setShowAdd(true)}>
+            <Plus size={13} /> Add Label
+          </Button>
+        )}
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-20">
+          <Spinner size="lg" />
+        </div>
+      ) : isError ? (
+        <EmptyState title="Unable to load labels. Please try again." />
+      ) : ordered.length === 0 ? (
+        <EmptyState title="No labels defined yet." />
+      ) : (
+        <div className="overflow-hidden rounded-md border">
+          <div className="flex items-center gap-2 bg-surface-hover px-3 py-2 text-ui-xs font-semibold tracking-wider text-foreground-subtle uppercase">
+            <div className="flex-1">Label</div>
+            <div className="w-28">Colour</div>
+            <div className="w-20 text-right">Actions</div>
+          </div>
+          {ordered.map((label) => (
+            <div
+              key={label.id}
+              className="flex items-center gap-2 border-t border-border-inner px-3 py-2.5"
+            >
+              <div className="flex flex-1 items-center gap-2">
+                <span
+                  className="h-3 w-3 shrink-0 rounded-full"
+                  style={{ backgroundColor: label.color }}
+                />
+                <span className="text-ui-lg font-medium text-foreground">{label.name}</span>
+              </div>
+              <div className="w-28">
+                <span className="font-mono text-ui-sm text-foreground-subtle">{label.color}</span>
+              </div>
+              <div className="flex w-20 items-center justify-end gap-0.5">
+                {canManage && (
+                  <>
+                    <IconButton
+                      type="button"
+                      size="sm"
+                      aria-label="Edit label"
+                      title="Edit label"
+                      onClick={() => setEditTarget(label)}
+                    >
+                      <Pencil size={14} />
+                    </IconButton>
+                    <IconButton
+                      type="button"
+                      size="sm"
+                      variant="destructive"
+                      aria-label="Delete label"
+                      title="Delete label"
+                      onClick={() => setDeleteTarget(label)}
+                      disabled={remove.isPending}
+                    >
+                      <Trash2 size={14} />
+                    </IconButton>
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showAdd && projectId && (
+        <LabelModal projectId={projectId} onClose={() => setShowAdd(false)} />
+      )}
+      {editTarget && projectId && (
+        <LabelModal projectId={projectId} label={editTarget} onClose={() => setEditTarget(null)} />
+      )}
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Delete label"
+        confirmText={deleteTarget?.name ?? ''}
+        message="This permanently removes the label from every work item that uses it."
+        confirmLabel="Delete label"
+        pending={remove.isPending}
+        onConfirm={() => deleteTarget && void handleDelete(deleteTarget)}
+        onCancel={() => setDeleteTarget(null)}
+      />
+    </div>
+  )
+}
+
+function LabelModal({
+  projectId,
+  label,
+  onClose,
+}: {
+  projectId: string
+  label?: ProjectLabel
+  onClose: () => void
+}) {
+  const isEdit = !!label
+  const [name, setName] = useState(label?.name ?? '')
+  const [color, setColor] = useState(label?.color ?? DEFAULT_LABEL_COLOR)
+  const create = useCreateLabel(projectId)
+  const update = useUpdateLabel(projectId)
+  const pending = create.isPending || update.isPending
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!name.trim()) return
+    try {
+      if (isEdit) {
+        await update.mutateAsync({ labelId: label.id, input: { name: name.trim(), color } })
+        notify.success(`Label "${name.trim()}" updated`)
+      } else {
+        await create.mutateAsync({ name: name.trim(), color })
+        notify.success(`Label "${name.trim()}" added`)
+      }
+      onClose()
+    } catch (err) {
+      notify.fromError(err, 'Failed to save label')
+    }
+  }
+
+  return (
+    <AppModal open onClose={onClose} title={isEdit ? 'Edit Label' : 'Add Label'} width={420}>
+      <form onSubmit={(e) => void handleSubmit(e)}>
+        <ModalBody className="space-y-4">
+          <FormField label="Label name" required>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="bug"
+              autoFocus
+            />
+          </FormField>
+          <FormField label="Colour">
+            <input
+              type="color"
+              value={color}
+              onChange={(e) => setColor(e.target.value)}
+              className="h-9 w-16 cursor-pointer rounded-md border bg-white p-1"
+            />
+          </FormField>
+        </ModalBody>
+        <ModalFooter>
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={pending || !name.trim()}>
+            {pending && <Loader2 size={12} className="animate-spin" />}
+            {isEdit ? 'Save Label' : 'Add Label'}
+          </Button>
+        </ModalFooter>
+      </form>
+    </AppModal>
+  )
+}

@@ -26,7 +26,6 @@ import {
   Archive,
   Search,
   Clock,
-  Trash2,
   Check,
   Save,
 } from 'lucide-react'
@@ -50,13 +49,6 @@ import {
   type TeamMember,
 } from '@/features/teams/api'
 import { useWorkspaceMembers } from '@/features/workspaces/api'
-import {
-  useProjectLabels,
-  useCreateLabel,
-  useUpdateLabel,
-  useDeleteLabel,
-  type ProjectLabel,
-} from '@/features/projects/api'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
 import { EmptyState } from '@/shared/ui/empty-state'
@@ -78,6 +70,7 @@ import { ProfileTab } from './ui/profile-tab'
 import { WorkspaceSettingsTab } from './ui/workspace-settings-tab'
 import { ProjectSettingsTab } from './ui/project-settings-tab'
 import { WorkflowTab } from './ui/workflow-tab'
+import { LabelsTab } from './ui/labels-tab'
 
 // ── Tab config (mirrors mockup SettingsPage.tsx) ──────────────────────────────
 
@@ -746,225 +739,6 @@ function InvitePanel({
         </div>
       </form>
     </div>
-  )
-}
-
-// ── Labels tab ────────────────────────────────────────────────────────────────
-
-const DEFAULT_LABEL_COLOR = BRAND.statusDefault
-
-function LabelsTab() {
-  const activeProject = useAppContext((s) => s.project)
-  const { hasPermission } = useAuthStore()
-  const canManage = hasPermission(PERMISSION.PROJECT_EDIT)
-  const projectId = activeProject?.projectId
-
-  const { data: labels = [], isLoading, isError } = useProjectLabels(projectId)
-  const remove = useDeleteLabel(projectId)
-  const [showAdd, setShowAdd] = useState(false)
-  const [editTarget, setEditTarget] = useState<ProjectLabel | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<ProjectLabel | null>(null)
-
-  if (!activeProject) {
-    return (
-      <p className="text-[13px]" style={{ color: BRAND.textMuted }}>
-        No project selected. Navigate into a project first.
-      </p>
-    )
-  }
-
-  const ordered = [...labels].sort((a, b) => a.name.localeCompare(b.name))
-
-  async function handleDelete(label: ProjectLabel) {
-    try {
-      await remove.mutateAsync(label.id)
-      toast.success(`Label "${label.name}" deleted`)
-      setDeleteTarget(null)
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to delete label')
-    }
-  }
-
-  return (
-    <div className="max-w-3xl">
-      <div className="mb-3 flex items-center justify-between">
-        <p className="text-[13px]" style={{ color: BRAND.textSecondary }}>
-          Labels categorise work items in{' '}
-          <span className="font-semibold" style={{ color: BRAND.textPrimary }}>
-            {activeProject.projectKey}
-          </span>
-          .
-        </p>
-        {canManage && (
-          <Button variant="secondary" size="sm" type="button" onClick={() => setShowAdd(true)}>
-            <Plus size={13} /> Add Label
-          </Button>
-        )}
-      </div>
-
-      {isLoading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 size={18} className="animate-spin" style={{ color: BRAND.textMuted }} />
-        </div>
-      ) : isError ? (
-        <p className="py-20 text-center text-[13px]" style={{ color: BRAND.textSecondary }}>
-          Unable to load labels. Please try again.
-        </p>
-      ) : ordered.length === 0 ? (
-        <p className="py-20 text-center text-[13px]" style={{ color: BRAND.textMuted }}>
-          No labels defined yet.
-        </p>
-      ) : (
-        <div className="overflow-hidden rounded-md" style={{ border: `1px solid ${BRAND.border}` }}>
-          <div
-            className="flex items-center gap-2 px-3 py-2 text-[10px] font-semibold tracking-wider uppercase"
-            style={{ backgroundColor: BRAND.surfaceHover, color: BRAND.textMuted }}
-          >
-            <div className="flex-1">Label</div>
-            <div className="w-28">Colour</div>
-            <div className="w-20 text-right">Actions</div>
-          </div>
-          {ordered.map((label) => (
-            <div
-              key={label.id}
-              className="flex items-center gap-2 px-3 py-2.5"
-              style={{ borderTop: `1px solid ${BRAND.borderInner}` }}
-            >
-              <div className="flex flex-1 items-center gap-2">
-                <span
-                  className="h-3 w-3 shrink-0 rounded-full"
-                  style={{ backgroundColor: label.color }}
-                />
-                <span className="text-[13px] font-medium" style={{ color: BRAND.textPrimary }}>
-                  {label.name}
-                </span>
-              </div>
-              <div className="w-28">
-                <span className="font-mono text-[11px]" style={{ color: BRAND.textMuted }}>
-                  {label.color}
-                </span>
-              </div>
-              <div className="flex w-20 items-center justify-end gap-0.5">
-                {canManage && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setEditTarget(label)}
-                      className="rounded p-1"
-                      style={{ color: BRAND.textMuted }}
-                      title="Edit label"
-                    >
-                      <Pencil size={14} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDeleteTarget(label)}
-                      disabled={remove.isPending}
-                      className="rounded p-1 disabled:opacity-30"
-                      style={{ color: BRAND.textMuted }}
-                      title="Delete label"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {showAdd && projectId && (
-        <LabelModal projectId={projectId} onClose={() => setShowAdd(false)} />
-      )}
-      {editTarget && projectId && (
-        <LabelModal projectId={projectId} label={editTarget} onClose={() => setEditTarget(null)} />
-      )}
-
-      <ConfirmDialog
-        open={!!deleteTarget}
-        title="Delete label"
-        confirmText={deleteTarget?.name ?? ''}
-        message="This permanently removes the label from every work item that uses it."
-        confirmLabel="Delete label"
-        pending={remove.isPending}
-        onConfirm={() => deleteTarget && void handleDelete(deleteTarget)}
-        onCancel={() => setDeleteTarget(null)}
-      />
-    </div>
-  )
-}
-
-function LabelModal({
-  projectId,
-  label,
-  onClose,
-}: {
-  projectId: string
-  label?: ProjectLabel
-  onClose: () => void
-}) {
-  const isEdit = !!label
-  const [name, setName] = useState(label?.name ?? '')
-  const [color, setColor] = useState(label?.color ?? DEFAULT_LABEL_COLOR)
-  const create = useCreateLabel(projectId)
-  const update = useUpdateLabel(projectId)
-  const pending = create.isPending || update.isPending
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!name.trim()) return
-    try {
-      if (isEdit) {
-        await update.mutateAsync({ labelId: label.id, input: { name: name.trim(), color } })
-        toast.success(`Label "${name.trim()}" updated`)
-      } else {
-        await create.mutateAsync({ name: name.trim(), color })
-        toast.success(`Label "${name.trim()}" added`)
-      }
-      onClose()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to save label')
-    }
-  }
-
-  return (
-    <AppModal open onClose={onClose} title={isEdit ? 'Edit Label' : 'Add Label'} width={420}>
-      <form
-        onSubmit={(e) => {
-          void handleSubmit(e)
-        }}
-      >
-        <ModalBody className="space-y-4">
-          <FormField label="Label name" required>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="bug"
-              autoFocus
-            />
-          </FormField>
-          <FormField label="Colour">
-            <input
-              type="color"
-              value={color}
-              onChange={(e) => setColor(e.target.value)}
-              className="h-9 w-16 cursor-pointer rounded-md bg-white p-1"
-              style={{ border: `1px solid ${BRAND.border}` }}
-            />
-          </FormField>
-        </ModalBody>
-        <ModalFooter>
-          <Button type="button" variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={pending || !name.trim()}>
-            {pending && <Loader2 size={12} className="animate-spin" />}
-            {isEdit ? 'Save Label' : 'Add Label'}
-          </Button>
-        </ModalFooter>
-      </form>
-    </AppModal>
   )
 }
 
