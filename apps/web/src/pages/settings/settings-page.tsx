@@ -51,10 +51,8 @@ import {
   type Team,
   type TeamMember,
 } from '@/features/teams/api'
-import { useWorkspaces, useUpdateWorkspace, useWorkspaceMembers } from '@/features/workspaces/api'
+import { useWorkspaceMembers } from '@/features/workspaces/api'
 import {
-  useProjects,
-  useUpdateProject,
   useProjectStatuses,
   useCreateStatus,
   useDeleteStatus,
@@ -84,6 +82,8 @@ import { useClientPagination } from '@/shared/lib/hooks/use-client-pagination'
 import { describeAuditEvent, type AuditNameResolver } from '@/entities/audit/model/describe-audit'
 import { useSystemRoles, type Role } from './model/use-system-roles'
 import { ProfileTab } from './ui/profile-tab'
+import { WorkspaceSettingsTab } from './ui/workspace-settings-tab'
+import { ProjectSettingsTab } from './ui/project-settings-tab'
 
 // ── Tab config (mirrors mockup SettingsPage.tsx) ──────────────────────────────
 
@@ -752,184 +752,6 @@ function InvitePanel({
         </div>
       </form>
     </div>
-  )
-}
-
-// ── Workspace Settings tab ────────────────────────────────────────────────────
-
-function WorkspaceSettingsTab() {
-  const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
-  const setWorkspace = useAppContext((s) => s.setWorkspace)
-  const workspace = useAppContext((s) => s.workspace)
-  const { data: workspaces = [] } = useWorkspaces()
-  const current = workspaces.find((w) => w.id === workspaceId)
-  const update = useUpdateWorkspace(workspaceId)
-
-  // Read-only workspace admins, derived from the shared members-with-profile roster.
-  const { data: allMembers = [] } = useWorkspaceMembers(workspaceId)
-  const admins = allMembers.filter((m) => m.roleSlug === 'workspace_admin')
-
-  const [name, setName] = useState(current?.name ?? workspace?.workspaceName ?? '')
-  const [description, setDescription] = useState(current?.description ?? '')
-
-  // Sync form once when workspace data first loads (current.id becomes defined).
-  // Tracking the id (not the object) avoids resetting mid-edit on background refetches.
-  const [syncedId, setSyncedId] = useState(current?.id)
-  if (current && current.id !== syncedId) {
-    setSyncedId(current.id)
-    setName(current.name)
-    setDescription(current.description ?? '')
-  }
-
-  async function handleSave(e: React.FormEvent) {
-    e.preventDefault()
-    if (!workspaceId || !name.trim()) return
-    try {
-      const updated = await update.mutateAsync({
-        name: name.trim(),
-        description: description.trim() || null,
-      })
-      setWorkspace({
-        workspaceId,
-        workspaceSlug: workspace?.workspaceSlug ?? '',
-        workspaceName: updated.name,
-      })
-      toast.success('Workspace settings saved')
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to save')
-    }
-  }
-
-  return (
-    <form
-      onSubmit={(e) => {
-        void handleSave(e)
-      }}
-      className="max-w-lg space-y-5"
-    >
-      {/* ── Read-only identity ── */}
-      <div className="rounded-md" style={{ border: `1px solid ${BRAND.border}` }}>
-        <dl className="grid grid-cols-[130px_1fr] gap-x-3 gap-y-2.5 p-4 text-[13px]">
-          <dt style={{ color: BRAND.textMuted }}>Slug</dt>
-          <dd className="font-mono" style={{ color: BRAND.textPrimary }}>
-            {current?.slug ?? workspace?.workspaceSlug ?? '—'}
-          </dd>
-          <dt style={{ color: BRAND.textMuted }}>Workspace admin</dt>
-          <dd style={{ color: BRAND.textPrimary }}>
-            {admins.length === 0 ? '—' : admins.map((a) => a.displayName).join(', ')}
-          </dd>
-        </dl>
-      </div>
-
-      <FormField label="Workspace name" required>
-        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Acme Corp" />
-      </FormField>
-      <FormField label="Description">
-        <Textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="What does this workspace cover?"
-          rows={3}
-        />
-      </FormField>
-      <div className="flex items-center gap-3 pt-1">
-        <Button type="submit" disabled={update.isPending || !name.trim()}>
-          {update.isPending && <Loader2 size={12} className="animate-spin" />}
-          Save changes
-        </Button>
-      </div>
-    </form>
-  )
-}
-
-// ── Project Settings tab ──────────────────────────────────────────────────────
-
-function ProjectSettingsTab() {
-  const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
-  const activeProject = useAppContext((s) => s.project)
-  const setProject = useAppContext((s) => s.setProject)
-  const { data: projects = [] } = useProjects(workspaceId)
-  const current = projects.find((p) => p.id === activeProject?.projectId)
-  const update = useUpdateProject(workspaceId)
-
-  const [name, setName] = useState(current?.name ?? activeProject?.projectName ?? '')
-  const [description, setDescription] = useState(current?.description ?? '')
-
-  // Sync form when project data loads or the active project switches.
-  // Tracking current.id avoids resetting mid-edit on background refetches
-  // while still resetting correctly when the user picks a different project.
-  const [syncedId, setSyncedId] = useState(current?.id)
-  if (current && current.id !== syncedId) {
-    setSyncedId(current.id)
-    setName(current.name)
-    setDescription(current.description ?? '')
-  }
-
-  if (!activeProject) {
-    return (
-      <p className="text-[13px]" style={{ color: BRAND.textMuted }}>
-        No project selected. Navigate into a project first.
-      </p>
-    )
-  }
-
-  async function handleSave(e: React.FormEvent) {
-    e.preventDefault()
-    if (!activeProject || !name.trim()) return
-    try {
-      await update.mutateAsync({
-        id: activeProject.projectId,
-        input: { name: name.trim(), description: description.trim() || undefined },
-      })
-      setProject({
-        projectId: activeProject.projectId,
-        projectKey: activeProject.projectKey,
-        projectName: name.trim(),
-      })
-      toast.success('Project settings saved')
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to save')
-    }
-  }
-
-  return (
-    <form
-      onSubmit={(e) => {
-        void handleSave(e)
-      }}
-      className="max-w-lg space-y-5"
-    >
-      <div
-        className="mb-2 rounded-md px-3 py-2 text-[12px]"
-        style={{
-          backgroundColor: BRAND.surface,
-          border: `1px solid ${BRAND.border}`,
-          color: BRAND.textMuted,
-        }}
-      >
-        Project:{' '}
-        <span className="font-semibold" style={{ color: BRAND.textPrimary }}>
-          {activeProject.projectKey} — {activeProject.projectName}
-        </span>
-      </div>
-      <FormField label="Project name" required>
-        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Project name" />
-      </FormField>
-      <FormField label="Description">
-        <Textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="What does this project deliver?"
-          rows={3}
-        />
-      </FormField>
-      <div className="flex items-center gap-3 pt-1">
-        <Button type="submit" disabled={update.isPending || !name.trim()}>
-          {update.isPending && <Loader2 size={12} className="animate-spin" />}
-          Save changes
-        </Button>
-      </div>
-    </form>
   )
 }
 
