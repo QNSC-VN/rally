@@ -254,6 +254,35 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
+/* ── Typography scale ──────────────────────────────────────────────────────────
+   Rally's de-facto UI type scale, tokenised. Base is 14px (html font-size), so
+   these rem values resolve to the exact px the app already uses everywhere. Use
+   `text-ui-*` utilities instead of arbitrary `text-[11px]` so type size comes
+   from one scale (FRONTEND_CONVENTIONS.md §Typography). Namespaced `-ui-` so it
+   is purely additive — it never shadows Tailwind's built-in text-xs/sm/… utilities.
+
+     text-ui-2xs  9px   badges, tiny meta
+     text-ui-xs  10px   column headers, captions, dense cells
+     text-ui-sm  11px   default UI text — buttons, most grid cells
+     text-ui-md  12px   body copy, form values
+     text-ui-lg  13px   modal titles, section headings
+     text-ui-xl  14px   page / section titles
+──────────────────────────────────────────────────────────────────────────────── */
+@theme {
+  --text-ui-2xs: 0.642857rem; /* 9px */
+  --text-ui-2xs--line-height: 0.857143rem; /* 12px */
+  --text-ui-xs: 0.714286rem; /* 10px */
+  --text-ui-xs--line-height: 1rem; /* 14px */
+  --text-ui-sm: 0.785714rem; /* 11px */
+  --text-ui-sm--line-height: 1.071429rem; /* 15px */
+  --text-ui-md: 0.857143rem; /* 12px */
+  --text-ui-md--line-height: 1.142857rem; /* 16px */
+  --text-ui-lg: 0.928571rem; /* 13px */
+  --text-ui-lg--line-height: 1.285714rem; /* 18px */
+  --text-ui-xl: 1rem; /* 14px */
+  --text-ui-xl--line-height: 1.428571rem; /* 20px */
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
