@@ -15,7 +15,6 @@ import {
   Shield,
   FileText,
   Lock,
-  LogOut,
   Loader2,
   Mail,
   X,
@@ -42,7 +41,6 @@ import { apiErrorMessage } from '@/shared/api/api-error'
 import type { components } from '@/shared/api/generated/api'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
-import { useNavigate } from '@tanstack/react-router'
 import {
   useWorkspaceTeams,
   useTeamMembers,
@@ -85,6 +83,7 @@ import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { useClientPagination } from '@/shared/lib/hooks/use-client-pagination'
 import { describeAuditEvent, type AuditNameResolver } from '@/entities/audit/model/describe-audit'
 import { useSystemRoles, type Role } from './model/use-system-roles'
+import { ProfileTab } from './ui/profile-tab'
 
 // ── Tab config (mirrors mockup SettingsPage.tsx) ──────────────────────────────
 
@@ -157,230 +156,6 @@ const SIDEBAR: SettingsGroup[] = [
   },
 ]
 
-// ── Profile form schema ───────────────────────────────────────────────────────
-
-const profileSchema = z.object({
-  displayName: z.string().min(1, 'Display name is required').max(255).trim(),
-  avatarUrl: z.string().optional(),
-  locale: z.string().min(2).max(10),
-  timezone: z.string().min(1).max(100),
-  phone: z.string().max(32).trim().optional(),
-})
-type ProfileForm = z.infer<typeof profileSchema>
-
-// ── Profile tab ───────────────────────────────────────────────────────────────
-
-function ProfileTab() {
-  const { user, setUser } = useAuthStore()
-  const navigate = useNavigate()
-
-  const profile = useForm<ProfileForm>({
-    resolver: zodResolver(profileSchema),
-    defaultValues: {
-      displayName: user?.displayName ?? '',
-      avatarUrl: user?.avatarUrl ?? '',
-      locale: user?.locale ?? 'en',
-      timezone: user?.timezone ?? 'UTC',
-      phone: user?.phone ?? '',
-    },
-  })
-
-  async function onSaveProfile(data: ProfileForm) {
-    try {
-      const body = {
-        displayName: data.displayName,
-        avatarUrl: data.avatarUrl?.trim() || null,
-        locale: data.locale,
-        timezone: data.timezone,
-        phone: data.phone?.trim() || null,
-      }
-      const {
-        data: updated,
-        error,
-        response,
-      } = await apiClient.PATCH('/v1/auth/me', {
-        body,
-      })
-      if (error) {
-        profile.setError('root', { message: apiErrorMessage(error, response.status) })
-        return
-      }
-      const u = updated as {
-        id: string
-        email: string
-        displayName: string
-        avatarUrl: string | null
-        locale: string
-        timezone: string
-        phone: string | null
-        role: string
-        permissions: string[]
-        emailVerified: boolean
-        createdAt: string
-        updatedAt: string
-      }
-      setUser(
-        { ...u, avatarUrl: u.avatarUrl ?? undefined, permissions: u.permissions ?? [] },
-        useAuthStore.getState().memberships,
-      )
-      toast.success('Profile updated')
-    } catch {
-      profile.setError('root', { message: 'Network error — please try again.' })
-    }
-  }
-
-  async function handleLogoutAll() {
-    try {
-      await apiClient.POST('/v1/auth/logout-all', {})
-    } catch {
-      /* ignore */
-    }
-    useAuthStore.getState().clearAuth()
-    toast.success('Signed out from all devices')
-    await navigate({ to: '/login' })
-  }
-
-  return (
-    <div className="flex flex-col gap-8">
-      {/* ── Profile info ── */}
-      <section>
-        <h3
-          className="mb-4 text-[12px] font-semibold tracking-wide uppercase"
-          style={{ color: BRAND.textMuted }}
-        >
-          Personal Information
-        </h3>
-        <form
-          onSubmit={profile.handleSubmit(onSaveProfile)}
-          className="flex max-w-md flex-col gap-4"
-        >
-          <Field label="Display Name" error={profile.formState.errors.displayName?.message}>
-            <input
-              {...profile.register('displayName')}
-              className="w-full rounded-md px-3 py-2 text-[13px] focus:outline-none"
-              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textPrimary }}
-              placeholder="Your display name"
-            />
-          </Field>
-          <Field label="Avatar URL" error={profile.formState.errors.avatarUrl?.message}>
-            <input
-              {...profile.register('avatarUrl')}
-              className="w-full rounded-md px-3 py-2 text-[13px] focus:outline-none"
-              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textPrimary }}
-              placeholder="https://..."
-            />
-          </Field>
-          <Field label="Phone" error={profile.formState.errors.phone?.message}>
-            <input
-              {...profile.register('phone')}
-              className="w-full rounded-md px-3 py-2 text-[13px] focus:outline-none"
-              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textPrimary }}
-              placeholder="+84 ..."
-            />
-          </Field>
-          <Field label="Locale">
-            <select
-              {...profile.register('locale')}
-              className="w-full rounded-md bg-white px-3 py-2 text-[13px] focus:outline-none"
-              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textPrimary }}
-            >
-              <option value="en">English</option>
-              <option value="vi">Tiếng Việt</option>
-              <option value="ja">日本語</option>
-              <option value="zh">中文</option>
-            </select>
-          </Field>
-          <Field label="Timezone">
-            <select
-              {...profile.register('timezone')}
-              className="w-full rounded-md bg-white px-3 py-2 text-[13px] focus:outline-none"
-              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textPrimary }}
-            >
-              {[
-                'UTC',
-                'Asia/Ho_Chi_Minh',
-                'Asia/Tokyo',
-                'America/New_York',
-                'America/Los_Angeles',
-                'Europe/London',
-                'Europe/Paris',
-              ].map((tz) => (
-                <option key={tz} value={tz}>
-                  {tz}
-                </option>
-              ))}
-            </select>
-          </Field>
-          {profile.formState.errors.root && (
-            <p className="text-[12px]" style={{ color: BRAND.danger }}>
-              {profile.formState.errors.root.message}
-            </p>
-          )}
-          <div>
-            <Button type="submit" disabled={profile.formState.isSubmitting}>
-              {profile.formState.isSubmitting ? (
-                <Loader2 size={13} className="animate-spin" />
-              ) : null}
-              Save changes
-            </Button>
-          </div>
-        </form>
-      </section>
-
-      <Divider />
-
-      {/* ── Password & security ── */}
-      <section>
-        <h3
-          className="mb-2 text-[12px] font-semibold tracking-wide uppercase"
-          style={{ color: BRAND.textMuted }}
-        >
-          Password &amp; Security
-        </h3>
-        <p className="max-w-md text-[12px]" style={{ color: BRAND.textSecondary }}>
-          Your password and multi-factor authentication are managed by your organisation through
-          Microsoft. Sign in with your organisational account to update security settings.
-        </p>
-      </section>
-
-      <Divider />
-
-      {/* ── Account ── */}
-      <section>
-        <h3
-          className="mb-1 text-[12px] font-semibold tracking-wide uppercase"
-          style={{ color: BRAND.textMuted }}
-        >
-          Account
-        </h3>
-        <p className="mb-4 text-[12px]" style={{ color: BRAND.textSecondary }}>
-          Email:{' '}
-          <span className="font-medium" style={{ color: BRAND.textPrimary }}>
-            {user?.email}
-          </span>
-          {user?.emailVerified === false && (
-            <span className="ml-2 text-[11px] font-semibold" style={{ color: BRAND.warning }}>
-              Not verified
-            </span>
-          )}
-        </p>
-        <button
-          onClick={() => void handleLogoutAll()}
-          className="flex items-center gap-2 rounded-md px-4 py-2 text-[13px] font-medium transition-colors hover:opacity-80"
-          style={{
-            border: `1px solid ${BRAND.dangerBorder}`,
-            color: BRAND.danger,
-            backgroundColor: BRAND.dangerBg,
-          }}
-        >
-          <LogOut size={13} />
-          Sign out from all devices
-        </button>
-      </section>
-    </div>
-  )
-}
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function Field({
@@ -408,10 +183,6 @@ function Field({
       )}
     </div>
   )
-}
-
-function Divider() {
-  return <hr style={{ borderColor: BRAND.borderSubtle }} />
 }
 
 // ── Invite form schema ─────────────────────────────────────────────────────────
