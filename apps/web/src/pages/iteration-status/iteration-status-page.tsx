@@ -56,7 +56,7 @@ import { NESTED_ROW_INDENT } from '@/shared/config/layout'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
-import { InlineSelect } from '@/shared/ui/native-select'
+import { InlineSelect, NativeSelect } from '@/shared/ui/native-select'
 import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { BulkActionBar } from '@/shared/ui/bulk-action-bar'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
@@ -68,6 +68,7 @@ import { useProjectPermissions } from '@/features/access/api'
 import {
   useIterations,
   useIterationStatus,
+  useIterationOptions,
   useCreateIterationItem,
   type Iteration,
   type IterationStatusItem,
@@ -118,6 +119,7 @@ type ColKey =
   | 'id'
   | 'name'
   | 'feature'
+  | 'iteration'
   | 'state'
   | 'block'
   | 'blockedReason'
@@ -137,6 +139,7 @@ const ITERATION_STATUS_COLUMNS: ColumnDef<ColKey>[] = [
   { key: 'id', label: 'ID', defaultWidth: 132, minWidth: 120 },
   { key: 'name', label: 'Name', defaultWidth: 240, minWidth: 150 },
   { key: 'feature', label: 'Feature', defaultWidth: 200, minWidth: 120 },
+  { key: 'iteration', label: 'Iteration', defaultWidth: 160, minWidth: 120 },
   { key: 'state', label: 'Schedule State', defaultWidth: 132, minWidth: 132 },
   { key: 'block', label: 'Block', defaultWidth: 60, minWidth: 56 },
   { key: 'blockedReason', label: 'Blocked Reason', defaultWidth: 160, minWidth: 100 },
@@ -543,6 +546,11 @@ export function IterationStatusPage() {
   )
   const selected = iterations[selectedIndex]
 
+  // Iteration picker feed for inline reassignment — scoped to the current
+  // iteration's team so every option is assignable (backend enforces the same
+  // team-scope rule via assertIterationAssignable).
+  const { data: iterationOptions = [] } = useIterationOptions(projectId, selected?.teamId)
+
   const items = status?.items ?? EMPTY_ITEMS
 
   function move(dir: -1 | 1) {
@@ -794,6 +802,7 @@ export function IterationStatusPage() {
       id: styleFor('id', { flexShrink: 0 }),
       name: styleFor('name', { flex: 1, minWidth: 150 }),
       feature: styleFor('feature', { flexShrink: 0 }),
+      iteration: styleFor('iteration', { flexShrink: 0 }),
       state: styleFor('state', { flexShrink: 0 }),
       block: styleFor('block', { flexShrink: 0 }),
       blockedReason: styleFor('blockedReason', { flexShrink: 0 }),
@@ -1047,6 +1056,7 @@ export function IterationStatusPage() {
                     rank={(currentPage - 1) * pageSize + idx + 1}
                     memberMap={memberMap}
                     milestoneOptions={milestoneOptions}
+                    iterationOptions={iterationOptions}
                     selectedIterationId={selectedId!}
                     canEdit={canEdit}
                     colStyles={colStyles}
@@ -1100,6 +1110,7 @@ export function IterationStatusPage() {
       {showAdd && selected && (
         <AddItemModal
           iteration={selected}
+          projectId={projectId}
           onClose={() => setShowAdd(false)}
           onCreated={() => setShowAdd(false)}
         />
@@ -1603,6 +1614,7 @@ const HEADER_META: DataTableHeaderColumn<ColKey>[] = [
   { key: 'id', label: 'ID', sortCol: 'id' },
   { key: 'name', label: 'Name', sortCol: 'name' },
   { key: 'feature', label: 'Feature' },
+  { key: 'iteration', label: 'Iteration' },
   { key: 'state', label: 'Schedule State', sortCol: 'scheduleState' },
   { key: 'block', label: 'Block', sortCol: 'block', align: 'center' },
   { key: 'blockedReason', label: 'Blocked Reason' },
@@ -1650,6 +1662,7 @@ function TableFooterTotals({
         Totals ({totals.count})
       </div>
       <div style={colStyles.feature} />
+      <div style={colStyles.iteration} />
       <div style={colStyles.state} />
       <div style={colStyles.block} />
       <div style={colStyles.blockedReason} />
@@ -1680,6 +1693,7 @@ function StatusRow({
   rank,
   memberMap,
   milestoneOptions,
+  iterationOptions,
   selectedIterationId,
   canEdit,
   colStyles,
@@ -1692,6 +1706,7 @@ function StatusRow({
   rank: number
   memberMap: Map<string, import('@/features/teams/api').ProjectMember>
   milestoneOptions: readonly { id: string; name: string }[]
+  iterationOptions: readonly { id: string; name: string }[]
   selectedIterationId: string
   canEdit: boolean
   colStyles: Record<string, React.CSSProperties>
@@ -1786,6 +1801,17 @@ function StatusRow({
       { assigneeId: userId },
       {
         onSuccess: () => toast.success('Owner updated'),
+        onError: (err) => toast.error(err.message),
+      },
+    )
+  }
+
+  function handleIterationChange(iterationId: string | null) {
+    update.mutate(
+      { iterationId },
+      {
+        onSuccess: () =>
+          toast.success(iterationId ? 'Iteration updated' : 'Moved to backlog'),
         onError: (err) => toast.error(err.message),
       },
     )
@@ -1930,6 +1956,28 @@ function StatusRow({
           ) : (
             <span style={{ color: AZ.textMuted, fontSize: 12 }}>&mdash;</span>
           )}
+        </div>
+
+        {/* Iteration — inline reassign (move item to another iteration or backlog) */}
+        <div
+          style={colStyles.iteration}
+          className="flex items-center overflow-hidden px-2"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <InlineSelect
+            value={item.iterationId ?? ''}
+            disabled={!canEdit}
+            aria-label="Iteration"
+            className="w-full"
+            onChange={(e) => handleIterationChange(e.target.value || null)}
+          >
+            <option value="">Backlog</option>
+            {iterationOptions.map((it) => (
+              <option key={it.id} value={it.id}>
+                {it.name}
+              </option>
+            ))}
+          </InlineSelect>
         </div>
 
         {/* Schedule State — Rally-style segmented stepper */}
@@ -2374,6 +2422,7 @@ function ChildTaskRow({
         />
       </div>
       <div style={colStyles.feature} className="px-2" />
+      <div style={colStyles.iteration} className="px-2" />
       <div
         style={colStyles.state}
         className="flex items-center px-2"
@@ -2539,18 +2588,22 @@ function SimplifiedStateControl({
 
 function AddItemModal({
   iteration,
+  projectId,
   onClose,
   onCreated,
 }: {
   iteration: Iteration
+  projectId: string | undefined
   onClose: () => void
   onCreated: () => void
 }) {
   const navigate = useNavigate()
   const create = useCreateIterationItem(iteration.id)
+  const { data: members = [] } = useProjectMembers(projectId)
   const [type, setType] = useState<'story' | 'defect'>('story')
   const [title, setTitle] = useState('')
   const [planEstimate, setPlanEstimate] = useState('')
+  const [assigneeId, setAssigneeId] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   async function submit(openDetail = false) {
@@ -2564,6 +2617,7 @@ function AddItemModal({
         type,
         title: title.trim(),
         planEstimate: planEstimate === '' ? undefined : Number(planEstimate),
+        assigneeId: assigneeId || undefined,
       })
       toast.success(
         `${type === 'defect' ? 'Defect' : 'Story'} "${title.trim()}" added to iteration`,
@@ -2627,6 +2681,17 @@ function AddItemModal({
             onChange={(e) => setPlanEstimate(e.target.value)}
             placeholder="0"
           />
+        </FormField>
+
+        <FormField label="Owner">
+          <NativeSelect value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
+            <option value="">Unassigned</option>
+            {members.map((m) => (
+              <option key={m.userId} value={m.userId}>
+                {m.displayName ?? m.email ?? m.userId}
+              </option>
+            ))}
+          </NativeSelect>
         </FormField>
       </ModalBody>
 

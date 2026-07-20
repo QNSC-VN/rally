@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
-import { and, eq, isNull, sql, desc, lt } from 'drizzle-orm';
+import { and, eq, isNull, sql, desc, lt, inArray } from 'drizzle-orm';
 import {
   InjectDrizzle,
   buildPageResult,
@@ -11,7 +11,7 @@ import type { JwtPayload, CursorPayload, PagedResult, DrizzleDB } from '@platfor
 import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
 import { PERMISSION } from '@shared-kernel';
-import { releaseDailySnapshots, workItems } from '../../../../../db/schema/work';
+import { releaseDailySnapshots, workItems, tasks } from '../../../../../db/schema/work';
 import {
   completedScheduleStatesSql,
   acceptedScheduleStatesSql,
@@ -44,9 +44,44 @@ export class ReleasesService {
     actor: JwtPayload,
     projectId: string,
     args: { limit: number; cursor: CursorPayload | null },
-  ): Promise<PagedResult<Release>> {
+  ): Promise<PagedResult<Release & { taskEstimate: number }>> {
     await this.projectsService.getProject(actor.workspaceId, projectId);
-    return this.releaseRepo.listByProject(projectId, actor.workspaceId, args);
+    const page = await this.releaseRepo.listByProject(projectId, actor.workspaceId, args);
+    const estimates = await this.computeTaskEstimates(page.data.map((r) => r.id));
+    return {
+      ...page,
+      data: page.data.map((r) => ({ ...r, taskEstimate: estimates.get(r.id) ?? 0 })),
+    };
+  }
+
+  /**
+   * SRS §6.1 / FR-004 — the "Task Estimate" list column is a read-only roll-up:
+   * the summed estimate hours of the child tasks under the stories/defects
+   * assigned to each release. Mirrors the Iteration Status definition
+   * (sum of `tasks.estimate_hours`), so both surfaces report the same number.
+   * Batched to avoid N+1 across a listed page. Releases with no assigned work
+   * (or no task estimates) resolve to 0.
+   */
+  private async computeTaskEstimates(releaseIds: string[]): Promise<Map<string, number>> {
+    if (releaseIds.length === 0) return new Map();
+    const rows = await this.db
+      .select({
+        releaseId: workItems.releaseId,
+        estimate: sql<number>`COALESCE(SUM(${tasks.estimateHours}), 0)`,
+      })
+      .from(tasks)
+      .innerJoin(workItems, eq(tasks.parentId, workItems.id))
+      .where(
+        and(
+          inArray(workItems.releaseId, releaseIds),
+          isNull(workItems.deletedAt),
+          isNull(tasks.deletedAt),
+        ),
+      )
+      .groupBy(workItems.releaseId);
+    const map = new Map<string, number>();
+    for (const r of rows) if (r.releaseId) map.set(r.releaseId, Number(r.estimate));
+    return map;
   }
 
   // ── Create ────────────────────────────────────────────────────────────────
@@ -215,8 +250,11 @@ export class ReleasesService {
           ? 100
           : 0;
 
+    const estimates = await this.computeTaskEstimates([id]);
+
     return {
       ...release,
+      taskEstimate: estimates.get(id) ?? 0,
       taskRollup: {
         totalItems: s.totalItems,
         completedItems: s.completedItems,
@@ -266,6 +304,9 @@ export class ReleasesService {
       sql`type IN ('story', 'defect')`,
     ];
 
+    // Total artifacts on this release (before cursor/limit) for the footer count.
+    const baseConditions = [...conditions];
+
     if (args.cursor) {
       conditions.push(lt(workItems.createdAt, new Date(args.cursor.k[0] as string)));
     }
@@ -290,7 +331,18 @@ export class ReleasesService {
       .orderBy(desc(workItems.createdAt))
       .limit(args.limit + 1);
 
-    return buildPageResult(rows, args.limit, (w) => [w.createdAt.toISOString()]);
+    const [countRow] = await this.db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(workItems)
+      .where(and(...baseConditions));
+
+    return buildPageResult(
+      rows,
+      args.limit,
+      (w) => [w.createdAt.toISOString()],
+      'desc',
+      Number(countRow?.total ?? 0),
+    );
   }
 
   // ── Burndown ─────────────────────────────────────────────────────────────

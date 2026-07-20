@@ -23,7 +23,7 @@ import {
   between,
 } from '@platform';
 import type { JwtPayload, CursorPayload, PagedResult, DbExecutor } from '@platform';
-import { PERMISSION, type ProjectPermission } from '@shared-kernel';
+import { PERMISSION, permissionGrants, type ProjectPermission } from '@shared-kernel';
 import {
   isAcceptedScheduleState,
   isCompletedScheduleState,
@@ -529,6 +529,32 @@ export class WorkItemsService {
       await this.projectsService.assertWorkspaceMember(project.workspaceId, input.assigneeId);
     }
 
+    // TASK-FR-012: a task's Work Product (parent) can be reassigned, but the new
+    // parent must be a valid work product (US/DE, never a task) in the SAME
+    // project — the same scope rules enforced at task creation. A task always
+    // belongs to a Work Product, so clearing the parent is rejected.
+    if (item.type === 'task' && input.parentId !== undefined && input.parentId !== item.parentId) {
+      if (input.parentId === null) {
+        throw new PreconditionFailedException(
+          'WORK_ITEM_INVALID_PARENT_TYPE',
+          'A task must belong to a work product',
+        );
+      }
+      const newParent = await this.getWorkItem(actor.workspaceId, input.parentId);
+      if (newParent.projectId !== item.projectId) {
+        throw new PreconditionFailedException(
+          'WORK_ITEM_PARENT_SCOPE_MISMATCH',
+          'Work product does not belong to the same project',
+        );
+      }
+      if (newParent.type === 'task') {
+        throw new PreconditionFailedException(
+          'WORK_ITEM_INVALID_PARENT_TYPE',
+          'A task cannot be moved under another task',
+        );
+      }
+    }
+
     // Validate status transition if statusId is changing
     if (input.statusId && input.statusId !== item.statusId) {
       await this.projectsService.assertTransitionAllowed(
@@ -555,14 +581,18 @@ export class WorkItemsService {
       await this.assertReleaseAssignable(actor.workspaceId, item.projectId, input.releaseId);
     }
 
-    // P3.4 — Validate defect state transitions
+    // P3.4 — Validate defect state transitions.
+    // SRS §6 (Quality/Defect) confirmed lifecycle:
+    //   Submitted → Open → Fixed → Closed, and Submitted/Open → Closed Declined.
+    // FR-017: reopen from Closed / Closed Declined is DEFERRED and must be
+    // rejected in Phase 3.4 until BA confirms permission + reason + audit rules.
     if (input.defectState !== undefined && input.defectState !== null && item.defectState) {
       const validTransitions: Record<DefectState, DefectState[]> = {
         submitted: ['open', 'closed_declined'],
-        open: ['fixed'],
+        open: ['fixed', 'closed_declined'],
         fixed: ['closed'],
-        closed: ['open'],
-        closed_declined: ['open'],
+        closed: [],
+        closed_declined: [],
       };
       const allowed = validTransitions[item.defectState as DefectState] ?? [];
       if (!allowed.includes(input.defectState as DefectState)) {
@@ -695,7 +725,7 @@ export class WorkItemsService {
           updated,
           actor.sub,
           [updated.assigneeId],
-          { itemKey: updated.itemKey, itemTitle: updated.title },
+          { itemKey: updated.itemKey, itemTitle: updated.title, projectId: updated.projectId },
           updated.assigneeId,
         );
       }
@@ -703,7 +733,7 @@ export class WorkItemsService {
 
     // Schedule-state change: notify watchers ∪ assignee (minus the actor).
     if (input.scheduleState !== undefined && updated.scheduleState !== item.scheduleState) {
-      const recipients = await this.resolveRecipients(updated.id, [updated.assigneeId], actor.sub);
+      const recipients = await this.resolveRecipients(updated, [updated.assigneeId], actor.sub);
       if (recipients.length > 0) {
         await this.emitWorkItemNotification(
           'WORK_ITEM_STATE_CHANGED',
@@ -714,6 +744,7 @@ export class WorkItemsService {
             itemKey: updated.itemKey,
             itemTitle: updated.title,
             newState: updated.scheduleState,
+            projectId: updated.projectId,
           },
           updated.scheduleState,
         );
@@ -745,17 +776,43 @@ export class WorkItemsService {
   // (minus the actor). The Worker relay applies each recipient's preference and
   // handles delivery/SSE — this layer only fans out candidates.
 
-  /** Watchers ∪ extra recipients, de-duplicated, with the actor removed. */
+  /** Watchers ∪ extra recipients, de-duplicated, actor removed, access-gated. */
   private async resolveRecipients(
-    workItemId: string,
+    item: WorkItem,
     extra: (string | null | undefined)[],
     actorId: string,
   ): Promise<string[]> {
-    const watchers = await this.watcherRepo.listUserIds(workItemId);
+    const watchers = await this.watcherRepo.listUserIds(item.id);
     const set = new Set<string>(watchers);
     for (const id of extra) if (id) set.add(id);
     set.delete(actorId);
-    return [...set];
+    return this.filterByProjectAccess(item.workspaceId, item.projectId, [...set]);
+  }
+
+  /**
+   * FR-019 — restrict notification recipients to users allowed to access the
+   * item's project. Effective per-project permissions are resolved from role
+   * assignments (a workspace-scoped role grants access without a membership
+   * row), so this is NOT a project_members lookup. Users lacking
+   * `work_item:view` on the project are dropped.
+   */
+  private async filterByProjectAccess(
+    workspaceId: string,
+    projectId: string,
+    userIds: string[],
+  ): Promise<string[]> {
+    if (userIds.length === 0) return [];
+    const results = await Promise.all(
+      userIds.map(async (userId) => {
+        const perms = await this.accessService.getProjectPermissions(
+          userId,
+          workspaceId,
+          projectId,
+        );
+        return permissionGrants(perms, PERMISSION.WORK_ITEM_VIEW) ? userId : null;
+      }),
+    );
+    return results.filter((id): id is string => id !== null);
   }
 
   private async emitWorkItemNotification<K extends NotificationTemplateName>(
@@ -804,8 +861,13 @@ export class WorkItemsService {
     // Commenter auto-watches the item so they receive follow-up activity.
     await this.watcherRepo.watch(workItemId, actor.sub, actor.workspaceId).catch(() => undefined);
 
-    const vars = { itemKey: item.itemKey, itemTitle: item.title };
-    const mentioned = mentionedUserIds.filter((id) => id && id !== actor.sub);
+    const vars = { itemKey: item.itemKey, itemTitle: item.title, projectId: item.projectId };
+    // FR-019: mentions may name anyone; keep only users who can access the project.
+    const mentioned = await this.filterByProjectAccess(
+      item.workspaceId,
+      item.projectId,
+      mentionedUserIds.filter((id) => id && id !== actor.sub),
+    );
 
     // Mentions take precedence — a mentioned watcher gets the mention, not the
     // generic comment notification.
@@ -820,7 +882,7 @@ export class WorkItemsService {
       );
     }
     const commentRecipients = (
-      await this.resolveRecipients(workItemId, [item.assigneeId], actor.sub)
+      await this.resolveRecipients(item, [item.assigneeId], actor.sub)
     ).filter((id) => !mentioned.includes(id));
     if (commentRecipients.length > 0) {
       await this.emitWorkItemNotification(

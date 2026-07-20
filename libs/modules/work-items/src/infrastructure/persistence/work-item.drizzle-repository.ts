@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq, isNull, lt, or, ilike, inArray, sql, asc, desc } from 'drizzle-orm';
-import { InjectDrizzle, buildPageResult } from '@platform';
+import { and, eq, isNull, lt, or, ilike, inArray, sql, asc, desc, type AnyColumn } from 'drizzle-orm';
+import { InjectDrizzle, buildPageResult, keysetCondition } from '@platform';
 import type { DrizzleDB, DbExecutor, CursorPayload, PagedResult } from '@platform';
 import {
   workItems,
@@ -27,6 +27,7 @@ import type {
   CreateWorkItemInput,
   UpdateWorkItemInput,
   WorkItemFilters,
+  WorkItemSortBy,
   TaskTotals,
 } from '../../domain/work-item.types';
 import { UNASSIGNED_FILTER } from '../../domain/work-item.types';
@@ -46,6 +47,26 @@ const SCHEDULE_STATE_TO_TASK_STATE: Record<WorkItemScheduleState, TaskState> = {
   completed: 'completed',
   accepted: 'completed',
   release: 'completed',
+};
+
+/**
+ * Single source of truth pairing each sortable backlog column with the cursor
+ * value extracted from a row. Keeping the ORDER BY column and the keyset cursor
+ * key defined together guarantees they can never drift apart — the bug that
+ * previously left every non-rank sort paginating by rank. `planEstimate` maps to
+ * the nullable `story_points`; {@link keysetCondition} handles its NULL ordering.
+ */
+const BACKLOG_SORT_COLUMNS: Record<
+  WorkItemSortBy,
+  { column: AnyColumn; value: (w: WorkItem) => unknown }
+> = {
+  rank: { column: workItems.rank, value: (w) => w.rank },
+  itemKey: { column: workItems.itemKey, value: (w) => w.itemKey },
+  type: { column: workItems.type, value: (w) => w.type },
+  title: { column: workItems.title, value: (w) => w.title },
+  scheduleState: { column: workItems.scheduleState, value: (w) => w.scheduleState },
+  priority: { column: workItems.priority, value: (w) => w.priority },
+  planEstimate: { column: workItems.storyPoints, value: (w) => w.storyPoints },
 };
 
 @Injectable()
@@ -324,32 +345,44 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     const conditions = this.buildFilters(projectId, workspaceId, filters);
     // Backlog shows only story + defect (tasks live under their parent item).
     conditions.push(inArray(workItems.type, ['story', 'defect']));
-    // Keyset pagination on rank — the backlog's stable default order (matches
-    // the ix_wi_backlog index and the Iteration Status sibling). Enum columns
-    // (scheduleState/priority) sort by their semantic Postgres declaration order.
-    if (cursor) {
-      conditions.push(lt(workItems.rank, cursor.k[0] as string));
-    }
 
-    const sortCol = {
-      rank: workItems.rank,
-      itemKey: workItems.itemKey,
-      type: workItems.type,
-      title: workItems.title,
-      scheduleState: workItems.scheduleState,
-      priority: workItems.priority,
-      planEstimate: workItems.storyPoints,
-    }[filters.sortBy ?? 'rank'];
-    const dir = filters.sortDirection === 'desc' ? desc : asc;
+    // Keyset ("seek") pagination keyed on the ACTIVE sort column, with the row
+    // id as a stable unique tie-breaker. This keeps paging correct for every
+    // sort — non-unique columns (title/type/priority), the nullable
+    // planEstimate, and the default rank — instead of always seeking by rank.
+    const sort = BACKLOG_SORT_COLUMNS[filters.sortBy ?? 'rank'];
+    const direction: 'asc' | 'desc' = filters.sortBy
+      ? (filters.sortDirection ?? 'asc')
+      : 'asc';
+    const orderDir = direction === 'desc' ? desc : asc;
+
+    // Total matching the filters (before the cursor/limit) so the backlog
+    // footer can show an accurate count — SRS BL-FR-007 ("total đúng").
+    const baseConditions = [...conditions];
+
+    if (cursor) {
+      conditions.push(keysetCondition(sort.column, workItems.id, cursor));
+    }
 
     const rows = await this.db
       .select()
       .from(workItems)
       .where(and(...conditions))
-      .orderBy(filters.sortBy ? dir(sortCol) : asc(workItems.rank))
+      .orderBy(orderDir(sort.column), asc(workItems.id))
       .limit(limit + 1);
 
-    return buildPageResult(rows as WorkItem[], limit, (w) => [w.rank]);
+    const [countRow] = await this.db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(workItems)
+      .where(and(...baseConditions));
+
+    return buildPageResult(
+      rows as WorkItem[],
+      limit,
+      (w) => [sort.value(w)],
+      direction,
+      Number(countRow?.total ?? 0),
+    );
   }
 
   async listTasksByParent(parentId: string, workspaceId: string): Promise<WorkItem[]> {
@@ -668,6 +701,10 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       const setFields: Record<string, unknown> = { updatedAt: new Date() };
       if (input.title !== undefined) setFields.title = input.title;
       if (input.description !== undefined) setFields.description = input.description;
+      // TASK-FR-012: Work Product (parent) reassignment. tasks.parent_id is NOT
+      // NULL, so only a concrete new parent is written; the service rejects null.
+      if (input.parentId !== undefined && input.parentId !== null)
+        setFields.parentId = input.parentId;
       if (input.scheduleState !== undefined)
         setFields.state = SCHEDULE_STATE_TO_TASK_STATE[input.scheduleState];
       if (input.assigneeId !== undefined) setFields.assigneeId = input.assigneeId;

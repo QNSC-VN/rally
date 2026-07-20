@@ -310,8 +310,11 @@ export class TeamStatusService {
     const estimateHours = tasks.reduce((s, t) => s + t.estimateHours, 0);
     const todoHours = tasks.reduce((s, t) => s + t.todoHours, 0);
     const actualHours = tasks.reduce((s, t) => s + t.actualHours, 0);
+    // Completion percentage per Team_Status SRS §10: actual / estimate * 100,
+    // capped at 100; 0 when there is no estimate to measure against. Capacity is
+    // a planning number (member availability), not a progress denominator.
     const progressPercent =
-      capacityHours > 0 ? Math.round((estimateHours / capacityHours) * 100) : 0;
+      estimateHours > 0 ? Math.min(100, Math.round((actualHours / estimateHours) * 100)) : 0;
     return {
       owner,
       capacityHours,

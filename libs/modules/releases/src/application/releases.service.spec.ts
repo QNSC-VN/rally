@@ -85,17 +85,31 @@ describe('ReleasesService', () => {
     projects = makeProjects();
     access = makeAccess();
 
+    const statRow = {
+      totalItems: 0,
+      completedItems: 0,
+      acceptedItems: 0,
+      totalPoints: '0',
+      completedPoints: '0',
+      // computeTaskEstimates reads releaseId/estimate; a null releaseId means
+      // the row is skipped, so taskEstimate resolves to 0 in these unit tests.
+      releaseId: null,
+      estimate: '0',
+    };
+    // Root is deliberately NOT thenable (Nest DI awaits thenable useValue
+    // providers). Only the chain returned by select() is awaitable, and it
+    // supports both the stats query (.where terminal) and the estimate roll-up
+    // (.where().groupBy() terminal).
+    const makeChain = () => {
+      const chain: Record<string, unknown> = {};
+      for (const key of ['from', 'innerJoin', 'where', 'groupBy']) {
+        chain[key] = vi.fn().mockReturnValue(chain);
+      }
+      (chain as { then: unknown }).then = (resolve: (v: unknown) => void) => resolve([statRow]);
+      return chain;
+    };
     const mockDrizzle = {
-      select: vi.fn().mockReturnThis(),
-      from: vi.fn().mockReturnThis(),
-      where: vi.fn().mockResolvedValue([
-        {
-          totalItems: 0,
-          completedItems: 0,
-          totalPoints: '0',
-          completedPoints: '0',
-        },
-      ]),
+      select: vi.fn(() => makeChain()),
     };
 
     const module: TestingModule = await Test.createTestingModule({

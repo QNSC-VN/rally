@@ -26,6 +26,7 @@ const ReleaseListItemSchema = z.object({
   releaseDate: z.string().nullable().describe('YYYY-MM-DD'),
   plannedVelocity: z.number().nullable(),
   planEstimate: z.number().nullable(),
+  taskEstimate: z.number().describe('Roll-up: summed estimate hours of assigned work items'),
   projectName: z.string().optional(),
 });
 

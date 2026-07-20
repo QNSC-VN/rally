@@ -16,6 +16,7 @@ function toDto(n: Notification): NotificationResponseDto {
     body: n.body,
     resourceType: n.resourceType,
     resourceId: n.resourceId,
+    metadata: n.metadata,
     isRead: n.isRead,
     readAt: n.readAt?.toISOString() ?? null,
     actorId: n.actorId,

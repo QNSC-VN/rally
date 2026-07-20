@@ -90,13 +90,13 @@ function fmtRange(it: Pick<Iteration, 'startDate' | 'endDate'>) {
 }
 
 /**
- * Member capacity load bar — Rally Team Status style: a percentage label above
- * a fill bar that is green when at/under capacity (≤100%) and red when over
- * (>100%). Rendered in the State column of each member group row.
+ * Member progress bar — Rally Team Status style: a percentage label above a
+ * green fill bar. The percentage is task completion (actual / estimate hours,
+ * capped at 100) per Team_Status SRS §10, shown for each member group row.
  */
-function LoadBar({ percent }: { percent: number }) {
-  const over = percent > 100
-  const color = over ? BRAND.danger : BRAND.success
+function ProgressBar({ percent }: { percent: number }) {
+  const clamped = Math.min(Math.max(percent, 0), 100)
+  const color = BRAND.success
   return (
     <div className="flex w-full flex-col gap-[3px]">
       <span className="text-[10px] leading-none font-semibold tabular-nums" style={{ color }}>
@@ -108,7 +108,7 @@ function LoadBar({ percent }: { percent: number }) {
       >
         <div
           className="h-full rounded-full"
-          style={{ width: `${Math.min(percent, 100)}%`, backgroundColor: color }}
+          style={{ width: `${clamped}%`, backgroundColor: color }}
         />
       </div>
     </div>
@@ -580,9 +580,9 @@ function MemberGroup({
         </div>
         <div className="shrink-0" style={colStyles.workProduct} />
         <div className="shrink-0" style={colStyles.release} />
-        {/* State column shows the member capacity load bar (Rally-style). */}
+        {/* State column shows the member task-completion progress bar. */}
         <div className="flex shrink-0 flex-col justify-center px-2" style={colStyles.state}>
-          <LoadBar percent={group.progressPercent} />
+          <ProgressBar percent={group.progressPercent} />
         </div>
         {/* Capacity (editable on group row — P3-TS-FR-017) */}
         <div

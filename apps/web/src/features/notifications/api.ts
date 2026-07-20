@@ -16,6 +16,8 @@ export interface Notification {
   body: string | null
   resourceType: string | null
   resourceId: string | null
+  /** Structured deep-link payload, e.g. { itemKey, projectId } for work items. */
+  metadata: Record<string, unknown>
   isRead: boolean
   readAt: string | null
   actorId: string | null

@@ -18,6 +18,7 @@ import { MilestonesService } from '@modules/milestones';
 import { ProjectsService } from '@modules/projects';
 import { ReleasesService } from '@modules/releases';
 import { WorkItemsService } from '@modules/work-items';
+import { TeamService } from '@modules/workspace';
 
 import { ALL, adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
 
@@ -28,6 +29,7 @@ describe('BA flows: releases + milestones + defect lifecycle (real AppModule + s
   let releases: ReleasesService;
   let milestones: MilestonesService;
   let iterations: IterationsService;
+  let teams: TeamService;
   const actor = adminActor();
 
   beforeAll(async () => {
@@ -37,6 +39,7 @@ describe('BA flows: releases + milestones + defect lifecycle (real AppModule + s
     releases = app.get(ReleasesService);
     milestones = app.get(MilestonesService);
     iterations = app.get(IterationsService);
+    teams = app.get(TeamService);
   });
 
   afterAll(async () => {
@@ -84,6 +87,28 @@ describe('BA flows: releases + milestones + defect lifecycle (real AppModule + s
       await expect(
         workItems.updateWorkItem(actor, story.id, { releaseId: releaseB.id }),
       ).rejects.toMatchObject({ code: 'RELEASE_PROJECT_MISMATCH' });
+    });
+
+    // FR-004 §6.1 — Task Estimate is a read-only roll-up of the child tasks'
+    // estimate hours under the release's assigned work items (same definition
+    // as Iteration Status), surfaced on both the list and the detail.
+    it('rolls up child task estimate hours into the release Task Estimate', async () => {
+      const project = await projects.createProject(actor, {
+        key: uniqueKey(),
+        name: 'Estimate Rollup Project',
+      });
+      const release = await releases.createRelease(actor, project.id, 'Estimate Release');
+      const story = await workItems.createWorkItem(actor, project.id, 'story', 'Estimated story');
+      await workItems.updateWorkItem(actor, story.id, { releaseId: release.id });
+      await workItems.createTask(actor, story.id, 'Task 1', { estimateHours: '3' });
+      await workItems.createTask(actor, story.id, 'Task 2', { estimateHours: '5' });
+
+      const detail = await releases.getReleaseDetail(actor, release.id);
+      expect(detail.taskEstimate).toBe(8);
+
+      const page = await releases.listReleases(actor, project.id, { limit: 50, cursor: null });
+      const listed = page.data.find((r) => r.id === release.id);
+      expect(listed?.taskEstimate).toBe(8);
     });
   });
 
@@ -139,6 +164,92 @@ describe('BA flows: releases + milestones + defect lifecycle (real AppModule + s
         workItems.setWorkItemMilestones(actor, story.id, [milestoneB.id]),
       ).rejects.toMatchObject({ code: 'MILESTONE_PROJECT_MISMATCH' });
     });
+
+    it('rejects an out-of-scope work item on the milestone-side artifact write', async () => {
+      // Symmetric guard: PUT /milestones/:id/artifacts must also reject items
+      // that do not belong to the milestone's project (FR-023 / AC12).
+      const projectA = await projects.createProject(actor, {
+        key: uniqueKey(),
+        name: 'MS Side A',
+      });
+      const projectB = await projects.createProject(actor, {
+        key: uniqueKey(),
+        name: 'MS Side B',
+      });
+      const milestoneA = await milestones.createMilestone(actor, projectA.id, 'Scoped MS');
+      const inScope = await workItems.createWorkItem(actor, projectA.id, 'story', 'In-scope story');
+      const outOfScope = await workItems.createWorkItem(
+        actor,
+        projectB.id,
+        'story',
+        'Foreign story',
+      );
+
+      // A foreign work item is rejected — no partial write.
+      await expect(
+        milestones.setMilestoneArtifacts(actor, milestoneA.id, [inScope.id, outOfScope.id]),
+      ).rejects.toMatchObject({ code: 'MILESTONE_PROJECT_MISMATCH' });
+      expect(await milestones.getMilestoneArtifacts(actor, milestoneA.id)).toHaveLength(0);
+
+      // An in-scope work item is accepted.
+      const linked = await milestones.setMilestoneArtifacts(actor, milestoneA.id, [inScope.id]);
+      expect(linked).toContain(inScope.id);
+    });
+
+    it('rejects a work item outside the milestone team scope (FR-021/023 / SRS §5.2)', async () => {
+      // When a milestone selects Team scope, an artifact must belong to one of
+      // its selected teams; items on any other team (or no team) are rejected.
+      const project = await projects.createProject(actor, {
+        key: uniqueKey(),
+        name: 'MS Team Scope',
+      });
+      const teamIn = await teams.createTeam(
+        actor.workspaceId,
+        'Team In Scope',
+        uniqueKey('T'),
+        undefined,
+        undefined,
+        actor.sub,
+      );
+      const teamOut = await teams.createTeam(
+        actor.workspaceId,
+        'Team Out Scope',
+        uniqueKey('T'),
+        undefined,
+        undefined,
+        actor.sub,
+      );
+      // Work items can only join teams linked to their project.
+      await projects.linkTeam(actor.workspaceId, project.id, teamIn.id);
+      await projects.linkTeam(actor.workspaceId, project.id, teamOut.id);
+
+      const milestone = await milestones.createMilestone(actor, project.id, 'Team-scoped MS');
+      await milestones.setMilestoneTeams(actor, milestone.id, [teamIn.id]);
+
+      // A work item on the wrong team is rejected — no partial write.
+      const foreignTeamItem = await workItems.createWorkItem(
+        actor,
+        project.id,
+        'story',
+        'Wrong-team story',
+        { teamId: teamOut.id },
+      );
+      await expect(
+        milestones.setMilestoneArtifacts(actor, milestone.id, [foreignTeamItem.id]),
+      ).rejects.toMatchObject({ code: 'MILESTONE_TEAM_MISMATCH' });
+      expect(await milestones.getMilestoneArtifacts(actor, milestone.id)).toHaveLength(0);
+
+      // A work item on an in-scope team is accepted.
+      const inTeamItem = await workItems.createWorkItem(
+        actor,
+        project.id,
+        'story',
+        'Right-team story',
+        { teamId: teamIn.id },
+      );
+      const linked = await milestones.setMilestoneArtifacts(actor, milestone.id, [inTeamItem.id]);
+      expect(linked).toContain(inTeamItem.id);
+    });
   });
 
   // ── E2E-015: quality defect lifecycle shares the backlog source ─────────────
@@ -168,15 +279,40 @@ describe('BA flows: releases + milestones + defect lifecycle (real AppModule + s
       const closed = await workItems.updateWorkItem(actor, defect.id, { defectState: 'closed' });
       expect(closed.defectState).toBe('closed');
 
-      // Invalid transition: closed → fixed (closed may only reopen to open).
+      // Invalid transition: closed → fixed (Closed is terminal in Phase 3.4).
       await expect(
         workItems.updateWorkItem(actor, defect.id, { defectState: 'fixed' }),
+      ).rejects.toMatchObject({ code: 'WORK_ITEM_INVALID_TRANSITION' });
+
+      // FR-017: reopen from Closed is DEFERRED — must be rejected in Phase 3.4.
+      await expect(
+        workItems.updateWorkItem(actor, defect.id, { defectState: 'open' }),
       ).rejects.toMatchObject({ code: 'WORK_ITEM_INVALID_TRANSITION' });
 
       // Defects cannot be deleted — they are resolved via state.
       await expect(workItems.deleteWorkItem(actor, defect.id)).rejects.toMatchObject({
         code: 'DEFECT_DELETE_FORBIDDEN',
       });
+    });
+
+    it('declines a defect after triage (Open → Closed Declined) and treats it as terminal', async () => {
+      const project = await projects.createProject(actor, {
+        key: uniqueKey(),
+        name: 'Defect Decline',
+      });
+      const defect = await workItems.createWorkItem(actor, project.id, 'defect', 'Declined defect');
+
+      // Submitted → Open → Closed Declined (declined after triage, SRS §6).
+      await workItems.updateWorkItem(actor, defect.id, { defectState: 'open' });
+      const declined = await workItems.updateWorkItem(actor, defect.id, {
+        defectState: 'closed_declined',
+      });
+      expect(declined.defectState).toBe('closed_declined');
+
+      // FR-017: reopen from Closed Declined is DEFERRED — must be rejected.
+      await expect(
+        workItems.updateWorkItem(actor, defect.id, { defectState: 'open' }),
+      ).rejects.toMatchObject({ code: 'WORK_ITEM_INVALID_TRANSITION' });
     });
   });
 });

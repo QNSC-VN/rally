@@ -112,6 +112,18 @@ const DEFECT_STATE_OPTIONS: { value: string; label: string }[] = [
   { value: 'closed_declined', label: 'Closed Declined' },
 ]
 
+// Mirrors the backend defect state machine (work-items.service.ts, SRS §6):
+// Submitted → Open → Fixed → Closed, and Submitted/Open → Closed Declined.
+// FR-017: reopen from Closed / Closed Declined is deferred, so those are
+// terminal here — invalid targets are hidden rather than offered-then-rejected.
+const DEFECT_TRANSITIONS: Record<string, string[]> = {
+  submitted: ['open', 'closed_declined'],
+  open: ['fixed', 'closed_declined'],
+  fixed: ['closed'],
+  closed: [],
+  closed_declined: [],
+}
+
 function DefectStateInlineCell({
   defect,
   canEdit,
@@ -124,6 +136,12 @@ function DefectStateInlineCell({
   const update = useUpdateWorkItem(defect.id)
   const currentVal = defect.defectState ?? 'submitted'
   const style = DEFECT_STATE_STYLE[currentVal] ?? DEFECT_STATE_STYLE.submitted
+  // Only the current state plus its valid next states are selectable; terminal
+  // states collapse to a single (unchangeable) option.
+  const allowedNext = DEFECT_TRANSITIONS[currentVal] ?? []
+  const stateOptions = DEFECT_STATE_OPTIONS.filter(
+    (o) => o.value === currentVal || allowedNext.includes(o.value),
+  )
 
   function handleChange(val: string) {
     if (val === currentVal) return
@@ -147,7 +165,7 @@ function DefectStateInlineCell({
           onChange={(e) => handleChange(e.target.value)}
           disabled={update.isPending}
         >
-          {DEFECT_STATE_OPTIONS.map((o) => (
+          {stateOptions.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
             </option>

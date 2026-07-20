@@ -19,6 +19,7 @@ import {
   useMarkNotificationRead,
   useMarkAllNotificationsRead,
 } from '@/features/notifications/api'
+import { useOpenNotification } from '@/features/notifications/use-open-notification'
 import { NotificationItem } from '@/features/notifications/ui/notification-item'
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -37,6 +38,7 @@ export function NotificationPopover({ open, onClose }: NotificationPopoverProps)
   const { data: notifications = [], isLoading } = useNotifications({ unreadOnly })
   const markRead = useMarkNotificationRead()
   const markAll = useMarkAllNotificationsRead()
+  const openNotification = useOpenNotification()
 
   // Close on outside click
   useEffect(() => {
@@ -160,7 +162,10 @@ export function NotificationPopover({ open, onClose }: NotificationPopoverProps)
                 notification={n}
                 onMarkRead={(id) => void markRead.mutateAsync(id)}
                 isMarkingRead={markRead.isPending}
-                onActivate={onClose}
+                onActivate={() => {
+                  openNotification(n)
+                  onClose()
+                }}
                 showBadge
                 dense
               />

@@ -589,25 +589,6 @@ function ReleaseRow({
     }
   }
 
-  function handleTaskEstimateBlur(e: React.FocusEvent<HTMLInputElement>) {
-    const val = e.target.value.trim()
-    const num = val === '' ? null : Number(val)
-    if (num !== null && (isNaN(num) || num < 0)) {
-      toast.error('Task estimate must be a non-negative number')
-      e.target.value = release.planEstimate != null ? String(release.planEstimate) : ''
-      return
-    }
-    if (num !== release.planEstimate) {
-      update.mutate(
-        { planEstimate: num ?? undefined },
-        {
-          onSuccess: () => toast.success('Task estimate updated'),
-          onError: (err) => toast.error(err.message),
-        },
-      )
-    }
-  }
-
   const navigate = useNavigate()
 
   return (
@@ -747,27 +728,13 @@ function ReleaseRow({
         )}
       </div>
 
-      {/* Task Estimate — inline editable */}
+      {/* Task Estimate — read-only roll-up of assigned work-item estimate hours (P3-REL-FR-004) */}
       <div
         style={{ ...colStyleFor('taskEstimate', { flexShrink: 0 }), color: BRAND.textSecondary }}
         className="pr-2 text-right font-mono tabular-nums"
         onClick={(e) => e.stopPropagation()}
       >
-        {canManage ? (
-          <input
-            key={release.planEstimate}
-            type="number"
-            min={0}
-            defaultValue={release.planEstimate != null ? String(release.planEstimate) : ''}
-            onBlur={handleTaskEstimateBlur}
-            placeholder="—"
-            onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-            className="w-full rounded border-0 bg-transparent px-0.5 text-right font-mono text-[11px] focus:bg-white focus:ring-1 focus:outline-none"
-            style={{ color: BRAND.textSecondary }}
-          />
-        ) : (
-          <span>{release.planEstimate ?? '—'}</span>
-        )}
+        <span>{release.taskEstimate ?? 0}</span>
       </div>
 
       {/* Progress bar */}

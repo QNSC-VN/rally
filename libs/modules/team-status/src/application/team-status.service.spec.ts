@@ -175,15 +175,15 @@ describe('TeamStatusService', () => {
       expect(alice.todoHours).toBe(5); // 2 + 3
       expect(alice.actualHours).toBe(7); // 2 + 5
       expect(alice.capacityHours).toBe(40);
-      // progress = round(estimate/capacity * 100) = round(10/40 * 100) = 25
-      expect(alice.progressPercent).toBe(25);
+      // progress = round(actual/estimate * 100) = round(7/10 * 100) = 70
+      expect(alice.progressPercent).toBe(70);
 
       // Bob's group
       const bob = result.groups.find((g) => g.owner.id === 'bob')!;
       expect(bob.taskCount).toBe(1);
       expect(bob.estimateHours).toBe(3);
-      // progress = round(estimate/capacity * 100) = round(3/40 * 100) = 8
-      expect(bob.progressPercent).toBe(8);
+      // progress = round(actual/estimate * 100) = round(0/3 * 100) = 0
+      expect(bob.progressPercent).toBe(0);
 
       // Totals
       expect(result.totals.estimateHours).toBe(13); // 10 + 3
@@ -294,22 +294,22 @@ describe('TeamStatusService', () => {
       expect(result.iteration.endDate).toBe('2024-06-11');
     });
 
-    it('allows progressPercent over 100 when estimate exceeds capacity', async () => {
+    it('caps progressPercent at 100 when actual exceeds estimate', async () => {
       repo.getTaskRows.mockResolvedValue([
-        makeRawRow({ id: 't1', assigneeId: 'alice', estimateHours: '50', actualHours: '5' }),
+        makeRawRow({ id: 't1', assigneeId: 'alice', estimateHours: '5', actualHours: '8' }),
       ]);
       repo.getCapacities.mockResolvedValue(new Map([['alice', 40]]));
 
       const result = await service.getTeamStatus(actor, 'proj-1', 'team-a', 'it-1');
-      // progress = round(50/40 * 100) = 125, no cap
-      expect(result.groups[0].progressPercent).toBe(125);
+      // progress = min(100, round(8/5 * 100)) = min(100, 160) = 100
+      expect(result.groups[0].progressPercent).toBe(100);
     });
 
-    it('returns 0% progress when capacity is 0', async () => {
+    it('returns 0% progress when estimate is 0', async () => {
       repo.getTaskRows.mockResolvedValue([
-        makeRawRow({ id: 't1', assigneeId: 'alice', estimateHours: '5', actualHours: '3' }),
+        makeRawRow({ id: 't1', assigneeId: 'alice', estimateHours: '0', actualHours: '3' }),
       ]);
-      repo.getCapacities.mockResolvedValue(new Map()); // no capacity
+      repo.getCapacities.mockResolvedValue(new Map([['alice', 40]]));
 
       const result = await service.getTeamStatus(actor, 'proj-1', 'team-a', 'it-1');
       expect(result.groups[0].progressPercent).toBe(0);
