@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   UserCheck,
@@ -13,8 +13,6 @@ import {
   FileText,
   Lock,
   Loader2,
-  Search,
-  Clock,
   Check,
   Save,
 } from 'lucide-react'
@@ -25,13 +23,8 @@ import type { ComponentType } from 'react'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
-import { useAppContext } from '@/shared/lib/stores/app-context.store'
-import { useWorkspaceTeams } from '@/features/teams/api'
-import { useWorkspaceMembers } from '@/features/workspaces/api'
 import { Button } from '@/shared/ui/button'
 import { EmptyState } from '@/shared/ui/empty-state'
-import { PaginationFooter } from '@/shared/ui/pagination-footer'
-import { describeAuditEvent, type AuditNameResolver } from '@/entities/audit/model/describe-audit'
 import { useSystemRoles, type Role } from './model/use-system-roles'
 import { ProfileTab } from './ui/profile-tab'
 import { WorkspaceSettingsTab } from './ui/workspace-settings-tab'
@@ -40,6 +33,7 @@ import { WorkflowTab } from './ui/workflow-tab'
 import { LabelsTab } from './ui/labels-tab'
 import { MembersTab } from './ui/members-tab'
 import { TeamsTab } from './ui/teams-tab'
+import { AuditLogTab } from './ui/audit-log-tab'
 
 // ── Tab config (mirrors mockup SettingsPage.tsx) ──────────────────────────────
 
@@ -111,247 +105,6 @@ const SIDEBAR: SettingsGroup[] = [
     ],
   },
 ]
-
-// ── Audit Log tab ─────────────────────────────────────────────────────────────
-
-const AUDIT_DEFAULT_PAGE_SIZE = 50
-
-/** Full, unambiguous timestamp for an audit entry (audit trails avoid abbreviations). */
-function formatAuditTime(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  })
-}
-
-function AuditLogTab() {
-  const [pageSize, setPageSize] = useState(AUDIT_DEFAULT_PAGE_SIZE)
-  const [offset, setOffset] = useState(0)
-  const [search, setSearch] = useState('')
-  const [from, setFrom] = useState('')
-  const [to, setTo] = useState('')
-
-  const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
-  const { data: members = [] } = useWorkspaceMembers(workspaceId)
-  const { data: teams = [] } = useWorkspaceTeams(workspaceId)
-  const { data: roles = [] } = useSystemRoles()
-
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ['audit-logs', offset, pageSize, from, to],
-    queryFn: async () => {
-      // Server-side date filtering (occurred_at). from = start-of-day,
-      // to = end-of-day so both bounds are inclusive of the picked calendar day.
-      const query: { limit: number; offset: number; from?: string; to?: string } = {
-        limit: pageSize,
-        offset,
-      }
-      if (from) query.from = `${from}T00:00:00`
-      if (to) query.to = `${to}T23:59:59`
-      const res = await apiClient.GET('/v1/audit-logs', { params: { query } })
-      return res.data
-    },
-    placeholderData: (prev) => prev,
-  })
-
-  const rows = data?.data ?? []
-  const hasNextPage = data?.pageInfo?.hasNextPage ?? false
-
-  // Turn each event into a plain-language sentence. The actor is resolved
-  // authoritatively server-side (actorName); the ids embedded in the payload
-  // (userId / roleId / teamId) are resolved best-effort from workspace reference
-  // data already cached for Settings, and degrade to a short id when absent.
-  const resolver = useMemo<AuditNameResolver>(() => {
-    const userNames = new Map(members.map((m) => [m.userId, m.displayName || m.email]))
-    const teamNames = new Map(teams.map((t) => [t.id, t.name]))
-    const roleNames = new Map(roles.map((r) => [r.id, r.name]))
-    return {
-      user: (id) => userNames.get(id),
-      team: (id) => teamNames.get(id),
-      role: (id) => roleNames.get(id),
-    }
-  }, [members, teams, roles])
-
-  const actorLabel = (a: (typeof rows)[number]): string => a.actorName ?? a.actorEmail ?? 'System'
-
-  // Server paginates; this box narrows the loaded page by actor or by the
-  // rendered description.
-  const q = search.trim().toLowerCase()
-  const filtered = q
-    ? rows.filter(
-        (a) =>
-          actorLabel(a).toLowerCase().includes(q) ||
-          describeAuditEvent(a, resolver).toLowerCase().includes(q),
-      )
-    : rows
-
-  return (
-    <div>
-      {/* ── Header: note + search ── */}
-      <div className="mb-3 flex items-end justify-between gap-3">
-        <p className="text-[12px]" style={{ color: BRAND.textMuted }}>
-          Administrative and settings changes for this workspace.
-        </p>
-        <div className="flex items-center gap-2">
-          {/* Server-side date range filter (occurred_at). */}
-          <input
-            type="date"
-            value={from}
-            max={to || undefined}
-            onChange={(e) => {
-              setFrom(e.target.value)
-              setOffset(0)
-            }}
-            aria-label="From date"
-            className="rounded px-2 py-1.5 text-[11px] focus:outline-none"
-            style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textPrimary }}
-          />
-          <span className="text-[11px]" style={{ color: BRAND.textMuted }}>
-            –
-          </span>
-          <input
-            type="date"
-            value={to}
-            min={from || undefined}
-            onChange={(e) => {
-              setTo(e.target.value)
-              setOffset(0)
-            }}
-            aria-label="To date"
-            className="rounded px-2 py-1.5 text-[11px] focus:outline-none"
-            style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textPrimary }}
-          />
-          {(from || to) && (
-            <button
-              onClick={() => {
-                setFrom('')
-                setTo('')
-                setOffset(0)
-              }}
-              className="rounded px-2 py-1.5 text-[11px] transition-colors hover:opacity-80"
-              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
-            >
-              Clear
-            </button>
-          )}
-          <div className="relative">
-            <Search
-              size={12}
-              className="absolute top-1/2 left-2.5 -translate-y-1/2"
-              style={{ color: BRAND.textMuted }}
-            />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search actor or description…"
-              className="w-64 rounded py-1.5 pr-3 pl-7 text-[11px] focus:outline-none"
-              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textPrimary }}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* ── Table ── */}
-      <div className="overflow-hidden rounded" style={{ border: `1px solid ${BRAND.border}` }}>
-        <div
-          className="flex h-8 items-center gap-2 px-3"
-          style={{ backgroundColor: BRAND.pageBg, borderBottom: `1px solid ${BRAND.border}` }}
-        >
-          {[
-            ['w-56', 'Time'],
-            ['w-48', 'Actor'],
-            ['flex-1', 'Detail'],
-          ].map(([c, l]) => (
-            <div
-              key={l}
-              className={`${c} text-[9px] font-semibold tracking-wider uppercase`}
-              style={{ color: BRAND.textMuted }}
-            >
-              {l}
-            </div>
-          ))}
-        </div>
-
-        {isLoading ? (
-          <div
-            className="flex items-center justify-center gap-2 py-10"
-            style={{ color: BRAND.textMuted }}
-          >
-            <Loader2 size={16} className="animate-spin" />
-            <span className="text-[12px]">Loading audit log…</span>
-          </div>
-        ) : isError ? (
-          <div className="px-3 py-6 text-center text-[11px]" style={{ color: BRAND.danger }}>
-            Failed to load audit log. Please try again.
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="px-3 py-6 text-center text-[11px]" style={{ color: BRAND.textMuted }}>
-            No audit events found.
-          </div>
-        ) : (
-          filtered.map((a) => {
-            return (
-              <div
-                key={a.id}
-                className="flex min-h-10 items-center gap-2 px-3 py-1.5"
-                style={{ borderBottom: `1px solid ${BRAND.borderInner}` }}
-              >
-                <div
-                  className="flex w-56 items-center gap-1 text-[10px]"
-                  style={{ color: BRAND.textMuted }}
-                >
-                  <Clock size={10} />
-                  {formatAuditTime(a.occurredAt)}
-                </div>
-                <div
-                  className="w-48 truncate text-[11px] font-medium"
-                  style={{ color: BRAND.textPrimary }}
-                  title={a.actorEmail ?? a.actorId ?? undefined}
-                >
-                  {actorLabel(a)}
-                </div>
-                <div
-                  className="min-w-0 flex-1 truncate text-[11px]"
-                  style={{ color: BRAND.textPrimary }}
-                  title={`${a.action} · ${a.resourceType} · ${a.resourceId}`}
-                >
-                  {describeAuditEvent(a, resolver)}
-                </div>
-              </div>
-            )
-          })
-        )}
-      </div>
-
-      {/* ── Pagination ── */}
-      {rows.length > 0 && (
-        <div
-          className="mt-3 overflow-hidden rounded-lg"
-          style={{ border: `1px solid ${BRAND.border}` }}
-        >
-          <PaginationFooter
-            pageSize={pageSize}
-            setPageSize={(n) => {
-              setPageSize(n)
-              setOffset(0)
-            }}
-            currentPage={Math.floor(offset / pageSize) + 1}
-            rangeStart={rows.length === 0 ? 0 : offset + 1}
-            rangeEnd={offset + rows.length}
-            hasPrevPage={offset > 0}
-            hasNextPage={hasNextPage}
-            onPrevPage={() => setOffset((o) => Math.max(0, o - pageSize))}
-            onNextPage={() => setOffset((o) => o + pageSize)}
-          />
-        </div>
-      )}
-    </div>
-  )
-}
 
 // ── Roles & Permissions tab ───────────────────────────────────────────────────
 
