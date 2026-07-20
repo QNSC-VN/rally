@@ -84,6 +84,7 @@ import { NativeSelect } from '@/shared/ui/native-select'
 import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { useClientPagination } from '@/shared/lib/hooks/use-client-pagination'
 import { describeAuditEvent, type AuditNameResolver } from '@/entities/audit/model/describe-audit'
+import { useSystemRoles, type Role } from './model/use-system-roles'
 
 // ── Tab config (mirrors mockup SettingsPage.tsx) ──────────────────────────────
 
@@ -450,13 +451,7 @@ function MembersTab() {
   })
 
   // Load available roles
-  const { data: roles = [] } = useQuery({
-    queryKey: ['system-roles'],
-    queryFn: async () => {
-      const res = await apiClient.GET('/v1/roles')
-      return res.data ?? []
-    },
-  })
+  const { data: roles = [] } = useSystemRoles()
 
   // Change role mutation: revoke old, assign new
   const changeRole = useMutation({
@@ -794,9 +789,24 @@ function MembersTab() {
 
 function MemberStatusBadge({ status }: { status: string }) {
   const map: Record<string, StatusStyle> = {
-    active: { label: 'Active', text: BRAND.success, bg: BRAND.successBg, border: BRAND.successBorder },
-    invited: { label: 'Invited', text: BRAND.warning, bg: BRAND.warningBg, border: BRAND.warningBorder },
-    suspended: { label: 'Suspended', text: BRAND.danger, bg: BRAND.dangerBg, border: BRAND.dangerBorder },
+    active: {
+      label: 'Active',
+      text: BRAND.success,
+      bg: BRAND.successBg,
+      border: BRAND.successBorder,
+    },
+    invited: {
+      label: 'Invited',
+      text: BRAND.warning,
+      bg: BRAND.warningBg,
+      border: BRAND.warningBorder,
+    },
+    suspended: {
+      label: 'Suspended',
+      text: BRAND.danger,
+      bg: BRAND.dangerBg,
+      border: BRAND.dangerBorder,
+    },
   }
   const style = map[status] ?? {
     label: status,
@@ -857,9 +867,7 @@ function UserDetailModal({
             {formatDateTime(member.lastLoginAt, 'Never')}
           </dd>
           <dt style={{ color: BRAND.textMuted }}>Joined</dt>
-          <dd style={{ color: BRAND.textPrimary }}>
-            {formatDate(member.joinedAt)}
-          </dd>
+          <dd style={{ color: BRAND.textPrimary }}>{formatDate(member.joinedAt)}</dd>
         </dl>
       </ModalBody>
       <ModalFooter>
@@ -2314,13 +2322,7 @@ function AuditLogTab() {
   const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
   const { data: members = [] } = useWorkspaceMembers(workspaceId)
   const { data: teams = [] } = useWorkspaceTeams(workspaceId)
-  const { data: roles = [] } = useQuery({
-    queryKey: ['system-roles'],
-    queryFn: async () => {
-      const res = await apiClient.GET('/v1/roles')
-      return (res.data ?? []) as Role[]
-    },
-  })
+  const { data: roles = [] } = useSystemRoles()
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['audit-logs', offset, pageSize, from, to],
@@ -2536,16 +2538,6 @@ function AuditLogTab() {
 
 // ── Roles & Permissions tab ───────────────────────────────────────────────────
 
-type Role = {
-  id: string
-  workspaceId: string | null
-  name: string
-  slug: string
-  description: string | null
-  isSystem: boolean
-  permissions: string[]
-}
-
 /** Turn `workspace_admin` / `workspace.manage_members` into `Workspace Admin`. */
 function humanizeSlug(value: string): string {
   return value.replace(/[._:]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
@@ -2564,17 +2556,7 @@ function RolesTab() {
   const { hasPermission } = useAuthStore()
   const canManage = hasPermission(PERMISSION.WORKSPACE_MANAGE_MEMBERS)
 
-  const {
-    data: roles = [],
-    isLoading,
-    isError,
-  } = useQuery({
-    queryKey: ['system-roles'],
-    queryFn: async () => {
-      const res = await apiClient.GET('/v1/roles')
-      return (res.data ?? []) as Role[]
-    },
-  })
+  const { data: roles = [], isLoading, isError } = useSystemRoles()
 
   // The assignable-permission catalogue is the single source of truth for the
   // editable matrix; only workspace admins may fetch or act on it.
