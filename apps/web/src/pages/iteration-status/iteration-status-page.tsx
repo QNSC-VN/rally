@@ -11,10 +11,10 @@ import { useMemo, useState, useCallback, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { type ColumnDef } from '@/shared/lib/hooks/use-column-layout'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
-import { useDataTable, type ColumnSpec } from '@/shared/ui/table'
+import { DataTableFrame, useDataTable, type ColumnSpec } from '@/shared/ui/table'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { IterationBoard } from '@/widgets/iteration-board/iteration-board'
-import { DataTableHeader, type DataTableHeaderColumn } from '@/shared/ui/data-table-header'
+import { type DataTableHeaderColumn } from '@/shared/ui/data-table-header'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { OwnerSelectCell } from '@/shared/ui/owner-cell'
 import { RowGutter } from '@/shared/ui/row-gutter'
@@ -989,105 +989,106 @@ export function IterationStatusPage() {
           )}
         </div>
       ) : (
-        <div className="flex flex-1 flex-col overflow-auto" style={{ backgroundColor: AZ.bg }}>
-          <DataTableHeader
-            columns={HEADER_META}
-            colStyles={colStyles}
-            onResize={startResize}
-            className="pr-3 pl-1"
-            leading={
-              <RowGutter
-                dragDisabled
-                checkbox={{
-                  checked: selection.allSelected,
-                  indeterminate: selection.someSelected,
-                  onChange: selection.toggleAll,
-                  ariaLabel: 'Select all',
-                }}
-              />
-            }
-            sort={{ col: sortCol, dir: sortDir, onSort: toggleSort }}
-            columnDrag={table.columnDrag}
-          />
-
-          {/* Totals row — directly under the header (parity with the Tasks tab) */}
-          {!isLoading && !isError && items.length > 0 && (
-            <TableFooterTotals colStyles={colStyles} totals={totals} />
-          )}
-
-          {/* Rows */}
-          {isLoading && <SkeletonList rows={10} cols={12} />}
-
-          {!isLoading && isError && (
-            <div
-              className="flex items-center justify-center"
-              style={{ height: 160, fontSize: 12, color: BRAND.danger }}
-            >
-              Failed to load iteration status. Please try again.
-            </div>
-          )}
-
-          {!isLoading && !isError && (
-            <DndContext
-              sensors={dndSensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
-            >
-              <SortableContext
-                items={localItems.map((it) => it.id)}
-                strategy={verticalListSortingStrategy}
+        <DataTableFrame
+          header={{
+            columns: HEADER_META,
+            colStyles,
+            onResize: startResize,
+            sort: { col: sortCol, dir: sortDir, onSort: toggleSort },
+            columnDrag: table.columnDrag,
+          }}
+          padClassName="pr-3 pl-1"
+          bodyBackground={AZ.bg}
+          leading={
+            <RowGutter
+              dragDisabled
+              checkbox={{
+                checked: selection.allSelected,
+                indeterminate: selection.someSelected,
+                onChange: selection.toggleAll,
+                ariaLabel: 'Select all',
+              }}
+            />
+          }
+          totals={
+            !isLoading && !isError && items.length > 0 ? (
+              <TableFooterTotals colStyles={colStyles} totals={totals} />
+            ) : undefined
+          }
+          loading={isLoading}
+          skeleton={{ rows: 10, cols: 12 }}
+          error={
+            isError ? (
+              <div
+                className="flex items-center justify-center"
+                style={{ height: 160, fontSize: 12, color: BRAND.danger }}
               >
-                {localItems.map((item, idx) => (
-                  <StatusRow
-                    key={item.id}
-                    item={item}
-                    rank={(currentPage - 1) * pageSize + idx + 1}
-                    memberMap={memberMap}
-                    milestoneOptions={milestoneOptions}
-                    iterationOptions={iterationOptions}
-                    selectedIterationId={selectedId!}
-                    canEdit={canEdit}
-                    colStyles={colStyles}
-                    dragEnabled={!sortCol}
-                    selected={selection.isSelected(item.id)}
-                    onToggleSelect={() => selection.toggle(item.id)}
-                    onOpen={() =>
-                      navigate({
-                        to: '/item/$itemKey',
-                        params: { itemKey: item.itemKey },
-                      })
-                    }
-                  />
-                ))}
-              </SortableContext>
-            </DndContext>
-          )}
-
-          {!isLoading && !isError && items.length === 0 && (
-            <div
-              className="flex items-center justify-center"
-              style={{ height: 160, fontSize: 12, color: AZ.textMuted }}
+                Failed to load iteration status. Please try again.
+              </div>
+            ) : undefined
+          }
+          empty={
+            items.length === 0 ? (
+              <div
+                className="flex items-center justify-center"
+                style={{ height: 160, fontSize: 12, color: AZ.textMuted }}
+              >
+                No items assigned to this iteration
+              </div>
+            ) : undefined
+          }
+          footer={
+            !isLoading && !isError && sortedItems.length > 0 ? (
+              <PaginationFooter
+                pageSize={pageSize}
+                setPageSize={setPageSize}
+                currentPage={currentPage}
+                rangeStart={(currentPage - 1) * pageSize + 1}
+                rangeEnd={(currentPage - 1) * pageSize + pagedItems.length}
+                total={sortedItems.length}
+                pageCount={pageCount}
+                hasPrevPage={currentPage > 1}
+                hasNextPage={currentPage < pageCount}
+                onPrevPage={goPrevPage}
+                onNextPage={goNextPage}
+              />
+            ) : undefined
+          }
+        >
+          <DndContext
+            sensors={dndSensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={localItems.map((it) => it.id)}
+              strategy={verticalListSortingStrategy}
             >
-              No items assigned to this iteration
-            </div>
-          )}
-        </div>
-      )}
-
-      {viewMode === 'list' && !isLoading && !isError && sortedItems.length > 0 && (
-        <PaginationFooter
-          pageSize={pageSize}
-          setPageSize={setPageSize}
-          currentPage={currentPage}
-          rangeStart={(currentPage - 1) * pageSize + 1}
-          rangeEnd={(currentPage - 1) * pageSize + pagedItems.length}
-          total={sortedItems.length}
-          pageCount={pageCount}
-          hasPrevPage={currentPage > 1}
-          hasNextPage={currentPage < pageCount}
-          onPrevPage={goPrevPage}
-          onNextPage={goNextPage}
-        />
+              {localItems.map((item, idx) => (
+                <StatusRow
+                  key={item.id}
+                  item={item}
+                  rank={(currentPage - 1) * pageSize + idx + 1}
+                  memberMap={memberMap}
+                  milestoneOptions={milestoneOptions}
+                  iterationOptions={iterationOptions}
+                  selectedIterationId={selectedId!}
+                  canEdit={canEdit}
+                  colStyles={colStyles}
+                  dragEnabled={!sortCol}
+                  selected={selection.isSelected(item.id)}
+                  onToggleSelect={() => selection.toggle(item.id)}
+                  onOpen={() =>
+                    navigate({
+                      to: '/item/$itemKey',
+                      params: { itemKey: item.itemKey },
+                    })
+                  }
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
+        </DataTableFrame>
       )}
 
       {/* ── Add Item modal ───────────────────────────────────────────────── */}
