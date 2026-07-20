@@ -18,6 +18,7 @@ import { DataTableHeader, type DataTableHeaderColumn } from '@/shared/ui/data-ta
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { OwnerSelectCell } from '@/shared/ui/owner-cell'
 import { RowGutter } from '@/shared/ui/row-gutter'
+import { TableTotalsRow } from '@/shared/ui/table-totals-row'
 import { MetricCard } from '@/shared/ui/metric-card'
 import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
@@ -1622,49 +1623,17 @@ function TableFooterTotals({
   totals: { planEst: number; taskEst: number; toDoSum: number; count: number }
 }) {
   return (
-    <div
-      className="flex items-center"
-      style={{
-        height: 28,
-        paddingLeft: 4,
-        paddingRight: 12,
-        backgroundColor: AZ.bgHeader,
-        borderTop: `2px solid ${AZ.border}`,
-        fontSize: 11,
-        color: AZ.textSecondary,
-        fontWeight: 600,
-        minWidth: 'max-content',
+    <TableTotalsRow
+      columns={HEADER_META}
+      colStyles={colStyles}
+      leading={<RowGutter dragDisabled />}
+      label={`Totals (${totals.count})`}
+      values={{
+        planEstimate: `${totals.planEst} Points`,
+        taskEstimate: `${totals.taskEst} Hours`,
+        toDo: `${totals.toDoSum} Hours`,
       }}
-    >
-      <div className="w-5 shrink-0 px-2" />
-      <div className="w-4 shrink-0 px-2" />
-      <div style={colStyles.rank} />
-      <div style={colStyles.id} />
-      <div style={colStyles.name} className="flex items-center px-2">
-        Totals ({totals.count})
-      </div>
-      <div style={colStyles.feature} />
-      <div style={colStyles.iteration} />
-      <div style={colStyles.state} />
-      <div style={colStyles.block} />
-      <div style={colStyles.blockedReason} />
-      <div style={colStyles.planEstimate} className="px-2 text-right">
-        {totals.planEst} Points
-      </div>
-      <div style={colStyles.taskEstimate} className="px-2 text-right">
-        {totals.taskEst} Hours
-      </div>
-      <div style={colStyles.toDo} className="px-2 text-right">
-        {totals.toDoSum} Hours
-      </div>
-      <div style={colStyles.tasksPct} />
-      <div style={colStyles.actual} />
-      <div style={colStyles.owner} />
-      <div style={colStyles.defects} />
-      <div style={colStyles.defectStatus} />
-      <div style={colStyles.milestones} />
-      <div style={colStyles.devOwner} />
-    </div>
+    />
   )
 }
 

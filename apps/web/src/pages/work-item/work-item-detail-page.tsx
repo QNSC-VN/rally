@@ -88,6 +88,9 @@ import { SaveIndicator } from '@/shared/ui/save-indicator'
 import { useDataTable, type ColumnSpec } from '@/shared/ui/table'
 import { DataTableHeader } from '@/shared/ui/data-table-header'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
+import { SelectionCheckbox } from '@/shared/ui/selection-checkbox'
+import { useRowSelection } from '@/shared/lib/hooks/use-row-selection'
+import { TableTotalsRow } from '@/shared/ui/table-totals-row'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { EmptyState } from '@/shared/ui/empty-state'
 
@@ -271,6 +274,9 @@ function TasksTab({
 }) {
   const { data: tasks = [], isLoading } = useTasks(workItemId)
   const { data: totals } = useTaskTotals(workItemId)
+  // Row selection (shared pattern with Backlog / Iteration Status): the header
+  // checkbox selects every task, each row toggles itself.
+  const selection = useRowSelection(tasks)
   // Tasks inherit their parent's project; team/owner names are resolved for display.
   const { data: teams = [] } = useProjectTeams(projectId)
   const { data: members = [] } = useProjectMembers(projectId)
@@ -388,41 +394,32 @@ function TasksTab({
           onResize={table.startResize}
           columnDrag={table.columnDrag}
           sort={{ col: sortCol, dir: sortDir, onSort: toggleSort }}
-          leading={<div className="w-6 shrink-0" />}
+          leading={
+            <div className="flex w-6 shrink-0 items-center justify-center">
+              <SelectionCheckbox
+                checked={selection.allSelected}
+                indeterminate={selection.someSelected}
+                onChange={selection.toggleAll}
+                ariaLabel="Select all tasks"
+              />
+            </div>
+          }
           className="px-3"
         />
 
-        {/* Totals row */}
+        {/* Totals row (shared component — single source of truth for layout) */}
         {totals && (
-          <div
-            className="flex h-8 items-center px-3 text-[12px] font-semibold"
-            style={{
-              backgroundColor: BRAND.surfaceSubtle,
-              borderBottom: `1px solid ${BRAND.borderInput}`,
-              color: BRAND.textPrimary,
-              minWidth: 'max-content',
+          <TableTotalsRow
+            columns={TASK_COLUMNS}
+            colStyles={colStyles}
+            leading={<div className="w-6 shrink-0" />}
+            label="Totals"
+            values={{
+              todo: `${totals.todoHours ?? 0}h`,
+              actuals: `${totals.actualHours ?? 0}h`,
+              estimate: `${totals.estimateHours ?? 0}h`,
             }}
-          >
-            <div className="w-6 shrink-0" />
-            <div className="shrink-0" style={colStyles.rank} />
-            <div className="shrink-0" style={colStyles.id} />
-            <div className="min-w-[150px] flex-1 px-2" style={colStyles.name}>
-              Totals
-            </div>
-            <div className="shrink-0" style={colStyles.state} />
-            <div className="shrink-0" style={colStyles.owner} />
-            <div className="shrink-0" style={colStyles.project} />
-            <div className="shrink-0" style={colStyles.teams} />
-            <div className="shrink-0 px-2 text-right font-mono" style={colStyles.todo}>
-              {totals.todoHours ?? 0}h
-            </div>
-            <div className="shrink-0 px-2 text-right font-mono" style={colStyles.actuals}>
-              {totals.actualHours ?? 0}h
-            </div>
-            <div className="shrink-0 px-2 text-right font-mono" style={colStyles.estimate}>
-              {totals.estimateHours ?? 0}h
-            </div>
-          </div>
+          />
         )}
 
         {/* Body */}
@@ -449,6 +446,8 @@ function TasksTab({
               key={`${task.id}:${task.updatedAt}`}
               task={task}
               canEdit={!readOnly}
+              selected={selection.isSelected(task.id)}
+              onToggleSelect={() => selection.toggle(task.id)}
               colStyles={colStyles}
               projectLabel={projectLabel}
               teamName={teamName}
@@ -478,6 +477,8 @@ function TaskRow({
   teamName,
   members,
   onOpen,
+  selected,
+  onToggleSelect,
 }: {
   task: WorkItem
   canEdit: boolean
@@ -486,6 +487,8 @@ function TaskRow({
   teamName: (id?: string | null) => string
   members: { userId: string; displayName?: string | null; email?: string | null }[]
   onOpen: (task: WorkItem) => void
+  selected: boolean
+  onToggleSelect: () => void
 }) {
   const update = useUpdateWorkItem(task.id)
 
@@ -516,7 +519,11 @@ function TaskRow({
       }}
     >
       <div className="flex w-6 shrink-0 items-center justify-center">
-        <input type="checkbox" aria-label={`Select task ${task.itemKey}`} className="h-4 w-4 rounded" />
+        <SelectionCheckbox
+          checked={selected}
+          onChange={onToggleSelect}
+          ariaLabel={`Select task ${task.itemKey}`}
+        />
       </div>
       {/* Rank */}
       <div

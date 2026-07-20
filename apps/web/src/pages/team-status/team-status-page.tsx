@@ -43,6 +43,7 @@ import { StateStepper } from '@/entities/work-item/ui/state-stepper'
 import { type StateStep } from '@/entities/work-item/ui/state-steps'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { OwnerSelectCell } from '@/shared/ui/owner-cell'
+import { TableTotalsRow } from '@/shared/ui/table-totals-row'
 
 const TEAM_TASK_STATES: TeamTaskState[] = ['Defined', 'In-Progress', 'Completed']
 
@@ -373,38 +374,20 @@ export function TeamStatusPage() {
           columnDrag={table.columnDrag}
         />
 
-        {/* Totals row (P3-TS-FR-013) */}
+        {/* Totals row (P3-TS-FR-013) — shared component keeps every grid's footer identical */}
         {totals && (
-          <div
-            className="flex h-7 items-center px-3 text-[11px] font-semibold"
-            style={{
-              backgroundColor: BRAND.surfaceSubtle,
-              borderBottom: `1px solid ${BRAND.borderSubtle}`,
-              color: BRAND.textSecondary,
-              minWidth: 'max-content',
+          <TableTotalsRow
+            columns={TEAM_STATUS_COLUMNS}
+            colStyles={colStyles}
+            leading={<div className="w-6 shrink-0" />}
+            label="Totals"
+            values={{
+              capacity: `${totals.capacityHours} Hours`,
+              estimate: `${totals.estimateHours} Hours`,
+              todo: `${totals.todoHours} Hours`,
+              actuals: `${totals.actualHours} Hours`,
             }}
-          >
-            <div className="w-6 shrink-0" />
-            <div className="shrink-0" style={colStyles.rank} />
-            <div className="shrink-0" style={colStyles.id} />
-            <div className="min-w-[180px] flex-1" style={colStyles.name} />
-            <div className="shrink-0" style={colStyles.workProduct} />
-            <div className="shrink-0" style={colStyles.release} />
-            <div className="shrink-0" style={colStyles.state} />
-            <div className="shrink-0 text-right font-mono tabular-nums" style={colStyles.capacity}>
-              {totals.capacityHours} Hours
-            </div>
-            <div className="shrink-0 text-right font-mono tabular-nums" style={colStyles.estimate}>
-              {totals.estimateHours} Hours
-            </div>
-            <div className="shrink-0 text-right font-mono tabular-nums" style={colStyles.todo}>
-              {totals.todoHours} Hours
-            </div>
-            <div className="shrink-0 text-right font-mono tabular-nums" style={colStyles.actuals}>
-              {totals.actualHours} Hours
-            </div>
-            <div className="shrink-0" style={colStyles.owner} />
-          </div>
+          />
         )}
 
         {/* Loading */}
