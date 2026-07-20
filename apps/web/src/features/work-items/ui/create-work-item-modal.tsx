@@ -18,6 +18,7 @@ import { Button } from '@/shared/ui/button'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { NativeSelect } from '@/shared/ui/native-select'
+import { OwnerSelectField, TeamSelectField } from '@/shared/ui/entity-select-field'
 
 type CreatableType = 'story' | 'defect'
 
@@ -211,30 +212,13 @@ export function CreateWorkItemModal({
 
         {/* Team + Owner row */}
         <div className="grid grid-cols-2 gap-4">
-          <FormField label="Team" htmlFor="wi-team">
-            <NativeSelect id="wi-team" value={validTeamId} onChange={(e) => setTeamId(e.target.value)}>
-              <option value="">No team</option>
-              {teams.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </NativeSelect>
-          </FormField>
-          <FormField label="Owner" htmlFor="wi-owner">
-            <NativeSelect
-              id="wi-owner"
-              value={assigneeId}
-              onChange={(e) => setAssigneeId(e.target.value)}
-            >
-              <option value="">Unassigned</option>
-              {members.map((m) => (
-                <option key={m.userId} value={m.userId}>
-                  {m.displayName ?? m.email ?? m.userId}
-                </option>
-              ))}
-            </NativeSelect>
-          </FormField>
+          <TeamSelectField id="wi-team" value={validTeamId} onChange={setTeamId} teams={teams} />
+          <OwnerSelectField
+            id="wi-owner"
+            value={assigneeId}
+            onChange={setAssigneeId}
+            members={members}
+          />
         </div>
 
         {/* Plan estimate */}

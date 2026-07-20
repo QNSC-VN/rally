@@ -2286,6 +2286,8 @@ export interface components {
             /** @enum {string} */
             scheduleState?: "idea" | "defined" | "in_progress" | "completed" | "accepted" | "release";
             /** @enum {string} */
+            flowState?: "idea" | "defined" | "in_progress" | "completed" | "accepted" | "release";
+            /** @enum {string} */
             priority?: "none" | "low" | "normal" | "high" | "urgent";
             assigneeId?: string | null;
             reporterId?: string | null;

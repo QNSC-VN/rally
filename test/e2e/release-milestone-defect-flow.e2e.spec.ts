@@ -100,8 +100,10 @@ describe('BA flows: releases + milestones + defect lifecycle (real AppModule + s
       const release = await releases.createRelease(actor, project.id, 'Estimate Release');
       const story = await workItems.createWorkItem(actor, project.id, 'story', 'Estimated story');
       await workItems.updateWorkItem(actor, story.id, { releaseId: release.id });
-      await workItems.createTask(actor, story.id, 'Task 1', { estimateHours: '3' });
-      await workItems.createTask(actor, story.id, 'Task 2', { estimateHours: '5' });
+      // Task Estimate is read-only derived as To Do + Actuals; drive the roll-up
+      // through the manual To Do inputs (3 + 5 = 8).
+      await workItems.createTask(actor, story.id, 'Task 1', { todoHours: '3' });
+      await workItems.createTask(actor, story.id, 'Task 2', { todoHours: '5' });
 
       const detail = await releases.getReleaseDetail(actor, release.id);
       expect(detail.taskEstimate).toBe(8);

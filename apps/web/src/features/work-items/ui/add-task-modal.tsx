@@ -12,7 +12,7 @@ import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
-import { NativeSelect } from '@/shared/ui/native-select'
+import { OwnerSelectField } from '@/shared/ui/entity-select-field'
 import { BRAND } from '@/shared/config/brand'
 
 interface Props {
@@ -117,20 +117,12 @@ export function AddTaskModal({ workItemId, onClose }: Props) {
           </FormField>
         </div>
 
-        <FormField label="Owner" htmlFor="task-owner">
-          <NativeSelect
-            id="task-owner"
-            value={assigneeId}
-            onChange={(e) => setAssigneeId(e.target.value)}
-          >
-            <option value="">Unassigned</option>
-            {members.map((m) => (
-              <option key={m.userId} value={m.userId}>
-                {m.displayName ?? m.email ?? m.userId}
-              </option>
-            ))}
-          </NativeSelect>
-        </FormField>
+        <OwnerSelectField
+          id="task-owner"
+          value={assigneeId}
+          onChange={setAssigneeId}
+          members={members}
+        />
       </ModalBody>
 
       <ModalFooter>

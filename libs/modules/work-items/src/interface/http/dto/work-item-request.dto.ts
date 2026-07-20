@@ -127,6 +127,7 @@ export const UpdateWorkItemSchema = z.object({
   description: z.string().max(50000).nullable().optional(),
   statusId: z.string().uuid().optional(),
   scheduleState: z.enum(SCHEDULE_STATES).optional(),
+  flowState: z.enum(SCHEDULE_STATES).optional(),
   priority: z.enum(WORK_ITEM_PRIORITIES).optional(),
   assigneeId: z.string().uuid().nullable().optional(),
   reporterId: z.string().uuid().nullable().optional(),

@@ -75,6 +75,7 @@ import { BRAND } from '@/shared/config/brand'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { FormField } from '@/shared/ui/form-field'
 import { NativeSelect, InlineCellSelect } from '@/shared/ui/native-select'
+import { OwnerSelectField, TeamSelectField } from '@/shared/ui/entity-select-field'
 import { SelectionModal } from '@/shared/ui/selection-modal'
 import { AddTaskModal } from '@/features/work-items/ui/add-task-modal'
 import { RichTextEditor } from '@/shared/ui/rich-text-editor'
@@ -477,10 +478,13 @@ function TaskRow({
           value={task.title}
           canEdit={canEdit}
           onCommit={commitTitle}
-          trigger="dblclick"
-          className="block truncate hover:underline"
-          style={{ color: BRAND.textPrimary }}
-          inputClassName="w-full rounded border border-input bg-white px-2 py-0.5 text-[12px] focus:outline-none"
+          className="block truncate text-[12px] font-medium"
+          style={{ color: BRAND.textPrimary, cursor: 'text' }}
+          inputClassName="w-full rounded px-1 py-0.5 text-[12px] focus:outline-none"
+          inputStyle={{
+            border: `1px solid ${BRAND.accentBorderStrong}`,
+            color: BRAND.textPrimary,
+          }}
           title={task.title}
           ariaLabel={`Task ${task.itemKey} name`}
         />
@@ -489,11 +493,11 @@ function TaskRow({
       <div className="shrink-0 px-2" style={colStyles.state}>
         <InlineCellSelect
           value={task.scheduleState}
-          displayValue={SCHEDULE_STATE_LABEL[task.scheduleState] ?? task.scheduleState}
+          displayValue={SCHEDULE_STATE_LABEL[task.scheduleState as ScheduleState] ?? task.scheduleState}
           disabled={!canEdit}
           aria-label={`Task ${task.itemKey} state`}
           onChange={(e) =>
-            update.mutateAsync({ scheduleState: e.target.value as WorkItem['scheduleState'] })
+            update.mutateAsync({ scheduleState: e.target.value as ScheduleState })
           }
         >
           {TASK_STATE_VALUES.map((s) => (
@@ -893,36 +897,20 @@ function DetailSidebar({
         )}
 
         {/* Owner */}
-        <FormField label="Owner">
-          <NativeSelect
-            value={item.assigneeId ?? ''}
-            onChange={(e) => onUpdate({ assigneeId: e.target.value || null })}
-            disabled={disabled}
-          >
-            <option value="">Unassigned</option>
-            {members.map((m) => (
-              <option key={m.userId} value={m.userId}>
-                {m.displayName ?? m.email ?? m.userId}
-              </option>
-            ))}
-          </NativeSelect>
-        </FormField>
+        <OwnerSelectField
+          value={item.assigneeId}
+          onChange={(v) => onUpdate({ assigneeId: v || null })}
+          members={members}
+          disabled={disabled}
+        />
 
         {/* Team */}
-        <FormField label="Team">
-          <NativeSelect
-            value={item.teamId ?? ''}
-            onChange={(e) => onUpdate({ teamId: e.target.value || null })}
-            disabled={disabled}
-          >
-            <option value="">No team</option>
-            {teams.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </NativeSelect>
-        </FormField>
+        <TeamSelectField
+          value={item.teamId}
+          onChange={(v) => onUpdate({ teamId: v || null })}
+          teams={teams}
+          disabled={disabled}
+        />
 
         {/* Priority — Defect only */}
         {item.type === 'defect' && (
