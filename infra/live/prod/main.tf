@@ -70,18 +70,19 @@ locals {
   # (read via _shared remote state), so a CF range change is one edit there.
   cloudflare_ipv4 = data.terraform_remote_state.shared.outputs.cloudflare_ipv4
 
-  # Cache endpoint: the shared runtime-prod Valkey node (via remote state),
-  # key-prefixed per product. REDIS_URL is an env var (not a secret) — the
-  # endpoint isn't sensitive.
-  cache_endpoint = data.terraform_remote_state.runtime.outputs.cache_endpoint
-  cache_port     = data.terraform_remote_state.runtime.outputs.cache_port
-  redis_url      = "redis://${local.cache_endpoint}:${local.cache_port}"
+  # Cache endpoint: this product's own dedicated Valkey node (module.cache below).
+  # The cache module enables in-transit encryption, so the client connects over
+  # TLS (rediss://). REDIS_URL is an env var (not a secret) — the endpoint isn't
+  # sensitive.
+  cache_endpoint = module.cache.endpoint
+  cache_port     = module.cache.port
+  redis_url      = "rediss://${local.cache_endpoint}:${local.cache_port}"
 }
 
-# ── Shared runtime layer (VPC + NAT + ALB + shared cache + WAF) ───────────────
-# The prod VPC/NAT/ALB/WAF and the shared cache node live once per env in
-# qnsc-infra/live/runtime-prod and are consumed here via remote state. RDS +
-# Fargate stay per-product below.
+# ── Shared runtime layer (VPC + NAT + ALB + WAF) ──────────────────────────────
+# The prod VPC/NAT/ALB/WAF live once per env in qnsc-infra/live/runtime-prod and
+# are consumed here via remote state. RDS + cache + Fargate stay per-product
+# below.
 data "terraform_remote_state" "runtime" {
   backend = "s3"
   config = {
@@ -146,9 +147,24 @@ module "rds" {
   tags = { Environment = local.env }
 }
 
-# ── Cache ───────────────────────────────────────────────────────────────────
-# No per-product cache node — this product uses the shared runtime-prod Valkey
-# node (key-prefixed: rally:*) via remote state — see local.cache_endpoint.
+# ── Cache (dedicated per-product Valkey node) ────────────────────────────────
+# This product owns its own single-node ElastiCache Valkey so another product's
+# load or a node restart can't evict rally's BFF sessions. In-transit + at-rest
+# encryption on (SOC 2); reuses the shared runtime-prod cache SG + data subnets.
+# Endpoint feeds local.redis_url (rediss://) above.
+module "cache" {
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/cache?ref=cache-v1.0.0"
+
+  name              = "${local.name}-cache"
+  subnet_ids        = data.terraform_remote_state.runtime.outputs.data_subnet_ids
+  security_group_id = data.terraform_remote_state.runtime.outputs.sg_cache_id
+  kms_key_arn       = local.kms_key_arn
+
+  mode      = "node" # single cache.t4g.micro (~$12/mo) — cheaper than serverless ~$90 floor
+  node_type = "cache.t4g.micro"
+
+  tags = { Environment = local.env }
+}
 
 # ── Messaging ─────────────────────────────────────────────────────────────────
 module "messaging" {
