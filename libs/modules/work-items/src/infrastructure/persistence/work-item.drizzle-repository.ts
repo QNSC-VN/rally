@@ -156,6 +156,13 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
           : t.state === 'completed'
             ? 'completed'
             : 'defined',
+      // Tasks have a single state; Flow State mirrors it for shape compatibility.
+      flowState:
+        t.state === 'in_progress'
+          ? 'in_progress'
+          : t.state === 'completed'
+            ? 'completed'
+            : 'defined',
       priority: 'normal',
       assigneeId: t.assigneeId,
       reporterId: null,
@@ -397,6 +404,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         description: tasks.description,
         statusId: sql<string>`''`.as('status_id'),
         scheduleState: tasks.state,
+        flowState: tasks.state,
         priority: sql<string>`'normal'`.as('priority'),
         assigneeId: tasks.assigneeId,
         reporterId: sql<string | null>`null`.as('reporter_id'),
@@ -522,7 +530,10 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     const r = rows[0];
     if (!r || Number(r.total) === 0 || r.allAccepted !== true) return false;
 
-    // Idempotent transition — only a committed iteration flips to accepted.
+    // Idempotent transition — a planning or committed iteration flips to
+    // accepted (BR-IT-02: auto-accept when every assigned US/DE is accepted,
+    // regardless of whether the iteration was manually committed first). An
+    // already-accepted iteration is left untouched, so this never auto-reverses.
     const updated = await exec
       .update(iterations)
       .set({ state: 'accepted', completedAt: new Date(), updatedAt: new Date() })
@@ -530,7 +541,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         and(
           eq(iterations.id, iterationId),
           eq(iterations.workspaceId, workspaceId),
-          eq(iterations.state, 'committed'),
+          inArray(iterations.state, ['planning', 'committed']),
         ),
       )
       .returning({ id: iterations.id });
@@ -606,6 +617,13 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
             : t.state === 'completed'
               ? 'completed'
               : 'defined',
+        // Tasks have a single state; Flow State mirrors it for shape compatibility.
+        flowState:
+          t.state === 'in_progress'
+            ? 'in_progress'
+            : t.state === 'completed'
+              ? 'completed'
+              : 'defined',
         priority: 'normal',
         assigneeId: t.assigneeId,
         reporterId: null,
@@ -652,6 +670,8 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         description: input.description,
         statusId: input.statusId,
         scheduleState: input.scheduleState ?? 'defined',
+        // BR-WI-01 — Flow State mirrors Schedule State on create.
+        flowState: input.flowState ?? input.scheduleState ?? 'defined',
         priority: input.priority,
         assigneeId: input.assigneeId,
         reporterId: input.reporterId,
@@ -705,8 +725,11 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       // NULL, so only a concrete new parent is written; the service rejects null.
       if (input.parentId !== undefined && input.parentId !== null)
         setFields.parentId = input.parentId;
-      if (input.scheduleState !== undefined)
-        setFields.state = SCHEDULE_STATE_TO_TASK_STATE[input.scheduleState];
+      // BR-WI-01 mirror: a task's single state is driven by whichever of
+      // scheduleState / flowState the caller sent (they always agree).
+      const taskMirroredState = input.scheduleState ?? input.flowState;
+      if (taskMirroredState !== undefined)
+        setFields.state = SCHEDULE_STATE_TO_TASK_STATE[taskMirroredState];
       if (input.assigneeId !== undefined) setFields.assigneeId = input.assigneeId;
       if (input.teamId !== undefined) setFields.teamId = input.teamId;
       if (input.iterationId !== undefined) setFields.iterationId = input.iterationId;
@@ -725,13 +748,19 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       return (await this.findById(id, workspaceId, exec))!;
     }
 
+    // BR-WI-01 mirror: any change to either Schedule or Flow State writes BOTH
+    // columns, so they can never drift. The service rejects a conflicting pair.
+    const mirroredState = input.scheduleState ?? input.flowState;
     const rows = await exec
       .update(workItems)
       .set({
         ...(input.title !== undefined && { title: input.title }),
         ...(input.description !== undefined && { description: input.description }),
         ...(input.statusId !== undefined && { statusId: input.statusId }),
-        ...(input.scheduleState !== undefined && { scheduleState: input.scheduleState }),
+        ...(mirroredState !== undefined && {
+          scheduleState: mirroredState,
+          flowState: mirroredState,
+        }),
         ...(input.priority !== undefined && { priority: input.priority }),
         ...(input.assigneeId !== undefined && { assigneeId: input.assigneeId }),
         ...(input.reporterId !== undefined && { reporterId: input.reporterId }),

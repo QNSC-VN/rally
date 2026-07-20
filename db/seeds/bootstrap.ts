@@ -39,6 +39,8 @@ import { type Db, WORKSPACE_ID } from './constants';
  *   BOOTSTRAP_WORKSPACE_SLUG  — url slug     (default "main")
  *   ENTRA_TENANT_ID           — Entra directory to federate (skips SSO if unset)
  *   SSO_ALLOWED_EMAIL_DOMAINS — comma-separated JIT allow-list (default "qnsc.vn")
+ *   SSO_JIT_ENABLED           — "false" = invite-only (only pre-provisioned users
+ *                               + platform admins may sign in); default "true"
  * Idempotent: workspace + connection use onConflictDoUpdate so config edits
  * reconcile on every run.
  */
@@ -158,6 +160,14 @@ export async function seedTenantBootstrapInto(database: Db): Promise<void> {
     .map((d) => d.trim().toLowerCase())
     .filter(Boolean);
 
+  // Invite-only toggle. Default true = open JIT: any allowed-domain user self-
+  // provisions on first SSO login. Set SSO_JIT_ENABLED=false to require pre-
+  // provisioning — only seeded/invited users (matched by email) and
+  // PLATFORM_ADMIN_EMAILS admins may sign in; everyone else is rejected until an
+  // admin invites them. The invited-user allow path needs @qnsc-vn/identity
+  // >= 5.5.0 (older versions treat jitEnabled=false as block-everyone).
+  const jitEnabled = (process.env['SSO_JIT_ENABLED'] ?? 'true').toLowerCase() !== 'false';
+
   await database
     .insert(ssoConnections)
     .values({
@@ -166,7 +176,7 @@ export async function seedTenantBootstrapInto(database: Db): Promise<void> {
       externalTenantId: entraTid,
       defaultRoleSlug: 'project_member',
       allowedEmailDomains: ssoAllowedDomains,
-      jitEnabled: true,
+      jitEnabled,
       status: 'active',
     })
     // Reconcile config on every run so allow-list / default-role / JIT changes
@@ -177,7 +187,7 @@ export async function seedTenantBootstrapInto(database: Db): Promise<void> {
         workspaceId: WORKSPACE_ID,
         defaultRoleSlug: 'project_member',
         allowedEmailDomains: ssoAllowedDomains,
-        jitEnabled: true,
+        jitEnabled,
         status: 'active',
         updatedAt: new Date(),
       },
@@ -186,7 +196,8 @@ export async function seedTenantBootstrapInto(database: Db): Promise<void> {
   console.log(
     `\u2705  Tenant bootstrap: workspace "${workspaceName}" + ${PRESET_WORKSPACE_ROLES.length} preset roles ` +
       `+ ${EDITABLE_TIER_SLUGS.length} editable tier roles + Entra SSO connection ` +
-      `reconciled (tid ${entraTid}, domains: ${ssoAllowedDomains.join(', ') || 'any'})`,
+      `reconciled (tid ${entraTid}, domains: ${ssoAllowedDomains.join(', ') || 'any'}, ` +
+      `jit: ${jitEnabled ? 'open' : 'invite-only'})`,
   );
 }
 

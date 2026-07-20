@@ -155,7 +155,7 @@ export function useMilestoneProjects(milestoneId: string | undefined) {
         params: { path: { id: milestoneId } },
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
-      return ((data as { data?: { id: string; name: string }[] } | undefined)?.data ?? [])
+      return ((data as string[] | undefined) ?? [])
     },
     enabled: !!milestoneId,
     staleTime: 30_000,
@@ -189,7 +189,7 @@ export function useMilestoneTeams(milestoneId: string | undefined) {
         params: { path: { id: milestoneId } },
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
-      return ((data as { data?: { id: string; name: string }[] } | undefined)?.data ?? [])
+      return ((data as string[] | undefined) ?? [])
     },
     enabled: !!milestoneId,
     staleTime: 30_000,
@@ -223,7 +223,7 @@ export function useMilestoneReleases(milestoneId: string | undefined) {
         params: { path: { id: milestoneId } },
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
-      return ((data as { data?: { id: string; name: string }[] } | undefined)?.data ?? [])
+      return ((data as string[] | undefined) ?? [])
     },
     enabled: !!milestoneId,
     staleTime: 30_000,

@@ -2,7 +2,8 @@
  * Releases API hooks — TanStack Query wrappers.
  * P3.2: Updated for Planning/Active/Accepted states and new fields.
  */
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMemo } from 'react'
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
 
@@ -64,20 +65,53 @@ export const releaseKeys = {
 
 // ── Queries ──────────────────────────────────────────────────────────────────
 
+/** Shared fetcher so single- and multi-project hooks stay in lockstep. */
+async function fetchReleases(projectId: string): Promise<Release[]> {
+  const { data, error, response } = await apiClient.GET('/v1/releases', {
+    params: { query: { projectId } },
+  })
+  if (error) throw new Error(apiErrorMessage(error, response.status))
+  return ((data as { data?: Release[] } | undefined)?.data ?? []) as Release[]
+}
+
 export function useReleases(projectId: string | undefined) {
   return useQuery({
     queryKey: releaseKeys.list(projectId ?? ''),
-    queryFn: async () => {
-      if (!projectId) return []
-      const { data, error, response } = await apiClient.GET('/v1/releases', {
-        params: { query: { projectId } },
-      })
-      if (error) throw new Error(apiErrorMessage(error, response.status))
-      return ((data as { data?: Release[] } | undefined)?.data ?? []) as Release[]
-    },
+    queryFn: () => fetchReleases(projectId as string),
     enabled: !!projectId,
     staleTime: 60_000,
   })
+}
+
+/**
+ * Union of releases across several projects (deduped by id). Used where an
+ * entity spans multiple projects — e.g. a milestone linked to more than one
+ * project needs every linked project's releases as selectable options.
+ * Reuses `releaseKeys.list` so results share cache with `useReleases`.
+ */
+export function useReleasesForProjects(projectIds: readonly string[]) {
+  const ids = useMemo(
+    () => [...new Set(projectIds.filter(Boolean))],
+    [projectIds],
+  )
+  const results = useQueries({
+    queries: ids.map((projectId) => ({
+      queryKey: releaseKeys.list(projectId),
+      queryFn: () => fetchReleases(projectId),
+      staleTime: 60_000,
+    })),
+  })
+  const isLoading = results.some((r) => r.isLoading)
+  // Stable signature of the fetched pages so the memo only recomputes when the
+  // underlying release data actually changes, not on every render.
+  const signature = results.map((r) => r.dataUpdatedAt).join(',')
+  const data = useMemo(() => {
+    const byId = new Map<string, Release>()
+    for (const r of results) for (const rel of r.data ?? []) byId.set(rel.id, rel)
+    return [...byId.values()]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signature])
+  return { data, isLoading }
 }
 
 export function useRelease(id: string | undefined) {

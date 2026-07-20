@@ -22,6 +22,8 @@ export interface WorkItem {
   description: string | null;
   statusId: string;
   scheduleState: WorkItemScheduleState;
+  // BR-WI-01 — always mirrors scheduleState (enforced in the repository).
+  flowState: WorkItemScheduleState;
   priority: WorkItemPriority;
   assigneeId: string | null;
   reporterId: string | null;
@@ -108,6 +110,7 @@ export interface CreateWorkItemInput {
   description?: string;
   statusId: string;
   scheduleState?: WorkItemScheduleState;
+  flowState?: WorkItemScheduleState;
   priority: WorkItemPriority;
   assigneeId?: string;
   reporterId?: string;
@@ -140,6 +143,7 @@ export interface UpdateWorkItemInput {
   description?: string | null;
   statusId?: string;
   scheduleState?: WorkItemScheduleState;
+  flowState?: WorkItemScheduleState;
   priority?: WorkItemPriority;
   assigneeId?: string | null;
   reporterId?: string | null;

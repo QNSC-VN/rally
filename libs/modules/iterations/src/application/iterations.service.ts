@@ -3,7 +3,6 @@ import { uuidv7 } from 'uuidv7';
 import { and, eq, isNull, inArray, sql } from 'drizzle-orm';
 import {
   NotFoundException,
-  ConflictException,
   PreconditionFailedException,
   InjectDrizzle,
 } from '@platform';
@@ -64,7 +63,7 @@ export class IterationsService {
     await this.projectsService.getProject(actor.workspaceId, projectId);
 
     if (opts.teamId) {
-      await this.assertTeamLinked(actor.workspaceId, projectId, opts.teamId);
+      await this.projectsService.assertTeamLinkedToProject(actor.workspaceId, projectId, opts.teamId);
     }
     this.assertDateRange(opts.startDate, opts.endDate);
 
@@ -147,7 +146,11 @@ export class IterationsService {
 
     // Team must remain linked to the iteration's project.
     if (input.teamId) {
-      await this.assertTeamLinked(actor.workspaceId, current.projectId, input.teamId);
+      await this.projectsService.assertTeamLinkedToProject(
+        actor.workspaceId,
+        current.projectId,
+        input.teamId,
+      );
     }
 
     // Validate the resulting date range (fall back to current values).
@@ -215,14 +218,6 @@ export class IterationsService {
       throw new PreconditionFailedException(
         'ITERATION_NOT_PLANNING',
         'Iteration is not in the Planning state',
-      );
-    }
-
-    const committed = await this.iterationRepo.findCommitted(iteration.projectId);
-    if (committed) {
-      throw new ConflictException(
-        'ITERATION_ALREADY_COMMITTED',
-        'Another iteration is already committed for this project',
       );
     }
 
@@ -354,21 +349,6 @@ export class IterationsService {
       throw new PreconditionFailedException(
         'ITERATION_INVALID_DATE_RANGE',
         'Start date must be before or equal to end date',
-      );
-    }
-  }
-
-  private async assertTeamLinked(
-    workspaceId: string,
-    projectId: string,
-    teamId: string,
-  ): Promise<void> {
-    const links = await this.projectsService.listProjectTeams(workspaceId, projectId);
-    const linked = links.some((l) => l.teamId === teamId && l.status === 'active');
-    if (!linked) {
-      throw new PreconditionFailedException(
-        'PROJECT_TEAM_LINK_NOT_FOUND',
-        'Team is not linked to this project',
       );
     }
   }

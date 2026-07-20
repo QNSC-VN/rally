@@ -396,6 +396,26 @@ export class ProjectsService {
     input: Omit<CreateWorkflowTransitionInput, 'id' | 'workspaceId' | 'projectId'>,
   ): Promise<WorkflowTransition> {
     await this.getProject(workspaceId, projectId);
+    // Both endpoints must be statuses of THIS project (mirrors deleteStatus's
+    // project-scope check) so a transition can never reference a status from
+    // another project/workspace. `fromStatusId` is nullable — null means "from
+    // any status" (a global transition), so it is only validated when provided.
+    const [from, to] = await Promise.all([
+      input.fromStatusId ? this.statusRepo.findById(input.fromStatusId) : Promise.resolve(null),
+      this.statusRepo.findById(input.toStatusId),
+    ]);
+    if (input.fromStatusId && (!from || from.projectId !== projectId)) {
+      throw new NotFoundException(
+        'WORKFLOW_STATUS_NOT_FOUND',
+        'Transition references a status that does not belong to this project',
+      );
+    }
+    if (!to || to.projectId !== projectId) {
+      throw new NotFoundException(
+        'WORKFLOW_STATUS_NOT_FOUND',
+        'Transition references a status that does not belong to this project',
+      );
+    }
     return this.statusRepo.createTransition({
       id: uuidv7(),
       workspaceId,
@@ -467,8 +487,41 @@ export class ProjectsService {
     return this.projectTeamRepo.listByProject(projectId);
   }
 
+  /**
+   * Single source of truth for the "team must be linked to this project" rule
+   * (SRS P1-MANAGE-ORG). Other modules (work items, iterations) delegate here
+   * instead of re-implementing the check, so the rule — and any future
+   * extension of it (e.g. status filters, effective-dating) — lives in exactly
+   * one place. Throws PROJECT_TEAM_LINK_NOT_FOUND when the team is not actively
+   * linked to the project.
+   */
+  async assertTeamLinkedToProject(
+    workspaceId: string,
+    projectId: string,
+    teamId: string,
+  ): Promise<void> {
+    const links = await this.listProjectTeams(workspaceId, projectId);
+    const linked = links.some((l) => l.teamId === teamId && l.status === 'active');
+    if (!linked) {
+      throw new PreconditionFailedException(
+        'PROJECT_TEAM_LINK_NOT_FOUND',
+        'Team is not linked to this project',
+      );
+    }
+  }
+
   async linkTeam(workspaceId: string, projectId: string, teamId: string): Promise<ProjectTeamLink> {
     await this.getProject(workspaceId, projectId);
+
+    // The team must belong to the same workspace (mirrors the create-project
+    // team validation) — prevents linking a team from another workspace/tenant.
+    const workspaceTeams = await this.teamService.listTeams(workspaceId);
+    if (!workspaceTeams.some((t) => t.id === teamId)) {
+      throw new PreconditionFailedException(
+        'PROJECT_TEAM_NOT_FOUND',
+        'Team does not belong to this workspace',
+      );
+    }
 
     const existing = await this.projectTeamRepo.findLink(projectId, teamId);
     if (existing) {
@@ -512,6 +565,11 @@ export class ProjectsService {
     roleId?: string,
   ): Promise<ProjectMember> {
     await this.getProject(workspaceId, projectId);
+
+    // A project member must first be an active member of the owning workspace —
+    // same rule enforced for a project's lead (PRJ-FR-006) and a work item's
+    // assignee (P1-15). Prevents adding a user from another workspace/tenant.
+    await this.assertWorkspaceMember(workspaceId, userId);
 
     const existing = await this.projectMemberRepo.findMember(projectId, userId);
     if (existing) {

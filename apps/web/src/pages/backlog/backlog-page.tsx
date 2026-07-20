@@ -51,7 +51,7 @@ import {
 import { useReleases } from '@/features/releases/api'
 import { useProjectMembers } from '@/features/teams/api'
 import { useIterationOptions } from '@/features/iterations/api'
-import { TypeBadge, PriorityBadge } from '@/entities/work-item/ui/badges'
+import { TypeBadge, PriorityBadge, ScheduleStateBadge } from '@/entities/work-item/ui/badges'
 import { StateStepper } from '@/entities/work-item/ui/state-stepper'
 import { SCHEDULE_STATE_STEPS } from '@/entities/work-item/ui/state-steps'
 import {
@@ -65,9 +65,9 @@ import {
 import { BRAND } from '@/shared/config/brand'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { CreateWorkItemModal } from '@/features/work-items/ui/create-work-item-modal'
-import { useColumnLayout, type ColumnDef } from '@/shared/lib/hooks/use-column-layout'
-import { useColumnDrag } from '@/shared/lib/hooks/use-column-drag'
+import { type ColumnDef } from '@/shared/lib/hooks/use-column-layout'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
+import { useDataTable } from '@/shared/ui/table'
 import {
   DataTableHeader,
   type DataTableColumnDrag,
@@ -82,6 +82,7 @@ type ColumnKey =
   | 'id'
   | 'name'
   | 'scheduleState'
+  | 'flowState'
   | 'priority'
   | 'estimate'
   | 'owner'
@@ -93,6 +94,7 @@ const COLUMN_MINS: Record<ColumnKey, number> = {
   id: 64,
   name: 180,
   scheduleState: 120,
+  flowState: 120,
   priority: 80,
   estimate: 44,
   owner: 90,
@@ -105,6 +107,7 @@ const DEFAULT_WIDTHS: Record<ColumnKey, number> = {
   id: 88,
   name: 260,
   scheduleState: 136,
+  flowState: 136,
   priority: 96,
   estimate: 52,
   owner: 120,
@@ -117,6 +120,7 @@ const COLUMN_LABELS: Record<ColumnKey, string> = {
   id: 'ID',
   name: 'Name',
   scheduleState: 'Schedule State',
+  flowState: 'Flow State',
   priority: 'Priority',
   estimate: 'Est.',
   owner: 'Owner',
@@ -129,6 +133,7 @@ const COLUMNS: ColumnKey[] = [
   'id',
   'name',
   'scheduleState',
+  'flowState',
   'priority',
   'estimate',
   'owner',
@@ -299,7 +304,10 @@ export function BacklogPage() {
     clear: clearSelection,
   } = useRowSelection(items)
 
-  // ── Column resize / order / visibility ──────────────────────────────────────
+  // ── Shared table engine (identical to projects/releases): resize + reorder + show/hide ──
+  const table = useDataTable<WorkItem, unknown, ColumnKey>(BACKLOG_COLUMNS, {
+    storageKey: STORAGE_KEYS.BACKLOG_COLUMN_WIDTHS,
+  })
   const {
     widths: colWidths,
     startResize,
@@ -307,27 +315,8 @@ export function BacklogPage() {
     hidden,
     toggleVisible,
     reorder,
-    styleFor,
-  } = useColumnLayout(BACKLOG_COLUMNS, STORAGE_KEYS.BACKLOG_COLUMN_WIDTHS)
-
-  // Header column drag-to-reorder (persists via useColumnLayout.reorder).
-  const {
-    activeDragKey,
-    dropIndicator,
-    handleDragStart: handleColDragStart,
-    handleDragOver: handleColDragOver,
-    handleDragLeave: handleColDragLeave,
-    handleDrop: handleColDrop,
-    handleDragEnd: handleColDragEnd,
-  } = useColumnDrag<ColumnKey>({ onReorder: reorder })
-  const colStyles = useMemo(
-    () =>
-      Object.fromEntries(COLUMNS.map((k) => [k, styleFor(k)])) as Record<
-        ColumnKey,
-        React.CSSProperties
-      >,
-    [styleFor],
-  )
+    colStyles,
+  } = table
 
   // ── Navigation ────────────────────────────────────────────────────────────────
   function openItem(item: WorkItem) {
@@ -355,8 +344,8 @@ export function BacklogPage() {
   // ── Table width ───────────────────────────────────────────────────────────────
   const totalColWidth = Object.values(colWidths).reduce((a, b) => a + b, 0)
   // Row layout: px-3 padding (24px) + checkbox w-5 (20px) + grip w-4 (16px) + row# w-6 (24px) +
-  // gap-2 between 12 flex items (11 × 8px = 88px) + column widths
-  const tableWidth = 24 + 20 + 16 + 24 + 88 + totalColWidth
+  // gap-2 between 13 flex items (12 × 8px = 96px) + column widths
+  const tableWidth = 24 + 20 + 16 + 24 + 96 + totalColWidth
 
   // ── Render ────────────────────────────────────────────────────────────────────
   if (!projectId) {
@@ -419,15 +408,7 @@ export function BacklogPage() {
                 onToggleAll={toggleAll}
                 startResize={startResize}
                 sort={{ col: sortCol, dir: sortDir, onSort: toggleSort }}
-                columnDrag={{
-                  activeDragKey,
-                  dropIndicator,
-                  onDragStart: handleColDragStart,
-                  onDragOver: handleColDragOver,
-                  onDragLeave: handleColDragLeave,
-                  onDrop: handleColDrop,
-                  onDragEnd: handleColDragEnd,
-                }}
+                columnDrag={table.columnDrag}
               />
 
               {/* Loading */}
@@ -882,16 +863,36 @@ function BacklogRow({
         )}
       </div>
 
-      {/* Schedule State — Rally-style segmented stepper */}
+      {/* Schedule State — business-readiness dropdown (mirrors Flow State) */}
       <div className="shrink-0 overflow-hidden px-2" style={colStyles.scheduleState} onClick={stop}>
+        {canEdit ? (
+          <InlineCellSelect
+            value={item.scheduleState ?? ''}
+            displayValue={SCHEDULE_STATE_LABEL[item.scheduleState as ScheduleState] ?? '—'}
+            onChange={(e) =>
+              patch({ scheduleState: e.target.value as UpdateWorkItemInput['scheduleState'] })
+            }
+            aria-label="Schedule state"
+          >
+            {SCHEDULE_STATE_VALUES.map((s) => (
+              <option key={s} value={s}>
+                {SCHEDULE_STATE_LABEL[s]}
+              </option>
+            ))}
+          </InlineCellSelect>
+        ) : (
+          <ScheduleStateBadge state={item.scheduleState} />
+        )}
+      </div>
+
+      {/* Flow State — Rally-style segmented stepper (mirrors Schedule State) */}
+      <div className="shrink-0 overflow-hidden px-2" style={colStyles.flowState} onClick={stop}>
         <StateStepper
           steps={SCHEDULE_STATE_STEPS}
-          value={item.scheduleState as ScheduleState}
+          value={(item.flowState ?? item.scheduleState) as ScheduleState}
           canEdit={canEdit}
-          onChange={(next) =>
-            patch({ scheduleState: next as UpdateWorkItemInput['scheduleState'] })
-          }
-          ariaLabel="Schedule state"
+          onChange={(next) => patch({ flowState: next as UpdateWorkItemInput['flowState'] })}
+          ariaLabel="Flow state"
         />
       </div>
 

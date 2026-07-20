@@ -11,6 +11,7 @@ export const IterationStatusMetricsSchema = z.object({
   daysLeft: z.number().int().nullable(),
   defectCount: z.number().int(),
   taskCount: z.number().int(),
+  activeTaskCount: z.number().int(),
 });
 
 export const IterationStatusItemSchema = z.object({
@@ -25,6 +26,8 @@ export const IterationStatusItemSchema = z.object({
   planEstimate: z.number().nullable(),
   taskEstimate: z.number(),
   toDo: z.number(),
+  taskTotal: z.number().int(),
+  taskDone: z.number().int(),
   assigneeId: z.string().uuid().nullable(),
   devOwnerId: z.string().uuid().nullable(),
   rank: z.string(),

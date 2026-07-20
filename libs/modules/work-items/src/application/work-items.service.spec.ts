@@ -28,6 +28,7 @@ const mockWorkItem = (o: Partial<WorkItem> = {}): WorkItem => ({
   description: null,
   statusId: 'status-todo',
   scheduleState: 'defined',
+  flowState: 'defined',
   priority: 'none',
   assigneeId: null,
   reporterId: null,
@@ -138,18 +139,35 @@ const makeUnitOfWork = () => ({
   run: vi.fn(async (cb: (tx: unknown) => unknown) => cb({})),
 });
 
-const makeProjectsService = () => ({
-  getProject: vi.fn().mockResolvedValue({ id: 'proj-1', workspaceId: 'ws-1' }),
-  listStatuses: vi
-    .fn()
-    .mockResolvedValue([mockStatus('status-todo', true), mockStatus('status-done')]),
-  assertTransitionAllowed: vi.fn().mockResolvedValue(undefined),
-  generateItemKey: vi.fn().mockResolvedValue('PROJ-42'),
-  listProjectTeams: vi.fn().mockResolvedValue([]),
-  // P1-15: scope validation helpers
-  assertWorkspaceMember: vi.fn().mockResolvedValue(undefined),
-  assertLabelBelongsToProject: vi.fn().mockResolvedValue(undefined),
-});
+const makeProjectsService = () => {
+  const listProjectTeams = vi.fn().mockResolvedValue([]);
+  return {
+    getProject: vi.fn().mockResolvedValue({ id: 'proj-1', workspaceId: 'ws-1' }),
+    listStatuses: vi
+      .fn()
+      .mockResolvedValue([mockStatus('status-todo', true), mockStatus('status-done')]),
+    assertTransitionAllowed: vi.fn().mockResolvedValue(undefined),
+    generateItemKey: vi.fn().mockResolvedValue('PROJ-42'),
+    listProjectTeams,
+    // Mirrors the real ProjectsService.assertTeamLinkedToProject so tests keep
+    // driving the outcome via the listProjectTeams mock.
+    assertTeamLinkedToProject: vi.fn(async (ws: string, projectId: string, teamId: string) => {
+      const links = (await listProjectTeams(ws, projectId)) as Array<{
+        teamId: string;
+        status: string;
+      }>;
+      if (!links.some((l) => l.teamId === teamId && l.status === 'active')) {
+        throw new PreconditionFailedException(
+          'PROJECT_TEAM_LINK_NOT_FOUND',
+          'Team is not linked to this project',
+        );
+      }
+    }),
+    // P1-15: scope validation helpers
+    assertWorkspaceMember: vi.fn().mockResolvedValue(undefined),
+    assertLabelBelongsToProject: vi.fn().mockResolvedValue(undefined),
+  };
+};
 
 // Grants everything by default; individual tests override to assert denial.
 const makeAccessService = () => ({
@@ -318,6 +336,106 @@ describe('WorkItemsService', () => {
         expect.anything(),
       );
     });
+
+    it('rejects an iteration that belongs to a different project', async () => {
+      workItemRepo.findIterationScope.mockResolvedValue({ projectId: 'other-proj', teamId: null });
+      await expect(
+        service.createWorkItem(mockActor, 'proj-1', 'story', 'Story', { iterationId: 'iter-x' }),
+      ).rejects.toThrow(PreconditionFailedException);
+      expect(workItemRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects a release that belongs to a different project', async () => {
+      workItemRepo.findReleaseProject.mockResolvedValue('other-proj');
+      await expect(
+        service.createWorkItem(mockActor, 'proj-1', 'story', 'Story', { releaseId: 'rel-x' }),
+      ).rejects.toThrow(PreconditionFailedException);
+      expect(workItemRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects a defect foundInReleaseId from a different project', async () => {
+      workItemRepo.findReleaseProject.mockResolvedValue('other-proj');
+      await expect(
+        service.createWorkItem(mockActor, 'proj-1', 'defect', 'Bug', {
+          foundInReleaseId: 'rel-x',
+        }),
+      ).rejects.toThrow(PreconditionFailedException);
+      expect(workItemRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects a reporterId who is not a workspace member', async () => {
+      projectsService.assertWorkspaceMember.mockRejectedValueOnce(new Error('NOT_MEMBER'));
+      await expect(
+        service.createWorkItem(mockActor, 'proj-1', 'story', 'Story', {
+          reporterId: 'foreign-user',
+        }),
+      ).rejects.toThrow('NOT_MEMBER');
+      expect(workItemRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects a devOwnerId who is not a workspace member', async () => {
+      projectsService.assertWorkspaceMember.mockRejectedValueOnce(new Error('NOT_MEMBER'));
+      await expect(
+        service.createWorkItem(mockActor, 'proj-1', 'defect', 'Bug', {
+          devOwnerId: 'foreign-user',
+        }),
+      ).rejects.toThrow('NOT_MEMBER');
+      expect(workItemRepo.create).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── createTask ─────────────────────────────────────────────────────────────
+
+  describe('createTask', () => {
+    it('inherits the team from the parent when none is provided', async () => {
+      workItemRepo.findById.mockResolvedValue(
+        mockWorkItem({ id: 'parent-1', projectId: 'proj-1', teamId: 'team-p' }),
+      );
+      projectsService.listProjectTeams.mockResolvedValue([{ teamId: 'team-p', status: 'active' }]);
+      workItemRepo.create.mockResolvedValue(mockWorkItem({ type: 'task', teamId: 'team-p' }));
+
+      await service.createTask(mockActor, 'parent-1', 'My task');
+
+      expect(workItemRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ teamId: 'team-p' }),
+        expect.anything(),
+      );
+    });
+
+    it('uses the explicitly provided team over the parent team', async () => {
+      workItemRepo.findById.mockResolvedValue(
+        mockWorkItem({ id: 'parent-1', projectId: 'proj-1', teamId: 'team-p' }),
+      );
+      projectsService.listProjectTeams.mockResolvedValue([{ teamId: 'team-x', status: 'active' }]);
+      workItemRepo.create.mockResolvedValue(mockWorkItem({ type: 'task', teamId: 'team-x' }));
+
+      await service.createTask(mockActor, 'parent-1', 'My task', { teamId: 'team-x' });
+
+      expect(workItemRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ teamId: 'team-x' }),
+        expect.anything(),
+      );
+    });
+
+    // ── DEV-013: Task Estimate is read-only derived (Estimate = To Do + Actuals) ──
+    it('derives Estimate from To Do + Actual and ignores any client-supplied estimate', async () => {
+      workItemRepo.findById.mockResolvedValue(
+        mockWorkItem({ id: 'parent-1', projectId: 'proj-1', teamId: 'team-p' }),
+      );
+      projectsService.listProjectTeams.mockResolvedValue([{ teamId: 'team-p', status: 'active' }]);
+      workItemRepo.create.mockResolvedValue(mockWorkItem({ type: 'task' }));
+
+      await service.createTask(mockActor, 'parent-1', 'My task', {
+        todoHours: '3',
+        actualHours: '2',
+        estimateHours: '99', // must be ignored — Estimate is derived
+      });
+
+      expect(workItemRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ estimateHours: '5.00', todoHours: '3', actualHours: '2' }),
+        expect.anything(),
+      );
+    });
   });
 
   // ── getWorkItem ────────────────────────────────────────────────────────────
@@ -377,9 +495,132 @@ describe('WorkItemsService', () => {
 
       expect(projectsService.assertTransitionAllowed).not.toHaveBeenCalled();
     });
-  });
 
-  // ── deleteWorkItem ─────────────────────────────────────────────────────────
+    // ── BR-WI-01: Schedule State <-> Flow State mirror ──
+    it('mirrors a Schedule State change onto Flow State', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ scheduleState: 'defined' }));
+      workItemRepo.update.mockResolvedValue(mockWorkItem({ scheduleState: 'in_progress' }));
+
+      await service.updateWorkItem(mockActor, 'wi-1', { scheduleState: 'in_progress' });
+
+      expect(workItemRepo.update).toHaveBeenCalledWith(
+        'wi-1',
+        expect.objectContaining({ scheduleState: 'in_progress', flowState: 'in_progress' }),
+        'ws-1',
+        expect.anything(),
+      );
+    });
+
+    it('mirrors a Flow State change onto Schedule State', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ scheduleState: 'defined' }));
+      workItemRepo.update.mockResolvedValue(mockWorkItem({ scheduleState: 'in_progress' }));
+
+      await service.updateWorkItem(mockActor, 'wi-1', { flowState: 'in_progress' });
+
+      expect(workItemRepo.update).toHaveBeenCalledWith(
+        'wi-1',
+        expect.objectContaining({ scheduleState: 'in_progress', flowState: 'in_progress' }),
+        'ws-1',
+        expect.anything(),
+      );
+    });
+
+    it('rejects a request that sets Schedule and Flow to conflicting values', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem());
+
+      await expect(
+        service.updateWorkItem(mockActor, 'wi-1', {
+          scheduleState: 'in_progress',
+          flowState: 'completed',
+        }),
+      ).rejects.toThrow(PreconditionFailedException);
+      expect(workItemRepo.update).not.toHaveBeenCalled();
+    });
+
+    // ── BR-TASK-02 / DEV-018: reverse roll-up ──
+    it('reopens a completed parent when a child task leaves Completed', async () => {
+      const task = mockWorkItem({
+        id: 'task-1',
+        type: 'task',
+        scheduleState: 'completed',
+        parentId: 'parent-1',
+      });
+      const parent = mockWorkItem({ id: 'parent-1', scheduleState: 'completed' });
+      workItemRepo.findById.mockImplementation((id: string) =>
+        Promise.resolve(id === 'parent-1' ? parent : task),
+      );
+      workItemRepo.update.mockResolvedValue(mockWorkItem({ id: 'task-1', type: 'task' }));
+
+      await service.updateWorkItem(mockActor, 'task-1', { scheduleState: 'in_progress' });
+
+      expect(workItemRepo.update).toHaveBeenCalledWith(
+        'parent-1',
+        expect.objectContaining({ scheduleState: 'in_progress' }),
+        'ws-1',
+        expect.anything(),
+      );
+    });
+
+    it('never reverts a parent already Accepted when a child task reopens', async () => {
+      const task = mockWorkItem({
+        id: 'task-1',
+        type: 'task',
+        scheduleState: 'completed',
+        parentId: 'parent-1',
+      });
+      const parent = mockWorkItem({ id: 'parent-1', scheduleState: 'accepted' });
+      workItemRepo.findById.mockImplementation((id: string) =>
+        Promise.resolve(id === 'parent-1' ? parent : task),
+      );
+      workItemRepo.update.mockResolvedValue(mockWorkItem({ id: 'task-1', type: 'task' }));
+
+      await service.updateWorkItem(mockActor, 'task-1', { scheduleState: 'in_progress' });
+
+      expect(workItemRepo.update).not.toHaveBeenCalledWith(
+        'parent-1',
+        expect.anything(),
+        'ws-1',
+        expect.anything(),
+      );
+    });
+
+    // ── DEV-013/015: Task Estimate = To Do + Actuals (read-only derived) ──
+    it('recomputes a task Estimate from To Do + Actual on update', async () => {
+      const task = mockWorkItem({ id: 'task-1', type: 'task', todoHours: '1', actualHours: '1' });
+      workItemRepo.findById.mockResolvedValue(task);
+      workItemRepo.update.mockResolvedValue(mockWorkItem({ id: 'task-1', type: 'task' }));
+
+      await service.updateWorkItem(mockActor, 'task-1', { todoHours: '4' });
+
+      // 4 (new To Do) + 1 (existing Actual) = 5.00
+      expect(workItemRepo.update).toHaveBeenCalledWith(
+        'task-1',
+        expect.objectContaining({ estimateHours: '5.00' }),
+        'ws-1',
+        expect.anything(),
+      );
+    });
+
+    it('does NOT auto-zero To Do when a task is completed (DEV-015)', async () => {
+      const task = mockWorkItem({
+        id: 'task-1',
+        type: 'task',
+        scheduleState: 'in_progress',
+        todoHours: '3',
+        actualHours: '2',
+        parentId: null,
+      });
+      workItemRepo.findById.mockResolvedValue(task);
+      workItemRepo.update.mockResolvedValue(mockWorkItem({ id: 'task-1', type: 'task' }));
+
+      await service.updateWorkItem(mockActor, 'task-1', { scheduleState: 'completed' });
+
+      const call = workItemRepo.update.mock.calls.find((c) => c[0] === 'task-1');
+      // To Do must be preserved (not forced to '0'); Estimate stays To Do + Actual = 5.00.
+      expect(call?.[1]).not.toHaveProperty('todoHours', '0');
+      expect(call?.[1]).toMatchObject({ estimateHours: '5.00' });
+    });
+  });
 
   describe('deleteWorkItem', () => {
     it('soft-deletes the work item', async () => {
@@ -670,11 +911,53 @@ describe('WorkItemsService', () => {
       ).rejects.toThrow(PreconditionFailedException);
     });
 
+    it('rejects a foundInReleaseId from another project', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ projectId: 'proj-1', type: 'defect' }));
+      workItemRepo.findReleaseProject.mockResolvedValue('proj-2');
+      await expect(
+        service.updateWorkItem(mockActor, 'wi-1', { foundInReleaseId: 'rel-x' }),
+      ).rejects.toThrow(PreconditionFailedException);
+    });
+
+    it('rejects a new reporterId who is not a workspace member', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ reporterId: 'user-1' }));
+      projectsService.assertWorkspaceMember.mockRejectedValueOnce(new Error('NOT_MEMBER'));
+      await expect(
+        service.updateWorkItem(mockActor, 'wi-1', { reporterId: 'outsider' }),
+      ).rejects.toThrow('NOT_MEMBER');
+    });
+
+    it('rejects a new devOwnerId who is not a workspace member', async () => {
+      workItemRepo.findById.mockResolvedValue(
+        mockWorkItem({ type: 'defect', devOwnerId: null }),
+      );
+      projectsService.assertWorkspaceMember.mockRejectedValueOnce(new Error('NOT_MEMBER'));
+      await expect(
+        service.updateWorkItem(mockActor, 'wi-1', { devOwnerId: 'outsider' }),
+      ).rejects.toThrow('NOT_MEMBER');
+    });
+
     it('rejects priority edits on stories', async () => {
       workItemRepo.findById.mockResolvedValue(mockWorkItem({ type: 'story' }));
       await expect(service.updateWorkItem(mockActor, 'wi-1', { priority: 'high' })).rejects.toThrow(
         PreconditionFailedException,
       );
+    });
+
+    it('rejects reassigning to a team not linked to the project', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ projectId: 'proj-1' }));
+      projectsService.listProjectTeams.mockResolvedValue([]);
+      await expect(
+        service.updateWorkItem(mockActor, 'wi-1', { teamId: 'team-x' }),
+      ).rejects.toThrow(PreconditionFailedException);
+    });
+
+    it('allows reassigning to a team linked to the project', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ projectId: 'proj-1' }));
+      projectsService.listProjectTeams.mockResolvedValue([{ teamId: 'team-x', status: 'active' }]);
+      workItemRepo.update.mockResolvedValue(mockWorkItem({ teamId: 'team-x' }));
+      const res = await service.updateWorkItem(mockActor, 'wi-1', { teamId: 'team-x' });
+      expect(res.teamId).toBe('team-x');
     });
   });
 

@@ -6,7 +6,7 @@
  * Task:         2 tabs — Details | Revision History
  * Sidebar differs by type (task shows time fields + Work Product link).
  */
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo, type CSSProperties } from 'react'
 import { useParams, useNavigate } from '@tanstack/react-router'
 import {
   Bell,
@@ -28,6 +28,8 @@ import {
   useTaskTotals,
   useActivityLog,
   useWorkItemLabels,
+  useWorkItemMilestones,
+  useSetWorkItemMilestones,
   useUpdateWorkItem,
   useWorkItem,
   useWatchers,
@@ -38,7 +40,7 @@ import {
   type WorkItem,
 } from '@/features/work-items/api'
 import { useReleases } from '@/features/releases/api'
-import { useProjectStatuses } from '@/features/projects/api'
+import { useMilestones } from '@/features/milestones/api'
 import { useProjectTeams, useProjectMembers } from '@/features/teams/api'
 import { useIterationOptions } from '@/features/iterations/api'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
@@ -54,22 +56,27 @@ import { WorkItemRefCell } from '@/entities/work-item/ui/work-item-ref-cell'
 import { LabelChips } from '@/entities/work-item/ui/label-chips'
 import { TaskRollup } from '@/entities/work-item/ui/task-rollup'
 import { describeActivity } from '@/entities/work-item/model/activity'
-import { OwnerCell } from '@/shared/ui/owner-cell'
+import { deriveEstimateHours } from '@/entities/work-item/model/task-time'
+import { OwnerCell, OwnerAvatar, OwnerSelectCell } from '@/shared/ui/owner-cell'
+import { formatDate, formatDateTime } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import { StateStepper } from '@/entities/work-item/ui/state-stepper'
 import { SCHEDULE_STATE_STEPS } from '@/entities/work-item/ui/state-steps'
 import {
   PRIORITY_VALUES,
   ScheduleState,
+  SCHEDULE_STATE_LABEL,
+  SCHEDULE_STATE_VALUES,
+  TASK_STATE_VALUES,
   WORK_ITEM_PRIORITY_CONFIG,
   type WorkItemType,
 } from '@/entities/work-item/model/types'
 import { BRAND } from '@/shared/config/brand'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { FormField } from '@/shared/ui/form-field'
-import { NativeSelect } from '@/shared/ui/native-select'
+import { NativeSelect, InlineCellSelect } from '@/shared/ui/native-select'
+import { SelectionModal } from '@/shared/ui/selection-modal'
 import { AddTaskModal } from '@/features/work-items/ui/add-task-modal'
-import { TimeLogModal } from '@/features/work-items/ui/time-log-modal'
 import { RichTextEditor } from '@/shared/ui/rich-text-editor'
 import { AttachmentBlock } from '@/features/collaboration/ui/attachment-block'
 import { LinkedItemsBlock } from '@/features/work-items/ui/linked-items-block'
@@ -77,6 +84,11 @@ import { CommentThread } from '@/features/collaboration/ui/comment-thread'
 import { Spinner } from '@/shared/ui/spinner'
 import { useSaveState } from '@/shared/lib/hooks/use-save-state'
 import { SaveIndicator } from '@/shared/ui/save-indicator'
+import { useDataTable, type ColumnSpec } from '@/shared/ui/table'
+import { DataTableHeader } from '@/shared/ui/data-table-header'
+import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
+import { SkeletonList } from '@/shared/ui/skeleton'
+import { EmptyState } from '@/shared/ui/empty-state'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -218,22 +230,44 @@ function DetailsTab({
 // ── Tasks tab ─────────────────────────────────────────────────────────────────
 
 // TASK-FR-003: columns Rank, ID, Name, State, Owner, Project, Teams, To Do, Actuals, Estimate.
-const TASK_GRID = '44px 56px 108px 1fr 130px 150px 110px 120px 60px 60px 80px'
-const TASK_COLS = [
-  '',
-  'Rank',
-  'ID',
-  'Name',
-  'State',
-  'Owner',
-  'Project',
-  'Teams',
-  'To Do',
-  'Actuals',
-  'Estimate',
+type TaskColKey =
+  | 'rank'
+  | 'id'
+  | 'name'
+  | 'state'
+  | 'owner'
+  | 'project'
+  | 'teams'
+  | 'todo'
+  | 'actuals'
+  | 'estimate'
+
+// Single per-column source of truth for the Tasks tab, driven by the shared
+// useDataTable engine (identical to Projects / Team Status / Quality) so the grid
+// gets resize + reorder + show/hide and a fluid name column for free — replacing
+// the old fixed 1216px hand-rolled layout that overflowed the detail column.
+const TASK_COLUMNS: ColumnSpec<WorkItem, unknown, TaskColKey>[] = [
+  { key: 'rank', label: 'Rank', defaultWidth: 60, minWidth: 52, locked: true },
+  { key: 'id', label: 'ID', defaultWidth: 108, minWidth: 90, locked: true },
+  { key: 'name', label: 'Name', defaultWidth: 240, minWidth: 150, locked: true },
+  { key: 'state', label: 'State', defaultWidth: 132, minWidth: 110 },
+  { key: 'owner', label: 'Owner', defaultWidth: 150, minWidth: 120 },
+  { key: 'project', label: 'Project', defaultWidth: 110 },
+  { key: 'teams', label: 'Teams', defaultWidth: 120 },
+  { key: 'todo', label: 'To Do', defaultWidth: 72, align: 'right' },
+  { key: 'actuals', label: 'Actuals', defaultWidth: 72, align: 'right' },
+  { key: 'estimate', label: 'Estimate', defaultWidth: 80, align: 'right' },
 ]
 
-function TasksTab({ workItemId, projectId }: { workItemId: string; projectId: string }) {
+function TasksTab({
+  workItemId,
+  projectId,
+  readOnly,
+}: {
+  workItemId: string
+  projectId: string
+  readOnly: boolean
+}) {
   const { data: tasks = [], isLoading } = useTasks(workItemId)
   const { data: totals } = useTaskTotals(workItemId)
   // Tasks inherit their parent's project; team/owner names are resolved for display.
@@ -244,10 +278,25 @@ function TasksTab({ workItemId, projectId }: { workItemId: string; projectId: st
   const [showAdd, setShowAdd] = useState(false)
   const navigate = useNavigate()
 
+  // Shared table engine (identical to Projects / Team Status): resize + reorder +
+  // show/hide, with the name column flexing to fill and all others width-pinned.
+  const table = useDataTable<WorkItem, unknown, TaskColKey>(TASK_COLUMNS, {
+    storageKey: STORAGE_KEYS.WORK_ITEM_TASKS_COLUMNS,
+    leadingWidth: 24,
+  })
+  const colStyles = useMemo(
+    () =>
+      Object.fromEntries(
+        TASK_COLUMNS.map((c) => [
+          c.key,
+          table.styleFor(c.key, c.key === 'name' ? { flex: 1, minWidth: 150 } : { flexShrink: 0 }),
+        ]),
+      ) as Record<TaskColKey, CSSProperties>,
+    [table],
+  )
+
   const teamName = (id?: string | null) =>
     id ? (teams.find((t) => t.id === id)?.name ?? '—') : '—'
-  const ownerName = (id?: string | null) =>
-    id ? (members.find((m) => m.userId === id)?.displayName ?? '—') : '—'
 
   function openTask(task: WorkItem) {
     void navigate({ to: '/item/$itemKey', params: { itemKey: task.itemKey } })
@@ -271,136 +320,248 @@ function TasksTab({ workItemId, projectId }: { workItemId: string; projectId: st
         </Button>
       </div>
 
-      {isLoading ? (
-        <div className="flex h-20 items-center justify-center">
-          <Spinner />
-        </div>
-      ) : (
-        <div
-          className="overflow-x-auto rounded bg-white"
-          style={{ border: `1px solid ${BRAND.border}` }}
-        >
-          <div style={{ minWidth: 1216 }}>
-            {/* Header row */}
-            <div
-              className="grid h-10 items-center"
-              style={{
-                gridTemplateColumns: TASK_GRID,
-                backgroundColor: 'white',
-                borderBottom: `2px solid ${BRAND.accentBorderStrong}`,
-              }}
-            >
-              {TASK_COLS.map((col, i) => (
-                <span
-                  key={i}
-                  className="flex h-full items-center px-3 text-[12px] font-semibold"
-                  style={{
-                    color: BRAND.textPrimary,
-                    borderRight:
-                      i < TASK_COLS.length - 1 ? `1px dashed ${BRAND.textMuted}` : undefined,
-                  }}
-                >
-                  {col}
-                </span>
-              ))}
+      <div
+        className="overflow-x-auto rounded bg-white"
+        style={{ border: `1px solid ${BRAND.border}` }}
+      >
+        {/* Header row (shared engine: resize + reorder + show/hide) */}
+        <DataTableHeader
+          columns={table.headerColumns}
+          colStyles={colStyles}
+          onResize={table.startResize}
+          columnDrag={table.columnDrag}
+          leading={<div className="w-6 shrink-0" />}
+          className="px-3"
+        />
+
+        {/* Totals row */}
+        {totals && (
+          <div
+            className="flex h-8 items-center px-3 text-[12px] font-semibold"
+            style={{
+              backgroundColor: BRAND.surfaceSubtle,
+              borderBottom: `1px solid ${BRAND.borderInput}`,
+              color: BRAND.textPrimary,
+              minWidth: 'max-content',
+            }}
+          >
+            <div className="w-6 shrink-0" />
+            <div className="shrink-0" style={colStyles.rank} />
+            <div className="shrink-0" style={colStyles.id} />
+            <div className="min-w-[150px] flex-1 px-2" style={colStyles.name}>
+              Totals
             </div>
-
-            {/* Totals row */}
-            {totals && (
-              <div
-                className="grid h-8 items-center text-[12px] font-semibold"
-                style={{
-                  gridTemplateColumns: TASK_GRID,
-                  backgroundColor: BRAND.surfaceSubtle,
-                  borderBottom: `1px solid ${BRAND.borderInput}`,
-                  color: BRAND.textPrimary,
-                }}
-              >
-                <span />
-                <span />
-                <span className="px-3">Totals</span>
-                <span />
-                <span />
-                <span />
-                <span />
-                <span />
-                <span className="px-3 text-right font-mono">{totals.todoHours ?? 0}h</span>
-                <span className="px-3 text-right font-mono">{totals.actualHours ?? 0}h</span>
-                <span className="px-3 text-right font-mono">{totals.estimateHours ?? 0}h</span>
-              </div>
-            )}
-
-            {/* Empty */}
-            {tasks.length === 0 && (
-              <div className="flex h-20 items-center justify-center">
-                <p className="text-sm" style={{ color: BRAND.textMuted }}>
-                  No tasks yet.{' '}
-                  <button
-                    onClick={() => setShowAdd(true)}
-                    className="font-medium"
-                    style={{ color: BRAND.primaryLight }}
-                  >
-                    Add one
-                  </button>
-                </p>
-              </div>
-            )}
-
-            {/* Task rows */}
-            {tasks.map((task) => (
-              <div
-                key={task.id}
-                className="grid min-h-10 cursor-pointer items-center text-[12px] hover:bg-primary-lighter"
-                style={{
-                  gridTemplateColumns: TASK_GRID,
-                  borderBottom: `1px solid ${BRAND.borderInner}`,
-                  color: BRAND.textPrimary,
-                }}
-                onClick={() => openTask(task)}
-              >
-                <div className="flex items-center justify-center">
-                  <input
-                    type="checkbox"
-                    aria-label={`Select task ${task.itemKey}`}
-                    className="h-4 w-4 rounded"
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                </div>
-                <span className="px-3 font-mono text-[11px]" style={{ color: BRAND.textSecondary }}>
-                  {task.rank ?? '—'}
-                </span>
-                <span className="flex items-center overflow-hidden px-3">
-                  <IdCell type={task.type} itemKey={task.itemKey} onOpen={() => openTask(task)} />
-                </span>
-                <span className="truncate px-3 font-medium">{task.title}</span>
-                <span className="px-3">
-                  <ScheduleStateBadge state={task.scheduleState} />
-                </span>
-                <span className="flex items-center overflow-hidden px-3">
-                  <OwnerCell name={task.assigneeId ? ownerName(task.assigneeId) : null} />
-                </span>
-                <span className="truncate px-3" style={{ color: BRAND.textSecondary }}>
-                  {projectLabel}
-                </span>
-                <span className="truncate px-3" style={{ color: BRAND.textSecondary }}>
-                  {teamName(task.teamId)}
-                </span>
-                <span className="px-3 text-right font-mono">
-                  {task.todoHours != null ? `${task.todoHours}h` : '—'}
-                </span>
-                <span className="px-3 text-right font-mono">
-                  {task.actualHours != null ? `${task.actualHours}h` : '—'}
-                </span>
-                <span className="px-3 text-right font-mono">
-                  {task.estimateHours != null ? `${task.estimateHours}h` : '—'}
-                </span>
-              </div>
-            ))}
+            <div className="shrink-0" style={colStyles.state} />
+            <div className="shrink-0" style={colStyles.owner} />
+            <div className="shrink-0" style={colStyles.project} />
+            <div className="shrink-0" style={colStyles.teams} />
+            <div className="shrink-0 px-2 text-right font-mono" style={colStyles.todo}>
+              {totals.todoHours ?? 0}h
+            </div>
+            <div className="shrink-0 px-2 text-right font-mono" style={colStyles.actuals}>
+              {totals.actualHours ?? 0}h
+            </div>
+            <div className="shrink-0 px-2 text-right font-mono" style={colStyles.estimate}>
+              {totals.estimateHours ?? 0}h
+            </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {/* Body */}
+        {isLoading ? (
+          <SkeletonList rows={4} cols={10} />
+        ) : tasks.length === 0 ? (
+          <EmptyState
+            size="sm"
+            icon={<ListChecks size={28} className="text-foreground-subtle" />}
+            title="No tasks yet"
+            description="Break this work item into trackable delivery tasks."
+            action={
+              readOnly ? undefined : (
+                <Button size="sm" onClick={() => setShowAdd(true)}>
+                  <Plus size={13} />
+                  Add Task
+                </Button>
+              )
+            }
+          />
+        ) : (
+          tasks.map((task) => (
+            <TaskRow
+              key={`${task.id}:${task.updatedAt}`}
+              task={task}
+              canEdit={!readOnly}
+              colStyles={colStyles}
+              projectLabel={projectLabel}
+              teamName={teamName}
+              members={members}
+              onOpen={openTask}
+            />
+          ))
+        )}
+      </div>
 
       {showAdd && <AddTaskModal workItemId={workItemId} onClose={() => setShowAdd(false)} />}
+    </div>
+  )
+}
+
+// Inline-editable Tasks-tab row (DEV-014): Name / State / Owner / To Do / Actuals
+// are edited in place with the shared cell primitives (InlineEditableCell /
+// InlineCellSelect / OwnerSelectCell — identical to the Team Status task grid);
+// Estimate is read-only derived (To Do + Actuals). Each edit invalidates the
+// ['work-items'] root, so the totals row and parent roll-up recompute immediately.
+// The row key includes `updatedAt` so committed values re-sync after a refresh.
+function TaskRow({
+  task,
+  canEdit,
+  colStyles,
+  projectLabel,
+  teamName,
+  members,
+  onOpen,
+}: {
+  task: WorkItem
+  canEdit: boolean
+  colStyles: Record<TaskColKey, CSSProperties>
+  projectLabel: string
+  teamName: (id?: string | null) => string
+  members: { userId: string; displayName?: string | null; email?: string | null }[]
+  onOpen: (task: WorkItem) => void
+}) {
+  const update = useUpdateWorkItem(task.id)
+
+  const commitTitle = (raw: string) => {
+    const next = raw.trim()
+    if (next && next !== task.title) void update.mutateAsync({ title: next })
+  }
+  const commitHours = (field: 'todoHours' | 'actualHours', raw: string) => {
+    const next = raw.trim() === '' ? null : Number(raw)
+    if (next != null && (Number.isNaN(next) || next < 0)) return
+    const current = task[field] != null ? Number(task[field]) : null
+    if (next !== current) void update.mutateAsync({ [field]: next })
+  }
+
+  const owner = members.find((m) => m.userId === task.assigneeId)
+  const ownerName = owner ? (owner.displayName ?? owner.email ?? null) : null
+
+  const numInput =
+    'w-16 rounded border border-input bg-white px-1 py-0.5 text-right font-mono text-[12px] focus:outline-none'
+
+  return (
+    <div
+      className="flex min-h-[36px] items-center bg-white px-3 text-[12px] transition-colors hover:bg-primary-lighter"
+      style={{
+        borderBottom: `1px solid ${BRAND.borderInner}`,
+        color: BRAND.textPrimary,
+        minWidth: 'max-content',
+      }}
+    >
+      <div className="flex w-6 shrink-0 items-center justify-center">
+        <input type="checkbox" aria-label={`Select task ${task.itemKey}`} className="h-4 w-4 rounded" />
+      </div>
+      {/* Rank */}
+      <div
+        className="shrink-0 px-2 font-mono text-[11px]"
+        style={{ ...colStyles.rank, color: BRAND.textSecondary }}
+      >
+        {task.rank ?? '—'}
+      </div>
+      {/* ID */}
+      <div className="flex shrink-0 items-center overflow-hidden px-2" style={colStyles.id}>
+        <IdCell type={task.type} itemKey={task.itemKey} onOpen={() => onOpen(task)} />
+      </div>
+      {/* Name — inline editable */}
+      <div className="min-w-[150px] flex-1 px-2" style={colStyles.name}>
+        <InlineEditableCell
+          value={task.title}
+          canEdit={canEdit}
+          onCommit={commitTitle}
+          trigger="dblclick"
+          className="block truncate hover:underline"
+          style={{ color: BRAND.textPrimary }}
+          inputClassName="w-full rounded border border-input bg-white px-2 py-0.5 text-[12px] focus:outline-none"
+          title={task.title}
+          ariaLabel={`Task ${task.itemKey} name`}
+        />
+      </div>
+      {/* State — single Task State (BR-TASK-01) */}
+      <div className="shrink-0 px-2" style={colStyles.state}>
+        <InlineCellSelect
+          value={task.scheduleState}
+          displayValue={SCHEDULE_STATE_LABEL[task.scheduleState] ?? task.scheduleState}
+          disabled={!canEdit}
+          aria-label={`Task ${task.itemKey} state`}
+          onChange={(e) =>
+            update.mutateAsync({ scheduleState: e.target.value as WorkItem['scheduleState'] })
+          }
+        >
+          {TASK_STATE_VALUES.map((s) => (
+            <option key={s} value={s}>
+              {SCHEDULE_STATE_LABEL[s]}
+            </option>
+          ))}
+        </InlineCellSelect>
+      </div>
+      {/* Owner */}
+      <div className="flex shrink-0 items-center overflow-hidden px-2" style={colStyles.owner}>
+        <OwnerSelectCell
+          ownerName={ownerName}
+          assigneeId={task.assigneeId}
+          members={members}
+          canEdit={canEdit}
+          onChange={(userId) => update.mutateAsync({ assigneeId: userId })}
+          ariaLabel={`Task ${task.itemKey} owner`}
+        />
+      </div>
+      {/* Project */}
+      <div
+        className="shrink-0 truncate px-2"
+        style={{ ...colStyles.project, color: BRAND.textSecondary }}
+      >
+        {projectLabel}
+      </div>
+      {/* Teams */}
+      <div
+        className="shrink-0 truncate px-2"
+        style={{ ...colStyles.teams, color: BRAND.textSecondary }}
+      >
+        {teamName(task.teamId)}
+      </div>
+      {/* To Do — inline editable */}
+      <div className="shrink-0 px-2 text-right" style={colStyles.todo}>
+        <InlineEditableCell
+          value={task.todoHours != null ? String(task.todoHours) : ''}
+          canEdit={canEdit}
+          onCommit={(v) => commitHours('todoHours', v)}
+          displayValue={task.todoHours ?? '—'}
+          className="font-mono tabular-nums hover:underline"
+          style={{ color: BRAND.textSecondary }}
+          inputClassName={numInput}
+          ariaLabel={`Task ${task.itemKey} to do hours`}
+        />
+      </div>
+      {/* Actuals — inline editable */}
+      <div className="shrink-0 px-2 text-right" style={colStyles.actuals}>
+        <InlineEditableCell
+          value={task.actualHours != null ? String(task.actualHours) : ''}
+          canEdit={canEdit}
+          onCommit={(v) => commitHours('actualHours', v)}
+          displayValue={task.actualHours ?? '—'}
+          className="font-mono tabular-nums hover:underline"
+          style={{ color: BRAND.textSecondary }}
+          inputClassName={numInput}
+          ariaLabel={`Task ${task.itemKey} actual hours`}
+        />
+      </div>
+      {/* Estimate — read-only derived (To Do + Actuals) */}
+      <div
+        className="shrink-0 px-2 text-right font-mono text-[11px]"
+        style={{ ...colStyles.estimate, color: BRAND.textSecondary }}
+        title="Estimate is derived: To Do + Actuals"
+      >
+        {deriveEstimateHours(task.todoHours, task.actualHours)}h
+      </div>
     </div>
   )
 }
@@ -459,11 +620,6 @@ function HistoryTab({ workItemId }: { workItemId: string }) {
         {logs.map((log, i) => {
           const revision = logs.length - i
           const userName = log.actorName ?? log.actorId ?? 'System'
-          const initials = userName
-            .split(' ')
-            .slice(0, 2)
-            .map((n) => n[0]?.toUpperCase())
-            .join('')
           return (
             <div
               key={log.id}
@@ -482,15 +638,10 @@ function HistoryTab({ workItemId }: { workItemId: string }) {
               </span>
               <span style={{ color: BRAND.textPrimary }}>{describeActivity(log)}</span>
               <span className="font-mono text-[11px]" style={{ color: BRAND.textSecondary }}>
-                {new Date(log.createdAt).toLocaleString()}
+                {formatDateTime(log.createdAt)}
               </span>
               <span className="flex min-w-0 items-center gap-2">
-                <span
-                  className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[8px] font-bold"
-                  style={{ backgroundColor: BRAND.avatarBg, color: BRAND.primary }}
-                >
-                  {initials}
-                </span>
+                <OwnerAvatar name={userName} />
                 <span className="truncate">{userName}</span>
               </span>
             </div>
@@ -633,18 +784,17 @@ function DetailSidebar({
   const { data: members = [] } = useProjectMembers(item.projectId)
   const { data: releases = [] } = useReleases(item.projectId)
   const { data: iterations = [] } = useIterationOptions(item.projectId, item.teamId)
-  const { data: statuses = [] } = useProjectStatuses(item.projectId)
   const { data: parentItem } = useWorkItem(item.parentId ?? undefined)
   const { data: taskTotals } = useTaskTotals(item.type !== 'task' ? item.id : undefined)
   const { data: tags = [] } = useWorkItemLabels(item.id)
   const isTask = item.type === 'task'
   const isDefect = item.type === 'defect'
   const disabled = updating || readOnly
-  const [showTimeLog, setShowTimeLog] = useState(false)
-  const memberName = (userId: string) => {
-    const m = members.find((x) => x.userId === userId)
-    return m?.displayName ?? m?.email ?? userId
-  }
+  const [showMilestones, setShowMilestones] = useState(false)
+  // Milestones apply to Story/Defect only (Tasks inherit via their parent).
+  const { data: milestoneOptions = [] } = useMilestones(!isTask ? item.projectId : undefined)
+  const { data: itemMilestones = [] } = useWorkItemMilestones(!isTask ? item.id : undefined)
+  const setMilestones = useSetWorkItemMilestones(item.id)
   const navigate = useNavigate()
   const openItem = (itemKey: string) => void navigate({ to: '/item/$itemKey', params: { itemKey } })
 
@@ -685,39 +835,62 @@ function DetailSidebar({
       </div>
 
       <div className="space-y-4 p-5">
-        {/* Schedule State */}
-        <FormField label="Schedule State">
-          <div>
-            <StateStepper
-              steps={SCHEDULE_STATE_STEPS}
-              value={(item.scheduleState ?? ScheduleState.Defined) as ScheduleState}
-              canEdit={!disabled}
-              onChange={(next) => {
-                if (next !== item.scheduleState)
-                  onUpdate({ scheduleState: next as WorkItem['scheduleState'] })
-              }}
-              ariaLabel="Schedule State"
-            />
-          </div>
-        </FormField>
+        {isTask ? (
+          /* Task State — a Task has ONE state dimension (BR-TASK-01). No
+             Schedule/Flow split. The wire field is `scheduleState`; the backend
+             mirrors it onto `task.state`. */
+          <FormField label="Task State">
+            <NativeSelect
+              value={item.scheduleState ?? ScheduleState.Defined}
+              onChange={(e) =>
+                onUpdate({ scheduleState: e.target.value as WorkItem['scheduleState'] })
+              }
+              disabled={disabled}
+            >
+              {TASK_STATE_VALUES.map((s) => (
+                <option key={s} value={s}>
+                  {SCHEDULE_STATE_LABEL[s]}
+                </option>
+              ))}
+            </NativeSelect>
+          </FormField>
+        ) : (
+          <>
+            {/* Schedule State — business-readiness dimension */}
+            <FormField label="Schedule State">
+              <div>
+                <StateStepper
+                  steps={SCHEDULE_STATE_STEPS}
+                  value={(item.scheduleState ?? ScheduleState.Defined) as ScheduleState}
+                  canEdit={!disabled}
+                  onChange={(next) => {
+                    if (next !== item.scheduleState)
+                      onUpdate({ scheduleState: next as WorkItem['scheduleState'] })
+                  }}
+                  ariaLabel="Schedule State"
+                />
+              </div>
+            </FormField>
 
-        {/* Flow State (workflow status — project-specific Kanban column) */}
-        <FormField label="Flow State">
-          <NativeSelect
-            value={item.statusId ?? ''}
-            onChange={(e) => onUpdate({ statusId: e.target.value })}
-            disabled={disabled}
-          >
-            {statuses.length === 0 && (
-              <option value={item.statusId ?? ''}>{item.statusId ?? 'Unknown'}</option>
-            )}
-            {statuses.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </NativeSelect>
-        </FormField>
+            {/* Flow State — mirrors Schedule State bidirectionally (backend
+                enforces the mirror; either control updates both). */}
+            <FormField label="Flow State">
+              <NativeSelect
+                value={item.flowState ?? item.scheduleState ?? ScheduleState.Defined}
+                onChange={(e) =>
+                  onUpdate({ flowState: e.target.value as WorkItem['flowState'] })
+                }
+                disabled={disabled}
+              >
+                {SCHEDULE_STATE_VALUES.map((s) => (
+                  <option key={s} value={s}>
+                    {SCHEDULE_STATE_LABEL[s]}
+                  </option>
+                ))}
+              </NativeSelect>
+            </FormField>
+          </>
+        )}
 
         {/* Owner */}
         <FormField label="Owner">
@@ -830,20 +1003,19 @@ function DetailSidebar({
             </FormField>
           ))}
 
-        {/* Task: time fields */}
+        {/* Task: time fields — Estimate is read-only derived (To Do + Actuals);
+            To Do and Actuals are the manual inputs (SRS P1-TASK-01 / DEV-015). */}
         {isTask && (
           <>
             <FormField label="Estimate (h)">
-              <input
-                type="number"
-                min={0}
-                step={0.5}
-                value={item.estimateHours ?? ''}
-                onChange={(e) =>
-                  onUpdate({ estimateHours: e.target.value ? Number(e.target.value) : null })
-                }
-                disabled={disabled}
-              />
+              <div
+                className="flex h-9 items-center rounded border border-input bg-input-background px-3 font-mono text-[13px]"
+                style={{ color: BRAND.textPrimary }}
+                title="Estimate is derived: To Do + Actuals"
+                aria-readonly
+              >
+                {deriveEstimateHours(item.todoHours, item.actualHours)}h
+              </div>
             </FormField>
             <FormField label="To Do (h)">
               <input
@@ -858,22 +1030,16 @@ function DetailSidebar({
               />
             </FormField>
             <FormField label="Actual (h)">
-              <div className="flex items-center gap-2">
-                <div
-                  className="flex h-9 flex-1 items-center rounded border border-input bg-input-background px-3 font-mono text-[13px]"
-                  style={{ color: BRAND.textPrimary }}
-                >
-                  {item.actualHours ?? 0}h
-                </div>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setShowTimeLog(true)}
-                >
-                  Log time
-                </Button>
-              </div>
+              <input
+                type="number"
+                min={0}
+                step={0.5}
+                value={item.actualHours ?? ''}
+                onChange={(e) =>
+                  onUpdate({ actualHours: e.target.value ? Number(e.target.value) : null })
+                }
+                disabled={disabled}
+              />
             </FormField>
           </>
         )}
@@ -938,6 +1104,41 @@ function DetailSidebar({
                 ))}
               </NativeSelect>
             </FormField>
+            {/* Milestones — many-to-many, persisted independently of Release
+                (SRS FR-022). Reuses the shared SelectionModal. */}
+            <FormField label="Milestones">
+              <button
+                type="button"
+                onClick={() => setShowMilestones(true)}
+                disabled={disabled}
+                className="flex w-full items-center justify-between rounded px-2 py-1 text-left text-[12px]"
+                style={{
+                  border: `1px solid ${BRAND.borderInput}`,
+                  background: 'white',
+                  color: itemMilestones.length > 0 ? BRAND.textPrimary : BRAND.textMuted,
+                  cursor: disabled ? 'default' : 'pointer',
+                }}
+                title={
+                  itemMilestones.length > 0
+                    ? itemMilestones.map((m) => m.name).join(', ')
+                    : undefined
+                }
+              >
+                <span className="truncate">
+                  {itemMilestones.length > 0
+                    ? itemMilestones.map((m) => m.name).join(', ')
+                    : 'No milestones'}
+                </span>
+                {itemMilestones.length > 0 && (
+                  <span
+                    className="ml-2 shrink-0 text-[11px]"
+                    style={{ color: BRAND.textMuted }}
+                  >
+                    {itemMilestones.length}
+                  </span>
+                )}
+              </button>
+            </FormField>
           </>
         )}
 
@@ -966,11 +1167,7 @@ function DetailSidebar({
         {/* Creation Date (read-only) */}
         <FormField label="Creation Date">
           <span className="block px-1 text-[12px]" style={{ color: BRAND.textSecondary }}>
-            {new Date(item.createdAt).toLocaleDateString(undefined, {
-              year: 'numeric',
-              month: 'short',
-              day: 'numeric',
-            })}
+            {formatDate(item.createdAt)}
           </span>
         </FormField>
 
@@ -989,12 +1186,14 @@ function DetailSidebar({
         )}
       </div>
       {/* end p-5 space-y-4 */}
-      {showTimeLog && (
-        <TimeLogModal
-          workItemId={item.id}
-          memberName={memberName}
-          canEdit={!readOnly}
-          onClose={() => setShowTimeLog(false)}
+      {showMilestones && (
+        <SelectionModal
+          open={showMilestones}
+          onClose={() => setShowMilestones(false)}
+          title="Milestones"
+          items={milestoneOptions.map((m) => ({ id: m.id, name: m.name }))}
+          selectedIds={itemMilestones.map((m) => m.id)}
+          onSave={(ids) => setMilestones.mutateAsync(ids).then(() => undefined)}
         />
       )}
     </aside>
@@ -1054,6 +1253,13 @@ export function WorkItemDetailPage() {
     isStory ? itemByKey.projectId : undefined,
   )
   const defectCount = childDefects.length
+
+  // Tasks tab count (DEV-012): drive from the SAME collection the Tasks table
+  // and roll-up read, so the badge always matches the persisted child tasks and
+  // refreshes after a create/delete (both invalidate the ['work-items'] root).
+  const showsTasks = itemByKey != null && itemByKey.type !== 'task'
+  const { data: tasksForCount = [] } = useTasks(showsTasks ? itemByKey.id : undefined)
+  const taskCount = tasksForCount.length
 
   const patchItem = useCallback(
     async (patch: Record<string, unknown>) => {
@@ -1116,7 +1322,6 @@ export function WorkItemDetailPage() {
 
   const item = itemByKey
   const isTask = item.type === 'task'
-  const taskCount = (item as WorkItem & { _count?: { tasks: number } })._count?.tasks ?? 0
 
   type TabDef = { id: DetailTab; icon: React.ReactNode; label: string }
   const tabs: TabDef[] = [
@@ -1295,7 +1500,7 @@ export function WorkItemDetailPage() {
             />
           )}
           {activeTab === 'tasks' && !isTask && (
-            <TasksTab workItemId={item.id} projectId={item.projectId} />
+            <TasksTab workItemId={item.id} projectId={item.projectId} readOnly={readOnly} />
           )}
           {activeTab === 'defects' && isStory && (
             <DefectsTab workItemId={item.id} projectId={item.projectId} />

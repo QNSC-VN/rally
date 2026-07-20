@@ -19,6 +19,7 @@ import { PageErrorBoundary } from '@/shared/ui/error-boundary'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { Avatar } from '@/shared/ui/avatar'
+import { KeyChip } from '@/shared/ui/key-chip'
 import { useWorkspaces } from '@/features/workspaces/api'
 import { useProjects } from '@/features/projects/api'
 import { useProjectTeams, type Team } from '@/features/teams/api'
@@ -66,6 +67,12 @@ const NAV_ITEMS: NavItem[] = [
         permission: 'iteration:view',
       },
       {
+        path: '/releases',
+        label: 'Releases',
+        featureFlag: 'feature.releases',
+        permission: 'project:view',
+      },
+      {
         path: '/milestones',
         label: 'Milestones',
         featureFlag: 'feature.milestones',
@@ -111,12 +118,6 @@ const NAV_ITEMS: NavItem[] = [
     path: '/portfolio',
     label: 'Portfolio',
     featureFlag: 'feature.portfolio',
-    permission: 'project:view',
-  },
-  {
-    path: '/releases',
-    label: 'Releases',
-    featureFlag: 'feature.releases',
     permission: 'project:view',
   },
   {
@@ -182,12 +183,7 @@ function ProjectTreeItem({
           className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pr-1 text-left"
           style={{ fontWeight: selected ? 600 : 400 }}
         >
-          <span
-            className="inline-flex h-4 w-8 shrink-0 items-center justify-center rounded-sm font-mono text-[9px] font-bold"
-            style={{ backgroundColor: BRAND.avatarBg, color: BRAND.primary }}
-          >
-            {project.key}
-          </span>
+          <KeyChip size="sm">{project.key}</KeyChip>
           <span className="truncate text-[11px]">{project.name}</span>
           {selected && (
             <Check size={10} className="ml-auto shrink-0" style={{ color: BRAND.primary }} />
@@ -228,12 +224,9 @@ function ProjectTreeItem({
                   fontWeight: currentTeamId === t.id ? 600 : 400,
                 }}
               >
-                <span
-                  className="inline-flex h-4 w-8 shrink-0 items-center justify-center rounded-sm font-mono text-[9px] font-bold"
-                  style={{ backgroundColor: BRAND.borderInner, color: BRAND.textSecondary }}
-                >
+                <KeyChip size="sm" tone="muted">
                   {t.key}
-                </span>
+                </KeyChip>
                 <span className="truncate text-[11px]">{t.name}</span>
                 {currentTeamId === t.id && (
                   <Check size={10} className="ml-auto shrink-0" style={{ color: BRAND.primary }} />

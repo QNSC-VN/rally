@@ -21,6 +21,10 @@ import {
   MilestoneQueryDto,
   CreateMilestoneDto,
   UpdateMilestoneDto,
+  SetMilestoneProjectsDto,
+  SetMilestoneTeamsDto,
+  SetMilestoneArtifactsDto,
+  SetMilestoneReleasesDto,
 } from './dto/milestone-request.dto';
 import { MilestoneResponseDto, MilestoneListItemDto } from './dto/milestone-response.dto';
 import type { Milestone } from '../../domain/milestone.types';
@@ -150,9 +154,9 @@ export class MilestonesController {
   async setMilestoneArtifacts(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: { ids: string[] },
+    @Body() dto: SetMilestoneArtifactsDto,
   ): Promise<string[]> {
-    return this.milestonesService.setMilestoneArtifacts(user, id, body.ids);
+    return this.milestonesService.setMilestoneArtifacts(user, id, dto.workItemIds);
   }
 
   @Get(':id/projects')
@@ -175,9 +179,9 @@ export class MilestonesController {
   async setMilestoneProjects(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: { ids: string[] },
+    @Body() dto: SetMilestoneProjectsDto,
   ): Promise<string[]> {
-    return this.milestonesService.setMilestoneProjects(user, id, body.ids);
+    return this.milestonesService.setMilestoneProjects(user, id, dto.projectIds);
   }
 
   @Get(':id/teams')
@@ -200,8 +204,33 @@ export class MilestonesController {
   async setMilestoneTeams(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: { ids: string[] },
+    @Body() dto: SetMilestoneTeamsDto,
   ): Promise<string[]> {
-    return this.milestonesService.setMilestoneTeams(user, id, body.ids);
+    return this.milestonesService.setMilestoneTeams(user, id, dto.teamIds);
+  }
+
+  @Get(':id/releases')
+  @ApiOperation({ summary: 'List linked releases for a milestone' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, description: 'Array of release IDs' })
+  @ApiCommonErrors(401, 404)
+  async listMilestoneReleases(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<string[]> {
+    return this.milestonesService.getMilestoneReleases(user, id);
+  }
+
+  @Put(':id/releases')
+  @ApiOperation({ summary: 'Set linked releases for a milestone (replace all)' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, description: 'Updated release IDs' })
+  @ApiCommonErrors(400, 401, 403, 404)
+  async setMilestoneReleases(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetMilestoneReleasesDto,
+  ): Promise<string[]> {
+    return this.milestonesService.setMilestoneReleases(user, id, dto.releaseIds);
   }
 }

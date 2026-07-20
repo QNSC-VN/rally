@@ -6,7 +6,14 @@ import { and, eq, isNull, sql, inArray } from 'drizzle-orm';
 import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
 import { PERMISSION } from '@shared-kernel';
-import { workItems, milestones, milestoneReleases, releases } from '../../../../../db/schema/work';
+import {
+  workItems,
+  milestones,
+  milestoneReleases,
+  releases,
+  projects,
+  teams,
+} from '../../../../../db/schema/work';
 import { completedScheduleStatesSql } from '../../../../../db/schema/enums';
 import { IMilestoneRepository, MILESTONE_REPOSITORY } from '../domain/ports/milestone.repository';
 import type { Milestone, MilestoneStatus, UpdateMilestoneInput } from '../domain/milestone.types';
@@ -26,14 +33,34 @@ interface ReleaseStats {
   completedPoints: number;
 }
 
-/** Valid status transitions (Rally-aligned lifecycle). */
+/**
+ * Valid status transitions. SRS FR-006 enumerates the milestone statuses but
+ * does not prescribe a transition graph, so we keep the lifecycle permissive:
+ * any status may move to any OTHER status, with `completed` as the single
+ * terminal state (a completed milestone is done and cannot be reopened). This
+ * avoids trapping users in the previous restrictive graph (e.g. a `met`
+ * milestone that could only go to `completed`) while still preventing the one
+ * invariant the product needs — no resurrection of a completed milestone.
+ * NOTE for BA sign-off: confirm whether any additional terminal/locked states
+ * are required; this graph is intentionally the least-restrictive safe default.
+ */
+const ALL_MILESTONE_STATUSES: MilestoneStatus[] = [
+  'planned',
+  'at_risk',
+  'met',
+  'missed',
+  'cancelled',
+  'completed',
+];
+const others = (self: MilestoneStatus): MilestoneStatus[] =>
+  ALL_MILESTONE_STATUSES.filter((s) => s !== self);
 const MILESTONE_TRANSITIONS: Record<MilestoneStatus, MilestoneStatus[]> = {
-  planned: ['at_risk', 'completed', 'cancelled'],
-  at_risk: ['planned', 'met', 'missed', 'cancelled'],
-  met: ['completed'],
-  missed: ['at_risk', 'cancelled'],
-  cancelled: ['planned'],
-  completed: [],
+  planned: others('planned'),
+  at_risk: others('at_risk'),
+  met: others('met'),
+  missed: others('missed'),
+  cancelled: others('cancelled'),
+  completed: [], // terminal — a completed milestone cannot be reopened
 };
 
 @Injectable()
@@ -62,6 +89,68 @@ export class MilestonesService {
       ...page,
       data: page.data.map((m) => ({ ...m, progress: progressByMilestone.get(m.id) ?? undefined })),
     };
+  }
+
+  /**
+   * Single guard that every milestone link write funnels through: the linked
+   * projects, teams and releases must all belong to the actor's workspace.
+   * Mirrors the tenant-isolation rule enforced for project\u2194team links
+   * (ProjectsService.linkTeam) so a milestone can never reference an entity
+   * from another workspace/tenant. Each set is validated with one COUNT query;
+   * a size mismatch means at least one id is foreign (or does not exist).
+   */
+  private async assertLinksInWorkspace(
+    workspaceId: string,
+    links: { projectIds?: string[]; teamIds?: string[]; releaseIds?: string[] },
+  ): Promise<void> {
+    const projectIds = [...new Set(links.projectIds ?? [])];
+    const teamIds = [...new Set(links.teamIds ?? [])];
+    const releaseIds = [...new Set(links.releaseIds ?? [])];
+
+    if (projectIds.length > 0) {
+      const rows = await this.db
+        .select({ id: projects.id })
+        .from(projects)
+        .where(
+          and(
+            inArray(projects.id, projectIds),
+            eq(projects.workspaceId, workspaceId),
+            isNull(projects.deletedAt),
+          ),
+        );
+      if (rows.length !== projectIds.length) {
+        throw new PreconditionFailedException(
+          'MILESTONE_PROJECT_NOT_IN_WORKSPACE',
+          'One or more projects do not belong to this workspace',
+        );
+      }
+    }
+
+    if (teamIds.length > 0) {
+      const rows = await this.db
+        .select({ id: teams.id })
+        .from(teams)
+        .where(and(inArray(teams.id, teamIds), eq(teams.workspaceId, workspaceId)));
+      if (rows.length !== teamIds.length) {
+        throw new PreconditionFailedException(
+          'MILESTONE_TEAM_NOT_IN_WORKSPACE',
+          'One or more teams do not belong to this workspace',
+        );
+      }
+    }
+
+    if (releaseIds.length > 0) {
+      const rows = await this.db
+        .select({ id: releases.id })
+        .from(releases)
+        .where(and(inArray(releases.id, releaseIds), eq(releases.workspaceId, workspaceId)));
+      if (rows.length !== releaseIds.length) {
+        throw new PreconditionFailedException(
+          'MILESTONE_RELEASE_NOT_IN_WORKSPACE',
+          'One or more releases do not belong to this workspace',
+        );
+      }
+    }
   }
 
   // ── Recalculate target dates from linked releases ──────────────────────
@@ -109,6 +198,14 @@ export class MilestonesService {
     } = {},
   ): Promise<Milestone> {
     await this.projectsService.getProject(actor.workspaceId, projectId);
+
+    // Tenant isolation: every linked project/team/release must live in this
+    // workspace before we persist any link (defense in depth beyond RLS).
+    await this.assertLinksInWorkspace(actor.workspaceId, {
+      projectIds: opts.projectIds,
+      teamIds: opts.teamIds,
+      releaseIds: opts.releaseIds,
+    });
 
     const releaseIds = opts.releaseIds ?? [];
 
@@ -277,13 +374,16 @@ export class MilestonesService {
 
     // If releaseIds changed, always recalculate target dates from releases
     if (input.releaseIds !== undefined) {
+      await this.assertLinksInWorkspace(actor.workspaceId, { releaseIds: input.releaseIds });
       await this.milestoneRepo.setReleaseLinks(id, input.releaseIds);
       await this.recalcTargetDates(id, actor.workspaceId);
     }
     if (input.projectIds !== undefined) {
+      await this.assertLinksInWorkspace(actor.workspaceId, { projectIds: input.projectIds });
       await this.milestoneRepo.setProjectLinks(id, input.projectIds);
     }
     if (input.teamIds !== undefined) {
+      await this.assertLinksInWorkspace(actor.workspaceId, { teamIds: input.teamIds });
       await this.milestoneRepo.setTeamLinks(id, input.teamIds);
     }
 
@@ -331,6 +431,7 @@ export class MilestonesService {
           id: workItems.id,
           projectId: workItems.projectId,
           teamId: workItems.teamId,
+          type: workItems.type,
         })
         .from(workItems)
         .where(
@@ -344,6 +445,15 @@ export class MilestonesService {
         throw new PreconditionFailedException(
           'MILESTONE_PROJECT_MISMATCH',
           'One or more work items do not belong to this milestone\u2019s project scope',
+        );
+      }
+      // SRS §5.1 / FR-014: a Milestone Artifact is a Story or Defect work item.
+      // Reject initiatives, features and tasks so the Artifacts dashboard stays
+      // the Backlog-shaped Story/Defect list the BA specified.
+      if (rows.some((r) => r.type !== 'story' && r.type !== 'defect')) {
+        throw new PreconditionFailedException(
+          'MILESTONE_INVALID_ARTIFACT_TYPE',
+          'Only stories and defects can be assigned as milestone artifacts',
         );
       }
       if (teamScope.length > 0) {
@@ -376,6 +486,7 @@ export class MilestonesService {
       milestone.projectId,
       PERMISSION.MILESTONE_EDIT,
     );
+    await this.assertLinksInWorkspace(actor.workspaceId, { projectIds });
     await this.milestoneRepo.setProjectLinks(milestoneId, projectIds);
     return this.milestoneRepo.getProjectIds(milestoneId);
   }
@@ -396,8 +507,33 @@ export class MilestonesService {
       milestone.projectId,
       PERMISSION.MILESTONE_EDIT,
     );
+    await this.assertLinksInWorkspace(actor.workspaceId, { teamIds });
     await this.milestoneRepo.setTeamLinks(milestoneId, teamIds);
     return this.milestoneRepo.getTeamIds(milestoneId);
+  }
+
+  async getMilestoneReleases(actor: JwtPayload, milestoneId: string): Promise<string[]> {
+    await this.getMilestone(actor.workspaceId, milestoneId);
+    return this.milestoneRepo.getReleaseIds(milestoneId);
+  }
+
+  async setMilestoneReleases(
+    actor: JwtPayload,
+    milestoneId: string,
+    releaseIds: string[],
+  ): Promise<string[]> {
+    const milestone = await this.getMilestone(actor.workspaceId, milestoneId);
+    await this.accessService.assertProjectPermission(
+      actor,
+      milestone.projectId,
+      PERMISSION.MILESTONE_EDIT,
+    );
+    await this.assertLinksInWorkspace(actor.workspaceId, { releaseIds });
+    await this.milestoneRepo.setReleaseLinks(milestoneId, releaseIds);
+    // Target dates are derived from the linked releases (SRS FR-011/012), so
+    // recompute them whenever the release set changes.
+    await this.recalcTargetDates(milestoneId, actor.workspaceId);
+    return this.milestoneRepo.getReleaseIds(milestoneId);
   }
 
   // ── Delete ────────────────────────────────────────────────────────────────

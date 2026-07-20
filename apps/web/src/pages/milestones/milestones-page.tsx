@@ -11,8 +11,9 @@ import { AlertTriangle, Plus, Pencil, Trash2, PackageOpen } from 'lucide-react'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { StatusBadge as StatusPill } from '@/shared/ui/status-badge'
 import { MILESTONE_STATUS_STYLE } from '@/features/milestones/status-colors'
-import { useColumnLayout, type ColumnDef } from '@/shared/lib/hooks/use-column-layout'
-import { ResizeHandle } from '@/shared/ui/resize-handle'
+import { DataTableHeader } from '@/shared/ui/data-table-header'
+import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
+import { useDataTable, type ColumnSpec } from '@/shared/ui/table'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { cn } from '@/shared/lib/utils'
@@ -353,26 +354,119 @@ function EditMilestoneModal({ milestone, onClose }: { milestone: Milestone; onCl
   )
 }
 
-// ── Column definitions (resize) ──────────────────────────────────────────
+// ── Table columns (shared useDataTable engine) ───────────────────────────────
 
 type MilestoneColKey = 'name' | 'targetStartDate' | 'targetEndDate' | 'status' | 'actions'
 
-const MILESTONES_COLUMNS: ColumnDef<MilestoneColKey>[] = [
-  { key: 'name', label: 'Name', defaultWidth: 260, minWidth: 120, locked: true },
-  { key: 'targetStartDate', label: 'Target Start Date', defaultWidth: 120, minWidth: 90 },
-  { key: 'targetEndDate', label: 'Target End Date', defaultWidth: 120, minWidth: 90 },
-  { key: 'status', label: 'Status', defaultWidth: 100, minWidth: 70 },
-  { key: 'actions', label: '', defaultWidth: 96, minWidth: 48, locked: true },
+/** Per-render context handed to each cell (permissions + row callbacks). */
+interface MilestoneCtx {
+  canManage: boolean
+  deletingId: string | null
+  onEdit: (m: Milestone) => void
+  onAskDelete: (id: string) => void
+  onCancelDelete: () => void
+  onConfirmDelete: (id: string) => void
+}
+
+/** Row actions cell — edit + delete-with-confirm, kept out of the column spec. */
+function MilestoneActionsCell({ milestone, ctx }: { milestone: Milestone; ctx: MilestoneCtx }) {
+  if (!ctx.canManage) return null
+  return (
+    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+      <button
+        onClick={() => ctx.onEdit(milestone)}
+        className="rounded p-1 hover:bg-surface-hover"
+        title="Edit"
+      >
+        <Pencil size={13} className="text-muted-foreground" />
+      </button>
+      {ctx.deletingId === milestone.id ? (
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => ctx.onConfirmDelete(milestone.id)}
+            className="rounded border border-destructive-border bg-destructive-bg px-1.5 py-0.5 text-[10px] font-medium text-destructive"
+          >
+            Confirm
+          </button>
+          <button
+            onClick={ctx.onCancelDelete}
+            className="rounded border border-border-strong px-1.5 py-0.5 text-[10px] text-muted-foreground"
+          >
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <button
+          onClick={() => ctx.onAskDelete(milestone.id)}
+          className="rounded p-1 hover:bg-destructive-bg"
+          title="Delete"
+        >
+          <Trash2 size={13} className="text-destructive" />
+        </button>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Single per-column source of truth. The shared {@link useDataTable} engine
+ * derives the header, resize / reorder / show-hide behaviour and body cells
+ * from this array — identical to the Projects / Quality grids.
+ */
+const MILESTONES_COLUMNS: ColumnSpec<Milestone, MilestoneCtx, MilestoneColKey>[] = [
+  {
+    key: 'name',
+    label: 'Name',
+    defaultWidth: 260,
+    minWidth: 120,
+    locked: true,
+    cellClassName: 'flex min-w-0 items-center',
+    cell: (m) => (
+      <span className="block truncate text-xs font-medium text-foreground">{m.name}</span>
+    ),
+  },
+  {
+    key: 'targetStartDate',
+    label: 'Target Start Date',
+    defaultWidth: 120,
+    minWidth: 90,
+    cellClassName: 'flex items-center text-xs text-muted-foreground',
+    cell: (m) => m.targetStartDate ?? '—',
+  },
+  {
+    key: 'targetEndDate',
+    label: 'Target End Date',
+    defaultWidth: 120,
+    minWidth: 90,
+    cellClassName: 'flex items-center text-xs text-muted-foreground',
+    cell: (m) => m.targetEndDate ?? '—',
+  },
+  {
+    key: 'status',
+    label: 'Status',
+    defaultWidth: 100,
+    minWidth: 70,
+    cellClassName: 'flex items-center',
+    cell: (m) => <StatusBadge status={m.status} />,
+  },
+  {
+    key: 'actions',
+    label: '',
+    defaultWidth: 96,
+    minWidth: 48,
+    locked: true,
+    cellClassName: 'flex items-center justify-end',
+    cell: (m, ctx) => <MilestoneActionsCell milestone={m} ctx={ctx} />,
+  },
 ]
 
 // ── Milestones page ───────────────────────────────────────────────────────────
 
 export function MilestonesPage() {
   const { project } = useAppContext()
-  const { startResize, styleFor } = useColumnLayout(
-    MILESTONES_COLUMNS,
-    STORAGE_KEYS.MILESTONES_COLUMNS,
-  )
+  const table = useDataTable<Milestone, MilestoneCtx, MilestoneColKey>(MILESTONES_COLUMNS, {
+    storageKey: STORAGE_KEYS.MILESTONES_COLUMNS,
+  })
   const { can } = useProjectPermissions(project?.projectId)
   const canManage = can('milestone:create') || can('milestone:edit') || can('milestone:delete')
   const { data: milestones, isLoading, error } = useMilestones(project?.projectId)
@@ -413,6 +507,17 @@ export function MilestonesPage() {
     )
   }
 
+  const cellCtx: MilestoneCtx = {
+    canManage,
+    deletingId: deleting,
+    onEdit: setEditing,
+    onAskDelete: setDeleting,
+    onCancelDelete: () => setDeleting(null),
+    onConfirmDelete: (id) => {
+      void handleDelete(id)
+    },
+  }
+
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Toolbar */}
@@ -433,6 +538,7 @@ export function MilestonesPage() {
             </Button>
           ) : undefined
         }
+        fields={<ColumnFieldsMenu {...table.fieldsMenuProps} />}
       />
 
       {/* Table */}
@@ -455,101 +561,23 @@ export function MilestonesPage() {
           />
         ) : (
           <div className="flex-1 overflow-auto">
-            {/* Header */}
-            <div
-              className="flex h-8 shrink-0 items-center border-b border-border-strong bg-surface-hover px-3 select-none"
-              style={{ minWidth: 'max-content' }}
-            >
-              {MILESTONES_COLUMNS.map((col) => (
+            <div style={{ width: table.tableWidth, minWidth: '100%' }}>
+              {/* Table header (shared engine: resize / reorder) */}
+              <DataTableHeader {...table.headerProps} className="gap-2 px-3" />
+              {/* Rows */}
+              {filtered.map((ms) => (
                 <div
-                  key={col.key}
-                  className="group relative flex items-center gap-1 px-2 text-[9px] font-semibold tracking-wider whitespace-nowrap text-foreground-subtle uppercase"
-                  style={styleFor(col.key, { flexShrink: 0 })}
+                  key={ms.id}
+                  className="flex min-h-12 cursor-pointer items-center gap-2 border-b border-border-inner px-3 hover:bg-surface-hover"
+                  style={{ minWidth: 'max-content' }}
+                  onClick={() =>
+                    navigate({ to: '/milestones/$milestoneId', params: { milestoneId: ms.id } })
+                  }
                 >
-                  <span>{col.label}</span>
-                  <ResizeHandle
-                    onMouseDown={(e) => startResize(col.key, e)}
-                    ariaLabel={`Resize ${col.label} column`}
-                  />
+                  {table.renderCells(ms, cellCtx)}
                 </div>
               ))}
             </div>
-            {/* Rows */}
-            {filtered.map((ms) => (
-              <div
-                key={ms.id}
-                className="flex h-8 cursor-pointer items-center border-b border-border-inner px-3 hover:bg-surface-hover"
-                style={{ minWidth: 'max-content' }}
-                onClick={() =>
-                  navigate({ to: '/milestones/$milestoneId', params: { milestoneId: ms.id } })
-                }
-              >
-                {/* Name */}
-                <div className="shrink-0 px-2" style={styleFor('name')}>
-                  <span className="block truncate text-xs font-medium text-foreground">
-                    {ms.name}
-                  </span>
-                </div>
-                {/* Target Start Date */}
-                <div
-                  className="shrink-0 px-2 text-xs text-muted-foreground"
-                  style={styleFor('targetStartDate')}
-                >
-                  {ms.targetStartDate ?? '\u2014'}
-                </div>
-                {/* Target End Date */}
-                <div
-                  className="shrink-0 px-2 text-xs text-muted-foreground"
-                  style={styleFor('targetEndDate')}
-                >
-                  {ms.targetEndDate ?? '\u2014'}
-                </div>
-                {/* Status */}
-                <div className="shrink-0 px-2" style={styleFor('status')}>
-                  <StatusBadge status={ms.status} />
-                </div>
-                {/* Actions */}
-                <div className="shrink-0 px-2" style={styleFor('actions')}>
-                  {canManage && (
-                    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        onClick={() => setEditing(ms)}
-                        className="rounded p-1 hover:bg-surface-hover"
-                        title="Edit"
-                      >
-                        <Pencil size={13} className="text-muted-foreground" />
-                      </button>
-                      {deleting === ms.id ? (
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => {
-                              void handleDelete(ms.id)
-                            }}
-                            className="rounded border border-destructive-border bg-destructive-bg px-1.5 py-0.5 text-[10px] font-medium text-destructive"
-                          >
-                            Confirm
-                          </button>
-                          <button
-                            onClick={() => setDeleting(null)}
-                            className="rounded border border-border-strong px-1.5 py-0.5 text-[10px] text-muted-foreground"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => setDeleting(ms.id)}
-                          className="rounded p-1 hover:bg-destructive-bg"
-                          title="Delete"
-                        >
-                          <Trash2 size={13} className="text-destructive" />
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
           </div>
         )}
       </div>

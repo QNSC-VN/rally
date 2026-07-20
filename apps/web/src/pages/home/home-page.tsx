@@ -6,6 +6,8 @@ import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { BRAND } from '@/shared/config/brand'
 import { PageHeader } from '@/shared/ui/page-header'
 import { EmptyState } from '@/shared/ui/empty-state'
+import { OwnerCell } from '@/shared/ui/owner-cell'
+import { KeyChip } from '@/shared/ui/key-chip'
 import { TypeBadge, ScheduleStateBadge, PriorityBadge } from '@/entities/work-item/ui/badges'
 import { WorkItemType, WorkItemPriority } from '@/entities/work-item/model/types'
 import { type Project, useProjects, useProjectStatuses } from '@/features/projects/api'
@@ -85,15 +87,7 @@ function ProjectHealthRow({
     >
       {/* Key */}
       <div className="w-14 shrink-0">
-        <span
-          className="rounded-sm px-1.5 py-px font-mono text-[10px] font-semibold"
-          style={{
-            backgroundColor: isSelected ? BRAND.accentBg : BRAND.pageBg,
-            color: isSelected ? BRAND.primaryLight : BRAND.textSecondary,
-          }}
-        >
-          {project.key}
-        </span>
+        <KeyChip>{project.key}</KeyChip>
       </div>
       {/* Name */}
       <div className="min-w-0 flex-1">
@@ -159,12 +153,14 @@ function ProjectHealthRow({
         )}
       </div>
       {/* Owner */}
-      <div className="w-32 shrink-0 text-[11px]" style={{ color: BRAND.textSecondary }}>
-        {project.leadId === currentUserId ? (
-          (currentUserDisplayName ?? 'You')
-        ) : (
-          <span style={{ color: BRAND.textMuted }}>—</span>
-        )}
+      <div className="flex w-32 shrink-0 items-center">
+        <OwnerCell
+          name={
+            project.leadId
+              ? (project.leadName ?? (project.leadId === currentUserId ? currentUserDisplayName : null))
+              : null
+          }
+        />
       </div>
     </div>
   )

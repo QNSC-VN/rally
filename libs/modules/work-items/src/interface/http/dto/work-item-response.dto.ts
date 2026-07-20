@@ -11,6 +11,7 @@ export const WorkItemResponseSchema = z.object({
   description: z.string().nullable(),
   statusId: z.string().uuid(),
   scheduleState: z.string(),
+  flowState: z.string(),
   priority: z.string(),
   assigneeId: z.string().uuid().nullable(),
   reporterId: z.string().uuid().nullable(),

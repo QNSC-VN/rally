@@ -31,8 +31,13 @@ export interface ColumnSpec<Row, Ctx, K extends string = string> {
   align?: 'center' | 'right'
   /** When set, the header cell is click-to-sort and shows a direction arrow. */
   sortCol?: string
-  /** Renders the body cell for a given row. */
-  cell: (row: Row, ctx: Ctx) => ReactNode
+  /**
+   * Renders the body cell for a given row. Optional: editable grids that own
+   * their row structure (per-row mutation hooks / inline inputs) still adopt the
+   * engine for layout + header + Show-Fields wiring, but render their own rows
+   * instead of calling `renderCells`, so they declare columns without a `cell`.
+   */
+  cell?: (row: Row, ctx: Ctx) => ReactNode
   /**
    * Extra classes for the body-cell wrapper `<div>` (padding/flex/alignment).
    * The engine always applies the resolved width/order/visibility style on top.

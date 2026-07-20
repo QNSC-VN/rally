@@ -94,7 +94,7 @@ describe('BA flows: project foundation → work items → iteration (real AppMod
         description: 'Login with SSO',
         assigneeId: ADMIN_USER_ID,
         scheduleState: 'in_progress',
-        storyPoints: 5,
+        storyPoints: '5',
       });
 
       expect(updated.description).toBe('Login with SSO');

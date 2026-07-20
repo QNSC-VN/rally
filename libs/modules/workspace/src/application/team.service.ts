@@ -3,6 +3,7 @@ import { uuidv7 } from 'uuidv7';
 import {
   NotFoundException,
   ConflictException,
+  PreconditionFailedException,
   UnitOfWork,
   AuditProducer,
   AUDIT_ACTION,
@@ -14,6 +15,10 @@ import {
   TEAM_MEMBER_REPOSITORY,
 } from '../domain/ports/team-member.repository';
 import { IWorkspaceRepository, WORKSPACE_REPOSITORY } from '../domain/ports/workspace.repository';
+import {
+  IWorkspaceMemberRepository,
+  WORKSPACE_MEMBER_REPOSITORY,
+} from '../domain/ports/workspace-member.repository';
 import type { Team, TeamMember, TeamWithStats, UpdateTeamInput } from '../domain/team.types';
 
 @Injectable()
@@ -24,6 +29,8 @@ export class TeamService {
     @Inject(TEAM_REPOSITORY) private readonly teamRepo: ITeamRepository,
     @Inject(TEAM_MEMBER_REPOSITORY) private readonly teamMemberRepo: ITeamMemberRepository,
     @Inject(WORKSPACE_REPOSITORY) private readonly workspaceRepo: IWorkspaceRepository,
+    @Inject(WORKSPACE_MEMBER_REPOSITORY)
+    private readonly workspaceMemberRepo: IWorkspaceMemberRepository,
     private readonly uow: UnitOfWork,
     private readonly audit: AuditProducer,
   ) {}
@@ -136,6 +143,16 @@ export class TeamService {
   ): Promise<TeamMember> {
     // Pass workspaceId so a team from another workspace can't be targeted (was a gap).
     await this.getTeam(teamId, workspaceId);
+
+    // A team member must be an active member of the owning workspace — same rule
+    // enforced for project members and work-item assignees. Prevents adding a
+    // user from another workspace/tenant to a team.
+    if (!(await this.workspaceMemberRepo.isMember(workspaceId, userId))) {
+      throw new PreconditionFailedException(
+        'TEAM_MEMBER_NOT_WORKSPACE_MEMBER',
+        'User is not an active member of this workspace',
+      );
+    }
 
     const existing = await this.teamMemberRepo.findMember(teamId, userId);
     if (existing) {

@@ -65,6 +65,7 @@ describe('IterationStatusService', () => {
         acceptedPoints: 0,
         defectCount: 0,
         taskCount: 0,
+        activeTaskCount: 0,
       }),
       listItems: vi.fn().mockResolvedValue(emptyPage),
     };
@@ -97,7 +98,8 @@ describe('IterationStatusService', () => {
         acceptedPoints: 30,
         defectCount: 2,
         taskCount: 5,
-      });
+        activeTaskCount: 3,
+      })
       iterationsService.getIteration.mockResolvedValue(mockIteration({ plannedVelocity: 40 }));
 
       const res = await service.getStatus(actor, 'it-1', {}, pageArgs);
@@ -107,6 +109,7 @@ describe('IterationStatusService', () => {
       expect(res.metrics.plannedVelocityPercent).toBe(75); // 30/40
       expect(res.metrics.defectCount).toBe(2);
       expect(res.metrics.taskCount).toBe(5);
+      expect(res.metrics.activeTaskCount).toBe(3);
     });
 
     it('guards divide-by-zero when there are no points', async () => {

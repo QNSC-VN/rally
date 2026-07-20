@@ -10,6 +10,7 @@
  * - Upload progress optimistic UI (spinner on uploading row)
  */
 import { BRAND } from '@/shared/config/brand'
+import { formatDate } from '@/shared/lib/utils'
 import { useRef, useState, useCallback } from 'react'
 import { FileText, Paperclip, Trash2, Upload, X } from 'lucide-react'
 import {
@@ -26,17 +27,6 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function formatDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    })
-  } catch {
-    return iso
-  }
-}
 
 interface AttachmentBlockProps {
   workItemId: string | undefined

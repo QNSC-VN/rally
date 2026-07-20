@@ -31,8 +31,9 @@ import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
-import { useColumnLayout, type ColumnDef } from '@/shared/lib/hooks/use-column-layout'
-import { ResizeHandle } from '@/shared/ui/resize-handle'
+import { DataTableHeader } from '@/shared/ui/data-table-header'
+import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
+import { useDataTable, type ColumnSpec } from '@/shared/ui/table'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { StatusBadge as StatusPill } from '@/shared/ui/status-badge'
 import { RELEASE_STATUS_STYLE } from '@/features/releases/status-colors'
@@ -55,21 +56,19 @@ type ColKey =
   | 'releaseDate'
   | 'plannedVelocity'
   | 'taskEstimate'
-  | 'progress'
   | 'state'
   | 'actions'
 
-const RELEASES_COLUMNS: ColumnDef<ColKey>[] = [
+const RELEASES_COLUMNS: ColumnSpec<Release, unknown, ColKey>[] = [
   { key: 'name', label: 'Name', defaultWidth: 200, minWidth: 120, locked: true },
   { key: 'theme', label: 'Theme', defaultWidth: 144, minWidth: 80 },
   { key: 'version', label: 'Version', defaultWidth: 80, minWidth: 50 },
   { key: 'startDate', label: 'Start Date', defaultWidth: 96, minWidth: 80 },
   { key: 'releaseDate', label: 'Release Date', defaultWidth: 96, minWidth: 80 },
-  { key: 'plannedVelocity', label: 'Plan. Vel.', defaultWidth: 80, minWidth: 60 },
-  { key: 'taskEstimate', label: 'Task Est.', defaultWidth: 64, minWidth: 50 },
-  { key: 'progress', label: 'Progress', defaultWidth: 128, minWidth: 80 },
+  { key: 'plannedVelocity', label: 'Plan. Vel.', defaultWidth: 80, minWidth: 60, align: 'right' },
+  { key: 'taskEstimate', label: 'Task Est.', defaultWidth: 64, minWidth: 50, align: 'right' },
   { key: 'state', label: 'State', defaultWidth: 112, minWidth: 80 },
-  { key: 'actions', label: '', defaultWidth: 64, minWidth: 48 },
+  { key: 'actions', label: '', defaultWidth: 64, minWidth: 48, locked: true },
 ]
 
 const RELEASE_STATES: ReleaseStatus[] = ['planning', 'active', 'accepted']
@@ -737,37 +736,6 @@ function ReleaseRow({
         <span>{release.taskEstimate ?? 0}</span>
       </div>
 
-      {/* Progress bar */}
-      <div style={colStyleFor('progress', { flexShrink: 0 })} className="flex items-center gap-1.5">
-        {release.taskRollup ? (
-          <>
-            <div
-              className="h-1.5 flex-1 overflow-hidden rounded-full"
-              style={{ backgroundColor: BRAND.borderInner }}
-            >
-              <div
-                className="h-full rounded-full transition-all"
-                style={{
-                  width: `${release.taskRollup.progressPercent}%`,
-                  backgroundColor:
-                    release.taskRollup.progressPercent === 100 ? BRAND.success : BRAND.primaryLight,
-                }}
-              />
-            </div>
-            <span
-              className="font-mono text-[10px] whitespace-nowrap tabular-nums"
-              style={{ color: BRAND.textMuted }}
-            >
-              {release.taskRollup.completedItems}/{release.taskRollup.totalItems}
-            </span>
-          </>
-        ) : (
-          <span className="text-[10px]" style={{ color: BRAND.textMuted }}>
-            —
-          </span>
-        )}
-      </div>
-
       {/* State (P3-REL-FR-008) */}
       <div style={colStyleFor('state', { flexShrink: 0 })} onClick={(e) => e.stopPropagation()}>
         {canManage ? (
@@ -842,11 +810,13 @@ export function ReleasesPage() {
   const { can } = useProjectPermissions(projectId)
   const canManage = can('release:create') || can('release:edit') || can('release:delete')
 
-  // ── Column layout (resize) ──────────────────────────────────────────
-  const { startResize, styleFor } = useColumnLayout(RELEASES_COLUMNS, STORAGE_KEYS.RELEASES_COLUMNS)
+  // ── Shared table engine (identical to projects/quality): resize / reorder / show-hide ──
+  const table = useDataTable<Release, unknown, ColKey>(RELEASES_COLUMNS, {
+    storageKey: STORAGE_KEYS.RELEASES_COLUMNS,
+  })
   const colStyleFor = useCallback(
-    (key: ColKey, base?: React.CSSProperties) => styleFor(key, base),
-    [styleFor],
+    (key: ColKey, base?: React.CSSProperties) => table.styleFor(key, base),
+    [table],
   )
 
   const { data: releases = [], isLoading, isError } = useReleases(projectId)
@@ -916,6 +886,7 @@ export function ReleasesPage() {
             </Button>
           ) : undefined
         }
+        fields={<ColumnFieldsMenu {...table.fieldsMenuProps} />}
       />
 
       {/* Summary metric strip */}
@@ -936,86 +907,8 @@ export function ReleasesPage() {
         <MetricCard label="Planning" value={stats.planning} minWidth={90} />
       </MetricStrip>
 
-      {/* Column headers (P3-REL-FR-004/007) — resizable */}
-      <div
-        className="flex h-8 items-center px-3 text-[11px] font-semibold select-none"
-        style={{
-          borderBottom: `1px solid ${BRAND.borderSubtle}`,
-          color: BRAND.textMuted,
-          backgroundColor: BRAND.surface,
-        }}
-      >
-        <div style={styleFor('name', { flexShrink: 0 })} className="group relative px-1">
-          Name
-          <ResizeHandle
-            onMouseDown={(e) => startResize('name', e)}
-            ariaLabel="Resize Name column"
-          />
-        </div>
-        <div style={styleFor('theme', { flexShrink: 0 })} className="group relative px-1">
-          Theme
-          <ResizeHandle
-            onMouseDown={(e) => startResize('theme', e)}
-            ariaLabel="Resize Theme column"
-          />
-        </div>
-        <div style={styleFor('version', { flexShrink: 0 })} className="group relative px-1">
-          Version
-          <ResizeHandle
-            onMouseDown={(e) => startResize('version', e)}
-            ariaLabel="Resize Version column"
-          />
-        </div>
-        <div style={styleFor('startDate', { flexShrink: 0 })} className="group relative px-1">
-          Start Date
-          <ResizeHandle
-            onMouseDown={(e) => startResize('startDate', e)}
-            ariaLabel="Resize Start Date column"
-          />
-        </div>
-        <div style={styleFor('releaseDate', { flexShrink: 0 })} className="group relative px-1">
-          Release Date
-          <ResizeHandle
-            onMouseDown={(e) => startResize('releaseDate', e)}
-            ariaLabel="Resize Release Date column"
-          />
-        </div>
-        <div
-          style={styleFor('plannedVelocity', { flexShrink: 0 })}
-          className="group relative px-1 pr-2 text-right"
-        >
-          Plan. Vel.
-          <ResizeHandle
-            onMouseDown={(e) => startResize('plannedVelocity', e)}
-            ariaLabel="Resize Planned Velocity column"
-          />
-        </div>
-        <div
-          style={styleFor('taskEstimate', { flexShrink: 0 })}
-          className="group relative px-1 pr-2 text-right"
-        >
-          Task Est.
-          <ResizeHandle
-            onMouseDown={(e) => startResize('taskEstimate', e)}
-            ariaLabel="Resize Task Estimate column"
-          />
-        </div>
-        <div style={styleFor('progress', { flexShrink: 0 })} className="group relative px-1">
-          Progress
-          <ResizeHandle
-            onMouseDown={(e) => startResize('progress', e)}
-            ariaLabel="Resize Progress column"
-          />
-        </div>
-        <div style={styleFor('state', { flexShrink: 0 })} className="group relative px-1">
-          State
-          <ResizeHandle
-            onMouseDown={(e) => startResize('state', e)}
-            ariaLabel="Resize State column"
-          />
-        </div>
-        {canManage && <div style={styleFor('actions', { flexShrink: 0 })} className="px-1" />}
-      </div>
+      {/* Column headers — shared table engine (identical wiring to projects/quality) */}
+      <DataTableHeader {...table.headerProps} className="px-3" />
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto" style={{ backgroundColor: BRAND.surface }}>

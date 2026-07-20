@@ -72,6 +72,7 @@ export class IterationStatusService {
       daysLeft: this.daysLeft(iteration.endDate),
       defectCount: raw.defectCount,
       taskCount: raw.taskCount,
+      activeTaskCount: raw.activeTaskCount,
     };
 
     return { iteration, metrics, items };

@@ -120,24 +120,15 @@ export function NotificationsPage() {
             title="Failed to load notifications. Please try again."
           />
         ) : notifications.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-4 py-20">
-            <div
-              className="flex h-14 w-14 items-center justify-center rounded-xl"
-              style={{ backgroundColor: BRAND.avatarBg }}
-            >
-              <Bell size={26} style={{ color: BRAND.primary }} />
-            </div>
-            <div className="text-center">
-              <p className="text-[15px] font-semibold" style={{ color: BRAND.textPrimary }}>
-                {tab === 'unread' ? 'No unread notifications' : "You're all caught up"}
-              </p>
-              <p className="mt-1 text-[12px]" style={{ color: BRAND.textMuted }}>
-                {tab === 'all'
-                  ? 'New notifications will appear here.'
-                  : 'Switch to the All tab to see everything.'}
-              </p>
-            </div>
-          </div>
+          <EmptyState
+            icon={<Bell size={28} className="text-foreground-subtle" />}
+            title={tab === 'unread' ? 'No unread notifications' : "You're all caught up"}
+            description={
+              tab === 'all'
+                ? 'New notifications will appear here.'
+                : 'Switch to the All tab to see everything.'
+            }
+          />
         ) : (
           <ul>
             {notifications.map((n) => (

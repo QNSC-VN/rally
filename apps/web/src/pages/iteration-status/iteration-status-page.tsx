@@ -9,9 +9,9 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useMemo, useState, useCallback, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { useColumnLayout, type ColumnDef } from '@/shared/lib/hooks/use-column-layout'
-import { useColumnDrag } from '@/shared/lib/hooks/use-column-drag'
+import { type ColumnDef } from '@/shared/lib/hooks/use-column-layout'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
+import { useDataTable, type ColumnSpec } from '@/shared/ui/table'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { IterationBoard } from '@/widgets/iteration-board/iteration-board'
 import { DataTableHeader, type DataTableHeaderColumn } from '@/shared/ui/data-table-header'
@@ -134,7 +134,7 @@ type ColKey =
   | 'milestones'
   | 'devOwner'
 
-const ITERATION_STATUS_COLUMNS: ColumnDef<ColKey>[] = [
+const ITERATION_STATUS_COLUMNS: ColumnSpec<unknown, unknown, ColKey>[] = [
   { key: 'rank', label: 'Rank', defaultWidth: 60, minWidth: 56 },
   { key: 'id', label: 'ID', defaultWidth: 132, minWidth: 120 },
   { key: 'name', label: 'Name', defaultWidth: 240, minWidth: 150 },
@@ -418,14 +418,15 @@ function DefectStatusPill({ total, open }: { total: number; open: number }) {
   )
 }
 
-/** Thin task-completion bar computed from task estimate vs. remaining to-do. */
-function TasksProgress({ estimate, toDo }: { estimate: number; toDo: number }) {
-  if (!estimate || estimate <= 0) {
+/** Thin task-completion bar computed from Task State: completed / total tasks.
+ * State-based (not To-Do hours) so it agrees with the Team Status screen. */
+function TasksProgress({ total, done }: { total: number; done: number }) {
+  if (!total || total <= 0) {
     return <span style={{ fontSize: 12, color: AZ.textMuted }}>&mdash;</span>
   }
-  const pct = Math.max(0, Math.min(100, Math.round(((estimate - toDo) / estimate) * 100)))
+  const pct = Math.max(0, Math.min(100, Math.round((done / total) * 100)))
   return (
-    <div className="flex w-full items-center gap-1.5" title={`${pct}% complete`}>
+    <div className="flex w-full items-center gap-1.5" title={`${done}/${total} tasks complete`}>
       <div
         style={{
           flex: 1,
@@ -489,22 +490,11 @@ export function IterationStatusPage() {
     localStorage.setItem(STORAGE_KEYS.ITERATION_STATUS_VIEW_MODE, mode)
   }, [])
 
-  const { startResize, order, hidden, toggleVisible, reorder, styleFor } = useColumnLayout(
-    ITERATION_STATUS_COLUMNS,
-    STORAGE_KEYS.ITERATION_STATUS_COLUMNS,
-  )
-
-  // Drag-to-reorder columns directly from their header cells (mirrors the
-  // Show Fields menu, but in-place). Delegates to `reorder` from useColumnLayout.
-  const {
-    activeDragKey,
-    dropIndicator,
-    handleDragStart: handleColDragStart,
-    handleDragOver: handleColDragOver,
-    handleDragLeave: handleColDragLeave,
-    handleDrop: handleColDrop,
-    handleDragEnd: handleColDragEnd,
-  } = useColumnDrag<ColKey>({ onReorder: reorder })
+  // Shared table engine (identical to projects/releases): resize + reorder + show/hide.
+  const table = useDataTable<unknown, unknown, ColKey>(ITERATION_STATUS_COLUMNS, {
+    storageKey: STORAGE_KEYS.ITERATION_STATUS_COLUMNS,
+  })
+  const { startResize, order, hidden, toggleVisible, reorder, styleFor } = table
 
   useEffect(() => {
     if (projectId) {
@@ -1016,15 +1006,7 @@ export function IterationStatusPage() {
               />
             }
             sort={{ col: sortCol, dir: sortDir, onSort: toggleSort }}
-            columnDrag={{
-              activeDragKey,
-              dropIndicator,
-              onDragStart: handleColDragStart,
-              onDragOver: handleColDragOver,
-              onDragLeave: handleColDragLeave,
-              onDrop: handleColDrop,
-              onDragEnd: handleColDragEnd,
-            }}
+            columnDrag={table.columnDrag}
           />
 
           {/* Rows */}
@@ -1432,7 +1414,7 @@ function MetricsStrip({
           <ListChecks size={16} style={{ color: AZ.textMuted }} />
           <div className="flex flex-col">
             <span style={{ fontSize: 11, fontWeight: 600, color: AZ.textPrimary }}>
-              {metrics?.taskCount ?? 0} Active
+              {metrics?.activeTaskCount ?? 0} Active
             </span>
             <span style={{ fontSize: 10, color: AZ.textMuted }}>Tasks</span>
           </div>
@@ -2128,7 +2110,7 @@ function StatusRow({
 
         {/* Tasks % complete (rollup) */}
         <div style={colStyles.tasksPct} className="flex items-center px-2">
-          <TasksProgress estimate={item.taskEstimate} toDo={item.toDo} />
+          <TasksProgress total={item.taskTotal} done={item.taskDone} />
         </div>
 
         {/* Actual — not tracked at story level, only on tasks */}

@@ -11,8 +11,6 @@ export const ITERATION_REPOSITORY = Symbol('ITERATION_REPOSITORY');
 
 export interface IIterationRepository {
   findById(id: string): Promise<Iteration | null>;
-  /** The single committed iteration for a project, if any. */
-  findCommitted(projectId: string): Promise<Iteration | null>;
   listByProject(
     projectId: string,
     workspaceId: string,

@@ -105,6 +105,14 @@ export function useTeamMembers(teamId: string | undefined) {
   })
 }
 
+/**
+ * Raw shape returned by `GET /v1/projects/{id}/teams` — a `project_team` LINK
+ * row, where `id` is the link id and `teamId` is the actual team id.
+ */
+interface ProjectTeamLinkRow extends Team {
+  teamId: string
+}
+
 export function useProjectTeams(projectId: string | undefined) {
   return useQuery({
     queryKey: teamKeys.projectTeams(projectId ?? ''),
@@ -114,7 +122,13 @@ export function useProjectTeams(projectId: string | undefined) {
         params: { path: { id: projectId } },
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
-      return (data as Team[]) ?? []
+      // The endpoint returns project_team LINK rows: `.id` is the link id and
+      // `.teamId` is the real team id. Normalize so `.id` is the TEAM id — every
+      // consumer treats this list as teams keyed by team id (Edit Project
+      // checkbox matching, team-name lookups, pickers). The link id is never
+      // used on the client (unlink is by teamId).
+      const links = (data as ProjectTeamLinkRow[]) ?? []
+      return links.map((l): Team => ({ ...l, id: l.teamId }))
     },
     enabled: !!projectId,
     staleTime: 60_000,

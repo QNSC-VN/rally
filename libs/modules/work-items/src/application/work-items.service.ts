@@ -36,6 +36,7 @@ import type {
 } from '@platform/notifications/notification.templates';
 import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
+import { deriveTaskEstimateHours } from '../domain/task-time.rules';
 import { IWorkItemRepository, WORK_ITEM_REPOSITORY } from '../domain/ports/work-item.repository';
 import {
   IActivityLogRepository,
@@ -226,13 +227,8 @@ export class WorkItemsService {
     title: string,
     opts: CreateWorkItemOpts = {},
   ): Promise<WorkItem> {
-    const project = await this.projectsService.getProject(actor.workspaceId, projectId);
+    await this.projectsService.getProject(actor.workspaceId, projectId);
     await this.accessService.assertProjectPermission(actor, projectId, PERMISSION.WORK_ITEM_CREATE);
-
-    // P1-15: assignee must be an active workspace member
-    if (opts.assigneeId) {
-      await this.projectsService.assertWorkspaceMember(project.workspaceId, opts.assigneeId);
-    }
 
     // P1-15: parentId must belong to the same project
     if (opts.parentId) {
@@ -260,9 +256,24 @@ export class WorkItemsService {
     }
 
     const statusId = await this.resolveStatusId(actor.workspaceId, projectId, opts.statusId);
-    if (opts.teamId) {
-      await this.assertTeamLinked(actor.workspaceId, projectId, opts.teamId);
-    }
+
+    // Every scoped reference (team, iteration, release, foundInRelease and the
+    // assignee/reporter/dev-owner person refs) is validated through the ONE
+    // assignment-scope guard — the same funnel the update and bulk paths use —
+    // so a create can't seed an item with a team/iteration/release that belongs
+    // to a different project or (for team-scoped iterations) a different team,
+    // nor a person from another workspace. Reachable e.g. via the task create
+    // flow, which accepts an explicit iteration and inherits the parent's
+    // iteration/team. reporterId defaults to the actor (always a member) so only
+    // an explicitly-provided reporter is validated.
+    await this.assertAssignmentScope(actor.workspaceId, {
+      projectId,
+      teamId: opts.teamId ?? null,
+      iterationId: opts.iterationId ?? null,
+      releaseId: opts.releaseId ?? null,
+      foundInReleaseId: opts.foundInReleaseId ?? null,
+      memberIds: [opts.assigneeId, opts.reporterId, opts.devOwnerId],
+    });
 
     // New items append to the end of their scope's order (top-level backlog,
     // or the parent's task list). A degenerate '' rank would sort correctly
@@ -309,7 +320,12 @@ export class WorkItemsService {
               iterationId: opts.iterationId,
               releaseId: opts.releaseId,
               storyPoints: opts.storyPoints,
-              estimateHours: opts.estimateHours,
+              // Task Estimate is read-only derived (Estimate = To Do + Actuals);
+              // any client-supplied estimate for a task is ignored.
+              estimateHours:
+                type === 'task'
+                  ? deriveTaskEstimateHours(opts.todoHours, opts.actualHours)
+                  : opts.estimateHours,
               todoHours: opts.todoHours,
               actualHours: opts.actualHours,
               acceptanceCriteria: opts.acceptanceCriteria,
@@ -422,6 +438,10 @@ export class WorkItemsService {
       parentId: parent.id,
       iterationId: opts.iterationId ?? parent.iterationId ?? undefined,
       assigneeId: opts.assigneeId ?? parent.assigneeId ?? undefined,
+      // SRS P1-04 (Task Management): team defaults to the parent's team unless
+      // explicitly provided, keeping the task's project/team compatible with
+      // its parent. createWorkItem still validates a provided team is linked.
+      teamId: opts.teamId ?? parent.teamId ?? undefined,
     });
   }
 
@@ -523,12 +543,6 @@ export class WorkItemsService {
   ): Promise<WorkItem> {
     const item = await this.getWorkItemForWrite(actor, id, PERMISSION.WORK_ITEM_EDIT);
 
-    // P1-15: validate new assignee is an active workspace member
-    if (input.assigneeId && input.assigneeId !== item.assigneeId) {
-      const project = await this.projectsService.getProject(actor.workspaceId, item.projectId);
-      await this.projectsService.assertWorkspaceMember(project.workspaceId, input.assigneeId);
-    }
-
     // TASK-FR-012: a task's Work Product (parent) can be reassigned, but the new
     // parent must be a valid work product (US/DE, never a task) in the SAME
     // project — the same scope rules enforced at task creation. A task always
@@ -572,14 +586,38 @@ export class WorkItemsService {
       );
     }
 
-    // P2-BL-02: assignment scope validation — iteration must share the work
-    // item's project/team; release must share its project. null unassigns.
-    if (input.iterationId) {
-      await this.assertIterationAssignable(actor.workspaceId, item, input.iterationId);
+    // Work Item Project and Team must be a valid pair (SRS P1-MANAGE-ORG). All
+    // scoped references funnel through the ONE assignment-scope guard, using the
+    // team the item WILL have after this patch (input.teamId when changing, else
+    // the current team) so a simultaneous team+iteration change is validated
+    // against the new team. A null teamId clears the team; the team-link re-check
+    // only runs when a team is actually being (re)assigned. Person refs
+    // (assignee/reporter/dev-owner) and a defect's foundInRelease are validated
+    // here too — only the ones actually changing, so unchanged members aren't
+    // re-queried.
+    const effectiveTeamId = input.teamId !== undefined ? input.teamId : item.teamId;
+    const changedMemberIds: Array<string | null | undefined> = [];
+    if (input.assigneeId && input.assigneeId !== item.assigneeId) {
+      changedMemberIds.push(input.assigneeId);
     }
-    if (input.releaseId) {
-      await this.assertReleaseAssignable(actor.workspaceId, item.projectId, input.releaseId);
+    if (input.reporterId && input.reporterId !== item.reporterId) {
+      changedMemberIds.push(input.reporterId);
     }
+    if (input.devOwnerId && input.devOwnerId !== item.devOwnerId) {
+      changedMemberIds.push(input.devOwnerId);
+    }
+    await this.assertAssignmentScope(
+      actor.workspaceId,
+      {
+        projectId: item.projectId,
+        teamId: effectiveTeamId,
+        iterationId: input.iterationId ?? null,
+        releaseId: input.releaseId ?? null,
+        foundInReleaseId: input.foundInReleaseId ?? null,
+        memberIds: changedMemberIds,
+      },
+      { validateTeamLink: Boolean(input.teamId) },
+    );
 
     // P3.4 — Validate defect state transitions.
     // SRS §6 (Quality/Defect) confirmed lifecycle:
@@ -603,13 +641,45 @@ export class WorkItemsService {
       }
     }
 
+    // ── BR-WI-01: Schedule State and Flow State mirror ──
+    // Accept a change to EITHER field and apply it to BOTH, so every downstream
+    // rule (roll-up, auto-accept, activity log) sees one coherent state. A
+    // request that sets the two to conflicting values is rejected.
+    if (
+      input.scheduleState !== undefined &&
+      input.flowState !== undefined &&
+      input.scheduleState !== input.flowState
+    ) {
+      throw new PreconditionFailedException(
+        'WORK_ITEM_STATE_MIRROR_CONFLICT',
+        'Schedule State and Flow State must match',
+      );
+    }
+    const nextState = input.scheduleState ?? input.flowState;
+    if (nextState !== undefined) {
+      input.scheduleState = nextState;
+      input.flowState = nextState;
+    }
+
     const isTask = item.type === 'task';
     const taskTransitioningToComplete =
       isTask && input.scheduleState === 'completed' && item.scheduleState !== 'completed';
+    // Reverse roll-up (BR-TASK-02): a task leaving Completed reopens its parent.
+    const taskTransitioningFromComplete =
+      isTask &&
+      item.scheduleState === 'completed' &&
+      input.scheduleState !== undefined &&
+      !isCompletedScheduleState(input.scheduleState);
 
-    // ── Auto-set To Do to 0 when a task is moved to Completed ──
-    if (taskTransitioningToComplete) {
-      input.todoHours = '0';
+    // Task Estimate is read-only derived (Estimate = To Do + Actuals). Recompute
+    // it from the effective To Do / Actual (incoming patch merged with the stored
+    // value) so it stays consistent everywhere and any client-supplied estimate
+    // is ignored. To Do is NOT auto-zeroed on completion (BA-confirmed DEV-015).
+    if (isTask) {
+      const effectiveTodo = input.todoHours !== undefined ? input.todoHours : item.todoHours;
+      const effectiveActual =
+        input.actualHours !== undefined ? input.actualHours : item.actualHours;
+      input.estimateHours = deriveTaskEstimateHours(effectiveTodo, effectiveActual);
     }
 
     const entries = diffWorkItem(item, input, isTask);
@@ -702,6 +772,46 @@ export class WorkItemsService {
                 tx,
               );
             }
+          }
+        }
+      }
+
+      // ── Reverse roll-up (BR-TASK-02 / DEV-018): reopening a child task moves
+      // its parent back to In-Progress — but only from 'completed'. A parent the
+      // team has manually advanced to a more mature terminal (accepted/release)
+      // is never auto-reverted (BA F3 guard). The repo mirrors Flow State too.
+      if (taskTransitioningFromComplete && item.parentId) {
+        const parentBefore = await this.workItemRepo.findById(
+          item.parentId,
+          actor.workspaceId,
+          tx,
+        );
+        if (parentBefore && parentBefore.scheduleState === 'completed') {
+          await this.workItemRepo.update(
+            item.parentId,
+            { scheduleState: 'in_progress', updatedBy: actor.sub },
+            actor.workspaceId,
+            tx,
+          );
+          const freshParent = await this.workItemRepo.findById(
+            item.parentId,
+            actor.workspaceId,
+            tx,
+          );
+          if (freshParent) {
+            await this.activityRepo.appendMany(
+              [
+                this.buildActivityInput(
+                  freshParent,
+                  'work_item',
+                  actor.sub,
+                  'work_item.schedule_state_changed',
+                  { field: 'scheduleState', old: 'completed', new: 'in_progress' },
+                  { auto: true },
+                ),
+              ],
+              tx,
+            );
           }
         }
       }
@@ -1190,7 +1300,7 @@ export class WorkItemsService {
    */
   private async assertIterationAssignable(
     workspaceId: string,
-    item: WorkItem,
+    item: Pick<WorkItem, 'projectId' | 'teamId'>,
     iterationId: string,
   ): Promise<void> {
     const scope = await this.workItemRepo.findIterationScope(iterationId, workspaceId);
@@ -1255,18 +1365,58 @@ export class WorkItemsService {
     return defaultStatus.id;
   }
 
-  private async assertTeamLinked(
+  /**
+   * The ONE guard every create/update path funnels its scoped references
+   * through, so no mutation can silently skip validation and no rule is
+   * duplicated per call site. Given the item's authoritative project and the
+   * team it effectively has, it validates each *provided* reference:
+   *   - team         → must be actively linked to the project (SRS P1-MANAGE-ORG)
+   *   - iteration    → must share the project and, if team-scoped, the team
+   *   - release      → must share the project
+   *   - foundInRelease (defect) → must share the project (same rule as release)
+   *   - member ids (assignee/reporter/devOwner) → must be active workspace members
+   * `validateTeamLink` lets the update path pass the effective team for the
+   * iteration match without re-checking a team that isn't changing. Callers pass
+   * only the member ids that are new/changed so an unchanged assignee isn't
+   * re-queried. Add a new scoped field here once and every mutation path is
+   * covered.
+   */
+  private async assertAssignmentScope(
     workspaceId: string,
-    projectId: string,
-    teamId: string,
+    scope: {
+      projectId: string;
+      teamId?: string | null;
+      iterationId?: string | null;
+      releaseId?: string | null;
+      foundInReleaseId?: string | null;
+      memberIds?: Array<string | null | undefined>;
+    },
+    opts: { validateTeamLink?: boolean } = {},
   ): Promise<void> {
-    const links = await this.projectsService.listProjectTeams(workspaceId, projectId);
-    const linked = links.some((l) => l.teamId === teamId && l.status === 'active');
-    if (!linked) {
-      throw new PreconditionFailedException(
-        'PROJECT_TEAM_LINK_NOT_FOUND',
-        'Team is not linked to this project',
+    const validateTeamLink = opts.validateTeamLink ?? true;
+    if (validateTeamLink && scope.teamId) {
+      await this.projectsService.assertTeamLinkedToProject(
+        workspaceId,
+        scope.projectId,
+        scope.teamId,
       );
+    }
+    if (scope.iterationId) {
+      await this.assertIterationAssignable(
+        workspaceId,
+        { projectId: scope.projectId, teamId: scope.teamId ?? null },
+        scope.iterationId,
+      );
+    }
+    if (scope.releaseId) {
+      await this.assertReleaseAssignable(workspaceId, scope.projectId, scope.releaseId);
+    }
+    if (scope.foundInReleaseId) {
+      await this.assertReleaseAssignable(workspaceId, scope.projectId, scope.foundInReleaseId);
+    }
+    const memberIds = [...new Set((scope.memberIds ?? []).filter((id): id is string => Boolean(id)))];
+    for (const userId of memberIds) {
+      await this.projectsService.assertWorkspaceMember(workspaceId, userId);
     }
   }
 

@@ -3,7 +3,6 @@ import { Test, TestingModule } from '@nestjs/testing';
 import {
   DRIZZLE,
   NotFoundException,
-  ConflictException,
   PreconditionFailedException,
 } from '@platform';
 import { ProjectsService } from '@modules/projects';
@@ -42,7 +41,6 @@ describe('IterationsService', () => {
   let service: IterationsService;
   let repo: {
     findById: ReturnType<typeof vi.fn>;
-    findCommitted: ReturnType<typeof vi.fn>;
     listByProject: ReturnType<typeof vi.fn>;
     listAssignmentOptions: ReturnType<typeof vi.fn>;
     nextKeyNumber: ReturnType<typeof vi.fn>;
@@ -53,6 +51,7 @@ describe('IterationsService', () => {
   let projects: {
     getProject: ReturnType<typeof vi.fn>;
     listProjectTeams: ReturnType<typeof vi.fn>;
+    assertTeamLinkedToProject: ReturnType<typeof vi.fn>;
   };
   let access: { assertProjectPermission: ReturnType<typeof vi.fn> };
   // Chainable Drizzle mock. Tests set the resolved rows before invoking.
@@ -78,7 +77,6 @@ describe('IterationsService', () => {
     };
     repo = {
       findById: vi.fn(),
-      findCommitted: vi.fn().mockResolvedValue(null),
       listByProject: vi.fn(),
       listAssignmentOptions: vi.fn().mockResolvedValue([]),
       nextKeyNumber: vi.fn().mockResolvedValue(1),
@@ -91,7 +89,25 @@ describe('IterationsService', () => {
     projects = {
       getProject: vi.fn().mockResolvedValue({ id: 'proj-1' }),
       listProjectTeams: vi.fn().mockResolvedValue([{ teamId: 'team-1', status: 'active' }]),
+      assertTeamLinkedToProject: vi.fn(),
     };
+    // Mirror the real ProjectsService rule so tests keep driving the outcome via
+    // the listProjectTeams mock.
+    projects.assertTeamLinkedToProject.mockImplementation(
+      async (ws: string, projectId: string, teamId: string) => {
+        const listProjectTeams = projects.listProjectTeams as unknown as (
+          ws: string,
+          projectId: string,
+        ) => Promise<Array<{ teamId: string; status: string }>>;
+        const links = await listProjectTeams(ws, projectId);
+        if (!links.some((l) => l.teamId === teamId && l.status === 'active')) {
+          throw new PreconditionFailedException(
+            'PROJECT_TEAM_LINK_NOT_FOUND',
+            'Team is not linked to this project',
+          );
+        }
+      },
+    );
     access = { assertProjectPermission: vi.fn().mockResolvedValue(undefined) };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -231,15 +247,13 @@ describe('IterationsService', () => {
   });
 
   describe('commitIteration', () => {
-    it('rejects when another iteration is already committed', async () => {
+    it('allows committing even when another iteration is already committed', async () => {
       repo.findById.mockResolvedValue(mockIteration({ state: 'planning' }));
-      repo.findCommitted.mockResolvedValue(mockIteration({ id: 'it-2', state: 'committed' }));
-      await expect(service.commitIteration(actor, 'it-1')).rejects.toBeInstanceOf(
-        ConflictException,
-      );
+      const updated = await service.commitIteration(actor, 'it-1');
+      expect(updated.state).toBe('committed');
     });
 
-    it('moves planning → committed when none committed', async () => {
+    it('moves planning → committed', async () => {
       repo.findById.mockResolvedValue(mockIteration({ state: 'planning' }));
       const updated = await service.commitIteration(actor, 'it-1');
       expect(updated.state).toBe('committed');

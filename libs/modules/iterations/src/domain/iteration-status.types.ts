@@ -23,6 +23,8 @@ export interface IterationStatusMetrics {
   defectCount: number;
   /** Count of assigned items of type 'task'. */
   taskCount: number;
+  /** Count of assigned child tasks NOT in the Completed task-state (active work). */
+  activeTaskCount: number;
 }
 
 /** One row of the Iteration Status work-item list. */
@@ -42,6 +44,10 @@ export interface IterationStatusItem {
   taskEstimate: number;
   /** Rollup: sum of child task to-do hours. */
   toDo: number;
+  /** Rollup: total non-deleted child tasks (Task % denominator). */
+  taskTotal: number;
+  /** Rollup: child tasks in the Completed task-state (Task % numerator). */
+  taskDone: number;
   assigneeId: string | null;
   /** work_items.dev_owner_id — Rally "Dev Owner" (distinct from Owner/assignee). */
   devOwnerId: string | null;

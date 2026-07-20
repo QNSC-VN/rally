@@ -107,10 +107,15 @@ export const workItems = workSchema.table(
     type: workItemTypeEnum('type').notNull(),
     title: varchar('title', { length: 500 }).notNull(),
     description: text('description'),
+    // Kanban board column (Future Team Board). NOT the BA "Flow State" — that is
+    // the flowState column below. Retained for the project-configurable board.
     statusId: uuid('status_id').notNull(),
-    // Sidebar "Flow State" is rendered from statusId → workflow_statuses.
-    // scheduleState is the orthogonal Rally business-maturity dimension.
+    // BR-WI-01 — Schedule State and Flow State share the same six values and
+    // MIRROR bidirectionally. Both are business-maturity dimensions; the mirror
+    // is enforced centrally in the work-item repository write path so they can
+    // never drift. Flow State reuses the schedule-state enum (identical catalog).
     scheduleState: workItemScheduleStateEnum('schedule_state').notNull().default('defined'),
+    flowState: workItemScheduleStateEnum('flow_state').notNull().default('defined'),
     priority: workItemPriorityEnum('priority').notNull().default('none'),
     assigneeId: uuid('assignee_id'),
     reporterId: uuid('reporter_id'),
@@ -121,7 +126,9 @@ export const workItems = workSchema.table(
     // Plan Estimate. numeric(6,2) allows fractional points (e.g. 0.5) per SRS §8;
     // Drizzle returns numeric as a string to preserve precision.
     storyPoints: numeric('story_points', { precision: 6, scale: 2 }),
-    // Task time tracking (hours). actual is manual entry in Phase 1.
+    // Task time tracking (hours). To Do and Actual are manual inputs; Estimate
+    // is read-only derived in the application layer as (To Do + Actual) per
+    // SRS P1-TASK-01. Drizzle returns numeric as a string to preserve precision.
     estimateHours: numeric('estimate_hours', { precision: 8, scale: 2 }),
     todoHours: numeric('todo_hours', { precision: 8, scale: 2 }),
     actualHours: numeric('actual_hours', { precision: 8, scale: 2 }),
@@ -517,8 +524,9 @@ export const activityLogs = workSchema.table(
 );
 
 // ── time_logs ─────────────────────────────────────────────────────────────────
-// Per-user time entries against a work item (added in migration 0012).
-// actual_hours on work_items is kept in sync by the trg_sync_actual_hours trigger.
+// Per-user time entries against a work item (added in migration 0012). Retained
+// as an optional worklog/audit trail. As of migration 0052 these entries no
+// longer drive actual_hours — Actual is a manual input (SRS P1-TASK-01).
 
 export const timeLogs = workSchema.table(
   'time_logs',

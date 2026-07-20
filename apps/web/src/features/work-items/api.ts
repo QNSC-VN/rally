@@ -14,9 +14,6 @@ export type WorkItem = components['schemas']['WorkItemResponseDto']
 export type ActivityLog = components['schemas']['ActivityResponseDto']
 export type TaskTotals = components['schemas']['TaskTotalsResponseDto']
 export type Watcher = components['schemas']['WatcherResponseDto']
-export type TimeLog = components['schemas']['TimeLogResponseDto']
-export type CreateTimeLogInput = components['schemas']['CreateTimeLogDto']
-export type UpdateTimeLogInput = components['schemas']['UpdateTimeLogDto']
 
 // ── Convenience aliases (BA design names) ─────────────────────────────────────
 
@@ -53,7 +50,7 @@ export const workItemKeys = {
   activity: (workItemId: string) => [...workItemKeys.all, 'activity', workItemId] as const,
   watchers: (workItemId: string) => [...workItemKeys.all, 'watchers', workItemId] as const,
   labels: (workItemId: string) => [...workItemKeys.all, 'labels', workItemId] as const,
-  timeLogs: (workItemId: string) => [...workItemKeys.all, 'time-logs', workItemId] as const,
+  milestones: (workItemId: string) => [...workItemKeys.all, 'milestones', workItemId] as const,
 } as const
 
 // ── Backlog list ──────────────────────────────────────────────────────────────
@@ -248,6 +245,23 @@ export function useWorkItemLabels(workItemId: string | undefined) {
 export interface WorkItemMilestone {
   id: string
   name: string
+}
+
+/** Milestones currently assigned to a work item (Story/Defect). */
+export function useWorkItemMilestones(workItemId: string | undefined) {
+  return useQuery({
+    queryKey: workItemKeys.milestones(workItemId ?? ''),
+    queryFn: async () => {
+      if (!workItemId) return []
+      const { data, error, response } = await apiClient.GET('/v1/work-items/{id}/milestones', {
+        params: { path: { id: workItemId } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return (data ?? []) as WorkItemMilestone[]
+    },
+    enabled: !!workItemId,
+    staleTime: 15_000,
+  })
 }
 
 /**
@@ -538,65 +552,6 @@ export function useToggleWatch(workItemId: string | undefined) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: workItemKeys.watchers(workItemId ?? '') })
     },
-  })
-}
-
-// ── Time logs (Jira-style worklog) ──────────────────────────────────────────────
-// `work_items.actual_hours` is trigger-derived from the SUM of a work item's
-// time logs (trg_sync_actual_hours), so logging time is the single source of
-// truth for Actual hours. Mutations invalidate the whole work-item tree so the
-// derived Actual value + parent task roll-ups refresh everywhere.
-
-export function useTimeLogs(workItemId: string | undefined) {
-  return useQuery({
-    queryKey: workItemKeys.timeLogs(workItemId ?? ''),
-    queryFn: async () => {
-      if (!workItemId) return [] as TimeLog[]
-      const { data, error, response } = await apiClient.GET('/v1/work-items/{id}/time-logs', {
-        params: { path: { id: workItemId }, query: { pageSize: 100 } },
-      })
-      if (error) throw new Error(apiErrorMessage(error, response.status))
-      // The controller returns a `{ items, total }` envelope at runtime even
-      // though the generated contract declares a bare array (backend
-      // @ApiResponse decorator omits the envelope) — normalise both shapes.
-      const res = data as unknown as { items?: TimeLog[] } | TimeLog[] | undefined
-      return Array.isArray(res) ? res : (res?.items ?? [])
-    },
-    enabled: !!workItemId,
-    staleTime: 15_000,
-  })
-}
-
-function invalidateAfterTimeLog(qc: ReturnType<typeof useQueryClient>) {
-  // Logged hours roll up into actualHours shown across every work-item view.
-  invalidateWorkItemViews(qc)
-}
-
-export function useLogTime(workItemId: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async (input: CreateTimeLogInput) => {
-      const { data, error, response } = await apiClient.POST('/v1/work-items/{id}/time-logs', {
-        params: { path: { id: workItemId } },
-        body: input,
-      })
-      if (error) throw new Error(apiErrorMessage(error, response.status))
-      return data as TimeLog
-    },
-    onSuccess: () => invalidateAfterTimeLog(qc),
-  })
-}
-
-export function useDeleteTimeLog(workItemId: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async (logId: string) => {
-      const { error, response } = await apiClient.DELETE('/v1/work-items/{id}/time-logs/{logId}', {
-        params: { path: { id: workItemId, logId } },
-      })
-      if (error) throw new Error(apiErrorMessage(error, response.status))
-    },
-    onSuccess: () => invalidateAfterTimeLog(qc),
   })
 }
 

@@ -21,13 +21,12 @@ import {
 } from 'lucide-react'
 import { BRAND } from '@/shared/config/brand'
 import { InlineSelect } from '@/shared/ui/native-select'
-import { Textarea } from '@/shared/ui/textarea'
-import { SkeletonList } from '@/shared/ui/skeleton'
+import { RichTextEditor } from '@/shared/ui/rich-text-editor'
+import { ArtifactTable } from '@/entities/work-item/ui/artifact-table'
 import { SearchInput } from '@/shared/ui/search-input'
-import { OwnerCell } from '@/shared/ui/owner-cell'
 import { MILESTONE_STATUS_STYLE } from '@/features/milestones/status-colors'
-import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
+import { SelectionModal } from '@/shared/ui/selection-modal'
 import { useProjectPermissions } from '@/features/access/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import {
@@ -41,13 +40,11 @@ import {
   useSetMilestoneReleases,
   useMilestoneArtifacts,
   type MilestoneStatus,
-  type ArtifactItem,
 } from '@/features/milestones/api'
-import { useReleases } from '@/features/releases/api'
+import { useReleasesForProjects } from '@/features/releases/api'
 import { useWorkspaceTeams } from '@/features/teams/api'
 import { useProjectMembers } from '@/features/teams/api'
 import { useProjects } from '@/features/projects/api'
-import { TypeBadge, ScheduleStateBadge, PriorityBadge } from '@/entities/work-item/ui/badges'
 
 // ── Status config ──────────────────────────────────────────────────────────────
 
@@ -61,151 +58,6 @@ const MILESTONE_STATUSES: MilestoneStatus[] = [
   'cancelled',
   'completed',
 ]
-
-// ── Searchable Selection Modal (reusable) ───────────────────────────────────────
-
-interface SelectionItem {
-  id: string
-  name: string
-}
-
-function SelectionModal({
-  open,
-  onClose,
-  title,
-  items,
-  selectedIds,
-  onSave,
-}: {
-  open: boolean
-  onClose: () => void
-  title: string
-  items: SelectionItem[]
-  selectedIds: string[]
-  onSave: (ids: string[]) => Promise<void>
-}) {
-  const [search, setSearch] = useState('')
-  const [local, setLocal] = useState<string[]>([])
-  const [saving, setSaving] = useState(false)
-
-  // Sync local state when modal opens
-  useEffect(() => {
-    if (open) {
-      setLocal([...selectedIds])
-      setSearch('')
-    }
-  }, [open, selectedIds])
-
-  const filtered = useMemo(() => {
-    if (!search) return items
-    const q = search.toLowerCase()
-    return items.filter((it) => it.name.toLowerCase().includes(q))
-  }, [items, search])
-
-  function toggle(id: string) {
-    setLocal((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
-  }
-
-  function toggleAll() {
-    if (filtered.every((it) => local.includes(it.id))) {
-      setLocal((prev) => prev.filter((id) => !filtered.some((f) => f.id === id)))
-    } else {
-      setLocal((prev) => {
-        const next = new Set(prev)
-        filtered.forEach((it) => next.add(it.id))
-        return [...next]
-      })
-    }
-  }
-
-  async function handleSave() {
-    setSaving(true)
-    try {
-      await onSave(local)
-      toast.success(`${title} updated`)
-      onClose()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : `Failed to update ${title.toLowerCase()}`)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const allFilteredSelected = filtered.length > 0 && filtered.every((it) => local.includes(it.id))
-
-  return (
-    <AppModal open={open} onClose={onClose} title={title} width={440}>
-      {/* Search bar above ModalBody */}
-      <div className="px-5 pt-3 pb-1">
-        <SearchInput
-          value={search}
-          onChange={setSearch}
-          placeholder={`Search ${title.toLowerCase()}...`}
-          ariaLabel={`Search ${title.toLowerCase()}`}
-          iconSize={13}
-          autoFocus
-          className="w-full rounded-md py-1.5 pl-8 text-xs"
-        />
-      </div>
-      <ModalBody className="space-y-1">
-        {/* Select-all row */}
-        <label
-          className="flex cursor-pointer items-center gap-2 rounded px-1 py-1.5 text-[11px] font-semibold select-none hover:bg-gray-50"
-          style={{ color: BRAND.textSecondary }}
-        >
-          <input
-            type="checkbox"
-            checked={allFilteredSelected}
-            onChange={toggleAll}
-            className="h-3.5 w-3.5 rounded"
-            style={{ accentColor: BRAND.primary }}
-          />
-          {allFilteredSelected ? 'Deselect All' : 'Select All'} ({filtered.length})
-        </label>
-        <div className="max-h-60 overflow-y-auto">
-          {filtered.length === 0 ? (
-            <p className="py-4 text-center text-xs" style={{ color: BRAND.textMuted }}>
-              No items found
-            </p>
-          ) : (
-            filtered.map((item) => (
-              <label
-                key={item.id}
-                className="flex cursor-pointer items-center gap-2 rounded px-1 py-1.5 text-xs transition-colors select-none hover:bg-gray-50"
-              >
-                <input
-                  type="checkbox"
-                  checked={local.includes(item.id)}
-                  onChange={() => toggle(item.id)}
-                  className="h-3.5 w-3.5 rounded"
-                  style={{ accentColor: BRAND.primary }}
-                />
-                <span className="truncate" style={{ color: BRAND.textPrimary }}>
-                  {item.name}
-                </span>
-              </label>
-            ))
-          )}
-        </div>
-      </ModalBody>
-      <ModalFooter>
-        <Button variant="outline" type="button" onClick={onClose}>
-          Cancel
-        </Button>
-        <Button
-          type="button"
-          onClick={() => {
-            void handleSave()
-          }}
-          disabled={saving}
-        >
-          {saving ? <Loader2 size={12} className="animate-spin" /> : null}
-          Save
-        </Button>
-      </ModalFooter>
-    </AppModal>
-  )
-}
 
 // ── Relation summary button (right sidebar) ────────────────────────────────────
 
@@ -239,75 +91,6 @@ function RelationButton({
         {count}
       </span>
     </button>
-  )
-}
-
-// ── Artifacts table row ────────────────────────────────────────────────────────
-
-function ArtifactRow({
-  item,
-  index,
-  onOpen,
-}: {
-  item: ArtifactItem
-  index: number
-  onOpen: () => void
-}) {
-  return (
-    <tr
-      className="cursor-pointer transition-colors duration-75"
-      style={{ borderBottom: `1px solid ${BRAND.borderInner}` }}
-      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = BRAND.surfaceHover)}
-      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-      onClick={onOpen}
-    >
-      {/* Rank */}
-      <td
-        className="h-8 px-3 text-center font-mono text-[10px] tabular-nums"
-        style={{ color: BRAND.textMuted }}
-      >
-        {index + 1}
-      </td>
-      {/* ID */}
-      <td
-        className="h-8 px-3 font-mono text-[10px] underline-offset-2 hover:underline"
-        style={{ color: BRAND.primaryLight }}
-      >
-        {item.itemKey}
-      </td>
-      {/* Name */}
-      <td className="h-8 px-3">
-        <span
-          className="block max-w-[300px] truncate text-xs font-medium"
-          style={{ color: BRAND.textPrimary }}
-        >
-          {item.title}
-        </span>
-      </td>
-      {/* Type */}
-      <td className="h-8 px-3">
-        <TypeBadge type={item.type} />
-      </td>
-      {/* Schedule State */}
-      <td className="h-8 px-3">
-        <ScheduleStateBadge state={item.scheduleState} />
-      </td>
-      {/* Priority */}
-      <td className="h-8 px-3">
-        <PriorityBadge priority={item.priority} />
-      </td>
-      {/* Owner */}
-      <td className="h-8 px-3">
-        <OwnerCell name={item.assigneeName} />
-      </td>
-      {/* Estimate */}
-      <td
-        className="h-8 px-3 text-center font-mono text-[10px]"
-        style={{ color: BRAND.textSecondary }}
-      >
-        {item.storyPoints ?? '—'}
-      </td>
-    </tr>
   )
 }
 
@@ -374,71 +157,16 @@ function ArtifactsTab({ milestoneId }: { milestoneId: string }) {
 
       {/* Table */}
       <div className="flex-1 overflow-auto" style={{ backgroundColor: BRAND.surface }}>
-        {isLoading ? (
-          <SkeletonList rows={8} />
-        ) : items.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2 p-8">
-            <Layers size={32} style={{ color: BRAND.textFaint }} />
-            <p className="text-xs" style={{ color: BRAND.textMuted }}>
-              {search ? 'No artifacts match your search' : 'No artifacts linked to this milestone'}
-            </p>
-          </div>
-        ) : (
-          <table className="w-full text-left">
-            <thead>
-              <tr
-                className="text-[9px] font-semibold tracking-wider uppercase select-none"
-                style={{
-                  backgroundColor: BRAND.surfaceHover,
-                  borderBottom: `1px solid ${BRAND.border}`,
-                }}
-              >
-                <th
-                  className="h-7 w-12 px-3 text-center font-medium"
-                  style={{ color: BRAND.textMuted }}
-                >
-                  #
-                </th>
-                <th className="h-7 w-20 px-3 font-medium" style={{ color: BRAND.textMuted }}>
-                  ID
-                </th>
-                <th className="h-7 px-3 font-medium" style={{ color: BRAND.textMuted }}>
-                  Name
-                </th>
-                <th className="h-7 w-14 px-3 font-medium" style={{ color: BRAND.textMuted }}>
-                  Type
-                </th>
-                <th className="h-7 w-24 px-3 font-medium" style={{ color: BRAND.textMuted }}>
-                  Schedule State
-                </th>
-                <th className="h-7 w-16 px-3 font-medium" style={{ color: BRAND.textMuted }}>
-                  Priority
-                </th>
-                <th className="h-7 w-28 px-3 font-medium" style={{ color: BRAND.textMuted }}>
-                  Owner
-                </th>
-                <th
-                  className="h-7 w-14 px-3 text-center font-medium"
-                  style={{ color: BRAND.textMuted }}
-                >
-                  Est.
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item, idx) => (
-                <ArtifactRow
-                  key={item.id}
-                  item={item}
-                  index={cursorHistory.length * pageSize + idx}
-                  onOpen={() =>
-                    navigate({ to: '/item/$itemKey', params: { itemKey: item.itemKey } })
-                  }
-                />
-              ))}
-            </tbody>
-          </table>
-        )}
+        <ArtifactTable
+          items={items}
+          isLoading={isLoading}
+          search={search}
+          entityNoun="milestone"
+          startIndex={cursorHistory.length * pageSize}
+          onOpenItem={(item) =>
+            navigate({ to: '/item/$itemKey', params: { itemKey: item.itemKey } })
+          }
+        />
       </div>
 
       {/* Pagination footer */}
@@ -505,25 +233,36 @@ type TabKey = 'details' | 'artifacts'
 
 export function MilestoneDetailPage() {
   const { milestoneId } = useParams({ from: '/auth/milestones/$milestoneId' })
-  const { project, workspace } = useAppContext()
-  const projectId = project?.projectId ?? ''
+  const { workspace } = useAppContext()
   const workspaceId = workspace?.workspaceId ?? ''
-  const { can } = useProjectPermissions(projectId || undefined)
-  const canManage = can('milestone:create') || can('milestone:edit') || can('milestone:delete')
 
   const { data: milestone, isLoading, isError } = useMilestone(milestoneId)
   const update = useUpdateMilestone()
 
-  // Relation data
-  const { data: linkedProjects = [] } = useMilestoneProjects(milestoneId)
-  const { data: linkedTeams = [] } = useMilestoneTeams(milestoneId)
-  const { data: linkedReleases = [] } = useMilestoneReleases(milestoneId)
+  // Relation data (arrays of linked entity IDs)
+  const { data: linkedProjectIds = [] } = useMilestoneProjects(milestoneId)
+  const { data: linkedTeamIds = [] } = useMilestoneTeams(milestoneId)
+  const { data: linkedReleaseIds = [] } = useMilestoneReleases(milestoneId)
+
+  // Permissions and member/release lookups are scoped to the milestone's OWN
+  // project(s) — not the app-context project — so the page is correct no matter
+  // which project the workspace selector currently points at (DEV-006).
+  const milestoneProjectId = milestone?.projectId ?? ''
+  const { can } = useProjectPermissions(milestoneProjectId || undefined)
+  const canManage = can('milestone:create') || can('milestone:edit') || can('milestone:delete')
+
+  // A milestone may span multiple projects; offer releases from every linked
+  // project (unioned with its home project) as selectable options.
+  const releaseProjectIds = useMemo(
+    () => [...new Set([milestoneProjectId, ...linkedProjectIds].filter(Boolean))],
+    [milestoneProjectId, linkedProjectIds],
+  )
 
   // Available items for selection modals
   const { data: allProjects = [] } = useProjects(workspaceId || undefined)
   const { data: allTeams = [] } = useWorkspaceTeams(workspaceId || undefined)
-  const { data: allReleases = [] } = useReleases(projectId || undefined)
-  const { data: members = [] } = useProjectMembers(projectId || undefined)
+  const { data: allReleases = [] } = useReleasesForProjects(releaseProjectIds)
+  const { data: members = [] } = useProjectMembers(milestoneProjectId || undefined)
 
   // Set mutations
   const setProjects = useSetMilestoneProjects()
@@ -532,8 +271,6 @@ export function MilestoneDetailPage() {
 
   // Local state
   const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
-  const [notes, setNotes] = useState('')
   const [status, setStatus] = useState<MilestoneStatus>('planned')
   const [ownerId, setOwnerId] = useState('')
   const [activeTab, setActiveTab] = useState<TabKey>('details')
@@ -547,8 +284,6 @@ export function MilestoneDetailPage() {
   useEffect(() => {
     if (milestone) {
       setName(milestone.name)
-      setDescription(milestone.description ?? '')
-      setNotes(milestone.notes ?? '')
       setStatus(milestone.status)
       setOwnerId(milestone.ownerId ?? '')
     }
@@ -565,8 +300,6 @@ export function MilestoneDetailPage() {
       await update.mutateAsync({
         id: milestone.id,
         name: name.trim(),
-        description: description.trim() || null,
-        notes: notes.trim() || null,
         status,
         ownerId: ownerId || null,
       })
@@ -574,6 +307,17 @@ export function MilestoneDetailPage() {
       toast.error(err instanceof Error ? err.message : 'Failed to save')
     } finally {
       setSaving(false)
+    }
+  }
+
+  // Rich-text fields (Description, Notes) auto-save individually on blur, matching
+  // the work-item detail page's RichTextEditor pattern.
+  async function handleRichFieldSave(patch: { description?: string | null; notes?: string | null }) {
+    if (!milestone) return
+    try {
+      await update.mutateAsync({ id: milestone.id, ...patch })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save')
     }
   }
 
@@ -733,51 +477,20 @@ export function MilestoneDetailPage() {
             className="flex-1 space-y-6 overflow-y-auto p-6"
             style={{ backgroundColor: BRAND.surface }}
           >
-            <div className="space-y-2">
-              <h2
-                className="text-[12px] font-semibold tracking-wider uppercase"
-                style={{ color: BRAND.textSecondary }}
-              >
-                Description
-              </h2>
-              <Textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                onBlur={handleFieldSave}
-                disabled={!canManage}
-                placeholder="Enter milestone description..."
-                rows={6}
-                className="w-full rounded-md border p-3 text-[12px] focus:ring-1 focus:outline-none"
-                style={{
-                  borderColor: BRAND.border,
-                  backgroundColor: BRAND.surface,
-                  color: BRAND.textPrimary,
-                }}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <h2
-                className="text-[12px] font-semibold tracking-wider uppercase"
-                style={{ color: BRAND.textSecondary }}
-              >
-                Notes
-              </h2>
-              <Textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                onBlur={handleFieldSave}
-                disabled={!canManage}
-                placeholder="Add internal notes..."
-                rows={10}
-                className="w-full rounded-md border p-3 text-[12px] focus:ring-1 focus:outline-none"
-                style={{
-                  borderColor: BRAND.border,
-                  backgroundColor: BRAND.surface,
-                  color: BRAND.textPrimary,
-                }}
-              />
-            </div>
+            <RichTextEditor
+              title="Description"
+              value={milestone?.description}
+              minHeight={120}
+              readOnly={!canManage}
+              onSave={(html) => handleRichFieldSave({ description: html || null })}
+            />
+            <RichTextEditor
+              title="Notes"
+              value={milestone?.notes}
+              minHeight={80}
+              readOnly={!canManage}
+              onSave={(html) => handleRichFieldSave({ notes: html || null })}
+            />
           </div>
 
           {/* Right sidebar (320px, scrollable) */}
@@ -796,7 +509,7 @@ export function MilestoneDetailPage() {
             <RelationButton
               icon={FolderKanban}
               label="Projects"
-              count={linkedProjects.length}
+              count={linkedProjectIds.length}
               onClick={() => setShowProjectsModal(true)}
               canManage={canManage}
             />
@@ -805,7 +518,7 @@ export function MilestoneDetailPage() {
             <RelationButton
               icon={Users}
               label="Teams"
-              count={linkedTeams.length}
+              count={linkedTeamIds.length}
               onClick={() => setShowTeamsModal(true)}
               canManage={canManage}
             />
@@ -814,7 +527,7 @@ export function MilestoneDetailPage() {
             <RelationButton
               icon={Layers}
               label="Releases"
-              count={linkedReleases.length}
+              count={linkedReleaseIds.length}
               onClick={() => setShowReleasesModal(true)}
               canManage={canManage}
             />
@@ -986,7 +699,7 @@ export function MilestoneDetailPage() {
           onClose={() => setShowProjectsModal(false)}
           title="Projects"
           items={allProjects.map((p) => ({ id: p.id, name: p.name }))}
-          selectedIds={linkedProjects.map((p) => p.id)}
+          selectedIds={linkedProjectIds}
           onSave={(ids) => setProjects.mutateAsync({ milestoneId, projectIds: ids })}
         />
       )}
@@ -996,7 +709,7 @@ export function MilestoneDetailPage() {
           onClose={() => setShowTeamsModal(false)}
           title="Teams"
           items={allTeams.map((t) => ({ id: t.id, name: t.name }))}
-          selectedIds={linkedTeams.map((t) => t.id)}
+          selectedIds={linkedTeamIds}
           onSave={(ids) => setTeams.mutateAsync({ milestoneId, teamIds: ids })}
         />
       )}
@@ -1006,7 +719,7 @@ export function MilestoneDetailPage() {
           onClose={() => setShowReleasesModal(false)}
           title="Releases"
           items={allReleases.map((r) => ({ id: r.id, name: r.name }))}
-          selectedIds={linkedReleases.map((r) => r.id)}
+          selectedIds={linkedReleaseIds}
           onSave={(ids) => setReleases.mutateAsync({ milestoneId, releaseIds: ids })}
         />
       )}

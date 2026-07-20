@@ -115,6 +115,11 @@ export class CollaborationService {
       storageKey: string;
     },
   ): Promise<Attachment> {
+    // Same authorization seam as createComment: the target work item must exist
+    // in the actor's workspace and the actor must hold work_item:edit on its
+    // project. Without this an attachment could be stapled to a work item in
+    // another workspace/project (tenant-isolation leak).
+    await this.assertCanCollaborate(actor, workItemId);
     const attachment = await this.attachmentRepo.create({
       id: uuidv7(),
       workspaceId: actor.workspaceId,
