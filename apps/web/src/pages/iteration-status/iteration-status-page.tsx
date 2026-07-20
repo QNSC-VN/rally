@@ -1010,6 +1010,11 @@ export function IterationStatusPage() {
             columnDrag={table.columnDrag}
           />
 
+          {/* Totals row — directly under the header (parity with the Tasks tab) */}
+          {!isLoading && !isError && items.length > 0 && (
+            <TableFooterTotals colStyles={colStyles} totals={totals} />
+          )}
+
           {/* Rows */}
           {isLoading && <SkeletonList rows={10} cols={12} />}
 
@@ -1065,10 +1070,6 @@ export function IterationStatusPage() {
             >
               No items assigned to this iteration
             </div>
-          )}
-
-          {!isLoading && !isError && items.length > 0 && (
-            <TableFooterTotals colStyles={colStyles} totals={totals} />
           )}
         </div>
       )}
@@ -1627,7 +1628,7 @@ function TableFooterTotals({
       columns={HEADER_META}
       colStyles={colStyles}
       leading={<RowGutter dragDisabled />}
-      label={`Totals (${totals.count})`}
+      label="Totals"
       values={{
         planEstimate: `${totals.planEst} Points`,
         taskEstimate: `${totals.taskEst} Hours`,
