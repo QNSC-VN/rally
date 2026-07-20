@@ -373,9 +373,13 @@ module "migrator" {
   log_retention_days = 90 # prod: SOC 2 minimum retention
 
   environment = {
-    NODE_ENV       = "production"
-    AWS_REGION     = local.region
-    SEED_ON_DEPLOY = "true"
+    NODE_ENV   = "production"
+    AWS_REGION = local.region
+    # Prod-safe: demo fixtures (ACME workspace, demo users/projects) must NEVER
+    # be seeded into production. Explicit "false" (not omission) per audit D-3 so
+    # the gate is structural. The migrator still runs migrations + system role
+    # catalogue + tenant/SSO bootstrap on every deploy — see db/migrate.ts.
+    SEED_ON_DEPLOY = "false"
     # Required by seed.ts to insert the SSO connection row that maps this Entra
     # directory to the system tenant. The insert is idempotent, so re-running on
     # each deploy is safe; without it, SSO login returns 401 on first prod boot.
