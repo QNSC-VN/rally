@@ -11,11 +11,9 @@ import { AlertTriangle, Plus, Pencil, Trash2, PackageOpen } from 'lucide-react'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { StatusBadge as StatusPill } from '@/shared/ui/status-badge'
 import { MILESTONE_STATUS_STYLE } from '@/features/milestones/status-colors'
-import { DataTableHeader } from '@/shared/ui/data-table-header'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
-import { useDataTable, type ColumnSpec } from '@/shared/ui/table'
+import { DataTableFrame, useDataTable, type ColumnSpec } from '@/shared/ui/table'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
-import { SkeletonList } from '@/shared/ui/skeleton'
 import { cn } from '@/shared/lib/utils'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
@@ -541,46 +539,44 @@ export function MilestonesPage() {
         fields={<ColumnFieldsMenu {...table.fieldsMenuProps} />}
       />
 
-      {/* Table */}
-      <div className="flex flex-1 overflow-hidden bg-card">
-        {isLoading ? (
-          <SkeletonList rows={6} />
-        ) : filtered.length === 0 ? (
-          <EmptyState
-            className="flex-1"
-            icon={<PackageOpen size={40} className="text-foreground-faint" />}
-            title={search ? 'No milestones match your search' : 'No milestones yet'}
-            action={
-              canManage && !search ? (
-                <Button size="sm" onClick={() => setShowCreate(true)}>
-                  <Plus size={14} />
-                  Create Milestone
-                </Button>
-              ) : undefined
+      {/* Table — shared DataTableFrame owns the chrome (read-only list kind:
+          sortable header, no totals / selection / drag gutter). */}
+      <DataTableFrame
+        header={table.headerProps}
+        padClassName="gap-2 px-3"
+        loading={isLoading}
+        skeleton={{ rows: 6 }}
+        empty={
+          filtered.length === 0 ? (
+            <EmptyState
+              className="flex-1"
+              icon={<PackageOpen size={40} className="text-foreground-faint" />}
+              title={search ? 'No milestones match your search' : 'No milestones yet'}
+              action={
+                canManage && !search ? (
+                  <Button size="sm" onClick={() => setShowCreate(true)}>
+                    <Plus size={14} />
+                    Create Milestone
+                  </Button>
+                ) : undefined
+              }
+            />
+          ) : undefined
+        }
+      >
+        {filtered.map((ms) => (
+          <div
+            key={ms.id}
+            className="flex min-h-12 cursor-pointer items-center gap-2 border-b border-border-inner px-3 hover:bg-surface-hover"
+            style={{ minWidth: 'max-content' }}
+            onClick={() =>
+              navigate({ to: '/milestones/$milestoneId', params: { milestoneId: ms.id } })
             }
-          />
-        ) : (
-          <div className="flex-1 overflow-auto">
-            <div style={{ width: table.tableWidth, minWidth: '100%' }}>
-              {/* Table header (shared engine: resize / reorder) */}
-              <DataTableHeader {...table.headerProps} className="gap-2 px-3" />
-              {/* Rows */}
-              {filtered.map((ms) => (
-                <div
-                  key={ms.id}
-                  className="flex min-h-12 cursor-pointer items-center gap-2 border-b border-border-inner px-3 hover:bg-surface-hover"
-                  style={{ minWidth: 'max-content' }}
-                  onClick={() =>
-                    navigate({ to: '/milestones/$milestoneId', params: { milestoneId: ms.id } })
-                  }
-                >
-                  {table.renderCells(ms, cellCtx)}
-                </div>
-              ))}
-            </div>
+          >
+            {table.renderCells(ms, cellCtx)}
           </div>
-        )}
-      </div>
+        ))}
+      </DataTableFrame>
 
       {/* Modals */}
       {showCreate && (

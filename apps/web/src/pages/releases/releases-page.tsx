@@ -17,7 +17,6 @@ import {
   Pencil,
   ExternalLink,
 } from 'lucide-react'
-import { SkeletonList } from '@/shared/ui/skeleton'
 import { InlineSelect } from '@/shared/ui/native-select'
 import { MetricCard } from '@/shared/ui/metric-card'
 import { MetricStrip } from '@/shared/ui/metric-strip'
@@ -31,9 +30,8 @@ import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
-import { DataTableHeader } from '@/shared/ui/data-table-header'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
-import { useDataTable, type ColumnSpec } from '@/shared/ui/table'
+import { DataTableFrame, useDataTable, type ColumnSpec } from '@/shared/ui/table'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { StatusBadge as StatusPill } from '@/shared/ui/status-badge'
 import { RELEASE_STATUS_STYLE } from '@/features/releases/status-colors'
@@ -907,49 +905,49 @@ export function ReleasesPage() {
         <MetricCard label="Planning" value={stats.planning} minWidth={90} />
       </MetricStrip>
 
-      {/* Column headers — shared table engine (identical wiring to projects/quality) */}
-      <DataTableHeader {...table.headerProps} className="px-3" />
-
-      {/* Body */}
-      <div className="flex-1 overflow-y-auto" style={{ backgroundColor: BRAND.surface }}>
-        {isLoading && <SkeletonList rows={8} cols={7} />}
-
-        {!isLoading && isError && (
-          <EmptyState
-            icon={<AlertTriangle size={28} className="text-destructive" />}
-            title="Failed to load releases. Please try again."
-          />
-        )}
-
-        {!isLoading && !isError && filtered.length === 0 && (
-          <EmptyState
-            icon={<PackageOpen size={32} className="text-border-strong" />}
-            title={search ? 'No releases match your search.' : 'No releases yet.'}
-            action={
-              !search && canManage ? (
-                <Button variant="link" size="xs" onClick={() => setShowCreate(true)}>
-                  + Create first release
-                </Button>
-              ) : undefined
-            }
-          />
-        )}
-
-        {!isLoading &&
-          !isError &&
-          filtered.map((release) => (
-            <ReleaseRow
-              key={release.id}
-              release={release}
-              projectId={projectId!}
-              canManage={canManage}
-              onDelete={(id) => {
-                void handleDelete(id)
-              }}
-              colStyleFor={colStyleFor}
+      {/* Table — shared DataTableFrame owns the chrome (read-only list kind:
+          sortable header, no totals / selection / drag gutter). */}
+      <DataTableFrame
+        header={table.headerProps}
+        loading={isLoading}
+        skeleton={{ rows: 8, cols: 7 }}
+        error={
+          isError ? (
+            <EmptyState
+              icon={<AlertTriangle size={28} className="text-destructive" />}
+              title="Failed to load releases. Please try again."
             />
-          ))}
-      </div>
+          ) : undefined
+        }
+        empty={
+          filtered.length === 0 ? (
+            <EmptyState
+              icon={<PackageOpen size={32} className="text-border-strong" />}
+              title={search ? 'No releases match your search.' : 'No releases yet.'}
+              action={
+                !search && canManage ? (
+                  <Button variant="link" size="xs" onClick={() => setShowCreate(true)}>
+                    + Create first release
+                  </Button>
+                ) : undefined
+              }
+            />
+          ) : undefined
+        }
+      >
+        {filtered.map((release) => (
+          <ReleaseRow
+            key={release.id}
+            release={release}
+            projectId={projectId!}
+            canManage={canManage}
+            onDelete={(id) => {
+              void handleDelete(id)
+            }}
+            colStyleFor={colStyleFor}
+          />
+        ))}
+      </DataTableFrame>
 
       {/* Modals */}
       {showCreate && (
