@@ -382,10 +382,10 @@ export function TeamStatusPage() {
             leading={<div className="w-6 shrink-0" />}
             label="Totals"
             values={{
-              capacity: `${totals.capacityHours} Hours`,
-              estimate: `${totals.estimateHours} Hours`,
-              todo: `${totals.todoHours} Hours`,
-              actuals: `${totals.actualHours} Hours`,
+              capacity: `${totals.capacityHours}h`,
+              estimate: `${totals.estimateHours}h`,
+              todo: `${totals.todoHours}h`,
+              actuals: `${totals.actualHours}h`,
             }}
           />
         )}

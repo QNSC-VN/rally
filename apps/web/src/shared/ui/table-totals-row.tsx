@@ -69,8 +69,7 @@ export function TableTotalsRow({
           <div
             key={col.key}
             className={cn(
-              'shrink-0 px-2',
-              isLabel && 'whitespace-nowrap',
+              'shrink-0 px-2 whitespace-nowrap',
               !isLabel && col.align === 'right' && 'text-right font-mono',
               !isLabel && col.align === 'center' && 'text-center',
             )}
