@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.2.3](https://github.com/QNSC-VN/rally/compare/v0.2.2...v0.2.3) (2026-07-20)
+
+
+### ✨ Features
+
+* per-workspace RBAC, granular permissions, project & track UX ([#102](https://github.com/QNSC-VN/rally/issues/102)) ([3c367a6](https://github.com/QNSC-VN/rally/commit/3c367a6f5c780e5d72d8db309235c8f40cb1132e))
+* phase 4 BA-design alignment (audit, roles, workflow, notifications, user phone) ([#100](https://github.com/QNSC-VN/rally/issues/100)) ([c3da490](https://github.com/QNSC-VN/rally/commit/c3da490dd38e61f64f6f4860f2cead1c38f01485))
+* **rally:** align BA domains (F1-F7) + dev elasticache cache fix ([#97](https://github.com/QNSC-VN/rally/issues/97)) ([e118e24](https://github.com/QNSC-VN/rally/commit/e118e24f2108a414708d9406913e4f059722f9f2))
+* **rally:** readable audit log + work-item/iteration/member follow-ups ([#106](https://github.com/QNSC-VN/rally/issues/106)) ([e47b8bf](https://github.com/QNSC-VN/rally/commit/e47b8bf87b14784cef3028dd42014ef47f9b0844))
+* **web:** align projects table + modals with BA design ([#105](https://github.com/QNSC-VN/rally/issues/105)) ([36de097](https://github.com/QNSC-VN/rally/commit/36de097c7a387f1edd9efda634859ef04f4d9ead))
+* **web:** paginate Projects list with shared PaginationFooter ([#104](https://github.com/QNSC-VN/rally/issues/104)) ([3417fe2](https://github.com/QNSC-VN/rally/commit/3417fe215dbdb3fc52b4ad9206e7793e9e624725))
+* **web:** searchable Projects & Teams accordion in workspace switcher ([#103](https://github.com/QNSC-VN/rally/issues/103)) ([2614638](https://github.com/QNSC-VN/rally/commit/2614638d77e15a3fb9409560551b5212c4a22d9c))
+
+
+### 🐛 Bug Fixes
+
+* close BA-alignment gaps + tier-split and correct the seed system ([#107](https://github.com/QNSC-VN/rally/issues/107)) ([d6e90dc](https://github.com/QNSC-VN/rally/commit/d6e90dccac0bf10a2c55bd91a1e6b6ab5119ea52))
+* **infra:** stop seeding demo fixtures into prod ([#108](https://github.com/QNSC-VN/rally/issues/108)) ([b62025e](https://github.com/QNSC-VN/rally/commit/b62025e4bed86f29d7409984affb9ef01f46b713))
+* **rally:** align BA domains — item_key format, stepper, fractional story points ([#99](https://github.com/QNSC-VN/rally/issues/99)) ([15ce95c](https://github.com/QNSC-VN/rally/commit/15ce95c348e24bb51dc8fe28ac174afa0649d909))
+
 ## [0.2.2](https://github.com/QNSC-VN/rally/compare/v0.2.1...v0.2.2) (2026-07-16)
 
 
