@@ -248,16 +248,16 @@ type TaskColKey =
 // gets resize + reorder + show/hide and a fluid name column for free — replacing
 // the old fixed 1216px hand-rolled layout that overflowed the detail column.
 const TASK_COLUMNS: ColumnSpec<WorkItem, unknown, TaskColKey>[] = [
-  { key: 'rank', label: 'Rank', defaultWidth: 60, minWidth: 52, locked: true },
-  { key: 'id', label: 'ID', defaultWidth: 108, minWidth: 90, locked: true },
-  { key: 'name', label: 'Name', defaultWidth: 240, minWidth: 150, locked: true },
-  { key: 'state', label: 'State', defaultWidth: 132, minWidth: 110 },
-  { key: 'owner', label: 'Owner', defaultWidth: 150, minWidth: 120 },
+  { key: 'rank', label: 'Rank', defaultWidth: 60, minWidth: 52, locked: true, sortCol: 'rank' },
+  { key: 'id', label: 'ID', defaultWidth: 108, minWidth: 90, locked: true, sortCol: 'id' },
+  { key: 'name', label: 'Name', defaultWidth: 240, minWidth: 150, locked: true, sortCol: 'name' },
+  { key: 'state', label: 'State', defaultWidth: 132, minWidth: 110, sortCol: 'state' },
+  { key: 'owner', label: 'Owner', defaultWidth: 150, minWidth: 120, sortCol: 'owner' },
   { key: 'project', label: 'Project', defaultWidth: 110 },
-  { key: 'teams', label: 'Teams', defaultWidth: 120 },
-  { key: 'todo', label: 'To Do', defaultWidth: 72, align: 'right' },
-  { key: 'actuals', label: 'Actuals', defaultWidth: 72, align: 'right' },
-  { key: 'estimate', label: 'Estimate', defaultWidth: 80, align: 'right' },
+  { key: 'teams', label: 'Teams', defaultWidth: 120, sortCol: 'teams' },
+  { key: 'todo', label: 'To Do', defaultWidth: 72, align: 'right', sortCol: 'todo' },
+  { key: 'actuals', label: 'Actuals', defaultWidth: 72, align: 'right', sortCol: 'actuals' },
+  { key: 'estimate', label: 'Estimate', defaultWidth: 80, align: 'right', sortCol: 'estimate' },
 ]
 
 function TasksTab({
@@ -299,6 +299,62 @@ function TasksTab({
   const teamName = (id?: string | null) =>
     id ? (teams.find((t) => t.id === id)?.name ?? '—') : '—'
 
+  // Client-side column sort — mirrors the shared header UX used by every other
+  // grid (Backlog / Team Status / Projects). `null` = the default rank order.
+  const [sortCol, setSortCol] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const toggleSort = useCallback(
+    (col: string) => {
+      if (sortCol === col) {
+        setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+      } else {
+        setSortCol(col)
+        setSortDir('asc')
+      }
+    },
+    [sortCol],
+  )
+
+  const sortedTasks = useMemo(() => {
+    if (!sortCol) return tasks
+    const factor = sortDir === 'asc' ? 1 : -1
+    const numeric = sortCol === 'todo' || sortCol === 'actuals' || sortCol === 'estimate'
+    const value = (t: WorkItem): string | number => {
+      switch (sortCol) {
+        case 'rank':
+          return t.rank ?? ''
+        case 'id':
+          return t.itemKey
+        case 'name':
+          return t.title.toLowerCase()
+        case 'state':
+          return t.scheduleState
+        case 'owner': {
+          const m = members.find((mm) => mm.userId === t.assigneeId)
+          return (m?.displayName ?? m?.email ?? '').toLowerCase()
+        }
+        case 'teams': {
+          const tm = teams.find((x) => x.id === t.teamId)
+          return (tm?.name ?? '').toLowerCase()
+        }
+        case 'todo':
+          return Number(t.todoHours ?? 0)
+        case 'actuals':
+          return Number(t.actualHours ?? 0)
+        case 'estimate':
+          return Number(t.estimateHours ?? 0)
+        default:
+          return ''
+      }
+    }
+    return [...tasks].sort((a, b) => {
+      const av = value(a)
+      const bv = value(b)
+      if (numeric) return ((av as number) - (bv as number)) * factor
+      return String(av).localeCompare(String(bv)) * factor
+    })
+  }, [tasks, sortCol, sortDir, members, teams])
+
   function openTask(task: WorkItem) {
     void navigate({ to: '/item/$itemKey', params: { itemKey: task.itemKey } })
   }
@@ -331,6 +387,7 @@ function TasksTab({
           colStyles={colStyles}
           onResize={table.startResize}
           columnDrag={table.columnDrag}
+          sort={{ col: sortCol, dir: sortDir, onSort: toggleSort }}
           leading={<div className="w-6 shrink-0" />}
           className="px-3"
         />
@@ -387,7 +444,7 @@ function TasksTab({
             }
           />
         ) : (
-          tasks.map((task) => (
+          sortedTasks.map((task) => (
             <TaskRow
               key={`${task.id}:${task.updatedAt}`}
               task={task}
