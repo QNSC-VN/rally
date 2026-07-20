@@ -10,11 +10,9 @@ import { useMemo, useState, useCallback, useEffect } from 'react'
 import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
 import { ChevronDown, ChevronLeft, ChevronRight, Inbox } from 'lucide-react'
-import { SkeletonList } from '@/shared/ui/skeleton'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { WorkItemRefCell } from '@/entities/work-item/ui/work-item-ref-cell'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
-import { DataTableHeader } from '@/shared/ui/data-table-header'
 import { BRAND } from '@/shared/config/brand'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
@@ -29,7 +27,7 @@ import {
 } from '@/features/team-status/api'
 import { Avatar } from '@/shared/ui/avatar'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
-import { useDataTable, type ColumnSpec } from '@/shared/ui/table'
+import { DataTableFrame, useDataTable, type ColumnSpec } from '@/shared/ui/table'
 import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { NESTED_ROW_INDENT } from '@/shared/config/layout'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
@@ -359,94 +357,85 @@ export function TeamStatusPage() {
         <ColumnFieldsMenu {...table.fieldsMenuProps} />
       </div>
 
-      {/* Table */}
-      <div
-        className="flex flex-1 flex-col overflow-auto"
-        style={{ backgroundColor: BRAND.surface }}
-      >
-        {/* Header row (P3-TS-FR-010) */}
-        <DataTableHeader
-          columns={table.headerColumns}
-          colStyles={colStyles}
-          onResize={table.startResize}
-          className="px-3"
-          leading={<div className="w-6 shrink-0" />}
-          columnDrag={table.columnDrag}
-        />
-
-        {/* Totals row (P3-TS-FR-013) — shared component keeps every grid's footer identical */}
-        {totals && (
-          <TableTotalsRow
-            columns={TEAM_STATUS_COLUMNS}
-            colStyles={colStyles}
-            leading={<div className="w-6 shrink-0" />}
-            label="Totals"
-            values={{
-              capacity: `${totals.capacityHours}h`,
-              estimate: `${totals.estimateHours}h`,
-              todo: `${totals.todoHours}h`,
-              actuals: `${totals.actualHours}h`,
-            }}
-          />
-        )}
-
-        {/* Loading */}
-        {isLoading && <SkeletonList rows={10} cols={10} />}
-
-        {/* Error */}
-        {!isLoading && isError && (
-          <div
-            className="flex h-40 items-center justify-center text-[12px]"
-            style={{ color: BRAND.danger }}
-          >
-            Failed to load team status. Please try again.
-          </div>
-        )}
-
-        {/* Member groups (P3-TS-FR-014) */}
-        {!isLoading &&
-          !isError &&
-          pagedGroups.map((group) => (
-            <MemberGroup
-              key={group.owner.id}
-              group={group}
-              projectId={projectId!}
-              teamId={teamId}
-              iterationId={selectedId!}
-              canEdit={canEdit}
+      {/* Table — shared DataTableFrame owns the scroll region, header, totals,
+          loading/error/empty states and footer so every grid's chrome is
+          identical. Team Status is a read-only report kind: sortable header +
+          totals, no selection/drag gutter (just a w-6 spacer that its member
+          rows also render). */}
+      <DataTableFrame
+        header={{ ...table.headerProps, colStyles }}
+        leading={<div className="w-6 shrink-0" />}
+        totals={
+          totals ? (
+            <TableTotalsRow
+              columns={TEAM_STATUS_COLUMNS}
               colStyles={colStyles}
-              members={members}
-              onOpenItem={(itemKey) => {
-                if (itemKey) navigate({ to: '/item/$itemKey', params: { itemKey } })
+              leading={<div className="w-6 shrink-0" />}
+              label="Totals"
+              values={{
+                capacity: `${totals.capacityHours}h`,
+                estimate: `${totals.estimateHours}h`,
+                todo: `${totals.todoHours}h`,
+                actuals: `${totals.actualHours}h`,
               }}
             />
-          ))}
-
-        {/* Empty state (P3-TS-TS-020) */}
-        {!isLoading && !isError && groups.length === 0 && (
-          <EmptyState
-            icon={<Inbox size={36} className="text-foreground-faint" />}
-            title="No tasks found for this iteration"
+          ) : undefined
+        }
+        loading={isLoading}
+        skeleton={{ rows: 10, cols: 10 }}
+        error={
+          isError ? (
+            <div
+              className="flex h-40 items-center justify-center text-[12px]"
+              style={{ color: BRAND.danger }}
+            >
+              Failed to load team status. Please try again.
+            </div>
+          ) : undefined
+        }
+        empty={
+          groups.length === 0 ? (
+            <EmptyState
+              icon={<Inbox size={36} className="text-foreground-faint" />}
+              title="No tasks found for this iteration"
+            />
+          ) : undefined
+        }
+        footer={
+          status ? (
+            <PaginationFooter
+              pageSize={pageSize}
+              setPageSize={setPageSize}
+              currentPage={currentPage}
+              rangeStart={groups.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}
+              rangeEnd={(currentPage - 1) * pageSize + pagedGroups.length}
+              total={groups.length}
+              pageCount={pageCount}
+              hasPrevPage={currentPage > 1}
+              hasNextPage={currentPage < pageCount}
+              onPrevPage={goPrevPage}
+              onNextPage={goNextPage}
+            />
+          ) : undefined
+        }
+      >
+        {/* Member groups (P3-TS-FR-014) */}
+        {pagedGroups.map((group) => (
+          <MemberGroup
+            key={group.owner.id}
+            group={group}
+            projectId={projectId!}
+            teamId={teamId}
+            iterationId={selectedId!}
+            canEdit={canEdit}
+            colStyles={colStyles}
+            members={members}
+            onOpenItem={(itemKey) => {
+              if (itemKey) navigate({ to: '/item/$itemKey', params: { itemKey } })
+            }}
           />
-        )}
-      </div>
-
-      {/* Pagination footer (P3-TS-FR-014, Rally parity) — paginates member groups */}
-      {!isLoading && !isError && status && (
-        <PaginationFooter
-          pageSize={pageSize}
-          setPageSize={setPageSize}
-          currentPage={currentPage}
-          rangeStart={groups.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}
-          rangeEnd={(currentPage - 1) * pageSize + pagedGroups.length}
-          total={groups.length}
-          pageCount={pageCount}
-          hasPrevPage={currentPage > 1}
-          hasNextPage={currentPage < pageCount}
-          onPrevPage={goPrevPage}
-          onNextPage={goNextPage}
-        />
-      )}
+        ))}
+      </DataTableFrame>
     </div>
   )
 }
