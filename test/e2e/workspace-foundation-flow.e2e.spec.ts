@@ -2,6 +2,11 @@
  * BA business-flow E2E — Phase 0/1 foundation: the Company → Project → Team
  * context backbone plus the project lifecycle.
  *
+ * Flows: E2E-001 (admin creates project foundation) and the team-creation half
+ * of E2E-002. The rest of E2E-002 — the rules that only bite once a team is
+ * USED for work management — is in team-preparation-flow.e2e.spec.ts.
+ * (07_Test Business/specs/E2E_BUSINESS_FLOW_COVERAGE.md)
+ *
  * Encodes the P0 scenarios that the cross-phase E2E pack assumes but does not
  * prove directly:
  *   - PHASE0 P0-PRJ-005/009/010 — project key is immutable, archive makes a

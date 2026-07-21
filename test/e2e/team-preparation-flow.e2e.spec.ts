@@ -2,9 +2,16 @@
  * BA business-flow E2E — E2E-002 "Admin prepares team and user for work management".
  *
  * This flow had NO automated coverage, and its absence is why the manual BA run
- * collapsed: E2E-00/01/04 were all blocked by "Team is not linked to this
- * project" (gaps DEV-003 / DEV-007). The team↔project link was missing from the
- * environment and nothing failed until a human tried to create a work item.
+ * collapsed: tracker checkpoints 00, 01 and 04 were all blocked by "Team is not
+ * linked to this project" (gaps DEV-003 / DEV-007). The team↔project link was
+ * missing from the environment and nothing failed until a human tried to create
+ * a work item.
+ *
+ * NOTE on numbering — the tracker's execution checkpoints (two digits, in
+ * BUSINESS_E2E_TEST_TRACKER.xlsx) and the business flows (three digits, in
+ * E2E_BUSINESS_FLOW_COVERAGE.md) are DIFFERENT schemes that look alike. Only
+ * three-digit flow ids are written in the citable form in these specs, so the
+ * traceability matrix can be extracted mechanically without false matches.
  *
  * Encodes the business rules verbatim from
  * 04_Developement_tracking/Phase 1/08_Manage_Projects_Teams_Users/SRS.md §2A:
@@ -22,6 +29,12 @@
  * an unlinked team must be REJECTED, a cross-project team must be REJECTED, and
  * the prepared context must be USABLE by the Backlog. Asserting only that calls
  * succeed would have passed against the very state that blocked the BA run.
+ *
+ * NOT duplicated here: team key normalisation (TEAM-FR-004), duplicate-key
+ * rejection, and project↔team link/unlink idempotency (TEAM-FR-006) are already
+ * proven by workspace-foundation-flow.e2e.spec.ts, which asserts strictly more
+ * in each case. This spec starts where that one stops — at the rules that only
+ * matter once a team is actually being USED for work management.
  *
  * Drives the REAL application services against the seeded DB.
  */
@@ -77,53 +90,6 @@ describe('BA flows: E2E-002 admin prepares team and user for work management', (
     await projects.linkTeam(admin.workspaceId, project.id, team.id);
     return { project, team };
   }
-
-  describe('step 2 — create Team under Project (TEAM-FR-006)', () => {
-    it("links the team to the project so it appears in that project's team list", async () => {
-      const { project, team } = await prepareLinkedContext();
-
-      const links = await projects.listProjectTeams(admin.workspaceId, project.id);
-      const link = links.find((l) => l.teamId === team.id);
-
-      expect(link).toBeDefined();
-      expect(link?.status).toBe('active');
-    });
-
-    it('normalizes the team key to uppercase (TEAM-FR-004)', async () => {
-      const key = uniqueKey('t').toLowerCase();
-      const team = await teams.createTeam(
-        admin.workspaceId,
-        'E2E-002 Lowercase Key',
-        key,
-        undefined,
-        ADMIN_USER_ID,
-        ADMIN_USER_ID,
-      );
-      expect(team.key).toBe(key.toUpperCase());
-    });
-
-    it('rejects a duplicate team key in the same workspace (TEAM-FR-004)', async () => {
-      const key = uniqueKey('T');
-      await teams.createTeam(
-        admin.workspaceId,
-        'E2E-002 First',
-        key,
-        undefined,
-        ADMIN_USER_ID,
-        ADMIN_USER_ID,
-      );
-      await expect(
-        teams.createTeam(
-          admin.workspaceId,
-          'E2E-002 Duplicate',
-          key,
-          undefined,
-          ADMIN_USER_ID,
-          ADMIN_USER_ID,
-        ),
-      ).rejects.toThrow(/TEAM_KEY_TAKEN|already taken/i);
-    });
-  });
 
   describe('rule — a team must be linked before it can be used (SRS §2A)', () => {
     // THE regression guard for DEV-003 / DEV-007. An unlinked team must be

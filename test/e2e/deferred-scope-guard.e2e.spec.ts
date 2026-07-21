@@ -116,8 +116,7 @@ describe('BA flows: E2E-010 / E2E-016 deferred-scope guards', () => {
         key: uniqueKey(),
         name: 'E2E-016 Release Scope',
       });
-      await releases.createRelease(admin, project.id, {
-        name: 'E2E-016 Release',
+      await releases.createRelease(admin, project.id, 'E2E-016 Release', {
         startDate: '2026-07-20',
         releaseDate: '2026-08-15',
       });
@@ -137,8 +136,7 @@ describe('BA flows: E2E-010 / E2E-016 deferred-scope guards', () => {
         key: uniqueKey(),
         name: 'E2E-016 Release Fields',
       });
-      await releases.createRelease(admin, project.id, {
-        name: 'E2E-016 Fields Release',
+      await releases.createRelease(admin, project.id, 'E2E-016 Fields Release', {
         startDate: '2026-07-20',
         releaseDate: '2026-08-15',
       });

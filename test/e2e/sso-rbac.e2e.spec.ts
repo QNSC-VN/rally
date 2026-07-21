@@ -1,6 +1,11 @@
 /**
  * End-to-end proof of the SSO login → RBAC/PBAC pipeline.
  *
+ * Flow: none. Authentication/authorisation infrastructure, not a numbered BA
+ * business flow. It underpins every flow (each one assumes a signed-in actor
+ * with resolved permissions) but proves no single one. Recorded explicitly so
+ * the matrix can tell "deliberately not a flow" from "untraced".
+ *
  * This boots the REAL rally `AppModule` (real Nest DI, real Drizzle against the
  * seeded `rally-postgres`) and drives the REAL `@qnsc-vn/identity` `AuthService`.
  * The ONLY thing stubbed is the Entra token signature check
