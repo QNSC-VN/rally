@@ -23,6 +23,7 @@ import { describe, expect, it } from 'vitest'
 const MAX_RAW_BUTTON = 95 // occurrences in pages/features/entities/widgets
 const MAX_INLINE_STYLE = 207 // `style={{` in pages/features/entities/widgets (remainder is data-driven/dynamic)
 const MAX_ARBITRARY_TEXT = 2 // `text-[` app-wide (only text-[0] + one navy placeholder rgba remain)
+const MAX_HARDCODED_TEXT = 133 // capitalized JSX text nodes in consumer layers (P4: wire t(), drive to 0)
 const MAX_FILE_LINES = 1024 // largest single source file (after monolith decomposition)
 
 // this file lives in src/test/
@@ -85,6 +86,14 @@ describe('FE consistency ratchets (only ever decrease)', () => {
   it(`arbitrary text-[Npx] app-wide <= ${MAX_ARBITRARY_TEXT}`, () => {
     const { total, byFile } = countMatches((f) => f.endsWith('.tsx'), /text-\[/g)
     assertRatchet('arbitrary text-[ count', total, MAX_ARBITRARY_TEXT, byFile)
+  })
+
+  it(`hardcoded JSX copy in consumer layers <= ${MAX_HARDCODED_TEXT}`, () => {
+    // Proxy for un-internationalised copy: capitalized text nodes rendered
+    // directly in JSX (`>Delete release<`). Wire it through `t()` (P4). Only
+    // ever decreases toward 0 as pages adopt i18n.
+    const { total, byFile } = countMatches(inConsumerLayers, />[A-Z][A-Za-z][A-Za-z ,.'!?/&-]*</g)
+    assertRatchet('hardcoded JSX copy count', total, MAX_HARDCODED_TEXT, byFile)
   })
 
   it(`no source file exceeds ${MAX_FILE_LINES} lines`, () => {
