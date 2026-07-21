@@ -47,7 +47,7 @@ export default defineConfig({
       ENTRA_CLIENT_SECRET: 'test-secret',
       ENTRA_REDIRECT_URI: 'http://localhost:3000/v1/bff/callback',
     },
-    include: ['libs/**/*.spec.ts', 'apps/**/*.spec.ts'],
+    include: ['libs/**/*.spec.ts', 'apps/**/*.spec.ts', 'db/**/*.spec.ts'],
     exclude: ['node_modules', 'dist'],
     coverage: {
       provider: 'v8',

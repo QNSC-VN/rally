@@ -38,7 +38,77 @@ concurrency:
   cancel-in-progress: false   # never cancel a running deploy
 
 jobs:
+  # ───────────────────────────────────────────────────────────────────────────
+  # Ordering gate — never roll the app ahead of its own infrastructure.
+  #
+  # Backend·Deploy and Infrastructure·Apply both fire on the same push, as
+  # independent workflows. Nothing sequenced them, so a commit that changes BOTH
+  # infra and app code raced: the deploy registered/ran tasks against the OLD
+  # task definition while the new one was still being applied.
+  #
+  # That is how the DATABASE_USER/PASSWORD migration would have failed — the
+  # migrator would have run with the previous task definition, still pointing at
+  # the retired db-url secret, and reported a confusing auth error.
+  #
+  # Deterministic by design:
+  #   - commit does NOT touch infra/live/** → no infra run exists, proceed at once
+  #   - commit DOES touch infra/live/**     → wait for that run on THIS sha
+  # It keys on the commit sha, so it can never wait on an unrelated run.
+  # ───────────────────────────────────────────────────────────────────────────
+  wait-for-infra:
+    name: Wait for infrastructure
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # Least-privilege: read the commit and query sibling runs. Nothing else.
+    # Explicit so an org-level default change cannot silently break the gate.
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
+        with:
+          fetch-depth: 2
+
+      - name: Does this commit change infrastructure?
+        id: touched
+        run: |
+          # A tag push has no meaningful "previous commit" to diff, and prod
+          # infra is applied from main before tagging, so never gate on tags.
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            echo "infra=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if git diff --name-only HEAD~1 HEAD | grep -q '^infra/live/'; then
+            echo "infra=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "infra=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Wait for Infrastructure · Apply on this commit
+        if: steps.touched.outputs.infra == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # The sibling run may not be registered the instant this job starts;
+          # allow a short grace period before concluding there is none.
+          for _ in $(seq 1 12); do
+            ID=$(gh run list --workflow=infra-apply.yml --commit "$GITHUB_SHA" \
+                   --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+            [ -n "$ID" ] && break
+            sleep 10
+          done
+
+          if [ -z "${ID:-}" ]; then
+            echo "::warning::infra/live changed but no Infrastructure · Apply run found for $GITHUB_SHA — proceeding."
+            exit 0
+          fi
+
+          echo "Waiting on infra-apply run $ID …"
+          gh run watch "$ID" --exit-status
+          echo "Infrastructure applied; deploy may proceed."
+
   deploy:
+    needs: wait-for-infra
     uses: QNSC-VN/qnsc-ci/.github/workflows/backend-deploy.yml@v1.4.0
     with:
       product: rally

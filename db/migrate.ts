@@ -16,11 +16,17 @@ import { Pool } from 'pg';
 import path from 'path';
 import { seed, seedSystemRoles, seedTenantBootstrap } from './seeds/seed';
 import { pgOptions } from './pg-ssl';
+import { resolveDatabaseUrl, resolveMigrationUrl } from './database-url';
 
-const url = process.env['DATABASE_MIGRATION_URL'] ?? process.env['DATABASE_URL'];
-
-if (!url) {
-  console.error('❌  DATABASE_MIGRATION_URL or DATABASE_URL required');
+// Resolves DATABASE_MIGRATION_URL, else DATABASE_URL, else composes from the
+// DATABASE_* parts (the deployed path — credentials come straight from the
+// RDS-managed secret, never a hand-maintained copy). Throws with a precise
+// message listing what is missing.
+let url: string;
+try {
+  url = resolveMigrationUrl();
+} catch (err) {
+  console.error(`❌  ${(err as Error).message}`);
   process.exit(1);
 }
 
@@ -33,9 +39,15 @@ async function run() {
     await migrate(db, { migrationsFolder: path.join(__dirname, 'migrations') });
     console.log('✅  Migrations applied');
 
-    // Seed uses DATABASE_URL (app role), not the migration URL (admin role).
-    // Falls back to migration URL if DATABASE_URL is not set separately.
-    const seedUrl = process.env['DATABASE_URL'] ?? url;
+    // Seed uses the app connection, not the migration URL (admin role).
+    // Falls back to the migration URL when no separate app credential is set.
+    const seedUrl = (() => {
+      try {
+        return resolveDatabaseUrl();
+      } catch {
+        return url;
+      }
+    })();
 
     // Reference data — the RBAC role catalogue — is required for authz to work
     // (JIT SSO provisioning assigns these role slugs). It contains no demo
