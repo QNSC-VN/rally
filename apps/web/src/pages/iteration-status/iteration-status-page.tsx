@@ -97,21 +97,6 @@ import { StateStepper } from '@/entities/work-item/ui/state-stepper'
 import { FeatureCell } from '@/entities/work-item/ui/feature-cell'
 import { SCHEDULE_STATE_STEPS, SIMPLIFIED_STATE_STEPS } from '@/entities/work-item/ui/state-steps'
 
-// ── Accent palette (Rally navy brand; neutral Azure-style layout kept) ──────
-const AZ = {
-  primary: BRAND.primary,
-  primaryLight: BRAND.primaryLighter,
-  textPrimary: BRAND.textPrimary,
-  textSecondary: BRAND.textSecondary,
-  textInverse: BRAND.primaryForeground,
-  textMuted: BRAND.textMuted,
-  bg: BRAND.surface,
-  bgHeader: BRAND.pageBg,
-  bgAlt: BRAND.surfaceHover,
-  border: BRAND.borderSubtle,
-  font: "'Segoe UI', -apple-system, BlinkMacSystemFont, 'Roboto', sans-serif",
-}
-
 // Single-letter badge for each schedule state (read-only view)
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -274,10 +259,9 @@ function MilestoneSelectCell({
             fontSize: 11,
             fontWeight: 600,
             lineHeight: '18px',
-            border: `1px solid ${AZ.border}`,
-            backgroundColor: AZ.bgAlt,
-            color: AZ.textSecondary,
-            fontFamily: AZ.font,
+            border: `1px solid ${BRAND.borderSubtle}`,
+            backgroundColor: BRAND.surfaceHover,
+            color: BRAND.textSecondary,
           }}
         >
           <span className="truncate">{selected[0].name}</span>
@@ -285,7 +269,7 @@ function MilestoneSelectCell({
         {selected.length > 1 && (
           <span
             className="shrink-0"
-            style={{ fontSize: 11, color: AZ.textMuted, whiteSpace: 'nowrap' }}
+            style={{ fontSize: 11, color: BRAND.textMuted, whiteSpace: 'nowrap' }}
             title={selected.map((m) => m.name).join(', ')}
           >
             +{selected.length - 1}
@@ -293,7 +277,7 @@ function MilestoneSelectCell({
         )}
       </>
     ) : (
-      <span style={{ color: AZ.textMuted, fontSize: 12 }}>&mdash;</span>
+      <span style={{ color: BRAND.textMuted, fontSize: 12 }}>&mdash;</span>
     )
 
   if (!canEdit) {
@@ -313,7 +297,7 @@ function MilestoneSelectCell({
         title="Edit milestones"
         className="flex w-full items-center gap-1 overflow-hidden rounded"
         style={{
-          background: open ? AZ.primaryLight : 'none',
+          background: open ? BRAND.primaryLighter : 'none',
           border: 'none',
           padding: '2px 4px',
           cursor: saving ? 'default' : 'pointer',
@@ -322,7 +306,7 @@ function MilestoneSelectCell({
         }}
       >
         <span className="flex min-w-0 flex-1 items-center gap-1">{summary}</span>
-        <ChevronDown size={12} style={{ color: AZ.textMuted, flexShrink: 0 }} />
+        <ChevronDown size={12} style={{ color: BRAND.textMuted, flexShrink: 0 }} />
       </button>
       {open &&
         pos &&
@@ -340,15 +324,15 @@ function MilestoneSelectCell({
               maxWidth: 280,
               maxHeight: 260,
               overflowY: 'auto',
-              backgroundColor: AZ.bg,
-              border: `1px solid ${AZ.border}`,
+              backgroundColor: BRAND.surface,
+              border: `1px solid ${BRAND.borderSubtle}`,
               borderRadius: 4,
               boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
               padding: 4,
             }}
           >
             {options.length === 0 ? (
-              <div style={{ padding: '8px 10px', fontSize: 12, color: AZ.textMuted }}>
+              <div style={{ padding: '8px 10px', fontSize: 12, color: BRAND.textMuted }}>
                 No milestones in this project
               </div>
             ) : (
@@ -364,18 +348,19 @@ function MilestoneSelectCell({
                       padding: '5px 8px',
                       borderRadius: 3,
                       fontSize: 12,
-                      color: AZ.textPrimary,
+                      color: BRAND.textPrimary,
                       cursor: 'pointer',
-                      fontFamily: AZ.font,
                     }}
-                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = AZ.bgAlt)}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.backgroundColor = BRAND.surfaceHover)
+                    }
                     onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
                   >
                     <input
                       type="checkbox"
                       checked={checked}
                       onChange={() => toggle(opt.id)}
-                      style={{ accentColor: AZ.primary, cursor: 'pointer' }}
+                      style={{ accentColor: BRAND.primary, cursor: 'pointer' }}
                     />
                     <span className="truncate">{opt.name}</span>
                   </label>
@@ -392,7 +377,7 @@ function MilestoneSelectCell({
 /** Rally "Defect Status" summary pill derived from child-defect counts. */
 function DefectStatusPill({ total, open }: { total: number; open: number }) {
   if (total === 0) {
-    return <span style={{ fontSize: 12, color: AZ.textMuted }}>None</span>
+    return <span style={{ fontSize: 12, color: BRAND.textMuted }}>None</span>
   }
   const closed = open === 0
   const bg = closed ? BRAND.successBg : BRAND.warningBg
@@ -411,7 +396,6 @@ function DefectStatusPill({ total, open }: { total: number; open: number }) {
         backgroundColor: bg,
         color: fg,
         border: `1px solid ${bd}`,
-        fontFamily: AZ.font,
       }}
     >
       {closed ? 'Closed' : `${open} Open`}
@@ -423,7 +407,7 @@ function DefectStatusPill({ total, open }: { total: number; open: number }) {
  * State-based (not To-Do hours) so it agrees with the Team Status screen. */
 function TasksProgress({ total, done }: { total: number; done: number }) {
   if (!total || total <= 0) {
-    return <span style={{ fontSize: 12, color: AZ.textMuted }}>&mdash;</span>
+    return <span style={{ fontSize: 12, color: BRAND.textMuted }}>&mdash;</span>
   }
   const pct = Math.max(0, Math.min(100, Math.round((done / total) * 100)))
   return (
@@ -433,7 +417,7 @@ function TasksProgress({ total, done }: { total: number; done: number }) {
           flex: 1,
           height: 6,
           borderRadius: 3,
-          backgroundColor: AZ.border,
+          backgroundColor: BRAND.borderSubtle,
           overflow: 'hidden',
         }}
       >
@@ -441,11 +425,11 @@ function TasksProgress({ total, done }: { total: number; done: number }) {
           style={{
             width: `${pct}%`,
             height: '100%',
-            backgroundColor: pct >= 100 ? BRAND.success : AZ.primary,
+            backgroundColor: pct >= 100 ? BRAND.success : BRAND.primary,
           }}
         />
       </div>
-      <span style={{ fontSize: 11, color: AZ.textSecondary, minWidth: 30, textAlign: 'right' }}>
+      <span style={{ fontSize: 11, color: BRAND.textSecondary, minWidth: 30, textAlign: 'right' }}>
         {pct}%
       </span>
     </div>
@@ -816,7 +800,7 @@ export function IterationStatusPage() {
     return (
       <div
         className="flex flex-1 items-center justify-center"
-        style={{ color: AZ.textMuted, fontSize: 13, fontFamily: AZ.font }}
+        style={{ color: BRAND.textMuted, fontSize: 13 }}
       >
         Select a project to view Iteration Status.
       </div>
@@ -827,13 +811,13 @@ export function IterationStatusPage() {
     return (
       <div
         className="flex flex-1 flex-col items-center justify-center gap-2"
-        style={{ color: AZ.textMuted, fontSize: 13, fontFamily: AZ.font }}
+        style={{ color: BRAND.textMuted, fontSize: 13 }}
       >
         <span>No iterations in this project/team yet.</span>
         <button
           onClick={() => navigate({ to: '/timeboxes' })}
           style={{
-            color: AZ.primary,
+            color: BRAND.primary,
             fontSize: 12,
             fontWeight: 600,
             cursor: 'pointer',
@@ -857,7 +841,7 @@ export function IterationStatusPage() {
   return (
     <div
       className="flex flex-1 flex-col overflow-hidden"
-      style={{ fontFamily: AZ.font, backgroundColor: AZ.bg, color: AZ.textPrimary, fontSize: 12 }}
+      style={{ backgroundColor: BRAND.surface, color: BRAND.textPrimary, fontSize: 12 }}
     >
       {/* ── Single page header: title + iteration picker ────────────────── */}
       <IterationHeader
@@ -970,7 +954,7 @@ export function IterationStatusPage() {
           ) : filteredItems.length === 0 ? (
             <div
               className="flex h-full items-center justify-center text-[13px]"
-              style={{ color: AZ.textMuted }}
+              style={{ color: BRAND.textMuted }}
             >
               No items assigned to this iteration
             </div>
@@ -998,7 +982,7 @@ export function IterationStatusPage() {
             columnDrag: table.columnDrag,
           }}
           padClassName="pr-3 pl-1"
-          bodyBackground={AZ.bg}
+          bodyBackground={BRAND.surface}
           leading={
             <RowGutter
               dragDisabled
@@ -1031,7 +1015,7 @@ export function IterationStatusPage() {
             items.length === 0 ? (
               <div
                 className="flex items-center justify-center"
-                style={{ height: 160, fontSize: 12, color: AZ.textMuted }}
+                style={{ height: 160, fontSize: 12, color: BRAND.textMuted }}
               >
                 No items assigned to this iteration
               </div>
@@ -1151,17 +1135,19 @@ function IterationHeader({
       className="flex shrink-0 items-center gap-3 px-4"
       style={{
         height: 44,
-        borderBottom: `1px solid ${AZ.border}`,
-        backgroundColor: AZ.bg,
+        borderBottom: `1px solid ${BRAND.borderSubtle}`,
+        backgroundColor: BRAND.surface,
       }}
     >
-      <span style={{ fontSize: 16, fontWeight: 700, color: AZ.textPrimary, whiteSpace: 'nowrap' }}>
+      <span
+        style={{ fontSize: 16, fontWeight: 700, color: BRAND.textPrimary, whiteSpace: 'nowrap' }}
+      >
         Iteration Status
       </span>
       <div
         className="flex items-center"
         style={{
-          border: `1px solid ${AZ.border}`,
+          border: `1px solid ${BRAND.borderSubtle}`,
           borderRadius: 2,
           overflow: 'visible',
           height: 28,
@@ -1178,12 +1164,12 @@ function IterationHeader({
             cursor: selectedIndex <= 0 ? 'not-allowed' : 'pointer',
             background: 'transparent',
             border: 'none',
-            borderRight: `1px solid ${AZ.border}`,
-            color: selectedIndex <= 0 ? AZ.textMuted : AZ.textSecondary,
+            borderRight: `1px solid ${BRAND.borderSubtle}`,
+            color: selectedIndex <= 0 ? BRAND.textMuted : BRAND.textSecondary,
             opacity: selectedIndex <= 0 ? 0.4 : 1,
           }}
           onMouseOver={(e) => {
-            if (selectedIndex > 0) e.currentTarget.style.backgroundColor = AZ.bgAlt
+            if (selectedIndex > 0) e.currentTarget.style.backgroundColor = BRAND.surfaceHover
           }}
           onMouseOut={(e) => {
             e.currentTarget.style.backgroundColor = 'transparent'
@@ -1204,12 +1190,11 @@ function IterationHeader({
               background: 'transparent',
               border: 'none',
               minWidth: 300,
-              color: AZ.textPrimary,
-              fontFamily: AZ.font,
+              color: BRAND.textPrimary,
               textAlign: 'left',
             }}
             onMouseOver={(e) => {
-              e.currentTarget.style.backgroundColor = AZ.bgAlt
+              e.currentTarget.style.backgroundColor = BRAND.surfaceHover
             }}
             onMouseOut={(e) => {
               e.currentTarget.style.backgroundColor = 'transparent'
@@ -1218,10 +1203,10 @@ function IterationHeader({
             <span style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>
               {selected?.name}
             </span>
-            <span style={{ fontSize: 11, whiteSpace: 'nowrap', color: AZ.textSecondary }}>
+            <span style={{ fontSize: 11, whiteSpace: 'nowrap', color: BRAND.textSecondary }}>
               {selected && fmtRange(selected)}
             </span>
-            <ChevronDown size={12} style={{ marginLeft: 'auto', color: AZ.textMuted }} />
+            <ChevronDown size={12} style={{ marginLeft: 'auto', color: BRAND.textMuted }} />
           </button>
           {selectorOpen && (
             <div
@@ -1229,10 +1214,10 @@ function IterationHeader({
               style={{
                 marginTop: 4,
                 width: 380,
-                backgroundColor: AZ.bg,
+                backgroundColor: BRAND.surface,
                 borderRadius: 2,
                 boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                border: `1px solid ${AZ.border}`,
+                border: `1px solid ${BRAND.borderSubtle}`,
                 maxHeight: 300,
                 overflowY: 'auto',
                 padding: '4px 0',
@@ -1253,21 +1238,21 @@ function IterationHeader({
                     padding: '6px 12px',
                     cursor: 'pointer',
                     border: 'none',
-                    background: selectedId === it.id ? AZ.primaryLight : 'transparent',
-                    color: selectedId === it.id ? AZ.primary : AZ.textPrimary,
-                    fontFamily: AZ.font,
+                    background: selectedId === it.id ? BRAND.primaryLighter : 'transparent',
+                    color: selectedId === it.id ? BRAND.primary : BRAND.textPrimary,
                     fontSize: 12,
                     textAlign: 'left',
                   }}
                   onMouseOver={(e) => {
-                    if (selectedId !== it.id) e.currentTarget.style.backgroundColor = AZ.bgAlt
+                    if (selectedId !== it.id)
+                      e.currentTarget.style.backgroundColor = BRAND.surfaceHover
                   }}
                   onMouseOut={(e) => {
                     if (selectedId !== it.id) e.currentTarget.style.backgroundColor = 'transparent'
                   }}
                 >
                   <span style={{ fontWeight: 600, flex: 1 }}>{it.name}</span>
-                  <span style={{ color: AZ.textMuted, fontSize: 11 }}>{fmtRange(it)}</span>
+                  <span style={{ color: BRAND.textMuted, fontSize: 11 }}>{fmtRange(it)}</span>
                 </button>
               ))}
             </div>
@@ -1284,13 +1269,13 @@ function IterationHeader({
             cursor: selectedIndex >= iterations.length - 1 ? 'not-allowed' : 'pointer',
             background: 'transparent',
             border: 'none',
-            borderLeft: `1px solid ${AZ.border}`,
-            color: selectedIndex >= iterations.length - 1 ? AZ.textMuted : AZ.textSecondary,
+            borderLeft: `1px solid ${BRAND.borderSubtle}`,
+            color: selectedIndex >= iterations.length - 1 ? BRAND.textMuted : BRAND.textSecondary,
             opacity: selectedIndex >= iterations.length - 1 ? 0.4 : 1,
           }}
           onMouseOver={(e) => {
             if (selectedIndex < iterations.length - 1)
-              e.currentTarget.style.backgroundColor = AZ.bgAlt
+              e.currentTarget.style.backgroundColor = BRAND.surfaceHover
           }}
           onMouseOut={(e) => {
             e.currentTarget.style.backgroundColor = 'transparent'
@@ -1304,7 +1289,7 @@ function IterationHeader({
       <div
         className="flex items-center"
         style={{
-          border: `1px solid ${AZ.border}`,
+          border: `1px solid ${BRAND.borderSubtle}`,
           borderRadius: 2,
           height: 28,
           overflow: 'hidden',
@@ -1330,12 +1315,11 @@ function IterationHeader({
                 padding: '0 10px',
                 fontSize: 11,
                 fontWeight: 600,
-                fontFamily: AZ.font,
                 cursor: 'pointer',
                 border: 'none',
-                borderLeft: i === 0 ? 'none' : `1px solid ${AZ.border}`,
-                backgroundColor: active ? AZ.primary : 'transparent',
-                color: active ? AZ.textInverse : AZ.textSecondary,
+                borderLeft: i === 0 ? 'none' : `1px solid ${BRAND.borderSubtle}`,
+                backgroundColor: active ? BRAND.primary : 'transparent',
+                color: active ? BRAND.primaryForeground : BRAND.textSecondary,
               }}
             >
               <Icon size={13} />
@@ -1368,8 +1352,8 @@ function MetricsStrip({
       className="flex shrink-0 items-stretch px-4"
       style={{
         height: 72,
-        borderBottom: `1px solid ${AZ.border}`,
-        backgroundColor: AZ.bg,
+        borderBottom: `1px solid ${BRAND.borderSubtle}`,
+        backgroundColor: BRAND.surface,
         gap: 24,
       }}
     >
@@ -1405,21 +1389,21 @@ function MetricsStrip({
       {/* Right side: Defects, Tasks, View Charts */}
       <div className="flex items-center" style={{ gap: 20 }}>
         <div className="flex items-center gap-2" style={{ minWidth: 90 }}>
-          <Bug size={16} style={{ color: AZ.textMuted }} />
+          <Bug size={16} style={{ color: BRAND.textMuted }} />
           <div className="flex flex-col">
-            <span style={{ fontSize: 11, fontWeight: 600, color: AZ.textPrimary }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: BRAND.textPrimary }}>
               {metrics?.defectCount ?? 0} Active
             </span>
-            <span style={{ fontSize: 10, color: AZ.textMuted }}>Defects</span>
+            <span style={{ fontSize: 10, color: BRAND.textMuted }}>Defects</span>
           </div>
         </div>
         <div className="flex items-center gap-2" style={{ minWidth: 90 }}>
-          <ListChecks size={16} style={{ color: AZ.textMuted }} />
+          <ListChecks size={16} style={{ color: BRAND.textMuted }} />
           <div className="flex flex-col">
-            <span style={{ fontSize: 11, fontWeight: 600, color: AZ.textPrimary }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: BRAND.textPrimary }}>
               {metrics?.activeTaskCount ?? 0} Active
             </span>
-            <span style={{ fontSize: 10, color: AZ.textMuted }}>Tasks</span>
+            <span style={{ fontSize: 10, color: BRAND.textMuted }}>Tasks</span>
           </div>
         </div>
         <button
@@ -1427,17 +1411,16 @@ function MetricsStrip({
           style={{
             fontSize: 11,
             fontWeight: 600,
-            color: AZ.primary,
+            color: BRAND.primary,
             background: 'none',
             border: 'none',
             cursor: 'pointer',
             padding: '4px 8px',
             borderRadius: 2,
-            fontFamily: AZ.font,
             whiteSpace: 'nowrap',
           }}
           onMouseOver={(e) => {
-            e.currentTarget.style.backgroundColor = AZ.primaryLight
+            e.currentTarget.style.backgroundColor = BRAND.primaryLighter
           }}
           onMouseOut={(e) => {
             e.currentTarget.style.backgroundColor = 'transparent'
@@ -1763,8 +1746,7 @@ function StatusRow({
     update.mutate(
       { iterationId },
       {
-        onSuccess: () =>
-          toast.success(iterationId ? 'Iteration updated' : 'Moved to backlog'),
+        onSuccess: () => toast.success(iterationId ? 'Iteration updated' : 'Moved to backlog'),
         onError: (err) => toast.error(err.message),
       },
     )
@@ -1807,8 +1789,8 @@ function StatusRow({
           height: 34,
           paddingLeft: 4,
           paddingRight: 12,
-          borderBottom: `1px solid ${AZ.border}`,
-          backgroundColor: AZ.bg,
+          borderBottom: `1px solid ${BRAND.borderSubtle}`,
+          backgroundColor: BRAND.surface,
           fontSize: 12,
           minWidth: 'max-content',
           ...rowStyle,
@@ -1818,7 +1800,7 @@ function StatusRow({
           e.currentTarget.style.backgroundColor = BRAND.primaryLighter
         }}
         onMouseOut={(e) => {
-          e.currentTarget.style.backgroundColor = AZ.bg
+          e.currentTarget.style.backgroundColor = BRAND.surface
         }}
       >
         {/* Leading gutter (rank grip + selection checkbox) — shared component so
@@ -1850,7 +1832,7 @@ function StatusRow({
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              color: AZ.textSecondary,
+              color: BRAND.textSecondary,
             }}
           >
             <ChevronDown
@@ -1861,7 +1843,10 @@ function StatusRow({
               }}
             />
           </button>
-          <span className="font-mono text-[10px] tabular-nums" style={{ color: AZ.textSecondary }}>
+          <span
+            className="font-mono text-[10px] tabular-nums"
+            style={{ color: BRAND.textSecondary }}
+          >
             {rank}
           </span>
         </div>
@@ -1884,13 +1869,12 @@ function StatusRow({
             ariaLabel="Name"
             title={item.title}
             className="block w-full truncate"
-            style={{ fontSize: 12, color: AZ.textPrimary, fontFamily: AZ.font }}
+            style={{ fontSize: 12, color: BRAND.textPrimary }}
             inputStyle={{
               width: '100%',
               fontSize: 12,
-              fontFamily: AZ.font,
-              color: AZ.textPrimary,
-              border: `1px solid ${AZ.primary}`,
+              color: BRAND.textPrimary,
+              border: `1px solid ${BRAND.primary}`,
               borderRadius: 2,
               outline: 'none',
               padding: '1px 4px',
@@ -1907,7 +1891,7 @@ function StatusRow({
               onOpen={() => navigate({ to: '/item/$itemKey', params: { itemKey: featureKey } })}
             />
           ) : (
-            <span style={{ color: AZ.textMuted, fontSize: 12 }}>&mdash;</span>
+            <span style={{ color: BRAND.textMuted, fontSize: 12 }}>&mdash;</span>
           )}
         </div>
 
@@ -1971,7 +1955,6 @@ function StatusRow({
                   backgroundColor: BRAND.dangerBg,
                   color: BRAND.danger,
                   border: `1px solid ${BRAND.dangerBorder}`,
-                  fontFamily: AZ.font,
                 }}
                 title="Blocked - Click to Unblock"
               >
@@ -1989,8 +1972,7 @@ function StatusRow({
                   fontSize: 11,
                   fontWeight: 500,
                   border: `1px dashed ${BRAND.border}`,
-                  color: AZ.textMuted,
-                  fontFamily: AZ.font,
+                  color: BRAND.textMuted,
                 }}
                 title="Unblocked - Click to Block"
               >
@@ -2006,12 +1988,12 @@ function StatusRow({
             <span
               className="truncate"
               title={item.blockedReason}
-              style={{ fontSize: 12, color: AZ.textSecondary }}
+              style={{ fontSize: 12, color: BRAND.textSecondary }}
             >
               {item.blockedReason}
             </span>
           ) : (
-            <span style={{ color: AZ.textMuted, fontSize: 12 }}>&mdash;</span>
+            <span style={{ color: BRAND.textMuted, fontSize: 12 }}>&mdash;</span>
           )}
         </div>
 
@@ -2024,7 +2006,7 @@ function StatusRow({
             displayValue={item.planEstimate ?? '—'}
             style={{
               fontFamily: 'Consolas, Monaco, monospace',
-              color: AZ.textSecondary,
+              color: BRAND.textSecondary,
               fontSize: 12,
             }}
             inputStyle={{
@@ -2032,7 +2014,7 @@ function StatusRow({
               textAlign: 'right',
               fontSize: 11,
               fontFamily: 'Consolas, Monaco, monospace',
-              border: `1px solid ${AZ.primary}`,
+              border: `1px solid ${BRAND.primary}`,
               borderRadius: 2,
               outline: 'none',
             }}
@@ -2046,7 +2028,7 @@ function StatusRow({
             ...colStyles.taskEstimate,
             textAlign: 'right',
             fontFamily: 'Consolas, Monaco, monospace',
-            color: AZ.textSecondary,
+            color: BRAND.textSecondary,
             fontSize: 12,
           }}
           className="px-2 text-right"
@@ -2063,7 +2045,7 @@ function StatusRow({
             displayValue={item.toDo ?? '—'}
             style={{
               fontFamily: 'Consolas, Monaco, monospace',
-              color: AZ.textSecondary,
+              color: BRAND.textSecondary,
               fontSize: 12,
             }}
             inputStyle={{
@@ -2071,7 +2053,7 @@ function StatusRow({
               textAlign: 'right',
               fontSize: 11,
               fontFamily: 'Consolas, Monaco, monospace',
-              border: `1px solid ${AZ.primary}`,
+              border: `1px solid ${BRAND.primary}`,
               borderRadius: 2,
               outline: 'none',
             }}
@@ -2086,7 +2068,7 @@ function StatusRow({
 
         {/* Actual — not tracked at story level, only on tasks */}
         <div
-          style={{ ...colStyles.actual, textAlign: 'right', color: AZ.textMuted, fontSize: 12 }}
+          style={{ ...colStyles.actual, textAlign: 'right', color: BRAND.textMuted, fontSize: 12 }}
           className="px-2 text-right"
         >
           &mdash;
@@ -2113,9 +2095,9 @@ function StatusRow({
           className="px-2 text-center"
         >
           {item.defectCount > 0 ? (
-            <span style={{ color: AZ.textSecondary, fontWeight: 600 }}>{item.defectCount}</span>
+            <span style={{ color: BRAND.textSecondary, fontWeight: 600 }}>{item.defectCount}</span>
           ) : (
-            <span style={{ color: AZ.textMuted }}>&mdash;</span>
+            <span style={{ color: BRAND.textMuted }}>&mdash;</span>
           )}
         </div>
 
@@ -2166,7 +2148,7 @@ function StatusRow({
         <div
           style={{
             backgroundColor: BRAND.surfaceHover,
-            boxShadow: `inset 2px 0 0 ${AZ.primaryLight}`,
+            boxShadow: `inset 2px 0 0 ${BRAND.primaryLighter}`,
           }}
         >
           {isLoadingTasks && (
@@ -2174,7 +2156,7 @@ function StatusRow({
               style={{
                 padding: '6px 44px',
                 fontSize: 11,
-                color: AZ.textMuted,
+                color: BRAND.textMuted,
                 display: 'flex',
                 alignItems: 'center',
                 gap: 6,
@@ -2188,7 +2170,7 @@ function StatusRow({
               style={{
                 padding: '6px 44px',
                 fontSize: 11,
-                color: AZ.textMuted,
+                color: BRAND.textMuted,
                 fontStyle: 'italic',
               }}
             >
@@ -2328,9 +2310,9 @@ function ChildTaskRow({
         height: 30,
         paddingLeft: 4,
         paddingRight: 12,
-        borderBottom: `1px dashed ${AZ.border}`,
+        borderBottom: `1px dashed ${BRAND.borderSubtle}`,
         fontSize: 11,
-        color: AZ.textSecondary,
+        color: BRAND.textSecondary,
         minWidth: 'max-content',
       }}
       onMouseOver={(e) => {
@@ -2361,13 +2343,12 @@ function ChildTaskRow({
           ariaLabel="Name"
           title={task.title}
           className="block w-full truncate"
-          style={{ fontSize: 12, color: AZ.textPrimary, fontFamily: AZ.font }}
+          style={{ fontSize: 12, color: BRAND.textPrimary }}
           inputStyle={{
             width: '100%',
             fontSize: 12,
-            fontFamily: AZ.font,
-            color: AZ.textPrimary,
-            border: `1px solid ${AZ.primary}`,
+            color: BRAND.textPrimary,
+            border: `1px solid ${BRAND.primary}`,
             borderRadius: 2,
             outline: 'none',
             padding: '1px 4px',
@@ -2410,7 +2391,7 @@ function ChildTaskRow({
             textAlign: 'right',
             fontSize: 11,
             fontFamily: 'Consolas, Monaco, monospace',
-            border: `1px solid ${AZ.primary}`,
+            border: `1px solid ${BRAND.primary}`,
             borderRadius: 2,
             outline: 'none',
           }}
@@ -2429,7 +2410,7 @@ function ChildTaskRow({
             textAlign: 'right',
             fontSize: 11,
             fontFamily: 'Consolas, Monaco, monospace',
-            border: `1px solid ${AZ.primary}`,
+            border: `1px solid ${BRAND.primary}`,
             borderRadius: 2,
             outline: 'none',
           }}
@@ -2449,7 +2430,7 @@ function ChildTaskRow({
             textAlign: 'right',
             fontSize: 11,
             fontFamily: 'Consolas, Monaco, monospace',
-            border: `1px solid ${AZ.primary}`,
+            border: `1px solid ${BRAND.primary}`,
             borderRadius: 2,
             outline: 'none',
           }}
