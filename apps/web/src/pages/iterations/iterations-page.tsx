@@ -13,6 +13,7 @@ import { useCallback, useMemo, useState, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, Inbox, Plus } from 'lucide-react'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
+import { TimeboxTypeSwitcher } from '@/pages/timeboxes/timebox-type-switcher'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { InlineSelect } from '@/shared/ui/native-select'
 import { Button } from '@/shared/ui/button'
@@ -107,6 +108,7 @@ export function IterationsPage() {
       {/* Toolbar */}
       <PageToolbar
         title={t('title')}
+        titleAccessory={<TimeboxTypeSwitcher current="iterations" />}
         search={{
           value: search,
           onChange: (v) => {

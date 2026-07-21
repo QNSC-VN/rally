@@ -10,6 +10,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { AlertTriangle, Plus, Pencil, Trash2, PackageOpen } from 'lucide-react'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
+import { TimeboxTypeSwitcher } from '@/pages/timeboxes/timebox-type-switcher'
 import { StatusBadge as StatusPill } from '@/shared/ui/status-badge'
 import { MILESTONE_STATUS_STYLE } from '@/features/milestones/status-colors'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
@@ -91,7 +92,7 @@ function MilestoneFormFields({
   releases: { id: string; name: string }[] | undefined
   members: { userId: string; displayName?: string; email?: string }[] | undefined
 }) {
-  const { t } = useTranslation('milestones')
+  const { t } = useTranslation(['milestones', 'iterations'])
   return (
     <>
       <FormField label={t('form.nameLabel')} required>
@@ -503,7 +504,8 @@ export function MilestonesPage() {
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Toolbar */}
       <PageToolbar
-        title={t('title')}
+        title={t('iterations:title')}
+        titleAccessory={<TimeboxTypeSwitcher current="milestones" />}
         search={{
           value: search,
           onChange: setSearch,

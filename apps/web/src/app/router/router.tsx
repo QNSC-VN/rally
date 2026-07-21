@@ -156,7 +156,9 @@ const iterationStatusRoute = createRoute({
 const releasesRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/releases',
-  staticData: { breadcrumb: 'Releases' },
+  // A TYPE mode of the Timeboxes screen, not its own top-level surface — the
+  // mockup breadcrumb reads "… › Plan › Timeboxes" here (DEV-004).
+  staticData: { breadcrumb: 'Timeboxes' },
   component: lazyPage(() => import('@/pages/releases/releases-page'), 'ReleasesPage'),
 })
 
@@ -170,7 +172,8 @@ const releaseDetailRoute = createRoute({
 const milestonesRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/milestones',
-  staticData: { breadcrumb: 'Milestones' },
+  // A TYPE mode of the Timeboxes screen (see /releases above).
+  staticData: { breadcrumb: 'Timeboxes' },
   component: lazyPage(() => import('@/pages/milestones/milestones-page'), 'MilestonesPage'),
 })
 
