@@ -17,7 +17,7 @@ import { RichTextEditor } from '@/shared/ui/rich-text-editor'
 import { StatusBadge } from '@/shared/ui/status-badge'
 import { ReleaseArtifactsTab } from './ui/release-artifacts-tab'
 import { TaskRollupPanel, BurndownPanel } from './ui/release-detail-panels'
-import { RELEASE_STATUS_STYLE } from '@/features/releases/status-colors'
+import { RELEASE_STATES, RELEASE_STATUS_STYLE } from './model/release-states'
 import { useProjectPermissions } from '@/features/access/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import {
@@ -26,10 +26,6 @@ import {
   useReleaseBurndown,
   type ReleaseStatus,
 } from '@/features/releases/api'
-
-const RELEASE_STATES: ReleaseStatus[] = ['planning', 'active', 'accepted']
-
-const STATUS_STYLE = RELEASE_STATUS_STYLE
 
 type TabKey = 'details' | 'artifacts'
 
@@ -121,7 +117,7 @@ export function ReleaseDetailPage() {
     )
   }
 
-  const s = STATUS_STYLE[release.status] ?? STATUS_STYLE.planning
+  const s = RELEASE_STATUS_STYLE[release.status] ?? RELEASE_STATUS_STYLE.planning
   const rollup = release.taskRollup
 
   const TABS: { key: TabKey; label: string }[] = [
@@ -237,7 +233,7 @@ export function ReleaseDetailPage() {
                   >
                     {RELEASE_STATES.map((st) => (
                       <option key={st} value={st}>
-                        {STATUS_STYLE[st].label}
+                        {RELEASE_STATUS_STYLE[st].label}
                       </option>
                     ))}
                   </InlineSelect>

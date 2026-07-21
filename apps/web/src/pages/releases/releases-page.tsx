@@ -21,7 +21,9 @@ import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
 import { DataTableFrame, useDataTable } from '@/shared/ui/table'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { type ColKey, RELEASES_COLUMNS } from './model/columns'
-import { CreateReleaseModal, ReleaseDetailModal, ReleaseRow } from './ui/release-parts'
+import { CreateReleaseModal } from './ui/create-release-modal'
+import { ReleaseDetailModal } from './ui/release-detail-modal'
+import { ReleaseRow } from './ui/release-row'
 import { useReleases, useDeleteRelease, type Release } from '@/features/releases/api'
 
 export function ReleasesPage() {

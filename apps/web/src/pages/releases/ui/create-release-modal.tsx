@@ -1,0 +1,182 @@
+import { useState } from 'react'
+import { useNavigate } from '@tanstack/react-router'
+import { Loader2 } from 'lucide-react'
+
+import { BRAND } from '@/shared/config/brand'
+import { useCreateRelease, type ReleaseStatus } from '@/features/releases/api'
+import { notify } from '@/shared/lib/toast'
+import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
+import { Button } from '@/shared/ui/button'
+import { FormField } from '@/shared/ui/form-field'
+import { Input } from '@/shared/ui/input'
+import { Textarea } from '@/shared/ui/textarea'
+import { InlineSelect } from '@/shared/ui/native-select'
+import { RELEASE_STATES, RELEASE_STATUS_STYLE } from '../model/release-states'
+
+// ── Create modal (P3-REL-FR-011/012: Type locked to Release) ─────────────
+
+export function CreateReleaseModal({
+  projectId,
+  onClose,
+}: {
+  projectId: string
+  onClose: () => void
+}) {
+  const navigate = useNavigate()
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [startDate, setStartDate] = useState('')
+  const [releaseDate, setReleaseDate] = useState('')
+  const [theme, setTheme] = useState('')
+  const [status, setState] = useState<ReleaseStatus>('planning')
+  const [error, setError] = useState<string | null>(null)
+  const create = useCreateRelease()
+
+  async function submit(goToDetails?: boolean) {
+    setError(null)
+    if (!name.trim()) {
+      setError('Release name is required')
+      return
+    }
+    if (startDate && releaseDate && releaseDate < startDate) {
+      setError('Release date must be >= start date')
+      return
+    }
+    try {
+      const result = await create.mutateAsync({
+        projectId,
+        name: name.trim(),
+        description: description.trim() || undefined,
+        theme: theme.trim() || undefined,
+        startDate: startDate || undefined,
+        releaseDate: releaseDate || undefined,
+        state: status,
+      })
+      notify.success(`Release "${name.trim()}" created`)
+      onClose()
+      if (goToDetails && result?.id) {
+        void navigate({ to: '/releases/$releaseId', params: { releaseId: result.id } })
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to create release'
+      setError(msg)
+      notify.error(msg)
+    }
+  }
+
+  return (
+    <AppModal
+      open
+      onClose={onClose}
+      title="Create Release"
+      subtitle="Type: Release (locked)"
+      width={460}
+    >
+      <ModalBody className="space-y-4">
+        {/* Type selector — disabled, locked to Release (P3-REL-FR-012) */}
+        <FormField label="Type">
+          <div className="flex gap-2">
+            {(['Iteration', 'Release', 'Milestones'] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                disabled={t !== 'Release'}
+                className="flex-1 rounded-sm py-1.5 text-ui-sm font-semibold transition-colors"
+                style={{
+                  backgroundColor: t === 'Release' ? BRAND.primaryLighter : 'transparent',
+                  color: t === 'Release' ? BRAND.primary : BRAND.textMuted,
+                  border: `1px solid ${t === 'Release' ? BRAND.accentBorder : BRAND.borderSubtle}`,
+                  opacity: t === 'Release' ? 1 : 0.4,
+                  cursor: t === 'Release' ? 'default' : 'not-allowed',
+                }}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        </FormField>
+
+        <FormField label="Release name" required error={error ?? undefined}>
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="v1.2.0 — Q3 Feature Drop"
+            autoFocus
+          />
+        </FormField>
+
+        <div className="flex gap-3">
+          <FormField label="Theme" className="flex-1">
+            <Input
+              value={theme}
+              onChange={(e) => setTheme(e.target.value)}
+              placeholder="e.g. Security & Perf"
+            />
+          </FormField>
+        </div>
+
+        <div className="flex gap-3">
+          <FormField label="Start Date" className="flex-1">
+            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+          </FormField>
+          <FormField label="Release Date" className="flex-1">
+            <Input
+              type="date"
+              value={releaseDate}
+              onChange={(e) => setReleaseDate(e.target.value)}
+            />
+          </FormField>
+        </div>
+
+        <FormField label="Status">
+          <InlineSelect
+            value={status}
+            onChange={(e) => setState(e.target.value as ReleaseStatus)}
+            className="w-full rounded border border-input bg-card px-2 py-1.5 text-ui-sm text-foreground focus:outline-none"
+          >
+            {RELEASE_STATES.map((s) => (
+              <option key={s} value={s}>
+                {RELEASE_STATUS_STYLE[s].label}
+              </option>
+            ))}
+          </InlineSelect>
+        </FormField>
+
+        <FormField label="Description">
+          <Textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="What ships in this release?"
+            rows={3}
+          />
+        </FormField>
+      </ModalBody>
+
+      <ModalFooter>
+        <Button variant="outline" type="button" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button
+          variant="secondary"
+          type="button"
+          disabled={create.isPending || !name.trim()}
+          onClick={() => {
+            void submit(true)
+          }}
+        >
+          Create with details
+        </Button>
+        <Button
+          type="button"
+          disabled={create.isPending || !name.trim()}
+          onClick={() => {
+            void submit(false)
+          }}
+        >
+          {create.isPending && <Loader2 size={11} className="animate-spin" />}
+          Create Release
+        </Button>
+      </ModalFooter>
+    </AppModal>
+  )
+}
