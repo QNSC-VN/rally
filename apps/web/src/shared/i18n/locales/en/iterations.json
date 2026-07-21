@@ -1,5 +1,11 @@
 {
   "title": "Timeboxes",
+  "type": {
+    "label": "Type",
+    "iterations": "Iterations",
+    "releases": "Releases",
+    "milestones": "Milestones"
+  },
   "selectProject": "Select a project to view iterations.",
   "createButton": "Create Iteration",
   "createWithDetails": "Create with details",

@@ -61,22 +61,14 @@ const NAV_ITEMS: NavItem[] = [
         permission: 'work_item:view',
       },
       {
+        // Releases and Milestones are NOT separate Plan entries — they are TYPE
+        // modes inside this one Timeboxes screen, reached via its TYPE dropdown
+        // (TimeboxTypeSwitcher). Matches the BA mockup and DEV_HANDOFF.md
+        // ("Release management remains under Plan > Timeboxes"). Was gap DEV-004.
         path: '/timeboxes',
         label: 'Timeboxes',
         featureFlag: 'feature.timeboxes',
         permission: 'iteration:view',
-      },
-      {
-        path: '/releases',
-        label: 'Releases',
-        featureFlag: 'feature.releases',
-        permission: 'project:view',
-      },
-      {
-        path: '/milestones',
-        label: 'Milestones',
-        featureFlag: 'feature.milestones',
-        permission: 'milestone:view',
       },
     ],
   },
