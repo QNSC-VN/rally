@@ -15,6 +15,14 @@
     <!-- Security: Content Security Policy (tightened at CDN/server for prod; meta tag as baseline) -->
     <!-- NOTE: frame-ancestors and X-Frame-Options MUST be set as HTTP headers — not meta tags.    -->
     <!-- In production, configure these at the reverse-proxy / CDN layer.                          -->
+    <!--                                                                                            -->
+    <!-- *.r2.cloudflarestorage.com is required for attachments. Uploads go DIRECTLY from the       -->
+    <!-- browser to the bucket via a presigned PUT (bytes never touch the API), and downloads       -->
+    <!-- follow a 302 from /v1/.../content to a presigned GET on that same host. Without it,        -->
+    <!-- every upload fails with an opaque "Failed to fetch" — the request is blocked before        -->
+    <!-- dispatch, so nothing reaches the network tab and the server logs stay clean.               -->
+    <!-- Listed in img-src too: a redirect target is re-checked, so inline <img> rendering of an    -->
+    <!-- attachment needs it as well.                                                               -->
     <meta
       http-equiv="Content-Security-Policy"
       content="
@@ -22,10 +30,11 @@
         script-src 'self' 'unsafe-inline';
         style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
         font-src 'self' https://fonts.gstatic.com data:;
-        img-src 'self' data: blob:;
+        img-src 'self' data: blob: https://*.r2.cloudflarestorage.com;
         connect-src 'self'
           http://localhost:3000
           https://*.qnsc.vn
+          https://*.r2.cloudflarestorage.com
           https://login.microsoftonline.com
           https://login.microsoft.com
           https://graph.microsoft.com;
