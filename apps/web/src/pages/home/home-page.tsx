@@ -79,9 +79,8 @@ function ProjectHealthRow({
 
   return (
     <div
-      className="flex h-9 items-center gap-3 px-4 transition-colors hover:bg-surface-hover"
+      className="flex h-9 items-center gap-3 border-b border-border-inner px-4 transition-colors hover:bg-surface-hover"
       style={{
-        borderBottom: `1px solid ${BRAND.borderInner}`,
         backgroundColor: isSelected ? BRAND.primaryLighter : undefined,
       }}
     >
@@ -91,65 +90,51 @@ function ProjectHealthRow({
       </div>
       {/* Name */}
       <div className="min-w-0 flex-1">
-        <span
-          className="block truncate text-[12px] font-medium"
-          style={{ color: BRAND.textPrimary }}
-        >
+        <span className="block truncate text-ui-md font-medium text-foreground">
           {project.name}
         </span>
       </div>
       {/* Active Sprint */}
-      <div className="w-32 shrink-0 text-[11px]" style={{ color: BRAND.textSecondary }}>
+      <div className="w-32 shrink-0 text-ui-sm text-muted-foreground">
         {activeSprint ? (
           activeSprint.name
         ) : (
-          <span style={{ color: BRAND.textMuted }}>No active sprint</span>
+          <span className="text-foreground-subtle">No active sprint</span>
         )}
       </div>
       {/* Progress */}
       <div className="flex w-36 shrink-0 items-center gap-2">
-        <div
-          className="h-1.5 w-20 overflow-hidden rounded-full"
-          style={{ backgroundColor: BRAND.borderSubtle }}
-        >
+        <div className="h-1.5 w-20 overflow-hidden rounded-full bg-border-subtle">
           <div
             className="h-full rounded-full"
             style={{ width: `${progress}%`, backgroundColor: progressColor }}
           />
         </div>
-        <span
-          className="text-[10px] font-semibold tabular-nums"
-          style={{ color: BRAND.textSecondary }}
-        >
+        <span className="text-ui-xs font-semibold text-muted-foreground tabular-nums">
           {progress}%
         </span>
       </div>
       {/* Open Defects */}
       <div className="w-24 shrink-0">
         <span
-          className="text-[12px] font-semibold tabular-nums"
+          className="text-ui-md font-semibold tabular-nums"
           style={{ color: defects > 0 ? BRAND.danger : BRAND.success }}
         >
           {defects}
         </span>
-        <span className="ml-1 text-[10px]" style={{ color: BRAND.textMuted }}>
+        <span className="ml-1 text-ui-xs text-foreground-subtle">
           {defects === 1 ? 'defect' : 'defects'}
         </span>
       </div>
       {/* Blocked */}
       <div className="w-24 shrink-0">
         {blocked > 0 ? (
-          <span
-            className="inline-flex items-center gap-1 text-[10px] font-semibold"
-            style={{ color: BRAND.danger }}
-          >
+          <span className="inline-flex items-center gap-1 text-ui-xs font-semibold text-destructive">
             <AlertTriangle size={11} />
             {blocked} blocked
           </span>
         ) : (
-          <span className="text-[10px]" style={{ color: BRAND.success }}>
-            None
-          </span>
+          <span className="text-ui-xs text-success">None</span>
         )}
       </div>
       {/* Owner */}
@@ -157,7 +142,8 @@ function ProjectHealthRow({
         <OwnerCell
           name={
             project.leadId
-              ? (project.leadName ?? (project.leadId === currentUserId ? currentUserDisplayName : null))
+              ? (project.leadName ??
+                (project.leadId === currentUserId ? currentUserDisplayName : null))
               : null
           }
         />
@@ -214,34 +200,25 @@ export function HomePage() {
   ]
 
   return (
-    <div className="flex flex-1 flex-col" style={{ backgroundColor: BRAND.pageBg }}>
+    <div className="flex flex-1 flex-col bg-background">
       <PageHeader
         title="Home"
         actions={
-          <div className="text-[11px]" style={{ color: BRAND.textSecondary }}>
+          <div className="text-ui-sm text-muted-foreground">
             {getGreeting()},{' '}
-            <span className="font-medium" style={{ color: BRAND.textPrimary }}>
-              {user?.displayName ?? 'User'}
-            </span>{' '}
-            ·{' '}
-            <span className="font-medium" style={{ color: BRAND.textPrimary }}>
-              {now}
-            </span>
+            <span className="font-medium text-foreground">{user?.displayName ?? 'User'}</span> ·{' '}
+            <span className="font-medium text-foreground">{now}</span>
           </div>
         }
       />
 
       {/* Summary strip */}
       {loadingProjects ? (
-        <div
-          className="flex shrink-0 bg-white"
-          style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
-        >
+        <div className="flex shrink-0 border-b border-border-subtle bg-card">
           {Array.from({ length: 6 }).map((_, i) => (
             <div
               key={i}
-              className="flex flex-1 flex-col justify-center gap-2 px-5 py-3"
-              style={i > 0 ? { borderLeft: `1px solid ${BRAND.borderSubtle}` } : undefined}
+              className={`flex flex-1 flex-col justify-center gap-2 px-5 py-3 ${i > 0 ? 'border-l border-border-subtle' : ''}`}
             >
               <div className="h-3 w-20 animate-pulse rounded bg-gray-200" />
               <div className="h-6 w-8 animate-pulse rounded bg-gray-200" />
@@ -249,17 +226,11 @@ export function HomePage() {
           ))}
         </div>
       ) : (
-        <div
-          className="flex shrink-0 bg-white"
-          style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
-        >
+        <div className="flex shrink-0 border-b border-border-subtle bg-card">
           {summaryMetrics.map((m, i) => {
             const inner = (
               <>
-                <span
-                  className="text-[9px] font-semibold tracking-widest uppercase"
-                  style={{ color: BRAND.textMuted }}
-                >
+                <span className="text-ui-2xs font-semibold tracking-widest text-foreground-subtle uppercase">
                   {m.label}
                 </span>
                 <span
@@ -270,13 +241,9 @@ export function HomePage() {
                 </span>
               </>
             )
-            const sharedStyle = {
-              borderLeft: i > 0 ? `1px solid ${BRAND.borderSubtle}` : undefined,
-            }
-            const sharedClass =
-              'flex flex-1 flex-col justify-center px-5 py-3 text-left transition-colors hover:bg-surface-hover'
+            const sharedClass = `flex flex-1 flex-col justify-center px-5 py-3 text-left transition-colors hover:bg-surface-hover ${i > 0 ? 'border-l border-border-subtle' : ''}`
             return (
-              <Link key={m.label} to={m.path as '/'} className={sharedClass} style={sharedStyle}>
+              <Link key={m.label} to={m.path as '/'} className={sharedClass}>
                 {inner}
               </Link>
             )
@@ -287,33 +254,16 @@ export function HomePage() {
       {/* Body grid */}
       <div className="grid flex-1 grid-cols-3 gap-4 p-4">
         {/* My Work table */}
-        <div
-          className="col-span-2 overflow-hidden rounded bg-white"
-          style={{ border: `1px solid ${BRAND.borderSubtle}` }}
-        >
-          <div
-            className="flex items-center justify-between px-4 py-2.5"
-            style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
-          >
-            <p className="text-[12px] font-semibold" style={{ color: BRAND.textPrimary }}>
-              My Work
-            </p>
-            <span
-              className="rounded-sm px-1.5 py-px text-[10px] font-semibold"
-              style={{ backgroundColor: BRAND.primaryLighter, color: BRAND.primaryLight }}
-            >
+        <div className="col-span-2 overflow-hidden rounded border border-border-subtle bg-card">
+          <div className="flex items-center justify-between border-b border-border-subtle px-4 py-2.5">
+            <p className="text-ui-md font-semibold text-foreground">My Work</p>
+            <span className="rounded-sm bg-primary-lighter px-1.5 py-px text-ui-xs font-semibold text-primary-light">
               {myItems.length} items
             </span>
           </div>
 
           {/* Table header */}
-          <div
-            className="flex h-7 items-center gap-2 px-3 select-none"
-            style={{
-              backgroundColor: BRAND.surfaceHover,
-              borderBottom: `1px solid ${BRAND.borderSubtle}`,
-            }}
-          >
+          <div className="flex h-7 items-center gap-2 border-b border-border-subtle bg-surface-hover px-3 select-none">
             {(
               [
                 ['w-[60px] shrink-0', 'ID'],
@@ -326,8 +276,7 @@ export function HomePage() {
             ).map(([cls, label]) => (
               <div
                 key={label}
-                className={`${cls} text-[9px] font-semibold tracking-widest uppercase`}
-                style={{ color: BRAND.textMuted }}
+                className={`${cls} text-ui-2xs font-semibold tracking-widest text-foreground-subtle uppercase`}
               >
                 {label}
               </div>
@@ -346,30 +295,20 @@ export function HomePage() {
               return (
                 <div
                   key={item.id}
-                  className="flex h-8 items-center gap-2 px-3 hover:bg-surface-hover"
-                  style={{ borderBottom: `1px solid ${BRAND.borderInner}` }}
+                  className="flex h-8 items-center gap-2 border-b border-border-inner px-3 hover:bg-surface-hover"
                 >
-                  <div
-                    className="w-[60px] shrink-0 font-mono text-[10px]"
-                    style={{ color: BRAND.textSecondary }}
-                  >
+                  <div className="w-[60px] shrink-0 font-mono text-ui-xs text-muted-foreground">
                     {item.itemKey}
                   </div>
                   <div className="w-14 shrink-0">
                     <TypeBadge type={toWiType(item.type)} />
                   </div>
                   <div className="min-w-0 flex-1 pr-2">
-                    <span
-                      className="block truncate text-[12px] font-medium"
-                      style={{ color: BRAND.textPrimary }}
-                    >
+                    <span className="block truncate text-ui-md font-medium text-foreground">
                       {item.title}
                     </span>
                   </div>
-                  <div
-                    className="w-24 shrink-0 font-mono text-[10px]"
-                    style={{ color: BRAND.textSecondary }}
-                  >
+                  <div className="w-24 shrink-0 font-mono text-ui-xs text-muted-foreground">
                     {item.projectKey}
                   </div>
                   <div className="w-24 shrink-0">
@@ -385,21 +324,12 @@ export function HomePage() {
         </div>
 
         {/* Recent Activity — sourced from the notification feed (assignments/mentions) */}
-        <div
-          className="overflow-hidden rounded bg-white"
-          style={{ border: `1px solid ${BRAND.borderSubtle}` }}
-        >
-          <div
-            className="flex items-center justify-between px-4 py-2.5"
-            style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
-          >
-            <p className="text-[12px] font-semibold" style={{ color: BRAND.textPrimary }}>
-              Recent Activity
-            </p>
+        <div className="overflow-hidden rounded border border-border-subtle bg-card">
+          <div className="flex items-center justify-between border-b border-border-subtle px-4 py-2.5">
+            <p className="text-ui-md font-semibold text-foreground">Recent Activity</p>
             <Link
               to={'/notifications' as '/'}
-              className="flex items-center gap-1 text-[11px]"
-              style={{ color: BRAND.primaryLight }}
+              className="flex items-center gap-1 text-ui-sm text-primary-light"
             >
               All <ArrowUpRight size={11} />
             </Link>
@@ -421,31 +351,17 @@ export function HomePage() {
         </div>
 
         {/* Project Health table */}
-        <div
-          className="col-span-3 overflow-hidden rounded bg-white"
-          style={{ border: `1px solid ${BRAND.borderSubtle}` }}
-        >
-          <div
-            className="flex items-center justify-between px-4 py-2.5"
-            style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
-          >
-            <p className="text-[12px] font-semibold" style={{ color: BRAND.textPrimary }}>
-              Project Health
-            </p>
+        <div className="col-span-3 overflow-hidden rounded border border-border-subtle bg-card">
+          <div className="flex items-center justify-between border-b border-border-subtle px-4 py-2.5">
+            <p className="text-ui-md font-semibold text-foreground">Project Health</p>
             {selectedProject && (
-              <span className="text-[10px] font-semibold" style={{ color: BRAND.primaryLight }}>
+              <span className="text-ui-xs font-semibold text-primary-light">
                 {selectedProject.projectKey} selected
               </span>
             )}
           </div>
           {/* Table header */}
-          <div
-            className="flex h-7 items-center gap-3 px-4 select-none"
-            style={{
-              backgroundColor: BRAND.surfaceHover,
-              borderBottom: `1px solid ${BRAND.borderSubtle}`,
-            }}
-          >
+          <div className="flex h-7 items-center gap-3 border-b border-border-subtle bg-surface-hover px-4 select-none">
             {(
               [
                 ['w-14 shrink-0', 'Key'],
@@ -459,8 +375,7 @@ export function HomePage() {
             ).map(([cls, label]) => (
               <div
                 key={label}
-                className={`${cls} text-[9px] font-semibold tracking-widest uppercase`}
-                style={{ color: BRAND.textMuted }}
+                className={`${cls} text-ui-2xs font-semibold tracking-widest text-foreground-subtle uppercase`}
               >
                 {label}
               </div>

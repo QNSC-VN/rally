@@ -96,7 +96,7 @@ export function CreateReleaseModal({
                 key={t}
                 type="button"
                 disabled={t !== 'Release'}
-                className="flex-1 rounded-sm py-1.5 text-[11px] font-semibold transition-colors"
+                className="flex-1 rounded-sm py-1.5 text-ui-sm font-semibold transition-colors"
                 style={{
                   backgroundColor: t === 'Release' ? BRAND.primaryLighter : 'transparent',
                   color: t === 'Release' ? BRAND.primary : BRAND.textMuted,
@@ -147,8 +147,7 @@ export function CreateReleaseModal({
           <InlineSelect
             value={status}
             onChange={(e) => setState(e.target.value as ReleaseStatus)}
-            className="w-full rounded bg-white px-2 py-1.5 text-[11px] focus:outline-none"
-            style={{ border: `1px solid ${BRAND.borderInput}`, color: BRAND.textPrimary }}
+            className="w-full rounded border border-input bg-card px-2 py-1.5 text-ui-sm text-foreground focus:outline-none"
           >
             {RELEASE_STATES.map((s) => (
               <option key={s} value={s}>
@@ -251,18 +250,9 @@ export function ReleaseDetailModal({
       <ModalBody className="space-y-4">
         {/* Task Rollup Summary */}
         {rollup && (
-          <div
-            className="flex items-center gap-4 rounded-md p-3"
-            style={{
-              backgroundColor: BRAND.surfaceHover,
-              border: `1px solid ${BRAND.borderSubtle}`,
-            }}
-          >
+          <div className="flex items-center gap-4 rounded-md border border-border-subtle bg-surface-hover p-3">
             <div className="flex-1">
-              <div
-                className="mb-1 text-[10px] font-semibold tracking-wider uppercase"
-                style={{ color: BRAND.textMuted }}
-              >
+              <div className="mb-1 text-ui-xs font-semibold tracking-wider text-foreground-subtle uppercase">
                 Progress
               </div>
               <div className="flex items-center gap-2">
@@ -283,50 +273,29 @@ export function ReleaseDetailModal({
                     }}
                   />
                 </div>
-                <span
-                  className="font-mono text-[11px] font-semibold"
-                  style={{ color: BRAND.textPrimary }}
-                >
+                <span className="font-mono text-ui-sm font-semibold text-foreground">
                   {rollup.progressPercent}%
                 </span>
               </div>
             </div>
-            <div
-              className="px-3 text-center"
-              style={{ borderLeft: `1px solid ${BRAND.borderSubtle}` }}
-            >
-              <div
-                className="text-[10px] tracking-wider uppercase"
-                style={{ color: BRAND.textMuted }}
-              >
+            <div className="border-l border-border-subtle px-3 text-center">
+              <div className="text-ui-xs tracking-wider text-foreground-subtle uppercase">
                 Items
               </div>
-              <div
-                className="font-mono text-[14px] font-semibold"
-                style={{ color: BRAND.textPrimary }}
-              >
+              <div className="font-mono text-ui-xl font-semibold text-foreground">
                 {rollup.completedItems}
-                <span className="text-[11px] font-normal" style={{ color: BRAND.textMuted }}>
+                <span className="text-ui-sm font-normal text-foreground-subtle">
                   /{rollup.totalItems}
                 </span>
               </div>
             </div>
-            <div
-              className="px-3 text-center"
-              style={{ borderLeft: `1px solid ${BRAND.borderSubtle}` }}
-            >
-              <div
-                className="text-[10px] tracking-wider uppercase"
-                style={{ color: BRAND.textMuted }}
-              >
+            <div className="border-l border-border-subtle px-3 text-center">
+              <div className="text-ui-xs tracking-wider text-foreground-subtle uppercase">
                 Points
               </div>
-              <div
-                className="font-mono text-[14px] font-semibold"
-                style={{ color: BRAND.textPrimary }}
-              >
+              <div className="font-mono text-ui-xl font-semibold text-foreground">
                 {rollup.completedPoints}
-                <span className="text-[11px] font-normal" style={{ color: BRAND.textMuted }}>
+                <span className="text-ui-sm font-normal text-foreground-subtle">
                   /{rollup.totalPoints}
                 </span>
               </div>
@@ -374,8 +343,7 @@ export function ReleaseDetailModal({
           <InlineSelect
             value={state}
             onChange={(e) => setState(e.target.value as ReleaseStatus)}
-            className="w-full rounded bg-white px-2 py-1.5 text-[11px] focus:outline-none"
-            style={{ border: `1px solid ${BRAND.borderInput}`, color: BRAND.textPrimary }}
+            className="w-full rounded border border-input bg-card px-2 py-1.5 text-ui-sm text-foreground focus:outline-none"
           >
             {RELEASE_STATES.map((s) => (
               <option key={s} value={s}>
@@ -548,8 +516,7 @@ export function ReleaseRow({
   return (
     <div
       onClick={() => navigate({ to: '/releases/$releaseId', params: { releaseId: release.id } })}
-      className="group flex h-8 cursor-pointer items-center px-3 text-[11px] hover:bg-surface-hover"
-      style={{ borderBottom: `1px solid ${BRAND.borderInner}` }}
+      className="group flex h-8 cursor-pointer items-center border-b border-border-inner px-3 text-ui-sm hover:bg-surface-hover"
     >
       {/* Name — inline editable (P3-REL-FR-005) */}
       <div
@@ -564,20 +531,17 @@ export function ReleaseRow({
             onBlur={handleNameBlur}
             aria-label="Release name"
             onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-            className="w-full rounded border-0 bg-transparent px-0.5 text-[11px] font-semibold focus:bg-white focus:ring-1 focus:outline-none"
-            style={{ color: BRAND.textPrimary }}
+            className="w-full rounded border-0 bg-transparent px-0.5 text-ui-sm font-semibold text-foreground focus:bg-card focus:ring-1 focus:outline-none"
           />
         ) : (
-          <span className="block truncate font-semibold" style={{ color: BRAND.textPrimary }}>
-            {release.name}
-          </span>
+          <span className="block truncate font-semibold text-foreground">{release.name}</span>
         )}
       </div>
 
       {/* Theme (P3-REL-FR-005) */}
       <div
-        style={{ ...colStyleFor('theme', { flexShrink: 0 }), color: BRAND.textSecondary }}
-        className="truncate pr-2"
+        style={colStyleFor('theme', { flexShrink: 0 })}
+        className="truncate pr-2 text-muted-foreground"
         onClick={(e) => e.stopPropagation()}
       >
         {canManage ? (
@@ -588,8 +552,7 @@ export function ReleaseRow({
             aria-label="Theme"
             placeholder="—"
             onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-            className="w-full rounded border-0 bg-transparent px-0.5 text-[11px] focus:bg-white focus:ring-1 focus:outline-none"
-            style={{ color: BRAND.textSecondary }}
+            className="w-full rounded border-0 bg-transparent px-0.5 text-ui-sm text-muted-foreground focus:bg-card focus:ring-1 focus:outline-none"
           />
         ) : (
           <span className="block truncate">{release.theme || '—'}</span>
@@ -598,8 +561,8 @@ export function ReleaseRow({
 
       {/* Version */}
       <div
-        style={{ ...colStyleFor('version', { flexShrink: 0 }), color: BRAND.textSecondary }}
-        className="truncate pr-2"
+        style={colStyleFor('version', { flexShrink: 0 })}
+        className="truncate pr-2 text-muted-foreground"
         onClick={(e) => e.stopPropagation()}
       >
         {canManage ? (
@@ -610,8 +573,7 @@ export function ReleaseRow({
             aria-label="Version"
             placeholder="—"
             onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-            className="w-full rounded border-0 bg-transparent px-0.5 text-[11px] focus:bg-white focus:ring-1 focus:outline-none"
-            style={{ color: BRAND.textSecondary }}
+            className="w-full rounded border-0 bg-transparent px-0.5 text-ui-sm text-muted-foreground focus:bg-card focus:ring-1 focus:outline-none"
           />
         ) : (
           <span className="block truncate">{release.version || '—'}</span>
@@ -620,7 +582,8 @@ export function ReleaseRow({
 
       {/* Start Date — inline editable */}
       <div
-        style={{ ...colStyleFor('startDate', { flexShrink: 0 }), color: BRAND.textSecondary }}
+        style={colStyleFor('startDate', { flexShrink: 0 })}
+        className="text-muted-foreground"
         onClick={(e) => e.stopPropagation()}
       >
         {canManage ? (
@@ -630,8 +593,7 @@ export function ReleaseRow({
             defaultValue={release.startDate ?? ''}
             onBlur={handleStartDateBlur}
             aria-label="Start date"
-            className="w-full rounded border-0 bg-transparent px-0.5 text-[11px] focus:bg-white focus:ring-1 focus:outline-none"
-            style={{ color: BRAND.textSecondary }}
+            className="w-full rounded border-0 bg-transparent px-0.5 text-ui-sm text-muted-foreground focus:bg-card focus:ring-1 focus:outline-none"
           />
         ) : (
           <span>{release.startDate ?? '—'}</span>
@@ -640,7 +602,8 @@ export function ReleaseRow({
 
       {/* Release Date — inline editable */}
       <div
-        style={{ ...colStyleFor('releaseDate', { flexShrink: 0 }), color: BRAND.textSecondary }}
+        style={colStyleFor('releaseDate', { flexShrink: 0 })}
+        className="text-muted-foreground"
         onClick={(e) => e.stopPropagation()}
       >
         {canManage ? (
@@ -650,8 +613,7 @@ export function ReleaseRow({
             defaultValue={release.releaseDate ?? ''}
             onBlur={handleReleaseDateBlur}
             aria-label="Release date"
-            className="w-full rounded border-0 bg-transparent px-0.5 text-[11px] focus:bg-white focus:ring-1 focus:outline-none"
-            style={{ color: BRAND.textSecondary }}
+            className="w-full rounded border-0 bg-transparent px-0.5 text-ui-sm text-muted-foreground focus:bg-card focus:ring-1 focus:outline-none"
           />
         ) : (
           <span>{release.releaseDate ?? '—'}</span>
@@ -660,8 +622,8 @@ export function ReleaseRow({
 
       {/* Planned Velocity — inline editable */}
       <div
-        style={{ ...colStyleFor('plannedVelocity', { flexShrink: 0 }), color: BRAND.textSecondary }}
-        className="pr-2"
+        style={colStyleFor('plannedVelocity', { flexShrink: 0 })}
+        className="pr-2 text-muted-foreground"
         onClick={(e) => e.stopPropagation()}
       >
         {canManage ? (
@@ -672,8 +634,7 @@ export function ReleaseRow({
             aria-label="Planned velocity"
             placeholder="—"
             onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-            className="w-full rounded border-0 bg-transparent px-0.5 text-right font-mono text-[11px] focus:bg-white focus:ring-1 focus:outline-none"
-            style={{ color: BRAND.textSecondary }}
+            className="w-full rounded border-0 bg-transparent px-0.5 text-right font-mono text-ui-sm text-muted-foreground focus:bg-card focus:ring-1 focus:outline-none"
           />
         ) : (
           <span className="block text-right font-mono tabular-nums">
@@ -684,8 +645,8 @@ export function ReleaseRow({
 
       {/* Task Estimate — read-only roll-up of assigned work-item estimate hours (P3-REL-FR-004) */}
       <div
-        style={{ ...colStyleFor('taskEstimate', { flexShrink: 0 }), color: BRAND.textSecondary }}
-        className="pr-2 text-right font-mono tabular-nums"
+        style={colStyleFor('taskEstimate', { flexShrink: 0 })}
+        className="pr-2 text-right font-mono text-muted-foreground tabular-nums"
         onClick={(e) => e.stopPropagation()}
       >
         <span>{release.taskEstimate ?? 0}</span>
@@ -697,8 +658,7 @@ export function ReleaseRow({
           <InlineSelect
             value={status}
             onChange={handleStateChange}
-            className="rounded bg-white px-1 py-0.5 text-[11px] focus:outline-none"
-            style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textPrimary }}
+            className="rounded border border-border-subtle bg-card px-1 py-0.5 text-ui-sm text-foreground focus:outline-none"
           >
             {RELEASE_STATES.map((s) => (
               <option key={s} value={s}>
@@ -721,8 +681,7 @@ export function ReleaseRow({
                 navigate({ to: '/releases/$releaseId', params: { releaseId: release.id } })
               }}
               title="Open detail"
-              className="cursor-pointer rounded p-1 transition-colors hover:bg-gray-100"
-              style={{ color: BRAND.textMuted }}
+              className="cursor-pointer rounded p-1 text-foreground-subtle transition-colors hover:bg-gray-100"
             >
               <Pencil size={12} />
             </button>
@@ -732,8 +691,7 @@ export function ReleaseRow({
                 navigate({ to: '/releases/$releaseId', params: { releaseId: release.id } })
               }}
               title="Detail"
-              className="cursor-pointer rounded p-1 transition-colors hover:bg-gray-100"
-              style={{ color: BRAND.textMuted }}
+              className="cursor-pointer rounded p-1 text-foreground-subtle transition-colors hover:bg-gray-100"
             >
               <ExternalLink size={12} />
             </button>
@@ -744,8 +702,7 @@ export function ReleaseRow({
                   onDelete(release.id)
                 }}
                 title="Delete release"
-                className="cursor-pointer rounded p-1 transition-colors hover:bg-red-50"
-                style={{ color: BRAND.textMuted }}
+                className="cursor-pointer rounded p-1 text-foreground-subtle transition-colors hover:bg-red-50"
               >
                 <Trash2 size={12} />
               </button>

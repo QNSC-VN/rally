@@ -171,29 +171,17 @@ export function MilestoneDetailPage() {
 
   if (isLoading) {
     return (
-      <div
-        className="flex flex-1 items-center justify-center"
-        style={{ backgroundColor: BRAND.pageBg }}
-      >
-        <Loader2 className="animate-spin" size={24} style={{ color: BRAND.primary }} />
+      <div className="flex flex-1 items-center justify-center bg-background">
+        <Loader2 className="animate-spin text-primary" size={24} />
       </div>
     )
   }
 
   if (isError || !milestone) {
     return (
-      <div
-        className="flex flex-1 flex-col items-center justify-center gap-3"
-        style={{ backgroundColor: BRAND.pageBg }}
-      >
-        <p className="text-[13px]" style={{ color: BRAND.textSecondary }}>
-          Milestone details could not be loaded.
-        </p>
-        <Link
-          to="/milestones"
-          className="text-[12px] font-semibold hover:underline"
-          style={{ color: BRAND.primary }}
-        >
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 bg-background">
+        <p className="text-ui-lg text-muted-foreground">Milestone details could not be loaded.</p>
+        <Link to="/milestones" className="text-ui-md font-semibold text-primary hover:underline">
           ← Back to Milestones
         </Link>
       </div>
@@ -208,17 +196,13 @@ export function MilestoneDetailPage() {
   ]
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden" style={{ backgroundColor: BRAND.pageBg }}>
+    <div className="flex flex-1 flex-col overflow-hidden bg-background">
       {/* Header bar */}
-      <div
-        className="flex h-12 shrink-0 items-center justify-between gap-4 px-4"
-        style={{ borderBottom: `1px solid ${BRAND.border}`, backgroundColor: BRAND.surface }}
-      >
+      <div className="flex h-12 shrink-0 items-center justify-between gap-4 border-b bg-card px-4">
         <div className="flex items-center gap-2">
           <Link
             to="/milestones"
-            className="flex h-7 w-7 items-center justify-center rounded transition-colors hover:bg-gray-100"
-            style={{ color: BRAND.textSecondary }}
+            className="flex h-7 w-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-gray-100"
           >
             <ChevronLeft size={16} />
           </Link>
@@ -231,16 +215,14 @@ export function MilestoneDetailPage() {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleFieldSave()
                 }}
-                className="rounded border-0 bg-transparent px-1 py-0.5 text-[14px] font-semibold focus:bg-white focus:ring-1 focus:outline-none"
-                style={{ color: BRAND.textPrimary, width: 320 }}
+                className="rounded border-0 bg-transparent px-1 py-0.5 text-ui-xl font-semibold text-foreground focus:bg-card focus:ring-1 focus:outline-none"
+                style={{ width: 320 }}
               />
             ) : (
-              <h1 className="text-[14px] font-semibold" style={{ color: BRAND.textPrimary }}>
-                {milestone.name}
-              </h1>
+              <h1 className="text-ui-xl font-semibold text-foreground">{milestone.name}</h1>
             )}
             <span
-              className="inline-flex items-center rounded-sm px-1.5 py-px text-[10px] font-medium"
+              className="inline-flex items-center rounded-sm px-1.5 py-px text-ui-xs font-medium"
               style={{ backgroundColor: s.bg, color: s.text, border: `1px solid ${s.border}` }}
             >
               {s.label}
@@ -249,9 +231,7 @@ export function MilestoneDetailPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          {saving && (
-            <Loader2 size={12} className="animate-spin" style={{ color: BRAND.primary }} />
-          )}
+          {saving && <Loader2 size={12} className="animate-spin text-primary" />}
           {canManage && (
             <Button size="sm" onClick={handleFieldSave} disabled={update.isPending || saving}>
               {update.isPending || saving ? (
@@ -266,25 +246,19 @@ export function MilestoneDetailPage() {
       </div>
 
       {/* Tab bar */}
-      <div
-        className="flex shrink-0 items-center gap-0 px-4"
-        style={{ borderBottom: `1px solid ${BRAND.border}`, backgroundColor: BRAND.surface }}
-      >
+      <div className="flex shrink-0 items-center gap-0 border-b bg-card px-4">
         {TABS.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className="relative px-4 py-2.5 text-[12px] font-medium transition-colors"
+            className="relative px-4 py-2.5 text-ui-md font-medium transition-colors"
             style={{
               color: activeTab === tab.key ? BRAND.primary : BRAND.textSecondary,
             }}
           >
             {tab.label}
             {activeTab === tab.key && (
-              <span
-                className="absolute right-0 bottom-0 left-0 h-0.5"
-                style={{ backgroundColor: BRAND.primary }}
-              />
+              <span className="absolute right-0 bottom-0 left-0 h-0.5 bg-primary" />
             )}
           </button>
         ))}
@@ -297,10 +271,7 @@ export function MilestoneDetailPage() {
         /* Details tab — two panel layout */
         <div className="flex flex-1 overflow-hidden">
           {/* Left panel: Description & Notes */}
-          <div
-            className="flex-1 space-y-6 overflow-y-auto p-6"
-            style={{ backgroundColor: BRAND.surface }}
-          >
+          <div className="flex-1 space-y-6 overflow-y-auto bg-card p-6">
             <RichTextEditor
               title="Description"
               value={milestone?.description}
@@ -318,14 +289,8 @@ export function MilestoneDetailPage() {
           </div>
 
           {/* Right sidebar (320px, scrollable) */}
-          <div
-            className="w-80 shrink-0 space-y-5 overflow-y-auto border-l p-5"
-            style={{ backgroundColor: BRAND.surface, borderColor: BRAND.border }}
-          >
-            <h2
-              className="text-[11px] font-semibold tracking-wider uppercase"
-              style={{ color: BRAND.textMuted }}
-            >
+          <div className="w-80 shrink-0 space-y-5 overflow-y-auto border-l bg-card p-5">
+            <h2 className="text-ui-sm font-semibold tracking-wider text-foreground-subtle uppercase">
               Metadata Details
             </h2>
 
@@ -357,21 +322,18 @@ export function MilestoneDetailPage() {
             />
 
             {/* Divider */}
-            <div style={{ borderTop: `1px solid ${BRAND.borderSubtle}` }} />
+            <div className="border-t border-border-subtle" />
 
             {/* Owner */}
             <div className="space-y-1">
-              <label className="text-[10px] font-medium" style={{ color: BRAND.textSecondary }}>
-                Owner
-              </label>
+              <label className="text-ui-xs font-medium text-muted-foreground">Owner</label>
               {canManage ? (
                 <select
                   value={ownerId}
                   onChange={(e) => {
                     void handleOwnerChange(e.target.value)
                   }}
-                  className="w-full cursor-pointer rounded bg-white px-2 py-1 text-[11px] focus:outline-none"
-                  style={{ border: `1px solid ${BRAND.borderInput}`, color: BRAND.textPrimary }}
+                  className="w-full cursor-pointer rounded border border-input bg-card px-2 py-1 text-ui-sm text-foreground focus:outline-none"
                 >
                   <option value="">Unassigned</option>
                   {members.map((m) => (
@@ -381,10 +343,7 @@ export function MilestoneDetailPage() {
                   ))}
                 </select>
               ) : (
-                <div
-                  className="py-1 text-[12px] font-semibold"
-                  style={{ color: BRAND.textPrimary }}
-                >
+                <div className="py-1 text-ui-md font-semibold text-foreground">
                   {members.find((m) => m.userId === milestone.ownerId)?.displayName ??
                     members.find((m) => m.userId === milestone.ownerId)?.email ??
                     '—'}
@@ -394,49 +353,42 @@ export function MilestoneDetailPage() {
 
             {/* Target Start Date (read-only, derived) */}
             <div className="space-y-1">
-              <label className="text-[10px] font-medium" style={{ color: BRAND.textSecondary }}>
+              <label className="text-ui-xs font-medium text-muted-foreground">
                 Target Start Date
               </label>
               <div className="flex items-center gap-1.5">
-                <CalendarDays size={12} style={{ color: BRAND.textMuted }} />
-                <span className="font-mono text-[12px]" style={{ color: BRAND.textPrimary }}>
+                <CalendarDays size={12} className="text-foreground-subtle" />
+                <span className="font-mono text-ui-md text-foreground">
                   {milestone.targetStartDate ?? '—'}
                 </span>
               </div>
-              <p className="text-[9px]" style={{ color: BRAND.textMuted }}>
-                Derived from linked Releases
-              </p>
+              <p className="text-ui-2xs text-foreground-subtle">Derived from linked Releases</p>
             </div>
 
             {/* Target End Date (read-only, derived) */}
             <div className="space-y-1">
-              <label className="text-[10px] font-medium" style={{ color: BRAND.textSecondary }}>
+              <label className="text-ui-xs font-medium text-muted-foreground">
                 Target End Date
               </label>
               <div className="flex items-center gap-1.5">
-                <CalendarDays size={12} style={{ color: BRAND.textMuted }} />
-                <span className="font-mono text-[12px]" style={{ color: BRAND.textPrimary }}>
+                <CalendarDays size={12} className="text-foreground-subtle" />
+                <span className="font-mono text-ui-md text-foreground">
                   {milestone.targetEndDate ?? '—'}
                 </span>
               </div>
-              <p className="text-[9px]" style={{ color: BRAND.textMuted }}>
-                Derived from linked Releases
-              </p>
+              <p className="text-ui-2xs text-foreground-subtle">Derived from linked Releases</p>
             </div>
 
             {/* Status */}
             <div className="space-y-1">
-              <label className="text-[10px] font-medium" style={{ color: BRAND.textSecondary }}>
-                Status
-              </label>
+              <label className="text-ui-xs font-medium text-muted-foreground">Status</label>
               {canManage ? (
                 <InlineSelect
                   value={status}
                   onChange={(e) => {
                     void handleStatusChange(e.target.value as MilestoneStatus)
                   }}
-                  className="w-full rounded bg-white px-2 py-1 text-[11px] focus:outline-none"
-                  style={{ border: `1px solid ${BRAND.borderInput}`, color: BRAND.textPrimary }}
+                  className="w-full rounded border border-input bg-card px-2 py-1 text-ui-sm text-foreground focus:outline-none"
                 >
                   {MILESTONE_STATUSES.map((st) => (
                     <option key={st} value={st}>

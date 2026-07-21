@@ -170,8 +170,8 @@ function ProjectTreeItem({
         >
           <ChevronRight
             size={12}
+            className="text-foreground-subtle"
             style={{
-              color: BRAND.textMuted,
               transform: expanded ? 'rotate(90deg)' : 'none',
               transition: 'transform 120ms',
             }}
@@ -184,14 +184,12 @@ function ProjectTreeItem({
           style={{ fontWeight: selected ? 600 : 400 }}
         >
           <KeyChip size="sm">{project.key}</KeyChip>
-          <span className="truncate text-[11px]">{project.name}</span>
-          {selected && (
-            <Check size={10} className="ml-auto shrink-0" style={{ color: BRAND.primary }} />
-          )}
+          <span className="truncate text-ui-sm">{project.name}</span>
+          {selected && <Check size={10} className="ml-auto shrink-0 text-primary" />}
         </button>
       </div>
       {expanded && (
-        <div className="mb-0.5 ml-5 border-l pl-1.5" style={{ borderColor: BRAND.borderSubtle }}>
+        <div className="mb-0.5 ml-5 border-l border-border-subtle pl-1.5">
           <button
             type="button"
             onClick={() => onSelectTeam(null)}
@@ -201,16 +199,14 @@ function ProjectTreeItem({
               fontWeight: selected && !currentTeamId ? 600 : 400,
             }}
           >
-            <Users size={11} className="shrink-0" style={{ color: BRAND.textSecondary }} />
-            <span className="truncate text-[11px]">All Teams</span>
+            <Users size={11} className="shrink-0 text-muted-foreground" />
+            <span className="truncate text-ui-sm">All Teams</span>
             {selected && !currentTeamId && (
-              <Check size={10} className="ml-auto shrink-0" style={{ color: BRAND.primary }} />
+              <Check size={10} className="ml-auto shrink-0 text-primary" />
             )}
           </button>
           {isLoading && (
-            <div className="px-1.5 py-1 text-[10px]" style={{ color: BRAND.textMuted }}>
-              Loading teams…
-            </div>
+            <div className="px-1.5 py-1 text-ui-xs text-foreground-subtle">Loading teams…</div>
           )}
           {!isLoading &&
             activeTeams.map((t) => (
@@ -227,14 +223,14 @@ function ProjectTreeItem({
                 <KeyChip size="sm" tone="muted">
                   {t.key}
                 </KeyChip>
-                <span className="truncate text-[11px]">{t.name}</span>
+                <span className="truncate text-ui-sm">{t.name}</span>
                 {currentTeamId === t.id && (
-                  <Check size={10} className="ml-auto shrink-0" style={{ color: BRAND.primary }} />
+                  <Check size={10} className="ml-auto shrink-0 text-primary" />
                 )}
               </button>
             ))}
           {!isLoading && activeTeams.length === 0 && (
-            <div className="px-1.5 py-1 text-[10px]" style={{ color: BRAND.textMuted }}>
+            <div className="px-1.5 py-1 text-ui-xs text-foreground-subtle">
               No teams in this project yet
             </div>
           )}
@@ -405,8 +401,8 @@ export function AppShell() {
       )}
       {/* ── Top nav ─────────────────────────────────────────────────────────── */}
       <header
-        className="relative z-30 flex h-10 shrink-0 items-center px-3"
-        style={{ backgroundColor: BRAND.primary, borderBottom: '1px solid rgba(255,255,255,0.08)' }}
+        className="relative z-30 flex h-10 shrink-0 items-center bg-primary px-3"
+        style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}
       >
         {/* Logo + workspace selector */}
         <div className="mr-4 flex items-center gap-2">
@@ -432,13 +428,13 @@ export function AppShell() {
               className="flex items-center gap-1.5 text-left text-white hover:opacity-90"
             >
               <div className="leading-tight">
-                <div className="text-[13px] font-semibold">
+                <div className="text-ui-lg font-semibold">
                   {memberships.find((m) => m.workspaceId === activeWorkspaceId)?.name ??
                     workspace?.workspaceName ??
                     'Select organization'}
                 </div>
                 <div
-                  className="max-w-44 truncate text-[9px]"
+                  className="max-w-44 truncate text-ui-2xs"
                   style={{ color: 'rgba(255,255,255,0.55)' }}
                 >
                   {project ? `${project.projectKey} · ${selectedTeamName}` : 'No project selected'}
@@ -448,58 +444,31 @@ export function AppShell() {
             </button>
 
             {wsOpen && (
-              <div
-                className="absolute top-full left-0 mt-1 w-72 overflow-hidden rounded bg-white py-1.5 shadow-xl"
-                style={{ border: `1px solid ${BRAND.border}` }}
-              >
+              <div className="absolute top-full left-0 mt-1 w-72 overflow-hidden rounded border border-border bg-card py-1.5 shadow-xl">
                 {/* Active organization header */}
-                <div
-                  className="flex items-center gap-2.5 px-3 py-2.5"
-                  style={{
-                    borderBottom: `1px solid ${BRAND.borderSubtle}`,
-                    backgroundColor: BRAND.surfaceHover,
-                  }}
-                >
-                  <div
-                    className="flex h-7 w-7 items-center justify-center rounded"
-                    style={{ backgroundColor: BRAND.avatarBg, color: BRAND.primary }}
-                  >
+                <div className="flex items-center gap-2.5 border-b border-border-subtle bg-surface-hover px-3 py-2.5">
+                  <div className="flex h-7 w-7 items-center justify-center rounded bg-avatar text-primary">
                     <Layers size={14} />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div
-                      className="text-[9px] font-semibold tracking-widest uppercase"
-                      style={{ color: BRAND.textMuted }}
-                    >
+                    <div className="text-ui-2xs font-semibold tracking-widest text-foreground-subtle uppercase">
                       Organization
                     </div>
-                    <div
-                      className="truncate text-[13px] font-semibold"
-                      style={{ color: BRAND.textPrimary }}
-                    >
+                    <div className="truncate text-ui-lg font-semibold text-foreground">
                       {memberships.find((m) => m.workspaceId === activeWorkspaceId)?.name ??
                         workspace?.workspaceName ??
                         '—'}
                     </div>
                   </div>
-                  <span
-                    className="rounded-sm px-1.5 py-0.5 text-[9px] font-semibold"
-                    style={{ color: BRAND.success, backgroundColor: BRAND.successBg }}
-                  >
+                  <span className="rounded-sm bg-success-bg px-1.5 py-0.5 text-ui-2xs font-semibold text-success">
                     Active
                   </span>
                 </div>
 
                 {/* Switch organization — only when user has multiple workspaces */}
                 {memberships.length > 1 && (
-                  <div
-                    className="px-3 pt-2 pb-1"
-                    style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
-                  >
-                    <div
-                      className="mb-1 text-[9px] font-semibold tracking-widest uppercase"
-                      style={{ color: BRAND.textMuted }}
-                    >
+                  <div className="border-b border-border-subtle px-3 pt-2 pb-1">
+                    <div className="mb-1 text-ui-2xs font-semibold tracking-widest text-foreground-subtle uppercase">
                       Switch Organization
                     </div>
                     {memberships
@@ -515,23 +484,13 @@ export function AppShell() {
                           }}
                           className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left hover:bg-surface-subtle disabled:opacity-50"
                         >
-                          <div
-                            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[9px] font-bold"
-                            style={{ backgroundColor: BRAND.avatarBg, color: BRAND.primary }}
-                          >
+                          <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-avatar text-ui-2xs font-bold text-primary">
                             {m.name[0].toUpperCase()}
                           </div>
                           <div className="min-w-0 flex-1">
-                            <div
-                              className="truncate text-[12px]"
-                              style={{ color: BRAND.textPrimary }}
-                            >
-                              {m.name}
-                            </div>
+                            <div className="truncate text-ui-md text-foreground">{m.name}</div>
                             {m.roleName && (
-                              <div className="text-[10px]" style={{ color: BRAND.textMuted }}>
-                                {m.roleName}
-                              </div>
+                              <div className="text-ui-xs text-foreground-subtle">{m.roleName}</div>
                             )}
                           </div>
                         </button>
@@ -539,7 +498,7 @@ export function AppShell() {
                   </div>
                 )}
 
-                <div className="px-3 py-2 text-[11px]" style={{ color: BRAND.textSecondary }}>
+                <div className="px-3 py-2 text-ui-sm text-muted-foreground">
                   {/* View workspace (deselect project) */}
                   <button
                     onClick={() => {

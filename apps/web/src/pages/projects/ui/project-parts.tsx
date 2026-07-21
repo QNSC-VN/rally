@@ -53,29 +53,18 @@ export function ArchiveConfirmModal({
   return (
     <AppModal open onClose={onClose} title="Archive project" width={440}>
       {/* Danger header band */}
-      <div
-        className="flex items-center gap-3 px-5 py-3"
-        style={{ backgroundColor: BRAND.dangerBg, borderBottom: `1px solid ${BRAND.dangerBorder}` }}
-      >
-        <AlertTriangle size={16} style={{ color: BRAND.danger, flexShrink: 0 }} />
-        <p className="text-[11px]" style={{ color: BRAND.danger }}>
+      <div className="flex items-center gap-3 border-b border-destructive-border bg-destructive-bg px-5 py-3">
+        <AlertTriangle size={16} className="text-destructive" style={{ flexShrink: 0 }} />
+        <p className="text-ui-sm text-destructive">
           This project will become read-only. Work items and iterations will still be visible.
         </p>
       </div>
 
       <ModalBody className="space-y-4">
         {/* Impact summary */}
-        <div
-          className="rounded p-3 text-[11px]"
-          style={{
-            backgroundColor: BRAND.surfaceSubtle,
-            border: `1px solid ${BRAND.borderSubtle}`,
-          }}
-        >
-          <p className="font-semibold" style={{ color: BRAND.textPrimary }}>
-            What will happen:
-          </p>
-          <ul className="mt-1.5 space-y-0.5" style={{ color: BRAND.textSecondary }}>
+        <div className="rounded border border-border-subtle bg-surface-subtle p-3 text-ui-sm">
+          <p className="font-semibold text-foreground">What will happen:</p>
+          <ul className="mt-1.5 space-y-0.5 text-muted-foreground">
             <li>
               · Project status changes to <strong>Archived</strong>
             </li>
@@ -89,11 +78,8 @@ export function ArchiveConfirmModal({
         <FormField
           label={
             <>
-              Type{' '}
-              <span className="font-mono font-bold" style={{ color: BRAND.textPrimary }}>
-                {project.key}
-              </span>{' '}
-              to confirm
+              Type <span className="font-mono font-bold text-foreground">{project.key}</span> to
+              confirm
             </>
           }
         >
@@ -154,8 +140,7 @@ function OwnerSelect({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       disabled={isLoading || members.length === 0}
-      className="w-full rounded border border-input bg-input-background px-3 py-2 text-[12px] outline-none focus:ring-2"
-      style={{ color: BRAND.textPrimary }}
+      className="w-full rounded border border-input bg-input-background px-3 py-2 text-ui-md text-foreground outline-none focus:ring-2"
     >
       {members.length === 0 && <option value="">{isLoading ? 'Loading…' : '—'}</option>}
       {members.map((m) => (
@@ -181,25 +166,16 @@ function TeamMultiSelect({
   function toggle(id: string) {
     onChange(value.includes(id) ? value.filter((t) => t !== id) : [...value, id])
   }
-  if (isLoading)
-    return (
-      <div className="text-[12px]" style={{ color: BRAND.textMuted }}>
-        Loading…
-      </div>
-    )
+  if (isLoading) return <div className="text-ui-md text-foreground-subtle">Loading…</div>
   if (teams.length === 0)
-    return (
-      <div className="text-[12px]" style={{ color: BRAND.textMuted }}>
-        No teams in this workspace yet.
-      </div>
-    )
+    return <div className="text-ui-md text-foreground-subtle">No teams in this workspace yet.</div>
   return (
     <div>
       <div className="mb-1.5 flex items-center justify-between">
-        <span className="text-[11px]" style={{ color: BRAND.textMuted }}>
+        <span className="text-ui-sm text-foreground-subtle">
           A team can be linked to multiple projects.
         </span>
-        <span className="text-[11px] font-medium" style={{ color: BRAND.textSecondary }}>
+        <span className="text-ui-sm font-medium text-muted-foreground">
           {value.length} selected
         </span>
       </div>
@@ -209,15 +185,14 @@ function TeamMultiSelect({
           return (
             <label
               key={t.id}
-              className="flex cursor-pointer items-center gap-2 rounded border px-2.5 py-2 text-[12px] transition-colors"
+              className="flex cursor-pointer items-center gap-2 rounded border px-2.5 py-2 text-ui-md text-foreground transition-colors"
               style={{
                 borderColor: checked ? BRAND.primary : BRAND.border,
                 backgroundColor: checked ? BRAND.primaryLighter : BRAND.surface,
-                color: BRAND.textPrimary,
               }}
             >
               <input type="checkbox" checked={checked} onChange={() => toggle(t.id)} />
-              <UsersRound size={12} style={{ color: BRAND.textMuted }} />
+              <UsersRound size={12} className="text-foreground-subtle" />
               <span className="truncate">{t.name}</span>
             </label>
           )
@@ -527,21 +502,14 @@ function ProjectTeamsCell({ projectId, teamCount }: { projectId: string; teamCou
   const { data: teams = [] } = useProjectTeams(teamCount > 0 ? projectId : undefined)
 
   if (teamCount === 0) {
-    return (
-      <span className="text-[11px]" style={{ color: BRAND.textMuted }}>
-        —
-      </span>
-    )
+    return <span className="text-ui-sm text-foreground-subtle">—</span>
   }
 
   // Names still loading — show a compact count placeholder.
   if (teams.length === 0) {
     return (
-      <span
-        className="inline-flex items-center gap-1 text-[11px]"
-        style={{ color: BRAND.textSecondary }}
-      >
-        <UsersRound size={11} style={{ color: BRAND.textMuted }} />
+      <span className="inline-flex items-center gap-1 text-ui-sm text-muted-foreground">
+        <UsersRound size={11} className="text-foreground-subtle" />
         {teamCount}
       </span>
     )
@@ -565,38 +533,33 @@ function ProjectActionsCell({ project, ctx }: { project: Project; ctx: ProjectCt
     <div className="relative" onClick={(e) => e.stopPropagation()}>
       <button
         onClick={() => setOpenMenu(openMenu === project.id ? null : project.id)}
-        className="flex h-6 w-6 items-center justify-center rounded hover:bg-avatar"
-        style={{ color: BRAND.textMuted }}
+        className="flex h-6 w-6 items-center justify-center rounded text-foreground-subtle hover:bg-avatar"
         aria-label="Project actions"
       >
         <MoreHorizontal size={14} />
       </button>
 
       {openMenu === project.id && (
-        <div
-          className="absolute top-7 right-0 z-20 w-44 overflow-hidden rounded bg-white py-1 shadow-lg"
-          style={{ border: `1px solid ${BRAND.border}` }}
-        >
+        <div className="absolute top-7 right-0 z-20 w-44 overflow-hidden rounded border border-border bg-card py-1 shadow-lg">
           <button
-            className="flex w-full items-center gap-2 px-3 py-2 text-[11px] hover:bg-surface-subtle"
-            style={{ color: BRAND.textPrimary }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-ui-sm text-foreground hover:bg-surface-subtle"
             onClick={() => {
               onEdit(project)
               setOpenMenu(null)
             }}
           >
-            <Edit3 size={12} style={{ color: BRAND.textSecondary }} />
+            <Edit3 size={12} className="text-muted-foreground" />
             Edit project
           </button>
           <button
-            className="flex w-full items-center gap-2 px-3 py-2 text-[11px] hover:bg-surface-subtle"
+            className="flex w-full items-center gap-2 px-3 py-2 text-ui-sm hover:bg-surface-subtle"
             style={{ color: project.status === 'active' ? BRAND.danger : BRAND.textPrimary }}
             onClick={() => onToggleArchive(project)}
           >
             {project.status === 'active' ? (
-              <Archive size={12} style={{ color: BRAND.danger }} />
+              <Archive size={12} className="text-destructive" />
             ) : (
-              <RotateCcw size={12} style={{ color: BRAND.textSecondary }} />
+              <RotateCcw size={12} className="text-muted-foreground" />
             )}
             {project.status === 'active' ? 'Archive project' : 'Restore project'}
           </button>
@@ -632,13 +595,9 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
     cellClassName: 'flex min-w-0 flex-col justify-center',
     cell: (p) => (
       <>
-        <div className="truncate text-[12px] font-semibold" style={{ color: BRAND.textPrimary }}>
-          {p.name}
-        </div>
+        <div className="truncate text-ui-md font-semibold text-foreground">{p.name}</div>
         {p.description && (
-          <div className="truncate text-[10px]" style={{ color: BRAND.textMuted }}>
-            {p.description}
-          </div>
+          <div className="truncate text-ui-xs text-foreground-subtle">{p.description}</div>
         )}
       </>
     ),
@@ -682,15 +641,15 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
     sortCol: 'members',
     defaultWidth: 96,
     minWidth: 70,
-    cellClassName: 'flex items-center text-[11px]',
+    cellClassName: 'flex items-center text-ui-sm',
     cell: (p) =>
       p.memberCount > 0 ? (
-        <span className="inline-flex items-center gap-1" style={{ color: BRAND.textSecondary }}>
-          <Users size={11} style={{ color: BRAND.textMuted }} />
+        <span className="inline-flex items-center gap-1 text-muted-foreground">
+          <Users size={11} className="text-foreground-subtle" />
           {p.memberCount}
         </span>
       ) : (
-        <span style={{ color: BRAND.textMuted }}>—</span>
+        <span className="text-foreground-subtle">—</span>
       ),
   },
   {
@@ -699,12 +658,12 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
     sortCol: 'startDate',
     defaultWidth: 116,
     minWidth: 90,
-    cellClassName: 'flex items-center text-[11px]',
+    cellClassName: 'flex items-center text-ui-sm',
     cell: (p) =>
       p.startDate ? (
-        <span style={{ color: BRAND.textSecondary }}>{formatDate(p.startDate)}</span>
+        <span className="text-muted-foreground">{formatDate(p.startDate)}</span>
       ) : (
-        <span style={{ color: BRAND.textMuted }}>—</span>
+        <span className="text-foreground-subtle">—</span>
       ),
   },
   {
@@ -713,8 +672,8 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
     sortCol: 'updated',
     defaultWidth: 128,
     minWidth: 100,
-    cellClassName: 'flex items-center text-[11px]',
-    cell: (p) => <span style={{ color: BRAND.textSecondary }}>{formatDate(p.updatedAt)}</span>,
+    cellClassName: 'flex items-center text-ui-sm',
+    cell: (p) => <span className="text-muted-foreground">{formatDate(p.updatedAt)}</span>,
   },
   {
     key: 'actions',

@@ -88,7 +88,7 @@ function ProgressBar({ percent }: { percent: number }) {
   const color = BRAND.success
   return (
     <div className="flex w-full flex-col gap-[3px]">
-      <span className="text-[10px] leading-none font-semibold tabular-nums" style={{ color }}>
+      <span className="text-ui-xs leading-none font-semibold text-success tabular-nums">
         {percent}%
       </span>
       <div
@@ -199,10 +199,7 @@ export function TeamStatusPage() {
 
   if (!projectId) {
     return (
-      <div
-        className="flex flex-1 items-center justify-center text-[13px]"
-        style={{ color: BRAND.textMuted }}
-      >
+      <div className="flex flex-1 items-center justify-center text-ui-lg text-foreground-subtle">
         Select a project to view Team Status.
       </div>
     )
@@ -210,15 +207,11 @@ export function TeamStatusPage() {
 
   if (!iterations.length) {
     return (
-      <div
-        className="flex flex-1 flex-col items-center justify-center gap-2 text-[13px]"
-        style={{ color: BRAND.textMuted }}
-      >
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 text-ui-lg text-foreground-subtle">
         <span>No iterations in this project/team yet.</span>
         <button
           onClick={() => navigate({ to: '/timeboxes' })}
-          className="cursor-pointer text-[12px] font-semibold hover:underline"
-          style={{ color: BRAND.primaryLight }}
+          className="cursor-pointer text-ui-md font-semibold text-primary-light hover:underline"
         >
           Go to Timeboxes →
         </button>
@@ -253,16 +246,8 @@ export function TeamStatusPage() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Selector bar — reuses Iteration Status pattern (P3-TS-FR-003) */}
-      <div
-        className="flex shrink-0 items-center gap-3 px-4 py-2"
-        style={{
-          backgroundColor: BRAND.surface,
-          borderBottom: `1px solid ${BRAND.borderSubtle}`,
-        }}
-      >
-        <span className="text-[11px] font-semibold" style={{ color: BRAND.textPrimary }}>
-          Iteration
-        </span>
+      <div className="flex shrink-0 items-center gap-3 border-b border-border-subtle bg-card px-4 py-2">
+        <span className="text-ui-sm font-semibold text-foreground">Iteration</span>
         <div
           className="flex items-center overflow-visible rounded"
           style={{ border: `1px solid ${BRAND.accentBorder}`, height: 28 }}
@@ -270,34 +255,24 @@ export function TeamStatusPage() {
           <button
             disabled={selectedIndex <= 0}
             onClick={() => move(-1)}
-            className="flex h-full cursor-pointer items-center px-2 hover:bg-primary-lighter disabled:cursor-not-allowed disabled:opacity-40"
-            style={{
-              color: BRAND.primaryLight,
-              borderRight: `1px solid ${BRAND.borderSubtle}`,
-            }}
+            className="flex h-full cursor-pointer items-center border-r border-border-subtle px-2 text-primary-light hover:bg-primary-lighter disabled:cursor-not-allowed disabled:opacity-40"
           >
             <ChevronLeft size={14} />
           </button>
           <div className="relative h-full">
             <button
               onClick={() => setSelectorOpen((o) => !o)}
-              className="flex h-full cursor-pointer items-center gap-3 bg-white px-3 text-left hover:bg-surface-hover"
-              style={{ minWidth: 280, color: BRAND.textPrimary }}
+              className="flex h-full cursor-pointer items-center gap-3 bg-card px-3 text-left text-foreground hover:bg-surface-hover"
+              style={{ minWidth: 280 }}
             >
-              <span className="text-[12px] font-semibold whitespace-nowrap">{selected?.name}</span>
-              <span
-                className="text-[11px] whitespace-nowrap"
-                style={{ color: BRAND.textSecondary }}
-              >
+              <span className="text-ui-md font-semibold whitespace-nowrap">{selected?.name}</span>
+              <span className="text-ui-sm whitespace-nowrap text-muted-foreground">
                 {selected && fmtRange(selected)}
               </span>
-              <ChevronDown size={12} className="ml-auto" style={{ color: BRAND.textSecondary }} />
+              <ChevronDown size={12} className="ml-auto text-muted-foreground" />
             </button>
             {selectorOpen && (
-              <div
-                className="absolute top-full left-0 z-50 mt-1 max-h-72 w-full overflow-auto rounded bg-white py-1 shadow-lg"
-                style={{ border: `1px solid ${BRAND.border}` }}
-              >
+              <div className="absolute top-full left-0 z-50 mt-1 max-h-72 w-full overflow-auto rounded border border-border-strong bg-card py-1 shadow-lg">
                 {iterations.map((it) => (
                   <button
                     key={it.id}
@@ -318,9 +293,7 @@ export function TeamStatusPage() {
                     >
                       {it.name}
                     </span>
-                    <span className="text-[11px]" style={{ color: BRAND.textSecondary }}>
-                      {fmtRange(it)}
-                    </span>
+                    <span className="text-ui-sm text-muted-foreground">{fmtRange(it)}</span>
                   </button>
                 ))}
               </div>
@@ -329,11 +302,7 @@ export function TeamStatusPage() {
           <button
             disabled={selectedIndex >= iterations.length - 1}
             onClick={() => move(1)}
-            className="flex h-full cursor-pointer items-center px-2 hover:bg-primary-lighter disabled:cursor-not-allowed disabled:opacity-40"
-            style={{
-              color: BRAND.primaryLight,
-              borderLeft: `1px solid ${BRAND.borderSubtle}`,
-            }}
+            className="flex h-full cursor-pointer items-center border-l border-border-subtle px-2 text-primary-light hover:bg-primary-lighter disabled:cursor-not-allowed disabled:opacity-40"
           >
             <ChevronRight size={14} />
           </button>
@@ -483,8 +452,7 @@ function MemberGroup({
   // combined width (not flex-1) so the Capacity/Estimate/To Do/Actuals values
   // line up with the header and totals row instead of being pushed to the far
   // right by a growing flex column.
-  const idNameWidth =
-    (Number(colStyles.id?.width) || 0) + (Number(colStyles.name?.width) || 0)
+  const idNameWidth = (Number(colStyles.id?.width) || 0) + (Number(colStyles.name?.width) || 0)
 
   return (
     <div>
