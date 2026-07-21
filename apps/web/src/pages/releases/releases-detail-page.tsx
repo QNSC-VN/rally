@@ -9,13 +9,14 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 /* eslint-disable react-hooks/set-state-in-effect */
 import { Link, useParams } from '@tanstack/react-router'
-import { ChevronLeft, Loader2, Save, TrendingDown } from 'lucide-react'
+import { ChevronLeft, Loader2, Save } from 'lucide-react'
 import { BRAND } from '@/shared/config/brand'
 import { InlineSelect } from '@/shared/ui/native-select'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { RichTextEditor } from '@/shared/ui/rich-text-editor'
 import { ReleaseArtifactsTab } from './ui/release-artifacts-tab'
+import { TaskRollupPanel, BurndownPanel } from './ui/release-detail-panels'
 import { RELEASE_STATUS_STYLE } from '@/features/releases/status-colors'
 import { useProjectPermissions } from '@/features/access/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
@@ -395,226 +396,9 @@ export function ReleaseDetailPage() {
               </div>
             </div>
 
-            {/* Task Roll-up metrics panel (read-only: Estimate / To Do / Actual) */}
-            {rollup && (
-              <div
-                className="space-y-3 rounded-md p-3"
-                style={{
-                  backgroundColor: BRAND.surfaceHover,
-                  border: `1px solid ${BRAND.borderSubtle}`,
-                }}
-              >
-                <h3
-                  className="text-[10px] font-bold tracking-wider uppercase"
-                  style={{ color: BRAND.textSecondary }}
-                >
-                  Task Roll-up
-                </h3>
+            {rollup && <TaskRollupPanel rollup={rollup} />}
 
-                <div className="space-y-1">
-                  <div
-                    className="flex justify-between text-[11px] font-semibold"
-                    style={{ color: BRAND.textPrimary }}
-                  >
-                    <span>Completion</span>
-                    <span>{rollup.progressPercent}%</span>
-                  </div>
-                  <div
-                    className="h-2 w-full overflow-hidden rounded-full"
-                    style={{ backgroundColor: BRAND.avatarBg }}
-                  >
-                    <div
-                      className="h-full rounded-full transition-all"
-                      style={{
-                        width: `${rollup.progressPercent}%`,
-                        backgroundColor:
-                          rollup.progressPercent === 100 ? BRAND.success : BRAND.primaryLight,
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2 pt-1">
-                  {/* Estimate / To Do / Actual — points */}
-                  <div className="grid grid-cols-3 gap-1 text-center">
-                    <div
-                      className="rounded-sm py-1.5"
-                      style={{ backgroundColor: BRAND.primaryLighter }}
-                    >
-                      <div
-                        className="text-[9px] font-semibold tracking-wider uppercase"
-                        style={{ color: BRAND.primary }}
-                      >
-                        Estimate
-                      </div>
-                      <div
-                        className="font-mono text-[14px] font-bold"
-                        style={{ color: BRAND.textPrimary }}
-                      >
-                        {rollup.totalPoints}
-                      </div>
-                    </div>
-                    <div className="rounded-sm py-1.5" style={{ backgroundColor: BRAND.warningBg }}>
-                      <div
-                        className="text-[9px] font-semibold tracking-wider uppercase"
-                        style={{ color: BRAND.warning }}
-                      >
-                        To Do
-                      </div>
-                      <div
-                        className="font-mono text-[14px] font-bold"
-                        style={{ color: BRAND.textPrimary }}
-                      >
-                        {rollup.toDoPoints}
-                      </div>
-                    </div>
-                    <div className="rounded-sm py-1.5" style={{ backgroundColor: BRAND.successBg }}>
-                      <div
-                        className="text-[9px] font-semibold tracking-wider uppercase"
-                        style={{ color: BRAND.success }}
-                      >
-                        Actual
-                      </div>
-                      <div
-                        className="font-mono text-[14px] font-bold"
-                        style={{ color: BRAND.textPrimary }}
-                      >
-                        {rollup.completedPoints}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Item counts */}
-                  <div
-                    className="grid grid-cols-3 gap-1 pt-1 text-center font-mono text-[10px]"
-                    style={{ color: BRAND.textMuted }}
-                  >
-                    <div>
-                      Items:{' '}
-                      <span className="font-semibold text-gray-700">{rollup.totalItems}</span>
-                    </div>
-                    <div>
-                      To Do: <span className="font-semibold text-gray-700">{rollup.toDoItems}</span>
-                    </div>
-                    <div>
-                      Done:{' '}
-                      <span className="font-semibold text-gray-700">{rollup.completedItems}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Accepted count (read-only) */}
-                <div
-                  className="mt-1 flex items-center justify-between rounded-sm px-3 py-2"
-                  style={{
-                    backgroundColor: BRAND.successBg,
-                    border: `1px solid ${BRAND.successBorder}`,
-                  }}
-                >
-                  <span
-                    className="text-[10px] font-semibold tracking-wider uppercase"
-                    style={{ color: BRAND.success }}
-                  >
-                    Accepted
-                  </span>
-                  <span
-                    className="font-mono text-[14px] font-bold"
-                    style={{ color: BRAND.success }}
-                  >
-                    {rollup.acceptedItems}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* Burndown Section */}
-            <div
-              className="space-y-3 rounded-md p-4"
-              style={{
-                backgroundColor: BRAND.surfaceHover,
-                border: `1px solid ${BRAND.borderSubtle}`,
-              }}
-            >
-              <h3
-                className="flex items-center gap-1.5 text-[10px] font-bold tracking-wider uppercase"
-                style={{ color: BRAND.textSecondary }}
-              >
-                <TrendingDown size={13} />
-                Burndown
-              </h3>
-              {burndownLoading ? (
-                <div className="flex h-32 items-center justify-center">
-                  <Loader2 className="animate-spin" size={16} style={{ color: BRAND.textMuted }} />
-                </div>
-              ) : burndown && burndown.length > 0 ? (
-                <div className="max-h-56 overflow-auto">
-                  <table className="w-full text-left text-[10px]">
-                    <thead>
-                      <tr style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}>
-                        <th
-                          className="py-1 pr-2 font-semibold"
-                          style={{ color: BRAND.textSecondary }}
-                        >
-                          Date
-                        </th>
-                        <th
-                          className="py-1 pr-2 text-right font-semibold"
-                          style={{ color: BRAND.textSecondary }}
-                        >
-                          Total
-                        </th>
-                        <th
-                          className="py-1 pr-2 text-right font-semibold"
-                          style={{ color: BRAND.textSecondary }}
-                        >
-                          Done
-                        </th>
-                        <th
-                          className="py-1 text-right font-semibold"
-                          style={{ color: BRAND.textSecondary }}
-                        >
-                          Remaining
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {burndown.map((pt) => (
-                        <tr
-                          key={pt.date}
-                          style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
-                        >
-                          <td className="py-1 pr-2 font-mono" style={{ color: BRAND.textPrimary }}>
-                            {pt.date}
-                          </td>
-                          <td
-                            className="py-1 pr-2 text-right font-mono"
-                            style={{ color: BRAND.textPrimary }}
-                          >
-                            {pt.totalPoints}
-                          </td>
-                          <td
-                            className="py-1 pr-2 text-right font-mono"
-                            style={{ color: BRAND.success }}
-                          >
-                            {pt.completedPoints}
-                          </td>
-                          <td
-                            className="py-1 text-right font-mono"
-                            style={{ color: BRAND.textPrimary }}
-                          >
-                            {pt.remainingPoints}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p className="text-[11px]" style={{ color: BRAND.textMuted }}>
-                  No burndown data available yet.
-                </p>
-              )}
-            </div>
+            <BurndownPanel burndown={burndown} loading={burndownLoading} />
           </div>
         </div>
       )}
