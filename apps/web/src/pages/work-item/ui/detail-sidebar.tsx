@@ -94,10 +94,7 @@ function RelatedItemField({
           onOpen={() => onOpen(target.itemKey)}
         />
       ) : (
-        <span
-          className="block rounded px-3 py-2 text-[12px]"
-          style={{ border: `1px solid ${BRAND.borderInput}`, color: BRAND.textMuted }}
-        >
+        <span className="block rounded border border-input px-3 py-2 text-ui-md text-foreground-subtle">
           {emptyText}
         </span>
       )}
@@ -155,19 +152,10 @@ export function DetailSidebar({
   if (collapsed) return null
 
   return (
-    <aside
-      className="w-[300px] shrink-0 overflow-y-auto bg-white"
-      style={{ borderLeft: `1px solid ${BRAND.borderInput}` }}
-    >
+    <aside className="w-[300px] shrink-0 overflow-y-auto border-l border-input bg-card">
       {/* Collapse toggle header */}
-      <div
-        className="sticky top-0 z-10 flex items-center justify-between bg-white px-3 py-2"
-        style={{ borderBottom: `1px solid ${BRAND.avatarBg}` }}
-      >
-        <span
-          className="text-[11px] font-semibold tracking-wide uppercase"
-          style={{ color: BRAND.textSecondary }}
-        >
+      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-avatar bg-card px-3 py-2">
+        <span className="text-ui-sm font-semibold tracking-wide text-muted-foreground uppercase">
           Details
         </span>
         <div className="flex items-center gap-2">
@@ -177,7 +165,7 @@ export function DetailSidebar({
             title="Hide sidebar"
             className="rounded p-1 transition-colors hover:bg-surface-subtle"
           >
-            <PanelRightClose size={14} style={{ color: BRAND.textSecondary }} />
+            <PanelRightClose size={14} className="text-muted-foreground" />
           </button>
         </div>
       </div>
@@ -339,8 +327,7 @@ export function DetailSidebar({
           <>
             <FormField label="Estimate (h)">
               <div
-                className="flex h-9 items-center rounded border border-input bg-input-background px-3 font-mono text-[13px]"
-                style={{ color: BRAND.textPrimary }}
+                className="flex h-9 items-center rounded border border-input bg-input-background px-3 font-mono text-ui-lg text-foreground"
                 title="Estimate is derived: To Do + Actuals"
                 aria-readonly
               >
@@ -441,10 +428,8 @@ export function DetailSidebar({
                 type="button"
                 onClick={() => setShowMilestones(true)}
                 disabled={disabled}
-                className="flex w-full items-center justify-between rounded px-2 py-1 text-left text-[12px]"
+                className="flex w-full items-center justify-between rounded border border-input bg-card px-2 py-1 text-left text-ui-md"
                 style={{
-                  border: `1px solid ${BRAND.borderInput}`,
-                  background: 'white',
                   color: itemMilestones.length > 0 ? BRAND.textPrimary : BRAND.textMuted,
                   cursor: disabled ? 'default' : 'pointer',
                 }}
@@ -460,7 +445,7 @@ export function DetailSidebar({
                     : 'No milestones'}
                 </span>
                 {itemMilestones.length > 0 && (
-                  <span className="ml-2 shrink-0 text-[11px]" style={{ color: BRAND.textMuted }}>
+                  <span className="ml-2 shrink-0 text-ui-sm text-foreground-subtle">
                     {itemMilestones.length}
                   </span>
                 )}
@@ -471,14 +456,7 @@ export function DetailSidebar({
 
         {/* Blocked flag */}
         {item.isBlocked && (
-          <div
-            className="flex items-start gap-2 rounded p-2 text-[11px]"
-            style={{
-              backgroundColor: BRAND.dangerBg,
-              border: `1px solid ${BRAND.dangerBorder}`,
-              color: BRAND.danger,
-            }}
-          >
+          <div className="flex items-start gap-2 rounded border border-destructive-border bg-destructive-bg p-2 text-ui-sm text-destructive">
             <span className="font-semibold">Blocked:</span>
             <span>{item.blockedReason ?? 'Reason not provided.'}</span>
           </div>
@@ -493,21 +471,14 @@ export function DetailSidebar({
 
         {/* Creation Date (read-only) */}
         <FormField label="Creation Date">
-          <span className="block px-1 text-[12px]" style={{ color: BRAND.textSecondary }}>
+          <span className="block px-1 text-ui-md text-muted-foreground">
             {formatDate(item.createdAt)}
           </span>
         </FormField>
 
         {/* Read-only notice */}
         {readOnly && (
-          <div
-            className="rounded px-3 py-2 text-[10px]"
-            style={{
-              backgroundColor: BRAND.surfaceHover,
-              border: `1px solid ${BRAND.avatarBg}`,
-              color: BRAND.textSecondary,
-            }}
-          >
+          <div className="rounded border border-avatar bg-surface-hover px-3 py-2 text-ui-xs text-muted-foreground">
             You have read-only access to this item.
           </div>
         )}

@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 
-import { BRAND } from '@/shared/config/brand'
 import { useReleaseArtifacts } from '@/features/releases/api'
 import { InlineSelect } from '@/shared/ui/native-select'
 import { SearchInput } from '@/shared/ui/search-input'
@@ -47,10 +46,7 @@ export function ReleaseArtifactsTab({ releaseId }: { releaseId: string }) {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Search toolbar */}
-      <div
-        className="flex shrink-0 items-center gap-3 px-4 py-2"
-        style={{ borderBottom: `1px solid ${BRAND.borderSubtle}`, backgroundColor: BRAND.surface }}
-      >
+      <div className="flex shrink-0 items-center gap-3 border-b border-border-subtle bg-card px-4 py-2">
         <SearchInput
           value={search}
           onChange={setSearch}
@@ -61,13 +57,13 @@ export function ReleaseArtifactsTab({ releaseId }: { releaseId: string }) {
           className="rounded-md py-1.5 pl-8 text-xs"
         />
         <div className="flex-1" />
-        <span className="text-[11px]" style={{ color: BRAND.textMuted }}>
+        <span className="text-ui-sm text-foreground-subtle">
           {pageInfo?.total != null ? `${pageInfo.total} items` : ''}
         </span>
       </div>
 
       {/* Table */}
-      <div className="flex-1 overflow-auto" style={{ backgroundColor: BRAND.surface }}>
+      <div className="flex-1 overflow-auto bg-card">
         <ArtifactTable
           items={items}
           isLoading={isLoading}
@@ -82,14 +78,8 @@ export function ReleaseArtifactsTab({ releaseId }: { releaseId: string }) {
 
       {/* Pagination footer */}
       {items.length > 0 && (
-        <div
-          className="flex h-9 shrink-0 items-center justify-between bg-white px-3"
-          style={{ borderTop: `1px solid ${BRAND.borderSubtle}` }}
-        >
-          <div
-            className="flex items-center gap-2 text-[11px]"
-            style={{ color: BRAND.textSecondary }}
-          >
+        <div className="flex h-9 shrink-0 items-center justify-between border-t border-border-subtle bg-card px-3">
+          <div className="flex items-center gap-2 text-ui-sm text-muted-foreground">
             <span>Rows per page</span>
             <InlineSelect
               aria-label="Rows per page"
@@ -103,22 +93,21 @@ export function ReleaseArtifactsTab({ releaseId }: { releaseId: string }) {
                 </option>
               ))}
             </InlineSelect>
-            <span style={{ color: BRAND.textMuted }}>
+            <span className="text-foreground-subtle">
               {pageInfo
                 ? `${(currentPage - 1) * pageSize + 1}–${(currentPage - 1) * pageSize + items.length}${pageInfo.total ? ` of ${pageInfo.total}` : ''}`
                 : ''}
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-[11px] tabular-nums" style={{ color: BRAND.textSecondary }}>
+            <span className="text-ui-sm text-muted-foreground tabular-nums">
               Page {currentPage}
             </span>
             <button
               aria-label="Previous page"
               disabled={currentPage === 1}
               onClick={onPrevPage}
-              className="rounded p-1.5 disabled:opacity-35"
-              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
+              className="rounded border border-border-strong p-1.5 text-muted-foreground disabled:opacity-35"
             >
               <ChevronLeft size={13} />
             </button>
@@ -126,8 +115,7 @@ export function ReleaseArtifactsTab({ releaseId }: { releaseId: string }) {
               aria-label="Next page"
               disabled={!pageInfo?.hasNextPage}
               onClick={onNextPage}
-              className="rounded p-1.5 disabled:opacity-35"
-              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
+              className="rounded border border-border-strong p-1.5 text-muted-foreground disabled:opacity-35"
             >
               <ChevronRight size={13} />
             </button>

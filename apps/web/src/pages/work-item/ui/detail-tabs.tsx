@@ -1,7 +1,6 @@
 import { useNavigate } from '@tanstack/react-router'
 import { Bug } from 'lucide-react'
 
-import { BRAND } from '@/shared/config/brand'
 import { useActivityLog, useChildDefects, type WorkItem } from '@/features/work-items/api'
 import { useProjectMembers } from '@/features/teams/api'
 import { describeActivity } from '@/entities/work-item/model/activity'
@@ -27,26 +26,16 @@ export function HistoryTab({ workItemId }: { workItemId: string }) {
   return (
     <div className="w-full space-y-5">
       <div>
-        <h2 className="text-[20px] font-semibold" style={{ color: BRAND.textPrimary }}>
-          Revision History
-        </h2>
-        <p className="mt-1 text-[12px]" style={{ color: BRAND.textSecondary }}>
+        <h2 className="text-xl font-semibold text-foreground">Revision History</h2>
+        <p className="mt-1 text-ui-md text-muted-foreground">
           Activity log for field changes, task updates, and work item creation.
         </p>
       </div>
 
-      <section
-        className="overflow-hidden rounded bg-white"
-        style={{ border: `1px solid ${BRAND.border}` }}
-      >
+      <section className="overflow-hidden rounded border border-border-strong bg-card">
         <div
-          className="grid px-4 py-2 text-[10px] font-semibold tracking-wider uppercase"
-          style={{
-            gridTemplateColumns: GRID,
-            color: BRAND.textSecondary,
-            backgroundColor: BRAND.surfaceHover,
-            borderBottom: `1px solid ${BRAND.border}`,
-          }}
+          className="grid border-b border-border-strong bg-surface-hover px-4 py-2 text-ui-xs font-semibold tracking-wider text-muted-foreground uppercase"
+          style={{ gridTemplateColumns: GRID }}
         >
           <span>Revision</span>
           <span>Description</span>
@@ -55,7 +44,7 @@ export function HistoryTab({ workItemId }: { workItemId: string }) {
         </div>
 
         {logs.length === 0 && (
-          <div className="px-4 py-6 text-center text-sm" style={{ color: BRAND.textMuted }}>
+          <div className="px-4 py-6 text-center text-sm text-foreground-subtle">
             No activity recorded yet.
           </div>
         )}
@@ -66,21 +55,14 @@ export function HistoryTab({ workItemId }: { workItemId: string }) {
           return (
             <div
               key={log.id}
-              className="grid items-start px-4 py-3 text-[12px]"
-              style={{
-                gridTemplateColumns: GRID,
-                borderBottom: `1px solid ${BRAND.borderInner}`,
-                color: BRAND.textPrimary,
-              }}
+              className="grid items-start border-b border-border-inner px-4 py-3 text-ui-md text-foreground"
+              style={{ gridTemplateColumns: GRID }}
             >
-              <span
-                className="font-mono text-[11px] tabular-nums"
-                style={{ color: BRAND.primaryLight }}
-              >
+              <span className="font-mono text-ui-sm text-primary-light tabular-nums">
                 {revision}
               </span>
-              <span style={{ color: BRAND.textPrimary }}>{describeActivity(log)}</span>
-              <span className="font-mono text-[11px]" style={{ color: BRAND.textSecondary }}>
+              <span className="text-foreground">{describeActivity(log)}</span>
+              <span className="font-mono text-ui-sm text-muted-foreground">
                 {formatDateTime(log.createdAt)}
               </span>
               <span className="flex min-w-0 items-center gap-2">
@@ -123,42 +105,30 @@ export function DefectsTab({ workItemId, projectId }: { workItemId: string; proj
     <div className="w-full">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h2 className="text-[20px] font-semibold" style={{ color: BRAND.textPrimary }}>
-            Defects
-          </h2>
-          <p className="mt-0.5 text-[12px]" style={{ color: BRAND.textSecondary }}>
+          <h2 className="text-xl font-semibold text-foreground">Defects</h2>
+          <p className="mt-0.5 text-ui-md text-muted-foreground">
             {defects.length} defect{defects.length !== 1 ? 's' : ''} linked to this story
           </p>
         </div>
       </div>
 
       {defects.length === 0 ? (
-        <div
-          className="rounded py-12 text-center"
-          style={{ border: `1px dashed ${BRAND.borderInput}` }}
-        >
-          <Bug size={28} style={{ color: BRAND.textFaint, margin: '0 auto 8px' }} />
-          <p className="text-[13px] font-medium" style={{ color: BRAND.textSecondary }}>
+        <div className="rounded border border-dashed border-input py-12 text-center">
+          <Bug size={28} className="text-foreground-faint" style={{ margin: '0 auto 8px' }} />
+          <p className="text-ui-lg font-medium text-muted-foreground">
             No defects linked to this story
           </p>
-          <p className="mt-1 text-[11px]" style={{ color: BRAND.textMuted }}>
+          <p className="mt-1 text-ui-sm text-foreground-subtle">
             Create a defect and assign it as a child of this story
           </p>
         </div>
       ) : (
-        <div
-          className="overflow-x-auto rounded"
-          style={{ border: `1px solid ${BRAND.borderInput}` }}
-        >
+        <div className="overflow-x-auto rounded border border-input">
           <div className="min-w-[600px]">
             {/* Header */}
             <div
-              className="grid items-center bg-surface-hover px-3 py-1.5 text-[10px] font-semibold tracking-wider uppercase"
-              style={{
-                gridTemplateColumns: DEFECT_GRID,
-                color: BRAND.textSecondary,
-                borderBottom: `1px solid ${BRAND.borderInput}`,
-              }}
+              className="grid items-center border-b border-input bg-surface-hover px-3 py-1.5 text-ui-xs font-semibold tracking-wider text-muted-foreground uppercase"
+              style={{ gridTemplateColumns: DEFECT_GRID }}
             >
               {DEFECT_COLS.map((col) => (
                 <span key={col}>{col}</span>
@@ -168,19 +138,14 @@ export function DefectsTab({ workItemId, projectId }: { workItemId: string; proj
             {defects.map((d) => (
               <div
                 key={d.id}
-                className="grid cursor-pointer items-center px-3 py-2 text-[12px] transition-colors hover:bg-primary-lighter"
-                style={{
-                  gridTemplateColumns: DEFECT_GRID,
-                  borderBottom: `1px solid ${BRAND.borderInner}`,
-                }}
+                className="grid cursor-pointer items-center border-b border-border-inner px-3 py-2 text-ui-md transition-colors hover:bg-primary-lighter"
+                style={{ gridTemplateColumns: DEFECT_GRID }}
                 onClick={() => openDefect(d)}
               >
                 <span className="flex items-center overflow-hidden">
                   <IdCell type={d.type} itemKey={d.itemKey} onOpen={() => openDefect(d)} />
                 </span>
-                <span className="truncate font-medium" style={{ color: BRAND.textPrimary }}>
-                  {d.title}
-                </span>
+                <span className="truncate font-medium text-foreground">{d.title}</span>
                 <ScheduleStateBadge state={d.scheduleState} />
                 <span>
                   <PriorityBadge priority={d.priority} />

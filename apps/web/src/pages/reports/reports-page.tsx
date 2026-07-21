@@ -72,16 +72,10 @@ function Widget({
 }) {
   return (
     <div
-      className="rounded p-4"
-      style={{
-        backgroundColor: BRAND.surface,
-        border: `1px solid ${BRAND.border}`,
-        gridColumn: `span ${span}`,
-      }}
+      className="rounded border border-border-strong bg-card p-4"
+      style={{ gridColumn: `span ${span}` }}
     >
-      <p className="mb-3 text-[11px] font-semibold" style={{ color: BRAND.textPrimary }}>
-        {title}
-      </p>
+      <p className="mb-3 text-ui-sm font-semibold text-foreground">{title}</p>
       {children}
     </div>
   )
@@ -221,14 +215,14 @@ export function ReportsPage() {
 
   if (!projectId) {
     return (
-      <div className="flex h-full items-center justify-center" style={{ color: BRAND.textMuted }}>
+      <div className="flex h-full items-center justify-center text-foreground-subtle">
         <p className="text-sm">Select a project to view its reports.</p>
       </div>
     )
   }
 
   return (
-    <div className="flex-1 overflow-auto" style={{ backgroundColor: BRAND.pageBg }}>
+    <div className="flex-1 overflow-auto bg-background">
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <PageHeader
         title="Reports"
@@ -415,14 +409,10 @@ export function ReportsPage() {
                   {statusPie.map((s) => (
                     <span
                       key={s.name}
-                      className="flex items-center gap-1 text-[10px]"
-                      style={{ color: BRAND.textSecondary }}
+                      className="flex items-center gap-1 text-ui-xs text-muted-foreground"
                     >
                       <span className="h-2 w-2 rounded-sm" style={{ backgroundColor: s.color }} />
-                      {s.name}{' '}
-                      <span className="font-semibold" style={{ color: BRAND.textPrimary }}>
-                        {s.value}
-                      </span>
+                      {s.name} <span className="font-semibold text-foreground">{s.value}</span>
                     </span>
                   ))}
                 </div>
@@ -435,10 +425,7 @@ export function ReportsPage() {
             <div className="space-y-2.5 pt-1">
               {defectRows.map((d) => (
                 <div key={d.label} className="flex items-center justify-between">
-                  <span
-                    className="flex items-center gap-2 text-[12px]"
-                    style={{ color: BRAND.textSecondary }}
-                  >
+                  <span className="flex items-center gap-2 text-ui-md text-muted-foreground">
                     <span
                       className="h-2.5 w-2.5 rounded-full"
                       style={{ backgroundColor: d.color }}
@@ -446,7 +433,7 @@ export function ReportsPage() {
                     {d.label}
                   </span>
                   <span
-                    className="text-[13px] font-semibold tabular-nums"
+                    className="text-ui-lg font-semibold tabular-nums"
                     style={{ color: d.color }}
                   >
                     {d.value}
@@ -493,10 +480,7 @@ export function ReportsPage() {
                     />
                   </BarChart>
                 </ResponsiveContainer>
-                <div
-                  className="mt-1 flex items-center justify-center gap-4 text-[10px]"
-                  style={{ color: BRAND.textSecondary }}
-                >
+                <div className="mt-1 flex items-center justify-center gap-4 text-ui-xs text-muted-foreground">
                   <span className="flex items-center gap-1">
                     <span
                       className="inline-block h-2 w-2.5 rounded-sm"
@@ -570,9 +554,7 @@ export function ReportsPage() {
           <Widget title="Release Progress">
             <div className="space-y-3 pt-1">
               {releases.length === 0 ? (
-                <p className="text-[11px]" style={{ color: BRAND.textMuted }}>
-                  No releases in this project.
-                </p>
+                <p className="text-ui-sm text-foreground-subtle">No releases in this project.</p>
               ) : (
                 releases.slice(0, 4).map((r) => {
                   const pct = r.taskRollup?.progressPercent ?? 0
@@ -581,23 +563,14 @@ export function ReportsPage() {
                   return (
                     <div key={r.id}>
                       <div className="mb-1 flex items-center justify-between">
-                        <span
-                          className="truncate pr-2 text-[10px]"
-                          style={{ color: BRAND.textSecondary }}
-                        >
+                        <span className="truncate pr-2 text-ui-xs text-muted-foreground">
                           {r.name}
                         </span>
-                        <span
-                          className="text-[10px] font-semibold tabular-nums"
-                          style={{ color: BRAND.textSecondary }}
-                        >
+                        <span className="text-ui-xs font-semibold text-muted-foreground tabular-nums">
                           {pct}%
                         </span>
                       </div>
-                      <div
-                        className="h-1.5 overflow-hidden rounded-full"
-                        style={{ backgroundColor: BRAND.borderSubtle }}
-                      >
+                      <div className="h-1.5 overflow-hidden rounded-full bg-border-subtle">
                         <div
                           className="h-full rounded-full"
                           style={{ width: `${pct}%`, backgroundColor: barColor }}
@@ -614,9 +587,7 @@ export function ReportsPage() {
           <Widget title="Blocked Items">
             <div className="space-y-2 pt-1">
               {blockedItems.length === 0 ? (
-                <p className="text-[11px]" style={{ color: BRAND.textMuted }}>
-                  No blocked items.
-                </p>
+                <p className="text-ui-sm text-foreground-subtle">No blocked items.</p>
               ) : (
                 blockedItems.map((i) => (
                   <button
@@ -629,16 +600,11 @@ export function ReportsPage() {
                   >
                     <AlertTriangle
                       size={12}
-                      style={{ color: BRAND.danger, marginTop: 1 }}
-                      className="shrink-0"
+                      style={{ marginTop: 1 }}
+                      className="shrink-0 text-destructive"
                     />
-                    <p
-                      className="min-w-0 truncate text-[11px]"
-                      style={{ color: BRAND.textPrimary }}
-                    >
-                      <span className="font-mono" style={{ color: BRAND.textMuted }}>
-                        {i.itemKey}
-                      </span>{' '}
+                    <p className="min-w-0 truncate text-ui-sm text-foreground">
+                      <span className="font-mono text-foreground-subtle">{i.itemKey}</span>{' '}
                       {i.title}
                     </p>
                   </button>
@@ -651,9 +617,7 @@ export function ReportsPage() {
           <Widget title="Recent Activity">
             <div className="space-y-2.5 pt-1">
               {notifications.length === 0 ? (
-                <p className="text-[11px]" style={{ color: BRAND.textMuted }}>
-                  No recent activity.
-                </p>
+                <p className="text-ui-sm text-foreground-subtle">No recent activity.</p>
               ) : (
                 notifications.slice(0, 6).map((n) => {
                   const actor = n.actorId ? memberMap.get(n.actorId) : undefined
@@ -662,13 +626,10 @@ export function ReportsPage() {
                     <div key={n.id} className="flex items-start gap-2">
                       <Avatar name={actorName} size={20} />
                       <div className="min-w-0">
-                        <p
-                          className="truncate text-[11px] leading-snug"
-                          style={{ color: BRAND.textSecondary }}
-                        >
+                        <p className="truncate text-ui-sm leading-snug text-muted-foreground">
                           {n.body ?? n.title}
                         </p>
-                        <p className="mt-0.5 text-[10px]" style={{ color: BRAND.textMuted }}>
+                        <p className="mt-0.5 text-ui-xs text-foreground-subtle">
                           {relativeTime(n.createdAt)}
                         </p>
                       </div>
@@ -685,17 +646,12 @@ export function ReportsPage() {
 }
 
 function ChartSkeleton() {
-  return (
-    <div className="h-[180px] animate-pulse rounded" style={{ backgroundColor: BRAND.pageBg }} />
-  )
+  return <div className="h-[180px] animate-pulse rounded bg-background" />
 }
 
 function EmptyChart({ label }: { label: string }) {
   return (
-    <div
-      className="flex h-[160px] items-center justify-center text-[11px]"
-      style={{ color: BRAND.textMuted }}
-    >
+    <div className="flex h-[160px] items-center justify-center text-ui-sm text-foreground-subtle">
       {label}
     </div>
   )

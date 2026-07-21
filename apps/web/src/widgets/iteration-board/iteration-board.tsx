@@ -166,18 +166,13 @@ function BoardColumn({
         className="flex items-center gap-2 rounded-t-sm px-2.5 py-2"
         style={{ backgroundColor: cfg.bg, borderBottom: `2px solid ${cfg.color}` }}
       >
-        <span className="text-[12px] font-semibold" style={{ color: cfg.color }}>
+        <span className="text-ui-md font-semibold" style={{ color: cfg.color }}>
           {SCHEDULE_STATE_LABEL[state]}
         </span>
-        <span
-          className="rounded-full px-1.5 text-[10px] font-semibold"
-          style={{ backgroundColor: BRAND.surface, color: BRAND.textSecondary }}
-        >
+        <span className="rounded-full bg-card px-1.5 text-ui-xs font-semibold text-muted-foreground">
           {items.length}
         </span>
-        <span className="ml-auto text-[10px] font-medium" style={{ color: BRAND.textMuted }}>
-          {points} pts
-        </span>
+        <span className="ml-auto text-ui-xs font-medium text-foreground-subtle">{points} pts</span>
       </div>
       <div
         ref={setNodeRef}
@@ -189,10 +184,7 @@ function BoardColumn({
         }}
       >
         {items.length === 0 ? (
-          <div
-            className="flex flex-1 items-center justify-center rounded-sm py-6 text-[11px]"
-            style={{ color: BRAND.textMuted }}
-          >
+          <div className="flex flex-1 items-center justify-center rounded-sm py-6 text-ui-sm text-foreground-subtle">
             {canEdit ? 'Drop cards here' : 'No cards'}
           </div>
         ) : (
@@ -271,9 +263,8 @@ function BoardCard({
 
   return (
     <div
-      className="group rounded-sm p-2"
+      className="group rounded-sm bg-card p-2"
       style={{
-        backgroundColor: BRAND.surface,
         border: `1px solid ${item.isBlocked ? BRAND.danger : BRAND.border}`,
         boxShadow: dragging ? '0 6px 16px rgba(0,0,0,0.18)' : '0 1px 2px rgba(0,0,0,0.04)',
       }}
@@ -286,16 +277,15 @@ function BoardCard({
             e.stopPropagation()
             onOpen?.(item.itemKey)
           }}
-          className="font-mono text-[11px] hover:underline"
-          style={{ color: BRAND.primaryLight }}
+          className="font-mono text-ui-sm text-primary-light hover:underline"
         >
           {item.itemKey}
         </button>
         {canEdit && dragHandleProps && (
           <span
             {...dragHandleProps}
-            className="ml-auto cursor-grab text-[0] opacity-0 group-hover:opacity-100"
-            style={{ color: BRAND.textMuted, touchAction: 'none' }}
+            className="ml-auto cursor-grab text-[0] text-foreground-subtle opacity-0 group-hover:opacity-100"
+            style={{ touchAction: 'none' }}
             aria-label="Drag card"
           >
             <GripVertical size={13} />
@@ -304,9 +294,8 @@ function BoardCard({
       </div>
 
       <p
-        className="mt-1.5 text-[12px] leading-snug"
+        className="mt-1.5 text-ui-md leading-snug text-foreground"
         style={{
-          color: BRAND.textPrimary,
           display: '-webkit-box',
           WebkitLineClamp: 3,
           WebkitBoxOrient: 'vertical',
@@ -318,21 +307,14 @@ function BoardCard({
       </p>
 
       {item.featureTitle && (
-        <p
-          className="mt-1 truncate text-[10px]"
-          style={{ color: BRAND.textMuted }}
-          title={item.featureTitle}
-        >
+        <p className="mt-1 truncate text-ui-xs text-foreground-subtle" title={item.featureTitle}>
           {item.featureTitle}
         </p>
       )}
 
       {taskTotal > 0 && (
         <div className="mt-2">
-          <div
-            className="h-1 w-full overflow-hidden rounded-full"
-            style={{ backgroundColor: BRAND.borderSubtle }}
-          >
+          <div className="h-1 w-full overflow-hidden rounded-full bg-border-subtle">
             <div
               className="h-full rounded-full"
               style={{
@@ -345,16 +327,12 @@ function BoardCard({
       )}
 
       <div className="mt-2 flex items-center gap-2">
-        <span
-          className="rounded-sm px-1.5 py-0.5 text-[10px] font-semibold"
-          style={{ backgroundColor: BRAND.primaryLighter, color: BRAND.primaryLight }}
-        >
+        <span className="rounded-sm bg-primary-lighter px-1.5 py-0.5 text-ui-xs font-semibold text-primary-light">
           {item.planEstimate ?? 0} pt
         </span>
         {item.isBlocked && (
           <span
-            className="flex items-center gap-0.5 text-[10px] font-medium"
-            style={{ color: BRAND.danger }}
+            className="flex items-center gap-0.5 text-ui-xs font-medium text-destructive"
             title={item.blockedReason ?? 'Blocked'}
           >
             <AlertTriangle size={11} /> Blocked

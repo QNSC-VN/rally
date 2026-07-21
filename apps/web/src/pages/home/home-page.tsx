@@ -234,7 +234,7 @@ export function HomePage() {
                   {m.label}
                 </span>
                 <span
-                  className="text-[20px] leading-tight font-semibold"
+                  className="text-xl leading-tight font-semibold"
                   style={{ color: m.alert ? BRAND.danger : BRAND.textPrimary }}
                 >
                   {m.value}

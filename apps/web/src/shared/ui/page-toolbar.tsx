@@ -2,8 +2,8 @@ import { useState, type ReactNode } from 'react'
 
 import { Filter, Upload } from 'lucide-react'
 
-import { BRAND } from '@/shared/config/brand'
 import { SearchInput } from '@/shared/ui/search-input'
+import { cn } from '@/shared/lib/utils'
 
 export interface PageToolbarSearch {
   value: string
@@ -65,22 +65,11 @@ export function PageToolbar({
 
   return (
     <>
-      <div
-        className="flex shrink-0 flex-wrap items-center gap-2 px-4 py-2"
-        style={{
-          backgroundColor: BRAND.surface,
-          borderBottom: `1px solid ${BRAND.borderSubtle}`,
-        }}
-      >
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border-subtle bg-card px-4 py-2">
         {title != null && (
           <>
-            <h2
-              className="mr-1 shrink-0 text-[13px] font-semibold"
-              style={{ color: BRAND.textPrimary }}
-            >
-              {title}
-            </h2>
-            <div className="h-4 w-px shrink-0" style={{ backgroundColor: BRAND.border }} />
+            <h2 className="mr-1 shrink-0 text-ui-lg font-semibold text-foreground">{title}</h2>
+            <div className="h-4 w-px shrink-0 bg-border-strong" />
           </>
         )}
 
@@ -119,13 +108,7 @@ export function PageToolbar({
       </div>
 
       {hasFilters && filtersOpen && (
-        <div
-          className="flex shrink-0 flex-wrap items-center gap-2 px-4 py-2"
-          style={{
-            backgroundColor: BRAND.surfaceHover,
-            borderBottom: `1px solid ${BRAND.borderSubtle}`,
-          }}
-        >
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border-subtle bg-surface-hover px-4 py-2">
           {filters}
         </div>
       )}
@@ -148,19 +131,18 @@ function FiltersToggle({
       type="button"
       onClick={onClick}
       aria-expanded={open}
-      className="flex items-center gap-1.5 rounded px-2.5 py-1 text-[11px] font-medium transition-colors"
-      style={{
-        border: `1px solid ${BRAND.borderInput}`,
-        color: active ? BRAND.primary : BRAND.textSecondary,
-        backgroundColor: open ? BRAND.primaryLighter : 'transparent',
-      }}
+      className={cn(
+        'flex items-center gap-1.5 rounded border border-input px-2.5 py-1 text-ui-sm font-medium transition-colors',
+        open && 'bg-primary-lighter',
+        active ? 'text-primary' : 'text-muted-foreground',
+      )}
     >
       <Filter size={12} />
       <span>Filters</span>
       {count > 0 && (
         <span
-          className="inline-flex min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-semibold text-white tabular-nums"
-          style={{ backgroundColor: BRAND.primary, height: 16 }}
+          className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-primary px-1 text-ui-xs font-semibold text-white tabular-nums"
+          style={{ height: 16 }}
         >
           {count}
         </span>
@@ -176,8 +158,7 @@ function ExportButton({ onClick }: { onClick: () => void }) {
       onClick={onClick}
       aria-label="Export"
       title="Export to CSV"
-      className="flex items-center rounded p-1.5 transition-colors hover:opacity-80"
-      style={{ border: `1px solid ${BRAND.borderInput}`, color: BRAND.textSecondary }}
+      className="flex items-center rounded border border-input p-1.5 text-muted-foreground transition-colors hover:opacity-80"
     >
       <Upload size={13} />
     </button>

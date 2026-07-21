@@ -19,7 +19,7 @@ export function SaveIndicator({ status, errorMsg, className }: SaveIndicatorProp
 
   return (
     <span
-      className={cn('flex items-center gap-1 text-[10px] font-medium', className)}
+      className={cn('flex items-center gap-1 text-ui-xs font-medium', className)}
       aria-live="polite"
     >
       {status === 'saving' && (

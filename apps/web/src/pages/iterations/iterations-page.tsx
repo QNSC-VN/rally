@@ -10,7 +10,6 @@ import { ChevronLeft, Plus } from 'lucide-react'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { InlineSelect } from '@/shared/ui/native-select'
-import { BRAND } from '@/shared/config/brand'
 import { Button } from '@/shared/ui/button'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
@@ -88,10 +87,7 @@ export function IterationsPage() {
 
   if (!projectId) {
     return (
-      <div
-        className="flex flex-1 items-center justify-center text-[13px]"
-        style={{ color: BRAND.textMuted }}
-      >
+      <div className="flex flex-1 items-center justify-center text-ui-lg text-foreground-subtle">
         Select a project to view iterations.
       </div>
     )
@@ -129,13 +125,8 @@ export function IterationsPage() {
         defaultFiltersOpen={stateFilter !== 'all'}
         filters={
           <>
-            <div
-              className="flex items-center gap-1.5 rounded px-2 py-1.5"
-              style={{ backgroundColor: BRAND.surface, border: `1px solid ${BRAND.borderSubtle}` }}
-            >
-              <span className="text-[11px] font-semibold" style={{ color: BRAND.textSecondary }}>
-                State
-              </span>
+            <div className="flex items-center gap-1.5 rounded border border-border-subtle bg-card px-2 py-1.5">
+              <span className="text-ui-sm font-semibold text-muted-foreground">State</span>
               <InlineSelect
                 value={stateFilter}
                 aria-label="Filter iterations by state"
@@ -154,8 +145,7 @@ export function IterationsPage() {
             {stateFilter !== 'all' && (
               <button
                 onClick={() => setStateFilter('all')}
-                className="cursor-pointer rounded px-2.5 py-1 text-[11px] hover:bg-primary-lighter"
-                style={{ color: BRAND.primaryLight }}
+                className="cursor-pointer rounded px-2.5 py-1 text-ui-sm text-primary-light hover:bg-primary-lighter"
               >
                 Clear filters
               </button>
@@ -165,19 +155,10 @@ export function IterationsPage() {
       />
 
       {/* Table */}
-      <div
-        className="flex flex-1 flex-col overflow-hidden"
-        style={{ backgroundColor: BRAND.surface }}
-      >
+      <div className="flex flex-1 flex-col overflow-hidden bg-card">
         <div className="flex-1 overflow-auto">
           <div style={{ width: tableWidth, minWidth: '100%' }}>
-            <div
-              className="sticky top-0 z-10 flex h-8 items-center px-3 select-none"
-              style={{
-                backgroundColor: BRAND.surfaceHover,
-                borderBottom: `1px solid ${BRAND.borderSubtle}`,
-              }}
-            >
+            <div className="sticky top-0 z-10 flex h-8 items-center border-b border-border-subtle bg-surface-hover px-3 select-none">
               <div className="w-16 shrink-0" />
               {COLUMNS.map((c) => {
                 const active = sort.key === c.key
@@ -185,11 +166,9 @@ export function IterationsPage() {
                   <button
                     key={c.key}
                     onClick={() => toggleSort(c.key)}
-                    className="flex h-full items-center gap-1 px-2 text-[11px] font-semibold"
+                    className={`flex h-full items-center gap-1 border-r border-border-subtle px-2 text-ui-sm font-semibold ${active ? 'text-primary' : 'text-foreground-subtle'}`}
                     style={{
                       width: c.width,
-                      color: active ? BRAND.primary : BRAND.textMuted,
-                      borderRight: `1px solid ${BRAND.borderSubtle}`,
                       justifyContent: c.align === 'right' ? 'flex-end' : 'flex-start',
                     }}
                   >
@@ -203,10 +182,7 @@ export function IterationsPage() {
             {isLoading && <SkeletonList rows={8} cols={6} />}
 
             {!isLoading && isError && (
-              <div
-                className="flex h-40 items-center justify-center text-[12px]"
-                style={{ color: BRAND.danger }}
-              >
+              <div className="flex h-40 items-center justify-center text-ui-md text-destructive">
                 Failed to load iterations. Please try again.
               </div>
             )}
@@ -217,48 +193,43 @@ export function IterationsPage() {
                 <div
                   key={it.id}
                   onClick={() => setDetailId(it.id)}
-                  className="flex h-8 cursor-pointer items-center px-3 transition-colors hover:bg-surface-subtle"
-                  style={{
-                    width: tableWidth,
-                    minWidth: '100%',
-                    borderBottom: `1px solid ${BRAND.borderInner}`,
-                  }}
+                  className="flex h-8 cursor-pointer items-center border-b border-border-inner px-3 transition-colors hover:bg-surface-subtle"
+                  style={{ width: tableWidth, minWidth: '100%' }}
                 >
                   <div
-                    className="w-16 shrink-0 truncate px-2 font-mono text-[10px]"
-                    style={{ color: BRAND.textMuted }}
+                    className="w-16 shrink-0 truncate px-2 font-mono text-ui-xs text-foreground-subtle"
                     title={it.iterationKey ?? ''}
                   >
                     {it.iterationKey ?? ''}
                   </div>
                   <div
-                    className="shrink-0 truncate px-2 text-[11px] font-medium"
-                    style={{ width: COLUMNS[0].width, color: BRAND.textPrimary }}
+                    className="shrink-0 truncate px-2 text-ui-sm font-medium text-foreground"
+                    style={{ width: COLUMNS[0].width }}
                     title={it.name}
                   >
                     {it.name}
                   </div>
                   <div
-                    className="shrink-0 truncate px-2 text-[11px]"
-                    style={{ width: COLUMNS[1].width, color: BRAND.textPrimary }}
+                    className="shrink-0 truncate px-2 text-ui-sm text-foreground"
+                    style={{ width: COLUMNS[1].width }}
                   >
                     {it.theme ?? ''}
                   </div>
                   <div
-                    className="shrink-0 truncate px-2 text-[11px]"
-                    style={{ width: COLUMNS[2].width, color: BRAND.textSecondary }}
+                    className="shrink-0 truncate px-2 text-ui-sm text-muted-foreground"
+                    style={{ width: COLUMNS[2].width }}
                   >
                     {it.startDate ?? ''}
                   </div>
                   <div
-                    className="shrink-0 truncate px-2 text-[11px]"
-                    style={{ width: COLUMNS[3].width, color: BRAND.textSecondary }}
+                    className="shrink-0 truncate px-2 text-ui-sm text-muted-foreground"
+                    style={{ width: COLUMNS[3].width }}
                   >
                     {it.endDate ?? ''}
                   </div>
                   <div
-                    className="shrink-0 px-2 text-right font-mono text-[11px] tabular-nums"
-                    style={{ width: COLUMNS[4].width, color: BRAND.textSecondary }}
+                    className="shrink-0 px-2 text-right font-mono text-ui-sm text-muted-foreground tabular-nums"
+                    style={{ width: COLUMNS[4].width }}
                   >
                     {it.plannedVelocity ?? ''}
                   </div>
@@ -269,10 +240,7 @@ export function IterationsPage() {
               ))}
 
             {!isLoading && !isError && pageRows.length === 0 && (
-              <div
-                className="flex h-40 items-center justify-center text-[12px]"
-                style={{ color: BRAND.textMuted }}
-              >
+              <div className="flex h-40 items-center justify-center text-ui-md text-foreground-subtle">
                 No iterations found
               </div>
             )}
@@ -280,25 +248,21 @@ export function IterationsPage() {
         </div>
 
         {/* Pagination */}
-        <div
-          className="flex h-10 shrink-0 items-center justify-between px-3"
-          style={{ backgroundColor: BRAND.surface, borderTop: `1px solid ${BRAND.borderSubtle}` }}
-        >
-          <span className="text-[11px]" style={{ color: BRAND.textMuted }}>
+        <div className="flex h-10 shrink-0 items-center justify-between border-t border-border-subtle bg-card px-3">
+          <span className="text-ui-sm text-foreground-subtle">
             {filtered.length === 0
               ? '0 records'
               : `${(activePage - 1) * PAGE_SIZE + 1}-${Math.min(activePage * PAGE_SIZE, filtered.length)} of ${filtered.length}`}
           </span>
           <div className="flex items-center gap-2">
-            <span className="text-[11px] tabular-nums" style={{ color: BRAND.textSecondary }}>
+            <span className="text-ui-sm text-muted-foreground tabular-nums">
               Page {activePage} of {totalPages}
             </span>
             <button
               aria-label="Previous page"
               disabled={activePage === 1}
               onClick={() => setPage(activePage - 1)}
-              className="cursor-pointer rounded p-1.5 transition-colors hover:bg-primary-lighter disabled:cursor-not-allowed disabled:opacity-35"
-              style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
+              className="cursor-pointer rounded border border-border-subtle p-1.5 text-muted-foreground transition-colors hover:bg-primary-lighter disabled:cursor-not-allowed disabled:opacity-35"
             >
               <ChevronLeft size={13} />
             </button>
@@ -306,8 +270,7 @@ export function IterationsPage() {
               aria-label="Next page"
               disabled={activePage === totalPages}
               onClick={() => setPage(activePage + 1)}
-              className="cursor-pointer rounded p-1.5 transition-colors hover:bg-primary-lighter disabled:cursor-not-allowed disabled:opacity-35"
-              style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textSecondary }}
+              className="cursor-pointer rounded border border-border-subtle p-1.5 text-muted-foreground transition-colors hover:bg-primary-lighter disabled:cursor-not-allowed disabled:opacity-35"
             >
               <ChevronLeft size={13} className="rotate-180" />
             </button>

@@ -8,7 +8,6 @@
  */
 import { useState } from 'react'
 import { ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react'
-import { BRAND } from '@/shared/config/brand'
 
 export interface PickerIteration {
   id: string
@@ -41,15 +40,14 @@ export function IterationPicker({
 
   return (
     <div
-      className="flex items-center"
-      style={{ border: `1px solid ${BRAND.border}`, borderRadius: 2, height: 28 }}
+      className="flex items-center border border-border-strong"
+      style={{ borderRadius: 2, height: 28 }}
     >
       <button
         type="button"
         disabled={selectedIndex <= 0}
         onClick={() => move(-1)}
-        className="flex h-full items-center px-1.5 disabled:opacity-40"
-        style={{ borderRight: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
+        className="flex h-full items-center border-r border-border-strong px-1.5 text-muted-foreground disabled:opacity-40"
         aria-label="Previous iteration"
       >
         <ChevronLeft size={14} />
@@ -58,37 +56,37 @@ export function IterationPicker({
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          className="flex h-full items-center gap-2.5 px-2.5 text-left"
-          style={{ minWidth: 280, color: BRAND.textPrimary }}
+          className="flex h-full items-center gap-2.5 px-2.5 text-left text-foreground"
+          style={{ minWidth: 280 }}
         >
-          <span className="text-[12px] font-semibold whitespace-nowrap">
+          <span className="text-ui-md font-semibold whitespace-nowrap">
             {selected?.name ?? 'No iteration'}
           </span>
           {selected && (
-            <span className="text-[11px] whitespace-nowrap" style={{ color: BRAND.textSecondary }}>
+            <span className="text-ui-sm whitespace-nowrap text-muted-foreground">
               {fmtRange(selected)}
             </span>
           )}
-          <ChevronDown size={12} style={{ marginLeft: 'auto', color: BRAND.textMuted }} />
+          <ChevronDown
+            size={12}
+            className="text-foreground-subtle"
+            style={{ marginLeft: 'auto' }}
+          />
         </button>
         {open && (
           <>
             <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
             <div
-              className="absolute top-full left-0 z-50 mt-1 overflow-y-auto py-1"
+              className="absolute top-full left-0 z-50 mt-1 overflow-y-auto border border-border-strong bg-card py-1"
               style={{
                 width: 360,
                 maxHeight: 300,
-                backgroundColor: BRAND.surface,
                 borderRadius: 2,
-                border: `1px solid ${BRAND.border}`,
                 boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
               }}
             >
               {iterations.length === 0 && (
-                <div className="px-3 py-2 text-[11px]" style={{ color: BRAND.textMuted }}>
-                  No iterations
-                </div>
+                <div className="px-3 py-2 text-ui-sm text-foreground-subtle">No iterations</div>
               )}
               {iterations.map((it) => (
                 <button
@@ -98,17 +96,10 @@ export function IterationPicker({
                     onSelect(it.id)
                     setOpen(false)
                   }}
-                  className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left hover:bg-background"
-                  style={{
-                    backgroundColor: it.id === selectedId ? BRAND.primaryLighter : 'transparent',
-                  }}
+                  className={`flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left hover:bg-background ${it.id === selectedId ? 'bg-primary-lighter' : ''}`}
                 >
-                  <span className="text-[12px] font-medium" style={{ color: BRAND.textPrimary }}>
-                    {it.name}
-                  </span>
-                  <span className="text-[11px]" style={{ color: BRAND.textMuted }}>
-                    {fmtRange(it)}
-                  </span>
+                  <span className="text-ui-md font-medium text-foreground">{it.name}</span>
+                  <span className="text-ui-sm text-foreground-subtle">{fmtRange(it)}</span>
                 </button>
               ))}
             </div>
@@ -119,8 +110,7 @@ export function IterationPicker({
         type="button"
         disabled={selectedIndex < 0 || selectedIndex >= iterations.length - 1}
         onClick={() => move(1)}
-        className="flex h-full items-center px-1.5 disabled:opacity-40"
-        style={{ borderLeft: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
+        className="flex h-full items-center border-l border-border-strong px-1.5 text-muted-foreground disabled:opacity-40"
         aria-label="Next iteration"
       >
         <ChevronRight size={14} />

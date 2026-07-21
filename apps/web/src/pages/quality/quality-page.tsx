@@ -142,8 +142,8 @@ export function QualityPage() {
   if (error) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8">
-        <AlertTriangle size={32} style={{ color: BRAND.danger }} />
-        <p className="text-sm" style={{ color: BRAND.textSecondary }}>
+        <AlertTriangle size={32} className="text-destructive" />
+        <p className="text-sm text-muted-foreground">
           {error instanceof Error ? error.message : 'Failed to load defects'}
         </p>
       </div>
@@ -357,8 +357,8 @@ export function QualityPage() {
           empty={
             defects.length === 0 ? (
               <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8">
-                <PackageOpen size={40} style={{ color: BRAND.textFaint }} />
-                <p className="text-sm" style={{ color: BRAND.textMuted }}>
+                <PackageOpen size={40} className="text-foreground-faint" />
+                <p className="text-sm text-foreground-subtle">
                   {search ||
                   severityFilter !== 'all' ||
                   envFilter !== 'all' ||

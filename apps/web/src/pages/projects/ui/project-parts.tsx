@@ -12,7 +12,7 @@ import {
 } from 'lucide-react'
 
 import { BRAND } from '@/shared/config/brand'
-import { formatDate } from '@/shared/lib/utils'
+import { cn, formatDate } from '@/shared/lib/utils'
 import { notify, errorMessage } from '@/shared/lib/toast'
 import { useCreateProject, useUpdateProject, type Project } from '@/features/projects/api'
 import { useWorkspaceMembers } from '@/features/workspaces/api'
@@ -89,8 +89,7 @@ export function ArchiveConfirmModal({
             value={typed}
             onChange={(e) => setTyped(e.target.value)}
             placeholder={project.key}
-            className="font-mono"
-            style={{ borderColor: confirmed ? BRAND.dangerBorder : undefined }}
+            className={cn('font-mono', confirmed && 'border-destructive-border')}
           />
         </FormField>
       </ModalBody>

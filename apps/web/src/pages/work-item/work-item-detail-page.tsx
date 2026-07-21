@@ -77,9 +77,7 @@ function DetailsTab({
 
   return (
     <div className="w-full space-y-5">
-      <h2 className="text-[20px] font-semibold" style={{ color: BRAND.textPrimary }}>
-        Details
-      </h2>
+      <h2 className="text-xl font-semibold text-foreground">Details</h2>
 
       <RichTextEditor
         title="Description"
@@ -223,13 +221,12 @@ export function WorkItemDetailPage() {
   if (!itemByKey) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3">
-        <p className="text-sm font-medium" style={{ color: BRAND.textSecondary }}>
+        <p className="text-sm font-medium text-muted-foreground">
           Work item "{itemKey}" not found.
         </p>
         <button
           onClick={() => void navigate({ to: '/backlog' })}
-          className="text-xs font-medium"
-          style={{ color: BRAND.primaryLight }}
+          className="text-xs font-medium text-primary-light"
         >
           ← Back to Backlog
         </button>
@@ -269,7 +266,7 @@ export function WorkItemDetailPage() {
             icon: (
               <span className="flex items-center gap-1.5">
                 <ListChecks size={19} />
-                <span className="text-[10px] font-semibold tabular-nums">{taskCount}</span>
+                <span className="text-ui-xs font-semibold tabular-nums">{taskCount}</span>
               </span>
             ),
             label: 'Tasks',
@@ -283,7 +280,7 @@ export function WorkItemDetailPage() {
             icon: (
               <span className="flex items-center gap-1.5">
                 <Bug size={19} />
-                <span className="text-[10px] font-semibold tabular-nums">{defectCount}</span>
+                <span className="text-ui-xs font-semibold tabular-nums">{defectCount}</span>
               </span>
             ),
             label: 'Defects',
@@ -298,9 +295,9 @@ export function WorkItemDetailPage() {
   ]
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden bg-white">
+    <div className="flex flex-1 flex-col overflow-hidden bg-card">
       {/* Header bar */}
-      <div className="shrink-0 text-white" style={{ backgroundColor: BRAND.primaryDark }}>
+      <div className="shrink-0 bg-primary-dark text-white">
         {/* Title row */}
         <div
           className="flex h-12 items-center gap-3 px-4"
@@ -314,15 +311,15 @@ export function WorkItemDetailPage() {
             <ChevronLeft size={18} />
           </button>
           <TypeBadge type={item.type} />
-          <span className="font-mono text-[13px] font-semibold text-white">{item.itemKey}</span>
+          <span className="font-mono text-ui-lg font-semibold text-white">{item.itemKey}</span>
           <span className="h-5 w-px bg-white/25" />
-          <h1 className="truncate text-[15px] font-semibold">{item.title}</h1>
+          <h1 className="truncate text-base font-semibold">{item.title}</h1>
           <div className="flex-1" />
 
           {/* Watcher count badge */}
           {watchers.length > 0 && (
             <div
-              className="flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium"
+              className="flex items-center gap-1 rounded px-2 py-1 text-ui-sm font-medium"
               style={{ backgroundColor: 'rgba(255,255,255,0.12)', color: BRAND.accentBg }}
               title={`${watchers.length} watcher${watchers.length !== 1 ? 's' : ''}`}
             >
@@ -341,7 +338,7 @@ export function WorkItemDetailPage() {
             }
             onClick={() => void toggleWatch.mutate(isWatching)}
             disabled={toggleWatch.isPending}
-            className="flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[11px] font-medium transition-colors"
+            className="flex items-center gap-1.5 rounded px-2.5 py-1.5 text-ui-sm font-medium transition-colors"
             style={{
               backgroundColor: isWatching ? 'rgba(255,255,255,0.18)' : 'transparent',
               color: isWatching ? 'white' : BRAND.accentBg,
@@ -364,18 +361,14 @@ export function WorkItemDetailPage() {
                 <MoreHorizontal size={17} />
               </button>
               {moreOpen && (
-                <div
-                  className="absolute top-full right-0 z-50 mt-1 w-44 overflow-hidden rounded shadow-lg"
-                  style={{ backgroundColor: 'white', border: `1px solid ${BRAND.borderInput}` }}
-                >
+                <div className="absolute top-full right-0 z-50 mt-1 w-44 overflow-hidden rounded border border-input bg-card shadow-lg">
                   <button
                     onClick={() => {
                       setMoreOpen(false)
                       setConfirmDelete(true)
                     }}
                     disabled={deleteMutation.isPending}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-[12px] transition-colors hover:bg-red-50 disabled:opacity-50"
-                    style={{ color: BRAND.danger }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-ui-md text-destructive transition-colors hover:bg-red-50 disabled:opacity-50"
                   >
                     <Trash2 size={13} />
                     Delete work item
@@ -404,7 +397,7 @@ export function WorkItemDetailPage() {
             <button
               key={id}
               onClick={() => setActiveTab(id)}
-              className="flex flex-col items-center justify-center gap-1 px-4 text-[11px] font-medium"
+              className="flex flex-col items-center justify-center gap-1 px-4 text-ui-sm font-medium"
               style={{
                 backgroundColor: activeTab === id ? BRAND.primaryLight : 'transparent',
                 color: activeTab === id ? 'white' : BRAND.accentBg,
@@ -418,12 +411,9 @@ export function WorkItemDetailPage() {
       </div>
 
       {/* Content area */}
-      <div className="flex min-h-0 flex-1" style={{ backgroundColor: BRAND.avatarBg }}>
+      <div className="flex min-h-0 flex-1 bg-avatar">
         {/* Main content */}
-        <main
-          className="flex-1 overflow-y-auto p-6"
-          style={{ backgroundColor: BRAND.surfaceSubtle }}
-        >
+        <main className="flex-1 overflow-y-auto bg-surface-subtle p-6">
           {activeTab === 'details' && (
             <DetailsTab
               item={item}
@@ -458,13 +448,9 @@ export function WorkItemDetailPage() {
           <button
             onClick={toggleSidebar}
             title="Show sidebar"
-            className="flex w-6 shrink-0 items-center justify-center transition-colors hover:bg-border-subtle"
-            style={{
-              borderLeft: `1px solid ${BRAND.borderInput}`,
-              backgroundColor: BRAND.surfaceSubtle,
-            }}
+            className="flex w-6 shrink-0 items-center justify-center border-l border-input bg-surface-subtle transition-colors hover:bg-border-subtle"
           >
-            <PanelRightOpen size={14} style={{ color: BRAND.textSecondary }} />
+            <PanelRightOpen size={14} className="text-muted-foreground" />
           </button>
         )}
       </div>

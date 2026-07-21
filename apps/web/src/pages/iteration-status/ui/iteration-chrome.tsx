@@ -53,22 +53,20 @@ export function IterationHeader({
 }) {
   return (
     <div
-      className="flex shrink-0 items-center gap-3 px-4"
+      className="flex shrink-0 items-center gap-3 border-b border-border-subtle bg-card px-4"
       style={{
         height: 44,
-        borderBottom: `1px solid ${BRAND.borderSubtle}`,
-        backgroundColor: BRAND.surface,
       }}
     >
       <span
-        style={{ fontSize: 16, fontWeight: 700, color: BRAND.textPrimary, whiteSpace: 'nowrap' }}
+        className="text-foreground"
+        style={{ fontSize: 16, fontWeight: 700, whiteSpace: 'nowrap' }}
       >
         Iteration Status
       </span>
       <div
-        className="flex items-center"
+        className="flex items-center border border-border-subtle"
         style={{
-          border: `1px solid ${BRAND.borderSubtle}`,
           borderRadius: 2,
           overflow: 'visible',
           height: 28,
@@ -77,6 +75,7 @@ export function IterationHeader({
         <button
           disabled={selectedIndex <= 0}
           onClick={() => move(-1)}
+          className="border-r border-border-subtle"
           style={{
             height: '100%',
             padding: '0 6px',
@@ -84,8 +83,6 @@ export function IterationHeader({
             alignItems: 'center',
             cursor: selectedIndex <= 0 ? 'not-allowed' : 'pointer',
             background: 'transparent',
-            border: 'none',
-            borderRight: `1px solid ${BRAND.borderSubtle}`,
             color: selectedIndex <= 0 ? BRAND.textMuted : BRAND.textSecondary,
             opacity: selectedIndex <= 0 ? 0.4 : 1,
           }}
@@ -101,6 +98,7 @@ export function IterationHeader({
         <div className="relative" style={{ height: '100%' }}>
           <button
             onClick={() => setSelectorOpen((o) => !o)}
+            className="text-foreground"
             style={{
               height: '100%',
               display: 'flex',
@@ -111,7 +109,6 @@ export function IterationHeader({
               background: 'transparent',
               border: 'none',
               minWidth: 300,
-              color: BRAND.textPrimary,
               textAlign: 'left',
             }}
             onMouseOver={(e) => {
@@ -124,21 +121,23 @@ export function IterationHeader({
             <span style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>
               {selected?.name}
             </span>
-            <span style={{ fontSize: 11, whiteSpace: 'nowrap', color: BRAND.textSecondary }}>
+            <span className="text-muted-foreground" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
               {selected && fmtRange(selected)}
             </span>
-            <ChevronDown size={12} style={{ marginLeft: 'auto', color: BRAND.textMuted }} />
+            <ChevronDown
+              size={12}
+              className="text-foreground-subtle"
+              style={{ marginLeft: 'auto' }}
+            />
           </button>
           {selectorOpen && (
             <div
-              className="absolute top-full left-0 z-50"
+              className="absolute top-full left-0 z-50 border border-border-subtle bg-card"
               style={{
                 marginTop: 4,
                 width: 380,
-                backgroundColor: BRAND.surface,
                 borderRadius: 2,
                 boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                border: `1px solid ${BRAND.borderSubtle}`,
                 maxHeight: 300,
                 overflowY: 'auto',
                 padding: '4px 0',
@@ -173,7 +172,9 @@ export function IterationHeader({
                   }}
                 >
                   <span style={{ fontWeight: 600, flex: 1 }}>{it.name}</span>
-                  <span style={{ color: BRAND.textMuted, fontSize: 11 }}>{fmtRange(it)}</span>
+                  <span className="text-foreground-subtle" style={{ fontSize: 11 }}>
+                    {fmtRange(it)}
+                  </span>
                 </button>
               ))}
             </div>
@@ -182,6 +183,7 @@ export function IterationHeader({
         <button
           disabled={selectedIndex >= iterations.length - 1}
           onClick={() => move(1)}
+          className="border-l border-border-subtle"
           style={{
             height: '100%',
             padding: '0 6px',
@@ -189,8 +191,6 @@ export function IterationHeader({
             alignItems: 'center',
             cursor: selectedIndex >= iterations.length - 1 ? 'not-allowed' : 'pointer',
             background: 'transparent',
-            border: 'none',
-            borderLeft: `1px solid ${BRAND.borderSubtle}`,
             color: selectedIndex >= iterations.length - 1 ? BRAND.textMuted : BRAND.textSecondary,
             opacity: selectedIndex >= iterations.length - 1 ? 0.4 : 1,
           }}
@@ -208,9 +208,8 @@ export function IterationHeader({
       <div className="flex-1" />
       {/* ── List / Board view toggle (BA spec) ──────────────────────────── */}
       <div
-        className="flex items-center"
+        className="flex items-center border border-border-subtle"
         style={{
-          border: `1px solid ${BRAND.borderSubtle}`,
           borderRadius: 2,
           height: 28,
           overflow: 'hidden',
@@ -270,11 +269,9 @@ export function MetricsStrip({
 }) {
   return (
     <div
-      className="flex shrink-0 items-stretch px-4"
+      className="flex shrink-0 items-stretch border-b border-border-subtle bg-card px-4"
       style={{
         height: 72,
-        borderBottom: `1px solid ${BRAND.borderSubtle}`,
-        backgroundColor: BRAND.surface,
         gap: 24,
       }}
     >
@@ -310,29 +307,32 @@ export function MetricsStrip({
       {/* Right side: Defects, Tasks, View Charts */}
       <div className="flex items-center" style={{ gap: 20 }}>
         <div className="flex items-center gap-2" style={{ minWidth: 90 }}>
-          <Bug size={16} style={{ color: BRAND.textMuted }} />
+          <Bug size={16} className="text-foreground-subtle" />
           <div className="flex flex-col">
-            <span style={{ fontSize: 11, fontWeight: 600, color: BRAND.textPrimary }}>
+            <span className="text-foreground" style={{ fontSize: 11, fontWeight: 600 }}>
               {metrics?.defectCount ?? 0} Active
             </span>
-            <span style={{ fontSize: 10, color: BRAND.textMuted }}>Defects</span>
+            <span className="text-foreground-subtle" style={{ fontSize: 10 }}>
+              Defects
+            </span>
           </div>
         </div>
         <div className="flex items-center gap-2" style={{ minWidth: 90 }}>
-          <ListChecks size={16} style={{ color: BRAND.textMuted }} />
+          <ListChecks size={16} className="text-foreground-subtle" />
           <div className="flex flex-col">
-            <span style={{ fontSize: 11, fontWeight: 600, color: BRAND.textPrimary }}>
+            <span className="text-foreground" style={{ fontSize: 11, fontWeight: 600 }}>
               {metrics?.activeTaskCount ?? 0} Active
             </span>
-            <span style={{ fontSize: 10, color: BRAND.textMuted }}>Tasks</span>
+            <span className="text-foreground-subtle" style={{ fontSize: 10 }}>
+              Tasks
+            </span>
           </div>
         </div>
         <button
-          className="flex items-center gap-1.5"
+          className="flex items-center gap-1.5 text-primary"
           style={{
             fontSize: 11,
             fontWeight: 600,
-            color: BRAND.primary,
             background: 'none',
             border: 'none',
             cursor: 'pointer',
@@ -414,10 +414,7 @@ export function Toolbar({
       defaultFiltersOpen={activeFilterCount > 0}
       filters={
         <>
-          <label
-            className="flex items-center gap-1.5 text-[11px] font-semibold"
-            style={{ color: BRAND.textSecondary }}
-          >
+          <label className="flex items-center gap-1.5 text-ui-sm font-semibold text-muted-foreground">
             State
             <InlineSelect
               value={stateFilter}
@@ -433,10 +430,7 @@ export function Toolbar({
               ))}
             </InlineSelect>
           </label>
-          <label
-            className="flex items-center gap-1.5 text-[11px] font-semibold"
-            style={{ color: BRAND.textSecondary }}
-          >
+          <label className="flex items-center gap-1.5 text-ui-sm font-semibold text-muted-foreground">
             Owner
             <InlineSelect
               value={ownerFilter}
@@ -453,10 +447,7 @@ export function Toolbar({
               ))}
             </InlineSelect>
           </label>
-          <label
-            className="flex cursor-pointer items-center gap-1.5 text-[11px] font-medium"
-            style={{ color: BRAND.textPrimary }}
-          >
+          <label className="flex cursor-pointer items-center gap-1.5 text-ui-sm font-medium text-foreground">
             <input
               type="checkbox"
               checked={blockedOnly}
@@ -471,8 +462,7 @@ export function Toolbar({
                 setOwnerFilter('all')
                 setBlockedOnly(false)
               }}
-              className="cursor-pointer rounded px-2.5 py-1 text-[11px]"
-              style={{ color: BRAND.primaryLight }}
+              className="cursor-pointer rounded px-2.5 py-1 text-ui-sm text-primary-light"
             >
               Clear filters
             </button>

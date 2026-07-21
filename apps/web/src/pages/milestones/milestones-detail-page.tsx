@@ -398,7 +398,7 @@ export function MilestoneDetailPage() {
                 </InlineSelect>
               ) : (
                 <span
-                  className="inline-flex items-center rounded-sm px-1.5 py-px text-[10px] font-medium"
+                  className="inline-flex items-center rounded-sm px-1.5 py-px text-ui-xs font-medium"
                   style={{ backgroundColor: s.bg, color: s.text, border: `1px solid ${s.border}` }}
                 >
                   {s.label}
@@ -408,31 +408,16 @@ export function MilestoneDetailPage() {
 
             {/* Progress */}
             {milestone.progress && (
-              <div
-                className="space-y-2 rounded-md p-3"
-                style={{
-                  backgroundColor: BRAND.surfaceHover,
-                  border: `1px solid ${BRAND.borderSubtle}`,
-                }}
-              >
-                <h3
-                  className="text-[10px] font-bold tracking-wider uppercase"
-                  style={{ color: BRAND.textSecondary }}
-                >
+              <div className="space-y-2 rounded-md border border-border-subtle bg-surface-hover p-3">
+                <h3 className="text-ui-xs font-bold tracking-wider text-muted-foreground uppercase">
                   Progress
                 </h3>
                 <div className="space-y-1">
-                  <div
-                    className="flex justify-between text-[11px] font-semibold"
-                    style={{ color: BRAND.textPrimary }}
-                  >
+                  <div className="flex justify-between text-ui-sm font-semibold text-foreground">
                     <span>Completion</span>
                     <span>{milestone.progress.progressPercent}%</span>
                   </div>
-                  <div
-                    className="h-2 w-full overflow-hidden rounded-full"
-                    style={{ backgroundColor: BRAND.avatarBg }}
-                  >
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-avatar">
                     <div
                       className="h-full rounded-full transition-all"
                       style={{
@@ -445,19 +430,16 @@ export function MilestoneDetailPage() {
                     />
                   </div>
                 </div>
-                <div
-                  className="grid grid-cols-2 gap-2 text-[10px]"
-                  style={{ color: BRAND.textMuted }}
-                >
+                <div className="grid grid-cols-2 gap-2 text-ui-xs text-foreground-subtle">
                   <div>
                     Items:{' '}
-                    <span className="font-semibold" style={{ color: BRAND.textPrimary }}>
+                    <span className="font-semibold text-foreground">
                       {milestone.progress.completedItems}/{milestone.progress.totalItems}
                     </span>
                   </div>
                   <div>
                     Points:{' '}
-                    <span className="font-semibold" style={{ color: BRAND.textPrimary }}>
+                    <span className="font-semibold text-foreground">
                       {milestone.progress.completedPoints}/{milestone.progress.totalPoints}
                     </span>
                   </div>

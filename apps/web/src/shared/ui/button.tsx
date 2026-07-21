@@ -37,9 +37,9 @@ const buttonVariants = cva(
         link: 'font-medium text-primary-light underline-offset-4 hover:underline',
       },
       size: {
-        md: 'px-4 py-1.5 text-[11px]',
-        sm: 'px-3 py-1 text-[11px]',
-        xs: 'px-2 py-0.5 text-[10px]',
+        md: 'px-4 py-1.5 text-ui-sm',
+        sm: 'px-3 py-1 text-ui-sm',
+        xs: 'px-2 py-0.5 text-ui-xs',
         icon: 'p-1',
       },
     },

@@ -185,7 +185,7 @@ export function ProjectsPage() {
     onToggleArchive: (p) => void toggleArchive(p),
   }
   return (
-    <div className="flex flex-1 flex-col" style={{ backgroundColor: BRAND.pageBg }}>
+    <div className="flex flex-1 flex-col bg-background">
       {showNewModal && workspaceId && (
         <NewProjectModal workspaceId={workspaceId} onClose={() => setShowNewModal(false)} />
       )}
@@ -206,15 +206,10 @@ export function ProjectsPage() {
       )}
 
       {/* Header */}
-      <div
-        className="flex shrink-0 items-center justify-between bg-white px-6 py-3"
-        style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
-      >
+      <div className="flex shrink-0 items-center justify-between border-b border-border-subtle bg-card px-6 py-3">
         <div>
-          <h1 className="text-[14px] font-semibold" style={{ color: BRAND.textPrimary }}>
-            Projects
-          </h1>
-          <p className="text-[11px]" style={{ color: BRAND.textMuted }}>
+          <h1 className="text-ui-xl font-semibold text-foreground">Projects</h1>
+          <p className="text-ui-sm text-foreground-subtle">
             {workspace?.workspaceName ?? 'Workspace'} · {activeCount} active{' '}
             {activeCount === 1 ? 'project' : 'projects'}
           </p>
@@ -239,10 +234,7 @@ export function ProjectsPage() {
       </MetricStrip>
 
       {/* Toolbar */}
-      <div
-        className="flex shrink-0 items-center gap-3 bg-white px-6 py-2"
-        style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
-      >
+      <div className="flex shrink-0 items-center gap-3 border-b border-border-subtle bg-card px-6 py-2">
         {/* Search */}
         <SearchInput
           value={search}
@@ -259,7 +251,7 @@ export function ProjectsPage() {
             <button
               key={tab}
               onClick={() => setFilter(tab)}
-              className="rounded px-2.5 py-1 text-[11px] font-medium capitalize transition-colors"
+              className="rounded px-2.5 py-1 text-ui-sm font-medium capitalize transition-colors"
               style={{
                 backgroundColor: filter === tab ? BRAND.primaryLighter : 'transparent',
                 color: filter === tab ? BRAND.primary : BRAND.textSecondary,
@@ -278,10 +270,7 @@ export function ProjectsPage() {
 
       {/* Table */}
       <div className="p-4">
-        <div
-          className="overflow-hidden rounded bg-white"
-          style={{ border: `1px solid ${BRAND.borderSubtle}` }}
-        >
+        <div className="overflow-hidden rounded border border-border-subtle bg-card">
           {/* Horizontal-scroll region: shared header + page-owned rows */}
           <div className="overflow-x-auto">
             <div style={{ width: table.tableWidth, minWidth: '100%' }}>
@@ -291,7 +280,7 @@ export function ProjectsPage() {
               {/* Loading state */}
               {isLoading && (
                 <div className="flex items-center justify-center py-12">
-                  <Loader2 size={22} className="animate-spin" style={{ color: BRAND.textMuted }} />
+                  <Loader2 size={22} className="animate-spin text-foreground-subtle" />
                 </div>
               )}
 
@@ -317,9 +306,8 @@ export function ProjectsPage() {
                     <div
                       key={project.id}
                       onClick={() => setEditingProject(project)}
-                      className="flex min-h-12 cursor-pointer items-center gap-2 px-3 transition-colors hover:bg-surface-hover"
+                      className="flex min-h-12 cursor-pointer items-center gap-2 border-b border-border-inner px-3 transition-colors hover:bg-surface-hover"
                       style={{
-                        borderBottom: `1px solid ${BRAND.borderInner}`,
                         opacity: project.status === 'archived' ? 0.7 : 1,
                         minWidth: 'max-content',
                       }}

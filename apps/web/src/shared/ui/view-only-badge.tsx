@@ -9,7 +9,7 @@ import { BRAND } from '@/shared/config/brand'
 export function ViewOnlyBadge({ label = 'View only' }: { label?: string }) {
   return (
     <span
-      className="flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] font-medium"
+      className="flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-ui-xs font-medium"
       style={{ backgroundColor: BRAND.pageBg, color: BRAND.textMuted }}
     >
       <Eye size={11} /> {label}

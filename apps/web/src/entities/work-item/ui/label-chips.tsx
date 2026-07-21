@@ -18,7 +18,7 @@ export function LabelChips({ labels }: { labels: readonly LabelChip[] }) {
       {labels.map((l) => (
         <span
           key={l.id}
-          className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium"
+          className="inline-flex items-center rounded-full px-2 py-0.5 text-ui-sm font-medium"
           style={{
             backgroundColor: `${l.color}1a`,
             color: l.color,

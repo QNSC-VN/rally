@@ -48,7 +48,6 @@ const COLS = {
   updated: 'w-24 shrink-0',
 } as const
 
-
 function progressColor(pct: number): string {
   if (pct >= 100) return BRAND.success
   if (pct > 50) return BRAND.primaryLight
@@ -92,7 +91,7 @@ export function PortfolioPage() {
 
   if (!projectId) {
     return (
-      <div className="flex h-full items-center justify-center" style={{ color: BRAND.textMuted }}>
+      <div className="flex h-full items-center justify-center text-foreground-subtle">
         <p className="text-sm">Select a project to view its portfolio.</p>
       </div>
     )
@@ -101,7 +100,7 @@ export function PortfolioPage() {
   const metrics = data?.metrics
 
   return (
-    <div className="flex h-full flex-col" style={{ backgroundColor: BRAND.pageBg }}>
+    <div className="flex h-full flex-col bg-background">
       {/* ── Metric strip ─────────────────────────────────────────────────── */}
       <MetricStrip>
         <MetricCard label="Initiatives" value={metrics?.initiatives ?? 0} minWidth={90} />
@@ -123,17 +122,11 @@ export function PortfolioPage() {
 
       {/* ── Toolbar ──────────────────────────────────────────────────────── */}
       <div
-        className="flex items-center gap-2 px-4"
-        style={{
-          height: 44,
-          backgroundColor: BRAND.surface,
-          borderBottom: `1px solid ${BRAND.border}`,
-        }}
+        className="flex items-center gap-2 border-b border-border-strong bg-card px-4"
+        style={{ height: 44 }}
       >
-        <h2 className="text-[13px] font-semibold" style={{ color: BRAND.textPrimary }}>
-          Portfolio Hierarchy
-        </h2>
-        <span className="text-[12px]" style={{ color: BRAND.textSecondary }}>
+        <h2 className="text-ui-lg font-semibold text-foreground">Portfolio Hierarchy</h2>
+        <span className="text-ui-md text-muted-foreground">
           {project.projectName}
           {team ? ` · ${team.teamName}` : ''}
         </span>
@@ -146,35 +139,23 @@ export function PortfolioPage() {
       </div>
 
       {/* ── Tree ─────────────────────────────────────────────────────────── */}
-      <div className="min-h-0 flex-1 overflow-auto" style={{ backgroundColor: BRAND.surface }}>
+      <div className="min-h-0 flex-1 overflow-auto bg-card">
         {isLoading ? (
           <div className="p-3">
             <SkeletonList rows={8} cols={7} />
           </div>
         ) : isError ? (
-          <div
-            className="flex h-full items-center justify-center text-[13px]"
-            style={{ color: BRAND.danger }}
-          >
+          <div className="flex h-full items-center justify-center text-ui-lg text-destructive">
             Failed to load portfolio data.
           </div>
         ) : tree.length === 0 ? (
-          <div
-            className="flex h-full items-center justify-center text-[13px]"
-            style={{ color: BRAND.textMuted }}
-          >
+          <div className="flex h-full items-center justify-center text-ui-lg text-foreground-subtle">
             No initiatives yet. Create an initiative to start planning the portfolio.
           </div>
         ) : (
           <>
             {/* Column header */}
-            <div
-              className="sticky top-0 z-10 flex h-8 items-center gap-2 px-3"
-              style={{
-                backgroundColor: BRAND.surfaceHover,
-                borderBottom: `1px solid ${BRAND.border}`,
-              }}
-            >
+            <div className="sticky top-0 z-10 flex h-8 items-center gap-2 border-b border-border-strong bg-surface-hover px-3">
               {(
                 [
                   [COLS.id, 'ID'],
@@ -191,8 +172,7 @@ export function PortfolioPage() {
               ).map(([cls, label]) => (
                 <div
                   key={label}
-                  className={`${cls} text-[9px] font-semibold tracking-wider uppercase`}
-                  style={{ color: BRAND.textMuted }}
+                  className={`${cls} text-ui-2xs font-semibold tracking-wider text-foreground-subtle uppercase`}
                 >
                   {label}
                 </div>
@@ -260,21 +240,17 @@ function TreeRow({
   return (
     <div>
       <div
-        className="flex h-9 items-center gap-2 px-3 hover:bg-surface-hover"
-        style={{
-          borderBottom: `1px solid ${BRAND.borderSubtle}`,
-          backgroundColor: level === 0 ? BRAND.surface : BRAND.surface,
-          cursor: hasChildren ? 'pointer' : 'default',
-        }}
+        className="flex h-9 items-center gap-2 border-b border-border-subtle bg-card px-3 hover:bg-surface-hover"
+        style={{ cursor: hasChildren ? 'pointer' : 'default' }}
         onClick={hasChildren ? () => onToggle(item.id) : undefined}
       >
         <div className={`${COLS.id} flex items-center gap-1.5`} style={{ paddingLeft: level * 20 }}>
           <span className="flex w-3.5 justify-center">
             {hasChildren &&
               (isOpen ? (
-                <ChevronDown size={12} style={{ color: BRAND.textMuted }} />
+                <ChevronDown size={12} className="text-foreground-subtle" />
               ) : (
-                <ChevronRight size={12} style={{ color: BRAND.textMuted }} />
+                <ChevronRight size={12} className="text-foreground-subtle" />
               ))}
           </span>
           <TypeBadge type={item.type} size={16} />
@@ -284,8 +260,8 @@ function TreeRow({
               e.stopPropagation()
               onOpen(item.itemKey)
             }}
-            className="truncate font-mono text-[10px] hover:underline"
-            style={{ color: BRAND.primaryLight, fontWeight: level < 2 ? 600 : 400 }}
+            className="truncate font-mono text-ui-xs text-primary-light hover:underline"
+            style={{ fontWeight: level < 2 ? 600 : 400 }}
           >
             {item.itemKey}
           </button>
@@ -293,7 +269,7 @@ function TreeRow({
 
         <div className={COLS.type}>
           <span
-            className="inline-flex items-center rounded-sm px-1.5 py-px text-[10px] font-semibold whitespace-nowrap"
+            className="inline-flex items-center rounded-sm px-1.5 py-px text-ui-xs font-semibold whitespace-nowrap"
             style={{ backgroundColor: typeCfg?.bg, color: typeCfg?.color }}
           >
             {typeCfg?.label ?? item.type}
@@ -302,11 +278,8 @@ function TreeRow({
 
         <div className={COLS.name}>
           <span
-            className="block truncate text-[12px]"
-            style={{
-              color: BRAND.textPrimary,
-              fontWeight: level === 0 ? 600 : level === 1 ? 500 : 400,
-            }}
+            className="block truncate text-ui-md text-foreground"
+            style={{ fontWeight: level === 0 ? 600 : level === 1 ? 500 : 400 }}
             title={item.title}
           >
             {item.title}
@@ -322,10 +295,7 @@ function TreeRow({
         </div>
 
         <div className={`${COLS.progress} flex items-center gap-2`}>
-          <div
-            className="h-1.5 w-16 overflow-hidden rounded-full"
-            style={{ backgroundColor: BRAND.borderSubtle }}
-          >
+          <div className="h-1.5 w-16 overflow-hidden rounded-full bg-border-subtle">
             <div
               className="h-full rounded-full"
               style={{
@@ -334,42 +304,29 @@ function TreeRow({
               }}
             />
           </div>
-          <span className="text-[10px] tabular-nums" style={{ color: BRAND.textSecondary }}>
-            {progressLabel}
-          </span>
+          <span className="text-ui-xs text-muted-foreground tabular-nums">{progressLabel}</span>
         </div>
 
-        <div
-          className={`${COLS.release} truncate text-[11px]`}
-          style={{ color: BRAND.textSecondary }}
-        >
+        <div className={`${COLS.release} truncate text-ui-sm text-muted-foreground`}>
           {item.releaseId ? (releaseMap.get(item.releaseId) ?? '—') : '—'}
         </div>
 
-        <div
-          className={`${COLS.related} text-[11px] tabular-nums`}
-          style={{ color: BRAND.textSecondary }}
-        >
+        <div className={`${COLS.related} text-ui-sm text-muted-foreground tabular-nums`}>
           {related ?? '—'}
         </div>
 
         <div className={COLS.blocked}>
           {rollup.blockedCount > 0 ? (
-            <span
-              className="inline-flex items-center gap-0.5 text-[10px] font-semibold"
-              style={{ color: BRAND.danger }}
-            >
+            <span className="inline-flex items-center gap-0.5 text-ui-xs font-semibold text-destructive">
               <AlertTriangle size={10} />
               {rollup.blockedCount}
             </span>
           ) : (
-            <span className="text-[10px]" style={{ color: BRAND.textFaint }}>
-              —
-            </span>
+            <span className="text-ui-xs text-foreground-faint">—</span>
           )}
         </div>
 
-        <div className={`${COLS.updated} text-[10px]`} style={{ color: BRAND.textMuted }}>
+        <div className={`${COLS.updated} text-ui-xs text-foreground-subtle`}>
           {formatDate(item.updatedAt)}
         </div>
       </div>

@@ -256,10 +256,7 @@ export function ReleaseDetailModal({
                 Progress
               </div>
               <div className="flex items-center gap-2">
-                <div
-                  className="h-2 flex-1 overflow-hidden rounded-full"
-                  style={{ backgroundColor: BRAND.borderSubtle }}
-                >
+                <div className="h-2 flex-1 overflow-hidden rounded-full bg-border-subtle">
                   <div
                     className="h-full rounded-full"
                     style={{

@@ -153,7 +153,7 @@ function MilestoneFormFields({
           >
             {targetStartDate || 'Not set'}
           </div>
-          <p className="mt-0.5 text-[10px] text-foreground-subtle">Derived from linked Releases</p>
+          <p className="mt-0.5 text-ui-xs text-foreground-subtle">Derived from linked Releases</p>
         </FormField>
         <FormField label="Target End">
           <div
@@ -164,7 +164,7 @@ function MilestoneFormFields({
           >
             {targetEndDate || 'Not set'}
           </div>
-          <p className="mt-0.5 text-[10px] text-foreground-subtle">Derived from linked Releases</p>
+          <p className="mt-0.5 text-ui-xs text-foreground-subtle">Derived from linked Releases</p>
         </FormField>
       </div>
       <FormField label="Associated Releases">

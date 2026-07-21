@@ -1,6 +1,5 @@
 import { Link } from '@tanstack/react-router'
 import { ShieldOff } from 'lucide-react'
-import { BRAND } from '@/shared/config/brand'
 import { Button } from '@/shared/ui/button'
 
 /**
@@ -10,32 +9,19 @@ import { Button } from '@/shared/ui/button'
 export function ForbiddenPage() {
   return (
     <div
-      className="flex flex-1 flex-col items-center justify-center gap-4 py-24"
-      style={{ backgroundColor: BRAND.pageBg }}
+      className="flex flex-1 flex-col items-center justify-center gap-4 bg-background py-24"
       role="main"
       aria-labelledby="forbidden-heading"
     >
-      <div
-        className="flex h-16 w-16 items-center justify-center rounded-full"
-        style={{ backgroundColor: BRAND.dangerBg }}
-      >
-        <ShieldOff size={30} style={{ color: BRAND.danger }} />
+      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-destructive-bg">
+        <ShieldOff size={30} className="text-destructive" />
       </div>
       <div className="text-center">
-        <p
-          id="forbidden-heading"
-          className="text-[42px] leading-none font-bold"
-          style={{ color: BRAND.textPrimary }}
-        >
+        <p id="forbidden-heading" className="text-4xl leading-none font-bold text-foreground">
           403
         </p>
-        <p className="mt-1 text-[14px] font-medium" style={{ color: BRAND.textSecondary }}>
-          Access denied
-        </p>
-        <p
-          className="mt-2 max-w-xs text-[13px]"
-          style={{ color: BRAND.textSecondary, opacity: 0.8 }}
-        >
+        <p className="mt-1 text-ui-xl font-medium text-muted-foreground">Access denied</p>
+        <p className="mt-2 max-w-xs text-ui-lg text-muted-foreground" style={{ opacity: 0.8 }}>
           You don't have permission to view this page. Contact your Workspace Admin if you think
           this is a mistake.
         </p>

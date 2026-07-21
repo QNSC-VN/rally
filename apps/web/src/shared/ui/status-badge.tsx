@@ -16,7 +16,7 @@ export function StatusBadge({ style, className }: StatusBadgeProps) {
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-sm px-1.5 py-px text-[11px] font-medium whitespace-nowrap',
+        'inline-flex items-center rounded-sm px-1.5 py-px text-ui-sm font-medium whitespace-nowrap',
         className,
       )}
       style={{ backgroundColor: style.bg, color: style.text, border: `1px solid ${style.border}` }}

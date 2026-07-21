@@ -67,7 +67,7 @@ function OverlaySelectField({
       >
         {leading}
         <span
-          className="min-w-0 flex-1 truncate text-[12px]"
+          className="min-w-0 flex-1 truncate text-ui-md"
           style={{ color: muted ? BRAND.textDisabled : BRAND.textPrimary }}
         >
           {displayText}

@@ -432,8 +432,8 @@ export function IterationStatusPage() {
   if (!projectId) {
     return (
       <div
-        className="flex flex-1 items-center justify-center"
-        style={{ color: BRAND.textMuted, fontSize: 13 }}
+        className="flex flex-1 items-center justify-center text-foreground-subtle"
+        style={{ fontSize: 13 }}
       >
         Select a project to view Iteration Status.
       </div>
@@ -443,14 +443,14 @@ export function IterationStatusPage() {
   if (!iterations.length) {
     return (
       <div
-        className="flex flex-1 flex-col items-center justify-center gap-2"
-        style={{ color: BRAND.textMuted, fontSize: 13 }}
+        className="flex flex-1 flex-col items-center justify-center gap-2 text-foreground-subtle"
+        style={{ fontSize: 13 }}
       >
         <span>No iterations in this project/team yet.</span>
         <button
           onClick={() => navigate({ to: '/timeboxes' })}
+          className="text-primary"
           style={{
-            color: BRAND.primary,
             fontSize: 12,
             fontWeight: 600,
             cursor: 'pointer',
@@ -473,8 +473,8 @@ export function IterationStatusPage() {
 
   return (
     <div
-      className="flex flex-1 flex-col overflow-hidden"
-      style={{ backgroundColor: BRAND.surface, color: BRAND.textPrimary, fontSize: 12 }}
+      className="flex flex-1 flex-col overflow-hidden bg-card text-foreground"
+      style={{ fontSize: 12 }}
     >
       {/* ── Single page header: title + iteration picker ────────────────── */}
       <IterationHeader
@@ -551,8 +551,7 @@ export function IterationStatusPage() {
                 type="button"
                 onClick={() => void removeSelectedFromIteration()}
                 disabled={bulkIteration.isPending}
-                className="rounded px-2 py-1 text-[11px] font-medium transition-colors hover:bg-white disabled:opacity-50"
-                style={{ color: BRAND.primaryLight }}
+                className="rounded px-2 py-1 text-ui-sm font-medium text-primary-light transition-colors hover:bg-card disabled:opacity-50"
               >
                 Remove from Iteration
               </button>
@@ -561,8 +560,7 @@ export function IterationStatusPage() {
                 type="button"
                 onClick={() => setConfirmDelete(true)}
                 disabled={deleteItem.isPending}
-                className="flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors hover:bg-white disabled:opacity-50"
-                style={{ color: BRAND.danger }}
+                className="flex items-center gap-1 rounded px-2 py-1 text-ui-sm font-medium text-destructive transition-colors hover:bg-card disabled:opacity-50"
               >
                 <Trash2 size={12} />
                 Delete
@@ -578,17 +576,11 @@ export function IterationStatusPage() {
           {isLoading ? (
             <SkeletonList rows={6} cols={6} />
           ) : isError ? (
-            <div
-              className="flex h-full items-center justify-center text-[13px]"
-              style={{ color: BRAND.danger }}
-            >
+            <div className="flex h-full items-center justify-center text-ui-lg text-destructive">
               Failed to load board data.
             </div>
           ) : filteredItems.length === 0 ? (
-            <div
-              className="flex h-full items-center justify-center text-[13px]"
-              style={{ color: BRAND.textMuted }}
-            >
+            <div className="flex h-full items-center justify-center text-ui-lg text-foreground-subtle">
               No items assigned to this iteration
             </div>
           ) : (
@@ -637,8 +629,8 @@ export function IterationStatusPage() {
           error={
             isError ? (
               <div
-                className="flex items-center justify-center"
-                style={{ height: 160, fontSize: 12, color: BRAND.danger }}
+                className="flex items-center justify-center text-destructive"
+                style={{ height: 160, fontSize: 12 }}
               >
                 Failed to load iteration status. Please try again.
               </div>
@@ -647,8 +639,8 @@ export function IterationStatusPage() {
           empty={
             items.length === 0 ? (
               <div
-                className="flex items-center justify-center"
-                style={{ height: 160, fontSize: 12, color: BRAND.textMuted }}
+                className="flex items-center justify-center text-foreground-subtle"
+                style={{ height: 160, fontSize: 12 }}
               >
                 No items assigned to this iteration
               </div>

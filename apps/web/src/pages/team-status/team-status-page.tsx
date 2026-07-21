@@ -13,7 +13,6 @@ import { ChevronDown, ChevronLeft, ChevronRight, Inbox } from 'lucide-react'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { WorkItemRefCell } from '@/entities/work-item/ui/work-item-ref-cell'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
-import { BRAND } from '@/shared/config/brand'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
 import { useIterations, type Iteration } from '@/features/iterations/api'
@@ -85,20 +84,13 @@ function fmtRange(it: Pick<Iteration, 'startDate' | 'endDate'>) {
  */
 function ProgressBar({ percent }: { percent: number }) {
   const clamped = Math.min(Math.max(percent, 0), 100)
-  const color = BRAND.success
   return (
     <div className="flex w-full flex-col gap-[3px]">
       <span className="text-ui-xs leading-none font-semibold text-success tabular-nums">
         {percent}%
       </span>
-      <div
-        className="h-1.5 w-full overflow-hidden rounded-full"
-        style={{ backgroundColor: BRAND.borderSubtle }}
-      >
-        <div
-          className="h-full rounded-full"
-          style={{ width: `${clamped}%`, backgroundColor: color }}
-        />
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-border-subtle">
+        <div className="h-full rounded-full bg-success" style={{ width: `${clamped}%` }} />
       </div>
     </div>
   )
@@ -249,8 +241,8 @@ export function TeamStatusPage() {
       <div className="flex shrink-0 items-center gap-3 border-b border-border-subtle bg-card px-4 py-2">
         <span className="text-ui-sm font-semibold text-foreground">Iteration</span>
         <div
-          className="flex items-center overflow-visible rounded"
-          style={{ border: `1px solid ${BRAND.accentBorder}`, height: 28 }}
+          className="flex items-center overflow-visible rounded border border-accent-border"
+          style={{ height: 28 }}
         >
           <button
             disabled={selectedIndex <= 0}
@@ -280,16 +272,10 @@ export function TeamStatusPage() {
                       setSelectedId(it.id)
                       setSelectorOpen(false)
                     }}
-                    className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-surface-subtle"
-                    style={{
-                      backgroundColor: selectedId === it.id ? BRAND.primaryLighter : 'transparent',
-                    }}
+                    className={`flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-surface-subtle ${selectedId === it.id ? 'bg-primary-lighter' : ''}`}
                   >
                     <span
-                      className="flex-1 text-[12px] font-semibold"
-                      style={{
-                        color: selectedId === it.id ? BRAND.primary : BRAND.textPrimary,
-                      }}
+                      className={`flex-1 text-ui-md font-semibold ${selectedId === it.id ? 'text-primary' : 'text-foreground'}`}
                     >
                       {it.name}
                     </span>
@@ -313,15 +299,11 @@ export function TeamStatusPage() {
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search Tasks"
           aria-label="Search Tasks"
-          className="h-7 w-56 rounded px-2 text-[12px] focus:outline-none"
-          style={{ border: `1px solid ${BRAND.accentBorder}`, color: BRAND.textPrimary }}
+          className="h-7 w-56 rounded border border-accent-border px-2 text-ui-md text-foreground focus:outline-none"
         />
         <div className="flex-1" />
-        <span className="text-[11px] whitespace-nowrap" style={{ color: BRAND.textSecondary }}>
-          Total Work Items:{' '}
-          <span className="font-semibold" style={{ color: BRAND.textPrimary }}>
-            {totalWorkItems}
-          </span>
+        <span className="text-ui-sm whitespace-nowrap text-muted-foreground">
+          Total Work Items: <span className="font-semibold text-foreground">{totalWorkItems}</span>
         </span>
         <ColumnFieldsMenu {...table.fieldsMenuProps} />
       </div>
@@ -354,10 +336,7 @@ export function TeamStatusPage() {
         skeleton={{ rows: 10, cols: 10 }}
         error={
           isError ? (
-            <div
-              className="flex h-40 items-center justify-center text-[12px]"
-              style={{ color: BRAND.danger }}
-            >
+            <div className="flex h-40 items-center justify-center text-ui-md text-destructive">
               Failed to load team status. Please try again.
             </div>
           ) : undefined
@@ -458,12 +437,8 @@ function MemberGroup({
     <div>
       {/* Group header row (P3-TS-FR-015) */}
       <div
-        className="flex h-9 cursor-pointer items-center px-3 hover:bg-surface-hover"
-        style={{
-          backgroundColor: BRAND.surfaceHover,
-          borderBottom: `1px solid ${BRAND.borderInner}`,
-          minWidth: 'max-content',
-        }}
+        className="flex h-9 cursor-pointer items-center border-b border-border-inner bg-surface-hover px-3 hover:bg-surface-hover"
+        style={{ minWidth: 'max-content' }}
         onClick={() => setExpanded((e) => !e)}
       >
         {/* Leading gutter (aligns with task-row drag/checkbox area) */}
@@ -488,16 +463,16 @@ function MemberGroup({
           <span className="flex w-3 shrink-0 items-center justify-center">
             {group.taskCount > 0 &&
               (expanded ? (
-                <ChevronDown size={12} style={{ color: BRAND.textSecondary }} />
+                <ChevronDown size={12} className="text-muted-foreground" />
               ) : (
-                <ChevronRight size={12} style={{ color: BRAND.textSecondary }} />
+                <ChevronRight size={12} className="text-muted-foreground" />
               ))}
           </span>
           <Avatar name={group.owner.displayName} size={20} />
-          <span className="truncate text-[11px] font-semibold" style={{ color: BRAND.textPrimary }}>
+          <span className="truncate text-ui-sm font-semibold text-foreground">
             {group.owner.displayName}
           </span>
-          <span className="shrink-0 text-[10px]" style={{ color: BRAND.textMuted }}>
+          <span className="shrink-0 text-ui-xs text-foreground-subtle">
             ({group.taskCount} Tasks)
           </span>
         </div>
@@ -518,32 +493,26 @@ function MemberGroup({
             canEdit={canEdit}
             onCommit={commitCapacity}
             trigger="dblclick"
-            className="font-mono text-[11px] tabular-nums hover:underline"
-            style={{ color: BRAND.textSecondary }}
-            inputClassName="w-12 text-[11px] text-right font-mono px-1 py-0.5 rounded focus:outline-none"
-            inputStyle={{
-              border: `1px solid ${BRAND.borderInput}`,
-              backgroundColor: 'white',
-              color: BRAND.textPrimary,
-            }}
+            className="font-mono text-ui-sm text-muted-foreground tabular-nums hover:underline"
+            inputClassName="w-12 rounded border border-input bg-card px-1 py-0.5 text-right font-mono text-ui-sm text-foreground focus:outline-none"
             ariaLabel="Capacity"
           />
         </div>
         <div
-          className="shrink-0 text-right font-mono text-[11px] tabular-nums"
-          style={{ ...colStyles.estimate, color: BRAND.textSecondary }}
+          className="shrink-0 text-right font-mono text-ui-sm text-muted-foreground tabular-nums"
+          style={colStyles.estimate}
         >
           {group.estimateHours}
         </div>
         <div
-          className="shrink-0 text-right font-mono text-[11px] tabular-nums"
-          style={{ ...colStyles.todo, color: BRAND.textSecondary }}
+          className="shrink-0 text-right font-mono text-ui-sm text-muted-foreground tabular-nums"
+          style={colStyles.todo}
         >
           {group.todoHours}
         </div>
         <div
-          className="shrink-0 text-right font-mono text-[11px] tabular-nums"
-          style={{ ...colStyles.actuals, color: BRAND.textSecondary }}
+          className="shrink-0 text-right font-mono text-ui-sm text-muted-foreground tabular-nums"
+          style={colStyles.actuals}
         >
           {group.actualHours}
         </div>
@@ -667,8 +636,8 @@ function TaskRow({
 
   return (
     <div
-      className="flex h-[34px] items-center bg-white px-3 text-[11px] transition-colors duration-100 hover:bg-primary-lighter"
-      style={{ borderBottom: `1px solid ${BRAND.borderInner}`, minWidth: 'max-content' }}
+      className="flex h-[34px] items-center border-b border-border-inner bg-card px-3 text-ui-sm transition-colors duration-100 hover:bg-primary-lighter"
+      style={{ minWidth: 'max-content' }}
       onClick={() => onOpenItem(task.taskKey)}
     >
       <div className="w-6 shrink-0" /> {/* Spacer for expand arrow */}
@@ -697,14 +666,8 @@ function TaskRow({
           onCommit={commitTitle}
           trigger="dblclick"
           displayValue={task.displayName || task.title}
-          className="block truncate hover:underline"
-          style={{ color: BRAND.textPrimary }}
-          inputClassName="w-full text-[11px] px-1 py-0.5 rounded focus:outline-none"
-          inputStyle={{
-            border: `1px solid ${BRAND.borderInput}`,
-            backgroundColor: 'white',
-            color: BRAND.textPrimary,
-          }}
+          className="block truncate text-foreground hover:underline"
+          inputClassName="w-full rounded border border-input bg-card px-1 py-0.5 text-ui-sm text-foreground focus:outline-none"
           title={task.displayName || task.title}
           ariaLabel="Task name"
         />
@@ -722,16 +685,11 @@ function TaskRow({
             onOpen={() => onOpenItem(task.workProduct.key)}
           />
         ) : (
-          <span className="text-[10px]" style={{ color: BRAND.textFaint }}>
-            —
-          </span>
+          <span className="text-ui-xs text-foreground-faint">—</span>
         )}
       </div>
       {/* Release (P3-TS-FR-025) */}
-      <div
-        className="shrink-0 truncate px-2"
-        style={{ ...colStyles.release, color: BRAND.textSecondary }}
-      >
+      <div className="shrink-0 truncate px-2 text-muted-foreground" style={colStyles.release}>
         {task.release?.name ?? ''}
       </div>
       {/* State (P3-TS-FR-021 — inline editable) */}
@@ -757,14 +715,8 @@ function TaskRow({
           canEdit={canEdit}
           onCommit={commitEstimate}
           displayValue={task.estimateHours || '—'}
-          className="font-mono tabular-nums"
-          style={{ color: BRAND.textSecondary }}
-          inputClassName="w-full text-[11px] text-right font-mono px-1 py-0.5 rounded focus:outline-none"
-          inputStyle={{
-            border: `1px solid ${BRAND.borderInput}`,
-            backgroundColor: 'white',
-            color: BRAND.textPrimary,
-          }}
+          className="font-mono text-muted-foreground tabular-nums"
+          inputClassName="w-full rounded border border-input bg-card px-1 py-0.5 text-right font-mono text-ui-sm text-foreground focus:outline-none"
           ariaLabel="Estimate hours"
         />
       </div>
@@ -778,14 +730,8 @@ function TaskRow({
           canEdit={canEdit}
           onCommit={commitTodo}
           displayValue={task.todoHours || '—'}
-          className="font-mono tabular-nums"
-          style={{ color: BRAND.textSecondary }}
-          inputClassName="w-full text-[11px] text-right font-mono px-1 py-0.5 rounded focus:outline-none"
-          inputStyle={{
-            border: `1px solid ${BRAND.borderInput}`,
-            backgroundColor: 'white',
-            color: BRAND.textPrimary,
-          }}
+          className="font-mono text-muted-foreground tabular-nums"
+          inputClassName="w-full rounded border border-input bg-card px-1 py-0.5 text-right font-mono text-ui-sm text-foreground focus:outline-none"
           ariaLabel="To Do hours"
         />
       </div>
@@ -799,20 +745,14 @@ function TaskRow({
           canEdit={canEdit}
           onCommit={commitActual}
           displayValue={task.actualHours || '—'}
-          className="font-mono tabular-nums"
-          style={{ color: BRAND.textSecondary }}
-          inputClassName="w-full text-[11px] text-right font-mono px-1 py-0.5 rounded focus:outline-none"
-          inputStyle={{
-            border: `1px solid ${BRAND.borderInput}`,
-            backgroundColor: 'white',
-            color: BRAND.textPrimary,
-          }}
+          className="font-mono text-muted-foreground tabular-nums"
+          inputClassName="w-full rounded border border-input bg-card px-1 py-0.5 text-right font-mono text-ui-sm text-foreground focus:outline-none"
           ariaLabel="Actual hours"
         />
       </div>
       {/* Owner + Dev Owner (UI-only alias — both write assigneeId) */}
       <div
-        className="shrink-0 truncate px-2 text-[11px]"
+        className="shrink-0 truncate px-2 text-ui-sm"
         style={colStyles.owner}
         onClick={(e) => e.stopPropagation()}
       >

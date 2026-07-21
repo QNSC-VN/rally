@@ -78,19 +78,14 @@ export function ReleasesPage() {
 
   if (!projectId) {
     return (
-      <div
-        className="flex flex-1 items-center justify-center"
-        style={{ backgroundColor: BRAND.pageBg }}
-      >
-        <p className="text-[13px]" style={{ color: BRAND.textMuted }}>
-          Select a project to view releases.
-        </p>
+      <div className="flex flex-1 items-center justify-center bg-background">
+        <p className="text-ui-lg text-foreground-subtle">Select a project to view releases.</p>
       </div>
     )
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden" style={{ backgroundColor: BRAND.pageBg }}>
+    <div className="flex flex-1 flex-col overflow-hidden bg-background">
       {/* Header */}
       <PageToolbar
         title="Releases"

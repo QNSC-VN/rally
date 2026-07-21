@@ -2,7 +2,6 @@ import { useCallback, useMemo, useState, type CSSProperties } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Plus, ListChecks } from 'lucide-react'
 
-import { BRAND } from '@/shared/config/brand'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import {
   useTasks,
@@ -159,10 +158,8 @@ export function TasksTab({
       {/* Header */}
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h2 className="text-[20px] font-semibold" style={{ color: BRAND.textPrimary }}>
-            Tasks
-          </h2>
-          <p className="mt-1 text-[11px]" style={{ color: BRAND.textSecondary }}>
+          <h2 className="text-xl font-semibold text-foreground">Tasks</h2>
+          <p className="mt-1 text-ui-sm text-muted-foreground">
             Break this work item into trackable delivery tasks.
           </p>
         </div>
@@ -172,10 +169,7 @@ export function TasksTab({
         </Button>
       </div>
 
-      <div
-        className="overflow-x-auto rounded bg-white"
-        style={{ border: `1px solid ${BRAND.border}` }}
-      >
+      <div className="overflow-x-auto rounded border border-border-strong bg-card">
         {/* Header row (shared engine: resize + reorder + show/hide) */}
         <DataTableHeader
           columns={table.headerColumns}
@@ -296,16 +290,12 @@ function TaskRow({
   const ownerName = owner ? (owner.displayName ?? owner.email ?? null) : null
 
   const numInput =
-    'w-16 rounded border border-input bg-white px-1 py-0.5 text-right font-mono text-[12px] focus:outline-none'
+    'w-16 rounded border border-input bg-card px-1 py-0.5 text-right font-mono text-ui-md focus:outline-none'
 
   return (
     <div
-      className="flex min-h-[36px] items-center bg-white px-3 text-[12px] transition-colors hover:bg-primary-lighter"
-      style={{
-        borderBottom: `1px solid ${BRAND.borderInner}`,
-        color: BRAND.textPrimary,
-        minWidth: 'max-content',
-      }}
+      className="flex min-h-[36px] items-center border-b border-border-inner bg-card px-3 text-ui-md text-foreground transition-colors hover:bg-primary-lighter"
+      style={{ minWidth: 'max-content' }}
     >
       <div className="flex w-6 shrink-0 items-center justify-center">
         <SelectionCheckbox
@@ -316,8 +306,8 @@ function TaskRow({
       </div>
       {/* Rank */}
       <div
-        className="shrink-0 px-2 font-mono text-[11px]"
-        style={{ ...colStyles.rank, color: BRAND.textSecondary }}
+        className="shrink-0 px-2 font-mono text-ui-sm text-muted-foreground"
+        style={colStyles.rank}
       >
         {task.rank ?? '—'}
       </div>
@@ -331,13 +321,9 @@ function TaskRow({
           value={task.title}
           canEdit={canEdit}
           onCommit={commitTitle}
-          className="block truncate text-[12px] font-medium"
-          style={{ color: BRAND.textPrimary, cursor: 'text' }}
-          inputClassName="w-full rounded px-1 py-0.5 text-[12px] focus:outline-none"
-          inputStyle={{
-            border: `1px solid ${BRAND.accentBorderStrong}`,
-            color: BRAND.textPrimary,
-          }}
+          className="block truncate text-ui-md font-medium text-foreground"
+          style={{ cursor: 'text' }}
+          inputClassName="w-full rounded border border-accent-border-strong px-1 py-0.5 text-ui-md text-foreground focus:outline-none"
           title={task.title}
           ariaLabel={`Task ${task.itemKey} name`}
         />
@@ -372,17 +358,11 @@ function TaskRow({
         />
       </div>
       {/* Project */}
-      <div
-        className="shrink-0 truncate px-2"
-        style={{ ...colStyles.project, color: BRAND.textSecondary }}
-      >
+      <div className="shrink-0 truncate px-2 text-muted-foreground" style={colStyles.project}>
         {projectLabel}
       </div>
       {/* Teams */}
-      <div
-        className="shrink-0 truncate px-2"
-        style={{ ...colStyles.teams, color: BRAND.textSecondary }}
-      >
+      <div className="shrink-0 truncate px-2 text-muted-foreground" style={colStyles.teams}>
         {teamName(task.teamId)}
       </div>
       {/* To Do — inline editable */}
@@ -392,8 +372,7 @@ function TaskRow({
           canEdit={canEdit}
           onCommit={(v) => commitHours('todoHours', v)}
           displayValue={task.todoHours ?? '—'}
-          className="font-mono tabular-nums hover:underline"
-          style={{ color: BRAND.textSecondary }}
+          className="font-mono text-muted-foreground tabular-nums hover:underline"
           inputClassName={numInput}
           ariaLabel={`Task ${task.itemKey} to do hours`}
         />
@@ -405,16 +384,15 @@ function TaskRow({
           canEdit={canEdit}
           onCommit={(v) => commitHours('actualHours', v)}
           displayValue={task.actualHours ?? '—'}
-          className="font-mono tabular-nums hover:underline"
-          style={{ color: BRAND.textSecondary }}
+          className="font-mono text-muted-foreground tabular-nums hover:underline"
           inputClassName={numInput}
           ariaLabel={`Task ${task.itemKey} actual hours`}
         />
       </div>
       {/* Estimate — read-only derived (To Do + Actuals) */}
       <div
-        className="shrink-0 px-2 text-right font-mono text-[11px]"
-        style={{ ...colStyles.estimate, color: BRAND.textSecondary }}
+        className="shrink-0 px-2 text-right font-mono text-ui-sm text-muted-foreground"
+        style={colStyles.estimate}
         title="Estimate is derived: To Do + Actuals"
       >
         {deriveEstimateHours(task.todoHours, task.actualHours)}h

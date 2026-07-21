@@ -123,18 +123,12 @@ export function SettingsPage() {
   const activeLabel = allItems.find((i) => i.key === activeTab)?.label ?? 'Settings'
 
   return (
-    <div className="flex flex-1 overflow-hidden" style={{ backgroundColor: BRAND.pageBg }}>
+    <div className="flex flex-1 overflow-hidden bg-background">
       {/* ── Left sidebar ── */}
-      <aside
-        className="w-52 shrink-0 overflow-y-auto px-3 py-4"
-        style={{ borderRight: `1px solid ${BRAND.border}`, backgroundColor: BRAND.surface }}
-      >
+      <aside className="w-52 shrink-0 overflow-y-auto border-r border-border-strong bg-card px-3 py-4">
         {SIDEBAR.map((group) => (
           <div key={group.group} className="mb-4">
-            <p
-              className="mb-1 px-2 text-[10px] font-semibold tracking-wider uppercase"
-              style={{ color: BRAND.textMuted }}
-            >
+            <p className="mb-1 px-2 text-ui-xs font-semibold tracking-wider text-foreground-subtle uppercase">
               {group.group}
             </p>
             {group.items.map((item) => {
@@ -149,7 +143,7 @@ export function SettingsPage() {
                   onClick={() => clickable && setActiveTab(item.key)}
                   disabled={locked}
                   title={locked ? 'Requires admin role' : undefined}
-                  className="mb-0.5 flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[12px] transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                  className="mb-0.5 flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-ui-md transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                   style={{
                     backgroundColor: isActive ? BRAND.primaryLighter : 'transparent',
                     color: isActive ? BRAND.primary : BRAND.textSecondary,
@@ -158,7 +152,7 @@ export function SettingsPage() {
                 >
                   <Icon size={13} style={{ color: isActive ? BRAND.primary : BRAND.textMuted }} />
                   {item.label}
-                  {locked && <Lock size={10} className="ml-auto" style={{ color: BRAND.border }} />}
+                  {locked && <Lock size={10} className="ml-auto text-border-strong" />}
                 </button>
               )
             })}
@@ -168,9 +162,7 @@ export function SettingsPage() {
 
       {/* ── Content ── */}
       <main className="flex-1 overflow-y-auto p-8">
-        <h2 className="mb-6 text-[15px] font-semibold" style={{ color: BRAND.textPrimary }}>
-          {activeLabel}
-        </h2>
+        <h2 className="mb-6 text-base font-semibold text-foreground">{activeLabel}</h2>
         {activeTab === 'profile' ? (
           <ProfileTab />
         ) : activeTab === 'members' ? (

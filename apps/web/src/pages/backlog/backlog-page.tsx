@@ -302,14 +302,7 @@ export function BacklogPage() {
   const table = useDataTable<WorkItem, unknown, ColumnKey>(BACKLOG_COLUMNS, {
     storageKey: STORAGE_KEYS.BACKLOG_COLUMN_WIDTHS,
   })
-  const {
-    startResize,
-    order,
-    hidden,
-    toggleVisible,
-    reorder,
-    colStyles,
-  } = table
+  const { startResize, order, hidden, toggleVisible, reorder, colStyles } = table
 
   // ── Navigation ────────────────────────────────────────────────────────────────
   function openItem(item: WorkItem) {
@@ -338,9 +331,7 @@ export function BacklogPage() {
   if (!projectId) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <p className="text-sm" style={{ color: BRAND.textMuted }}>
-          Select a project to view the backlog.
-        </p>
+        <p className="text-sm text-foreground-subtle">Select a project to view the backlog.</p>
       </div>
     )
   }
@@ -412,7 +403,7 @@ export function BacklogPage() {
           error={
             isError ? (
               <div className="flex h-32 items-center justify-center">
-                <p className="text-sm" style={{ color: BRAND.danger }}>
+                <p className="text-sm text-destructive">
                   {error instanceof Error ? error.message : 'Failed to load backlog.'}
                 </p>
               </div>
@@ -421,14 +412,13 @@ export function BacklogPage() {
           empty={
             items.length === 0 ? (
               <div className="flex h-32 flex-col items-center justify-center gap-2">
-                <p className="text-sm" style={{ color: BRAND.textMuted }}>
+                <p className="text-sm text-foreground-subtle">
                   No backlog items match your filters.
                 </p>
                 <button
                   onClick={() => setShowCreate(true)}
                   disabled={!canCreate}
-                  className="text-xs font-medium disabled:cursor-not-allowed disabled:opacity-40"
-                  style={{ color: BRAND.primaryLight }}
+                  className="text-xs font-medium text-primary-light disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   + Create Work Item
                 </button>
@@ -728,7 +718,7 @@ function BacklogRow({
   return (
     <div
       ref={setNodeRef}
-      className="group flex h-[34px] items-center gap-2 px-3 transition-colors duration-100 hover:bg-primary-lighter"
+      className="group flex h-[34px] items-center gap-2 border-b border-border-inner px-3 transition-colors duration-100 hover:bg-primary-lighter"
       style={{
         minWidth: 'max-content',
         backgroundColor: isDragging
@@ -736,7 +726,6 @@ function BacklogRow({
           : selected
             ? BRAND.surfaceSubtle
             : undefined,
-        borderBottom: `1px solid ${BRAND.borderInner}`,
         opacity: isDragging ? 0.6 : 1,
         transform: CSS.Transform.toString(transform),
         transition,
@@ -759,10 +748,7 @@ function BacklogRow({
       />
 
       {/* Row number */}
-      <div
-        className="w-6 shrink-0 px-2 text-right font-mono text-[10px] tabular-nums"
-        style={{ color: BRAND.textMuted }}
-      >
+      <div className="w-6 shrink-0 px-2 text-right font-mono text-ui-xs text-foreground-subtle tabular-nums">
         {rowNum}
       </div>
 
@@ -773,8 +759,8 @@ function BacklogRow({
 
       {/* ID — opens detail */}
       <button
-        className="shrink-0 overflow-hidden px-2 text-left font-mono text-[10px] underline-offset-2 hover:underline"
-        style={{ ...colStyles.id, color: BRAND.primaryLight }}
+        className="shrink-0 overflow-hidden px-2 text-left font-mono text-ui-xs text-primary-light underline-offset-2 hover:underline"
+        style={colStyles.id}
         onClick={onOpen}
       >
         {item.itemKey}
@@ -787,20 +773,16 @@ function BacklogRow({
             value={item.title}
             canEdit
             onCommit={commitTitle}
-            className="block truncate text-[12px] font-medium"
-            style={{ color: BRAND.textPrimary, cursor: 'text' }}
-            inputClassName="w-full rounded px-1 py-0.5 text-[12px] focus:outline-none"
-            inputStyle={{
-              border: `1px solid ${BRAND.accentBorderStrong}`,
-              color: BRAND.textPrimary,
-            }}
+            className="block truncate text-ui-md font-medium text-foreground"
+            style={{ cursor: 'text' }}
+            inputClassName="w-full rounded border border-accent-border-strong px-1 py-0.5 text-ui-md text-foreground focus:outline-none"
             ariaLabel="Title"
             title={item.title}
           />
         ) : (
           <span
-            className="block truncate text-[12px] font-medium"
-            style={{ color: BRAND.textPrimary, cursor: 'pointer' }}
+            className="block truncate text-ui-md font-medium text-foreground"
+            style={{ cursor: 'pointer' }}
             onClick={onOpen}
             title={item.title}
           >
@@ -864,9 +846,7 @@ function BacklogRow({
             <PriorityBadge priority={item.priority} />
           )
         ) : (
-          <span className="font-mono text-[10px]" style={{ color: BRAND.textDisabled }}>
-            —
-          </span>
+          <span className="font-mono text-ui-xs text-foreground-disabled">—</span>
         )}
       </div>
 
@@ -882,15 +862,11 @@ function BacklogRow({
               const next = raw === '' ? null : Number(raw)
               if (next !== (item.storyPoints ?? null)) patch({ storyPoints: next, todoHours: next })
             }}
-            className="w-12 rounded px-1 py-0.5 text-center font-mono text-[10px] focus:outline-none"
-            style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
+            className="w-12 rounded border border-border-strong px-1 py-0.5 text-center font-mono text-ui-xs text-muted-foreground focus:outline-none"
             aria-label="Plan estimate"
           />
         ) : (
-          <span
-            className="font-mono text-[10px] font-semibold"
-            style={{ color: BRAND.textSecondary }}
-          >
+          <span className="font-mono text-ui-xs font-semibold text-muted-foreground">
             {item.storyPoints ?? '—'}
           </span>
         )}
@@ -926,7 +902,7 @@ function BacklogRow({
           </InlineCellSelect>
         ) : (
           <span
-            className="truncate text-[11px]"
+            className="truncate text-ui-sm"
             style={{ color: item.releaseId ? BRAND.textPrimary : BRAND.textDisabled }}
           >
             {releases.find((r) => r.id === item.releaseId)?.name ?? '—'}
@@ -953,7 +929,7 @@ function BacklogRow({
           </InlineCellSelect>
         ) : (
           <span
-            className="truncate text-[11px]"
+            className="truncate text-ui-sm"
             style={{ color: item.iterationId ? BRAND.textPrimary : BRAND.textDisabled }}
           >
             {iterations.find((it) => it.id === item.iterationId)?.name ?? '—'}

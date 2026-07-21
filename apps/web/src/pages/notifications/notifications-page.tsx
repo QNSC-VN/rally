@@ -50,17 +50,14 @@ export function NotificationsPage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col" style={{ backgroundColor: BRAND.pageBg, minHeight: 0 }}>
+    <div className="flex flex-1 flex-col bg-background" style={{ minHeight: 0 }}>
       {/* ── Header ── */}
       <PageHeader
-        icon={<Bell size={16} style={{ color: BRAND.textSecondary }} />}
+        icon={<Bell size={16} className="text-muted-foreground" />}
         title="Notifications"
         badge={
           unreadCount > 0 ? (
-            <span
-              className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-white"
-              style={{ backgroundColor: BRAND.primary }}
-            >
+            <span className="rounded-full bg-primary px-2 py-0.5 text-ui-sm font-semibold text-white">
               {unreadCount}
             </span>
           ) : undefined
@@ -74,7 +71,7 @@ export function NotificationsPage() {
                   <button
                     key={t.key}
                     onClick={() => setTab(t.key)}
-                    className="rounded px-3 py-1.5 text-[12px] font-medium transition-colors"
+                    className="rounded px-3 py-1.5 text-ui-md font-medium transition-colors"
                     style={{
                       backgroundColor: active ? BRAND.primary : 'transparent',
                       color: active ? BRAND.surface : BRAND.textSecondary,
@@ -90,12 +87,7 @@ export function NotificationsPage() {
               <button
                 onClick={() => void handleMarkAll()}
                 disabled={markAll.isPending}
-                className="flex items-center gap-1.5 rounded px-3 py-1.5 text-[12px] font-medium transition-colors hover:opacity-80"
-                style={{
-                  border: `1px solid ${BRAND.border}`,
-                  color: BRAND.textSecondary,
-                  backgroundColor: BRAND.surface,
-                }}
+                className="flex items-center gap-1.5 rounded border border-border-strong bg-card px-3 py-1.5 text-ui-md font-medium text-muted-foreground transition-colors hover:opacity-80"
               >
                 <CheckCheck size={13} />
                 Mark all read
@@ -109,10 +101,7 @@ export function NotificationsPage() {
       <div className="flex-1 overflow-y-auto">
         {isLoading ? (
           <div className="flex items-center justify-center py-20">
-            <div
-              className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent"
-              style={{ borderColor: BRAND.primary, borderTopColor: 'transparent' }}
-            />
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           </div>
         ) : isError ? (
           <EmptyState

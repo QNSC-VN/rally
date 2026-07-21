@@ -121,7 +121,7 @@ function ToolButton({ label, disabled, active, onAction, children }: ToolButtonP
 }
 
 function Divider() {
-  return <span className="mx-1 h-5 w-px shrink-0" style={{ backgroundColor: BRAND.borderInput }} />
+  return <span className="mx-1 h-5 w-px shrink-0 bg-input" />
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -201,7 +201,7 @@ export function RichTextEditor({
 
   return (
     <section
-      className={`overflow-hidden rounded bg-white transition-[border-color,box-shadow] ${className}`}
+      className={`overflow-hidden rounded bg-card transition-[border-color,box-shadow] ${className}`}
       style={{
         border: focused ? '1px solid var(--ring)' : `1px solid ${BRAND.border}`,
         boxShadow: focused ? '0 0 0 3px color-mix(in srgb, var(--ring) 50%, transparent)' : 'none',
@@ -219,13 +219,8 @@ export function RichTextEditor({
     >
       {/* Section header */}
       <div
-        className="flex items-center justify-between px-4 py-2 text-[11px] font-semibold select-none"
-        style={{
-          color: BRAND.textSecondary,
-          backgroundColor: BRAND.surfaceHover,
-          borderBottom: `1px solid ${BRAND.border}`,
-          flexShrink: 0,
-        }}
+        className="flex items-center justify-between border-b border-border-strong bg-surface-hover px-4 py-2 text-ui-sm font-semibold text-muted-foreground select-none"
+        style={{ flexShrink: 0 }}
       >
         <span>{title}</span>
         {!readOnly && (
@@ -233,8 +228,7 @@ export function RichTextEditor({
             type="button"
             aria-label={expanded ? 'Collapse editor' : 'Expand editor'}
             onClick={() => setExpanded((v) => !v)}
-            className="cursor-pointer rounded p-0.5 hover:bg-slate-200"
-            style={{ color: BRAND.textSecondary }}
+            className="cursor-pointer rounded p-0.5 text-muted-foreground hover:bg-slate-200"
           >
             {expanded ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
           </button>
@@ -244,12 +238,8 @@ export function RichTextEditor({
       {/* Toolbar */}
       {!readOnly && (
         <div
-          className="flex flex-wrap items-center gap-0.5 overflow-x-auto px-2 py-1.5"
-          style={{
-            borderBottom: `1px solid ${BRAND.border}`,
-            backgroundColor: 'white',
-            flexShrink: 0,
-          }}
+          className="flex flex-wrap items-center gap-0.5 overflow-x-auto border-b border-border-strong bg-card px-2 py-1.5"
+          style={{ flexShrink: 0 }}
         >
           <ToolButton label="Undo" onAction={() => exec('undo')}>
             <Undo2 size={13} />
@@ -262,8 +252,7 @@ export function RichTextEditor({
             aria-label="Text style"
             onChange={handleFormatBlock}
             defaultValue="p"
-            className="h-7 w-28 rounded-sm bg-white px-2 text-[11px] focus:outline-none"
-            style={{ color: BRAND.textPrimary, border: `1px solid ${BRAND.borderInput}` }}
+            className="h-7 w-28 rounded-sm border border-input bg-card px-2 text-ui-sm text-foreground focus:outline-none"
             onMouseDown={(e) => e.stopPropagation()}
           >
             <option value="p">Paragraph</option>
@@ -307,11 +296,9 @@ export function RichTextEditor({
       {/* Content area */}
       {readOnly ? (
         <div
-          className="prose prose-sm max-w-none px-4 py-3 text-[13px] leading-6"
+          className="prose prose-sm max-w-none bg-surface-hover px-4 py-3 text-ui-lg leading-6 text-foreground"
           style={{
             minHeight,
-            color: BRAND.textPrimary,
-            backgroundColor: BRAND.surfaceHover,
             overflowY: expanded ? 'auto' : undefined,
             flex: expanded ? '1' : undefined,
           }}
@@ -325,11 +312,9 @@ export function RichTextEditor({
           onFocus={() => setFocused(true)}
           onBlur={handleBlur}
           onKeyDown={handleKeyDown}
-          className="prose prose-sm max-w-none px-4 py-3 text-[13px] leading-6 focus:outline-none"
+          className="prose prose-sm max-w-none bg-card px-4 py-3 text-ui-lg leading-6 text-foreground focus:outline-none"
           style={{
             minHeight,
-            color: BRAND.textPrimary,
-            backgroundColor: 'white',
             overflowY: expanded ? 'auto' : undefined,
             flex: expanded ? '1' : undefined,
           }}
@@ -340,12 +325,8 @@ export function RichTextEditor({
       {/* Keyboard hint */}
       {!readOnly && (
         <div
-          className="px-4 py-1 text-[10px] select-none"
-          style={{
-            color: BRAND.textMuted,
-            borderTop: `1px solid ${BRAND.primaryLighter}`,
-            flexShrink: 0,
-          }}
+          className="border-t border-primary-lighter px-4 py-1 text-ui-xs text-foreground-subtle select-none"
+          style={{ flexShrink: 0 }}
         >
           Ctrl+Enter to save · changes auto-saved on blur
         </div>

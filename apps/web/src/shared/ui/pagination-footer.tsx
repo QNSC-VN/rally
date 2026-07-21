@@ -46,7 +46,7 @@ export function PaginationFooter({
       className="flex h-10 shrink-0 items-center justify-between bg-white px-3"
       style={{ borderTop: `1px solid ${BRAND.borderSubtle}` }}
     >
-      <div className="flex items-center gap-2 text-[11px]" style={{ color: BRAND.textSecondary }}>
+      <div className="flex items-center gap-2 text-ui-sm text-muted-foreground">
         <span>Rows per page</span>
         <InlineSelect
           aria-label="Rows per page"
@@ -65,7 +65,7 @@ export function PaginationFooter({
         </span>
       </div>
       <div className="flex items-center gap-2">
-        <span className="text-[11px] tabular-nums" style={{ color: BRAND.textSecondary }}>
+        <span className="text-ui-sm text-muted-foreground tabular-nums">
           {`Page ${currentPage}${pageCount != null ? ` of ${pageCount}` : ''}`}
         </span>
         <button

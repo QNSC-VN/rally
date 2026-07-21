@@ -1,8 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { ChevronLeft, Loader2 } from 'lucide-react'
-
-import { BRAND } from '@/shared/config/brand'
 import { notify } from '@/shared/lib/toast'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectTeams, useProjectMembers } from '@/features/teams/api'
@@ -198,7 +196,7 @@ export function IterationDetail({
   const teamName = team?.name ?? null
   const disabled = !canManage
   const readonlyCls =
-    'w-full rounded border border-input bg-input-background px-3 py-2 text-[12px] text-foreground'
+    'w-full rounded border border-input bg-input-background px-3 py-2 text-ui-md text-foreground'
 
   function patch(body: Parameters<typeof update.mutateAsync>[0]) {
     void update.mutateAsync(body)
@@ -254,21 +252,18 @@ export function IterationDetail({
   ).length
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden bg-white">
-      <div className="shrink-0 text-white" style={{ backgroundColor: BRAND.primaryDark }}>
+    <div className="flex flex-1 flex-col overflow-hidden bg-card">
+      <div className="shrink-0 bg-primary-dark text-white">
         <div className="flex h-12 items-center gap-3 px-4">
           <button aria-label="Back" onClick={onBack} className="rounded p-1.5 hover:bg-white/10">
             <ChevronLeft size={18} />
           </button>
-          <span
-            className="rounded-sm px-1.5 py-px text-[10px] font-semibold"
-            style={{ backgroundColor: BRAND.primaryLighter, color: BRAND.primary }}
-          >
+          <span className="rounded-sm bg-primary-lighter px-1.5 py-px text-ui-xs font-semibold text-primary">
             Iteration
           </span>
-          <span className="font-mono text-[13px] font-semibold">{it.iterationKey ?? 'New'}</span>
+          <span className="font-mono text-ui-lg font-semibold">{it.iterationKey ?? 'New'}</span>
           <span className="h-5 w-px bg-white/25" />
-          <h1 className="truncate text-[15px] font-semibold">{it.name}</h1>
+          <h1 className="truncate text-base font-semibold">{it.name}</h1>
           <div className="ml-auto">
             <StatusBadge style={ITERATION_STATE_STYLE[it.state]} />
           </div>
@@ -276,14 +271,8 @@ export function IterationDetail({
       </div>
 
       {canManage && it.state !== 'accepted' && (
-        <div
-          className="flex shrink-0 items-center justify-between gap-3 px-6 py-2"
-          style={{
-            backgroundColor: BRAND.surface,
-            borderBottom: `1px solid ${BRAND.borderSubtle}`,
-          }}
-        >
-          <span className="text-[12px]" style={{ color: BRAND.textSecondary }}>
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border-subtle bg-card px-6 py-2">
+          <span className="text-ui-md text-muted-foreground">
             {it.state === 'planning'
               ? 'Shape the scope, then commit to start the iteration.'
               : `${unfinishedCount} unfinished item${unfinishedCount === 1 ? '' : 's'} · all assigned items must be accepted to close.`}
@@ -314,11 +303,8 @@ export function IterationDetail({
         </div>
       )}
 
-      <div className="flex min-h-0 flex-1 gap-2" style={{ backgroundColor: BRAND.avatarBg }}>
-        <main
-          className="flex-1 overflow-y-auto p-6"
-          style={{ backgroundColor: BRAND.surfaceSubtle }}
-        >
+      <div className="flex min-h-0 flex-1 gap-2 bg-avatar">
+        <main className="flex-1 overflow-y-auto bg-surface-subtle p-6">
           <div className="space-y-5">
             <CapacityStrip metrics={status?.metrics} scopeCount={scopeItems.length} />
             <IterationScope
@@ -326,9 +312,7 @@ export function IterationDetail({
               memberName={memberName}
               onOpen={(itemKey) => navigate({ to: '/item/$itemKey', params: { itemKey } })}
             />
-            <h2 className="text-[18px] font-semibold" style={{ color: BRAND.textPrimary }}>
-              Details
-            </h2>
+            <h2 className="text-lg font-semibold text-foreground">Details</h2>
             <RichTextEditor
               title="Theme"
               value={it?.theme}
@@ -346,10 +330,7 @@ export function IterationDetail({
           </div>
         </main>
 
-        <aside
-          className="w-[320px] shrink-0 space-y-4 overflow-y-auto bg-white p-5"
-          style={{ borderLeft: `1px solid ${BRAND.borderSubtle}` }}
-        >
+        <aside className="w-[320px] shrink-0 space-y-4 overflow-y-auto border-l border-border-subtle bg-card p-5">
           <FormField label="Project">
             <div className={readonlyCls}>{project?.projectName ?? '—'}</div>
           </FormField>
@@ -441,30 +422,15 @@ function CapacityStrip({
   ]
   return (
     <section>
-      <h2 className="mb-2 text-[18px] font-semibold" style={{ color: BRAND.textPrimary }}>
-        Capacity
-      </h2>
+      <h2 className="mb-2 text-lg font-semibold text-foreground">Capacity</h2>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
         {tiles.map((t) => (
-          <div
-            key={t.label}
-            className="rounded bg-white px-3 py-2.5"
-            style={{ border: `1px solid ${BRAND.borderSubtle}` }}
-          >
-            <div
-              className="text-[10px] font-semibold tracking-wide uppercase"
-              style={{ color: BRAND.textMuted }}
-            >
+          <div key={t.label} className="rounded border border-border-subtle bg-card px-3 py-2.5">
+            <div className="text-ui-xs font-semibold tracking-wide text-foreground-subtle uppercase">
               {t.label}
             </div>
-            <div className="mt-1 text-[16px] font-semibold" style={{ color: BRAND.textPrimary }}>
-              {t.value}
-            </div>
-            {t.caption && (
-              <div className="text-[10px]" style={{ color: BRAND.textMuted }}>
-                {t.caption}
-              </div>
-            )}
+            <div className="mt-1 text-base font-semibold text-foreground">{t.value}</div>
+            {t.caption && <div className="text-ui-xs text-foreground-subtle">{t.caption}</div>}
           </div>
         ))}
       </div>
@@ -485,29 +451,19 @@ function IterationScope({
 }) {
   return (
     <section>
-      <h2 className="mb-2 text-[18px] font-semibold" style={{ color: BRAND.textPrimary }}>
+      <h2 className="mb-2 text-lg font-semibold text-foreground">
         Scope{' '}
-        <span className="text-[13px] font-normal" style={{ color: BRAND.textMuted }}>
-          ({items.length})
-        </span>
+        <span className="text-ui-lg font-normal text-foreground-subtle">({items.length})</span>
       </h2>
-      <div
-        className="overflow-hidden rounded bg-white"
-        style={{ border: `1px solid ${BRAND.borderSubtle}` }}
-      >
+      <div className="overflow-hidden rounded border border-border-subtle bg-card">
         {items.length === 0 ? (
-          <div className="px-4 py-8 text-center text-[13px]" style={{ color: BRAND.textMuted }}>
+          <div className="px-4 py-8 text-center text-ui-lg text-foreground-subtle">
             No work items assigned. Assign Stories or Defects from the Backlog.
           </div>
         ) : (
-          <table className="w-full text-[12px]">
+          <table className="w-full text-ui-md">
             <thead>
-              <tr
-                style={{
-                  borderBottom: `1px solid ${BRAND.borderSubtle}`,
-                  color: BRAND.textSecondary,
-                }}
-              >
+              <tr className="border-b border-border-subtle text-muted-foreground">
                 <th className="px-3 py-2 text-left font-semibold">Type</th>
                 <th className="px-3 py-2 text-left font-semibold">ID</th>
                 <th className="px-3 py-2 text-left font-semibold">Name</th>
@@ -521,28 +477,20 @@ function IterationScope({
                 <tr
                   key={i.id}
                   onClick={() => onOpen(i.itemKey)}
-                  className="cursor-pointer hover:bg-primary-lighter"
-                  style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
+                  className="cursor-pointer border-b border-border-subtle hover:bg-primary-lighter"
                 >
                   <td className="px-3 py-2">
                     <TypeBadge type={i.type} />
                   </td>
-                  <td className="px-3 py-2 font-mono" style={{ color: BRAND.primary }}>
-                    {i.itemKey}
-                  </td>
-                  <td className="px-3 py-2" style={{ color: BRAND.textPrimary }}>
-                    {i.title}
-                  </td>
+                  <td className="px-3 py-2 font-mono text-primary">{i.itemKey}</td>
+                  <td className="px-3 py-2 text-foreground">{i.title}</td>
                   <td className="px-3 py-2">
                     <ScheduleStateBadge state={i.scheduleState} />
                   </td>
-                  <td
-                    className="px-3 py-2 text-right font-mono"
-                    style={{ color: BRAND.textSecondary }}
-                  >
+                  <td className="px-3 py-2 text-right font-mono text-muted-foreground">
                     {i.planEstimate ?? '—'}
                   </td>
-                  <td className="px-3 py-2" style={{ color: BRAND.textSecondary }}>
+                  <td className="px-3 py-2 text-muted-foreground">
                     {i.assigneeId ? (memberName.get(i.assigneeId) ?? '—') : '—'}
                   </td>
                 </tr>
@@ -585,7 +533,7 @@ function RolloverModal({
   return (
     <AppModal open onClose={onClose} title="Move Unfinished Items" width={440}>
       <ModalBody className="space-y-4">
-        <p className="text-[13px]" style={{ color: BRAND.textSecondary }}>
+        <p className="text-ui-lg text-muted-foreground">
           {unfinishedCount} unfinished (not-accepted) Story/Defect item
           {unfinishedCount === 1 ? '' : 's'} will be moved out of this iteration.
         </p>

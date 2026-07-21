@@ -86,7 +86,7 @@ export function MilestoneSelectCell({
     selected.length > 0 ? (
       <>
         <span
-          className="min-w-0 flex-1 truncate"
+          className="min-w-0 flex-1 truncate border border-border-subtle bg-surface-hover text-muted-foreground"
           title={selected.map((m) => m.name).join(', ')}
           style={{
             display: 'inline-flex',
@@ -98,17 +98,14 @@ export function MilestoneSelectCell({
             fontSize: 11,
             fontWeight: 600,
             lineHeight: '18px',
-            border: `1px solid ${BRAND.borderSubtle}`,
-            backgroundColor: BRAND.surfaceHover,
-            color: BRAND.textSecondary,
           }}
         >
           <span className="truncate">{selected[0].name}</span>
         </span>
         {selected.length > 1 && (
           <span
-            className="shrink-0"
-            style={{ fontSize: 11, color: BRAND.textMuted, whiteSpace: 'nowrap' }}
+            className="shrink-0 text-foreground-subtle"
+            style={{ fontSize: 11, whiteSpace: 'nowrap' }}
             title={selected.map((m) => m.name).join(', ')}
           >
             +{selected.length - 1}
@@ -116,7 +113,9 @@ export function MilestoneSelectCell({
         )}
       </>
     ) : (
-      <span style={{ color: BRAND.textMuted, fontSize: 12 }}>&mdash;</span>
+      <span className="text-foreground-subtle" style={{ fontSize: 12 }}>
+        &mdash;
+      </span>
     )
 
   if (!canEdit) {
@@ -145,7 +144,7 @@ export function MilestoneSelectCell({
         }}
       >
         <span className="flex min-w-0 flex-1 items-center gap-1">{summary}</span>
-        <ChevronDown size={12} style={{ color: BRAND.textMuted, flexShrink: 0 }} />
+        <ChevronDown size={12} className="text-foreground-subtle" style={{ flexShrink: 0 }} />
       </button>
       {open &&
         pos &&
@@ -153,6 +152,7 @@ export function MilestoneSelectCell({
           <div
             ref={popRef}
             onClick={(e) => e.stopPropagation()}
+            className="border border-border-subtle bg-card"
             style={{
               position: 'fixed',
               top: pos.top ?? undefined,
@@ -163,15 +163,13 @@ export function MilestoneSelectCell({
               maxWidth: 280,
               maxHeight: 260,
               overflowY: 'auto',
-              backgroundColor: BRAND.surface,
-              border: `1px solid ${BRAND.borderSubtle}`,
               borderRadius: 4,
               boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
               padding: 4,
             }}
           >
             {options.length === 0 ? (
-              <div style={{ padding: '8px 10px', fontSize: 12, color: BRAND.textMuted }}>
+              <div className="text-foreground-subtle" style={{ padding: '8px 10px', fontSize: 12 }}>
                 No milestones in this project
               </div>
             ) : (
@@ -180,6 +178,7 @@ export function MilestoneSelectCell({
                 return (
                   <label
                     key={opt.id}
+                    className="text-foreground"
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -187,7 +186,6 @@ export function MilestoneSelectCell({
                       padding: '5px 8px',
                       borderRadius: 3,
                       fontSize: 12,
-                      color: BRAND.textPrimary,
                       cursor: 'pointer',
                     }}
                     onMouseEnter={(e) =>
@@ -216,7 +214,11 @@ export function MilestoneSelectCell({
 /** Rally "Defect Status" summary pill derived from child-defect counts. */
 export function DefectStatusPill({ total, open }: { total: number; open: number }) {
   if (total === 0) {
-    return <span style={{ fontSize: 12, color: BRAND.textMuted }}>None</span>
+    return (
+      <span className="text-foreground-subtle" style={{ fontSize: 12 }}>
+        None
+      </span>
+    )
   }
   const closed = open === 0
   const bg = closed ? BRAND.successBg : BRAND.warningBg
@@ -246,17 +248,21 @@ export function DefectStatusPill({ total, open }: { total: number; open: number 
  * State-based (not To-Do hours) so it agrees with the Team Status screen. */
 export function TasksProgress({ total, done }: { total: number; done: number }) {
   if (!total || total <= 0) {
-    return <span style={{ fontSize: 12, color: BRAND.textMuted }}>&mdash;</span>
+    return (
+      <span className="text-foreground-subtle" style={{ fontSize: 12 }}>
+        &mdash;
+      </span>
+    )
   }
   const pct = Math.max(0, Math.min(100, Math.round((done / total) * 100)))
   return (
     <div className="flex w-full items-center gap-1.5" title={`${done}/${total} tasks complete`}>
       <div
+        className="bg-border-subtle"
         style={{
           flex: 1,
           height: 6,
           borderRadius: 3,
-          backgroundColor: BRAND.borderSubtle,
           overflow: 'hidden',
         }}
       >
@@ -268,7 +274,10 @@ export function TasksProgress({ total, done }: { total: number; done: number }) 
           }}
         />
       </div>
-      <span style={{ fontSize: 11, color: BRAND.textSecondary, minWidth: 30, textAlign: 'right' }}>
+      <span
+        className="text-muted-foreground"
+        style={{ fontSize: 11, minWidth: 30, textAlign: 'right' }}
+      >
         {pct}%
       </span>
     </div>

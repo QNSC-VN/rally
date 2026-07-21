@@ -202,7 +202,7 @@ function LabelModal({
               type="color"
               value={color}
               onChange={(e) => setColor(e.target.value)}
-              className="h-9 w-16 cursor-pointer rounded-md border bg-white p-1"
+              className="h-9 w-16 cursor-pointer rounded-md border bg-card p-1"
             />
           </FormField>
         </ModalBody>

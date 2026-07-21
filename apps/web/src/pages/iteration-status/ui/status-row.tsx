@@ -129,13 +129,11 @@ export function StatusRow({
     <>
       <div
         ref={setNodeRef}
-        className="group flex items-center transition-colors duration-100 hover:bg-primary-lighter"
+        className="group flex items-center border-b border-border-subtle bg-card transition-colors duration-100 hover:bg-primary-lighter"
         style={{
           height: 34,
           paddingLeft: 4,
           paddingRight: 12,
-          borderBottom: `1px solid ${BRAND.borderSubtle}`,
-          backgroundColor: BRAND.surface,
           fontSize: 12,
           minWidth: 'max-content',
           ...rowStyle,
@@ -170,6 +168,7 @@ export function StatusRow({
               setTasksExpanded(!tasksExpanded)
             }}
             aria-label={tasksExpanded ? 'Collapse tasks' : 'Expand tasks'}
+            className="text-muted-foreground"
             style={{
               background: 'none',
               border: 'none',
@@ -177,7 +176,6 @@ export function StatusRow({
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              color: BRAND.textSecondary,
             }}
           >
             <ChevronDown
@@ -188,12 +186,7 @@ export function StatusRow({
               }}
             />
           </button>
-          <span
-            className="font-mono text-[10px] tabular-nums"
-            style={{ color: BRAND.textSecondary }}
-          >
-            {rank}
-          </span>
+          <span className="font-mono text-ui-xs text-muted-foreground tabular-nums">{rank}</span>
         </div>
 
         {/* ID */}
@@ -213,13 +206,12 @@ export function StatusRow({
             onCommit={commitTitle}
             ariaLabel="Name"
             title={item.title}
-            className="block w-full truncate"
-            style={{ fontSize: 12, color: BRAND.textPrimary }}
+            className="block w-full truncate text-foreground"
+            style={{ fontSize: 12 }}
+            inputClassName="border border-primary text-foreground"
             inputStyle={{
               width: '100%',
               fontSize: 12,
-              color: BRAND.textPrimary,
-              border: `1px solid ${BRAND.primary}`,
               borderRadius: 2,
               outline: 'none',
               padding: '1px 4px',
@@ -236,7 +228,9 @@ export function StatusRow({
               onOpen={() => navigate({ to: '/item/$itemKey', params: { itemKey: featureKey } })}
             />
           ) : (
-            <span style={{ color: BRAND.textMuted, fontSize: 12 }}>&mdash;</span>
+            <span className="text-foreground-subtle" style={{ fontSize: 12 }}>
+              &mdash;
+            </span>
           )}
         </div>
 
@@ -288,6 +282,7 @@ export function StatusRow({
           >
             {item.isBlocked ? (
               <span
+                className="border border-destructive-border bg-destructive-bg text-destructive"
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
@@ -297,9 +292,6 @@ export function StatusRow({
                   borderRadius: 2,
                   fontSize: 11,
                   fontWeight: 700,
-                  backgroundColor: BRAND.dangerBg,
-                  color: BRAND.danger,
-                  border: `1px solid ${BRAND.dangerBorder}`,
                 }}
                 title="Blocked - Click to Unblock"
               >
@@ -307,6 +299,7 @@ export function StatusRow({
               </span>
             ) : (
               <span
+                className="border border-dashed border-border-strong text-foreground-subtle"
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
@@ -316,8 +309,6 @@ export function StatusRow({
                   borderRadius: 2,
                   fontSize: 11,
                   fontWeight: 500,
-                  border: `1px dashed ${BRAND.border}`,
-                  color: BRAND.textMuted,
                 }}
                 title="Unblocked - Click to Block"
               >
@@ -331,14 +322,16 @@ export function StatusRow({
         <div style={colStyles.blockedReason} className="flex items-center px-2">
           {item.blockedReason ? (
             <span
-              className="truncate"
+              className="truncate text-muted-foreground"
               title={item.blockedReason}
-              style={{ fontSize: 12, color: BRAND.textSecondary }}
+              style={{ fontSize: 12 }}
             >
               {item.blockedReason}
             </span>
           ) : (
-            <span style={{ color: BRAND.textMuted, fontSize: 12 }}>&mdash;</span>
+            <span className="text-foreground-subtle" style={{ fontSize: 12 }}>
+              &mdash;
+            </span>
           )}
         </div>
 
@@ -349,17 +342,17 @@ export function StatusRow({
             canEdit={canEdit}
             onCommit={commitEstimate}
             displayValue={item.planEstimate ?? '—'}
+            className="text-muted-foreground"
             style={{
               fontFamily: MONO_FONT,
-              color: BRAND.textSecondary,
               fontSize: 12,
             }}
+            inputClassName="border border-primary"
             inputStyle={{
               width: '100%',
               textAlign: 'right',
               fontSize: 11,
               fontFamily: MONO_FONT,
-              border: `1px solid ${BRAND.primary}`,
               borderRadius: 2,
               outline: 'none',
             }}
@@ -373,10 +366,9 @@ export function StatusRow({
             ...colStyles.taskEstimate,
             textAlign: 'right',
             fontFamily: MONO_FONT,
-            color: BRAND.textSecondary,
             fontSize: 12,
           }}
-          className="px-2 text-right"
+          className="px-2 text-right text-muted-foreground"
         >
           {item.taskEstimate || '—'}
         </div>
@@ -388,17 +380,17 @@ export function StatusRow({
             canEdit={canEdit}
             onCommit={commitTodo}
             displayValue={item.toDo ?? '—'}
+            className="text-muted-foreground"
             style={{
               fontFamily: MONO_FONT,
-              color: BRAND.textSecondary,
               fontSize: 12,
             }}
+            inputClassName="border border-primary"
             inputStyle={{
               width: '100%',
               textAlign: 'right',
               fontSize: 11,
               fontFamily: MONO_FONT,
-              border: `1px solid ${BRAND.primary}`,
               borderRadius: 2,
               outline: 'none',
             }}
@@ -413,8 +405,8 @@ export function StatusRow({
 
         {/* Actual — not tracked at story level, only on tasks */}
         <div
-          style={{ ...colStyles.actual, textAlign: 'right', color: BRAND.textMuted, fontSize: 12 }}
-          className="px-2 text-right"
+          style={{ ...colStyles.actual, textAlign: 'right', fontSize: 12 }}
+          className="px-2 text-right text-foreground-subtle"
         >
           &mdash;
         </div>
@@ -440,9 +432,11 @@ export function StatusRow({
           className="px-2 text-center"
         >
           {item.defectCount > 0 ? (
-            <span style={{ color: BRAND.textSecondary, fontWeight: 600 }}>{item.defectCount}</span>
+            <span className="text-muted-foreground" style={{ fontWeight: 600 }}>
+              {item.defectCount}
+            </span>
           ) : (
-            <span style={{ color: BRAND.textMuted }}>&mdash;</span>
+            <span className="text-foreground-subtle">&mdash;</span>
           )}
         </div>
 
@@ -491,17 +485,17 @@ export function StatusRow({
           the parent row / header. */}
       {tasksExpanded && (
         <div
+          className="bg-surface-hover"
           style={{
-            backgroundColor: BRAND.surfaceHover,
             boxShadow: `inset 2px 0 0 ${BRAND.primaryLighter}`,
           }}
         >
           {isLoadingTasks && (
             <div
+              className="text-foreground-subtle"
               style={{
                 padding: '6px 44px',
                 fontSize: 11,
-                color: BRAND.textMuted,
                 display: 'flex',
                 alignItems: 'center',
                 gap: 6,
@@ -512,10 +506,10 @@ export function StatusRow({
           )}
           {!isLoadingTasks && childTasks.length === 0 && (
             <div
+              className="text-foreground-subtle"
               style={{
                 padding: '6px 44px',
                 fontSize: 11,
-                color: BRAND.textMuted,
                 fontStyle: 'italic',
               }}
             >
@@ -595,14 +589,12 @@ function ChildTaskRow({
 
   return (
     <div
-      className="flex items-center"
+      className="flex items-center border-b border-dashed border-border-subtle text-muted-foreground"
       style={{
         height: 30,
         paddingLeft: 4,
         paddingRight: 12,
-        borderBottom: `1px dashed ${BRAND.borderSubtle}`,
         fontSize: 11,
-        color: BRAND.textSecondary,
         minWidth: 'max-content',
       }}
       onMouseOver={(e) => {
@@ -632,13 +624,12 @@ function ChildTaskRow({
           onCommit={commitTaskTitle}
           ariaLabel="Name"
           title={task.title}
-          className="block w-full truncate"
-          style={{ fontSize: 12, color: BRAND.textPrimary }}
+          className="block w-full truncate text-foreground"
+          style={{ fontSize: 12 }}
+          inputClassName="border border-primary text-foreground"
           inputStyle={{
             width: '100%',
             fontSize: 12,
-            color: BRAND.textPrimary,
-            border: `1px solid ${BRAND.primary}`,
             borderRadius: 2,
             outline: 'none',
             padding: '1px 4px',
@@ -676,12 +667,12 @@ function ChildTaskRow({
           onCommit={commitTaskEstimate}
           displayValue={task.estimateHours ?? '—'}
           style={{ fontFamily: MONO_FONT, fontSize: 11 }}
+          inputClassName="border border-primary"
           inputStyle={{
             width: '100%',
             textAlign: 'right',
             fontSize: 11,
             fontFamily: MONO_FONT,
-            border: `1px solid ${BRAND.primary}`,
             borderRadius: 2,
             outline: 'none',
           }}
@@ -695,12 +686,12 @@ function ChildTaskRow({
           onCommit={commitTaskTodo}
           displayValue={task.todoHours ?? '—'}
           style={{ fontFamily: MONO_FONT, fontSize: 11 }}
+          inputClassName="border border-primary"
           inputStyle={{
             width: '100%',
             textAlign: 'right',
             fontSize: 11,
             fontFamily: MONO_FONT,
-            border: `1px solid ${BRAND.primary}`,
             borderRadius: 2,
             outline: 'none',
           }}
@@ -715,12 +706,12 @@ function ChildTaskRow({
           onCommit={commitTaskActual}
           displayValue={task.actualHours ?? '—'}
           style={{ fontFamily: MONO_FONT, fontSize: 11 }}
+          inputClassName="border border-primary"
           inputStyle={{
             width: '100%',
             textAlign: 'right',
             fontSize: 11,
             fontFamily: MONO_FONT,
-            border: `1px solid ${BRAND.primary}`,
             borderRadius: 2,
             outline: 'none',
           }}
