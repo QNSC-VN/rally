@@ -54,22 +54,18 @@ import { SkeletonList } from '@/shared/ui/skeleton'
 import { BRAND } from '@/shared/config/brand'
 import { NESTED_ROW_INDENT } from '@/shared/config/layout'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
-import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
-import { InlineSelect, NativeSelect } from '@/shared/ui/native-select'
+import { InlineSelect } from '@/shared/ui/native-select'
 import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { BulkActionBar } from '@/shared/ui/bulk-action-bar'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { useRowSelection } from '@/shared/lib/hooks/use-row-selection'
-import { FormField } from '@/shared/ui/form-field'
-import { Input } from '@/shared/ui/input'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
 import {
   useIterations,
   useIterationStatus,
   useIterationOptions,
-  useCreateIterationItem,
   type Iteration,
   type IterationStatusItem,
 } from '@/features/iterations/api'
@@ -97,6 +93,8 @@ import { FeatureCell } from '@/entities/work-item/ui/feature-cell'
 import { SCHEDULE_STATE_STEPS, SIMPLIFIED_STATE_STEPS } from '@/entities/work-item/ui/state-steps'
 import { MilestoneSelectCell, DefectStatusPill, TasksProgress } from './ui/status-cells'
 import { useWorkItemFieldCommit } from './model/use-work-item-field-commit'
+import { AddItemModal } from './ui/add-item-modal'
+import { fmtRange, computeTotalDays } from './model/iteration-helpers'
 
 // Single-letter badge for each schedule state (read-only view)
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -151,20 +149,6 @@ const EMPTY_ITEMS: IterationStatusItem[] = []
 // Sentinel for the Owner filter's "Unassigned" option (empty string collides
 // with the native <select> placeholder, so use an explicit token).
 const OWNER_UNASSIGNED = '__unassigned__'
-
-function fmtRange(it: Pick<Iteration, 'startDate' | 'endDate'>) {
-  const s = it.startDate ?? '—'
-  const e = it.endDate ?? '—'
-  return `${s} - ${e}`
-}
-
-function computeTotalDays(it: Iteration | undefined): number {
-  if (!it?.startDate || !it?.endDate) return 10
-  const start = new Date(it.startDate)
-  const end = new Date(it.endDate)
-  const diff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1
-  return Math.max(1, diff)
-}
 
 // ── Main page ──────────────────────────────────────────────────────────────
 
@@ -2124,137 +2108,5 @@ function SimplifiedStateControl({
       onChange={onChange}
       ariaLabel="Task state"
     />
-  )
-}
-
-// ── Add Item modal ──────────────────────────────────────────────────────────
-
-function AddItemModal({
-  iteration,
-  projectId,
-  onClose,
-  onCreated,
-}: {
-  iteration: Iteration
-  projectId: string | undefined
-  onClose: () => void
-  onCreated: () => void
-}) {
-  const navigate = useNavigate()
-  const create = useCreateIterationItem(iteration.id)
-  const { data: members = [] } = useProjectMembers(projectId)
-  const [type, setType] = useState<'story' | 'defect'>('story')
-  const [title, setTitle] = useState('')
-  const [planEstimate, setPlanEstimate] = useState('')
-  const [assigneeId, setAssigneeId] = useState('')
-  const [error, setError] = useState<string | null>(null)
-
-  async function submit(openDetail = false) {
-    setError(null)
-    if (!title.trim()) {
-      setError('Title is required')
-      return
-    }
-    try {
-      const result = await create.mutateAsync({
-        type,
-        title: title.trim(),
-        planEstimate: planEstimate === '' ? undefined : Number(planEstimate),
-        assigneeId: assigneeId || undefined,
-      })
-      toast.success(
-        `${type === 'defect' ? 'Defect' : 'Story'} "${title.trim()}" added to iteration`,
-      )
-      if (openDetail) {
-        void navigate({ to: '/item/$itemKey', params: { itemKey: result.itemKey } })
-      } else {
-        onCreated()
-      }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Failed to create item'
-      setError(msg)
-      toast.error(msg)
-    }
-  }
-
-  return (
-    <AppModal
-      open
-      onClose={onClose}
-      title="Add Item to Iteration"
-      subtitle={`${iteration.name} · ${fmtRange(iteration)}`}
-      width={460}
-    >
-      <ModalBody className="space-y-4">
-        {/* Type toggle */}
-        <FormField label="Type">
-          <div className="flex gap-2">
-            {(['story', 'defect'] as const).map((o) => (
-              <button
-                key={o}
-                type="button"
-                onClick={() => setType(o)}
-                className="flex-1 rounded-sm py-1.5 text-[11px] font-semibold capitalize transition-colors"
-                style={{
-                  backgroundColor: type === o ? BRAND.primaryLighter : 'transparent',
-                  color: type === o ? BRAND.primary : BRAND.textSecondary,
-                  border: `1px solid ${type === o ? BRAND.accentBorder : BRAND.borderSubtle}`,
-                }}
-              >
-                {o}
-              </button>
-            ))}
-          </div>
-        </FormField>
-
-        <FormField label="Title" required error={error ?? undefined}>
-          <Input
-            autoFocus
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Enter a concise work item title..."
-          />
-        </FormField>
-
-        <FormField label="Plan Estimate">
-          <Input
-            type="number"
-            min={0}
-            value={planEstimate}
-            onChange={(e) => setPlanEstimate(e.target.value)}
-            placeholder="0"
-          />
-        </FormField>
-
-        <FormField label="Owner">
-          <NativeSelect value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
-            <option value="">Unassigned</option>
-            {members.map((m) => (
-              <option key={m.userId} value={m.userId}>
-                {m.displayName ?? m.email ?? m.userId}
-              </option>
-            ))}
-          </NativeSelect>
-        </FormField>
-      </ModalBody>
-
-      <ModalFooter>
-        <Button variant="outline" type="button" onClick={onClose}>
-          Cancel
-        </Button>
-        <Button
-          variant="secondary"
-          type="button"
-          disabled={create.isPending}
-          onClick={() => submit(true)}
-        >
-          Create with details
-        </Button>
-        <Button type="button" disabled={create.isPending} onClick={() => submit(false)}>
-          {create.isPending && <Loader2 size={11} className="animate-spin" />}
-          Create Item
-        </Button>
-      </ModalFooter>
-    </AppModal>
   )
 }
