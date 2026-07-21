@@ -1,17 +1,31 @@
 /**
- * RichTextEditor — contentEditable-based rich text component.
+ * RichTextEditor — Tiptap-based rich text component.
  *
  * Design principles:
  * - Matches the mockup toolbar exactly (Bold/Italic/Underline/Strike,
  *   lists, headings, links, code, undo/redo).
- * - Uses document.execCommand (universally supported in browsers for Phase 1).
- * - Saves via onBlur; calls onSave(html) only when content actually changed.
- * - Renders with DOMPurify-sanitized dangerouslySetInnerHTML (XSS-safe).
+ * - Built on Tiptap/ProseMirror — `document.execCommand`, which this
+ *   component used previously, has been dropped by Chrome/Edge for most
+ *   rich-editing commands, silently no-op'ing every toolbar action and
+ *   typed input. Tiptap owns the DOM directly via ProseMirror's own
+ *   transaction model, so it isn't affected by that removal.
+ * - Reports edits via onChange on blur (or Ctrl/Cmd+Enter) — it does NOT
+ *   persist anything itself. The owning page decides when to actually save
+ *   (Broadcom-Rally-style explicit Save/Cancel, not per-field autosave); see
+ *   usePendingPatch + SaveCancelBar.
+ * - Output is DOMPurify-sanitized before both render and onChange, so a
+ *   future extension misconfiguration still can't emit disallowed markup.
  * - readOnly prop disables all editing and shows a flat read view.
- * - Keyboard shortcut: Ctrl/Cmd+Enter saves immediately.
+ * - Pasting an image inserts it immediately as a local blob-URL preview (no
+ *   network call) — the owning page's Save step is responsible for actually
+ *   uploading it and rewriting the src to a durable URL before persisting.
  */
 import { BRAND } from '@/shared/config/brand'
-import { useRef, useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { EditorContent, useEditor, type Editor } from '@tiptap/react'
+import StarterKit from '@tiptap/starter-kit'
+import Placeholder from '@tiptap/extension-placeholder'
+import Image from '@tiptap/extension-image'
 import DOMPurify from 'dompurify'
 import { Tooltip } from './tooltip'
 import {
@@ -68,10 +82,37 @@ export function sanitize(html: string): string {
       'th',
       'td',
       'hr',
+      'img',
     ],
-    ALLOWED_ATTR: ['href', 'target', 'rel', 'class'],
+    // DOMPurify's default ALLOWED_URI_REGEXP does not include blob: (by
+    // design — it's normally an XSS vector). This override adds it because
+    // that's how a pasted image renders as a local preview before the owning
+    // page's Save step uploads it and rewrites src to a durable
+    // /attachments/.../content URL. Otherwise identical to DOMPurify's own
+    // default (https/ftp/mailto/tel/etc. + relative paths).
+    ALLOWED_ATTR: ['href', 'target', 'rel', 'class', 'src', 'alt'],
+    ALLOWED_URI_REGEXP:
+      /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|matrix|blob):|[^a-z]|[a-z+.-]+(?:[^a-z+.:-]|$))/i,
     ALLOW_DATA_ATTR: false,
   }) as string
+}
+
+/**
+ * Tiptap's own getHTML() serializes an empty document as `<p></p>` (its
+ * schema always has at least one paragraph node), never `''`. A caller's
+ * `value` prop, on the other hand, is `null`/`''`/undefined for "no content
+ * yet". Comparing the two directly without this normalization made every
+ * field with empty content look "changed" the instant the editor mounted —
+ * marking the page dirty before the user touched anything.
+ */
+function isEmptyHtml(html: string): boolean {
+  return html === '' || html === '<p></p>'
+}
+
+/** Equal for dirty-checking purposes — treats every empty-content shape as one value. */
+function htmlEquals(a: string, b: string): boolean {
+  if (isEmptyHtml(a) && isEmptyHtml(b)) return true
+  return a === b
 }
 
 // ── Toolbar button ────────────────────────────────────────────────────────────
@@ -91,7 +132,7 @@ function ToolButton({ label, disabled, active, onAction, children }: ToolButtonP
         aria-label={label}
         disabled={disabled}
         onMouseDown={(e) => {
-          // Prevent blur before execCommand
+          // Prevent editor blur before the command runs
           e.preventDefault()
           if (!disabled) onAction()
         }}
@@ -124,6 +165,158 @@ function Divider() {
   return <span className="mx-1 h-5 w-px shrink-0 bg-input" />
 }
 
+// ── Toolbar ───────────────────────────────────────────────────────────────────
+function Toolbar({ editor }: { editor: Editor }) {
+  const handleLink = useCallback(() => {
+    const previousUrl = editor.getAttributes('link')['href'] as string | undefined
+    const url = window.prompt('Enter URL:', previousUrl ?? '')
+    if (url === null) return
+    if (url === '') {
+      editor.chain().focus().extendMarkRange('link').unsetLink().run()
+      return
+    }
+    editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run()
+  }, [editor])
+
+  const formatValue = editor.isActive('heading', { level: 2 })
+    ? 'h2'
+    : editor.isActive('heading', { level: 3 })
+      ? 'h3'
+      : editor.isActive('blockquote')
+        ? 'blockquote'
+        : 'p'
+
+  const handleFormatBlock = useCallback(
+    (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const chain = editor.chain().focus()
+      switch (e.target.value) {
+        case 'h2':
+          chain.setHeading({ level: 2 }).run()
+          break
+        case 'h3':
+          chain.setHeading({ level: 3 }).run()
+          break
+        case 'blockquote':
+          chain.setBlockquote().run()
+          break
+        default:
+          chain.setParagraph().run()
+      }
+    },
+    [editor],
+  )
+
+  return (
+    <div
+      className="flex flex-wrap items-center gap-0.5 overflow-x-auto border-b border-border-strong bg-card px-2 py-1.5"
+      style={{ flexShrink: 0 }}
+    >
+      <ToolButton
+        label="Undo"
+        disabled={!editor.can().undo()}
+        onAction={() => editor.chain().focus().undo().run()}
+      >
+        <Undo2 size={13} />
+      </ToolButton>
+      <ToolButton
+        label="Redo"
+        disabled={!editor.can().redo()}
+        onAction={() => editor.chain().focus().redo().run()}
+      >
+        <Redo2 size={13} />
+      </ToolButton>
+      <Divider />
+      <select
+        aria-label="Text style"
+        value={formatValue}
+        onChange={handleFormatBlock}
+        className="h-7 w-28 rounded-sm border border-input bg-card px-2 text-ui-sm text-foreground focus:outline-none"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <option value="p">Paragraph</option>
+        <option value="h2">Heading 2</option>
+        <option value="h3">Heading 3</option>
+        <option value="blockquote">Quote</option>
+      </select>
+      <Divider />
+      <ToolButton
+        label="Bold"
+        active={editor.isActive('bold')}
+        onAction={() => editor.chain().focus().toggleBold().run()}
+      >
+        <Bold size={14} />
+      </ToolButton>
+      <ToolButton
+        label="Italic"
+        active={editor.isActive('italic')}
+        onAction={() => editor.chain().focus().toggleItalic().run()}
+      >
+        <Italic size={14} />
+      </ToolButton>
+      <ToolButton
+        label="Underline"
+        active={editor.isActive('underline')}
+        onAction={() => editor.chain().focus().toggleUnderline().run()}
+      >
+        <Underline size={14} />
+      </ToolButton>
+      <ToolButton
+        label="Strikethrough"
+        active={editor.isActive('strike')}
+        onAction={() => editor.chain().focus().toggleStrike().run()}
+      >
+        <Strikethrough size={14} />
+      </ToolButton>
+      <Divider />
+      <ToolButton
+        label="Bulleted list"
+        active={editor.isActive('bulletList')}
+        onAction={() => editor.chain().focus().toggleBulletList().run()}
+      >
+        <List size={14} />
+      </ToolButton>
+      <ToolButton
+        label="Numbered list"
+        active={editor.isActive('orderedList')}
+        onAction={() => editor.chain().focus().toggleOrderedList().run()}
+      >
+        <ListOrdered size={14} />
+      </ToolButton>
+      <ToolButton label="Align left" onAction={() => {}} disabled>
+        <AlignLeft size={14} />
+      </ToolButton>
+      <Divider />
+      <ToolButton label="Insert link" active={editor.isActive('link')} onAction={handleLink}>
+        <Link2 size={14} />
+      </ToolButton>
+      <ToolButton
+        label="Code block"
+        active={editor.isActive('codeBlock')}
+        onAction={() => editor.chain().focus().toggleCodeBlock().run()}
+      >
+        <Code2 size={14} />
+      </ToolButton>
+    </div>
+  )
+}
+
+// ── Image paste ───────────────────────────────────────────────────────────────
+
+/**
+ * Reads image files off a paste event's clipboard data. Returns [] for a
+ * normal text/HTML paste — Tiptap's own paste handling covers that case.
+ */
+function imageFilesFromClipboard(data: DataTransfer): File[] {
+  const files: File[] = []
+  for (const item of data.items) {
+    if (item.kind === 'file' && item.type.startsWith('image/')) {
+      const file = item.getAsFile()
+      if (file) files.push(file)
+    }
+  }
+  return files
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 interface RichTextEditorProps {
   /** Section heading shown in the header bar */
@@ -134,8 +327,22 @@ interface RichTextEditorProps {
   minHeight?: number
   /** Disable all editing */
   readOnly?: boolean
-  /** Called with sanitized HTML when content is saved (blur or Ctrl+Enter) */
-  onSave?: (html: string) => void
+  /**
+   * Called with the current sanitized HTML whenever content changes
+   * (including a pasted-image preview being inserted). Does NOT persist
+   * anything — the owning page decides when to actually save. Prefer this
+   * over onBlur for pages using usePendingPatch/SaveCancelBar, since it
+   * fires immediately (needed to show the dirty-state bar as soon as the
+   * user starts typing, not only once they click away).
+   */
+  onChange?: (html: string) => void
+  /**
+   * Called with the current sanitized HTML on blur, only when it actually
+   * changed since the field was focused. For pages that still save this
+   * field immediately (not yet migrated to the Save/Cancel pattern) — do not
+   * combine with onChange on the same page, prefer one or the other.
+   */
+  onBlur?: (html: string) => void
   /** Optional extra CSS class on the outer wrapper */
   className?: string
 }
@@ -145,59 +352,107 @@ export function RichTextEditor({
   value,
   minHeight = 80,
   readOnly = false,
-  onSave,
+  onChange,
+  onBlur,
   className = '',
 }: RichTextEditorProps) {
-  const editorRef = useRef<HTMLDivElement>(null)
-  const savedRef = useRef<string>('')
   const [expanded, setExpanded] = useState(false)
   const [focused, setFocused] = useState(false)
-
-  // Sync external value into editor (only when it changes externally)
+  // Mirrors the latest callbacks so the paste handler and onBlur (registered
+  // once at editor creation) always call the current callback, not a stale
+  // closure from the render that created the editor. Updated in an effect
+  // (not during render) — mutating a ref while rendering is a React footgun.
+  const onChangeRef = useRef(onChange)
+  const onBlurRef = useRef(onBlur)
+  const valueAtFocusRef = useRef(value)
+  // Tracks the latest external `value` prop (distinct from valueAtFocusRef,
+  // which freezes at focus time) — used by onUpdate to detect a real edit vs.
+  // Tiptap's own mount-time content normalization firing a spurious update.
+  const valueRef = useRef(value)
   useEffect(() => {
-    if (!editorRef.current) return
+    onChangeRef.current = onChange
+    onBlurRef.current = onBlur
+    valueRef.current = value
+  }, [onChange, onBlur, value])
+
+  const editor = useEditor({
+    editable: !readOnly,
+    immediatelyRender: false,
+    extensions: [
+      StarterKit,
+      Placeholder.configure({ placeholder: `Add ${title.toLowerCase()}…` }),
+      Image.configure({ inline: false, allowBase64: false }),
+    ],
+    content: sanitize(value ?? ''),
+    editorProps: {
+      attributes: {
+        class: 'px-4 py-3 text-ui-lg leading-6 text-foreground focus:outline-none',
+      },
+      handlePaste: (view, event) => {
+        const files = event.clipboardData ? imageFilesFromClipboard(event.clipboardData) : []
+        if (files.length === 0) return false // let Tiptap handle normal text/HTML paste
+
+        event.preventDefault()
+        for (const file of files) {
+          // No upload here — just a local preview. The owning page's Save
+          // step is responsible for uploading and rewriting src to a durable
+          // URL before persisting (see usePendingPatch + the image-paste
+          // upload step in work-item-detail-page).
+          const src = URL.createObjectURL(file)
+          const { schema } = view.state
+          const node = schema.nodes['image']?.create({ src, alt: file.name })
+          if (!node) continue
+          const tr = view.state.tr.replaceSelectionWith(node)
+          view.dispatch(tr)
+        }
+        return true
+      },
+    },
+    onFocus: () => {
+      setFocused(true)
+      valueAtFocusRef.current = value
+    },
+    onBlur: ({ editor: ed }) => {
+      setFocused(false)
+      if (!onBlurRef.current) return
+      const html = sanitize(ed.getHTML())
+      if (!htmlEquals(html, sanitize(valueAtFocusRef.current ?? ''))) onBlurRef.current(html)
+    },
+    onUpdate: ({ editor: ed }) => {
+      // Tiptap can fire onUpdate during its own initial content normalization
+      // on mount, not just from real user edits — compare against the
+      // external value (the same guard onBlur uses) so mounting a field with
+      // existing content never marks a page dirty before anyone touches it.
+      const html = sanitize(ed.getHTML())
+      if (!htmlEquals(html, sanitize(valueRef.current ?? ''))) onChangeRef.current?.(html)
+    },
+  })
+
+  // Sync external value into the editor (only when it changes externally —
+  // e.g. after a save round-trips, a Cancel reverts local edits, or another
+  // tab/user updates it). Comparing sanitized HTML avoids clobbering the
+  // user's cursor on every keystroke.
+  useEffect(() => {
+    if (!editor) return
     const clean = sanitize(value ?? '')
-    // Only update DOM if different to avoid losing cursor position
-    if (editorRef.current.innerHTML !== clean) {
-      editorRef.current.innerHTML = clean
-      savedRef.current = clean
+    if (!htmlEquals(sanitize(editor.getHTML()), clean)) {
+      editor.commands.setContent(clean, { emitUpdate: false })
     }
-  }, [value])
+  }, [value, editor])
 
-  const exec = useCallback((command: string, value?: string) => {
-    editorRef.current?.focus()
-    document.execCommand(command, false, value)
-  }, [])
+  // Keep editable state in sync if readOnly changes after mount.
+  useEffect(() => {
+    editor?.setEditable(!readOnly)
+  }, [editor, readOnly])
 
-  const handleBlur = useCallback(() => {
-    setFocused(false)
-    if (!editorRef.current || readOnly || !onSave) return
-    const html = sanitize(editorRef.current.innerHTML)
-    if (html !== savedRef.current) {
-      savedRef.current = html
-      onSave(html)
-    }
-  }, [readOnly, onSave])
-
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+  const handleKeyDownCapture = useCallback((e: React.KeyboardEvent) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
       e.preventDefault()
-      editorRef.current?.blur()
+      ;(e.currentTarget.querySelector('.ProseMirror') as HTMLElement | null)?.blur()
     }
   }, [])
 
-  const handleFormatBlock = useCallback(
-    (e: React.ChangeEvent<HTMLSelectElement>) => {
-      exec('formatBlock', e.target.value)
-      editorRef.current?.focus()
-    },
-    [exec],
-  )
-
-  const handleLink = useCallback(() => {
-    const url = window.prompt('Enter URL:')
-    if (url) exec('createLink', url)
-  }, [exec])
+  if (!editor) return null
 
   return (
     <section
@@ -236,101 +491,20 @@ export function RichTextEditor({
       </div>
 
       {/* Toolbar */}
-      {!readOnly && (
-        <div
-          className="flex flex-wrap items-center gap-0.5 overflow-x-auto border-b border-border-strong bg-card px-2 py-1.5"
-          style={{ flexShrink: 0 }}
-        >
-          <ToolButton label="Undo" onAction={() => exec('undo')}>
-            <Undo2 size={13} />
-          </ToolButton>
-          <ToolButton label="Redo" onAction={() => exec('redo')}>
-            <Redo2 size={13} />
-          </ToolButton>
-          <Divider />
-          <select
-            aria-label="Text style"
-            onChange={handleFormatBlock}
-            defaultValue="p"
-            className="h-7 w-28 rounded-sm border border-input bg-card px-2 text-ui-sm text-foreground focus:outline-none"
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <option value="p">Paragraph</option>
-            <option value="h2">Heading 2</option>
-            <option value="h3">Heading 3</option>
-            <option value="blockquote">Quote</option>
-          </select>
-          <Divider />
-          <ToolButton label="Bold" onAction={() => exec('bold')}>
-            <Bold size={14} />
-          </ToolButton>
-          <ToolButton label="Italic" onAction={() => exec('italic')}>
-            <Italic size={14} />
-          </ToolButton>
-          <ToolButton label="Underline" onAction={() => exec('underline')}>
-            <Underline size={14} />
-          </ToolButton>
-          <ToolButton label="Strikethrough" onAction={() => exec('strikeThrough')}>
-            <Strikethrough size={14} />
-          </ToolButton>
-          <Divider />
-          <ToolButton label="Bulleted list" onAction={() => exec('insertUnorderedList')}>
-            <List size={14} />
-          </ToolButton>
-          <ToolButton label="Numbered list" onAction={() => exec('insertOrderedList')}>
-            <ListOrdered size={14} />
-          </ToolButton>
-          <ToolButton label="Align left" onAction={() => exec('justifyLeft')}>
-            <AlignLeft size={14} />
-          </ToolButton>
-          <Divider />
-          <ToolButton label="Insert link" onAction={handleLink}>
-            <Link2 size={14} />
-          </ToolButton>
-          <ToolButton label="Inline code" onAction={() => exec('formatBlock', 'pre')}>
-            <Code2 size={14} />
-          </ToolButton>
-        </div>
-      )}
+      {!readOnly && <Toolbar editor={editor} />}
 
       {/* Content area */}
-      {readOnly ? (
-        <div
-          className="prose prose-sm max-w-none bg-surface-hover px-4 py-3 text-ui-lg leading-6 text-foreground"
-          style={{
-            minHeight,
-            overflowY: expanded ? 'auto' : undefined,
-            flex: expanded ? '1' : undefined,
-          }}
-          dangerouslySetInnerHTML={{ __html: sanitize(value ?? '') }}
-        />
-      ) : (
-        <div
-          ref={editorRef}
-          contentEditable
-          suppressContentEditableWarning
-          onFocus={() => setFocused(true)}
-          onBlur={handleBlur}
-          onKeyDown={handleKeyDown}
-          className="prose prose-sm max-w-none bg-card px-4 py-3 text-ui-lg leading-6 text-foreground focus:outline-none"
-          style={{
-            minHeight,
-            overflowY: expanded ? 'auto' : undefined,
-            flex: expanded ? '1' : undefined,
-          }}
-          data-placeholder={`Add ${title.toLowerCase()}…`}
-        />
-      )}
-
-      {/* Keyboard hint */}
-      {!readOnly && (
-        <div
-          className="border-t border-primary-lighter px-4 py-1 text-ui-xs text-foreground-subtle select-none"
-          style={{ flexShrink: 0 }}
-        >
-          Ctrl+Enter to save · changes auto-saved on blur
-        </div>
-      )}
+      <div
+        onKeyDownCapture={handleKeyDownCapture}
+        className={readOnly ? 'bg-surface-hover' : 'bg-card'}
+        style={{
+          minHeight,
+          overflowY: expanded ? 'auto' : undefined,
+          flex: expanded ? '1' : undefined,
+        }}
+      >
+        <EditorContent editor={editor} />
+      </div>
     </section>
   )
 }

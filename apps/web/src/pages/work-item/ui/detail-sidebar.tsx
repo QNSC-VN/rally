@@ -12,6 +12,7 @@ import {
   useTaskTotals,
   useBacklog,
   type WorkItem,
+  type UpdateWorkItemInput,
 } from '@/features/work-items/api'
 import { useProjectTeams, useProjectMembers } from '@/features/teams/api'
 import { useReleases } from '@/features/releases/api'
@@ -108,7 +109,7 @@ function RelatedItemField({
 
 interface SidebarProps {
   item: WorkItem
-  onUpdate: (patch: Partial<WorkItem>) => void
+  onUpdate: (patch: Partial<UpdateWorkItemInput>) => void
   updating: boolean
   readOnly: boolean
   collapsed?: boolean
@@ -182,7 +183,7 @@ export function DetailSidebar({
             <NativeSelect
               value={item.scheduleState ?? ScheduleState.Defined}
               onChange={(e) =>
-                onUpdate({ scheduleState: e.target.value as WorkItem['scheduleState'] })
+                onUpdate({ scheduleState: e.target.value as UpdateWorkItemInput['scheduleState'] })
               }
               disabled={disabled}
             >
@@ -204,7 +205,7 @@ export function DetailSidebar({
                   canEdit={!disabled}
                   onChange={(next) => {
                     if (next !== item.scheduleState)
-                      onUpdate({ scheduleState: next as WorkItem['scheduleState'] })
+                      onUpdate({ scheduleState: next as UpdateWorkItemInput['scheduleState'] })
                   }}
                   ariaLabel="Schedule State"
                 />
@@ -216,7 +217,9 @@ export function DetailSidebar({
             <FormField label={t('sidebar.flowState')}>
               <NativeSelect
                 value={item.flowState ?? item.scheduleState ?? ScheduleState.Defined}
-                onChange={(e) => onUpdate({ flowState: e.target.value as WorkItem['flowState'] })}
+                onChange={(e) =>
+                  onUpdate({ flowState: e.target.value as UpdateWorkItemInput['flowState'] })
+                }
                 disabled={disabled}
               >
                 {SCHEDULE_STATE_VALUES.map((s) => (
@@ -250,7 +253,9 @@ export function DetailSidebar({
           <FormField label={t('sidebar.priority')}>
             <NativeSelect
               value={item.priority ?? 'none'}
-              onChange={(e) => onUpdate({ priority: e.target.value as WorkItem['priority'] })}
+              onChange={(e) =>
+                onUpdate({ priority: e.target.value as UpdateWorkItemInput['priority'] })
+              }
               disabled={disabled}
             >
               {PRIORITIES.map(({ value, label }) => (

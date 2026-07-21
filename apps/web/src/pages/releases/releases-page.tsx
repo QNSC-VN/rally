@@ -16,6 +16,7 @@ import { Button } from '@/shared/ui/button'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { BRAND } from '@/shared/config/brand'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
+import { TimeboxTypeSwitcher } from '@/pages/timeboxes/timebox-type-switcher'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
@@ -28,7 +29,7 @@ import { ReleaseRow } from './ui/release-row'
 import { useReleases, useDeleteRelease, type Release } from '@/features/releases/api'
 
 export function ReleasesPage() {
-  const { t } = useTranslation('releases')
+  const { t } = useTranslation(['releases', 'iterations'])
   const { project } = useAppContext()
   const projectId = project?.projectId
   const { can } = useProjectPermissions(projectId)
@@ -92,7 +93,8 @@ export function ReleasesPage() {
     <div className="flex flex-1 flex-col overflow-hidden bg-background">
       {/* Header */}
       <PageToolbar
-        title={t('title')}
+        title={t('iterations:title')}
+        titleAccessory={<TimeboxTypeSwitcher current="releases" />}
         search={{
           value: search,
           onChange: setSearch,

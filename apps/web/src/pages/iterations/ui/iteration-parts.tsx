@@ -322,14 +322,14 @@ export function IterationDetail({
               value={it?.theme}
               minHeight={200}
               readOnly={disabled}
-              onSave={(html) => patch({ theme: html || null })}
+              onBlur={(html) => patch({ theme: html || null })}
             />
             <RichTextEditor
               title={t('detail.notesLabel')}
               value={it?.notes}
               minHeight={160}
               readOnly={disabled}
-              onSave={(html) => patch({ notes: html || null })}
+              onBlur={(html) => patch({ notes: html || null })}
             />
           </div>
         </main>
