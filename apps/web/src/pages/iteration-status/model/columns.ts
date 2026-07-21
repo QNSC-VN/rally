@@ -1,4 +1,5 @@
 import { type ColumnSpec } from '@/shared/ui/table'
+import { type DataTableHeaderColumn } from '@/shared/ui/data-table-header'
 
 export type ColKey =
   | 'rank'
@@ -44,3 +45,26 @@ export const ITERATION_STATUS_COLUMNS: ColumnSpec<unknown, unknown, ColKey>[] = 
 // Sentinel for the Owner filter's "Unassigned" option (empty string collides
 // with the native <select> placeholder, so use an explicit token).
 export const OWNER_UNASSIGNED = '__unassigned__'
+
+// Sticky-header column metadata (labels + sort keys + alignment) for the grid
+// header. Shared by the page (headerProps) and the chrome Toolbar's DataTableHeader.
+export const HEADER_META: DataTableHeaderColumn<ColKey>[] = [
+  { key: 'rank', label: 'Rank', sortCol: 'rank', align: 'center' },
+  { key: 'id', label: 'ID', sortCol: 'id' },
+  { key: 'name', label: 'Name', sortCol: 'name' },
+  { key: 'feature', label: 'Feature' },
+  { key: 'iteration', label: 'Iteration' },
+  { key: 'state', label: 'Schedule State', sortCol: 'scheduleState' },
+  { key: 'block', label: 'Block', sortCol: 'block', align: 'center' },
+  { key: 'blockedReason', label: 'Blocked Reason' },
+  { key: 'planEstimate', label: 'Plan Est', sortCol: 'planEstimate', align: 'right' },
+  { key: 'taskEstimate', label: 'Task Est', sortCol: 'taskEstimate', align: 'right' },
+  { key: 'toDo', label: 'To Do', sortCol: 'toDo', align: 'right' },
+  { key: 'tasksPct', label: 'Tasks' },
+  { key: 'actual', label: 'Actual', align: 'right' },
+  { key: 'owner', label: 'Owner', sortCol: 'owner' },
+  { key: 'defects', label: 'Defects', align: 'center' },
+  { key: 'defectStatus', label: 'Defect Status' },
+  { key: 'milestones', label: 'Milestones' },
+  { key: 'devOwner', label: 'Dev Owner' },
+]

@@ -56,7 +56,12 @@ import { StatusRow } from './ui/status-row'
 import { AddItemModal } from './ui/add-item-modal'
 import { IterationHeader, MetricsStrip, Toolbar, TableFooterTotals } from './ui/iteration-chrome'
 import { computeTotalDays } from './model/iteration-helpers'
-import { type ColKey, ITERATION_STATUS_COLUMNS, OWNER_UNASSIGNED } from './model/columns'
+import {
+  type ColKey,
+  ITERATION_STATUS_COLUMNS,
+  OWNER_UNASSIGNED,
+  HEADER_META,
+} from './model/columns'
 
 // Stable empty-array reference — `status?.items ?? []` would otherwise mint a
 // new array every render while status is loading, which defeats the

@@ -13,7 +13,6 @@ import {
 
 import { BRAND } from '@/shared/config/brand'
 import { type ColumnDef } from '@/shared/lib/hooks/use-column-layout'
-import { type DataTableHeaderColumn } from '@/shared/ui/data-table-header'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { Button } from '@/shared/ui/button'
@@ -27,7 +26,7 @@ import {
   type ScheduleState,
 } from '@/entities/work-item/model/types'
 import { fmtRange } from '../model/iteration-helpers'
-import { type ColKey, OWNER_UNASSIGNED } from '../model/columns'
+import { type ColKey, OWNER_UNASSIGNED, HEADER_META } from '../model/columns'
 
 export function IterationHeader({
   iterations,
@@ -499,26 +498,6 @@ export function Toolbar({
 // Drives the (single-source) header render: label, optional sort key, and
 // alignment. Order mirrors ITERATION_STATUS_COLUMNS; visual position is driven
 // by CSS `order` via styleFor, so the DOM order stays canonical.
-const HEADER_META: DataTableHeaderColumn<ColKey>[] = [
-  { key: 'rank', label: 'Rank', sortCol: 'rank', align: 'center' },
-  { key: 'id', label: 'ID', sortCol: 'id' },
-  { key: 'name', label: 'Name', sortCol: 'name' },
-  { key: 'feature', label: 'Feature' },
-  { key: 'iteration', label: 'Iteration' },
-  { key: 'state', label: 'Schedule State', sortCol: 'scheduleState' },
-  { key: 'block', label: 'Block', sortCol: 'block', align: 'center' },
-  { key: 'blockedReason', label: 'Blocked Reason' },
-  { key: 'planEstimate', label: 'Plan Est', sortCol: 'planEstimate', align: 'right' },
-  { key: 'taskEstimate', label: 'Task Est', sortCol: 'taskEstimate', align: 'right' },
-  { key: 'toDo', label: 'To Do', sortCol: 'toDo', align: 'right' },
-  { key: 'tasksPct', label: 'Tasks' },
-  { key: 'actual', label: 'Actual', align: 'right' },
-  { key: 'owner', label: 'Owner', sortCol: 'owner' },
-  { key: 'defects', label: 'Defects', align: 'center' },
-  { key: 'defectStatus', label: 'Defect Status' },
-  { key: 'milestones', label: 'Milestones' },
-  { key: 'devOwner', label: 'Dev Owner' },
-]
 
 // ── Table footer totals ──────────────────────────────────────────────────────
 
