@@ -91,7 +91,7 @@ export function LinkedItemsBlock({
   return (
     <div className="mt-4">
       <div className="mb-2 flex items-center justify-between">
-        <div className="flex items-center gap-1.5 text-[12px] font-semibold text-muted-foreground">
+        <div className="flex items-center gap-1.5 text-ui-md font-semibold text-muted-foreground">
           <Link2 size={13} />
           Linked Items
           {relations.length > 0 && (
@@ -101,7 +101,7 @@ export function LinkedItemsBlock({
         {!readOnly && !adding && (
           <button
             onClick={() => setAdding(true)}
-            className="flex items-center gap-1 rounded px-2 py-1 text-[11px] text-primary-light hover:bg-primary-lighter"
+            className="flex items-center gap-1 rounded px-2 py-1 text-ui-sm text-primary-light hover:bg-primary-lighter"
           >
             <Plus size={12} />
             Link item
@@ -115,7 +115,7 @@ export function LinkedItemsBlock({
             <select
               value={relationType}
               onChange={(e) => setRelationType(e.target.value as WorkItemRelationType)}
-              className="rounded border border-input px-2 py-1 text-[12px]"
+              className="rounded border border-input px-2 py-1 text-ui-md"
             >
               {RELATION_TYPE_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
@@ -136,7 +136,7 @@ export function LinkedItemsBlock({
             value={search}
             onChange={(e) => void runSearch(e.target.value)}
             placeholder="Search work item by key or title…"
-            className="mt-2 w-full rounded border border-input px-2 py-1 text-[12px]"
+            className="mt-2 w-full rounded border border-input px-2 py-1 text-ui-md"
           />
           {hits.length > 0 && (
             <ul className="mt-1 max-h-48 overflow-y-auto rounded border border-border-inner">
@@ -145,7 +145,7 @@ export function LinkedItemsBlock({
                   <button
                     onClick={() => void addLink(h.id)}
                     disabled={linkMutation.isPending}
-                    className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-[12px] hover:bg-surface-hover disabled:opacity-50"
+                    className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-ui-md hover:bg-surface-hover disabled:opacity-50"
                   >
                     <span className="font-mono text-primary-light">{h.itemKey}</span>
                     <span className="truncate text-muted-foreground">{h.title}</span>
@@ -154,26 +154,26 @@ export function LinkedItemsBlock({
               ))}
             </ul>
           )}
-          {error && <p className="mt-1 text-[11px] text-destructive">{error}</p>}
+          {error && <p className="mt-1 text-ui-sm text-destructive">{error}</p>}
         </div>
       )}
 
       {isLoading ? (
-        <p className="text-[12px] text-foreground-subtle">Loading…</p>
+        <p className="text-ui-md text-foreground-subtle">Loading…</p>
       ) : relations.length === 0 ? (
-        <p className="text-[12px] text-foreground-subtle">No linked items.</p>
+        <p className="text-ui-md text-foreground-subtle">No linked items.</p>
       ) : (
         <div className="space-y-2">
           {grouped.map(([label, items]) => (
             <div key={label}>
-              <div className="text-[11px] font-medium text-foreground-subtle">{label}</div>
+              <div className="text-ui-sm font-medium text-foreground-subtle">{label}</div>
               <ul className="mt-0.5 space-y-0.5">
                 {items.map((r) => (
                   <li
                     key={r.id}
                     className="flex items-center justify-between rounded px-1.5 py-1 hover:bg-surface-hover"
                   >
-                    <span className="flex items-center gap-2 text-[12px]">
+                    <span className="flex items-center gap-2 text-ui-md">
                       <span className="font-mono text-primary-light">{r.relatedItem.itemKey}</span>
                       <span className="truncate text-foreground">{r.relatedItem.title}</span>
                     </span>

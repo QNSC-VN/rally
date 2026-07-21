@@ -68,19 +68,13 @@ export function OwnerAvatar({
 
 export function OwnerCell({ name, className }: OwnerCellProps) {
   if (!name) {
-    return (
-      <span className="text-[10px]" style={{ color: BRAND.textDisabled }}>
-        —
-      </span>
-    )
+    return <span className="text-ui-xs text-foreground-disabled">—</span>
   }
 
   return (
     <div className={cn('flex items-center gap-1 overflow-hidden', className)}>
       <OwnerAvatar name={name} />
-      <span className="truncate text-[10px]" style={{ color: BRAND.textSecondary }}>
-        {name}
-      </span>
+      <span className="truncate text-ui-xs text-muted-foreground">{name}</span>
     </div>
   )
 }

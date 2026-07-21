@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { AlertTriangle, Bell, CheckCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import { BRAND } from '@/shared/config/brand'
@@ -32,6 +33,7 @@ const TAB_FILTER: Record<
 }
 
 export function NotificationsPage() {
+  const { t } = useTranslation('notifications')
   const [tab, setTab] = useState<NotificationTab>('all')
   const { data: notifications = [], isLoading, isError } = useNotifications(TAB_FILTER[tab])
   const markRead = useMarkNotificationRead()
@@ -43,24 +45,21 @@ export function NotificationsPage() {
   async function handleMarkAll() {
     try {
       await markAll.mutateAsync()
-      toast.success('All notifications marked as read')
+      toast.success(t('markAllSuccess'))
     } catch {
-      toast.error('Failed to mark all as read')
+      toast.error(t('markAllError'))
     }
   }
 
   return (
-    <div className="flex flex-1 flex-col" style={{ backgroundColor: BRAND.pageBg, minHeight: 0 }}>
+    <div className="flex flex-1 flex-col bg-background" style={{ minHeight: 0 }}>
       {/* ── Header ── */}
       <PageHeader
-        icon={<Bell size={16} style={{ color: BRAND.textSecondary }} />}
-        title="Notifications"
+        icon={<Bell size={16} className="text-muted-foreground" />}
+        title={t('common:notifications')}
         badge={
           unreadCount > 0 ? (
-            <span
-              className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-white"
-              style={{ backgroundColor: BRAND.primary }}
-            >
+            <span className="rounded-full bg-primary px-2 py-0.5 text-ui-sm font-semibold text-white">
               {unreadCount}
             </span>
           ) : undefined
@@ -68,20 +67,20 @@ export function NotificationsPage() {
         actions={
           <>
             <div className="flex items-center gap-1">
-              {TABS.map((t) => {
-                const active = tab === t.key
+              {TABS.map((type) => {
+                const active = tab === type.key
                 return (
                   <button
-                    key={t.key}
-                    onClick={() => setTab(t.key)}
-                    className="rounded px-3 py-1.5 text-[12px] font-medium transition-colors"
+                    key={type.key}
+                    onClick={() => setTab(type.key)}
+                    className="rounded px-3 py-1.5 text-ui-md font-medium transition-colors"
                     style={{
                       backgroundColor: active ? BRAND.primary : 'transparent',
                       color: active ? BRAND.surface : BRAND.textSecondary,
                       border: `1px solid ${active ? BRAND.primary : BRAND.border}`,
                     }}
                   >
-                    {t.label}
+                    {t(`tabs.${type.key}`)}
                   </button>
                 )
               })}
@@ -90,15 +89,10 @@ export function NotificationsPage() {
               <button
                 onClick={() => void handleMarkAll()}
                 disabled={markAll.isPending}
-                className="flex items-center gap-1.5 rounded px-3 py-1.5 text-[12px] font-medium transition-colors hover:opacity-80"
-                style={{
-                  border: `1px solid ${BRAND.border}`,
-                  color: BRAND.textSecondary,
-                  backgroundColor: BRAND.surface,
-                }}
+                className="flex items-center gap-1.5 rounded border border-border-strong bg-card px-3 py-1.5 text-ui-md font-medium text-muted-foreground transition-colors hover:opacity-80"
               >
                 <CheckCheck size={13} />
-                Mark all read
+                {t('markAllRead')}
               </button>
             )}
           </>
@@ -109,25 +103,18 @@ export function NotificationsPage() {
       <div className="flex-1 overflow-y-auto">
         {isLoading ? (
           <div className="flex items-center justify-center py-20">
-            <div
-              className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent"
-              style={{ borderColor: BRAND.primary, borderTopColor: 'transparent' }}
-            />
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           </div>
         ) : isError ? (
           <EmptyState
             icon={<AlertTriangle size={28} className="text-destructive" />}
-            title="Failed to load notifications. Please try again."
+            title={t('errors.load')}
           />
         ) : notifications.length === 0 ? (
           <EmptyState
             icon={<Bell size={28} className="text-foreground-subtle" />}
-            title={tab === 'unread' ? 'No unread notifications' : "You're all caught up"}
-            description={
-              tab === 'all'
-                ? 'New notifications will appear here.'
-                : 'Switch to the All tab to see everything.'
-            }
+            title={tab === 'unread' ? t('empty.noUnread') : t('empty.caughtUp')}
+            description={tab === 'all' ? t('empty.allDescription') : t('empty.otherDescription')}
           />
         ) : (
           <ul>

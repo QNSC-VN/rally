@@ -1,0 +1,68 @@
+{
+  "title": "Defects",
+  "logDefect": "Log Defect",
+  "metrics": {
+    "openDefects": "Open Defects",
+    "critical": "Critical",
+    "inProgress": "In Progress",
+    "verifiedAccepted": "Verified / Accepted",
+    "reopened": "Reopened",
+    "blockers": "Blockers"
+  },
+  "filters": {
+    "allSeverity": "All Severity",
+    "allEnv": "All Env",
+    "development": "Development",
+    "staging": "Staging",
+    "production": "Production",
+    "testing": "Testing",
+    "allPriority": "All Priority",
+    "allFlowStates": "All Flow States",
+    "allDefectStates": "All Defect States",
+    "allOwners": "All Owners",
+    "allReleases": "All Releases",
+    "allRootCauses": "All Root Causes",
+    "requirements": "Requirements",
+    "design": "Design",
+    "code": "Code",
+    "test": "Test",
+    "integration": "Integration",
+    "other": "Other",
+    "allResolutions": "All Resolutions",
+    "unresolved": "Open (Unresolved)",
+    "fixed": "Fixed",
+    "wontFix": "Won't Fix",
+    "duplicate": "Duplicate",
+    "cannotReproduce": "Cannot Reproduce",
+    "deferred": "Deferred",
+    "byDesign": "By Design"
+  },
+  "empty": {
+    "noMatch": "No defects match your filters",
+    "none": "No defects logged yet"
+  },
+  "create": {
+    "titleLabel": "Title",
+    "severityLabel": "Severity",
+    "priorityLabel": "Priority",
+    "foundInLabel": "Found In",
+    "rootCauseLabel": "Root Cause",
+    "assigneeLabel": "Assignee",
+    "releaseLabel": "Release",
+    "unassigned": "Unassigned",
+    "titleRequired": "Title is required",
+    "logging": "Logging...",
+    "logged": "Defect \"{{name}}\" logged",
+    "logFailed": "Failed to log defect"
+  },
+  "toasts": {
+    "stateUpdated": "Defect state updated",
+    "fixedInBuildUpdated": "Fixed In Build updated"
+  },
+  "errors": {
+    "loadFailed": "Failed to load defects",
+    "stateUpdateFailed": "Failed to update defect state",
+    "updateFailed": "Failed to update",
+    "flowStateUpdateFailed": "Failed to update flow state"
+  }
+}

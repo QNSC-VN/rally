@@ -18,7 +18,7 @@ export function Avatar({ name, size = 28 }: AvatarProps) {
   return (
     <div
       aria-label={name}
-      className="flex shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white select-none"
+      className="flex shrink-0 items-center justify-center rounded-full text-ui-xs font-semibold text-white select-none"
       style={{ width: size, height: size, backgroundColor: BRAND.primaryLight }}
     >
       {initials(name)}

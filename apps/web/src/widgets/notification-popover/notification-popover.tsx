@@ -10,9 +10,9 @@
  *  - Accessible: aria-haspopup, focus trap exit via Escape
  */
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Link } from '@tanstack/react-router'
 import { Bell, CheckCheck, ExternalLink } from 'lucide-react'
-import { BRAND } from '@/shared/config/brand'
 import {
   useNotifications,
   useNotificationUnreadCount,
@@ -32,6 +32,7 @@ interface NotificationPopoverProps {
 }
 
 export function NotificationPopover({ open, onClose }: NotificationPopoverProps) {
+  const { t } = useTranslation('notifications')
   const panelRef = useRef<HTMLDivElement>(null)
   const [unreadOnly, setUnreadOnly] = useState(false)
 
@@ -73,32 +74,22 @@ export function NotificationPopover({ open, onClose }: NotificationPopoverProps)
       ref={panelRef}
       role="dialog"
       aria-label="Notifications"
-      className="absolute top-full right-0 z-50 mt-1.5 flex flex-col overflow-hidden rounded-lg bg-white shadow-2xl"
+      className="absolute top-full right-0 z-50 mt-1.5 flex flex-col overflow-hidden rounded-lg border border-border-strong bg-card shadow-2xl"
       style={{
         width: 380,
         maxHeight: 520,
-        border: `1px solid ${BRAND.border}`,
         // Subtle drop-shadow to lift above header
         boxShadow: '0 8px 32px rgba(0,0,0,0.14), 0 2px 8px rgba(0,0,0,0.08)',
       }}
     >
       {/* ── Header ── */}
-      <div
-        className="flex shrink-0 items-center justify-between px-4 py-3"
-        style={{
-          borderBottom: `1px solid ${BRAND.borderSubtle}`,
-          backgroundColor: BRAND.surfaceSubtle,
-        }}
-      >
+      <div className="flex shrink-0 items-center justify-between border-b border-border-subtle bg-surface-subtle px-4 py-3">
         <div className="flex items-center gap-2">
-          <span className="text-[13px] font-semibold" style={{ color: BRAND.textPrimary }}>
-            Notifications
+          <span className="text-ui-lg font-semibold text-foreground">
+            {t('common:notifications')}
           </span>
           {unreadCount > 0 && (
-            <span
-              className="rounded-full px-1.5 py-0.5 text-[10px] font-bold text-white"
-              style={{ backgroundColor: BRAND.danger }}
-            >
+            <span className="rounded-full bg-destructive px-1.5 py-0.5 text-ui-xs font-bold text-white">
               {unreadCount > 99 ? '99+' : unreadCount}
             </span>
           )}
@@ -113,9 +104,7 @@ export function NotificationPopover({ open, onClose }: NotificationPopoverProps)
               onChange={(e) => setUnreadOnly(e.target.checked)}
               className="h-3 w-3 rounded accent-primary"
             />
-            <span className="text-[10px]" style={{ color: BRAND.textSecondary }}>
-              Unread only
-            </span>
+            <span className="text-ui-xs text-muted-foreground">{t('unreadOnly')}</span>
           </label>
 
           {/* Mark all read */}
@@ -124,11 +113,10 @@ export function NotificationPopover({ open, onClose }: NotificationPopoverProps)
               onClick={() => void markAll.mutateAsync()}
               disabled={markAll.isPending}
               title="Mark all as read"
-              className="flex items-center gap-1 rounded px-2 py-1 text-[10px] font-medium transition-colors hover:bg-white disabled:opacity-50"
-              style={{ color: BRAND.textSecondary, border: `1px solid ${BRAND.border}` }}
+              className="flex items-center gap-1 rounded border border-border-strong px-2 py-1 text-ui-xs font-medium text-muted-foreground transition-colors hover:bg-card disabled:opacity-50"
             >
               <CheckCheck size={11} />
-              All read
+              {t('allRead')}
             </button>
           )}
         </div>
@@ -138,16 +126,13 @@ export function NotificationPopover({ open, onClose }: NotificationPopoverProps)
       <div className="flex-1 overflow-y-auto">
         {isLoading ? (
           <div className="flex items-center justify-center py-10">
-            <div
-              className="h-4 w-4 animate-spin rounded-full border-2"
-              style={{ borderColor: BRAND.primary, borderTopColor: 'transparent' }}
-            />
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           </div>
         ) : displayed.length === 0 ? (
           <EmptyState
             size="sm"
             icon={<Bell size={28} className="text-foreground-subtle" />}
-            title={unreadOnly ? 'No unread notifications' : "You're all caught up"}
+            title={unreadOnly ? t('empty.noUnread') : t('empty.caughtUp')}
           />
         ) : (
           <ul>
@@ -170,23 +155,16 @@ export function NotificationPopover({ open, onClose }: NotificationPopoverProps)
       </div>
 
       {/* ── Footer ── */}
-      <div
-        className="flex shrink-0 items-center justify-between px-4 py-2.5"
-        style={{
-          borderTop: `1px solid ${BRAND.borderSubtle}`,
-          backgroundColor: BRAND.surfaceSubtle,
-        }}
-      >
-        <span className="text-[10px]" style={{ color: BRAND.textMuted }}>
-          Showing {displayed.length} of {notifications.length}
+      <div className="flex shrink-0 items-center justify-between border-t border-border-subtle bg-surface-subtle px-4 py-2.5">
+        <span className="text-ui-xs text-foreground-subtle">
+          {t('showingCount', { shown: displayed.length, total: notifications.length })}
         </span>
         <Link
           to={'/notifications' as '/'}
           onClick={onClose}
-          className="flex items-center gap-1 text-[11px] font-medium transition-colors hover:underline"
-          style={{ color: BRAND.primaryLight }}
+          className="flex items-center gap-1 text-ui-sm font-medium text-primary-light transition-colors hover:underline"
         >
-          View all
+          {t('viewAll')}
           <ExternalLink size={10} />
         </Link>
       </div>

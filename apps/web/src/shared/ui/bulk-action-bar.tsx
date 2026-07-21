@@ -36,17 +36,13 @@ export function BulkActionBar({ selectedCount, onClear, error, children }: BulkA
         borderBottom: `1px solid ${BRAND.accentBorder}`,
       }}
     >
-      <span className="mr-1 text-[11px] font-semibold" style={{ color: BRAND.primaryLight }}>
+      <span className="mr-1 text-ui-sm font-semibold text-primary-light">
         {selectedCount} selected
       </span>
 
       {children}
 
-      {error && (
-        <span className="text-[11px]" style={{ color: BRAND.danger }}>
-          {error}
-        </span>
-      )}
+      {error && <span className="text-ui-sm text-destructive">{error}</span>}
 
       <div className="flex-1" />
       <button

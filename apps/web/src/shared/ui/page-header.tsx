@@ -41,16 +41,12 @@ export function PageHeader({
     >
       <div className="flex min-w-0 items-center gap-2.5">
         {icon}
-        <h1 className="shrink-0 text-[13px] font-semibold" style={{ color: BRAND.textPrimary }}>
-          {title}
-        </h1>
+        <h1 className="shrink-0 text-ui-lg font-semibold text-foreground">{title}</h1>
         {badge}
         {subtitle != null && (
           <>
             <div className="h-4 w-px shrink-0" style={{ backgroundColor: BRAND.border }} />
-            <div className="truncate text-[11px]" style={{ color: BRAND.textSecondary }}>
-              {subtitle}
-            </div>
+            <div className="truncate text-ui-sm text-muted-foreground">{subtitle}</div>
           </>
         )}
       </div>

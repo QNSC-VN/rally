@@ -35,7 +35,9 @@ export function KeyChip({
     <span
       className={cn(
         'inline-flex shrink-0 items-center justify-center rounded-sm font-mono whitespace-nowrap',
-        size === 'sm' ? 'h-4 min-w-8 px-1 text-[9px] font-bold' : 'h-5 px-1.5 text-[10px] font-semibold',
+        size === 'sm'
+          ? 'h-4 min-w-8 px-1 text-ui-2xs font-bold'
+          : 'h-5 px-1.5 text-ui-xs font-semibold',
         className,
       )}
       style={{ backgroundColor: bg, color: text }}

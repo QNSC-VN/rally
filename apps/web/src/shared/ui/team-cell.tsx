@@ -64,19 +64,13 @@ export function TeamCell({
   className?: string
 }) {
   if (!name && !teamKey) {
-    return (
-      <span className="text-[10px]" style={{ color: BRAND.textDisabled }}>
-        —
-      </span>
-    )
+    return <span className="text-ui-xs text-foreground-disabled">—</span>
   }
 
   return (
     <div className={cn('flex items-center gap-1 overflow-hidden', className)}>
       <TeamAvatar teamKey={teamKey} name={name} />
-      <span className="truncate text-[10px]" style={{ color: BRAND.textSecondary }}>
-        {name ?? teamKey}
-      </span>
+      <span className="truncate text-ui-xs text-muted-foreground">{name ?? teamKey}</span>
     </div>
   )
 }

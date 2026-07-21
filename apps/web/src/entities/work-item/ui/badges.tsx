@@ -32,8 +32,8 @@ export function TypeBadge({ type, size = 18 }: TypeBadgeProps) {
   // icon can never drift between pages.
   return (
     <span
-      className="inline-flex shrink-0 items-center justify-center rounded-full"
-      style={{ width: size, height: size, backgroundColor: cfg.color, color: BRAND.surface }}
+      className="inline-flex shrink-0 items-center justify-center rounded-full text-card"
+      style={{ width: size, height: size, backgroundColor: cfg.color }}
       title={cfg.label}
     >
       {Icon ? (
@@ -56,7 +56,7 @@ export function ScheduleStateBadge({ state }: ScheduleStateBadgeProps) {
   const label = SCHEDULE_STATE_LABEL[state as ScheduleState] ?? state
   return (
     <span
-      className="inline-flex h-5 items-center rounded-sm px-1.5 text-[10px] font-medium"
+      className="inline-flex h-5 items-center rounded-sm px-1.5 text-ui-xs font-medium"
       style={{ color: cfg.color, backgroundColor: cfg.bg }}
     >
       {label}
@@ -73,16 +73,12 @@ interface SeverityBadgeProps {
 /** Read-only defect severity pill (SRS labels + colour). Renders `—` for none. */
 export function SeverityBadge({ severity }: SeverityBadgeProps) {
   if (!severity || severity === 'none') {
-    return (
-      <span className="text-[10px]" style={{ color: BRAND.textFaint }}>
-        —
-      </span>
-    )
+    return <span className="text-ui-xs text-foreground-faint">—</span>
   }
   const cfg = DEFECT_SEVERITY_CONFIG[severity as DefectSeverity] ?? DEFECT_SEVERITY_CONFIG.none
   return (
     <span
-      className="inline-flex items-center rounded-sm px-1.5 py-px text-[10px] font-medium"
+      className="inline-flex items-center rounded-sm px-1.5 py-px text-ui-xs font-medium"
       style={{ backgroundColor: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}` }}
     >
       {cfg.label}
@@ -102,7 +98,7 @@ export function PriorityBadge({ priority }: PriorityBadgeProps) {
     color: BRAND.textSecondary,
   }
   return (
-    <span className="text-[10px] font-medium" style={{ color: cfg.color }}>
+    <span className="text-ui-xs font-medium" style={{ color: cfg.color }}>
       {cfg.label}
     </span>
   )

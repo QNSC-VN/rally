@@ -13,7 +13,6 @@ import { Button } from '@/shared/ui/button'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { OwnerSelectField } from '@/shared/ui/entity-select-field'
-import { BRAND } from '@/shared/config/brand'
 
 interface Props {
   workItemId: string
@@ -107,8 +106,7 @@ export function AddTaskModal({ workItemId, onClose }: Props) {
 
           <FormField label="Estimate (hrs)">
             <div
-              className="flex h-9 items-center rounded border border-input bg-input-background px-3 font-mono text-[13px]"
-              style={{ color: BRAND.textPrimary }}
+              className="flex h-9 items-center rounded border border-input bg-input-background px-3 font-mono text-ui-lg text-foreground"
               title="Estimate is derived: To Do + Actuals"
               aria-readonly
             >

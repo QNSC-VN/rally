@@ -1,5 +1,6 @@
 import { BRAND } from '@/shared/config/brand'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Layers, ShieldCheck, Check, AlertCircle } from 'lucide-react'
 import { ENV } from '@/shared/config/env'
 
@@ -22,6 +23,7 @@ function MicrosoftLogo() {
 }
 
 export function LoginPage() {
+  const { t } = useTranslation('auth')
   const [ssoLoading, setSsoLoading] = useState(false)
   const [ssoError, setSsoError] = useState<string | null>(null)
   const [devEmail, setDevEmail] = useState('admin@acme.dev')
@@ -39,7 +41,7 @@ export function LoginPage() {
       const returnTo = new URLSearchParams(window.location.search).get('returnTo') ?? '/'
       window.location.href = `/v1/bff/login?returnTo=${encodeURIComponent(returnTo)}`
     } catch {
-      setSsoError('Could not initiate sign-in. Please try again.')
+      setSsoError(t('errors.ssoInit'))
       setSsoLoading(false)
     }
   }
@@ -60,30 +62,27 @@ export function LoginPage() {
         body: JSON.stringify({ email: devEmail }),
       })
       if (!res.ok) {
-        setDevError('Login failed. Check the email is a seeded account and the API is running.')
+        setDevError(t('errors.devLoginFailed'))
         setDevLoading(false)
         return
       }
       // Full reload — bootstrapAuth() restores the session from the refresh cookie.
       window.location.assign('/')
     } catch {
-      setDevError('Could not reach the API. Is it running on :3000?')
+      setDevError(t('errors.devApiUnreachable'))
       setDevLoading(false)
     }
   }
 
-  const features = ['Workspace control', 'Project visibility', 'Team governance']
+  const features = [t('features.control'), t('features.visibility'), t('features.governance')]
 
   return (
     <main
-      className="grid min-h-svh lg:grid-cols-[minmax(420px,0.9fr)_minmax(560px,1.1fr)]"
-      style={{ fontFamily: "'Inter', system-ui, sans-serif", backgroundColor: BRAND.pageBg }}
+      className="grid min-h-svh bg-background lg:grid-cols-[minmax(420px,0.9fr)_minmax(560px,1.1fr)]"
+      style={{ fontFamily: "'Inter', system-ui, sans-serif" }}
     >
       {/* ── Left panel ─────────────────────────────────────────────────────── */}
-      <section
-        className="relative hidden flex-col justify-between overflow-hidden p-10 text-white lg:flex xl:p-14"
-        style={{ backgroundColor: BRAND.primary }}
-      >
+      <section className="relative hidden flex-col justify-between overflow-hidden bg-primary p-10 text-white lg:flex xl:p-14">
         <div
           className="absolute inset-0 opacity-20"
           style={{
@@ -103,9 +102,9 @@ export function LoginPage() {
             <Layers size={19} />
           </div>
           <div>
-            <div className="text-[16px] font-semibold tracking-tight">Mini Rally</div>
-            <div className="text-[10px]" style={{ color: 'rgba(255,255,255,0.55)' }}>
-              Work Management Platform
+            <div className="text-base font-semibold tracking-tight">{t('common:appName')}</div>
+            <div className="text-ui-xs" style={{ color: 'rgba(255,255,255,0.55)' }}>
+              {t('common:platformTagline')}
             </div>
           </div>
         </div>
@@ -113,28 +112,28 @@ export function LoginPage() {
         {/* Hero copy */}
         <div className="relative max-w-xl">
           <div
-            className="mb-5 inline-flex items-center gap-1.5 rounded px-2 py-1 text-[10px] font-semibold tracking-widest uppercase"
+            className="mb-5 inline-flex items-center gap-1.5 rounded px-2 py-1 text-ui-xs font-semibold tracking-widest uppercase"
             style={{ backgroundColor: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.78)' }}
           >
             <ShieldCheck size={12} />
-            Workspace Administration
+            {t('workspaceAdmin')}
           </div>
-          <h1 className="text-[32px] leading-tight font-semibold tracking-tight xl:text-[38px]">
-            Plan clearly.
+          <h1 className="text-3xl leading-tight font-semibold tracking-tight xl:text-4xl">
+            {t('heroLine1')}
             <br />
-            Deliver with confidence.
+            {t('heroLine2')}
           </h1>
           <p
-            className="mt-4 max-w-md text-[14px] leading-6"
+            className="mt-4 max-w-md text-ui-xl leading-6"
             style={{ color: 'rgba(255,255,255,0.66)' }}
           >
-            Manage company workspaces, projects, teams and delivery from one focused operating view.
+            {t('taglineDesc')}
           </p>
           <div className="mt-8 grid max-w-lg grid-cols-3 gap-3">
             {features.map((f) => (
               <div
                 key={f}
-                className="flex items-center gap-2 text-[11px]"
+                className="flex items-center gap-2 text-ui-sm"
                 style={{ color: 'rgba(255,255,255,0.74)' }}
               >
                 <span
@@ -149,8 +148,8 @@ export function LoginPage() {
           </div>
         </div>
 
-        <div className="relative text-[10px]" style={{ color: 'rgba(255,255,255,0.45)' }}>
-          © 2026 Mini Rally · Internal workspace
+        <div className="relative text-ui-xs" style={{ color: 'rgba(255,255,255,0.45)' }}>
+          {t('copyright')}
         </div>
       </section>
 
@@ -159,57 +158,35 @@ export function LoginPage() {
         <div className="w-full max-w-[430px]">
           {/* Mobile logo */}
           <div className="mb-8 flex items-center gap-2 lg:hidden">
-            <div
-              className="flex h-8 w-8 items-center justify-center rounded text-white"
-              style={{ backgroundColor: BRAND.primary }}
-            >
+            <div className="flex h-8 w-8 items-center justify-center rounded bg-primary text-white">
               <Layers size={16} />
             </div>
             <div>
-              <div className="text-[14px] font-semibold" style={{ color: BRAND.textPrimary }}>
-                Mini Rally
-              </div>
-              <div className="text-[9px]" style={{ color: BRAND.textMuted }}>
-                Work Management Platform
+              <div className="text-ui-xl font-semibold text-foreground">{t('common:appName')}</div>
+              <div className="text-ui-2xs text-foreground-subtle">
+                {t('common:platformTagline')}
               </div>
             </div>
           </div>
 
           {/* Card */}
-          <div
-            className="overflow-hidden rounded-md bg-white shadow-sm"
-            style={{ border: `1px solid ${BRAND.border}` }}
-          >
+          <div className="overflow-hidden rounded-md border border-border-strong bg-card shadow-sm">
             {/* Card header */}
-            <div
-              className="px-7 pt-7 pb-5"
-              style={{ borderBottom: `1px solid ${BRAND.borderInner}` }}
-            >
+            <div className="border-b border-border-inner px-7 pt-7 pb-5">
               <div className="flex items-center justify-between gap-4">
                 <div>
-                  <p
-                    className="mb-1 text-[10px] font-semibold tracking-widest uppercase"
-                    style={{ color: BRAND.textMuted }}
-                  >
-                    Admin access
+                  <p className="mb-1 text-ui-xs font-semibold tracking-widest text-foreground-subtle uppercase">
+                    {t('adminAccess')}
                   </p>
-                  <h2
-                    className="text-[21px] font-semibold tracking-tight"
-                    style={{ color: BRAND.textPrimary }}
-                  >
-                    Sign in to Mini Rally
+                  <h2 className="text-xl font-semibold tracking-tight text-foreground">
+                    {t('signIn')}
                   </h2>
                 </div>
-                <div
-                  className="flex h-10 w-10 items-center justify-center rounded-full"
-                  style={{ backgroundColor: BRAND.primaryLighter, color: BRAND.primary }}
-                >
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-lighter text-primary">
                   <ShieldCheck size={19} />
                 </div>
               </div>
-              <p className="mt-2 text-[12px]" style={{ color: BRAND.textSecondary }}>
-                Use your organisational account to continue.
-              </p>
+              <p className="mt-2 text-ui-md text-muted-foreground">{t('orgAccountPrompt')}</p>
             </div>
 
             <div className="px-7 py-6">
@@ -217,12 +194,7 @@ export function LoginPage() {
               {ssoError && (
                 <div
                   role="alert"
-                  className="mb-4 flex items-start gap-2 rounded px-3 py-2.5 text-[11px]"
-                  style={{
-                    color: BRAND.danger,
-                    backgroundColor: BRAND.dangerBg,
-                    border: `1px solid ${BRAND.dangerBorder}`,
-                  }}
+                  className="mb-4 flex items-start gap-2 rounded border border-destructive-border bg-destructive-bg px-3 py-2.5 text-ui-sm text-destructive"
                 >
                   <AlertCircle size={14} className="mt-px shrink-0" />
                   {ssoError}
@@ -233,13 +205,8 @@ export function LoginPage() {
                 type="button"
                 onClick={handleSsoLogin}
                 disabled={ssoLoading}
-                className="flex w-full items-center justify-center gap-3 rounded py-3 text-[13px] font-medium transition-colors disabled:opacity-60"
-                style={{
-                  backgroundColor: BRAND.surface,
-                  border: `1px solid ${BRAND.border}`,
-                  color: BRAND.textPrimary,
-                  boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
-                }}
+                className="flex w-full items-center justify-center gap-3 rounded border border-border-strong bg-card py-3 text-ui-lg font-medium text-foreground transition-colors disabled:opacity-60"
+                style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.backgroundColor = BRAND.surfaceSubtle
                 }}
@@ -249,14 +216,13 @@ export function LoginPage() {
               >
                 {ssoLoading ? (
                   <span
-                    className="h-5 w-5 animate-spin rounded-full"
-                    style={{ border: `2px solid ${BRAND.border}`, borderTopColor: BRAND.primary }}
+                    className="h-5 w-5 animate-spin rounded-full border-2 border-border-strong border-t-primary"
                     aria-label="Signing in…"
                   />
                 ) : (
                   <MicrosoftLogo />
                 )}
-                {ssoLoading ? 'Redirecting to Microsoft…' : 'Sign in with Microsoft'}
+                {ssoLoading ? t('redirectingToMicrosoft') : t('signInWithMicrosoft')}
               </button>
               {/* ── Dev sign-in ─────────────────────────────────────────────
                   Shown when VITE_DEV_LOGIN=true (any non-prod deployment), so QA
@@ -264,20 +230,12 @@ export function LoginPage() {
                   Entra tenant. Never enabled in production. */}
               {ENV.DEV_LOGIN_ENABLED && (
                 <form onSubmit={handleDevLogin} className="flex flex-col gap-4">
-                  <p className="text-[12px]" style={{ color: BRAND.textSecondary }}>
-                    Development only: sign in with a seeded account (mints a server-side BFF
-                    session).
-                  </p>
+                  <p className="text-ui-md text-muted-foreground">{t('devOnlyPrompt')}</p>
 
                   {devError && (
                     <div
                       role="alert"
-                      className="flex items-start gap-2 rounded px-3 py-2.5 text-[11px]"
-                      style={{
-                        color: BRAND.danger,
-                        backgroundColor: BRAND.dangerBg,
-                        border: `1px solid ${BRAND.dangerBorder}`,
-                      }}
+                      className="flex items-start gap-2 rounded border border-destructive-border bg-destructive-bg px-3 py-2.5 text-ui-sm text-destructive"
                     >
                       <AlertCircle size={14} className="mt-px shrink-0" />
                       {devError}
@@ -287,10 +245,9 @@ export function LoginPage() {
                   <div className="flex flex-col gap-1.5">
                     <label
                       htmlFor="dev-email"
-                      className="text-[11px] font-medium"
-                      style={{ color: BRAND.textSecondary }}
+                      className="text-ui-sm font-medium text-muted-foreground"
                     >
-                      Email
+                      {t('devEmailLabel')}
                     </label>
                     <input
                       id="dev-email"
@@ -298,8 +255,7 @@ export function LoginPage() {
                       required
                       value={devEmail}
                       onChange={(e) => setDevEmail(e.target.value)}
-                      className="h-10 w-full rounded px-3 text-[13px] outline-none"
-                      style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textPrimary }}
+                      className="h-10 w-full rounded border border-border-strong px-3 text-ui-lg text-foreground outline-none"
                       placeholder="you@acme.dev"
                     />
                   </div>
@@ -307,24 +263,19 @@ export function LoginPage() {
                   <button
                     type="submit"
                     disabled={devLoading}
-                    className="flex w-full items-center justify-center gap-2 rounded py-3 text-[13px] font-medium text-white transition-colors disabled:opacity-60"
-                    style={{ backgroundColor: BRAND.primary }}
+                    className="flex w-full items-center justify-center gap-2 rounded bg-primary py-3 text-ui-lg font-medium text-white transition-colors disabled:opacity-60"
                   >
-                    {devLoading ? 'Signing in…' : 'Sign in'}
+                    {devLoading ? t('signingIn') : t('signInButton')}
                   </button>
                 </form>
               )}
             </div>
           </div>
 
-          <p className="mt-5 text-center text-[10px]" style={{ color: BRAND.textMuted }}>
-            Need access?{' '}
-            <a
-              href="mailto:admin@minirallyapp.com"
-              className="font-medium"
-              style={{ color: BRAND.primaryLight }}
-            >
-              Contact your administrator
+          <p className="mt-5 text-center text-ui-xs text-foreground-subtle">
+            {t('needAccess')}{' '}
+            <a href="mailto:admin@minirallyapp.com" className="font-medium text-primary-light">
+              {t('contactAdmin')}
             </a>
           </p>
         </div>

@@ -106,7 +106,7 @@ export function SelectionModal({
       <ModalBody className="space-y-1">
         {/* Select-all row */}
         <label
-          className="flex cursor-pointer items-center gap-2 rounded px-1 py-1.5 text-[11px] font-semibold select-none hover:bg-gray-50"
+          className="flex cursor-pointer items-center gap-2 rounded px-1 py-1.5 text-ui-sm font-semibold select-none hover:bg-gray-50"
           style={{ color: BRAND.textSecondary }}
         >
           <SelectionCheckbox

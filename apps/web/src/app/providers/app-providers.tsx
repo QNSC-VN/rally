@@ -8,10 +8,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       {children}
-      <Toaster
-        position="top-right"
-        toastOptions={{ classNames: { toast: 'text-[13px]' } }}
-      />
+      <Toaster position="top-right" toastOptions={{ classNames: { toast: 'text-ui-lg' } }} />
       {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
     </QueryClientProvider>
   )

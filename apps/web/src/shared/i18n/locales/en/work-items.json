@@ -18,5 +18,83 @@
     "high": "High",
     "normal": "Normal",
     "low": "Low"
+  },
+  "notFound": "Work item \"{{key}}\" not found.",
+  "backToBacklog": "← Back to Backlog",
+  "watch": {
+    "watch": "Watch",
+    "watching": "Watching"
+  },
+  "tabs": {
+    "details": "Details",
+    "tasks": "Tasks",
+    "defects": "Defects",
+    "history": "Revision History"
+  },
+  "delete": {
+    "title": "Delete work item",
+    "message": "Delete {{key}}? This cannot be undone.",
+    "success": "{{key}} deleted",
+    "failed": "Failed to delete work item"
+  },
+  "details": {
+    "heading": "Details",
+    "notes": "Notes",
+    "releaseNotes": "Release Notes"
+  },
+  "tasks": {
+    "heading": "Tasks",
+    "subtitle": "Break this work item into trackable delivery tasks.",
+    "add": "Add Task",
+    "totals": "Totals",
+    "emptyTitle": "No tasks yet"
+  },
+  "history": {
+    "subtitle": "Activity log for field changes, task updates, and work item creation.",
+    "colRevision": "Revision",
+    "colCreationDate": "Creation Date",
+    "colUser": "User",
+    "empty": "No activity recorded yet."
+  },
+  "defects": {
+    "countLinked_one": "{{count}} defect linked to this story",
+    "countLinked_other": "{{count}} defects linked to this story",
+    "emptyTitle": "No defects linked to this story",
+    "emptyDescription": "Create a defect and assign it as a child of this story"
+  },
+  "sidebar": {
+    "taskState": "Task State",
+    "scheduleState": "Schedule State",
+    "flowState": "Flow State",
+    "priority": "Priority",
+    "environment": "Environment",
+    "env": {
+      "notSpecified": "Not specified",
+      "development": "Development",
+      "staging": "Staging",
+      "production": "Production",
+      "testing": "Testing"
+    },
+    "workProduct": "Work Product",
+    "feature": "Feature",
+    "parentStory": "Parent Story",
+    "noParentStory": "No parent story",
+    "loading": "Loading…",
+    "estimateH": "Estimate (h)",
+    "todoH": "To Do (h)",
+    "actualH": "Actual (h)",
+    "planEstimatePts": "Plan Estimate (pts)",
+    "taskRollup": "Task Roll-up",
+    "iteration": "Iteration",
+    "noIteration": "No iteration",
+    "release": "Release",
+    "noRelease": "No release",
+    "milestones": "Milestones",
+    "noMilestones": "No milestones",
+    "blockedLabel": "Blocked:",
+    "reasonNotProvided": "Reason not provided.",
+    "tags": "Tags",
+    "creationDate": "Creation Date",
+    "readOnlyNotice": "You have read-only access to this item."
   }
 }

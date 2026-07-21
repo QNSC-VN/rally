@@ -12,8 +12,7 @@ import { BRAND } from './brand'
 
 // ── Standard modal / detail-panel field ──────────────────────────────────────
 /** Full-width input, select, or textarea inside a modal or detail sidebar. */
-export const FIELD_CLS =
-  'w-full text-[12px] px-3 py-2 rounded bg-white focus:outline-none' as const
+export const FIELD_CLS = 'w-full text-ui-md px-3 py-2 rounded bg-white focus:outline-none' as const
 
 export const FIELD_STYLE = {
   border: `1px solid ${BRAND.borderInput}`,
@@ -33,7 +32,7 @@ export const FIELD_STYLE_READONLY = {
 /** Tight select/input used directly inside a table row (Backlog, Iteration
  *  Status). Smaller font and padding so the row height stays compact. */
 export const INLINE_FIELD_CLS =
-  'rounded bg-white text-[11px] px-1 py-0.5 focus:outline-none' as const
+  'rounded bg-white text-ui-sm px-1 py-0.5 focus:outline-none' as const
 
 export const INLINE_FIELD_STYLE = {
   border: `1px solid ${BRAND.borderSubtle}`,

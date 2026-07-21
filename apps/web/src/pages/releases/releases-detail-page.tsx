@@ -5,170 +5,33 @@
  * and a right sidebar panel for metadata fields, status validation, and task roll-up/acceptance metrics.
  * P3.3: Added Artifacts tab showing linked US/DE work items.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 /* eslint-disable react-hooks/set-state-in-effect */
-import { Link, useNavigate, useParams } from '@tanstack/react-router'
-import { ChevronLeft, ChevronRight, Loader2, Save, TrendingDown } from 'lucide-react'
-import { BRAND } from '@/shared/config/brand'
+import { Link, useParams } from '@tanstack/react-router'
+import { ChevronLeft, Loader2, Save } from 'lucide-react'
 import { InlineSelect } from '@/shared/ui/native-select'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { RichTextEditor } from '@/shared/ui/rich-text-editor'
-import { ArtifactTable } from '@/entities/work-item/ui/artifact-table'
-import { SearchInput } from '@/shared/ui/search-input'
-import { RELEASE_STATUS_STYLE } from '@/features/releases/status-colors'
+import { StatusBadge } from '@/shared/ui/status-badge'
+import { ReleaseArtifactsTab } from './ui/release-artifacts-tab'
+import { TaskRollupPanel, BurndownPanel } from './ui/release-detail-panels'
+import { RELEASE_STATES, RELEASE_STATUS_STYLE } from './model/release-states'
 import { useProjectPermissions } from '@/features/access/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import {
   useRelease,
   useUpdateRelease,
   useReleaseBurndown,
-  useReleaseArtifacts,
   type ReleaseStatus,
 } from '@/features/releases/api'
 
-const RELEASE_STATES: ReleaseStatus[] = ['planning', 'active', 'accepted']
-
-const STATUS_STYLE = RELEASE_STATUS_STYLE
-
 type TabKey = 'details' | 'artifacts'
 
-// ── Release Artifacts tab ─────────────────────────────────────────────────────
-
-function ReleaseArtifactsTab({ releaseId }: { releaseId: string }) {
-  const navigate = useNavigate()
-  const [search, setSearch] = useState('')
-  const [pageSize, setPageSize] = useState(25)
-  const [cursor, setCursor] = useState<string | undefined>(undefined)
-  const [cursorHistory, setCursorHistory] = useState<string[]>([])
-  const currentPage = cursorHistory.length + 1
-
-  const { data, isLoading } = useReleaseArtifacts(releaseId, {
-    pageSize,
-    search: search || undefined,
-  })
-
-  const items = useMemo(() => data?.data ?? [], [data])
-  const pageInfo = data?.pageInfo
-
-  useEffect(() => {
-    const id = setTimeout(() => {
-      setCursor(undefined)
-      setCursorHistory([])
-    }, 0)
-    return () => clearTimeout(id)
-  }, [search, pageSize])
-
-  function onPrevPage() {
-    const prev = cursorHistory[cursorHistory.length - 2]
-    setCursorHistory((h) => h.slice(0, -1))
-    setCursor(prev)
-  }
-
-  function onNextPage() {
-    if (!pageInfo?.hasNextPage || !pageInfo.nextCursor) return
-    setCursorHistory((h) => [...h, cursor ?? ''])
-    setCursor(pageInfo.nextCursor)
-  }
-
-  return (
-    <div className="flex flex-1 flex-col overflow-hidden">
-      {/* Search toolbar */}
-      <div
-        className="flex shrink-0 items-center gap-3 px-4 py-2"
-        style={{ borderBottom: `1px solid ${BRAND.borderSubtle}`, backgroundColor: BRAND.surface }}
-      >
-        <SearchInput
-          value={search}
-          onChange={setSearch}
-          placeholder="Search artifacts..."
-          ariaLabel="Search artifacts"
-          width={220}
-          iconSize={13}
-          className="rounded-md py-1.5 pl-8 text-xs"
-        />
-        <div className="flex-1" />
-        <span className="text-[11px]" style={{ color: BRAND.textMuted }}>
-          {pageInfo?.total != null ? `${pageInfo.total} items` : ''}
-        </span>
-      </div>
-
-      {/* Table */}
-      <div className="flex-1 overflow-auto" style={{ backgroundColor: BRAND.surface }}>
-        <ArtifactTable
-          items={items}
-          isLoading={isLoading}
-          search={search}
-          entityNoun="release"
-          startIndex={cursorHistory.length * pageSize}
-          onOpenItem={(item) =>
-            navigate({ to: '/item/$itemKey', params: { itemKey: item.itemKey } })
-          }
-        />
-      </div>
-
-      {/* Pagination footer */}
-      {items.length > 0 && (
-        <div
-          className="flex h-9 shrink-0 items-center justify-between bg-white px-3"
-          style={{ borderTop: `1px solid ${BRAND.borderSubtle}` }}
-        >
-          <div
-            className="flex items-center gap-2 text-[11px]"
-            style={{ color: BRAND.textSecondary }}
-          >
-            <span>Rows per page</span>
-            <InlineSelect
-              aria-label="Rows per page"
-              value={pageSize}
-              onChange={(e) => setPageSize(Number(e.target.value))}
-              className="w-auto"
-            >
-              {[10, 25, 50, 100].map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </InlineSelect>
-            <span style={{ color: BRAND.textMuted }}>
-              {pageInfo
-                ? `${(currentPage - 1) * pageSize + 1}–${(currentPage - 1) * pageSize + items.length}${pageInfo.total ? ` of ${pageInfo.total}` : ''}`
-                : ''}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] tabular-nums" style={{ color: BRAND.textSecondary }}>
-              Page {currentPage}
-            </span>
-            <button
-              aria-label="Previous page"
-              disabled={currentPage === 1}
-              onClick={onPrevPage}
-              className="rounded p-1.5 disabled:opacity-35"
-              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
-            >
-              <ChevronLeft size={13} />
-            </button>
-            <button
-              aria-label="Next page"
-              disabled={!pageInfo?.hasNextPage}
-              onClick={onNextPage}
-              className="rounded p-1.5 disabled:opacity-35"
-              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
-            >
-              <ChevronRight size={13} />
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── Main page ─────────────────────────────────────────────────────────────────
-
 export function ReleaseDetailPage() {
+  const { t } = useTranslation('releases')
   const { releaseId } = useParams({ from: '/auth/releases/$releaseId' })
   const { project } = useAppContext()
   const projectId = project?.projectId ?? ''
@@ -203,11 +66,11 @@ export function ReleaseDetailPage() {
 
   async function handleSave() {
     if (!name.trim()) {
-      toast.error('Release name is required')
+      toast.error(t('create.nameRequired'))
       return
     }
     if (startDate && releaseDate && releaseDate < startDate) {
-      toast.error('Release date must be >= start date')
+      toast.error(t('create.dateOrder'))
       return
     }
 
@@ -221,9 +84,9 @@ export function ReleaseDetailPage() {
         version: version.trim() || null,
         state,
       })
-      toast.success('Release details saved')
+      toast.success(t('detailPage.saved'))
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to update release')
+      toast.error(err instanceof Error ? err.message : t('detail.updateFailed'))
     }
   }
 
@@ -233,61 +96,45 @@ export function ReleaseDetailPage() {
     try {
       await update.mutateAsync(patch)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to update release')
+      toast.error(err instanceof Error ? err.message : t('detail.updateFailed'))
     }
   }
 
   if (isLoading) {
     return (
-      <div
-        className="flex flex-1 items-center justify-center"
-        style={{ backgroundColor: BRAND.pageBg }}
-      >
-        <Loader2 className="animate-spin" size={24} style={{ color: BRAND.primary }} />
+      <div className="flex flex-1 items-center justify-center bg-background">
+        <Loader2 className="animate-spin text-primary" size={24} />
       </div>
     )
   }
 
   if (isError || !release) {
     return (
-      <div
-        className="flex flex-1 flex-col items-center justify-center gap-3"
-        style={{ backgroundColor: BRAND.pageBg }}
-      >
-        <p className="text-[13px]" style={{ color: BRAND.textSecondary }}>
-          Release details could not be loaded.
-        </p>
-        <Link
-          to="/releases"
-          className="text-[12px] font-semibold hover:underline"
-          style={{ color: BRAND.primary }}
-        >
-          ← Back to Releases
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 bg-background">
+        <p className="text-ui-lg text-muted-foreground">{t('detailPage.loadError')}</p>
+        <Link to="/releases" className="text-ui-md font-semibold text-primary hover:underline">
+          {t('detailPage.backToReleases')}
         </Link>
       </div>
     )
   }
 
-  const s = STATUS_STYLE[release.status] ?? STATUS_STYLE.planning
+  const s = RELEASE_STATUS_STYLE[release.status] ?? RELEASE_STATUS_STYLE.planning
   const rollup = release.taskRollup
 
   const TABS: { key: TabKey; label: string }[] = [
-    { key: 'details', label: 'Details' },
-    { key: 'artifacts', label: 'Artifacts' },
+    { key: 'details', label: t('detailPage.tabs.details') },
+    { key: 'artifacts', label: t('detailPage.tabs.artifacts') },
   ]
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden" style={{ backgroundColor: BRAND.pageBg }}>
+    <div className="flex flex-1 flex-col overflow-hidden bg-background">
       {/* Header bar */}
-      <div
-        className="flex h-12 shrink-0 items-center justify-between gap-4 px-4"
-        style={{ borderBottom: `1px solid ${BRAND.border}`, backgroundColor: BRAND.surface }}
-      >
+      <div className="bg-surface flex h-12 shrink-0 items-center justify-between gap-4 border-b border-border px-4">
         <div className="flex items-center gap-2">
           <Link
             to="/releases"
-            className="flex h-7 w-7 items-center justify-center rounded transition-colors hover:bg-gray-100"
-            style={{ color: BRAND.textSecondary }}
+            className="flex h-7 w-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-surface-hover"
           >
             <ChevronLeft size={16} />
           </Link>
@@ -297,51 +144,36 @@ export function ReleaseDetailPage() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 onBlur={handleSave}
-                className="rounded border-0 bg-transparent px-1 py-0.5 text-[14px] font-semibold focus:bg-white focus:ring-1 focus:outline-none"
-                style={{ color: BRAND.textPrimary, width: 240 }}
+                className="w-60 rounded border-0 bg-transparent px-1 py-0.5 text-ui-xl font-semibold text-foreground focus:bg-card focus:ring-1 focus:outline-none"
               />
             ) : (
-              <h1 className="text-[14px] font-semibold" style={{ color: BRAND.textPrimary }}>
-                {release.name}
-              </h1>
+              <h1 className="text-ui-xl font-semibold text-foreground">{release.name}</h1>
             )}
-            <span
-              className="inline-flex items-center rounded-sm px-1.5 py-px text-[10px] font-medium"
-              style={{ backgroundColor: s.bg, color: s.text, border: `1px solid ${s.border}` }}
-            >
-              {s.label}
-            </span>
+            <StatusBadge style={s} />
           </div>
         </div>
 
         {canManage && (
           <Button size="sm" onClick={handleSave} disabled={update.isPending}>
             {update.isPending ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
-            Save Changes
+            {t('detailPage.saveChanges')}
           </Button>
         )}
       </div>
 
       {/* Tab bar */}
-      <div
-        className="flex shrink-0 items-center gap-0 px-4"
-        style={{ borderBottom: `1px solid ${BRAND.border}`, backgroundColor: BRAND.surface }}
-      >
+      <div className="bg-surface flex shrink-0 items-center gap-0 border-b border-border px-4">
         {TABS.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className="relative px-4 py-2.5 text-[12px] font-medium transition-colors"
-            style={{
-              color: activeTab === tab.key ? BRAND.primary : BRAND.textSecondary,
-            }}
+            className={`relative px-4 py-2.5 text-ui-md font-medium transition-colors ${
+              activeTab === tab.key ? 'text-primary' : 'text-muted-foreground'
+            }`}
           >
             {tab.label}
             {activeTab === tab.key && (
-              <span
-                className="absolute right-0 bottom-0 left-0 h-0.5"
-                style={{ backgroundColor: BRAND.primary }}
-              />
+              <span className="absolute right-0 bottom-0 left-0 h-0.5 bg-primary" />
             )}
           </button>
         ))}
@@ -356,14 +188,14 @@ export function ReleaseDetailPage() {
           {/* Left Side: Theme & Notes rich editors */}
           <div className="flex-1 space-y-6 overflow-y-auto p-6">
             <RichTextEditor
-              title="Release Theme"
+              title={t('detailPage.themeTitle')}
               value={release?.theme}
               minHeight={100}
               readOnly={!canManage}
               onSave={(html) => handleRichFieldSave({ theme: html || null })}
             />
             <RichTextEditor
-              title="Notes & Scope Deliverables"
+              title={t('detailPage.notesTitle')}
               value={release?.notes}
               minHeight={140}
               readOnly={!canManage}
@@ -372,33 +204,24 @@ export function ReleaseDetailPage() {
           </div>
 
           {/* Right Side Panel */}
-          <div
-            className="w-72 shrink-0 space-y-5 overflow-y-auto border-l p-5"
-            style={{ backgroundColor: BRAND.surface, borderColor: BRAND.border }}
-          >
+          <div className="bg-surface w-72 shrink-0 space-y-5 overflow-y-auto border-l border-border p-5">
             <div className="space-y-4">
-              <h2
-                className="text-[11px] font-semibold tracking-wider uppercase"
-                style={{ color: BRAND.textMuted }}
-              >
-                Metadata Details
+              <h2 className="text-ui-sm font-semibold tracking-wider text-foreground-subtle uppercase">
+                {t('detailPage.metadataTitle')}
               </h2>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-medium" style={{ color: BRAND.textSecondary }}>
-                  Project Scope
+                <label className="text-ui-xs font-medium text-muted-foreground">
+                  {t('detailPage.projectScope')}
                 </label>
-                <div
-                  className="py-1 text-[12px] font-semibold"
-                  style={{ color: BRAND.textPrimary }}
-                >
+                <div className="py-1 text-ui-md font-semibold text-foreground">
                   {project?.projectName ?? '—'}
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-medium" style={{ color: BRAND.textSecondary }}>
-                  Lifecycle State
+                <label className="text-ui-xs font-medium text-muted-foreground">
+                  {t('detailPage.lifecycleState')}
                 </label>
                 {canManage ? (
                   <InlineSelect
@@ -408,29 +231,23 @@ export function ReleaseDetailPage() {
                       // Auto-trigger save on change
                       void update.mutateAsync({ state: e.target.value as ReleaseStatus })
                     }}
-                    className="w-full rounded bg-white px-2 py-1 text-[11px] focus:outline-none"
-                    style={{ border: `1px solid ${BRAND.borderInput}`, color: BRAND.textPrimary }}
+                    className="w-full rounded border border-input bg-card px-2 py-1 text-ui-sm text-foreground focus:outline-none"
                   >
                     {RELEASE_STATES.map((st) => (
                       <option key={st} value={st}>
-                        {STATUS_STYLE[st].label}
+                        {RELEASE_STATUS_STYLE[st].label}
                       </option>
                     ))}
                   </InlineSelect>
                 ) : (
-                  <div
-                    className="py-1 text-[12px] font-semibold"
-                    style={{ color: BRAND.textPrimary }}
-                  >
-                    {s.label}
-                  </div>
+                  <div className="py-1 text-ui-md font-semibold text-foreground">{s.label}</div>
                 )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-medium" style={{ color: BRAND.textSecondary }}>
-                    Start Date
+                  <label className="text-ui-xs font-medium text-muted-foreground">
+                    {t('detail.startDateLabel')}
                   </label>
                   {canManage ? (
                     <Input
@@ -438,18 +255,16 @@ export function ReleaseDetailPage() {
                       value={startDate}
                       onChange={(e) => setStartDate(e.target.value)}
                       onBlur={handleSave}
-                      className="px-2 py-1 text-[11px]"
+                      className="px-2 py-1 text-ui-sm"
                     />
                   ) : (
-                    <div className="font-mono text-[12px]" style={{ color: BRAND.textPrimary }}>
-                      {startDate || '—'}
-                    </div>
+                    <div className="font-mono text-ui-md text-foreground">{startDate || '—'}</div>
                   )}
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-medium" style={{ color: BRAND.textSecondary }}>
-                    Release Date
+                  <label className="text-ui-xs font-medium text-muted-foreground">
+                    {t('detail.releaseDateLabel')}
                   </label>
                   {canManage ? (
                     <Input
@@ -457,20 +272,18 @@ export function ReleaseDetailPage() {
                       value={releaseDate}
                       onChange={(e) => setReleaseDate(e.target.value)}
                       onBlur={handleSave}
-                      className="px-2 py-1 text-[11px]"
+                      className="px-2 py-1 text-ui-sm"
                     />
                   ) : (
-                    <div className="font-mono text-[12px]" style={{ color: BRAND.textPrimary }}>
-                      {releaseDate || '—'}
-                    </div>
+                    <div className="font-mono text-ui-md text-foreground">{releaseDate || '—'}</div>
                   )}
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-medium" style={{ color: BRAND.textSecondary }}>
-                    Planned Velocity
+                  <label className="text-ui-xs font-medium text-muted-foreground">
+                    {t('detail.plannedVelocityLabel')}
                   </label>
                   {canManage ? (
                     <Input
@@ -480,18 +293,18 @@ export function ReleaseDetailPage() {
                       onChange={(e) => setPlannedVelocity(e.target.value)}
                       onBlur={handleSave}
                       placeholder="0"
-                      className="px-2 py-1 text-[11px]"
+                      className="px-2 py-1 text-ui-sm"
                     />
                   ) : (
-                    <div className="font-mono text-[12px]" style={{ color: BRAND.textPrimary }}>
+                    <div className="font-mono text-ui-md text-foreground">
                       {plannedVelocity || '—'}
                     </div>
                   )}
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-medium" style={{ color: BRAND.textSecondary }}>
-                    Plan Estimate
+                  <label className="text-ui-xs font-medium text-muted-foreground">
+                    {t('detail.planEstimateLabel')}
                   </label>
                   {canManage ? (
                     <Input
@@ -501,10 +314,10 @@ export function ReleaseDetailPage() {
                       onChange={(e) => setPlanEstimate(e.target.value)}
                       onBlur={handleSave}
                       placeholder="0"
-                      className="px-2 py-1 text-[11px]"
+                      className="px-2 py-1 text-ui-sm"
                     />
                   ) : (
-                    <div className="font-mono text-[12px]" style={{ color: BRAND.textPrimary }}>
+                    <div className="font-mono text-ui-md text-foreground">
                       {planEstimate || '—'}
                     </div>
                   )}
@@ -512,8 +325,8 @@ export function ReleaseDetailPage() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-medium" style={{ color: BRAND.textSecondary }}>
-                  Version Release Tag
+                <label className="text-ui-xs font-medium text-muted-foreground">
+                  {t('detailPage.versionTag')}
                 </label>
                 {canManage ? (
                   <Input
@@ -521,236 +334,17 @@ export function ReleaseDetailPage() {
                     onChange={(e) => setVersion(e.target.value)}
                     onBlur={handleSave}
                     placeholder="e.g. v2.4.0"
-                    className="px-2 py-1 text-[11px]"
+                    className="px-2 py-1 text-ui-sm"
                   />
                 ) : (
-                  <div className="text-[12px] font-semibold" style={{ color: BRAND.textPrimary }}>
-                    {version || '—'}
-                  </div>
+                  <div className="text-ui-md font-semibold text-foreground">{version || '—'}</div>
                 )}
               </div>
             </div>
 
-            {/* Task Roll-up metrics panel (read-only: Estimate / To Do / Actual) */}
-            {rollup && (
-              <div
-                className="space-y-3 rounded-md p-3"
-                style={{
-                  backgroundColor: BRAND.surfaceHover,
-                  border: `1px solid ${BRAND.borderSubtle}`,
-                }}
-              >
-                <h3
-                  className="text-[10px] font-bold tracking-wider uppercase"
-                  style={{ color: BRAND.textSecondary }}
-                >
-                  Task Roll-up
-                </h3>
+            {rollup && <TaskRollupPanel rollup={rollup} />}
 
-                <div className="space-y-1">
-                  <div
-                    className="flex justify-between text-[11px] font-semibold"
-                    style={{ color: BRAND.textPrimary }}
-                  >
-                    <span>Completion</span>
-                    <span>{rollup.progressPercent}%</span>
-                  </div>
-                  <div
-                    className="h-2 w-full overflow-hidden rounded-full"
-                    style={{ backgroundColor: BRAND.avatarBg }}
-                  >
-                    <div
-                      className="h-full rounded-full transition-all"
-                      style={{
-                        width: `${rollup.progressPercent}%`,
-                        backgroundColor:
-                          rollup.progressPercent === 100 ? BRAND.success : BRAND.primaryLight,
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2 pt-1">
-                  {/* Estimate / To Do / Actual — points */}
-                  <div className="grid grid-cols-3 gap-1 text-center">
-                    <div
-                      className="rounded-sm py-1.5"
-                      style={{ backgroundColor: BRAND.primaryLighter }}
-                    >
-                      <div
-                        className="text-[9px] font-semibold tracking-wider uppercase"
-                        style={{ color: BRAND.primary }}
-                      >
-                        Estimate
-                      </div>
-                      <div
-                        className="font-mono text-[14px] font-bold"
-                        style={{ color: BRAND.textPrimary }}
-                      >
-                        {rollup.totalPoints}
-                      </div>
-                    </div>
-                    <div className="rounded-sm py-1.5" style={{ backgroundColor: BRAND.warningBg }}>
-                      <div
-                        className="text-[9px] font-semibold tracking-wider uppercase"
-                        style={{ color: BRAND.warning }}
-                      >
-                        To Do
-                      </div>
-                      <div
-                        className="font-mono text-[14px] font-bold"
-                        style={{ color: BRAND.textPrimary }}
-                      >
-                        {rollup.toDoPoints}
-                      </div>
-                    </div>
-                    <div className="rounded-sm py-1.5" style={{ backgroundColor: BRAND.successBg }}>
-                      <div
-                        className="text-[9px] font-semibold tracking-wider uppercase"
-                        style={{ color: BRAND.success }}
-                      >
-                        Actual
-                      </div>
-                      <div
-                        className="font-mono text-[14px] font-bold"
-                        style={{ color: BRAND.textPrimary }}
-                      >
-                        {rollup.completedPoints}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Item counts */}
-                  <div
-                    className="grid grid-cols-3 gap-1 pt-1 text-center font-mono text-[10px]"
-                    style={{ color: BRAND.textMuted }}
-                  >
-                    <div>
-                      Items:{' '}
-                      <span className="font-semibold text-gray-700">{rollup.totalItems}</span>
-                    </div>
-                    <div>
-                      To Do: <span className="font-semibold text-gray-700">{rollup.toDoItems}</span>
-                    </div>
-                    <div>
-                      Done:{' '}
-                      <span className="font-semibold text-gray-700">{rollup.completedItems}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Accepted count (read-only) */}
-                <div
-                  className="mt-1 flex items-center justify-between rounded-sm px-3 py-2"
-                  style={{
-                    backgroundColor: BRAND.successBg,
-                    border: `1px solid ${BRAND.successBorder}`,
-                  }}
-                >
-                  <span
-                    className="text-[10px] font-semibold tracking-wider uppercase"
-                    style={{ color: BRAND.success }}
-                  >
-                    Accepted
-                  </span>
-                  <span
-                    className="font-mono text-[14px] font-bold"
-                    style={{ color: BRAND.success }}
-                  >
-                    {rollup.acceptedItems}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* Burndown Section */}
-            <div
-              className="space-y-3 rounded-md p-4"
-              style={{
-                backgroundColor: BRAND.surfaceHover,
-                border: `1px solid ${BRAND.borderSubtle}`,
-              }}
-            >
-              <h3
-                className="flex items-center gap-1.5 text-[10px] font-bold tracking-wider uppercase"
-                style={{ color: BRAND.textSecondary }}
-              >
-                <TrendingDown size={13} />
-                Burndown
-              </h3>
-              {burndownLoading ? (
-                <div className="flex h-32 items-center justify-center">
-                  <Loader2 className="animate-spin" size={16} style={{ color: BRAND.textMuted }} />
-                </div>
-              ) : burndown && burndown.length > 0 ? (
-                <div className="max-h-56 overflow-auto">
-                  <table className="w-full text-left text-[10px]">
-                    <thead>
-                      <tr style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}>
-                        <th
-                          className="py-1 pr-2 font-semibold"
-                          style={{ color: BRAND.textSecondary }}
-                        >
-                          Date
-                        </th>
-                        <th
-                          className="py-1 pr-2 text-right font-semibold"
-                          style={{ color: BRAND.textSecondary }}
-                        >
-                          Total
-                        </th>
-                        <th
-                          className="py-1 pr-2 text-right font-semibold"
-                          style={{ color: BRAND.textSecondary }}
-                        >
-                          Done
-                        </th>
-                        <th
-                          className="py-1 text-right font-semibold"
-                          style={{ color: BRAND.textSecondary }}
-                        >
-                          Remaining
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {burndown.map((pt) => (
-                        <tr
-                          key={pt.date}
-                          style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
-                        >
-                          <td className="py-1 pr-2 font-mono" style={{ color: BRAND.textPrimary }}>
-                            {pt.date}
-                          </td>
-                          <td
-                            className="py-1 pr-2 text-right font-mono"
-                            style={{ color: BRAND.textPrimary }}
-                          >
-                            {pt.totalPoints}
-                          </td>
-                          <td
-                            className="py-1 pr-2 text-right font-mono"
-                            style={{ color: BRAND.success }}
-                          >
-                            {pt.completedPoints}
-                          </td>
-                          <td
-                            className="py-1 text-right font-mono"
-                            style={{ color: BRAND.textPrimary }}
-                          >
-                            {pt.remainingPoints}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p className="text-[11px]" style={{ color: BRAND.textMuted }}>
-                  No burndown data available yet.
-                </p>
-              )}
-            </div>
+            <BurndownPanel burndown={burndown} loading={burndownLoading} />
           </div>
         </div>
       )}

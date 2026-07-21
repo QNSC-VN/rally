@@ -1,4 +1,3 @@
-import { BRAND } from '@/shared/config/brand'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import type { WorkItemType } from '@/entities/work-item/model/types'
 
@@ -46,12 +45,7 @@ export function WorkItemRefCell({
         type="button"
         onClick={open}
         title={label}
-        className="flex w-full items-center gap-1.5 truncate rounded px-2.5 py-1.5 text-[12px] hover:bg-slate-50"
-        style={{
-          border: `1px solid ${BRAND.borderInput}`,
-          color: BRAND.primaryLight,
-          cursor: 'pointer',
-        }}
+        className="flex w-full cursor-pointer items-center gap-1.5 truncate rounded border border-input px-2.5 py-1.5 text-ui-md text-primary-light hover:bg-slate-50"
       >
         <TypeBadge type={type} size={16} />
         <span className="truncate">{label}</span>
@@ -64,8 +58,7 @@ export function WorkItemRefCell({
       type="button"
       onClick={open}
       title={label}
-      className="inline-flex max-w-full items-center gap-1.5 border-none bg-transparent p-0"
-      style={{ cursor: 'pointer' }}
+      className="inline-flex max-w-full cursor-pointer items-center gap-1.5 border-none bg-transparent p-0"
       onMouseOver={(e) => {
         e.currentTarget.style.textDecoration = 'underline'
       }}
@@ -74,9 +67,7 @@ export function WorkItemRefCell({
       }}
     >
       <TypeBadge type={type} size={16} />
-      <span className="truncate" style={{ fontSize: 11, color: BRAND.primaryLight }}>
-        {label}
-      </span>
+      <span className="truncate text-ui-sm text-primary-light">{label}</span>
     </button>
   )
 }

@@ -6,3 +6,6 @@ export {
   type DataTableFrameProps,
   type DataTableFrameHeader,
 } from './data-table-frame'
+// Re-exported so grid pages get the column-descriptor type from the table barrel
+// and never import `shared/ui/data-table-header` directly (frame is the only path).
+export { type DataTableHeaderColumn } from '@/shared/ui/data-table-header'

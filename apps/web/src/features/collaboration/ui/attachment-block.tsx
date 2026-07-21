@@ -11,7 +11,7 @@
  * - Upload progress optimistic UI (spinner on uploading row)
  */
 import { BRAND } from '@/shared/config/brand'
-import { formatDate } from '@/shared/lib/utils'
+import { formatDate, cn } from '@/shared/lib/utils'
 import { useRef, useState, useCallback } from 'react'
 import { FileText, Paperclip, Trash2, Upload, X } from 'lucide-react'
 import {
@@ -79,42 +79,23 @@ export function AttachmentBlock({ workItemId, readOnly = false }: AttachmentBloc
   const isUploading = uploadMutation.isPending
 
   return (
-    <section
-      className="overflow-hidden rounded bg-white"
-      style={{ border: `1px solid ${BRAND.border}` }}
-    >
+    <section className="overflow-hidden rounded border border-border-strong bg-card">
       {/* Header */}
-      <div
-        className="flex items-center gap-2 px-4 py-2 text-[11px] font-semibold select-none"
-        style={{
-          color: BRAND.textSecondary,
-          backgroundColor: BRAND.surfaceHover,
-          borderBottom: `1px solid ${BRAND.border}`,
-        }}
-      >
+      <div className="flex items-center gap-2 border-b border-border-strong bg-surface-hover px-4 py-2 text-ui-sm font-semibold text-muted-foreground select-none">
         <Paperclip size={12} />
         <span>Attachments</span>
         {attachments.length > 0 && (
-          <span
-            className="ml-1 rounded-full px-1.5 py-px text-[10px] font-bold"
-            style={{ backgroundColor: BRAND.avatarBg, color: BRAND.textSecondary }}
-          >
+          <span className="ml-1 rounded-full bg-avatar px-1.5 py-px text-ui-xs font-bold text-muted-foreground">
             {attachments.length}
           </span>
         )}
       </div>
 
       {/* File list */}
-      <div className="divide-y" style={{ borderColor: BRAND.primaryLighter }}>
-        {isLoading && (
-          <div className="px-4 py-3 text-[12px]" style={{ color: BRAND.textMuted }}>
-            Loading…
-          </div>
-        )}
+      <div className="divide-y divide-primary-lighter">
+        {isLoading && <div className="px-4 py-3 text-ui-md text-foreground-subtle">Loading…</div>}
         {!isLoading && attachments.length === 0 && (
-          <div className="px-4 py-3 text-[12px]" style={{ color: BRAND.textMuted }}>
-            No attachments.
-          </div>
+          <div className="px-4 py-3 text-ui-md text-foreground-subtle">No attachments.</div>
         )}
         {attachments.map((a) => {
           const isDeleting = deletingId === a.id
@@ -128,18 +109,17 @@ export function AttachmentBlock({ workItemId, readOnly = false }: AttachmentBloc
               className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-slate-50"
               style={{ opacity: isDeleting ? 0.5 : 1 }}
             >
-              <FileText size={15} style={{ color: BRAND.textSecondary, flexShrink: 0 }} />
+              <FileText size={15} className="shrink-0 text-muted-foreground" />
               <div className="min-w-0 flex-1">
                 <a
                   href={downloadUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="block truncate text-[12px] font-medium hover:underline"
-                  style={{ color: BRAND.primaryLight }}
+                  className="block truncate text-ui-md font-medium text-primary-light hover:underline"
                 >
                   {a.filename}
                 </a>
-                <span className="text-[10px]" style={{ color: BRAND.textMuted }}>
+                <span className="text-ui-xs text-foreground-subtle">
                   {formatBytes(a.sizeBytes)} · {formatDate(a.createdAt)}
                 </span>
               </div>
@@ -149,8 +129,7 @@ export function AttachmentBlock({ workItemId, readOnly = false }: AttachmentBloc
                   aria-label={`Delete ${a.filename}`}
                   onClick={() => void handleDelete(a.id)}
                   disabled={isDeleting}
-                  className="rounded p-1 transition-colors hover:bg-red-50"
-                  style={{ color: BRAND.textMuted }}
+                  className="rounded p-1 text-foreground-subtle transition-colors hover:bg-red-50"
                   onMouseEnter={(e) =>
                     ((e.currentTarget as HTMLButtonElement).style.color = BRAND.danger)
                   }
@@ -173,9 +152,7 @@ export function AttachmentBlock({ workItemId, readOnly = false }: AttachmentBloc
         {isUploading && (
           <div className="flex items-center gap-3 px-4 py-2.5">
             <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
-            <span className="text-[12px]" style={{ color: BRAND.textSecondary }}>
-              Uploading…
-            </span>
+            <span className="text-ui-md text-muted-foreground">Uploading…</span>
           </div>
         )}
       </div>
@@ -183,12 +160,12 @@ export function AttachmentBlock({ workItemId, readOnly = false }: AttachmentBloc
       {/* Drop zone */}
       {!readOnly && (
         <div
-          className="m-3 rounded-lg transition-all"
-          style={{
-            border: `2px dashed ${dragging ? BRAND.primaryLight : BRAND.border}`,
-            backgroundColor: dragging ? BRAND.primaryLighter : BRAND.surfaceHover,
-            padding: '16px 12px',
-          }}
+          className={cn(
+            'm-3 rounded-lg border-2 border-dashed px-3 py-4 transition-all',
+            dragging
+              ? 'border-primary-light bg-primary-lighter'
+              : 'border-border-strong bg-surface-hover',
+          )}
           onDragOver={(e) => {
             e.preventDefault()
             setDragging(true)
@@ -209,30 +186,26 @@ export function AttachmentBlock({ workItemId, readOnly = false }: AttachmentBloc
             onClick={() => inputRef.current?.click()}
             className="flex w-full flex-col items-center gap-1.5"
           >
-            <Upload size={18} style={{ color: dragging ? BRAND.primaryLight : BRAND.textMuted }} />
+            <Upload
+              size={18}
+              className={dragging ? 'text-primary-light' : 'text-foreground-subtle'}
+            />
             <span
-              className="text-[11px]"
-              style={{ color: dragging ? BRAND.primaryLight : BRAND.textSecondary }}
+              className={cn(
+                'text-ui-sm',
+                dragging ? 'text-primary-light' : 'text-muted-foreground',
+              )}
             >
               {dragging ? 'Drop to upload' : 'Drag & drop or click to upload'}
             </span>
-            <span className="text-[10px]" style={{ color: BRAND.textMuted }}>
-              Any file · max 10 MB
-            </span>
+            <span className="text-ui-xs text-foreground-subtle">Any file · max 10 MB</span>
           </button>
         </div>
       )}
 
       {/* Error message */}
       {sizeError && (
-        <div
-          className="mx-3 mb-3 flex items-center justify-between gap-2 rounded px-3 py-2 text-[11px]"
-          style={{
-            backgroundColor: BRAND.dangerBg,
-            border: `1px solid ${BRAND.dangerBorder}`,
-            color: BRAND.danger,
-          }}
-        >
+        <div className="mx-3 mb-3 flex items-center justify-between gap-2 rounded border border-destructive-border bg-destructive-bg px-3 py-2 text-ui-sm text-destructive">
           <span>{sizeError}</span>
           <button type="button" onClick={() => setSizeError(null)} aria-label="Dismiss error">
             <X size={12} />
@@ -242,14 +215,7 @@ export function AttachmentBlock({ workItemId, readOnly = false }: AttachmentBloc
 
       {/* Upload mutation error */}
       {uploadMutation.isError && (
-        <div
-          className="mx-3 mb-3 flex items-center justify-between gap-2 rounded px-3 py-2 text-[11px]"
-          style={{
-            backgroundColor: BRAND.dangerBg,
-            border: `1px solid ${BRAND.dangerBorder}`,
-            color: BRAND.danger,
-          }}
-        >
+        <div className="mx-3 mb-3 flex items-center justify-between gap-2 rounded border border-destructive-border bg-destructive-bg px-3 py-2 text-ui-sm text-destructive">
           <span>Upload failed: {(uploadMutation.error as Error)?.message ?? 'Unknown error'}</span>
           <button type="button" onClick={() => uploadMutation.reset()} aria-label="Dismiss error">
             <X size={12} />

@@ -3,6 +3,14 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "pnpm": {
+    "overrides": {
+      "brace-expansion@1": "^1.1.16",
+      "brace-expansion@2": "^2.1.2",
+      "brace-expansion@5": "^5.0.7",
+      "js-yaml@4": "^4.3.0"
+    }
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -17,15 +25,6 @@
     "test:e2e": "playwright test",
     "codegen": "openapi-typescript http://localhost:3000/api/docs-json -o src/shared/api/generated/api.ts",
     "prepare": "husky"
-  },
-  "lint-staged": {
-    "*.{ts,tsx}": [
-      "eslint --fix --max-warnings=0 --no-warn-ignored",
-      "prettier --write"
-    ],
-    "*.{json,css,md}": [
-      "prettier --write"
-    ]
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

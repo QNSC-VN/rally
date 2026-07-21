@@ -100,9 +100,13 @@ RUN pnpm build:migrator
 FROM node:${NODE_VERSION}-alpine${ALPINE_VERSION} AS api
 
 # Upgrade all Alpine packages to latest security patches within the pinned
-# Alpine version. Ensures Trivy finds no CRITICAL/HIGH CVEs with available fixes.
+# Alpine version, and remove the base image's global npm — it is unused at
+# runtime (the app runs via `node dist/...`) and its bundled node-tar carries a
+# CRITICAL CVE (CVE-2026-59873) that apk upgrade cannot patch. Ensures Trivy
+# finds no CRITICAL/HIGH CVEs with available fixes.
 RUN apk upgrade --no-cache \
     && apk add --no-cache tini \
+    && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
     && rm -rf /var/cache/apk/*
 
 # Runtime tunables — override via docker run -e or Kubernetes env
@@ -145,6 +149,7 @@ FROM node:${NODE_VERSION}-alpine${ALPINE_VERSION} AS worker
 
 RUN apk upgrade --no-cache \
     && apk add --no-cache tini \
+    && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
     && rm -rf /var/cache/apk/*
 
 ENV NODE_ENV=production
@@ -179,6 +184,7 @@ FROM node:${NODE_VERSION}-alpine${ALPINE_VERSION} AS migrator
 
 RUN apk upgrade --no-cache \
     && apk add --no-cache tini \
+    && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
     && rm -rf /var/cache/apk/*
 
 ENV NODE_ENV=production

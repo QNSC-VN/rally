@@ -1,0 +1,40 @@
+{
+  "selectProject": "Select a project to view its portfolio.",
+  "title": "Portfolio Hierarchy",
+  "newInitiative": "New Initiative",
+  "loadError": "Failed to load portfolio data.",
+  "empty": "No initiatives yet. Create an initiative to start planning the portfolio.",
+  "metrics": {
+    "initiatives": "Initiatives",
+    "features": "Features",
+    "totalStories": "Total Stories",
+    "acceptedStories": "Accepted Stories",
+    "totalPoints": "Total Points"
+  },
+  "columns": {
+    "id": "ID",
+    "type": "Type",
+    "progress": "Progress",
+    "targetRelease": "Target Release",
+    "related": "Related",
+    "blocked": "Blocked"
+  },
+  "create": {
+    "title": "New Initiative",
+    "titleLabel": "Title",
+    "titleRequired": "Title is required",
+    "unassigned": "Unassigned",
+    "priorityLabel": "Priority",
+    "priority": {
+      "none": "None",
+      "low": "Low",
+      "normal": "Normal",
+      "high": "High",
+      "urgent": "Urgent"
+    },
+    "createWithDetails": "Create with details",
+    "createButton": "Create Initiative",
+    "created": "Initiative \"{{name}}\" created",
+    "createFailed": "Failed to create initiative"
+  }
+}
