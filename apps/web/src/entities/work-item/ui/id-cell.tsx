@@ -1,4 +1,3 @@
-import { BRAND } from '@/shared/config/brand'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import type { WorkItemType } from '@/entities/work-item/model/types'
 
@@ -31,14 +30,7 @@ export function IdCell({ type, itemKey, onOpen }: IdCellProps) {
           onOpen()
         }}
         title={itemKey}
-        className="min-w-0 truncate text-left font-mono text-[12px] underline-offset-2 hover:underline"
-        style={{
-          color: BRAND.primaryLight,
-          background: 'none',
-          border: 'none',
-          padding: 0,
-          cursor: 'pointer',
-        }}
+        className="min-w-0 cursor-pointer truncate border-none bg-transparent p-0 text-left font-mono text-ui-md text-primary-light underline-offset-2 hover:underline"
       >
         {itemKey}
       </button>

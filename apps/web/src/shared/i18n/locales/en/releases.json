@@ -1,0 +1,109 @@
+{
+  "title": "Releases",
+  "selectProject": "Select a project to view releases.",
+  "metrics": {
+    "total": "Total Releases",
+    "active": "Active",
+    "accepted": "Accepted",
+    "planning": "Planning"
+  },
+  "loadError": "Failed to load releases. Please try again.",
+  "empty": "No releases yet.",
+  "emptySearch": "No releases match your search.",
+  "createFirst": "+ Create first release",
+  "createButton": "Create Release",
+  "createWithDetails": "Create with details",
+  "searchPlaceholder": "Search releases…",
+  "create": {
+    "title": "Create Release",
+    "subtitle": "Type: Release (locked)",
+    "typeLabel": "Type",
+    "nameLabel": "Release name",
+    "themeLabel": "Theme",
+    "startDateLabel": "Start Date",
+    "releaseDateLabel": "Release Date",
+    "statusLabel": "Status",
+    "descriptionLabel": "Description",
+    "nameRequired": "Release name is required",
+    "dateOrder": "Release date must be >= start date",
+    "created": "Release \"{{name}}\" created",
+    "createFailed": "Failed to create release"
+  },
+  "detail": {
+    "subtitle": "Release Detail",
+    "themeLabel": "Theme",
+    "notesLabel": "Notes",
+    "nameLabel": "Release name",
+    "startDateLabel": "Start Date",
+    "releaseDateLabel": "Release Date",
+    "stateLabel": "State",
+    "plannedVelocityLabel": "Planned Velocity",
+    "planEstimateLabel": "Plan Estimate",
+    "versionLabel": "Version",
+    "progress": "Progress",
+    "items": "Items",
+    "points": "Points",
+    "updated": "Release updated",
+    "updateFailed": "Failed to update release"
+  },
+  "row": {
+    "nameUpdated": "Name updated",
+    "themeUpdated": "Theme updated",
+    "versionUpdated": "Version updated",
+    "velocityInvalid": "Planned velocity must be a positive integer",
+    "velocityUpdated": "Planned velocity updated",
+    "startDateUpdated": "Start date updated",
+    "releaseDateUpdated": "Release date updated",
+    "statusUpdated": "Status updated to {{label}}"
+  },
+  "delete": {
+    "title": "Delete release",
+    "message": "Delete this release? Work items will keep their release assignment.",
+    "confirm": "Delete release",
+    "deleted": "Release deleted",
+    "deleteFailed": "Failed to delete release"
+  },
+  "detailPage": {
+    "loadError": "Release details could not be loaded.",
+    "backToReleases": "← Back to Releases",
+    "saveChanges": "Save Changes",
+    "saved": "Release details saved",
+    "tabs": {
+      "details": "Details",
+      "artifacts": "Artifacts"
+    },
+    "themeTitle": "Release Theme",
+    "notesTitle": "Notes & Scope Deliverables",
+    "metadataTitle": "Metadata Details",
+    "projectScope": "Project Scope",
+    "lifecycleState": "Lifecycle State",
+    "versionTag": "Version Release Tag",
+    "rollup": {
+      "title": "Task Roll-up",
+      "completion": "Completion",
+      "estimate": "Estimate",
+      "toDo": "To Do",
+      "actual": "Actual",
+      "items": "Items:",
+      "toDoItems": "To Do:",
+      "done": "Done:",
+      "accepted": "Accepted"
+    },
+    "burndown": {
+      "title": "Burndown",
+      "date": "Date",
+      "total": "Total",
+      "done": "Done",
+      "remaining": "Remaining",
+      "empty": "No burndown data available yet."
+    },
+    "artifacts": {
+      "itemCount": "{{total}} items"
+    },
+    "pagination": {
+      "rowsPerPage": "Rows per page",
+      "page": "Page",
+      "of": "of"
+    }
+  }
+}

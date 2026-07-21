@@ -52,7 +52,7 @@ export function SearchInput({
         placeholder={placeholder}
         aria-label={ariaLabel ?? placeholder}
         autoFocus={autoFocus}
-        className={cn('rounded py-1 pr-3 pl-7 text-[11px] focus:outline-none', className)}
+        className={cn('rounded py-1 pr-3 pl-7 text-ui-sm focus:outline-none', className)}
         style={{
           backgroundColor: BRAND.inputBg,
           border: `1px solid ${BRAND.border}`,

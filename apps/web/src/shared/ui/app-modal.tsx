@@ -91,14 +91,14 @@ export function AppModal({
           >
             <div>
               <DialogPrimitive.Title
-                className="text-[13px] font-semibold"
+                className="text-ui-lg font-semibold"
                 style={{ color: BRAND.textPrimary }}
               >
                 {title}
               </DialogPrimitive.Title>
               {subtitle && (
                 <DialogPrimitive.Description
-                  className="text-[11px]"
+                  className="text-ui-sm"
                   style={{ color: BRAND.textMuted }}
                 >
                   {subtitle}

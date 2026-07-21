@@ -47,16 +47,8 @@ export function FormField({
         )}
       </Label>
       {children}
-      {hint && (
-        <p className="text-[10px]" style={{ color: BRAND.textMuted }}>
-          {hint}
-        </p>
-      )}
-      {error && (
-        <p className="text-[11px]" style={{ color: BRAND.danger }}>
-          {error}
-        </p>
-      )}
+      {hint && <p className="text-ui-xs text-foreground-subtle">{hint}</p>}
+      {error && <p className="text-ui-sm text-destructive">{error}</p>}
     </div>
   )
 }

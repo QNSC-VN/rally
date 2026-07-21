@@ -149,7 +149,7 @@ export function CreateWorkItemModal({
                   key={value}
                   type="button"
                   onClick={() => setType(value)}
-                  className="flex flex-1 items-center justify-center gap-1 rounded-sm py-1.5 text-[11px] font-semibold transition-colors"
+                  className="flex flex-1 items-center justify-center gap-1 rounded-sm py-1.5 text-ui-sm font-semibold transition-colors"
                   style={{
                     backgroundColor: active ? cfg.bg : 'transparent',
                     color: active ? cfg.color : BRAND.textSecondary,
@@ -173,7 +173,7 @@ export function CreateWorkItemModal({
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Enter a concise, descriptive title…"
-            className="text-[13px]"
+            className="text-ui-lg"
           />
         </FormField>
 
@@ -236,9 +236,7 @@ export function CreateWorkItemModal({
       </ModalBody>
 
       <ModalFooter className="justify-between">
-        <span className="text-[10px]" style={{ color: BRAND.textMuted }}>
-          Ctrl+Enter to save
-        </span>
+        <span className="text-ui-xs text-foreground-subtle">Ctrl+Enter to save</span>
         <div className="flex gap-2">
           <Button variant="outline" type="button" onClick={onClose} disabled={submitting}>
             Cancel

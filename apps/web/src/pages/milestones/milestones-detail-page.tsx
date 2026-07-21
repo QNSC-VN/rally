@@ -6,24 +6,15 @@
  * Artifacts tab: backlog-style table of assigned US/DE work items with search + pagination.
  */
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 /* eslint-disable react-hooks/set-state-in-effect */
-import { Link, useNavigate, useParams } from '@tanstack/react-router'
-import {
-  ChevronLeft,
-  ChevronRight,
-  Loader2,
-  Save,
-  Users,
-  FolderKanban,
-  Layers,
-  CalendarDays,
-} from 'lucide-react'
+import { Link, useParams } from '@tanstack/react-router'
+import { ChevronLeft, Loader2, Save, Users, FolderKanban, Layers, CalendarDays } from 'lucide-react'
 import { BRAND } from '@/shared/config/brand'
 import { InlineSelect } from '@/shared/ui/native-select'
 import { RichTextEditor } from '@/shared/ui/rich-text-editor'
-import { ArtifactTable } from '@/entities/work-item/ui/artifact-table'
-import { SearchInput } from '@/shared/ui/search-input'
+import { RelationButton, ArtifactsTab } from './ui/detail-parts'
 import { MILESTONE_STATUS_STYLE } from '@/features/milestones/status-colors'
 import { Button } from '@/shared/ui/button'
 import { SelectionModal } from '@/shared/ui/selection-modal'
@@ -38,7 +29,6 @@ import {
   useSetMilestoneTeams,
   useMilestoneReleases,
   useSetMilestoneReleases,
-  useMilestoneArtifacts,
   type MilestoneStatus,
 } from '@/features/milestones/api'
 import { useReleasesForProjects } from '@/features/releases/api'
@@ -59,179 +49,12 @@ const MILESTONE_STATUSES: MilestoneStatus[] = [
   'completed',
 ]
 
-// ── Relation summary button (right sidebar) ────────────────────────────────────
-
-function RelationButton({
-  icon: Icon,
-  label,
-  count,
-  onClick,
-  canManage,
-}: {
-  icon: React.ComponentType<{ size?: number; style?: React.CSSProperties }>
-  label: string
-  count: number
-  onClick: () => void
-  canManage: boolean
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={!canManage}
-      className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs transition-colors hover:bg-gray-50 disabled:cursor-default disabled:opacity-80"
-      style={{ border: `1px solid ${BRAND.borderSubtle}`, color: BRAND.textPrimary }}
-    >
-      <Icon size={14} style={{ color: BRAND.textMuted }} />
-      <span className="flex-1 font-medium">{label}</span>
-      <span
-        className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold"
-        style={{ backgroundColor: BRAND.primaryLighter, color: BRAND.primary }}
-      >
-        {count}
-      </span>
-    </button>
-  )
-}
-
-// ── Artifacts tab ──────────────────────────────────────────────────────────────
-
-function ArtifactsTab({ milestoneId }: { milestoneId: string }) {
-  const navigate = useNavigate()
-  const [search, setSearch] = useState('')
-  const [pageSize, setPageSize] = useState(25)
-  const [cursor, setCursor] = useState<string | undefined>(undefined)
-  const [cursorHistory, setCursorHistory] = useState<string[]>([])
-  const currentPage = cursorHistory.length + 1
-
-  const { data, isLoading } = useMilestoneArtifacts(milestoneId, {
-    pageSize,
-    search: search || undefined,
-  })
-
-  const items = useMemo(() => data?.data ?? [], [data])
-  const pageInfo = data?.pageInfo
-
-  // Reset pagination on search / pageSize change
-  useEffect(() => {
-    const id = setTimeout(() => {
-      setCursor(undefined)
-      setCursorHistory([])
-    }, 0)
-    return () => clearTimeout(id)
-  }, [search, pageSize])
-
-  function onPrevPage() {
-    const prev = cursorHistory[cursorHistory.length - 2]
-    setCursorHistory((h) => h.slice(0, -1))
-    setCursor(prev)
-  }
-
-  function onNextPage() {
-    if (!pageInfo?.hasNextPage || !pageInfo.nextCursor) return
-    setCursorHistory((h) => [...h, cursor ?? ''])
-    setCursor(pageInfo.nextCursor)
-  }
-
-  return (
-    <div className="flex flex-1 flex-col overflow-hidden">
-      {/* Search toolbar */}
-      <div
-        className="flex shrink-0 items-center gap-3 px-4 py-2"
-        style={{ borderBottom: `1px solid ${BRAND.borderSubtle}`, backgroundColor: BRAND.surface }}
-      >
-        <SearchInput
-          value={search}
-          onChange={setSearch}
-          placeholder="Search artifacts..."
-          ariaLabel="Search artifacts"
-          width={220}
-          iconSize={13}
-          className="rounded-md py-1.5 pl-8 text-xs"
-        />
-        <div className="flex-1" />
-        <span className="text-[11px]" style={{ color: BRAND.textMuted }}>
-          {pageInfo?.total != null ? `${pageInfo.total} items` : ''}
-        </span>
-      </div>
-
-      {/* Table */}
-      <div className="flex-1 overflow-auto" style={{ backgroundColor: BRAND.surface }}>
-        <ArtifactTable
-          items={items}
-          isLoading={isLoading}
-          search={search}
-          entityNoun="milestone"
-          startIndex={cursorHistory.length * pageSize}
-          onOpenItem={(item) =>
-            navigate({ to: '/item/$itemKey', params: { itemKey: item.itemKey } })
-          }
-        />
-      </div>
-
-      {/* Pagination footer */}
-      {items.length > 0 && (
-        <div
-          className="flex h-9 shrink-0 items-center justify-between bg-white px-3"
-          style={{ borderTop: `1px solid ${BRAND.borderSubtle}` }}
-        >
-          <div
-            className="flex items-center gap-2 text-[11px]"
-            style={{ color: BRAND.textSecondary }}
-          >
-            <span>Rows per page</span>
-            <InlineSelect
-              aria-label="Rows per page"
-              value={pageSize}
-              onChange={(e) => setPageSize(Number(e.target.value))}
-              className="w-auto"
-            >
-              {[10, 25, 50, 100].map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </InlineSelect>
-            <span style={{ color: BRAND.textMuted }}>
-              {pageInfo
-                ? `${(currentPage - 1) * pageSize + 1}–${(currentPage - 1) * pageSize + items.length}${pageInfo.total ? ` of ${pageInfo.total}` : ''}`
-                : ''}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] tabular-nums" style={{ color: BRAND.textSecondary }}>
-              Page {currentPage}
-            </span>
-            <button
-              aria-label="Previous page"
-              disabled={currentPage === 1}
-              onClick={onPrevPage}
-              className="rounded p-1.5 disabled:opacity-35"
-              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
-            >
-              <ChevronLeft size={13} />
-            </button>
-            <button
-              aria-label="Next page"
-              disabled={!pageInfo?.hasNextPage}
-              onClick={onNextPage}
-              className="rounded p-1.5 disabled:opacity-35"
-              style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
-            >
-              <ChevronRight size={13} />
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 type TabKey = 'details' | 'artifacts'
 
 export function MilestoneDetailPage() {
+  const { t } = useTranslation('milestones')
   const { milestoneId } = useParams({ from: '/auth/milestones/$milestoneId' })
   const { workspace } = useAppContext()
   const workspaceId = workspace?.workspaceId ?? ''
@@ -292,7 +115,7 @@ export function MilestoneDetailPage() {
   async function handleFieldSave() {
     if (!milestone) return
     if (!name.trim()) {
-      toast.error('Milestone name is required')
+      toast.error(t('detail.nameRequired'))
       return
     }
     setSaving(true)
@@ -304,7 +127,7 @@ export function MilestoneDetailPage() {
         ownerId: ownerId || null,
       })
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to save')
+      toast.error(err instanceof Error ? err.message : t('detail.saveFailed'))
     } finally {
       setSaving(false)
     }
@@ -312,12 +135,15 @@ export function MilestoneDetailPage() {
 
   // Rich-text fields (Description, Notes) auto-save individually on blur, matching
   // the work-item detail page's RichTextEditor pattern.
-  async function handleRichFieldSave(patch: { description?: string | null; notes?: string | null }) {
+  async function handleRichFieldSave(patch: {
+    description?: string | null
+    notes?: string | null
+  }) {
     if (!milestone) return
     try {
       await update.mutateAsync({ id: milestone.id, ...patch })
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to save')
+      toast.error(err instanceof Error ? err.message : t('detail.saveFailed'))
     }
   }
 
@@ -327,7 +153,7 @@ export function MilestoneDetailPage() {
     try {
       await update.mutateAsync({ id: milestone.id, status: newStatus })
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to update status')
+      toast.error(err instanceof Error ? err.message : t('detail.statusUpdateFailed'))
       setStatus(milestone.status)
     }
   }
@@ -338,7 +164,7 @@ export function MilestoneDetailPage() {
     try {
       await update.mutateAsync({ id: milestone.id, ownerId: newOwnerId || null })
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to update owner')
+      toast.error(err instanceof Error ? err.message : t('detail.ownerUpdateFailed'))
       setOwnerId(milestone.ownerId ?? '')
     }
   }
@@ -347,30 +173,18 @@ export function MilestoneDetailPage() {
 
   if (isLoading) {
     return (
-      <div
-        className="flex flex-1 items-center justify-center"
-        style={{ backgroundColor: BRAND.pageBg }}
-      >
-        <Loader2 className="animate-spin" size={24} style={{ color: BRAND.primary }} />
+      <div className="flex flex-1 items-center justify-center bg-background">
+        <Loader2 className="animate-spin text-primary" size={24} />
       </div>
     )
   }
 
   if (isError || !milestone) {
     return (
-      <div
-        className="flex flex-1 flex-col items-center justify-center gap-3"
-        style={{ backgroundColor: BRAND.pageBg }}
-      >
-        <p className="text-[13px]" style={{ color: BRAND.textSecondary }}>
-          Milestone details could not be loaded.
-        </p>
-        <Link
-          to="/milestones"
-          className="text-[12px] font-semibold hover:underline"
-          style={{ color: BRAND.primary }}
-        >
-          ← Back to Milestones
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 bg-background">
+        <p className="text-ui-lg text-muted-foreground">{t('detail.loadError')}</p>
+        <Link to="/milestones" className="text-ui-md font-semibold text-primary hover:underline">
+          {t('detail.backToMilestones')}
         </Link>
       </div>
     )
@@ -379,22 +193,18 @@ export function MilestoneDetailPage() {
   const s = STATUS_STYLE[milestone.status] ?? STATUS_STYLE.planned
 
   const TABS: { key: TabKey; label: string }[] = [
-    { key: 'details', label: 'Details' },
-    { key: 'artifacts', label: 'Artifacts' },
+    { key: 'details', label: t('detail.tabs.details') },
+    { key: 'artifacts', label: t('detail.tabs.artifacts') },
   ]
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden" style={{ backgroundColor: BRAND.pageBg }}>
+    <div className="flex flex-1 flex-col overflow-hidden bg-background">
       {/* Header bar */}
-      <div
-        className="flex h-12 shrink-0 items-center justify-between gap-4 px-4"
-        style={{ borderBottom: `1px solid ${BRAND.border}`, backgroundColor: BRAND.surface }}
-      >
+      <div className="flex h-12 shrink-0 items-center justify-between gap-4 border-b bg-card px-4">
         <div className="flex items-center gap-2">
           <Link
             to="/milestones"
-            className="flex h-7 w-7 items-center justify-center rounded transition-colors hover:bg-gray-100"
-            style={{ color: BRAND.textSecondary }}
+            className="flex h-7 w-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-gray-100"
           >
             <ChevronLeft size={16} />
           </Link>
@@ -407,16 +217,14 @@ export function MilestoneDetailPage() {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleFieldSave()
                 }}
-                className="rounded border-0 bg-transparent px-1 py-0.5 text-[14px] font-semibold focus:bg-white focus:ring-1 focus:outline-none"
-                style={{ color: BRAND.textPrimary, width: 320 }}
+                className="rounded border-0 bg-transparent px-1 py-0.5 text-ui-xl font-semibold text-foreground focus:bg-card focus:ring-1 focus:outline-none"
+                style={{ width: 320 }}
               />
             ) : (
-              <h1 className="text-[14px] font-semibold" style={{ color: BRAND.textPrimary }}>
-                {milestone.name}
-              </h1>
+              <h1 className="text-ui-xl font-semibold text-foreground">{milestone.name}</h1>
             )}
             <span
-              className="inline-flex items-center rounded-sm px-1.5 py-px text-[10px] font-medium"
+              className="inline-flex items-center rounded-sm px-1.5 py-px text-ui-xs font-medium"
               style={{ backgroundColor: s.bg, color: s.text, border: `1px solid ${s.border}` }}
             >
               {s.label}
@@ -425,9 +233,7 @@ export function MilestoneDetailPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          {saving && (
-            <Loader2 size={12} className="animate-spin" style={{ color: BRAND.primary }} />
-          )}
+          {saving && <Loader2 size={12} className="animate-spin text-primary" />}
           {canManage && (
             <Button size="sm" onClick={handleFieldSave} disabled={update.isPending || saving}>
               {update.isPending || saving ? (
@@ -435,32 +241,26 @@ export function MilestoneDetailPage() {
               ) : (
                 <Save size={12} />
               )}
-              Save Changes
+              {t('detail.saveChanges')}
             </Button>
           )}
         </div>
       </div>
 
       {/* Tab bar */}
-      <div
-        className="flex shrink-0 items-center gap-0 px-4"
-        style={{ borderBottom: `1px solid ${BRAND.border}`, backgroundColor: BRAND.surface }}
-      >
+      <div className="flex shrink-0 items-center gap-0 border-b bg-card px-4">
         {TABS.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className="relative px-4 py-2.5 text-[12px] font-medium transition-colors"
+            className="relative px-4 py-2.5 text-ui-md font-medium transition-colors"
             style={{
               color: activeTab === tab.key ? BRAND.primary : BRAND.textSecondary,
             }}
           >
             {tab.label}
             {activeTab === tab.key && (
-              <span
-                className="absolute right-0 bottom-0 left-0 h-0.5"
-                style={{ backgroundColor: BRAND.primary }}
-              />
+              <span className="absolute right-0 bottom-0 left-0 h-0.5 bg-primary" />
             )}
           </button>
         ))}
@@ -473,19 +273,16 @@ export function MilestoneDetailPage() {
         /* Details tab — two panel layout */
         <div className="flex flex-1 overflow-hidden">
           {/* Left panel: Description & Notes */}
-          <div
-            className="flex-1 space-y-6 overflow-y-auto p-6"
-            style={{ backgroundColor: BRAND.surface }}
-          >
+          <div className="flex-1 space-y-6 overflow-y-auto bg-card p-6">
             <RichTextEditor
-              title="Description"
+              title={t('common:description')}
               value={milestone?.description}
               minHeight={120}
               readOnly={!canManage}
               onSave={(html) => handleRichFieldSave({ description: html || null })}
             />
             <RichTextEditor
-              title="Notes"
+              title={t('detail.notesLabel')}
               value={milestone?.notes}
               minHeight={80}
               readOnly={!canManage}
@@ -494,21 +291,15 @@ export function MilestoneDetailPage() {
           </div>
 
           {/* Right sidebar (320px, scrollable) */}
-          <div
-            className="w-80 shrink-0 space-y-5 overflow-y-auto border-l p-5"
-            style={{ backgroundColor: BRAND.surface, borderColor: BRAND.border }}
-          >
-            <h2
-              className="text-[11px] font-semibold tracking-wider uppercase"
-              style={{ color: BRAND.textMuted }}
-            >
-              Metadata Details
+          <div className="w-80 shrink-0 space-y-5 overflow-y-auto border-l bg-card p-5">
+            <h2 className="text-ui-sm font-semibold tracking-wider text-foreground-subtle uppercase">
+              {t('detail.metadataDetails')}
             </h2>
 
             {/* Projects */}
             <RelationButton
               icon={FolderKanban}
-              label="Projects"
+              label={t('detail.projects')}
               count={linkedProjectIds.length}
               onClick={() => setShowProjectsModal(true)}
               canManage={canManage}
@@ -517,7 +308,7 @@ export function MilestoneDetailPage() {
             {/* Teams */}
             <RelationButton
               icon={Users}
-              label="Teams"
+              label={t('detail.teams')}
               count={linkedTeamIds.length}
               onClick={() => setShowTeamsModal(true)}
               canManage={canManage}
@@ -526,19 +317,19 @@ export function MilestoneDetailPage() {
             {/* Releases */}
             <RelationButton
               icon={Layers}
-              label="Releases"
+              label={t('detail.releases')}
               count={linkedReleaseIds.length}
               onClick={() => setShowReleasesModal(true)}
               canManage={canManage}
             />
 
             {/* Divider */}
-            <div style={{ borderTop: `1px solid ${BRAND.borderSubtle}` }} />
+            <div className="border-t border-border-subtle" />
 
             {/* Owner */}
             <div className="space-y-1">
-              <label className="text-[10px] font-medium" style={{ color: BRAND.textSecondary }}>
-                Owner
+              <label className="text-ui-xs font-medium text-muted-foreground">
+                {t('common:owner')}
               </label>
               {canManage ? (
                 <select
@@ -546,10 +337,9 @@ export function MilestoneDetailPage() {
                   onChange={(e) => {
                     void handleOwnerChange(e.target.value)
                   }}
-                  className="w-full cursor-pointer rounded bg-white px-2 py-1 text-[11px] focus:outline-none"
-                  style={{ border: `1px solid ${BRAND.borderInput}`, color: BRAND.textPrimary }}
+                  className="w-full cursor-pointer rounded border border-input bg-card px-2 py-1 text-ui-sm text-foreground focus:outline-none"
                 >
-                  <option value="">Unassigned</option>
+                  <option value="">{t('detail.unassigned')}</option>
                   {members.map((m) => (
                     <option key={m.userId} value={m.userId}>
                       {m.displayName ?? m.email ?? m.userId}
@@ -557,10 +347,7 @@ export function MilestoneDetailPage() {
                   ))}
                 </select>
               ) : (
-                <div
-                  className="py-1 text-[12px] font-semibold"
-                  style={{ color: BRAND.textPrimary }}
-                >
+                <div className="py-1 text-ui-md font-semibold text-foreground">
                   {members.find((m) => m.userId === milestone.ownerId)?.displayName ??
                     members.find((m) => m.userId === milestone.ownerId)?.email ??
                     '—'}
@@ -570,40 +357,40 @@ export function MilestoneDetailPage() {
 
             {/* Target Start Date (read-only, derived) */}
             <div className="space-y-1">
-              <label className="text-[10px] font-medium" style={{ color: BRAND.textSecondary }}>
-                Target Start Date
+              <label className="text-ui-xs font-medium text-muted-foreground">
+                {t('detail.targetStartDate')}
               </label>
               <div className="flex items-center gap-1.5">
-                <CalendarDays size={12} style={{ color: BRAND.textMuted }} />
-                <span className="font-mono text-[12px]" style={{ color: BRAND.textPrimary }}>
+                <CalendarDays size={12} className="text-foreground-subtle" />
+                <span className="font-mono text-ui-md text-foreground">
                   {milestone.targetStartDate ?? '—'}
                 </span>
               </div>
-              <p className="text-[9px]" style={{ color: BRAND.textMuted }}>
-                Derived from linked Releases
+              <p className="text-ui-2xs text-foreground-subtle">
+                {t('detail.derivedFromReleases')}
               </p>
             </div>
 
             {/* Target End Date (read-only, derived) */}
             <div className="space-y-1">
-              <label className="text-[10px] font-medium" style={{ color: BRAND.textSecondary }}>
-                Target End Date
+              <label className="text-ui-xs font-medium text-muted-foreground">
+                {t('detail.targetEndDate')}
               </label>
               <div className="flex items-center gap-1.5">
-                <CalendarDays size={12} style={{ color: BRAND.textMuted }} />
-                <span className="font-mono text-[12px]" style={{ color: BRAND.textPrimary }}>
+                <CalendarDays size={12} className="text-foreground-subtle" />
+                <span className="font-mono text-ui-md text-foreground">
                   {milestone.targetEndDate ?? '—'}
                 </span>
               </div>
-              <p className="text-[9px]" style={{ color: BRAND.textMuted }}>
-                Derived from linked Releases
+              <p className="text-ui-2xs text-foreground-subtle">
+                {t('detail.derivedFromReleases')}
               </p>
             </div>
 
             {/* Status */}
             <div className="space-y-1">
-              <label className="text-[10px] font-medium" style={{ color: BRAND.textSecondary }}>
-                Status
+              <label className="text-ui-xs font-medium text-muted-foreground">
+                {t('common:status')}
               </label>
               {canManage ? (
                 <InlineSelect
@@ -611,8 +398,7 @@ export function MilestoneDetailPage() {
                   onChange={(e) => {
                     void handleStatusChange(e.target.value as MilestoneStatus)
                   }}
-                  className="w-full rounded bg-white px-2 py-1 text-[11px] focus:outline-none"
-                  style={{ border: `1px solid ${BRAND.borderInput}`, color: BRAND.textPrimary }}
+                  className="w-full rounded border border-input bg-card px-2 py-1 text-ui-sm text-foreground focus:outline-none"
                 >
                   {MILESTONE_STATUSES.map((st) => (
                     <option key={st} value={st}>
@@ -622,7 +408,7 @@ export function MilestoneDetailPage() {
                 </InlineSelect>
               ) : (
                 <span
-                  className="inline-flex items-center rounded-sm px-1.5 py-px text-[10px] font-medium"
+                  className="inline-flex items-center rounded-sm px-1.5 py-px text-ui-xs font-medium"
                   style={{ backgroundColor: s.bg, color: s.text, border: `1px solid ${s.border}` }}
                 >
                   {s.label}
@@ -632,31 +418,16 @@ export function MilestoneDetailPage() {
 
             {/* Progress */}
             {milestone.progress && (
-              <div
-                className="space-y-2 rounded-md p-3"
-                style={{
-                  backgroundColor: BRAND.surfaceHover,
-                  border: `1px solid ${BRAND.borderSubtle}`,
-                }}
-              >
-                <h3
-                  className="text-[10px] font-bold tracking-wider uppercase"
-                  style={{ color: BRAND.textSecondary }}
-                >
-                  Progress
+              <div className="space-y-2 rounded-md border border-border-subtle bg-surface-hover p-3">
+                <h3 className="text-ui-xs font-bold tracking-wider text-muted-foreground uppercase">
+                  {t('detail.progress')}
                 </h3>
                 <div className="space-y-1">
-                  <div
-                    className="flex justify-between text-[11px] font-semibold"
-                    style={{ color: BRAND.textPrimary }}
-                  >
-                    <span>Completion</span>
+                  <div className="flex justify-between text-ui-sm font-semibold text-foreground">
+                    <span>{t('detail.completion')}</span>
                     <span>{milestone.progress.progressPercent}%</span>
                   </div>
-                  <div
-                    className="h-2 w-full overflow-hidden rounded-full"
-                    style={{ backgroundColor: BRAND.avatarBg }}
-                  >
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-avatar">
                     <div
                       className="h-full rounded-full transition-all"
                       style={{
@@ -669,19 +440,16 @@ export function MilestoneDetailPage() {
                     />
                   </div>
                 </div>
-                <div
-                  className="grid grid-cols-2 gap-2 text-[10px]"
-                  style={{ color: BRAND.textMuted }}
-                >
+                <div className="grid grid-cols-2 gap-2 text-ui-xs text-foreground-subtle">
                   <div>
-                    Items:{' '}
-                    <span className="font-semibold" style={{ color: BRAND.textPrimary }}>
+                    {t('detail.itemsLabel')}{' '}
+                    <span className="font-semibold text-foreground">
                       {milestone.progress.completedItems}/{milestone.progress.totalItems}
                     </span>
                   </div>
                   <div>
-                    Points:{' '}
-                    <span className="font-semibold" style={{ color: BRAND.textPrimary }}>
+                    {t('detail.pointsLabel')}{' '}
+                    <span className="font-semibold text-foreground">
                       {milestone.progress.completedPoints}/{milestone.progress.totalPoints}
                     </span>
                   </div>
@@ -697,7 +465,7 @@ export function MilestoneDetailPage() {
         <SelectionModal
           open={showProjectsModal}
           onClose={() => setShowProjectsModal(false)}
-          title="Projects"
+          title={t('detail.projects')}
           items={allProjects.map((p) => ({ id: p.id, name: p.name }))}
           selectedIds={linkedProjectIds}
           onSave={(ids) => setProjects.mutateAsync({ milestoneId, projectIds: ids })}
@@ -707,8 +475,8 @@ export function MilestoneDetailPage() {
         <SelectionModal
           open={showTeamsModal}
           onClose={() => setShowTeamsModal(false)}
-          title="Teams"
-          items={allTeams.map((t) => ({ id: t.id, name: t.name }))}
+          title={t('detail.teams')}
+          items={allTeams.map((team) => ({ id: team.id, name: team.name }))}
           selectedIds={linkedTeamIds}
           onSave={(ids) => setTeams.mutateAsync({ milestoneId, teamIds: ids })}
         />
@@ -717,7 +485,7 @@ export function MilestoneDetailPage() {
         <SelectionModal
           open={showReleasesModal}
           onClose={() => setShowReleasesModal(false)}
-          title="Releases"
+          title={t('detail.releases')}
           items={allReleases.map((r) => ({ id: r.id, name: r.name }))}
           selectedIds={linkedReleaseIds}
           onSave={(ids) => setReleases.mutateAsync({ milestoneId, releaseIds: ids })}

@@ -36,26 +36,19 @@ export function MetricCard({
   return (
     <div className="flex flex-col justify-center" style={{ minWidth }}>
       <span
-        className="mb-1 text-[10px] font-semibold uppercase"
-        style={{ color: BRAND.textMuted, letterSpacing: '0.5px' }}
+        className="mb-1 text-ui-xs font-semibold text-foreground-subtle uppercase"
+        style={{ letterSpacing: '0.5px' }}
       >
         {label}
       </span>
       <div className="flex items-baseline gap-1.5">
-        <span className="text-[22px] leading-none font-bold tabular-nums" style={{ color }}>
+        <span className="text-xl leading-none font-bold tabular-nums" style={{ color }}>
           {value}
         </span>
-        {caption != null && (
-          <span className="text-[11px]" style={{ color: BRAND.textSecondary }}>
-            {caption}
-          </span>
-        )}
+        {caption != null && <span className="text-ui-sm text-muted-foreground">{caption}</span>}
       </div>
       {progressPct != null && (
-        <div
-          className="mt-1.5 h-1 w-[120px] overflow-hidden rounded-full"
-          style={{ backgroundColor: BRAND.borderSubtle }}
-        >
+        <div className="mt-1.5 h-1 w-[120px] overflow-hidden rounded-full bg-border-subtle">
           <div
             className="h-full rounded-full"
             style={{

@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Link } from '@tanstack/react-router'
 import { AlertTriangle, ArrowUpRight, Clock, Inbox } from 'lucide-react'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
@@ -40,11 +41,11 @@ function toPriority(raw: string): WorkItemPriority {
   return map[raw] ?? WorkItemPriority.None
 }
 
-function getGreeting() {
+function getGreeting(t: (key: string) => string) {
   const h = new Date().getHours()
-  if (h < 12) return 'Good morning'
-  if (h < 17) return 'Good afternoon'
-  return 'Good evening'
+  if (h < 12) return t('greeting.morning')
+  if (h < 17) return t('greeting.afternoon')
+  return t('greeting.evening')
 }
 
 // ── Project Health Row ────────────────────────────────────────────────────────
@@ -59,6 +60,7 @@ function ProjectHealthRow({
   currentUserId: string | undefined
   currentUserDisplayName: string | undefined
 }) {
+  const { t } = useTranslation('home')
   const { data: workItems = [] } = useWorkItems({ projectId: project.id, limit: 100 })
   const { data: iterations = [] } = useIterations(project.id)
   const { data: statuses = [] } = useProjectStatuses(project.id)
@@ -79,9 +81,8 @@ function ProjectHealthRow({
 
   return (
     <div
-      className="flex h-9 items-center gap-3 px-4 transition-colors hover:bg-surface-hover"
+      className="flex h-9 items-center gap-3 border-b border-border-inner px-4 transition-colors hover:bg-surface-hover"
       style={{
-        borderBottom: `1px solid ${BRAND.borderInner}`,
         backgroundColor: isSelected ? BRAND.primaryLighter : undefined,
       }}
     >
@@ -91,65 +92,51 @@ function ProjectHealthRow({
       </div>
       {/* Name */}
       <div className="min-w-0 flex-1">
-        <span
-          className="block truncate text-[12px] font-medium"
-          style={{ color: BRAND.textPrimary }}
-        >
+        <span className="block truncate text-ui-md font-medium text-foreground">
           {project.name}
         </span>
       </div>
       {/* Active Sprint */}
-      <div className="w-32 shrink-0 text-[11px]" style={{ color: BRAND.textSecondary }}>
+      <div className="w-32 shrink-0 text-ui-sm text-muted-foreground">
         {activeSprint ? (
           activeSprint.name
         ) : (
-          <span style={{ color: BRAND.textMuted }}>No active sprint</span>
+          <span className="text-foreground-subtle">{t('projectHealth.noActiveSprint')}</span>
         )}
       </div>
       {/* Progress */}
       <div className="flex w-36 shrink-0 items-center gap-2">
-        <div
-          className="h-1.5 w-20 overflow-hidden rounded-full"
-          style={{ backgroundColor: BRAND.borderSubtle }}
-        >
+        <div className="h-1.5 w-20 overflow-hidden rounded-full bg-border-subtle">
           <div
             className="h-full rounded-full"
             style={{ width: `${progress}%`, backgroundColor: progressColor }}
           />
         </div>
-        <span
-          className="text-[10px] font-semibold tabular-nums"
-          style={{ color: BRAND.textSecondary }}
-        >
+        <span className="text-ui-xs font-semibold text-muted-foreground tabular-nums">
           {progress}%
         </span>
       </div>
       {/* Open Defects */}
       <div className="w-24 shrink-0">
         <span
-          className="text-[12px] font-semibold tabular-nums"
+          className="text-ui-md font-semibold tabular-nums"
           style={{ color: defects > 0 ? BRAND.danger : BRAND.success }}
         >
           {defects}
         </span>
-        <span className="ml-1 text-[10px]" style={{ color: BRAND.textMuted }}>
-          {defects === 1 ? 'defect' : 'defects'}
+        <span className="ml-1 text-ui-xs text-foreground-subtle">
+          {t('projectHealth.defect', { count: defects })}
         </span>
       </div>
       {/* Blocked */}
       <div className="w-24 shrink-0">
         {blocked > 0 ? (
-          <span
-            className="inline-flex items-center gap-1 text-[10px] font-semibold"
-            style={{ color: BRAND.danger }}
-          >
+          <span className="inline-flex items-center gap-1 text-ui-xs font-semibold text-destructive">
             <AlertTriangle size={11} />
-            {blocked} blocked
+            {t('projectHealth.blockedCount', { count: blocked })}
           </span>
         ) : (
-          <span className="text-[10px]" style={{ color: BRAND.success }}>
-            None
-          </span>
+          <span className="text-ui-xs text-success">{t('projectHealth.none')}</span>
         )}
       </div>
       {/* Owner */}
@@ -157,7 +144,8 @@ function ProjectHealthRow({
         <OwnerCell
           name={
             project.leadId
-              ? (project.leadName ?? (project.leadId === currentUserId ? currentUserDisplayName : null))
+              ? (project.leadName ??
+                (project.leadId === currentUserId ? currentUserDisplayName : null))
               : null
           }
         />
@@ -168,6 +156,7 @@ function ProjectHealthRow({
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 export function HomePage() {
+  const { t } = useTranslation('home')
   const { user } = useAuthStore()
   const { workspace, project: selectedProject } = useAppContext()
   const workspaceId = workspace?.workspaceId
@@ -205,43 +194,44 @@ export function HomePage() {
   const { data: activity = [] } = useNotifications({})
 
   const summaryMetrics = [
-    { label: 'Active Projects', value: String(activeProjects.length), path: '/projects' },
-    { label: 'Open Work Items', value: String(counts.total), path: '/backlog' },
-    { label: 'Active Sprints', value: String(activeSprintsCount), path: '/timeboxes' },
-    { label: 'Blocked Items', value: String(counts.blocked), path: '/backlog', alert: true },
-    { label: 'Open Defects', value: String(counts.defects), path: '/quality', alert: true },
-    { label: 'Assigned to Me', value: String(myItems.length), path: '/backlog' },
+    { label: t('metrics.activeProjects'), value: String(activeProjects.length), path: '/projects' },
+    { label: t('metrics.openWorkItems'), value: String(counts.total), path: '/backlog' },
+    { label: t('metrics.activeSprints'), value: String(activeSprintsCount), path: '/timeboxes' },
+    {
+      label: t('metrics.blockedItems'),
+      value: String(counts.blocked),
+      path: '/backlog',
+      alert: true,
+    },
+    {
+      label: t('metrics.openDefects'),
+      value: String(counts.defects),
+      path: '/quality',
+      alert: true,
+    },
+    { label: t('metrics.assignedToMe'), value: String(myItems.length), path: '/backlog' },
   ]
 
   return (
-    <div className="flex flex-1 flex-col" style={{ backgroundColor: BRAND.pageBg }}>
+    <div className="flex flex-1 flex-col bg-background">
       <PageHeader
-        title="Home"
+        title={t('title')}
         actions={
-          <div className="text-[11px]" style={{ color: BRAND.textSecondary }}>
-            {getGreeting()},{' '}
-            <span className="font-medium" style={{ color: BRAND.textPrimary }}>
-              {user?.displayName ?? 'User'}
-            </span>{' '}
-            ·{' '}
-            <span className="font-medium" style={{ color: BRAND.textPrimary }}>
-              {now}
-            </span>
+          <div className="text-ui-sm text-muted-foreground">
+            {getGreeting(t)},{' '}
+            <span className="font-medium text-foreground">{user?.displayName ?? t('user')}</span> ·{' '}
+            <span className="font-medium text-foreground">{now}</span>
           </div>
         }
       />
 
       {/* Summary strip */}
       {loadingProjects ? (
-        <div
-          className="flex shrink-0 bg-white"
-          style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
-        >
+        <div className="flex shrink-0 border-b border-border-subtle bg-card">
           {Array.from({ length: 6 }).map((_, i) => (
             <div
               key={i}
-              className="flex flex-1 flex-col justify-center gap-2 px-5 py-3"
-              style={i > 0 ? { borderLeft: `1px solid ${BRAND.borderSubtle}` } : undefined}
+              className={`flex flex-1 flex-col justify-center gap-2 px-5 py-3 ${i > 0 ? 'border-l border-border-subtle' : ''}`}
             >
               <div className="h-3 w-20 animate-pulse rounded bg-gray-200" />
               <div className="h-6 w-8 animate-pulse rounded bg-gray-200" />
@@ -249,34 +239,24 @@ export function HomePage() {
           ))}
         </div>
       ) : (
-        <div
-          className="flex shrink-0 bg-white"
-          style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
-        >
+        <div className="flex shrink-0 border-b border-border-subtle bg-card">
           {summaryMetrics.map((m, i) => {
             const inner = (
               <>
-                <span
-                  className="text-[9px] font-semibold tracking-widest uppercase"
-                  style={{ color: BRAND.textMuted }}
-                >
+                <span className="text-ui-2xs font-semibold tracking-widest text-foreground-subtle uppercase">
                   {m.label}
                 </span>
                 <span
-                  className="text-[20px] leading-tight font-semibold"
+                  className="text-xl leading-tight font-semibold"
                   style={{ color: m.alert ? BRAND.danger : BRAND.textPrimary }}
                 >
                   {m.value}
                 </span>
               </>
             )
-            const sharedStyle = {
-              borderLeft: i > 0 ? `1px solid ${BRAND.borderSubtle}` : undefined,
-            }
-            const sharedClass =
-              'flex flex-1 flex-col justify-center px-5 py-3 text-left transition-colors hover:bg-surface-hover'
+            const sharedClass = `flex flex-1 flex-col justify-center px-5 py-3 text-left transition-colors hover:bg-surface-hover ${i > 0 ? 'border-l border-border-subtle' : ''}`
             return (
-              <Link key={m.label} to={m.path as '/'} className={sharedClass} style={sharedStyle}>
+              <Link key={m.label} to={m.path as '/'} className={sharedClass}>
                 {inner}
               </Link>
             )
@@ -287,47 +267,29 @@ export function HomePage() {
       {/* Body grid */}
       <div className="grid flex-1 grid-cols-3 gap-4 p-4">
         {/* My Work table */}
-        <div
-          className="col-span-2 overflow-hidden rounded bg-white"
-          style={{ border: `1px solid ${BRAND.borderSubtle}` }}
-        >
-          <div
-            className="flex items-center justify-between px-4 py-2.5"
-            style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
-          >
-            <p className="text-[12px] font-semibold" style={{ color: BRAND.textPrimary }}>
-              My Work
-            </p>
-            <span
-              className="rounded-sm px-1.5 py-px text-[10px] font-semibold"
-              style={{ backgroundColor: BRAND.primaryLighter, color: BRAND.primaryLight }}
-            >
-              {myItems.length} items
+        <div className="col-span-2 overflow-hidden rounded border border-border-subtle bg-card">
+          <div className="flex items-center justify-between border-b border-border-subtle px-4 py-2.5">
+            <p className="text-ui-md font-semibold text-foreground">{t('myWork.title')}</p>
+            <span className="rounded-sm bg-primary-lighter px-1.5 py-px text-ui-xs font-semibold text-primary-light">
+              {t('myWork.itemCount', { count: myItems.length })}
             </span>
           </div>
 
           {/* Table header */}
-          <div
-            className="flex h-7 items-center gap-2 px-3 select-none"
-            style={{
-              backgroundColor: BRAND.surfaceHover,
-              borderBottom: `1px solid ${BRAND.borderSubtle}`,
-            }}
-          >
+          <div className="flex h-7 items-center gap-2 border-b border-border-subtle bg-surface-hover px-3 select-none">
             {(
               [
-                ['w-[60px] shrink-0', 'ID'],
-                ['w-14 shrink-0', 'Type'],
-                ['flex-1 min-w-0 pr-2', 'Name'],
-                ['w-24 shrink-0', 'Project'],
-                ['w-24 shrink-0', 'Status'],
-                ['w-[80px] shrink-0', 'Priority'],
+                ['w-[60px] shrink-0', t('myWork.columns.id')],
+                ['w-14 shrink-0', t('myWork.columns.type')],
+                ['flex-1 min-w-0 pr-2', t('common:name')],
+                ['w-24 shrink-0', t('myWork.columns.project')],
+                ['w-24 shrink-0', t('common:status')],
+                ['w-[80px] shrink-0', t('myWork.columns.priority')],
               ] as [string, string][]
             ).map(([cls, label]) => (
               <div
                 key={label}
-                className={`${cls} text-[9px] font-semibold tracking-widest uppercase`}
-                style={{ color: BRAND.textMuted }}
+                className={`${cls} text-ui-2xs font-semibold tracking-widest text-foreground-subtle uppercase`}
               >
                 {label}
               </div>
@@ -339,37 +301,27 @@ export function HomePage() {
             <EmptyState
               size="sm"
               icon={<Inbox size={28} className="text-foreground-subtle" />}
-              title="No items assigned to you"
+              title={t('myWork.empty')}
             />
           ) : (
             myItems.map((item) => {
               return (
                 <div
                   key={item.id}
-                  className="flex h-8 items-center gap-2 px-3 hover:bg-surface-hover"
-                  style={{ borderBottom: `1px solid ${BRAND.borderInner}` }}
+                  className="flex h-8 items-center gap-2 border-b border-border-inner px-3 hover:bg-surface-hover"
                 >
-                  <div
-                    className="w-[60px] shrink-0 font-mono text-[10px]"
-                    style={{ color: BRAND.textSecondary }}
-                  >
+                  <div className="w-[60px] shrink-0 font-mono text-ui-xs text-muted-foreground">
                     {item.itemKey}
                   </div>
                   <div className="w-14 shrink-0">
                     <TypeBadge type={toWiType(item.type)} />
                   </div>
                   <div className="min-w-0 flex-1 pr-2">
-                    <span
-                      className="block truncate text-[12px] font-medium"
-                      style={{ color: BRAND.textPrimary }}
-                    >
+                    <span className="block truncate text-ui-md font-medium text-foreground">
                       {item.title}
                     </span>
                   </div>
-                  <div
-                    className="w-24 shrink-0 font-mono text-[10px]"
-                    style={{ color: BRAND.textSecondary }}
-                  >
+                  <div className="w-24 shrink-0 font-mono text-ui-xs text-muted-foreground">
                     {item.projectKey}
                   </div>
                   <div className="w-24 shrink-0">
@@ -385,31 +337,22 @@ export function HomePage() {
         </div>
 
         {/* Recent Activity — sourced from the notification feed (assignments/mentions) */}
-        <div
-          className="overflow-hidden rounded bg-white"
-          style={{ border: `1px solid ${BRAND.borderSubtle}` }}
-        >
-          <div
-            className="flex items-center justify-between px-4 py-2.5"
-            style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
-          >
-            <p className="text-[12px] font-semibold" style={{ color: BRAND.textPrimary }}>
-              Recent Activity
-            </p>
+        <div className="overflow-hidden rounded border border-border-subtle bg-card">
+          <div className="flex items-center justify-between border-b border-border-subtle px-4 py-2.5">
+            <p className="text-ui-md font-semibold text-foreground">{t('activity.title')}</p>
             <Link
               to={'/notifications' as '/'}
-              className="flex items-center gap-1 text-[11px]"
-              style={{ color: BRAND.primaryLight }}
+              className="flex items-center gap-1 text-ui-sm text-primary-light"
             >
-              All <ArrowUpRight size={11} />
+              {t('activity.all')} <ArrowUpRight size={11} />
             </Link>
           </div>
           {activity.length === 0 ? (
             <EmptyState
               size="sm"
               icon={<Clock size={28} className="text-foreground-subtle" />}
-              title="No recent activity"
-              description="Work item updates will appear here"
+              title={t('activity.empty.title')}
+              description={t('activity.empty.description')}
             />
           ) : (
             <ul className="flex flex-col">
@@ -421,46 +364,31 @@ export function HomePage() {
         </div>
 
         {/* Project Health table */}
-        <div
-          className="col-span-3 overflow-hidden rounded bg-white"
-          style={{ border: `1px solid ${BRAND.borderSubtle}` }}
-        >
-          <div
-            className="flex items-center justify-between px-4 py-2.5"
-            style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
-          >
-            <p className="text-[12px] font-semibold" style={{ color: BRAND.textPrimary }}>
-              Project Health
-            </p>
+        <div className="col-span-3 overflow-hidden rounded border border-border-subtle bg-card">
+          <div className="flex items-center justify-between border-b border-border-subtle px-4 py-2.5">
+            <p className="text-ui-md font-semibold text-foreground">{t('projectHealth.title')}</p>
             {selectedProject && (
-              <span className="text-[10px] font-semibold" style={{ color: BRAND.primaryLight }}>
-                {selectedProject.projectKey} selected
+              <span className="text-ui-xs font-semibold text-primary-light">
+                {t('projectHealth.selected', { key: selectedProject.projectKey })}
               </span>
             )}
           </div>
           {/* Table header */}
-          <div
-            className="flex h-7 items-center gap-3 px-4 select-none"
-            style={{
-              backgroundColor: BRAND.surfaceHover,
-              borderBottom: `1px solid ${BRAND.borderSubtle}`,
-            }}
-          >
+          <div className="flex h-7 items-center gap-3 border-b border-border-subtle bg-surface-hover px-4 select-none">
             {(
               [
-                ['w-14 shrink-0', 'Key'],
-                ['flex-1 min-w-0', 'Project Name'],
-                ['w-32 shrink-0', 'Active Sprint'],
-                ['w-36 shrink-0', 'Progress'],
-                ['w-24 shrink-0', 'Open Defects'],
-                ['w-24 shrink-0', 'Blocked'],
-                ['w-32 shrink-0', 'Owner'],
+                ['w-14 shrink-0', t('projectHealth.columns.key')],
+                ['flex-1 min-w-0', t('projectHealth.columns.projectName')],
+                ['w-32 shrink-0', t('projectHealth.columns.activeSprint')],
+                ['w-36 shrink-0', t('projectHealth.columns.progress')],
+                ['w-24 shrink-0', t('projectHealth.columns.openDefects')],
+                ['w-24 shrink-0', t('projectHealth.columns.blocked')],
+                ['w-32 shrink-0', t('common:owner')],
               ] as [string, string][]
             ).map(([cls, label]) => (
               <div
                 key={label}
-                className={`${cls} text-[9px] font-semibold tracking-widest uppercase`}
-                style={{ color: BRAND.textMuted }}
+                className={`${cls} text-ui-2xs font-semibold tracking-widest text-foreground-subtle uppercase`}
               >
                 {label}
               </div>
@@ -468,7 +396,7 @@ export function HomePage() {
           </div>
           {/* Rows */}
           {activeProjects.length === 0 ? (
-            <EmptyState size="sm" title="No active projects" />
+            <EmptyState size="sm" title={t('projectHealth.empty')} />
           ) : (
             activeProjects.map((p) => (
               <ProjectHealthRow

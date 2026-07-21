@@ -37,7 +37,6 @@ import { useState, type ReactNode } from 'react'
 import { Loader2 } from 'lucide-react'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
-import { BRAND } from '@/shared/config/brand'
 
 interface ConfirmDialogProps {
   open: boolean
@@ -85,19 +84,11 @@ export function ConfirmDialog({
   return (
     <AppModal open={open} onClose={handleCancel} title={title} width={typedMode ? 440 : 420}>
       <ModalBody className={typedMode ? 'space-y-4' : undefined}>
-        {message && (
-          <p className="text-[13px] leading-relaxed" style={{ color: BRAND.textSecondary }}>
-            {message}
-          </p>
-        )}
+        {message && <p className="text-ui-lg leading-relaxed text-muted-foreground">{message}</p>}
         {typedMode && (
           <>
-            <p className="text-[13px]" style={{ color: BRAND.textSecondary }}>
-              Type{' '}
-              <span className="font-semibold" style={{ color: BRAND.textPrimary }}>
-                {confirmText}
-              </span>{' '}
-              to confirm.
+            <p className="text-ui-lg text-muted-foreground">
+              Type <span className="font-semibold text-foreground">{confirmText}</span> to confirm.
             </p>
             <input
               value={value}
@@ -106,8 +97,7 @@ export function ConfirmDialog({
               spellCheck={false}
               autoComplete="off"
               disabled={pending}
-              className="w-full rounded-md px-3 py-2 text-[13px] focus:outline-none"
-              style={{ border: `1px solid ${BRAND.borderInput}`, color: BRAND.textPrimary }}
+              className="w-full rounded-md border border-input px-3 py-2 text-ui-lg text-foreground focus:outline-none"
               placeholder={confirmText}
             />
           </>

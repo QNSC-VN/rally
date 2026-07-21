@@ -1,0 +1,24 @@
+{
+  "markAllRead": "Mark all read",
+  "markAllSuccess": "All notifications marked as read",
+  "markAllError": "Failed to mark all as read",
+  "unreadOnly": "Unread only",
+  "allRead": "All read",
+  "viewAll": "View all",
+  "showingCount": "Showing {{shown}} of {{total}}",
+  "tabs": {
+    "all": "All",
+    "unread": "Unread",
+    "assigned": "Assigned",
+    "mentions": "Mentions"
+  },
+  "empty": {
+    "noUnread": "No unread notifications",
+    "caughtUp": "You're all caught up",
+    "allDescription": "New notifications will appear here.",
+    "otherDescription": "Switch to the All tab to see everything."
+  },
+  "errors": {
+    "load": "Failed to load notifications. Please try again."
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "title": "Reports",
+  "selectProject": "Select a project to view its reports.",
+  "subtitleWindow": "Last 6 iterations",
+  "export": "Export",
+  "exported": "Report exported",
+  "units": {
+    "pts": "pts"
+  },
+  "metrics": {
+    "committed": "Committed",
+    "accepted": "Accepted",
+    "remaining": "Remaining",
+    "daysLeft": "Days Left",
+    "completion": "Completion"
+  },
+  "widgets": {
+    "iterationProgress": "Current Iteration Progress",
+    "burndown": "Iteration Burndown",
+    "velocity": "Velocity",
+    "statusDistribution": "Status Distribution",
+    "defectSummary": "Defect Summary",
+    "workload": "Workload by Owner",
+    "plannedVsCompleted": "Planned vs Completed",
+    "releaseProgress": "Release Progress",
+    "blocked": "Blocked Items",
+    "recentActivity": "Recent Activity"
+  },
+  "empty": {
+    "burndown": "No burndown data for this iteration.",
+    "velocity": "No completed iterations yet.",
+    "statusDistribution": "No items in this iteration.",
+    "workload": "No assigned work.",
+    "plannedVsCompleted": "No iteration history yet.",
+    "releases": "No releases in this project.",
+    "blocked": "No blocked items.",
+    "recentActivity": "No recent activity."
+  },
+  "defects": {
+    "open": "Open",
+    "critical": "Critical",
+    "inProgress": "In Progress",
+    "resolved": "Resolved",
+    "blockers": "Blockers"
+  },
+  "legend": {
+    "define": "Define",
+    "inProgress": "In Progress",
+    "complete": "Complete"
+  }
+}

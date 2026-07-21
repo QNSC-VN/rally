@@ -54,7 +54,7 @@ export function TableTotalsRow({
 
   return (
     <div
-      className={cn('flex h-8 items-center px-3 text-[12px] font-semibold', className)}
+      className={cn('flex h-8 items-center px-3 text-ui-md font-semibold', className)}
       style={{
         backgroundColor: BRAND.surfaceSubtle,
         borderBottom: `1px solid ${BRAND.borderInput}`,

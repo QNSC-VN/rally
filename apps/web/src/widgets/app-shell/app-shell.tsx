@@ -170,8 +170,8 @@ function ProjectTreeItem({
         >
           <ChevronRight
             size={12}
+            className="text-foreground-subtle"
             style={{
-              color: BRAND.textMuted,
               transform: expanded ? 'rotate(90deg)' : 'none',
               transition: 'transform 120ms',
             }}
@@ -184,14 +184,12 @@ function ProjectTreeItem({
           style={{ fontWeight: selected ? 600 : 400 }}
         >
           <KeyChip size="sm">{project.key}</KeyChip>
-          <span className="truncate text-[11px]">{project.name}</span>
-          {selected && (
-            <Check size={10} className="ml-auto shrink-0" style={{ color: BRAND.primary }} />
-          )}
+          <span className="truncate text-ui-sm">{project.name}</span>
+          {selected && <Check size={10} className="ml-auto shrink-0 text-primary" />}
         </button>
       </div>
       {expanded && (
-        <div className="mb-0.5 ml-5 border-l pl-1.5" style={{ borderColor: BRAND.borderSubtle }}>
+        <div className="mb-0.5 ml-5 border-l border-border-subtle pl-1.5">
           <button
             type="button"
             onClick={() => onSelectTeam(null)}
@@ -201,16 +199,14 @@ function ProjectTreeItem({
               fontWeight: selected && !currentTeamId ? 600 : 400,
             }}
           >
-            <Users size={11} className="shrink-0" style={{ color: BRAND.textSecondary }} />
-            <span className="truncate text-[11px]">All Teams</span>
+            <Users size={11} className="shrink-0 text-muted-foreground" />
+            <span className="truncate text-ui-sm">All Teams</span>
             {selected && !currentTeamId && (
-              <Check size={10} className="ml-auto shrink-0" style={{ color: BRAND.primary }} />
+              <Check size={10} className="ml-auto shrink-0 text-primary" />
             )}
           </button>
           {isLoading && (
-            <div className="px-1.5 py-1 text-[10px]" style={{ color: BRAND.textMuted }}>
-              Loading teams…
-            </div>
+            <div className="px-1.5 py-1 text-ui-xs text-foreground-subtle">Loading teams…</div>
           )}
           {!isLoading &&
             activeTeams.map((t) => (
@@ -227,14 +223,14 @@ function ProjectTreeItem({
                 <KeyChip size="sm" tone="muted">
                   {t.key}
                 </KeyChip>
-                <span className="truncate text-[11px]">{t.name}</span>
+                <span className="truncate text-ui-sm">{t.name}</span>
                 {currentTeamId === t.id && (
-                  <Check size={10} className="ml-auto shrink-0" style={{ color: BRAND.primary }} />
+                  <Check size={10} className="ml-auto shrink-0 text-primary" />
                 )}
               </button>
             ))}
           {!isLoading && activeTeams.length === 0 && (
-            <div className="px-1.5 py-1 text-[10px]" style={{ color: BRAND.textMuted }}>
+            <div className="px-1.5 py-1 text-ui-xs text-foreground-subtle">
               No teams in this project yet
             </div>
           )}
@@ -405,8 +401,8 @@ export function AppShell() {
       )}
       {/* ── Top nav ─────────────────────────────────────────────────────────── */}
       <header
-        className="relative z-30 flex h-10 shrink-0 items-center px-3"
-        style={{ backgroundColor: BRAND.primary, borderBottom: '1px solid rgba(255,255,255,0.08)' }}
+        className="relative z-30 flex h-10 shrink-0 items-center bg-primary px-3"
+        style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}
       >
         {/* Logo + workspace selector */}
         <div className="mr-4 flex items-center gap-2">
@@ -432,13 +428,13 @@ export function AppShell() {
               className="flex items-center gap-1.5 text-left text-white hover:opacity-90"
             >
               <div className="leading-tight">
-                <div className="text-[13px] font-semibold">
+                <div className="text-ui-lg font-semibold">
                   {memberships.find((m) => m.workspaceId === activeWorkspaceId)?.name ??
                     workspace?.workspaceName ??
                     'Select organization'}
                 </div>
                 <div
-                  className="max-w-44 truncate text-[9px]"
+                  className="max-w-44 truncate text-ui-2xs"
                   style={{ color: 'rgba(255,255,255,0.55)' }}
                 >
                   {project ? `${project.projectKey} · ${selectedTeamName}` : 'No project selected'}
@@ -448,58 +444,31 @@ export function AppShell() {
             </button>
 
             {wsOpen && (
-              <div
-                className="absolute top-full left-0 mt-1 w-72 overflow-hidden rounded bg-white py-1.5 shadow-xl"
-                style={{ border: `1px solid ${BRAND.border}` }}
-              >
+              <div className="absolute top-full left-0 mt-1 w-72 overflow-hidden rounded border border-border bg-card py-1.5 shadow-xl">
                 {/* Active organization header */}
-                <div
-                  className="flex items-center gap-2.5 px-3 py-2.5"
-                  style={{
-                    borderBottom: `1px solid ${BRAND.borderSubtle}`,
-                    backgroundColor: BRAND.surfaceHover,
-                  }}
-                >
-                  <div
-                    className="flex h-7 w-7 items-center justify-center rounded"
-                    style={{ backgroundColor: BRAND.avatarBg, color: BRAND.primary }}
-                  >
+                <div className="flex items-center gap-2.5 border-b border-border-subtle bg-surface-hover px-3 py-2.5">
+                  <div className="flex h-7 w-7 items-center justify-center rounded bg-avatar text-primary">
                     <Layers size={14} />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div
-                      className="text-[9px] font-semibold tracking-widest uppercase"
-                      style={{ color: BRAND.textMuted }}
-                    >
+                    <div className="text-ui-2xs font-semibold tracking-widest text-foreground-subtle uppercase">
                       Organization
                     </div>
-                    <div
-                      className="truncate text-[13px] font-semibold"
-                      style={{ color: BRAND.textPrimary }}
-                    >
+                    <div className="truncate text-ui-lg font-semibold text-foreground">
                       {memberships.find((m) => m.workspaceId === activeWorkspaceId)?.name ??
                         workspace?.workspaceName ??
                         '—'}
                     </div>
                   </div>
-                  <span
-                    className="rounded-sm px-1.5 py-0.5 text-[9px] font-semibold"
-                    style={{ color: BRAND.success, backgroundColor: BRAND.successBg }}
-                  >
+                  <span className="rounded-sm bg-success-bg px-1.5 py-0.5 text-ui-2xs font-semibold text-success">
                     Active
                   </span>
                 </div>
 
                 {/* Switch organization — only when user has multiple workspaces */}
                 {memberships.length > 1 && (
-                  <div
-                    className="px-3 pt-2 pb-1"
-                    style={{ borderBottom: `1px solid ${BRAND.borderSubtle}` }}
-                  >
-                    <div
-                      className="mb-1 text-[9px] font-semibold tracking-widest uppercase"
-                      style={{ color: BRAND.textMuted }}
-                    >
+                  <div className="border-b border-border-subtle px-3 pt-2 pb-1">
+                    <div className="mb-1 text-ui-2xs font-semibold tracking-widest text-foreground-subtle uppercase">
                       Switch Organization
                     </div>
                     {memberships
@@ -515,23 +484,13 @@ export function AppShell() {
                           }}
                           className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left hover:bg-surface-subtle disabled:opacity-50"
                         >
-                          <div
-                            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[9px] font-bold"
-                            style={{ backgroundColor: BRAND.avatarBg, color: BRAND.primary }}
-                          >
+                          <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-avatar text-ui-2xs font-bold text-primary">
                             {m.name[0].toUpperCase()}
                           </div>
                           <div className="min-w-0 flex-1">
-                            <div
-                              className="truncate text-[12px]"
-                              style={{ color: BRAND.textPrimary }}
-                            >
-                              {m.name}
-                            </div>
+                            <div className="truncate text-ui-md text-foreground">{m.name}</div>
                             {m.roleName && (
-                              <div className="text-[10px]" style={{ color: BRAND.textMuted }}>
-                                {m.roleName}
-                              </div>
+                              <div className="text-ui-xs text-foreground-subtle">{m.roleName}</div>
                             )}
                           </div>
                         </button>
@@ -539,7 +498,7 @@ export function AppShell() {
                   </div>
                 )}
 
-                <div className="px-3 py-2 text-[11px]" style={{ color: BRAND.textSecondary }}>
+                <div className="px-3 py-2 text-ui-sm text-muted-foreground">
                   {/* View workspace (deselect project) */}
                   <button
                     onClick={() => {
@@ -568,24 +527,18 @@ export function AppShell() {
                       className="shrink-0"
                       style={{ color: project ? BRAND.textSecondary : BRAND.textMuted }}
                     />
-                    <span className="text-[11px]">View workspace</span>
+                    <span className="text-ui-sm">View workspace</span>
                   </button>
-                  <div
-                    className="my-1.5"
-                    style={{ borderTop: `1px solid ${BRAND.borderSubtle}` }}
-                  />
+                  <div className="my-1.5 border-t border-border-subtle" />
                   {/* Projects & Teams — searchable, scrollable accordion tree.
                       Each project expands to reveal its teams (lazy-loaded). */}
                   {navProjects.length > 0 && (
                     <>
                       <div className="mb-1 flex items-center justify-between">
-                        <div
-                          className="text-[9px] font-semibold tracking-widest uppercase"
-                          style={{ color: BRAND.textMuted }}
-                        >
+                        <div className="text-ui-2xs font-semibold tracking-widest text-foreground-subtle uppercase">
                           Projects & Teams
                         </div>
-                        <span className="text-[9px]" style={{ color: BRAND.textMuted }}>
+                        <span className="text-ui-2xs text-foreground-subtle">
                           {navProjects.length}
                         </span>
                       </div>
@@ -594,16 +547,14 @@ export function AppShell() {
                         <div className="relative mb-1">
                           <Search
                             size={11}
-                            className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2"
-                            style={{ color: BRAND.textMuted }}
+                            className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-foreground-subtle"
                           />
                           <input
                             value={projectSearch}
                             onChange={(e) => setProjectSearch(e.target.value)}
                             placeholder="Filter projects…"
                             aria-label="Filter projects"
-                            className="w-full rounded border py-1 pr-2 pl-6 text-[11px] outline-none"
-                            style={{ borderColor: BRAND.borderSubtle, color: BRAND.textPrimary }}
+                            className="w-full rounded border border-border-subtle py-1 pr-2 pl-6 text-ui-sm text-foreground outline-none"
                           />
                         </div>
                       )}
@@ -639,18 +590,12 @@ export function AppShell() {
                           />
                         ))}
                         {filteredNavProjects.length === 0 && (
-                          <div
-                            className="px-1.5 py-2 text-center text-[10px]"
-                            style={{ color: BRAND.textMuted }}
-                          >
+                          <div className="px-1.5 py-2 text-center text-ui-xs text-foreground-subtle">
                             No projects match “{projectSearch.trim()}”
                           </div>
                         )}
                       </div>
-                      <div
-                        className="my-1.5"
-                        style={{ borderTop: `1px solid ${BRAND.borderSubtle}` }}
-                      />
+                      <div className="my-1.5 border-t border-border-subtle" />
                     </>
                   )}
                   <Link
@@ -692,7 +637,7 @@ export function AppShell() {
                       setWsOpen(false)
                       setUserOpen(false)
                     }}
-                    className="flex items-center gap-1.5 rounded py-1 pr-2 pl-2.5 text-[13px] font-medium transition-colors"
+                    className="flex items-center gap-1.5 rounded py-1 pr-2 pl-2.5 text-ui-lg font-medium transition-colors"
                     style={{
                       backgroundColor: isActive(path) ? 'rgba(255,255,255,0.16)' : 'transparent',
                       color: isActive(path) ? BRAND.surface : 'rgba(255,255,255,0.72)',
@@ -701,7 +646,7 @@ export function AppShell() {
                     {label}
                     {comingSoon ? (
                       <span
-                        className="ml-0.5 rounded-sm px-1 py-px text-[8px] font-semibold tracking-wide uppercase"
+                        className="ml-0.5 rounded-sm px-1 py-px text-ui-2xs font-semibold tracking-wide uppercase"
                         style={{
                           backgroundColor: 'rgba(255,255,255,0.12)',
                           color: 'rgba(255,255,255,0.5)',
@@ -721,14 +666,8 @@ export function AppShell() {
                     )}
                   </button>
                   {!comingSoon && openMenu === label && (
-                    <div
-                      className="absolute top-full left-0 z-50 mt-1 w-44 rounded bg-white py-1 shadow-lg"
-                      style={{ border: `1px solid ${BRAND.border}` }}
-                    >
-                      <div
-                        className="px-3 py-1.5 text-[9px] font-semibold tracking-widest uppercase"
-                        style={{ color: BRAND.textMuted }}
-                      >
+                    <div className="absolute top-full left-0 z-50 mt-1 w-44 rounded border border-border bg-card py-1 shadow-lg">
+                      <div className="px-3 py-1.5 text-ui-2xs font-semibold tracking-widest text-foreground-subtle uppercase">
                         {label}
                       </div>
                       {children.map((child) => {
@@ -740,21 +679,10 @@ export function AppShell() {
                             <button
                               key={child.path}
                               onClick={() => handleComingSoon(child.label)}
-                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px]"
-                              style={{
-                                color: BRAND.textPrimary,
-                                backgroundColor: 'transparent',
-                                fontWeight: 400,
-                              }}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-ui-lg text-foreground"
                             >
                               <span className="flex-1">{child.label}</span>
-                              <span
-                                className="rounded-sm px-1 py-px text-[8px] font-semibold tracking-wide uppercase"
-                                style={{
-                                  backgroundColor: BRAND.borderInner,
-                                  color: BRAND.textMuted,
-                                }}
-                              >
+                              <span className="rounded-sm bg-border-inner px-1 py-px text-ui-2xs font-semibold tracking-wide text-foreground-subtle uppercase">
                                 Soon
                               </span>
                             </button>
@@ -765,7 +693,7 @@ export function AppShell() {
                             key={child.path}
                             to={child.path}
                             onClick={() => setOpenMenu(null)}
-                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px]"
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-ui-lg"
                             style={{
                               color: isActive(child.path) ? BRAND.primary : BRAND.textPrimary,
                               backgroundColor: isActive(child.path)
@@ -789,12 +717,12 @@ export function AppShell() {
                 <button
                   key={path}
                   onClick={() => handleComingSoon(label)}
-                  className="flex items-center rounded px-2.5 py-1 text-[13px] font-medium transition-colors"
+                  className="flex items-center rounded px-2.5 py-1 text-ui-lg font-medium transition-colors"
                   style={{ color: 'rgba(255,255,255,0.55)' }}
                 >
                   {label}
                   <span
-                    className="rounded-sm px-1 py-px text-[8px] font-semibold tracking-wide uppercase"
+                    className="rounded-sm px-1 py-px text-ui-2xs font-semibold tracking-wide uppercase"
                     style={{
                       backgroundColor: 'rgba(255,255,255,0.10)',
                       color: 'rgba(255,255,255,0.45)',
@@ -811,7 +739,7 @@ export function AppShell() {
                 key={path}
                 to={path as '/'}
                 onClick={closeAll}
-                className="flex items-center rounded px-2.5 py-1 text-[13px] font-medium transition-colors"
+                className="flex items-center rounded px-2.5 py-1 text-ui-lg font-medium transition-colors"
                 style={{
                   backgroundColor: isActive(path) ? 'rgba(255,255,255,0.16)' : 'transparent',
                   color: isActive(path) ? BRAND.surface : 'rgba(255,255,255,0.72)',
@@ -838,7 +766,7 @@ export function AppShell() {
               aria-label="Search all work items"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="rounded py-1 pr-3 pl-7 text-[12px] text-white placeholder:text-[rgba(255,255,255,0.45)] focus:outline-none"
+              className="rounded py-1 pr-3 pl-7 text-ui-md text-white placeholder:text-[rgba(255,255,255,0.45)] focus:outline-none"
               style={{
                 backgroundColor: 'rgba(255,255,255,0.1)',
                 border: '1px solid rgba(255,255,255,0.18)',
@@ -867,10 +795,7 @@ export function AppShell() {
             >
               <Bell size={14} />
               {unreadCount > 0 && (
-                <span
-                  className="absolute top-0.5 right-0.5 flex h-3.5 min-w-[14px] items-center justify-center rounded-full px-0.5 text-[8px] leading-none font-bold text-white"
-                  style={{ backgroundColor: BRAND.danger }}
-                >
+                <span className="absolute top-0.5 right-0.5 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-destructive px-0.5 text-ui-2xs leading-none font-bold text-white">
                   {unreadCount > 99 ? '99+' : unreadCount}
                 </span>
               )}
@@ -915,29 +840,15 @@ export function AppShell() {
             </button>
 
             {userOpen && (
-              <div
-                className="absolute top-full right-0 z-50 mt-1 w-56 overflow-hidden rounded bg-white shadow-xl"
-                style={{ border: `1px solid ${BRAND.border}` }}
-              >
+              <div className="absolute top-full right-0 z-50 mt-1 w-56 overflow-hidden rounded border border-border bg-card shadow-xl">
                 {/* Profile info */}
-                <div
-                  className="flex items-center gap-2.5 px-3 py-3"
-                  style={{
-                    borderBottom: `1px solid ${BRAND.borderSubtle}`,
-                    backgroundColor: BRAND.surfaceHover,
-                  }}
-                >
+                <div className="flex items-center gap-2.5 border-b border-border-subtle bg-surface-hover px-3 py-3">
                   <Avatar name={user?.displayName ?? 'U'} size={32} />
                   <div className="min-w-0 flex-1">
-                    <div
-                      className="truncate text-[12px] font-semibold"
-                      style={{ color: BRAND.textPrimary }}
-                    >
+                    <div className="truncate text-ui-md font-semibold text-foreground">
                       {user?.displayName}
                     </div>
-                    <div className="truncate text-[10px]" style={{ color: BRAND.textMuted }}>
-                      {user?.email}
-                    </div>
+                    <div className="truncate text-ui-xs text-foreground-subtle">{user?.email}</div>
                   </div>
                 </div>
 
@@ -945,29 +856,26 @@ export function AppShell() {
                 <div className="py-1">
                   <Link
                     to={'/settings' as '/'}
-                    className="flex w-full items-center gap-2.5 px-3 py-2 text-[11px] hover:bg-surface-subtle"
-                    style={{ color: BRAND.textPrimary }}
+                    className="flex w-full items-center gap-2.5 px-3 py-2 text-ui-sm text-foreground hover:bg-surface-subtle"
                     onClick={closeAll}
                   >
-                    <User size={13} style={{ color: BRAND.textSecondary }} />
+                    <User size={13} className="text-muted-foreground" />
                     My profile
                   </Link>
                   <Link
                     to={'/settings' as '/'}
-                    className="flex w-full items-center gap-2.5 px-3 py-2 text-[11px] hover:bg-surface-subtle"
-                    style={{ color: BRAND.textPrimary }}
+                    className="flex w-full items-center gap-2.5 px-3 py-2 text-ui-sm text-foreground hover:bg-surface-subtle"
                     onClick={closeAll}
                   >
-                    <Settings size={13} style={{ color: BRAND.textSecondary }} />
+                    <Settings size={13} className="text-muted-foreground" />
                     Settings
                   </Link>
                 </div>
 
-                <div style={{ borderTop: `1px solid ${BRAND.borderSubtle}` }} className="py-1">
+                <div className="border-t border-border-subtle py-1">
                   <button
                     onClick={handleSignOut}
-                    className="flex w-full items-center gap-2.5 px-3 py-2 text-[11px] hover:bg-destructive-bg"
-                    style={{ color: BRAND.danger }}
+                    className="flex w-full items-center gap-2.5 px-3 py-2 text-ui-sm text-destructive hover:bg-destructive-bg"
                   >
                     <LogOut size={13} />
                     Sign out
@@ -981,19 +889,11 @@ export function AppShell() {
 
       {/* ── Breadcrumb bar ───────────────────────────────────────────────────── */}
       {crumbs.length > 0 && (
-        <div
-          className="flex h-8 shrink-0 items-center gap-1.5 px-4 text-[11px]"
-          style={{
-            backgroundColor: BRAND.surface,
-            borderBottom: `1px solid ${BRAND.borderSubtle}`,
-          }}
-        >
-          <span style={{ color: BRAND.textSecondary }}>
-            {workspace?.workspaceName ?? 'Workspace'}
-          </span>
+        <div className="flex h-8 shrink-0 items-center gap-1.5 border-b border-border-subtle bg-card px-4 text-ui-sm">
+          <span className="text-muted-foreground">{workspace?.workspaceName ?? 'Workspace'}</span>
           {crumbs.map((crumb, i) => (
             <span key={i} className="flex items-center gap-1.5">
-              <ChevronRight size={11} style={{ color: BRAND.textFaint }} />
+              <ChevronRight size={11} className="text-foreground-faint" />
               <span
                 style={{
                   color: i === crumbs.length - 1 ? BRAND.textPrimary : BRAND.textSecondary,
@@ -1010,8 +910,7 @@ export function AppShell() {
       {/* ── Page content ─────────────────────────────────────────────────────── */}
       <main
         id="main-content"
-        className="flex flex-1 flex-col overflow-auto"
-        style={{ backgroundColor: BRAND.pageBg }}
+        className="flex flex-1 flex-col overflow-auto bg-background"
         aria-label="Main content"
       >
         <PageErrorBoundary>

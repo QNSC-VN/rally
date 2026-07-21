@@ -1,14 +1,13 @@
 /**
  * NativeSelect — Rally-styled wrapper around <select>.
  * Provides the same visual token system as Input/Textarea:
- * border-input, focus-visible ring, bg-white, text-[12px].
+ * border-input, focus-visible ring, bg-card, text-ui-md.
  *
  * Usage:
  *   <NativeSelect value={v} onChange={e => setV(e.target.value)}>
  *     <option value="a">Option A</option>
  *   </NativeSelect>
  */
-import { BRAND } from '@/shared/config/brand'
 import { forwardRef } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
@@ -23,7 +22,7 @@ export const NativeSelect = forwardRef<HTMLSelectElement, NativeSelectProps>(
       <select
         ref={ref}
         className={cn(
-          'w-full cursor-pointer rounded border border-input bg-white px-3 py-2 text-[12px] text-foreground transition-colors outline-none',
+          'w-full cursor-pointer rounded border border-input bg-card px-3 py-2 text-ui-md text-foreground transition-colors outline-none',
           'focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50',
           'disabled:cursor-not-allowed disabled:bg-input-background disabled:opacity-60',
           className,
@@ -44,9 +43,9 @@ export const InlineSelect = forwardRef<HTMLSelectElement, NativeSelectProps>(
       <select
         ref={ref}
         className={cn(
-          'w-full cursor-pointer rounded border border-transparent bg-transparent px-1 py-0.5 text-[11px] text-foreground transition-colors outline-none',
-          'hover:border-input hover:bg-white',
-          'focus-visible:border-ring focus-visible:bg-white focus-visible:ring-[3px] focus-visible:ring-ring/50',
+          'w-full cursor-pointer rounded border border-transparent bg-transparent px-1 py-0.5 text-ui-sm text-foreground transition-colors outline-none',
+          'hover:border-input hover:bg-card',
+          'focus-visible:border-ring focus-visible:bg-card focus-visible:ring-[3px] focus-visible:ring-ring/50',
           'disabled:cursor-not-allowed disabled:opacity-60',
           className,
         )}
@@ -79,7 +78,7 @@ export const InlineCellSelect = forwardRef<HTMLSelectElement, InlineCellSelectPr
       <div
         className={cn(
           'relative flex w-full cursor-pointer items-center overflow-hidden rounded border border-transparent transition-colors',
-          'hover:border-input hover:bg-white',
+          'hover:border-input hover:bg-card',
           props.disabled && 'cursor-not-allowed opacity-60',
           className,
         )}
@@ -87,12 +86,14 @@ export const InlineCellSelect = forwardRef<HTMLSelectElement, InlineCellSelectPr
         <span className="pointer-events-none flex min-w-0 flex-1 items-center gap-1 px-1 py-0.5">
           {leading}
           <span
-            className="min-w-0 flex-1 truncate text-[11px]"
-            style={{ color: muted ? BRAND.textDisabled : 'inherit' }}
+            className={cn(
+              'min-w-0 flex-1 truncate text-ui-sm',
+              muted && 'text-foreground-disabled',
+            )}
           >
             {displayValue}
           </span>
-          <ChevronDown size={9} className="shrink-0" style={{ color: BRAND.textMuted }} />
+          <ChevronDown size={9} className="shrink-0 text-foreground-subtle" />
         </span>
         <select
           ref={ref}

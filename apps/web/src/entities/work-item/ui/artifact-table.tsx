@@ -34,32 +34,22 @@ function ArtifactRow({
 }) {
   return (
     <tr
-      className="cursor-pointer transition-colors duration-75"
-      style={{ borderBottom: `1px solid ${BRAND.borderInner}` }}
+      className="cursor-pointer border-b border-border-inner transition-colors duration-75"
       onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = BRAND.surfaceHover)}
       onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
       onClick={onOpen}
     >
       {/* Rank */}
-      <td
-        className="h-8 px-3 text-center font-mono text-[10px] tabular-nums"
-        style={{ color: BRAND.textMuted }}
-      >
+      <td className="h-8 px-3 text-center font-mono text-ui-xs text-foreground-subtle tabular-nums">
         {index + 1}
       </td>
       {/* ID */}
-      <td
-        className="h-8 px-3 font-mono text-[10px] underline-offset-2 hover:underline"
-        style={{ color: BRAND.primaryLight }}
-      >
+      <td className="h-8 px-3 font-mono text-ui-xs text-primary-light underline-offset-2 hover:underline">
         {item.itemKey}
       </td>
       {/* Name */}
       <td className="h-8 px-3">
-        <span
-          className="block max-w-[300px] truncate text-xs font-medium"
-          style={{ color: BRAND.textPrimary }}
-        >
+        <span className="block max-w-[300px] truncate text-xs font-medium text-foreground">
           {item.title}
         </span>
       </td>
@@ -80,10 +70,7 @@ function ArtifactRow({
         <OwnerCell name={item.assigneeName} />
       </td>
       {/* Estimate */}
-      <td
-        className="h-8 px-3 text-center font-mono text-[10px]"
-        style={{ color: BRAND.textSecondary }}
-      >
+      <td className="h-8 px-3 text-center font-mono text-ui-xs text-muted-foreground">
         {item.storyPoints ?? '—'}
       </td>
     </tr>
@@ -112,8 +99,8 @@ export function ArtifactTable({
   if (items.length === 0) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 p-8">
-        <Layers size={32} style={{ color: BRAND.textFaint }} />
-        <p className="text-xs" style={{ color: BRAND.textMuted }}>
+        <Layers size={32} className="text-foreground-faint" />
+        <p className="text-xs text-foreground-subtle">
           {search ? 'No artifacts match your search' : `No artifacts linked to this ${entityNoun}`}
         </p>
       </div>
@@ -123,37 +110,15 @@ export function ArtifactTable({
   return (
     <table className="w-full text-left">
       <thead>
-        <tr
-          className="text-[9px] font-semibold tracking-wider uppercase select-none"
-          style={{
-            backgroundColor: BRAND.surfaceHover,
-            borderBottom: `1px solid ${BRAND.border}`,
-          }}
-        >
-          <th className="h-7 w-12 px-3 text-center font-medium" style={{ color: BRAND.textMuted }}>
-            #
-          </th>
-          <th className="h-7 w-20 px-3 font-medium" style={{ color: BRAND.textMuted }}>
-            ID
-          </th>
-          <th className="h-7 px-3 font-medium" style={{ color: BRAND.textMuted }}>
-            Name
-          </th>
-          <th className="h-7 w-14 px-3 font-medium" style={{ color: BRAND.textMuted }}>
-            Type
-          </th>
-          <th className="h-7 w-24 px-3 font-medium" style={{ color: BRAND.textMuted }}>
-            Schedule State
-          </th>
-          <th className="h-7 w-16 px-3 font-medium" style={{ color: BRAND.textMuted }}>
-            Priority
-          </th>
-          <th className="h-7 w-28 px-3 font-medium" style={{ color: BRAND.textMuted }}>
-            Owner
-          </th>
-          <th className="h-7 w-14 px-3 text-center font-medium" style={{ color: BRAND.textMuted }}>
-            Est.
-          </th>
+        <tr className="border-b border-border-strong bg-surface-hover text-ui-2xs font-semibold tracking-wider uppercase select-none">
+          <th className="h-7 w-12 px-3 text-center font-medium text-foreground-subtle">#</th>
+          <th className="h-7 w-20 px-3 font-medium text-foreground-subtle">ID</th>
+          <th className="h-7 px-3 font-medium text-foreground-subtle">Name</th>
+          <th className="h-7 w-14 px-3 font-medium text-foreground-subtle">Type</th>
+          <th className="h-7 w-24 px-3 font-medium text-foreground-subtle">Schedule State</th>
+          <th className="h-7 w-16 px-3 font-medium text-foreground-subtle">Priority</th>
+          <th className="h-7 w-28 px-3 font-medium text-foreground-subtle">Owner</th>
+          <th className="h-7 w-14 px-3 text-center font-medium text-foreground-subtle">Est.</th>
         </tr>
       </thead>
       <tbody>
