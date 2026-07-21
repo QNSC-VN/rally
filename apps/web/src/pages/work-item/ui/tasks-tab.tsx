@@ -20,13 +20,11 @@ import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { OwnerSelectCell } from '@/shared/ui/owner-cell'
 import { Button } from '@/shared/ui/button'
 import { EmptyState } from '@/shared/ui/empty-state'
-import { SkeletonList } from '@/shared/ui/skeleton'
 import { InlineCellSelect } from '@/shared/ui/native-select'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { SelectionCheckbox } from '@/shared/ui/selection-checkbox'
 import { TableTotalsRow } from '@/shared/ui/table-totals-row'
-import { useDataTable, type ColumnSpec } from '@/shared/ui/table'
-import { DataTableHeader } from '@/shared/ui/data-table-header'
+import { useDataTable, DataTableFrame, type ColumnSpec } from '@/shared/ui/table'
 import { useRowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { AddTaskModal } from '@/features/work-items/ui/add-task-modal'
 
@@ -169,77 +167,78 @@ export function TasksTab({
         </Button>
       </div>
 
-      <div className="overflow-x-auto rounded border border-border-strong bg-card">
-        {/* Header row (shared engine: resize + reorder + show/hide) */}
-        <DataTableHeader
-          columns={table.headerColumns}
-          colStyles={colStyles}
-          onResize={table.startResize}
-          columnDrag={table.columnDrag}
-          sort={{ col: sortCol, dir: sortDir, onSort: toggleSort }}
-          leading={
-            <div className="flex w-6 shrink-0 items-center justify-center">
-              <SelectionCheckbox
-                checked={selection.allSelected}
-                indeterminate={selection.someSelected}
-                onChange={selection.toggleAll}
-                ariaLabel="Select all tasks"
-              />
-            </div>
-          }
-          className="px-3"
-        />
-
-        {/* Totals row (shared component — single source of truth for layout) */}
-        {totals && (
-          <TableTotalsRow
-            columns={TASK_COLUMNS}
-            colStyles={colStyles}
-            leading={<div className="w-6 shrink-0" />}
-            label="Totals"
-            values={{
-              todo: `${totals.todoHours ?? 0}h`,
-              actuals: `${totals.actualHours ?? 0}h`,
-              estimate: `${totals.estimateHours ?? 0}h`,
-            }}
-          />
-        )}
-
-        {/* Body */}
-        {isLoading ? (
-          <SkeletonList rows={4} cols={10} />
-        ) : tasks.length === 0 ? (
-          <EmptyState
-            size="sm"
-            icon={<ListChecks size={28} className="text-foreground-subtle" />}
-            title="No tasks yet"
-            description="Break this work item into trackable delivery tasks."
-            action={
-              readOnly ? undefined : (
-                <Button size="sm" onClick={() => setShowAdd(true)}>
-                  <Plus size={13} />
-                  Add Task
-                </Button>
-              )
-            }
-          />
-        ) : (
-          sortedTasks.map((task) => (
-            <TaskRow
-              key={`${task.id}:${task.updatedAt}`}
-              task={task}
-              canEdit={!readOnly}
-              selected={selection.isSelected(task.id)}
-              onToggleSelect={() => selection.toggle(task.id)}
-              colStyles={colStyles}
-              projectLabel={projectLabel}
-              teamName={teamName}
-              members={members}
-              onOpen={openTask}
+      {/* Shared DataTableFrame owns the header/totals/loading/empty chrome; the
+          className keeps this embedded sub-grid's bordered-card look. */}
+      <DataTableFrame
+        className="rounded border border-border-strong"
+        header={{
+          columns: table.headerColumns,
+          colStyles,
+          onResize: table.startResize,
+          columnDrag: table.columnDrag,
+          sort: { col: sortCol, dir: sortDir, onSort: toggleSort },
+        }}
+        leading={
+          <div className="flex w-6 shrink-0 items-center justify-center">
+            <SelectionCheckbox
+              checked={selection.allSelected}
+              indeterminate={selection.someSelected}
+              onChange={selection.toggleAll}
+              ariaLabel="Select all tasks"
             />
-          ))
-        )}
-      </div>
+          </div>
+        }
+        totals={
+          totals ? (
+            <TableTotalsRow
+              columns={TASK_COLUMNS}
+              colStyles={colStyles}
+              leading={<div className="w-6 shrink-0" />}
+              label="Totals"
+              values={{
+                todo: `${totals.todoHours ?? 0}h`,
+                actuals: `${totals.actualHours ?? 0}h`,
+                estimate: `${totals.estimateHours ?? 0}h`,
+              }}
+            />
+          ) : undefined
+        }
+        loading={isLoading}
+        skeleton={{ rows: 4, cols: 10 }}
+        empty={
+          tasks.length === 0 ? (
+            <EmptyState
+              size="sm"
+              icon={<ListChecks size={28} className="text-foreground-subtle" />}
+              title="No tasks yet"
+              description="Break this work item into trackable delivery tasks."
+              action={
+                readOnly ? undefined : (
+                  <Button size="sm" onClick={() => setShowAdd(true)}>
+                    <Plus size={13} />
+                    Add Task
+                  </Button>
+                )
+              }
+            />
+          ) : undefined
+        }
+      >
+        {sortedTasks.map((task) => (
+          <TaskRow
+            key={`${task.id}:${task.updatedAt}`}
+            task={task}
+            canEdit={!readOnly}
+            selected={selection.isSelected(task.id)}
+            onToggleSelect={() => selection.toggle(task.id)}
+            colStyles={colStyles}
+            projectLabel={projectLabel}
+            teamName={teamName}
+            members={members}
+            onOpen={openTask}
+          />
+        ))}
+      </DataTableFrame>
 
       {showAdd && <AddTaskModal workItemId={workItemId} onClose={() => setShowAdd(false)} />}
     </div>

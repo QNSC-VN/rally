@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { FolderKanban, Loader2, Plus } from 'lucide-react'
+import { FolderKanban, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { BRAND } from '@/shared/config/brand'
 import { SearchInput } from '@/shared/ui/search-input'
@@ -8,9 +8,8 @@ import { MetricCard } from '@/shared/ui/metric-card'
 import { MetricStrip } from '@/shared/ui/metric-strip'
 import { Button } from '@/shared/ui/button'
 import { PaginationFooter } from '@/shared/ui/pagination-footer'
-import { DataTableHeader } from '@/shared/ui/data-table-header'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
-import { useDataTable } from '@/shared/ui/table'
+import { useDataTable, DataTableFrame } from '@/shared/ui/table'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
@@ -268,59 +267,30 @@ export function ProjectsPage() {
         </div>
       </div>
 
-      {/* Table */}
-      <div className="p-4">
-        <div className="overflow-hidden rounded border border-border-subtle bg-card">
-          {/* Horizontal-scroll region: shared header + page-owned rows */}
-          <div className="overflow-x-auto">
-            <div style={{ width: table.tableWidth, minWidth: '100%' }}>
-              {/* Table header (shared engine: resize / reorder / sort) */}
-              <DataTableHeader {...table.headerProps} className="gap-2 px-3" />
-
-              {/* Loading state */}
-              {isLoading && (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 size={22} className="animate-spin text-foreground-subtle" />
-                </div>
-              )}
-
-              {/* Empty state */}
-              {!isLoading && filtered.length === 0 && (
-                <EmptyState
-                  icon={
-                    <FolderKanban
-                      size={32}
-                      strokeWidth={1.25}
-                      className="text-foreground-subtle opacity-40"
-                    />
-                  }
-                  title="No projects found"
-                  description="Try adjusting your search or filter."
+      {/* Table — shared DataTableFrame owns the scroll region, header, loading/
+          empty states and footer, so projects' grid chrome matches every other
+          grid (see FRONTEND_COMPONENT_AUDIT §5.2). */}
+      <DataTableFrame
+        header={table.headerProps}
+        padClassName="gap-2 px-3"
+        loading={isLoading}
+        empty={
+          filtered.length === 0 ? (
+            <EmptyState
+              icon={
+                <FolderKanban
+                  size={32}
+                  strokeWidth={1.25}
+                  className="text-foreground-subtle opacity-40"
                 />
-              )}
-
-              {/* Rows */}
-              <div ref={menuRef}>
-                {!isLoading &&
-                  paged.map((project) => (
-                    <div
-                      key={project.id}
-                      onClick={() => setEditingProject(project)}
-                      className="flex min-h-12 cursor-pointer items-center gap-2 border-b border-border-inner px-3 transition-colors hover:bg-surface-hover"
-                      style={{
-                        opacity: project.status === 'archived' ? 0.7 : 1,
-                        minWidth: 'max-content',
-                      }}
-                    >
-                      {table.renderCells(project, cellCtx)}
-                    </div>
-                  ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Pagination footer */}
-          {!isLoading && filtered.length > 0 && (
+              }
+              title="No projects found"
+              description="Try adjusting your search or filter."
+            />
+          ) : undefined
+        }
+        footer={
+          filtered.length > 0 ? (
             <PaginationFooter
               pageSize={pageSize}
               setPageSize={setPageSize}
@@ -334,9 +304,25 @@ export function ProjectsPage() {
               onPrevPage={() => setCurrentPage((p) => Math.max(1, p - 1))}
               onNextPage={() => setCurrentPage((p) => Math.min(pageCount, p + 1))}
             />
-          )}
+          ) : undefined
+        }
+      >
+        <div ref={menuRef}>
+          {paged.map((project) => (
+            <div
+              key={project.id}
+              onClick={() => setEditingProject(project)}
+              className="flex min-h-12 cursor-pointer items-center gap-2 border-b border-border-inner px-3 transition-colors hover:bg-surface-hover"
+              style={{
+                opacity: project.status === 'archived' ? 0.7 : 1,
+                minWidth: 'max-content',
+              }}
+            >
+              {table.renderCells(project, cellCtx)}
+            </div>
+          ))}
         </div>
-      </div>
+      </DataTableFrame>
     </div>
   )
 }

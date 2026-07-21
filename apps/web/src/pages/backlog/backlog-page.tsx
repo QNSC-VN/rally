@@ -67,7 +67,7 @@ import { CreateWorkItemModal } from '@/features/work-items/ui/create-work-item-m
 import { type ColumnDef } from '@/shared/lib/hooks/use-column-layout'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
 import { useDataTable, DataTableFrame } from '@/shared/ui/table'
-import { type DataTableHeaderColumn } from '@/shared/ui/data-table-header'
+import { type DataTableHeaderColumn } from '@/shared/ui/table'
 
 // ── Column definitions ─────────────────────────────────────────────────────────
 
