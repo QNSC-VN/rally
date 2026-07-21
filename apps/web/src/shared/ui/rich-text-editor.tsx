@@ -1,17 +1,25 @@
 /**
- * RichTextEditor — contentEditable-based rich text component.
+ * RichTextEditor — Tiptap-based rich text component.
  *
  * Design principles:
  * - Matches the mockup toolbar exactly (Bold/Italic/Underline/Strike,
  *   lists, headings, links, code, undo/redo).
- * - Uses document.execCommand (universally supported in browsers for Phase 1).
+ * - Built on Tiptap/ProseMirror — `document.execCommand`, which this
+ *   component used previously, has been dropped by Chrome/Edge for most
+ *   rich-editing commands, silently no-op'ing every toolbar action and
+ *   typed input. Tiptap owns the DOM directly via ProseMirror's own
+ *   transaction model, so it isn't affected by that removal.
  * - Saves via onBlur; calls onSave(html) only when content actually changed.
- * - Renders with DOMPurify-sanitized dangerouslySetInnerHTML (XSS-safe).
+ * - Output is DOMPurify-sanitized before both render and onSave, so a future
+ *   extension misconfiguration still can't emit disallowed markup.
  * - readOnly prop disables all editing and shows a flat read view.
  * - Keyboard shortcut: Ctrl/Cmd+Enter saves immediately.
  */
 import { BRAND } from '@/shared/config/brand'
-import { useRef, useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { EditorContent, useEditor, type Editor } from '@tiptap/react'
+import StarterKit from '@tiptap/starter-kit'
+import Placeholder from '@tiptap/extension-placeholder'
 import DOMPurify from 'dompurify'
 import { Tooltip } from './tooltip'
 import {
@@ -91,7 +99,7 @@ function ToolButton({ label, disabled, active, onAction, children }: ToolButtonP
         aria-label={label}
         disabled={disabled}
         onMouseDown={(e) => {
-          // Prevent blur before execCommand
+          // Prevent editor blur before the command runs
           e.preventDefault()
           if (!disabled) onAction()
         }}
@@ -124,6 +132,141 @@ function Divider() {
   return <span className="mx-1 h-5 w-px shrink-0 bg-input" />
 }
 
+// ── Toolbar ───────────────────────────────────────────────────────────────────
+function Toolbar({ editor }: { editor: Editor }) {
+  const handleLink = useCallback(() => {
+    const previousUrl = editor.getAttributes('link')['href'] as string | undefined
+    const url = window.prompt('Enter URL:', previousUrl ?? '')
+    if (url === null) return
+    if (url === '') {
+      editor.chain().focus().extendMarkRange('link').unsetLink().run()
+      return
+    }
+    editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run()
+  }, [editor])
+
+  const formatValue = editor.isActive('heading', { level: 2 })
+    ? 'h2'
+    : editor.isActive('heading', { level: 3 })
+      ? 'h3'
+      : editor.isActive('blockquote')
+        ? 'blockquote'
+        : 'p'
+
+  const handleFormatBlock = useCallback(
+    (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const chain = editor.chain().focus()
+      switch (e.target.value) {
+        case 'h2':
+          chain.setHeading({ level: 2 }).run()
+          break
+        case 'h3':
+          chain.setHeading({ level: 3 }).run()
+          break
+        case 'blockquote':
+          chain.setBlockquote().run()
+          break
+        default:
+          chain.setParagraph().run()
+      }
+    },
+    [editor],
+  )
+
+  return (
+    <div
+      className="flex flex-wrap items-center gap-0.5 overflow-x-auto border-b border-border-strong bg-card px-2 py-1.5"
+      style={{ flexShrink: 0 }}
+    >
+      <ToolButton
+        label="Undo"
+        disabled={!editor.can().undo()}
+        onAction={() => editor.chain().focus().undo().run()}
+      >
+        <Undo2 size={13} />
+      </ToolButton>
+      <ToolButton
+        label="Redo"
+        disabled={!editor.can().redo()}
+        onAction={() => editor.chain().focus().redo().run()}
+      >
+        <Redo2 size={13} />
+      </ToolButton>
+      <Divider />
+      <select
+        aria-label="Text style"
+        value={formatValue}
+        onChange={handleFormatBlock}
+        className="h-7 w-28 rounded-sm border border-input bg-card px-2 text-ui-sm text-foreground focus:outline-none"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <option value="p">Paragraph</option>
+        <option value="h2">Heading 2</option>
+        <option value="h3">Heading 3</option>
+        <option value="blockquote">Quote</option>
+      </select>
+      <Divider />
+      <ToolButton
+        label="Bold"
+        active={editor.isActive('bold')}
+        onAction={() => editor.chain().focus().toggleBold().run()}
+      >
+        <Bold size={14} />
+      </ToolButton>
+      <ToolButton
+        label="Italic"
+        active={editor.isActive('italic')}
+        onAction={() => editor.chain().focus().toggleItalic().run()}
+      >
+        <Italic size={14} />
+      </ToolButton>
+      <ToolButton
+        label="Underline"
+        active={editor.isActive('underline')}
+        onAction={() => editor.chain().focus().toggleUnderline().run()}
+      >
+        <Underline size={14} />
+      </ToolButton>
+      <ToolButton
+        label="Strikethrough"
+        active={editor.isActive('strike')}
+        onAction={() => editor.chain().focus().toggleStrike().run()}
+      >
+        <Strikethrough size={14} />
+      </ToolButton>
+      <Divider />
+      <ToolButton
+        label="Bulleted list"
+        active={editor.isActive('bulletList')}
+        onAction={() => editor.chain().focus().toggleBulletList().run()}
+      >
+        <List size={14} />
+      </ToolButton>
+      <ToolButton
+        label="Numbered list"
+        active={editor.isActive('orderedList')}
+        onAction={() => editor.chain().focus().toggleOrderedList().run()}
+      >
+        <ListOrdered size={14} />
+      </ToolButton>
+      <ToolButton label="Align left" onAction={() => {}} disabled>
+        <AlignLeft size={14} />
+      </ToolButton>
+      <Divider />
+      <ToolButton label="Insert link" active={editor.isActive('link')} onAction={handleLink}>
+        <Link2 size={14} />
+      </ToolButton>
+      <ToolButton
+        label="Code block"
+        active={editor.isActive('codeBlock')}
+        onAction={() => editor.chain().focus().toggleCodeBlock().run()}
+      >
+        <Code2 size={14} />
+      </ToolButton>
+    </div>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 interface RichTextEditorProps {
   /** Section heading shown in the header bar */
@@ -148,56 +291,52 @@ export function RichTextEditor({
   onSave,
   className = '',
 }: RichTextEditorProps) {
-  const editorRef = useRef<HTMLDivElement>(null)
-  const savedRef = useRef<string>('')
   const [expanded, setExpanded] = useState(false)
   const [focused, setFocused] = useState(false)
 
-  // Sync external value into editor (only when it changes externally)
+  const editor = useEditor({
+    editable: !readOnly,
+    immediatelyRender: false,
+    extensions: [StarterKit, Placeholder.configure({ placeholder: `Add ${title.toLowerCase()}…` })],
+    content: sanitize(value ?? ''),
+    editorProps: {
+      attributes: {
+        class: 'px-4 py-3 text-ui-lg leading-6 text-foreground focus:outline-none',
+      },
+    },
+    onFocus: () => setFocused(true),
+    onBlur: ({ editor: ed }) => {
+      setFocused(false)
+      if (readOnly || !onSave) return
+      const html = sanitize(ed.getHTML())
+      if (html !== sanitize(value ?? '')) onSave(html)
+    },
+  })
+
+  // Sync external value into the editor (only when it changes externally —
+  // e.g. after a save round-trips, or another tab/user updates it). Comparing
+  // sanitized HTML avoids clobbering the user's cursor on every keystroke.
   useEffect(() => {
-    if (!editorRef.current) return
+    if (!editor) return
     const clean = sanitize(value ?? '')
-    // Only update DOM if different to avoid losing cursor position
-    if (editorRef.current.innerHTML !== clean) {
-      editorRef.current.innerHTML = clean
-      savedRef.current = clean
+    if (sanitize(editor.getHTML()) !== clean) {
+      editor.commands.setContent(clean, { emitUpdate: false })
     }
-  }, [value])
+  }, [value, editor])
 
-  const exec = useCallback((command: string, value?: string) => {
-    editorRef.current?.focus()
-    document.execCommand(command, false, value)
-  }, [])
+  // Keep editable state in sync if readOnly changes after mount.
+  useEffect(() => {
+    editor?.setEditable(!readOnly)
+  }, [editor, readOnly])
 
-  const handleBlur = useCallback(() => {
-    setFocused(false)
-    if (!editorRef.current || readOnly || !onSave) return
-    const html = sanitize(editorRef.current.innerHTML)
-    if (html !== savedRef.current) {
-      savedRef.current = html
-      onSave(html)
-    }
-  }, [readOnly, onSave])
-
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+  const handleKeyDownCapture = useCallback((e: React.KeyboardEvent) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
       e.preventDefault()
-      editorRef.current?.blur()
+      ;(e.currentTarget.querySelector('.ProseMirror') as HTMLElement | null)?.blur()
     }
   }, [])
 
-  const handleFormatBlock = useCallback(
-    (e: React.ChangeEvent<HTMLSelectElement>) => {
-      exec('formatBlock', e.target.value)
-      editorRef.current?.focus()
-    },
-    [exec],
-  )
-
-  const handleLink = useCallback(() => {
-    const url = window.prompt('Enter URL:')
-    if (url) exec('createLink', url)
-  }, [exec])
+  if (!editor) return null
 
   return (
     <section
@@ -236,91 +375,20 @@ export function RichTextEditor({
       </div>
 
       {/* Toolbar */}
-      {!readOnly && (
-        <div
-          className="flex flex-wrap items-center gap-0.5 overflow-x-auto border-b border-border-strong bg-card px-2 py-1.5"
-          style={{ flexShrink: 0 }}
-        >
-          <ToolButton label="Undo" onAction={() => exec('undo')}>
-            <Undo2 size={13} />
-          </ToolButton>
-          <ToolButton label="Redo" onAction={() => exec('redo')}>
-            <Redo2 size={13} />
-          </ToolButton>
-          <Divider />
-          <select
-            aria-label="Text style"
-            onChange={handleFormatBlock}
-            defaultValue="p"
-            className="h-7 w-28 rounded-sm border border-input bg-card px-2 text-ui-sm text-foreground focus:outline-none"
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <option value="p">Paragraph</option>
-            <option value="h2">Heading 2</option>
-            <option value="h3">Heading 3</option>
-            <option value="blockquote">Quote</option>
-          </select>
-          <Divider />
-          <ToolButton label="Bold" onAction={() => exec('bold')}>
-            <Bold size={14} />
-          </ToolButton>
-          <ToolButton label="Italic" onAction={() => exec('italic')}>
-            <Italic size={14} />
-          </ToolButton>
-          <ToolButton label="Underline" onAction={() => exec('underline')}>
-            <Underline size={14} />
-          </ToolButton>
-          <ToolButton label="Strikethrough" onAction={() => exec('strikeThrough')}>
-            <Strikethrough size={14} />
-          </ToolButton>
-          <Divider />
-          <ToolButton label="Bulleted list" onAction={() => exec('insertUnorderedList')}>
-            <List size={14} />
-          </ToolButton>
-          <ToolButton label="Numbered list" onAction={() => exec('insertOrderedList')}>
-            <ListOrdered size={14} />
-          </ToolButton>
-          <ToolButton label="Align left" onAction={() => exec('justifyLeft')}>
-            <AlignLeft size={14} />
-          </ToolButton>
-          <Divider />
-          <ToolButton label="Insert link" onAction={handleLink}>
-            <Link2 size={14} />
-          </ToolButton>
-          <ToolButton label="Inline code" onAction={() => exec('formatBlock', 'pre')}>
-            <Code2 size={14} />
-          </ToolButton>
-        </div>
-      )}
+      {!readOnly && <Toolbar editor={editor} />}
 
       {/* Content area */}
-      {readOnly ? (
-        <div
-          className="prose prose-sm max-w-none bg-surface-hover px-4 py-3 text-ui-lg leading-6 text-foreground"
-          style={{
-            minHeight,
-            overflowY: expanded ? 'auto' : undefined,
-            flex: expanded ? '1' : undefined,
-          }}
-          dangerouslySetInnerHTML={{ __html: sanitize(value ?? '') }}
-        />
-      ) : (
-        <div
-          ref={editorRef}
-          contentEditable
-          suppressContentEditableWarning
-          onFocus={() => setFocused(true)}
-          onBlur={handleBlur}
-          onKeyDown={handleKeyDown}
-          className="prose prose-sm max-w-none bg-card px-4 py-3 text-ui-lg leading-6 text-foreground focus:outline-none"
-          style={{
-            minHeight,
-            overflowY: expanded ? 'auto' : undefined,
-            flex: expanded ? '1' : undefined,
-          }}
-          data-placeholder={`Add ${title.toLowerCase()}…`}
-        />
-      )}
+      <div
+        onKeyDownCapture={handleKeyDownCapture}
+        className={readOnly ? 'bg-surface-hover' : 'bg-card'}
+        style={{
+          minHeight,
+          overflowY: expanded ? 'auto' : undefined,
+          flex: expanded ? '1' : undefined,
+        }}
+      >
+        <EditorContent editor={editor} />
+      </div>
 
       {/* Keyboard hint */}
       {!readOnly && (
