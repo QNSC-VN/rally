@@ -17,6 +17,8 @@ import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { cn } from '@/shared/lib/utils'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
+import { IconButton } from '@/shared/ui/icon-button'
+import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
@@ -359,49 +361,26 @@ type MilestoneColKey = 'name' | 'targetStartDate' | 'targetEndDate' | 'status' |
 /** Per-render context handed to each cell (permissions + row callbacks). */
 interface MilestoneCtx {
   canManage: boolean
-  deletingId: string | null
   onEdit: (m: Milestone) => void
   onAskDelete: (id: string) => void
-  onCancelDelete: () => void
-  onConfirmDelete: (id: string) => void
 }
 
-/** Row actions cell — edit + delete-with-confirm, kept out of the column spec. */
+/** Row actions cell — edit + delete (delete opens the shared ConfirmDialog). */
 function MilestoneActionsCell({ milestone, ctx }: { milestone: Milestone; ctx: MilestoneCtx }) {
   if (!ctx.canManage) return null
   return (
     <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-      <button
-        onClick={() => ctx.onEdit(milestone)}
-        className="rounded p-1 hover:bg-surface-hover"
-        title="Edit"
+      <IconButton aria-label="Edit" title="Edit" onClick={() => ctx.onEdit(milestone)}>
+        <Pencil size={13} />
+      </IconButton>
+      <IconButton
+        variant="destructive"
+        aria-label="Delete"
+        title="Delete"
+        onClick={() => ctx.onAskDelete(milestone.id)}
       >
-        <Pencil size={13} className="text-muted-foreground" />
-      </button>
-      {ctx.deletingId === milestone.id ? (
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => ctx.onConfirmDelete(milestone.id)}
-            className="rounded border border-destructive-border bg-destructive-bg px-1.5 py-0.5 text-[10px] font-medium text-destructive"
-          >
-            Confirm
-          </button>
-          <button
-            onClick={ctx.onCancelDelete}
-            className="rounded border border-border-strong px-1.5 py-0.5 text-[10px] text-muted-foreground"
-          >
-            Cancel
-          </button>
-        </div>
-      ) : (
-        <button
-          onClick={() => ctx.onAskDelete(milestone.id)}
-          className="rounded p-1 hover:bg-destructive-bg"
-          title="Delete"
-        >
-          <Trash2 size={13} className="text-destructive" />
-        </button>
-      )}
+        <Trash2 size={13} />
+      </IconButton>
     </div>
   )
 }
@@ -507,13 +486,8 @@ export function MilestonesPage() {
 
   const cellCtx: MilestoneCtx = {
     canManage,
-    deletingId: deleting,
     onEdit: setEditing,
     onAskDelete: setDeleting,
-    onCancelDelete: () => setDeleting(null),
-    onConfirmDelete: (id) => {
-      void handleDelete(id)
-    },
   }
 
   return (
@@ -586,6 +560,17 @@ export function MilestonesPage() {
         />
       )}
       {editing && <EditMilestoneModal milestone={editing} onClose={() => setEditing(null)} />}
+
+      <ConfirmDialog
+        open={deleting !== null}
+        title="Delete milestone"
+        message="Delete this milestone? This cannot be undone."
+        confirmLabel="Delete"
+        destructive
+        pending={deleteMilestone.isPending}
+        onConfirm={() => deleting && void handleDelete(deleting)}
+        onCancel={() => setDeleting(null)}
+      />
     </div>
   )
 }
