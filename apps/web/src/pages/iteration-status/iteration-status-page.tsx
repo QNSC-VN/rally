@@ -96,6 +96,7 @@ import { StateStepper } from '@/entities/work-item/ui/state-stepper'
 import { FeatureCell } from '@/entities/work-item/ui/feature-cell'
 import { SCHEDULE_STATE_STEPS, SIMPLIFIED_STATE_STEPS } from '@/entities/work-item/ui/state-steps'
 import { MilestoneSelectCell, DefectStatusPill, TasksProgress } from './ui/status-cells'
+import { useWorkItemFieldCommit } from './model/use-work-item-field-commit'
 
 // Single-letter badge for each schedule state (read-only view)
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -1418,96 +1419,30 @@ function StatusRow({
     opacity: isDragging ? 0.5 : 1,
   }
 
-  function commitEstimate(raw: string) {
-    const num = raw.trim() === '' ? null : Number(raw)
-    if (num !== null && (isNaN(num) || num < 0)) {
-      toast.error('Estimate must be a positive number')
-      return
-    }
+  const { save, saveNumber } = useWorkItemFieldCommit(update)
+  const milestoneCommit = useWorkItemFieldCommit(setMilestones)
+
+  const commitEstimate = (raw: string) =>
     // Auto-sync To Do to the new Plan Estimate value.
-    update.mutate(
-      { storyPoints: num, todoHours: num },
-      {
-        onSuccess: () => toast.success('Plan estimate updated'),
-        onError: (err) => toast.error(err.message),
-      },
-    )
-  }
-
-  function commitTodo(raw: string) {
-    const num = raw.trim() === '' ? null : Number(raw)
-    if (num !== null && (isNaN(num) || num < 0)) {
-      toast.error('Todo hours must be a positive number')
-      return
-    }
-    update.mutate(
-      { todoHours: num },
-      {
-        onSuccess: () => toast.success('Todo hours updated'),
-        onError: (err) => toast.error(err.message),
-      },
-    )
-  }
-
-  function commitTitle(raw: string) {
+    saveNumber(raw, (n) => ({ storyPoints: n, todoHours: n }), 'Plan estimate updated', 'Estimate')
+  const commitTodo = (raw: string) =>
+    saveNumber(raw, (n) => ({ todoHours: n }), 'Todo hours updated', 'Todo hours')
+  const commitTitle = (raw: string) => {
     const next = raw.trim()
     if (!next || next === item.title) return
-    update.mutate(
-      { title: next },
-      {
-        onSuccess: () => toast.success('Name updated'),
-        onError: (err) => toast.error(err.message),
-      },
-    )
+    save({ title: next }, 'Name updated')
   }
-
-  function handleOwnerChange(userId: string | null) {
-    update.mutate(
-      { assigneeId: userId },
-      {
-        onSuccess: () => toast.success('Owner updated'),
-        onError: (err) => toast.error(err.message),
-      },
-    )
-  }
-
-  function handleIterationChange(iterationId: string | null) {
-    update.mutate(
-      { iterationId },
-      {
-        onSuccess: () => toast.success(iterationId ? 'Iteration updated' : 'Moved to backlog'),
-        onError: (err) => toast.error(err.message),
-      },
-    )
-  }
-
-  function handleDevOwnerChange(userId: string | null) {
-    update.mutate(
-      { devOwnerId: userId },
-      {
-        onSuccess: () => toast.success('Dev owner updated'),
-        onError: (err) => toast.error(err.message),
-      },
-    )
-  }
-
-  function handleMilestonesChange(ids: string[]) {
-    setMilestones.mutate(ids, {
-      onSuccess: () => toast.success('Milestones updated'),
-      onError: (err) => toast.error(err.message),
-    })
-  }
-
-  function toggleBlocked() {
-    update.mutate(
+  const handleOwnerChange = (userId: string | null) => save({ assigneeId: userId }, 'Owner updated')
+  const handleIterationChange = (iterationId: string | null) =>
+    save({ iterationId }, iterationId ? 'Iteration updated' : 'Moved to backlog')
+  const handleDevOwnerChange = (userId: string | null) =>
+    save({ devOwnerId: userId }, 'Dev owner updated')
+  const handleMilestonesChange = (ids: string[]) => milestoneCommit.save(ids, 'Milestones updated')
+  const toggleBlocked = () =>
+    save(
       { isBlocked: !item.isBlocked },
-      {
-        onSuccess: () =>
-          toast.success(item.isBlocked ? 'Work item unblocked' : 'Work item blocked'),
-        onError: (err) => toast.error(err.message),
-      },
+      item.isBlocked ? 'Work item unblocked' : 'Work item blocked',
     )
-  }
 
   return (
     <>
@@ -1949,83 +1884,28 @@ function ChildTaskRow({
 }) {
   const updateTask = useUpdateWorkItem(task.id)
 
-  function commitTaskTitle(raw: string) {
+  const { save, saveNumber } = useWorkItemFieldCommit(updateTask)
+
+  const commitTaskTitle = (raw: string) => {
     const next = raw.trim()
     if (!next || next === task.title) return
-    updateTask.mutate(
-      { title: next },
-      {
-        onSuccess: () => toast.success('Name updated'),
-        onError: (err) => toast.error(err.message),
-      },
-    )
+    save({ title: next }, 'Name updated')
   }
-
-  function commitTaskEstimate(raw: string) {
-    const num = raw.trim() === '' ? null : Number(raw)
-    if (num !== null && (isNaN(num) || num < 0)) {
-      toast.error('Estimate must be a positive number')
-      return
-    }
-    // Auto-sync To Do to the new estimate value.
-    updateTask.mutate(
-      { estimateHours: num, todoHours: num },
-      {
-        onSuccess: () => toast.success('Task estimate updated'),
-        onError: (err) => toast.error(err.message),
-      },
+  // Auto-sync To Do to the new estimate value.
+  const commitTaskEstimate = (raw: string) =>
+    saveNumber(
+      raw,
+      (n) => ({ estimateHours: n, todoHours: n }),
+      'Task estimate updated',
+      'Estimate',
     )
-  }
-
-  function commitTaskTodo(raw: string) {
-    const num = raw.trim() === '' ? null : Number(raw)
-    if (num !== null && (isNaN(num) || num < 0)) {
-      toast.error('Todo hours must be a positive number')
-      return
-    }
-    updateTask.mutate(
-      { todoHours: num },
-      {
-        onSuccess: () => toast.success('Todo hours updated'),
-        onError: (err) => toast.error(err.message),
-      },
-    )
-  }
-
-  function commitTaskActual(raw: string) {
-    const num = raw.trim() === '' ? null : Number(raw)
-    if (num !== null && (isNaN(num) || num < 0)) {
-      toast.error('Actual hours must be a positive number')
-      return
-    }
-    updateTask.mutate(
-      { actualHours: num },
-      {
-        onSuccess: () => toast.success('Actual hours updated'),
-        onError: (err) => toast.error(err.message),
-      },
-    )
-  }
-
-  function handleOwnerChange(userId: string | null) {
-    updateTask.mutate(
-      { assigneeId: userId },
-      {
-        onSuccess: () => toast.success('Owner updated'),
-        onError: (err) => toast.error(err.message),
-      },
-    )
-  }
-
-  function handleDevOwnerChange(userId: string | null) {
-    updateTask.mutate(
-      { devOwnerId: userId },
-      {
-        onSuccess: () => toast.success('Dev owner updated'),
-        onError: (err) => toast.error(err.message),
-      },
-    )
-  }
+  const commitTaskTodo = (raw: string) =>
+    saveNumber(raw, (n) => ({ todoHours: n }), 'Todo hours updated', 'Todo hours')
+  const commitTaskActual = (raw: string) =>
+    saveNumber(raw, (n) => ({ actualHours: n }), 'Actual hours updated', 'Actual hours')
+  const handleOwnerChange = (userId: string | null) => save({ assigneeId: userId }, 'Owner updated')
+  const handleDevOwnerChange = (userId: string | null) =>
+    save({ devOwnerId: userId }, 'Dev owner updated')
 
   const devOwnerMember = task.devOwnerId
     ? membersList.find((m) => m.userId === task.devOwnerId)
