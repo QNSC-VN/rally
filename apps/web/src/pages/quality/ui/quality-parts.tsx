@@ -1,5 +1,6 @@
 /* eslint-disable react-refresh/only-export-components -- QUALITY_COLUMNS is config that must co-locate with the cell renderers it references */
 import { useState, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 
@@ -44,6 +45,7 @@ function DefectStateInlineCell({
   canEdit: boolean
   projectId: string
 }) {
+  const { t } = useTranslation('quality')
   const qc = useQueryClient()
   const update = useUpdateWorkItem(defect.id)
   const currentVal = defect.defectState ?? 'submitted'
@@ -60,10 +62,10 @@ function DefectStateInlineCell({
     update.mutate({ defectState: val } as never, {
       onSuccess: () => {
         void qc.invalidateQueries({ queryKey: qualityKeys.all })
-        notify.success('Defect state updated')
+        notify.success(t('toasts.stateUpdated'))
       },
       onError: () => {
-        notify.error('Failed to update defect state')
+        notify.error(t('errors.stateUpdateFailed'))
       },
     })
   }
@@ -108,6 +110,7 @@ function FixedInBuildCell({
   canEdit: boolean
   projectId: string
 }) {
+  const { t } = useTranslation('quality')
   const qc = useQueryClient()
   const update = useUpdateWorkItem(defect.id)
 
@@ -117,10 +120,10 @@ function FixedInBuildCell({
     update.mutate({ fixedInBuild: trimmed || null } as never, {
       onSuccess: () => {
         void qc.invalidateQueries({ queryKey: qualityKeys.all })
-        notify.success('Fixed In Build updated')
+        notify.success(t('toasts.fixedInBuildUpdated'))
       },
       onError: () => {
-        notify.error('Failed to update')
+        notify.error(t('errors.updateFailed'))
       },
     })
   }
@@ -148,6 +151,7 @@ function FixedInBuildCell({
  * Single visual language for schedule state across every work-item grid.
  */
 function FlowStateStepperCell({ defect, canEdit }: { defect: DefectRow; canEdit: boolean }) {
+  const { t } = useTranslation('quality')
   const qc = useQueryClient()
   const update = useUpdateWorkItem(defect.id)
 
@@ -163,7 +167,7 @@ function FlowStateStepperCell({ defect, canEdit }: { defect: DefectRow; canEdit:
               void qc.invalidateQueries({ queryKey: qualityKeys.all })
             },
             onError: () => {
-              notify.error('Failed to update flow state')
+              notify.error(t('errors.flowStateUpdateFailed'))
             },
           })
         }
@@ -379,6 +383,7 @@ function DefectInlineCell({
   canEdit: boolean
   projectId: string
 }) {
+  const { t } = useTranslation('quality')
   const qc = useQueryClient()
   const update = useUpdateWorkItem(defect.id)
 
@@ -389,7 +394,7 @@ function DefectInlineCell({
         void qc.invalidateQueries({ queryKey: qualityKeys.all })
       },
       onError: () => {
-        notify.error('Failed to update')
+        notify.error(t('errors.updateFailed'))
       },
     })
   }
@@ -415,6 +420,7 @@ function DefectInlineCell({
 // ── Log Defect modal ───────────────────────────────────────────────────────
 
 export function LogDefectModal({ projectId, onClose }: { projectId: string; onClose: () => void }) {
+  const { t } = useTranslation('quality')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [severity, setSeverity] = useState('')
@@ -432,7 +438,7 @@ export function LogDefectModal({ projectId, onClose }: { projectId: string; onCl
   async function handleSubmit() {
     setError(null)
     if (!title.trim()) {
-      setError('Title is required')
+      setError(t('create.titleRequired'))
       return
     }
     try {
@@ -447,17 +453,17 @@ export function LogDefectModal({ projectId, onClose }: { projectId: string; onCl
         assigneeId: assigneeId || undefined,
         releaseId: releaseId || undefined,
       })
-      notify.success(`Defect "${title.trim()}" logged`)
+      notify.success(t('create.logged', { name: title.trim() }))
       onClose()
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to log defect'
+      const msg = err instanceof Error ? err.message : t('create.logFailed')
       setError(msg)
       notify.error(msg)
     }
   }
 
   return (
-    <AppModal open onClose={onClose} title="Log Defect" width={480}>
+    <AppModal open onClose={onClose} title={t('logDefect')} width={480}>
       <form
         onSubmit={(e) => {
           e.preventDefault()
@@ -465,7 +471,7 @@ export function LogDefectModal({ projectId, onClose }: { projectId: string; onCl
         }}
       >
         <ModalBody className="space-y-4">
-          <FormField label="Title" required error={error ?? undefined}>
+          <FormField label={t('create.titleLabel')} required error={error ?? undefined}>
             <Input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
@@ -473,7 +479,7 @@ export function LogDefectModal({ projectId, onClose }: { projectId: string; onCl
               autoFocus
             />
           </FormField>
-          <FormField label="Description">
+          <FormField label={t('common:description')}>
             <Textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -482,7 +488,7 @@ export function LogDefectModal({ projectId, onClose }: { projectId: string; onCl
             />
           </FormField>
           <div className="grid grid-cols-2 gap-3">
-            <FormField label="Severity">
+            <FormField label={t('create.severityLabel')}>
               <select
                 value={severity}
                 onChange={(e) => setSeverity(e.target.value)}
@@ -496,7 +502,7 @@ export function LogDefectModal({ projectId, onClose }: { projectId: string; onCl
                 ))}
               </select>
             </FormField>
-            <FormField label="Priority">
+            <FormField label={t('create.priorityLabel')}>
               <select
                 value={priority}
                 onChange={(e) => setPriority(e.target.value)}
@@ -511,7 +517,7 @@ export function LogDefectModal({ projectId, onClose }: { projectId: string; onCl
             </FormField>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <FormField label="Found In">
+            <FormField label={t('create.foundInLabel')}>
               <select
                 value={environment}
                 onChange={(e) => setEnvironment(e.target.value)}
@@ -525,7 +531,7 @@ export function LogDefectModal({ projectId, onClose }: { projectId: string; onCl
                 ))}
               </select>
             </FormField>
-            <FormField label="Root Cause">
+            <FormField label={t('create.rootCauseLabel')}>
               <select
                 value={rootCause}
                 onChange={(e) => setRootCause(e.target.value)}
@@ -543,13 +549,13 @@ export function LogDefectModal({ projectId, onClose }: { projectId: string; onCl
             </FormField>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <FormField label="Assignee">
+            <FormField label={t('create.assigneeLabel')}>
               <select
                 value={assigneeId}
                 onChange={(e) => setAssigneeId(e.target.value)}
                 className="w-full rounded-md border border-border-strong px-3 py-1.5 text-sm text-foreground"
               >
-                <option value="">Unassigned</option>
+                <option value="">{t('create.unassigned')}</option>
                 {(members ?? []).map((m) => (
                   <option key={m.userId} value={m.userId}>
                     {m.displayName ?? m.email}
@@ -557,7 +563,7 @@ export function LogDefectModal({ projectId, onClose }: { projectId: string; onCl
                 ))}
               </select>
             </FormField>
-            <FormField label="Release">
+            <FormField label={t('create.releaseLabel')}>
               <select
                 value={releaseId}
                 onChange={(e) => setReleaseId(e.target.value)}
@@ -575,10 +581,10 @@ export function LogDefectModal({ projectId, onClose }: { projectId: string; onCl
         </ModalBody>
         <ModalFooter>
           <Button variant="outline" type="button" onClick={onClose}>
-            Cancel
+            {t('common:cancel')}
           </Button>
           <Button type="submit" disabled={createDefect.isPending || !title.trim()}>
-            {createDefect.isPending ? 'Logging...' : 'Log Defect'}
+            {createDefect.isPending ? t('create.logging') : t('logDefect')}
           </Button>
         </ModalFooter>
       </form>

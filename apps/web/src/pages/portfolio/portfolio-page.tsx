@@ -9,6 +9,7 @@
  * from the rest of the app.
  */
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -55,6 +56,7 @@ function progressColor(pct: number): string {
 }
 
 export function PortfolioPage() {
+  const { t } = useTranslation('portfolio')
   const navigate = useNavigate()
   const { project, team } = useAppContext()
   const projectId = project?.projectId
@@ -92,7 +94,7 @@ export function PortfolioPage() {
   if (!projectId) {
     return (
       <div className="flex h-full items-center justify-center text-foreground-subtle">
-        <p className="text-sm">Select a project to view its portfolio.</p>
+        <p className="text-sm">{t('selectProject')}</p>
       </div>
     )
   }
@@ -103,17 +105,25 @@ export function PortfolioPage() {
     <div className="flex h-full flex-col bg-background">
       {/* ── Metric strip ─────────────────────────────────────────────────── */}
       <MetricStrip>
-        <MetricCard label="Initiatives" value={metrics?.initiatives ?? 0} minWidth={90} />
-        <MetricCard label="Features" value={metrics?.features ?? 0} minWidth={90} />
-        <MetricCard label="Total Stories" value={metrics?.totalStories ?? 0} minWidth={100} />
         <MetricCard
-          label="Accepted Stories"
+          label={t('metrics.initiatives')}
+          value={metrics?.initiatives ?? 0}
+          minWidth={90}
+        />
+        <MetricCard label={t('metrics.features')} value={metrics?.features ?? 0} minWidth={90} />
+        <MetricCard
+          label={t('metrics.totalStories')}
+          value={metrics?.totalStories ?? 0}
+          minWidth={100}
+        />
+        <MetricCard
+          label={t('metrics.acceptedStories')}
           value={metrics?.acceptedStories ?? 0}
           valueColor={BRAND.success}
           minWidth={120}
         />
         <MetricCard
-          label="Total Points"
+          label={t('metrics.totalPoints')}
           value={metrics?.totalPoints ?? 0}
           valueColor={BRAND.primaryLight}
           minWidth={100}
@@ -125,7 +135,7 @@ export function PortfolioPage() {
         className="flex items-center gap-2 border-b border-border-strong bg-card px-4"
         style={{ height: 44 }}
       >
-        <h2 className="text-ui-lg font-semibold text-foreground">Portfolio Hierarchy</h2>
+        <h2 className="text-ui-lg font-semibold text-foreground">{t('title')}</h2>
         <span className="text-ui-md text-muted-foreground">
           {project.projectName}
           {team ? ` · ${team.teamName}` : ''}
@@ -133,7 +143,7 @@ export function PortfolioPage() {
         {!canCreate && <ViewOnlyBadge />}
         {canCreate && (
           <Button size="sm" type="button" className="ml-auto" onClick={() => setShowCreate(true)}>
-            <Plus size={13} /> New Initiative
+            <Plus size={13} /> {t('newInitiative')}
           </Button>
         )}
       </div>
@@ -146,11 +156,11 @@ export function PortfolioPage() {
           </div>
         ) : isError ? (
           <div className="flex h-full items-center justify-center text-ui-lg text-destructive">
-            Failed to load portfolio data.
+            {t('loadError')}
           </div>
         ) : tree.length === 0 ? (
           <div className="flex h-full items-center justify-center text-ui-lg text-foreground-subtle">
-            No initiatives yet. Create an initiative to start planning the portfolio.
+            {t('empty')}
           </div>
         ) : (
           <>
@@ -158,16 +168,16 @@ export function PortfolioPage() {
             <div className="sticky top-0 z-10 flex h-8 items-center gap-2 border-b border-border-strong bg-surface-hover px-3">
               {(
                 [
-                  [COLS.id, 'ID'],
-                  [COLS.type, 'Type'],
-                  [COLS.name, 'Name'],
-                  [COLS.owner, 'Owner'],
-                  [COLS.status, 'Status'],
-                  [COLS.progress, 'Progress'],
-                  [COLS.release, 'Target Release'],
-                  [COLS.related, 'Related'],
-                  [COLS.blocked, 'Blocked'],
-                  [COLS.updated, 'Updated'],
+                  [COLS.id, t('columns.id')],
+                  [COLS.type, t('columns.type')],
+                  [COLS.name, t('common:name')],
+                  [COLS.owner, t('common:owner')],
+                  [COLS.status, t('common:status')],
+                  [COLS.progress, t('columns.progress')],
+                  [COLS.release, t('columns.targetRelease')],
+                  [COLS.related, t('columns.related')],
+                  [COLS.blocked, t('columns.blocked')],
+                  [COLS.updated, t('common:updatedAt')],
                 ] as const
               ).map(([cls, label]) => (
                 <div
@@ -359,6 +369,7 @@ function CreateInitiativeModal({
   members: Array<{ userId: string; displayName?: string | null; email?: string | null }>
   onClose: () => void
 }) {
+  const { t } = useTranslation('portfolio')
   const navigate = useNavigate()
   const qc = useQueryClient()
   const create = useCreateWorkItem()
@@ -370,7 +381,7 @@ function CreateInitiativeModal({
   async function submit(openDetail = false) {
     setError(null)
     if (!title.trim()) {
-      setError('Title is required')
+      setError(t('create.titleRequired'))
       return
     }
     try {
@@ -382,20 +393,20 @@ function CreateInitiativeModal({
         assigneeId: assigneeId || undefined,
       })
       void qc.invalidateQueries({ queryKey: portfolioKeys.all })
-      toast.success(`Initiative "${title.trim()}" created`)
+      toast.success(t('create.created', { name: title.trim() }))
       if (openDetail) void navigate({ to: '/item/$itemKey', params: { itemKey: item.itemKey } })
       else onClose()
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Failed to create initiative'
+      const msg = e instanceof Error ? e.message : t('create.createFailed')
       setError(msg)
       toast.error(msg)
     }
   }
 
   return (
-    <AppModal open onClose={onClose} title="New Initiative" width={460}>
+    <AppModal open onClose={onClose} title={t('create.title')} width={460}>
       <ModalBody className="space-y-4">
-        <FormField label="Title" required error={error ?? undefined}>
+        <FormField label={t('create.titleLabel')} required error={error ?? undefined}>
           <Input
             autoFocus
             value={title}
@@ -404,9 +415,9 @@ function CreateInitiativeModal({
           />
         </FormField>
 
-        <FormField label="Owner">
+        <FormField label={t('common:owner')}>
           <NativeSelect value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
-            <option value="">Unassigned</option>
+            <option value="">{t('create.unassigned')}</option>
             {members.map((m) => (
               <option key={m.userId} value={m.userId}>
                 {m.displayName ?? m.email}
@@ -415,23 +426,23 @@ function CreateInitiativeModal({
           </NativeSelect>
         </FormField>
 
-        <FormField label="Priority">
+        <FormField label={t('create.priorityLabel')}>
           <NativeSelect
             value={priority}
             onChange={(e) => setPriority(e.target.value as typeof priority)}
           >
-            <option value="none">None</option>
-            <option value="low">Low</option>
-            <option value="normal">Normal</option>
-            <option value="high">High</option>
-            <option value="urgent">Urgent</option>
+            <option value="none">{t('create.priority.none')}</option>
+            <option value="low">{t('create.priority.low')}</option>
+            <option value="normal">{t('create.priority.normal')}</option>
+            <option value="high">{t('create.priority.high')}</option>
+            <option value="urgent">{t('create.priority.urgent')}</option>
           </NativeSelect>
         </FormField>
       </ModalBody>
 
       <ModalFooter>
         <Button variant="outline" type="button" onClick={onClose}>
-          Cancel
+          {t('common:cancel')}
         </Button>
         <Button
           variant="secondary"
@@ -439,11 +450,11 @@ function CreateInitiativeModal({
           disabled={create.isPending}
           onClick={() => submit(true)}
         >
-          Create with details
+          {t('create.createWithDetails')}
         </Button>
         <Button type="button" disabled={create.isPending} onClick={() => submit(false)}>
           {create.isPending && <Loader2 size={11} className="animate-spin" />}
-          Create Initiative
+          {t('create.createButton')}
         </Button>
       </ModalFooter>
     </AppModal>

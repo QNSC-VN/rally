@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   UserCheck,
   Bell,
@@ -40,60 +41,61 @@ type SettingsTab = {
 }
 type SettingsGroup = { group: string; items: SettingsTab[] }
 
+// `group` / `label` hold i18n keys (settings namespace), resolved via t() at render.
 const SIDEBAR: SettingsGroup[] = [
   {
-    group: 'Personal',
+    group: 'groups.personal',
     items: [
-      { key: 'profile', label: 'Profile & Account', icon: UserCheck, requires: null },
-      { key: 'notifications', label: 'Notification Preferences', icon: Bell, requires: null },
+      { key: 'profile', label: 'nav.profile', icon: UserCheck, requires: null },
+      { key: 'notifications', label: 'nav.notifications', icon: Bell, requires: null },
     ],
   },
   {
-    group: 'Project',
+    group: 'groups.project',
     items: [
       {
         key: 'project',
-        label: 'Project Settings',
+        label: 'nav.project',
         icon: SlidersHorizontal,
         requires: PERMISSION.PROJECT_EDIT,
       },
       {
         key: 'workflow',
-        label: 'Workflow Status',
+        label: 'nav.workflow',
         icon: Activity,
         requires: PERMISSION.PROJECT_EDIT,
       },
-      { key: 'labels', label: 'Labels', icon: Tag, requires: PERMISSION.PROJECT_EDIT },
+      { key: 'labels', label: 'nav.labels', icon: Tag, requires: PERMISSION.PROJECT_EDIT },
     ],
   },
   {
-    group: 'Workspace',
+    group: 'groups.workspace',
     items: [
       {
         key: 'workspace',
-        label: 'Workspace Settings',
+        label: 'nav.workspace',
         icon: Globe,
         requires: PERMISSION.WORKSPACE_VIEW,
       },
       {
         key: 'members',
-        label: 'User Management',
+        label: 'nav.members',
         icon: Users,
         requires: PERMISSION.WORKSPACE_MANAGE_MEMBERS,
       },
       {
         key: 'teams',
-        label: 'Teams',
+        label: 'nav.teams',
         icon: UsersRound,
         requires: PERMISSION.WORKSPACE_MANAGE_TEAMS,
       },
       {
         key: 'roles',
-        label: 'Roles & Permissions',
+        label: 'nav.roles',
         icon: Shield,
         requires: PERMISSION.WORKSPACE_MANAGE_MEMBERS,
       },
-      { key: 'audit', label: 'Audit Log', icon: FileText, requires: PERMISSION.WORKSPACE_ALL },
+      { key: 'audit', label: 'nav.audit', icon: FileText, requires: PERMISSION.WORKSPACE_ALL },
     ],
   },
 ]
@@ -101,11 +103,12 @@ const SIDEBAR: SettingsGroup[] = [
 // ── Coming soon tab ───────────────────────────────────────────────────────────
 
 function ComingSoonTab({ label }: { label: string }) {
+  const { t } = useTranslation('settings')
   return (
     <EmptyState
       icon={<Lock size={22} className="text-border-strong" />}
       title={label}
-      description="Available in a future release."
+      description={t('comingSoon')}
     />
   )
 }
@@ -113,6 +116,7 @@ function ComingSoonTab({ label }: { label: string }) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export function SettingsPage() {
+  const { t } = useTranslation('settings')
   const [activeTab, setActiveTab] = useState('profile')
   const { hasPermission } = useAuthStore()
   // Each tab is gated on the exact permission its API enforces, so what the FE
@@ -120,7 +124,8 @@ export function SettingsPage() {
   // and namespace wildcards, so an admin still sees everything.
 
   const allItems = SIDEBAR.flatMap((g) => g.items)
-  const activeLabel = allItems.find((i) => i.key === activeTab)?.label ?? 'Settings'
+  const activeItem = allItems.find((i) => i.key === activeTab)
+  const activeLabel = activeItem ? t(activeItem.label) : t('common:settings')
 
   return (
     <div className="flex flex-1 overflow-hidden bg-background">
@@ -129,7 +134,7 @@ export function SettingsPage() {
         {SIDEBAR.map((group) => (
           <div key={group.group} className="mb-4">
             <p className="mb-1 px-2 text-ui-xs font-semibold tracking-wider text-foreground-subtle uppercase">
-              {group.group}
+              {t(group.group)}
             </p>
             {group.items.map((item) => {
               const Icon = item.icon
@@ -151,7 +156,7 @@ export function SettingsPage() {
                   }}
                 >
                   <Icon size={13} style={{ color: isActive ? BRAND.primary : BRAND.textMuted }} />
-                  {item.label}
+                  {t(item.label)}
                   {locked && <Lock size={10} className="ml-auto text-border-strong" />}
                 </button>
               )

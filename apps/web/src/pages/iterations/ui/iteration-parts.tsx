@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { ChevronLeft, Loader2 } from 'lucide-react'
 import { notify } from '@/shared/lib/toast'
@@ -39,6 +40,7 @@ export function CreateIterationModal({
   onClose: () => void
   onCreated: (id: string) => void
 }) {
+  const { t } = useTranslation('iterations')
   const { workspace, team } = useAppContext()
   const workspaceId = workspace?.workspaceId ?? ''
   // Project auto-fills from context (P2-IT-FR-001C) but an admin may override it
@@ -58,7 +60,7 @@ export function CreateIterationModal({
   // A pre-filled/inherited team that isn't linked to the selected project is
   // treated as unset so the create can't be rejected with
   // PROJECT_TEAM_LINK_NOT_FOUND (FR-001D). Derived — no effect needed.
-  const validTeamId = teams.some((t) => t.id === teamId) ? teamId : ''
+  const validTeamId = teams.some((tm) => tm.id === teamId) ? teamId : ''
 
   function handleProjectChange(nextProjectId: string) {
     if (nextProjectId === selectedProjectId) return
@@ -69,15 +71,15 @@ export function CreateIterationModal({
   async function submit(openDetail: boolean) {
     setError(null)
     if (!name.trim()) {
-      setError('Name is required')
+      setError(t('create.nameRequired'))
       return
     }
     if (!startDate) {
-      setError('Start Date is required')
+      setError(t('create.startDateRequired'))
       return
     }
     if (!endDate) {
-      setError('End Date is required')
+      setError(t('create.endDateRequired'))
       return
     }
     try {
@@ -89,20 +91,20 @@ export function CreateIterationModal({
         endDate: endDate || undefined,
         state,
       })
-      notify.success(`Iteration "${it.name}" created`)
+      notify.success(t('create.created', { name: it.name }))
       if (openDetail) onCreated(it.id)
       else onClose()
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Failed to create iteration'
+      const msg = e instanceof Error ? e.message : t('create.createFailed')
       setError(msg)
       notify.error(msg)
     }
   }
 
   return (
-    <AppModal open onClose={onClose} title="New Iteration" width={480}>
+    <AppModal open onClose={onClose} title={t('create.title')} width={480}>
       <ModalBody className="space-y-4">
-        <FormField label="Name" required error={error ?? undefined}>
+        <FormField label={t('common:name')} required error={error ?? undefined}>
           <Input
             autoFocus
             value={name}
@@ -111,13 +113,13 @@ export function CreateIterationModal({
           />
         </FormField>
         {/* Type — Phase 2 shows Iterations only, so the control is fixed (P2-IT-FR-003/011). */}
-        <FormField label="Type">
+        <FormField label={t('create.typeLabel')}>
           <NativeSelect value="iteration" disabled>
             <option value="iteration">Iteration</option>
           </NativeSelect>
         </FormField>
         {/* Project — auto-filled from context, overridable by admin (P2-IT-FR-001C/D). */}
-        <FormField label="Project" required>
+        <FormField label={t('create.projectLabel')} required>
           <NativeSelect
             value={selectedProjectId}
             onChange={(e) => handleProjectChange(e.target.value)}
@@ -129,25 +131,25 @@ export function CreateIterationModal({
             ))}
           </NativeSelect>
         </FormField>
-        <FormField label="Team">
+        <FormField label={t('create.teamLabel')}>
           <NativeSelect value={validTeamId} onChange={(e) => setTeamId(e.target.value)}>
             <option value="">No team</option>
-            {teams.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
+            {teams.map((tm) => (
+              <option key={tm.id} value={tm.id}>
+                {tm.name}
               </option>
             ))}
           </NativeSelect>
         </FormField>
         <div className="grid grid-cols-2 gap-4">
-          <FormField label="Start Date" required>
+          <FormField label={t('create.startDateLabel')} required>
             <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
           </FormField>
-          <FormField label="End Date" required>
+          <FormField label={t('create.endDateLabel')} required>
             <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
           </FormField>
         </div>
-        <FormField label="State" required>
+        <FormField label={t('create.stateLabel')} required>
           <NativeSelect value={state} onChange={(e) => setState(e.target.value as IterationState)}>
             <option value="planning">Planning</option>
             <option value="committed">Committed</option>
@@ -158,7 +160,7 @@ export function CreateIterationModal({
 
       <ModalFooter>
         <Button variant="outline" type="button" onClick={onClose}>
-          Cancel
+          {t('common:cancel')}
         </Button>
         <Button
           variant="secondary"
@@ -166,11 +168,11 @@ export function CreateIterationModal({
           disabled={create.isPending}
           onClick={() => submit(true)}
         >
-          Create with details
+          {t('createWithDetails')}
         </Button>
         <Button type="button" disabled={create.isPending} onClick={() => submit(false)}>
           {create.isPending && <Loader2 size={11} className="animate-spin" />}
-          Create Iteration
+          {t('createButton')}
         </Button>
       </ModalFooter>
     </AppModal>
@@ -188,11 +190,12 @@ export function IterationDetail({
   canManage: boolean
   onBack: () => void
 }) {
+  const { t } = useTranslation('iterations')
   const { project } = useAppContext()
   const { data: it, isLoading } = useIteration(id)
   const update = useUpdateIteration(id)
   const { data: teams = [] } = useProjectTeams(it?.projectId)
-  const team = teams.find((t) => t.id === it?.teamId) ?? null
+  const team = teams.find((tm) => tm.id === it?.teamId) ?? null
   const teamName = team?.name ?? null
   const disabled = !canManage
   const readonlyCls =
@@ -221,17 +224,17 @@ export function IterationDetail({
   async function handleCommit() {
     try {
       await commit.mutateAsync()
-      notify.success('Iteration committed')
+      notify.success(t('detail.committed'))
     } catch (e) {
-      notify.error(e instanceof Error ? e.message : 'Failed to commit iteration')
+      notify.error(e instanceof Error ? e.message : t('detail.commitFailed'))
     }
   }
   async function handleAccept() {
     try {
       await accept.mutateAsync()
-      notify.success('Iteration accepted')
+      notify.success(t('detail.accepted'))
     } catch (e) {
-      notify.error(e instanceof Error ? e.message : 'Failed to accept iteration')
+      notify.error(e instanceof Error ? e.message : t('detail.acceptFailed'))
     }
   }
 
@@ -259,7 +262,7 @@ export function IterationDetail({
             <ChevronLeft size={18} />
           </button>
           <span className="rounded-sm bg-primary-lighter px-1.5 py-px text-ui-xs font-semibold text-primary">
-            Iteration
+            {t('detail.typeBadge')}
           </span>
           <span className="font-mono text-ui-lg font-semibold">{it.iterationKey ?? 'New'}</span>
           <span className="h-5 w-px bg-white/25" />
@@ -274,8 +277,8 @@ export function IterationDetail({
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border-subtle bg-card px-6 py-2">
           <span className="text-ui-md text-muted-foreground">
             {it.state === 'planning'
-              ? 'Shape the scope, then commit to start the iteration.'
-              : `${unfinishedCount} unfinished item${unfinishedCount === 1 ? '' : 's'} · all assigned items must be accepted to close.`}
+              ? t('detail.planningHint')
+              : t('detail.unfinishedHint', { count: unfinishedCount })}
           </span>
           <div className="flex items-center gap-2">
             {it.state === 'committed' && (
@@ -285,18 +288,18 @@ export function IterationDetail({
                 disabled={unfinishedCount === 0}
                 onClick={() => setShowRollover(true)}
               >
-                Move Unfinished
+                {t('detail.moveUnfinished')}
               </Button>
             )}
             {it.state === 'planning' ? (
               <Button size="sm" disabled={commit.isPending} onClick={handleCommit}>
-                {commit.isPending && <Loader2 size={11} className="animate-spin" />} Commit
-                Iteration
+                {commit.isPending && <Loader2 size={11} className="animate-spin" />}{' '}
+                {t('detail.commit')}
               </Button>
             ) : (
               <Button size="sm" disabled={accept.isPending} onClick={handleAccept}>
-                {accept.isPending && <Loader2 size={11} className="animate-spin" />} Accept
-                Iteration
+                {accept.isPending && <Loader2 size={11} className="animate-spin" />}{' '}
+                {t('detail.accept')}
               </Button>
             )}
           </div>
@@ -312,16 +315,16 @@ export function IterationDetail({
               memberName={memberName}
               onOpen={(itemKey) => navigate({ to: '/item/$itemKey', params: { itemKey } })}
             />
-            <h2 className="text-lg font-semibold text-foreground">Details</h2>
+            <h2 className="text-lg font-semibold text-foreground">{t('detail.details')}</h2>
             <RichTextEditor
-              title="Theme"
+              title={t('detail.themeLabel')}
               value={it?.theme}
               minHeight={200}
               readOnly={disabled}
               onSave={(html) => patch({ theme: html || null })}
             />
             <RichTextEditor
-              title="Notes"
+              title={t('detail.notesLabel')}
               value={it?.notes}
               minHeight={160}
               readOnly={disabled}
@@ -331,19 +334,19 @@ export function IterationDetail({
         </main>
 
         <aside className="w-[320px] shrink-0 space-y-4 overflow-y-auto border-l border-border-subtle bg-card p-5">
-          <FormField label="Project">
+          <FormField label={t('detail.projectLabel')}>
             <div className={readonlyCls}>{project?.projectName ?? '—'}</div>
           </FormField>
-          <FormField label="Team">
+          <FormField label={t('detail.teamLabel')}>
             {teamName ? (
               <div className={readonlyCls}>
                 <TeamCell teamKey={team?.key} name={teamName} />
               </div>
             ) : (
-              <div className={readonlyCls}>No team</div>
+              <div className={readonlyCls}>{t('detail.noTeam')}</div>
             )}
           </FormField>
-          <FormField label="Start Date">
+          <FormField label={t('detail.startDateLabel')}>
             <Input
               type="date"
               value={it.startDate ?? ''}
@@ -351,7 +354,7 @@ export function IterationDetail({
               onBlur={(e) => patch({ startDate: e.target.value || null })}
             />
           </FormField>
-          <FormField label="End Date">
+          <FormField label={t('detail.endDateLabel')}>
             <Input
               type="date"
               value={it.endDate ?? ''}
@@ -359,12 +362,12 @@ export function IterationDetail({
               onBlur={(e) => patch({ endDate: e.target.value || null })}
             />
           </FormField>
-          <FormField label="State">
+          <FormField label={t('detail.stateLabel')}>
             <div className="flex h-9 items-center rounded border border-input bg-input-background px-3">
               <StatusBadge style={ITERATION_STATE_STYLE[it.state]} />
             </div>
           </FormField>
-          <FormField label="Planned Velocity">
+          <FormField label={t('detail.plannedVelocityLabel')}>
             <Input
               type="number"
               min={0}
@@ -400,37 +403,43 @@ function CapacityStrip({
   metrics: IterationStatus['metrics'] | undefined
   scopeCount: number
 }) {
+  const { t } = useTranslation('iterations')
   const committed = metrics?.totalPlanEstimate ?? 0
   const capacity = metrics?.plannedVelocity ?? 0
   const capacityPct = capacity > 0 ? Math.round((committed / capacity) * 100) : 0
   const tiles: Array<{ label: string; value: string; caption?: string }> = [
-    { label: 'Planned Velocity', value: `${capacity} pts` },
+    { label: t('capacity.plannedVelocity'), value: t('capacity.pts', { value: capacity }) },
     {
-      label: 'Committed',
-      value: `${committed} pts`,
-      caption: capacity > 0 ? `${capacityPct}% of capacity` : undefined,
+      label: t('capacity.committed'),
+      value: t('capacity.pts', { value: committed }),
+      caption: capacity > 0 ? t('capacity.ofCapacity', { pct: capacityPct }) : undefined,
     },
     {
-      label: 'Accepted',
-      value: `${metrics?.acceptedPoints ?? 0} pts`,
-      caption: `${metrics?.acceptedPercent ?? 0}% of committed`,
+      label: t('capacity.accepted'),
+      value: t('capacity.pts', { value: metrics?.acceptedPoints ?? 0 }),
+      caption: t('capacity.ofCommitted', { pct: metrics?.acceptedPercent ?? 0 }),
     },
-    { label: 'Days Left', value: metrics?.daysLeft != null ? String(metrics.daysLeft) : '—' },
-    { label: 'Scope Items', value: String(scopeCount) },
-    { label: 'Defects', value: String(metrics?.defectCount ?? 0) },
-    { label: 'Tasks', value: String(metrics?.taskCount ?? 0) },
+    {
+      label: t('capacity.daysLeft'),
+      value: metrics?.daysLeft != null ? String(metrics.daysLeft) : '—',
+    },
+    { label: t('capacity.scopeItems'), value: String(scopeCount) },
+    { label: t('capacity.defects'), value: String(metrics?.defectCount ?? 0) },
+    { label: t('capacity.tasks'), value: String(metrics?.taskCount ?? 0) },
   ]
   return (
     <section>
-      <h2 className="mb-2 text-lg font-semibold text-foreground">Capacity</h2>
+      <h2 className="mb-2 text-lg font-semibold text-foreground">{t('capacity.title')}</h2>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
-        {tiles.map((t) => (
-          <div key={t.label} className="rounded border border-border-subtle bg-card px-3 py-2.5">
+        {tiles.map((tile) => (
+          <div key={tile.label} className="rounded border border-border-subtle bg-card px-3 py-2.5">
             <div className="text-ui-xs font-semibold tracking-wide text-foreground-subtle uppercase">
-              {t.label}
+              {tile.label}
             </div>
-            <div className="mt-1 text-base font-semibold text-foreground">{t.value}</div>
-            {t.caption && <div className="text-ui-xs text-foreground-subtle">{t.caption}</div>}
+            <div className="mt-1 text-base font-semibold text-foreground">{tile.value}</div>
+            {tile.caption && (
+              <div className="text-ui-xs text-foreground-subtle">{tile.caption}</div>
+            )}
           </div>
         ))}
       </div>
@@ -449,27 +458,28 @@ function IterationScope({
   memberName: Map<string, string>
   onOpen: (itemKey: string) => void
 }) {
+  const { t } = useTranslation('iterations')
   return (
     <section>
       <h2 className="mb-2 text-lg font-semibold text-foreground">
-        Scope{' '}
+        {t('scope.title')}{' '}
         <span className="text-ui-lg font-normal text-foreground-subtle">({items.length})</span>
       </h2>
       <div className="overflow-hidden rounded border border-border-subtle bg-card">
         {items.length === 0 ? (
           <div className="px-4 py-8 text-center text-ui-lg text-foreground-subtle">
-            No work items assigned. Assign Stories or Defects from the Backlog.
+            {t('scope.empty')}
           </div>
         ) : (
           <table className="w-full text-ui-md">
             <thead>
               <tr className="border-b border-border-subtle text-muted-foreground">
-                <th className="px-3 py-2 text-left font-semibold">Type</th>
-                <th className="px-3 py-2 text-left font-semibold">ID</th>
-                <th className="px-3 py-2 text-left font-semibold">Name</th>
-                <th className="px-3 py-2 text-left font-semibold">Schedule State</th>
-                <th className="px-3 py-2 text-right font-semibold">Est.</th>
-                <th className="px-3 py-2 text-left font-semibold">Owner</th>
+                <th className="px-3 py-2 text-left font-semibold">{t('scope.type')}</th>
+                <th className="px-3 py-2 text-left font-semibold">{t('scope.id')}</th>
+                <th className="px-3 py-2 text-left font-semibold">{t('common:name')}</th>
+                <th className="px-3 py-2 text-left font-semibold">{t('scope.scheduleState')}</th>
+                <th className="px-3 py-2 text-right font-semibold">{t('scope.est')}</th>
+                <th className="px-3 py-2 text-left font-semibold">{t('common:owner')}</th>
               </tr>
             </thead>
             <tbody>
@@ -516,6 +526,7 @@ function RolloverModal({
   unfinishedCount: number
   onClose: () => void
 }) {
+  const { t } = useTranslation('iterations')
   const rollover = useRolloverIteration(iterationId)
   const [target, setTarget] = useState('') // '' = backlog
   const targets = iterations.filter((it) => it.id !== iterationId && it.state !== 'accepted')
@@ -523,26 +534,25 @@ function RolloverModal({
   async function submit() {
     try {
       const res = await rollover.mutateAsync({ moveToIterationId: target || undefined })
-      notify.success(`Moved ${res.movedCount} item${res.movedCount === 1 ? '' : 's'}`)
+      notify.success(t('rollover.moved', { count: res.movedCount }))
       onClose()
     } catch (e) {
-      notify.error(e instanceof Error ? e.message : 'Failed to move items')
+      notify.error(e instanceof Error ? e.message : t('rollover.moveFailed'))
     }
   }
 
   return (
-    <AppModal open onClose={onClose} title="Move Unfinished Items" width={440}>
+    <AppModal open onClose={onClose} title={t('rollover.title')} width={440}>
       <ModalBody className="space-y-4">
         <p className="text-ui-lg text-muted-foreground">
-          {unfinishedCount} unfinished (not-accepted) Story/Defect item
-          {unfinishedCount === 1 ? '' : 's'} will be moved out of this iteration.
+          {t('rollover.summary', { count: unfinishedCount })}
         </p>
-        <FormField label="Destination">
+        <FormField label={t('rollover.destination')}>
           <NativeSelect value={target} onChange={(e) => setTarget(e.target.value)}>
             <option value="">Backlog (no iteration)</option>
-            {targets.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
+            {targets.map((it) => (
+              <option key={it.id} value={it.id}>
+                {it.name}
               </option>
             ))}
           </NativeSelect>
@@ -550,10 +560,11 @@ function RolloverModal({
       </ModalBody>
       <ModalFooter>
         <Button variant="outline" type="button" onClick={onClose}>
-          Cancel
+          {t('common:cancel')}
         </Button>
         <Button type="button" disabled={rollover.isPending} onClick={submit}>
-          {rollover.isPending && <Loader2 size={11} className="animate-spin" />} Move Items
+          {rollover.isPending && <Loader2 size={11} className="animate-spin" />}{' '}
+          {t('rollover.moveItems')}
         </Button>
       </ModalFooter>
     </AppModal>

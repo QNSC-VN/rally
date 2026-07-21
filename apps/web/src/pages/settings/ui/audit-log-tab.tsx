@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { Clock } from 'lucide-react'
 
@@ -31,6 +32,7 @@ function formatAuditTime(iso: string): string {
 const DATE_INPUT_CLS = 'rounded border px-2 py-1.5 text-ui-sm text-foreground focus:outline-none'
 
 export function AuditLogTab() {
+  const { t } = useTranslation('settings')
   const [pageSize, setPageSize] = useState(AUDIT_DEFAULT_PAGE_SIZE)
   const [offset, setOffset] = useState(0)
   const [search, setSearch] = useState('')
@@ -62,7 +64,7 @@ export function AuditLogTab() {
 
   const resolver = useMemo<AuditNameResolver>(() => {
     const userNames = new Map(members.map((m) => [m.userId, m.displayName || m.email]))
-    const teamNames = new Map(teams.map((t) => [t.id, t.name]))
+    const teamNames = new Map(teams.map((team) => [team.id, team.name]))
     const roleNames = new Map(roles.map((r) => [r.id, r.name]))
     return {
       user: (id) => userNames.get(id),
@@ -71,7 +73,8 @@ export function AuditLogTab() {
     }
   }, [members, teams, roles])
 
-  const actorLabel = (a: (typeof rows)[number]): string => a.actorName ?? a.actorEmail ?? 'System'
+  const actorLabel = (a: (typeof rows)[number]): string =>
+    a.actorName ?? a.actorEmail ?? t('audit.system')
 
   const q = search.trim().toLowerCase()
   const filtered = q
@@ -86,9 +89,7 @@ export function AuditLogTab() {
     <div>
       {/* ── Header: note + filters + search ── */}
       <div className="mb-3 flex items-end justify-between gap-3">
-        <p className="text-ui-md text-foreground-subtle">
-          Administrative and settings changes for this workspace.
-        </p>
+        <p className="text-ui-md text-foreground-subtle">{t('audit.intro')}</p>
         <div className="flex items-center gap-2">
           <input
             type="date"
@@ -123,7 +124,7 @@ export function AuditLogTab() {
                 setOffset(0)
               }}
             >
-              Clear
+              {t('audit.clear')}
             </Button>
           )}
           <SearchInput
@@ -139,9 +140,9 @@ export function AuditLogTab() {
       <div className="overflow-hidden rounded border">
         <div className="flex h-8 items-center gap-2 border-b bg-background px-3">
           {[
-            ['w-56', 'Time'],
-            ['w-48', 'Actor'],
-            ['flex-1', 'Detail'],
+            ['w-56', t('audit.colTime')],
+            ['w-48', t('audit.colActor')],
+            ['flex-1', t('audit.colDetail')],
           ].map(([c, l]) => (
             <div
               key={l}
@@ -155,15 +156,15 @@ export function AuditLogTab() {
         {isLoading ? (
           <div className="flex items-center justify-center gap-2 py-10 text-foreground-subtle">
             <Spinner size="md" />
-            <span className="text-ui-md">Loading audit log…</span>
+            <span className="text-ui-md">{t('audit.loading')}</span>
           </div>
         ) : isError ? (
           <div className="px-3 py-6 text-center text-ui-sm text-destructive">
-            Failed to load audit log. Please try again.
+            {t('audit.loadError')}
           </div>
         ) : filtered.length === 0 ? (
           <div className="px-3 py-6 text-center text-ui-sm text-foreground-subtle">
-            No audit events found.
+            {t('audit.empty')}
           </div>
         ) : (
           filtered.map((a) => (

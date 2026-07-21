@@ -6,6 +6,7 @@
  * Priority, State, Schedule State, Fixed In Build, Iteration, Submitted By, Owner
  */
 import { useCallback, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
 import { DndContext } from '@dnd-kit/core'
@@ -41,6 +42,7 @@ import {
 } from './model/quality-config'
 
 export function QualityPage() {
+  const { t } = useTranslation('quality')
   const navigate = useNavigate()
   const qc = useQueryClient()
   const { project } = useAppContext()
@@ -144,7 +146,7 @@ export function QualityPage() {
       <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8">
         <AlertTriangle size={32} className="text-destructive" />
         <p className="text-sm text-muted-foreground">
-          {error instanceof Error ? error.message : 'Failed to load defects'}
+          {error instanceof Error ? error.message : t('errors.loadFailed')}
         </p>
       </div>
     )
@@ -155,37 +157,37 @@ export function QualityPage() {
       {/* Metrics strip */}
       <MetricStrip>
         <MetricCard
-          label="Open Defects"
+          label={t('metrics.openDefects')}
           value={metrics.openDefects}
           valueColor={BRAND.warning}
           minWidth={100}
         />
         <MetricCard
-          label="Critical"
+          label={t('metrics.critical')}
           value={metrics.critical}
           valueColor={BRAND.danger}
           minWidth={80}
         />
         <MetricCard
-          label="In Progress"
+          label={t('metrics.inProgress')}
           value={metrics.inProgress}
           valueColor={BRAND.primaryLight}
           minWidth={90}
         />
         <MetricCard
-          label="Verified / Accepted"
+          label={t('metrics.verifiedAccepted')}
           value={metrics.verifiedAccepted}
           valueColor={BRAND.success}
           minWidth={130}
         />
         <MetricCard
-          label="Reopened"
+          label={t('metrics.reopened')}
           value={metrics.reopened}
           valueColor={BRAND.textPrimary}
           minWidth={90}
         />
         <MetricCard
-          label="Blockers"
+          label={t('metrics.blockers')}
           value={metrics.blockers}
           valueColor={metrics.blockers > 0 ? BRAND.danger : BRAND.textPrimary}
           minWidth={80}
@@ -194,7 +196,7 @@ export function QualityPage() {
 
       {/* Toolbar */}
       <PageToolbar
-        title="Defects"
+        title={t('title')}
         search={{
           value: search,
           onChange: setSearch,
@@ -206,7 +208,7 @@ export function QualityPage() {
           canManage ? (
             <Button size="sm" onClick={() => setShowLogDefect(true)}>
               <Plus size={12} />
-              Log Defect
+              {t('logDefect')}
             </Button>
           ) : undefined
         }
@@ -227,7 +229,7 @@ export function QualityPage() {
               label="Severity"
               value={severityFilter}
               onChange={setSeverityFilter}
-              options={[{ value: 'all', label: 'All Severity' }, ...SEVERITY_OPTIONS]}
+              options={[{ value: 'all', label: t('filters.allSeverity') }, ...SEVERITY_OPTIONS]}
             />
 
             <FilterSelect
@@ -235,11 +237,11 @@ export function QualityPage() {
               value={envFilter}
               onChange={setEnvFilter}
               options={[
-                { value: 'all', label: 'All Env' },
-                { value: 'development', label: 'Development' },
-                { value: 'staging', label: 'Staging' },
-                { value: 'production', label: 'Production' },
-                { value: 'testing', label: 'Testing' },
+                { value: 'all', label: t('filters.allEnv') },
+                { value: 'development', label: t('filters.development') },
+                { value: 'staging', label: t('filters.staging') },
+                { value: 'production', label: t('filters.production') },
+                { value: 'testing', label: t('filters.testing') },
               ]}
             />
 
@@ -247,21 +249,24 @@ export function QualityPage() {
               label="Priority"
               value={priorityFilter}
               onChange={setPriorityFilter}
-              options={[{ value: 'all', label: 'All Priority' }, ...PRIORITY_OPTIONS]}
+              options={[{ value: 'all', label: t('filters.allPriority') }, ...PRIORITY_OPTIONS]}
             />
 
             <FilterSelect
               label="Flow State"
               value={stateFilter}
               onChange={setStateFilter}
-              options={[{ value: 'all', label: 'All Flow States' }, ...FLOW_STATE_OPTIONS]}
+              options={[{ value: 'all', label: t('filters.allFlowStates') }, ...FLOW_STATE_OPTIONS]}
             />
 
             <FilterSelect
               label="Defect State"
               value={defectStateFilter}
               onChange={setDefectStateFilter}
-              options={[{ value: 'all', label: 'All Defect States' }, ...DEFECT_STATE_OPTIONS]}
+              options={[
+                { value: 'all', label: t('filters.allDefectStates') },
+                ...DEFECT_STATE_OPTIONS,
+              ]}
             />
 
             <FilterSelect
@@ -269,7 +274,7 @@ export function QualityPage() {
               value={ownerFilter}
               onChange={setOwnerFilter}
               options={[
-                { value: 'all', label: 'All Owners' },
+                { value: 'all', label: t('filters.allOwners') },
                 ...(members ?? []).map((m) => ({
                   value: m.userId,
                   label: m.displayName ?? m.email ?? m.userId,
@@ -282,7 +287,7 @@ export function QualityPage() {
               value={releaseFilter}
               onChange={setReleaseFilter}
               options={[
-                { value: 'all', label: 'All Releases' },
+                { value: 'all', label: t('filters.allReleases') },
                 ...(releases ?? []).map((r) => ({ value: r.id, label: r.name })),
               ]}
             />
@@ -292,13 +297,13 @@ export function QualityPage() {
               value={rootCauseFilter}
               onChange={setRootCauseFilter}
               options={[
-                { value: 'all', label: 'All Root Causes' },
-                { value: 'requirements', label: 'Requirements' },
-                { value: 'design', label: 'Design' },
-                { value: 'code', label: 'Code' },
-                { value: 'test', label: 'Test' },
-                { value: 'integration', label: 'Integration' },
-                { value: 'other', label: 'Other' },
+                { value: 'all', label: t('filters.allRootCauses') },
+                { value: 'requirements', label: t('filters.requirements') },
+                { value: 'design', label: t('filters.design') },
+                { value: 'code', label: t('filters.code') },
+                { value: 'test', label: t('filters.test') },
+                { value: 'integration', label: t('filters.integration') },
+                { value: 'other', label: t('filters.other') },
               ]}
             />
 
@@ -307,14 +312,14 @@ export function QualityPage() {
               value={resolutionFilter}
               onChange={setResolutionFilter}
               options={[
-                { value: 'all', label: 'All Resolutions' },
-                { value: 'unresolved', label: 'Open (Unresolved)' },
-                { value: 'fixed', label: 'Fixed' },
-                { value: 'wont_fix', label: "Won't Fix" },
-                { value: 'duplicate', label: 'Duplicate' },
-                { value: 'cannot_reproduce', label: 'Cannot Reproduce' },
-                { value: 'deferred', label: 'Deferred' },
-                { value: 'by_design', label: 'By Design' },
+                { value: 'all', label: t('filters.allResolutions') },
+                { value: 'unresolved', label: t('filters.unresolved') },
+                { value: 'fixed', label: t('filters.fixed') },
+                { value: 'wont_fix', label: t('filters.wontFix') },
+                { value: 'duplicate', label: t('filters.duplicate') },
+                { value: 'cannot_reproduce', label: t('filters.cannotReproduce') },
+                { value: 'deferred', label: t('filters.deferred') },
+                { value: 'by_design', label: t('filters.byDesign') },
               ]}
             />
           </>
@@ -364,8 +369,8 @@ export function QualityPage() {
                   envFilter !== 'all' ||
                   priorityFilter !== 'all' ||
                   stateFilter !== 'all'
-                    ? 'No defects match your filters'
-                    : 'No defects logged yet'}
+                    ? t('empty.noMatch')
+                    : t('empty.none')}
                 </p>
               </div>
             ) : undefined

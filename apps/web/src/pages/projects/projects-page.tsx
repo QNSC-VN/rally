@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { FolderKanban, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { BRAND } from '@/shared/config/brand'
@@ -23,13 +24,8 @@ import {
   NewProjectModal,
 } from './ui/project-parts'
 
-/** Extract a human-readable message from an API error response. */
-function parseApiError(err: unknown): string {
-  if (err instanceof Error) return err.message
-  return 'An unexpected error occurred'
-}
-
 export function ProjectsPage() {
+  const { t } = useTranslation('projects')
   const { workspace } = useAppContext()
   const workspaceId = workspace?.workspaceId
   const { user: currentUser } = useAuthStore()
@@ -146,10 +142,9 @@ export function ProjectsPage() {
     // Restore doesn't need confirmation
     try {
       await updateProject.mutateAsync({ id: project.id, input: { status: 'active' } })
-      toast.success(`"${project.name}" restored`)
+      toast.success(t('toast.restored', { name: project.name }))
     } catch (err) {
-      const msg = parseApiError(err)
-      toast.error(msg)
+      toast.error(err instanceof Error ? err.message : t('errors.unexpected'))
     }
     setOpenMenu(null)
   }
@@ -158,11 +153,10 @@ export function ProjectsPage() {
     if (!archivingProject) return
     try {
       await updateProject.mutateAsync({ id: archivingProject.id, input: { status: 'archived' } })
-      toast.success(`"${archivingProject.name}" archived`)
+      toast.success(t('toast.archived', { name: archivingProject.name }))
       setArchivingProject(null)
     } catch (err) {
-      const msg = parseApiError(err)
-      toast.error(msg)
+      toast.error(err instanceof Error ? err.message : t('errors.unexpected'))
     }
   }
 
@@ -207,29 +201,29 @@ export function ProjectsPage() {
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between border-b border-border-subtle bg-card px-6 py-3">
         <div>
-          <h1 className="text-ui-xl font-semibold text-foreground">Projects</h1>
+          <h1 className="text-ui-xl font-semibold text-foreground">{t('title')}</h1>
           <p className="text-ui-sm text-foreground-subtle">
-            {workspace?.workspaceName ?? 'Workspace'} · {activeCount} active{' '}
-            {activeCount === 1 ? 'project' : 'projects'}
+            {workspace?.workspaceName ?? t('subtitle.workspace')} · {activeCount}{' '}
+            {activeCount === 1 ? t('subtitle.oneActive') : t('subtitle.manyActive')}
           </p>
         </div>
         <Button size="sm" onClick={() => setShowNewModal(true)}>
           <Plus size={13} />
-          New Project
+          {t('create.title')}
         </Button>
       </div>
 
       {/* Summary metric strip */}
       <MetricStrip>
-        <MetricCard label="Total" value={stats.total} minWidth={80} />
+        <MetricCard label={t('metrics.total')} value={stats.total} minWidth={80} />
         <MetricCard
-          label="Active"
+          label={t('metrics.active')}
           value={stats.active}
           valueColor={BRAND.primaryLight}
           minWidth={80}
         />
-        <MetricCard label="Archived" value={stats.archived} minWidth={90} />
-        <MetricCard label="Linked Teams" value={stats.linkedTeams} minWidth={110} />
+        <MetricCard label={t('metrics.archived')} value={stats.archived} minWidth={90} />
+        <MetricCard label={t('metrics.linkedTeams')} value={stats.linkedTeams} minWidth={110} />
       </MetricStrip>
 
       {/* Toolbar */}
@@ -256,7 +250,11 @@ export function ProjectsPage() {
                 color: filter === tab ? BRAND.primary : BRAND.textSecondary,
               }}
             >
-              {tab === 'All' ? 'All' : tab === 'active' ? 'Active' : 'Archived'}
+              {tab === 'All'
+                ? t('status.all')
+                : tab === 'active'
+                  ? t('status.active')
+                  : t('status.archived')}
             </button>
           ))}
         </div>
@@ -284,8 +282,8 @@ export function ProjectsPage() {
                   className="text-foreground-subtle opacity-40"
                 />
               }
-              title="No projects found"
-              description="Try adjusting your search or filter."
+              title={t('emptyFiltered')}
+              description={t('emptyFilteredDesc')}
             />
           ) : undefined
         }

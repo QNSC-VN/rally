@@ -1,0 +1,18 @@
+{
+  "title": "Backlog",
+  "selectProject": "Select a project to view the backlog.",
+  "loadError": "Failed to load backlog.",
+  "empty": "No backlog items match your filters.",
+  "createButton": "Create Work Item",
+  "createFirst": "+ Create Work Item",
+  "created": "{{type}} \"{{title}}\" created",
+  "typeStory": "Story",
+  "typeDefect": "Defect",
+  "filters": {
+    "allTypes": "All Types",
+    "allOwners": "All Owners",
+    "unassigned": "Unassigned",
+    "allReleases": "All Releases",
+    "allIterations": "All Iterations"
+  }
+}

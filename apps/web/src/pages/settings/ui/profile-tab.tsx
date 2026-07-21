@@ -1,4 +1,5 @@
 import { useForm } from 'react-hook-form'
+import { useTranslation } from 'react-i18next'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Loader2, LogOut } from 'lucide-react'
@@ -13,14 +14,13 @@ import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { NativeSelect } from '@/shared/ui/native-select'
 
-const profileSchema = z.object({
-  displayName: z.string().min(1, 'Display name is required').max(255).trim(),
-  avatarUrl: z.string().optional(),
-  locale: z.string().min(2).max(10),
-  timezone: z.string().min(1).max(100),
-  phone: z.string().max(32).trim().optional(),
-})
-type ProfileForm = z.infer<typeof profileSchema>
+type ProfileForm = {
+  displayName: string
+  avatarUrl?: string
+  locale: string
+  timezone: string
+  phone?: string
+}
 
 const TIMEZONES = [
   'UTC',
@@ -44,8 +44,17 @@ function SectionTitle({ children, className }: { children: React.ReactNode; clas
 }
 
 export function ProfileTab() {
+  const { t } = useTranslation('settings')
   const { user, setUser } = useAuthStore()
   const navigate = useNavigate()
+
+  const profileSchema = z.object({
+    displayName: z.string().min(1, t('profile.displayNameRequired')).max(255).trim(),
+    avatarUrl: z.string().optional(),
+    locale: z.string().min(2).max(10),
+    timezone: z.string().min(1).max(100),
+    phone: z.string().max(32).trim().optional(),
+  })
 
   const profile = useForm<ProfileForm>({
     resolver: zodResolver(profileSchema),
@@ -90,9 +99,9 @@ export function ProfileTab() {
         { ...u, avatarUrl: u.avatarUrl ?? undefined, permissions: u.permissions ?? [] },
         useAuthStore.getState().memberships,
       )
-      notify.success('Profile updated')
+      notify.success(t('profile.profileUpdated'))
     } catch {
-      profile.setError('root', { message: 'Network error — please try again.' })
+      profile.setError('root', { message: t('profile.networkError') })
     }
   }
 
@@ -103,7 +112,7 @@ export function ProfileTab() {
       /* ignore */
     }
     useAuthStore.getState().clearAuth()
-    notify.success('Signed out from all devices')
+    notify.success(t('profile.signedOutAll'))
     await navigate({ to: '/login' })
   }
 
@@ -111,21 +120,30 @@ export function ProfileTab() {
     <div className="flex flex-col gap-8">
       {/* ── Profile info ── */}
       <section>
-        <SectionTitle className="mb-4">Personal Information</SectionTitle>
+        <SectionTitle className="mb-4">{t('profile.personalInfo')}</SectionTitle>
         <form
           onSubmit={profile.handleSubmit(onSaveProfile)}
           className="flex max-w-md flex-col gap-4"
         >
-          <FormField label="Display Name" error={profile.formState.errors.displayName?.message}>
+          <FormField
+            label={t('profile.displayNameLabel')}
+            error={profile.formState.errors.displayName?.message}
+          >
             <Input {...profile.register('displayName')} placeholder="Your display name" />
           </FormField>
-          <FormField label="Avatar URL" error={profile.formState.errors.avatarUrl?.message}>
+          <FormField
+            label={t('profile.avatarUrlLabel')}
+            error={profile.formState.errors.avatarUrl?.message}
+          >
             <Input {...profile.register('avatarUrl')} placeholder="https://..." />
           </FormField>
-          <FormField label="Phone" error={profile.formState.errors.phone?.message}>
+          <FormField
+            label={t('profile.phoneLabel')}
+            error={profile.formState.errors.phone?.message}
+          >
             <Input {...profile.register('phone')} placeholder="+84 ..." />
           </FormField>
-          <FormField label="Locale">
+          <FormField label={t('profile.localeLabel')}>
             <NativeSelect {...profile.register('locale')}>
               <option value="en">English</option>
               <option value="vi">Tiếng Việt</option>
@@ -133,7 +151,7 @@ export function ProfileTab() {
               <option value="zh">中文</option>
             </NativeSelect>
           </FormField>
-          <FormField label="Timezone">
+          <FormField label={t('profile.timezoneLabel')}>
             <NativeSelect {...profile.register('timezone')}>
               {TIMEZONES.map((tz) => (
                 <option key={tz} value={tz}>
@@ -150,7 +168,7 @@ export function ProfileTab() {
               {profile.formState.isSubmitting ? (
                 <Loader2 size={13} className="animate-spin" />
               ) : null}
-              Save changes
+              {t('saveChanges')}
             </Button>
           </div>
         </form>
@@ -160,10 +178,9 @@ export function ProfileTab() {
 
       {/* ── Password & security ── */}
       <section>
-        <SectionTitle className="mb-2">Password &amp; Security</SectionTitle>
+        <SectionTitle className="mb-2">{t('profile.passwordSecurity')}</SectionTitle>
         <p className="max-w-md text-ui-md text-muted-foreground">
-          Your password and multi-factor authentication are managed by your organisation through
-          Microsoft. Sign in with your organisational account to update security settings.
+          {t('profile.passwordSecurityNote')}
         </p>
       </section>
 
@@ -171,16 +188,19 @@ export function ProfileTab() {
 
       {/* ── Account ── */}
       <section>
-        <SectionTitle className="mb-1">Account</SectionTitle>
+        <SectionTitle className="mb-1">{t('profile.account')}</SectionTitle>
         <p className="mb-4 text-ui-md text-muted-foreground">
-          Email: <span className="font-medium text-foreground">{user?.email}</span>
+          {t('profile.emailLabel')}{' '}
+          <span className="font-medium text-foreground">{user?.email}</span>
           {user?.emailVerified === false && (
-            <span className="ml-2 text-ui-sm font-semibold text-warning">Not verified</span>
+            <span className="ml-2 text-ui-sm font-semibold text-warning">
+              {t('profile.notVerified')}
+            </span>
           )}
         </p>
         <Button variant="destructive" onClick={() => void handleLogoutAll()}>
           <LogOut size={13} />
-          Sign out from all devices
+          {t('profile.signOutAll')}
         </Button>
       </section>
     </div>

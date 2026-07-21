@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Loader2,
   UserPlus,
@@ -57,6 +58,7 @@ function sanitizeKey(value: string): string {
 }
 
 function CreateTeamModal({ workspaceId, onClose }: { workspaceId: string; onClose: () => void }) {
+  const { t } = useTranslation('settings')
   const [name, setName] = useState('')
   const [key, setKey] = useState('')
   const [description, setDescription] = useState('')
@@ -72,18 +74,18 @@ function CreateTeamModal({ workspaceId, onClose }: { workspaceId: string; onClos
         key: key.trim(),
         description: description.trim() || undefined,
       })
-      notify.success(`Team "${name}" created`)
+      notify.success(t('teams.teamCreated', { name }))
       onClose()
     } catch (err) {
-      notify.fromError(err, 'Failed to create team')
+      notify.fromError(err, t('teams.createFailed'))
     }
   }
 
   return (
-    <AppModal open onClose={onClose} title="New Team" width={440}>
+    <AppModal open onClose={onClose} title={t('teams.newTeamTitle')} width={440}>
       <form onSubmit={(e) => void handleSubmit(e)}>
         <ModalBody className="space-y-4">
-          <FormField label="Team name" required>
+          <FormField label={t('teams.teamNameLabel')} required>
             <Input
               value={name}
               onChange={(e) => {
@@ -94,14 +96,14 @@ function CreateTeamModal({ workspaceId, onClose }: { workspaceId: string; onClos
               autoFocus
             />
           </FormField>
-          <FormField label="Key" required hint="Short alphanumeric identifier (max 8 chars)">
+          <FormField label={t('teams.keyLabel')} required hint={t('teams.keyHint')}>
             <Input
               value={key}
               onChange={(e) => setKey(sanitizeKey(e.target.value))}
               placeholder="PLAT"
             />
           </FormField>
-          <FormField label="Description">
+          <FormField label={t('common:description')}>
             <Textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -113,10 +115,10 @@ function CreateTeamModal({ workspaceId, onClose }: { workspaceId: string; onClos
         <ModalFooter>
           <Button type="submit" disabled={create.isPending || !name.trim() || !key.trim()}>
             {create.isPending ? <Loader2 size={12} className="animate-spin" /> : null}
-            Create team
+            {t('teams.createTeam')}
           </Button>
           <Button type="button" variant="outline" onClick={onClose}>
-            Cancel
+            {t('common:cancel')}
           </Button>
         </ModalFooter>
       </form>
@@ -125,6 +127,7 @@ function CreateTeamModal({ workspaceId, onClose }: { workspaceId: string; onClos
 }
 
 function EditTeamModal({ team, onClose }: { team: Team; onClose: () => void }) {
+  const { t } = useTranslation('settings')
   const [name, setName] = useState(team.name)
   const [description, setDescription] = useState(team.description ?? '')
   const [leadId, setLeadId] = useState(team.leadId ?? '')
@@ -140,23 +143,23 @@ function EditTeamModal({ team, onClose }: { team: Team; onClose: () => void }) {
         description: description.trim() || null,
         leadId: leadId || null,
       })
-      notify.success('Team updated')
+      notify.success(t('teams.teamUpdated'))
       onClose()
     } catch (err) {
-      notify.fromError(err, 'Failed to update team')
+      notify.fromError(err, t('teams.updateFailed'))
     }
   }
 
   return (
-    <AppModal open onClose={onClose} title={`Edit ${team.name}`} width={440}>
+    <AppModal open onClose={onClose} title={t('teams.editTitle', { name: team.name })} width={440}>
       <form onSubmit={(e) => void handleSubmit(e)}>
         <ModalBody className="space-y-4">
-          <FormField label="Team name" required>
+          <FormField label={t('teams.teamNameLabel')} required>
             <Input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
           </FormField>
-          <FormField label="Team lead" hint="Choose from current team members">
+          <FormField label={t('teams.teamLeadLabel')} hint={t('teams.teamLeadHint')}>
             <NativeSelect value={leadId} onChange={(e) => setLeadId(e.target.value)}>
-              <option value="">— No lead —</option>
+              <option value="">{t('teams.noLeadOption')}</option>
               {members.map((m) => (
                 <option key={m.userId} value={m.userId}>
                   {m.displayName ?? m.email ?? m.userId}
@@ -164,7 +167,7 @@ function EditTeamModal({ team, onClose }: { team: Team; onClose: () => void }) {
               ))}
             </NativeSelect>
           </FormField>
-          <FormField label="Description">
+          <FormField label={t('common:description')}>
             <Textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -175,10 +178,10 @@ function EditTeamModal({ team, onClose }: { team: Team; onClose: () => void }) {
         <ModalFooter>
           <Button type="submit" disabled={update.isPending || !name.trim()}>
             {update.isPending ? <Loader2 size={12} className="animate-spin" /> : null}
-            Save
+            {t('common:save')}
           </Button>
           <Button type="button" variant="outline" onClick={onClose}>
-            Cancel
+            {t('common:cancel')}
           </Button>
         </ModalFooter>
       </form>
@@ -187,6 +190,7 @@ function EditTeamModal({ team, onClose }: { team: Team; onClose: () => void }) {
 }
 
 function AddMemberModal({ teamId, onClose }: { teamId: string; onClose: () => void }) {
+  const { t } = useTranslation('settings')
   const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
   const [selectedUserId, setSelectedUserId] = useState('')
   const addMember = useAddTeamMember(teamId)
@@ -201,28 +205,26 @@ function AddMemberModal({ teamId, onClose }: { teamId: string; onClose: () => vo
     if (!selectedUserId) return
     try {
       await addMember.mutateAsync(selectedUserId)
-      notify.success('Member added')
+      notify.success(t('teams.memberAdded'))
       onClose()
     } catch (err) {
-      notify.fromError(err, 'Failed to add member')
+      notify.fromError(err, t('teams.addMemberFailed'))
     }
   }
 
   return (
-    <AppModal open onClose={onClose} title="Add team member" width={400}>
+    <AppModal open onClose={onClose} title={t('teams.addMemberTitle')} width={400}>
       <form onSubmit={(e) => void handleAdd(e)}>
         <ModalBody className="space-y-4">
           {available.length === 0 ? (
-            <p className="text-ui-lg text-foreground-subtle">
-              All workspace members are already on this team.
-            </p>
+            <p className="text-ui-lg text-foreground-subtle">{t('teams.allMembersOnTeam')}</p>
           ) : (
-            <FormField label="Select member" required>
+            <FormField label={t('teams.selectMemberLabel')} required>
               <NativeSelect
                 value={selectedUserId}
                 onChange={(e) => setSelectedUserId(e.target.value)}
               >
-                <option value="">— Select a member —</option>
+                <option value="">{t('teams.selectMemberOption')}</option>
                 {available.map((m) => (
                   <option key={m.userId} value={m.userId}>
                     {m.displayName ?? m.email ?? m.userId}
@@ -242,10 +244,10 @@ function AddMemberModal({ teamId, onClose }: { teamId: string; onClose: () => vo
             ) : (
               <UserPlus size={13} />
             )}
-            Add to team
+            {t('teams.addToTeam')}
           </Button>
           <Button type="button" variant="outline" onClick={onClose}>
-            Cancel
+            {t('common:cancel')}
           </Button>
         </ModalFooter>
       </form>
@@ -277,6 +279,7 @@ function TeamDetail({
   roster: Map<string, MemberWithProfile>
   onBack: () => void
 }) {
+  const { t } = useTranslation('settings')
   const { data: members = [], isLoading } = useTeamMembers(team.id)
   const remove = useRemoveTeamMember(team.id)
   const update = useUpdateTeam(team.id)
@@ -288,9 +291,9 @@ function TeamDetail({
   async function handleRemoveMember(userId: string) {
     try {
       await remove.mutateAsync(userId)
-      notify.success('Member removed')
+      notify.success(t('teams.memberRemoved'))
     } catch (err) {
-      notify.fromError(err, 'Failed to remove team member')
+      notify.fromError(err, t('teams.removeMemberFailed'))
     } finally {
       setMemberToRemove(null)
     }
@@ -300,9 +303,9 @@ function TeamDetail({
     const next = team.status === 'active' ? 'archived' : 'active'
     try {
       await update.mutateAsync({ status: next })
-      notify.success(next === 'archived' ? 'Team archived' : 'Team restored')
+      notify.success(next === 'archived' ? t('teams.teamArchived') : t('teams.teamRestored'))
     } catch (err) {
-      notify.fromError(err, 'Failed to update team status')
+      notify.fromError(err, t('teams.updateStatusFailed'))
     } finally {
       setConfirmArchive(false)
     }
@@ -313,7 +316,7 @@ function TeamDetail({
       {/* Back + header */}
       <div className="mb-5 flex items-center gap-3">
         <Button variant="link" size="sm" onClick={onBack} className="px-0">
-          <ArrowLeft size={13} /> All teams
+          <ArrowLeft size={13} /> {t('teams.allTeams')}
         </Button>
         <span className="text-border">·</span>
         <span className="text-ui-lg font-semibold text-foreground">{team.name}</span>
@@ -323,7 +326,7 @@ function TeamDetail({
         <div className="ml-auto flex items-center gap-3">
           <TeamStatusBadge status={team.status} />
           <Button variant="outline" size="sm" onClick={() => setShowEdit(true)}>
-            <Pencil size={12} /> Edit
+            <Pencil size={12} /> {t('common:edit')}
           </Button>
           <Button
             variant="outline"
@@ -338,7 +341,7 @@ function TeamDetail({
             ) : (
               <Archive size={12} />
             )}
-            {team.status === 'active' ? 'Archive' : 'Restore'}
+            {team.status === 'active' ? t('common:archive') : t('common:restore')}
           </Button>
         </div>
       </div>
@@ -351,7 +354,7 @@ function TeamDetail({
       <div className="mb-6 flex flex-wrap items-center gap-x-8 gap-y-2">
         <div className="flex items-center gap-2">
           <span className="text-ui-sm font-semibold tracking-wide text-foreground-subtle uppercase">
-            Lead
+            {t('teams.leadLabel')}
           </span>
           {lead ? (
             <span className="flex items-center gap-1.5">
@@ -359,12 +362,12 @@ function TeamDetail({
               <span className="text-ui-lg text-foreground">{lead.displayName}</span>
             </span>
           ) : (
-            <span className="text-ui-lg text-foreground-disabled">No lead assigned</span>
+            <span className="text-ui-lg text-foreground-disabled">{t('teams.noLeadAssigned')}</span>
           )}
         </div>
         <div className="flex items-center gap-2">
           <span className="text-ui-sm font-semibold tracking-wide text-foreground-subtle uppercase">
-            Created
+            {t('teams.createdLabel')}
           </span>
           <span className="text-ui-lg text-foreground">{formatDate(team.createdAt)}</span>
         </div>
@@ -372,9 +375,11 @@ function TeamDetail({
 
       {/* Members section */}
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-ui-lg font-semibold text-foreground">Members ({members.length})</h3>
+        <h3 className="text-ui-lg font-semibold text-foreground">
+          {t('teams.membersCount', { count: members.length })}
+        </h3>
         <Button size="sm" onClick={() => setShowAddMember(true)}>
-          <Plus size={12} /> Add member
+          <Plus size={12} /> {t('teams.addMember')}
         </Button>
       </div>
 
@@ -384,9 +389,7 @@ function TeamDetail({
         </div>
       ) : members.length === 0 ? (
         <div className="rounded-lg border border-dashed py-10 text-center">
-          <p className="text-ui-lg text-foreground-subtle">
-            No members yet. Add someone to get started.
-          </p>
+          <p className="text-ui-lg text-foreground-subtle">{t('teams.noMembersYet')}</p>
         </div>
       ) : (
         <div className="overflow-hidden rounded-lg border">
@@ -407,7 +410,7 @@ function TeamDetail({
                     {name}
                     {isLead && (
                       <span className="rounded bg-primary-lighter px-1.5 py-0.5 text-ui-xs font-semibold text-primary">
-                        Lead
+                        {t('teams.leadBadge')}
                       </span>
                     )}
                   </p>
@@ -436,9 +439,9 @@ function TeamDetail({
 
       <ConfirmDialog
         open={confirmArchive}
-        title={`Archive ${team.name}?`}
-        message="The team will be hidden from active team lists. You can restore it later."
-        confirmLabel="Archive team"
+        title={t('teams.archiveTitle', { name: team.name })}
+        message={t('teams.archiveMessage')}
+        confirmLabel={t('teams.archiveConfirm')}
         destructive
         pending={update.isPending}
         onConfirm={() => void handleToggleStatus()}
@@ -447,13 +450,16 @@ function TeamDetail({
 
       <ConfirmDialog
         open={memberToRemove !== null}
-        title="Remove team member?"
+        title={t('teams.removeMemberTitle')}
         message={
           memberToRemove
-            ? `${memberToRemove.displayName ?? 'This member'} will be removed from ${team.name}.`
+            ? t('teams.removeMemberMessage', {
+                member: memberToRemove.displayName ?? t('teams.thisMember'),
+                team: team.name,
+              })
             : undefined
         }
-        confirmLabel="Remove"
+        confirmLabel={t('teams.removeConfirm')}
         destructive
         pending={remove.isPending}
         onConfirm={() => memberToRemove && void handleRemoveMember(memberToRemove.userId)}
@@ -464,6 +470,7 @@ function TeamDetail({
 }
 
 export function TeamsTab() {
+  const { t } = useTranslation('settings')
   const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
   const { data: teams = [], isLoading } = useWorkspaceTeams(workspaceId)
   const { data: members = [] } = useWorkspaceMembers(workspaceId)
@@ -476,13 +483,15 @@ export function TeamsTab() {
   const visibleTeams = useMemo(() => {
     const q = search.trim().toLowerCase()
     if (!q) return teams
-    return teams.filter((t) => t.name.toLowerCase().includes(q) || t.key.toLowerCase().includes(q))
+    return teams.filter(
+      (team) => team.name.toLowerCase().includes(q) || team.key.toLowerCase().includes(q),
+    )
   }, [teams, search])
 
   const { pageItems, footerProps } = useClientPagination(visibleTeams, 25)
 
   if (selectedTeam) {
-    const live = teams.find((t) => t.id === selectedTeam.id) ?? selectedTeam
+    const live = teams.find((team) => team.id === selectedTeam.id) ?? selectedTeam
     return (
       <TeamDetail
         team={live}
@@ -496,11 +505,9 @@ export function TeamsTab() {
   return (
     <div>
       <div className="mb-5 flex items-center justify-between">
-        <p className="text-ui-lg text-muted-foreground">
-          Teams group members who collaborate on the same projects.
-        </p>
+        <p className="text-ui-lg text-muted-foreground">{t('teams.intro')}</p>
         <Button size="sm" onClick={() => setShowCreate(true)}>
-          <Plus size={13} /> New team
+          <Plus size={13} /> {t('teams.newTeam')}
         </Button>
       </div>
 
@@ -515,8 +522,8 @@ export function TeamsTab() {
       ) : visibleTeams.length === 0 ? (
         <EmptyState
           icon={<UsersRound size={28} className="text-border-strong" />}
-          title={search.trim() ? 'No teams match your search' : 'No teams yet'}
-          description="Create a team to group members and assign work items."
+          title={search.trim() ? t('teams.emptySearch') : t('teams.empty')}
+          description={t('teams.emptyDescription')}
         />
       ) : (
         <div className="overflow-hidden rounded-lg border">
@@ -546,7 +553,7 @@ export function TeamsTab() {
                       </span>
                     </>
                   ) : (
-                    <span className="text-ui-md text-foreground-disabled">No lead</span>
+                    <span className="text-ui-md text-foreground-disabled">{t('teams.noLead')}</span>
                   )}
                 </div>
                 {typeof team.memberCount === 'number' && (

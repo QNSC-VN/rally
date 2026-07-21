@@ -23,7 +23,7 @@ import { describe, expect, it } from 'vitest'
 const MAX_RAW_BUTTON = 95 // occurrences in pages/features/entities/widgets
 const MAX_INLINE_STYLE = 207 // `style={{` in pages/features/entities/widgets (remainder is data-driven/dynamic)
 const MAX_ARBITRARY_TEXT = 2 // `text-[` app-wide (only text-[0] + one navy placeholder rgba remain)
-const MAX_HARDCODED_TEXT = 133 // capitalized JSX text nodes in consumer layers (P4: wire t(), drive to 0)
+const MAX_HARDCODED_TEXT = 26 // capitalized JSX text nodes in consumer layers (P4 fleet done; residual = enum <option> labels)
 const MAX_FILE_LINES = 1024 // largest single source file (after monolith decomposition)
 
 // this file lives in src/test/

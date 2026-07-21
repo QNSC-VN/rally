@@ -10,6 +10,7 @@
  * bespoke pagination (FRONTEND_COMPONENT_AUDIT §5.2).
  */
 import { useCallback, useMemo, useState, type CSSProperties } from 'react'
+import { useTranslation } from 'react-i18next'
 import { AlertTriangle, Inbox, Plus } from 'lucide-react'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { EmptyState } from '@/shared/ui/empty-state'
@@ -30,6 +31,7 @@ import { useIterations, type Iteration, type IterationState } from '@/features/i
 // ── Page ────────────────────────────────────────────────────────────────────
 
 export function IterationsPage() {
+  const { t } = useTranslation('iterations')
   const { project } = useAppContext()
   const projectId = project?.projectId
   const { can } = useProjectPermissions(projectId)
@@ -91,7 +93,7 @@ export function IterationsPage() {
   if (!projectId) {
     return (
       <div className="flex flex-1 items-center justify-center text-ui-lg text-foreground-subtle">
-        Select a project to view iterations.
+        {t('selectProject')}
       </div>
     )
   }
@@ -104,7 +106,7 @@ export function IterationsPage() {
     <div className="flex flex-1 flex-col overflow-hidden bg-background">
       {/* Toolbar */}
       <PageToolbar
-        title="Timeboxes"
+        title={t('title')}
         search={{
           value: search,
           onChange: (v) => {
@@ -118,7 +120,7 @@ export function IterationsPage() {
         actions={
           canManage ? (
             <Button size="sm" onClick={() => setShowCreate(true)}>
-              <Plus size={12} /> Create Iteration
+              <Plus size={12} /> {t('createButton')}
             </Button>
           ) : undefined
         }
@@ -128,7 +130,9 @@ export function IterationsPage() {
         filters={
           <>
             <div className="flex items-center gap-1.5 rounded border border-border-subtle bg-card px-2 py-1.5">
-              <span className="text-ui-sm font-semibold text-muted-foreground">State</span>
+              <span className="text-ui-sm font-semibold text-muted-foreground">
+                {t('filterState')}
+              </span>
               <InlineSelect
                 value={stateFilter}
                 aria-label="Filter iterations by state"
@@ -149,7 +153,7 @@ export function IterationsPage() {
                 onClick={() => setStateFilter('all')}
                 className="cursor-pointer rounded px-2.5 py-1 text-ui-sm text-primary-light hover:bg-primary-lighter"
               >
-                Clear filters
+                {t('clearFilters')}
               </button>
             )}
           </>
@@ -170,7 +174,7 @@ export function IterationsPage() {
           isError ? (
             <EmptyState
               icon={<AlertTriangle size={28} className="text-destructive" />}
-              title="Failed to load iterations. Please try again."
+              title={t('loadError')}
             />
           ) : undefined
         }
@@ -178,7 +182,7 @@ export function IterationsPage() {
           pageRows.length === 0 ? (
             <EmptyState
               icon={<Inbox size={32} className="text-foreground-subtle" />}
-              title="No iterations found"
+              title={t('empty')}
             />
           ) : undefined
         }

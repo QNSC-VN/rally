@@ -1,4 +1,5 @@
 import { useMemo, useState, type CSSProperties } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { ChevronDown, Loader2 } from 'lucide-react'
 import { useSortable } from '@dnd-kit/sortable'
@@ -62,6 +63,7 @@ export function StatusRow({
   onToggleSelect: () => void
   onOpen: () => void
 }) {
+  const { t } = useTranslation('iteration-status')
   const navigate = useNavigate()
   const update = useUpdateWorkItem(item.id)
   const setMilestones = useSetWorkItemMilestones(item.id)
@@ -105,25 +107,29 @@ export function StatusRow({
 
   const commitEstimate = (raw: string) =>
     // Auto-sync To Do to the new Plan Estimate value.
-    saveNumber(raw, (n) => ({ storyPoints: n, todoHours: n }), 'Plan estimate updated', 'Estimate')
+    saveNumber(
+      raw,
+      (n) => ({ storyPoints: n, todoHours: n }),
+      t('row.planEstimateUpdated'),
+      'Estimate',
+    )
   const commitTodo = (raw: string) =>
-    saveNumber(raw, (n) => ({ todoHours: n }), 'Todo hours updated', 'Todo hours')
+    saveNumber(raw, (n) => ({ todoHours: n }), t('row.todoHoursUpdated'), 'Todo hours')
   const commitTitle = (raw: string) => {
     const next = raw.trim()
     if (!next || next === item.title) return
-    save({ title: next }, 'Name updated')
+    save({ title: next }, t('row.nameUpdated'))
   }
-  const handleOwnerChange = (userId: string | null) => save({ assigneeId: userId }, 'Owner updated')
+  const handleOwnerChange = (userId: string | null) =>
+    save({ assigneeId: userId }, t('row.ownerUpdated'))
   const handleIterationChange = (iterationId: string | null) =>
-    save({ iterationId }, iterationId ? 'Iteration updated' : 'Moved to backlog')
+    save({ iterationId }, iterationId ? t('row.iterationUpdated') : t('row.movedToBacklog'))
   const handleDevOwnerChange = (userId: string | null) =>
-    save({ devOwnerId: userId }, 'Dev owner updated')
-  const handleMilestonesChange = (ids: string[]) => milestoneCommit.save(ids, 'Milestones updated')
+    save({ devOwnerId: userId }, t('row.devOwnerUpdated'))
+  const handleMilestonesChange = (ids: string[]) =>
+    milestoneCommit.save(ids, t('row.milestonesUpdated'))
   const toggleBlocked = () =>
-    save(
-      { isBlocked: !item.isBlocked },
-      item.isBlocked ? 'Work item unblocked' : 'Work item blocked',
-    )
+    save({ isBlocked: !item.isBlocked }, item.isBlocked ? t('row.unblocked') : t('row.blocked'))
 
   return (
     <>
@@ -247,7 +253,7 @@ export function StatusRow({
             className="w-full"
             onChange={(e) => handleIterationChange(e.target.value || null)}
           >
-            <option value="">Backlog</option>
+            <option value="">{t('row.backlog')}</option>
             {iterationOptions.map((it) => (
               <option key={it.id} value={it.id}>
                 {it.name}
@@ -501,7 +507,7 @@ export function StatusRow({
                 gap: 6,
               }}
             >
-              <Loader2 size={12} className="animate-spin" /> Loading tasks...
+              <Loader2 size={12} className="animate-spin" /> {t('row.loadingTasks')}
             </div>
           )}
           {!isLoadingTasks && childTasks.length === 0 && (
@@ -513,7 +519,7 @@ export function StatusRow({
                 fontStyle: 'italic',
               }}
             >
-              No tasks created under this item
+              {t('row.noTasks')}
             </div>
           )}
           {!isLoadingTasks &&
@@ -557,6 +563,7 @@ function ChildTaskRow({
   colStyles: Record<string, CSSProperties>
   onOpen: () => void
 }) {
+  const { t } = useTranslation('iteration-status')
   const updateTask = useUpdateWorkItem(task.id)
 
   const { save, saveNumber } = useWorkItemFieldCommit(updateTask)
@@ -564,23 +571,24 @@ function ChildTaskRow({
   const commitTaskTitle = (raw: string) => {
     const next = raw.trim()
     if (!next || next === task.title) return
-    save({ title: next }, 'Name updated')
+    save({ title: next }, t('row.nameUpdated'))
   }
   // Auto-sync To Do to the new estimate value.
   const commitTaskEstimate = (raw: string) =>
     saveNumber(
       raw,
       (n) => ({ estimateHours: n, todoHours: n }),
-      'Task estimate updated',
+      t('row.taskEstimateUpdated'),
       'Estimate',
     )
   const commitTaskTodo = (raw: string) =>
-    saveNumber(raw, (n) => ({ todoHours: n }), 'Todo hours updated', 'Todo hours')
+    saveNumber(raw, (n) => ({ todoHours: n }), t('row.todoHoursUpdated'), 'Todo hours')
   const commitTaskActual = (raw: string) =>
-    saveNumber(raw, (n) => ({ actualHours: n }), 'Actual hours updated', 'Actual hours')
-  const handleOwnerChange = (userId: string | null) => save({ assigneeId: userId }, 'Owner updated')
+    saveNumber(raw, (n) => ({ actualHours: n }), t('row.actualHoursUpdated'), 'Actual hours')
+  const handleOwnerChange = (userId: string | null) =>
+    save({ assigneeId: userId }, t('row.ownerUpdated'))
   const handleDevOwnerChange = (userId: string | null) =>
-    save({ devOwnerId: userId }, 'Dev owner updated')
+    save({ devOwnerId: userId }, t('row.devOwnerUpdated'))
 
   const devOwnerMember = task.devOwnerId
     ? membersList.find((m) => m.userId === task.devOwnerId)
@@ -650,7 +658,7 @@ function ChildTaskRow({
             updateTask.mutate(
               { scheduleState: next },
               {
-                onSuccess: () => notify.success('Task state updated'),
+                onSuccess: () => notify.success(t('row.taskStateUpdated')),
                 onError: (err) => notify.error(err.message),
               },
             )

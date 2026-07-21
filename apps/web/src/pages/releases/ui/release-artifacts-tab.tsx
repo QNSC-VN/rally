@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 
@@ -8,6 +9,7 @@ import { SearchInput } from '@/shared/ui/search-input'
 import { ArtifactTable } from '@/entities/work-item/ui/artifact-table'
 
 export function ReleaseArtifactsTab({ releaseId }: { releaseId: string }) {
+  const { t } = useTranslation('releases')
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [pageSize, setPageSize] = useState(25)
@@ -58,7 +60,9 @@ export function ReleaseArtifactsTab({ releaseId }: { releaseId: string }) {
         />
         <div className="flex-1" />
         <span className="text-ui-sm text-foreground-subtle">
-          {pageInfo?.total != null ? `${pageInfo.total} items` : ''}
+          {pageInfo?.total != null
+            ? t('detailPage.artifacts.itemCount', { total: pageInfo.total })
+            : ''}
         </span>
       </div>
 
@@ -80,7 +84,7 @@ export function ReleaseArtifactsTab({ releaseId }: { releaseId: string }) {
       {items.length > 0 && (
         <div className="flex h-9 shrink-0 items-center justify-between border-t border-border-subtle bg-card px-3">
           <div className="flex items-center gap-2 text-ui-sm text-muted-foreground">
-            <span>Rows per page</span>
+            <span>{t('detailPage.pagination.rowsPerPage')}</span>
             <InlineSelect
               aria-label="Rows per page"
               value={pageSize}
@@ -95,13 +99,13 @@ export function ReleaseArtifactsTab({ releaseId }: { releaseId: string }) {
             </InlineSelect>
             <span className="text-foreground-subtle">
               {pageInfo
-                ? `${(currentPage - 1) * pageSize + 1}–${(currentPage - 1) * pageSize + items.length}${pageInfo.total ? ` of ${pageInfo.total}` : ''}`
+                ? `${(currentPage - 1) * pageSize + 1}–${(currentPage - 1) * pageSize + items.length}${pageInfo.total ? ` ${t('detailPage.pagination.of')} ${pageInfo.total}` : ''}`
                 : ''}
             </span>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-ui-sm text-muted-foreground tabular-nums">
-              Page {currentPage}
+              {t('detailPage.pagination.page')} {currentPage}
             </span>
             <button
               aria-label="Previous page"

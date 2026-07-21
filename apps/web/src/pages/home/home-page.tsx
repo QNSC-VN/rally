@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Link } from '@tanstack/react-router'
 import { AlertTriangle, ArrowUpRight, Clock, Inbox } from 'lucide-react'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
@@ -40,11 +41,11 @@ function toPriority(raw: string): WorkItemPriority {
   return map[raw] ?? WorkItemPriority.None
 }
 
-function getGreeting() {
+function getGreeting(t: (key: string) => string) {
   const h = new Date().getHours()
-  if (h < 12) return 'Good morning'
-  if (h < 17) return 'Good afternoon'
-  return 'Good evening'
+  if (h < 12) return t('greeting.morning')
+  if (h < 17) return t('greeting.afternoon')
+  return t('greeting.evening')
 }
 
 // ── Project Health Row ────────────────────────────────────────────────────────
@@ -59,6 +60,7 @@ function ProjectHealthRow({
   currentUserId: string | undefined
   currentUserDisplayName: string | undefined
 }) {
+  const { t } = useTranslation('home')
   const { data: workItems = [] } = useWorkItems({ projectId: project.id, limit: 100 })
   const { data: iterations = [] } = useIterations(project.id)
   const { data: statuses = [] } = useProjectStatuses(project.id)
@@ -99,7 +101,7 @@ function ProjectHealthRow({
         {activeSprint ? (
           activeSprint.name
         ) : (
-          <span className="text-foreground-subtle">No active sprint</span>
+          <span className="text-foreground-subtle">{t('projectHealth.noActiveSprint')}</span>
         )}
       </div>
       {/* Progress */}
@@ -123,7 +125,7 @@ function ProjectHealthRow({
           {defects}
         </span>
         <span className="ml-1 text-ui-xs text-foreground-subtle">
-          {defects === 1 ? 'defect' : 'defects'}
+          {t('projectHealth.defect', { count: defects })}
         </span>
       </div>
       {/* Blocked */}
@@ -131,10 +133,10 @@ function ProjectHealthRow({
         {blocked > 0 ? (
           <span className="inline-flex items-center gap-1 text-ui-xs font-semibold text-destructive">
             <AlertTriangle size={11} />
-            {blocked} blocked
+            {t('projectHealth.blockedCount', { count: blocked })}
           </span>
         ) : (
-          <span className="text-ui-xs text-success">None</span>
+          <span className="text-ui-xs text-success">{t('projectHealth.none')}</span>
         )}
       </div>
       {/* Owner */}
@@ -154,6 +156,7 @@ function ProjectHealthRow({
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 export function HomePage() {
+  const { t } = useTranslation('home')
   const { user } = useAuthStore()
   const { workspace, project: selectedProject } = useAppContext()
   const workspaceId = workspace?.workspaceId
@@ -191,22 +194,32 @@ export function HomePage() {
   const { data: activity = [] } = useNotifications({})
 
   const summaryMetrics = [
-    { label: 'Active Projects', value: String(activeProjects.length), path: '/projects' },
-    { label: 'Open Work Items', value: String(counts.total), path: '/backlog' },
-    { label: 'Active Sprints', value: String(activeSprintsCount), path: '/timeboxes' },
-    { label: 'Blocked Items', value: String(counts.blocked), path: '/backlog', alert: true },
-    { label: 'Open Defects', value: String(counts.defects), path: '/quality', alert: true },
-    { label: 'Assigned to Me', value: String(myItems.length), path: '/backlog' },
+    { label: t('metrics.activeProjects'), value: String(activeProjects.length), path: '/projects' },
+    { label: t('metrics.openWorkItems'), value: String(counts.total), path: '/backlog' },
+    { label: t('metrics.activeSprints'), value: String(activeSprintsCount), path: '/timeboxes' },
+    {
+      label: t('metrics.blockedItems'),
+      value: String(counts.blocked),
+      path: '/backlog',
+      alert: true,
+    },
+    {
+      label: t('metrics.openDefects'),
+      value: String(counts.defects),
+      path: '/quality',
+      alert: true,
+    },
+    { label: t('metrics.assignedToMe'), value: String(myItems.length), path: '/backlog' },
   ]
 
   return (
     <div className="flex flex-1 flex-col bg-background">
       <PageHeader
-        title="Home"
+        title={t('title')}
         actions={
           <div className="text-ui-sm text-muted-foreground">
-            {getGreeting()},{' '}
-            <span className="font-medium text-foreground">{user?.displayName ?? 'User'}</span> ·{' '}
+            {getGreeting(t)},{' '}
+            <span className="font-medium text-foreground">{user?.displayName ?? t('user')}</span> ·{' '}
             <span className="font-medium text-foreground">{now}</span>
           </div>
         }
@@ -256,9 +269,9 @@ export function HomePage() {
         {/* My Work table */}
         <div className="col-span-2 overflow-hidden rounded border border-border-subtle bg-card">
           <div className="flex items-center justify-between border-b border-border-subtle px-4 py-2.5">
-            <p className="text-ui-md font-semibold text-foreground">My Work</p>
+            <p className="text-ui-md font-semibold text-foreground">{t('myWork.title')}</p>
             <span className="rounded-sm bg-primary-lighter px-1.5 py-px text-ui-xs font-semibold text-primary-light">
-              {myItems.length} items
+              {t('myWork.itemCount', { count: myItems.length })}
             </span>
           </div>
 
@@ -266,12 +279,12 @@ export function HomePage() {
           <div className="flex h-7 items-center gap-2 border-b border-border-subtle bg-surface-hover px-3 select-none">
             {(
               [
-                ['w-[60px] shrink-0', 'ID'],
-                ['w-14 shrink-0', 'Type'],
-                ['flex-1 min-w-0 pr-2', 'Name'],
-                ['w-24 shrink-0', 'Project'],
-                ['w-24 shrink-0', 'Status'],
-                ['w-[80px] shrink-0', 'Priority'],
+                ['w-[60px] shrink-0', t('myWork.columns.id')],
+                ['w-14 shrink-0', t('myWork.columns.type')],
+                ['flex-1 min-w-0 pr-2', t('common:name')],
+                ['w-24 shrink-0', t('myWork.columns.project')],
+                ['w-24 shrink-0', t('common:status')],
+                ['w-[80px] shrink-0', t('myWork.columns.priority')],
               ] as [string, string][]
             ).map(([cls, label]) => (
               <div
@@ -288,7 +301,7 @@ export function HomePage() {
             <EmptyState
               size="sm"
               icon={<Inbox size={28} className="text-foreground-subtle" />}
-              title="No items assigned to you"
+              title={t('myWork.empty')}
             />
           ) : (
             myItems.map((item) => {
@@ -326,20 +339,20 @@ export function HomePage() {
         {/* Recent Activity — sourced from the notification feed (assignments/mentions) */}
         <div className="overflow-hidden rounded border border-border-subtle bg-card">
           <div className="flex items-center justify-between border-b border-border-subtle px-4 py-2.5">
-            <p className="text-ui-md font-semibold text-foreground">Recent Activity</p>
+            <p className="text-ui-md font-semibold text-foreground">{t('activity.title')}</p>
             <Link
               to={'/notifications' as '/'}
               className="flex items-center gap-1 text-ui-sm text-primary-light"
             >
-              All <ArrowUpRight size={11} />
+              {t('activity.all')} <ArrowUpRight size={11} />
             </Link>
           </div>
           {activity.length === 0 ? (
             <EmptyState
               size="sm"
               icon={<Clock size={28} className="text-foreground-subtle" />}
-              title="No recent activity"
-              description="Work item updates will appear here"
+              title={t('activity.empty.title')}
+              description={t('activity.empty.description')}
             />
           ) : (
             <ul className="flex flex-col">
@@ -353,10 +366,10 @@ export function HomePage() {
         {/* Project Health table */}
         <div className="col-span-3 overflow-hidden rounded border border-border-subtle bg-card">
           <div className="flex items-center justify-between border-b border-border-subtle px-4 py-2.5">
-            <p className="text-ui-md font-semibold text-foreground">Project Health</p>
+            <p className="text-ui-md font-semibold text-foreground">{t('projectHealth.title')}</p>
             {selectedProject && (
               <span className="text-ui-xs font-semibold text-primary-light">
-                {selectedProject.projectKey} selected
+                {t('projectHealth.selected', { key: selectedProject.projectKey })}
               </span>
             )}
           </div>
@@ -364,13 +377,13 @@ export function HomePage() {
           <div className="flex h-7 items-center gap-3 border-b border-border-subtle bg-surface-hover px-4 select-none">
             {(
               [
-                ['w-14 shrink-0', 'Key'],
-                ['flex-1 min-w-0', 'Project Name'],
-                ['w-32 shrink-0', 'Active Sprint'],
-                ['w-36 shrink-0', 'Progress'],
-                ['w-24 shrink-0', 'Open Defects'],
-                ['w-24 shrink-0', 'Blocked'],
-                ['w-32 shrink-0', 'Owner'],
+                ['w-14 shrink-0', t('projectHealth.columns.key')],
+                ['flex-1 min-w-0', t('projectHealth.columns.projectName')],
+                ['w-32 shrink-0', t('projectHealth.columns.activeSprint')],
+                ['w-36 shrink-0', t('projectHealth.columns.progress')],
+                ['w-24 shrink-0', t('projectHealth.columns.openDefects')],
+                ['w-24 shrink-0', t('projectHealth.columns.blocked')],
+                ['w-32 shrink-0', t('common:owner')],
               ] as [string, string][]
             ).map(([cls, label]) => (
               <div
@@ -383,7 +396,7 @@ export function HomePage() {
           </div>
           {/* Rows */}
           {activeProjects.length === 0 ? (
-            <EmptyState size="sm" title="No active projects" />
+            <EmptyState size="sm" title={t('projectHealth.empty')} />
           ) : (
             activeProjects.map((p) => (
               <ProjectHealthRow

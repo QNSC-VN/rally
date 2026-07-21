@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Loader2 } from 'lucide-react'
 
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
@@ -11,6 +12,7 @@ import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
 
 export function WorkspaceSettingsTab() {
+  const { t } = useTranslation('settings')
   const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
   const setWorkspace = useAppContext((s) => s.setWorkspace)
   const workspace = useAppContext((s) => s.workspace)
@@ -43,9 +45,9 @@ export function WorkspaceSettingsTab() {
         workspaceSlug: workspace?.workspaceSlug ?? '',
         workspaceName: updated.name,
       })
-      notify.success('Workspace settings saved')
+      notify.success(t('workspace.saved'))
     } catch (err) {
-      notify.fromError(err, 'Failed to save')
+      notify.fromError(err, t('workspace.saveFailed'))
     }
   }
 
@@ -54,21 +56,21 @@ export function WorkspaceSettingsTab() {
       {/* ── Read-only identity ── */}
       <div className="rounded-md border">
         <dl className="grid grid-cols-[130px_1fr] gap-x-3 gap-y-2.5 p-4 text-ui-lg">
-          <dt className="text-foreground-subtle">Slug</dt>
+          <dt className="text-foreground-subtle">{t('workspace.slugLabel')}</dt>
           <dd className="font-mono text-foreground">
             {current?.slug ?? workspace?.workspaceSlug ?? '—'}
           </dd>
-          <dt className="text-foreground-subtle">Workspace admin</dt>
+          <dt className="text-foreground-subtle">{t('workspace.adminLabel')}</dt>
           <dd className="text-foreground">
             {admins.length === 0 ? '—' : admins.map((a) => a.displayName).join(', ')}
           </dd>
         </dl>
       </div>
 
-      <FormField label="Workspace name" required>
+      <FormField label={t('workspace.nameLabel')} required>
         <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Acme Corp" />
       </FormField>
-      <FormField label="Description">
+      <FormField label={t('common:description')}>
         <Textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
@@ -79,7 +81,7 @@ export function WorkspaceSettingsTab() {
       <div className="flex items-center gap-3 pt-1">
         <Button type="submit" disabled={update.isPending || !name.trim()}>
           {update.isPending && <Loader2 size={12} className="animate-spin" />}
-          Save changes
+          {t('saveChanges')}
         </Button>
       </div>
     </form>

@@ -1,0 +1,92 @@
+{
+  "title": "Iteration Status",
+  "selectProject": "Select a project to view Iteration Status.",
+  "noIterations": "No iterations in this project/team yet.",
+  "goToTimeboxes": "Go to Timeboxes →",
+  "loadError": "Failed to load iteration status. Please try again.",
+  "boardLoadError": "Failed to load board data.",
+  "emptyItems": "No items assigned to this iteration",
+  "view": {
+    "list": "List",
+    "board": "Board"
+  },
+  "metrics": {
+    "plannedVelocity": "Planned Velocity",
+    "iterationEnd": "Iteration End",
+    "accepted": "Accepted",
+    "points": "{{current}} of {{total}} Points",
+    "defectsActive": "{{value}} Active",
+    "defects": "Defects",
+    "tasksActive": "{{value}} Active",
+    "tasks": "Tasks",
+    "viewCharts": "View Charts"
+  },
+  "toolbar": {
+    "addNew": "Add New",
+    "state": "State",
+    "allStates": "All States",
+    "allOwners": "All Owners",
+    "unassigned": "Unassigned",
+    "blockedOnly": "Blocked items only",
+    "clearFilters": "Clear filters"
+  },
+  "totals": {
+    "label": "Totals",
+    "points": "{{value}} Points",
+    "hours": "{{value}} Hours"
+  },
+  "bulk": {
+    "setState": "Set State…",
+    "removeFromIteration": "Remove from Iteration",
+    "removedFromIteration": "Removed from iteration",
+    "removeFailed": "Failed to remove items from iteration",
+    "updatesFailed": "{{failed}} of {{total}} updates failed",
+    "itemsUpdated_one": "Updated {{count}} item",
+    "itemsUpdated_other": "Updated {{count}} items",
+    "deletionsFailed": "{{failed}} of {{total}} deletions failed",
+    "itemsDeleted_one": "Deleted {{count}} item",
+    "itemsDeleted_other": "Deleted {{count}} items"
+  },
+  "delete": {
+    "title_one": "Delete {{count}} item?",
+    "title_other": "Delete {{count}} items?",
+    "message": "This permanently removes the selected work items from the project. This action cannot be undone."
+  },
+  "row": {
+    "backlog": "Backlog",
+    "loadingTasks": "Loading tasks...",
+    "noTasks": "No tasks created under this item",
+    "planEstimateUpdated": "Plan estimate updated",
+    "todoHoursUpdated": "Todo hours updated",
+    "nameUpdated": "Name updated",
+    "ownerUpdated": "Owner updated",
+    "iterationUpdated": "Iteration updated",
+    "movedToBacklog": "Moved to backlog",
+    "devOwnerUpdated": "Dev owner updated",
+    "milestonesUpdated": "Milestones updated",
+    "blocked": "Work item blocked",
+    "unblocked": "Work item unblocked",
+    "taskEstimateUpdated": "Task estimate updated",
+    "actualHoursUpdated": "Actual hours updated",
+    "taskStateUpdated": "Task state updated"
+  },
+  "cells": {
+    "noMilestones": "No milestones in this project",
+    "defectNone": "None",
+    "defectClosed": "Closed",
+    "defectOpen": "{{value}} Open"
+  },
+  "create": {
+    "title": "Add Item to Iteration",
+    "typeLabel": "Type",
+    "titleLabel": "Title",
+    "planEstimateLabel": "Plan Estimate",
+    "story": "Story",
+    "defect": "Defect",
+    "titleRequired": "Title is required",
+    "added": "{{type}} \"{{title}}\" added to iteration",
+    "createFailed": "Failed to create item",
+    "withDetails": "Create with details",
+    "createItem": "Create Item"
+  }
+}

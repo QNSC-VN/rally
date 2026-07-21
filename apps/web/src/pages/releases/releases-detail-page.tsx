@@ -6,6 +6,7 @@
  * P3.3: Added Artifacts tab showing linked US/DE work items.
  */
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 /* eslint-disable react-hooks/set-state-in-effect */
 import { Link, useParams } from '@tanstack/react-router'
@@ -30,6 +31,7 @@ import {
 type TabKey = 'details' | 'artifacts'
 
 export function ReleaseDetailPage() {
+  const { t } = useTranslation('releases')
   const { releaseId } = useParams({ from: '/auth/releases/$releaseId' })
   const { project } = useAppContext()
   const projectId = project?.projectId ?? ''
@@ -64,11 +66,11 @@ export function ReleaseDetailPage() {
 
   async function handleSave() {
     if (!name.trim()) {
-      toast.error('Release name is required')
+      toast.error(t('create.nameRequired'))
       return
     }
     if (startDate && releaseDate && releaseDate < startDate) {
-      toast.error('Release date must be >= start date')
+      toast.error(t('create.dateOrder'))
       return
     }
 
@@ -82,9 +84,9 @@ export function ReleaseDetailPage() {
         version: version.trim() || null,
         state,
       })
-      toast.success('Release details saved')
+      toast.success(t('detailPage.saved'))
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to update release')
+      toast.error(err instanceof Error ? err.message : t('detail.updateFailed'))
     }
   }
 
@@ -94,7 +96,7 @@ export function ReleaseDetailPage() {
     try {
       await update.mutateAsync(patch)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to update release')
+      toast.error(err instanceof Error ? err.message : t('detail.updateFailed'))
     }
   }
 
@@ -109,9 +111,9 @@ export function ReleaseDetailPage() {
   if (isError || !release) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3 bg-background">
-        <p className="text-ui-lg text-muted-foreground">Release details could not be loaded.</p>
+        <p className="text-ui-lg text-muted-foreground">{t('detailPage.loadError')}</p>
         <Link to="/releases" className="text-ui-md font-semibold text-primary hover:underline">
-          ← Back to Releases
+          {t('detailPage.backToReleases')}
         </Link>
       </div>
     )
@@ -121,8 +123,8 @@ export function ReleaseDetailPage() {
   const rollup = release.taskRollup
 
   const TABS: { key: TabKey; label: string }[] = [
-    { key: 'details', label: 'Details' },
-    { key: 'artifacts', label: 'Artifacts' },
+    { key: 'details', label: t('detailPage.tabs.details') },
+    { key: 'artifacts', label: t('detailPage.tabs.artifacts') },
   ]
 
   return (
@@ -154,7 +156,7 @@ export function ReleaseDetailPage() {
         {canManage && (
           <Button size="sm" onClick={handleSave} disabled={update.isPending}>
             {update.isPending ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
-            Save Changes
+            {t('detailPage.saveChanges')}
           </Button>
         )}
       </div>
@@ -186,14 +188,14 @@ export function ReleaseDetailPage() {
           {/* Left Side: Theme & Notes rich editors */}
           <div className="flex-1 space-y-6 overflow-y-auto p-6">
             <RichTextEditor
-              title="Release Theme"
+              title={t('detailPage.themeTitle')}
               value={release?.theme}
               minHeight={100}
               readOnly={!canManage}
               onSave={(html) => handleRichFieldSave({ theme: html || null })}
             />
             <RichTextEditor
-              title="Notes & Scope Deliverables"
+              title={t('detailPage.notesTitle')}
               value={release?.notes}
               minHeight={140}
               readOnly={!canManage}
@@ -205,12 +207,12 @@ export function ReleaseDetailPage() {
           <div className="bg-surface w-72 shrink-0 space-y-5 overflow-y-auto border-l border-border p-5">
             <div className="space-y-4">
               <h2 className="text-ui-sm font-semibold tracking-wider text-foreground-subtle uppercase">
-                Metadata Details
+                {t('detailPage.metadataTitle')}
               </h2>
 
               <div className="space-y-1">
                 <label className="text-ui-xs font-medium text-muted-foreground">
-                  Project Scope
+                  {t('detailPage.projectScope')}
                 </label>
                 <div className="py-1 text-ui-md font-semibold text-foreground">
                   {project?.projectName ?? '—'}
@@ -219,7 +221,7 @@ export function ReleaseDetailPage() {
 
               <div className="space-y-1">
                 <label className="text-ui-xs font-medium text-muted-foreground">
-                  Lifecycle State
+                  {t('detailPage.lifecycleState')}
                 </label>
                 {canManage ? (
                   <InlineSelect
@@ -244,7 +246,9 @@ export function ReleaseDetailPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-ui-xs font-medium text-muted-foreground">Start Date</label>
+                  <label className="text-ui-xs font-medium text-muted-foreground">
+                    {t('detail.startDateLabel')}
+                  </label>
                   {canManage ? (
                     <Input
                       type="date"
@@ -260,7 +264,7 @@ export function ReleaseDetailPage() {
 
                 <div className="space-y-1">
                   <label className="text-ui-xs font-medium text-muted-foreground">
-                    Release Date
+                    {t('detail.releaseDateLabel')}
                   </label>
                   {canManage ? (
                     <Input
@@ -279,7 +283,7 @@ export function ReleaseDetailPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="text-ui-xs font-medium text-muted-foreground">
-                    Planned Velocity
+                    {t('detail.plannedVelocityLabel')}
                   </label>
                   {canManage ? (
                     <Input
@@ -300,7 +304,7 @@ export function ReleaseDetailPage() {
 
                 <div className="space-y-1">
                   <label className="text-ui-xs font-medium text-muted-foreground">
-                    Plan Estimate
+                    {t('detail.planEstimateLabel')}
                   </label>
                   {canManage ? (
                     <Input
@@ -322,7 +326,7 @@ export function ReleaseDetailPage() {
 
               <div className="space-y-1">
                 <label className="text-ui-xs font-medium text-muted-foreground">
-                  Version Release Tag
+                  {t('detailPage.versionTag')}
                 </label>
                 {canManage ? (
                   <Input

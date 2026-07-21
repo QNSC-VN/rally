@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Loader2 } from 'lucide-react'
 
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
@@ -11,6 +12,7 @@ import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
 
 export function ProjectSettingsTab() {
+  const { t } = useTranslation('settings')
   const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
   const activeProject = useAppContext((s) => s.project)
   const setProject = useAppContext((s) => s.setProject)
@@ -27,11 +29,7 @@ export function ProjectSettingsTab() {
   })
 
   if (!activeProject) {
-    return (
-      <p className="text-ui-lg text-foreground-subtle">
-        No project selected. Navigate into a project first.
-      </p>
-    )
+    return <p className="text-ui-lg text-foreground-subtle">{t('noProjectSelected')}</p>
   }
 
   async function handleSave(e: React.FormEvent) {
@@ -47,24 +45,24 @@ export function ProjectSettingsTab() {
         projectKey: activeProject.projectKey,
         projectName: name.trim(),
       })
-      notify.success('Project settings saved')
+      notify.success(t('project.saved'))
     } catch (err) {
-      notify.fromError(err, 'Failed to save')
+      notify.fromError(err, t('project.saveFailed'))
     }
   }
 
   return (
     <form onSubmit={(e) => void handleSave(e)} className="max-w-lg space-y-5">
       <div className="mb-2 rounded-md border bg-surface-subtle px-3 py-2 text-ui-md text-foreground-subtle">
-        Project:{' '}
+        {t('project.projectLabel')}{' '}
         <span className="font-semibold text-foreground">
           {activeProject.projectKey} — {activeProject.projectName}
         </span>
       </div>
-      <FormField label="Project name" required>
+      <FormField label={t('project.nameLabel')} required>
         <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Project name" />
       </FormField>
-      <FormField label="Description">
+      <FormField label={t('common:description')}>
         <Textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
@@ -75,7 +73,7 @@ export function ProjectSettingsTab() {
       <div className="flex items-center gap-3 pt-1">
         <Button type="submit" disabled={update.isPending || !name.trim()}>
           {update.isPending && <Loader2 size={12} className="animate-spin" />}
-          Save changes
+          {t('saveChanges')}
         </Button>
       </div>
     </form>

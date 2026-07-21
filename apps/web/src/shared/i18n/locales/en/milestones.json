@@ -1,0 +1,70 @@
+{
+  "title": "Milestones",
+  "createButton": "New Milestone",
+  "createMilestone": "Create Milestone",
+  "empty": "No milestones yet",
+  "emptySearch": "No milestones match your search",
+  "loadError": "Failed to load milestones",
+  "form": {
+    "nameLabel": "Milestone name",
+    "notesLabel": "Notes",
+    "unassigned": "Unassigned",
+    "targetStart": "Target Start",
+    "targetEnd": "Target End",
+    "notSet": "Not set",
+    "derivedFromReleases": "Derived from linked Releases",
+    "associatedReleases": "Associated Releases",
+    "noReleases": "No releases available"
+  },
+  "create": {
+    "title": "New Milestone",
+    "creating": "Creating...",
+    "createButton": "Create Milestone",
+    "created": "Milestone \"{{name}}\" created",
+    "createFailed": "Failed to create milestone"
+  },
+  "edit": {
+    "title": "Edit Milestone",
+    "saving": "Saving...",
+    "updated": "Milestone updated",
+    "updateFailed": "Failed to update milestone"
+  },
+  "delete": {
+    "title": "Delete milestone",
+    "message": "Delete this milestone? This cannot be undone.",
+    "deleted": "Milestone deleted",
+    "deleteFailed": "Failed to delete"
+  },
+  "detail": {
+    "nameRequired": "Milestone name is required",
+    "saveFailed": "Failed to save",
+    "statusUpdateFailed": "Failed to update status",
+    "ownerUpdateFailed": "Failed to update owner",
+    "loadError": "Milestone details could not be loaded.",
+    "backToMilestones": "← Back to Milestones",
+    "saveChanges": "Save Changes",
+    "notesLabel": "Notes",
+    "metadataDetails": "Metadata Details",
+    "projects": "Projects",
+    "teams": "Teams",
+    "releases": "Releases",
+    "unassigned": "Unassigned",
+    "targetStartDate": "Target Start Date",
+    "targetEndDate": "Target End Date",
+    "derivedFromReleases": "Derived from linked Releases",
+    "progress": "Progress",
+    "completion": "Completion",
+    "itemsLabel": "Items:",
+    "pointsLabel": "Points:",
+    "tabs": {
+      "details": "Details",
+      "artifacts": "Artifacts"
+    }
+  },
+  "artifacts": {
+    "itemsCount": "{{total}} items",
+    "rowsPerPage": "Rows per page",
+    "ofTotal": " of {{total}}",
+    "page": "Page {{page}}"
+  }
+}

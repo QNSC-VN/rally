@@ -1,5 +1,6 @@
 /* eslint-disable react-refresh/only-export-components -- PROJECT_COLUMNS is config that must co-locate with the cell renderers it references */
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   AlertTriangle,
@@ -47,30 +48,29 @@ export function ArchiveConfirmModal({
   onClose: () => void
   isPending: boolean
 }) {
+  const { t } = useTranslation('projects')
   const [typed, setTyped] = useState('')
   const confirmed = typed.trim().toUpperCase() === project.key.toUpperCase()
 
   return (
-    <AppModal open onClose={onClose} title="Archive project" width={440}>
+    <AppModal open onClose={onClose} title={t('actions.archive')} width={440}>
       {/* Danger header band */}
       <div className="flex items-center gap-3 border-b border-destructive-border bg-destructive-bg px-5 py-3">
         <AlertTriangle size={16} className="text-destructive" style={{ flexShrink: 0 }} />
-        <p className="text-ui-sm text-destructive">
-          This project will become read-only. Work items and iterations will still be visible.
-        </p>
+        <p className="text-ui-sm text-destructive">{t('archive.warning')}</p>
       </div>
 
       <ModalBody className="space-y-4">
         {/* Impact summary */}
         <div className="rounded border border-border-subtle bg-surface-subtle p-3 text-ui-sm">
-          <p className="font-semibold text-foreground">What will happen:</p>
+          <p className="font-semibold text-foreground">{t('archive.whatWillHappen')}</p>
           <ul className="mt-1.5 space-y-0.5 text-muted-foreground">
             <li>
-              · Project status changes to <strong>Archived</strong>
+              {t('archive.statusChange')} <strong>{t('status.archived')}</strong>
             </li>
-            <li>· No new work items, iterations, or releases can be created</li>
-            <li>· Existing data remains accessible in read-only mode</li>
-            <li>· The project will be hidden from the Active filter</li>
+            <li>{t('archive.item2')}</li>
+            <li>{t('archive.item3')}</li>
+            <li>{t('archive.item4')}</li>
           </ul>
         </div>
 
@@ -78,8 +78,9 @@ export function ArchiveConfirmModal({
         <FormField
           label={
             <>
-              Type <span className="font-mono font-bold text-foreground">{project.key}</span> to
-              confirm
+              {t('archive.confirmPrefix')}{' '}
+              <span className="font-mono font-bold text-foreground">{project.key}</span>{' '}
+              {t('archive.confirmSuffix')}
             </>
           }
         >
@@ -96,7 +97,7 @@ export function ArchiveConfirmModal({
 
       <ModalFooter>
         <Button variant="outline" type="button" onClick={onClose}>
-          Cancel
+          {t('common:cancel')}
         </Button>
         <Button
           variant="destructive"
@@ -105,7 +106,7 @@ export function ArchiveConfirmModal({
           disabled={!confirmed || isPending}
         >
           {isPending && <Loader2 size={12} className="animate-spin" />}
-          Archive project
+          {t('actions.archive')}
         </Button>
       </ModalFooter>
     </AppModal>
@@ -133,6 +134,7 @@ function OwnerSelect({
   onChange: (userId: string) => void
   currentUserId?: string
 }) {
+  const { t } = useTranslation('projects')
   const { data: members = [], isLoading } = useWorkspaceMembers(workspaceId)
   return (
     <select
@@ -141,7 +143,7 @@ function OwnerSelect({
       disabled={isLoading || members.length === 0}
       className="w-full rounded border border-input bg-input-background px-3 py-2 text-ui-md text-foreground outline-none focus:ring-2"
     >
-      {members.length === 0 && <option value="">{isLoading ? 'Loading…' : '—'}</option>}
+      {members.length === 0 && <option value="">{isLoading ? t('form.loading') : '—'}</option>}
       {members.map((m) => (
         <option key={m.userId} value={m.userId}>
           {(m.displayName || m.email || m.userId) + (m.userId === currentUserId ? ' (you)' : '')}
@@ -161,38 +163,37 @@ function TeamMultiSelect({
   value: string[]
   onChange: (teamIds: string[]) => void
 }) {
+  const { t } = useTranslation('projects')
   const { data: teams = [], isLoading } = useWorkspaceTeams(workspaceId)
   function toggle(id: string) {
-    onChange(value.includes(id) ? value.filter((t) => t !== id) : [...value, id])
+    onChange(value.includes(id) ? value.filter((teamId) => teamId !== id) : [...value, id])
   }
-  if (isLoading) return <div className="text-ui-md text-foreground-subtle">Loading…</div>
+  if (isLoading) return <div className="text-ui-md text-foreground-subtle">{t('form.loading')}</div>
   if (teams.length === 0)
-    return <div className="text-ui-md text-foreground-subtle">No teams in this workspace yet.</div>
+    return <div className="text-ui-md text-foreground-subtle">{t('form.noTeams')}</div>
   return (
     <div>
       <div className="mb-1.5 flex items-center justify-between">
-        <span className="text-ui-sm text-foreground-subtle">
-          A team can be linked to multiple projects.
-        </span>
+        <span className="text-ui-sm text-foreground-subtle">{t('form.teamsHint')}</span>
         <span className="text-ui-sm font-medium text-muted-foreground">
-          {value.length} selected
+          {t('form.teamsSelected', { num: value.length })}
         </span>
       </div>
       <div className="grid max-h-40 grid-cols-2 gap-1.5 overflow-y-auto rounded border border-input bg-input-background p-2">
-        {teams.map((t) => {
-          const checked = value.includes(t.id)
+        {teams.map((team) => {
+          const checked = value.includes(team.id)
           return (
             <label
-              key={t.id}
+              key={team.id}
               className="flex cursor-pointer items-center gap-2 rounded border px-2.5 py-2 text-ui-md text-foreground transition-colors"
               style={{
                 borderColor: checked ? BRAND.primary : BRAND.border,
                 backgroundColor: checked ? BRAND.primaryLighter : BRAND.surface,
               }}
             >
-              <input type="checkbox" checked={checked} onChange={() => toggle(t.id)} />
+              <input type="checkbox" checked={checked} onChange={() => toggle(team.id)} />
               <UsersRound size={12} className="text-foreground-subtle" />
-              <span className="truncate">{t.name}</span>
+              <span className="truncate">{team.name}</span>
             </label>
           )
         })}
@@ -230,10 +231,11 @@ function ProjectFormFields({
   currentUserId?: string
   autoFocusName?: boolean
 }) {
+  const { t } = useTranslation('projects')
   return (
     <>
       <div className="grid grid-cols-[1fr_9rem] gap-3">
-        <FormField label="Project Name" required>
+        <FormField label={t('form.name')} required>
           <Input
             autoFocus={autoFocusName}
             type="text"
@@ -244,9 +246,9 @@ function ProjectFormFields({
           />
         </FormField>
         <FormField
-          label="Project Key"
+          label={t('form.key')}
           required={keyEditable}
-          hint={keyEditable ? '2–6 letters' : 'Immutable'}
+          hint={keyEditable ? t('form.keyHintEditable') : t('form.keyHintImmutable')}
         >
           <Input
             type="text"
@@ -270,7 +272,7 @@ function ProjectFormFields({
           />
         </FormField>
       </div>
-      <FormField label="Description">
+      <FormField label={t('fields.description')}>
         <Textarea
           value={values.description}
           onChange={(e) => onPatch({ description: e.target.value })}
@@ -279,7 +281,7 @@ function ProjectFormFields({
         />
       </FormField>
       <div className="grid grid-cols-2 gap-3">
-        <FormField label="Project Owner" required>
+        <FormField label={t('form.owner')} required>
           <OwnerSelect
             workspaceId={workspaceId}
             value={values.leadId}
@@ -287,7 +289,7 @@ function ProjectFormFields({
             currentUserId={currentUserId}
           />
         </FormField>
-        <FormField label="Start Date">
+        <FormField label={t('form.startDate')}>
           <Input
             type="date"
             value={values.startDate}
@@ -295,7 +297,7 @@ function ProjectFormFields({
           />
         </FormField>
       </div>
-      <FormField label="Teams">
+      <FormField label={t('fields.teams')}>
         <TeamMultiSelect
           workspaceId={workspaceId}
           value={values.teamIds}
@@ -317,6 +319,7 @@ export function EditProjectModal({
   workspaceId: string
   onClose: () => void
 }) {
+  const { t } = useTranslation('projects')
   const { user } = useAuthStore()
   const qc = useQueryClient()
   const { data: linkedTeams = [], isLoading: teamsLoading } = useProjectTeams(project.id)
@@ -334,7 +337,7 @@ export function EditProjectModal({
   const [seeded, setSeeded] = useState(false)
   if (!teamsLoading && !seeded) {
     setSeeded(true)
-    setValues((v) => ({ ...v, teamIds: linkedTeams.map((t) => t.id) }))
+    setValues((v) => ({ ...v, teamIds: linkedTeams.map((team) => team.id) }))
   }
   function patch(p: Partial<ProjectFormValues>) {
     setValues((v) => ({ ...v, ...p }))
@@ -359,7 +362,7 @@ export function EditProjectModal({
         },
       })
       // Diff team links against the originally-loaded set.
-      const original = new Set(linkedTeams.map((t) => t.id))
+      const original = new Set(linkedTeams.map((team) => team.id))
       const next = new Set(values.teamIds)
       const toAdd = values.teamIds.filter((id) => !original.has(id))
       const toRemove = [...original].filter((id) => !next.has(id))
@@ -370,7 +373,7 @@ export function EditProjectModal({
       if (toAdd.length || toRemove.length) {
         void qc.invalidateQueries({ queryKey: ['projects', workspaceId] })
       }
-      notify.success(`Project "${values.name}" updated`)
+      notify.success(t('edit.updated', { name: values.name }))
       onClose()
     } catch (err) {
       const msg = errorMessage(err)
@@ -379,7 +382,7 @@ export function EditProjectModal({
   }
 
   return (
-    <AppModal open onClose={onClose} title="Edit Project" width={560}>
+    <AppModal open onClose={onClose} title={t('edit.title')} width={560}>
       <form onSubmit={handleSubmit}>
         <ModalBody className="space-y-4">
           <ProjectFormFields
@@ -393,11 +396,11 @@ export function EditProjectModal({
         </ModalBody>
         <ModalFooter>
           <Button variant="outline" type="button" onClick={onClose}>
-            Cancel
+            {t('common:cancel')}
           </Button>
           <Button type="submit" disabled={saving || !values.name.trim()}>
             {saving && <Loader2 size={12} className="animate-spin" />}
-            Save Changes
+            {t('edit.save')}
           </Button>
         </ModalFooter>
       </form>
@@ -414,6 +417,7 @@ export function NewProjectModal({
   workspaceId: string
   onClose: () => void
 }) {
+  const { t } = useTranslation('projects')
   const { user } = useAuthStore()
   const [values, setValues] = useState<ProjectFormValues>({
     name: '',
@@ -447,7 +451,7 @@ export function NewProjectModal({
     const trimmedKey = values.key.trim().toUpperCase()
     if (!values.name.trim() || !trimmedKey) return
     if (trimmedKey.length < 2) {
-      notify.error('Project key must be at least 2 characters')
+      notify.error(t('create.keyTooShort'))
       return
     }
     try {
@@ -460,7 +464,7 @@ export function NewProjectModal({
         startDate: values.startDate || undefined,
         teamIds: values.teamIds.length > 0 ? values.teamIds : undefined,
       })
-      notify.success(`Project "${values.name}" created`)
+      notify.success(t('create.created', { name: values.name }))
       onClose()
     } catch (err) {
       const msg = errorMessage(err)
@@ -469,7 +473,7 @@ export function NewProjectModal({
   }
 
   return (
-    <AppModal open onClose={onClose} title="New Project" width={560}>
+    <AppModal open onClose={onClose} title={t('create.title')} width={560}>
       <form onSubmit={handleSubmit}>
         <ModalBody className="space-y-4">
           <ProjectFormFields
@@ -482,11 +486,11 @@ export function NewProjectModal({
         </ModalBody>
         <ModalFooter>
           <Button variant="outline" type="button" onClick={onClose}>
-            Cancel
+            {t('common:cancel')}
           </Button>
           <Button type="submit" disabled={isPending || !values.name.trim() || !values.key.trim()}>
             {isPending && <Loader2 size={12} className="animate-spin" />}
-            Create Project
+            {t('create.submit')}
           </Button>
         </ModalFooter>
       </form>
@@ -527,6 +531,7 @@ function ProjectTeamsCell({ projectId, teamCount }: { projectId: string; teamCou
 // ── Table columns (shared useDataTable engine) ───────────────────────────────
 
 function ProjectActionsCell({ project, ctx }: { project: Project; ctx: ProjectCtx }) {
+  const { t } = useTranslation('projects')
   const { openMenu, setOpenMenu, onEdit, onToggleArchive } = ctx
   return (
     <div className="relative" onClick={(e) => e.stopPropagation()}>
@@ -548,7 +553,7 @@ function ProjectActionsCell({ project, ctx }: { project: Project; ctx: ProjectCt
             }}
           >
             <Edit3 size={12} className="text-muted-foreground" />
-            Edit project
+            {t('actions.edit')}
           </button>
           <button
             className="flex w-full items-center gap-2 px-3 py-2 text-ui-sm hover:bg-surface-subtle"
@@ -560,7 +565,7 @@ function ProjectActionsCell({ project, ctx }: { project: Project; ctx: ProjectCt
             ) : (
               <RotateCcw size={12} className="text-muted-foreground" />
             )}
-            {project.status === 'active' ? 'Archive project' : 'Restore project'}
+            {project.status === 'active' ? t('actions.archive') : t('actions.restore')}
           </button>
         </div>
       )}

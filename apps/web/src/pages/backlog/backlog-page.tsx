@@ -26,6 +26,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
@@ -175,6 +176,7 @@ const SCHEDULE_STATE_OPTS = [
 ]
 
 export function BacklogPage() {
+  const { t } = useTranslation('backlog')
   const navigate = useNavigate()
   const { project, team } = useAppContext()
   const projectId = project?.projectId
@@ -331,7 +333,7 @@ export function BacklogPage() {
   if (!projectId) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <p className="text-sm text-foreground-subtle">Select a project to view the backlog.</p>
+        <p className="text-sm text-foreground-subtle">{t('selectProject')}</p>
       </div>
     )
   }
@@ -404,7 +406,7 @@ export function BacklogPage() {
             isError ? (
               <div className="flex h-32 items-center justify-center">
                 <p className="text-sm text-destructive">
-                  {error instanceof Error ? error.message : 'Failed to load backlog.'}
+                  {error instanceof Error ? error.message : t('loadError')}
                 </p>
               </div>
             ) : undefined
@@ -412,15 +414,13 @@ export function BacklogPage() {
           empty={
             items.length === 0 ? (
               <div className="flex h-32 flex-col items-center justify-center gap-2">
-                <p className="text-sm text-foreground-subtle">
-                  No backlog items match your filters.
-                </p>
+                <p className="text-sm text-foreground-subtle">{t('empty')}</p>
                 <button
                   onClick={() => setShowCreate(true)}
                   disabled={!canCreate}
                   className="text-xs font-medium text-primary-light disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  + Create Work Item
+                  {t('createFirst')}
                 </button>
               </div>
             ) : undefined
@@ -476,7 +476,12 @@ export function BacklogPage() {
           onClose={() => setShowCreate(false)}
           onCreated={(item) => {
             setShowCreate(false)
-            toast.success(`${item.type === 'defect' ? 'Defect' : 'Story'} "${item.title}" created`)
+            toast.success(
+              t('created', {
+                type: item.type === 'defect' ? t('typeDefect') : t('typeStory'),
+                title: item.title,
+              }),
+            )
           }}
           onCreatedWithDetails={(item) => {
             setShowCreate(false)
@@ -539,6 +544,7 @@ function BacklogToolbar({
   toggleVisible,
   reorder,
 }: BacklogToolbarProps) {
+  const { t } = useTranslation('backlog')
   const activeFilterCount =
     (filterType ? 1 : 0) +
     (filterState ? 1 : 0) +
@@ -548,7 +554,7 @@ function BacklogToolbar({
 
   return (
     <PageToolbar
-      title="Backlog"
+      title={t('title')}
       search={{
         value: search,
         onChange: setSearch,
@@ -564,7 +570,7 @@ function BacklogToolbar({
           title={!canCreate ? 'You do not have permission to create work items' : undefined}
         >
           <Plus size={12} />
-          Create Work Item
+          {t('createButton')}
         </Button>
       }
       activeFilterCount={activeFilterCount}
@@ -578,9 +584,9 @@ function BacklogToolbar({
             aria-label="Filter by type"
             className="w-auto"
           >
-            <option value="">All Types</option>
-            <option value="story">Story</option>
-            <option value="defect">Defect</option>
+            <option value="">{t('filters.allTypes')}</option>
+            <option value="story">{t('typeStory')}</option>
+            <option value="defect">{t('typeDefect')}</option>
           </InlineSelect>
 
           {/* Schedule State filter */}
@@ -604,8 +610,8 @@ function BacklogToolbar({
             aria-label="Filter by owner"
             className="w-auto"
           >
-            <option value="">All Owners</option>
-            <option value="unassigned">Unassigned</option>
+            <option value="">{t('filters.allOwners')}</option>
+            <option value="unassigned">{t('filters.unassigned')}</option>
             {members.map((m) => (
               <option key={m.userId} value={m.userId}>
                 {m.displayName ?? m.email ?? m.userId}
@@ -620,7 +626,7 @@ function BacklogToolbar({
             aria-label="Filter by release"
             className="w-auto"
           >
-            <option value="">All Releases</option>
+            <option value="">{t('filters.allReleases')}</option>
             {releases.map((r) => (
               <option key={r.id} value={r.id}>
                 {r.name}
@@ -635,7 +641,7 @@ function BacklogToolbar({
             aria-label="Filter by iteration"
             className="w-auto"
           >
-            <option value="">All Iterations</option>
+            <option value="">{t('filters.allIterations')}</option>
             {iterations.map((it) => (
               <option key={it.id} value={it.id}>
                 {it.name}

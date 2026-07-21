@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
 
@@ -24,6 +25,7 @@ export function AddItemModal({
   onClose: () => void
   onCreated: () => void
 }) {
+  const { t } = useTranslation('iteration-status')
   const navigate = useNavigate()
   const create = useCreateIterationItem(iteration.id)
   const { data: members = [] } = useProjectMembers(projectId)
@@ -36,7 +38,7 @@ export function AddItemModal({
   async function submit(openDetail = false) {
     setError(null)
     if (!title.trim()) {
-      setError('Title is required')
+      setError(t('create.titleRequired'))
       return
     }
     try {
@@ -47,7 +49,10 @@ export function AddItemModal({
         assigneeId: assigneeId || undefined,
       })
       notify.success(
-        `${type === 'defect' ? 'Defect' : 'Story'} "${title.trim()}" added to iteration`,
+        t('create.added', {
+          type: type === 'defect' ? t('create.defect') : t('create.story'),
+          title: title.trim(),
+        }),
       )
       if (openDetail) {
         void navigate({ to: '/item/$itemKey', params: { itemKey: result.itemKey } })
@@ -55,7 +60,7 @@ export function AddItemModal({
         onCreated()
       }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Failed to create item'
+      const msg = e instanceof Error ? e.message : t('create.createFailed')
       setError(msg)
       notify.error(msg)
     }
@@ -65,13 +70,13 @@ export function AddItemModal({
     <AppModal
       open
       onClose={onClose}
-      title="Add Item to Iteration"
+      title={t('create.title')}
       subtitle={`${iteration.name} · ${fmtRange(iteration)}`}
       width={460}
     >
       <ModalBody className="space-y-4">
         {/* Type toggle */}
-        <FormField label="Type">
+        <FormField label={t('create.typeLabel')}>
           <div className="flex gap-2">
             {(['story', 'defect'] as const).map((o) => (
               <button
@@ -91,7 +96,7 @@ export function AddItemModal({
           </div>
         </FormField>
 
-        <FormField label="Title" required error={error ?? undefined}>
+        <FormField label={t('create.titleLabel')} required error={error ?? undefined}>
           <Input
             autoFocus
             value={title}
@@ -100,7 +105,7 @@ export function AddItemModal({
           />
         </FormField>
 
-        <FormField label="Plan Estimate">
+        <FormField label={t('create.planEstimateLabel')}>
           <Input
             type="number"
             min={0}
@@ -110,9 +115,9 @@ export function AddItemModal({
           />
         </FormField>
 
-        <FormField label="Owner">
+        <FormField label={t('common:owner')}>
           <NativeSelect value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
-            <option value="">Unassigned</option>
+            <option value="">{t('toolbar.unassigned')}</option>
             {members.map((m) => (
               <option key={m.userId} value={m.userId}>
                 {m.displayName ?? m.email ?? m.userId}
@@ -124,7 +129,7 @@ export function AddItemModal({
 
       <ModalFooter>
         <Button variant="outline" type="button" onClick={onClose}>
-          Cancel
+          {t('common:cancel')}
         </Button>
         <Button
           variant="secondary"
@@ -132,11 +137,11 @@ export function AddItemModal({
           disabled={create.isPending}
           onClick={() => submit(true)}
         >
-          Create with details
+          {t('create.withDetails')}
         </Button>
         <Button type="button" disabled={create.isPending} onClick={() => submit(false)}>
           {create.isPending && <Loader2 size={11} className="animate-spin" />}
-          Create Item
+          {t('create.createItem')}
         </Button>
       </ModalFooter>
     </AppModal>

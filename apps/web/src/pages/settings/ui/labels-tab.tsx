@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Plus, Pencil, Trash2, Loader2 } from 'lucide-react'
 
 import { BRAND } from '@/shared/config/brand'
@@ -25,6 +26,7 @@ import { Spinner } from '@/shared/ui/spinner'
 const DEFAULT_LABEL_COLOR = BRAND.statusDefault
 
 export function LabelsTab() {
+  const { t } = useTranslation('settings')
   const activeProject = useAppContext((s) => s.project)
   const { hasPermission } = useAuthStore()
   const canManage = hasPermission(PERMISSION.PROJECT_EDIT)
@@ -37,11 +39,7 @@ export function LabelsTab() {
   const [deleteTarget, setDeleteTarget] = useState<ProjectLabel | null>(null)
 
   if (!activeProject) {
-    return (
-      <p className="text-ui-lg text-foreground-subtle">
-        No project selected. Navigate into a project first.
-      </p>
-    )
+    return <p className="text-ui-lg text-foreground-subtle">{t('noProjectSelected')}</p>
   }
 
   const ordered = [...labels].sort((a, b) => a.name.localeCompare(b.name))
@@ -49,10 +47,10 @@ export function LabelsTab() {
   async function handleDelete(label: ProjectLabel) {
     try {
       await remove.mutateAsync(label.id)
-      notify.success(`Label "${label.name}" deleted`)
+      notify.success(t('labels.labelDeleted', { name: label.name }))
       setDeleteTarget(null)
     } catch (err) {
-      notify.fromError(err, 'Failed to delete label')
+      notify.fromError(err, t('labels.deleteFailed'))
     }
   }
 
@@ -60,12 +58,12 @@ export function LabelsTab() {
     <div className="max-w-3xl">
       <div className="mb-3 flex items-center justify-between">
         <p className="text-ui-lg text-muted-foreground">
-          Labels categorise work items in{' '}
+          {t('labels.description')}{' '}
           <span className="font-semibold text-foreground">{activeProject.projectKey}</span>.
         </p>
         {canManage && (
           <Button variant="secondary" size="sm" type="button" onClick={() => setShowAdd(true)}>
-            <Plus size={13} /> Add Label
+            <Plus size={13} /> {t('labels.addLabel')}
           </Button>
         )}
       </div>
@@ -75,15 +73,15 @@ export function LabelsTab() {
           <Spinner size="lg" />
         </div>
       ) : isError ? (
-        <EmptyState title="Unable to load labels. Please try again." />
+        <EmptyState title={t('labels.loadError')} />
       ) : ordered.length === 0 ? (
-        <EmptyState title="No labels defined yet." />
+        <EmptyState title={t('labels.empty')} />
       ) : (
         <div className="overflow-hidden rounded-md border">
           <div className="flex items-center gap-2 bg-surface-hover px-3 py-2 text-ui-xs font-semibold tracking-wider text-foreground-subtle uppercase">
-            <div className="flex-1">Label</div>
-            <div className="w-28">Colour</div>
-            <div className="w-20 text-right">Actions</div>
+            <div className="flex-1">{t('labels.colLabel')}</div>
+            <div className="w-28">{t('labels.colColor')}</div>
+            <div className="w-20 text-right">{t('common:actions')}</div>
           </div>
           {ordered.map((label) => (
             <div
@@ -140,10 +138,10 @@ export function LabelsTab() {
 
       <ConfirmDialog
         open={!!deleteTarget}
-        title="Delete label"
+        title={t('labels.deleteTitle')}
         confirmText={deleteTarget?.name ?? ''}
-        message="This permanently removes the label from every work item that uses it."
-        confirmLabel="Delete label"
+        message={t('labels.deleteMessage')}
+        confirmLabel={t('labels.deleteConfirm')}
         pending={remove.isPending}
         onConfirm={() => deleteTarget && void handleDelete(deleteTarget)}
         onCancel={() => setDeleteTarget(null)}
@@ -161,6 +159,7 @@ function LabelModal({
   label?: ProjectLabel
   onClose: () => void
 }) {
+  const { t } = useTranslation('settings')
   const isEdit = !!label
   const [name, setName] = useState(label?.name ?? '')
   const [color, setColor] = useState(label?.color ?? DEFAULT_LABEL_COLOR)
@@ -174,22 +173,27 @@ function LabelModal({
     try {
       if (isEdit) {
         await update.mutateAsync({ labelId: label.id, input: { name: name.trim(), color } })
-        notify.success(`Label "${name.trim()}" updated`)
+        notify.success(t('labels.labelUpdated', { name: name.trim() }))
       } else {
         await create.mutateAsync({ name: name.trim(), color })
-        notify.success(`Label "${name.trim()}" added`)
+        notify.success(t('labels.labelAdded', { name: name.trim() }))
       }
       onClose()
     } catch (err) {
-      notify.fromError(err, 'Failed to save label')
+      notify.fromError(err, t('labels.saveFailed'))
     }
   }
 
   return (
-    <AppModal open onClose={onClose} title={isEdit ? 'Edit Label' : 'Add Label'} width={420}>
+    <AppModal
+      open
+      onClose={onClose}
+      title={isEdit ? t('labels.editTitle') : t('labels.addLabel')}
+      width={420}
+    >
       <form onSubmit={(e) => void handleSubmit(e)}>
         <ModalBody className="space-y-4">
-          <FormField label="Label name" required>
+          <FormField label={t('labels.labelNameLabel')} required>
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -197,7 +201,7 @@ function LabelModal({
               autoFocus
             />
           </FormField>
-          <FormField label="Colour">
+          <FormField label={t('labels.colorLabel')}>
             <input
               type="color"
               value={color}
@@ -208,11 +212,11 @@ function LabelModal({
         </ModalBody>
         <ModalFooter>
           <Button type="button" variant="outline" onClick={onClose}>
-            Cancel
+            {t('common:cancel')}
           </Button>
           <Button type="submit" disabled={pending || !name.trim()}>
             {pending && <Loader2 size={12} className="animate-spin" />}
-            {isEdit ? 'Save Label' : 'Add Label'}
+            {isEdit ? t('labels.saveLabel') : t('labels.addLabel')}
           </Button>
         </ModalFooter>
       </form>

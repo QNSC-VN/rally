@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { PanelRightClose } from 'lucide-react'
 
@@ -50,6 +51,7 @@ function ParentStorySelect({
   currentParentId: string | null
   onUpdate: (patch: { parentId: string | null }) => void
 }) {
+  const { t } = useTranslation('work-items')
   const { data: backlogData } = useBacklog(projectId, { type: 'story' })
   const stories = backlogData?.data ?? []
   return (
@@ -57,7 +59,7 @@ function ParentStorySelect({
       value={currentParentId ?? ''}
       onChange={(e) => onUpdate({ parentId: e.target.value || null })}
     >
-      <option value="">No parent story</option>
+      <option value="">{t('sidebar.noParentStory')}</option>
       {stories.map((s) => (
         <option key={s.id} value={s.id}>
           {s.itemKey} — {s.title}
@@ -125,6 +127,7 @@ export function DetailSidebar({
   saveStatus,
   saveErrorMsg,
 }: SidebarProps) {
+  const { t } = useTranslation('work-items')
   const { data: teams = [] } = useProjectTeams(item.projectId)
   const { data: members = [] } = useProjectMembers(item.projectId)
   const { data: releases = [] } = useReleases(item.projectId)
@@ -156,7 +159,7 @@ export function DetailSidebar({
       {/* Collapse toggle header */}
       <div className="sticky top-0 z-10 flex items-center justify-between border-b border-avatar bg-card px-3 py-2">
         <span className="text-ui-sm font-semibold tracking-wide text-muted-foreground uppercase">
-          Details
+          {t('details.heading')}
         </span>
         <div className="flex items-center gap-2">
           {saveStatus && <SaveIndicator status={saveStatus} errorMsg={saveErrorMsg} />}
@@ -175,7 +178,7 @@ export function DetailSidebar({
           /* Task State — a Task has ONE state dimension (BR-TASK-01). No
              Schedule/Flow split. The wire field is `scheduleState`; the backend
              mirrors it onto `task.state`. */
-          <FormField label="Task State">
+          <FormField label={t('sidebar.taskState')}>
             <NativeSelect
               value={item.scheduleState ?? ScheduleState.Defined}
               onChange={(e) =>
@@ -193,7 +196,7 @@ export function DetailSidebar({
         ) : (
           <>
             {/* Schedule State — business-readiness dimension */}
-            <FormField label="Schedule State">
+            <FormField label={t('sidebar.scheduleState')}>
               <div>
                 <StateStepper
                   steps={SCHEDULE_STATE_STEPS}
@@ -210,7 +213,7 @@ export function DetailSidebar({
 
             {/* Flow State — mirrors Schedule State bidirectionally (backend
                 enforces the mirror; either control updates both). */}
-            <FormField label="Flow State">
+            <FormField label={t('sidebar.flowState')}>
               <NativeSelect
                 value={item.flowState ?? item.scheduleState ?? ScheduleState.Defined}
                 onChange={(e) => onUpdate({ flowState: e.target.value as WorkItem['flowState'] })}
@@ -244,7 +247,7 @@ export function DetailSidebar({
 
         {/* Priority — Defect only */}
         {item.type === 'defect' && (
-          <FormField label="Priority">
+          <FormField label={t('sidebar.priority')}>
             <NativeSelect
               value={item.priority ?? 'none'}
               onChange={(e) => onUpdate({ priority: e.target.value as WorkItem['priority'] })}
@@ -261,7 +264,7 @@ export function DetailSidebar({
 
         {/* Environment — Defect only */}
         {isDefect && (
-          <FormField label="Environment">
+          <FormField label={t('sidebar.environment')}>
             <NativeSelect
               value={item.foundInEnvironment ?? ''}
               onChange={(e) =>
@@ -273,11 +276,11 @@ export function DetailSidebar({
               }
               disabled={disabled}
             >
-              <option value="">Not specified</option>
-              <option value="development">Development</option>
-              <option value="staging">Staging</option>
-              <option value="production">Production</option>
-              <option value="testing">Testing</option>
+              <option value="">{t('sidebar.env.notSpecified')}</option>
+              <option value="development">{t('sidebar.env.development')}</option>
+              <option value="staging">{t('sidebar.env.staging')}</option>
+              <option value="production">{t('sidebar.env.production')}</option>
+              <option value="testing">{t('sidebar.env.testing')}</option>
             </NativeSelect>
           </FormField>
         )}
@@ -285,9 +288,9 @@ export function DetailSidebar({
         {/* Task: Work Product (parent link) */}
         {isTask && item.parentId && (
           <RelatedItemField
-            label="Work Product"
+            label={t('sidebar.workProduct')}
             target={parentItem}
-            emptyText="Loading…"
+            emptyText={t('sidebar.loading')}
             onOpen={openItem}
           />
         )}
@@ -295,9 +298,9 @@ export function DetailSidebar({
         {/* Story: Feature (parent link) */}
         {item.type === 'story' && item.parentId && (
           <RelatedItemField
-            label="Feature"
+            label={t('sidebar.feature')}
             target={parentItem}
-            emptyText="Loading…"
+            emptyText={t('sidebar.loading')}
             onOpen={openItem}
           />
         )}
@@ -306,13 +309,13 @@ export function DetailSidebar({
         {isDefect &&
           (disabled ? (
             <RelatedItemField
-              label="Parent Story"
+              label={t('sidebar.parentStory')}
               target={parentItem}
-              emptyText={item.parentId ? 'Loading…' : 'No parent story'}
+              emptyText={item.parentId ? t('sidebar.loading') : t('sidebar.noParentStory')}
               onOpen={openItem}
             />
           ) : (
-            <FormField label="Parent Story">
+            <FormField label={t('sidebar.parentStory')}>
               <ParentStorySelect
                 projectId={item.projectId}
                 currentParentId={item.parentId}
@@ -325,7 +328,7 @@ export function DetailSidebar({
             To Do and Actuals are the manual inputs (SRS P1-TASK-01 / DEV-015). */}
         {isTask && (
           <>
-            <FormField label="Estimate (h)">
+            <FormField label={t('sidebar.estimateH')}>
               <div
                 className="flex h-9 items-center rounded border border-input bg-input-background px-3 font-mono text-ui-lg text-foreground"
                 title="Estimate is derived: To Do + Actuals"
@@ -334,7 +337,7 @@ export function DetailSidebar({
                 {deriveEstimateHours(item.todoHours, item.actualHours)}h
               </div>
             </FormField>
-            <FormField label="To Do (h)">
+            <FormField label={t('sidebar.todoH')}>
               <input
                 type="number"
                 min={0}
@@ -346,7 +349,7 @@ export function DetailSidebar({
                 disabled={disabled}
               />
             </FormField>
-            <FormField label="Actual (h)">
+            <FormField label={t('sidebar.actualH')}>
               <input
                 type="number"
                 min={0}
@@ -363,7 +366,7 @@ export function DetailSidebar({
 
         {/* Story/Defect: Plan Estimate */}
         {!isTask && (
-          <FormField label="Plan Estimate (pts)">
+          <FormField label={t('sidebar.planEstimatePts')}>
             <input
               type="number"
               min={0}
@@ -378,7 +381,7 @@ export function DetailSidebar({
 
         {/* Story/Defect: Task Roll-up (read-only aggregate of child task hours) */}
         {!isTask && taskTotals && taskTotals.taskCount > 0 && (
-          <FormField label="Task Roll-up">
+          <FormField label={t('sidebar.taskRollup')}>
             <TaskRollup
               estimate={taskTotals.estimateHours}
               todo={taskTotals.todoHours}
@@ -390,7 +393,7 @@ export function DetailSidebar({
         {/* Story/Defect: Iteration + Release */}
         {!isTask && (
           <>
-            <FormField label="Iteration">
+            <FormField label={t('sidebar.iteration')}>
               <NativeSelect
                 value={item.iterationId ?? ''}
                 onChange={(e) => {
@@ -399,7 +402,7 @@ export function DetailSidebar({
                 }}
                 disabled={disabled}
               >
-                <option value="">No iteration</option>
+                <option value="">{t('sidebar.noIteration')}</option>
                 {iterations.map((i) => (
                   <option key={i.id} value={i.id}>
                     {i.name}
@@ -407,13 +410,13 @@ export function DetailSidebar({
                 ))}
               </NativeSelect>
             </FormField>
-            <FormField label="Release">
+            <FormField label={t('sidebar.release')}>
               <NativeSelect
                 value={item.releaseId ?? ''}
                 onChange={(e) => onUpdate({ releaseId: e.target.value || null })}
                 disabled={disabled}
               >
-                <option value="">No release</option>
+                <option value="">{t('sidebar.noRelease')}</option>
                 {releases.map((r) => (
                   <option key={r.id} value={r.id}>
                     {r.name}
@@ -423,7 +426,7 @@ export function DetailSidebar({
             </FormField>
             {/* Milestones — many-to-many, persisted independently of Release
                 (SRS FR-022). Reuses the shared SelectionModal. */}
-            <FormField label="Milestones">
+            <FormField label={t('sidebar.milestones')}>
               <button
                 type="button"
                 onClick={() => setShowMilestones(true)}
@@ -442,7 +445,7 @@ export function DetailSidebar({
                 <span className="truncate">
                   {itemMilestones.length > 0
                     ? itemMilestones.map((m) => m.name).join(', ')
-                    : 'No milestones'}
+                    : t('sidebar.noMilestones')}
                 </span>
                 {itemMilestones.length > 0 && (
                   <span className="ml-2 shrink-0 text-ui-sm text-foreground-subtle">
@@ -457,20 +460,20 @@ export function DetailSidebar({
         {/* Blocked flag */}
         {item.isBlocked && (
           <div className="flex items-start gap-2 rounded border border-destructive-border bg-destructive-bg p-2 text-ui-sm text-destructive">
-            <span className="font-semibold">Blocked:</span>
-            <span>{item.blockedReason ?? 'Reason not provided.'}</span>
+            <span className="font-semibold">{t('sidebar.blockedLabel')}</span>
+            <span>{item.blockedReason ?? t('sidebar.reasonNotProvided')}</span>
           </div>
         )}
 
         {/* Tags (labels) */}
         {tags.length > 0 && (
-          <FormField label="Tags">
+          <FormField label={t('sidebar.tags')}>
             <LabelChips labels={tags} />
           </FormField>
         )}
 
         {/* Creation Date (read-only) */}
-        <FormField label="Creation Date">
+        <FormField label={t('sidebar.creationDate')}>
           <span className="block px-1 text-ui-md text-muted-foreground">
             {formatDate(item.createdAt)}
           </span>
@@ -479,7 +482,7 @@ export function DetailSidebar({
         {/* Read-only notice */}
         {readOnly && (
           <div className="rounded border border-avatar bg-surface-hover px-3 py-2 text-ui-xs text-muted-foreground">
-            You have read-only access to this item.
+            {t('sidebar.readOnlyNotice')}
           </div>
         )}
       </div>
@@ -488,7 +491,7 @@ export function DetailSidebar({
         <SelectionModal
           open={showMilestones}
           onClose={() => setShowMilestones(false)}
-          title="Milestones"
+          title={t('sidebar.milestones')}
           items={milestoneOptions.map((m) => ({ id: m.id, name: m.name }))}
           selectedIds={itemMilestones.map((m) => m.id)}
           onSave={(ids) => setMilestones.mutateAsync(ids).then(() => undefined)}

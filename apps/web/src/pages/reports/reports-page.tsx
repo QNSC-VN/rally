@@ -25,6 +25,7 @@ import {
 } from 'recharts'
 import { AlertTriangle, Download } from 'lucide-react'
 import { toast } from 'sonner'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 
 import { BRAND } from '@/shared/config/brand'
@@ -82,6 +83,7 @@ function Widget({
 }
 
 export function ReportsPage() {
+  const { t } = useTranslation('reports')
   const navigate = useNavigate()
   const { project, team } = useAppContext()
   const projectId = project?.projectId
@@ -184,13 +186,13 @@ export function ReportsPage() {
   const defectRows = useMemo(() => {
     const m = defects?.metrics
     return [
-      { label: 'Open', value: m?.openDefects ?? 0, color: BRAND.warning },
-      { label: 'Critical', value: m?.critical ?? 0, color: BRAND.danger },
-      { label: 'In Progress', value: m?.inProgress ?? 0, color: BRAND.primaryLight },
-      { label: 'Resolved', value: m?.verifiedAccepted ?? 0, color: BRAND.success },
-      { label: 'Blockers', value: m?.blockers ?? 0, color: BRAND.danger },
+      { label: t('defects.open'), value: m?.openDefects ?? 0, color: BRAND.warning },
+      { label: t('defects.critical'), value: m?.critical ?? 0, color: BRAND.danger },
+      { label: t('defects.inProgress'), value: m?.inProgress ?? 0, color: BRAND.primaryLight },
+      { label: t('defects.resolved'), value: m?.verifiedAccepted ?? 0, color: BRAND.success },
+      { label: t('defects.blockers'), value: m?.blockers ?? 0, color: BRAND.danger },
     ]
-  }, [defects])
+  }, [defects, t])
 
   function exportCsv() {
     const lines: string[] = []
@@ -210,13 +212,13 @@ export function ReportsPage() {
     a.download = `report-${selected?.name ?? 'project'}.csv`
     a.click()
     URL.revokeObjectURL(url)
-    toast.success('Report exported')
+    toast.success(t('exported'))
   }
 
   if (!projectId) {
     return (
       <div className="flex h-full items-center justify-center text-foreground-subtle">
-        <p className="text-sm">Select a project to view its reports.</p>
+        <p className="text-sm">{t('selectProject')}</p>
       </div>
     )
   }
@@ -225,8 +227,8 @@ export function ReportsPage() {
     <div className="flex-1 overflow-auto bg-background">
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <PageHeader
-        title="Reports"
-        subtitle={`${project.projectName}${team ? ` · ${team.teamName}` : ''} · Last 6 iterations`}
+        title={t('title')}
+        subtitle={`${project.projectName}${team ? ` · ${team.teamName}` : ''} · ${t('subtitleWindow')}`}
         actions={
           <>
             <IterationPicker
@@ -236,7 +238,7 @@ export function ReportsPage() {
             />
             {canExport && (
               <Button size="sm" type="button" onClick={exportCsv}>
-                <Download size={12} /> Export
+                <Download size={12} /> {t('export')}
               </Button>
             )}
           </>
@@ -251,35 +253,35 @@ export function ReportsPage() {
         <div className="grid grid-cols-3 gap-3 p-4">
           {/* Sprint progress strip */}
           <Widget
-            title={`Current Iteration Progress${selected ? ` — ${selected.name}` : ''}`}
+            title={`${t('widgets.iterationProgress')}${selected ? ` — ${selected.name}` : ''}`}
             span={3}
           >
             <div className="flex gap-6">
               <MetricCard
-                label="Committed"
+                label={t('metrics.committed')}
                 value={metrics?.totalPlanEstimate ?? 0}
-                caption="pts"
+                caption={t('units.pts')}
                 minWidth={100}
               />
               <MetricCard
-                label="Accepted"
+                label={t('metrics.accepted')}
                 value={metrics?.acceptedPoints ?? 0}
                 valueColor={BRAND.success}
-                caption="pts"
+                caption={t('units.pts')}
                 minWidth={100}
               />
               <MetricCard
-                label="Remaining"
+                label={t('metrics.remaining')}
                 value={Math.max(
                   0,
                   (metrics?.totalPlanEstimate ?? 0) - (metrics?.acceptedPoints ?? 0),
                 )}
                 valueColor={BRAND.warning}
-                caption="pts"
+                caption={t('units.pts')}
                 minWidth={100}
               />
               <MetricCard
-                label="Days Left"
+                label={t('metrics.daysLeft')}
                 value={metrics?.daysLeft ?? '—'}
                 valueColor={
                   metrics?.daysLeft != null && metrics.daysLeft <= 2 ? BRAND.danger : undefined
@@ -287,7 +289,7 @@ export function ReportsPage() {
                 minWidth={90}
               />
               <MetricCard
-                label="Completion"
+                label={t('metrics.completion')}
                 value={`${metrics?.acceptedPercent ?? 0}%`}
                 valueColor={BRAND.primaryLight}
                 progressPct={metrics?.acceptedPercent ?? 0}
@@ -297,11 +299,11 @@ export function ReportsPage() {
           </Widget>
 
           {/* Burndown */}
-          <Widget title="Iteration Burndown" span={2}>
+          <Widget title={t('widgets.burndown')} span={2}>
             {burndownLoading ? (
               <ChartSkeleton />
             ) : burndownData.length === 0 ? (
-              <EmptyChart label="No burndown data for this iteration." />
+              <EmptyChart label={t('empty.burndown')} />
             ) : (
               <ResponsiveContainer width="100%" height={180}>
                 <AreaChart data={burndownData}>
@@ -343,11 +345,11 @@ export function ReportsPage() {
           </Widget>
 
           {/* Velocity */}
-          <Widget title="Velocity">
+          <Widget title={t('widgets.velocity')}>
             {velocityLoading ? (
               <ChartSkeleton />
             ) : velocityData.length === 0 ? (
-              <EmptyChart label="No completed iterations yet." />
+              <EmptyChart label={t('empty.velocity')} />
             ) : (
               <ResponsiveContainer width="100%" height={180}>
                 <BarChart data={velocityData} barGap={3}>
@@ -382,9 +384,9 @@ export function ReportsPage() {
           </Widget>
 
           {/* Status distribution */}
-          <Widget title="Status Distribution">
+          <Widget title={t('widgets.statusDistribution')}>
             {statusPie.length === 0 ? (
-              <EmptyChart label="No items in this iteration." />
+              <EmptyChart label={t('empty.statusDistribution')} />
             ) : (
               <>
                 <ResponsiveContainer width="100%" height={160}>
@@ -421,7 +423,7 @@ export function ReportsPage() {
           </Widget>
 
           {/* Defect summary */}
-          <Widget title="Defect Summary">
+          <Widget title={t('widgets.defectSummary')}>
             <div className="space-y-2.5 pt-1">
               {defectRows.map((d) => (
                 <div key={d.label} className="flex items-center justify-between">
@@ -444,9 +446,9 @@ export function ReportsPage() {
           </Widget>
 
           {/* Workload by owner */}
-          <Widget title="Workload by Owner">
+          <Widget title={t('widgets.workload')}>
             {workloadData.length === 0 ? (
-              <EmptyChart label="No assigned work." />
+              <EmptyChart label={t('empty.workload')} />
             ) : (
               <>
                 <ResponsiveContainer width="100%" height={160}>
@@ -486,21 +488,21 @@ export function ReportsPage() {
                       className="inline-block h-2 w-2.5 rounded-sm"
                       style={{ backgroundColor: BRAND.accentBorder }}
                     />{' '}
-                    Define
+                    {t('legend.define')}
                   </span>
                   <span className="flex items-center gap-1">
                     <span
                       className="inline-block h-2 w-2.5 rounded-sm"
                       style={{ backgroundColor: BRAND.warning }}
                     />{' '}
-                    In Progress
+                    {t('legend.inProgress')}
                   </span>
                   <span className="flex items-center gap-1">
                     <span
                       className="inline-block h-2 w-2.5 rounded-sm"
                       style={{ backgroundColor: BRAND.primary }}
                     />{' '}
-                    Complete
+                    {t('legend.complete')}
                   </span>
                 </div>
               </>
@@ -508,9 +510,9 @@ export function ReportsPage() {
           </Widget>
 
           {/* Planned vs Completed */}
-          <Widget title="Planned vs Completed" span={2}>
+          <Widget title={t('widgets.plannedVsCompleted')} span={2}>
             {velocityData.length === 0 ? (
-              <EmptyChart label="No iteration history yet." />
+              <EmptyChart label={t('empty.plannedVsCompleted')} />
             ) : (
               <ResponsiveContainer width="100%" height={160}>
                 <AreaChart data={velocityData}>
@@ -551,10 +553,10 @@ export function ReportsPage() {
           </Widget>
 
           {/* Release progress */}
-          <Widget title="Release Progress">
+          <Widget title={t('widgets.releaseProgress')}>
             <div className="space-y-3 pt-1">
               {releases.length === 0 ? (
-                <p className="text-ui-sm text-foreground-subtle">No releases in this project.</p>
+                <p className="text-ui-sm text-foreground-subtle">{t('empty.releases')}</p>
               ) : (
                 releases.slice(0, 4).map((r) => {
                   const pct = r.taskRollup?.progressPercent ?? 0
@@ -584,10 +586,10 @@ export function ReportsPage() {
           </Widget>
 
           {/* Blocked items */}
-          <Widget title="Blocked Items">
+          <Widget title={t('widgets.blocked')}>
             <div className="space-y-2 pt-1">
               {blockedItems.length === 0 ? (
-                <p className="text-ui-sm text-foreground-subtle">No blocked items.</p>
+                <p className="text-ui-sm text-foreground-subtle">{t('empty.blocked')}</p>
               ) : (
                 blockedItems.map((i) => (
                   <button
@@ -614,10 +616,10 @@ export function ReportsPage() {
           </Widget>
 
           {/* Recent activity */}
-          <Widget title="Recent Activity">
+          <Widget title={t('widgets.recentActivity')}>
             <div className="space-y-2.5 pt-1">
               {notifications.length === 0 ? (
-                <p className="text-ui-sm text-foreground-subtle">No recent activity.</p>
+                <p className="text-ui-sm text-foreground-subtle">{t('empty.recentActivity')}</p>
               ) : (
                 notifications.slice(0, 6).map((n) => {
                   const actor = n.actorId ? memberMap.get(n.actorId) : undefined

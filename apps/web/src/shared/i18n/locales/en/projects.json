@@ -4,7 +4,10 @@
   "search": "Search projects...",
   "empty": "No projects yet",
   "emptyDesc": "Create your first project to get started.",
+  "emptyFiltered": "No projects found",
+  "emptyFilteredDesc": "Try adjusting your search or filter.",
   "status": {
+    "all": "All",
     "active": "Active",
     "archived": "Archived"
   },
@@ -21,5 +24,56 @@
     "edit": "Edit project",
     "viewBacklog": "View backlog",
     "viewBoard": "View board"
+  },
+  "metrics": {
+    "total": "Total",
+    "active": "Active",
+    "archived": "Archived",
+    "linkedTeams": "Linked Teams"
+  },
+  "subtitle": {
+    "workspace": "Workspace",
+    "oneActive": "active project",
+    "manyActive": "active projects"
+  },
+  "toast": {
+    "restored": "\"{{name}}\" restored",
+    "archived": "\"{{name}}\" archived"
+  },
+  "errors": {
+    "unexpected": "An unexpected error occurred"
+  },
+  "form": {
+    "name": "Project Name",
+    "key": "Project Key",
+    "keyHintEditable": "2–6 letters",
+    "keyHintImmutable": "Immutable",
+    "owner": "Project Owner",
+    "startDate": "Start Date",
+    "loading": "Loading…",
+    "noTeams": "No teams in this workspace yet.",
+    "teamsHint": "A team can be linked to multiple projects.",
+    "teamsSelected": "{{num}} selected"
+  },
+  "create": {
+    "title": "New Project",
+    "submit": "Create Project",
+    "created": "Project \"{{name}}\" created",
+    "keyTooShort": "Project key must be at least 2 characters"
+  },
+  "edit": {
+    "title": "Edit Project",
+    "save": "Save Changes",
+    "updated": "Project \"{{name}}\" updated"
+  },
+  "archive": {
+    "warning": "This project will become read-only. Work items and iterations will still be visible.",
+    "whatWillHappen": "What will happen:",
+    "statusChange": "· Project status changes to",
+    "item2": "· No new work items, iterations, or releases can be created",
+    "item3": "· Existing data remains accessible in read-only mode",
+    "item4": "· The project will be hidden from the Active filter",
+    "confirmPrefix": "Type",
+    "confirmSuffix": "to confirm"
   }
 }

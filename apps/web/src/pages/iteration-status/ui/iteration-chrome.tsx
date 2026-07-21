@@ -1,4 +1,5 @@
 import { type CSSProperties } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Plus,
   ChevronLeft,
@@ -51,6 +52,7 @@ export function IterationHeader({
   viewMode: 'list' | 'board'
   setViewMode: (mode: 'list' | 'board') => void
 }) {
+  const { t } = useTranslation('iteration-status')
   return (
     <div
       className="flex shrink-0 items-center gap-3 border-b border-border-subtle bg-card px-4"
@@ -62,7 +64,7 @@ export function IterationHeader({
         className="text-foreground"
         style={{ fontSize: 16, fontWeight: 700, whiteSpace: 'nowrap' }}
       >
-        Iteration Status
+        {t('title')}
       </span>
       <div
         className="flex items-center border border-border-subtle"
@@ -217,8 +219,8 @@ export function IterationHeader({
       >
         {(
           [
-            { mode: 'list', Icon: List, label: 'List' },
-            { mode: 'board', Icon: LayoutGrid, label: 'Board' },
+            { mode: 'list', Icon: List, label: t('view.list') },
+            { mode: 'board', Icon: LayoutGrid, label: t('view.board') },
           ] as const
         ).map(({ mode, Icon, label }, i) => {
           const active = viewMode === mode
@@ -267,6 +269,7 @@ export function MetricsStrip({
   iterationEnd: { value: string; label: string; color: string }
   iterationProgressPct: number
 }) {
+  const { t } = useTranslation('iteration-status')
   return (
     <div
       className="flex shrink-0 items-stretch border-b border-border-subtle bg-card px-4"
@@ -278,14 +281,17 @@ export function MetricsStrip({
       {/* Left side: KPI cards from the iteration read-model */}
       <div className="flex items-stretch" style={{ gap: 32, flex: 1 }}>
         <MetricCard
-          label="Planned Velocity"
+          label={t('metrics.plannedVelocity')}
           value={`${velocityPct}%`}
-          caption={`${metrics?.totalPlanEstimate ?? 0} of ${metrics?.plannedVelocity ?? 0} Points`}
+          caption={t('metrics.points', {
+            current: metrics?.totalPlanEstimate ?? 0,
+            total: metrics?.plannedVelocity ?? 0,
+          })}
           progressPct={velocityPct}
           minWidth={160}
         />
         <MetricCard
-          label="Iteration End"
+          label={t('metrics.iterationEnd')}
           value={iterationEnd.value}
           valueColor={iterationEnd.color}
           caption={iterationEnd.label}
@@ -294,10 +300,13 @@ export function MetricsStrip({
           minWidth={140}
         />
         <MetricCard
-          label="Accepted"
+          label={t('metrics.accepted')}
           value={`${acceptedPct}%`}
           valueColor={BRAND.success}
-          caption={`${metrics?.acceptedPoints ?? 0} of ${metrics?.totalPlanEstimate ?? 0} Points`}
+          caption={t('metrics.points', {
+            current: metrics?.acceptedPoints ?? 0,
+            total: metrics?.totalPlanEstimate ?? 0,
+          })}
           progressPct={acceptedPct}
           progressColor={BRAND.success}
           minWidth={140}
@@ -310,10 +319,10 @@ export function MetricsStrip({
           <Bug size={16} className="text-foreground-subtle" />
           <div className="flex flex-col">
             <span className="text-foreground" style={{ fontSize: 11, fontWeight: 600 }}>
-              {metrics?.defectCount ?? 0} Active
+              {t('metrics.defectsActive', { value: metrics?.defectCount ?? 0 })}
             </span>
             <span className="text-foreground-subtle" style={{ fontSize: 10 }}>
-              Defects
+              {t('metrics.defects')}
             </span>
           </div>
         </div>
@@ -321,10 +330,10 @@ export function MetricsStrip({
           <ListChecks size={16} className="text-foreground-subtle" />
           <div className="flex flex-col">
             <span className="text-foreground" style={{ fontSize: 11, fontWeight: 600 }}>
-              {metrics?.activeTaskCount ?? 0} Active
+              {t('metrics.tasksActive', { value: metrics?.activeTaskCount ?? 0 })}
             </span>
             <span className="text-foreground-subtle" style={{ fontSize: 10 }}>
-              Tasks
+              {t('metrics.tasks')}
             </span>
           </div>
         </div>
@@ -348,7 +357,7 @@ export function MetricsStrip({
           }}
         >
           <BarChart3 size={14} />
-          View Charts
+          {t('metrics.viewCharts')}
         </button>
       </div>
     </div>
@@ -392,6 +401,7 @@ export function Toolbar({
   setBlockedOnly: (v: boolean) => void
   members: import('@/features/teams/api').ProjectMember[]
 }) {
+  const { t } = useTranslation('iteration-status')
   const activeFilterCount =
     (stateFilter !== 'all' ? 1 : 0) + (ownerFilter !== 'all' ? 1 : 0) + (blockedOnly ? 1 : 0)
   return (
@@ -406,7 +416,7 @@ export function Toolbar({
       actions={
         canCreate ? (
           <Button size="sm" onClick={onAddNew}>
-            <Plus size={14} /> Add New
+            <Plus size={14} /> {t('toolbar.addNew')}
           </Button>
         ) : undefined
       }
@@ -415,14 +425,14 @@ export function Toolbar({
       filters={
         <>
           <label className="flex items-center gap-1.5 text-ui-sm font-semibold text-muted-foreground">
-            State
+            {t('toolbar.state')}
             <InlineSelect
               value={stateFilter}
               aria-label="Filter by schedule state"
               onChange={(e) => setStateFilter(e.target.value as ScheduleState | 'all')}
               className="w-auto"
             >
-              <option value="all">All States</option>
+              <option value="all">{t('toolbar.allStates')}</option>
               {SCHEDULE_STATE_VALUES.map((s) => (
                 <option key={s} value={s}>
                   {SCHEDULE_STATE_LABEL[s as ScheduleState] ?? s}
@@ -431,15 +441,15 @@ export function Toolbar({
             </InlineSelect>
           </label>
           <label className="flex items-center gap-1.5 text-ui-sm font-semibold text-muted-foreground">
-            Owner
+            {t('common:owner')}
             <InlineSelect
               value={ownerFilter}
               aria-label="Filter by owner"
               onChange={(e) => setOwnerFilter(e.target.value)}
               className="w-auto"
             >
-              <option value="all">All Owners</option>
-              <option value={OWNER_UNASSIGNED}>Unassigned</option>
+              <option value="all">{t('toolbar.allOwners')}</option>
+              <option value={OWNER_UNASSIGNED}>{t('toolbar.unassigned')}</option>
               {members.map((m) => (
                 <option key={m.userId} value={m.userId}>
                   {m.displayName}
@@ -453,7 +463,7 @@ export function Toolbar({
               checked={blockedOnly}
               onChange={(e) => setBlockedOnly(e.target.checked)}
             />
-            Blocked items only
+            {t('toolbar.blockedOnly')}
           </label>
           {activeFilterCount > 0 && (
             <button
@@ -464,7 +474,7 @@ export function Toolbar({
               }}
               className="cursor-pointer rounded px-2.5 py-1 text-ui-sm text-primary-light"
             >
-              Clear filters
+              {t('toolbar.clearFilters')}
             </button>
           )}
         </>
@@ -498,16 +508,17 @@ export function TableFooterTotals({
   colStyles: Record<string, CSSProperties>
   totals: { planEst: number; taskEst: number; toDoSum: number; count: number }
 }) {
+  const { t } = useTranslation('iteration-status')
   return (
     <TableTotalsRow
       columns={HEADER_META}
       colStyles={colStyles}
       leading={<RowGutter dragDisabled />}
-      label="Totals"
+      label={t('totals.label')}
       values={{
-        planEstimate: `${totals.planEst} Points`,
-        taskEstimate: `${totals.taskEst} Hours`,
-        toDo: `${totals.toDoSum} Hours`,
+        planEstimate: t('totals.points', { value: totals.planEst }),
+        taskEstimate: t('totals.hours', { value: totals.taskEst }),
+        toDo: t('totals.hours', { value: totals.toDoSum }),
       }}
     />
   )

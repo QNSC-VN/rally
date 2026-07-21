@@ -1,4 +1,5 @@
 import { useState, useRef, useMemo, useEffect, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { createPortal } from 'react-dom'
 import { ChevronDown } from 'lucide-react'
 
@@ -24,6 +25,7 @@ export function MilestoneSelectCell({
   saving: boolean
   onCommit: (ids: string[]) => void
 }) {
+  const { t } = useTranslation('iteration-status')
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState<{
     left: number
@@ -170,7 +172,7 @@ export function MilestoneSelectCell({
           >
             {options.length === 0 ? (
               <div className="text-foreground-subtle" style={{ padding: '8px 10px', fontSize: 12 }}>
-                No milestones in this project
+                {t('cells.noMilestones')}
               </div>
             ) : (
               options.map((opt) => {
@@ -213,10 +215,11 @@ export function MilestoneSelectCell({
 
 /** Rally "Defect Status" summary pill derived from child-defect counts. */
 export function DefectStatusPill({ total, open }: { total: number; open: number }) {
+  const { t } = useTranslation('iteration-status')
   if (total === 0) {
     return (
       <span className="text-foreground-subtle" style={{ fontSize: 12 }}>
-        None
+        {t('cells.defectNone')}
       </span>
     )
   }
@@ -239,7 +242,7 @@ export function DefectStatusPill({ total, open }: { total: number; open: number 
         border: `1px solid ${bd}`,
       }}
     >
-      {closed ? 'Closed' : `${open} Open`}
+      {closed ? t('cells.defectClosed') : t('cells.defectOpen', { value: open })}
     </span>
   )
 }

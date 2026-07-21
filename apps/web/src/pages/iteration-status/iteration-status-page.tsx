@@ -8,6 +8,7 @@
  */
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useMemo, useState, useCallback, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { DataTableFrame, useDataTable } from '@/shared/ui/table'
 import { IterationBoard } from '@/widgets/iteration-board/iteration-board'
 import { RowGutter } from '@/shared/ui/row-gutter'
@@ -72,6 +73,7 @@ const EMPTY_ITEMS: IterationStatusItem[] = []
 // ── Main page ──────────────────────────────────────────────────────────────
 
 export function IterationStatusPage() {
+  const { t } = useTranslation('iteration-status')
   const navigate = useNavigate()
   const { project } = useAppContext()
   const projectId = project?.projectId
@@ -322,9 +324,9 @@ export function IterationStatusPage() {
         iterationId: null,
       })
       selection.clear()
-      toast.success('Removed from iteration')
+      toast.success(t('bulk.removedFromIteration'))
     } catch (e) {
-      setBulkError(e instanceof Error ? e.message : 'Failed to remove items from iteration')
+      setBulkError(e instanceof Error ? e.message : t('bulk.removeFailed'))
     }
   }
 
@@ -337,10 +339,10 @@ export function IterationStatusPage() {
     )
     const failed = results.filter((r) => r.status === 'rejected').length
     if (failed > 0) {
-      setBulkError(`${failed} of ${ids.length} updates failed`)
+      setBulkError(t('bulk.updatesFailed', { failed, total: ids.length }))
     } else {
       selection.clear()
-      toast.success(`Updated ${ids.length} item${ids.length === 1 ? '' : 's'}`)
+      toast.success(t('bulk.itemsUpdated', { count: ids.length }))
     }
   }
 
@@ -354,10 +356,10 @@ export function IterationStatusPage() {
     const failed = results.filter((r) => r.status === 'rejected').length
     setConfirmDelete(false)
     if (failed > 0) {
-      setBulkError(`${failed} of ${ids.length} deletions failed`)
+      setBulkError(t('bulk.deletionsFailed', { failed, total: ids.length }))
     } else {
       selection.clear()
-      toast.success(`Deleted ${ids.length} item${ids.length === 1 ? '' : 's'}`)
+      toast.success(t('bulk.itemsDeleted', { count: ids.length }))
     }
   }
 
@@ -435,7 +437,7 @@ export function IterationStatusPage() {
         className="flex flex-1 items-center justify-center text-foreground-subtle"
         style={{ fontSize: 13 }}
       >
-        Select a project to view Iteration Status.
+        {t('selectProject')}
       </div>
     )
   }
@@ -446,7 +448,7 @@ export function IterationStatusPage() {
         className="flex flex-1 flex-col items-center justify-center gap-2 text-foreground-subtle"
         style={{ fontSize: 13 }}
       >
-        <span>No iterations in this project/team yet.</span>
+        <span>{t('noIterations')}</span>
         <button
           onClick={() => navigate({ to: '/timeboxes' })}
           className="text-primary"
@@ -465,7 +467,7 @@ export function IterationStatusPage() {
             ;(e.target as HTMLElement).style.textDecoration = 'none'
           }}
         >
-          Go to Timeboxes →
+          {t('goToTimeboxes')}
         </button>
       </div>
     )
@@ -539,7 +541,7 @@ export function IterationStatusPage() {
                 className="w-auto"
                 aria-label="Set state for selected"
               >
-                <option value="">Set State…</option>
+                <option value="">{t('bulk.setState')}</option>
                 {SCHEDULE_STATE_VALUES.map((s) => (
                   <option key={s} value={s}>
                     {SCHEDULE_STATE_LABEL[s as ScheduleState] ?? s}
@@ -553,7 +555,7 @@ export function IterationStatusPage() {
                 disabled={bulkIteration.isPending}
                 className="rounded px-2 py-1 text-ui-sm font-medium text-primary-light transition-colors hover:bg-card disabled:opacity-50"
               >
-                Remove from Iteration
+                {t('bulk.removeFromIteration')}
               </button>
 
               <button
@@ -563,7 +565,7 @@ export function IterationStatusPage() {
                 className="flex items-center gap-1 rounded px-2 py-1 text-ui-sm font-medium text-destructive transition-colors hover:bg-card disabled:opacity-50"
               >
                 <Trash2 size={12} />
-                Delete
+                {t('common:delete')}
               </button>
             </>
           )}
@@ -577,11 +579,11 @@ export function IterationStatusPage() {
             <SkeletonList rows={6} cols={6} />
           ) : isError ? (
             <div className="flex h-full items-center justify-center text-ui-lg text-destructive">
-              Failed to load board data.
+              {t('boardLoadError')}
             </div>
           ) : filteredItems.length === 0 ? (
             <div className="flex h-full items-center justify-center text-ui-lg text-foreground-subtle">
-              No items assigned to this iteration
+              {t('emptyItems')}
             </div>
           ) : (
             <IterationBoard
@@ -632,7 +634,7 @@ export function IterationStatusPage() {
                 className="flex items-center justify-center text-destructive"
                 style={{ height: 160, fontSize: 12 }}
               >
-                Failed to load iteration status. Please try again.
+                {t('loadError')}
               </div>
             ) : undefined
           }
@@ -642,7 +644,7 @@ export function IterationStatusPage() {
                 className="flex items-center justify-center text-foreground-subtle"
                 style={{ height: 160, fontSize: 12 }}
               >
-                No items assigned to this iteration
+                {t('emptyItems')}
               </div>
             ) : undefined
           }
@@ -712,9 +714,9 @@ export function IterationStatusPage() {
 
       <ConfirmDialog
         open={confirmDelete}
-        title={`Delete ${selection.count} item${selection.count === 1 ? '' : 's'}?`}
-        message="This permanently removes the selected work items from the project. This action cannot be undone."
-        confirmLabel="Delete"
+        title={t('delete.title', { count: selection.count })}
+        message={t('delete.message')}
+        confirmLabel={t('common:delete')}
         destructive
         pending={deleteItem.isPending}
         onConfirm={() => void deleteSelected()}

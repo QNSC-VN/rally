@@ -1,0 +1,11 @@
+{
+  "backToHome": "Back to Home",
+  "notFound": {
+    "title": "Page not found",
+    "description": "The page you requested doesn't exist or you don't have access."
+  },
+  "forbidden": {
+    "title": "Access denied",
+    "description": "You don't have permission to view this page. Contact your Workspace Admin if you think this is a mistake."
+  }
+}

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Shield, Check, Lock, Save, Loader2 } from 'lucide-react'
 
@@ -27,6 +28,7 @@ function isRoleEditable(role: Role): boolean {
 }
 
 export function RolesTab() {
+  const { t } = useTranslation('settings')
   const qc = useQueryClient()
   const { hasPermission } = useAuthStore()
   const canManage = hasPermission(PERMISSION.WORKSPACE_MANAGE_MEMBERS)
@@ -55,9 +57,9 @@ export function RolesTab() {
     },
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ['system-roles'] })
-      notify.success('Role permissions updated')
+      notify.success(t('roles.permissionsUpdated'))
     },
-    onError: (err) => notify.fromError(err, 'Failed to update role'),
+    onError: (err) => notify.fromError(err, t('roles.updateFailed')),
   })
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -72,11 +74,11 @@ export function RolesTab() {
   }
 
   if (isError) {
-    return <EmptyState title="Unable to load roles. Please try again." />
+    return <EmptyState title={t('roles.loadError')} />
   }
 
   if (roles.length === 0) {
-    return <EmptyState title="No roles are defined for this workspace." />
+    return <EmptyState title={t('roles.empty')} />
   }
 
   const editable = selected != null && canManage && isRoleEditable(selected)
@@ -86,7 +88,7 @@ export function RolesTab() {
       {/* ── Role list ── */}
       <div className="w-64 shrink-0 space-y-1">
         <p className="mb-2 text-ui-xs font-semibold tracking-widest text-foreground-subtle uppercase">
-          Roles
+          {t('roles.listTitle')}
         </p>
         {roles.map((r) => {
           const isActive = selected?.id === r.id
@@ -106,7 +108,7 @@ export function RolesTab() {
                 </span>
                 {r.isSystem && (
                   <span className="rounded-full bg-surface-hover px-1.5 py-0.5 text-ui-2xs font-medium tracking-wide text-foreground-subtle uppercase">
-                    System
+                    {t('roles.systemBadge')}
                   </span>
                 )}
               </div>
@@ -126,7 +128,7 @@ export function RolesTab() {
                 {humanizeSlug(selected.name)}
               </h3>
               <span className="rounded-full bg-surface-hover px-2 py-0.5 text-ui-xs font-medium text-muted-foreground">
-                {selected.permissions.length} permissions
+                {t('roles.permissionCountBadge', { count: selected.permissions.length })}
               </span>
             </div>
 
@@ -149,9 +151,7 @@ export function RolesTab() {
             />
 
             {!editable && !canManage && (
-              <p className="mt-3 text-ui-sm text-foreground-subtle">
-                You need workspace member management permission to edit roles.
-              </p>
+              <p className="mt-3 text-ui-sm text-foreground-subtle">{t('roles.needPermission')}</p>
             )}
           </>
         )}
@@ -179,6 +179,7 @@ function RolePermissionEditor({
   onSave: (permissions: string[]) => void
   readOnly?: boolean
 }) {
+  const { t } = useTranslation('settings')
   const initial = new Set(role.permissions)
   const [draft, setDraft] = useState<Set<string>>(() => new Set(role.permissions))
 
@@ -257,15 +258,14 @@ function RolePermissionEditor({
 
       <div className="flex items-center justify-between border-t pt-3">
         <p className="text-ui-sm text-foreground-subtle">
-          {draft.size} permission{draft.size === 1 ? '' : 's'}
-          {readOnly ? '' : ' selected'}
+          {readOnly
+            ? t('roles.count', { count: draft.size })
+            : t('roles.selectedCount', { count: draft.size })}
         </p>
         {readOnly ? (
           <div className="flex items-center gap-1.5">
             <Lock size={11} className="text-foreground-subtle" />
-            <p className="text-ui-sm text-foreground-subtle">
-              Protected role — permissions are fixed and cannot be edited.
-            </p>
+            <p className="text-ui-sm text-foreground-subtle">{t('roles.protectedRole')}</p>
           </div>
         ) : (
           <div className="flex items-center gap-2">
@@ -276,11 +276,11 @@ function RolePermissionEditor({
               onClick={() => setDraft(new Set(role.permissions))}
               disabled={!dirty || saving}
             >
-              Reset
+              {t('roles.reset')}
             </Button>
             <Button type="button" size="sm" onClick={handleSave} disabled={!dirty || saving}>
               {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-              Save changes
+              {t('saveChanges')}
             </Button>
           </div>
         )}

@@ -62,5 +62,48 @@
     "confirm": "Delete release",
     "deleted": "Release deleted",
     "deleteFailed": "Failed to delete release"
+  },
+  "detailPage": {
+    "loadError": "Release details could not be loaded.",
+    "backToReleases": "← Back to Releases",
+    "saveChanges": "Save Changes",
+    "saved": "Release details saved",
+    "tabs": {
+      "details": "Details",
+      "artifacts": "Artifacts"
+    },
+    "themeTitle": "Release Theme",
+    "notesTitle": "Notes & Scope Deliverables",
+    "metadataTitle": "Metadata Details",
+    "projectScope": "Project Scope",
+    "lifecycleState": "Lifecycle State",
+    "versionTag": "Version Release Tag",
+    "rollup": {
+      "title": "Task Roll-up",
+      "completion": "Completion",
+      "estimate": "Estimate",
+      "toDo": "To Do",
+      "actual": "Actual",
+      "items": "Items:",
+      "toDoItems": "To Do:",
+      "done": "Done:",
+      "accepted": "Accepted"
+    },
+    "burndown": {
+      "title": "Burndown",
+      "date": "Date",
+      "total": "Total",
+      "done": "Done",
+      "remaining": "Remaining",
+      "empty": "No burndown data available yet."
+    },
+    "artifacts": {
+      "itemCount": "{{total}} items"
+    },
+    "pagination": {
+      "rowsPerPage": "Rows per page",
+      "page": "Page",
+      "of": "of"
+    }
   }
 }

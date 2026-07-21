@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
+import { useTranslation } from 'react-i18next'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -28,15 +29,12 @@ import { OwnerAvatar } from '@/shared/ui/owner-cell'
 import { formatDate, formatDateTime } from '@/shared/lib/utils'
 import { useSystemRoles } from '../model/use-system-roles'
 
-const inviteSchema = z.object({
-  email: z.string().email('Enter a valid email address'),
-  roleId: z.string().min(1, 'Select a role'),
-})
-type InviteForm = z.infer<typeof inviteSchema>
+type InviteForm = { email: string; roleId: string }
 
 type MemberWithProfile = components['schemas']['MemberWithProfileResponseDto']
 
 export function MembersTab() {
+  const { t } = useTranslation('settings')
   const qc = useQueryClient()
   const { user } = useAuthStore()
   const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
@@ -81,7 +79,7 @@ export function MembersTab() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['workspace-members-profile', workspaceId] })
-      notify.success('Role updated')
+      notify.success(t('members.roleUpdated'))
     },
     onError: (err) => notify.error(apiErrorMessage(err)),
   })
@@ -95,7 +93,7 @@ export function MembersTab() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['workspace-invitations', workspaceId] })
-      notify.success('Invitation cancelled')
+      notify.success(t('members.inviteCancelled'))
     },
     onError: (err) => notify.error(apiErrorMessage(err)),
   })
@@ -110,7 +108,7 @@ export function MembersTab() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['workspace-members-profile', workspaceId] })
       setSelectedMember(null)
-      notify.success('Member removed')
+      notify.success(t('members.memberRemoved'))
     },
     onError: (err) => notify.error(apiErrorMessage(err)),
   })
@@ -129,14 +127,14 @@ export function MembersTab() {
   const { pageItems: pagedMembers, footerProps } = useClientPagination(filteredMembers, 25)
 
   if (!workspaceId) {
-    return <p className="text-ui-lg text-foreground-subtle">No workspace selected.</p>
+    return <p className="text-ui-lg text-foreground-subtle">{t('members.noWorkspace')}</p>
   }
 
   if (membersLoading) {
     return (
       <div className="flex items-center gap-2 py-10 text-foreground-subtle">
         <Loader2 size={16} className="animate-spin" />
-        <span className="text-ui-lg">Loading members…</span>
+        <span className="text-ui-lg">{t('members.loading')}</span>
       </div>
     )
   }
@@ -146,10 +144,10 @@ export function MembersTab() {
       {/* ── Header row: count + search + invite button ── */}
       <div className="flex items-center justify-between gap-3">
         <p className="text-ui-md text-foreground-subtle">
-          {members.length} workspace member{members.length !== 1 ? 's' : ''}
+          {t('members.memberCount', { count: members.length })}
           {invitations.length > 0 && (
             <span className="ml-2 text-warning">
-              · {invitations.length} pending invite{invitations.length !== 1 ? 's' : ''}
+              {t('members.pendingInvites', { count: invitations.length })}
             </span>
           )}
         </p>
@@ -162,7 +160,7 @@ export function MembersTab() {
           />
           <Button size="sm" onClick={() => setShowInvitePanel((v) => !v)}>
             <UserPlus size={13} />
-            Invite member
+            {t('members.invite')}
           </Button>
         </div>
       </div>
@@ -184,7 +182,7 @@ export function MembersTab() {
       {invitations.length > 0 && (
         <section>
           <h4 className="mb-2 text-ui-sm font-semibold tracking-wide text-foreground-subtle uppercase">
-            Pending Invitations
+            {t('members.pendingInvitations')}
           </h4>
           <div className="overflow-hidden rounded-md border">
             {invitations.map(
@@ -201,12 +199,16 @@ export function MembersTab() {
                     <Mail size={14} className="shrink-0 text-foreground-subtle" />
                     <div className="min-w-0 flex-1">
                       <span className="text-foreground">{inv.email}</span>
-                      <span className="ml-2 text-ui-sm text-foreground-subtle">as {roleLabel}</span>
+                      <span className="ml-2 text-ui-sm text-foreground-subtle">
+                        {t('members.asRole')} {roleLabel}
+                      </span>
                     </div>
                     <span
                       className={`shrink-0 text-ui-sm ${expired ? 'text-destructive' : 'text-foreground-subtle'}`}
                     >
-                      {expired ? 'Expired' : `Expires ${formatDate(inv.expiresAt)}`}
+                      {expired
+                        ? t('members.expired')
+                        : t('members.expires', { date: formatDate(inv.expiresAt) })}
                     </span>
                     <IconButton
                       size="sm"
@@ -229,7 +231,15 @@ export function MembersTab() {
       <table className="w-full border-collapse text-ui-lg">
         <thead>
           <tr className="border-b border-border-strong">
-            {['Member', 'Email', 'Phone', 'Role', 'Status', 'Last Login', 'Joined'].map((h) => (
+            {[
+              t('members.colMember'),
+              t('members.colEmail'),
+              t('members.colPhone'),
+              t('members.colRole'),
+              t('common:status'),
+              t('members.colLastLogin'),
+              t('members.colJoined'),
+            ].map((h) => (
               <th
                 key={h}
                 className="pb-2 text-left text-ui-sm font-semibold tracking-wide text-foreground-subtle uppercase"
@@ -255,7 +265,7 @@ export function MembersTab() {
                       {m.displayName}
                       {isCurrentUser && (
                         <span className="ml-2 rounded bg-primary-lighter px-1 py-0.5 text-ui-xs text-primary">
-                          you
+                          {t('members.you')}
                         </span>
                       )}
                     </span>
@@ -279,7 +289,7 @@ export function MembersTab() {
                   >
                     {!m.roleId && (
                       <option value="" disabled>
-                        — no role —
+                        {t('members.noRole')}
                       </option>
                     )}
                     {roles.map((r) => (
@@ -293,7 +303,7 @@ export function MembersTab() {
                   <MemberStatusBadge status={m.status} />
                 </td>
                 <td className="py-3 pr-4 text-foreground-subtle">
-                  {formatDate(m.lastLoginAt, 'Never')}
+                  {formatDate(m.lastLoginAt, t('members.never'))}
                 </td>
                 <td className="py-3 text-foreground-subtle">{formatDate(m.joinedAt)}</td>
               </tr>
@@ -302,7 +312,7 @@ export function MembersTab() {
           {filteredMembers.length === 0 && (
             <tr>
               <td colSpan={7} className="py-8 text-center text-ui-lg text-foreground-subtle">
-                {search.trim() ? 'No members match your search.' : 'No members yet.'}
+                {search.trim() ? t('members.noMembersSearch') : t('members.noMembers')}
               </td>
             </tr>
           )}
@@ -378,12 +388,13 @@ function UserDetailModal({
   onRemove: () => void
   isRemoving: boolean
 }) {
+  const { t } = useTranslation('settings')
   const roleName = roles.find((r) => r.id === member.roleId)?.name ?? member.roleName ?? '—'
   const isWorkspaceAdmin = member.roleSlug === 'workspace_admin'
   const canRemove = !isCurrentUser && !isWorkspaceAdmin
 
   return (
-    <AppModal open onClose={onClose} title="Member details" width={440}>
+    <AppModal open onClose={onClose} title={t('members.detailTitle')} width={440}>
       <ModalBody className="space-y-4">
         <div className="flex items-center gap-3">
           <OwnerAvatar name={member.displayName} avatarUrl={member.avatarUrl} size={44} />
@@ -396,23 +407,25 @@ function UserDetailModal({
         </div>
 
         <dl className="grid grid-cols-[110px_1fr] gap-x-3 gap-y-2 text-ui-lg">
-          <dt className="text-foreground-subtle">Phone</dt>
+          <dt className="text-foreground-subtle">{t('members.detailPhone')}</dt>
           <dd className="text-foreground">{member.phone || '—'}</dd>
-          <dt className="text-foreground-subtle">Role</dt>
+          <dt className="text-foreground-subtle">{t('members.detailRole')}</dt>
           <dd className="text-foreground">{roleName}</dd>
-          <dt className="text-foreground-subtle">Status</dt>
+          <dt className="text-foreground-subtle">{t('common:status')}</dt>
           <dd>
             <MemberStatusBadge status={member.status} />
           </dd>
-          <dt className="text-foreground-subtle">Last login</dt>
-          <dd className="text-foreground">{formatDateTime(member.lastLoginAt, 'Never')}</dd>
-          <dt className="text-foreground-subtle">Joined</dt>
+          <dt className="text-foreground-subtle">{t('members.detailLastLogin')}</dt>
+          <dd className="text-foreground">
+            {formatDateTime(member.lastLoginAt, t('members.never'))}
+          </dd>
+          <dt className="text-foreground-subtle">{t('members.detailJoined')}</dt>
           <dd className="text-foreground">{formatDate(member.joinedAt)}</dd>
         </dl>
       </ModalBody>
       <ModalFooter>
         <Button type="button" variant="outline" onClick={onClose}>
-          Close
+          {t('common:close')}
         </Button>
         <Button
           type="button"
@@ -428,7 +441,7 @@ function UserDetailModal({
           }
         >
           {isRemoving && <Loader2 size={12} className="animate-spin" />}
-          Remove access
+          {t('members.removeAccess')}
         </Button>
       </ModalFooter>
     </AppModal>
@@ -448,6 +461,11 @@ function InvitePanel({
   onClose: () => void
   onSuccess: () => void
 }) {
+  const { t } = useTranslation('settings')
+  const inviteSchema = z.object({
+    email: z.string().email(t('members.invalidEmail')),
+    roleId: z.string().min(1, t('members.selectRoleError')),
+  })
   const form = useForm<InviteForm>({
     resolver: zodResolver(inviteSchema),
     defaultValues: { email: '', roleId: '' },
@@ -462,7 +480,7 @@ function InvitePanel({
       if (error) throw new Error(apiErrorMessage(error, response.status))
     },
     onSuccess: () => {
-      notify.success('Invitation sent')
+      notify.success(t('members.inviteSent'))
       onSuccess()
     },
     onError: (err: Error) => {
@@ -473,7 +491,7 @@ function InvitePanel({
   return (
     <Card>
       <CardHeader
-        title="Invite a new member"
+        title={t('members.invitePanelTitle')}
         actions={
           <IconButton size="sm" aria-label="Close invite panel" onClick={onClose}>
             <X size={14} />
@@ -483,12 +501,18 @@ function InvitePanel({
       <CardBody>
         <form onSubmit={form.handleSubmit((d) => invite.mutate(d))} className="flex flex-col gap-4">
           <div className="flex gap-3">
-            <FormField label="Email address" error={form.formState.errors.email?.message}>
+            <FormField
+              label={t('members.emailFieldLabel')}
+              error={form.formState.errors.email?.message}
+            >
               <Input {...form.register('email')} type="email" placeholder="colleague@company.com" />
             </FormField>
-            <FormField label="Role" error={form.formState.errors.roleId?.message}>
+            <FormField
+              label={t('members.roleFieldLabel')}
+              error={form.formState.errors.roleId?.message}
+            >
               <NativeSelect {...form.register('roleId')}>
-                <option value="">Select role…</option>
+                <option value="">{t('members.selectRoleOption')}</option>
                 {roles.map((r) => (
                   <option key={r.id} value={r.id}>
                     {r.name}
@@ -507,10 +531,10 @@ function InvitePanel({
               ) : (
                 <Mail size={13} />
               )}
-              Send invitation
+              {t('members.sendInvite')}
             </Button>
             <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
+              {t('common:cancel')}
             </Button>
           </div>
         </form>

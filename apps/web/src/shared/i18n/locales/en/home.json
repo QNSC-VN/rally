@@ -1,0 +1,54 @@
+{
+  "title": "Home",
+  "user": "User",
+  "greeting": {
+    "morning": "Good morning",
+    "afternoon": "Good afternoon",
+    "evening": "Good evening"
+  },
+  "metrics": {
+    "activeProjects": "Active Projects",
+    "openWorkItems": "Open Work Items",
+    "activeSprints": "Active Sprints",
+    "blockedItems": "Blocked Items",
+    "openDefects": "Open Defects",
+    "assignedToMe": "Assigned to Me"
+  },
+  "myWork": {
+    "title": "My Work",
+    "itemCount": "{{count}} items",
+    "columns": {
+      "id": "ID",
+      "type": "Type",
+      "project": "Project",
+      "priority": "Priority"
+    },
+    "empty": "No items assigned to you"
+  },
+  "activity": {
+    "title": "Recent Activity",
+    "all": "All",
+    "empty": {
+      "title": "No recent activity",
+      "description": "Work item updates will appear here"
+    }
+  },
+  "projectHealth": {
+    "title": "Project Health",
+    "selected": "{{key}} selected",
+    "columns": {
+      "key": "Key",
+      "projectName": "Project Name",
+      "activeSprint": "Active Sprint",
+      "progress": "Progress",
+      "openDefects": "Open Defects",
+      "blocked": "Blocked"
+    },
+    "noActiveSprint": "No active sprint",
+    "defect_one": "defect",
+    "defect_other": "defects",
+    "blockedCount": "{{count}} blocked",
+    "none": "None",
+    "empty": "No active projects"
+  }
+}

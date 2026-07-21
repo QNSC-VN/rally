@@ -5,6 +5,7 @@
  * Plan > Timeboxes alongside Iterations and Releases.
  */
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { AlertTriangle, Plus, Pencil, Trash2, PackageOpen } from 'lucide-react'
@@ -90,9 +91,10 @@ function MilestoneFormFields({
   releases: { id: string; name: string }[] | undefined
   members: { userId: string; displayName?: string; email?: string }[] | undefined
 }) {
+  const { t } = useTranslation('milestones')
   return (
     <>
-      <FormField label="Milestone name" required>
+      <FormField label={t('form.nameLabel')} required>
         <Input
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -100,7 +102,7 @@ function MilestoneFormFields({
           autoFocus
         />
       </FormField>
-      <FormField label="Status">
+      <FormField label={t('common:status')}>
         <select
           value={status}
           onChange={(e) => setStatus(e.target.value as MilestoneStatus)}
@@ -113,7 +115,7 @@ function MilestoneFormFields({
           ))}
         </select>
       </FormField>
-      <FormField label="Description">
+      <FormField label={t('common:description')}>
         <Textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
@@ -121,7 +123,7 @@ function MilestoneFormFields({
           rows={2}
         />
       </FormField>
-      <FormField label="Notes">
+      <FormField label={t('form.notesLabel')}>
         <Textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
@@ -129,13 +131,13 @@ function MilestoneFormFields({
           rows={2}
         />
       </FormField>
-      <FormField label="Owner">
+      <FormField label={t('common:owner')}>
         <select
           value={ownerId}
           onChange={(e) => setOwnerId(e.target.value)}
           className="w-full rounded-md border border-border-strong px-3 py-1.5 text-sm text-foreground"
         >
-          <option value="">Unassigned</option>
+          <option value="">{t('form.unassigned')}</option>
           {(members ?? []).map((m) => (
             <option key={m.userId} value={m.userId}>
               {m.displayName ?? m.email}
@@ -144,30 +146,34 @@ function MilestoneFormFields({
         </select>
       </FormField>
       <div className="grid grid-cols-2 gap-3">
-        <FormField label="Target Start">
+        <FormField label={t('form.targetStart')}>
           <div
             className={cn(
               'w-full rounded-md border border-border-strong bg-surface-subtle px-3 py-1.5 text-sm',
               targetStartDate ? 'text-foreground' : 'text-foreground-subtle',
             )}
           >
-            {targetStartDate || 'Not set'}
+            {targetStartDate || t('form.notSet')}
           </div>
-          <p className="mt-0.5 text-ui-xs text-foreground-subtle">Derived from linked Releases</p>
+          <p className="mt-0.5 text-ui-xs text-foreground-subtle">
+            {t('form.derivedFromReleases')}
+          </p>
         </FormField>
-        <FormField label="Target End">
+        <FormField label={t('form.targetEnd')}>
           <div
             className={cn(
               'w-full rounded-md border border-border-strong bg-surface-subtle px-3 py-1.5 text-sm',
               targetEndDate ? 'text-foreground' : 'text-foreground-subtle',
             )}
           >
-            {targetEndDate || 'Not set'}
+            {targetEndDate || t('form.notSet')}
           </div>
-          <p className="mt-0.5 text-ui-xs text-foreground-subtle">Derived from linked Releases</p>
+          <p className="mt-0.5 text-ui-xs text-foreground-subtle">
+            {t('form.derivedFromReleases')}
+          </p>
         </FormField>
       </div>
-      <FormField label="Associated Releases">
+      <FormField label={t('form.associatedReleases')}>
         <div className="flex max-h-32 flex-col gap-1.5 overflow-y-auto rounded-md border border-border-strong p-2">
           {releases && releases.length > 0 ? (
             releases.map((r) => (
@@ -184,7 +190,7 @@ function MilestoneFormFields({
               </label>
             ))
           ) : (
-            <span className="text-xs text-foreground-subtle">No releases available</span>
+            <span className="text-xs text-foreground-subtle">{t('form.noReleases')}</span>
           )}
         </div>
       </FormField>
@@ -195,6 +201,7 @@ function MilestoneFormFields({
 // ── Create modal ──────────────────────────────────────────────────────────────
 
 function CreateMilestoneModal({ projectId, onClose }: { projectId: string; onClose: () => void }) {
+  const { t } = useTranslation('milestones')
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [notes, setNotes] = useState('')
@@ -226,15 +233,15 @@ function CreateMilestoneModal({ projectId, onClose }: { projectId: string; onClo
         ownerId: ownerId || undefined,
         releaseIds: selectedReleases,
       })
-      toast.success(`Milestone "${name}" created`)
+      toast.success(t('create.created', { name }))
       onClose()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create milestone')
+      toast.error(err instanceof Error ? err.message : t('create.createFailed'))
     }
   }
 
   return (
-    <AppModal open onClose={onClose} title="New Milestone" width={480}>
+    <AppModal open onClose={onClose} title={t('create.title')} width={480}>
       <form
         onSubmit={(e) => {
           void handleSubmit(e)
@@ -262,10 +269,10 @@ function CreateMilestoneModal({ projectId, onClose }: { projectId: string; onClo
         </ModalBody>
         <ModalFooter>
           <Button variant="outline" type="button" onClick={onClose}>
-            Cancel
+            {t('common:cancel')}
           </Button>
           <Button type="submit" disabled={create.isPending || !name.trim()}>
-            {create.isPending ? 'Creating...' : 'Create Milestone'}
+            {create.isPending ? t('create.creating') : t('create.createButton')}
           </Button>
         </ModalFooter>
       </form>
@@ -276,6 +283,7 @@ function CreateMilestoneModal({ projectId, onClose }: { projectId: string; onClo
 // ── Edit modal ────────────────────────────────────────────────────────────────
 
 function EditMilestoneModal({ milestone, onClose }: { milestone: Milestone; onClose: () => void }) {
+  const { t } = useTranslation('milestones')
   const [name, setName] = useState(milestone.name)
   const [description, setDescription] = useState(milestone.description ?? '')
   const [notes, setNotes] = useState(milestone.notes ?? '')
@@ -307,15 +315,15 @@ function EditMilestoneModal({ milestone, onClose }: { milestone: Milestone; onCl
         ownerId: ownerId || null,
         releaseIds: selectedReleases,
       })
-      toast.success('Milestone updated')
+      toast.success(t('edit.updated'))
       onClose()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to update milestone')
+      toast.error(err instanceof Error ? err.message : t('edit.updateFailed'))
     }
   }
 
   return (
-    <AppModal open onClose={onClose} title="Edit Milestone" width={480}>
+    <AppModal open onClose={onClose} title={t('edit.title')} width={480}>
       <form
         onSubmit={(e) => {
           void handleSubmit(e)
@@ -343,10 +351,10 @@ function EditMilestoneModal({ milestone, onClose }: { milestone: Milestone; onCl
         </ModalBody>
         <ModalFooter>
           <Button variant="outline" type="button" onClick={onClose}>
-            Cancel
+            {t('common:cancel')}
           </Button>
           <Button type="submit" disabled={update.isPending || !name.trim()}>
-            {update.isPending ? 'Saving...' : 'Save'}
+            {update.isPending ? t('edit.saving') : t('common:save')}
           </Button>
         </ModalFooter>
       </form>
@@ -440,6 +448,7 @@ const MILESTONES_COLUMNS: ColumnSpec<Milestone, MilestoneCtx, MilestoneColKey>[]
 // ── Milestones page ───────────────────────────────────────────────────────────
 
 export function MilestonesPage() {
+  const { t } = useTranslation('milestones')
   const { project } = useAppContext()
   const table = useDataTable<Milestone, MilestoneCtx, MilestoneColKey>(MILESTONES_COLUMNS, {
     storageKey: STORAGE_KEYS.MILESTONES_COLUMNS,
@@ -466,10 +475,10 @@ export function MilestonesPage() {
   async function handleDelete(id: string) {
     try {
       await deleteMilestone.mutateAsync(id)
-      toast.success('Milestone deleted')
+      toast.success(t('delete.deleted'))
       setDeleting(null)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to delete')
+      toast.error(err instanceof Error ? err.message : t('delete.deleteFailed'))
     }
   }
 
@@ -478,7 +487,7 @@ export function MilestonesPage() {
       <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8">
         <AlertTriangle size={32} className="text-destructive" />
         <p className="text-sm text-muted-foreground">
-          {error instanceof Error ? error.message : 'Failed to load milestones'}
+          {error instanceof Error ? error.message : t('loadError')}
         </p>
       </div>
     )
@@ -494,7 +503,7 @@ export function MilestonesPage() {
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Toolbar */}
       <PageToolbar
-        title="Milestones"
+        title={t('title')}
         search={{
           value: search,
           onChange: setSearch,
@@ -506,7 +515,7 @@ export function MilestonesPage() {
           canManage ? (
             <Button size="sm" onClick={() => setShowCreate(true)}>
               <Plus size={14} />
-              New Milestone
+              {t('createButton')}
             </Button>
           ) : undefined
         }
@@ -525,12 +534,12 @@ export function MilestonesPage() {
             <EmptyState
               className="flex-1"
               icon={<PackageOpen size={40} className="text-foreground-faint" />}
-              title={search ? 'No milestones match your search' : 'No milestones yet'}
+              title={search ? t('emptySearch') : t('empty')}
               action={
                 canManage && !search ? (
                   <Button size="sm" onClick={() => setShowCreate(true)}>
                     <Plus size={14} />
-                    Create Milestone
+                    {t('createMilestone')}
                   </Button>
                 ) : undefined
               }
@@ -563,9 +572,9 @@ export function MilestonesPage() {
 
       <ConfirmDialog
         open={deleting !== null}
-        title="Delete milestone"
-        message="Delete this milestone? This cannot be undone."
-        confirmLabel="Delete"
+        title={t('delete.title')}
+        message={t('delete.message')}
+        confirmLabel={t('common:delete')}
         destructive
         pending={deleteMilestone.isPending}
         onConfirm={() => deleting && void handleDelete(deleting)}

@@ -6,6 +6,7 @@
  * Artifacts tab: backlog-style table of assigned US/DE work items with search + pagination.
  */
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 /* eslint-disable react-hooks/set-state-in-effect */
 import { Link, useParams } from '@tanstack/react-router'
@@ -53,6 +54,7 @@ const MILESTONE_STATUSES: MilestoneStatus[] = [
 type TabKey = 'details' | 'artifacts'
 
 export function MilestoneDetailPage() {
+  const { t } = useTranslation('milestones')
   const { milestoneId } = useParams({ from: '/auth/milestones/$milestoneId' })
   const { workspace } = useAppContext()
   const workspaceId = workspace?.workspaceId ?? ''
@@ -113,7 +115,7 @@ export function MilestoneDetailPage() {
   async function handleFieldSave() {
     if (!milestone) return
     if (!name.trim()) {
-      toast.error('Milestone name is required')
+      toast.error(t('detail.nameRequired'))
       return
     }
     setSaving(true)
@@ -125,7 +127,7 @@ export function MilestoneDetailPage() {
         ownerId: ownerId || null,
       })
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to save')
+      toast.error(err instanceof Error ? err.message : t('detail.saveFailed'))
     } finally {
       setSaving(false)
     }
@@ -141,7 +143,7 @@ export function MilestoneDetailPage() {
     try {
       await update.mutateAsync({ id: milestone.id, ...patch })
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to save')
+      toast.error(err instanceof Error ? err.message : t('detail.saveFailed'))
     }
   }
 
@@ -151,7 +153,7 @@ export function MilestoneDetailPage() {
     try {
       await update.mutateAsync({ id: milestone.id, status: newStatus })
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to update status')
+      toast.error(err instanceof Error ? err.message : t('detail.statusUpdateFailed'))
       setStatus(milestone.status)
     }
   }
@@ -162,7 +164,7 @@ export function MilestoneDetailPage() {
     try {
       await update.mutateAsync({ id: milestone.id, ownerId: newOwnerId || null })
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to update owner')
+      toast.error(err instanceof Error ? err.message : t('detail.ownerUpdateFailed'))
       setOwnerId(milestone.ownerId ?? '')
     }
   }
@@ -180,9 +182,9 @@ export function MilestoneDetailPage() {
   if (isError || !milestone) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3 bg-background">
-        <p className="text-ui-lg text-muted-foreground">Milestone details could not be loaded.</p>
+        <p className="text-ui-lg text-muted-foreground">{t('detail.loadError')}</p>
         <Link to="/milestones" className="text-ui-md font-semibold text-primary hover:underline">
-          ← Back to Milestones
+          {t('detail.backToMilestones')}
         </Link>
       </div>
     )
@@ -191,8 +193,8 @@ export function MilestoneDetailPage() {
   const s = STATUS_STYLE[milestone.status] ?? STATUS_STYLE.planned
 
   const TABS: { key: TabKey; label: string }[] = [
-    { key: 'details', label: 'Details' },
-    { key: 'artifacts', label: 'Artifacts' },
+    { key: 'details', label: t('detail.tabs.details') },
+    { key: 'artifacts', label: t('detail.tabs.artifacts') },
   ]
 
   return (
@@ -239,7 +241,7 @@ export function MilestoneDetailPage() {
               ) : (
                 <Save size={12} />
               )}
-              Save Changes
+              {t('detail.saveChanges')}
             </Button>
           )}
         </div>
@@ -273,14 +275,14 @@ export function MilestoneDetailPage() {
           {/* Left panel: Description & Notes */}
           <div className="flex-1 space-y-6 overflow-y-auto bg-card p-6">
             <RichTextEditor
-              title="Description"
+              title={t('common:description')}
               value={milestone?.description}
               minHeight={120}
               readOnly={!canManage}
               onSave={(html) => handleRichFieldSave({ description: html || null })}
             />
             <RichTextEditor
-              title="Notes"
+              title={t('detail.notesLabel')}
               value={milestone?.notes}
               minHeight={80}
               readOnly={!canManage}
@@ -291,13 +293,13 @@ export function MilestoneDetailPage() {
           {/* Right sidebar (320px, scrollable) */}
           <div className="w-80 shrink-0 space-y-5 overflow-y-auto border-l bg-card p-5">
             <h2 className="text-ui-sm font-semibold tracking-wider text-foreground-subtle uppercase">
-              Metadata Details
+              {t('detail.metadataDetails')}
             </h2>
 
             {/* Projects */}
             <RelationButton
               icon={FolderKanban}
-              label="Projects"
+              label={t('detail.projects')}
               count={linkedProjectIds.length}
               onClick={() => setShowProjectsModal(true)}
               canManage={canManage}
@@ -306,7 +308,7 @@ export function MilestoneDetailPage() {
             {/* Teams */}
             <RelationButton
               icon={Users}
-              label="Teams"
+              label={t('detail.teams')}
               count={linkedTeamIds.length}
               onClick={() => setShowTeamsModal(true)}
               canManage={canManage}
@@ -315,7 +317,7 @@ export function MilestoneDetailPage() {
             {/* Releases */}
             <RelationButton
               icon={Layers}
-              label="Releases"
+              label={t('detail.releases')}
               count={linkedReleaseIds.length}
               onClick={() => setShowReleasesModal(true)}
               canManage={canManage}
@@ -326,7 +328,9 @@ export function MilestoneDetailPage() {
 
             {/* Owner */}
             <div className="space-y-1">
-              <label className="text-ui-xs font-medium text-muted-foreground">Owner</label>
+              <label className="text-ui-xs font-medium text-muted-foreground">
+                {t('common:owner')}
+              </label>
               {canManage ? (
                 <select
                   value={ownerId}
@@ -335,7 +339,7 @@ export function MilestoneDetailPage() {
                   }}
                   className="w-full cursor-pointer rounded border border-input bg-card px-2 py-1 text-ui-sm text-foreground focus:outline-none"
                 >
-                  <option value="">Unassigned</option>
+                  <option value="">{t('detail.unassigned')}</option>
                   {members.map((m) => (
                     <option key={m.userId} value={m.userId}>
                       {m.displayName ?? m.email ?? m.userId}
@@ -354,7 +358,7 @@ export function MilestoneDetailPage() {
             {/* Target Start Date (read-only, derived) */}
             <div className="space-y-1">
               <label className="text-ui-xs font-medium text-muted-foreground">
-                Target Start Date
+                {t('detail.targetStartDate')}
               </label>
               <div className="flex items-center gap-1.5">
                 <CalendarDays size={12} className="text-foreground-subtle" />
@@ -362,13 +366,15 @@ export function MilestoneDetailPage() {
                   {milestone.targetStartDate ?? '—'}
                 </span>
               </div>
-              <p className="text-ui-2xs text-foreground-subtle">Derived from linked Releases</p>
+              <p className="text-ui-2xs text-foreground-subtle">
+                {t('detail.derivedFromReleases')}
+              </p>
             </div>
 
             {/* Target End Date (read-only, derived) */}
             <div className="space-y-1">
               <label className="text-ui-xs font-medium text-muted-foreground">
-                Target End Date
+                {t('detail.targetEndDate')}
               </label>
               <div className="flex items-center gap-1.5">
                 <CalendarDays size={12} className="text-foreground-subtle" />
@@ -376,12 +382,16 @@ export function MilestoneDetailPage() {
                   {milestone.targetEndDate ?? '—'}
                 </span>
               </div>
-              <p className="text-ui-2xs text-foreground-subtle">Derived from linked Releases</p>
+              <p className="text-ui-2xs text-foreground-subtle">
+                {t('detail.derivedFromReleases')}
+              </p>
             </div>
 
             {/* Status */}
             <div className="space-y-1">
-              <label className="text-ui-xs font-medium text-muted-foreground">Status</label>
+              <label className="text-ui-xs font-medium text-muted-foreground">
+                {t('common:status')}
+              </label>
               {canManage ? (
                 <InlineSelect
                   value={status}
@@ -410,11 +420,11 @@ export function MilestoneDetailPage() {
             {milestone.progress && (
               <div className="space-y-2 rounded-md border border-border-subtle bg-surface-hover p-3">
                 <h3 className="text-ui-xs font-bold tracking-wider text-muted-foreground uppercase">
-                  Progress
+                  {t('detail.progress')}
                 </h3>
                 <div className="space-y-1">
                   <div className="flex justify-between text-ui-sm font-semibold text-foreground">
-                    <span>Completion</span>
+                    <span>{t('detail.completion')}</span>
                     <span>{milestone.progress.progressPercent}%</span>
                   </div>
                   <div className="h-2 w-full overflow-hidden rounded-full bg-avatar">
@@ -432,13 +442,13 @@ export function MilestoneDetailPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-ui-xs text-foreground-subtle">
                   <div>
-                    Items:{' '}
+                    {t('detail.itemsLabel')}{' '}
                     <span className="font-semibold text-foreground">
                       {milestone.progress.completedItems}/{milestone.progress.totalItems}
                     </span>
                   </div>
                   <div>
-                    Points:{' '}
+                    {t('detail.pointsLabel')}{' '}
                     <span className="font-semibold text-foreground">
                       {milestone.progress.completedPoints}/{milestone.progress.totalPoints}
                     </span>
@@ -455,7 +465,7 @@ export function MilestoneDetailPage() {
         <SelectionModal
           open={showProjectsModal}
           onClose={() => setShowProjectsModal(false)}
-          title="Projects"
+          title={t('detail.projects')}
           items={allProjects.map((p) => ({ id: p.id, name: p.name }))}
           selectedIds={linkedProjectIds}
           onSave={(ids) => setProjects.mutateAsync({ milestoneId, projectIds: ids })}
@@ -465,8 +475,8 @@ export function MilestoneDetailPage() {
         <SelectionModal
           open={showTeamsModal}
           onClose={() => setShowTeamsModal(false)}
-          title="Teams"
-          items={allTeams.map((t) => ({ id: t.id, name: t.name }))}
+          title={t('detail.teams')}
+          items={allTeams.map((team) => ({ id: team.id, name: team.name }))}
           selectedIds={linkedTeamIds}
           onSave={(ids) => setTeams.mutateAsync({ milestoneId, teamIds: ids })}
         />
@@ -475,7 +485,7 @@ export function MilestoneDetailPage() {
         <SelectionModal
           open={showReleasesModal}
           onClose={() => setShowReleasesModal(false)}
-          title="Releases"
+          title={t('detail.releases')}
           items={allReleases.map((r) => ({ id: r.id, name: r.name }))}
           selectedIds={linkedReleaseIds}
           onSave={(ids) => setReleases.mutateAsync({ milestoneId, releaseIds: ids })}

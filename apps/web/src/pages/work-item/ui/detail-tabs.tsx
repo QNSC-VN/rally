@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { Bug } from 'lucide-react'
 
@@ -11,6 +12,7 @@ import { ScheduleStateBadge, PriorityBadge, SeverityBadge } from '@/entities/wor
 import { Spinner } from '@/shared/ui/spinner'
 
 export function HistoryTab({ workItemId }: { workItemId: string }) {
+  const { t } = useTranslation('work-items')
   const { data: logs = [], isLoading } = useActivityLog(workItemId)
 
   if (isLoading) {
@@ -26,10 +28,8 @@ export function HistoryTab({ workItemId }: { workItemId: string }) {
   return (
     <div className="w-full space-y-5">
       <div>
-        <h2 className="text-xl font-semibold text-foreground">Revision History</h2>
-        <p className="mt-1 text-ui-md text-muted-foreground">
-          Activity log for field changes, task updates, and work item creation.
-        </p>
+        <h2 className="text-xl font-semibold text-foreground">{t('tabs.history')}</h2>
+        <p className="mt-1 text-ui-md text-muted-foreground">{t('history.subtitle')}</p>
       </div>
 
       <section className="overflow-hidden rounded border border-border-strong bg-card">
@@ -37,15 +37,15 @@ export function HistoryTab({ workItemId }: { workItemId: string }) {
           className="grid border-b border-border-strong bg-surface-hover px-4 py-2 text-ui-xs font-semibold tracking-wider text-muted-foreground uppercase"
           style={{ gridTemplateColumns: GRID }}
         >
-          <span>Revision</span>
-          <span>Description</span>
-          <span>Creation Date</span>
-          <span>User</span>
+          <span>{t('history.colRevision')}</span>
+          <span>{t('common:description')}</span>
+          <span>{t('history.colCreationDate')}</span>
+          <span>{t('history.colUser')}</span>
         </div>
 
         {logs.length === 0 && (
           <div className="px-4 py-6 text-center text-sm text-foreground-subtle">
-            No activity recorded yet.
+            {t('history.empty')}
           </div>
         )}
 
@@ -83,6 +83,7 @@ const DEFECT_COLS = ['ID', 'Title', 'State', 'Priority', 'Owner', 'Severity']
 const DEFECT_GRID = '80px 1fr 120px 80px 130px 100px'
 
 export function DefectsTab({ workItemId, projectId }: { workItemId: string; projectId: string }) {
+  const { t } = useTranslation('work-items')
   const { data: defects = [], isLoading } = useChildDefects(workItemId, projectId)
   const { data: members = [] } = useProjectMembers(projectId)
   const navigate = useNavigate()
@@ -105,9 +106,9 @@ export function DefectsTab({ workItemId, projectId }: { workItemId: string; proj
     <div className="w-full">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-foreground">Defects</h2>
+          <h2 className="text-xl font-semibold text-foreground">{t('tabs.defects')}</h2>
           <p className="mt-0.5 text-ui-md text-muted-foreground">
-            {defects.length} defect{defects.length !== 1 ? 's' : ''} linked to this story
+            {t('defects.countLinked', { count: defects.length })}
           </p>
         </div>
       </div>
@@ -115,12 +116,8 @@ export function DefectsTab({ workItemId, projectId }: { workItemId: string; proj
       {defects.length === 0 ? (
         <div className="rounded border border-dashed border-input py-12 text-center">
           <Bug size={28} className="text-foreground-faint" style={{ margin: '0 auto 8px' }} />
-          <p className="text-ui-lg font-medium text-muted-foreground">
-            No defects linked to this story
-          </p>
-          <p className="mt-1 text-ui-sm text-foreground-subtle">
-            Create a defect and assign it as a child of this story
-          </p>
+          <p className="text-ui-lg font-medium text-muted-foreground">{t('defects.emptyTitle')}</p>
+          <p className="mt-1 text-ui-sm text-foreground-subtle">{t('defects.emptyDescription')}</p>
         </div>
       ) : (
         <div className="overflow-x-auto rounded border border-input">

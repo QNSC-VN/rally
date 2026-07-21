@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState, type CSSProperties } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { Plus, ListChecks } from 'lucide-react'
 
@@ -58,6 +59,7 @@ export function TasksTab({
   projectId: string
   readOnly: boolean
 }) {
+  const { t } = useTranslation('work-items')
   const { data: tasks = [], isLoading } = useTasks(workItemId)
   const { data: totals } = useTaskTotals(workItemId)
   // Row selection (shared pattern with Backlog / Iteration Status): the header
@@ -89,7 +91,7 @@ export function TasksTab({
   )
 
   const teamName = (id?: string | null) =>
-    id ? (teams.find((t) => t.id === id)?.name ?? '—') : '—'
+    id ? (teams.find((team) => team.id === id)?.name ?? '—') : '—'
 
   // Client-side column sort — mirrors the shared header UX used by every other
   // grid (Backlog / Team Status / Projects). `null` = the default rank order.
@@ -111,30 +113,30 @@ export function TasksTab({
     if (!sortCol) return tasks
     const factor = sortDir === 'asc' ? 1 : -1
     const numeric = sortCol === 'todo' || sortCol === 'actuals' || sortCol === 'estimate'
-    const value = (t: WorkItem): string | number => {
+    const value = (wi: WorkItem): string | number => {
       switch (sortCol) {
         case 'rank':
-          return t.rank ?? ''
+          return wi.rank ?? ''
         case 'id':
-          return t.itemKey
+          return wi.itemKey
         case 'name':
-          return t.title.toLowerCase()
+          return wi.title.toLowerCase()
         case 'state':
-          return t.scheduleState
+          return wi.scheduleState
         case 'owner': {
-          const m = members.find((mm) => mm.userId === t.assigneeId)
+          const m = members.find((mm) => mm.userId === wi.assigneeId)
           return (m?.displayName ?? m?.email ?? '').toLowerCase()
         }
         case 'teams': {
-          const tm = teams.find((x) => x.id === t.teamId)
+          const tm = teams.find((x) => x.id === wi.teamId)
           return (tm?.name ?? '').toLowerCase()
         }
         case 'todo':
-          return Number(t.todoHours ?? 0)
+          return Number(wi.todoHours ?? 0)
         case 'actuals':
-          return Number(t.actualHours ?? 0)
+          return Number(wi.actualHours ?? 0)
         case 'estimate':
-          return Number(t.estimateHours ?? 0)
+          return Number(wi.estimateHours ?? 0)
         default:
           return ''
       }
@@ -156,14 +158,12 @@ export function TasksTab({
       {/* Header */}
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-foreground">Tasks</h2>
-          <p className="mt-1 text-ui-sm text-muted-foreground">
-            Break this work item into trackable delivery tasks.
-          </p>
+          <h2 className="text-xl font-semibold text-foreground">{t('tasks.heading')}</h2>
+          <p className="mt-1 text-ui-sm text-muted-foreground">{t('tasks.subtitle')}</p>
         </div>
         <Button size="sm" onClick={() => setShowAdd(true)}>
           <Plus size={13} />
-          Add Task
+          {t('tasks.add')}
         </Button>
       </div>
 
@@ -194,7 +194,7 @@ export function TasksTab({
               columns={TASK_COLUMNS}
               colStyles={colStyles}
               leading={<div className="w-6 shrink-0" />}
-              label="Totals"
+              label={t('tasks.totals')}
               values={{
                 todo: `${totals.todoHours ?? 0}h`,
                 actuals: `${totals.actualHours ?? 0}h`,
@@ -210,13 +210,13 @@ export function TasksTab({
             <EmptyState
               size="sm"
               icon={<ListChecks size={28} className="text-foreground-subtle" />}
-              title="No tasks yet"
-              description="Break this work item into trackable delivery tasks."
+              title={t('tasks.emptyTitle')}
+              description={t('tasks.subtitle')}
               action={
                 readOnly ? undefined : (
                   <Button size="sm" onClick={() => setShowAdd(true)}>
                     <Plus size={13} />
-                    Add Task
+                    {t('tasks.add')}
                   </Button>
                 )
               }

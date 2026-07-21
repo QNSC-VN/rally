@@ -7,6 +7,7 @@
  * Sidebar differs by type (task shows time fields + Work Product link).
  */
 import { useState, useCallback, useRef, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useParams, useNavigate } from '@tanstack/react-router'
 import {
   Bell,
@@ -66,6 +67,7 @@ function DetailsTab({
   onUpdate: (patch: Partial<WorkItem>) => void
   readOnly: boolean
 }) {
+  const { t } = useTranslation('work-items')
   const isTask = item.type === 'task'
 
   const handleSave = useCallback(
@@ -77,10 +79,10 @@ function DetailsTab({
 
   return (
     <div className="w-full space-y-5">
-      <h2 className="text-xl font-semibold text-foreground">Details</h2>
+      <h2 className="text-xl font-semibold text-foreground">{t('details.heading')}</h2>
 
       <RichTextEditor
-        title="Description"
+        title={t('common:description')}
         value={item.description}
         minHeight={120}
         readOnly={readOnly}
@@ -92,7 +94,7 @@ function DetailsTab({
       <LinkedItemsBlock workItemId={item.id} projectId={item.projectId} readOnly={readOnly} />
 
       <RichTextEditor
-        title="Notes"
+        title={t('details.notes')}
         value={item.notes}
         minHeight={80}
         readOnly={readOnly}
@@ -102,7 +104,7 @@ function DetailsTab({
       {/* Release Notes — Story/Defect only */}
       {!isTask && (
         <RichTextEditor
-          title="Release Notes"
+          title={t('details.releaseNotes')}
           value={item.releaseNotes}
           minHeight={80}
           readOnly={readOnly}
@@ -118,6 +120,7 @@ function DetailsTab({
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export function WorkItemDetailPage() {
+  const { t } = useTranslation('work-items')
   const { itemKey } = useParams({ from: '/auth/item/$itemKey' })
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<DetailTab>('details')
@@ -202,11 +205,11 @@ export function WorkItemDetailPage() {
     if (!itemByKey) return
     try {
       await deleteMutation.mutateAsync({ id: itemByKey.id, projectId: itemByKey.projectId })
-      toast.success(`${itemByKey.itemKey} deleted`)
+      toast.success(t('delete.success', { key: itemByKey.itemKey }))
       setConfirmDelete(false)
       void navigate({ to: '/backlog' })
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to delete work item')
+      toast.error(err instanceof Error ? err.message : t('delete.failed'))
     }
   }
 
@@ -222,13 +225,13 @@ export function WorkItemDetailPage() {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3">
         <p className="text-sm font-medium text-muted-foreground">
-          Work item "{itemKey}" not found.
+          {t('notFound', { key: itemKey })}
         </p>
         <button
           onClick={() => void navigate({ to: '/backlog' })}
           className="text-xs font-medium text-primary-light"
         >
-          ← Back to Backlog
+          {t('backToBacklog')}
         </button>
       </div>
     )
@@ -257,7 +260,7 @@ export function WorkItemDetailPage() {
           <polyline points="10 9 9 9 8 9" />
         </svg>
       ),
-      label: 'Details',
+      label: t('tabs.details'),
     },
     ...(!isTask
       ? [
@@ -269,7 +272,7 @@ export function WorkItemDetailPage() {
                 <span className="text-ui-xs font-semibold tabular-nums">{taskCount}</span>
               </span>
             ),
-            label: 'Tasks',
+            label: t('tabs.tasks'),
           },
         ]
       : []),
@@ -283,14 +286,14 @@ export function WorkItemDetailPage() {
                 <span className="text-ui-xs font-semibold tabular-nums">{defectCount}</span>
               </span>
             ),
-            label: 'Defects',
+            label: t('tabs.defects'),
           },
         ]
       : []),
     {
       id: 'history',
       icon: <History size={19} />,
-      label: 'Revision History',
+      label: t('tabs.history'),
     },
   ]
 
@@ -347,7 +350,7 @@ export function WorkItemDetailPage() {
             }}
           >
             {isWatching ? <BellOff size={14} /> : <Bell size={14} />}
-            <span>{isWatching ? 'Watching' : 'Watch'}</span>
+            <span>{isWatching ? t('watch.watching') : t('watch.watch')}</span>
           </button>
 
           {/* BA rule (P3.4): defects are never deleted — hide the whole menu for them. */}
@@ -371,17 +374,15 @@ export function WorkItemDetailPage() {
                     className="flex w-full items-center gap-2 px-3 py-2 text-ui-md text-destructive transition-colors hover:bg-red-50 disabled:opacity-50"
                   >
                     <Trash2 size={13} />
-                    Delete work item
+                    {t('delete.title')}
                   </button>
                 </div>
               )}
               <ConfirmDialog
                 open={confirmDelete}
-                title="Delete work item"
-                message={
-                  itemByKey ? `Delete ${itemByKey.itemKey}? This cannot be undone.` : undefined
-                }
-                confirmLabel="Delete"
+                title={t('delete.title')}
+                message={itemByKey ? t('delete.message', { key: itemByKey.itemKey }) : undefined}
+                confirmLabel={t('common:delete')}
                 destructive
                 pending={deleteMutation.isPending}
                 onConfirm={() => void handleDelete()}
