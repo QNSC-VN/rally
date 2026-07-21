@@ -10,11 +10,11 @@ import { toast } from 'sonner'
 /* eslint-disable react-hooks/set-state-in-effect */
 import { Link, useParams } from '@tanstack/react-router'
 import { ChevronLeft, Loader2, Save } from 'lucide-react'
-import { BRAND } from '@/shared/config/brand'
 import { InlineSelect } from '@/shared/ui/native-select'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { RichTextEditor } from '@/shared/ui/rich-text-editor'
+import { StatusBadge } from '@/shared/ui/status-badge'
 import { ReleaseArtifactsTab } from './ui/release-artifacts-tab'
 import { TaskRollupPanel, BurndownPanel } from './ui/release-detail-panels'
 import { RELEASE_STATUS_STYLE } from '@/features/releases/status-colors'
@@ -104,29 +104,17 @@ export function ReleaseDetailPage() {
 
   if (isLoading) {
     return (
-      <div
-        className="flex flex-1 items-center justify-center"
-        style={{ backgroundColor: BRAND.pageBg }}
-      >
-        <Loader2 className="animate-spin" size={24} style={{ color: BRAND.primary }} />
+      <div className="flex flex-1 items-center justify-center bg-background">
+        <Loader2 className="animate-spin text-primary" size={24} />
       </div>
     )
   }
 
   if (isError || !release) {
     return (
-      <div
-        className="flex flex-1 flex-col items-center justify-center gap-3"
-        style={{ backgroundColor: BRAND.pageBg }}
-      >
-        <p className="text-[13px]" style={{ color: BRAND.textSecondary }}>
-          Release details could not be loaded.
-        </p>
-        <Link
-          to="/releases"
-          className="text-[12px] font-semibold hover:underline"
-          style={{ color: BRAND.primary }}
-        >
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 bg-background">
+        <p className="text-ui-lg text-muted-foreground">Release details could not be loaded.</p>
+        <Link to="/releases" className="text-ui-md font-semibold text-primary hover:underline">
           ← Back to Releases
         </Link>
       </div>
@@ -142,17 +130,13 @@ export function ReleaseDetailPage() {
   ]
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden" style={{ backgroundColor: BRAND.pageBg }}>
+    <div className="flex flex-1 flex-col overflow-hidden bg-background">
       {/* Header bar */}
-      <div
-        className="flex h-12 shrink-0 items-center justify-between gap-4 px-4"
-        style={{ borderBottom: `1px solid ${BRAND.border}`, backgroundColor: BRAND.surface }}
-      >
+      <div className="bg-surface flex h-12 shrink-0 items-center justify-between gap-4 border-b border-border px-4">
         <div className="flex items-center gap-2">
           <Link
             to="/releases"
-            className="flex h-7 w-7 items-center justify-center rounded transition-colors hover:bg-gray-100"
-            style={{ color: BRAND.textSecondary }}
+            className="flex h-7 w-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-surface-hover"
           >
             <ChevronLeft size={16} />
           </Link>
@@ -162,20 +146,12 @@ export function ReleaseDetailPage() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 onBlur={handleSave}
-                className="rounded border-0 bg-transparent px-1 py-0.5 text-[14px] font-semibold focus:bg-white focus:ring-1 focus:outline-none"
-                style={{ color: BRAND.textPrimary, width: 240 }}
+                className="w-60 rounded border-0 bg-transparent px-1 py-0.5 text-ui-xl font-semibold text-foreground focus:bg-card focus:ring-1 focus:outline-none"
               />
             ) : (
-              <h1 className="text-[14px] font-semibold" style={{ color: BRAND.textPrimary }}>
-                {release.name}
-              </h1>
+              <h1 className="text-ui-xl font-semibold text-foreground">{release.name}</h1>
             )}
-            <span
-              className="inline-flex items-center rounded-sm px-1.5 py-px text-[10px] font-medium"
-              style={{ backgroundColor: s.bg, color: s.text, border: `1px solid ${s.border}` }}
-            >
-              {s.label}
-            </span>
+            <StatusBadge style={s} />
           </div>
         </div>
 
@@ -188,25 +164,18 @@ export function ReleaseDetailPage() {
       </div>
 
       {/* Tab bar */}
-      <div
-        className="flex shrink-0 items-center gap-0 px-4"
-        style={{ borderBottom: `1px solid ${BRAND.border}`, backgroundColor: BRAND.surface }}
-      >
+      <div className="bg-surface flex shrink-0 items-center gap-0 border-b border-border px-4">
         {TABS.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className="relative px-4 py-2.5 text-[12px] font-medium transition-colors"
-            style={{
-              color: activeTab === tab.key ? BRAND.primary : BRAND.textSecondary,
-            }}
+            className={`relative px-4 py-2.5 text-ui-md font-medium transition-colors ${
+              activeTab === tab.key ? 'text-primary' : 'text-muted-foreground'
+            }`}
           >
             {tab.label}
             {activeTab === tab.key && (
-              <span
-                className="absolute right-0 bottom-0 left-0 h-0.5"
-                style={{ backgroundColor: BRAND.primary }}
-              />
+              <span className="absolute right-0 bottom-0 left-0 h-0.5 bg-primary" />
             )}
           </button>
         ))}
@@ -237,32 +206,23 @@ export function ReleaseDetailPage() {
           </div>
 
           {/* Right Side Panel */}
-          <div
-            className="w-72 shrink-0 space-y-5 overflow-y-auto border-l p-5"
-            style={{ backgroundColor: BRAND.surface, borderColor: BRAND.border }}
-          >
+          <div className="bg-surface w-72 shrink-0 space-y-5 overflow-y-auto border-l border-border p-5">
             <div className="space-y-4">
-              <h2
-                className="text-[11px] font-semibold tracking-wider uppercase"
-                style={{ color: BRAND.textMuted }}
-              >
+              <h2 className="text-ui-sm font-semibold tracking-wider text-foreground-subtle uppercase">
                 Metadata Details
               </h2>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-medium" style={{ color: BRAND.textSecondary }}>
+                <label className="text-ui-xs font-medium text-muted-foreground">
                   Project Scope
                 </label>
-                <div
-                  className="py-1 text-[12px] font-semibold"
-                  style={{ color: BRAND.textPrimary }}
-                >
+                <div className="py-1 text-ui-md font-semibold text-foreground">
                   {project?.projectName ?? '—'}
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-medium" style={{ color: BRAND.textSecondary }}>
+                <label className="text-ui-xs font-medium text-muted-foreground">
                   Lifecycle State
                 </label>
                 {canManage ? (
@@ -273,8 +233,7 @@ export function ReleaseDetailPage() {
                       // Auto-trigger save on change
                       void update.mutateAsync({ state: e.target.value as ReleaseStatus })
                     }}
-                    className="w-full rounded bg-white px-2 py-1 text-[11px] focus:outline-none"
-                    style={{ border: `1px solid ${BRAND.borderInput}`, color: BRAND.textPrimary }}
+                    className="w-full rounded border border-input bg-card px-2 py-1 text-ui-sm text-foreground focus:outline-none"
                   >
                     {RELEASE_STATES.map((st) => (
                       <option key={st} value={st}>
@@ -283,37 +242,28 @@ export function ReleaseDetailPage() {
                     ))}
                   </InlineSelect>
                 ) : (
-                  <div
-                    className="py-1 text-[12px] font-semibold"
-                    style={{ color: BRAND.textPrimary }}
-                  >
-                    {s.label}
-                  </div>
+                  <div className="py-1 text-ui-md font-semibold text-foreground">{s.label}</div>
                 )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-medium" style={{ color: BRAND.textSecondary }}>
-                    Start Date
-                  </label>
+                  <label className="text-ui-xs font-medium text-muted-foreground">Start Date</label>
                   {canManage ? (
                     <Input
                       type="date"
                       value={startDate}
                       onChange={(e) => setStartDate(e.target.value)}
                       onBlur={handleSave}
-                      className="px-2 py-1 text-[11px]"
+                      className="px-2 py-1 text-ui-sm"
                     />
                   ) : (
-                    <div className="font-mono text-[12px]" style={{ color: BRAND.textPrimary }}>
-                      {startDate || '—'}
-                    </div>
+                    <div className="font-mono text-ui-md text-foreground">{startDate || '—'}</div>
                   )}
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-medium" style={{ color: BRAND.textSecondary }}>
+                  <label className="text-ui-xs font-medium text-muted-foreground">
                     Release Date
                   </label>
                   {canManage ? (
@@ -322,19 +272,17 @@ export function ReleaseDetailPage() {
                       value={releaseDate}
                       onChange={(e) => setReleaseDate(e.target.value)}
                       onBlur={handleSave}
-                      className="px-2 py-1 text-[11px]"
+                      className="px-2 py-1 text-ui-sm"
                     />
                   ) : (
-                    <div className="font-mono text-[12px]" style={{ color: BRAND.textPrimary }}>
-                      {releaseDate || '—'}
-                    </div>
+                    <div className="font-mono text-ui-md text-foreground">{releaseDate || '—'}</div>
                   )}
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-medium" style={{ color: BRAND.textSecondary }}>
+                  <label className="text-ui-xs font-medium text-muted-foreground">
                     Planned Velocity
                   </label>
                   {canManage ? (
@@ -345,17 +293,17 @@ export function ReleaseDetailPage() {
                       onChange={(e) => setPlannedVelocity(e.target.value)}
                       onBlur={handleSave}
                       placeholder="0"
-                      className="px-2 py-1 text-[11px]"
+                      className="px-2 py-1 text-ui-sm"
                     />
                   ) : (
-                    <div className="font-mono text-[12px]" style={{ color: BRAND.textPrimary }}>
+                    <div className="font-mono text-ui-md text-foreground">
                       {plannedVelocity || '—'}
                     </div>
                   )}
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-medium" style={{ color: BRAND.textSecondary }}>
+                  <label className="text-ui-xs font-medium text-muted-foreground">
                     Plan Estimate
                   </label>
                   {canManage ? (
@@ -366,10 +314,10 @@ export function ReleaseDetailPage() {
                       onChange={(e) => setPlanEstimate(e.target.value)}
                       onBlur={handleSave}
                       placeholder="0"
-                      className="px-2 py-1 text-[11px]"
+                      className="px-2 py-1 text-ui-sm"
                     />
                   ) : (
-                    <div className="font-mono text-[12px]" style={{ color: BRAND.textPrimary }}>
+                    <div className="font-mono text-ui-md text-foreground">
                       {planEstimate || '—'}
                     </div>
                   )}
@@ -377,7 +325,7 @@ export function ReleaseDetailPage() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-medium" style={{ color: BRAND.textSecondary }}>
+                <label className="text-ui-xs font-medium text-muted-foreground">
                   Version Release Tag
                 </label>
                 {canManage ? (
@@ -386,12 +334,10 @@ export function ReleaseDetailPage() {
                     onChange={(e) => setVersion(e.target.value)}
                     onBlur={handleSave}
                     placeholder="e.g. v2.4.0"
-                    className="px-2 py-1 text-[11px]"
+                    className="px-2 py-1 text-ui-sm"
                   />
                 ) : (
-                  <div className="text-[12px] font-semibold" style={{ color: BRAND.textPrimary }}>
-                    {version || '—'}
-                  </div>
+                  <div className="text-ui-md font-semibold text-foreground">{version || '—'}</div>
                 )}
               </div>
             </div>
