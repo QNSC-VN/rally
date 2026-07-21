@@ -4,35 +4,28 @@
  * Lists iterations for the active project/team with search, state filter, sort
  * and pagination; a quick-create modal; and a full-page detail (Theme/Notes +
  * right panel). State maps DB planning/committed/accepted ↔ UI Planning/Committed/Accepted.
+ *
+ * Grid uses the shared `useDataTable` engine + `DataTableFrame` (resize / reorder /
+ * show-hide + identical chrome), replacing the former hand-rolled flex-grid and
+ * bespoke pagination (FRONTEND_COMPONENT_AUDIT §5.2).
  */
-import { useMemo, useState } from 'react'
-import { ChevronLeft, Plus } from 'lucide-react'
+import { useCallback, useMemo, useState, type CSSProperties } from 'react'
+import { AlertTriangle, Inbox, Plus } from 'lucide-react'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
-import { SkeletonList } from '@/shared/ui/skeleton'
+import { EmptyState } from '@/shared/ui/empty-state'
 import { InlineSelect } from '@/shared/ui/native-select'
 import { Button } from '@/shared/ui/button'
+import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
+import { PaginationFooter } from '@/shared/ui/pagination-footer'
+import { DataTableFrame, useDataTable } from '@/shared/ui/table'
+import { StatusBadge } from '@/shared/ui/status-badge'
+import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
-import { StatusBadge } from '@/shared/ui/status-badge'
 import { ITERATION_STATE_STYLE } from '@/features/iterations/status-colors'
 import { CreateIterationModal, IterationDetail } from './ui/iteration-parts'
-import { useIterations, type IterationState } from '@/features/iterations/api'
-
-// ── State label mapping (DB ↔ UI) ────────────────────────────────────────────
-
-// ── Columns ───────────────────────────────────────────────────────────────────
-
-type SortKey = 'name' | 'theme' | 'startDate' | 'endDate' | 'state' | 'plannedVelocity'
-const COLUMNS: Array<{ key: SortKey; label: string; width: number; align?: 'right' }> = [
-  { key: 'name', label: 'Name', width: 220 },
-  { key: 'theme', label: 'Theme', width: 260 },
-  { key: 'startDate', label: 'Start Date', width: 130 },
-  { key: 'endDate', label: 'End Date', width: 130 },
-  { key: 'plannedVelocity', label: 'Planned Velocity', width: 130, align: 'right' },
-  { key: 'state', label: 'State', width: 120 },
-]
-
-const PAGE_SIZE = 25
+import { type ColKey, ITERATIONS_COLUMNS } from './model/columns'
+import { useIterations, type Iteration, type IterationState } from '@/features/iterations/api'
 
 // ── Page ────────────────────────────────────────────────────────────────────
 
@@ -44,13 +37,23 @@ export function IterationsPage() {
 
   const { data: iterations = [], isLoading, isError } = useIterations(projectId)
 
+  // ── Shared table engine (resize / reorder / show-hide) ──
+  const table = useDataTable<Iteration, unknown, ColKey>(ITERATIONS_COLUMNS, {
+    storageKey: STORAGE_KEYS.ITERATIONS_COLUMNS,
+  })
+  const colStyleFor = useCallback(
+    (key: ColKey, base?: CSSProperties) => table.styleFor(key, base),
+    [table],
+  )
+
   const [search, setSearch] = useState('')
   const [stateFilter, setStateFilter] = useState<'all' | IterationState>('all')
-  const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({
+  const [sort, setSort] = useState<{ key: ColKey; dir: 'asc' | 'desc' }>({
     key: 'startDate',
     dir: 'asc',
   })
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(25)
   const [showCreate, setShowCreate] = useState(false)
   const [detailId, setDetailId] = useState<string | null>(null)
 
@@ -75,15 +78,15 @@ export function IterationsPage() {
     return sorted
   }, [iterations, search, stateFilter, sort])
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
   const activePage = Math.min(page, totalPages)
-  const pageRows = filtered.slice((activePage - 1) * PAGE_SIZE, activePage * PAGE_SIZE)
+  const pageRows = filtered.slice((activePage - 1) * pageSize, activePage * pageSize)
 
-  function toggleSort(key: SortKey) {
+  const toggleSort = useCallback((key: ColKey) => {
     setSort((p) =>
       p.key === key ? { key, dir: p.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' },
     )
-  }
+  }, [])
 
   if (!projectId) {
     return (
@@ -97,10 +100,8 @@ export function IterationsPage() {
     return <IterationDetail id={detailId} canManage={canManage} onBack={() => setDetailId(null)} />
   }
 
-  const tableWidth = COLUMNS.reduce((t, c) => t + c.width, 0) + 64
-
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
+    <div className="flex flex-1 flex-col overflow-hidden bg-background">
       {/* Toolbar */}
       <PageToolbar
         title="Timeboxes"
@@ -121,6 +122,7 @@ export function IterationsPage() {
             </Button>
           ) : undefined
         }
+        fields={<ColumnFieldsMenu {...table.fieldsMenuProps} />}
         activeFilterCount={stateFilter !== 'all' ? 1 : 0}
         defaultFiltersOpen={stateFilter !== 'all'}
         filters={
@@ -154,129 +156,103 @@ export function IterationsPage() {
         }
       />
 
-      {/* Table */}
-      <div className="flex flex-1 flex-col overflow-hidden bg-card">
-        <div className="flex-1 overflow-auto">
-          <div style={{ width: tableWidth, minWidth: '100%' }}>
-            <div className="sticky top-0 z-10 flex h-8 items-center border-b border-border-subtle bg-surface-hover px-3 select-none">
-              <div className="w-16 shrink-0" />
-              {COLUMNS.map((c) => {
-                const active = sort.key === c.key
-                return (
-                  <button
-                    key={c.key}
-                    onClick={() => toggleSort(c.key)}
-                    className={`flex h-full items-center gap-1 border-r border-border-subtle px-2 text-ui-sm font-semibold ${active ? 'text-primary' : 'text-foreground-subtle'}`}
-                    style={{
-                      width: c.width,
-                      justifyContent: c.align === 'right' ? 'flex-end' : 'flex-start',
-                    }}
-                  >
-                    <span className="truncate">{c.label}</span>
-                    {active && <span>{sort.dir === 'asc' ? '▲' : '▼'}</span>}
-                  </button>
-                )
-              })}
+      {/* Table — shared DataTableFrame owns the header/scroll/loading/empty chrome;
+          the leading iteration-key cell is a gutter (not a reorderable column). */}
+      <DataTableFrame
+        header={{
+          ...table.headerProps,
+          sort: { col: sort.key, dir: sort.dir, onSort: (k) => toggleSort(k as ColKey) },
+        }}
+        leading={<div className="w-16 shrink-0" />}
+        loading={isLoading}
+        skeleton={{ rows: 8, cols: 6 }}
+        error={
+          isError ? (
+            <EmptyState
+              icon={<AlertTriangle size={28} className="text-destructive" />}
+              title="Failed to load iterations. Please try again."
+            />
+          ) : undefined
+        }
+        empty={
+          pageRows.length === 0 ? (
+            <EmptyState
+              icon={<Inbox size={32} className="text-foreground-subtle" />}
+              title="No iterations found"
+            />
+          ) : undefined
+        }
+        footer={
+          filtered.length > 0 ? (
+            <PaginationFooter
+              pageSize={pageSize}
+              setPageSize={(n) => {
+                setPageSize(n)
+                setPage(1)
+              }}
+              currentPage={activePage}
+              rangeStart={(activePage - 1) * pageSize + 1}
+              rangeEnd={(activePage - 1) * pageSize + pageRows.length}
+              total={filtered.length}
+              pageCount={totalPages}
+              hasPrevPage={activePage > 1}
+              hasNextPage={activePage < totalPages}
+              onPrevPage={() => setPage(activePage - 1)}
+              onNextPage={() => setPage(activePage + 1)}
+            />
+          ) : undefined
+        }
+      >
+        {pageRows.map((it) => (
+          <div
+            key={it.id}
+            onClick={() => setDetailId(it.id)}
+            className="flex h-8 cursor-pointer items-center border-b border-border-inner px-3 transition-colors hover:bg-surface-subtle"
+            style={{ minWidth: 'max-content' }}
+          >
+            <div
+              className="w-16 shrink-0 truncate px-2 font-mono text-ui-xs text-foreground-subtle"
+              title={it.iterationKey ?? ''}
+            >
+              {it.iterationKey ?? ''}
             </div>
-
-            {isLoading && <SkeletonList rows={8} cols={6} />}
-
-            {!isLoading && isError && (
-              <div className="flex h-40 items-center justify-center text-ui-md text-destructive">
-                Failed to load iterations. Please try again.
-              </div>
-            )}
-
-            {!isLoading &&
-              !isError &&
-              pageRows.map((it) => (
-                <div
-                  key={it.id}
-                  onClick={() => setDetailId(it.id)}
-                  className="flex h-8 cursor-pointer items-center border-b border-border-inner px-3 transition-colors hover:bg-surface-subtle"
-                  style={{ width: tableWidth, minWidth: '100%' }}
-                >
-                  <div
-                    className="w-16 shrink-0 truncate px-2 font-mono text-ui-xs text-foreground-subtle"
-                    title={it.iterationKey ?? ''}
-                  >
-                    {it.iterationKey ?? ''}
-                  </div>
-                  <div
-                    className="shrink-0 truncate px-2 text-ui-sm font-medium text-foreground"
-                    style={{ width: COLUMNS[0].width }}
-                    title={it.name}
-                  >
-                    {it.name}
-                  </div>
-                  <div
-                    className="shrink-0 truncate px-2 text-ui-sm text-foreground"
-                    style={{ width: COLUMNS[1].width }}
-                  >
-                    {it.theme ?? ''}
-                  </div>
-                  <div
-                    className="shrink-0 truncate px-2 text-ui-sm text-muted-foreground"
-                    style={{ width: COLUMNS[2].width }}
-                  >
-                    {it.startDate ?? ''}
-                  </div>
-                  <div
-                    className="shrink-0 truncate px-2 text-ui-sm text-muted-foreground"
-                    style={{ width: COLUMNS[3].width }}
-                  >
-                    {it.endDate ?? ''}
-                  </div>
-                  <div
-                    className="shrink-0 px-2 text-right font-mono text-ui-sm text-muted-foreground tabular-nums"
-                    style={{ width: COLUMNS[4].width }}
-                  >
-                    {it.plannedVelocity ?? ''}
-                  </div>
-                  <div className="shrink-0 px-2" style={{ width: COLUMNS[5].width }}>
-                    <StatusBadge style={ITERATION_STATE_STYLE[it.state]} />
-                  </div>
-                </div>
-              ))}
-
-            {!isLoading && !isError && pageRows.length === 0 && (
-              <div className="flex h-40 items-center justify-center text-ui-md text-foreground-subtle">
-                No iterations found
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Pagination */}
-        <div className="flex h-10 shrink-0 items-center justify-between border-t border-border-subtle bg-card px-3">
-          <span className="text-ui-sm text-foreground-subtle">
-            {filtered.length === 0
-              ? '0 records'
-              : `${(activePage - 1) * PAGE_SIZE + 1}-${Math.min(activePage * PAGE_SIZE, filtered.length)} of ${filtered.length}`}
-          </span>
-          <div className="flex items-center gap-2">
-            <span className="text-ui-sm text-muted-foreground tabular-nums">
-              Page {activePage} of {totalPages}
-            </span>
-            <button
-              aria-label="Previous page"
-              disabled={activePage === 1}
-              onClick={() => setPage(activePage - 1)}
-              className="cursor-pointer rounded border border-border-subtle p-1.5 text-muted-foreground transition-colors hover:bg-primary-lighter disabled:cursor-not-allowed disabled:opacity-35"
+            <div
+              style={colStyleFor('name', { flexShrink: 0 })}
+              className="truncate px-2 text-ui-sm font-medium text-foreground"
+              title={it.name}
             >
-              <ChevronLeft size={13} />
-            </button>
-            <button
-              aria-label="Next page"
-              disabled={activePage === totalPages}
-              onClick={() => setPage(activePage + 1)}
-              className="cursor-pointer rounded border border-border-subtle p-1.5 text-muted-foreground transition-colors hover:bg-primary-lighter disabled:cursor-not-allowed disabled:opacity-35"
+              {it.name}
+            </div>
+            <div
+              style={colStyleFor('theme', { flexShrink: 0 })}
+              className="truncate px-2 text-ui-sm text-foreground"
             >
-              <ChevronLeft size={13} className="rotate-180" />
-            </button>
+              {it.theme ?? ''}
+            </div>
+            <div
+              style={colStyleFor('startDate', { flexShrink: 0 })}
+              className="truncate px-2 text-ui-sm text-muted-foreground"
+            >
+              {it.startDate ?? ''}
+            </div>
+            <div
+              style={colStyleFor('endDate', { flexShrink: 0 })}
+              className="truncate px-2 text-ui-sm text-muted-foreground"
+            >
+              {it.endDate ?? ''}
+            </div>
+            <div
+              style={colStyleFor('plannedVelocity', { flexShrink: 0 })}
+              className="px-2 text-right font-mono text-ui-sm text-muted-foreground tabular-nums"
+            >
+              {it.plannedVelocity ?? ''}
+            </div>
+            <div style={colStyleFor('state', { flexShrink: 0 })} className="px-2">
+              <StatusBadge style={ITERATION_STATE_STYLE[it.state]} />
+            </div>
           </div>
-        </div>
-      </div>
+        ))}
+      </DataTableFrame>
 
       {showCreate && projectId && (
         <CreateIterationModal
