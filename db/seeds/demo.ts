@@ -262,6 +262,7 @@ async function seedWorkItems() {
           ...item,
           workspaceId: WORKSPACE_ID,
           projectId: nxpId,
+          teamId: TEAM_ALPHA_ID,
           createdBy: ADMIN_USER_ID,
           rank: getDeterministicRank(item.itemKey),
         })
@@ -296,6 +297,7 @@ async function seedWorkItems() {
           ...t,
           workspaceId: WORKSPACE_ID,
           projectId: nxpId,
+          teamId: TEAM_ALPHA_ID,
           itemKey: `TA-${i + 1}`,
           rank: getDeterministicRank(`TA-${i + 1}`),
           createdBy: ADMIN_USER_ID,
@@ -367,6 +369,7 @@ async function seedWorkItems() {
           ...item,
           workspaceId: WORKSPACE_ID,
           projectId: mobId,
+          teamId: TEAM_BETA_ID,
           createdBy: ADMIN_USER_ID,
           rank: getDeterministicRank(item.itemKey),
         })
@@ -391,6 +394,7 @@ async function seedWorkItems() {
           ...t,
           workspaceId: WORKSPACE_ID,
           projectId: mobId,
+          teamId: TEAM_BETA_ID,
           itemKey: `TA-${i + 1}`,
           rank: getDeterministicRank(`TA-${i + 1}`),
           createdBy: ADMIN_USER_ID,
@@ -832,6 +836,7 @@ async function seedExtendedWorkItems() {
         ...item,
         workspaceId: WORKSPACE_ID,
         projectId: nxpId,
+        teamId: TEAM_ALPHA_ID,
         createdBy: ADMIN_USER_ID,
         rank: getDeterministicRank(item.itemKey),
       })
@@ -905,6 +910,7 @@ async function seedExtendedWorkItems() {
         ...t,
         workspaceId: WORKSPACE_ID,
         projectId: nxpId,
+        teamId: TEAM_ALPHA_ID,
         itemKey,
         rank: getDeterministicRank(itemKey),
         createdBy: ADMIN_USER_ID,
@@ -963,6 +969,7 @@ async function seedExtendedWorkItems() {
           ...item,
           workspaceId: WORKSPACE_ID,
           projectId: mobId,
+          teamId: TEAM_BETA_ID,
           createdBy: ADMIN_USER_ID,
           rank: getDeterministicRank(item.itemKey),
         })
