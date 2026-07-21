@@ -1,5 +1,24 @@
 import { clsx, type ClassValue } from 'clsx'
-import { twMerge } from 'tailwind-merge'
+import { extendTailwindMerge } from 'tailwind-merge'
+
+/**
+ * tailwind-merge's default config buckets every `text-*` class (font size AND
+ * color) into one conflict group, so `text-primary-foreground text-ui-sm`
+ * silently dropped the color half — the last `text-*` class in the string
+ * always won, regardless of whether it was actually a color or a size. This
+ * broke any element combining a text-color utility with our custom `text-ui-*`
+ * font-size scale (see globals.css `--text-ui-*`), e.g. every <Button> variant
+ * — its color class was discarded, leaving default (dark) text color on a
+ * navy background. Registering the custom scale as its own `font-size` group
+ * tells tailwind-merge it does not conflict with color utilities.
+ */
+const twMerge = extendTailwindMerge({
+  extend: {
+    classGroups: {
+      'font-size': [{ text: ['ui-2xs', 'ui-xs', 'ui-sm', 'ui-md', 'ui-lg', 'ui-xl'] }],
+    },
+  },
+})
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
