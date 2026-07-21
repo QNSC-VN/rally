@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { BRAND } from '@/shared/config/brand'
+import { formatDate } from '@/shared/lib/utils'
 import { SearchInput } from '@/shared/ui/search-input'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { MetricCard } from '@/shared/ui/metric-card'
@@ -23,6 +24,9 @@ import { Button } from '@/shared/ui/button'
 import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { OwnerCell } from '@/shared/ui/owner-cell'
 import { TeamCell } from '@/shared/ui/team-cell'
+import { KeyChip } from '@/shared/ui/key-chip'
+import { StatusBadge } from '@/shared/ui/status-badge'
+import { PROJECT_STATUS_STYLE } from '@/features/projects/status-colors'
 import { DataTableHeader } from '@/shared/ui/data-table-header'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
 import { useDataTable, type ColumnSpec } from '@/shared/ui/table'
@@ -145,23 +149,7 @@ function ArchiveConfirmModal({
 // ── Status badge ──────────────────────────────────────────────────────────────
 
 function ProjectStatusBadge({ status }: { status: 'active' | 'archived' }) {
-  const active = status === 'active'
-  return (
-    <span
-      className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] font-semibold"
-      style={{
-        color: active ? BRAND.success : BRAND.textSecondary,
-        backgroundColor: active ? BRAND.successBg : BRAND.primaryLighter,
-        border: `1px solid ${active ? BRAND.successBorder : BRAND.border}`,
-      }}
-    >
-      <span
-        className="h-1.5 w-1.5 rounded-full"
-        style={{ backgroundColor: active ? BRAND.success : BRAND.textMuted }}
-      />
-      {active ? 'Active' : 'Archived'}
-    </span>
-  )
+  return <StatusBadge style={PROJECT_STATUS_STYLE[status]} />
 }
 
 // ── Owner (project lead) picker ──────────────────────────────────────────────
@@ -597,9 +585,6 @@ interface ProjectCtx {
   onToggleArchive: (project: Project) => void
 }
 
-const fmtDate = (iso: string) =>
-  new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-
 /** Row actions dropdown — page-local interactivity kept out of the column spec. */
 function ProjectActionsCell({ project, ctx }: { project: Project; ctx: ProjectCtx }) {
   const { openMenu, setOpenMenu, onEdit, onToggleArchive } = ctx
@@ -662,14 +647,7 @@ const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] = [
     minWidth: 60,
     locked: true,
     cellClassName: 'flex items-center',
-    cell: (p) => (
-      <span
-        className="inline-flex h-5 items-center rounded-sm px-1.5 font-mono text-[10px] font-semibold"
-        style={{ backgroundColor: BRAND.avatarBg, color: BRAND.primary }}
-      >
-        {p.key}
-      </span>
-    ),
+    cell: (p) => <KeyChip>{p.key}</KeyChip>,
   },
   {
     key: 'name',
@@ -751,7 +729,7 @@ const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] = [
     cellClassName: 'flex items-center text-[11px]',
     cell: (p) =>
       p.startDate ? (
-        <span style={{ color: BRAND.textSecondary }}>{fmtDate(p.startDate)}</span>
+        <span style={{ color: BRAND.textSecondary }}>{formatDate(p.startDate)}</span>
       ) : (
         <span style={{ color: BRAND.textMuted }}>—</span>
       ),
@@ -763,7 +741,7 @@ const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] = [
     defaultWidth: 128,
     minWidth: 100,
     cellClassName: 'flex items-center text-[11px]',
-    cell: (p) => <span style={{ color: BRAND.textSecondary }}>{fmtDate(p.updatedAt)}</span>,
+    cell: (p) => <span style={{ color: BRAND.textSecondary }}>{formatDate(p.updatedAt)}</span>,
   },
   {
     key: 'actions',

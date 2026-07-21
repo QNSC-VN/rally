@@ -14,7 +14,6 @@ import { CSS } from '@dnd-kit/utilities'
 import { AlertTriangle, PackageOpen, Plus } from 'lucide-react'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { RowGutter } from '@/shared/ui/row-gutter'
-import { SkeletonList } from '@/shared/ui/skeleton'
 import { MetricCard } from '@/shared/ui/metric-card'
 import { MetricStrip } from '@/shared/ui/metric-strip'
 import { BRAND } from '@/shared/config/brand'
@@ -51,8 +50,7 @@ import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { useQueryClient } from '@tanstack/react-query'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
 import { OwnerCell } from '@/shared/ui/owner-cell'
-import { DataTableHeader } from '@/shared/ui/data-table-header'
-import { useDataTable, useRowRerank, type ColumnSpec } from '@/shared/ui/table'
+import { useDataTable, useRowRerank, DataTableFrame, type ColumnSpec } from '@/shared/ui/table'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -1105,68 +1103,62 @@ export function QualityPage() {
       />
 
       {/* Defect table */}
-      <div className="flex flex-1 overflow-hidden bg-white">
-        {isLoading ? (
-          <SkeletonList rows={8} />
-        ) : defects.length === 0 ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8">
-            <PackageOpen size={40} style={{ color: BRAND.textFaint }} />
-            <p className="text-sm" style={{ color: BRAND.textMuted }}>
-              {search ||
-              severityFilter !== 'all' ||
-              envFilter !== 'all' ||
-              priorityFilter !== 'all' ||
-              stateFilter !== 'all'
-                ? 'No defects match your filters'
-                : 'No defects logged yet'}
-            </p>
-          </div>
-        ) : (
-          <div className="flex flex-1 flex-col overflow-hidden">
-            <div className="flex-1 overflow-auto">
-              <div style={{ width: table.tableWidth, minWidth: '100%' }}>
-                {/* Header */}
-                <DataTableHeader
-                  {...table.headerProps}
-                  className="gap-2 px-3"
-                  leading={
-                    <>
-                      <RowGutter
-                        dragDisabled
-                        checkbox={{
-                          checked: allSelected,
-                          indeterminate: someSelected,
-                          onChange: toggleAll,
-                          ariaLabel: 'Select all',
-                        }}
-                      />
-                      <div className="w-6 shrink-0 px-2 text-right">#</div>
-                    </>
-                  }
-                />
-                {/* Rows */}
-                <DndContext {...rerank.dndContextProps}>
-                  <SortableContext {...rerank.sortableContextProps}>
-                    {rerank.items.map((d, idx) => (
-                      <DefectTableRow
-                        key={d.id}
-                        defect={d}
-                        rowNum={idx + 1}
-                        canManage={canManage}
-                        projectId={project?.projectId ?? ''}
-                        dragDisabled={sortCol !== null}
-                        selected={isSelected(d.id)}
-                        onToggleSelect={() => toggleSelect(d.id)}
-                        openItem={(k) => navigate({ to: '/item/$itemKey', params: { itemKey: k } })}
-                        renderCells={table.renderCells}
-                      />
-                    ))}
-                  </SortableContext>
-                </DndContext>
+      <div className="flex flex-1 overflow-hidden">
+        <DataTableFrame
+          header={table.headerProps}
+          padClassName="gap-2 px-3"
+          leading={
+            <>
+              <RowGutter
+                dragDisabled
+                checkbox={{
+                  checked: allSelected,
+                  indeterminate: someSelected,
+                  onChange: toggleAll,
+                  ariaLabel: 'Select all',
+                }}
+              />
+              <div className="w-6 shrink-0 px-2 text-right">#</div>
+            </>
+          }
+          loading={isLoading}
+          skeleton={{ rows: 8 }}
+          empty={
+            defects.length === 0 ? (
+              <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8">
+                <PackageOpen size={40} style={{ color: BRAND.textFaint }} />
+                <p className="text-sm" style={{ color: BRAND.textMuted }}>
+                  {search ||
+                  severityFilter !== 'all' ||
+                  envFilter !== 'all' ||
+                  priorityFilter !== 'all' ||
+                  stateFilter !== 'all'
+                    ? 'No defects match your filters'
+                    : 'No defects logged yet'}
+                </p>
               </div>
-            </div>
-          </div>
-        )}
+            ) : undefined
+          }
+        >
+          <DndContext {...rerank.dndContextProps}>
+            <SortableContext {...rerank.sortableContextProps}>
+              {rerank.items.map((d, idx) => (
+                <DefectTableRow
+                  key={d.id}
+                  defect={d}
+                  rowNum={idx + 1}
+                  canManage={canManage}
+                  projectId={project?.projectId ?? ''}
+                  dragDisabled={sortCol !== null}
+                  selected={isSelected(d.id)}
+                  onToggleSelect={() => toggleSelect(d.id)}
+                  openItem={(k) => navigate({ to: '/item/$itemKey', params: { itemKey: k } })}
+                  renderCells={table.renderCells}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
+        </DataTableFrame>
       </div>
 
       {/* Log Defect Modal */}

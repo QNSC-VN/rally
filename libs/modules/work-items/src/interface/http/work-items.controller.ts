@@ -78,6 +78,7 @@ function toWorkItemDto(w: WorkItem): WorkItemResponseDto {
     description: w.description,
     statusId: w.statusId,
     scheduleState: w.scheduleState,
+    flowState: w.flowState,
     priority: w.priority,
     assigneeId: w.assigneeId,
     reporterId: w.reporterId,

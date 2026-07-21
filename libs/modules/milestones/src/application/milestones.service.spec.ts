@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
-import { DRIZZLE, NotFoundException } from '@platform';
+import { DRIZZLE, NotFoundException, PreconditionFailedException } from '@platform';
 import { MilestonesService } from './milestones.service';
 import { MILESTONE_REPOSITORY } from '../domain/ports/milestone.repository';
 import { ProjectsService } from '@modules/projects';
@@ -173,6 +173,9 @@ describe('MilestonesService', () => {
 
     it('calls recalcTargetDates via DB when releases are linked', async () => {
       const releaseIds = ['rel-1', 'rel-2'];
+      // Guard + recalc share this.db.select; return one row per linked id so the
+      // in-workspace COUNT check passes (rows.length === releaseIds.length).
+      db.select.mockReturnValue(makeChain([{ id: 'rel-1' }, { id: 'rel-2' }]));
 
       // recalcTargetDates does: db.select().from().innerJoin().where() => aggregates
       // then db.update().set().where() to persist
@@ -201,6 +204,7 @@ describe('MilestonesService', () => {
 
     it('ignores manual target dates — always derives from releases', async () => {
       const releaseIds = ['rel-1', 'rel-2'];
+      db.select.mockReturnValue(makeChain([{ id: 'rel-1' }, { id: 'rel-2' }]));
 
       await service.createMilestone(actor, 'proj-1', 'MVP', {
         releaseIds,
@@ -273,6 +277,7 @@ describe('MilestonesService', () => {
     it('recalculates target dates via DB when releaseIds change', async () => {
       repo.findById.mockResolvedValue(mockMilestone());
       repo.getReleaseIds.mockResolvedValue(['rel-new']);
+      db.select.mockReturnValue(makeChain([{ id: 'rel-new' }]));
 
       await service.updateMilestone(actor, 'ms-1', {
         releaseIds: ['rel-new'],
@@ -346,6 +351,7 @@ describe('MilestonesService', () => {
     it('strips target dates even when releaseIds also change', async () => {
       repo.findById.mockResolvedValue(mockMilestone());
       repo.getReleaseIds.mockResolvedValue(['rel-new']);
+      db.select.mockReturnValue(makeChain([{ id: 'rel-new' }]));
 
       await service.updateMilestone(actor, 'ms-1', {
         targetStartDate: '2024-03-01',
@@ -361,6 +367,137 @@ describe('MilestonesService', () => {
           targetStartDate: '2024-03-01',
         }),
       );
+    });
+  });
+
+  // ── setMilestoneArtifacts ──────────────────────────────────────────────────
+
+  describe('setMilestoneArtifacts', () => {
+    it('assigns story/defect items within the milestone project scope', async () => {
+      repo.findById.mockResolvedValue(mockMilestone({ projectId: 'proj-1' }));
+      db.select.mockReturnValue(
+        makeChain([{ id: 'wi-1', projectId: 'proj-1', teamId: null, type: 'story' }]),
+      );
+      await service.setMilestoneArtifacts(actor, 'ms-1', ['wi-1']);
+      expect(repo.setArtifactLinks).toHaveBeenCalledWith('ms-1', ['wi-1']);
+    });
+
+    it('rejects a non-story/defect item (SRS §5.1 / FR-014)', async () => {
+      repo.findById.mockResolvedValue(mockMilestone({ projectId: 'proj-1' }));
+      db.select.mockReturnValue(
+        makeChain([{ id: 'wi-1', projectId: 'proj-1', teamId: null, type: 'task' }]),
+      );
+      await expect(service.setMilestoneArtifacts(actor, 'ms-1', ['wi-1'])).rejects.toThrow(
+        PreconditionFailedException,
+      );
+      expect(repo.setArtifactLinks).not.toHaveBeenCalled();
+    });
+
+    it('rejects an item outside the milestone project scope (FR-023)', async () => {
+      repo.findById.mockResolvedValue(mockMilestone({ projectId: 'proj-1' }));
+      db.select.mockReturnValue(
+        makeChain([{ id: 'wi-1', projectId: 'proj-9', teamId: null, type: 'story' }]),
+      );
+      await expect(service.setMilestoneArtifacts(actor, 'ms-1', ['wi-1'])).rejects.toThrow(
+        PreconditionFailedException,
+      );
+      expect(repo.setArtifactLinks).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── status transitions (relaxed graph — completed is terminal) ─────────────
+
+  describe('status transitions', () => {
+    it('allows a relaxed transition that the old graph forbade (planned → met)', async () => {
+      repo.findById.mockResolvedValue(mockMilestone({ status: 'planned' }));
+      await expect(
+        service.updateMilestone(actor, 'ms-1', { status: 'met' }),
+      ).resolves.toBeDefined();
+      expect(repo.update).toHaveBeenCalled();
+    });
+
+    it('allows re-opening from a non-terminal state (cancelled → planned)', async () => {
+      repo.findById.mockResolvedValue(mockMilestone({ status: 'cancelled' }));
+      await expect(
+        service.updateMilestone(actor, 'ms-1', { status: 'planned' }),
+      ).resolves.toBeDefined();
+    });
+
+    it('rejects reopening a completed milestone (terminal)', async () => {
+      repo.findById.mockResolvedValue(mockMilestone({ status: 'completed' }));
+      await expect(service.updateMilestone(actor, 'ms-1', { status: 'planned' })).rejects.toThrow(
+        PreconditionFailedException,
+      );
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── cross-workspace link guard (tenant isolation) ──────────────────────────
+
+  describe('cross-workspace link guard', () => {
+    it('rejects a release from another workspace on create', async () => {
+      db.select.mockReturnValue(makeChain([])); // no rows match → foreign / missing
+      await expect(
+        service.createMilestone(actor, 'proj-1', 'MVP', { releaseIds: ['rel-x'] }),
+      ).rejects.toThrow(PreconditionFailedException);
+      expect(repo.setReleaseLinks).not.toHaveBeenCalled();
+    });
+
+    it('rejects a linked project from another workspace on create', async () => {
+      db.select.mockReturnValue(makeChain([]));
+      await expect(
+        service.createMilestone(actor, 'proj-1', 'MVP', { projectIds: ['proj-x'] }),
+      ).rejects.toThrow(PreconditionFailedException);
+      expect(repo.setProjectLinks).not.toHaveBeenCalled();
+    });
+
+    it('rejects a linked team from another workspace on create', async () => {
+      db.select.mockReturnValue(makeChain([]));
+      await expect(
+        service.createMilestone(actor, 'proj-1', 'MVP', { teamIds: ['team-x'] }),
+      ).rejects.toThrow(PreconditionFailedException);
+      expect(repo.setTeamLinks).not.toHaveBeenCalled();
+    });
+
+    it('rejects a foreign project on update', async () => {
+      repo.findById.mockResolvedValue(mockMilestone());
+      db.select.mockReturnValue(makeChain([]));
+      await expect(
+        service.updateMilestone(actor, 'ms-1', { projectIds: ['proj-x'] }),
+      ).rejects.toThrow(PreconditionFailedException);
+      expect(repo.setProjectLinks).not.toHaveBeenCalled();
+    });
+
+    it('rejects a foreign project on setMilestoneProjects', async () => {
+      repo.findById.mockResolvedValue(mockMilestone());
+      db.select.mockReturnValue(makeChain([]));
+      await expect(service.setMilestoneProjects(actor, 'ms-1', ['proj-x'])).rejects.toThrow(
+        PreconditionFailedException,
+      );
+      expect(repo.setProjectLinks).not.toHaveBeenCalled();
+    });
+
+    it('accepts in-workspace projects on setMilestoneProjects', async () => {
+      repo.findById.mockResolvedValue(mockMilestone());
+      db.select.mockReturnValue(makeChain([{ id: 'proj-2' }]));
+      await service.setMilestoneProjects(actor, 'ms-1', ['proj-2']);
+      expect(repo.setProjectLinks).toHaveBeenCalledWith('ms-1', ['proj-2']);
+    });
+
+    it('rejects a foreign team on setMilestoneTeams', async () => {
+      repo.findById.mockResolvedValue(mockMilestone());
+      db.select.mockReturnValue(makeChain([]));
+      await expect(service.setMilestoneTeams(actor, 'ms-1', ['team-x'])).rejects.toThrow(
+        PreconditionFailedException,
+      );
+      expect(repo.setTeamLinks).not.toHaveBeenCalled();
+    });
+
+    it('accepts in-workspace teams on setMilestoneTeams', async () => {
+      repo.findById.mockResolvedValue(mockMilestone());
+      db.select.mockReturnValue(makeChain([{ id: 'team-2' }]));
+      await service.setMilestoneTeams(actor, 'ms-1', ['team-2']);
+      expect(repo.setTeamLinks).toHaveBeenCalledWith('ms-1', ['team-2']);
     });
   });
 

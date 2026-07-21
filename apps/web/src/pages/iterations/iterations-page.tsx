@@ -18,10 +18,15 @@ import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
+import { RichTextEditor } from '@/shared/ui/rich-text-editor'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
 import { useProjectTeams, useProjectMembers } from '@/features/teams/api'
+import { useProjects } from '@/features/projects/api'
 import { TypeBadge, ScheduleStateBadge } from '@/entities/work-item/ui/badges'
+import { StatusBadge } from '@/shared/ui/status-badge'
+import { TeamCell } from '@/shared/ui/team-cell'
+import { ITERATION_STATE_STYLE } from '@/features/iterations/status-colors'
 import {
   useIterations,
   useIteration,
@@ -38,29 +43,6 @@ import {
 } from '@/features/iterations/api'
 
 // ── State label mapping (DB ↔ UI) ────────────────────────────────────────────
-
-const STATE_LABEL: Record<IterationState, string> = {
-  planning: 'Planning',
-  committed: 'Committed',
-  accepted: 'Accepted',
-}
-const STATE_STYLE: Record<IterationState, { bg: string; text: string; border: string }> = {
-  planning: { bg: BRAND.primaryLighter, text: BRAND.primary, border: BRAND.accentBorder },
-  committed: { bg: BRAND.warningBg, text: BRAND.warning, border: BRAND.warningBorder },
-  accepted: { bg: BRAND.successBg, text: BRAND.success, border: BRAND.successBorder },
-}
-
-function StateBadge({ state }: { state: IterationState }) {
-  const s = STATE_STYLE[state]
-  return (
-    <span
-      className="inline-flex items-center rounded-sm px-1.5 py-px text-[11px] font-medium whitespace-nowrap"
-      style={{ backgroundColor: s.bg, color: s.text, border: `1px solid ${s.border}` }}
-    >
-      {STATE_LABEL[state]}
-    </span>
-  )
-}
 
 // ── Columns ───────────────────────────────────────────────────────────────────
 
@@ -304,7 +286,7 @@ export function IterationsPage() {
                     {it.plannedVelocity ?? ''}
                   </div>
                   <div className="shrink-0 px-2" style={{ width: COLUMNS[5].width }}>
-                    <StateBadge state={it.state} />
+                    <StatusBadge style={ITERATION_STATE_STYLE[it.state]} />
                   </div>
                 </div>
               ))}
@@ -381,8 +363,13 @@ function CreateIterationModal({
   onClose: () => void
   onCreated: (id: string) => void
 }) {
-  const { team } = useAppContext()
-  const { data: teams = [] } = useProjectTeams(projectId)
+  const { workspace, team } = useAppContext()
+  const workspaceId = workspace?.workspaceId ?? ''
+  // Project auto-fills from context (P2-IT-FR-001C) but an admin may override it
+  // (FR-001D); Team then filters by the SELECTED project and must be valid for it.
+  const [selectedProjectId, setSelectedProjectId] = useState(projectId)
+  const { data: projects = [] } = useProjects(workspaceId || undefined)
+  const { data: teams = [] } = useProjectTeams(selectedProjectId)
   const create = useCreateIteration()
   const [name, setName] = useState('')
   // Auto-fill from the Team selected in the workspace context (falls back to "No team")
@@ -391,6 +378,17 @@ function CreateIterationModal({
   const [endDate, setEndDate] = useState('')
   const [state, setState] = useState<IterationState>('planning')
   const [error, setError] = useState<string | null>(null)
+
+  // A pre-filled/inherited team that isn't linked to the selected project is
+  // treated as unset so the create can't be rejected with
+  // PROJECT_TEAM_LINK_NOT_FOUND (FR-001D). Derived — no effect needed.
+  const validTeamId = teams.some((t) => t.id === teamId) ? teamId : ''
+
+  function handleProjectChange(nextProjectId: string) {
+    if (nextProjectId === selectedProjectId) return
+    setSelectedProjectId(nextProjectId)
+    setTeamId('')
+  }
 
   async function submit(openDetail: boolean) {
     setError(null)
@@ -408,9 +406,9 @@ function CreateIterationModal({
     }
     try {
       const it = await create.mutateAsync({
-        projectId,
+        projectId: selectedProjectId,
         name: name.trim(),
-        teamId: teamId || undefined,
+        teamId: validTeamId || undefined,
         startDate: startDate || undefined,
         endDate: endDate || undefined,
         state,
@@ -436,8 +434,27 @@ function CreateIterationModal({
             placeholder="Enter iteration name..."
           />
         </FormField>
+        {/* Type — Phase 2 shows Iterations only, so the control is fixed (P2-IT-FR-003/011). */}
+        <FormField label="Type">
+          <NativeSelect value="iteration" disabled>
+            <option value="iteration">Iteration</option>
+          </NativeSelect>
+        </FormField>
+        {/* Project — auto-filled from context, overridable by admin (P2-IT-FR-001C/D). */}
+        <FormField label="Project" required>
+          <NativeSelect
+            value={selectedProjectId}
+            onChange={(e) => handleProjectChange(e.target.value)}
+          >
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </NativeSelect>
+        </FormField>
         <FormField label="Team">
-          <NativeSelect value={teamId} onChange={(e) => setTeamId(e.target.value)}>
+          <NativeSelect value={validTeamId} onChange={(e) => setTeamId(e.target.value)}>
             <option value="">No team</option>
             {teams.map((t) => (
               <option key={t.id} value={t.id}>
@@ -499,12 +516,8 @@ function IterationDetail({
   const { data: it, isLoading } = useIteration(id)
   const update = useUpdateIteration(id)
   const { data: teams = [] } = useProjectTeams(it?.projectId)
-  const teamName = teams.find((t) => t.id === it?.teamId)?.name ?? null
-  const [theme, setTheme] = useState<string | null>(null)
-  const [notes, setNotes] = useState<string | null>(null)
-
-  const themeVal = theme ?? it?.theme ?? ''
-  const notesVal = notes ?? it?.notes ?? ''
+  const team = teams.find((t) => t.id === it?.teamId) ?? null
+  const teamName = team?.name ?? null
   const disabled = !canManage
   const readonlyCls =
     'w-full rounded border border-input bg-input-background px-3 py-2 text-[12px] text-foreground'
@@ -579,7 +592,7 @@ function IterationDetail({
           <span className="h-5 w-px bg-white/25" />
           <h1 className="truncate text-[15px] font-semibold">{it.name}</h1>
           <div className="ml-auto">
-            <StateBadge state={it.state} />
+            <StatusBadge style={ITERATION_STATE_STYLE[it.state]} />
           </div>
         </div>
       </div>
@@ -638,54 +651,20 @@ function IterationDetail({
             <h2 className="text-[18px] font-semibold" style={{ color: BRAND.textPrimary }}>
               Details
             </h2>
-            <section
-              className="overflow-hidden rounded bg-white"
-              style={{ border: `1px solid ${BRAND.borderSubtle}` }}
-            >
-              <div
-                className="px-4 py-2 text-[11px] font-semibold"
-                style={{
-                  color: BRAND.textSecondary,
-                  backgroundColor: BRAND.surfaceSubtle,
-                  borderBottom: `1px solid ${BRAND.borderSubtle}`,
-                }}
-              >
-                Theme
-              </div>
-              <textarea
-                value={themeVal}
-                disabled={disabled}
-                onChange={(e) => setTheme(e.target.value)}
-                onBlur={() => theme !== null && patch({ theme })}
-                placeholder="Describe the iteration goal, scope, and planning context..."
-                className="block w-full resize-none px-4 py-3 text-[13px] leading-6 focus:outline-none"
-                style={{ minHeight: 200, color: BRAND.textPrimary }}
-              />
-            </section>
-            <section
-              className="overflow-hidden rounded bg-white"
-              style={{ border: `1px solid ${BRAND.borderSubtle}` }}
-            >
-              <div
-                className="px-4 py-2 text-[11px] font-semibold"
-                style={{
-                  color: BRAND.textSecondary,
-                  backgroundColor: BRAND.surfaceSubtle,
-                  borderBottom: `1px solid ${BRAND.borderSubtle}`,
-                }}
-              >
-                Notes
-              </div>
-              <textarea
-                value={notesVal}
-                disabled={disabled}
-                onChange={(e) => setNotes(e.target.value)}
-                onBlur={() => notes !== null && patch({ notes })}
-                placeholder="Capture team notes, risks, carry-over context, or planning decisions..."
-                className="block w-full resize-none px-4 py-3 text-[13px] leading-6 focus:outline-none"
-                style={{ minHeight: 160, color: BRAND.textPrimary }}
-              />
-            </section>
+            <RichTextEditor
+              title="Theme"
+              value={it?.theme}
+              minHeight={200}
+              readOnly={disabled}
+              onSave={(html) => patch({ theme: html || null })}
+            />
+            <RichTextEditor
+              title="Notes"
+              value={it?.notes}
+              minHeight={160}
+              readOnly={disabled}
+              onSave={(html) => patch({ notes: html || null })}
+            />
           </div>
         </main>
 
@@ -697,7 +676,13 @@ function IterationDetail({
             <div className={readonlyCls}>{project?.projectName ?? '—'}</div>
           </FormField>
           <FormField label="Team">
-            <div className={readonlyCls}>{teamName ?? 'No team'}</div>
+            {teamName ? (
+              <div className={readonlyCls}>
+                <TeamCell teamKey={team?.key} name={teamName} />
+              </div>
+            ) : (
+              <div className={readonlyCls}>No team</div>
+            )}
           </FormField>
           <FormField label="Start Date">
             <Input
@@ -717,7 +702,7 @@ function IterationDetail({
           </FormField>
           <FormField label="State">
             <div className="flex h-9 items-center rounded border border-input bg-input-background px-3">
-              <StateBadge state={it.state} />
+              <StatusBadge style={ITERATION_STATE_STYLE[it.state]} />
             </div>
           </FormField>
           <FormField label="Planned Velocity">

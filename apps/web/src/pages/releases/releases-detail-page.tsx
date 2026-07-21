@@ -9,15 +9,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 /* eslint-disable react-hooks/set-state-in-effect */
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
-import { ChevronLeft, ChevronRight, Layers, Loader2, Save, TrendingDown } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Loader2, Save, TrendingDown } from 'lucide-react'
 import { BRAND } from '@/shared/config/brand'
 import { InlineSelect } from '@/shared/ui/native-select'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
-import { Textarea } from '@/shared/ui/textarea'
-import { SkeletonList } from '@/shared/ui/skeleton'
+import { RichTextEditor } from '@/shared/ui/rich-text-editor'
+import { ArtifactTable } from '@/entities/work-item/ui/artifact-table'
 import { SearchInput } from '@/shared/ui/search-input'
-import { OwnerCell } from '@/shared/ui/owner-cell'
 import { RELEASE_STATUS_STYLE } from '@/features/releases/status-colors'
 import { useProjectPermissions } from '@/features/access/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
@@ -27,76 +26,13 @@ import {
   useReleaseBurndown,
   useReleaseArtifacts,
   type ReleaseStatus,
-  type ReleaseArtifactItem,
 } from '@/features/releases/api'
-import { TypeBadge, ScheduleStateBadge, PriorityBadge } from '@/entities/work-item/ui/badges'
 
 const RELEASE_STATES: ReleaseStatus[] = ['planning', 'active', 'accepted']
 
 const STATUS_STYLE = RELEASE_STATUS_STYLE
 
 type TabKey = 'details' | 'artifacts'
-
-// ── Release artifact row ──────────────────────────────────────────────────────
-
-function ReleaseArtifactRow({
-  item,
-  index,
-  onOpen,
-}: {
-  item: ReleaseArtifactItem
-  index: number
-  onOpen: () => void
-}) {
-  return (
-    <tr
-      className="cursor-pointer transition-colors duration-75"
-      style={{ borderBottom: `1px solid ${BRAND.borderInner}` }}
-      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = BRAND.primaryLighter)}
-      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-      onClick={onOpen}
-    >
-      <td
-        className="h-8 px-3 text-center font-mono text-[10px] tabular-nums"
-        style={{ color: BRAND.textMuted }}
-      >
-        {index + 1}
-      </td>
-      <td
-        className="h-8 px-3 font-mono text-[10px] underline-offset-2 hover:underline"
-        style={{ color: BRAND.primaryLight }}
-      >
-        {item.itemKey}
-      </td>
-      <td className="h-8 px-3">
-        <span
-          className="block max-w-[300px] truncate text-xs font-medium"
-          style={{ color: BRAND.textPrimary }}
-        >
-          {item.title}
-        </span>
-      </td>
-      <td className="h-8 px-3">
-        <TypeBadge type={item.type} />
-      </td>
-      <td className="h-8 px-3">
-        <ScheduleStateBadge state={item.scheduleState} />
-      </td>
-      <td className="h-8 px-3">
-        <PriorityBadge priority={item.priority} />
-      </td>
-      <td className="h-8 px-3">
-        <OwnerCell name={item.assigneeName} />
-      </td>
-      <td
-        className="h-8 px-3 text-center font-mono text-[10px]"
-        style={{ color: BRAND.textSecondary }}
-      >
-        {item.storyPoints ?? '—'}
-      </td>
-    </tr>
-  )
-}
 
 // ── Release Artifacts tab ─────────────────────────────────────────────────────
 
@@ -160,71 +96,16 @@ function ReleaseArtifactsTab({ releaseId }: { releaseId: string }) {
 
       {/* Table */}
       <div className="flex-1 overflow-auto" style={{ backgroundColor: BRAND.surface }}>
-        {isLoading ? (
-          <SkeletonList rows={8} />
-        ) : items.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2 p-8">
-            <Layers size={32} style={{ color: BRAND.textFaint }} />
-            <p className="text-xs" style={{ color: BRAND.textMuted }}>
-              {search ? 'No artifacts match your search' : 'No artifacts linked to this release'}
-            </p>
-          </div>
-        ) : (
-          <table className="w-full text-left">
-            <thead>
-              <tr
-                className="text-[9px] font-semibold tracking-wider uppercase select-none"
-                style={{
-                  backgroundColor: BRAND.surfaceHover,
-                  borderBottom: `1px solid ${BRAND.border}`,
-                }}
-              >
-                <th
-                  className="h-7 w-12 px-3 text-center font-medium"
-                  style={{ color: BRAND.textMuted }}
-                >
-                  #
-                </th>
-                <th className="h-7 w-20 px-3 font-medium" style={{ color: BRAND.textMuted }}>
-                  ID
-                </th>
-                <th className="h-7 px-3 font-medium" style={{ color: BRAND.textMuted }}>
-                  Name
-                </th>
-                <th className="h-7 w-14 px-3 font-medium" style={{ color: BRAND.textMuted }}>
-                  Type
-                </th>
-                <th className="h-7 w-24 px-3 font-medium" style={{ color: BRAND.textMuted }}>
-                  Schedule State
-                </th>
-                <th className="h-7 w-16 px-3 font-medium" style={{ color: BRAND.textMuted }}>
-                  Priority
-                </th>
-                <th className="h-7 w-28 px-3 font-medium" style={{ color: BRAND.textMuted }}>
-                  Owner
-                </th>
-                <th
-                  className="h-7 w-14 px-3 text-center font-medium"
-                  style={{ color: BRAND.textMuted }}
-                >
-                  Est.
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item, idx) => (
-                <ReleaseArtifactRow
-                  key={item.id}
-                  item={item}
-                  index={cursorHistory.length * pageSize + idx}
-                  onOpen={() =>
-                    navigate({ to: '/item/$itemKey', params: { itemKey: item.itemKey } })
-                  }
-                />
-              ))}
-            </tbody>
-          </table>
-        )}
+        <ArtifactTable
+          items={items}
+          isLoading={isLoading}
+          search={search}
+          entityNoun="release"
+          startIndex={cursorHistory.length * pageSize}
+          onOpenItem={(item) =>
+            navigate({ to: '/item/$itemKey', params: { itemKey: item.itemKey } })
+          }
+        />
       </div>
 
       {/* Pagination footer */}
@@ -300,8 +181,6 @@ export function ReleaseDetailPage() {
 
   // Local fields state
   const [name, setName] = useState('')
-  const [theme, setTheme] = useState('')
-  const [notes, setNotes] = useState('')
   const [startDate, setStartDate] = useState('')
   const [releaseDate, setReleaseDate] = useState('')
   const [plannedVelocity, setPlannedVelocity] = useState('')
@@ -313,8 +192,6 @@ export function ReleaseDetailPage() {
   useEffect(() => {
     if (release) {
       setName(release.name)
-      setTheme(release.theme ?? '')
-      setNotes(release.notes ?? '')
       setStartDate(release.startDate ?? '')
       setReleaseDate(release.releaseDate ?? '')
       setPlannedVelocity(release.plannedVelocity == null ? '' : String(release.plannedVelocity))
@@ -337,8 +214,6 @@ export function ReleaseDetailPage() {
     try {
       await update.mutateAsync({
         name: name.trim(),
-        theme: theme.trim() || null,
-        notes: notes.trim() || null,
         startDate: startDate || null,
         releaseDate: releaseDate || null,
         plannedVelocity: plannedVelocity ? Number(plannedVelocity) : null,
@@ -347,6 +222,16 @@ export function ReleaseDetailPage() {
         state,
       })
       toast.success('Release details saved')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update release')
+    }
+  }
+
+  // Rich-text fields (Theme, Notes) auto-save individually on blur, matching
+  // the work-item detail page's RichTextEditor pattern.
+  async function handleRichFieldSave(patch: { theme?: string | null; notes?: string | null }) {
+    try {
+      await update.mutateAsync(patch)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to update release')
     }
@@ -470,51 +355,20 @@ export function ReleaseDetailPage() {
         <div className="flex flex-1 overflow-hidden">
           {/* Left Side: Theme & Notes rich editors */}
           <div className="flex-1 space-y-6 overflow-y-auto p-6">
-            <div className="space-y-2">
-              <h2
-                className="text-[12px] font-semibold tracking-wider uppercase"
-                style={{ color: BRAND.textSecondary }}
-              >
-                Release Theme
-              </h2>
-              <Textarea
-                value={theme}
-                onChange={(e) => setTheme(e.target.value)}
-                onBlur={handleSave}
-                disabled={!canManage}
-                placeholder="Enter release themes and high level objectives..."
-                rows={4}
-                className="w-full rounded-md border p-3 text-[12px] focus:ring-1 focus:outline-none"
-                style={{
-                  borderColor: BRAND.border,
-                  backgroundColor: BRAND.surface,
-                  color: BRAND.textPrimary,
-                }}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <h2
-                className="text-[12px] font-semibold tracking-wider uppercase"
-                style={{ color: BRAND.textSecondary }}
-              >
-                Notes & Scope Deliverables
-              </h2>
-              <Textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                onBlur={handleSave}
-                disabled={!canManage}
-                placeholder="Add release notes, acceptance criteria, scope list, or deployment criteria..."
-                rows={12}
-                className="w-full rounded-md border p-3 text-[12px] focus:ring-1 focus:outline-none"
-                style={{
-                  borderColor: BRAND.border,
-                  backgroundColor: BRAND.surface,
-                  color: BRAND.textPrimary,
-                }}
-              />
-            </div>
+            <RichTextEditor
+              title="Release Theme"
+              value={release?.theme}
+              minHeight={100}
+              readOnly={!canManage}
+              onSave={(html) => handleRichFieldSave({ theme: html || null })}
+            />
+            <RichTextEditor
+              title="Notes & Scope Deliverables"
+              value={release?.notes}
+              minHeight={140}
+              readOnly={!canManage}
+              onSave={(html) => handleRichFieldSave({ notes: html || null })}
+            />
           </div>
 
           {/* Right Side Panel */}

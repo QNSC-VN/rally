@@ -21,15 +21,6 @@ export class IterationDrizzleRepository implements IIterationRepository {
     return rows[0] ?? null;
   }
 
-  async findCommitted(projectId: string): Promise<Iteration | null> {
-    const rows = await this.db
-      .select()
-      .from(iterations)
-      .where(and(eq(iterations.projectId, projectId), eq(iterations.state, 'committed')))
-      .limit(1);
-    return rows[0] ?? null;
-  }
-
   async listByProject(
     projectId: string,
     workspaceId: string,

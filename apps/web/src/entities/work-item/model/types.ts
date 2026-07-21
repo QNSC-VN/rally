@@ -93,11 +93,23 @@ export const WORK_ITEM_TYPE_CONFIG: Record<WorkItemType, BadgeStyle> = {
 export const SCHEDULE_STATE_LABEL: Record<ScheduleState, string> = {
   [ScheduleState.Idea]: 'Idea',
   [ScheduleState.Defined]: 'Defined',
-  [ScheduleState.InProgress]: 'In Progress',
+  [ScheduleState.InProgress]: 'In-Progress',
   [ScheduleState.Completed]: 'Completed',
   [ScheduleState.Accepted]: 'Accepted',
   [ScheduleState.Release]: 'Release',
 }
+
+/**
+ * Task State — the ONLY state a Task carries (BR-TASK-01). A Task has no
+ * Schedule/Flow dimension; its three states map 1:1 onto the schedule-state
+ * enum values used on the wire (defined/in_progress/completed), so the Task
+ * control edits `scheduleState` and the backend mirrors it to `task.state`.
+ */
+export const TASK_STATE_VALUES: readonly ScheduleState[] = [
+  ScheduleState.Defined,
+  ScheduleState.InProgress,
+  ScheduleState.Completed,
+]
 
 /**
  * Human-readable, proper-cased priority labels for dropdowns/menus.

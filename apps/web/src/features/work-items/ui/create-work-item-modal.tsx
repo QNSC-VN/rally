@@ -9,6 +9,7 @@ import { Loader2 } from 'lucide-react'
 import { useCreateWorkItem, useBacklog, type WorkItem } from '@/features/work-items/api'
 import { useProjectTeams } from '@/features/teams/api'
 import { useProjectMembers } from '@/features/teams/api'
+import { useProjects } from '@/features/projects/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { BRAND } from '@/shared/config/brand'
 import { WORK_ITEM_TYPE_CONFIG } from '@/entities/work-item/model/types'
@@ -17,6 +18,7 @@ import { Button } from '@/shared/ui/button'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { NativeSelect } from '@/shared/ui/native-select'
+import { OwnerSelectField, TeamSelectField } from '@/shared/ui/entity-select-field'
 
 type CreatableType = 'story' | 'defect'
 
@@ -33,9 +35,14 @@ export function CreateWorkItemModal({
   onCreated,
   onCreatedWithDetails,
 }: Props) {
-  const { team } = useAppContext()
+  const { workspace, team } = useAppContext()
+  const workspaceId = workspace?.workspaceId ?? ''
   const [type, setType] = useState<CreatableType>('story')
   const [title, setTitle] = useState('')
+  // Project defaults to the backlog's current project (WIC-FR-004) but can be
+  // switched to any project the user can access; Team/Owner/Parent then filter
+  // by the SELECTED project so an item can't be seeded with cross-project refs.
+  const [selectedProjectId, setSelectedProjectId] = useState(projectId)
   // Auto-fill from the Team selected in the workspace context (falls back to "No team")
   const [teamId, setTeamId] = useState(team?.teamId ?? '')
   const [assigneeId, setAssigneeId] = useState('')
@@ -45,11 +52,27 @@ export function CreateWorkItemModal({
   const [submitting, setSubmitting] = useState(false)
 
   const createMutation = useCreateWorkItem()
-  const { data: teams = [] } = useProjectTeams(projectId)
-  const { data: members = [] } = useProjectMembers(projectId)
+  const { data: projects = [] } = useProjects(workspaceId || undefined)
+  const { data: teams = [] } = useProjectTeams(selectedProjectId)
+  const { data: members = [] } = useProjectMembers(selectedProjectId)
   // Fetch stories for the parent dropdown (only used when type=defect)
-  const { data: backlogData } = useBacklog(projectId, { type: 'story' })
+  const { data: backlogData } = useBacklog(selectedProjectId, { type: 'story' })
   const stories = backlogData?.data ?? []
+
+  // A pre-filled/inherited team that isn't linked to the selected project is
+  // treated as unset so the backend can't reject the create with
+  // PROJECT_TEAM_LINK_NOT_FOUND (DEV-007). Derived — no effect needed.
+  const validTeamId = teams.some((t) => t.id === teamId) ? teamId : ''
+
+  // When the project changes, reset project-scoped selections so no stale
+  // cross-project team/owner/parent can be submitted.
+  function handleProjectChange(nextProjectId: string) {
+    if (nextProjectId === selectedProjectId) return
+    setSelectedProjectId(nextProjectId)
+    setTeamId('')
+    setAssigneeId('')
+    setParentStoryId('')
+  }
 
   const titleRef = useRef<HTMLInputElement>(null)
   const submitRef = useRef(submit)
@@ -69,11 +92,11 @@ export function CreateWorkItemModal({
     setSubmitting(true)
     try {
       const item = await createMutation.mutateAsync({
-        projectId,
+        projectId: selectedProjectId,
         type,
         title: title.trim(),
         priority: 'none',
-        teamId: teamId || undefined,
+        teamId: validTeamId || undefined,
         assigneeId: assigneeId || undefined,
         storyPoints: storyPoints ? Number(storyPoints) : undefined,
         parentId: type === 'defect' ? parentStoryId || undefined : undefined,
@@ -154,6 +177,21 @@ export function CreateWorkItemModal({
           />
         </FormField>
 
+        {/* Project — required, default current project (WIC-FR-004) */}
+        <FormField label="Project" required htmlFor="wi-project">
+          <NativeSelect
+            id="wi-project"
+            value={selectedProjectId}
+            onChange={(e) => handleProjectChange(e.target.value)}
+          >
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </NativeSelect>
+        </FormField>
+
         {/* Parent Story — Defect only */}
         {type === 'defect' && (
           <FormField label="Parent Story" htmlFor="wi-parent-story">
@@ -174,30 +212,13 @@ export function CreateWorkItemModal({
 
         {/* Team + Owner row */}
         <div className="grid grid-cols-2 gap-4">
-          <FormField label="Team" htmlFor="wi-team">
-            <NativeSelect id="wi-team" value={teamId} onChange={(e) => setTeamId(e.target.value)}>
-              <option value="">No team</option>
-              {teams.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </NativeSelect>
-          </FormField>
-          <FormField label="Owner" htmlFor="wi-owner">
-            <NativeSelect
-              id="wi-owner"
-              value={assigneeId}
-              onChange={(e) => setAssigneeId(e.target.value)}
-            >
-              <option value="">Unassigned</option>
-              {members.map((m) => (
-                <option key={m.userId} value={m.userId}>
-                  {m.displayName ?? m.email ?? m.userId}
-                </option>
-              ))}
-            </NativeSelect>
-          </FormField>
+          <TeamSelectField id="wi-team" value={validTeamId} onChange={setTeamId} teams={teams} />
+          <OwnerSelectField
+            id="wi-owner"
+            value={assigneeId}
+            onChange={setAssigneeId}
+            members={members}
+          />
         </div>
 
         {/* Plan estimate */}

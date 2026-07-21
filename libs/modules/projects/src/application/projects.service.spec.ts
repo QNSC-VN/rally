@@ -248,6 +248,125 @@ describe('ProjectsService', () => {
     });
   });
 
+  // ── linkTeam ──────────────────────────────────────────────────────────────
+
+  describe('linkTeam', () => {
+    it('rejects a team that does not belong to the workspace', async () => {
+      projectRepo.findById.mockResolvedValue(mockProject());
+      teamService.listTeams.mockResolvedValue([{ id: 'team-1' }]);
+      await expect(service.linkTeam('ws-1', 'proj-1', 'team-foreign')).rejects.toThrow(
+        PreconditionFailedException,
+      );
+      expect(projectTeamRepo.linkTeam).not.toHaveBeenCalled();
+    });
+
+    it('links a team that belongs to the workspace', async () => {
+      projectRepo.findById.mockResolvedValue(mockProject());
+      teamService.listTeams.mockResolvedValue([{ id: 'team-1' }]);
+      projectTeamRepo.findLink.mockResolvedValue(null);
+      projectTeamRepo.linkTeam.mockResolvedValue({ id: 'link-1', teamId: 'team-1' });
+      await service.linkTeam('ws-1', 'proj-1', 'team-1');
+      expect(projectTeamRepo.linkTeam).toHaveBeenCalled();
+    });
+  });
+
+  // ── assertTeamLinkedToProject (shared rule) ────────────────────────────────
+
+  describe('assertTeamLinkedToProject', () => {
+    it('resolves when the team is actively linked to the project', async () => {
+      projectRepo.findById.mockResolvedValue(mockProject());
+      projectTeamRepo.listByProject.mockResolvedValue([{ teamId: 'team-1', status: 'active' }]);
+      await expect(
+        service.assertTeamLinkedToProject('ws-1', 'proj-1', 'team-1'),
+      ).resolves.toBeUndefined();
+    });
+
+    it('throws when the team is not linked to the project', async () => {
+      projectRepo.findById.mockResolvedValue(mockProject());
+      projectTeamRepo.listByProject.mockResolvedValue([]);
+      await expect(service.assertTeamLinkedToProject('ws-1', 'proj-1', 'team-1')).rejects.toThrow(
+        PreconditionFailedException,
+      );
+    });
+
+    it('throws when the link exists but is not active', async () => {
+      projectRepo.findById.mockResolvedValue(mockProject());
+      projectTeamRepo.listByProject.mockResolvedValue([{ teamId: 'team-1', status: 'unlinked' }]);
+      await expect(service.assertTeamLinkedToProject('ws-1', 'proj-1', 'team-1')).rejects.toThrow(
+        PreconditionFailedException,
+      );
+    });
+  });
+
+  // ── addProjectMember ────────────────────────────────────────────────────────
+
+  describe('addProjectMember', () => {
+    it('adds a member who is an active workspace member', async () => {
+      projectRepo.findById.mockResolvedValue(mockProject());
+      workspaceMemberRepo.findMember.mockResolvedValue({ userId: 'user-2', status: 'active' });
+      projectMemberRepo.findMember.mockResolvedValue(null);
+      projectMemberRepo.addMember.mockResolvedValue({ id: 'pm-1', userId: 'user-2' });
+      await service.addProjectMember('ws-1', 'proj-1', 'user-2');
+      expect(projectMemberRepo.addMember).toHaveBeenCalled();
+    });
+
+    it('rejects a user who is not an active workspace member', async () => {
+      projectRepo.findById.mockResolvedValue(mockProject());
+      workspaceMemberRepo.findMember.mockResolvedValue(null);
+      await expect(service.addProjectMember('ws-1', 'proj-1', 'foreign-user')).rejects.toThrow(
+        PreconditionFailedException,
+      );
+      expect(projectMemberRepo.addMember).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('createTransition', () => {
+    const transitionInput = { fromStatusId: 'status-1', toStatusId: 'status-2', name: 'Start' };
+
+    it('creates a transition when both statuses belong to the project', async () => {
+      projectRepo.findById.mockResolvedValue(mockProject());
+      statusRepo.findById
+        .mockResolvedValueOnce(mockStatus({ id: 'status-1' }))
+        .mockResolvedValueOnce(mockStatus({ id: 'status-2' }));
+      statusRepo.createTransition.mockResolvedValue({ id: 'tr-1' });
+      await service.createTransition('ws-1', 'proj-1', transitionInput);
+      expect(statusRepo.createTransition).toHaveBeenCalled();
+    });
+
+    it('rejects when the from-status belongs to another project', async () => {
+      projectRepo.findById.mockResolvedValue(mockProject());
+      statusRepo.findById
+        .mockResolvedValueOnce(mockStatus({ id: 'status-1', projectId: 'other-proj' }))
+        .mockResolvedValueOnce(mockStatus({ id: 'status-2' }));
+      await expect(service.createTransition('ws-1', 'proj-1', transitionInput)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(statusRepo.createTransition).not.toHaveBeenCalled();
+    });
+
+    it('rejects when the to-status belongs to another project', async () => {
+      projectRepo.findById.mockResolvedValue(mockProject());
+      statusRepo.findById
+        .mockResolvedValueOnce(mockStatus({ id: 'status-1' }))
+        .mockResolvedValueOnce(mockStatus({ id: 'status-2', projectId: 'other-proj' }));
+      await expect(service.createTransition('ws-1', 'proj-1', transitionInput)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(statusRepo.createTransition).not.toHaveBeenCalled();
+    });
+
+    it('rejects when a referenced status does not exist', async () => {
+      projectRepo.findById.mockResolvedValue(mockProject());
+      statusRepo.findById
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(mockStatus({ id: 'status-2' }));
+      await expect(service.createTransition('ws-1', 'proj-1', transitionInput)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(statusRepo.createTransition).not.toHaveBeenCalled();
+    });
+  });
+
   // ── getProject ────────────────────────────────────────────────────────────
 
   describe('getProject', () => {

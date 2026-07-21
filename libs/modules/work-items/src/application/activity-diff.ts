@@ -76,8 +76,11 @@ export function diffWorkItem(
   add('teamId', 'work_item.updated', 'task.updated');
   add('iterationId', 'work_item.updated', 'task.updated');
   add('releaseId', 'work_item.updated', 'task.updated');
-  add('statusId', 'work_item.flow_state_changed', 'task.state_changed');
+  add('statusId', 'work_item.updated', 'task.updated');
   add('scheduleState', 'work_item.schedule_state_changed', 'task.state_changed');
+  // BR-WI-01: Flow State mirrors Schedule State — log it as its own dimension on
+  // work items (a task has a single state, already logged above).
+  if (!isTask) add('flowState', 'work_item.flow_state_changed', 'work_item.flow_state_changed');
   add('priority', 'work_item.priority_changed', 'task.updated');
   add('assigneeId', 'work_item.assigned', 'task.updated');
   add('storyPoints', 'work_item.estimate_updated', 'task.estimate_updated');

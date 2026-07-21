@@ -15,6 +15,7 @@ import { toast } from 'sonner'
 import { ChevronDown, ChevronRight, AlertTriangle, Plus, Loader2 } from 'lucide-react'
 
 import { BRAND } from '@/shared/config/brand'
+import { formatDate } from '@/shared/lib/utils'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
 import { useProjectMembers } from '@/features/teams/api'
@@ -47,12 +48,6 @@ const COLS = {
   updated: 'w-24 shrink-0',
 } as const
 
-function fmtDate(iso: string): string {
-  const d = new Date(iso)
-  return Number.isNaN(d.getTime())
-    ? '—'
-    : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
-}
 
 function progressColor(pct: number): string {
   if (pct >= 100) return BRAND.success
@@ -375,7 +370,7 @@ function TreeRow({
         </div>
 
         <div className={`${COLS.updated} text-[10px]`} style={{ color: BRAND.textMuted }}>
-          {fmtDate(item.updatedAt)}
+          {formatDate(item.updatedAt)}
         </div>
       </div>
 

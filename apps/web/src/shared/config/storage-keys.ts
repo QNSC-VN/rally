@@ -11,6 +11,7 @@ export const STORAGE_KEYS = {
   QUALITY_COLUMNS: 'rally-quality-columns',
   MILESTONES_COLUMNS: 'rally-milestones-columns',
   PROJECTS_COLUMNS: 'rally-projects-columns',
+  WORK_ITEM_TASKS_COLUMNS: 'rally-work-item-tasks-columns',
   LAST_ACCESSED_ITERATION: 'rally-last-accessed-iteration',
   ITERATION_STATUS_VIEW_MODE: 'rally-iteration-status-view-mode',
 } as const

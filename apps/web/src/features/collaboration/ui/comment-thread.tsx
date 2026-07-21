@@ -7,7 +7,6 @@
  * mentionedUserIds so the backend fires mention notifications (F7).
  * Read-only mode (viewers) hides the composer and edit/delete controls.
  */
-import { BRAND } from '@/shared/config/brand'
 import { useMemo, useRef, useState } from 'react'
 import { MessageSquare, Pencil, Trash2 } from 'lucide-react'
 import {
@@ -19,14 +18,7 @@ import {
 } from '@/features/collaboration/api'
 import { useProjectMembers } from '@/features/teams/api'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
-
-function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase() ?? '')
-    .join('')
-}
+import { OwnerAvatar } from '@/shared/ui/owner-cell'
 
 function relativeTime(iso: string): string {
   try {
@@ -132,12 +124,7 @@ export function CommentThread({ workItemId, projectId, readOnly = false }: Comme
               const mine = c.authorId === currentUserId
               return (
                 <li key={c.id} className="flex gap-2">
-                  <div
-                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white"
-                    style={{ backgroundColor: BRAND.textSecondary }}
-                  >
-                    {initials(author)}
-                  </div>
+                  <OwnerAvatar name={author} size={24} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 text-[11px] text-foreground-subtle">
                       <span className="font-medium text-foreground">{author}</span>

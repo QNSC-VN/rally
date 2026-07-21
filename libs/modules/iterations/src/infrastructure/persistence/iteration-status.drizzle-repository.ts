@@ -29,7 +29,6 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
         totalPlanEstimate: sql<number>`coalesce(sum(${workItems.storyPoints}), 0)::numeric`,
         acceptedPoints: sql<number>`coalesce(sum(${workItems.storyPoints}) filter (where ${workItems.scheduleState} in (${acceptedScheduleStatesSql()})), 0)::numeric`,
         defectCount: sql<number>`(count(*) filter (where ${workItems.type} = 'defect'))::int`,
-        taskCount: sql<number>`(select count(*)::int from ${tasks} t where t.parent_id = ${workItems.id} and t.deleted_at is null)`,
       })
       .from(workItems)
       .where(
@@ -40,12 +39,35 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
         ),
       );
 
+    // Task metrics are STATE-based (SRS/BA 2026-07-20): the "active" count is
+    // every child task NOT in the Completed task-state — the SAME definition the
+    // Team Status screen uses — so the two screens always agree. A separate
+    // aggregate over `tasks` joined to the iteration's items (a correlated
+    // subquery cannot live beside the ungrouped work-item aggregate above).
+    const parent = alias(workItems, 'wi_task_parent');
+    const [taskAgg] = await this.db
+      .select({
+        taskCount: sql<number>`count(*)::int`,
+        activeTaskCount: sql<number>`(count(*) filter (where ${tasks.state} <> 'completed'))::int`,
+      })
+      .from(tasks)
+      .innerJoin(parent, eq(parent.id, tasks.parentId))
+      .where(
+        and(
+          eq(parent.iterationId, iterationId),
+          eq(parent.workspaceId, workspaceId),
+          isNull(parent.deletedAt),
+          isNull(tasks.deletedAt),
+        ),
+      );
+
     const r = rows[0];
     return {
       totalPlanEstimate: Number(r?.totalPlanEstimate ?? 0),
       acceptedPoints: Number(r?.acceptedPoints ?? 0),
       defectCount: Number(r?.defectCount ?? 0),
-      taskCount: Number(r?.taskCount ?? 0),
+      taskCount: Number(taskAgg?.taskCount ?? 0),
+      activeTaskCount: Number(taskAgg?.activeTaskCount ?? 0),
     };
   }
 
@@ -90,6 +112,23 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
       from ${tasks} t
       where t.parent_id = ${workItems.id}
         and t.deleted_at is null
+    )`;
+
+    // State-based task rollup (SRS/BA 2026-07-20): Task % = done/total tasks,
+    // where "done" is the Completed task-state — NOT derived from To Do hours —
+    // so the Iteration Status "Tasks" column matches the Team Status screen.
+    const taskTotal = sql<number>`(
+      select count(*)::int
+      from ${tasks} t
+      where t.parent_id = ${workItems.id}
+        and t.deleted_at is null
+    )`;
+    const taskDone = sql<number>`(
+      select count(*)::int
+      from ${tasks} t
+      where t.parent_id = ${workItems.id}
+        and t.deleted_at is null
+        and t.state = 'completed'
     )`;
 
     // Nearest ancestor Feature (story→feature, defect→story→feature) — Rally "Feature" column.
@@ -145,6 +184,8 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
         rank: workItems.rank,
         taskEstimate,
         toDo,
+        taskTotal,
+        taskDone,
         featureKey,
         featureTitle,
         defectCount,
@@ -170,6 +211,8 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
       planEstimate: r.planEstimate,
       taskEstimate: Number(r.taskEstimate ?? 0),
       toDo: Number(r.toDo ?? 0),
+      taskTotal: Number(r.taskTotal ?? 0),
+      taskDone: Number(r.taskDone ?? 0),
       assigneeId: r.assigneeId,
       devOwnerId: r.devOwnerId,
       rank: r.rank,

@@ -14,7 +14,7 @@ export const ITERATION_STATUS_REPOSITORY = Symbol('ITERATION_STATUS_REPOSITORY')
 /** Metrics computed directly from work items (before iteration-derived fields). */
 export type RawIterationMetrics = Pick<
   IterationStatusMetrics,
-  'totalPlanEstimate' | 'acceptedPoints' | 'defectCount' | 'taskCount'
+  'totalPlanEstimate' | 'acceptedPoints' | 'defectCount' | 'taskCount' | 'activeTaskCount'
 >;
 
 export interface IIterationStatusRepository {

@@ -35,3 +35,27 @@ export const UpdateMilestoneSchema = z.object({
   teamIds: z.array(z.string().uuid()).optional(),
 });
 export class UpdateMilestoneDto extends createZodDto(UpdateMilestoneSchema) {}
+
+// ── Set-links (replace-all) request bodies ──────────────────────────────────
+// Field names intentionally mirror the client payload (projectIds / teamIds /
+// workItemIds) so the contract is self-documenting; validation turns a
+// malformed body into a 400 instead of an unhandled 500.
+export const SetMilestoneProjectsSchema = z.object({
+  projectIds: z.array(z.string().uuid()),
+});
+export class SetMilestoneProjectsDto extends createZodDto(SetMilestoneProjectsSchema) {}
+
+export const SetMilestoneTeamsSchema = z.object({
+  teamIds: z.array(z.string().uuid()),
+});
+export class SetMilestoneTeamsDto extends createZodDto(SetMilestoneTeamsSchema) {}
+
+export const SetMilestoneArtifactsSchema = z.object({
+  workItemIds: z.array(z.string().uuid()),
+});
+export class SetMilestoneArtifactsDto extends createZodDto(SetMilestoneArtifactsSchema) {}
+
+export const SetMilestoneReleasesSchema = z.object({
+  releaseIds: z.array(z.string().uuid()),
+});
+export class SetMilestoneReleasesDto extends createZodDto(SetMilestoneReleasesSchema) {}

@@ -10,11 +10,9 @@ import { useMemo, useState, useCallback, useEffect } from 'react'
 import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
 import { ChevronDown, ChevronLeft, ChevronRight, Inbox } from 'lucide-react'
-import { SkeletonList } from '@/shared/ui/skeleton'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { WorkItemRefCell } from '@/entities/work-item/ui/work-item-ref-cell'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
-import { DataTableHeader, type DataTableHeaderColumn } from '@/shared/ui/data-table-header'
 import { BRAND } from '@/shared/config/brand'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
@@ -28,9 +26,8 @@ import {
   type TeamTaskState,
 } from '@/features/team-status/api'
 import { Avatar } from '@/shared/ui/avatar'
-import { useColumnLayout, type ColumnDef } from '@/shared/lib/hooks/use-column-layout'
-import { useColumnDrag } from '@/shared/lib/hooks/use-column-drag'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
+import { DataTableFrame, useDataTable, type ColumnSpec } from '@/shared/ui/table'
 import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { NESTED_ROW_INDENT } from '@/shared/config/layout'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
@@ -44,6 +41,7 @@ import { StateStepper } from '@/entities/work-item/ui/state-stepper'
 import { type StateStep } from '@/entities/work-item/ui/state-steps'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { OwnerSelectCell } from '@/shared/ui/owner-cell'
+import { TableTotalsRow } from '@/shared/ui/table-totals-row'
 
 const TEAM_TASK_STATES: TeamTaskState[] = ['Defined', 'In-Progress', 'Completed']
 
@@ -60,28 +58,19 @@ type ColKey =
   | 'actuals'
   | 'owner'
 
-const TEAM_STATUS_COLUMNS: ColumnDef<ColKey>[] = [
+const TEAM_STATUS_COLUMNS: ColumnSpec<TeamStatusTaskRow, unknown, ColKey>[] = [
   { key: 'rank', label: 'Rank', defaultWidth: 60, minWidth: 56, locked: true },
   { key: 'id', label: 'ID', defaultWidth: 132, minWidth: 120, locked: true },
   { key: 'name', label: 'Task Name', defaultWidth: 240, minWidth: 150, locked: true },
   { key: 'workProduct', label: 'Work Product', defaultWidth: 140 },
   { key: 'release', label: 'Release', defaultWidth: 96 },
   { key: 'state', label: 'State', defaultWidth: 112 },
-  { key: 'capacity', label: 'Capacity', defaultWidth: 64 },
-  { key: 'estimate', label: 'Estimate', defaultWidth: 64 },
-  { key: 'todo', label: 'To Do', defaultWidth: 56 },
-  { key: 'actuals', label: 'Actuals', defaultWidth: 56 },
+  { key: 'capacity', label: 'Capacity', defaultWidth: 64, align: 'right' },
+  { key: 'estimate', label: 'Estimate', defaultWidth: 64, align: 'right' },
+  { key: 'todo', label: 'To Do', defaultWidth: 56, align: 'right' },
+  { key: 'actuals', label: 'Actuals', defaultWidth: 56, align: 'right' },
   { key: 'owner', label: 'Owner', defaultWidth: 96 },
 ]
-
-const RIGHT_ALIGNED = new Set<ColKey>(['capacity', 'estimate', 'todo', 'actuals'])
-
-/** Header descriptors for the shared <DataTableHeader> (no sort on this grid). */
-const TEAM_HEADER_COLUMNS: DataTableHeaderColumn<ColKey>[] = TEAM_STATUS_COLUMNS.map((c) => ({
-  key: c.key,
-  label: c.label,
-  align: RIGHT_ALIGNED.has(c.key) ? ('right' as const) : undefined,
-}))
 
 function fmtRange(it: Pick<Iteration, 'startDate' | 'endDate'>) {
   const s = it.startDate ?? '—'
@@ -123,35 +112,23 @@ export function TeamStatusPage() {
   const { can } = useProjectPermissions(projectId)
   const canEdit = can('team_status:edit')
 
-  // ── Column layout state (P3-TS-FR-011: resize + reorder + show/hide) ──
+  // ── Shared table engine (identical to projects/releases): resize + reorder + show/hide ──
   // Must be declared before any early returns to satisfy Rules of Hooks.
-  const { startResize, order, hidden, toggleVisible, reorder, styleFor } = useColumnLayout(
-    TEAM_STATUS_COLUMNS,
-    STORAGE_KEYS.TEAM_STATUS_COLUMNS,
-  )
+  const table = useDataTable<TeamStatusTaskRow, unknown, ColKey>(TEAM_STATUS_COLUMNS, {
+    storageKey: STORAGE_KEYS.TEAM_STATUS_COLUMNS,
+  })
 
-  // Build per-column style (width + order + visibility) via useColumnLayout.
+  // The name column grows to fill; all others are width-pinned by the engine.
   const colStyles = useMemo(
     () =>
       Object.fromEntries(
         TEAM_STATUS_COLUMNS.map((c) => [
           c.key,
-          styleFor(c.key, c.key === 'name' ? { flex: 1, minWidth: 150 } : { flexShrink: 0 }),
+          table.styleFor(c.key, c.key === 'name' ? { flex: 1, minWidth: 150 } : { flexShrink: 0 }),
         ]),
       ) as Record<ColKey, React.CSSProperties>,
-    [styleFor],
+    [table],
   )
-
-  // Header column drag-to-reorder (persists via useColumnLayout.reorder).
-  const {
-    activeDragKey,
-    dropIndicator,
-    handleDragStart,
-    handleDragOver,
-    handleDragLeave,
-    handleDrop,
-    handleDragEnd,
-  } = useColumnDrag<ColKey>({ onReorder: reorder })
 
   const { data: iterations = [] } = useIterations(projectId)
   const { data: members = [] } = useProjectMembers(projectId)
@@ -377,129 +354,88 @@ export function TeamStatusPage() {
             {totalWorkItems}
           </span>
         </span>
-        <ColumnFieldsMenu
-          columns={TEAM_STATUS_COLUMNS}
-          order={order}
-          hidden={hidden}
-          onToggle={toggleVisible}
-          onReorder={reorder}
-        />
+        <ColumnFieldsMenu {...table.fieldsMenuProps} />
       </div>
 
-      {/* Table */}
-      <div
-        className="flex flex-1 flex-col overflow-auto"
-        style={{ backgroundColor: BRAND.surface }}
-      >
-        {/* Header row (P3-TS-FR-010) */}
-        <DataTableHeader
-          columns={TEAM_HEADER_COLUMNS}
-          colStyles={colStyles}
-          onResize={startResize}
-          className="px-3"
-          leading={<div className="w-6 shrink-0" />}
-          columnDrag={{
-            activeDragKey,
-            dropIndicator,
-            onDragStart: handleDragStart,
-            onDragOver: handleDragOver,
-            onDragLeave: handleDragLeave,
-            onDrop: handleDrop,
-            onDragEnd: handleDragEnd,
-          }}
-        />
-
-        {/* Totals row (P3-TS-FR-013) */}
-        {totals && (
-          <div
-            className="flex h-7 items-center px-3 text-[11px] font-semibold"
-            style={{
-              backgroundColor: BRAND.surfaceSubtle,
-              borderBottom: `1px solid ${BRAND.borderSubtle}`,
-              color: BRAND.textSecondary,
-              minWidth: 'max-content',
-            }}
-          >
-            <div className="w-6 shrink-0" />
-            <div className="shrink-0" style={colStyles.rank} />
-            <div className="shrink-0" style={colStyles.id} />
-            <div className="min-w-[180px] flex-1" style={colStyles.name} />
-            <div className="shrink-0" style={colStyles.workProduct} />
-            <div className="shrink-0" style={colStyles.release} />
-            <div className="shrink-0" style={colStyles.state} />
-            <div className="shrink-0 text-right font-mono tabular-nums" style={colStyles.capacity}>
-              {totals.capacityHours} Hours
-            </div>
-            <div className="shrink-0 text-right font-mono tabular-nums" style={colStyles.estimate}>
-              {totals.estimateHours} Hours
-            </div>
-            <div className="shrink-0 text-right font-mono tabular-nums" style={colStyles.todo}>
-              {totals.todoHours} Hours
-            </div>
-            <div className="shrink-0 text-right font-mono tabular-nums" style={colStyles.actuals}>
-              {totals.actualHours} Hours
-            </div>
-            <div className="shrink-0" style={colStyles.owner} />
-          </div>
-        )}
-
-        {/* Loading */}
-        {isLoading && <SkeletonList rows={10} cols={10} />}
-
-        {/* Error */}
-        {!isLoading && isError && (
-          <div
-            className="flex h-40 items-center justify-center text-[12px]"
-            style={{ color: BRAND.danger }}
-          >
-            Failed to load team status. Please try again.
-          </div>
-        )}
-
-        {/* Member groups (P3-TS-FR-014) */}
-        {!isLoading &&
-          !isError &&
-          pagedGroups.map((group) => (
-            <MemberGroup
-              key={group.owner.id}
-              group={group}
-              projectId={projectId!}
-              teamId={teamId}
-              iterationId={selectedId!}
-              canEdit={canEdit}
+      {/* Table — shared DataTableFrame owns the scroll region, header, totals,
+          loading/error/empty states and footer so every grid's chrome is
+          identical. Team Status is a read-only report kind: sortable header +
+          totals, no selection/drag gutter (just a w-6 spacer that its member
+          rows also render). */}
+      <DataTableFrame
+        header={{ ...table.headerProps, colStyles }}
+        leading={<div className="w-6 shrink-0" />}
+        totals={
+          totals ? (
+            <TableTotalsRow
+              columns={TEAM_STATUS_COLUMNS}
               colStyles={colStyles}
-              members={members}
-              onOpenItem={(itemKey) => {
-                if (itemKey) navigate({ to: '/item/$itemKey', params: { itemKey } })
+              leading={<div className="w-6 shrink-0" />}
+              label="Totals"
+              values={{
+                capacity: `${totals.capacityHours}h`,
+                estimate: `${totals.estimateHours}h`,
+                todo: `${totals.todoHours}h`,
+                actuals: `${totals.actualHours}h`,
               }}
             />
-          ))}
-
-        {/* Empty state (P3-TS-TS-020) */}
-        {!isLoading && !isError && groups.length === 0 && (
-          <EmptyState
-            icon={<Inbox size={36} className="text-foreground-faint" />}
-            title="No tasks found for this iteration"
+          ) : undefined
+        }
+        loading={isLoading}
+        skeleton={{ rows: 10, cols: 10 }}
+        error={
+          isError ? (
+            <div
+              className="flex h-40 items-center justify-center text-[12px]"
+              style={{ color: BRAND.danger }}
+            >
+              Failed to load team status. Please try again.
+            </div>
+          ) : undefined
+        }
+        empty={
+          groups.length === 0 ? (
+            <EmptyState
+              icon={<Inbox size={36} className="text-foreground-faint" />}
+              title="No tasks found for this iteration"
+            />
+          ) : undefined
+        }
+        footer={
+          status ? (
+            <PaginationFooter
+              pageSize={pageSize}
+              setPageSize={setPageSize}
+              currentPage={currentPage}
+              rangeStart={groups.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}
+              rangeEnd={(currentPage - 1) * pageSize + pagedGroups.length}
+              total={groups.length}
+              pageCount={pageCount}
+              hasPrevPage={currentPage > 1}
+              hasNextPage={currentPage < pageCount}
+              onPrevPage={goPrevPage}
+              onNextPage={goNextPage}
+            />
+          ) : undefined
+        }
+      >
+        {/* Member groups (P3-TS-FR-014) */}
+        {pagedGroups.map((group) => (
+          <MemberGroup
+            key={group.owner.id}
+            group={group}
+            projectId={projectId!}
+            teamId={teamId}
+            iterationId={selectedId!}
+            canEdit={canEdit}
+            colStyles={colStyles}
+            members={members}
+            onOpenItem={(itemKey) => {
+              if (itemKey) navigate({ to: '/item/$itemKey', params: { itemKey } })
+            }}
           />
-        )}
-      </div>
-
-      {/* Pagination footer (P3-TS-FR-014, Rally parity) — paginates member groups */}
-      {!isLoading && !isError && status && (
-        <PaginationFooter
-          pageSize={pageSize}
-          setPageSize={setPageSize}
-          currentPage={currentPage}
-          rangeStart={groups.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}
-          rangeEnd={(currentPage - 1) * pageSize + pagedGroups.length}
-          total={groups.length}
-          pageCount={pageCount}
-          hasPrevPage={currentPage > 1}
-          hasNextPage={currentPage < pageCount}
-          onPrevPage={goPrevPage}
-          onNextPage={goNextPage}
-        />
-      )}
+        ))}
+      </DataTableFrame>
     </div>
   )
 }
@@ -543,6 +479,13 @@ function MemberGroup({
     )
   }
 
+  // The member label spans the fixed ID + Task Name columns. Match their exact
+  // combined width (not flex-1) so the Capacity/Estimate/To Do/Actuals values
+  // line up with the header and totals row instead of being pushed to the far
+  // right by a growing flex column.
+  const idNameWidth =
+    (Number(colStyles.id?.width) || 0) + (Number(colStyles.name?.width) || 0)
+
   return (
     <div>
       {/* Group header row (P3-TS-FR-015) */}
@@ -559,9 +502,21 @@ function MemberGroup({
         <div className="w-6 shrink-0" />
         <div className="shrink-0" style={colStyles.rank} /> {/* Rank column spacer */}
         {/* Member label — caret + avatar + name clustered at the ID column,
-            matching Rally. Spans the ID + Task Name width (order 1, after rank).
-            Caret only renders for expandable members (P3-TS-FR-016). */}
-        <div className="flex min-w-0 flex-1 items-center gap-2 pl-2" style={{ order: 1 }}>
+            matching Rally. Spans the ID + Task Name columns at their fixed
+            combined width so downstream columns stay aligned with the header
+            and totals row. Caret only renders for expandable members
+            (P3-TS-FR-016). */}
+        <div
+          className="flex min-w-0 items-center gap-2 pl-2"
+          style={{
+            order: colStyles.id.order,
+            width: idNameWidth,
+            minWidth: idNameWidth,
+            maxWidth: idNameWidth,
+            flexShrink: 0,
+            flexGrow: 0,
+          }}
+        >
           <span className="flex w-3 shrink-0 items-center justify-center">
             {group.taskCount > 0 &&
               (expanded ? (

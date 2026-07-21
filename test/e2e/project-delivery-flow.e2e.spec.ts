@@ -94,7 +94,7 @@ describe('BA flows: project foundation → work items → iteration (real AppMod
         description: 'Login with SSO',
         assigneeId: ADMIN_USER_ID,
         scheduleState: 'in_progress',
-        storyPoints: 5,
+        storyPoints: '5',
       });
 
       expect(updated.description).toBe('Login with SSO');
@@ -172,9 +172,10 @@ describe('BA flows: project foundation → work items → iteration (real AppMod
       });
       const story = await workItems.createWorkItem(actor, project.id, 'story', 'Story with tasks');
 
-      // actual (5) deliberately exceeds estimate (2) — the BA allows over-run.
+      // Task time model (BA-confirmed): Estimate is read-only derived as
+      // To Do + Actuals; only To Do and Actuals are manual inputs.
       const task = await workItems.createTask(actor, story.id, 'Implement endpoint', {
-        estimateHours: '2',
+        todoHours: '2',
         actualHours: '5',
       });
       expect(task.type).toBe('task');
@@ -182,7 +183,7 @@ describe('BA flows: project foundation → work items → iteration (real AppMod
 
       const totals = await workItems.getTaskTotals(actor, story.id);
       expect(totals.taskCount).toBe(1);
-      expect(totals.estimateHours).toBe(2);
+      expect(totals.estimateHours).toBe(7); // derived: To Do (2) + Actuals (5)
       expect(totals.actualHours).toBe(5);
 
       // A task is NOT a backlog item — backlog holds stories + defects only.

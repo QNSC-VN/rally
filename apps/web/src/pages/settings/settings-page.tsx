@@ -77,6 +77,9 @@ import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
 import { OwnerAvatar } from '@/shared/ui/owner-cell'
 import { TeamAvatar } from '@/shared/ui/team-cell'
+import { StatusBadge } from '@/shared/ui/status-badge'
+import type { StatusStyle } from '@/shared/config/status-colors'
+import { formatDate, formatDateTime } from '@/shared/lib/utils'
 import { NativeSelect } from '@/shared/ui/native-select'
 import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { useClientPagination } from '@/shared/lib/hooks/use-client-pagination'
@@ -634,7 +637,7 @@ function MembersTab() {
                       className="shrink-0 text-[11px]"
                       style={{ color: expired ? BRAND.danger : BRAND.textMuted }}
                     >
-                      {expired ? 'Expired' : `Expires ${expiresDate.toLocaleDateString()}`}
+                      {expired ? 'Expired' : `Expires ${formatDate(inv.expiresAt)}`}
                     </span>
                     <button
                       onClick={() => cancelInvite.mutate(inv.id)}
@@ -741,11 +744,11 @@ function MembersTab() {
                 </td>
                 {/* Last login */}
                 <td className="py-3 pr-4" style={{ color: BRAND.textMuted }}>
-                  {m.lastLoginAt ? new Date(m.lastLoginAt).toLocaleDateString() : 'Never'}
+                  {formatDate(m.lastLoginAt, 'Never')}
                 </td>
                 {/* Joined date */}
                 <td className="py-3" style={{ color: BRAND.textMuted }}>
-                  {new Date(m.joinedAt).toLocaleDateString()}
+                  {formatDate(m.joinedAt)}
                 </td>
               </tr>
             )
@@ -790,20 +793,18 @@ function MembersTab() {
 // ── Member status badge ───────────────────────────────────────────────────────
 
 function MemberStatusBadge({ status }: { status: string }) {
-  const map: Record<string, { label: string; color: string; bg: string }> = {
-    active: { label: 'Active', color: BRAND.success, bg: BRAND.successBg },
-    invited: { label: 'Invited', color: BRAND.warning, bg: BRAND.warningBg },
-    suspended: { label: 'Suspended', color: BRAND.danger, bg: BRAND.dangerBg },
+  const map: Record<string, StatusStyle> = {
+    active: { label: 'Active', text: BRAND.success, bg: BRAND.successBg, border: BRAND.successBorder },
+    invited: { label: 'Invited', text: BRAND.warning, bg: BRAND.warningBg, border: BRAND.warningBorder },
+    suspended: { label: 'Suspended', text: BRAND.danger, bg: BRAND.dangerBg, border: BRAND.dangerBorder },
   }
-  const s = map[status] ?? { label: status, color: BRAND.textMuted, bg: BRAND.surfaceSubtle }
-  return (
-    <span
-      className="rounded px-2 py-0.5 text-[11px] font-semibold capitalize"
-      style={{ color: s.color, backgroundColor: s.bg }}
-    >
-      {s.label}
-    </span>
-  )
+  const style = map[status] ?? {
+    label: status,
+    text: BRAND.textMuted,
+    bg: BRAND.surfaceSubtle,
+    border: BRAND.border,
+  }
+  return <StatusBadge style={style} className="capitalize" />
 }
 
 // ── User detail modal ─────────────────────────────────────────────────────────
@@ -853,11 +854,11 @@ function UserDetailModal({
           </dd>
           <dt style={{ color: BRAND.textMuted }}>Last login</dt>
           <dd style={{ color: BRAND.textPrimary }}>
-            {member.lastLoginAt ? new Date(member.lastLoginAt).toLocaleString() : 'Never'}
+            {formatDateTime(member.lastLoginAt, 'Never')}
           </dd>
           <dt style={{ color: BRAND.textMuted }}>Joined</dt>
           <dd style={{ color: BRAND.textPrimary }}>
-            {new Date(member.joinedAt).toLocaleDateString()}
+            {formatDate(member.joinedAt)}
           </dd>
         </dl>
       </ModalBody>
@@ -2004,7 +2005,7 @@ function TeamDetail({
             Created
           </span>
           <span className="text-[13px]" style={{ color: BRAND.textPrimary }}>
-            {new Date(team.createdAt).toLocaleDateString()}
+            {formatDate(team.createdAt)}
           </span>
         </div>
       </div>
@@ -2123,18 +2124,16 @@ function TeamDetail({
 }
 
 function TeamStatusBadge({ status }: { status: 'active' | 'archived' }) {
-  const active = status === 'active'
-  return (
-    <span
-      className="rounded-full px-2 py-0.5 text-[11px] font-medium capitalize"
-      style={{
-        color: active ? BRAND.success : BRAND.textMuted,
-        backgroundColor: active ? BRAND.successBg : BRAND.surfaceSubtle,
-      }}
-    >
-      {status}
-    </span>
-  )
+  const style: StatusStyle =
+    status === 'active'
+      ? { label: 'Active', text: BRAND.success, bg: BRAND.successBg, border: BRAND.successBorder }
+      : {
+          label: 'Archived',
+          text: BRAND.textSecondary,
+          bg: BRAND.surfaceSubtle,
+          border: BRAND.border,
+        }
+  return <StatusBadge style={style} />
 }
 
 function TeamsTab() {

@@ -9,15 +9,16 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useMemo, useState, useCallback, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { useColumnLayout, type ColumnDef } from '@/shared/lib/hooks/use-column-layout'
-import { useColumnDrag } from '@/shared/lib/hooks/use-column-drag'
+import { type ColumnDef } from '@/shared/lib/hooks/use-column-layout'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
+import { DataTableFrame, useDataTable, type ColumnSpec } from '@/shared/ui/table'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { IterationBoard } from '@/widgets/iteration-board/iteration-board'
-import { DataTableHeader, type DataTableHeaderColumn } from '@/shared/ui/data-table-header'
+import { type DataTableHeaderColumn } from '@/shared/ui/data-table-header'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { OwnerSelectCell } from '@/shared/ui/owner-cell'
 import { RowGutter } from '@/shared/ui/row-gutter'
+import { TableTotalsRow } from '@/shared/ui/table-totals-row'
 import { MetricCard } from '@/shared/ui/metric-card'
 import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
@@ -134,7 +135,7 @@ type ColKey =
   | 'milestones'
   | 'devOwner'
 
-const ITERATION_STATUS_COLUMNS: ColumnDef<ColKey>[] = [
+const ITERATION_STATUS_COLUMNS: ColumnSpec<unknown, unknown, ColKey>[] = [
   { key: 'rank', label: 'Rank', defaultWidth: 60, minWidth: 56 },
   { key: 'id', label: 'ID', defaultWidth: 132, minWidth: 120 },
   { key: 'name', label: 'Name', defaultWidth: 240, minWidth: 150 },
@@ -418,14 +419,15 @@ function DefectStatusPill({ total, open }: { total: number; open: number }) {
   )
 }
 
-/** Thin task-completion bar computed from task estimate vs. remaining to-do. */
-function TasksProgress({ estimate, toDo }: { estimate: number; toDo: number }) {
-  if (!estimate || estimate <= 0) {
+/** Thin task-completion bar computed from Task State: completed / total tasks.
+ * State-based (not To-Do hours) so it agrees with the Team Status screen. */
+function TasksProgress({ total, done }: { total: number; done: number }) {
+  if (!total || total <= 0) {
     return <span style={{ fontSize: 12, color: AZ.textMuted }}>&mdash;</span>
   }
-  const pct = Math.max(0, Math.min(100, Math.round(((estimate - toDo) / estimate) * 100)))
+  const pct = Math.max(0, Math.min(100, Math.round((done / total) * 100)))
   return (
-    <div className="flex w-full items-center gap-1.5" title={`${pct}% complete`}>
+    <div className="flex w-full items-center gap-1.5" title={`${done}/${total} tasks complete`}>
       <div
         style={{
           flex: 1,
@@ -489,22 +491,11 @@ export function IterationStatusPage() {
     localStorage.setItem(STORAGE_KEYS.ITERATION_STATUS_VIEW_MODE, mode)
   }, [])
 
-  const { startResize, order, hidden, toggleVisible, reorder, styleFor } = useColumnLayout(
-    ITERATION_STATUS_COLUMNS,
-    STORAGE_KEYS.ITERATION_STATUS_COLUMNS,
-  )
-
-  // Drag-to-reorder columns directly from their header cells (mirrors the
-  // Show Fields menu, but in-place). Delegates to `reorder` from useColumnLayout.
-  const {
-    activeDragKey,
-    dropIndicator,
-    handleDragStart: handleColDragStart,
-    handleDragOver: handleColDragOver,
-    handleDragLeave: handleColDragLeave,
-    handleDrop: handleColDrop,
-    handleDragEnd: handleColDragEnd,
-  } = useColumnDrag<ColKey>({ onReorder: reorder })
+  // Shared table engine (identical to projects/releases): resize + reorder + show/hide.
+  const table = useDataTable<unknown, unknown, ColKey>(ITERATION_STATUS_COLUMNS, {
+    storageKey: STORAGE_KEYS.ITERATION_STATUS_COLUMNS,
+  })
+  const { startResize, order, hidden, toggleVisible, reorder, styleFor } = table
 
   useEffect(() => {
     if (projectId) {
@@ -998,112 +989,106 @@ export function IterationStatusPage() {
           )}
         </div>
       ) : (
-        <div className="flex flex-1 flex-col overflow-auto" style={{ backgroundColor: AZ.bg }}>
-          <DataTableHeader
-            columns={HEADER_META}
-            colStyles={colStyles}
-            onResize={startResize}
-            className="pr-3 pl-1"
-            leading={
-              <RowGutter
-                dragDisabled
-                checkbox={{
-                  checked: selection.allSelected,
-                  indeterminate: selection.someSelected,
-                  onChange: selection.toggleAll,
-                  ariaLabel: 'Select all',
-                }}
-              />
-            }
-            sort={{ col: sortCol, dir: sortDir, onSort: toggleSort }}
-            columnDrag={{
-              activeDragKey,
-              dropIndicator,
-              onDragStart: handleColDragStart,
-              onDragOver: handleColDragOver,
-              onDragLeave: handleColDragLeave,
-              onDrop: handleColDrop,
-              onDragEnd: handleColDragEnd,
-            }}
-          />
-
-          {/* Rows */}
-          {isLoading && <SkeletonList rows={10} cols={12} />}
-
-          {!isLoading && isError && (
-            <div
-              className="flex items-center justify-center"
-              style={{ height: 160, fontSize: 12, color: BRAND.danger }}
-            >
-              Failed to load iteration status. Please try again.
-            </div>
-          )}
-
-          {!isLoading && !isError && (
-            <DndContext
-              sensors={dndSensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
-            >
-              <SortableContext
-                items={localItems.map((it) => it.id)}
-                strategy={verticalListSortingStrategy}
+        <DataTableFrame
+          header={{
+            columns: HEADER_META,
+            colStyles,
+            onResize: startResize,
+            sort: { col: sortCol, dir: sortDir, onSort: toggleSort },
+            columnDrag: table.columnDrag,
+          }}
+          padClassName="pr-3 pl-1"
+          bodyBackground={AZ.bg}
+          leading={
+            <RowGutter
+              dragDisabled
+              checkbox={{
+                checked: selection.allSelected,
+                indeterminate: selection.someSelected,
+                onChange: selection.toggleAll,
+                ariaLabel: 'Select all',
+              }}
+            />
+          }
+          totals={
+            !isLoading && !isError && items.length > 0 ? (
+              <TableFooterTotals colStyles={colStyles} totals={totals} />
+            ) : undefined
+          }
+          loading={isLoading}
+          skeleton={{ rows: 10, cols: 12 }}
+          error={
+            isError ? (
+              <div
+                className="flex items-center justify-center"
+                style={{ height: 160, fontSize: 12, color: BRAND.danger }}
               >
-                {localItems.map((item, idx) => (
-                  <StatusRow
-                    key={item.id}
-                    item={item}
-                    rank={(currentPage - 1) * pageSize + idx + 1}
-                    memberMap={memberMap}
-                    milestoneOptions={milestoneOptions}
-                    iterationOptions={iterationOptions}
-                    selectedIterationId={selectedId!}
-                    canEdit={canEdit}
-                    colStyles={colStyles}
-                    dragEnabled={!sortCol}
-                    selected={selection.isSelected(item.id)}
-                    onToggleSelect={() => selection.toggle(item.id)}
-                    onOpen={() =>
-                      navigate({
-                        to: '/item/$itemKey',
-                        params: { itemKey: item.itemKey },
-                      })
-                    }
-                  />
-                ))}
-              </SortableContext>
-            </DndContext>
-          )}
-
-          {!isLoading && !isError && items.length === 0 && (
-            <div
-              className="flex items-center justify-center"
-              style={{ height: 160, fontSize: 12, color: AZ.textMuted }}
+                Failed to load iteration status. Please try again.
+              </div>
+            ) : undefined
+          }
+          empty={
+            items.length === 0 ? (
+              <div
+                className="flex items-center justify-center"
+                style={{ height: 160, fontSize: 12, color: AZ.textMuted }}
+              >
+                No items assigned to this iteration
+              </div>
+            ) : undefined
+          }
+          footer={
+            !isLoading && !isError && sortedItems.length > 0 ? (
+              <PaginationFooter
+                pageSize={pageSize}
+                setPageSize={setPageSize}
+                currentPage={currentPage}
+                rangeStart={(currentPage - 1) * pageSize + 1}
+                rangeEnd={(currentPage - 1) * pageSize + pagedItems.length}
+                total={sortedItems.length}
+                pageCount={pageCount}
+                hasPrevPage={currentPage > 1}
+                hasNextPage={currentPage < pageCount}
+                onPrevPage={goPrevPage}
+                onNextPage={goNextPage}
+              />
+            ) : undefined
+          }
+        >
+          <DndContext
+            sensors={dndSensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={localItems.map((it) => it.id)}
+              strategy={verticalListSortingStrategy}
             >
-              No items assigned to this iteration
-            </div>
-          )}
-
-          {!isLoading && !isError && items.length > 0 && (
-            <TableFooterTotals colStyles={colStyles} totals={totals} />
-          )}
-        </div>
-      )}
-
-      {viewMode === 'list' && !isLoading && !isError && sortedItems.length > 0 && (
-        <PaginationFooter
-          pageSize={pageSize}
-          setPageSize={setPageSize}
-          currentPage={currentPage}
-          rangeStart={(currentPage - 1) * pageSize + 1}
-          rangeEnd={(currentPage - 1) * pageSize + pagedItems.length}
-          total={sortedItems.length}
-          pageCount={pageCount}
-          hasPrevPage={currentPage > 1}
-          hasNextPage={currentPage < pageCount}
-          onPrevPage={goPrevPage}
-          onNextPage={goNextPage}
-        />
+              {localItems.map((item, idx) => (
+                <StatusRow
+                  key={item.id}
+                  item={item}
+                  rank={(currentPage - 1) * pageSize + idx + 1}
+                  memberMap={memberMap}
+                  milestoneOptions={milestoneOptions}
+                  iterationOptions={iterationOptions}
+                  selectedIterationId={selectedId!}
+                  canEdit={canEdit}
+                  colStyles={colStyles}
+                  dragEnabled={!sortCol}
+                  selected={selection.isSelected(item.id)}
+                  onToggleSelect={() => selection.toggle(item.id)}
+                  onOpen={() =>
+                    navigate({
+                      to: '/item/$itemKey',
+                      params: { itemKey: item.itemKey },
+                    })
+                  }
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
+        </DataTableFrame>
       )}
 
       {/* ── Add Item modal ───────────────────────────────────────────────── */}
@@ -1432,7 +1417,7 @@ function MetricsStrip({
           <ListChecks size={16} style={{ color: AZ.textMuted }} />
           <div className="flex flex-col">
             <span style={{ fontSize: 11, fontWeight: 600, color: AZ.textPrimary }}>
-              {metrics?.taskCount ?? 0} Active
+              {metrics?.activeTaskCount ?? 0} Active
             </span>
             <span style={{ fontSize: 10, color: AZ.textMuted }}>Tasks</span>
           </div>
@@ -1640,49 +1625,17 @@ function TableFooterTotals({
   totals: { planEst: number; taskEst: number; toDoSum: number; count: number }
 }) {
   return (
-    <div
-      className="flex items-center"
-      style={{
-        height: 28,
-        paddingLeft: 4,
-        paddingRight: 12,
-        backgroundColor: AZ.bgHeader,
-        borderTop: `2px solid ${AZ.border}`,
-        fontSize: 11,
-        color: AZ.textSecondary,
-        fontWeight: 600,
-        minWidth: 'max-content',
+    <TableTotalsRow
+      columns={HEADER_META}
+      colStyles={colStyles}
+      leading={<RowGutter dragDisabled />}
+      label="Totals"
+      values={{
+        planEstimate: `${totals.planEst} Points`,
+        taskEstimate: `${totals.taskEst} Hours`,
+        toDo: `${totals.toDoSum} Hours`,
       }}
-    >
-      <div className="w-5 shrink-0 px-2" />
-      <div className="w-4 shrink-0 px-2" />
-      <div style={colStyles.rank} />
-      <div style={colStyles.id} />
-      <div style={colStyles.name} className="flex items-center px-2">
-        Totals ({totals.count})
-      </div>
-      <div style={colStyles.feature} />
-      <div style={colStyles.iteration} />
-      <div style={colStyles.state} />
-      <div style={colStyles.block} />
-      <div style={colStyles.blockedReason} />
-      <div style={colStyles.planEstimate} className="px-2 text-right">
-        {totals.planEst} Points
-      </div>
-      <div style={colStyles.taskEstimate} className="px-2 text-right">
-        {totals.taskEst} Hours
-      </div>
-      <div style={colStyles.toDo} className="px-2 text-right">
-        {totals.toDoSum} Hours
-      </div>
-      <div style={colStyles.tasksPct} />
-      <div style={colStyles.actual} />
-      <div style={colStyles.owner} />
-      <div style={colStyles.defects} />
-      <div style={colStyles.defectStatus} />
-      <div style={colStyles.milestones} />
-      <div style={colStyles.devOwner} />
-    </div>
+    />
   )
 }
 
@@ -2128,7 +2081,7 @@ function StatusRow({
 
         {/* Tasks % complete (rollup) */}
         <div style={colStyles.tasksPct} className="flex items-center px-2">
-          <TasksProgress estimate={item.taskEstimate} toDo={item.toDo} />
+          <TasksProgress total={item.taskTotal} done={item.taskDone} />
         </div>
 
         {/* Actual — not tracked at story level, only on tasks */}

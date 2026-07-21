@@ -121,7 +121,7 @@ export function useDataTable<Row, Ctx, K extends string>(
     (row: Row, ctx: Ctx) =>
       columns.map((c) => (
         <div key={c.key} style={colStyles[c.key]} className={c.cellClassName}>
-          {c.cell(row, ctx)}
+          {c.cell?.(row, ctx)}
         </div>
       )),
     [columns, colStyles],

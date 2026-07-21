@@ -365,6 +365,20 @@
       "when": 1784700000000,
       "tag": "0050_sync_task_actual_hours",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1784800000000,
+      "tag": "0051_work_item_flow_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1784900000000,
+      "tag": "0052_task_actual_hours_manual",
+      "breakpoints": true
     }
   ]
 }

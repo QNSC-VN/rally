@@ -18,3 +18,27 @@ export function relativeTime(iso: string): string {
   // For older items, fall back to a short date
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
+
+/** Format an ISO date string as a short calendar date, e.g. "Jul 31, 2026". */
+export function formatDate(iso: string | null | undefined, fallback = '—'): string {
+  if (!iso) return fallback
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime())
+    ? fallback
+    : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+/** Format an ISO timestamp as a short date + time, e.g. "Jul 31, 2026, 2:30 PM". */
+export function formatDateTime(iso: string | null | undefined, fallback = '—'): string {
+  if (!iso) return fallback
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime())
+    ? fallback
+    : d.toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      })
+}

@@ -21,6 +21,7 @@ import {
 } from '@/features/notifications/api'
 import { useOpenNotification } from '@/features/notifications/use-open-notification'
 import { NotificationItem } from '@/features/notifications/ui/notification-item'
+import { EmptyState } from '@/shared/ui/empty-state'
 
 // ── Main component ────────────────────────────────────────────────────────────
 
@@ -143,17 +144,11 @@ export function NotificationPopover({ open, onClose }: NotificationPopoverProps)
             />
           </div>
         ) : displayed.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-3 py-12">
-            <div
-              className="flex h-10 w-10 items-center justify-center rounded-xl"
-              style={{ backgroundColor: BRAND.avatarBg }}
-            >
-              <Bell size={20} style={{ color: BRAND.primary }} />
-            </div>
-            <p className="text-center text-[12px]" style={{ color: BRAND.textSecondary }}>
-              {unreadOnly ? 'No unread notifications' : "You're all caught up"}
-            </p>
-          </div>
+          <EmptyState
+            size="sm"
+            icon={<Bell size={28} className="text-foreground-subtle" />}
+            title={unreadOnly ? 'No unread notifications' : "You're all caught up"}
+          />
         ) : (
           <ul>
             {displayed.map((n) => (

@@ -12,7 +12,7 @@ import { StorageService } from '@platform';
 import type { WorkItem } from '../domain/work-item.types';
 import type { TimeLog } from '../domain/time-log.types';
 import type { Attachment } from '../domain/attachment.types';
-import { NotFoundException, UnitOfWork } from '@platform';
+import { NotFoundException, PreconditionFailedException, UnitOfWork } from '@platform';
 import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
 
@@ -38,6 +38,7 @@ const mockWorkItem = (o: Partial<WorkItem> = {}): WorkItem => ({
   description: null,
   statusId: 'status-todo',
   scheduleState: 'defined',
+  flowState: 'defined',
   priority: 'none',
   assigneeId: null,
   reporterId: null,
@@ -192,15 +193,30 @@ const makeUnitOfWork = () => ({
   run: vi.fn(async (cb: (tx: unknown) => unknown) => cb({})),
 });
 
-const makeProjectsService = () => ({
-  getProject: vi.fn().mockResolvedValue({ id: 'proj-1', workspaceId: WORKSPACE_A }),
-  listStatuses: vi.fn().mockResolvedValue([]),
-  assertTransitionAllowed: vi.fn().mockResolvedValue(undefined),
-  generateItemKey: vi.fn().mockResolvedValue('PROJ-42'),
-  listProjectTeams: vi.fn().mockResolvedValue([]),
-  assertWorkspaceMember: vi.fn().mockResolvedValue(undefined),
-  assertLabelBelongsToProject: vi.fn().mockResolvedValue(undefined),
-});
+const makeProjectsService = () => {
+  const listProjectTeams = vi.fn().mockResolvedValue([]);
+  return {
+    getProject: vi.fn().mockResolvedValue({ id: 'proj-1', workspaceId: WORKSPACE_A }),
+    listStatuses: vi.fn().mockResolvedValue([]),
+    assertTransitionAllowed: vi.fn().mockResolvedValue(undefined),
+    generateItemKey: vi.fn().mockResolvedValue('PROJ-42'),
+    listProjectTeams,
+    assertTeamLinkedToProject: vi.fn(async (ws: string, projectId: string, teamId: string) => {
+      const links = (await listProjectTeams(ws, projectId)) as Array<{
+        teamId: string;
+        status: string;
+      }>;
+      if (!links.some((l) => l.teamId === teamId && l.status === 'active')) {
+        throw new PreconditionFailedException(
+          'PROJECT_TEAM_LINK_NOT_FOUND',
+          'Team is not linked to this project',
+        );
+      }
+    }),
+    assertWorkspaceMember: vi.fn().mockResolvedValue(undefined),
+    assertLabelBelongsToProject: vi.fn().mockResolvedValue(undefined),
+  };
+};
 
 const makeStorageService = () => ({
   presignPut: vi.fn().mockResolvedValue({ uploadUrl: 'https://s3.example.com/upload' }),
