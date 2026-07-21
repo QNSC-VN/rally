@@ -68,6 +68,15 @@ export class StorageService {
       region: endpoint ? 'auto' : config.get('AWS_REGION'),
       ...(endpoint ? { endpoint, forcePathStyle: config.get('STORAGE_FORCE_PATH_STYLE') } : {}),
       ...(accessKeyId && secretAccessKey ? { credentials: { accessKeyId, secretAccessKey } } : {}),
+      // SDK v3 defaults to auto-attaching a CRC32 checksum (x-amz-checksum-crc32 /
+      // x-amz-sdk-checksum-algorithm) to PutObjectCommand, which bleeds into the
+      // presigned URL's query string below. presignPut deliberately signs only
+      // content-type/content-length (see its docstring — signableHeaders drift
+      // here previously broke every upload), so an unsigned checksum param the
+      // bucket's CORS AllowedHeaders doesn't list fails preflight with the same
+      // opaque "Failed to fetch" that comment warns about. Disable it at the
+      // client so PutObjectCommand never adds checksum params in the first place.
+      requestChecksumCalculation: 'WHEN_REQUIRED',
     });
   }
 
