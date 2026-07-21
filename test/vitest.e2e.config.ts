@@ -25,6 +25,17 @@ export default defineConfig({
     setupFiles: ['./test/setup.ts'],
     testTimeout: 30_000,
     hookTimeout: 30_000,
+    // Run spec FILES one at a time. These specs share ONE Postgres and ONE
+    // Valkey; by default vitest runs files in parallel workers, so a spec that
+    // creates an assignment publishes a notification wake-signal on the shared
+    // Valkey channel that fires a DIFFERENT spec's live worker-relay
+    // subscription mid-assertion (attempts/status shift under it). It also lets
+    // two specs mutate overlapping rows. Both are cross-spec interference, not
+    // real product flake — the notification specs pass 11/11 in isolation.
+    // Serial execution removes the whole class; tests within a file still run in
+    // order. Slower, but a shared stateful backend cannot be driven in parallel
+    // safely without per-spec DB/channel isolation, which this suite does not do.
+    fileParallelism: false,
     env: {
       // Entra BFF OIDC — test-only placeholders, same values as vitest.config.ts.
       // .env intentionally leaves these commented out for local dev-login-only
