@@ -7,6 +7,7 @@
  */
 import { useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
+import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { useNavigate } from '@tanstack/react-router'
 import {
   AlertTriangle,
@@ -842,11 +843,13 @@ export function ReleasesPage() {
     [releases],
   )
 
+  const [deleteId, setDeleteId] = useState<string | null>(null)
+
   async function handleDelete(id: string) {
-    if (!confirm('Delete this release? Work items will keep their release assignment.')) return
     try {
       await deleteRelease.mutateAsync(id)
       toast.success('Release deleted')
+      setDeleteId(null)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to delete release')
     }
@@ -941,13 +944,22 @@ export function ReleasesPage() {
             release={release}
             projectId={projectId!}
             canManage={canManage}
-            onDelete={(id) => {
-              void handleDelete(id)
-            }}
+            onDelete={(id) => setDeleteId(id)}
             colStyleFor={colStyleFor}
           />
         ))}
       </DataTableFrame>
+
+      <ConfirmDialog
+        open={deleteId !== null}
+        title="Delete release"
+        message="Delete this release? Work items will keep their release assignment."
+        confirmLabel="Delete release"
+        destructive
+        pending={deleteRelease.isPending}
+        onConfirm={() => deleteId && void handleDelete(deleteId)}
+        onCancel={() => setDeleteId(null)}
+      />
 
       {/* Modals */}
       {showCreate && (
