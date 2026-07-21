@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 
 import { BRAND } from '@/shared/config/brand'
+import { type Iteration } from '@/features/iterations/api'
 import { type ColumnDef } from '@/shared/lib/hooks/use-column-layout'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
 import { PageToolbar } from '@/shared/ui/page-toolbar'

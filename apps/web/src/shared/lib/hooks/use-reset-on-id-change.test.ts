@@ -32,7 +32,7 @@ describe('useResetOnIdChange', () => {
     const reset = vi.fn()
     const { rerender } = renderHook(
       ({ id }: { id: string | undefined }) => useResetOnIdChange(id, reset),
-      { initialProps: { id: undefined } },
+      { initialProps: { id: undefined as string | undefined } },
     )
     rerender({ id: 'a' })
     expect(reset).toHaveBeenCalledTimes(1)
