@@ -150,6 +150,10 @@ const EMPTY_ITEMS: IterationStatusItem[] = []
 // with the native <select> placeholder, so use an explicit token).
 const OWNER_UNASSIGNED = '__unassigned__'
 
+// Single mono stack for numeric cells (digit alignment). One source instead of
+// the Windows-only 'Consolas, Monaco, monospace' string hardcoded per cell.
+const MONO_FONT = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
+
 // ── Main page ──────────────────────────────────────────────────────────────
 
 export function IterationStatusPage() {
@@ -1653,7 +1657,7 @@ function StatusRow({
             onCommit={commitEstimate}
             displayValue={item.planEstimate ?? '—'}
             style={{
-              fontFamily: 'Consolas, Monaco, monospace',
+              fontFamily: MONO_FONT,
               color: BRAND.textSecondary,
               fontSize: 12,
             }}
@@ -1661,7 +1665,7 @@ function StatusRow({
               width: '100%',
               textAlign: 'right',
               fontSize: 11,
-              fontFamily: 'Consolas, Monaco, monospace',
+              fontFamily: MONO_FONT,
               border: `1px solid ${BRAND.primary}`,
               borderRadius: 2,
               outline: 'none',
@@ -1675,7 +1679,7 @@ function StatusRow({
           style={{
             ...colStyles.taskEstimate,
             textAlign: 'right',
-            fontFamily: 'Consolas, Monaco, monospace',
+            fontFamily: MONO_FONT,
             color: BRAND.textSecondary,
             fontSize: 12,
           }}
@@ -1692,7 +1696,7 @@ function StatusRow({
             onCommit={commitTodo}
             displayValue={item.toDo ?? '—'}
             style={{
-              fontFamily: 'Consolas, Monaco, monospace',
+              fontFamily: MONO_FONT,
               color: BRAND.textSecondary,
               fontSize: 12,
             }}
@@ -1700,7 +1704,7 @@ function StatusRow({
               width: '100%',
               textAlign: 'right',
               fontSize: 11,
-              fontFamily: 'Consolas, Monaco, monospace',
+              fontFamily: MONO_FONT,
               border: `1px solid ${BRAND.primary}`,
               borderRadius: 2,
               outline: 'none',
@@ -1978,12 +1982,12 @@ function ChildTaskRow({
           canEdit={canEdit}
           onCommit={commitTaskEstimate}
           displayValue={task.estimateHours ?? '—'}
-          style={{ fontFamily: 'Consolas, Monaco, monospace', fontSize: 11 }}
+          style={{ fontFamily: MONO_FONT, fontSize: 11 }}
           inputStyle={{
             width: '100%',
             textAlign: 'right',
             fontSize: 11,
-            fontFamily: 'Consolas, Monaco, monospace',
+            fontFamily: MONO_FONT,
             border: `1px solid ${BRAND.primary}`,
             borderRadius: 2,
             outline: 'none',
@@ -1997,12 +2001,12 @@ function ChildTaskRow({
           canEdit={canEdit}
           onCommit={commitTaskTodo}
           displayValue={task.todoHours ?? '—'}
-          style={{ fontFamily: 'Consolas, Monaco, monospace', fontSize: 11 }}
+          style={{ fontFamily: MONO_FONT, fontSize: 11 }}
           inputStyle={{
             width: '100%',
             textAlign: 'right',
             fontSize: 11,
-            fontFamily: 'Consolas, Monaco, monospace',
+            fontFamily: MONO_FONT,
             border: `1px solid ${BRAND.primary}`,
             borderRadius: 2,
             outline: 'none',
@@ -2017,12 +2021,12 @@ function ChildTaskRow({
           canEdit={canEdit}
           onCommit={commitTaskActual}
           displayValue={task.actualHours ?? '—'}
-          style={{ fontFamily: 'Consolas, Monaco, monospace', fontSize: 11 }}
+          style={{ fontFamily: MONO_FONT, fontSize: 11 }}
           inputStyle={{
             width: '100%',
             textAlign: 'right',
             fontSize: 11,
-            fontFamily: 'Consolas, Monaco, monospace',
+            fontFamily: MONO_FONT,
             border: `1px solid ${BRAND.primary}`,
             borderRadius: 2,
             outline: 'none',
