@@ -1,7 +1,7 @@
 /**
  * work schema — projects, work_items, workflow_statuses, workflow_transitions,
  *               iterations, releases, project_counters, iteration_daily_snapshots,
- *               comments, attachments, custom_field_defs,
+ *               comments, work_item_attachments, custom_field_defs,
  *               time_logs, work_item_watchers
  * Canonical DDL: 05_Architecture/DATABASE_SCHEMA.md §9
  */
@@ -16,7 +16,6 @@ import {
   timestamp,
   date,
   jsonb,
-  bigint,
   index,
   uniqueIndex,
   primaryKey,
@@ -39,7 +38,6 @@ import {
   releaseStatusEnum,
   teamStatusEnum,
   teamMemberStatusEnum,
-  attachmentStatusEnum,
   activityEntityTypeEnum,
   milestoneStatusEnum,
   defectSeverityEnum,
@@ -50,6 +48,7 @@ import {
   taskStateEnum,
   workItemRelationTypeEnum,
 } from './enums';
+import { files } from './storage';
 
 export const workSchema = pgSchema('work');
 
@@ -345,26 +344,36 @@ export const comments = workSchema.table(
   }),
 );
 
-// ── attachments ───────────────────────────────────────────────────────────
+// ── work_item_attachments (link: work_items ←→ storage.files) ──────────────
+//
+// Replaces the old work.attachments table, which carried the blob metadata AND
+// hard-coded work_item_id NOT NULL — meaning every new upload surface needed its
+// own copy of the whole thing. Blob metadata now lives once in storage.files;
+// this table only records "this file is attached to this work item".
+//
+// Both sides are real FKs with ON DELETE CASCADE: deleting a work item drops its
+// link rows, and the now-unreferenced storage.files rows are swept by the worker
+// reaper (which is also what deletes the underlying objects).
 
-export const attachments = workSchema.table(
-  'attachments',
+export const workItemAttachments = workSchema.table(
+  'work_item_attachments',
   {
-    id: uuid('id').primaryKey().defaultRandom(),
+    workItemId: uuid('work_item_id')
+      .notNull()
+      .references(() => workItems.id, { onDelete: 'cascade' }),
+    fileId: uuid('file_id')
+      .notNull()
+      .references(() => files.id, { onDelete: 'cascade' }),
     workspaceId: uuid('workspace_id').notNull(),
-    workItemId: uuid('work_item_id').notNull(),
-    uploadedBy: uuid('uploaded_by').notNull(),
-    filename: varchar('filename', { length: 500 }).notNull(),
-    mimeType: varchar('mime_type', { length: 255 }).notNull(),
-    sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull(),
-    storageKey: varchar('storage_key', { length: 1000 }).notNull(), // S3 object key
-    status: attachmentStatusEnum('status').notNull().default('pending'),
-    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    attachedBy: uuid('attached_by').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    workspaceIdx: index('ix_attach_workspace').on(t.workspaceId),
-    workItemIdx: index('ix_attach_work_item').on(t.workItemId),
+    pk: primaryKey({ columns: [t.workItemId, t.fileId] }),
+    workItemIdx: index('ix_wia_work_item').on(t.workItemId),
+    // Drives the "is this file still referenced?" check in the reaper.
+    fileIdx: index('ix_wia_file').on(t.fileId),
+    workspaceIdx: index('ix_wia_workspace').on(t.workspaceId),
   }),
 );
 

@@ -2,89 +2,102 @@ import { Injectable } from '@nestjs/common';
 import { and, count, eq, isNull } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
-import { attachments } from '../../../../../../db/schema/work';
-import type { Attachment, CreateAttachmentInput } from '../../domain/attachment.types';
+import { workItemAttachments } from '../../../../../../db/schema/work';
+import { files } from '../../../../../../db/schema/storage';
+import type { WorkItemAttachment } from '../../domain/attachment.types';
 import type { IAttachmentRepository } from '../../domain/ports/attachment.repository';
 
+/**
+ * Link-table repository. Every query joins storage.files and filters on
+ * `status = 'completed'` + `deleted_at IS NULL`, so a presigned-but-unconfirmed
+ * or soft-deleted file can never appear in a listing or count against quota.
+ */
 @Injectable()
 export class AttachmentDrizzleRepository implements IAttachmentRepository {
   constructor(@InjectDrizzle() private readonly db: DrizzleDB) {}
 
-  async findById(id: string, workspaceId: string): Promise<Attachment | null> {
-    const rows = await this.db
-      .select()
-      .from(attachments)
-      .where(
-        and(eq(attachments.id, id), eq(attachments.workspaceId, workspaceId), isNull(attachments.deletedAt)),
-      )
-      .limit(1);
-    return rows[0] ?? null;
-  }
+  private static readonly projection = {
+    id: files.id,
+    workItemId: workItemAttachments.workItemId,
+    workspaceId: workItemAttachments.workspaceId,
+    filename: files.filename,
+    mimeType: files.mimeType,
+    sizeBytes: files.sizeBytes,
+    uploadedBy: files.uploadedBy,
+    createdAt: workItemAttachments.createdAt,
+  };
 
-  async listByWorkItem(workItemId: string, workspaceId: string): Promise<Attachment[]> {
-    const rows = await this.db
-      .select()
-      .from(attachments)
+  async listByWorkItem(workItemId: string, workspaceId: string): Promise<WorkItemAttachment[]> {
+    return this.db
+      .select(AttachmentDrizzleRepository.projection)
+      .from(workItemAttachments)
+      .innerJoin(files, eq(files.id, workItemAttachments.fileId))
       .where(
         and(
-          eq(attachments.workItemId, workItemId),
-          eq(attachments.workspaceId, workspaceId),
-          eq(attachments.status, 'completed'),
-          isNull(attachments.deletedAt),
+          eq(workItemAttachments.workItemId, workItemId),
+          eq(workItemAttachments.workspaceId, workspaceId),
+          eq(files.status, 'completed'),
+          isNull(files.deletedAt),
         ),
       )
-      .orderBy(attachments.createdAt);
-    return rows;
+      .orderBy(workItemAttachments.createdAt);
   }
 
   async countByWorkItem(workItemId: string, workspaceId: string): Promise<number> {
     const [{ cnt }] = await this.db
       .select({ cnt: count() })
-      .from(attachments)
+      .from(workItemAttachments)
+      .innerJoin(files, eq(files.id, workItemAttachments.fileId))
       .where(
         and(
-          eq(attachments.workItemId, workItemId),
-          eq(attachments.workspaceId, workspaceId),
-          eq(attachments.status, 'completed'),
-          isNull(attachments.deletedAt),
+          eq(workItemAttachments.workItemId, workItemId),
+          eq(workItemAttachments.workspaceId, workspaceId),
+          eq(files.status, 'completed'),
+          isNull(files.deletedAt),
         ),
       );
     return Number(cnt);
   }
 
-  async create(input: CreateAttachmentInput): Promise<Attachment> {
+  async findByWorkItemAndFile(
+    workItemId: string,
+    fileId: string,
+    workspaceId: string,
+  ): Promise<WorkItemAttachment | null> {
     const rows = await this.db
-      .insert(attachments)
-      .values({
-        id: input.id,
-        workspaceId: input.workspaceId,
-        workItemId: input.workItemId,
-        uploadedBy: input.uploadedBy,
-        filename: input.filename,
-        mimeType: input.mimeType,
-        sizeBytes: input.sizeBytes,
-        storageKey: input.storageKey,
-        status: 'pending',
-      })
-      .returning();
-    return rows[0];
+      .select(AttachmentDrizzleRepository.projection)
+      .from(workItemAttachments)
+      .innerJoin(files, eq(files.id, workItemAttachments.fileId))
+      .where(
+        and(
+          eq(workItemAttachments.workItemId, workItemId),
+          eq(workItemAttachments.fileId, fileId),
+          eq(workItemAttachments.workspaceId, workspaceId),
+          isNull(files.deletedAt),
+        ),
+      )
+      .limit(1);
+    return rows[0] ?? null;
   }
 
-  async confirm(id: string): Promise<Attachment> {
-    const rows = await this.db
-      .update(attachments)
-      .set({ status: 'completed' })
-      .where(eq(attachments.id, id))
-      .returning();
-    return rows[0];
+  async link(input: {
+    workItemId: string;
+    fileId: string;
+    workspaceId: string;
+    attachedBy: string;
+  }): Promise<void> {
+    await this.db.insert(workItemAttachments).values(input).onConflictDoNothing();
   }
 
-  async softDelete(id: string): Promise<Attachment> {
-    const rows = await this.db
-      .update(attachments)
-      .set({ deletedAt: new Date() })
-      .where(eq(attachments.id, id))
-      .returning();
-    return rows[0];
+  async unlink(workItemId: string, fileId: string, workspaceId: string): Promise<void> {
+    await this.db
+      .delete(workItemAttachments)
+      .where(
+        and(
+          eq(workItemAttachments.workItemId, workItemId),
+          eq(workItemAttachments.fileId, fileId),
+          eq(workItemAttachments.workspaceId, workspaceId),
+        ),
+      );
   }
 }
