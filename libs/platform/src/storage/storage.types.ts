@@ -5,17 +5,18 @@ export interface PresignPutRequest {
   key: string;
   mimeType: string;
   sizeBytes: number;
-  /** Base64 SHA-256. Bound into the signature — the bucket rejects a mismatched body. */
-  checksumSha256: string;
   visibility: StorageVisibility;
+  // No checksum here on purpose — a presigned PUT cannot carry one. See
+  // StorageService.presignPut for the evidence and what happened when it tried.
 }
 
 export interface PresignPutResult {
   uploadUrl: string;
   /**
-   * Headers the client MUST send on the PUT. They are part of the signature, so
-   * omitting or altering any of them fails with SignatureDoesNotMatch. Returned
-   * explicitly rather than documented, so the client never has to guess.
+   * The EXACT header set the signature covers. The client must send these and
+   * nothing else: an extra `x-amz-*` header the signature does not cover is
+   * rejected 403, and on a bucket origin that failure reaches the browser as an
+   * opaque "Failed to fetch". Returned explicitly so the client never guesses.
    */
   requiredHeaders: Record<string, string>;
 }

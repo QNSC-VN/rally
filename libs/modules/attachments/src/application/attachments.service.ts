@@ -36,12 +36,13 @@ export class AttachmentsService {
 
   /**
    * Validate against the policy, reserve a storage.files row, and mint a
-   * presigned PUT bound to the exact content-type, length AND checksum.
+   * presigned PUT bound to the exact content-type and length.
    *
-   * Binding the checksum into the signature is what makes the upload
-   * tamper-evident: the bucket itself rejects a body whose SHA-256 does not
-   * match, so a client cannot declare one file and upload another. The old
-   * size-only comparison on confirm could not detect a same-length swap.
+   * The client-computed SHA-256 is recorded on the row but is NOT enforced at
+   * upload time — a presigned PUT cannot carry a checksum (see
+   * StorageService.presignPut). It serves as the dedup key and lets a background
+   * job verify content later. Upload-time enforcement is content-type and size,
+   * both signed, both rejected at the edge.
    *
    * `currentOwnerCount` is supplied by the caller because only the owning
    * context knows its link table. Pass 0 for surfaces without a quota.
@@ -100,7 +101,6 @@ export class AttachmentsService {
       key: storageKey,
       mimeType: req.mimeType,
       sizeBytes: req.sizeBytes,
-      checksumSha256: req.checksumSha256,
       visibility: policy.visibility,
     });
 
@@ -132,8 +132,9 @@ export class AttachmentsService {
       );
     }
 
-    // The bucket enforces this at PUT time; re-checking here catches a backend
-    // that silently ignored the checksum header rather than rejecting the body.
+    // Opportunistic: only some backends return a stored checksum, and nothing
+    // enforces one at PUT time. When present it is still worth comparing — it is
+    // the only check that can catch a same-length substitution.
     if (head.checksumSha256 && file.checksumSha256 && head.checksumSha256 !== file.checksumSha256) {
       await this.discard(file, 'checksum mismatch');
       throw new PreconditionFailedException(
