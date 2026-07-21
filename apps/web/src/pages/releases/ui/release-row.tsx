@@ -1,4 +1,5 @@
 import { type CSSProperties } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { Pencil, Trash2, ExternalLink } from 'lucide-react'
 
@@ -25,6 +26,7 @@ export function ReleaseRow({
   onDelete: (id: string) => void
   colStyleFor: (key: ColKey, base?: CSSProperties) => CSSProperties
 }) {
+  const { t } = useTranslation('releases')
   const update = useUpdateRelease(release.id, projectId)
   const status = release.status as ReleaseStatus
 
@@ -34,7 +36,7 @@ export function ReleaseRow({
       { state: newState },
       {
         onSuccess: () =>
-          notify.success(`Status updated to ${RELEASE_STATUS_STYLE[newState].label}`),
+          notify.success(t('row.statusUpdated', { label: RELEASE_STATUS_STYLE[newState].label })),
         onError: (err) => notify.error(err.message),
       },
     )
@@ -46,7 +48,7 @@ export function ReleaseRow({
       update.mutate(
         { name: val },
         {
-          onSuccess: () => notify.success('Name updated'),
+          onSuccess: () => notify.success(t('row.nameUpdated')),
           onError: (err) => notify.error(err.message),
         },
       )
@@ -59,7 +61,7 @@ export function ReleaseRow({
       update.mutate(
         { theme: val || undefined },
         {
-          onSuccess: () => notify.success('Theme updated'),
+          onSuccess: () => notify.success(t('row.themeUpdated')),
           onError: (err) => notify.error(err.message),
         },
       )
@@ -72,7 +74,7 @@ export function ReleaseRow({
       update.mutate(
         { version: val || undefined },
         {
-          onSuccess: () => notify.success('Version updated'),
+          onSuccess: () => notify.success(t('row.versionUpdated')),
           onError: (err) => notify.error(err.message),
         },
       )
@@ -83,7 +85,7 @@ export function ReleaseRow({
     const val = e.target.value.trim()
     const num = val === '' ? null : Number(val)
     if (num !== null && (isNaN(num) || num < 0)) {
-      notify.error('Planned velocity must be a positive integer')
+      notify.error(t('row.velocityInvalid'))
       e.target.value = release.plannedVelocity != null ? String(release.plannedVelocity) : ''
       return
     }
@@ -91,7 +93,7 @@ export function ReleaseRow({
       update.mutate(
         { plannedVelocity: num ?? undefined },
         {
-          onSuccess: () => notify.success('Planned velocity updated'),
+          onSuccess: () => notify.success(t('row.velocityUpdated')),
           onError: (err) => notify.error(err.message),
         },
       )
@@ -104,7 +106,7 @@ export function ReleaseRow({
       update.mutate(
         { startDate: val || undefined },
         {
-          onSuccess: () => notify.success('Start date updated'),
+          onSuccess: () => notify.success(t('row.startDateUpdated')),
           onError: (err) => notify.error(err.message),
         },
       )
@@ -117,7 +119,7 @@ export function ReleaseRow({
       update.mutate(
         { releaseDate: val || undefined },
         {
-          onSuccess: () => notify.success('Release date updated'),
+          onSuccess: () => notify.success(t('row.releaseDateUpdated')),
           onError: (err) => notify.error(err.message),
         },
       )

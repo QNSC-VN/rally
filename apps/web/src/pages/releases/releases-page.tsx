@@ -6,6 +6,7 @@
  * Project, Planned Velocity, Task Estimate, State.
  */
 import { useCallback, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { AlertTriangle, Plus, PackageOpen } from 'lucide-react'
@@ -27,6 +28,7 @@ import { ReleaseRow } from './ui/release-row'
 import { useReleases, useDeleteRelease, type Release } from '@/features/releases/api'
 
 export function ReleasesPage() {
+  const { t } = useTranslation('releases')
   const { project } = useAppContext()
   const projectId = project?.projectId
   const { can } = useProjectPermissions(projectId)
@@ -71,17 +73,17 @@ export function ReleasesPage() {
   async function handleDelete(id: string) {
     try {
       await deleteRelease.mutateAsync(id)
-      toast.success('Release deleted')
+      toast.success(t('delete.deleted'))
       setDeleteId(null)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to delete release')
+      toast.error(err instanceof Error ? err.message : t('delete.deleteFailed'))
     }
   }
 
   if (!projectId) {
     return (
       <div className="flex flex-1 items-center justify-center bg-background">
-        <p className="text-ui-lg text-foreground-subtle">Select a project to view releases.</p>
+        <p className="text-ui-lg text-foreground-subtle">{t('selectProject')}</p>
       </div>
     )
   }
@@ -90,7 +92,7 @@ export function ReleasesPage() {
     <div className="flex flex-1 flex-col overflow-hidden bg-background">
       {/* Header */}
       <PageToolbar
-        title="Releases"
+        title={t('title')}
         search={{
           value: search,
           onChange: setSearch,
@@ -101,7 +103,7 @@ export function ReleasesPage() {
         actions={
           canManage ? (
             <Button size="sm" onClick={() => setShowCreate(true)}>
-              <Plus size={13} /> Create Release
+              <Plus size={13} /> {t('createButton')}
             </Button>
           ) : undefined
         }
@@ -110,20 +112,20 @@ export function ReleasesPage() {
 
       {/* Summary metric strip */}
       <MetricStrip>
-        <MetricCard label="Total Releases" value={stats.total} minWidth={100} />
+        <MetricCard label={t('metrics.total')} value={stats.total} minWidth={100} />
         <MetricCard
-          label="Active"
+          label={t('metrics.active')}
           value={stats.active}
           valueColor={BRAND.primaryLight}
           minWidth={80}
         />
         <MetricCard
-          label="Accepted"
+          label={t('metrics.accepted')}
           value={stats.accepted}
           valueColor={BRAND.success}
           minWidth={90}
         />
-        <MetricCard label="Planning" value={stats.planning} minWidth={90} />
+        <MetricCard label={t('metrics.planning')} value={stats.planning} minWidth={90} />
       </MetricStrip>
 
       {/* Table — shared DataTableFrame owns the chrome (read-only list kind:
@@ -136,7 +138,7 @@ export function ReleasesPage() {
           isError ? (
             <EmptyState
               icon={<AlertTriangle size={28} className="text-destructive" />}
-              title="Failed to load releases. Please try again."
+              title={t('loadError')}
             />
           ) : undefined
         }
@@ -144,11 +146,11 @@ export function ReleasesPage() {
           filtered.length === 0 ? (
             <EmptyState
               icon={<PackageOpen size={32} className="text-border-strong" />}
-              title={search ? 'No releases match your search.' : 'No releases yet.'}
+              title={search ? t('emptySearch') : t('empty')}
               action={
                 !search && canManage ? (
                   <Button variant="link" size="xs" onClick={() => setShowCreate(true)}>
-                    + Create first release
+                    {t('createFirst')}
                   </Button>
                 ) : undefined
               }
@@ -170,9 +172,9 @@ export function ReleasesPage() {
 
       <ConfirmDialog
         open={deleteId !== null}
-        title="Delete release"
-        message="Delete this release? Work items will keep their release assignment."
-        confirmLabel="Delete release"
+        title={t('delete.title')}
+        message={t('delete.message')}
+        confirmLabel={t('delete.confirm')}
         destructive
         pending={deleteRelease.isPending}
         onConfirm={() => deleteId && void handleDelete(deleteId)}

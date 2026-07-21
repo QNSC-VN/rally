@@ -30,5 +30,7 @@
   "owner": "Owner",
   "members": "Members",
   "settings": "Settings",
-  "notifications": "Notifications"
+  "notifications": "Notifications",
+  "appName": "Mini Rally",
+  "platformTagline": "Work Management Platform"
 }

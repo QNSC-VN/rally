@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
 
@@ -22,6 +23,7 @@ export function CreateReleaseModal({
   projectId: string
   onClose: () => void
 }) {
+  const { t } = useTranslation('releases')
   const navigate = useNavigate()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -35,11 +37,11 @@ export function CreateReleaseModal({
   async function submit(goToDetails?: boolean) {
     setError(null)
     if (!name.trim()) {
-      setError('Release name is required')
+      setError(t('create.nameRequired'))
       return
     }
     if (startDate && releaseDate && releaseDate < startDate) {
-      setError('Release date must be >= start date')
+      setError(t('create.dateOrder'))
       return
     }
     try {
@@ -52,13 +54,13 @@ export function CreateReleaseModal({
         releaseDate: releaseDate || undefined,
         state: status,
       })
-      notify.success(`Release "${name.trim()}" created`)
+      notify.success(t('create.created', { name: name.trim() }))
       onClose()
       if (goToDetails && result?.id) {
         void navigate({ to: '/releases/$releaseId', params: { releaseId: result.id } })
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to create release'
+      const msg = err instanceof Error ? err.message : t('create.createFailed')
       setError(msg)
       notify.error(msg)
     }
@@ -68,35 +70,35 @@ export function CreateReleaseModal({
     <AppModal
       open
       onClose={onClose}
-      title="Create Release"
-      subtitle="Type: Release (locked)"
+      title={t('create.title')}
+      subtitle={t('create.subtitle')}
       width={460}
     >
       <ModalBody className="space-y-4">
         {/* Type selector — disabled, locked to Release (P3-REL-FR-012) */}
-        <FormField label="Type">
+        <FormField label={t('create.typeLabel')}>
           <div className="flex gap-2">
-            {(['Iteration', 'Release', 'Milestones'] as const).map((t) => (
+            {(['Iteration', 'Release', 'Milestones'] as const).map((type) => (
               <button
-                key={t}
+                key={type}
                 type="button"
-                disabled={t !== 'Release'}
+                disabled={type !== 'Release'}
                 className="flex-1 rounded-sm py-1.5 text-ui-sm font-semibold transition-colors"
                 style={{
-                  backgroundColor: t === 'Release' ? BRAND.primaryLighter : 'transparent',
-                  color: t === 'Release' ? BRAND.primary : BRAND.textMuted,
-                  border: `1px solid ${t === 'Release' ? BRAND.accentBorder : BRAND.borderSubtle}`,
-                  opacity: t === 'Release' ? 1 : 0.4,
-                  cursor: t === 'Release' ? 'default' : 'not-allowed',
+                  backgroundColor: type === 'Release' ? BRAND.primaryLighter : 'transparent',
+                  color: type === 'Release' ? BRAND.primary : BRAND.textMuted,
+                  border: `1px solid ${type === 'Release' ? BRAND.accentBorder : BRAND.borderSubtle}`,
+                  opacity: type === 'Release' ? 1 : 0.4,
+                  cursor: type === 'Release' ? 'default' : 'not-allowed',
                 }}
               >
-                {t}
+                {type}
               </button>
             ))}
           </div>
         </FormField>
 
-        <FormField label="Release name" required error={error ?? undefined}>
+        <FormField label={t('create.nameLabel')} required error={error ?? undefined}>
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -106,7 +108,7 @@ export function CreateReleaseModal({
         </FormField>
 
         <div className="flex gap-3">
-          <FormField label="Theme" className="flex-1">
+          <FormField label={t('create.themeLabel')} className="flex-1">
             <Input
               value={theme}
               onChange={(e) => setTheme(e.target.value)}
@@ -116,10 +118,10 @@ export function CreateReleaseModal({
         </div>
 
         <div className="flex gap-3">
-          <FormField label="Start Date" className="flex-1">
+          <FormField label={t('create.startDateLabel')} className="flex-1">
             <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
           </FormField>
-          <FormField label="Release Date" className="flex-1">
+          <FormField label={t('create.releaseDateLabel')} className="flex-1">
             <Input
               type="date"
               value={releaseDate}
@@ -128,7 +130,7 @@ export function CreateReleaseModal({
           </FormField>
         </div>
 
-        <FormField label="Status">
+        <FormField label={t('create.statusLabel')}>
           <InlineSelect
             value={status}
             onChange={(e) => setState(e.target.value as ReleaseStatus)}
@@ -142,7 +144,7 @@ export function CreateReleaseModal({
           </InlineSelect>
         </FormField>
 
-        <FormField label="Description">
+        <FormField label={t('create.descriptionLabel')}>
           <Textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -154,7 +156,7 @@ export function CreateReleaseModal({
 
       <ModalFooter>
         <Button variant="outline" type="button" onClick={onClose}>
-          Cancel
+          {t('common:cancel')}
         </Button>
         <Button
           variant="secondary"
@@ -164,7 +166,7 @@ export function CreateReleaseModal({
             void submit(true)
           }}
         >
-          Create with details
+          {t('createWithDetails')}
         </Button>
         <Button
           type="button"
@@ -174,7 +176,7 @@ export function CreateReleaseModal({
           }}
         >
           {create.isPending && <Loader2 size={11} className="animate-spin" />}
-          Create Release
+          {t('createButton')}
         </Button>
       </ModalFooter>
     </AppModal>

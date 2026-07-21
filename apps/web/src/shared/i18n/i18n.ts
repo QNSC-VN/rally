@@ -6,6 +6,7 @@ import auth from './locales/en/auth.json'
 import projects from './locales/en/projects.json'
 import workItems from './locales/en/work-items.json'
 import nav from './locales/en/nav.json'
+import releases from './locales/en/releases.json'
 
 export const defaultNS = 'common'
 
@@ -14,7 +15,7 @@ i18n.use(initReactI18next).init({
   fallbackLng: 'en',
   defaultNS,
   resources: {
-    en: { common, auth, projects, 'work-items': workItems, nav },
+    en: { common, auth, projects, 'work-items': workItems, nav, releases },
   },
   interpolation: { escapeValue: false },
 })

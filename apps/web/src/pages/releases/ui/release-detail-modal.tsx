@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Loader2 } from 'lucide-react'
 
 import { BRAND } from '@/shared/config/brand'
@@ -23,6 +24,7 @@ export function ReleaseDetailModal({
   projectId: string
   onClose: () => void
 }) {
+  const { t } = useTranslation('releases')
   const [name, setName] = useState(release.name)
   const [theme, setTheme] = useState(release.theme ?? '')
   const [notes, setNotes] = useState(release.notes ?? '')
@@ -52,24 +54,30 @@ export function ReleaseDetailModal({
         version: version.trim() || null,
         state,
       })
-      notify.success('Release updated')
+      notify.success(t('detail.updated'))
       onClose()
     } catch (err) {
-      notify.error(err instanceof Error ? err.message : 'Failed to update release')
+      notify.error(err instanceof Error ? err.message : t('detail.updateFailed'))
     }
   }
 
   const rollup = release.taskRollup
 
   return (
-    <AppModal open onClose={onClose} title={release.name} subtitle="Release Detail" width={560}>
+    <AppModal
+      open
+      onClose={onClose}
+      title={release.name}
+      subtitle={t('detail.subtitle')}
+      width={560}
+    >
       <ModalBody className="space-y-4">
         {/* Task Rollup Summary */}
         {rollup && (
           <div className="flex items-center gap-4 rounded-md border border-border-subtle bg-surface-hover p-3">
             <div className="flex-1">
               <div className="mb-1 text-ui-xs font-semibold tracking-wider text-foreground-subtle uppercase">
-                Progress
+                {t('detail.progress')}
               </div>
               <div className="flex items-center gap-2">
                 <div className="h-2 flex-1 overflow-hidden rounded-full bg-border-subtle">
@@ -93,7 +101,7 @@ export function ReleaseDetailModal({
             </div>
             <div className="border-l border-border-subtle px-3 text-center">
               <div className="text-ui-xs tracking-wider text-foreground-subtle uppercase">
-                Items
+                {t('detail.items')}
               </div>
               <div className="font-mono text-ui-xl font-semibold text-foreground">
                 {rollup.completedItems}
@@ -104,7 +112,7 @@ export function ReleaseDetailModal({
             </div>
             <div className="border-l border-border-subtle px-3 text-center">
               <div className="text-ui-xs tracking-wider text-foreground-subtle uppercase">
-                Points
+                {t('detail.points')}
               </div>
               <div className="font-mono text-ui-xl font-semibold text-foreground">
                 {rollup.completedPoints}
@@ -116,7 +124,7 @@ export function ReleaseDetailModal({
           </div>
         )}
         {/* Left panel fields: Theme, Notes */}
-        <FormField label="Theme">
+        <FormField label={t('detail.themeLabel')}>
           <Textarea
             value={theme}
             onChange={(e) => setTheme(e.target.value)}
@@ -125,7 +133,7 @@ export function ReleaseDetailModal({
           />
         </FormField>
 
-        <FormField label="Notes">
+        <FormField label={t('detail.notesLabel')}>
           <Textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
@@ -135,15 +143,15 @@ export function ReleaseDetailModal({
         </FormField>
 
         {/* Right panel fields */}
-        <FormField label="Release name" required>
+        <FormField label={t('detail.nameLabel')} required>
           <Input value={name} onChange={(e) => setName(e.target.value)} />
         </FormField>
 
         <div className="flex gap-3">
-          <FormField label="Start Date" className="flex-1">
+          <FormField label={t('detail.startDateLabel')} className="flex-1">
             <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
           </FormField>
-          <FormField label="Release Date" className="flex-1">
+          <FormField label={t('detail.releaseDateLabel')} className="flex-1">
             <Input
               type="date"
               value={releaseDate}
@@ -152,7 +160,7 @@ export function ReleaseDetailModal({
           </FormField>
         </div>
 
-        <FormField label="State">
+        <FormField label={t('detail.stateLabel')}>
           <InlineSelect
             value={state}
             onChange={(e) => setState(e.target.value as ReleaseStatus)}
@@ -167,7 +175,7 @@ export function ReleaseDetailModal({
         </FormField>
 
         <div className="flex gap-3">
-          <FormField label="Planned Velocity" className="flex-1">
+          <FormField label={t('detail.plannedVelocityLabel')} className="flex-1">
             <Input
               type="number"
               min={0}
@@ -176,7 +184,7 @@ export function ReleaseDetailModal({
               placeholder="0"
             />
           </FormField>
-          <FormField label="Plan Estimate" className="flex-1">
+          <FormField label={t('detail.planEstimateLabel')} className="flex-1">
             <Input
               type="number"
               min={0}
@@ -187,14 +195,14 @@ export function ReleaseDetailModal({
           </FormField>
         </div>
 
-        <FormField label="Version" hint="Optional">
+        <FormField label={t('detail.versionLabel')} hint="Optional">
           <Input value={version} onChange={(e) => setVersion(e.target.value)} placeholder="1.0.0" />
         </FormField>
       </ModalBody>
 
       <ModalFooter>
         <Button variant="outline" type="button" onClick={onClose}>
-          Cancel
+          {t('common:cancel')}
         </Button>
         <Button
           type="button"
@@ -204,7 +212,7 @@ export function ReleaseDetailModal({
           }}
         >
           {update.isPending && <Loader2 size={11} className="animate-spin" />}
-          Save
+          {t('common:save')}
         </Button>
       </ModalFooter>
     </AppModal>
