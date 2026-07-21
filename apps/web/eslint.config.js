@@ -71,4 +71,24 @@ export default defineConfig([
       'react-refresh/only-export-components': 'off',
     },
   },
+  // Grid pages must consume the shared DataTableFrame (via @/shared/ui/table),
+  // never re-assemble grid chrome from the low-level DataTableHeader directly.
+  // Keeps every grid's header/scroll/footer identical (audit §5.2 / §8.2).
+  {
+    files: ['src/pages/**/*.{ts,tsx}', 'src/widgets/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@/shared/ui/data-table-header',
+              message:
+                'Use DataTableFrame + DataTableHeaderColumn from @/shared/ui/table; do not assemble chrome from DataTableHeader directly.',
+            },
+          ],
+        },
+      ],
+    },
+  },
 ])

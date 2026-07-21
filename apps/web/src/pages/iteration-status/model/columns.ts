@@ -1,5 +1,5 @@
 import { type ColumnSpec } from '@/shared/ui/table'
-import { type DataTableHeaderColumn } from '@/shared/ui/data-table-header'
+import { type DataTableHeaderColumn } from '@/shared/ui/table'
 
 export type ColKey =
   | 'rank'
