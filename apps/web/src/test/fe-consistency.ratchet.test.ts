@@ -21,8 +21,8 @@ import { describe, expect, it } from 'vitest'
 
 // ── Baselines — LOWER as the migration proceeds, NEVER raise ──────────────────
 const MAX_RAW_BUTTON = 98 // occurrences in pages/features/entities/widgets
-const MAX_INLINE_STYLE = 774 // `style={{` in pages/features/entities/widgets
-const MAX_ARBITRARY_TEXT = 485 // `text-[` app-wide
+const MAX_INLINE_STYLE = 712 // `style={{` in pages/features/entities/widgets
+const MAX_ARBITRARY_TEXT = 444 // `text-[` app-wide
 const MAX_FILE_LINES = 1024 // largest single source file (after monolith decomposition)
 
 // this file lives in src/test/
