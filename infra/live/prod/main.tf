@@ -115,7 +115,6 @@ module "secrets" {
   recovery_window_days = 30 # longer recovery in production
 
   secret_names = {
-    "db-url"              = "PostgreSQL connection URL for the app"
     "jwt-private"         = "EC P-256 (ES256) private key (PEM, base64-encoded)"
     "jwt-public"          = "EC P-256 (ES256) public key (PEM, base64-encoded)"
     "csrf-secret"         = "CSRF token signing secret"
@@ -236,10 +235,22 @@ module "api" {
   alb_host_headers  = [local.api_domain] # host-based routing on the shared prod ALB
   health_check_path = "/v1/healthz"
 
-  secret_arns = values(module.secrets.secret_arns)
+  # Includes the AWS-managed RDS secret: the execution role needs GetSecretValue
+  # on it to inject DATABASE_USER/PASSWORD. Omit it and the task cannot start at
+  # all ("unable to pull secrets") — it is not a runtime error, it is a boot
+  # failure. The migrator reuses this role, so it is covered here too.
+  secret_arns = concat(values(module.secrets.secret_arns), [module.rds.master_secret_arn])
   kms_key_arn = local.kms_key_arn
   secrets = [
-    { name = "DATABASE_URL", secret_arn = module.secrets.secret_arns["db-url"] },
+    # Credentials come STRAIGHT from the RDS-managed secret that AWS owns and
+    # rotates — never a hand-maintained copy. `:key::` selects one JSON field.
+    #
+    # This replaces a static `db-url` secret. That copy went stale on every
+    # rotation and the next deploy died with 28P01 (auth failed for app_admin),
+    # with nothing drifting in Terraform to explain why. Host/port/name are
+    # non-secret and passed as plain env below; the app composes the URL.
+    { name = "DATABASE_USER", secret_arn = "${module.rds.master_secret_arn}:username::" },
+    { name = "DATABASE_PASSWORD", secret_arn = "${module.rds.master_secret_arn}:password::" },
     { name = "JWT_PRIVATE_KEY", secret_arn = module.secrets.secret_arns["jwt-private"] },
     { name = "JWT_PUBLIC_KEY", secret_arn = module.secrets.secret_arns["jwt-public"] },
     { name = "CSRF_SECRET", secret_arn = module.secrets.secret_arns["csrf-secret"] },
@@ -254,6 +265,10 @@ module "api" {
     { name = "PORT", value = "3000" },
     { name = "REDIS_URL", value = local.redis_url }, # shared runtime-prod cache
     { name = "AWS_REGION", value = local.region },
+    # Non-secret connection parts; DATABASE_USER/PASSWORD arrive via secrets.
+    { name = "DATABASE_HOST", value = module.rds.address },
+    { name = "DATABASE_PORT", value = tostring(module.rds.port) },
+    { name = "DATABASE_NAME", value = module.rds.db_name },
     { name = "CORS_ORIGINS", value = local.app_base_url },
     { name = "APP_BASE_URL", value = local.app_base_url },
     # JWT config — defaults match app .env.example; override if needed
@@ -335,10 +350,22 @@ module "worker" {
   health_check_command = "pgrep -x node || exit 1"
   container_port       = 3001
 
-  secret_arns = values(module.secrets.secret_arns)
+  # Includes the AWS-managed RDS secret: the execution role needs GetSecretValue
+  # on it to inject DATABASE_USER/PASSWORD. Omit it and the task cannot start at
+  # all ("unable to pull secrets") — it is not a runtime error, it is a boot
+  # failure. The migrator reuses this role, so it is covered here too.
+  secret_arns = concat(values(module.secrets.secret_arns), [module.rds.master_secret_arn])
   kms_key_arn = local.kms_key_arn
   secrets = [
-    { name = "DATABASE_URL", secret_arn = module.secrets.secret_arns["db-url"] },
+    # Credentials come STRAIGHT from the RDS-managed secret that AWS owns and
+    # rotates — never a hand-maintained copy. `:key::` selects one JSON field.
+    #
+    # This replaces a static `db-url` secret. That copy went stale on every
+    # rotation and the next deploy died with 28P01 (auth failed for app_admin),
+    # with nothing drifting in Terraform to explain why. Host/port/name are
+    # non-secret and passed as plain env below; the app composes the URL.
+    { name = "DATABASE_USER", secret_arn = "${module.rds.master_secret_arn}:username::" },
+    { name = "DATABASE_PASSWORD", secret_arn = "${module.rds.master_secret_arn}:password::" },
     { name = "JWT_PRIVATE_KEY", secret_arn = module.secrets.secret_arns["jwt-private"] },
     { name = "JWT_PUBLIC_KEY", secret_arn = module.secrets.secret_arns["jwt-public"] },
     # Shared env schema validates these at boot even though the worker never uses them as middleware.
@@ -353,6 +380,10 @@ module "worker" {
     { name = "NODE_ENV", value = "production" },
     { name = "REDIS_URL", value = local.redis_url },
     { name = "AWS_REGION", value = local.region },
+    # Non-secret connection parts; DATABASE_USER/PASSWORD arrive via secrets.
+    { name = "DATABASE_HOST", value = module.rds.address },
+    { name = "DATABASE_PORT", value = tostring(module.rds.port) },
+    { name = "DATABASE_NAME", value = module.rds.db_name },
     # Entra SSO — the worker validates the shared env schema, so these are required to boot.
     { name = "ENTRA_TENANT_ID", value = var.entra_tenant_id },
     { name = "ENTRA_CLIENT_ID", value = var.entra_client_id },
@@ -416,6 +447,10 @@ module "migrator" {
   environment = {
     NODE_ENV   = "production"
     AWS_REGION = local.region
+    # Non-secret connection parts; USER/PASSWORD arrive via secrets below.
+    DATABASE_HOST = module.rds.address
+    DATABASE_PORT = tostring(module.rds.port)
+    DATABASE_NAME = module.rds.db_name
     # Prod-safe: demo fixtures (ACME workspace, demo users/projects) must NEVER
     # be seeded into production. Explicit "false" (not omission) per audit D-3 so
     # the gate is structural. The migrator still runs migrations + system role
@@ -428,7 +463,11 @@ module "migrator" {
   }
 
   secrets = {
-    DATABASE_URL = module.secrets.secret_arns["db-url"]
+    # Same RDS-managed credential as the services — the master user holds full
+    # DDL rights. Read live from the AWS-managed secret so a rotation can never
+    # leave the migrator holding a stale password.
+    DATABASE_USER     = "${module.rds.master_secret_arn}:username::"
+    DATABASE_PASSWORD = "${module.rds.master_secret_arn}:password::"
   }
 
   tags = { Environment = local.env, Service = "migrator" }

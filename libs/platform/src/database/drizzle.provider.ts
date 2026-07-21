@@ -4,6 +4,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { AppConfigService } from '../config/app-config.service';
 import * as schema from '../../../../db/schema';
 import { pgOptions } from '../../../../db/pg-ssl';
+import { resolveDatabaseUrl } from '../../../../db/database-url';
 
 export const DRIZZLE = Symbol('DRIZZLE');
 
@@ -28,7 +29,20 @@ export class DrizzleProvider {
 
   constructor(private readonly config: AppConfigService) {
     this.pool = new Pool({
-      ...pgOptions(config.get('DATABASE_URL')),
+      // Composed from DATABASE_* parts when no complete URL is supplied, so the
+      // deployed path reads the RDS-managed secret directly and never holds a
+      // copy of a rotating password. See db/database-url.ts.
+      ...pgOptions(
+        resolveDatabaseUrl({
+          DATABASE_URL: config.get('DATABASE_URL'),
+          DATABASE_HOST: config.get('DATABASE_HOST'),
+          DATABASE_PORT: config.get('DATABASE_PORT'),
+          DATABASE_NAME: config.get('DATABASE_NAME'),
+          DATABASE_USER: config.get('DATABASE_USER'),
+          DATABASE_PASSWORD: config.get('DATABASE_PASSWORD'),
+          DATABASE_SSLMODE: config.get('DATABASE_SSLMODE'),
+        }),
+      ),
       min: config.get('DATABASE_POOL_MIN'),
       max: config.get('DATABASE_POOL_MAX'),
       // Fail fast on idle connections to surface misconfiguration
