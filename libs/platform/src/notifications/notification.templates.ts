@@ -13,13 +13,23 @@
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type NotificationTemplateName =
-  | 'WORKSPACE_INVITATION'
-  | 'WORKSPACE_INVITATION_ACCEPTED'
-  | 'WORK_ITEM_ASSIGNED'
-  | 'WORK_ITEM_STATE_CHANGED'
-  | 'WORK_ITEM_COMMENTED'
-  | 'WORK_ITEM_MENTIONED';
+/**
+ * Runtime mirror of NotificationTemplateName — the single source of truth for
+ * validating a caller-supplied type string (e.g. the preferences API's
+ * `:type` path param) against every real template name. Keep in sync with
+ * the union below; the array-as-const/derived-union pattern keeps them
+ * mechanically impossible to drift apart.
+ */
+export const NOTIFICATION_TEMPLATE_NAMES = [
+  'WORKSPACE_INVITATION',
+  'WORKSPACE_INVITATION_ACCEPTED',
+  'WORK_ITEM_ASSIGNED',
+  'WORK_ITEM_STATE_CHANGED',
+  'WORK_ITEM_COMMENTED',
+  'WORK_ITEM_MENTIONED',
+] as const;
+
+export type NotificationTemplateName = (typeof NOTIFICATION_TEMPLATE_NAMES)[number];
 
 interface WorkItemNotificationVars {
   itemKey: string;

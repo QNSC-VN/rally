@@ -807,50 +807,58 @@ export class WorkItemsService {
         }
       }
 
+      // ── F7 notifications ──
+      // Enqueued on the same `tx` as the business write, so the outbox row
+      // commits/rolls back atomically with it — no ghost notification, no
+      // silent drop on a post-commit crash. Recipient resolution (watchers +
+      // permission checks) reads already-committed data off the pool; only
+      // the outbox insert itself needs the transaction.
+
+      // Assignment: notify (and auto-watch) the new assignee.
+      const assigneeChanged =
+        input.assigneeId !== undefined &&
+        !!updated.assigneeId &&
+        updated.assigneeId !== item.assigneeId;
+      if (assigneeChanged && updated.assigneeId) {
+        await this.watcherRepo
+          .watch(updated.id, updated.assigneeId, actor.workspaceId)
+          .catch(() => undefined);
+        if (updated.assigneeId !== actor.sub) {
+          await this.emitWorkItemNotification(
+            'WORK_ITEM_ASSIGNED',
+            updated,
+            actor.sub,
+            [updated.assigneeId],
+            { itemKey: updated.itemKey, itemTitle: updated.title, projectId: updated.projectId },
+            updated.assigneeId,
+            tx,
+          );
+        }
+      }
+
+      // Schedule-state change: notify watchers ∪ assignee (minus the actor).
+      if (input.scheduleState !== undefined && updated.scheduleState !== item.scheduleState) {
+        const recipients = await this.resolveRecipients(updated, [updated.assigneeId], actor.sub);
+        if (recipients.length > 0) {
+          await this.emitWorkItemNotification(
+            'WORK_ITEM_STATE_CHANGED',
+            updated,
+            actor.sub,
+            recipients,
+            {
+              itemKey: updated.itemKey,
+              itemTitle: updated.title,
+              newState: updated.scheduleState,
+              projectId: updated.projectId,
+            },
+            updated.scheduleState,
+            tx,
+          );
+        }
+      }
+
       return updated;
     });
-
-    // ── F7 notifications (best-effort, post-commit) ──
-    // Assignment: notify (and auto-watch) the new assignee.
-    const assigneeChanged =
-      input.assigneeId !== undefined &&
-      !!updated.assigneeId &&
-      updated.assigneeId !== item.assigneeId;
-    if (assigneeChanged && updated.assigneeId) {
-      await this.watcherRepo
-        .watch(updated.id, updated.assigneeId, actor.workspaceId)
-        .catch(() => undefined);
-      if (updated.assigneeId !== actor.sub) {
-        await this.emitWorkItemNotification(
-          'WORK_ITEM_ASSIGNED',
-          updated,
-          actor.sub,
-          [updated.assigneeId],
-          { itemKey: updated.itemKey, itemTitle: updated.title, projectId: updated.projectId },
-          updated.assigneeId,
-        );
-      }
-    }
-
-    // Schedule-state change: notify watchers ∪ assignee (minus the actor).
-    if (input.scheduleState !== undefined && updated.scheduleState !== item.scheduleState) {
-      const recipients = await this.resolveRecipients(updated, [updated.assigneeId], actor.sub);
-      if (recipients.length > 0) {
-        await this.emitWorkItemNotification(
-          'WORK_ITEM_STATE_CHANGED',
-          updated,
-          actor.sub,
-          recipients,
-          {
-            itemKey: updated.itemKey,
-            itemTitle: updated.title,
-            newState: updated.scheduleState,
-            projectId: updated.projectId,
-          },
-          updated.scheduleState,
-        );
-      }
-    }
 
     return updated;
   }
@@ -916,6 +924,13 @@ export class WorkItemsService {
     return results.filter((id): id is string => id !== null);
   }
 
+  /**
+   * Pass `tx` when called from inside an open business transaction (e.g. the
+   * update path) so the outbox insert commits/rolls back atomically with the
+   * business write — no ghost notification, no silent drop on a post-commit
+   * crash. Callers outside a transaction (e.g. comment notifications) may
+   * omit it; the scheduler falls back to its own best-effort transaction.
+   */
   private async emitWorkItemNotification<K extends NotificationTemplateName>(
     template: K,
     item: WorkItem,
@@ -923,22 +938,28 @@ export class WorkItemsService {
     recipientIds: string[],
     vars: NotificationTemplateVars[K],
     discriminator: string,
+    tx?: DbExecutor,
   ): Promise<void> {
     await Promise.all(
       recipientIds.map((recipientId) =>
         this.notificationScheduler
-          .schedule({
-            workspaceId: item.workspaceId,
-            recipientId,
-            actorId,
-            template,
-            vars,
-            resourceId: item.id,
-            // The relay writes idempotencyKey into in_app_notifications.source_event_id
-            // (a UUID). Derive a deterministic UUID from the business-event key so
-            // dedup still holds while satisfying the column type.
-            idempotencyKey: stableEventId(`${template}:${item.id}:${recipientId}:${discriminator}`),
-          })
+          .schedule(
+            {
+              workspaceId: item.workspaceId,
+              recipientId,
+              actorId,
+              template,
+              vars,
+              resourceId: item.id,
+              // The relay writes idempotencyKey into in_app_notifications.source_event_id
+              // (a UUID). Derive a deterministic UUID from the business-event key so
+              // dedup still holds while satisfying the column type.
+              idempotencyKey: stableEventId(
+                `${template}:${item.id}:${recipientId}:${discriminator}`,
+              ),
+            },
+            tx,
+          )
           .catch((err: unknown) =>
             this.logger.warn(
               { err, template, workItemId: item.id, recipientId },

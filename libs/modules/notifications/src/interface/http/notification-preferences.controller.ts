@@ -6,18 +6,42 @@
  *   PUT    /notifications/preferences/:type     — upsert (body: { inApp?, email? })
  *   DELETE /notifications/preferences/:type     — reset to default (delete row)
  *
- * type can be '*' (wildcard master switch) or a specific event type
- * (e.g. 'work_item.assigned', 'sprint.started').
+ * `type` must be '*' (wildcard master switch) or one of NotificationTemplateName
+ * (e.g. 'WORK_ITEM_ASSIGNED') — the exact runtime value stored on notification
+ * rows (see @platform/notifications/notification.templates). A mistyped or
+ * wrongly-cased type now fails validation instead of silently creating a
+ * preference row that never matches any real notification.
  */
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Put } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Put,
+} from '@nestjs/common';
 import { ApiBody, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Auth, ApiCommonErrors } from '@platform';
 import type { JwtPayload } from '@platform';
+import { NOTIFICATION_TEMPLATE_NAMES } from '@platform/notifications';
 import { CurrentUser } from '@modules/identity';
 import { NotificationPreferencesService } from '../../application/notification-preferences.service';
 import { UpsertPreferenceDto } from './dto/preference-request.dto';
 import type { PreferenceResponseDto } from './dto/preference-response.dto';
 import type { NotificationPreference } from '../../domain/notification-preference.types';
+
+const VALID_TYPES = new Set<string>(['*', ...NOTIFICATION_TEMPLATE_NAMES]);
+
+function assertValidType(type: string): void {
+  if (!VALID_TYPES.has(type)) {
+    throw new BadRequestException(
+      `Unknown notification type '${type}'. Must be '*' or one of: ${NOTIFICATION_TEMPLATE_NAMES.join(', ')}`,
+    );
+  }
+}
 
 function toDto(p: NotificationPreference): PreferenceResponseDto {
   return {
@@ -56,7 +80,7 @@ export class NotificationPreferencesController {
       'Creates or updates the preference for a specific notification type. ' +
       "Use type='*' to set a global switch for all types.",
   })
-  @ApiParam({ name: 'type', description: 'Event type key, e.g. work_item.assigned or *' })
+  @ApiParam({ name: 'type', description: "Event type key, e.g. WORK_ITEM_ASSIGNED or '*'" })
   @ApiBody({ type: UpsertPreferenceDto })
   @ApiResponse({ status: 200 })
   @ApiCommonErrors(400, 401)
@@ -65,6 +89,7 @@ export class NotificationPreferencesController {
     @Param('type') type: string,
     @Body() body: UpsertPreferenceDto,
   ): Promise<PreferenceResponseDto> {
+    assertValidType(type);
     const pref = await this.prefsService.upsert({
       workspaceId: user.workspaceId,
       userId: user.sub,
@@ -81,10 +106,11 @@ export class NotificationPreferencesController {
     summary: 'Reset a notification preference to default',
     description: 'Deletes the explicit preference row; the type reverts to both channels enabled.',
   })
-  @ApiParam({ name: 'type', description: 'Event type key, e.g. work_item.assigned or *' })
+  @ApiParam({ name: 'type', description: "Event type key, e.g. WORK_ITEM_ASSIGNED or '*'" })
   @ApiResponse({ status: 204, description: 'Reset to default' })
-  @ApiCommonErrors(401)
+  @ApiCommonErrors(400, 401)
   async reset(@CurrentUser() user: JwtPayload, @Param('type') type: string): Promise<void> {
+    assertValidType(type);
     await this.prefsService.reset(user.workspaceId, user.sub, type);
   }
 }

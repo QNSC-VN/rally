@@ -95,6 +95,13 @@ export abstract class AbstractOutboxRelay<TRow extends { id: string; attempts: n
   /**
    * Mark the row as failed or pending-retry (within the relay transaction).
    * newStatus is 'failed' when newAttempts >= maxAttempts, otherwise 'pending'.
+   *
+   * `nextAttemptAt` is the base class's computed exponential-backoff delay
+   * (see {@link backoffDelayMs}) — subclasses whose outbox table has a
+   * `scheduledAt`/similar column should write it there so `fetchBatch()`'s
+   * `scheduledAt <= now()` filter actually spaces retries out. Subclasses
+   * without such a column (e.g. the SNS domain-event outbox, which retries
+   * every tick unconditionally) may ignore it.
    */
   protected abstract markFailed(
     tx: DrizzleTx,
@@ -102,7 +109,21 @@ export abstract class AbstractOutboxRelay<TRow extends { id: string; attempts: n
     newAttempts: number,
     newStatus: 'pending' | 'failed',
     lastError: string,
+    nextAttemptAt: Date,
   ): Promise<void>;
+
+  /**
+   * Exponential backoff with a cap, so a persistently-failing row is retried
+   * with increasing spacing instead of burning all `maxAttempts` within
+   * seconds (bounded only by the cron/wake cadence). Base 30s, doubling per
+   * attempt, capped at 30 minutes: attempt 1 → 30s, 2 → 1m, 3 → 2m, 4 → 4m,
+   * 5 → 8m (well under the cap for the default maxAttempts=5).
+   */
+  protected backoffDelayMs(newAttempts: number): number {
+    const baseMs = 30_000;
+    const capMs = 30 * 60_000;
+    return Math.min(baseMs * 2 ** (newAttempts - 1), capMs);
+  }
 
   // ── Relay loop ────────────────────────────────────────────────────────────
 
@@ -148,8 +169,9 @@ export abstract class AbstractOutboxRelay<TRow extends { id: string; attempts: n
             const newAttempts = row.attempts + 1;
             const newStatus: 'pending' | 'failed' =
               newAttempts >= this.maxAttempts ? 'failed' : 'pending';
+            const nextAttemptAt = new Date(Date.now() + this.backoffDelayMs(newAttempts));
 
-            await this.markFailed(tx, row.id, newAttempts, newStatus, errMsg);
+            await this.markFailed(tx, row.id, newAttempts, newStatus, errMsg, nextAttemptAt);
 
             this.logger.error(
               { rowId: row.id, err },
@@ -170,7 +192,9 @@ export abstract class AbstractOutboxRelay<TRow extends { id: string; attempts: n
       if (this.wakeOnComplete) {
         this.wakeOnComplete = false;
         setImmediate(() => {
-          void this.relay().catch((err: unknown) => this.logger.error({ err }, 'Post-wake relay failed'));
+          void this.relay().catch((err: unknown) =>
+            this.logger.error({ err }, 'Post-wake relay failed'),
+          );
         });
       }
     }

@@ -73,7 +73,7 @@ export class NotificationRelayService
     config: AppConfigService,
   ) {
     super(db);
-    this.appUrl = (config.get('APP_BASE_URL')) ?? 'http://localhost:5173';
+    this.appUrl = config.get('APP_BASE_URL') ?? 'http://localhost:5173';
   }
 
   async onModuleInit(): Promise<void> {
@@ -139,7 +139,11 @@ export class NotificationRelayService
   protected async processRow(row: NotificationOutboxRow): Promise<PostCommitTask | void> {
     // Skip in-app delivery if user has opted out (preference check uses pool connection,
     // outside the FOR UPDATE SKIP LOCKED transaction — eventual consistency is acceptable).
-    const inAppEnabled = await this.prefs.isInAppEnabled(row.workspaceId, row.recipientId, row.type);
+    const inAppEnabled = await this.prefs.isInAppEnabled(
+      row.workspaceId,
+      row.recipientId,
+      row.type,
+    );
     if (!inAppEnabled) {
       this.logger.debug(
         { recipientId: row.recipientId, type: row.type },
@@ -173,7 +177,11 @@ export class NotificationRelayService
     if (!notification) return; // deduplicated — no post-commit work needed
 
     // Check email preference outside the transaction (acceptable eventual consistency).
-    const emailEnabled = await this.prefs.isEmailEnabled(row.workspaceId, row.recipientId, row.type);
+    const emailEnabled = await this.prefs.isEmailEnabled(
+      row.workspaceId,
+      row.recipientId,
+      row.type,
+    );
 
     return async () => {
       // 1. SSE real-time push via Valkey.
@@ -255,10 +263,19 @@ export class NotificationRelayService
     newAttempts: number,
     newStatus: 'pending' | 'failed',
     lastError: string,
+    nextAttemptAt: Date,
   ): Promise<void> {
     await tx
       .update(notificationOutbox)
-      .set({ status: newStatus, attempts: newAttempts, lastError })
+      .set({
+        status: newStatus,
+        attempts: newAttempts,
+        lastError,
+        // Only pushes scheduledAt forward on a retry — a 'failed' (terminal)
+        // row keeps its last scheduledAt, which is fine since fetchBatch()
+        // never selects 'failed' rows again.
+        ...(newStatus === 'pending' ? { scheduledAt: nextAttemptAt } : {}),
+      })
       .where(eq(notificationOutbox.id, rowId));
   }
 }

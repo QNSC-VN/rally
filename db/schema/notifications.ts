@@ -23,7 +23,7 @@ export const inAppNotifications = notificationsSchema.table(
     workspaceId: uuid('workspace_id').notNull(),
     recipientId: uuid('recipient_id').notNull(),
     actorId: uuid('actor_id'), // who triggered the notification
-    type: varchar('type', { length: 100 }).notNull(), // e.g. 'work_item.assigned'
+    type: varchar('type', { length: 100 }).notNull(), // a NotificationTemplateName, e.g. 'WORK_ITEM_ASSIGNED'
     title: varchar('title', { length: 500 }).notNull(),
     body: text('body'),
     resourceType: varchar('resource_type', { length: 50 }), // 'work_item' | 'sprint' | etc.
