@@ -75,11 +75,25 @@ export class StorageService {
    * Presigned PUT for direct client-to-bucket upload, expiring in
    * UPLOAD_URL_TTL_SECONDS (5 min).
    *
-   * Content-Type, Content-Length and the SHA-256 checksum are all bound into the
-   * signature. The checksum is the important one: the bucket verifies the body
-   * against it and rejects a mismatch, so a client cannot declare one file and
-   * upload another. Verifying only on confirm (and only by size) could not
-   * detect a same-length substitution.
+   * Content-Type and Content-Length are bound into the signature, so the bucket
+   * rejects an upload that declares a different type or exceeds the declared
+   * size — enforcement happens at the edge, not after the fact.
+   *
+   * The SHA-256 checksum is deliberately NOT sent by the client.
+   *
+   * An earlier version passed `ChecksumSHA256` and listed
+   * `x-amz-checksum-sha256` in `signableHeaders`, intending the bucket to reject
+   * a mismatched body. The presigner silently ignores it: the emitted
+   * X-Amz-SignedHeaders is `content-length;content-type;host` in every variant
+   * tried (command input, build-step header injection, and
+   * finalizeRequest + unhoistableHeaders). The client then sent an x-amz-* header
+   * the signature did not cover, S3/R2 rejected it 403, and because that error
+   * response carries no CORS headers the browser surfaced it as an opaque
+   * "Failed to fetch" — every upload failed.
+   *
+   * The digest the client computes is still stored on storage.files: it is the
+   * dedup key and lets a background job verify content later. It is NOT enforced
+   * at upload time. Anything claiming otherwise is wrong.
    *
    * Content-Disposition is baked in at PUT time so it is stored as object
    * metadata and therefore applies to EVERY later read — including a CDN read
@@ -96,23 +110,18 @@ export class StorageService {
             Key: req.key,
             ContentType: req.mimeType,
             ContentLength: req.sizeBytes,
-            ChecksumSHA256: req.checksumSha256,
           }),
           {
             expiresIn: UPLOAD_URL_TTL_SECONDS,
-            signableHeaders: new Set(['content-type', 'content-length', 'x-amz-checksum-sha256']),
+            signableHeaders: new Set(['content-type', 'content-length']),
           },
         ),
       ResiliencePreset.STORAGE,
     );
 
-    return {
-      uploadUrl,
-      requiredHeaders: {
-        'Content-Type': req.mimeType,
-        'x-amz-checksum-sha256': req.checksumSha256,
-      },
-    };
+    // Exactly the headers the signature covers. Sending anything extra beginning
+    // with x-amz- fails the signature; sending fewer fails it too.
+    return { uploadUrl, requiredHeaders: { 'Content-Type': req.mimeType } };
   }
 
   /**

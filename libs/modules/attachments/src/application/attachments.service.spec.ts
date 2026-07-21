@@ -119,10 +119,22 @@ describe('AttachmentsService', () => {
       await expect(presign({}, 25)).rejects.toThrow(PreconditionFailedException);
     });
 
-    it('binds the checksum into the presigned PUT', async () => {
+    // A presigned PUT cannot carry a checksum. Passing one made the client send
+    // an x-amz-* header the signature did not cover; S3/R2 answered 403 without
+    // CORS headers and the browser reported an opaque "Failed to fetch", so every
+    // upload failed. Guard against it coming back.
+    it('does NOT ask the storage layer to sign a checksum', async () => {
       await presign();
       expect(storage.presignPut).toHaveBeenCalledWith(
-        expect.objectContaining({ checksumSha256: CHECKSUM, visibility: 'private' }),
+        expect.objectContaining({ visibility: 'private', mimeType: 'text/plain' }),
+      );
+      expect(storage.presignPut.mock.calls[0][0]).not.toHaveProperty('checksumSha256');
+    });
+
+    it('still records the client checksum for dedup / later verification', async () => {
+      await presign();
+      expect(fileRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ checksumSha256: CHECKSUM }),
       );
     });
 
