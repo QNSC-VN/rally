@@ -192,14 +192,14 @@ export function ReleaseDetailPage() {
               value={release?.theme}
               minHeight={100}
               readOnly={!canManage}
-              onSave={(html) => handleRichFieldSave({ theme: html || null })}
+              onBlur={(html) => handleRichFieldSave({ theme: html || null })}
             />
             <RichTextEditor
               title={t('detailPage.notesTitle')}
               value={release?.notes}
               minHeight={140}
               readOnly={!canManage}
-              onSave={(html) => handleRichFieldSave({ notes: html || null })}
+              onBlur={(html) => handleRichFieldSave({ notes: html || null })}
             />
           </div>
 

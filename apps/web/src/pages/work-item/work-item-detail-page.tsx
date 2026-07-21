@@ -30,6 +30,7 @@ import {
   useDeleteWorkItem,
   useChildDefects,
   type WorkItem,
+  type UpdateWorkItemInput,
 } from '@/features/work-items/api'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { useProjectPermissions } from '@/features/access/api'
@@ -46,6 +47,9 @@ import { LinkedItemsBlock } from '@/features/work-items/ui/linked-items-block'
 import { CommentThread } from '@/features/collaboration/ui/comment-thread'
 import { Spinner } from '@/shared/ui/spinner'
 import { useSaveState } from '@/shared/lib/hooks/use-save-state'
+import { usePendingPatch } from '@/shared/lib/hooks/use-pending-patch'
+import { SaveCancelBar } from '@/shared/ui/save-cancel-bar'
+import { useUploadPastedImages } from '@/features/collaboration/use-upload-pasted-images'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -60,21 +64,21 @@ type DetailTab = 'details' | 'tasks' | 'defects' | 'history'
 
 function DetailsTab({
   item,
-  onUpdate,
+  onFieldChange,
   readOnly,
 }: {
   item: WorkItem
-  onUpdate: (patch: Partial<WorkItem>) => void
+  onFieldChange: (patch: Partial<UpdateWorkItemInput>) => void
   readOnly: boolean
 }) {
   const { t } = useTranslation('work-items')
   const isTask = item.type === 'task'
 
-  const handleSave = useCallback(
+  const handleChange = useCallback(
     (field: 'description' | 'notes' | 'releaseNotes') => (html: string) => {
-      onUpdate({ [field]: html || null })
+      onFieldChange({ [field]: html || null })
     },
-    [onUpdate],
+    [onFieldChange],
   )
 
   return (
@@ -86,7 +90,7 @@ function DetailsTab({
         value={item.description}
         minHeight={120}
         readOnly={readOnly}
-        onSave={handleSave('description')}
+        onChange={handleChange('description')}
       />
 
       <AttachmentBlock workItemId={item.id} readOnly={readOnly} />
@@ -98,7 +102,7 @@ function DetailsTab({
         value={item.notes}
         minHeight={80}
         readOnly={readOnly}
-        onSave={handleSave('notes')}
+        onChange={handleChange('notes')}
       />
 
       {/* Release Notes — Story/Defect only */}
@@ -108,7 +112,7 @@ function DetailsTab({
           value={item.releaseNotes}
           minHeight={80}
           readOnly={readOnly}
-          onSave={handleSave('releaseNotes')}
+          onChange={handleChange('releaseNotes')}
         />
       )}
 
@@ -153,6 +157,7 @@ export function WorkItemDetailPage() {
   const updateMutation = useUpdateWorkItem(itemByKey?.id ?? '')
   const deleteMutation = useDeleteWorkItem()
   const { status: saveStatus, errorMsg: saveErrorMsg, wrap: wrapSave } = useSaveState()
+  const { uploadAndRewrite } = useUploadPastedImages(itemByKey?.id)
 
   // P1-11: work item is read-only when the user lacks work_item:edit permission.
   // BA spec: all active roles (non-Viewer) can update any work item.
@@ -180,14 +185,39 @@ export function WorkItemDetailPage() {
   const { data: tasksForCount = [] } = useTasks(showsTasks ? itemByKey.id : undefined)
   const taskCount = tasksForCount.length
 
-  const patchItem = useCallback(
-    async (patch: Record<string, unknown>) => {
-      if (!itemByKey) return
+  // Broadcom-Rally-style Save/Cancel: field edits accumulate locally (sidebar
+  // dropdowns AND rich-text editors alike) instead of auto-saving on every
+  // change; the floating bar below commits or discards them all at once.
+  // Falls back to an empty object while the entity is still loading — the
+  // hook must run unconditionally on every render (Rules of Hooks), the
+  // loadingKey/!itemByKey guards below happen after.
+  const {
+    value: item,
+    isDirty,
+    saving,
+    setField,
+    save,
+    cancel,
+  } = usePendingPatch<WorkItem, UpdateWorkItemInput>(
+    itemByKey ?? ({} as WorkItem),
+    itemByKey?.id,
+    async (patch) => {
+      // Upload any pasted-image previews still sitting as blob: URLs before
+      // persisting — this is the actual "upload happens on Save" step.
+      const resolved = { ...patch }
+      if (typeof resolved.description === 'string') {
+        resolved.description = await uploadAndRewrite(resolved.description)
+      }
+      if (typeof resolved.notes === 'string') {
+        resolved.notes = await uploadAndRewrite(resolved.notes)
+      }
+      if (typeof resolved.releaseNotes === 'string') {
+        resolved.releaseNotes = await uploadAndRewrite(resolved.releaseNotes)
+      }
       await wrapSave(async () => {
-        await updateMutation.mutateAsync(patch)
+        await updateMutation.mutateAsync(resolved)
       })
     },
-    [itemByKey, updateMutation, wrapSave],
   )
 
   useEffect(() => {
@@ -237,7 +267,6 @@ export function WorkItemDetailPage() {
     )
   }
 
-  const item = itemByKey
   const isTask = item.type === 'task'
 
   type TabDef = { id: DetailTab; icon: React.ReactNode; label: string }
@@ -416,11 +445,7 @@ export function WorkItemDetailPage() {
         {/* Main content */}
         <main className="flex-1 overflow-y-auto bg-surface-subtle p-6">
           {activeTab === 'details' && (
-            <DetailsTab
-              item={item}
-              onUpdate={(patch) => void patchItem(patch as Record<string, unknown>)}
-              readOnly={readOnly}
-            />
+            <DetailsTab item={item} onFieldChange={setField} readOnly={readOnly} />
           )}
           {activeTab === 'tasks' && !isTask && (
             <TasksTab workItemId={item.id} projectId={item.projectId} readOnly={readOnly} />
@@ -435,8 +460,8 @@ export function WorkItemDetailPage() {
         {activeTab === 'details' && (
           <DetailSidebar
             item={item}
-            onUpdate={(patch) => void patchItem(patch as Record<string, unknown>)}
-            updating={updateMutation.isPending}
+            onUpdate={setField}
+            updating={saving}
             readOnly={readOnly}
             collapsed={sidebarCollapsed}
             onToggleCollapse={toggleSidebar}
@@ -455,6 +480,17 @@ export function WorkItemDetailPage() {
           </button>
         )}
       </div>
+
+      {/* Floating Save/Cancel — appears once any field has an unsaved edit
+          (sidebar dropdowns or the rich-text editors), matching Broadcom
+          Rally's UX instead of auto-saving each field on change. */}
+      <SaveCancelBar
+        visible={isDirty && !readOnly}
+        saving={saving}
+        errorMsg={saveStatus === 'error' ? saveErrorMsg : null}
+        onSave={() => void save()}
+        onCancel={cancel}
+      />
     </div>
   )
 }
