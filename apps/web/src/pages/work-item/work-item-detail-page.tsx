@@ -60,6 +60,7 @@ import { deriveEstimateHours } from '@/entities/work-item/model/task-time'
 import { OwnerCell, OwnerAvatar, OwnerSelectCell } from '@/shared/ui/owner-cell'
 import { formatDate, formatDateTime } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
+import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { StateStepper } from '@/entities/work-item/ui/state-stepper'
 import { SCHEDULE_STATE_STEPS } from '@/entities/work-item/ui/state-steps'
 import {
@@ -235,16 +236,7 @@ function DetailsTab({
 
 // TASK-FR-003: columns Rank, ID, Name, State, Owner, Project, Teams, To Do, Actuals, Estimate.
 type TaskColKey =
-  | 'rank'
-  | 'id'
-  | 'name'
-  | 'state'
-  | 'owner'
-  | 'project'
-  | 'teams'
-  | 'todo'
-  | 'actuals'
-  | 'estimate'
+  'rank' | 'id' | 'name' | 'state' | 'owner' | 'project' | 'teams' | 'todo' | 'actuals' | 'estimate'
 
 // Single per-column source of truth for the Tasks tab, driven by the shared
 // useDataTable engine (identical to Projects / Team Status / Quality) so the grid
@@ -557,12 +549,12 @@ function TaskRow({
       <div className="shrink-0 px-2" style={colStyles.state}>
         <InlineCellSelect
           value={task.scheduleState}
-          displayValue={SCHEDULE_STATE_LABEL[task.scheduleState as ScheduleState] ?? task.scheduleState}
+          displayValue={
+            SCHEDULE_STATE_LABEL[task.scheduleState as ScheduleState] ?? task.scheduleState
+          }
           disabled={!canEdit}
           aria-label={`Task ${task.itemKey} state`}
-          onChange={(e) =>
-            update.mutateAsync({ scheduleState: e.target.value as ScheduleState })
-          }
+          onChange={(e) => update.mutateAsync({ scheduleState: e.target.value as ScheduleState })}
         >
           {TASK_STATE_VALUES.map((s) => (
             <option key={s} value={s}>
@@ -945,9 +937,7 @@ function DetailSidebar({
             <FormField label="Flow State">
               <NativeSelect
                 value={item.flowState ?? item.scheduleState ?? ScheduleState.Defined}
-                onChange={(e) =>
-                  onUpdate({ flowState: e.target.value as WorkItem['flowState'] })
-                }
+                onChange={(e) => onUpdate({ flowState: e.target.value as WorkItem['flowState'] })}
                 disabled={disabled}
               >
                 {SCHEDULE_STATE_VALUES.map((s) => (
@@ -1182,10 +1172,7 @@ function DetailSidebar({
                     : 'No milestones'}
                 </span>
                 {itemMilestones.length > 0 && (
-                  <span
-                    className="ml-2 shrink-0 text-[11px]"
-                    style={{ color: BRAND.textMuted }}
-                  >
+                  <span className="ml-2 shrink-0 text-[11px]" style={{ color: BRAND.textMuted }}>
                     {itemMilestones.length}
                   </span>
                 )}
@@ -1259,6 +1246,7 @@ export function WorkItemDetailPage() {
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<DetailTab>('details')
   const [moreOpen, setMoreOpen] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const moreRef = useRef<HTMLDivElement>(null)
 
   // P1-10: sidebar collapse — persisted in localStorage so preference survives navigation
@@ -1336,11 +1324,10 @@ export function WorkItemDetailPage() {
 
   async function handleDelete() {
     if (!itemByKey) return
-    if (!confirm(`Delete ${itemByKey.itemKey}? This cannot be undone.`)) return
-    setMoreOpen(false)
     try {
       await deleteMutation.mutateAsync({ id: itemByKey.id, projectId: itemByKey.projectId })
       toast.success(`${itemByKey.itemKey} deleted`)
+      setConfirmDelete(false)
       void navigate({ to: '/backlog' })
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to delete work item')
@@ -1504,7 +1491,10 @@ export function WorkItemDetailPage() {
                   style={{ backgroundColor: 'white', border: `1px solid ${BRAND.borderInput}` }}
                 >
                   <button
-                    onClick={() => void handleDelete()}
+                    onClick={() => {
+                      setMoreOpen(false)
+                      setConfirmDelete(true)
+                    }}
                     disabled={deleteMutation.isPending}
                     className="flex w-full items-center gap-2 px-3 py-2 text-[12px] transition-colors hover:bg-red-50 disabled:opacity-50"
                     style={{ color: BRAND.danger }}
@@ -1514,6 +1504,18 @@ export function WorkItemDetailPage() {
                   </button>
                 </div>
               )}
+              <ConfirmDialog
+                open={confirmDelete}
+                title="Delete work item"
+                message={
+                  itemByKey ? `Delete ${itemByKey.itemKey}? This cannot be undone.` : undefined
+                }
+                confirmLabel="Delete"
+                destructive
+                pending={deleteMutation.isPending}
+                onConfirm={() => void handleDelete()}
+                onCancel={() => setConfirmDelete(false)}
+              />
             </div>
           )}
         </div>
