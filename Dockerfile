@@ -36,7 +36,7 @@ RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 
 WORKDIR /app
 
-COPY package.json pnpm-lock.yaml .npmrc ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store,sharing=locked \
     --mount=type=secret,id=node_auth_token \
@@ -56,7 +56,7 @@ RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 
 WORKDIR /app
 
-COPY package.json pnpm-lock.yaml .npmrc ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store,sharing=locked \
     --mount=type=secret,id=node_auth_token \
