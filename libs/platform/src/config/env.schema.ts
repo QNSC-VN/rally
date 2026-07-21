@@ -67,14 +67,29 @@ export const EnvSchema = z.object({
   SQS_AUDIT_URL: z.string().optional(),
   SQS_REPORTING_URL: z.string().optional(),
   SQS_SEARCH_URL: z.string().optional(),
+  /** PRIVATE bucket — every permission-gated upload. Served only via presigned GET. */
   S3_ATTACHMENTS_BUCKET: z.string().default('rally-attachments'),
-  CDN_ATTACHMENTS_BASE_URL: z.string().url().optional(),
+
+  /**
+   * PUBLIC bucket — non-sensitive assets only (avatars, workspace logos). World-
+   * readable by key. Optional: when unset, any attempt to store a public asset
+   * throws rather than silently falling back to the private bucket.
+   */
+  S3_PUBLIC_ASSETS_BUCKET: z.string().optional(),
+
+  /**
+   * CDN origin for the PUBLIC bucket. MUST NOT point at the private bucket —
+   * doing so makes every attachment readable by key, bypassing authorization
+   * entirely. StorageService.cdnUrl() has no private-bucket path for this reason.
+   */
+  CDN_PUBLIC_ASSETS_BASE_URL: z.string().url().optional(),
 
   // Object-storage backend selection (provider-neutral). All optional:
   //  - unset          → AWS S3 via the default credential chain (ECS task role).
   //  - STORAGE_ENDPOINT set → S3-compatible backend (Cloudflare R2, MinIO).
   // R2 requires STORAGE_ENDPOINT + STORAGE_ACCESS_KEY_ID + STORAGE_SECRET_ACCESS_KEY
-  // + STORAGE_FORCE_PATH_STYLE=true. Bucket name stays S3_ATTACHMENTS_BUCKET.
+  // + STORAGE_FORCE_PATH_STYLE=true. Bucket names stay S3_ATTACHMENTS_BUCKET /
+  // S3_PUBLIC_ASSETS_BUCKET — both buckets share one endpoint and credential pair.
   STORAGE_ENDPOINT: z.string().url().optional(),
   STORAGE_ACCESS_KEY_ID: z.string().optional(),
   STORAGE_SECRET_ACCESS_KEY: z.string().optional(),

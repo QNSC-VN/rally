@@ -10,6 +10,7 @@ import {
   Post,
   Put,
   Query,
+  Redirect,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
@@ -59,7 +60,7 @@ import { BACKLOG_SORT_FIELDS } from '../../domain/work-item.types';
 import type { ActivityLog } from '../../domain/activity-log.types';
 import type { TimeLog } from '../../domain/time-log.types';
 import type { Watcher } from '../../domain/watcher.types';
-import type { Attachment } from '../../domain/attachment.types';
+import type { WorkItemAttachment } from '../../domain/attachment.types';
 
 // ── Mappers ─────────────────────────────────────────────────────────────────
 
@@ -149,7 +150,7 @@ function toWatcherDto(w: Watcher): WatcherResponseDto {
 
 // ── Controller ────────────────────────────────────────────────────────────────
 
-function toAttachmentDto(a: Attachment): AttachmentResponseDto {
+function toAttachmentDto(a: WorkItemAttachment): AttachmentResponseDto {
   return {
     id: a.id,
     workItemId: a.workItemId,
@@ -157,7 +158,6 @@ function toAttachmentDto(a: Attachment): AttachmentResponseDto {
     filename: a.filename,
     mimeType: a.mimeType,
     sizeBytes: Number(a.sizeBytes),
-    status: a.status,
     createdAt: a.createdAt.toISOString(),
   };
 }
@@ -777,6 +777,7 @@ export class WorkItemsController {
       filename: dto.filename,
       mimeType: dto.mimeType,
       sizeBytes: dto.sizeBytes,
+      checksumSha256: dto.checksumSha256,
     });
   }
 
@@ -821,6 +822,34 @@ export class WorkItemsController {
     @Param('aid', ParseUUIDPipe) aid: string,
   ): Promise<DownloadUrlResponseDto> {
     return this.workItemsService.getAttachmentDownloadUrl(user, id, aid);
+  }
+
+  /**
+   * Stable, authenticated URL for an attachment's bytes. Authorizes, then 302s
+   * to a freshly minted presigned URL.
+   *
+   * This is the URL that belongs in an href or an <img src> — it never expires,
+   * so it is safe to persist in rich-text content, and every access is
+   * re-authorized. Presigned URLs must NEVER be stored anywhere: they expire in
+   * 15 minutes and they carry access in the URL itself.
+   *
+   * 302 rather than 307 so the browser follows with GET and does not re-send the
+   * session cookie to the bucket origin.
+   */
+  @Get(':id/attachments/:aid/content')
+  @Redirect(undefined, 302)
+  @ApiOperation({ summary: 'Redirect to the attachment bytes (stable, authenticated URL)' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiParam({ name: 'aid', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 302, description: 'Redirect to a short-lived presigned URL' })
+  @ApiCommonErrors(401, 404)
+  async getAttachmentContent(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('aid', ParseUUIDPipe) aid: string,
+  ): Promise<{ url: string; statusCode: number }> {
+    const { downloadUrl } = await this.workItemsService.getAttachmentDownloadUrl(user, id, aid);
+    return { url: downloadUrl, statusCode: 302 };
   }
 
   @Delete(':id/attachments/:aid')

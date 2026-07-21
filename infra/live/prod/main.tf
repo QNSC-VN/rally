@@ -115,13 +115,18 @@ module "secrets" {
   recovery_window_days = 30 # longer recovery in production
 
   secret_names = {
-    "db-url"               = "PostgreSQL connection URL for the app"
-    "jwt-private"          = "EC P-256 (ES256) private key (PEM, base64-encoded)"
-    "jwt-public"           = "EC P-256 (ES256) public key (PEM, base64-encoded)"
-    "csrf-secret"          = "CSRF token signing secret"
-    "entra-client-secret"  = "Microsoft Entra confidential-client secret (BFF OIDC)"
-    "r2-access-key-id"     = "Cloudflare R2 bucket-scoped access key ID (attachments)"
-    "r2-secret-access-key" = "Cloudflare R2 bucket-scoped secret access key (attachments)"
+    "db-url"              = "PostgreSQL connection URL for the app"
+    "jwt-private"         = "EC P-256 (ES256) private key (PEM, base64-encoded)"
+    "jwt-public"          = "EC P-256 (ES256) public key (PEM, base64-encoded)"
+    "csrf-secret"         = "CSRF token signing secret"
+    "entra-client-secret" = "Microsoft Entra confidential-client secret (BFF OIDC)"
+    # MUST be scoped to BOTH R2 buckets (<product>-<env>-attachments AND
+    # <product>-<env>-public-assets). StorageService uses one S3 client for both,
+    # so a token scoped to attachments alone makes every avatar/logo write 403.
+    # R2 API tokens are minted by hand in the Cloudflare dashboard, not by
+    # Terraform — re-mint with both buckets selected when adding a bucket.
+    "r2-access-key-id"     = "Cloudflare R2 access key ID (attachments + public-assets)"
+    "r2-secret-access-key" = "Cloudflare R2 secret access key (attachments + public-assets)"
   }
 
   tags = { Environment = local.env }
@@ -272,6 +277,16 @@ module "api" {
     # storage-prod stack. Bucket name still travels as S3_ATTACHMENTS_BUCKET; the
     # presence of STORAGE_ENDPOINT flips StorageService to the R2 endpoint + keys.
     { name = "S3_ATTACHMENTS_BUCKET", value = data.terraform_remote_state.storage.outputs.rally_attachments_name },
+    # Separate PUBLIC bucket for avatars/logos. StorageService refuses to store a
+    # public asset when this is unset rather than falling back to the private
+    # bucket — a silent fallback would put world-readable objects next to
+    # permission-gated ones.
+    { name = "S3_PUBLIC_ASSETS_BUCKET", value = data.terraform_remote_state.storage.outputs.rally_public_assets_name },
+    # CDN_PUBLIC_ASSETS_BASE_URL is deliberately NOT set yet — the public bucket
+    # has no custom domain until cf-r2-v1.1.0 ships. Unset means public assets
+    # fall back to a presigned GET, which is correct, just not edge-cached.
+    # When wiring it: source it from the storage stack output, never hand-enter
+    # it, and never point it at the attachments bucket.
     { name = "STORAGE_ENDPOINT", value = data.terraform_remote_state.storage.outputs.rally_attachments_endpoint },
     { name = "STORAGE_FORCE_PATH_STYLE", value = "true" },
     # Email — SES in production
@@ -349,6 +364,16 @@ module "worker" {
     { name = "SNS_TOPIC_ARN", value = module.messaging.topic_arns["domain-events"] },
     # Attachments object storage — Cloudflare R2 (see api service for rationale).
     { name = "S3_ATTACHMENTS_BUCKET", value = data.terraform_remote_state.storage.outputs.rally_attachments_name },
+    # Separate PUBLIC bucket for avatars/logos. StorageService refuses to store a
+    # public asset when this is unset rather than falling back to the private
+    # bucket — a silent fallback would put world-readable objects next to
+    # permission-gated ones.
+    { name = "S3_PUBLIC_ASSETS_BUCKET", value = data.terraform_remote_state.storage.outputs.rally_public_assets_name },
+    # CDN_PUBLIC_ASSETS_BASE_URL is deliberately NOT set yet — the public bucket
+    # has no custom domain until cf-r2-v1.1.0 ships. Unset means public assets
+    # fall back to a presigned GET, which is correct, just not edge-cached.
+    # When wiring it: source it from the storage stack output, never hand-enter
+    # it, and never point it at the attachments bucket.
     { name = "STORAGE_ENDPOINT", value = data.terraform_remote_state.storage.outputs.rally_attachments_endpoint },
     { name = "STORAGE_FORCE_PATH_STYLE", value = "true" },
     { name = "EMAIL_PROVIDER", value = "ses" },

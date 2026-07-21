@@ -5,7 +5,6 @@ import { WorkItemsService } from '@modules/work-items';
 import { AccessService } from '@modules/access';
 import { CollaborationService } from './collaboration.service';
 import { COMMENT_REPOSITORY } from '../domain/ports/comment.repository';
-import { ATTACHMENT_REPOSITORY } from '../domain/ports/attachment.repository';
 import type { Comment } from '../domain/collaboration.types';
 
 const now = new Date('2024-06-01');
@@ -48,13 +47,6 @@ const makeCommentRepo = () => ({
   softDelete: vi.fn().mockResolvedValue(undefined),
 });
 
-const makeAttachmentRepo = () => ({
-  findById: vi.fn(),
-  listByWorkItem: vi.fn().mockResolvedValue([]),
-  create: vi.fn(),
-  softDelete: vi.fn().mockResolvedValue(undefined),
-});
-
 // getWorkItem resolves the item so the service can read its projectId.
 const makeWorkItemsService = () => ({
   getWorkItem: vi.fn().mockResolvedValue({ id: 'wi-1', projectId: 'proj-9', workspaceId: 'ws-1' }),
@@ -68,13 +60,11 @@ const makeAccessService = () => ({
 describe('CollaborationService — project-scoped comment writes', () => {
   let service: CollaborationService;
   let commentRepo: ReturnType<typeof makeCommentRepo>;
-  let attachmentRepo: ReturnType<typeof makeAttachmentRepo>;
   let workItemsService: ReturnType<typeof makeWorkItemsService>;
   let accessService: ReturnType<typeof makeAccessService>;
 
   beforeEach(async () => {
     commentRepo = makeCommentRepo();
-    attachmentRepo = makeAttachmentRepo();
     workItemsService = makeWorkItemsService();
     accessService = makeAccessService();
 
@@ -82,7 +72,6 @@ describe('CollaborationService — project-scoped comment writes', () => {
       providers: [
         CollaborationService,
         { provide: COMMENT_REPOSITORY, useValue: commentRepo },
-        { provide: ATTACHMENT_REPOSITORY, useValue: attachmentRepo },
         { provide: WorkItemsService, useValue: workItemsService },
         { provide: AccessService, useValue: accessService },
       ],
@@ -141,41 +130,6 @@ describe('CollaborationService — project-scoped comment writes', () => {
         'work_item:edit',
       );
       expect(commentRepo.softDelete).toHaveBeenCalledWith('c-1');
-    });
-  });
-
-  describe('createAttachment', () => {
-    const input = {
-      filename: 'spec.pdf',
-      mimeType: 'application/pdf',
-      sizeBytes: 1024,
-      storageKey: 'ws-1/wi-1/spec.pdf',
-    };
-
-    it('authorizes work_item:edit against the item’s project before creating', async () => {
-      attachmentRepo.create.mockResolvedValue({ id: 'att-1' });
-      await service.createAttachment(mockActor, 'wi-1', input);
-      expect(workItemsService.getWorkItem).toHaveBeenCalledWith('ws-1', 'wi-1');
-      expect(accessService.assertProjectPermission).toHaveBeenCalledWith(
-        mockActor,
-        'proj-9',
-        'work_item:edit',
-      );
-      expect(attachmentRepo.create).toHaveBeenCalledOnce();
-    });
-
-    it('does not create when authorization is denied', async () => {
-      accessService.assertProjectPermission.mockRejectedValueOnce(new Error('DENIED'));
-      await expect(service.createAttachment(mockActor, 'wi-1', input)).rejects.toThrow('DENIED');
-      expect(attachmentRepo.create).not.toHaveBeenCalled();
-    });
-
-    it('does not create when the work item is outside the workspace', async () => {
-      workItemsService.getWorkItem.mockRejectedValueOnce(new Error('WORK_ITEM_NOT_FOUND'));
-      await expect(service.createAttachment(mockActor, 'foreign-wi', input)).rejects.toThrow(
-        'WORK_ITEM_NOT_FOUND',
-      );
-      expect(attachmentRepo.create).not.toHaveBeenCalled();
     });
   });
 });

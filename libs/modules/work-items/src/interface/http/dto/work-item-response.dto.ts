@@ -109,11 +109,19 @@ export class WatcherResponseDto extends createZodDto(WatcherResponseSchema) {}
 
 export const PresignAttachmentResponseSchema = z.object({
   attachmentId: z.string().uuid(),
-  uploadUrl: z.string().url().describe('Presigned S3 PUT URL — expires in 5 minutes'),
+  uploadUrl: z.string().url().describe('Presigned PUT URL — expires in 5 minutes'),
+  requiredHeaders: z
+    .record(z.string(), z.string())
+    .describe(
+      'Headers the client MUST send on the PUT. They are part of the signature — ' +
+        'omitting or altering any of them fails with SignatureDoesNotMatch.',
+    ),
 });
 
 export class PresignAttachmentResponseDto extends createZodDto(PresignAttachmentResponseSchema) {}
 
+// `status` is intentionally absent: only confirmed attachments are ever returned
+// by a route, so it carried no information and invited clients to branch on it.
 export const AttachmentResponseSchema = z.object({
   id: z.string().uuid(),
   workItemId: z.string().uuid(),
@@ -121,7 +129,6 @@ export const AttachmentResponseSchema = z.object({
   filename: z.string(),
   mimeType: z.string(),
   sizeBytes: z.number().int(),
-  status: z.enum(['pending', 'completed']),
   createdAt: z.string().datetime(),
 });
 

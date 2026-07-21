@@ -8,10 +8,10 @@ import { WATCHER_REPOSITORY } from '../domain/ports/watcher.repository';
 import { ATTACHMENT_REPOSITORY } from '../domain/ports/attachment.repository';
 import { WORK_ITEM_RELATION_REPOSITORY } from '../domain/ports/work-item-relation.repository';
 import { NotificationSchedulerService } from '@platform/notifications/notification-scheduler.service';
-import { StorageService } from '@platform';
 import type { WorkItem } from '../domain/work-item.types';
 import type { TimeLog } from '../domain/time-log.types';
-import type { Attachment } from '../domain/attachment.types';
+import type { WorkItemAttachment } from '../domain/attachment.types';
+import { AttachmentsService } from '@modules/attachments';
 import { NotFoundException, PreconditionFailedException, UnitOfWork } from '@platform';
 import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
@@ -88,7 +88,7 @@ const mockTimeLog = (o: Partial<TimeLog> = {}): TimeLog => ({
   ...o,
 });
 
-const mockAttachment = (o: Partial<Attachment> = {}): Attachment => ({
+const mockAttachment = (o: Partial<WorkItemAttachment> = {}): WorkItemAttachment => ({
   id: 'att-a',
   workspaceId: WORKSPACE_A,
   workItemId: 'wi-a',
@@ -96,9 +96,6 @@ const mockAttachment = (o: Partial<Attachment> = {}): Attachment => ({
   filename: 'file.txt',
   mimeType: 'text/plain',
   sizeBytes: 100,
-  storageKey: `${WORKSPACE_A}/wi-a/att-a`,
-  status: 'completed',
-  deletedAt: null,
   createdAt: now,
   ...o,
 });
@@ -163,15 +160,44 @@ const makeScopedTimeLogRepo = (logs: TimeLog[]) => ({
   softDelete: vi.fn().mockResolvedValue(undefined),
 });
 
-const makeScopedAttachmentRepo = (attachments: Attachment[]) => ({
-  findById: vi.fn((id: string, workspaceId: string) =>
-    Promise.resolve(attachments.find((a) => a.id === id && a.workspaceId === workspaceId) ?? null),
+/** Valid base64 SHA-256 shape — the DTO/service reject anything else. */
+const CHECKSUM = 'A'.repeat(43) + '=';
+
+const makeScopedAttachmentRepo = (attachments: WorkItemAttachment[]) => ({
+  // Scoped by BOTH work item and workspace — a viewer of one work item must not
+  // be able to reach an attachment hanging off another.
+  findByWorkItemAndFile: vi.fn((workItemId: string, fileId: string, workspaceId: string) =>
+    Promise.resolve(
+      attachments.find(
+        (a) => a.id === fileId && a.workItemId === workItemId && a.workspaceId === workspaceId,
+      ) ?? null,
+    ),
   ),
   listByWorkItem: vi.fn().mockResolvedValue([]),
   countByWorkItem: vi.fn().mockResolvedValue(0),
-  create: vi.fn((input: Partial<Attachment>) => Promise.resolve(mockAttachment(input))),
-  confirm: vi.fn(),
+  link: vi.fn().mockResolvedValue(undefined),
+  unlink: vi.fn().mockResolvedValue(undefined),
+});
+
+const makeAttachmentsService = () => ({
+  presign: vi.fn().mockResolvedValue({
+    fileId: 'att-new',
+    uploadUrl: 'https://bucket.example.com/upload',
+    requiredHeaders: {},
+  }),
+  confirm: vi.fn().mockResolvedValue({
+    id: 'att-new',
+    filename: 'file.txt',
+    mimeType: 'text/plain',
+    sizeBytes: 100,
+    uploadedBy: 'user-1',
+    createdAt: now,
+  }),
+  getDownloadUrl: vi
+    .fn()
+    .mockResolvedValue({ url: 'https://bucket.example.com/get', expiresInSeconds: 900 }),
   softDelete: vi.fn().mockResolvedValue(undefined),
+  findById: vi.fn().mockResolvedValue(null),
 });
 
 const makeWatcherRepo = () => ({
@@ -218,20 +244,13 @@ const makeProjectsService = () => {
   };
 };
 
-const makeStorageService = () => ({
-  presignPut: vi.fn().mockResolvedValue({ uploadUrl: 'https://s3.example.com/upload' }),
-  presignGet: vi.fn().mockResolvedValue('https://s3.example.com/download'),
-  headObject: vi.fn().mockResolvedValue({ contentLength: 100 }),
-  deleteObject: vi.fn().mockResolvedValue(undefined),
-  cdnUrl: vi.fn().mockReturnValue(null),
-});
-
 describe('WorkItemsService — workspace isolation', () => {
   let service: WorkItemsService;
   let workItemRepo: ReturnType<typeof makeScopedWorkItemRepo>;
   let timeLogRepo: ReturnType<typeof makeScopedTimeLogRepo>;
   let watcherRepo: ReturnType<typeof makeWatcherRepo>;
   let attachmentRepo: ReturnType<typeof makeScopedAttachmentRepo>;
+  let attachmentsService: ReturnType<typeof makeAttachmentsService>;
   let activityRepo: ReturnType<typeof makeActivityRepo>;
   let projectsService: ReturnType<typeof makeProjectsService>;
 
@@ -270,7 +289,7 @@ describe('WorkItemsService — workspace isolation', () => {
           provide: NotificationSchedulerService,
           useValue: { schedule: vi.fn().mockResolvedValue(undefined) },
         },
-        { provide: StorageService, useValue: makeStorageService() },
+        { provide: AttachmentsService, useValue: attachmentsService },
         { provide: ProjectsService, useValue: projectsService },
         {
           provide: AccessService,
@@ -289,6 +308,7 @@ describe('WorkItemsService — workspace isolation', () => {
     workItemRepo = makeScopedWorkItemRepo([itemA]);
     timeLogRepo = makeScopedTimeLogRepo([logA]);
     attachmentRepo = makeScopedAttachmentRepo([attachmentA]);
+    attachmentsService = makeAttachmentsService();
     service = await build(workItemRepo, timeLogRepo, attachmentRepo);
   });
 
@@ -570,9 +590,10 @@ describe('WorkItemsService — workspace isolation', () => {
           filename: 'a.txt',
           mimeType: 'text/plain',
           sizeBytes: 10,
+          checksumSha256: CHECKSUM,
         }),
       ).rejects.toThrow(NotFoundException);
-      expect(attachmentRepo.create).not.toHaveBeenCalled();
+      expect(attachmentsService.presign).not.toHaveBeenCalled();
     });
 
     it('presigns using the caller workspaceId', async () => {
@@ -580,9 +601,14 @@ describe('WorkItemsService — workspace isolation', () => {
         filename: 'a.txt',
         mimeType: 'text/plain',
         sizeBytes: 10,
+        checksumSha256: CHECKSUM,
       });
-      expect(attachmentRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ workspaceId: WORKSPACE_A, workItemId: 'wi-a' }),
+      // The key is built from the ACTOR's workspace, never from a client value.
+      expect(attachmentsService.presign).toHaveBeenCalledWith(
+        expect.objectContaining({ workspaceId: WORKSPACE_A }),
+        expect.anything(),
+        expect.objectContaining({ filename: 'a.txt' }),
+        0,
       );
     });
 
@@ -590,7 +616,7 @@ describe('WorkItemsService — workspace isolation', () => {
       await expect(
         service.confirmAttachment(actorForWorkspace(WORKSPACE_B), 'wi-a', 'att-a'),
       ).rejects.toThrow(NotFoundException);
-      expect(attachmentRepo.confirm).not.toHaveBeenCalled();
+      expect(attachmentsService.confirm).not.toHaveBeenCalled();
     });
 
     it('cannot list attachments of a foreign workspace work item', async () => {
@@ -604,14 +630,14 @@ describe('WorkItemsService — workspace isolation', () => {
       await expect(
         service.getAttachmentDownloadUrl(actorForWorkspace(WORKSPACE_B), 'wi-a', 'att-a'),
       ).rejects.toThrow(NotFoundException);
-      expect(attachmentRepo.findById).not.toHaveBeenCalled();
+      expect(attachmentsService.getDownloadUrl).not.toHaveBeenCalled();
     });
 
     it('cannot delete an attachment via a foreign workspace work item scope', async () => {
       await expect(
         service.deleteAttachment(actorForWorkspace(WORKSPACE_B), 'wi-a', 'att-a'),
       ).rejects.toThrow(NotFoundException);
-      expect(attachmentRepo.softDelete).not.toHaveBeenCalled();
+      expect(attachmentsService.softDelete).not.toHaveBeenCalled();
     });
   });
 

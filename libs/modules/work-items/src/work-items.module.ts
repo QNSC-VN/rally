@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ProjectsModule } from '@modules/projects';
 import { AccessModule } from '@modules/access';
+import { AttachmentsModule } from '@modules/attachments';
 import { WorkItemsService } from './application/work-items.service';
 import { WorkItemsController } from './interface/http/work-items.controller';
 import { WorkItemDrizzleRepository } from './infrastructure/persistence/work-item.drizzle-repository';
@@ -17,7 +18,7 @@ import { WATCHER_REPOSITORY } from './domain/ports/watcher.repository';
 import { ATTACHMENT_REPOSITORY } from './domain/ports/attachment.repository';
 
 @Module({
-  imports: [ProjectsModule, AccessModule],
+  imports: [ProjectsModule, AccessModule, AttachmentsModule],
   controllers: [WorkItemsController],
   providers: [
     WorkItemsService,

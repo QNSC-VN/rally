@@ -5,8 +5,9 @@
  * Purges:
  *   1. identity.auth_sessions that are revoked and expired >N days ago
  *   2. workspace.workspace_invitations that are still 'pending' but expired >N days ago
- *   3. work.attachments that are still 'pending' (never confirmed) older than 24 h
- *      — hard-deletes the DB row then best-effort deletes the S3 object
+ *   3. storage.files that are unreachable — either presigned but never confirmed
+ *      (older than 24 h), or soft-deleted, or no longer referenced by any link
+ *      table. Deletes the object, then the row.
  *
  * N is configured via SESSION_CLEANUP_OLDER_THAN_DAYS (default 7).
  */
@@ -74,27 +75,75 @@ export class CleanupCronService {
       'Expired stale workspace invitations',
     );
 
-    // 3. Orphan attachments — pending rows older than 24 h (client presigned but
-    //    never called /confirm). Hard-delete from DB first, then best-effort
-    //    remove the S3 objects so abandoned uploads don't accumulate.
-    const orphanRows = await this.db.execute<{ id: string; storage_key: string }>(
+    // 3. Unreachable storage.files — the single place objects are deleted.
+    //
+    // Three ways a file becomes unreachable, all handled by one sweep so a file
+    // cannot slip between them:
+    //   a) pending  — presigned but /confirm never called (client abandoned)
+    //   b) soft-deleted — the owner called DELETE
+    //   c) unreferenced — every link row is gone (e.g. its work item was
+    //      deleted, which cascaded the link but not the file)
+    //
+    // (c) is why deletion lives here rather than in the request path: a file may
+    // be referenced by more than one link row, and only a sweep can see that the
+    // last reference has gone. Add a NOT EXISTS clause per new link table.
+    //
+    // Objects are deleted BEFORE the rows: a failed object delete leaves the row
+    // for the next run to retry. The reverse order would drop the only record of
+    // the key and leak the object permanently.
+    const unreachable = await this.db.execute<{
+      id: string;
+      storage_key: string;
+      visibility: string;
+    }>(
       sql`
-        DELETE FROM work.attachments
-        WHERE status = 'pending'
-          AND created_at < NOW() - INTERVAL '24 hours'
-          AND deleted_at IS NULL
-        RETURNING id, storage_key
+        SELECT f.id, f.storage_key, f.visibility
+        FROM storage.files f
+        WHERE
+          (f.status = 'pending' AND f.created_at < NOW() - INTERVAL '24 hours')
+          OR f.deleted_at IS NOT NULL
+          OR (
+            f.status = 'completed'
+            -- Grace period: a file is legitimately unreferenced between /confirm
+            -- and the caller writing its link row. Without this the sweep would
+            -- race an in-flight upload.
+            AND f.confirmed_at < NOW() - INTERVAL '1 hour'
+            AND NOT EXISTS (
+              SELECT 1 FROM work.work_item_attachments l WHERE l.file_id = f.id
+            )
+          )
+        LIMIT 1000
       `,
     );
-    const orphans =
-      (orphanRows as unknown as { rows: { id: string; storage_key: string }[] }).rows ?? [];
+    const rows =
+      (
+        unreachable as unknown as {
+          rows: { id: string; storage_key: string; visibility: string }[];
+        }
+      ).rows ?? [];
 
-    if (orphans.length > 0) {
-      // Fire S3 deletes in parallel — failures are logged inside deleteObject, never thrown.
-      await Promise.allSettled(
-        orphans.map((row) => this.storageService.deleteObject(row.storage_key)),
+    if (rows.length > 0) {
+      const results = await Promise.allSettled(
+        rows.map((r) =>
+          this.storageService.deleteObject(
+            r.storage_key,
+            r.visibility === 'public' ? 'public' : 'private',
+          ),
+        ),
       );
-      this.logger.log({ deleted: orphans.length }, 'Purged orphan pending attachments');
+      // deleteObject swallows its own errors, so a rejection here is unexpected —
+      // keep those rows for the next run rather than dropping the key.
+      const deletedIds = rows.filter((_, i) => results[i].status === 'fulfilled').map((r) => r.id);
+
+      if (deletedIds.length > 0) {
+        await this.db.execute(
+          sql`DELETE FROM storage.files WHERE id = ANY(${sql.param(deletedIds)}::uuid[])`,
+        );
+      }
+      this.logger.log(
+        { swept: rows.length, deleted: deletedIds.length },
+        'Purged unreachable storage files',
+      );
     }
   }
 }

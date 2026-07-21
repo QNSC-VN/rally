@@ -98,6 +98,23 @@ export const releaseStatusEnum = pgEnum('release_status', ['planning', 'active',
 
 export const attachmentStatusEnum = pgEnum('attachment_status', ['pending', 'completed']);
 
+// ── storage ────────────────────────────────────────────────────────────────
+
+/**
+ * Lifecycle of a storage.files row. `pending` means presigned but not yet
+ * confirmed — the object may or may not exist in the bucket. `completed` means
+ * the upload was verified (size + checksum) against the bucket.
+ */
+export const fileStatusEnum = pgEnum('file_status', ['pending', 'completed']);
+
+/**
+ * Which bucket a file lives in. `private` objects are only ever reachable via a
+ * short-lived presigned GET minted after an authorization check. `public`
+ * objects live in the CDN-fronted bucket and are readable by anyone holding the
+ * key — only ever for non-sensitive assets (avatars, workspace logos).
+ */
+export const fileVisibilityEnum = pgEnum('file_visibility', ['private', 'public']);
+
 export const activityEntityTypeEnum = pgEnum('activity_entity_type', [
   'work_item',
   'task',

@@ -7,10 +7,7 @@ import { apiErrorMessage } from '@/shared/api/api-error'
 import type { components } from '@/shared/api/generated/api'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-export type Attachment = components['schemas']['AttachmentResponseDto'] & {
-  /** Injected by the upload endpoint — path to download the file */
-  downloadPath?: string
-}
+export type Attachment = components['schemas']['AttachmentResponseDto']
 
 // ── Query keys ────────────────────────────────────────────────────────────────
 const attachmentKeys = {
@@ -35,23 +32,83 @@ export function useAttachments(workItemId: string | undefined) {
   })
 }
 
+/**
+ * Base64 SHA-256 of a file, computed in the browser.
+ *
+ * The API binds this into the presigned PUT signature, so the bucket itself
+ * rejects a body that does not match it. Requires a secure context
+ * (crypto.subtle is undefined over plain HTTP on a non-localhost origin).
+ */
+async function sha256Base64(file: File): Promise<string> {
+  if (!crypto?.subtle) {
+    throw new Error('Secure context required to upload files (crypto.subtle unavailable)')
+  }
+  const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer())
+  let binary = ''
+  for (const byte of new Uint8Array(digest)) binary += String.fromCharCode(byte)
+  return btoa(binary)
+}
+
+/**
+ * Three-phase upload: presign → PUT direct to the bucket → confirm.
+ *
+ * Bytes never pass through the API, which is what makes this scale — the API
+ * only ever handles the small JSON legs. The previous implementation POSTed
+ * multipart to `/attachments/upload`, a route that has never existed on the
+ * backend, so uploading always 404'd.
+ */
 export function useUploadAttachment(workItemId: string | undefined) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (file: File): Promise<Attachment> => {
       if (!workItemId) throw new Error('workItemId required')
-      const form = new FormData()
-      form.append('file', file)
-      const res = await fetch(`/v1/work-items/${workItemId}/attachments/upload`, {
+
+      const checksumSha256 = await sha256Base64(file)
+
+      // 1. Reserve the file row and get a signed URL.
+      const presignRes = await fetch(`/v1/work-items/${workItemId}/attachments/presign`, {
         method: 'POST',
-        body: form,
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
+        body: JSON.stringify({
+          filename: file.name,
+          mimeType: file.type,
+          sizeBytes: file.size,
+          checksumSha256,
+        }),
       })
-      if (!res.ok) {
-        const text = await res.text().catch(() => res.statusText)
-        throw new Error(text)
+      if (!presignRes.ok) {
+        throw new Error(await presignRes.text().catch(() => presignRes.statusText))
       }
-      return (await res.json()) as Attachment
+      const { attachmentId, uploadUrl, requiredHeaders } = (await presignRes.json()) as {
+        attachmentId: string
+        uploadUrl: string
+        requiredHeaders: Record<string, string>
+      }
+
+      // 2. PUT the bytes straight to the bucket. `requiredHeaders` are part of
+      //    the signature — sending anything else fails with SignatureDoesNotMatch.
+      //    Deliberately omits credentials: this origin is the bucket, not the API,
+      //    and the presigned URL is the only authorization it needs.
+      const putRes = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: requiredHeaders,
+        body: file,
+      })
+      if (!putRes.ok) {
+        throw new Error(`Upload failed (${putRes.status})`)
+      }
+
+      // 3. Confirm — the API verifies size + checksum against the bucket and
+      //    only then links the file to the work item and makes it visible.
+      const confirmRes = await fetch(
+        `/v1/work-items/${workItemId}/attachments/${attachmentId}/confirm`,
+        { method: 'POST', credentials: 'include' },
+      )
+      if (!confirmRes.ok) {
+        throw new Error(await confirmRes.text().catch(() => confirmRes.statusText))
+      }
+      return (await confirmRes.json()) as Attachment
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: attachmentKeys.list(workItemId ?? '') })

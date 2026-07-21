@@ -6,11 +6,7 @@ import { PERMISSION } from '@shared-kernel';
 import { WorkItemsService } from '@modules/work-items';
 import { AccessService } from '@modules/access';
 import { ICommentRepository, COMMENT_REPOSITORY } from '../domain/ports/comment.repository';
-import {
-  IAttachmentRepository,
-  ATTACHMENT_REPOSITORY,
-} from '../domain/ports/attachment.repository';
-import type { Comment, Attachment } from '../domain/collaboration.types';
+import type { Comment } from '../domain/collaboration.types';
 
 @Injectable()
 export class CollaborationService {
@@ -18,7 +14,6 @@ export class CollaborationService {
 
   constructor(
     @Inject(COMMENT_REPOSITORY) private readonly commentRepo: ICommentRepository,
-    @Inject(ATTACHMENT_REPOSITORY) private readonly attachmentRepo: IAttachmentRepository,
     private readonly workItemsService: WorkItemsService,
     private readonly accessService: AccessService,
   ) {}
@@ -97,45 +92,5 @@ export class CollaborationService {
     }
     await this.assertCanCollaborate(actor, comment.workItemId);
     await this.commentRepo.softDelete(commentId);
-  }
-
-  // ── Attachments ───────────────────────────────────────────────────────────
-
-  async listAttachments(actor: JwtPayload, workItemId: string): Promise<Attachment[]> {
-    return this.attachmentRepo.listByWorkItem(workItemId, actor.workspaceId);
-  }
-
-  async createAttachment(
-    actor: JwtPayload,
-    workItemId: string,
-    input: {
-      filename: string;
-      mimeType: string;
-      sizeBytes: number;
-      storageKey: string;
-    },
-  ): Promise<Attachment> {
-    // Same authorization seam as createComment: the target work item must exist
-    // in the actor's workspace and the actor must hold work_item:edit on its
-    // project. Without this an attachment could be stapled to a work item in
-    // another workspace/project (tenant-isolation leak).
-    await this.assertCanCollaborate(actor, workItemId);
-    const attachment = await this.attachmentRepo.create({
-      id: uuidv7(),
-      workspaceId: actor.workspaceId,
-      workItemId,
-      uploadedBy: actor.sub,
-      ...input,
-    });
-    this.logger.log({ attachmentId: attachment.id, workItemId }, 'Attachment created');
-    return attachment;
-  }
-
-  async deleteAttachment(actor: JwtPayload, attachmentId: string): Promise<void> {
-    const attachment = await this.attachmentRepo.findById(attachmentId);
-    if (!attachment || attachment.workspaceId !== actor.workspaceId || attachment.deletedAt) {
-      throw new NotFoundException('ATTACHMENT_NOT_FOUND', 'Attachment not found');
-    }
-    await this.attachmentRepo.softDelete(attachmentId);
   }
 }

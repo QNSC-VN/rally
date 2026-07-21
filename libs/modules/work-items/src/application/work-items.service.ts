@@ -75,14 +75,9 @@ import type {
 } from '../domain/activity-log.types';
 import type { TimeLog } from '../domain/time-log.types';
 import type { Watcher } from '../domain/watcher.types';
-import type { Attachment } from '../domain/attachment.types';
+import type { WorkItemAttachment } from '../domain/attachment.types';
 import { diffWorkItem } from './activity-diff';
-import { StorageService } from '@platform';
-import {
-  ATTACHMENT_ALLOWED_MIME_TYPES,
-  ATTACHMENT_MAX_PER_WORK_ITEM,
-  ATTACHMENT_MAX_SIZE_BYTES,
-} from '../domain/attachment.rules';
+import { AttachmentsService, WORK_ITEM_ATTACHMENT_POLICY } from '@modules/attachments';
 
 /** Walk an error's `.cause` chain looking for a PG unique-violation (code 23505). */
 function isDuplicateKeyError(err: unknown): boolean {
@@ -143,7 +138,7 @@ export class WorkItemsService {
     @Inject(WORK_ITEM_RELATION_REPOSITORY)
     private readonly relationRepo: IWorkItemRelationRepository,
     private readonly notificationScheduler: NotificationSchedulerService,
-    private readonly storageService: StorageService,
+    private readonly attachments: AttachmentsService,
     private readonly projectsService: ProjectsService,
     private readonly accessService: AccessService,
     private readonly uow: UnitOfWork,
@@ -781,11 +776,7 @@ export class WorkItemsService {
       // team has manually advanced to a more mature terminal (accepted/release)
       // is never auto-reverted (BA F3 guard). The repo mirrors Flow State too.
       if (taskTransitioningFromComplete && item.parentId) {
-        const parentBefore = await this.workItemRepo.findById(
-          item.parentId,
-          actor.workspaceId,
-          tx,
-        );
+        const parentBefore = await this.workItemRepo.findById(item.parentId, actor.workspaceId, tx);
         if (parentBefore && parentBefore.scheduleState === 'completed') {
           await this.workItemRepo.update(
             item.parentId,
@@ -1414,7 +1405,9 @@ export class WorkItemsService {
     if (scope.foundInReleaseId) {
       await this.assertReleaseAssignable(workspaceId, scope.projectId, scope.foundInReleaseId);
     }
-    const memberIds = [...new Set((scope.memberIds ?? []).filter((id): id is string => Boolean(id)))];
+    const memberIds = [
+      ...new Set((scope.memberIds ?? []).filter((id): id is string => Boolean(id))),
+    ];
     for (const userId of memberIds) {
       await this.projectsService.assertWorkspaceMember(workspaceId, userId);
     }
@@ -1577,58 +1570,32 @@ export class WorkItemsService {
   }
 
   // ── Attachments ───────────────────────────────────────────────────────────
+  //
+  // Authorization lives here; the upload mechanics live in AttachmentsService.
+  // These methods deliberately do nothing that another upload surface would also
+  // have to do — that is what keeps a second surface to a policy descriptor plus
+  // a link table.
+  //
+  // The file id is the public attachment id. Callers never see the link row.
 
   @Span('work-items.presign-attachment')
   async presignAttachment(
     actor: JwtPayload,
     workItemId: string,
-    input: { filename: string; mimeType: string; sizeBytes: number },
-  ): Promise<{ attachmentId: string; uploadUrl: string }> {
+    input: { filename: string; mimeType: string; sizeBytes: number; checksumSha256: string },
+  ): Promise<{ attachmentId: string; uploadUrl: string; requiredHeaders: Record<string, string> }> {
     await this.getWorkItemForWrite(actor, workItemId, PERMISSION.WORK_ITEM_EDIT);
 
-    if (!ATTACHMENT_ALLOWED_MIME_TYPES.has(input.mimeType)) {
-      throw new PreconditionFailedException(
-        'ATTACHMENT_INVALID_TYPE',
-        `File type '${input.mimeType}' is not allowed`,
-      );
-    }
-
-    if (input.sizeBytes > ATTACHMENT_MAX_SIZE_BYTES) {
-      throw new PreconditionFailedException(
-        'ATTACHMENT_FILE_TOO_LARGE',
-        `File exceeds the maximum size of ${ATTACHMENT_MAX_SIZE_BYTES / 1024 / 1024}MB`,
-      );
-    }
-
     const current = await this.attachmentRepo.countByWorkItem(workItemId, actor.workspaceId);
-    if (current >= ATTACHMENT_MAX_PER_WORK_ITEM) {
-      throw new PreconditionFailedException(
-        'ATTACHMENT_LIMIT_EXCEEDED',
-        `Work item already has the maximum of ${ATTACHMENT_MAX_PER_WORK_ITEM} attachments`,
-      );
-    }
 
-    const id = uuidv7();
-    const ext = input.filename.includes('.') ? `.${input.filename.split('.').pop()}` : '';
-    const storageKey = `${actor.workspaceId}/${workItemId}/${id}${ext}`;
-
-    await this.attachmentRepo.create({
-      id,
-      workspaceId: actor.workspaceId,
-      workItemId,
-      uploadedBy: actor.sub,
-      filename: input.filename,
-      mimeType: input.mimeType,
-      sizeBytes: input.sizeBytes,
-      storageKey,
-    });
-
-    const { uploadUrl } = await this.storageService.presignPut(
-      storageKey,
-      input.mimeType,
-      input.sizeBytes,
+    const { fileId, uploadUrl, requiredHeaders } = await this.attachments.presign(
+      actor,
+      WORK_ITEM_ATTACHMENT_POLICY,
+      input,
+      current,
     );
-    return { attachmentId: id, uploadUrl };
+
+    return { attachmentId: fileId, uploadUrl, requiredHeaders };
   }
 
   @Span('work-items.confirm-attachment')
@@ -1636,41 +1603,32 @@ export class WorkItemsService {
     actor: JwtPayload,
     workItemId: string,
     attachmentId: string,
-  ): Promise<Attachment> {
+  ): Promise<WorkItemAttachment> {
     const item = await this.getWorkItemForWrite(actor, workItemId, PERMISSION.WORK_ITEM_EDIT);
 
-    const attachment = await this.attachmentRepo.findById(attachmentId, actor.workspaceId);
-    if (!attachment || attachment.workItemId !== workItemId) {
-      throw new NotFoundException('ATTACHMENT_NOT_FOUND', 'Attachment not found');
-    }
+    // Verifies the object landed and matches the declared size + checksum.
+    const file = await this.attachments.confirm(actor, attachmentId, WORK_ITEM_ATTACHMENT_POLICY);
 
-    if (attachment.status !== 'pending') {
+    // Re-check the quota at confirm time: presign only reserved a row, and N
+    // concurrent presigns could each have passed the check against the same
+    // count. This is the point where the file becomes visible, so it is the
+    // point that has to hold the limit.
+    const current = await this.attachmentRepo.countByWorkItem(workItemId, actor.workspaceId);
+    if (current >= (WORK_ITEM_ATTACHMENT_POLICY.maxPerOwner ?? Infinity)) {
+      await this.attachments.softDelete(attachmentId);
       throw new PreconditionFailedException(
-        'ATTACHMENT_NOT_PENDING',
-        'Attachment is not in pending state',
+        'ATTACHMENT_LIMIT_EXCEEDED',
+        `Work item already has the maximum of ${WORK_ITEM_ATTACHMENT_POLICY.maxPerOwner} attachments`,
       );
     }
 
-    // Verify the file was actually uploaded to S3.
-    const head = await this.storageService.headObject(attachment.storageKey);
-    if (!head) {
-      throw new PreconditionFailedException(
-        'ATTACHMENT_NOT_PENDING',
-        'File not found in storage — please upload first',
-      );
-    }
+    await this.attachmentRepo.link({
+      workItemId,
+      fileId: attachmentId,
+      workspaceId: actor.workspaceId,
+      attachedBy: actor.sub,
+    });
 
-    // Tamper check: actual uploaded bytes must match the declared size.
-    if (head.contentLength !== attachment.sizeBytes) {
-      // Mark as deleted so it can be cleaned up.
-      void this.attachmentRepo.softDelete(attachmentId);
-      throw new PreconditionFailedException(
-        'ATTACHMENT_SIZE_MISMATCH',
-        'Uploaded file size does not match declared size',
-      );
-    }
-
-    const confirmed = await this.attachmentRepo.confirm(attachmentId);
     void this.activityRepo.append({
       id: uuidv7(),
       workspaceId: actor.workspaceId,
@@ -1681,17 +1639,24 @@ export class WorkItemsService {
       actorId: actor.sub,
       action: 'attachment.uploaded',
       changes: null,
-      metadata: { filename: attachment.filename },
+      metadata: { filename: file.filename },
     });
-    this.logger.log(
-      { workItemId, attachmentId, filename: attachment.filename },
-      'Attachment confirmed',
-    );
-    return confirmed;
+    this.logger.log({ workItemId, attachmentId, filename: file.filename }, 'Attachment confirmed');
+
+    return {
+      id: file.id,
+      workItemId,
+      workspaceId: actor.workspaceId,
+      filename: file.filename,
+      mimeType: file.mimeType,
+      sizeBytes: file.sizeBytes,
+      uploadedBy: file.uploadedBy,
+      createdAt: file.createdAt,
+    };
   }
 
   @Span('work-items.list-attachments')
-  async listAttachments(actor: JwtPayload, workItemId: string): Promise<Attachment[]> {
+  async listAttachments(actor: JwtPayload, workItemId: string): Promise<WorkItemAttachment[]> {
     await this.getWorkItemForView(actor, workItemId);
     return this.attachmentRepo.listByWorkItem(workItemId, actor.workspaceId);
   }
@@ -1704,13 +1669,24 @@ export class WorkItemsService {
   ): Promise<{ downloadUrl: string }> {
     await this.getWorkItemForView(actor, workItemId);
 
-    const attachment = await this.attachmentRepo.findById(attachmentId, actor.workspaceId);
-    if (!attachment || attachment.workItemId !== workItemId || attachment.status !== 'completed') {
+    // Scoped to the work item, not just the workspace: without this a viewer of
+    // work item A could mint a URL for an attachment on work item B in a project
+    // they cannot see.
+    const link = await this.attachmentRepo.findByWorkItemAndFile(
+      workItemId,
+      attachmentId,
+      actor.workspaceId,
+    );
+    if (!link) {
       throw new NotFoundException('ATTACHMENT_NOT_FOUND', 'Attachment not found');
     }
 
-    const downloadUrl = await this.storageService.presignGet(attachment.storageKey);
-    return { downloadUrl };
+    const { url } = await this.attachments.getDownloadUrl(
+      actor,
+      attachmentId,
+      WORK_ITEM_ATTACHMENT_POLICY,
+    );
+    return { downloadUrl: url };
   }
 
   @Span('work-items.delete-attachment')
@@ -1721,22 +1697,28 @@ export class WorkItemsService {
   ): Promise<void> {
     const item = await this.getWorkItemForWrite(actor, workItemId, PERMISSION.WORK_ITEM_EDIT);
 
-    const attachment = await this.attachmentRepo.findById(attachmentId, actor.workspaceId);
-    if (!attachment || attachment.workItemId !== workItemId) {
+    const link = await this.attachmentRepo.findByWorkItemAndFile(
+      workItemId,
+      attachmentId,
+      actor.workspaceId,
+    );
+    if (!link) {
       throw new NotFoundException('ATTACHMENT_NOT_FOUND', 'Attachment not found');
     }
 
     const isAdmin = actor.permissions?.includes('workspace:*');
-    if (!isAdmin && attachment.uploadedBy !== actor.sub) {
+    if (!isAdmin && link.uploadedBy !== actor.sub) {
       throw new PermissionDeniedException(
         'ATTACHMENT_NOT_OWNER',
         'Only the uploader or a workspace admin may delete this attachment',
       );
     }
 
-    await this.attachmentRepo.softDelete(attachmentId);
-    // Fire-and-forget: DB row is already soft-deleted; S3 cleanup best-effort.
-    void this.storageService.deleteObject(attachment.storageKey);
+    await this.attachmentRepo.unlink(workItemId, attachmentId, actor.workspaceId);
+    // Soft-delete the file too. The object itself is removed by the worker
+    // reaper, which is the only place that can see whether some other link row
+    // still references it.
+    await this.attachments.softDelete(attachmentId);
 
     void this.activityRepo.append({
       id: uuidv7(),
@@ -1748,11 +1730,8 @@ export class WorkItemsService {
       actorId: actor.sub,
       action: 'attachment.deleted',
       changes: null,
-      metadata: { filename: attachment.filename },
+      metadata: { filename: link.filename },
     });
-    this.logger.log(
-      { workItemId, attachmentId, filename: attachment.filename },
-      'Attachment deleted',
-    );
+    this.logger.log({ workItemId, attachmentId, filename: link.filename }, 'Attachment deleted');
   }
 }

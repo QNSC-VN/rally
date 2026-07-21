@@ -8,7 +8,7 @@ import { WATCHER_REPOSITORY } from '../domain/ports/watcher.repository';
 import { ATTACHMENT_REPOSITORY } from '../domain/ports/attachment.repository';
 import { WORK_ITEM_RELATION_REPOSITORY } from '../domain/ports/work-item-relation.repository';
 import { NotificationSchedulerService } from '@platform/notifications/notification-scheduler.service';
-import { StorageService } from '@platform';
+import { AttachmentsService } from '@modules/attachments';
 import type { WorkItem } from '../domain/work-item.types';
 import { NotFoundException, PreconditionFailedException, UnitOfWork } from '@platform';
 import { ProjectsService } from '@modules/projects';
@@ -192,21 +192,34 @@ const makeWatcherRepo = () => ({
   listUserIds: vi.fn(),
 });
 
+// Link table only — blob metadata now lives in storage.files behind AttachmentsService.
 const makeAttachmentRepo = () => ({
-  findById: vi.fn(),
-  listByWorkItem: vi.fn(),
+  listByWorkItem: vi.fn().mockResolvedValue([]),
   countByWorkItem: vi.fn().mockResolvedValue(0),
-  create: vi.fn(),
-  confirm: vi.fn(),
-  softDelete: vi.fn().mockResolvedValue(undefined),
+  findByWorkItemAndFile: vi.fn().mockResolvedValue(null),
+  link: vi.fn().mockResolvedValue(undefined),
+  unlink: vi.fn().mockResolvedValue(undefined),
 });
 
-const makeStorageService = () => ({
-  presignPut: vi.fn().mockResolvedValue({ uploadUrl: 'https://s3.example.com/upload' }),
-  presignGet: vi.fn().mockResolvedValue('https://s3.example.com/download'),
-  headObject: vi.fn().mockResolvedValue({ contentLength: 1024 }),
-  deleteObject: vi.fn().mockResolvedValue(undefined),
-  cdnUrl: vi.fn().mockReturnValue(null),
+const makeAttachmentsService = () => ({
+  presign: vi.fn().mockResolvedValue({
+    fileId: 'file-1',
+    uploadUrl: 'https://bucket.example.com/upload',
+    requiredHeaders: {},
+  }),
+  confirm: vi.fn().mockResolvedValue({
+    id: 'file-1',
+    filename: 'f.txt',
+    mimeType: 'text/plain',
+    sizeBytes: 1024,
+    uploadedBy: 'user-1',
+    createdAt: new Date(),
+  }),
+  getDownloadUrl: vi
+    .fn()
+    .mockResolvedValue({ url: 'https://bucket.example.com/get', expiresInSeconds: 900 }),
+  softDelete: vi.fn().mockResolvedValue(undefined),
+  findById: vi.fn().mockResolvedValue(null),
 });
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -221,7 +234,7 @@ describe('WorkItemsService', () => {
   let timeLogRepo: ReturnType<typeof makeTimeLogRepo>;
   let watcherRepo: ReturnType<typeof makeWatcherRepo>;
   let attachmentRepo: ReturnType<typeof makeAttachmentRepo>;
-  let storageService: ReturnType<typeof makeStorageService>;
+  let attachmentsService: ReturnType<typeof makeAttachmentsService>;
   let relationRepo: ReturnType<typeof makeRelationRepo>;
 
   beforeEach(async () => {
@@ -233,7 +246,7 @@ describe('WorkItemsService', () => {
     timeLogRepo = makeTimeLogRepo();
     watcherRepo = makeWatcherRepo();
     attachmentRepo = makeAttachmentRepo();
-    storageService = makeStorageService();
+    attachmentsService = makeAttachmentsService();
     relationRepo = makeRelationRepo();
 
     const module: TestingModule = await Test.createTestingModule({
@@ -249,7 +262,7 @@ describe('WorkItemsService', () => {
           provide: NotificationSchedulerService,
           useValue: { schedule: vi.fn().mockResolvedValue(undefined) },
         },
-        { provide: StorageService, useValue: storageService },
+        { provide: AttachmentsService, useValue: attachmentsService },
         { provide: ProjectsService, useValue: projectsService },
         { provide: AccessService, useValue: accessService },
         { provide: UnitOfWork, useValue: uow },
@@ -912,7 +925,9 @@ describe('WorkItemsService', () => {
     });
 
     it('rejects a foundInReleaseId from another project', async () => {
-      workItemRepo.findById.mockResolvedValue(mockWorkItem({ projectId: 'proj-1', type: 'defect' }));
+      workItemRepo.findById.mockResolvedValue(
+        mockWorkItem({ projectId: 'proj-1', type: 'defect' }),
+      );
       workItemRepo.findReleaseProject.mockResolvedValue('proj-2');
       await expect(
         service.updateWorkItem(mockActor, 'wi-1', { foundInReleaseId: 'rel-x' }),
@@ -928,9 +943,7 @@ describe('WorkItemsService', () => {
     });
 
     it('rejects a new devOwnerId who is not a workspace member', async () => {
-      workItemRepo.findById.mockResolvedValue(
-        mockWorkItem({ type: 'defect', devOwnerId: null }),
-      );
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ type: 'defect', devOwnerId: null }));
       projectsService.assertWorkspaceMember.mockRejectedValueOnce(new Error('NOT_MEMBER'));
       await expect(
         service.updateWorkItem(mockActor, 'wi-1', { devOwnerId: 'outsider' }),
@@ -947,9 +960,9 @@ describe('WorkItemsService', () => {
     it('rejects reassigning to a team not linked to the project', async () => {
       workItemRepo.findById.mockResolvedValue(mockWorkItem({ projectId: 'proj-1' }));
       projectsService.listProjectTeams.mockResolvedValue([]);
-      await expect(
-        service.updateWorkItem(mockActor, 'wi-1', { teamId: 'team-x' }),
-      ).rejects.toThrow(PreconditionFailedException);
+      await expect(service.updateWorkItem(mockActor, 'wi-1', { teamId: 'team-x' })).rejects.toThrow(
+        PreconditionFailedException,
+      );
     });
 
     it('allows reassigning to a team linked to the project', async () => {

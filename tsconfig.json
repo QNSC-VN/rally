@@ -33,6 +33,8 @@
       "@modules/projects/*": ["./libs/modules/projects/src/*"],
       "@modules/work-items": ["./libs/modules/work-items/src/index"],
       "@modules/work-items/*": ["./libs/modules/work-items/src/*"],
+      "@modules/attachments": ["./libs/modules/attachments/src/index"],
+      "@modules/attachments/*": ["./libs/modules/attachments/src/*"],
       "@modules/workflow": ["./libs/modules/workflow/src/index"],
       "@modules/workflow/*": ["./libs/modules/workflow/src/*"],
       "@modules/iterations": ["./libs/modules/iterations/src/index"],

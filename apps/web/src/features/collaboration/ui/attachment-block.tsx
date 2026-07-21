@@ -5,7 +5,8 @@
  * - Drag & drop zone with visual highlight
  * - Click-to-browse file picker (any file type, max 10 MB)
  * - File list: icon, name, size, date, delete button
- * - Download link via /v1/work-items/{id}/attachments/{id}/download
+ * - Download link via /v1/work-items/{id}/attachments/{id}/content
+ *   (authorizes, then 302s to a short-lived presigned URL)
  * - Read-only mode hides upload zone and delete buttons
  * - Upload progress optimistic UI (spinner on uploading row)
  */
@@ -98,8 +99,10 @@ export function AttachmentBlock({ workItemId, readOnly = false }: AttachmentBloc
         )}
         {attachments.map((a) => {
           const isDeleting = deletingId === a.id
-          const downloadUrl =
-            a.downloadPath ?? `/v1/work-items/${a.workItemId}/attachments/${a.id}/download`
+          // /content redirects to a fresh presigned URL after re-authorizing.
+          // The old /download route returns JSON, so linking to it showed the
+          // response body instead of downloading the file.
+          const downloadUrl = `/v1/work-items/${a.workItemId}/attachments/${a.id}/content`
           return (
             <div
               key={a.id}
