@@ -15,6 +15,7 @@
  * @nestjs/config, so the suite runs against the same connection/tenant as dev.
  */
 import 'reflect-metadata';
+import { randomUUID } from 'node:crypto';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test, type TestingModule } from '@nestjs/testing';
 import type { JwtPayload } from '@platform';
@@ -110,13 +111,24 @@ export const viewerActor = (): JwtPayload => makeActor(VIEWER_ID, []);
  * Unique, uppercase project/team key (≤10 chars — the DB column is
  * `varchar(10)`) so repeated runs against the same seeded DB never collide with
  * a `*_KEY_TAKEN` conflict.
+ *
+ * The previous implementation was `Date.now().toString(36).slice(-5)` plus a
+ * two-digit random, and did NOT hold that promise:
+ *   - only 100 random values, so two keys minted in the same millisecond
+ *     collided 1 in 100
+ *   - the last 5 base36 chars of a ms timestamp wrap every 36^5 ms (~16.8 h),
+ *     so the time component REPEATS
+ * E2E rows are never cleaned up, so collision pressure grew with every run.
+ * It surfaced as an unrelated-looking failure — a project insert dying on
+ * uq_projects_workspace_key deep inside a notification test.
+ *
+ * Now 9 random hex chars after the prefix letter: 16^9 ≈ 6.9e10 values, no time
+ * component to wrap. Key format is `^[A-Za-z][A-Za-z0-9]*$`, so hex is valid,
+ * and 1 + 9 = 10 exactly fills varchar(10).
  */
 export function uniqueKey(prefix = 'E'): string {
-  const stamp = Date.now().toString(36).slice(-5).toUpperCase();
-  const rand = Math.floor(Math.random() * 100)
-    .toString()
-    .padStart(2, '0');
-  return `${prefix}${stamp}${rand}`;
+  const rand = randomUUID().replace(/-/g, '').slice(0, 9).toUpperCase();
+  return `${prefix}${rand}`;
 }
 
 /** Paging args that fetch everything a small test project produces. */

@@ -412,8 +412,21 @@ describe('BA flows: Worker relay — real fetchBatch/processRow/markSent/markFai
     // proves the cascade is delivered end-to-end either way. EMAIL_PROVIDER=dev
     // (see vitest.e2e.config.ts) so this logs instead of actually sending.
     await emailRelay.relay();
-    const [afterEmail] = await db.select().from(emailOutbox).where(eq(emailOutbox.id, emailRow.id));
-    expect(afterEmail?.status).toBe('sent');
+
+    // POLL for the terminal state rather than reading once. The wake signal can
+    // have a concurrent relay pass already holding this row claimed-but-not-yet
+    // -marked; our explicit relay() then finds nothing to claim and returns
+    // immediately, so a single read observes 'pending' and the assertion fails.
+    // Measured at roughly 1 run in 10 before this change — enough to train
+    // people to re-run a red build instead of reading it.
+    //
+    // Waiting for 'sent' asserts the same guarantee (the cascade IS delivered)
+    // without depending on which pass gets there first.
+    const afterEmail = await waitFor(async () => {
+      const [r] = await db.select().from(emailOutbox).where(eq(emailOutbox.id, emailRow.id));
+      return r?.status === 'sent' ? r : undefined;
+    });
+    expect(afterEmail.status).toBe('sent');
   });
 
   it('does NOT cascade to email when the recipient has email disabled for this type', async () => {

@@ -30,12 +30,28 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AccessService } from '@modules/access';
 import { AppModule } from '../../apps/api/src/app.module';
 
-// Mirrors the seeded SSO connection + platform-admin allow-list (see db/seeds/seed.ts
-// and .env). The connection routes tenant `dev-tenant` into the demo workspace and
-// JIT-provisions `@qnsc.vn` accounts as `project_member`.
-const TENANT = 'dev-tenant';
-const DOMAIN = 'qnsc.vn';
-const PLATFORM_ADMIN_EMAIL = 'nghiavt@qnsc.vn';
+// Read from the SAME environment the seed used, so the test matches whatever
+// this machine bootstrapped rather than one hard-coded environment.
+//
+// These were previously literals ('dev-tenant' / 'nghiavt@qnsc.vn'), which meant
+// the spec only passed where those exact values happened to be configured — CI.
+// Locally, .env seeds a different tenant and admin, so both cases failed with
+// "No workspace is configured for your organization" and a project_member/
+// workspace_admin mismatch: a config mismatch that reads exactly like a product
+// bug. The header even claimed config came from .env while the code ignored it.
+//
+// seedTenantBootstrap creates the SSO connection from ENTRA_TENANT_ID, and the
+// platform-admin elevation reads PLATFORM_ADMIN_EMAILS, so deriving both from
+// the same source keeps the test aligned by construction.
+const TENANT = process.env['ENTRA_TENANT_ID'] ?? 'dev-tenant';
+const PLATFORM_ADMIN_EMAIL = (process.env['PLATFORM_ADMIN_EMAILS'] ?? 'nghiavt@qnsc.vn')
+  .split(',')[0]
+  .trim();
+// JIT provisioning is gated on the connection's allow-list, which
+// seedTenantBootstrap builds from SSO_ALLOWED_EMAIL_DOMAINS — not from the admin
+// address. Deriving it from the admin email instead would happen to pass while
+// asserting the wrong thing.
+const DOMAIN = (process.env['SSO_ALLOWED_EMAIL_DOMAINS'] ?? 'qnsc.vn').split(',')[0].trim();
 const WORKSPACE_ALL = 'workspace:*';
 
 interface DecodedAccessToken {
