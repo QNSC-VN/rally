@@ -279,14 +279,14 @@ export function MilestoneDetailPage() {
               value={milestone?.description}
               minHeight={120}
               readOnly={!canManage}
-              onSave={(html) => handleRichFieldSave({ description: html || null })}
+              onBlur={(html) => handleRichFieldSave({ description: html || null })}
             />
             <RichTextEditor
               title={t('detail.notesLabel')}
               value={milestone?.notes}
               minHeight={80}
               readOnly={!canManage}
-              onSave={(html) => handleRichFieldSave({ notes: html || null })}
+              onBlur={(html) => handleRichFieldSave({ notes: html || null })}
             />
           </div>
 
