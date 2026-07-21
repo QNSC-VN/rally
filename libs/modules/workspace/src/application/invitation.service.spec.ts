@@ -12,7 +12,14 @@ import {
   IWorkspaceMemberRepository,
 } from '../domain/ports/workspace-member.repository';
 import type { Workspace, WorkspaceInvitation } from '../domain/workspace.types';
-import { NotFoundException, AppConfigService, EmailSchedulerService, UnitOfWork } from '@platform';
+import {
+  NotFoundException,
+  AppConfigService,
+  EmailSchedulerService,
+  UnitOfWork,
+  DRIZZLE,
+} from '@platform';
+import { NotificationSchedulerService } from '@platform/notifications/notification-scheduler.service';
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -99,11 +106,24 @@ const makeEmailScheduler = () => ({
   schedule: vi.fn().mockResolvedValue(undefined),
 });
 
+const makeNotificationScheduler = () => ({
+  schedule: vi.fn().mockResolvedValue(undefined),
+});
+
 // Run the wrapped work immediately with a stub transaction so repository mocks
 // receive a tx argument exactly as they would in production.
 const makeUow = () => ({
   run: vi.fn((fn: (tx: unknown) => unknown) => fn({})),
 });
+
+/** Chainable select().from().where().limit() mock resolving to `rows`. */
+const makeDb = (rows: unknown[] = [{ displayName: 'Alice' }]) => {
+  const limit = vi.fn().mockResolvedValue(rows);
+  const where = vi.fn().mockReturnValue({ limit });
+  const from = vi.fn().mockReturnValue({ where });
+  const select = vi.fn().mockReturnValue({ from });
+  return { select, from, where, limit };
+};
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
@@ -113,14 +133,18 @@ describe('InvitationService', () => {
   let invitationRepo: ReturnType<typeof makeInvitationRepo>;
   let memberRepo: ReturnType<typeof makeMemberRepo>;
   let emailScheduler: ReturnType<typeof makeEmailScheduler>;
+  let notificationScheduler: ReturnType<typeof makeNotificationScheduler>;
   let uow: ReturnType<typeof makeUow>;
+  let db: ReturnType<typeof makeDb>;
 
   beforeEach(async () => {
     workspaceRepo = makeWorkspaceRepo();
     invitationRepo = makeInvitationRepo();
     memberRepo = makeMemberRepo();
     emailScheduler = makeEmailScheduler();
+    notificationScheduler = makeNotificationScheduler();
     uow = makeUow();
+    db = makeDb();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -130,7 +154,9 @@ describe('InvitationService', () => {
         { provide: WORKSPACE_MEMBER_REPOSITORY, useValue: memberRepo },
         { provide: AppConfigService, useValue: makeConfig() },
         { provide: EmailSchedulerService, useValue: emailScheduler },
+        { provide: NotificationSchedulerService, useValue: notificationScheduler },
         { provide: UnitOfWork, useValue: uow },
+        { provide: DRIZZLE, useValue: db },
       ],
     }).compile();
 
@@ -207,6 +233,7 @@ describe('InvitationService', () => {
   describe('acceptInvitation', () => {
     it('accepts pending invitation and adds member', async () => {
       invitationRepo.findByTokenHash.mockResolvedValue(mockInvitation({ status: 'pending' }));
+      workspaceRepo.findById.mockResolvedValue(mockWorkspace());
       memberRepo.findMember.mockResolvedValue(null);
       memberRepo.addMember.mockResolvedValue({
         id: 'member-1',
@@ -229,6 +256,65 @@ describe('InvitationService', () => {
         expect.anything(),
       );
       expect(memberRepo.addMember).toHaveBeenCalledOnce();
+    });
+
+    it('notifies the inviter, enlisted on the same tx as the membership write', async () => {
+      invitationRepo.findByTokenHash.mockResolvedValue(
+        mockInvitation({ status: 'pending', invitedBy: 'inviter-1' }),
+      );
+      workspaceRepo.findById.mockResolvedValue(mockWorkspace({ name: 'Acme Corp' }));
+      memberRepo.findMember.mockResolvedValue(null);
+      memberRepo.addMember.mockResolvedValue({
+        id: 'member-1',
+        workspaceId: 'ws-1',
+        userId: 'user-2',
+        roleId: null,
+        status: 'active',
+        lastActiveAt: null,
+        joinedAt: now,
+        updatedAt: now,
+        createdAt: now,
+      });
+      db.limit.mockResolvedValue([{ displayName: 'Bob Accepter' }]);
+
+      await service.acceptInvitation('raw-token', 'user-2');
+
+      expect(notificationScheduler.schedule).toHaveBeenCalledWith(
+        expect.objectContaining({
+          workspaceId: 'ws-1',
+          recipientId: 'inviter-1',
+          actorId: 'user-2',
+          template: 'WORKSPACE_INVITATION_ACCEPTED',
+          vars: { workspaceName: 'Acme Corp', accepteeName: 'Bob Accepter' },
+          idempotencyKey: 'invitation-accepted:inv-1',
+        }),
+        expect.anything(), // tx
+      );
+    });
+
+    it('falls back to a generic accepteeName when the accepting user cannot be resolved', async () => {
+      invitationRepo.findByTokenHash.mockResolvedValue(mockInvitation({ status: 'pending' }));
+      workspaceRepo.findById.mockResolvedValue(mockWorkspace());
+      memberRepo.findMember.mockResolvedValue(null);
+      memberRepo.addMember.mockResolvedValue({
+        id: 'member-1',
+        workspaceId: 'ws-1',
+        userId: 'user-2',
+        roleId: null,
+        status: 'active',
+        lastActiveAt: null,
+        joinedAt: now,
+        updatedAt: now,
+        createdAt: now,
+      });
+      db.limit.mockResolvedValue([]); // user row not found
+
+      await service.acceptInvitation('raw-token', 'user-2');
+
+      expect(notificationScheduler.schedule).toHaveBeenCalledWith(
+        expect.objectContaining({ vars: expect.objectContaining({ accepteeName: 'A user' }) }),
+        expect.anything(),
+      );
     });
 
     it('throws NotFoundException when token not found', async () => {

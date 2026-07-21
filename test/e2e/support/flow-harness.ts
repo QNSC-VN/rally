@@ -16,10 +16,14 @@
  */
 import 'reflect-metadata';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
-import { Test } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import type { JwtPayload } from '@platform';
+import { PlatformModule } from '@platform';
+import { NotificationsModule } from '@modules/notifications';
 
 import { AppModule } from '../../../apps/api/src/app.module';
+import { NotificationRelayService } from '../../../apps/worker/src/notifications/notification-relay.service';
+import { EmailRelayService } from '../../../apps/worker/src/email/email-relay.service';
 
 // ── Seed fixtures (see db/seeds/seed.ts) ──────────────────────────────────────
 export const WORKSPACE_ID = '00000000-0000-7000-8000-000000000003';
@@ -37,6 +41,36 @@ export async function bootRallyApp(): Promise<NestFastifyApplication> {
   // init() runs onModuleInit (DB pool, cache) without binding a port.
   await app.init();
   return app;
+}
+
+/**
+ * Boot just enough of the real Worker to exercise the notification + email
+ * relay's actual fetchBatch/processRow/markSent/markFailed against the seeded
+ * DB — the same code the deployed Worker runs. Deliberately does NOT import
+ * ScheduleModule.forRoot() or the full WorkerModule (AuditConsumer/SQS,
+ * ReportingModule, etc.): the @Cron decorators on relay() then have no
+ * scheduler to register against, so nothing fires on its own timer — tests
+ * call `.relay()` directly for deterministic, race-free assertions instead of
+ * waiting on/racing the live 5s cron.
+ */
+export async function bootRallyWorkerRelays(): Promise<{
+  module: TestingModule;
+  notificationRelay: NotificationRelayService;
+  emailRelay: EmailRelayService;
+}> {
+  const module = await Test.createTestingModule({
+    imports: [PlatformModule, NotificationsModule],
+    providers: [NotificationRelayService, EmailRelayService],
+  }).compile();
+
+  // onModuleInit (Valkey wake-signal subscription) still runs via init().
+  await module.init();
+
+  return {
+    module,
+    notificationRelay: module.get(NotificationRelayService),
+    emailRelay: module.get(EmailRelayService),
+  };
 }
 
 /**

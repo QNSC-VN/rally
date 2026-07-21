@@ -156,6 +156,11 @@ export class OutboxRelayService
     newAttempts: number,
     newStatus: 'pending' | 'failed',
     lastError: string,
+    // outbox_events has no scheduledAt column — this relay is a plain SNS
+    // fan-out with unconditional 5s retry, not a scheduled-delivery outbox
+    // like email/notifications, so the base class's backoff delay doesn't
+    // apply here.
+    _nextAttemptAt: Date,
   ): Promise<void> {
     await tx
       .update(outboxEvents)

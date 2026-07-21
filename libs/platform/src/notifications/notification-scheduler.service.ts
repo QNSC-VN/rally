@@ -1,10 +1,13 @@
 /**
  * NotificationSchedulerService — API-side service that enqueues in-app
- * notifications to notification_outbox within the caller's DB transaction.
+ * notifications to notification_outbox.
  *
  * Design mirrors EmailSchedulerService:
- *   - Callers call schedule() INSIDE their business transaction.
+ *   - Callers SHOULD pass `tx` to enlist schedule() in their business transaction.
  *   - If the transaction rolls back, the outbox row is never written → no ghost notification.
+ *   - Without `tx`, the insert runs in its own best-effort transaction — a
+ *     crash between the caller's commit and this call can silently drop the
+ *     notification, so prefer passing `tx` whenever one is already open.
  *   - The Worker NotificationRelayService polls notification_outbox, renders
  *     the template, and writes to notifications.in_app_notifications.
  *
@@ -17,10 +20,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
 import { InjectDrizzle } from '../database/drizzle.provider';
-import type { DrizzleDB } from '../database/drizzle.provider';
+import type { DrizzleDB, DbExecutor } from '../database/drizzle.provider';
 import { NotificationPubSubService } from './notification-pubsub.service';
 import { notificationOutbox } from '../../../../db/schema/messaging';
 import type { NotificationTemplateName, NotificationTemplateVars } from './notification.templates';
+
+type AnyDb = DbExecutor;
 
 export interface ScheduleNotificationOptions<K extends NotificationTemplateName> {
   workspaceId: string;
@@ -54,14 +59,17 @@ export class NotificationSchedulerService {
   ) {}
 
   /**
-   * Enqueues a notification to the outbox.  Must be called inside a DB
-   * transaction to guarantee atomicity with the surrounding business write.
+   * Enqueues a notification to the outbox.  Pass `tx` to enlist the insert in
+   * the caller's business transaction, so a rollback also discards the outbox
+   * row (no ghost notification). Without `tx` the insert runs in its own
+   * best-effort transaction, same as EmailSchedulerService.
    *
    * Duplicate calls with the same idempotencyKey are silently ignored
    * (ON CONFLICT DO NOTHING).
    */
   async schedule<K extends NotificationTemplateName>(
     options: ScheduleNotificationOptions<K>,
+    tx?: AnyDb,
   ): Promise<void> {
     const {
       workspaceId,
@@ -74,7 +82,8 @@ export class NotificationSchedulerService {
       idempotencyKey,
     } = options;
 
-    await this.db
+    const db = tx ?? this.db;
+    await db
       .insert(notificationOutbox)
       .values({
         id: uuidv7(),

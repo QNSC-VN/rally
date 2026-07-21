@@ -135,10 +135,19 @@ export class EmailRelayService
     newAttempts: number,
     newStatus: 'pending' | 'failed',
     lastError: string,
+    nextAttemptAt: Date,
   ): Promise<void> {
     await tx
       .update(emailOutbox)
-      .set({ status: newStatus, attempts: newAttempts, lastError })
+      .set({
+        status: newStatus,
+        attempts: newAttempts,
+        lastError,
+        // Only pushes scheduledAt forward on a retry — a 'failed' (terminal)
+        // row keeps its last scheduledAt, which is fine since fetchBatch()
+        // never selects 'failed' rows again.
+        ...(newStatus === 'pending' ? { scheduledAt: nextAttemptAt } : {}),
+      })
       .where(eq(emailOutbox.id, rowId));
   }
 }

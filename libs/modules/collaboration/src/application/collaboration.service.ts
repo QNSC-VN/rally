@@ -56,11 +56,18 @@ export class CollaborationService {
       parentId,
     });
     this.logger.log({ commentId: comment.id, workItemId }, 'Comment created');
-    // F7 — notify watchers/assignee (comment) and any @mentioned users. Best-effort:
-    // a notification failure must never fail the comment write.
-    void this.workItemsService
+    // F7 — notify watchers/assignee (comment) and any @mentioned users. Best-effort
+    // and awaited (not fire-and-forget): a notification failure must never fail
+    // the comment write, but it must be logged rather than silently discarded —
+    // otherwise a broken notification path has no signal anywhere.
+    await this.workItemsService
       .notifyCommentAdded(actor, workItemId, mentionedUserIds)
-      .catch(() => undefined);
+      .catch((err: unknown) =>
+        this.logger.warn(
+          { err, commentId: comment.id, workItemId },
+          'Failed to enqueue comment notifications',
+        ),
+      );
     return comment;
   }
 
