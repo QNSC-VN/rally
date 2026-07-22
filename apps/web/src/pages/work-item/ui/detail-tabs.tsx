@@ -7,8 +7,11 @@ import { useProjectMembers } from '@/features/teams/api'
 import { describeActivity } from '@/entities/work-item/model/activity'
 import { formatDateTime } from '@/shared/lib/utils'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
+import { StateStepper } from '@/entities/work-item/ui/state-stepper'
+import { SCHEDULE_STATE_STEPS } from '@/entities/work-item/ui/state-steps'
+import type { ScheduleState } from '@/entities/work-item/model/types'
 import { OwnerCell, OwnerAvatar } from '@/shared/ui/owner-cell'
-import { ScheduleStateBadge, PriorityBadge, SeverityBadge } from '@/entities/work-item/ui/badges'
+import { PriorityBadge, SeverityBadge } from '@/entities/work-item/ui/badges'
 import { Spinner } from '@/shared/ui/spinner'
 
 export function HistoryTab({ workItemId }: { workItemId: string }) {
@@ -135,15 +138,19 @@ export function DefectsTab({ workItemId, projectId }: { workItemId: string; proj
             {defects.map((d) => (
               <div
                 key={d.id}
-                className="grid cursor-pointer items-center border-b border-border-inner px-3 py-2 text-ui-md transition-colors hover:bg-primary-lighter"
+                className="grid items-center border-b border-border-inner px-3 py-2 text-ui-md transition-colors hover:bg-primary-lighter"
                 style={{ gridTemplateColumns: DEFECT_GRID }}
-                onClick={() => openDefect(d)}
               >
                 <span className="flex items-center overflow-hidden">
                   <IdCell type={d.type} itemKey={d.itemKey} onOpen={() => openDefect(d)} />
                 </span>
                 <span className="truncate font-medium text-foreground">{d.title}</span>
-                <ScheduleStateBadge state={d.scheduleState} />
+                <StateStepper
+                  steps={SCHEDULE_STATE_STEPS}
+                  value={d.scheduleState as ScheduleState}
+                  canEdit={false}
+                  ariaLabel="Schedule state"
+                />
                 <span>
                   <PriorityBadge priority={d.priority} />
                 </span>

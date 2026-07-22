@@ -7,7 +7,14 @@
  * Mirrors the AttachmentBlock layout/readOnly conventions.
  */
 import { useMemo, useState } from 'react'
+import { useNavigate } from '@tanstack/react-router'
 import { Link2, Plus, Trash2, X } from 'lucide-react'
+import { Button } from '@/shared/ui/button'
+import { IconButton } from '@/shared/ui/icon-button'
+import { Input } from '@/shared/ui/input'
+import { NativeSelect } from '@/shared/ui/native-select'
+import { WorkItemRefCell } from '@/entities/work-item/ui/work-item-ref-cell'
+import { type WorkItemType } from '@/entities/work-item/model/types'
 import {
   useRelations,
   useLinkWorkItem,
@@ -22,7 +29,6 @@ const RELATION_TYPE_OPTIONS: { value: WorkItemRelationType; label: string }[] = 
   { value: 'depends_on', label: 'Depends on' },
   { value: 'relates_to', label: 'Relates to' },
   { value: 'duplicates', label: 'Duplicates' },
-  { value: 'causes', label: 'Causes' },
 ]
 
 interface SearchHit {
@@ -42,6 +48,7 @@ export function LinkedItemsBlock({
   projectId,
   readOnly = false,
 }: LinkedItemsBlockProps) {
+  const navigate = useNavigate()
   const { data: relations = [], isLoading } = useRelations(workItemId)
   const linkMutation = useLinkWorkItem(workItemId)
   const unlinkMutation = useUnlinkWorkItem(workItemId)
@@ -99,44 +106,37 @@ export function LinkedItemsBlock({
           )}
         </div>
         {!readOnly && !adding && (
-          <button
-            onClick={() => setAdding(true)}
-            className="flex items-center gap-1 rounded px-2 py-1 text-ui-sm text-primary-light hover:bg-primary-lighter"
-          >
+          <Button variant="ghost" size="sm" onClick={() => setAdding(true)}>
             <Plus size={12} />
             Link item
-          </button>
+          </Button>
         )}
       </div>
 
       {adding && (
         <div className="mb-3 rounded border border-input p-2">
-          <div className="flex items-center justify-between">
-            <select
+          <div className="flex items-center justify-between gap-2">
+            <NativeSelect
               value={relationType}
               onChange={(e) => setRelationType(e.target.value as WorkItemRelationType)}
-              className="rounded border border-input px-2 py-1 text-ui-md"
+              className="w-auto"
             >
               {RELATION_TYPE_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
                 </option>
               ))}
-            </select>
-            <button
-              aria-label="Cancel"
-              onClick={() => setAdding(false)}
-              className="p-1 text-foreground-subtle"
-            >
+            </NativeSelect>
+            <IconButton aria-label="Cancel" title="Cancel" onClick={() => setAdding(false)}>
               <X size={14} />
-            </button>
+            </IconButton>
           </div>
-          <input
+          <Input
             autoFocus
             value={search}
             onChange={(e) => void runSearch(e.target.value)}
             placeholder="Search work item by key or title…"
-            className="mt-2 w-full rounded border border-input px-2 py-1 text-ui-md"
+            className="mt-2"
           />
           {hits.length > 0 && (
             <ul className="mt-1 max-h-48 overflow-y-auto rounded border border-border-inner">
@@ -171,21 +171,29 @@ export function LinkedItemsBlock({
                 {items.map((r) => (
                   <li
                     key={r.id}
-                    className="flex items-center justify-between rounded px-1.5 py-1 hover:bg-surface-hover"
+                    className="flex items-center justify-between gap-2 rounded px-1.5 py-1 hover:bg-surface-hover"
                   >
-                    <span className="flex items-center gap-2 text-ui-md">
-                      <span className="font-mono text-primary-light">{r.relatedItem.itemKey}</span>
-                      <span className="truncate text-foreground">{r.relatedItem.title}</span>
-                    </span>
+                    <WorkItemRefCell
+                      type={r.relatedItem.type as WorkItemType}
+                      itemKey={r.relatedItem.itemKey}
+                      title={r.relatedItem.title}
+                      onOpen={() =>
+                        navigate({
+                          to: '/item/$itemKey',
+                          params: { itemKey: r.relatedItem.itemKey },
+                        })
+                      }
+                    />
                     {!readOnly && (
-                      <button
+                      <IconButton
+                        variant="destructive"
                         aria-label="Remove link"
+                        title="Remove link"
                         onClick={() => void unlinkMutation.mutate(r.id)}
                         disabled={unlinkMutation.isPending}
-                        className="p-1 text-foreground-disabled hover:text-destructive disabled:opacity-50"
                       >
                         <Trash2 size={12} />
-                      </button>
+                      </IconButton>
                     )}
                   </li>
                 ))}

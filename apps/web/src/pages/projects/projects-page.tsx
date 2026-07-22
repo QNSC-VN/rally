@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FolderKanban, Plus } from 'lucide-react'
 import { toast } from 'sonner'
@@ -14,6 +14,7 @@ import { useDataTable, DataTableFrame } from '@/shared/ui/table'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
+import { useClickOutside } from '@/shared/lib/hooks/use-click-outside'
 import { useProjects, useUpdateProject } from '@/features/projects/api'
 import type { Project } from '@/features/projects/api'
 import { type ProjectColKey, type ProjectCtx } from './model/columns'
@@ -40,7 +41,7 @@ export function ProjectsPage() {
   const [sortCol, setSortCol] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [openMenu, setOpenMenu] = useState<string | null>(null)
-  const menuRef = useRef<HTMLDivElement>(null)
+  const menuRef = useClickOutside<HTMLDivElement>(openMenu !== null, () => setOpenMenu(null))
   const [showNewModal, setShowNewModal] = useState(false)
 
   const handleSort = useCallback(
@@ -62,17 +63,6 @@ export function ProjectsPage() {
     sort: { col: sortCol, dir: sortDir, onSort: handleSort },
   })
 
-  // Close dropdown on outside click
-  useEffect(() => {
-    if (!openMenu) return
-    function handleClick(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setOpenMenu(null)
-      }
-    }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [openMenu])
   const [editingProject, setEditingProject] = useState<Project | null>(null)
   const [archivingProject, setArchivingProject] = useState<Project | null>(null)
 

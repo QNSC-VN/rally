@@ -9,28 +9,23 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useMemo, useState, useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { DataTableFrame, useDataTable } from '@/shared/ui/table'
+import { SelectableTable, useDataTable } from '@/shared/ui/table'
 import { IterationBoard } from '@/widgets/iteration-board/iteration-board'
-import { RowGutter } from '@/shared/ui/row-gutter'
 import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
 import {
-  DndContext,
   closestCenter,
   PointerSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core'
-import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
-import { Trash2 } from 'lucide-react'
+import { verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { BRAND } from '@/shared/config/brand'
-import { InlineSelect } from '@/shared/ui/native-select'
 import { PaginationFooter } from '@/shared/ui/pagination-footer'
-import { BulkActionBar } from '@/shared/ui/bulk-action-bar'
-import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
+import { BulkDeleteCopy } from '@/features/work-items/ui/bulk-delete-copy'
 import { useRowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
@@ -38,21 +33,16 @@ import {
   useIterations,
   useIterationStatus,
   useIterationOptions,
+  useCreateIterationItem,
   type IterationStatusItem,
 } from '@/features/iterations/api'
 import {
   useUpdateAnyWorkItem,
-  useDeleteWorkItem,
-  useBulkAssignIteration,
   useRankAnyWorkItem,
 } from '@/features/work-items/api'
 import { useProjectMembers } from '@/features/teams/api'
 import { useMilestones } from '@/features/milestones/api'
-import {
-  SCHEDULE_STATE_LABEL,
-  SCHEDULE_STATE_VALUES,
-  ScheduleState,
-} from '@/entities/work-item/model/types'
+import { ScheduleState } from '@/entities/work-item/model/types'
 import { StatusRow } from './ui/status-row'
 import { AddItemModal } from './ui/add-item-modal'
 import { IterationHeader, MetricsStrip, Toolbar, TableFooterTotals } from './ui/iteration-chrome'
@@ -308,58 +298,26 @@ export function IterationStatusPage() {
 
   // ── Bulk selection ──────────────────────────────────────────────
   const selection = useRowSelection(localItems)
-  const bulkIteration = useBulkAssignIteration()
   const bulkUpdate = useUpdateAnyWorkItem()
-  const deleteItem = useDeleteWorkItem()
-  const [bulkError, setBulkError] = useState<string | null>(null)
-  const [confirmDelete, setConfirmDelete] = useState(false)
+  const copyItem = useCreateIterationItem(selectedId ?? '')
 
-  async function removeSelectedFromIteration() {
-    if (!projectId || selection.count === 0) return
-    setBulkError(null)
+  // Copy = duplicate the single selected Story/Defect into the current iteration
+  // (Rally "Copy"; disabled when more than one row is selected). Delete is
+  // handled by the shared BulkDeleteCopy in the bulk bar.
+  async function copySelected() {
+    if (!selectedId || selection.count !== 1) return
+    const src = items.find((i) => selection.selectedIds.has(i.id))
+    if (!src || (src.type !== 'story' && src.type !== 'defect')) return
     try {
-      await bulkIteration.mutateAsync({
-        projectId,
-        itemIds: [...selection.selectedIds],
-        iterationId: null,
+      await copyItem.mutateAsync({
+        type: src.type,
+        title: `${src.title} (copy)`,
+        ...(src.planEstimate != null ? { planEstimate: src.planEstimate } : {}),
       })
       selection.clear()
-      toast.success(t('bulk.removedFromIteration'))
+      toast.success('Item copied')
     } catch (e) {
-      setBulkError(e instanceof Error ? e.message : t('bulk.removeFailed'))
-    }
-  }
-
-  async function setStateForSelected(next: ScheduleState) {
-    if (!projectId || selection.count === 0) return
-    setBulkError(null)
-    const ids = [...selection.selectedIds]
-    const results = await Promise.allSettled(
-      ids.map((id) => bulkUpdate.mutateAsync({ id, input: { scheduleState: next } })),
-    )
-    const failed = results.filter((r) => r.status === 'rejected').length
-    if (failed > 0) {
-      setBulkError(t('bulk.updatesFailed', { failed, total: ids.length }))
-    } else {
-      selection.clear()
-      toast.success(t('bulk.itemsUpdated', { count: ids.length }))
-    }
-  }
-
-  async function deleteSelected() {
-    if (!projectId || selection.count === 0) return
-    setBulkError(null)
-    const ids = [...selection.selectedIds]
-    const results = await Promise.allSettled(
-      ids.map((id) => deleteItem.mutateAsync({ id, projectId })),
-    )
-    const failed = results.filter((r) => r.status === 'rejected').length
-    setConfirmDelete(false)
-    if (failed > 0) {
-      setBulkError(t('bulk.deletionsFailed', { failed, total: ids.length }))
-    } else {
-      selection.clear()
-      toast.success(t('bulk.itemsDeleted', { count: ids.length }))
+      toast.error(e instanceof Error ? e.message : 'Copy failed')
     }
   }
 
@@ -519,60 +477,8 @@ export function IterationStatusPage() {
         members={members}
       />
 
-      {/* Bulk action bar (appears when rows are selected) */}
-      {selection.count > 0 && (
-        <BulkActionBar
-          selectedCount={selection.count}
-          error={bulkError}
-          onClear={() => {
-            selection.clear()
-            setBulkError(null)
-          }}
-        >
-          {canEdit && (
-            <>
-              <InlineSelect
-                value=""
-                disabled={bulkUpdate.isPending}
-                onChange={(e) => {
-                  if (!e.target.value) return
-                  void setStateForSelected(e.target.value as ScheduleState)
-                }}
-                className="w-auto"
-                aria-label="Set state for selected"
-              >
-                <option value="">{t('bulk.setState')}</option>
-                {SCHEDULE_STATE_VALUES.map((s) => (
-                  <option key={s} value={s}>
-                    {SCHEDULE_STATE_LABEL[s as ScheduleState] ?? s}
-                  </option>
-                ))}
-              </InlineSelect>
-
-              <button
-                type="button"
-                onClick={() => void removeSelectedFromIteration()}
-                disabled={bulkIteration.isPending}
-                className="rounded px-2 py-1 text-ui-sm font-medium text-primary-light transition-colors hover:bg-card disabled:opacity-50"
-              >
-                {t('bulk.removeFromIteration')}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setConfirmDelete(true)}
-                disabled={deleteItem.isPending}
-                className="flex items-center gap-1 rounded px-2 py-1 text-ui-sm font-medium text-destructive transition-colors hover:bg-card disabled:opacity-50"
-              >
-                <Trash2 size={12} />
-                {t('common:delete')}
-              </button>
-            </>
-          )}
-        </BulkActionBar>
-      )}
-
       {/* ── 6. Table (List view) or Board view ───────────────────────────── */}
+      {/* Bulk bar (Delete + Copy) is rendered by SelectableTable in List view. */}
       {viewMode === 'board' ? (
         <div className="min-h-0 flex-1 overflow-auto p-3">
           {isLoading ? (
@@ -600,8 +506,10 @@ export function IterationStatusPage() {
           )}
         </div>
       ) : (
-        <DataTableFrame
-          header={{
+        <SelectableTable
+          rows={localItems}
+          selection={selection}
+          headerProps={{
             columns: HEADER_META,
             colStyles,
             onResize: startResize,
@@ -610,17 +518,29 @@ export function IterationStatusPage() {
           }}
           padClassName="pr-3 pl-1"
           bodyBackground={BRAND.surface}
-          leading={
-            <RowGutter
-              dragDisabled
-              checkbox={{
-                checked: selection.allSelected,
-                indeterminate: selection.someSelected,
-                onChange: selection.toggleAll,
-                ariaLabel: 'Select all',
-              }}
-            />
+          bulkActions={
+            canEdit
+              ? (sel) => (
+                  <BulkDeleteCopy
+                    selection={sel}
+                    projectId={projectId ?? ''}
+                    onCopy={copySelected}
+                    copyPending={copyItem.isPending}
+                  />
+                )
+              : undefined
           }
+          dnd={{
+            dndContextProps: {
+              sensors: dndSensors,
+              collisionDetection: closestCenter,
+              onDragEnd: handleDragEnd,
+            },
+            sortableContextProps: {
+              items: localItems.map((it) => it.id),
+              strategy: verticalListSortingStrategy,
+            },
+          }}
           totals={
             !isLoading && !isError && items.length > 0 ? (
               <TableFooterTotals colStyles={colStyles} totals={totals} />
@@ -665,41 +585,29 @@ export function IterationStatusPage() {
               />
             ) : undefined
           }
-        >
-          <DndContext
-            sensors={dndSensors}
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
-          >
-            <SortableContext
-              items={localItems.map((it) => it.id)}
-              strategy={verticalListSortingStrategy}
-            >
-              {localItems.map((item, idx) => (
-                <StatusRow
-                  key={item.id}
-                  item={item}
-                  rank={(currentPage - 1) * pageSize + idx + 1}
-                  memberMap={memberMap}
-                  milestoneOptions={milestoneOptions}
-                  iterationOptions={iterationOptions}
-                  selectedIterationId={selectedId!}
-                  canEdit={canEdit}
-                  colStyles={colStyles}
-                  dragEnabled={!sortCol}
-                  selected={selection.isSelected(item.id)}
-                  onToggleSelect={() => selection.toggle(item.id)}
-                  onOpen={() =>
-                    navigate({
-                      to: '/item/$itemKey',
-                      params: { itemKey: item.itemKey },
-                    })
-                  }
-                />
-              ))}
-            </SortableContext>
-          </DndContext>
-        </DataTableFrame>
+          renderRow={(item, { selected, onToggleSelect }) => (
+            <StatusRow
+              key={item.id}
+              item={item}
+              rank={(currentPage - 1) * pageSize + localItems.indexOf(item) + 1}
+              memberMap={memberMap}
+              milestoneOptions={milestoneOptions}
+              iterationOptions={iterationOptions}
+              selectedIterationId={selectedId!}
+              canEdit={canEdit}
+              colStyles={colStyles}
+              dragEnabled={!sortCol}
+              selected={selected}
+              onToggleSelect={onToggleSelect}
+              onOpen={() =>
+                navigate({
+                  to: '/item/$itemKey',
+                  params: { itemKey: item.itemKey },
+                })
+              }
+            />
+          )}
+        />
       )}
 
       {/* ── Add Item modal ───────────────────────────────────────────────── */}
@@ -711,17 +619,6 @@ export function IterationStatusPage() {
           onCreated={() => setShowAdd(false)}
         />
       )}
-
-      <ConfirmDialog
-        open={confirmDelete}
-        title={t('delete.title', { count: selection.count })}
-        message={t('delete.message')}
-        confirmLabel={t('common:delete')}
-        destructive
-        pending={deleteItem.isPending}
-        onConfirm={() => void deleteSelected()}
-        onCancel={() => setConfirmDelete(false)}
-      />
     </div>
   )
 }

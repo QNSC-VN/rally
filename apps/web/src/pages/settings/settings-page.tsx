@@ -3,9 +3,6 @@ import { useTranslation } from 'react-i18next'
 import {
   UserCheck,
   Bell,
-  SlidersHorizontal,
-  Activity,
-  Tag,
   Globe,
   Users,
   UsersRound,
@@ -20,9 +17,6 @@ import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { ProfileTab } from './ui/profile-tab'
 import { WorkspaceSettingsTab } from './ui/workspace-settings-tab'
-import { ProjectSettingsTab } from './ui/project-settings-tab'
-import { WorkflowTab } from './ui/workflow-tab'
-import { LabelsTab } from './ui/labels-tab'
 import { MembersTab } from './ui/members-tab'
 import { TeamsTab } from './ui/teams-tab'
 import { AuditLogTab } from './ui/audit-log-tab'
@@ -50,24 +44,8 @@ const SIDEBAR: SettingsGroup[] = [
       { key: 'notifications', label: 'nav.notifications', icon: Bell, requires: null },
     ],
   },
-  {
-    group: 'groups.project',
-    items: [
-      {
-        key: 'project',
-        label: 'nav.project',
-        icon: SlidersHorizontal,
-        requires: PERMISSION.PROJECT_EDIT,
-      },
-      {
-        key: 'workflow',
-        label: 'nav.workflow',
-        icon: Activity,
-        requires: PERMISSION.PROJECT_EDIT,
-      },
-      { key: 'labels', label: 'nav.labels', icon: Tag, requires: PERMISSION.PROJECT_EDIT },
-    ],
-  },
+  // Project-scoped settings intentionally NOT in the gear sidebar — the single
+  // entry point is Manage Projects > Projects (P4-SET-02).
   {
     group: 'groups.workspace',
     items: [
@@ -176,12 +154,6 @@ export function SettingsPage() {
           <TeamsTab />
         ) : activeTab === 'workspace' ? (
           <WorkspaceSettingsTab />
-        ) : activeTab === 'project' ? (
-          <ProjectSettingsTab />
-        ) : activeTab === 'workflow' ? (
-          <WorkflowTab />
-        ) : activeTab === 'labels' ? (
-          <LabelsTab />
         ) : activeTab === 'audit' ? (
           <AuditLogTab />
         ) : activeTab === 'roles' ? (

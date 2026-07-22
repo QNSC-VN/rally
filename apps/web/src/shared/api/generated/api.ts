@@ -511,6 +511,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Bounded, attention-sorted per-project health rollup (Home widget) */
+        get: operations["ProjectsController_listProjectHealth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{id}": {
         parameters: {
             query?: never;
@@ -748,6 +765,40 @@ export interface paths {
         };
         /** List backlog items (stories and defects) in a project */
         get: operations["WorkItemsController_listBacklog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/work-items/my": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Top-N work items assigned to the current user (Home widget) */
+        get: operations["WorkItemsController_listMyWork"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/work-items/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Workspace-wide summary counts for the Home strip */
+        get: operations["WorkItemsController_getWorkspaceSummary"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1140,6 +1191,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/work-items/{id}/attachments/{aid}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Redirect to the attachment bytes (stable, authenticated URL) */
+        get: operations["WorkItemsController_getAttachmentContent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/work-items/{id}/attachments/{aid}": {
         parameters: {
             query?: never;
@@ -1209,6 +1277,23 @@ export interface paths {
         head?: never;
         /** Update iteration details */
         patch: operations["IterationsController_updateIteration"];
+        trace?: never;
+    };
+    "/v1/iterations/{id}/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the revision history of an iteration */
+        get: operations["IterationsController_getActivity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/iterations/{id}/commit": {
@@ -1514,6 +1599,23 @@ export interface paths {
         };
         /** List notifications for the current user */
         get: operations["NotificationsController_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/notifications/paged": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Cursor-paginated notifications feed (full page, infinite scroll) */
+        get: operations["NotificationsController_listPaged"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2098,6 +2200,18 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        ProjectHealthResponseDto: {
+            /** Format: uuid */
+            id: string;
+            key: string;
+            name: string;
+            leadId: string | null;
+            leadName: string | null;
+            activeSprintName: string | null;
+            progressPercent: number;
+            openDefects: number;
+            blockedCount: number;
+        };
         CreateProjectDto: {
             key: string;
             name: string;
@@ -2218,6 +2332,27 @@ export interface components {
             devOwnerId: string | null;
             defectState: string | null;
             fixedInBuild: string | null;
+        };
+        MyWorkItemResponseDto: {
+            /** Format: uuid */
+            id: string;
+            itemKey: string;
+            type: string;
+            title: string;
+            scheduleState: string;
+            priority: string;
+            /** Format: uuid */
+            projectId: string;
+            projectKey: string;
+            projectName: string;
+        };
+        WorkspaceSummaryResponseDto: {
+            activeProjects: number;
+            openWorkItems: number;
+            activeSprints: number;
+            blockedItems: number;
+            openDefects: number;
+            assignedToMe: number;
         };
         CreateWorkItemDto: {
             /** Format: uuid */
@@ -2382,7 +2517,7 @@ export interface components {
             /** Format: uuid */
             targetId: string;
             /** @enum {string} */
-            relationType: "blocks" | "duplicates" | "relates_to" | "depends_on" | "causes";
+            relationType: "blocks" | "duplicates" | "relates_to" | "depends_on";
         };
         SetWorkItemMilestonesDto: {
             ids: string[];
@@ -2424,15 +2559,20 @@ export interface components {
             filename: string;
             mimeType: string;
             sizeBytes: number;
+            checksumSha256: string;
         };
         PresignAttachmentResponseDto: {
             /** Format: uuid */
             attachmentId: string;
             /**
              * Format: uri
-             * @description Presigned S3 PUT URL — expires in 5 minutes
+             * @description Presigned PUT URL — expires in 5 minutes
              */
             uploadUrl: string;
+            /** @description Headers the client MUST send on the PUT. They are part of the signature — omitting or altering any of them fails with SignatureDoesNotMatch. */
+            requiredHeaders: {
+                [key: string]: string;
+            };
         };
         AttachmentResponseDto: {
             /** Format: uuid */
@@ -2444,8 +2584,6 @@ export interface components {
             filename: string;
             mimeType: string;
             sizeBytes: number;
-            /** @enum {string} */
-            status: "pending" | "completed";
             /** Format: date-time */
             createdAt: string;
         };
@@ -2509,6 +2647,23 @@ export interface components {
             /** @enum {string} */
             state: "planning" | "committed" | "accepted";
         };
+        IterationActivityResponseDto: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            createdAt: string;
+            actorId: string | null;
+            actorName: string | null;
+            action: string;
+            changes: {
+                field: string;
+                old: unknown;
+                new: unknown;
+            } | null;
+            metadata: {
+                [key: string]: unknown;
+            };
+        };
         UpdateIterationDto: {
             name?: string;
             goal?: string | null;
@@ -2561,6 +2716,7 @@ export interface components {
                 planEstimate: number | null;
                 taskEstimate: number;
                 toDo: number;
+                actual: number;
                 taskTotal: number;
                 taskDone: number;
                 assigneeId: string | null;
@@ -2602,6 +2758,7 @@ export interface components {
             workspaceId: string;
             /** Format: uuid */
             projectId: string;
+            releaseKey: string | null;
             name: string;
             description: string | null;
             theme: string | null;
@@ -2773,6 +2930,7 @@ export interface components {
             workspaceId: string;
             /** Format: uuid */
             projectId: string;
+            milestoneKey: string | null;
             name: string;
             description: string | null;
             notes: string | null;
@@ -2824,6 +2982,7 @@ export interface components {
             workspaceId: string;
             /** Format: uuid */
             projectId: string;
+            milestoneKey: string | null;
             name: string;
             description: string | null;
             notes: string | null;
@@ -4574,6 +4733,41 @@ export interface operations {
             };
         };
     };
+    ProjectsController_listProjectHealth: {
+        parameters: {
+            query?: {
+                limit?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectHealthResponseDto"][];
+                };
+            };
+            /** @description Bad Request — validation error or malformed input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized — missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     ProjectsController_getProject: {
         parameters: {
             query?: never;
@@ -5539,6 +5733,67 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkItemsController_listMyWork: {
+        parameters: {
+            query?: {
+                limit?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyWorkItemResponseDto"][];
+                };
+            };
+            /** @description Bad Request — validation error or malformed input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized — missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkItemsController_getWorkspaceSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceSummaryResponseDto"];
+                };
+            };
+            /** @description Unauthorized — missing or invalid authentication */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6955,6 +7210,41 @@ export interface operations {
             };
         };
     };
+    WorkItemsController_getAttachmentContent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                aid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redirect to a short-lived presigned URL */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized — missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     WorkItemsController_deleteAttachment: {
         parameters: {
             query?: never;
@@ -7287,6 +7577,44 @@ export interface operations {
             };
             /** @description Unprocessable — business rule violation */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    IterationsController_getActivity: {
+        parameters: {
+            query?: {
+                page?: number;
+                pageSize?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IterationActivityResponseDto"][];
+                };
+            };
+            /** @description Unauthorized — missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8374,6 +8702,56 @@ export interface operations {
             };
         };
     };
+    NotificationsController_listPaged: {
+        parameters: {
+            query?: {
+                unreadOnly?: string;
+                category?: "assigned" | "mentions";
+                limit?: number;
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["NotificationResponseDto"][];
+                        pageInfo?: {
+                            /** @description Opaque cursor token for the next page */
+                            nextCursor: string | null;
+                            hasNextPage: boolean;
+                            /** @description Number of items returned per page */
+                            limit: number;
+                            /** @description Total rows matching the filters (ignoring cursor/limit); present only on endpoints that expose a count */
+                            total?: number;
+                        };
+                    };
+                };
+            };
+            /** @description Bad Request — validation error or malformed input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized — missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     NotificationsController_markRead: {
         parameters: {
             query?: never;
@@ -8487,7 +8865,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Event type key, e.g. work_item.assigned or * */
+                /** @description Event type key, e.g. WORK_ITEM_ASSIGNED or '*' */
                 type: string;
             };
             cookie?: never;
@@ -8525,7 +8903,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Event type key, e.g. work_item.assigned or * */
+                /** @description Event type key, e.g. WORK_ITEM_ASSIGNED or '*' */
                 type: string;
             };
             cookie?: never;
@@ -8534,6 +8912,13 @@ export interface operations {
         responses: {
             /** @description Reset to default */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request — validation error or malformed input */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };

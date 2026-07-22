@@ -1,7 +1,7 @@
 {
   "title": "Timeboxes",
   "type": {
-    "label": "Type",
+    "label": "Timebox",
     "iterations": "Iterations",
     "releases": "Releases",
     "milestones": "Milestones"
@@ -80,5 +80,27 @@
     "moved_other": "Moved {{count}} items",
     "moveFailed": "Failed to move items",
     "moveItems": "Move Items"
+  },
+  "metrics": {
+    "total": "Total",
+    "planning": "Planning",
+    "committed": "Committed",
+    "accepted": "Accepted"
+  },
+  "delete": {
+    "title": "Delete iteration",
+    "confirm": "Delete iteration",
+    "deleted": "Iteration deleted",
+    "deleteFailed": "Failed to delete iteration",
+    "bulkMessage": "Delete {{count}} iteration(s)? This cannot be undone."
+  },
+  "row": {
+    "nameUpdated": "Name updated",
+    "themeUpdated": "Theme updated",
+    "velocityUpdated": "Planned velocity updated",
+    "velocityInvalid": "Planned velocity must be a non-negative number",
+    "startDateUpdated": "Start date updated",
+    "endDateUpdated": "End date updated",
+    "stateUpdated": "State updated"
   }
 }

@@ -8,6 +8,13 @@ export interface ColumnDef<K extends string> {
   minWidth?: number
   /** Cannot be hidden via the Show Fields menu (e.g. ID / Name). */
   locked?: boolean
+  /**
+   * When true, this column grows to absorb any leftover width so the table
+   * fills its container instead of leaving an empty gap (Rally lets the primary
+   * text column — Name — expand). `defaultWidth` becomes its minimum. Only mark
+   * ONE column per grid as grow.
+   */
+  grow?: boolean
 }
 
 interface StoredExtras<K extends string> {
@@ -55,6 +62,10 @@ export function useColumnLayout<K extends string>(columns: ColumnDef<K>[], stora
     () => Object.fromEntries(columns.map((c) => [c.key, c.minWidth ?? 30])) as Record<K, number>,
     [columns],
   )
+  const growKeys = useMemo(
+    () => new Set(columns.filter((c) => c.grow).map((c) => c.key)),
+    [columns],
+  )
 
   const { widths, startResize, resizedKeys } = useResizableColumns(defaults, {
     min: mins,
@@ -64,11 +75,14 @@ export function useColumnLayout<K extends string>(columns: ColumnDef<K>[], stora
   const [{ order, hidden }, setExtras] = useState(() => {
     const stored = loadExtras<K>(storageKey, knownKeys)
     const order = stored.order ?? knownKeys
-    // Reconcile: keep known stored order, append any new columns not yet stored.
-    const merged = [
-      ...order.filter((k) => knownKeys.includes(k)),
-      ...knownKeys.filter((k) => !order.includes(k)),
-    ]
+    // Reconcile: keep the stored order, then splice any NEW columns (added since
+    // the layout was saved) back at their declared index — not the end — so a
+    // new leading column (e.g. a locked ID) lands where the ColumnSpec puts it
+    // instead of drifting to the far right.
+    const merged = order.filter((k) => knownKeys.includes(k))
+    knownKeys.forEach((k, i) => {
+      if (!merged.includes(k)) merged.splice(Math.min(i, merged.length), 0, k)
+    })
     const hiddenSet = new Set(
       (stored.hidden ?? []).filter((k) => !columns.find((c) => c.key === k)?.locked),
     )
@@ -136,6 +150,26 @@ export function useColumnLayout<K extends string>(columns: ColumnDef<K>[], stora
 
       const width = widths[key] ?? base.width
 
+      // Grow column: fills leftover width (never shrinks below its width, which
+      // acts as the minimum). Applied identically in the header and the rows
+      // (both spread styleFor), so columns stay aligned while the table fills
+      // its container. No maxWidth so it can expand.
+      if (growKeys.has(key)) {
+        // Explicit long-hands only — do NOT mix the `flex` shorthand with
+        // `flexGrow: undefined`, because React applies the shorthand then clears
+        // the long-hand back to 0, silently killing the grow.
+        return {
+          ...base,
+          order: orderIndex.get(key) ?? 0,
+          width: undefined,
+          maxWidth: undefined,
+          minWidth: width,
+          flexGrow: 1,
+          flexShrink: 1,
+          flexBasis: typeof width === 'number' ? `${width}px` : width,
+        }
+      }
+
       // Fixed-width column: pin width and drop any flex sizing the callsite set,
       // so the resized width always wins.
       return {
@@ -150,7 +184,7 @@ export function useColumnLayout<K extends string>(columns: ColumnDef<K>[], stora
         flexBasis: undefined,
       }
     },
-    [widths, orderIndex, hidden],
+    [widths, orderIndex, hidden, growKeys],
   )
 
   return { widths, startResize, order, hidden, toggleVisible, reorder, styleFor, resizedKeys }

@@ -1,30 +1,38 @@
 /**
- * AttachmentBlock — drag-and-drop / click-to-upload file list component.
+ * AttachmentBlock — Rally-style attachment table.
  *
  * Features:
- * - Drag & drop zone with visual highlight
- * - Click-to-browse file picker (any file type, max 10 MB)
- * - File list: icon, name, size, date, delete button
- * - Download link via /v1/work-items/{id}/attachments/{id}/content
- *   (authorizes, then 302s to a short-lived presigned URL)
- * - Read-only mode hides upload zone and delete buttons
- * - Upload progress optimistic UI (spinner on uploading row)
+ * - Table layout: Name (download link) · Description · When · Size, with a
+ *   per-row gear actions menu (Delete).
+ * - Hover thumbnail preview for image attachments (Rally parity).
+ * - Slim "＋ Drag or click to add attachments" row that doubles as the
+ *   drag-and-drop target and file picker (any file, max 10 MB).
+ * - Click a name to download via /v1/work-items/{id}/attachments/{id}/content
+ *   (authorizes, then 302s to a short-lived presigned URL).
+ * - Read-only mode hides the gear menu and the add row.
+ * - Pasted-image previews in the rich-text editors upload on Save (see
+ *   useUploadPastedImages) and then appear here — this block only lists what
+ *   the server already has.
  */
-import { BRAND } from '@/shared/config/brand'
-import { formatDate, cn } from '@/shared/lib/utils'
+import { formatDate, relativeTime, cn } from '@/shared/lib/utils'
+import { useClickOutside } from '@/shared/lib/hooks/use-click-outside'
 import { useRef, useState, useCallback } from 'react'
-import { FileText, Paperclip, Trash2, Upload, X } from 'lucide-react'
+import { Plus, Settings, Trash2, X } from 'lucide-react'
+import { IconButton } from '@/shared/ui/icon-button'
 import {
   useAttachments,
   useUploadAttachment,
   useDeleteAttachment,
 } from '@/features/collaboration/api'
 
+/** Column headers — an array (not literal JSX text) so labels stay data. */
+const COLUMN_LABELS = ['Name', 'Description', 'When', 'Size']
+
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
@@ -42,6 +50,8 @@ export function AttachmentBlock({ workItemId, readOnly = false }: AttachmentBloc
   const [dragging, setDragging] = useState(false)
   const [sizeError, setSizeError] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [menuId, setMenuId] = useState<string | null>(null)
+  const menuRef = useClickOutside<HTMLDivElement>(menuId !== null, () => setMenuId(null))
 
   const handleFiles = useCallback(
     async (files: FileList | null) => {
@@ -69,6 +79,7 @@ export function AttachmentBlock({ workItemId, readOnly = false }: AttachmentBloc
 
   const handleDelete = useCallback(
     async (id: string) => {
+      setMenuId(null)
       setDeletingId(id)
       await deleteMutation.mutateAsync(id).catch(() => null)
       setDeletingId(null)
@@ -77,145 +88,184 @@ export function AttachmentBlock({ workItemId, readOnly = false }: AttachmentBloc
   )
 
   const isUploading = uploadMutation.isPending
+  const hasRows = attachments.length > 0
 
   return (
-    <section className="overflow-hidden rounded border border-border-strong bg-card">
-      {/* Header */}
-      <div className="flex items-center gap-2 border-b border-border-strong bg-surface-hover px-4 py-2 text-ui-sm font-semibold text-muted-foreground select-none">
-        <Paperclip size={12} />
-        <span>Attachments</span>
-        {attachments.length > 0 && (
-          <span className="ml-1 rounded-full bg-avatar px-1.5 py-px text-ui-xs font-bold text-muted-foreground">
+    <section>
+      {/* Section label — sits above the box (Rally parity). */}
+      <span className="mb-1 flex items-center gap-1.5 text-ui-sm font-semibold text-muted-foreground select-none">
+        Attachments
+        {hasRows && (
+          <span className="rounded-full bg-avatar px-1.5 py-px text-ui-xs font-bold text-muted-foreground">
             {attachments.length}
           </span>
         )}
-      </div>
+      </span>
 
-      {/* File list */}
-      <div className="divide-y divide-primary-lighter">
-        {isLoading && <div className="px-4 py-3 text-ui-md text-foreground-subtle">Loading…</div>}
-        {!isLoading && attachments.length === 0 && (
-          <div className="px-4 py-3 text-ui-md text-foreground-subtle">No attachments.</div>
+      <div className="rounded border border-input bg-card">
+        {isLoading && (
+          <div className="px-4 py-3 text-ui-md text-foreground-subtle">Loading…</div>
         )}
-        {attachments.map((a) => {
-          const isDeleting = deletingId === a.id
-          // /content redirects to a fresh presigned URL after re-authorizing.
-          // The old /download route returns JSON, so linking to it showed the
-          // response body instead of downloading the file.
-          const downloadUrl = `/v1/work-items/${a.workItemId}/attachments/${a.id}/content`
-          return (
-            <div
-              key={a.id}
-              className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-slate-50"
-              style={{ opacity: isDeleting ? 0.5 : 1 }}
-            >
-              <FileText size={15} className="shrink-0 text-muted-foreground" />
-              <div className="min-w-0 flex-1">
-                <a
-                  href={downloadUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block truncate text-ui-md font-medium text-primary-light hover:underline"
-                >
-                  {a.filename}
-                </a>
-                <span className="text-ui-xs text-foreground-subtle">
-                  {formatBytes(a.sizeBytes)} · {formatDate(a.createdAt)}
-                </span>
-              </div>
-              {!readOnly && (
-                <button
-                  type="button"
-                  aria-label={`Delete ${a.filename}`}
-                  onClick={() => void handleDelete(a.id)}
-                  disabled={isDeleting}
-                  className="rounded p-1 text-foreground-subtle transition-colors hover:bg-red-50"
-                  onMouseEnter={(e) =>
-                    ((e.currentTarget as HTMLButtonElement).style.color = BRAND.danger)
-                  }
-                  onMouseLeave={(e) =>
-                    ((e.currentTarget as HTMLButtonElement).style.color = BRAND.textMuted)
-                  }
-                >
-                  {isDeleting ? (
-                    <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  ) : (
-                    <Trash2 size={13} />
-                  )}
-                </button>
-              )}
-            </div>
-          )
-        })}
 
-        {/* Uploading optimistic row */}
-        {isUploading && (
-          <div className="flex items-center gap-3 px-4 py-2.5">
-            <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
-            <span className="text-ui-md text-muted-foreground">Uploading…</span>
+        {!isLoading && hasRows && (
+          <table className="w-full text-left text-ui-sm">
+            <thead>
+              <tr className="border-b border-input bg-surface-hover text-ui-2xs font-semibold tracking-wider text-foreground-subtle uppercase select-none">
+                {!readOnly && <th className="w-8" />}
+                {COLUMN_LABELS.map((label, i) => (
+                  <th
+                    key={label}
+                    className={`px-3 py-1.5 font-medium whitespace-nowrap ${
+                      i === COLUMN_LABELS.length - 1 ? 'text-right' : ''
+                    }`}
+                  >
+                    {label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {attachments.map((a) => {
+                const isDeleting = deletingId === a.id
+                // /content re-authorizes then 302s to a fresh presigned URL.
+                const downloadUrl = `/v1/work-items/${a.workItemId}/attachments/${a.id}/content`
+                const isImage = a.mimeType?.startsWith('image/')
+                return (
+                  <tr
+                    key={a.id}
+                    className="group border-b border-border-inner transition-colors last:border-0 hover:bg-surface-hover"
+                    style={{ opacity: isDeleting ? 0.5 : 1 }}
+                  >
+                    {/* Gear actions menu */}
+                    {!readOnly && (
+                      <td className="px-2">
+                        <div className="relative" ref={menuId === a.id ? menuRef : undefined}>
+                          <IconButton
+                            aria-label={`Actions for ${a.filename}`}
+                            title="Actions"
+                            onClick={() => setMenuId((id) => (id === a.id ? null : a.id))}
+                          >
+                            {isDeleting ? (
+                              <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                            ) : (
+                              <Settings size={13} />
+                            )}
+                          </IconButton>
+                          {menuId === a.id && (
+                            <>
+                              <div className="absolute top-full left-0 z-50 mt-1 w-32 overflow-hidden rounded border border-input bg-card shadow-lg">
+                                <button
+                                  type="button"
+                                  onClick={() => void handleDelete(a.id)}
+                                  className="flex w-full items-center gap-2 px-3 py-1.5 text-ui-sm text-destructive transition-colors hover:bg-destructive-bg"
+                                >
+                                  <Trash2 size={12} /> Delete
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    )}
+
+                    {/* Name — download link + hover thumbnail for images */}
+                    <td className="relative px-3 py-2">
+                      <a
+                        href={downloadUrl}
+                        download={a.filename}
+                        className="block truncate text-ui-md font-medium text-primary-light hover:underline"
+                        title={a.filename}
+                      >
+                        {a.filename}
+                      </a>
+                      {isImage && (
+                        <div className="pointer-events-none absolute top-full left-3 z-50 mt-1 hidden w-64 overflow-hidden rounded-md bg-tooltip-bg p-1.5 shadow-xl group-hover:block">
+                          <div className="mb-1 truncate px-1 text-ui-xs font-medium text-white">
+                            {a.filename}
+                          </div>
+                          <img
+                            src={downloadUrl}
+                            alt={a.filename}
+                            className="max-h-40 w-full rounded object-contain"
+                            loading="lazy"
+                          />
+                        </div>
+                      )}
+                    </td>
+
+                    {/* Description — not tracked yet; reserved column for parity */}
+                    <td className="px-3 py-2 text-foreground-subtle" />
+
+                    <td className="px-3 py-2 whitespace-nowrap text-foreground-subtle">
+                      <span title={formatDate(a.createdAt)}>{relativeTime(a.createdAt)}</span>
+                    </td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap text-foreground-subtle tabular-nums">
+                      {formatBytes(a.sizeBytes)}
+                    </td>
+                  </tr>
+                )
+              })}
+
+              {isUploading && (
+                <tr>
+                  <td colSpan={readOnly ? 4 : 5} className="px-3 py-2">
+                    <span className="flex items-center gap-2 text-ui-md text-muted-foreground">
+                      <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-primary-light border-t-transparent" />
+                      Uploading…
+                    </span>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        )}
+
+        {/* Add row — drop target + file picker (Rally's single-line add bar) */}
+        {!readOnly && (
+          <div
+            className={cn(
+              'flex items-center gap-2 px-3 py-2 text-ui-sm transition-colors',
+              hasRows && 'border-t border-input',
+              dragging ? 'bg-primary-lighter text-primary-light' : 'text-primary-light',
+            )}
+            onDragOver={(e) => {
+              e.preventDefault()
+              setDragging(true)
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={handleDrop}
+          >
+            <input
+              ref={inputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(e) => void handleFiles(e.target.files)}
+              aria-label="Upload file"
+            />
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              className="flex w-full items-center gap-1.5 font-medium hover:underline"
+            >
+              <Plus size={14} />
+              {dragging ? 'Drop to upload' : 'Drag or click to add attachments'}
+            </button>
           </div>
         )}
       </div>
 
-      {/* Drop zone */}
-      {!readOnly && (
-        <div
-          className={cn(
-            'm-3 rounded-lg border-2 border-dashed px-3 py-4 transition-all',
-            dragging
-              ? 'border-primary-light bg-primary-lighter'
-              : 'border-border-strong bg-surface-hover',
-          )}
-          onDragOver={(e) => {
-            e.preventDefault()
-            setDragging(true)
-          }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={handleDrop}
-        >
-          <input
-            ref={inputRef}
-            type="file"
-            multiple
-            className="hidden"
-            onChange={(e) => void handleFiles(e.target.files)}
-            aria-label="Upload file"
-          />
-          <button
-            type="button"
-            onClick={() => inputRef.current?.click()}
-            className="flex w-full flex-col items-center gap-1.5"
-          >
-            <Upload
-              size={18}
-              className={dragging ? 'text-primary-light' : 'text-foreground-subtle'}
-            />
-            <span
-              className={cn(
-                'text-ui-sm',
-                dragging ? 'text-primary-light' : 'text-muted-foreground',
-              )}
-            >
-              {dragging ? 'Drop to upload' : 'Drag & drop or click to upload'}
-            </span>
-            <span className="text-ui-xs text-foreground-subtle">Any file · max 10 MB</span>
-          </button>
-        </div>
-      )}
-
-      {/* Error message */}
+      {/* Error messages */}
       {sizeError && (
-        <div className="mx-3 mb-3 flex items-center justify-between gap-2 rounded border border-destructive-border bg-destructive-bg px-3 py-2 text-ui-sm text-destructive">
+        <div className="mt-2 flex items-center justify-between gap-2 rounded border border-destructive-border bg-destructive-bg px-3 py-2 text-ui-sm text-destructive">
           <span>{sizeError}</span>
           <button type="button" onClick={() => setSizeError(null)} aria-label="Dismiss error">
             <X size={12} />
           </button>
         </div>
       )}
-
-      {/* Upload mutation error */}
       {uploadMutation.isError && (
-        <div className="mx-3 mb-3 flex items-center justify-between gap-2 rounded border border-destructive-border bg-destructive-bg px-3 py-2 text-ui-sm text-destructive">
+        <div className="mt-2 flex items-center justify-between gap-2 rounded border border-destructive-border bg-destructive-bg px-3 py-2 text-ui-sm text-destructive">
           <span>Upload failed: {(uploadMutation.error as Error)?.message ?? 'Unknown error'}</span>
           <button type="button" onClick={() => uploadMutation.reset()} aria-label="Dismiss error">
             <X size={12} />

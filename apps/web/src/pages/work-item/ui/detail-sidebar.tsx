@@ -1,9 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { PanelRightClose } from 'lucide-react'
 
-import { BRAND } from '@/shared/config/brand'
 import {
   useWorkItem,
   useWorkItemLabels,
@@ -30,16 +29,18 @@ import {
   type WorkItemType,
 } from '@/entities/work-item/model/types'
 import { FormField } from '@/shared/ui/form-field'
-import { NativeSelect } from '@/shared/ui/native-select'
+import { Input } from '@/shared/ui/input'
+import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { OwnerSelectField, TeamSelectField } from '@/shared/ui/entity-select-field'
-import { SelectionModal } from '@/shared/ui/selection-modal'
 import { StateStepper } from '@/entities/work-item/ui/state-stepper'
 import { SCHEDULE_STATE_STEPS } from '@/entities/work-item/ui/state-steps'
 import { TaskRollup } from '@/entities/work-item/ui/task-rollup'
 import { LabelChips } from '@/entities/work-item/ui/label-chips'
 import { WorkItemRefCell } from '@/entities/work-item/ui/work-item-ref-cell'
+import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { SaveIndicator } from '@/shared/ui/save-indicator'
 import { formatDate } from '@/shared/lib/utils'
+import { useAppContext } from '@/shared/lib/stores/app-context.store'
 
 type SaveStatus = ReturnType<typeof useSaveState>['status']
 
@@ -56,17 +57,22 @@ function ParentStorySelect({
   const { data: backlogData } = useBacklog(projectId, { type: 'story' })
   const stories = backlogData?.data ?? []
   return (
-    <NativeSelect
+    <SearchableSelect
+      variant="field"
       value={currentParentId ?? ''}
-      onChange={(e) => onUpdate({ parentId: e.target.value || null })}
-    >
-      <option value="">{t('sidebar.noParentStory')}</option>
-      {stories.map((s) => (
-        <option key={s.id} value={s.id}>
-          {s.itemKey} — {s.title}
-        </option>
-      ))}
-    </NativeSelect>
+      ariaLabel={t('sidebar.noParentStory')}
+      placeholder={t('sidebar.noParentStory')}
+      options={[
+        { value: '', label: t('sidebar.noParentStory') },
+        ...stories.map((s) => ({
+          value: s.id,
+          label: `${s.itemKey}: ${s.title}`,
+          searchText: `${s.itemKey} ${s.title}`,
+          icon: <TypeBadge type={s.type} size={16} />,
+        })),
+      ]}
+      onChange={(v) => onUpdate({ parentId: v || null })}
+    />
   )
 }
 
@@ -129,6 +135,7 @@ export function DetailSidebar({
   saveErrorMsg,
 }: SidebarProps) {
   const { t } = useTranslation('work-items')
+  const { project } = useAppContext()
   const { data: teams = [] } = useProjectTeams(item.projectId)
   const { data: members = [] } = useProjectMembers(item.projectId)
   const { data: releases = [] } = useReleases(item.projectId)
@@ -139,7 +146,6 @@ export function DetailSidebar({
   const isTask = item.type === 'task'
   const isDefect = item.type === 'defect'
   const disabled = updating || readOnly
-  const [showMilestones, setShowMilestones] = useState(false)
   // Milestones apply to Story/Defect only (Tasks inherit via their parent).
   const { data: milestoneOptions = [] } = useMilestones(!isTask ? item.projectId : undefined)
   const { data: itemMilestones = [] } = useWorkItemMilestones(!isTask ? item.id : undefined)
@@ -191,54 +197,62 @@ export function DetailSidebar({
              Schedule/Flow split. The wire field is `scheduleState`; the backend
              mirrors it onto `task.state`. */
           <FormField label={t('sidebar.taskState')}>
-            <NativeSelect
+            <SearchableSelect
+              variant="field"
               value={item.scheduleState ?? ScheduleState.Defined}
-              onChange={(e) =>
-                onUpdate({ scheduleState: e.target.value as UpdateWorkItemInput['scheduleState'] })
+              readOnly={disabled}
+              ariaLabel={t('sidebar.taskState')}
+              options={TASK_STATE_VALUES.map((s) => ({ value: s, label: SCHEDULE_STATE_LABEL[s] }))}
+              onChange={(v) =>
+                onUpdate({ scheduleState: v as UpdateWorkItemInput['scheduleState'] })
               }
-              disabled={disabled}
-            >
-              {TASK_STATE_VALUES.map((s) => (
-                <option key={s} value={s}>
-                  {SCHEDULE_STATE_LABEL[s]}
-                </option>
-              ))}
-            </NativeSelect>
+            />
           </FormField>
         ) : (
           <>
-            {/* Schedule State — business-readiness dimension */}
+            {/* Schedule State — business-readiness dimension. Uses the shared
+                SearchableSelect popover (same control as Flow State), but keeps
+                its special segmented-stepper display via `triggerContent`. */}
             <FormField label={t('sidebar.scheduleState')}>
-              <div>
-                <StateStepper
-                  steps={SCHEDULE_STATE_STEPS}
-                  value={(item.scheduleState ?? ScheduleState.Defined) as ScheduleState}
-                  canEdit={!disabled}
-                  onChange={(next) => {
-                    if (next !== item.scheduleState)
-                      onUpdate({ scheduleState: next as UpdateWorkItemInput['scheduleState'] })
-                  }}
-                  ariaLabel="Schedule State"
-                />
-              </div>
+              <SearchableSelect
+                variant="field"
+                value={item.scheduleState ?? ScheduleState.Defined}
+                readOnly={disabled}
+                ariaLabel={t('sidebar.scheduleState')}
+                searchPlaceholder="Search"
+                triggerContent={
+                  <StateStepper
+                    steps={SCHEDULE_STATE_STEPS}
+                    value={(item.scheduleState ?? ScheduleState.Defined) as ScheduleState}
+                    canEdit={false}
+                    ariaLabel="Schedule State"
+                  />
+                }
+                options={SCHEDULE_STATE_VALUES.map((s) => ({
+                  value: s,
+                  label: SCHEDULE_STATE_LABEL[s],
+                }))}
+                onChange={(v) =>
+                  onUpdate({ scheduleState: v as UpdateWorkItemInput['scheduleState'] })
+                }
+              />
             </FormField>
 
             {/* Flow State — mirrors Schedule State bidirectionally (backend
                 enforces the mirror; either control updates both). */}
             <FormField label={t('sidebar.flowState')}>
-              <NativeSelect
+              <SearchableSelect
+                variant="field"
                 value={item.flowState ?? item.scheduleState ?? ScheduleState.Defined}
-                onChange={(e) =>
-                  onUpdate({ flowState: e.target.value as UpdateWorkItemInput['flowState'] })
-                }
-                disabled={disabled}
-              >
-                {SCHEDULE_STATE_VALUES.map((s) => (
-                  <option key={s} value={s}>
-                    {SCHEDULE_STATE_LABEL[s]}
-                  </option>
-                ))}
-              </NativeSelect>
+                readOnly={disabled}
+                ariaLabel={t('sidebar.flowState')}
+                searchPlaceholder="Search"
+                options={SCHEDULE_STATE_VALUES.map((s) => ({
+                  value: s,
+                  label: SCHEDULE_STATE_LABEL[s],
+                }))}
+                onChange={(v) => onUpdate({ flowState: v as UpdateWorkItemInput['flowState'] })}
+              />
             </FormField>
           </>
         )}
@@ -251,6 +265,13 @@ export function DetailSidebar({
           disabled={disabled}
         />
 
+        {/* Project — read-only (WID-FR-007). A work item's project is fixed. */}
+        <FormField label={t('sidebar.project', 'Project')}>
+          <div className="flex h-9 items-center rounded border border-input bg-input-background px-3 text-ui-md text-muted-foreground">
+            {project?.projectName ?? '—'}
+          </div>
+        </FormField>
+
         {/* Team */}
         <TeamSelectField
           value={item.teamId}
@@ -262,42 +283,39 @@ export function DetailSidebar({
         {/* Priority — Defect only */}
         {item.type === 'defect' && (
           <FormField label={t('sidebar.priority')}>
-            <NativeSelect
+            <SearchableSelect
+              variant="field"
               value={item.priority ?? 'none'}
-              onChange={(e) =>
-                onUpdate({ priority: e.target.value as UpdateWorkItemInput['priority'] })
-              }
-              disabled={disabled}
-            >
-              {PRIORITIES.map(({ value, label }) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </NativeSelect>
+              readOnly={disabled}
+              ariaLabel={t('sidebar.priority')}
+              options={PRIORITIES.map(({ value, label }) => ({ value, label }))}
+              onChange={(v) => onUpdate({ priority: v as UpdateWorkItemInput['priority'] })}
+            />
           </FormField>
         )}
 
         {/* Environment — Defect only */}
         {isDefect && (
           <FormField label={t('sidebar.environment')}>
-            <NativeSelect
+            <SearchableSelect
+              variant="field"
               value={item.foundInEnvironment ?? ''}
-              onChange={(e) =>
+              readOnly={disabled}
+              ariaLabel={t('sidebar.environment')}
+              options={[
+                { value: '', label: t('sidebar.env.notSpecified') },
+                { value: 'development', label: t('sidebar.env.development') },
+                { value: 'staging', label: t('sidebar.env.staging') },
+                { value: 'production', label: t('sidebar.env.production') },
+                { value: 'testing', label: t('sidebar.env.testing') },
+              ]}
+              onChange={(v) =>
                 onUpdate({
                   foundInEnvironment:
-                    (e.target.value as 'development' | 'staging' | 'production' | 'testing') ||
-                    null,
+                    (v as 'development' | 'staging' | 'production' | 'testing') || null,
                 })
               }
-              disabled={disabled}
-            >
-              <option value="">{t('sidebar.env.notSpecified')}</option>
-              <option value="development">{t('sidebar.env.development')}</option>
-              <option value="staging">{t('sidebar.env.staging')}</option>
-              <option value="production">{t('sidebar.env.production')}</option>
-              <option value="testing">{t('sidebar.env.testing')}</option>
-            </NativeSelect>
+            />
           </FormField>
         )}
 
@@ -354,7 +372,7 @@ export function DetailSidebar({
               </div>
             </FormField>
             <FormField label={t('sidebar.todoH')}>
-              <input
+              <Input
                 type="number"
                 min={0}
                 step={0.5}
@@ -366,7 +384,7 @@ export function DetailSidebar({
               />
             </FormField>
             <FormField label={t('sidebar.actualH')}>
-              <input
+              <Input
                 type="number"
                 min={0}
                 step={0.5}
@@ -383,7 +401,7 @@ export function DetailSidebar({
         {/* Story/Defect: Plan Estimate */}
         {!isTask && (
           <FormField label={t('sidebar.planEstimatePts')}>
-            <input
+            <Input
               type="number"
               min={0}
               value={item.storyPoints ?? ''}
@@ -410,65 +428,67 @@ export function DetailSidebar({
         {!isTask && (
           <>
             <FormField label={t('sidebar.iteration')}>
-              <NativeSelect
+              <SearchableSelect
+                variant="field"
                 value={item.iterationId ?? ''}
-                onChange={(e) => {
-                  const v = e.target.value || null
-                  if (v !== (item.iterationId ?? null)) onUpdate({ iterationId: v })
+                readOnly={disabled}
+                ariaLabel={t('sidebar.iteration')}
+                placeholder={t('sidebar.noIteration')}
+                options={[
+                  { value: '', label: t('sidebar.noIteration') },
+                  ...iterations.map((i) => ({
+                    value: i.id,
+                    label: i.iterationKey ? `${i.iterationKey}: ${i.name}` : i.name,
+                    searchText: `${i.iterationKey ?? ''} ${i.name}`,
+                    icon: <TypeBadge type="iteration" size={16} />,
+                  })),
+                ]}
+                onChange={(v) => {
+                  const next = v || null
+                  if (next !== (item.iterationId ?? null)) onUpdate({ iterationId: next })
                 }}
-                disabled={disabled}
-              >
-                <option value="">{t('sidebar.noIteration')}</option>
-                {iterations.map((i) => (
-                  <option key={i.id} value={i.id}>
-                    {i.name}
-                  </option>
-                ))}
-              </NativeSelect>
+              />
             </FormField>
             <FormField label={t('sidebar.release')}>
-              <NativeSelect
+              <SearchableSelect
+                variant="field"
                 value={item.releaseId ?? ''}
-                onChange={(e) => onUpdate({ releaseId: e.target.value || null })}
-                disabled={disabled}
-              >
-                <option value="">{t('sidebar.noRelease')}</option>
-                {releases.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                  </option>
-                ))}
-              </NativeSelect>
+                readOnly={disabled}
+                ariaLabel={t('sidebar.release')}
+                placeholder={t('sidebar.noRelease')}
+                options={[
+                  { value: '', label: t('sidebar.noRelease') },
+                  ...releases.map((r) => ({
+                    value: r.id,
+                    label: r.releaseKey ? `${r.releaseKey}: ${r.name}` : r.name,
+                    searchText: `${r.releaseKey ?? ''} ${r.name}`,
+                    icon: <TypeBadge type="release" size={16} />,
+                  })),
+                ]}
+                onChange={(v) => onUpdate({ releaseId: v || null })}
+              />
             </FormField>
             {/* Milestones — many-to-many, persisted independently of Release
-                (SRS FR-022). Reuses the shared SelectionModal. */}
+                (SRS FR-022). Same SearchableSelect style as Iteration/Release,
+                in multi-select mode (no separate modal). */}
             <FormField label={t('sidebar.milestones')}>
-              <button
-                type="button"
-                onClick={() => setShowMilestones(true)}
-                disabled={disabled}
-                className="flex w-full items-center justify-between rounded border border-input bg-card px-2 py-1 text-left text-ui-md"
-                style={{
-                  color: itemMilestones.length > 0 ? BRAND.textPrimary : BRAND.textMuted,
-                  cursor: disabled ? 'default' : 'pointer',
+              <SearchableSelect
+                variant="field"
+                multiple
+                value={itemMilestones.map((m) => m.id)}
+                readOnly={disabled}
+                ariaLabel={t('sidebar.milestones')}
+                placeholder={t('sidebar.noMilestones')}
+                options={selectableMilestoneOptions.map((m) => ({
+                  value: m.id,
+                  label: m.milestoneKey ? `${m.milestoneKey}: ${m.name}` : m.name,
+                  searchText: `${m.milestoneKey ?? ''} ${m.name}`,
+                  icon: <TypeBadge type="milestone" size={16} />,
+                }))}
+                onChange={(ids) => {
+                  void setMilestones.mutateAsync(ids)
                 }}
-                title={
-                  itemMilestones.length > 0
-                    ? itemMilestones.map((m) => m.name).join(', ')
-                    : undefined
-                }
-              >
-                <span className="truncate">
-                  {itemMilestones.length > 0
-                    ? itemMilestones.map((m) => m.name).join(', ')
-                    : t('sidebar.noMilestones')}
-                </span>
-                {itemMilestones.length > 0 && (
-                  <span className="ml-2 shrink-0 text-ui-sm text-foreground-subtle">
-                    {itemMilestones.length}
-                  </span>
-                )}
-              </button>
+              />
             </FormField>
           </>
         )}
@@ -490,9 +510,9 @@ export function DetailSidebar({
 
         {/* Creation Date (read-only) */}
         <FormField label={t('sidebar.creationDate')}>
-          <span className="block px-1 text-ui-md text-muted-foreground">
+          <div className="flex h-9 items-center rounded border border-input bg-input-background px-3 text-ui-md text-muted-foreground">
             {formatDate(item.createdAt)}
-          </span>
+          </div>
         </FormField>
 
         {/* Read-only notice */}
@@ -503,16 +523,6 @@ export function DetailSidebar({
         )}
       </div>
       {/* end p-5 space-y-4 */}
-      {showMilestones && (
-        <SelectionModal
-          open={showMilestones}
-          onClose={() => setShowMilestones(false)}
-          title={t('sidebar.milestones')}
-          items={selectableMilestoneOptions.map((m) => ({ id: m.id, name: m.name }))}
-          selectedIds={itemMilestones.map((m) => m.id)}
-          onSave={(ids) => setMilestones.mutateAsync(ids).then(() => undefined)}
-        />
-      )}
     </aside>
   )
 }

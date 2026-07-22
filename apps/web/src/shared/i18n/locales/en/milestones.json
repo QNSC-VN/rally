@@ -5,6 +5,16 @@
   "empty": "No milestones yet",
   "emptySearch": "No milestones match your search",
   "loadError": "Failed to load milestones",
+  "totals": "Totals ({{count}})",
+  "filters": {
+    "allStatuses": "All statuses"
+  },
+  "metrics": {
+    "total": "Total",
+    "planned": "Planned",
+    "atRisk": "At Risk",
+    "completed": "Completed"
+  },
   "form": {
     "nameLabel": "Milestone name",
     "notesLabel": "Notes",
@@ -32,10 +42,12 @@
   "delete": {
     "title": "Delete milestone",
     "message": "Delete this milestone? This cannot be undone.",
+    "bulkMessage": "Delete {{count}} milestone(s)? This cannot be undone.",
     "deleted": "Milestone deleted",
     "deleteFailed": "Failed to delete"
   },
   "detail": {
+    "typeBadge": "Milestone",
     "nameRequired": "Milestone name is required",
     "saveFailed": "Failed to save",
     "statusUpdateFailed": "Failed to update status",
@@ -66,5 +78,10 @@
     "rowsPerPage": "Rows per page",
     "ofTotal": " of {{total}}",
     "page": "Page {{page}}"
+  },
+  "row": {
+    "nameUpdated": "Name updated",
+    "statusUpdated": "Status updated",
+    "updateFailed": "Update failed"
   }
 }

@@ -31,7 +31,8 @@ export function StateStepper<T extends string>({
   steps: StateStep<T>[]
   value: T
   canEdit: boolean
-  onChange: (next: T) => void
+  /** Omit for a read-only stepper (summary grids). */
+  onChange?: (next: T) => void
   ariaLabel?: string
 }) {
   const idx = steps.findIndex((s) => s.value === value)
@@ -50,8 +51,8 @@ export function StateStepper<T extends string>({
             key={step.value}
             type="button"
             title={step.label}
-            disabled={!canEdit || isCurrent}
-            onClick={canEdit && !isCurrent ? () => onChange(step.value) : undefined}
+            disabled={!canEdit || isCurrent || !onChange}
+            onClick={canEdit && !isCurrent && onChange ? () => onChange(step.value) : undefined}
             style={{
               width: CELL,
               flex: 'none',
@@ -61,7 +62,7 @@ export function StateStepper<T extends string>({
               fontSize: 10,
               fontWeight: 700,
               lineHeight: `${CELL - 2}px`,
-              cursor: canEdit && !isCurrent ? 'pointer' : 'default',
+              cursor: canEdit && !isCurrent && onChange ? 'pointer' : 'default',
               backgroundColor: isCurrent
                 ? STEPPER_CURRENT
                 : reached

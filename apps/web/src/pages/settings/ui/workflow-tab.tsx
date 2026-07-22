@@ -22,7 +22,7 @@ import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
-import { NativeSelect } from '@/shared/ui/native-select'
+import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { Spinner } from '@/shared/ui/spinner'
 
 const STATUS_CATEGORIES = [
@@ -82,16 +82,13 @@ function AddStatusModal({ projectId, onClose }: { projectId: string; onClose: ()
             />
           </FormField>
           <FormField label={t('workflow.categoryLabel')} required>
-            <NativeSelect
+            <SearchableSelect
+              variant="field"
               value={category}
-              onChange={(e) => setCategory(e.target.value as StatusCategory)}
-            >
-              {STATUS_CATEGORIES.map((c) => (
-                <option key={c.value} value={c.value}>
-                  {c.label}
-                </option>
-              ))}
-            </NativeSelect>
+              ariaLabel={t('workflow.categoryLabel')}
+              options={STATUS_CATEGORIES.map((c) => ({ value: c.value, label: c.label }))}
+              onChange={(v) => setCategory(v as StatusCategory)}
+            />
           </FormField>
           <FormField label={t('workflow.colorLabel')}>
             <input

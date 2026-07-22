@@ -14,5 +14,10 @@
     "unassigned": "Unassigned",
     "allReleases": "All Releases",
     "allIterations": "All Iterations"
+  },
+  "metrics": {
+    "total": "Total Items",
+    "defects": "Defects",
+    "blocked": "Blocked"
   }
 }

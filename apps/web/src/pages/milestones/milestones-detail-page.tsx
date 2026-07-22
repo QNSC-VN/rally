@@ -5,31 +5,35 @@
  * Details tab: left panel (description, notes) + right sidebar (projects, teams, releases, owner, dates, status).
  * Artifacts tab: backlog-style table of assigned US/DE work items with search + pagination.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-/* eslint-disable react-hooks/set-state-in-effect */
-import { Link, useParams } from '@tanstack/react-router'
-import { ChevronLeft, Loader2, Save, Users, FolderKanban, Layers, CalendarDays } from 'lucide-react'
+import { Link, useNavigate, useParams } from '@tanstack/react-router'
+import { FileText, Loader2, Package } from 'lucide-react'
 import { BRAND } from '@/shared/config/brand'
-import { InlineSelect } from '@/shared/ui/native-select'
+import { DetailLayout, DetailTwoPane } from '@/shared/ui/detail/detail-layout'
+import { DetailField } from '@/shared/ui/detail/detail-field'
+import { SearchableSelect } from '@/shared/ui/searchable-select'
+import { OwnerSelectField } from '@/shared/ui/entity-select-field'
+import { TeamAvatar } from '@/shared/ui/team-cell'
 import { RichTextEditor } from '@/shared/ui/rich-text-editor'
-import { RelationButton, ArtifactsTab } from './ui/detail-parts'
+import { DateField } from '@/shared/ui/date-field'
+import { ArtifactsTab } from './ui/detail-parts'
 import { MILESTONE_STATUS_STYLE } from '@/features/milestones/status-colors'
-import { Button } from '@/shared/ui/button'
-import { SelectionModal } from '@/shared/ui/selection-modal'
+import { SaveCancelBar } from '@/shared/ui/save-cancel-bar'
+import { usePendingPatch } from '@/shared/lib/hooks/use-pending-patch'
+import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { useProjectPermissions } from '@/features/access/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import {
   useMilestone,
   useUpdateMilestone,
   useMilestoneProjects,
-  useSetMilestoneProjects,
   useMilestoneTeams,
-  useSetMilestoneTeams,
   useMilestoneReleases,
-  useSetMilestoneReleases,
+  type Milestone,
   type MilestoneStatus,
+  type UpdateMilestoneInput,
 } from '@/features/milestones/api'
 import { useReleasesForProjects } from '@/features/releases/api'
 import { useWorkspaceTeams } from '@/features/teams/api'
@@ -55,6 +59,7 @@ type TabKey = 'details' | 'artifacts'
 
 export function MilestoneDetailPage() {
   const { t } = useTranslation('milestones')
+  const navigate = useNavigate()
   const { milestoneId } = useParams({ from: '/auth/milestones/$milestoneId' })
   const { workspace } = useAppContext()
   const workspaceId = workspace?.workspaceId ?? ''
@@ -87,86 +92,41 @@ export function MilestoneDetailPage() {
   const { data: allReleases = [] } = useReleasesForProjects(releaseProjectIds)
   const { data: members = [] } = useProjectMembers(milestoneProjectId || undefined)
 
-  // Set mutations
-  const setProjects = useSetMilestoneProjects()
-  const setTeams = useSetMilestoneTeams()
-  const setReleases = useSetMilestoneReleases()
-
-  // Local state
-  const [name, setName] = useState('')
-  const [status, setStatus] = useState<MilestoneStatus>('planned')
-  const [ownerId, setOwnerId] = useState('')
   const [activeTab, setActiveTab] = useState<TabKey>('details')
-  const [saving, setSaving] = useState(false)
 
-  // Selection modals
-  const [showProjectsModal, setShowProjectsModal] = useState(false)
-  const [showTeamsModal, setShowTeamsModal] = useState(false)
-  const [showReleasesModal, setShowReleasesModal] = useState(false)
+  // Broadcom-Rally-style deferred save (matches the Work Item / Release / Timebox
+  // detail pages): name, status, owner and description/notes rich text accumulate
+  // locally and commit together via the floating Save/Cancel bar. Relation sets
+  // (projects/teams/releases) commit immediately via their own set-mutations from
+  // the inline multi-select dropdowns; target dates are manual when no Release is
+  // linked, else derived read-only.
+  const {
+    value: mrel,
+    pending,
+    isDirty,
+    saving,
+    setField,
+    save,
+    cancel,
+  } = usePendingPatch<Milestone, UpdateMilestoneInput>(
+    milestone ?? ({} as Milestone),
+    milestoneId,
+    async (patch) => {
+      try {
+        return await update.mutateAsync({ id: milestoneId, ...patch })
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : t('detail.saveFailed'))
+        throw err
+      }
+    },
+  )
 
-  useEffect(() => {
-    if (milestone) {
-      setName(milestone.name)
-      setStatus(milestone.status)
-      setOwnerId(milestone.ownerId ?? '')
-    }
-  }, [milestone])
-
-  async function handleFieldSave() {
-    if (!milestone) return
-    if (!name.trim()) {
+  function handleSave() {
+    if (!(mrel.name ?? '').trim()) {
       toast.error(t('detail.nameRequired'))
       return
     }
-    setSaving(true)
-    try {
-      await update.mutateAsync({
-        id: milestone.id,
-        name: name.trim(),
-        status,
-        ownerId: ownerId || null,
-      })
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : t('detail.saveFailed'))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  // Rich-text fields (Description, Notes) auto-save individually on blur, matching
-  // the work-item detail page's RichTextEditor pattern.
-  async function handleRichFieldSave(patch: {
-    description?: string | null
-    notes?: string | null
-  }) {
-    if (!milestone) return
-    try {
-      await update.mutateAsync({ id: milestone.id, ...patch })
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : t('detail.saveFailed'))
-    }
-  }
-
-  async function handleStatusChange(newStatus: MilestoneStatus) {
-    if (!milestone) return
-    setStatus(newStatus)
-    try {
-      await update.mutateAsync({ id: milestone.id, status: newStatus })
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : t('detail.statusUpdateFailed'))
-      setStatus(milestone.status)
-    }
-  }
-
-  async function handleOwnerChange(newOwnerId: string) {
-    if (!milestone) return
-    setOwnerId(newOwnerId)
-    try {
-      await update.mutateAsync({ id: milestone.id, ownerId: newOwnerId || null })
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : t('detail.ownerUpdateFailed'))
-      setOwnerId(milestone.ownerId ?? '')
-    }
+    void save().catch(() => {})
   }
 
   // ── Loading / error states ──────────────────────────────────────────────────
@@ -190,307 +150,241 @@ export function MilestoneDetailPage() {
     )
   }
 
-  const s = STATUS_STYLE[milestone.status] ?? STATUS_STYLE.planned
+  // Relation multi-selects flow through the deferred Save/Cancel patch like every
+  // other field: show the pending selection (falls back to the saved link list),
+  // and the milestone PATCH commits project/team/release links on Save.
+  const effProjectIds = pending.projectIds ?? linkedProjectIds
+  const effTeamIds = pending.teamIds ?? linkedTeamIds
+  const effReleaseIds = pending.releaseIds ?? linkedReleaseIds
 
-  const TABS: { key: TabKey; label: string }[] = [
-    { key: 'details', label: t('detail.tabs.details') },
-    { key: 'artifacts', label: t('detail.tabs.artifacts') },
+  // Target dates are derived (read-only) while ≥1 Release is linked; with none
+  // linked they are user-managed manual fields (reconciled SRS §2 / P3-MS-019).
+  const hasLinkedReleases = effReleaseIds.length > 0
+
+  const TABS = [
+    { key: 'details', label: t('detail.tabs.details'), icon: <FileText size={19} /> },
+    { key: 'artifacts', label: t('detail.tabs.artifacts'), icon: <Package size={19} /> },
   ]
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden bg-background">
-      {/* Header bar */}
-      <div className="flex h-12 shrink-0 items-center justify-between gap-4 border-b bg-card px-4">
-        <div className="flex items-center gap-2">
-          <Link
-            to="/milestones"
-            className="flex h-7 w-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-gray-100"
-          >
-            <ChevronLeft size={16} />
-          </Link>
-          <div className="flex items-center gap-3">
-            {canManage ? (
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                onBlur={handleFieldSave}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleFieldSave()
-                }}
-                className="rounded border-0 bg-transparent px-1 py-0.5 text-ui-xl font-semibold text-foreground focus:bg-card focus:ring-1 focus:outline-none"
-                style={{ width: 320 }}
-              />
-            ) : (
-              <h1 className="text-ui-xl font-semibold text-foreground">{milestone.name}</h1>
-            )}
-            <span
-              className="inline-flex items-center rounded-sm px-1.5 py-px text-ui-xs font-medium"
-              style={{ backgroundColor: s.bg, color: s.text, border: `1px solid ${s.border}` }}
-            >
-              {s.label}
-            </span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {saving && <Loader2 size={12} className="animate-spin text-primary" />}
-          {canManage && (
-            <Button size="sm" onClick={handleFieldSave} disabled={update.isPending || saving}>
-              {update.isPending || saving ? (
-                <Loader2 size={12} className="animate-spin" />
-              ) : (
-                <Save size={12} />
-              )}
-              {t('detail.saveChanges')}
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* Tab bar */}
-      <div className="flex shrink-0 items-center gap-0 border-b bg-card px-4">
-        {TABS.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className="relative px-4 py-2.5 text-ui-md font-medium transition-colors"
-            style={{
-              color: activeTab === tab.key ? BRAND.primary : BRAND.textSecondary,
-            }}
-          >
-            {tab.label}
-            {activeTab === tab.key && (
-              <span className="absolute right-0 bottom-0 left-0 h-0.5 bg-primary" />
-            )}
-          </button>
-        ))}
-      </div>
-
-      {/* Content area */}
+    <DetailLayout
+      onBack={() => void navigate({ to: '/milestones' })}
+      badge={<TypeBadge type="milestone" />}
+      itemKey={milestone.milestoneKey}
+      title={
+        canManage ? (
+          <input
+            value={mrel.name ?? ''}
+            onChange={(e) => setField({ name: e.target.value })}
+            className="w-80 rounded border-0 bg-transparent px-1 py-0.5 text-base font-semibold text-white placeholder-white/60 focus:bg-white/10 focus:outline-none"
+            aria-label={t('common:name')}
+          />
+        ) : (
+          milestone.name
+        )
+      }
+      tabs={TABS}
+      activeTab={activeTab}
+      onTabChange={(key) => setActiveTab(key as TabKey)}
+    >
       {activeTab === 'artifacts' ? (
         <ArtifactsTab milestoneId={milestoneId} />
       ) : (
-        /* Details tab — two panel layout */
-        <div className="flex flex-1 overflow-hidden">
-          {/* Left panel: Description & Notes */}
-          <div className="flex-1 space-y-6 overflow-y-auto bg-card p-6">
-            <RichTextEditor
-              title={t('common:description')}
-              value={milestone?.description}
-              minHeight={120}
-              readOnly={!canManage}
-              onBlur={(html) => handleRichFieldSave({ description: html || null })}
-            />
-            <RichTextEditor
-              title={t('detail.notesLabel')}
-              value={milestone?.notes}
-              minHeight={80}
-              readOnly={!canManage}
-              onBlur={(html) => handleRichFieldSave({ notes: html || null })}
-            />
-          </div>
+        <DetailTwoPane
+          sidebarTitle={t('detail.metadataDetails')}
+          main={
+            <>
+              <RichTextEditor
+                title={t('common:description')}
+                value={mrel.description}
+                minHeight={120}
+                readOnly={!canManage}
+                onChange={(html) => setField({ description: html || null })}
+              />
+              <RichTextEditor
+                title={t('detail.notesLabel')}
+                value={mrel.notes}
+                minHeight={80}
+                readOnly={!canManage}
+                onChange={(html) => setField({ notes: html || null })}
+              />
+            </>
+          }
+          sidebar={
+            <>
+              {/* Projects / Teams / Releases — many-to-many (P3-MS-FR-007/008/009),
+                  edited via the shared searchable multi-select dropdown (Selected /
+                  Available groups + search), consistent with every other picker
+                  (Broadcom-Rally parity, replaces the old selection modal). */}
+              <DetailField label={t('detail.projects')}>
+                <SearchableSelect
+                  variant="field"
+                  multiple
+                  value={effProjectIds}
+                  readOnly={!canManage}
+                  ariaLabel={t('detail.projects')}
+                  placeholder={t('detail.noProjects', 'None')}
+                  searchPlaceholder="Search"
+                  options={allProjects.map((p) => ({
+                    value: p.id,
+                    label: p.name,
+                    searchText: p.name,
+                  }))}
+                  onChange={(ids) => setField({ projectIds: ids as string[] })}
+                />
+              </DetailField>
+              <DetailField label={t('detail.teams')}>
+                <SearchableSelect
+                  variant="field"
+                  multiple
+                  value={effTeamIds}
+                  readOnly={!canManage}
+                  ariaLabel={t('detail.teams')}
+                  placeholder={t('detail.noTeams', 'None')}
+                  searchPlaceholder="Search"
+                  options={allTeams.map((tm) => ({
+                    value: tm.id,
+                    label: tm.name,
+                    searchText: tm.name,
+                    icon: <TeamAvatar teamKey={tm.key} name={tm.name} size={16} />,
+                  }))}
+                  onChange={(ids) => setField({ teamIds: ids as string[] })}
+                />
+              </DetailField>
+              <DetailField label={t('detail.releases')}>
+                <SearchableSelect
+                  variant="field"
+                  multiple
+                  value={effReleaseIds}
+                  readOnly={!canManage}
+                  ariaLabel={t('detail.releases')}
+                  placeholder={t('detail.noReleases', 'None')}
+                  searchPlaceholder="Search"
+                  options={allReleases.map((r) => ({
+                    value: r.id,
+                    label: r.name,
+                    searchText: r.name,
+                    icon: <TypeBadge type="release" size={16} />,
+                  }))}
+                  onChange={(ids) => setField({ releaseIds: ids as string[] })}
+                />
+              </DetailField>
 
-          {/* Right sidebar (320px, scrollable) */}
-          <div className="w-80 shrink-0 space-y-5 overflow-y-auto border-l bg-card p-5">
-            <h2 className="text-ui-sm font-semibold tracking-wider text-foreground-subtle uppercase">
-              {t('detail.metadataDetails')}
-            </h2>
+              <div className="border-t border-border-subtle" />
 
-            {/* Projects */}
-            <RelationButton
-              icon={FolderKanban}
-              label={t('detail.projects')}
-              count={linkedProjectIds.length}
-              onClick={() => setShowProjectsModal(true)}
-              canManage={canManage}
-            />
+              <OwnerSelectField
+                label={t('common:owner')}
+                value={mrel.ownerId ?? ''}
+                onChange={(v) => setField({ ownerId: v || null })}
+                members={members}
+                disabled={!canManage}
+                placeholder={t('detail.unassigned')}
+              />
 
-            {/* Teams */}
-            <RelationButton
-              icon={Users}
-              label={t('detail.teams')}
-              count={linkedTeamIds.length}
-              onClick={() => setShowTeamsModal(true)}
-              canManage={canManage}
-            />
+              <DetailField label={t('detail.targetStartDate')}>
+                <DateField
+                  variant="field"
+                  value={mrel.targetStartDate ?? null}
+                  readOnly={!canManage || hasLinkedReleases}
+                  ariaLabel={t('detail.targetStartDate')}
+                  onChange={
+                    canManage && !hasLinkedReleases
+                      ? (v) => setField({ targetStartDate: v })
+                      : undefined
+                  }
+                />
+                {hasLinkedReleases && (
+                  <p className="text-ui-2xs text-foreground-subtle">
+                    {t('detail.derivedFromReleases')}
+                  </p>
+                )}
+              </DetailField>
 
-            {/* Releases */}
-            <RelationButton
-              icon={Layers}
-              label={t('detail.releases')}
-              count={linkedReleaseIds.length}
-              onClick={() => setShowReleasesModal(true)}
-              canManage={canManage}
-            />
+              <DetailField label={t('detail.targetEndDate')}>
+                <DateField
+                  variant="field"
+                  value={mrel.targetEndDate ?? null}
+                  readOnly={!canManage || hasLinkedReleases}
+                  ariaLabel={t('detail.targetEndDate')}
+                  onChange={
+                    canManage && !hasLinkedReleases
+                      ? (v) => setField({ targetEndDate: v })
+                      : undefined
+                  }
+                />
+                {hasLinkedReleases && (
+                  <p className="text-ui-2xs text-foreground-subtle">
+                    {t('detail.derivedFromReleases')}
+                  </p>
+                )}
+              </DetailField>
 
-            {/* Divider */}
-            <div className="border-t border-border-subtle" />
+              <DetailField label={t('common:status')}>
+                <SearchableSelect
+                  variant="field"
+                  value={mrel.status}
+                  readOnly={!canManage}
+                  ariaLabel={t('common:status')}
+                  options={MILESTONE_STATUSES.map((st) => ({
+                    value: st,
+                    label: STATUS_STYLE[st].label,
+                  }))}
+                  onChange={(v) => setField({ status: v as MilestoneStatus })}
+                />
+              </DetailField>
 
-            {/* Owner */}
-            <div className="space-y-1">
-              <label className="text-ui-xs font-medium text-muted-foreground">
-                {t('common:owner')}
-              </label>
-              {canManage ? (
-                <select
-                  value={ownerId}
-                  onChange={(e) => {
-                    void handleOwnerChange(e.target.value)
-                  }}
-                  className="w-full cursor-pointer rounded border border-input bg-card px-2 py-1 text-ui-sm text-foreground focus:outline-none"
-                >
-                  <option value="">{t('detail.unassigned')}</option>
-                  {members.map((m) => (
-                    <option key={m.userId} value={m.userId}>
-                      {m.displayName ?? m.email ?? m.userId}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <div className="py-1 text-ui-md font-semibold text-foreground">
-                  {members.find((m) => m.userId === milestone.ownerId)?.displayName ??
-                    members.find((m) => m.userId === milestone.ownerId)?.email ??
-                    '—'}
+              {milestone.progress && (
+                <div className="space-y-2 rounded-md border border-border-subtle bg-surface-hover p-3">
+                  <h3 className="text-ui-xs font-bold tracking-wider text-muted-foreground uppercase">
+                    {t('detail.progress')}
+                  </h3>
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-ui-sm font-semibold text-foreground">
+                      <span>{t('detail.completion')}</span>
+                      <span>{milestone.progress.progressPercent}%</span>
+                    </div>
+                    <div className="h-2 w-full overflow-hidden rounded-full bg-avatar">
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{
+                          width: `${milestone.progress.progressPercent}%`,
+                          backgroundColor:
+                            milestone.progress.progressPercent === 100
+                              ? BRAND.success
+                              : BRAND.primaryLight,
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-ui-xs text-foreground-subtle">
+                    <div>
+                      {t('detail.itemsLabel')}{' '}
+                      <span className="font-semibold text-foreground">
+                        {milestone.progress.completedItems}/{milestone.progress.totalItems}
+                      </span>
+                    </div>
+                    <div>
+                      {t('detail.pointsLabel')}{' '}
+                      <span className="font-semibold text-foreground">
+                        {milestone.progress.completedPoints}/{milestone.progress.totalPoints}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               )}
-            </div>
-
-            {/* Target Start Date (read-only, derived) */}
-            <div className="space-y-1">
-              <label className="text-ui-xs font-medium text-muted-foreground">
-                {t('detail.targetStartDate')}
-              </label>
-              <div className="flex items-center gap-1.5">
-                <CalendarDays size={12} className="text-foreground-subtle" />
-                <span className="font-mono text-ui-md text-foreground">
-                  {milestone.targetStartDate ?? '—'}
-                </span>
-              </div>
-              <p className="text-ui-2xs text-foreground-subtle">
-                {t('detail.derivedFromReleases')}
-              </p>
-            </div>
-
-            {/* Target End Date (read-only, derived) */}
-            <div className="space-y-1">
-              <label className="text-ui-xs font-medium text-muted-foreground">
-                {t('detail.targetEndDate')}
-              </label>
-              <div className="flex items-center gap-1.5">
-                <CalendarDays size={12} className="text-foreground-subtle" />
-                <span className="font-mono text-ui-md text-foreground">
-                  {milestone.targetEndDate ?? '—'}
-                </span>
-              </div>
-              <p className="text-ui-2xs text-foreground-subtle">
-                {t('detail.derivedFromReleases')}
-              </p>
-            </div>
-
-            {/* Status */}
-            <div className="space-y-1">
-              <label className="text-ui-xs font-medium text-muted-foreground">
-                {t('common:status')}
-              </label>
-              {canManage ? (
-                <InlineSelect
-                  value={status}
-                  onChange={(e) => {
-                    void handleStatusChange(e.target.value as MilestoneStatus)
-                  }}
-                  className="w-full rounded border border-input bg-card px-2 py-1 text-ui-sm text-foreground focus:outline-none"
-                >
-                  {MILESTONE_STATUSES.map((st) => (
-                    <option key={st} value={st}>
-                      {STATUS_STYLE[st].label}
-                    </option>
-                  ))}
-                </InlineSelect>
-              ) : (
-                <span
-                  className="inline-flex items-center rounded-sm px-1.5 py-px text-ui-xs font-medium"
-                  style={{ backgroundColor: s.bg, color: s.text, border: `1px solid ${s.border}` }}
-                >
-                  {s.label}
-                </span>
-              )}
-            </div>
-
-            {/* Progress */}
-            {milestone.progress && (
-              <div className="space-y-2 rounded-md border border-border-subtle bg-surface-hover p-3">
-                <h3 className="text-ui-xs font-bold tracking-wider text-muted-foreground uppercase">
-                  {t('detail.progress')}
-                </h3>
-                <div className="space-y-1">
-                  <div className="flex justify-between text-ui-sm font-semibold text-foreground">
-                    <span>{t('detail.completion')}</span>
-                    <span>{milestone.progress.progressPercent}%</span>
-                  </div>
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-avatar">
-                    <div
-                      className="h-full rounded-full transition-all"
-                      style={{
-                        width: `${milestone.progress.progressPercent}%`,
-                        backgroundColor:
-                          milestone.progress.progressPercent === 100
-                            ? BRAND.success
-                            : BRAND.primaryLight,
-                      }}
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-ui-xs text-foreground-subtle">
-                  <div>
-                    {t('detail.itemsLabel')}{' '}
-                    <span className="font-semibold text-foreground">
-                      {milestone.progress.completedItems}/{milestone.progress.totalItems}
-                    </span>
-                  </div>
-                  <div>
-                    {t('detail.pointsLabel')}{' '}
-                    <span className="font-semibold text-foreground">
-                      {milestone.progress.completedPoints}/{milestone.progress.totalPoints}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Selection modals */}
-      {showProjectsModal && (
-        <SelectionModal
-          open={showProjectsModal}
-          onClose={() => setShowProjectsModal(false)}
-          title={t('detail.projects')}
-          items={allProjects.map((p) => ({ id: p.id, name: p.name }))}
-          selectedIds={linkedProjectIds}
-          onSave={(ids) => setProjects.mutateAsync({ milestoneId, projectIds: ids })}
+            </>
+          }
         />
       )}
-      {showTeamsModal && (
-        <SelectionModal
-          open={showTeamsModal}
-          onClose={() => setShowTeamsModal(false)}
-          title={t('detail.teams')}
-          items={allTeams.map((team) => ({ id: team.id, name: team.name }))}
-          selectedIds={linkedTeamIds}
-          onSave={(ids) => setTeams.mutateAsync({ milestoneId, teamIds: ids })}
+      {activeTab === 'details' && (
+        <SaveCancelBar
+          visible={isDirty && canManage}
+          saving={saving}
+          errorMsg={null}
+          onSave={handleSave}
+          onCancel={cancel}
         />
       )}
-      {showReleasesModal && (
-        <SelectionModal
-          open={showReleasesModal}
-          onClose={() => setShowReleasesModal(false)}
-          title={t('detail.releases')}
-          items={allReleases.map((r) => ({ id: r.id, name: r.name }))}
-          selectedIds={linkedReleaseIds}
-          onSave={(ids) => setReleases.mutateAsync({ milestoneId, releaseIds: ids })}
-        />
-      )}
-    </div>
+    </DetailLayout>
   )
 }

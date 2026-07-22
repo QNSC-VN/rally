@@ -1,4 +1,4 @@
-import { useForm } from 'react-hook-form'
+import { useForm, Controller } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -12,7 +12,7 @@ import { notify } from '@/shared/lib/toast'
 import { Button } from '@/shared/ui/button'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
-import { NativeSelect } from '@/shared/ui/native-select'
+import { SearchableSelect } from '@/shared/ui/searchable-select'
 
 type ProfileForm = {
   displayName: string
@@ -144,21 +144,39 @@ export function ProfileTab() {
             <Input {...profile.register('phone')} placeholder="+84 ..." />
           </FormField>
           <FormField label={t('profile.localeLabel')}>
-            <NativeSelect {...profile.register('locale')}>
-              <option value="en">English</option>
-              <option value="vi">Tiếng Việt</option>
-              <option value="ja">日本語</option>
-              <option value="zh">中文</option>
-            </NativeSelect>
+            <Controller
+              control={profile.control}
+              name="locale"
+              render={({ field }) => (
+                <SearchableSelect
+                  variant="field"
+                  value={field.value ?? ''}
+                  ariaLabel={t('profile.localeLabel')}
+                  options={[
+                    { value: 'en', label: 'English' },
+                    { value: 'vi', label: 'Tiếng Việt' },
+                    { value: 'ja', label: '日本語' },
+                    { value: 'zh', label: '中文' },
+                  ]}
+                  onChange={field.onChange}
+                />
+              )}
+            />
           </FormField>
           <FormField label={t('profile.timezoneLabel')}>
-            <NativeSelect {...profile.register('timezone')}>
-              {TIMEZONES.map((tz) => (
-                <option key={tz} value={tz}>
-                  {tz}
-                </option>
-              ))}
-            </NativeSelect>
+            <Controller
+              control={profile.control}
+              name="timezone"
+              render={({ field }) => (
+                <SearchableSelect
+                  variant="field"
+                  value={field.value ?? ''}
+                  ariaLabel={t('profile.timezoneLabel')}
+                  options={TIMEZONES.map((tz) => ({ value: tz, label: tz }))}
+                  onChange={field.onChange}
+                />
+              )}
+            />
           </FormField>
           {profile.formState.errors.root && (
             <p className="text-ui-md text-destructive">{profile.formState.errors.root.message}</p>

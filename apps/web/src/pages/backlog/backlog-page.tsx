@@ -12,7 +12,6 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  DndContext,
   PointerSensor,
   closestCenter,
   useSensor,
@@ -20,7 +19,6 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core'
 import {
-  SortableContext,
   arrayMove,
   useSortable,
   verticalListSortingStrategy,
@@ -31,13 +29,15 @@ import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
+import { ListPageHeader } from '@/shared/ui/list-page/list-page-header'
 import { Button } from '@/shared/ui/button'
 import { RowGutter } from '@/shared/ui/row-gutter'
-import { InlineCellSelect, InlineSelect } from '@/shared/ui/native-select'
+import { InlineSelect } from '@/shared/ui/native-select'
+import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { OwnerSelectCell } from '@/shared/ui/owner-cell'
-import { BulkScheduleBar } from '@/features/work-items/ui/bulk-schedule-bar'
+import { BulkDeleteCopy } from '@/features/work-items/ui/bulk-delete-copy'
 import { useRowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
@@ -45,14 +45,16 @@ import {
   useBacklog,
   useUpdateWorkItem,
   useRankAnyWorkItem,
+  useCreateWorkItem,
   type WorkItem,
   type UpdateWorkItemInput,
 } from '@/features/work-items/api'
 import { useReleases } from '@/features/releases/api'
 import { useProjectMembers } from '@/features/teams/api'
 import { useIterationOptions, useIterations } from '@/features/iterations/api'
-import { TypeBadge, PriorityBadge, ScheduleStateBadge } from '@/entities/work-item/ui/badges'
 import { StateStepper } from '@/entities/work-item/ui/state-stepper'
+import { IdCell } from '@/entities/work-item/ui/id-cell'
+import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { SCHEDULE_STATE_STEPS } from '@/entities/work-item/ui/state-steps'
 import {
   SCHEDULE_STATE_LABEL,
@@ -60,20 +62,18 @@ import {
   PRIORITY_VALUES,
   PRIORITY_LABEL,
   type ScheduleState,
-  type WorkItemPriority,
 } from '@/entities/work-item/model/types'
 import { BRAND } from '@/shared/config/brand'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { CreateWorkItemModal } from '@/features/work-items/ui/create-work-item-modal'
 import { type ColumnDef } from '@/shared/lib/hooks/use-column-layout'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
-import { useDataTable, DataTableFrame } from '@/shared/ui/table'
+import { useDataTable, SelectableTable, RankSortHeader } from '@/shared/ui/table'
 import { type DataTableHeaderColumn } from '@/shared/ui/table'
 
 // ── Column definitions ─────────────────────────────────────────────────────────
 
 type ColumnKey =
-  | 'type'
   | 'id'
   | 'name'
   | 'scheduleState'
@@ -85,8 +85,7 @@ type ColumnKey =
   | 'iteration'
 
 const COLUMN_MINS: Record<ColumnKey, number> = {
-  type: 60,
-  id: 64,
+  id: 88,
   name: 180,
   scheduleState: 120,
   flowState: 120,
@@ -98,8 +97,7 @@ const COLUMN_MINS: Record<ColumnKey, number> = {
 }
 
 const DEFAULT_WIDTHS: Record<ColumnKey, number> = {
-  type: 72,
-  id: 88,
+  id: 116,
   name: 260,
   scheduleState: 136,
   flowState: 136,
@@ -111,7 +109,6 @@ const DEFAULT_WIDTHS: Record<ColumnKey, number> = {
 }
 
 const COLUMN_LABELS: Record<ColumnKey, string> = {
-  type: 'Type',
   id: 'ID',
   name: 'Name',
   scheduleState: 'Schedule State',
@@ -124,7 +121,6 @@ const COLUMN_LABELS: Record<ColumnKey, string> = {
 }
 
 const COLUMNS: ColumnKey[] = [
-  'type',
   'id',
   'name',
   'scheduleState',
@@ -148,7 +144,6 @@ const BACKLOG_COLUMNS: ColumnDef<ColumnKey>[] = COLUMNS.map((key) => ({
  * from this map are not sortable (owner/release/iteration would sort by UUID).
  */
 const COLUMN_SORT_FIELD: Partial<Record<ColumnKey, string>> = {
-  type: 'type',
   id: 'itemKey',
   name: 'title',
   scheduleState: 'scheduleState',
@@ -298,14 +293,26 @@ export function BacklogPage() {
   }
 
   // ── Selection ─────────────────────────────────────────────────────────────────
-  const {
-    selectedIds,
-    allSelected,
-    someSelected,
-    toggle: toggleSelect,
-    toggleAll,
-    clear: clearSelection,
-  } = useRowSelection(items)
+  const selection = useRowSelection(items)
+  const createItem = useCreateWorkItem()
+  async function copySelected() {
+    const src = localItems.find((i) => selection.selectedIds.has(i.id))
+    if (!src || !projectId) return
+    try {
+      await createItem.mutateAsync({
+        projectId,
+        type: src.type as 'story' | 'defect',
+        title: `${src.title} (copy)`,
+        priority: (src.priority ?? 'none') as 'none' | 'low' | 'normal' | 'high' | 'urgent',
+        ...(src.teamId ? { teamId: src.teamId } : {}),
+        ...(src.storyPoints != null ? { storyPoints: Number(src.storyPoints) } : {}),
+      })
+      selection.clear()
+      toast.success('Item copied')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Copy failed')
+    }
+  }
 
   // ── Shared table engine (identical to projects/releases): resize + reorder + show/hide ──
   const table = useDataTable<WorkItem, unknown, ColumnKey>(BACKLOG_COLUMNS, {
@@ -347,6 +354,8 @@ export function BacklogPage() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
+      {/* Title → toolbar. Backlog shows NO KPI/metric strip (P2-BL-FR-019 / AC#10). */}
+      <ListPageHeader title={t('title')} />
       <BacklogToolbar
         search={search}
         setSearch={setSearch}
@@ -372,20 +381,14 @@ export function BacklogPage() {
         reorder={reorder}
       />
 
-      {/* Bulk action bar (P2-BL-08) */}
-      <BulkScheduleBar
-        projectId={projectId}
-        selectedIds={selectedIds}
-        clearSelection={clearSelection}
-        releases={releases}
-        iterations={iterationOptions}
-        canEdit={canEdit}
-      />
-
-      {/* Table area */}
-      <div className="flex flex-1 overflow-hidden">
-        <DataTableFrame
-          header={{
+      {/* Table — shared SelectableTable shell (selection gutter + BulkActionBar
+          with Assign Release/Iteration + DnD wrap), consistent with Quality /
+          Iteration Status / Tasks. */}
+      <div className="flex flex-1 flex-col overflow-hidden">
+        <SelectableTable
+          rows={localItems}
+          selection={selection}
+          headerProps={{
             columns: BACKLOG_HEADER_COLUMNS,
             colStyles,
             onResize: startResize,
@@ -393,19 +396,33 @@ export function BacklogPage() {
             columnDrag: table.columnDrag,
           }}
           padClassName="gap-2 px-3"
-          leading={
-            <>
-              <RowGutter
-                dragDisabled
-                checkbox={{
-                  checked: allSelected,
-                  indeterminate: someSelected,
-                  onChange: toggleAll,
-                  ariaLabel: 'Select all',
-                }}
+          leadingExtra={
+            <RankSortHeader
+              active={sortCol === 'rank'}
+              dir={sortDir}
+              onSort={() => toggleSort('rank')}
+            />
+          }
+          dnd={{
+            dndContextProps: {
+              sensors: dndSensors,
+              collisionDetection: closestCenter,
+              onDragEnd: handleDragEnd,
+            },
+            sortableContextProps: {
+              items: localItems.map((it) => it.id),
+              strategy: verticalListSortingStrategy,
+            },
+          }}
+          bulkActions={(sel) =>
+            canEdit ? (
+              <BulkDeleteCopy
+                selection={sel}
+                projectId={projectId!}
+                onCopy={copySelected}
+                copyPending={createItem.isPending}
               />
-              <div className="w-6 shrink-0 px-2 text-right">#</div>
-            </>
+            ) : null
           }
           loading={isLoading}
           skeleton={{ rows: 10, cols: 7 }}
@@ -446,35 +463,23 @@ export function BacklogPage() {
               onNextPage={goNextPage}
             />
           }
-        >
-          <DndContext
-            sensors={dndSensors}
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
-          >
-            <SortableContext
-              items={localItems.map((it) => it.id)}
-              strategy={verticalListSortingStrategy}
-            >
-              {localItems.map((item, idx) => (
-                <BacklogRow
-                  key={item.id}
-                  item={item}
-                  rowNum={(currentPage - 1) * pageSize + idx + 1}
-                  selected={selectedIds.has(item.id)}
-                  onToggleSelect={() => toggleSelect(item.id)}
-                  onOpen={() => openItem(item)}
-                  colStyles={colStyles}
-                  canEdit={canEdit}
-                  members={members}
-                  releases={releases}
-                  iterations={iterationOptions}
-                  allIterations={allIterations}
-                />
-              ))}
-            </SortableContext>
-          </DndContext>
-        </DataTableFrame>
+          renderRow={(item, { selected, onToggleSelect }) => (
+            <BacklogRow
+              key={item.id}
+              item={item}
+              rowNum={(currentPage - 1) * pageSize + localItems.indexOf(item) + 1}
+              selected={selected}
+              onToggleSelect={onToggleSelect}
+              onOpen={() => openItem(item)}
+              colStyles={colStyles}
+              canEdit={canEdit}
+              members={members}
+              releases={releases}
+              iterations={iterationOptions}
+              allIterations={allIterations}
+            />
+          )}
+        />
       </div>
 
       {/* Create modal */}
@@ -562,7 +567,6 @@ function BacklogToolbar({
 
   return (
     <PageToolbar
-      title={t('title')}
       search={{
         value: search,
         onChange: setSearch,
@@ -578,7 +582,7 @@ function BacklogToolbar({
           title={!canCreate ? 'You do not have permission to create work items' : undefined}
         >
           <Plus size={12} />
-          {t('createButton')}
+          {t('common:addNew')}
         </Button>
       }
       activeFilterCount={activeFilterCount}
@@ -682,9 +686,9 @@ interface BacklogRowProps {
   colStyles: Record<ColumnKey, React.CSSProperties>
   canEdit: boolean
   members: Array<{ userId: string; displayName?: string; email?: string }>
-  releases: Array<{ id: string; name: string }>
-  iterations: Array<{ id: string; name: string }>
-  allIterations: Array<{ id: string; name: string }>
+  releases: Array<{ id: string; name: string; releaseKey?: string | null }>
+  iterations: Array<{ id: string; name: string; iterationKey?: string | null }>
+  allIterations: Array<{ id: string; name: string; iterationKey?: string | null }>
 }
 
 // inline table selects use <InlineSelect> component directly
@@ -734,7 +738,7 @@ function BacklogRow({
   return (
     <div
       ref={setNodeRef}
-      className="group flex h-[34px] items-center gap-2 border-b border-border-inner px-3 transition-colors duration-100 hover:bg-primary-lighter"
+      className="group flex min-h-[34px] items-center gap-2 border-b border-border-inner px-3 transition-colors duration-100 hover:bg-primary-lighter"
       style={{
         minWidth: 'max-content',
         backgroundColor: isDragging
@@ -764,23 +768,14 @@ function BacklogRow({
       />
 
       {/* Row number */}
-      <div className="w-6 shrink-0 px-2 text-right font-mono text-ui-xs text-foreground-subtle tabular-nums">
+      <div className="w-12 shrink-0 px-2 text-right font-mono text-ui-xs text-foreground-subtle tabular-nums">
         {rowNum}
       </div>
 
-      {/* Type */}
-      <div className="shrink-0 overflow-hidden px-2" style={colStyles.type}>
-        <TypeBadge type={item.type} />
+      {/* ID — type glyph + key link (shared cell; the only nav affordance) */}
+      <div className="shrink-0 overflow-hidden px-2" style={colStyles.id} onClick={stop}>
+        <IdCell type={item.type} itemKey={item.itemKey} onOpen={onOpen} />
       </div>
-
-      {/* ID — opens detail */}
-      <button
-        className="shrink-0 overflow-hidden px-2 text-left font-mono text-ui-xs text-primary-light underline-offset-2 hover:underline"
-        style={colStyles.id}
-        onClick={onOpen}
-      >
-        {item.itemKey}
-      </button>
 
       {/* Title — inline edit */}
       <div className="min-w-0 shrink-0 px-2" style={colStyles.name} onClick={stop}>
@@ -789,16 +784,16 @@ function BacklogRow({
             value={item.title}
             canEdit
             onCommit={commitTitle}
-            className="block truncate text-ui-md font-medium text-foreground"
-            style={{ cursor: 'text' }}
-            inputClassName="w-full rounded border border-accent-border-strong px-1 py-0.5 text-ui-md text-foreground focus:outline-none"
+            className="block w-full break-words whitespace-normal text-foreground"
+            style={{ cursor: 'text', fontSize: 12 }}
+            inputClassName="w-full rounded border border-accent-border-strong px-1 py-0.5 text-ui-sm text-foreground focus:outline-none"
             ariaLabel="Title"
             title={item.title}
           />
         ) : (
           <span
-            className="block truncate text-ui-md font-medium text-foreground"
-            style={{ cursor: 'pointer' }}
+            className="block break-words whitespace-normal text-foreground"
+            style={{ cursor: 'pointer', fontSize: 12 }}
             onClick={onOpen}
             title={item.title}
           >
@@ -807,85 +802,61 @@ function BacklogRow({
         )}
       </div>
 
-      {/* Schedule State — business-readiness dropdown (mirrors Flow State) */}
+      {/* Schedule State — Rally-style segmented stepper (shared control) */}
       <div className="shrink-0 overflow-hidden px-2" style={colStyles.scheduleState} onClick={stop}>
-        {canEdit ? (
-          <InlineCellSelect
-            value={item.scheduleState ?? ''}
-            displayValue={SCHEDULE_STATE_LABEL[item.scheduleState as ScheduleState] ?? '—'}
-            onChange={(e) =>
-              patch({ scheduleState: e.target.value as UpdateWorkItemInput['scheduleState'] })
-            }
-            aria-label="Schedule state"
-          >
-            {SCHEDULE_STATE_VALUES.map((s) => (
-              <option key={s} value={s}>
-                {SCHEDULE_STATE_LABEL[s]}
-              </option>
-            ))}
-          </InlineCellSelect>
-        ) : (
-          <ScheduleStateBadge state={item.scheduleState} />
-        )}
-      </div>
-
-      {/* Flow State — Rally-style segmented stepper (mirrors Schedule State) */}
-      <div className="shrink-0 overflow-hidden px-2" style={colStyles.flowState} onClick={stop}>
         <StateStepper
           steps={SCHEDULE_STATE_STEPS}
-          value={(item.flowState ?? item.scheduleState) as ScheduleState}
+          value={item.scheduleState as ScheduleState}
           canEdit={canEdit}
-          onChange={(next) => patch({ flowState: next as UpdateWorkItemInput['flowState'] })}
+          onChange={(next) => patch({ scheduleState: next as UpdateWorkItemInput['scheduleState'] })}
+          ariaLabel="Schedule state"
+        />
+      </div>
+
+      {/* Flow State — shared SearchableSelect (enum dropdown) */}
+      <div className="shrink-0 overflow-hidden px-2" style={colStyles.flowState} onClick={stop}>
+        <SearchableSelect
+          value={item.flowState ?? item.scheduleState ?? ''}
+          readOnly={!canEdit}
           ariaLabel="Flow state"
+          options={SCHEDULE_STATE_VALUES.map((s) => ({ value: s, label: SCHEDULE_STATE_LABEL[s] }))}
+          onChange={(v) => patch({ flowState: v as UpdateWorkItemInput['flowState'] })}
         />
       </div>
 
       {/* Priority — defects only */}
       <div className="shrink-0 overflow-hidden px-2" style={colStyles.priority} onClick={stop}>
         {item.type === 'defect' ? (
-          canEdit ? (
-            <InlineCellSelect
-              value={item.priority ?? ''}
-              displayValue={item.priority ? PRIORITY_LABEL[item.priority as WorkItemPriority] : '—'}
-              onChange={(e) =>
-                patch({ priority: e.target.value as UpdateWorkItemInput['priority'] })
-              }
-              aria-label="Priority"
-            >
-              {PRIORITY_VALUES.map((p) => (
-                <option key={p} value={p}>
-                  {PRIORITY_LABEL[p]}
-                </option>
-              ))}
-            </InlineCellSelect>
-          ) : (
-            <PriorityBadge priority={item.priority} />
-          )
+          <SearchableSelect
+            value={item.priority ?? ''}
+            readOnly={!canEdit}
+            ariaLabel="Priority"
+            options={PRIORITY_VALUES.map((p) => ({ value: p, label: PRIORITY_LABEL[p] }))}
+            onChange={(v) => patch({ priority: v as UpdateWorkItemInput['priority'] })}
+          />
         ) : (
           <span className="font-mono text-ui-xs text-foreground-disabled">—</span>
         )}
       </div>
 
-      {/* Plan Estimate — inline number */}
+      {/* Plan Estimate — shared InlineEditableCell */}
       <div className="shrink-0 px-2 text-center" style={colStyles.estimate} onClick={stop}>
-        {canEdit ? (
-          <input
-            type="number"
-            min={0}
-            defaultValue={item.storyPoints ?? ''}
-            onBlur={(e) => {
-              const raw = e.target.value
-              const next = raw === '' ? null : Number(raw)
-              if (next !== (item.storyPoints ?? null)) patch({ storyPoints: next, todoHours: next })
-            }}
-            className="w-12 rounded border border-border-strong px-1 py-0.5 text-center font-mono text-ui-xs text-muted-foreground focus:outline-none"
-            aria-label="Plan estimate"
-          />
-        ) : (
-          <span className="font-mono text-ui-xs font-semibold text-muted-foreground">
-            {item.storyPoints ?? '—'}
-          </span>
-        )}
+        <InlineEditableCell
+          value={item.storyPoints != null ? String(item.storyPoints) : ''}
+          canEdit={canEdit}
+          ariaLabel="Plan estimate"
+          onCommit={(raw) => {
+            const next = raw === '' ? null : Number(raw)
+            // Plan Estimate = story points only. (Previously also wrote todoHours,
+            // conflating story points with task To-Do hours — no SRS FR calls for
+            // that, and it corrupted task-hour roll-ups.)
+            if (next !== (item.storyPoints ?? null)) patch({ storyPoints: next })
+          }}
+          displayValue={item.storyPoints ?? '—'}
+          className="block text-center font-mono text-muted-foreground"
+          style={{ fontSize: 12 }}
+          inputClassName="w-full rounded border border-primary bg-transparent px-0.5 text-center font-mono text-ui-xs text-foreground focus:outline-none"
+        />
       </div>
 
       {/* Owner — inline select */}
@@ -899,67 +870,58 @@ function BacklogRow({
         />
       </div>
 
-      {/* Release — inline select */}
+      {/* Release — shared SearchableSelect */}
       <div className="shrink-0 overflow-hidden px-2" style={colStyles.release} onClick={stop}>
-        {canEdit ? (
-          <InlineCellSelect
-            value={item.releaseId ?? ''}
-            displayValue={releases.find((r) => r.id === item.releaseId)?.name ?? '—'}
-            muted={!item.releaseId}
-            onChange={(e) => patch({ releaseId: e.target.value || null })}
-            aria-label="Release"
-          >
-            <option value="">—</option>
-            {releases.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name}
-              </option>
-            ))}
-          </InlineCellSelect>
-        ) : (
-          <span
-            className="truncate text-ui-sm"
-            style={{ color: item.releaseId ? BRAND.textPrimary : BRAND.textDisabled }}
-          >
-            {releases.find((r) => r.id === item.releaseId)?.name ?? '—'}
-          </span>
-        )}
+        <SearchableSelect
+          value={item.releaseId ?? ''}
+          readOnly={!canEdit}
+          ariaLabel="Release"
+          placeholder="—"
+          options={[
+            { value: '', label: '—' },
+            ...releases.map((r) => ({
+              value: r.id,
+              label: r.releaseKey ? `${r.releaseKey}: ${r.name}` : r.name,
+              searchText: `${r.releaseKey ?? ''} ${r.name}`,
+              icon: <TypeBadge type="release" size={16} />,
+            })),
+          ]}
+          onChange={(v) => patch({ releaseId: v || null })}
+        />
       </div>
 
-      {/* Iteration — inline select */}
+      {/* Iteration — shared SearchableSelect */}
       <div className="shrink-0 overflow-hidden px-2" style={colStyles.iteration} onClick={stop}>
-        {canEdit ? (
-          <InlineCellSelect
-            value={item.iterationId ?? ''}
-            displayValue={allIterations.find((it) => it.id === item.iterationId)?.name ?? '—'}
-            muted={!item.iterationId}
-            onChange={(e) => patch({ iterationId: e.target.value || null })}
-            aria-label="Iteration"
-          >
-            <option value="">—</option>
-            {/* The current iteration may be Accepted and therefore absent from
-                the assignable `iterations` options — keep it in the list so a
-                native <select> doesn't silently show the wrong option as
-                selected while the popover is open. */}
-            {item.iterationId && !iterations.some((it) => it.id === item.iterationId) && (
-              <option value={item.iterationId}>
-                {allIterations.find((it) => it.id === item.iterationId)?.name ?? '—'}
-              </option>
-            )}
-            {iterations.map((it) => (
-              <option key={it.id} value={it.id}>
-                {it.name}
-              </option>
-            ))}
-          </InlineCellSelect>
-        ) : (
-          <span
-            className="truncate text-ui-sm"
-            style={{ color: item.iterationId ? BRAND.textPrimary : BRAND.textDisabled }}
-          >
-            {allIterations.find((it) => it.id === item.iterationId)?.name ?? '—'}
-          </span>
-        )}
+        <SearchableSelect
+          value={item.iterationId ?? ''}
+          readOnly={!canEdit}
+          ariaLabel="Iteration"
+          placeholder="—"
+          options={[
+            { value: '', label: '—' },
+            // Keep the current (possibly Accepted) iteration selectable even when
+            // it's absent from the assignable `iterations` list.
+            ...(item.iterationId && !iterations.some((it) => it.id === item.iterationId)
+              ? [
+                  (() => {
+                    const cur = allIterations.find((it) => it.id === item.iterationId)
+                    return {
+                      value: item.iterationId,
+                      label: cur?.iterationKey ? `${cur.iterationKey}: ${cur.name}` : (cur?.name ?? '—'),
+                      icon: <TypeBadge type="iteration" size={16} />,
+                    }
+                  })(),
+                ]
+              : []),
+            ...iterations.map((it) => ({
+              value: it.id,
+              label: it.iterationKey ? `${it.iterationKey}: ${it.name}` : it.name,
+              searchText: `${it.iterationKey ?? ''} ${it.name}`,
+              icon: <TypeBadge type="iteration" size={16} />,
+            })),
+          ]}
+          onChange={(v) => patch({ iterationId: v || null })}
+        />
       </div>
     </div>
   )

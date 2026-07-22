@@ -386,7 +386,7 @@ export function AppShell() {
   }
 
   return (
-    <div className="flex min-h-svh flex-col">
+    <div className="flex h-svh flex-col">
       {/* Backdrop to close open dropdowns when clicking outside */}
       {(openMenu !== null || wsOpen || userOpen || notifOpen) && (
         <div className="fixed inset-0 z-20" aria-hidden onClick={closeAll} />
@@ -491,37 +491,6 @@ export function AppShell() {
                 )}
 
                 <div className="px-3 py-2 text-ui-sm text-muted-foreground">
-                  {/* View workspace (deselect project) */}
-                  <button
-                    onClick={() => {
-                      if (!project) return
-                      setProject(null)
-                      setTeam(null)
-                      closeAll()
-                    }}
-                    disabled={!project}
-                    className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left"
-                    style={{
-                      color: project ? BRAND.textPrimary : BRAND.textMuted,
-                      opacity: project ? 1 : 0.65,
-                      cursor: project ? 'pointer' : 'not-allowed',
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!project) return
-                      e.currentTarget.style.backgroundColor = BRAND.surfaceSubtle
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'transparent'
-                    }}
-                  >
-                    <Layers
-                      size={12}
-                      className="shrink-0"
-                      style={{ color: project ? BRAND.textSecondary : BRAND.textMuted }}
-                    />
-                    <span className="text-ui-sm">View workspace</span>
-                  </button>
-                  <div className="my-1.5 border-t border-border-subtle" />
                   {/* Projects & Teams — searchable, scrollable accordion tree.
                       Each project expands to reveal its teams (lazy-loaded). */}
                   {navProjects.length > 0 && (
@@ -902,7 +871,7 @@ export function AppShell() {
       {/* ── Page content ─────────────────────────────────────────────────────── */}
       <main
         id="main-content"
-        className="flex flex-1 flex-col overflow-auto bg-background"
+        className="flex min-h-0 flex-1 flex-col overflow-auto bg-background"
         aria-label="Main content"
       >
         <PageErrorBoundary>

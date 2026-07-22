@@ -23,15 +23,18 @@ import { useProjectMembers } from '@/features/teams/api'
 import { useReleases } from '@/features/releases/api'
 import { useCreateWorkItem } from '@/features/work-items/api'
 import { usePortfolio, portfolioKeys, type PortfolioNode } from '@/features/portfolio/api'
-import { TypeBadge, ScheduleStateBadge } from '@/entities/work-item/ui/badges'
+import { IdCell } from '@/entities/work-item/ui/id-cell'
+import { StateStepper } from '@/entities/work-item/ui/state-stepper'
+import { SCHEDULE_STATE_STEPS } from '@/entities/work-item/ui/state-steps'
+import type { ScheduleState } from '@/entities/work-item/model/types'
 import { WORK_ITEM_TYPE_CONFIG, type WorkItemType } from '@/entities/work-item/model/types'
-import { OwnerCell } from '@/shared/ui/owner-cell'
+import { OwnerCell, ownerSelectOptions } from '@/shared/ui/owner-cell'
+import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { MetricCard } from '@/shared/ui/metric-card'
 import { MetricStrip } from '@/shared/ui/metric-strip'
 import { ViewOnlyBadge } from '@/shared/ui/view-only-badge'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
-import { NativeSelect } from '@/shared/ui/native-select'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { SkeletonList } from '@/shared/ui/skeleton'
@@ -250,7 +253,7 @@ function TreeRow({
   return (
     <div>
       <div
-        className="flex h-9 items-center gap-2 border-b border-border-subtle bg-card px-3 hover:bg-surface-hover"
+        className="flex min-h-9 items-center gap-2 border-b border-border-subtle bg-card px-3 hover:bg-surface-hover"
         style={{ cursor: hasChildren ? 'pointer' : 'default' }}
         onClick={hasChildren ? () => onToggle(item.id) : undefined}
       >
@@ -263,18 +266,7 @@ function TreeRow({
                 <ChevronRight size={12} className="text-foreground-subtle" />
               ))}
           </span>
-          <TypeBadge type={item.type} size={16} />
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              onOpen(item.itemKey)
-            }}
-            className="truncate font-mono text-ui-xs text-primary-light hover:underline"
-            style={{ fontWeight: level < 2 ? 600 : 400 }}
-          >
-            {item.itemKey}
-          </button>
+          <IdCell type={item.type} itemKey={item.itemKey} onOpen={() => onOpen(item.itemKey)} />
         </div>
 
         <div className={COLS.type}>
@@ -288,7 +280,7 @@ function TreeRow({
 
         <div className={COLS.name}>
           <span
-            className="block truncate text-ui-md text-foreground"
+            className="block break-words whitespace-normal text-ui-md text-foreground"
             style={{ fontWeight: level === 0 ? 600 : level === 1 ? 500 : 400 }}
             title={item.title}
           >
@@ -301,7 +293,12 @@ function TreeRow({
         </div>
 
         <div className={COLS.status}>
-          <ScheduleStateBadge state={item.scheduleState} />
+          <StateStepper
+            steps={SCHEDULE_STATE_STEPS}
+            value={item.scheduleState as ScheduleState}
+            canEdit={false}
+            ariaLabel="Schedule state"
+          />
         </div>
 
         <div className={`${COLS.progress} flex items-center gap-2`}>
@@ -416,27 +413,30 @@ function CreateInitiativeModal({
         </FormField>
 
         <FormField label={t('common:owner')}>
-          <NativeSelect value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
-            <option value="">{t('create.unassigned')}</option>
-            {members.map((m) => (
-              <option key={m.userId} value={m.userId}>
-                {m.displayName ?? m.email}
-              </option>
-            ))}
-          </NativeSelect>
+          <SearchableSelect
+            variant="field"
+            value={assigneeId}
+            ariaLabel={t('common:owner')}
+            placeholder={t('create.unassigned')}
+            options={ownerSelectOptions(members, assigneeId)}
+            onChange={setAssigneeId}
+          />
         </FormField>
 
         <FormField label={t('create.priorityLabel')}>
-          <NativeSelect
+          <SearchableSelect
+            variant="field"
             value={priority}
-            onChange={(e) => setPriority(e.target.value as typeof priority)}
-          >
-            <option value="none">{t('create.priority.none')}</option>
-            <option value="low">{t('create.priority.low')}</option>
-            <option value="normal">{t('create.priority.normal')}</option>
-            <option value="high">{t('create.priority.high')}</option>
-            <option value="urgent">{t('create.priority.urgent')}</option>
-          </NativeSelect>
+            ariaLabel={t('create.priorityLabel')}
+            options={[
+              { value: 'none', label: t('create.priority.none') },
+              { value: 'low', label: t('create.priority.low') },
+              { value: 'normal', label: t('create.priority.normal') },
+              { value: 'high', label: t('create.priority.high') },
+              { value: 'urgent', label: t('create.priority.urgent') },
+            ]}
+            onChange={(v) => setPriority(v as typeof priority)}
+          />
         </FormField>
       </ModalBody>
 

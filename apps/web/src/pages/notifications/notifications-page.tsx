@@ -6,7 +6,7 @@ import { BRAND } from '@/shared/config/brand'
 import { PageHeader } from '@/shared/ui/page-header'
 import { EmptyState } from '@/shared/ui/empty-state'
 import {
-  useNotifications,
+  useNotificationsPaged,
   useMarkNotificationRead,
   useMarkAllNotificationsRead,
 } from '@/features/notifications/api'
@@ -35,11 +35,19 @@ const TAB_FILTER: Record<
 export function NotificationsPage() {
   const { t } = useTranslation('notifications')
   const [tab, setTab] = useState<NotificationTab>('all')
-  const { data: notifications = [], isLoading, isError } = useNotifications(TAB_FILTER[tab])
+  const {
+    data,
+    isLoading,
+    isError,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useNotificationsPaged(TAB_FILTER[tab])
   const markRead = useMarkNotificationRead()
   const markAll = useMarkAllNotificationsRead()
   const openNotification = useOpenNotification()
 
+  const notifications = data?.pages.flatMap((p) => p.data) ?? []
   const unreadCount = notifications.filter((n) => !n.isRead).length
 
   async function handleMarkAll() {
@@ -117,17 +125,30 @@ export function NotificationsPage() {
             description={tab === 'all' ? t('empty.allDescription') : t('empty.otherDescription')}
           />
         ) : (
-          <ul>
-            {notifications.map((n) => (
-              <NotificationItem
-                key={n.id}
-                notification={n}
-                onMarkRead={(id) => void markRead.mutateAsync(id)}
-                isMarkingRead={markRead.isPending}
-                onActivate={() => openNotification(n)}
-              />
-            ))}
-          </ul>
+          <>
+            <ul>
+              {notifications.map((n) => (
+                <NotificationItem
+                  key={n.id}
+                  notification={n}
+                  onMarkRead={(id) => void markRead.mutateAsync(id)}
+                  isMarkingRead={markRead.isPending}
+                  onActivate={() => openNotification(n)}
+                />
+              ))}
+            </ul>
+            {hasNextPage && (
+              <div className="flex justify-center py-4">
+                <button
+                  onClick={() => void fetchNextPage()}
+                  disabled={isFetchingNextPage}
+                  className="rounded border border-border-strong bg-card px-4 py-1.5 text-ui-md font-medium text-primary-light transition-colors hover:bg-surface-hover disabled:opacity-50"
+                >
+                  {isFetchingNextPage ? t('loadingMore') : t('loadMore')}
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

@@ -9,6 +9,8 @@
 import { useState } from 'react'
 import { ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react'
 
+import { useClickOutside } from '@/shared/lib/hooks/use-click-outside'
+
 export interface PickerIteration {
   id: string
   name: string
@@ -30,6 +32,7 @@ export function IterationPicker({
   onSelect: (id: string) => void
 }) {
   const [open, setOpen] = useState(false)
+  const pickerRef = useClickOutside<HTMLDivElement>(open, () => setOpen(false))
   const selectedIndex = iterations.findIndex((i) => i.id === selectedId)
   const selected = iterations[selectedIndex]
 
@@ -52,7 +55,7 @@ export function IterationPicker({
       >
         <ChevronLeft size={14} />
       </button>
-      <div className="relative h-full">
+      <div ref={pickerRef} className="relative h-full">
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
@@ -75,7 +78,6 @@ export function IterationPicker({
         </button>
         {open && (
           <>
-            <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
             <div
               className="absolute top-full left-0 z-50 mt-1 overflow-y-auto border border-border-strong bg-card py-1"
               style={{

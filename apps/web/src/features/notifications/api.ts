@@ -2,7 +2,7 @@
  * Notifications feature API hooks.
  */
 import { useEffect } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
 import { ENV } from '@/shared/config/env'
@@ -48,21 +48,56 @@ export function useNotificationUnreadCount() {
 export type NotificationCategory = 'assigned' | 'mentions'
 
 export function useNotifications(
-  filter: { unreadOnly?: boolean; category?: NotificationCategory } = {},
+  filter: { unreadOnly?: boolean; category?: NotificationCategory; limit?: number } = {},
 ) {
-  const { unreadOnly = false, category } = filter
+  const { unreadOnly = false, category, limit } = filter
   return useQuery({
-    queryKey: ['notifications', 'list', unreadOnly, category ?? 'all'],
+    queryKey: ['notifications', 'list', unreadOnly, category ?? 'all', limit ?? 'all'],
     queryFn: async () => {
-      const query: { unreadOnly?: string; category?: NotificationCategory } = {}
+      const query: { unreadOnly?: string; category?: NotificationCategory; limit?: number } = {}
       if (unreadOnly) query.unreadOnly = 'true'
       if (category) query.category = category
+      if (limit) query.limit = limit
       const { data, error, response } = await apiClient.GET('/v1/notifications', {
         params: { query },
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return (data as Notification[]) ?? []
     },
+    staleTime: 30_000,
+  })
+}
+
+interface PagedNotifications {
+  data: Notification[]
+  pageInfo: { nextCursor: string | null; hasNextPage: boolean }
+}
+
+/** Cursor-paginated feed for the full Notifications page (infinite scroll). */
+export function useNotificationsPaged(
+  filter: { unreadOnly?: boolean; category?: NotificationCategory } = {},
+) {
+  const { unreadOnly = false, category } = filter
+  return useInfiniteQuery({
+    queryKey: ['notifications', 'paged', unreadOnly, category ?? 'all'],
+    initialPageParam: undefined as string | undefined,
+    queryFn: async ({ pageParam }) => {
+      const query: {
+        unreadOnly?: string
+        category?: NotificationCategory
+        cursor?: string
+        limit?: number
+      } = { limit: 10 }
+      if (unreadOnly) query.unreadOnly = 'true'
+      if (category) query.category = category
+      if (pageParam) query.cursor = pageParam
+      const { data, error, response } = await apiClient.GET('/v1/notifications/paged', {
+        params: { query },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as PagedNotifications
+    },
+    getNextPageParam: (last) => last.pageInfo.nextCursor ?? undefined,
     staleTime: 30_000,
   })
 }

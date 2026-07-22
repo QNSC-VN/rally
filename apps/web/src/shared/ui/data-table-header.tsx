@@ -92,7 +92,7 @@ export function DataTableHeader<K extends string>({
       }}
     >
       {leading}
-      {columns.map((col) => (
+      {columns.map((col, i) => (
         <HeaderColumn
           key={col.key}
           column={col}
@@ -100,6 +100,7 @@ export function DataTableHeader<K extends string>({
           onResize={onResize}
           sort={sort}
           columnDrag={columnDrag}
+          isLast={i === columns.length - 1}
         />
       ))}
     </div>
@@ -112,6 +113,9 @@ interface HeaderColumnProps<K extends string> {
   onResize: (key: K, e: React.MouseEvent) => void
   sort?: DataTableSort
   columnDrag?: DataTableColumnDrag<K>
+  /** The last column omits its right separator so the trailing header
+   *  background isn't boxed into a phantom empty column on narrow tables. */
+  isLast?: boolean
 }
 
 function HeaderColumn<K extends string>({
@@ -120,6 +124,7 @@ function HeaderColumn<K extends string>({
   onResize,
   sort,
   columnDrag,
+  isLast,
 }: HeaderColumnProps<K>) {
   const before =
     columnDrag?.dropIndicator?.type === 'before' && columnDrag.dropIndicator.key === column.key
@@ -155,7 +160,7 @@ function HeaderColumn<K extends string>({
     <div
       style={{
         ...style,
-        borderRight: `1px solid ${SEPARATOR}`,
+        borderRight: isLast ? undefined : `1px solid ${SEPARATOR}`,
         opacity: dragging ? 0.4 : 1,
         cursor: columnDrag ? 'grab' : undefined,
       }}

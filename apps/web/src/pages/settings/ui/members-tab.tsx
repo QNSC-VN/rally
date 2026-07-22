@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { useForm, Controller } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -17,11 +17,12 @@ import { useClientPagination } from '@/shared/lib/hooks/use-client-pagination'
 import { notify } from '@/shared/lib/toast'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
+import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { IconButton } from '@/shared/ui/icon-button'
 import { Card, CardHeader, CardBody } from '@/shared/ui/card'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
-import { NativeSelect } from '@/shared/ui/native-select'
+import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { SearchInput } from '@/shared/ui/search-input'
 import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { StatusBadge } from '@/shared/ui/status-badge'
@@ -275,30 +276,24 @@ export function MembersTab() {
                 <td className="py-3 pr-4 text-muted-foreground">{m.email}</td>
                 <td className="py-3 pr-4 text-muted-foreground">{m.phone || '—'}</td>
                 <td className="py-3 pr-4">
-                  <NativeSelect
-                    className="w-auto px-2 py-1 text-ui-md"
+                  <SearchableSelect
+                    variant="field"
+                    className="w-auto min-w-[9rem]"
                     value={m.roleId ?? ''}
-                    disabled={isCurrentUser || changeRole.isPending}
-                    aria-label={`Role for ${m.displayName}`}
-                    onChange={(e) =>
+                    readOnly={isCurrentUser || changeRole.isPending}
+                    ariaLabel={`Role for ${m.displayName}`}
+                    options={[
+                      ...(!m.roleId ? [{ value: '', label: t('members.noRole') }] : []),
+                      ...roles.map((r) => ({ value: r.id, label: r.name })),
+                    ]}
+                    onChange={(v) =>
                       changeRole.mutate({
                         userId: m.userId,
                         oldAssignmentId: m.roleAssignmentId,
-                        newRoleId: e.target.value,
+                        newRoleId: v,
                       })
                     }
-                  >
-                    {!m.roleId && (
-                      <option value="" disabled>
-                        {t('members.noRole')}
-                      </option>
-                    )}
-                    {roles.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.name}
-                      </option>
-                    ))}
-                  </NativeSelect>
+                  />
                 </td>
                 <td className="py-3 pr-4">
                   <MemberStatusBadge status={m.status} />
@@ -357,7 +352,7 @@ function MemberStatusBadge({ status }: { status: string }) {
       border: BRAND.warningBorder,
     },
     suspended: {
-      label: 'Suspended',
+      label: 'Deactive',
       text: BRAND.danger,
       bg: BRAND.dangerBg,
       border: BRAND.dangerBorder,
@@ -390,11 +385,13 @@ function UserDetailModal({
   isRemoving: boolean
 }) {
   const { t } = useTranslation('settings')
+  const [confirmRemove, setConfirmRemove] = useState(false)
   const roleName = roles.find((r) => r.id === member.roleId)?.name ?? member.roleName ?? '—'
   const isWorkspaceAdmin = member.roleSlug === 'workspace_admin'
   const canRemove = !isCurrentUser && !isWorkspaceAdmin
 
   return (
+    <>
     <AppModal open onClose={onClose} title={t('members.detailTitle')} width={440}>
       <ModalBody className="space-y-4">
         <div className="flex items-center gap-3">
@@ -431,7 +428,7 @@ function UserDetailModal({
         <Button
           type="button"
           variant="destructive"
-          onClick={onRemove}
+          onClick={() => setConfirmRemove(true)}
           disabled={!canRemove || isRemoving}
           title={
             isCurrentUser
@@ -446,6 +443,21 @@ function UserDetailModal({
         </Button>
       </ModalFooter>
     </AppModal>
+    {/* P4-SET-07: Remove User Access requires typing the member name to confirm. */}
+    <ConfirmDialog
+      open={confirmRemove}
+      title={t('members.removeAccess')}
+      message={t('members.removeConfirm', {
+        name: member.displayName,
+        defaultValue: `Remove {{name}}'s workspace access? This cannot be undone.`,
+      })}
+      confirmText={member.displayName}
+      confirmLabel={t('members.removeAccess')}
+      pending={isRemoving}
+      onConfirm={onRemove}
+      onCancel={() => setConfirmRemove(false)}
+    />
+    </>
   )
 }
 
@@ -512,14 +524,23 @@ function InvitePanel({
               label={t('members.roleFieldLabel')}
               error={form.formState.errors.roleId?.message}
             >
-              <NativeSelect {...form.register('roleId')}>
-                <option value="">{t('members.selectRoleOption')}</option>
-                {roles.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                  </option>
-                ))}
-              </NativeSelect>
+              <Controller
+                control={form.control}
+                name="roleId"
+                render={({ field }) => (
+                  <SearchableSelect
+                    variant="field"
+                    value={field.value ?? ''}
+                    ariaLabel={t('members.roleFieldLabel')}
+                    placeholder={t('members.selectRoleOption')}
+                    options={[
+                      { value: '', label: t('members.selectRoleOption') },
+                      ...roles.map((r) => ({ value: r.id, label: r.name })),
+                    ]}
+                    onChange={field.onChange}
+                  />
+                )}
+              />
             </FormField>
           </div>
           {form.formState.errors.root && (

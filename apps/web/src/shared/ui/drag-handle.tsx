@@ -47,10 +47,10 @@ export const DragHandle = forwardRef<HTMLDivElement, DragHandleProps>(function D
     <div
       ref={ref}
       aria-label={disabled ? undefined : 'Drag to reorder'}
-      className={`flex w-4 shrink-0 items-center justify-center px-2 ${
+      className={`flex w-5 shrink-0 items-center justify-center ${
         disabled
           ? 'cursor-default opacity-0'
-          : 'cursor-grab opacity-0 transition-opacity duration-100 group-hover:opacity-100 active:cursor-grabbing'
+          : 'cursor-grab text-muted-foreground opacity-70 transition-opacity duration-100 hover:opacity-100 active:cursor-grabbing'
       } ${className}`}
       {...(disabled ? {} : rest)}
     >

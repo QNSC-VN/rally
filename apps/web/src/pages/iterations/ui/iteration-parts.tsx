@@ -1,21 +1,36 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
-import { ChevronLeft, Loader2 } from 'lucide-react'
+import { FileText, History, Loader2 } from 'lucide-react'
 import { notify } from '@/shared/lib/toast'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectTeams, useProjectMembers } from '@/features/teams/api'
 import { useProjects } from '@/features/projects/api'
-import { TypeBadge, ScheduleStateBadge } from '@/entities/work-item/ui/badges'
-import { StatusBadge } from '@/shared/ui/status-badge'
-import { TeamCell } from '@/shared/ui/team-cell'
+import { IdCell } from '@/entities/work-item/ui/id-cell'
+import { StateStepper } from '@/entities/work-item/ui/state-stepper'
+import { SCHEDULE_STATE_STEPS } from '@/entities/work-item/ui/state-steps'
+import type { ScheduleState } from '@/entities/work-item/model/types'
+import { TeamAvatar } from '@/shared/ui/team-cell'
+import { TeamSelectField } from '@/shared/ui/entity-select-field'
 import { ITERATION_STATE_STYLE } from '@/features/iterations/status-colors'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
+import { DateField } from '@/shared/ui/date-field'
 import { NativeSelect } from '@/shared/ui/native-select'
+import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { RichTextEditor } from '@/shared/ui/rich-text-editor'
+import { SaveCancelBar } from '@/shared/ui/save-cancel-bar'
+import { usePendingPatch } from '@/shared/lib/hooks/use-pending-patch'
+import { DetailLayout, DetailTwoPane } from '@/shared/ui/detail/detail-layout'
+import { TypeBadge } from '@/entities/work-item/ui/badges'
+import { IterationHistoryTab } from './iteration-history-tab'
+import {
+  DetailField,
+  DetailFieldPair,
+  DetailReadonlyValue,
+} from '@/shared/ui/detail/detail-field'
 import { Spinner } from '@/shared/ui/spinner'
 import {
   useIteration,
@@ -23,8 +38,6 @@ import {
   useIterationStatus,
   useCreateIteration,
   useUpdateIteration,
-  useCommitIteration,
-  useAcceptIteration,
   useRolloverIteration,
   type IterationState,
   type Iteration,
@@ -121,45 +134,60 @@ export function CreateIterationModal({
         </FormField>
         {/* Project — auto-filled from context, overridable by admin (P2-IT-FR-001C/D). */}
         <FormField label={t('create.projectLabel')} required>
-          <NativeSelect
+          <SearchableSelect
+            variant="field"
             value={selectedProjectId}
-            onChange={(e) => handleProjectChange(e.target.value)}
-          >
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </NativeSelect>
+            ariaLabel={t('create.projectLabel')}
+            options={projects.map((p) => ({ value: p.id, label: p.name }))}
+            onChange={handleProjectChange}
+          />
         </FormField>
         <FormField label={t('create.teamLabel')}>
-          <NativeSelect value={validTeamId} onChange={(e) => setTeamId(e.target.value)}>
-            <option value="">No team</option>
-            {teams.map((tm) => (
-              <option key={tm.id} value={tm.id}>
-                {tm.name}
-              </option>
-            ))}
-          </NativeSelect>
+          <SearchableSelect
+            variant="field"
+            value={validTeamId}
+            ariaLabel={t('create.teamLabel')}
+            placeholder="No team"
+            options={[
+              { value: '', label: 'No team' },
+              ...teams.map((tm) => ({
+                value: tm.id,
+                label: tm.name,
+                icon: <TeamAvatar teamKey={tm.key} name={tm.name} size={16} />,
+              })),
+            ]}
+            onChange={setTeamId}
+          />
         </FormField>
         <div className="grid grid-cols-2 gap-4">
           <FormField label={t('create.startDateLabel')} required>
-            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            <DateField
+              variant="field"
+              value={startDate || null}
+              ariaLabel={t('create.startDateLabel')}
+              onChange={(v) => setStartDate(v ?? '')}
+            />
           </FormField>
           <FormField label={t('create.endDateLabel')} required>
-            <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+            <DateField
+              variant="field"
+              value={endDate || null}
+              ariaLabel={t('create.endDateLabel')}
+              onChange={(v) => setEndDate(v ?? '')}
+            />
           </FormField>
         </div>
         <FormField label={t('create.stateLabel')} required>
-          <NativeSelect
-            aria-label={t('create.stateLabel')}
+          <SearchableSelect
+            variant="field"
+            ariaLabel={t('create.stateLabel')}
             value={state}
-            onChange={(e) => setState(e.target.value as IterationState)}
-          >
-            <option value="planning">Planning</option>
-            <option value="committed">Committed</option>
-            <option value="accepted">Accepted</option>
-          </NativeSelect>
+            options={(['planning', 'committed', 'accepted'] as IterationState[]).map((s) => ({
+              value: s,
+              label: ITERATION_STATE_STYLE[s].label,
+            }))}
+            onChange={(v) => setState(v as IterationState)}
+          />
         </FormField>
       </ModalBody>
 
@@ -200,15 +228,31 @@ export function IterationDetail({
   const { data: it, isLoading } = useIteration(id)
   const update = useUpdateIteration(id)
   const { data: teams = [] } = useProjectTeams(it?.projectId)
-  const team = teams.find((tm) => tm.id === it?.teamId) ?? null
-  const teamName = team?.name ?? null
   const disabled = !canManage
-  const readonlyCls =
-    'w-full rounded border border-input bg-input-background px-3 py-2 text-ui-md text-foreground'
 
-  function patch(body: Parameters<typeof update.mutateAsync>[0]) {
-    void update.mutateAsync(body)
-  }
+  // Broadcom-Rally-style deferred save (matches the Work Item detail page): field
+  // edits accumulate locally and commit together via the floating Save/Cancel bar
+  // instead of auto-saving each field on blur. Lifecycle actions (Commit / Accept
+  // / Rollover) below remain immediate — they aren't field edits.
+  const {
+    value: vit,
+    isDirty,
+    saving,
+    setField,
+    save,
+    cancel,
+  } = usePendingPatch<Iteration, Parameters<typeof update.mutateAsync>[0]>(
+    it ?? ({} as Iteration),
+    id,
+    async (body) => {
+      try {
+        return await update.mutateAsync(body)
+      } catch (e) {
+        notify.error(e instanceof Error ? e.message : t('detail.saveFailed', 'Failed to save'))
+        throw e
+      }
+    },
+  )
 
   // Timebox scope + capacity read-model (shared with Iteration Status) and the
   // gated lifecycle actions (Commit / Accept / Rollover).
@@ -216,9 +260,8 @@ export function IterationDetail({
   const { data: status } = useIterationStatus(id)
   const { data: members = [] } = useProjectMembers(it?.projectId)
   const { data: allIterations = [] } = useIterations(it?.projectId)
-  const commit = useCommitIteration(id)
-  const accept = useAcceptIteration(id)
   const [showRollover, setShowRollover] = useState(false)
+  const [activeTab, setActiveTab] = useState<'details' | 'history'>('details')
 
   const memberName = useMemo(() => {
     const m = new Map<string, string>()
@@ -226,21 +269,16 @@ export function IterationDetail({
     return m
   }, [members])
 
-  async function handleCommit() {
-    try {
-      await commit.mutateAsync()
-      notify.success(t('detail.committed'))
-    } catch (e) {
-      notify.error(e instanceof Error ? e.message : t('detail.commitFailed'))
-    }
-  }
-  async function handleAccept() {
-    try {
-      await accept.mutateAsync()
-      notify.success(t('detail.accepted'))
-    } catch (e) {
-      notify.error(e instanceof Error ? e.message : t('detail.acceptFailed'))
-    }
+  // State is a gated lifecycle transition (not a free field), so — like the
+  // /timeboxes list row — it saves IMMEDIATELY through the update mutation (the
+  // backend routes it to Commit/Accept and rejects invalid jumps), rather than
+  // through the deferred Save/Cancel patch used by the other fields.
+  function saveState(v: string) {
+    if (!it || v === it.state) return
+    void update.mutateAsync({ state: v as IterationState }).then(
+      () => notify.success(t('detail.stateUpdated', 'State updated')),
+      (e: unknown) => notify.error(e instanceof Error ? e.message : t('detail.saveFailed', 'Failed to save')),
+    )
   }
 
   if (isLoading || !it) {
@@ -259,133 +297,156 @@ export function IterationDetail({
       i.scheduleState !== 'release',
   ).length
 
+  const tabs = [
+    { key: 'details', label: t('detail.details'), icon: <FileText size={19} /> },
+    {
+      key: 'history',
+      label: t('detail.history', 'Revision History'),
+      icon: <History size={19} />,
+    },
+  ]
+
   return (
-    <div className="flex flex-1 flex-col overflow-hidden bg-card">
-      <div className="shrink-0 bg-primary-dark text-white">
-        <div className="flex h-12 items-center gap-3 px-4">
-          <button aria-label="Back" onClick={onBack} className="rounded p-1.5 hover:bg-white/10">
-            <ChevronLeft size={18} />
-          </button>
-          <span className="rounded-sm bg-primary-lighter px-1.5 py-px text-ui-xs font-semibold text-primary">
-            {t('detail.typeBadge')}
-          </span>
-          <span className="font-mono text-ui-lg font-semibold">{it.iterationKey ?? 'New'}</span>
-          <span className="h-5 w-px bg-white/25" />
-          <h1 className="truncate text-base font-semibold">{it.name}</h1>
-          <div className="ml-auto">
-            <StatusBadge style={ITERATION_STATE_STYLE[it.state]} />
+    <>
+      <DetailLayout
+        onBack={onBack}
+        badge={<TypeBadge type="iteration" />}
+        itemKey={it.iterationKey ?? 'New'}
+        title={
+          disabled ? (
+            it.name
+          ) : (
+            <input
+              value={vit.name ?? ''}
+              onChange={(e) => setField({ name: e.target.value })}
+              className="w-full rounded border-0 bg-transparent px-1 py-0.5 text-base font-semibold text-white placeholder-white/60 focus:bg-white/10 focus:outline-none"
+              aria-label="Name"
+            />
+          )
+        }
+        tabs={tabs}
+        activeTab={activeTab}
+        onTabChange={(k) => setActiveTab(k as 'details' | 'history')}
+      >
+        {activeTab === 'history' ? (
+          <div className="flex-1 overflow-y-auto bg-card p-6">
+            <IterationHistoryTab iterationId={id} />
           </div>
-        </div>
-      </div>
+        ) : (
+          <>
+        <DetailTwoPane
+          sidebarTitle={t('detail.details')}
+          main={
+            <>
+              {canManage && it.state !== 'accepted' && (
+                <p className="text-ui-md text-muted-foreground">
+                  {it.state === 'planning'
+                    ? t('detail.planningHint')
+                    : t('detail.unfinishedHint', { count: unfinishedCount })}
+                </p>
+              )}
+              <CapacityStrip metrics={status?.metrics} scopeCount={scopeItems.length} />
+              <IterationScope
+                items={scopeItems}
+                memberName={memberName}
+                onOpen={(itemKey) => navigate({ to: '/item/$itemKey', params: { itemKey } })}
+              />
+              <RichTextEditor
+                title={t('detail.themeLabel')}
+                value={vit.theme}
+                minHeight={200}
+                readOnly={disabled}
+                onChange={(html) => setField({ theme: html || null })}
+              />
+              <RichTextEditor
+                title={t('detail.notesLabel')}
+                value={vit.notes}
+                minHeight={160}
+                readOnly={disabled}
+                onChange={(html) => setField({ notes: html || null })}
+              />
+            </>
+          }
+          sidebar={
+            <div className="space-y-4">
+              <DetailField label={t('detail.projectLabel')}>
+                <DetailReadonlyValue>{project?.projectName ?? '—'}</DetailReadonlyValue>
+              </DetailField>
 
-      {canManage && it.state !== 'accepted' && (
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border-subtle bg-card px-6 py-2">
-          <span className="text-ui-md text-muted-foreground">
-            {it.state === 'planning'
-              ? t('detail.planningHint')
-              : t('detail.unfinishedHint', { count: unfinishedCount })}
-          </span>
-          <div className="flex items-center gap-2">
-            {it.state === 'committed' && (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={unfinishedCount === 0}
-                onClick={() => setShowRollover(true)}
-              >
-                {t('detail.moveUnfinished')}
-              </Button>
-            )}
-            {it.state === 'planning' ? (
-              <Button size="sm" disabled={commit.isPending} onClick={handleCommit}>
-                {commit.isPending && <Loader2 size={11} className="animate-spin" />}{' '}
-                {t('detail.commit')}
-              </Button>
-            ) : (
-              <Button size="sm" disabled={accept.isPending} onClick={handleAccept}>
-                {accept.isPending && <Loader2 size={11} className="animate-spin" />}{' '}
-                {t('detail.accept')}
-              </Button>
-            )}
-          </div>
-        </div>
-      )}
+              <TeamSelectField
+                label={t('detail.teamLabel')}
+                value={vit.teamId}
+                onChange={(v) => setField({ teamId: v || null })}
+                teams={teams}
+                disabled={disabled}
+                placeholder={t('detail.noTeam')}
+              />
 
-      <div className="flex min-h-0 flex-1 gap-2 bg-avatar">
-        <main className="flex-1 overflow-y-auto bg-surface-subtle p-6">
-          <div className="space-y-5">
-            <CapacityStrip metrics={status?.metrics} scopeCount={scopeItems.length} />
-            <IterationScope
-              items={scopeItems}
-              memberName={memberName}
-              onOpen={(itemKey) => navigate({ to: '/item/$itemKey', params: { itemKey } })}
-            />
-            <h2 className="text-lg font-semibold text-foreground">{t('detail.details')}</h2>
-            <RichTextEditor
-              title={t('detail.themeLabel')}
-              value={it?.theme}
-              minHeight={200}
-              readOnly={disabled}
-              onBlur={(html) => patch({ theme: html || null })}
-            />
-            <RichTextEditor
-              title={t('detail.notesLabel')}
-              value={it?.notes}
-              minHeight={160}
-              readOnly={disabled}
-              onBlur={(html) => patch({ notes: html || null })}
-            />
-          </div>
-        </main>
+              <DetailFieldPair>
+                <DetailField label={t('detail.startDateLabel')}>
+                  <DateField
+                    variant="field"
+                    value={vit.startDate}
+                    readOnly={disabled}
+                    ariaLabel={t('detail.startDateLabel')}
+                    onChange={disabled ? undefined : (v) => setField({ startDate: v })}
+                  />
+                </DetailField>
+                <DetailField label={t('detail.endDateLabel')}>
+                  <DateField
+                    variant="field"
+                    value={vit.endDate}
+                    readOnly={disabled}
+                    ariaLabel={t('detail.endDateLabel')}
+                    onChange={disabled ? undefined : (v) => setField({ endDate: v })}
+                  />
+                </DetailField>
+              </DetailFieldPair>
 
-        <aside className="w-[320px] shrink-0 space-y-4 overflow-y-auto border-l border-border-subtle bg-card p-5">
-          <FormField label={t('detail.projectLabel')}>
-            <div className={readonlyCls}>{project?.projectName ?? '—'}</div>
-          </FormField>
-          <FormField label={t('detail.teamLabel')}>
-            {teamName ? (
-              <div className={readonlyCls}>
-                <TeamCell teamKey={team?.key} name={teamName} />
-              </div>
-            ) : (
-              <div className={readonlyCls}>{t('detail.noTeam')}</div>
-            )}
-          </FormField>
-          <FormField label={t('detail.startDateLabel')}>
-            <Input
-              type="date"
-              value={it.startDate ?? ''}
-              disabled={disabled}
-              onBlur={(e) => patch({ startDate: e.target.value || null })}
-            />
-          </FormField>
-          <FormField label={t('detail.endDateLabel')}>
-            <Input
-              type="date"
-              value={it.endDate ?? ''}
-              disabled={disabled}
-              onBlur={(e) => patch({ endDate: e.target.value || null })}
-            />
-          </FormField>
-          <FormField label={t('detail.stateLabel')}>
-            <div className="flex h-9 items-center rounded border border-input bg-input-background px-3">
-              <StatusBadge style={ITERATION_STATE_STYLE[it.state]} />
+              <DetailField label={t('detail.stateLabel')}>
+                <SearchableSelect
+                  variant="field"
+                  value={it.state}
+                  readOnly={disabled}
+                  ariaLabel={t('detail.stateLabel')}
+                  options={(['planning', 'committed', 'accepted'] as IterationState[]).map((s) => ({
+                    value: s,
+                    label: ITERATION_STATE_STYLE[s].label,
+                  }))}
+                  onChange={saveState}
+                />
+              </DetailField>
+
+              <DetailField label={t('detail.plannedVelocityLabel')}>
+                {!disabled ? (
+                  <Input
+                    type="number"
+                    min={0}
+                    value={vit.plannedVelocity ?? ''}
+                    onChange={(e) =>
+                      setField({
+                        plannedVelocity: e.target.value === '' ? null : Number(e.target.value),
+                      })
+                    }
+                    placeholder="0"
+                  />
+                ) : (
+                  <DetailReadonlyValue mono>{vit.plannedVelocity ?? '—'}</DetailReadonlyValue>
+                )}
+              </DetailField>
             </div>
-          </FormField>
-          <FormField label={t('detail.plannedVelocityLabel')}>
-            <Input
-              type="number"
-              min={0}
-              defaultValue={it.plannedVelocity ?? ''}
-              disabled={disabled}
-              onBlur={(e) =>
-                patch({ plannedVelocity: e.target.value === '' ? null : Number(e.target.value) })
-              }
-              placeholder="0"
-            />
-          </FormField>
-        </aside>
-      </div>
+          }
+        />
+        <SaveCancelBar
+          visible={isDirty && !disabled}
+          saving={saving}
+          errorMsg={null}
+          onSave={() => void save().catch(() => {})}
+          onCancel={cancel}
+        />
+          </>
+        )}
+      </DetailLayout>
 
       {showRollover && (
         <RolloverModal
@@ -395,7 +456,7 @@ export function IterationDetail({
           onClose={() => setShowRollover(false)}
         />
       )}
-    </div>
+    </>
   )
 }
 
@@ -479,7 +540,6 @@ function IterationScope({
           <table className="w-full text-ui-md">
             <thead>
               <tr className="border-b border-border-subtle text-muted-foreground">
-                <th className="px-3 py-2 text-left font-semibold">{t('scope.type')}</th>
                 <th className="px-3 py-2 text-left font-semibold">{t('scope.id')}</th>
                 <th className="px-3 py-2 text-left font-semibold">{t('common:name')}</th>
                 <th className="px-3 py-2 text-left font-semibold">{t('scope.scheduleState')}</th>
@@ -491,16 +551,19 @@ function IterationScope({
               {items.map((i) => (
                 <tr
                   key={i.id}
-                  onClick={() => onOpen(i.itemKey)}
-                  className="cursor-pointer border-b border-border-subtle hover:bg-primary-lighter"
+                  className="border-b border-border-subtle hover:bg-primary-lighter"
                 >
                   <td className="px-3 py-2">
-                    <TypeBadge type={i.type} />
+                    <IdCell type={i.type} itemKey={i.itemKey} onOpen={() => onOpen(i.itemKey)} />
                   </td>
-                  <td className="px-3 py-2 font-mono text-primary">{i.itemKey}</td>
                   <td className="px-3 py-2 text-foreground">{i.title}</td>
                   <td className="px-3 py-2">
-                    <ScheduleStateBadge state={i.scheduleState} />
+                    <StateStepper
+                      steps={SCHEDULE_STATE_STEPS}
+                      value={i.scheduleState as ScheduleState}
+                      canEdit={false}
+                      ariaLabel="Schedule state"
+                    />
                   </td>
                   <td className="px-3 py-2 text-right font-mono text-muted-foreground">
                     {i.planEstimate ?? '—'}
@@ -553,14 +616,17 @@ function RolloverModal({
           {t('rollover.summary', { count: unfinishedCount })}
         </p>
         <FormField label={t('rollover.destination')}>
-          <NativeSelect value={target} onChange={(e) => setTarget(e.target.value)}>
-            <option value="">Backlog (no iteration)</option>
-            {targets.map((it) => (
-              <option key={it.id} value={it.id}>
-                {it.name}
-              </option>
-            ))}
-          </NativeSelect>
+          <SearchableSelect
+            variant="field"
+            value={target}
+            ariaLabel={t('rollover.destination')}
+            placeholder="Backlog (no iteration)"
+            options={[
+              { value: '', label: 'Backlog (no iteration)' },
+              ...targets.map((it) => ({ value: it.id, label: it.name })),
+            ]}
+            onChange={setTarget}
+          />
         </FormField>
       </ModalBody>
       <ModalFooter>

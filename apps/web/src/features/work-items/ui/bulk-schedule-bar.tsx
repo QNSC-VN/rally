@@ -1,13 +1,10 @@
 /**
- * BulkScheduleBar — the shared "assign Release / assign Iteration to the
- * selected work items" strip.
+ * Bulk "assign Release / assign Iteration to the selected work items" controls.
  *
- * Backlog and Quality (and any future table over work items) drove the exact
- * same two InlineSelect controls plus the identical bulk-assign handlers +
- * error state inline. This hoists that pattern to a single source of truth on
- * top of the generic {@link BulkActionBar}: it owns the mutations, the inline
- * error, and the "N selected" chrome. Renders nothing when no rows are
- * selected, so callers can drop it straight into their layout.
+ * `BulkScheduleActions` renders just the two InlineSelect controls + inline
+ * error (owns the mutations), designed to drop into a shared `BulkActionBar`
+ * via SelectableTable's `bulkActions` slot. `BulkScheduleBar` is the legacy
+ * standalone wrapper (its own bar) kept for any caller not yet on SelectableTable.
  */
 import { useState } from 'react'
 import { BulkActionBar } from '@/shared/ui/bulk-action-bar'
@@ -19,7 +16,7 @@ interface ScheduleOption {
   name: string
 }
 
-interface BulkScheduleBarProps {
+interface BulkScheduleActionsProps {
   projectId: string | undefined
   selectedIds: Set<string>
   clearSelection: () => void
@@ -31,7 +28,8 @@ interface BulkScheduleBarProps {
   onAssigned?: () => void | Promise<void>
 }
 
-export function BulkScheduleBar({
+/** The Release/Iteration assign controls (no bar) — render inside a BulkActionBar. */
+export function BulkScheduleActions({
   projectId,
   selectedIds,
   clearSelection,
@@ -39,7 +37,7 @@ export function BulkScheduleBar({
   iterations,
   canEdit,
   onAssigned,
-}: BulkScheduleBarProps) {
+}: BulkScheduleActionsProps) {
   const bulkRelease = useBulkAssignRelease()
   const bulkIteration = useBulkAssignIteration()
   const [bulkError, setBulkError] = useState<string | null>(null)
@@ -68,58 +66,60 @@ export function BulkScheduleBar({
     }
   }
 
-  if (selectedIds.size === 0) return null
+  if (!canEdit) return null
 
   return (
-    <BulkActionBar
-      selectedCount={selectedIds.size}
-      error={bulkError}
-      onClear={() => {
-        clearSelection()
-        setBulkError(null)
-      }}
-    >
-      {canEdit && (
-        <>
-          <InlineSelect
-            value=""
-            disabled={bulkRelease.isPending}
-            onChange={(e) => {
-              if (!e.target.value) return
-              void assignReleaseToSelected(e.target.value === '__none__' ? null : e.target.value)
-            }}
-            className="w-auto"
-            aria-label="Assign release to selected"
-          >
-            <option value="">Assign Release…</option>
-            <option value="__none__">— Unschedule —</option>
-            {releases.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name}
-              </option>
-            ))}
-          </InlineSelect>
+    <>
+      <InlineSelect
+        value=""
+        disabled={bulkRelease.isPending}
+        onChange={(e) => {
+          if (!e.target.value) return
+          void assignReleaseToSelected(e.target.value === '__none__' ? null : e.target.value)
+        }}
+        className="w-auto"
+        aria-label="Assign release to selected"
+      >
+        <option value="">Assign Release…</option>
+        <option value="__none__">— Unschedule —</option>
+        {releases.map((r) => (
+          <option key={r.id} value={r.id}>
+            {r.name}
+          </option>
+        ))}
+      </InlineSelect>
 
-          <InlineSelect
-            value=""
-            disabled={bulkIteration.isPending}
-            onChange={(e) => {
-              if (!e.target.value) return
-              void assignIterationToSelected(e.target.value === '__none__' ? null : e.target.value)
-            }}
-            className="w-auto"
-            aria-label="Assign iteration to selected"
-          >
-            <option value="">Assign Iteration…</option>
-            <option value="__none__">— Unschedule —</option>
-            {iterations.map((it) => (
-              <option key={it.id} value={it.id}>
-                {it.name}
-              </option>
-            ))}
-          </InlineSelect>
-        </>
-      )}
+      <InlineSelect
+        value=""
+        disabled={bulkIteration.isPending}
+        onChange={(e) => {
+          if (!e.target.value) return
+          void assignIterationToSelected(e.target.value === '__none__' ? null : e.target.value)
+        }}
+        className="w-auto"
+        aria-label="Assign iteration to selected"
+      >
+        <option value="">Assign Iteration…</option>
+        <option value="__none__">— Unschedule —</option>
+        {iterations.map((it) => (
+          <option key={it.id} value={it.id}>
+            {it.name}
+          </option>
+        ))}
+      </InlineSelect>
+
+      {bulkError && <span className="text-ui-sm text-destructive">{bulkError}</span>}
+    </>
+  )
+}
+
+/** Legacy standalone bar (owns its own BulkActionBar). Prefer SelectableTable +
+ *  `bulkActions={() => <BulkScheduleActions … />}`. */
+export function BulkScheduleBar(props: BulkScheduleActionsProps) {
+  if (props.selectedIds.size === 0) return null
+  return (
+    <BulkActionBar selectedCount={props.selectedIds.size} onClear={props.clearSelection}>
+      <BulkScheduleActions {...props} />
     </BulkActionBar>
   )
 }

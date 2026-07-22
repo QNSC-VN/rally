@@ -56,8 +56,11 @@ export function useRowSelection<T extends { id: string }>(items: readonly T[]): 
   const toggleAll = useCallback(() => {
     setSelectedIds((prev) => {
       const next = new Set(prev)
-      const everyVisibleSelected = items.length > 0 && items.every((i) => next.has(i.id))
-      if (everyVisibleSelected) items.forEach((i) => next.delete(i.id))
+      // Standard header-checkbox convention: if ANY visible row is selected
+      // (partial/indeterminate OR all), clicking clears them; only when nothing
+      // is selected does it select all. Gives a reliable one-click "deselect all".
+      const anyVisibleSelected = items.some((i) => next.has(i.id))
+      if (anyVisibleSelected) items.forEach((i) => next.delete(i.id))
       else items.forEach((i) => next.add(i.id))
       return next
     })

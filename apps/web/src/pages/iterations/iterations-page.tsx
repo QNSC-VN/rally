@@ -11,23 +11,32 @@
  */
 import { useCallback, useMemo, useState, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, Inbox, Plus } from 'lucide-react'
-import { PageToolbar } from '@/shared/ui/page-toolbar'
+import { toast } from 'sonner'
+import { AlertTriangle, Inbox, Plus, Trash2 } from 'lucide-react'
 import { TimeboxTypeSwitcher } from '@/pages/timeboxes/timebox-type-switcher'
+import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
+import { type RowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { InlineSelect } from '@/shared/ui/native-select'
 import { Button } from '@/shared/ui/button'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
-import { PaginationFooter } from '@/shared/ui/pagination-footer'
-import { DataTableFrame, useDataTable } from '@/shared/ui/table'
-import { StatusBadge } from '@/shared/ui/status-badge'
+import { useDataTable } from '@/shared/ui/table'
+import { ListPageScaffold } from '@/shared/ui/list-page/list-page-scaffold'
+import { ListPageHeader } from '@/shared/ui/list-page/list-page-header'
+import { MetricStrip } from '@/shared/ui/metric-strip'
+import { MetricCard } from '@/shared/ui/metric-card'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
-import { ITERATION_STATE_STYLE } from '@/features/iterations/status-colors'
 import { CreateIterationModal, IterationDetail } from './ui/iteration-parts'
+import { IterationRow } from './ui/iteration-row'
 import { type ColKey, ITERATIONS_COLUMNS } from './model/columns'
-import { useIterations, type Iteration, type IterationState } from '@/features/iterations/api'
+import {
+  useIterations,
+  useDeleteIteration,
+  type Iteration,
+  type IterationState,
+} from '@/features/iterations/api'
 
 // ── Page ────────────────────────────────────────────────────────────────────
 
@@ -39,6 +48,20 @@ export function IterationsPage() {
   const canManage = can('iteration:create') || can('iteration:edit') || can('iteration:delete')
 
   const { data: iterations = [], isLoading, isError } = useIterations(projectId)
+  const deleteIteration = useDeleteIteration(projectId ?? '')
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
+
+  async function handleBulkDelete(selection: RowSelection) {
+    const ids = iterations.filter((it) => selection.selectedIds.has(it.id)).map((it) => it.id)
+    try {
+      await Promise.all(ids.map((id) => deleteIteration.mutateAsync(id)))
+      toast.success(t('delete.deleted'))
+      selection.clear()
+      setConfirmBulkDelete(false)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t('delete.deleteFailed'))
+    }
+  }
 
   // ── Shared table engine (resize / reorder / show-hide) ──
   const table = useDataTable<Iteration, unknown, ColKey>(ITERATIONS_COLUMNS, {
@@ -55,8 +78,6 @@ export function IterationsPage() {
     key: 'startDate',
     dir: 'asc',
   })
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(25)
   const [showCreate, setShowCreate] = useState(false)
   const [detailId, setDetailId] = useState<string | null>(null)
 
@@ -69,21 +90,28 @@ export function IterationsPage() {
       const matchesState = stateFilter === 'all' || it.state === stateFilter
       return matchesQ && matchesState
     })
-    const sorted = [...rows].sort((a, b) => {
-      const av = a[sort.key] ?? ''
-      const bv = b[sort.key] ?? ''
+    // `id` isn't a real Iteration field — sort by the display key instead.
+    const sortField = (sort.key === 'id' ? 'iterationKey' : sort.key) as keyof Iteration
+    return [...rows].sort((a, b) => {
+      const av = a[sortField] ?? ''
+      const bv = b[sortField] ?? ''
       const r =
         typeof av === 'number' && typeof bv === 'number'
           ? av - bv
           : String(av).localeCompare(String(bv))
       return sort.dir === 'asc' ? r : -r
     })
-    return sorted
   }, [iterations, search, stateFilter, sort])
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
-  const activePage = Math.min(page, totalPages)
-  const pageRows = filtered.slice((activePage - 1) * pageSize, activePage * pageSize)
+  const metrics = useMemo(
+    () => ({
+      total: iterations.length,
+      planning: iterations.filter((it) => it.state === 'planning').length,
+      committed: iterations.filter((it) => it.state === 'committed').length,
+      accepted: iterations.filter((it) => it.state === 'accepted').length,
+    }),
+    [iterations],
+  )
 
   const toggleSort = useCallback((key: ColKey) => {
     setSort((p) =>
@@ -104,17 +132,52 @@ export function IterationsPage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden bg-background">
-      {/* Toolbar */}
-      <PageToolbar
-        title={t('title')}
-        titleAccessory={<TimeboxTypeSwitcher current="iterations" />}
+    <>
+      <ListPageScaffold<Iteration, ColKey>
+        bulkActions={
+          canManage
+            ? (selection) => (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmBulkDelete(true)}
+                    disabled={deleteIteration.isPending}
+                    className="flex items-center gap-1 rounded px-2 py-1 text-ui-sm font-medium text-destructive transition-colors hover:bg-card disabled:opacity-50"
+                  >
+                    <Trash2 size={12} />
+                    {t('common:delete')}
+                  </button>
+                  <ConfirmDialog
+                    open={confirmBulkDelete}
+                    title={t('delete.title')}
+                    message={t('delete.bulkMessage', { count: selection.count })}
+                    confirmLabel={t('delete.confirm')}
+                    destructive
+                    pending={deleteIteration.isPending}
+                    onConfirm={() => void handleBulkDelete(selection)}
+                    onCancel={() => setConfirmBulkDelete(false)}
+                  />
+                </>
+              )
+            : undefined
+        }
+        header={
+          <ListPageHeader
+            title={t('title')}
+            accessory={<TimeboxTypeSwitcher current="iterations" />}
+          />
+        }
+        metrics={
+          <MetricStrip>
+            <MetricCard label={t('metrics.total')} value={metrics.total} minWidth={90} />
+            <MetricCard label={t('metrics.planning')} value={metrics.planning} minWidth={90} />
+            <MetricCard label={t('metrics.committed')} value={metrics.committed} minWidth={90} />
+            <MetricCard label={t('metrics.accepted')} value={metrics.accepted} minWidth={90} />
+          </MetricStrip>
+        }
         search={{
           value: search,
-          onChange: (v) => {
-            setSearch(v)
-            setPage(1)
-          },
+          onChange: setSearch,
           placeholder: 'Search iterations…',
           ariaLabel: 'Search iterations',
           width: 190,
@@ -122,54 +185,33 @@ export function IterationsPage() {
         actions={
           canManage ? (
             <Button size="sm" onClick={() => setShowCreate(true)}>
-              <Plus size={12} /> {t('createButton')}
+              <Plus size={12} /> {t('common:addNew')}
             </Button>
           ) : undefined
         }
         fields={<ColumnFieldsMenu {...table.fieldsMenuProps} />}
         activeFilterCount={stateFilter !== 'all' ? 1 : 0}
-        defaultFiltersOpen={stateFilter !== 'all'}
         filters={
-          <>
-            <div className="flex items-center gap-1.5 rounded border border-border-subtle bg-card px-2 py-1.5">
-              <span className="text-ui-sm font-semibold text-muted-foreground">
-                {t('filterState')}
-              </span>
-              <InlineSelect
-                value={stateFilter}
-                aria-label="Filter iterations by state"
-                onChange={(e) => {
-                  setStateFilter(e.target.value as 'all' | IterationState)
-                  setPage(1)
-                }}
-                className="w-auto"
-              >
-                <option value="all">All</option>
-                <option value="planning">Planning</option>
-                <option value="committed">Committed</option>
-                <option value="accepted">Accepted</option>
-              </InlineSelect>
-            </div>
-            {stateFilter !== 'all' && (
-              <button
-                onClick={() => setStateFilter('all')}
-                className="cursor-pointer rounded px-2.5 py-1 text-ui-sm text-primary-light hover:bg-primary-lighter"
-              >
-                {t('clearFilters')}
-              </button>
-            )}
-          </>
+          <label className="flex items-center gap-1.5 text-ui-sm font-semibold text-muted-foreground">
+            {t('filterState')}
+            <InlineSelect
+              value={stateFilter}
+              aria-label="Filter iterations by state"
+              onChange={(e) => setStateFilter(e.target.value as 'all' | IterationState)}
+              className="w-auto"
+            >
+              <option value="all">All</option>
+              <option value="planning">Planning</option>
+              <option value="committed">Committed</option>
+              <option value="accepted">Accepted</option>
+            </InlineSelect>
+          </label>
         }
-      />
-
-      {/* Table — shared DataTableFrame owns the header/scroll/loading/empty chrome;
-          the leading iteration-key cell is a gutter (not a reorderable column). */}
-      <DataTableFrame
-        header={{
-          ...table.headerProps,
-          sort: { col: sort.key, dir: sort.dir, onSort: (k) => toggleSort(k as ColKey) },
-        }}
-        leading={<div className="w-16 shrink-0" />}
+        headerProps={table.headerProps}
+        headerColumns={table.headerColumns}
+        colStyles={table.colStyles}
+        sort={{ col: sort.key, dir: sort.dir, onSort: (k) => toggleSort(k as ColKey) }}
+        items={filtered}
         loading={isLoading}
         skeleton={{ rows: 8, cols: 6 }}
         error={
@@ -181,84 +223,24 @@ export function IterationsPage() {
           ) : undefined
         }
         empty={
-          pageRows.length === 0 ? (
+          filtered.length === 0 ? (
             <EmptyState
               icon={<Inbox size={32} className="text-foreground-subtle" />}
               title={t('empty')}
             />
           ) : undefined
         }
-        footer={
-          filtered.length > 0 ? (
-            <PaginationFooter
-              pageSize={pageSize}
-              setPageSize={(n) => {
-                setPageSize(n)
-                setPage(1)
-              }}
-              currentPage={activePage}
-              rangeStart={(activePage - 1) * pageSize + 1}
-              rangeEnd={(activePage - 1) * pageSize + pageRows.length}
-              total={filtered.length}
-              pageCount={totalPages}
-              hasPrevPage={activePage > 1}
-              hasNextPage={activePage < totalPages}
-              onPrevPage={() => setPage(activePage - 1)}
-              onNextPage={() => setPage(activePage + 1)}
-            />
-          ) : undefined
-        }
-      >
-        {pageRows.map((it) => (
-          <div
+        renderRow={(it, { gutter }) => (
+          <IterationRow
             key={it.id}
-            onClick={() => setDetailId(it.id)}
-            className="flex h-8 cursor-pointer items-center border-b border-border-inner px-3 transition-colors hover:bg-surface-subtle"
-            style={{ minWidth: 'max-content' }}
-          >
-            <div
-              className="w-16 shrink-0 truncate px-2 font-mono text-ui-xs text-foreground-subtle"
-              title={it.iterationKey ?? ''}
-            >
-              {it.iterationKey ?? ''}
-            </div>
-            <div
-              style={colStyleFor('name', { flexShrink: 0 })}
-              className="truncate px-2 text-ui-sm font-medium text-foreground"
-              title={it.name}
-            >
-              {it.name}
-            </div>
-            <div
-              style={colStyleFor('theme', { flexShrink: 0 })}
-              className="truncate px-2 text-ui-sm text-foreground"
-            >
-              {it.theme ?? ''}
-            </div>
-            <div
-              style={colStyleFor('startDate', { flexShrink: 0 })}
-              className="truncate px-2 text-ui-sm text-muted-foreground"
-            >
-              {it.startDate ?? ''}
-            </div>
-            <div
-              style={colStyleFor('endDate', { flexShrink: 0 })}
-              className="truncate px-2 text-ui-sm text-muted-foreground"
-            >
-              {it.endDate ?? ''}
-            </div>
-            <div
-              style={colStyleFor('plannedVelocity', { flexShrink: 0 })}
-              className="px-2 text-right font-mono text-ui-sm text-muted-foreground tabular-nums"
-            >
-              {it.plannedVelocity ?? ''}
-            </div>
-            <div style={colStyleFor('state', { flexShrink: 0 })} className="px-2">
-              <StatusBadge style={ITERATION_STATE_STYLE[it.state]} />
-            </div>
-          </div>
-        ))}
-      </DataTableFrame>
+            iteration={it}
+            canManage={canManage}
+            colStyleFor={colStyleFor}
+            gutter={gutter}
+            onOpen={() => setDetailId(it.id)}
+          />
+        )}
+      />
 
       {showCreate && projectId && (
         <CreateIterationModal
@@ -270,6 +252,6 @@ export function IterationsPage() {
           }}
         />
       )}
-    </div>
+    </>
   )
 }

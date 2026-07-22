@@ -1,6 +1,10 @@
 import { Layers } from 'lucide-react'
 
-import { TypeBadge, ScheduleStateBadge, PriorityBadge } from '@/entities/work-item/ui/badges'
+import { PriorityBadge } from '@/entities/work-item/ui/badges'
+import { IdCell } from '@/entities/work-item/ui/id-cell'
+import { StateStepper } from '@/entities/work-item/ui/state-stepper'
+import { SCHEDULE_STATE_STEPS } from '@/entities/work-item/ui/state-steps'
+import type { ScheduleState } from '@/entities/work-item/model/types'
 import { BRAND } from '@/shared/config/brand'
 import { OwnerCell } from '@/shared/ui/owner-cell'
 import { SkeletonList } from '@/shared/ui/skeleton'
@@ -34,18 +38,17 @@ function ArtifactRow({
 }) {
   return (
     <tr
-      className="cursor-pointer border-b border-border-inner transition-colors duration-75"
+      className="border-b border-border-inner transition-colors duration-75"
       onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = BRAND.surfaceHover)}
       onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-      onClick={onOpen}
     >
       {/* Rank */}
       <td className="h-8 px-3 text-center font-mono text-ui-xs text-foreground-subtle tabular-nums">
         {index + 1}
       </td>
-      {/* ID */}
-      <td className="h-8 px-3 font-mono text-ui-xs text-primary-light underline-offset-2 hover:underline">
-        {item.itemKey}
+      {/* ID — type glyph + key link (the only nav affordance) */}
+      <td className="h-8 px-3">
+        <IdCell type={item.type} itemKey={item.itemKey} onOpen={onOpen} />
       </td>
       {/* Name */}
       <td className="h-8 px-3">
@@ -53,13 +56,14 @@ function ArtifactRow({
           {item.title}
         </span>
       </td>
-      {/* Type */}
-      <td className="h-8 px-3">
-        <TypeBadge type={item.type} />
-      </td>
       {/* Schedule State */}
       <td className="h-8 px-3">
-        <ScheduleStateBadge state={item.scheduleState} />
+        <StateStepper
+          steps={SCHEDULE_STATE_STEPS}
+          value={item.scheduleState as ScheduleState}
+          canEdit={false}
+          ariaLabel="Schedule state"
+        />
       </td>
       {/* Priority */}
       <td className="h-8 px-3">
@@ -112,10 +116,9 @@ export function ArtifactTable({
       <thead>
         <tr className="border-b border-border-strong bg-surface-hover text-ui-2xs font-semibold tracking-wider uppercase select-none">
           <th className="h-7 w-12 px-3 text-center font-medium text-foreground-subtle">#</th>
-          <th className="h-7 w-20 px-3 font-medium text-foreground-subtle">ID</th>
+          <th className="h-7 w-24 px-3 font-medium text-foreground-subtle">ID</th>
           <th className="h-7 px-3 font-medium text-foreground-subtle">Name</th>
-          <th className="h-7 w-14 px-3 font-medium text-foreground-subtle">Type</th>
-          <th className="h-7 w-24 px-3 font-medium text-foreground-subtle">Schedule State</th>
+          <th className="h-7 w-32 px-3 font-medium text-foreground-subtle">Schedule State</th>
           <th className="h-7 w-16 px-3 font-medium text-foreground-subtle">Priority</th>
           <th className="h-7 w-28 px-3 font-medium text-foreground-subtle">Owner</th>
           <th className="h-7 w-14 px-3 text-center font-medium text-foreground-subtle">Est.</th>

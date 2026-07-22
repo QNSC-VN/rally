@@ -5,7 +5,7 @@
  * (e.g. milestone → projects / teams / releases). Keeps a local draft while
  * open and commits via `onSave` on confirm, surfacing success / error toasts.
  */
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { BRAND } from '@/shared/config/brand'
@@ -17,6 +17,9 @@ import { SelectionCheckbox } from '@/shared/ui/selection-checkbox'
 export interface SelectionItem {
   id: string
   name: string
+  /** Optional leading icon (e.g. a `<TypeBadge>`) shown before the name, so the
+   *  picker matches the icon+key cells used by the list/select fields. */
+  icon?: ReactNode
 }
 
 interface SelectionModalProps {
@@ -132,6 +135,7 @@ export function SelectionModal({
                   onChange={() => toggle(item.id)}
                   ariaLabel={item.name}
                 />
+                {item.icon && <span className="flex shrink-0 items-center">{item.icon}</span>}
                 <span className="truncate" style={{ color: BRAND.textPrimary }}>
                   {item.name}
                 </span>
