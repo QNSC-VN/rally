@@ -151,7 +151,11 @@ export function CreateIterationModal({
           </FormField>
         </div>
         <FormField label={t('create.stateLabel')} required>
-          <NativeSelect value={state} onChange={(e) => setState(e.target.value as IterationState)}>
+          <NativeSelect
+            aria-label={t('create.stateLabel')}
+            value={state}
+            onChange={(e) => setState(e.target.value as IterationState)}
+          >
             <option value="planning">Planning</option>
             <option value="committed">Committed</option>
             <option value="accepted">Accepted</option>

@@ -54,10 +54,22 @@ export class IterationDrizzleRepository implements IIterationRepository {
   }
 
   async nextKeyNumber(projectId: string, workspaceId: string): Promise<number> {
-    // Count existing iterations for the project; next number = count + 1.
-    // Uniqueness is enforced by uq_iterations_key; on collision the caller retries.
+    // MAX(existing numeric suffix) + 1, not count(*) + 1: iterations can be
+    // hard-deleted (see delete() below), so count() under-reports once any
+    // iteration is gone and reissues a key a surviving row still holds —
+    // exactly the uq_iterations_key collision this was meant to prevent.
+    // Still not airtight under concurrent creates (two requests can read the
+    // same MAX before either commits), so createIteration retries on the
+    // unique-constraint violation this query can't fully rule out alone.
+    // substring(... from '[0-9]+$'), not a \d regex: Drizzle's sql template
+    // silently drops a bare backslash before it reaches Postgres (verified via
+    // query.toSQL() — '(\d+)$' arrived as the literal 3-char pattern '(d+)$'),
+    // so \d-based patterns quietly match nothing and this always computed 0.
+    // The POSIX character class needs no backslash and sidesteps that entirely.
     const rows = await this.db
-      .select({ n: sql<number>`count(*)::int` })
+      .select({
+        n: sql<number>`COALESCE(MAX(substring(${iterations.iterationKey} from '[0-9]+$')::int), 0)::int`,
+      })
       .from(iterations)
       .where(and(eq(iterations.projectId, projectId), eq(iterations.workspaceId, workspaceId)));
     return (rows[0]?.n ?? 0) + 1;

@@ -573,6 +573,7 @@ async function seedReleases() {
         name: 'v2.0 — NX Platform Upgrade',
         description: 'Major upgrade to NX v21 + ESLint flat-config rollout.',
         status: 'planning',
+        startDate: '2026-07-01',
         releaseDate: '2026-07-31',
       },
       {
@@ -582,6 +583,7 @@ async function seedReleases() {
         name: 'v2.1 — Storybook & DX',
         description: 'Storybook 8 integration and developer experience improvements.',
         status: 'planning',
+        startDate: '2026-08-01',
         releaseDate: '2026-08-31',
       },
       // MOB release

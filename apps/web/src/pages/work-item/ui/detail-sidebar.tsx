@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { PanelRightClose } from 'lucide-react'
@@ -144,6 +144,17 @@ export function DetailSidebar({
   const { data: milestoneOptions = [] } = useMilestones(!isTask ? item.projectId : undefined)
   const { data: itemMilestones = [] } = useWorkItemMilestones(!isTask ? item.id : undefined)
   const setMilestones = useSetWorkItemMilestones(item.id)
+  // Reconciliation C01: with a Release selected, *new* add options are limited
+  // to Milestones related to that Release — but an already-selected Milestone
+  // must stay visible/intact even if it isn't related to the current Release,
+  // so changing Release never silently drops an existing selection.
+  const selectableMilestoneOptions = useMemo(() => {
+    if (!item.releaseId) return milestoneOptions
+    const selectedIds = new Set(itemMilestones.map((m) => m.id))
+    return milestoneOptions.filter(
+      (m) => selectedIds.has(m.id) || m.releaseIds.includes(item.releaseId!),
+    )
+  }, [milestoneOptions, itemMilestones, item.releaseId])
   const navigate = useNavigate()
   const openItem = (itemKey: string) => void navigate({ to: '/item/$itemKey', params: { itemKey } })
 
@@ -497,7 +508,7 @@ export function DetailSidebar({
           open={showMilestones}
           onClose={() => setShowMilestones(false)}
           title={t('sidebar.milestones')}
-          items={milestoneOptions.map((m) => ({ id: m.id, name: m.name }))}
+          items={selectableMilestoneOptions.map((m) => ({ id: m.id, name: m.name }))}
           selectedIds={itemMilestones.map((m) => m.id)}
           onSave={(ids) => setMilestones.mutateAsync(ids).then(() => undefined)}
         />

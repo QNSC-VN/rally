@@ -50,7 +50,7 @@ import {
 } from '@/features/work-items/api'
 import { useReleases } from '@/features/releases/api'
 import { useProjectMembers } from '@/features/teams/api'
-import { useIterationOptions } from '@/features/iterations/api'
+import { useIterationOptions, useIterations } from '@/features/iterations/api'
 import { TypeBadge, PriorityBadge, ScheduleStateBadge } from '@/entities/work-item/ui/badges'
 import { StateStepper } from '@/entities/work-item/ui/state-stepper'
 import { SCHEDULE_STATE_STEPS } from '@/entities/work-item/ui/state-steps'
@@ -215,7 +215,14 @@ export function BacklogPage() {
   // Reference lists for the P2.1 filters, inline selects and id→name lookups.
   const { data: members = [] } = useProjectMembers(projectId)
   const { data: releases = [] } = useReleases(projectId)
-  const { data: iterations = [] } = useIterationOptions(projectId, team?.teamId)
+  // Assignable choices only (planning/committed) — used to populate the
+  // inline-edit <option> list and the filter dropdown.
+  const { data: iterationOptions = [] } = useIterationOptions(projectId, team?.teamId)
+  // All iterations regardless of state — used to resolve an already-set
+  // iterationId to its name. Reusing iterationOptions here silently rendered
+  // '—' for any item whose iteration had since become Accepted, even though
+  // the relation was genuinely set (see RELATION_DATA_TRACEABILITY.md).
+  const { data: allIterations = [] } = useIterations(projectId, team?.teamId)
 
   // Reset pagination on filter/project change (synchronously, before useBacklog reads cursor)
   const prevTeamRef = useRef(team?.teamId)
@@ -355,7 +362,7 @@ export function BacklogPage() {
         setFilterIteration={setFilterIteration}
         members={members}
         releases={releases}
-        iterations={iterations}
+        iterations={iterationOptions}
         canCreate={canCreate}
         onCreate={() => setShowCreate(true)}
         columns={BACKLOG_COLUMNS}
@@ -371,7 +378,7 @@ export function BacklogPage() {
         selectedIds={selectedIds}
         clearSelection={clearSelection}
         releases={releases}
-        iterations={iterations}
+        iterations={iterationOptions}
         canEdit={canEdit}
       />
 
@@ -461,7 +468,8 @@ export function BacklogPage() {
                   canEdit={canEdit}
                   members={members}
                   releases={releases}
-                  iterations={iterations}
+                  iterations={iterationOptions}
+                  allIterations={allIterations}
                 />
               ))}
             </SortableContext>
@@ -676,6 +684,7 @@ interface BacklogRowProps {
   members: Array<{ userId: string; displayName?: string; email?: string }>
   releases: Array<{ id: string; name: string }>
   iterations: Array<{ id: string; name: string }>
+  allIterations: Array<{ id: string; name: string }>
 }
 
 // inline table selects use <InlineSelect> component directly
@@ -691,6 +700,7 @@ function BacklogRow({
   members,
   releases,
   iterations,
+  allIterations,
 }: BacklogRowProps) {
   const {
     setNodeRef,
@@ -921,12 +931,21 @@ function BacklogRow({
         {canEdit ? (
           <InlineCellSelect
             value={item.iterationId ?? ''}
-            displayValue={iterations.find((it) => it.id === item.iterationId)?.name ?? '—'}
+            displayValue={allIterations.find((it) => it.id === item.iterationId)?.name ?? '—'}
             muted={!item.iterationId}
             onChange={(e) => patch({ iterationId: e.target.value || null })}
             aria-label="Iteration"
           >
             <option value="">—</option>
+            {/* The current iteration may be Accepted and therefore absent from
+                the assignable `iterations` options — keep it in the list so a
+                native <select> doesn't silently show the wrong option as
+                selected while the popover is open. */}
+            {item.iterationId && !iterations.some((it) => it.id === item.iterationId) && (
+              <option value={item.iterationId}>
+                {allIterations.find((it) => it.id === item.iterationId)?.name ?? '—'}
+              </option>
+            )}
             {iterations.map((it) => (
               <option key={it.id} value={it.id}>
                 {it.name}
@@ -938,7 +957,7 @@ function BacklogRow({
             className="truncate text-ui-sm"
             style={{ color: item.iterationId ? BRAND.textPrimary : BRAND.textDisabled }}
           >
-            {iterations.find((it) => it.id === item.iterationId)?.name ?? '—'}
+            {allIterations.find((it) => it.id === item.iterationId)?.name ?? '—'}
           </span>
         )}
       </div>
