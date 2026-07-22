@@ -483,6 +483,13 @@ describe('BA flows: Worker relay — real fetchBatch/processRow/markSent/markFai
     const before = Date.now();
     await notificationRelay.relay();
 
+    // A single read is safe here: AbstractOutboxRelay.relay() now guarantees
+    // that by the time its promise resolves, a pass that started at or after
+    // THIS call has completed and processed whatever was pending at that
+    // point — including this row, inserted above. (Previously relay() could
+    // no-op with an immediate return while another pass was in flight, so a
+    // racing call's promise could resolve before any pass had touched this
+    // row at all; that's fixed at the source, not worked around here.)
     const [after] = await db
       .select()
       .from(notificationOutbox)
