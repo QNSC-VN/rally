@@ -1,11 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
 import { and, eq, isNull, inArray, sql } from 'drizzle-orm';
-import {
-  NotFoundException,
-  PreconditionFailedException,
-  InjectDrizzle,
-} from '@platform';
+import { NotFoundException, PreconditionFailedException, InjectDrizzle } from '@platform';
 import type { JwtPayload, CursorPayload, PagedResult, DrizzleDB } from '@platform';
 import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
@@ -19,6 +15,22 @@ import type {
   IterationFilters,
   UpdateIterationInput,
 } from '../domain/iteration.types';
+
+/** Walk an error's `.cause` chain looking for a PG unique-violation (code 23505). */
+function isDuplicateKeyError(err: unknown): boolean {
+  let current: unknown = err;
+  while (true) {
+    if (current && typeof current === 'object' && 'code' in current) {
+      const c = (current as Record<string, unknown>).code;
+      if (c === '23505') return true;
+    }
+    if (current && typeof current === 'object' && 'cause' in current) {
+      current = current.cause;
+    } else {
+      return false;
+    }
+  }
+}
 
 @Injectable()
 export class IterationsService {
@@ -63,27 +75,55 @@ export class IterationsService {
     await this.projectsService.getProject(actor.workspaceId, projectId);
 
     if (opts.teamId) {
-      await this.projectsService.assertTeamLinkedToProject(actor.workspaceId, projectId, opts.teamId);
+      await this.projectsService.assertTeamLinkedToProject(
+        actor.workspaceId,
+        projectId,
+        opts.teamId,
+      );
     }
     this.assertDateRange(opts.startDate, opts.endDate);
 
-    const keyNumber = await this.iterationRepo.nextKeyNumber(projectId, actor.workspaceId);
+    // iterationKey reservation reads MAX(existing) + 1 (not atomic under
+    // concurrent creates) and iterations can be hard-deleted, so a collision
+    // on uq_iterations_key is possible; retry once with a freshly computed key.
+    const MAX_KEY_RETRIES = 2;
+    let iteration: Iteration | undefined;
+    let lastErr: unknown;
 
-    const iteration = await this.iterationRepo.create({
-      id: uuidv7(),
-      workspaceId: actor.workspaceId,
-      projectId,
-      teamId: opts.teamId ?? null,
-      iterationKey: `IT-${keyNumber}`,
-      name,
-      goal: opts.goal,
-      theme: opts.theme,
-      notes: opts.notes,
-      state: opts.state,
-      startDate: opts.startDate,
-      endDate: opts.endDate,
-      plannedVelocity: opts.plannedVelocity,
-    });
+    for (let attempt = 0; attempt < MAX_KEY_RETRIES; attempt++) {
+      const keyNumber = await this.iterationRepo.nextKeyNumber(projectId, actor.workspaceId);
+
+      try {
+        iteration = await this.iterationRepo.create({
+          id: uuidv7(),
+          workspaceId: actor.workspaceId,
+          projectId,
+          teamId: opts.teamId ?? null,
+          iterationKey: `IT-${keyNumber}`,
+          name,
+          goal: opts.goal,
+          theme: opts.theme,
+          notes: opts.notes,
+          state: opts.state,
+          startDate: opts.startDate,
+          endDate: opts.endDate,
+          plannedVelocity: opts.plannedVelocity,
+        });
+        break; // success — exit retry loop
+      } catch (err: unknown) {
+        lastErr = err;
+        if (isDuplicateKeyError(err) && attempt < MAX_KEY_RETRIES - 1) {
+          this.logger.warn(
+            { projectId, attempt: attempt + 1 },
+            'Duplicate iteration key on create — retrying with next key',
+          );
+          continue;
+        }
+        throw err; // not a duplicate-key error or last attempt — re-throw
+      }
+    }
+
+    if (!iteration) throw lastErr;
 
     this.logger.log(
       { iterationId: iteration.id, projectId, userId: actor.sub },

@@ -48,7 +48,11 @@ export default defineConfig({
       ENTRA_REDIRECT_URI: 'http://localhost:3000/v1/bff/callback',
     },
     include: ['libs/**/*.spec.ts', 'apps/**/*.spec.ts', 'db/**/*.spec.ts'],
-    exclude: ['node_modules', 'dist'],
+    // Bare 'node_modules' only matches a top-level segment, not nested ones —
+    // apps/**/*.spec.ts otherwise pulls in package-internal specs like
+    // apps/web/node_modules/@tiptap/react/src/*.spec.ts, which need jsdom and
+    // fail under this config's environment: 'node'.
+    exclude: ['**/node_modules/**', '**/dist/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],

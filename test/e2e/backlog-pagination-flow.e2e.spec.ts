@@ -1,6 +1,11 @@
 /**
  * BA business-flow E2E — backlog list keyset pagination correctness.
  *
+ * Flow: none. This is a REGRESSION spec for BL-FR-007, finer-grained than any
+ * numbered flow in E2E_BUSINESS_FLOW_COVERAGE.md. Recorded explicitly so the
+ * traceability matrix can distinguish "deliberately not a flow" from
+ * "untraced" — the previous silence read as the latter.
+ *
  * The backlog (BL-FR-007) must page through the FULL result set with no gaps
  * and no duplicates for every sortable column, not just the default rank order.
  * A prior bug always seeked by `rank` regardless of the active sort, so page 2+

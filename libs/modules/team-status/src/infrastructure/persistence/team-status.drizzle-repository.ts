@@ -4,10 +4,13 @@ import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
 import {
   tasks,
+  workItems,
+  releases,
   memberCapacity,
   teamMembers,
   projectMembers,
 } from '../../../../../../db/schema/work';
+import { alias } from 'drizzle-orm/pg-core';
 import { users } from '../../../../../../db/schema/identity';
 import type { RawTeamStatusTaskRow, TeamStatusRosterMember } from '../../domain/team-status.types';
 import { ITeamStatusRepository } from '../../domain/ports/team-status.repository';
@@ -24,11 +27,16 @@ export class TeamStatusDrizzleRepository implements ITeamStatusRepository {
     // P3 refactor: Query from the dedicated `tasks` table instead of
     // `work_items WHERE type='task'`. Join with work_items for the
     // parent (work product) info.
+    // Parent work item + its release, joined once (see the select below for why
+    // this replaced correlated subqueries).
+    const parent = alias(workItems, 'parent');
+    const release = alias(releases, 'parent_release');
+
     const conditions = [
       eq(tasks.workspaceId, workspaceId),
       isNull(tasks.deletedAt),
-      // Task iteration matches directly OR its parent's iteration matches
-      sql`(${tasks.iterationId} = ${iterationId} OR (SELECT p.iteration_id FROM work.work_items p WHERE p.id = ${tasks.parentId} AND p.deleted_at IS NULL) = ${iterationId})`,
+      // Task iteration matches directly OR its parent's iteration matches.
+      sql`(${tasks.iterationId} = ${iterationId} OR ${parent.iterationId} = ${iterationId})`,
     ];
     if (teamId) {
       conditions.push(eq(tasks.teamId, teamId));
@@ -43,31 +51,17 @@ export class TeamStatusDrizzleRepository implements ITeamStatusRepository {
         type: sql<string>`'task'`.as('type'),
         scheduleState: tasks.state, // task_state enum
         parentId: tasks.parentId,
-        parentKey: sql<string | null>`
-          (SELECT p.item_key FROM work.work_items p
-           WHERE p.id = ${tasks.parentId} AND p.deleted_at IS NULL)
-        `.as('parent_key'),
-        parentType: sql<string | null>`
-          (SELECT p.type FROM work.work_items p
-           WHERE p.id = ${tasks.parentId} AND p.deleted_at IS NULL)
-        `.as('parent_type'),
-        parentTitle: sql<string | null>`
-          (SELECT p.title FROM work.work_items p
-           WHERE p.id = ${tasks.parentId} AND p.deleted_at IS NULL)
-        `.as('parent_title'),
-        parentScheduleState: sql<string | null>`
-          (SELECT p.schedule_state FROM work.work_items p
-           WHERE p.id = ${tasks.parentId} AND p.deleted_at IS NULL)
-        `.as('parent_schedule_state'),
-        releaseId: sql<string | null>`
-          (SELECT p.release_id FROM work.work_items p
-           WHERE p.id = ${tasks.parentId} AND p.deleted_at IS NULL)
-        `.as('release_id'),
-        releaseName: sql<string | null>`
-          (SELECT r.name FROM work.releases r
-           INNER JOIN work.work_items p ON p.release_id = r.id
-           WHERE p.id = ${tasks.parentId} AND p.deleted_at IS NULL)
-        `.as('release_name'),
+        // Parent work product + its release, resolved by a LEFT JOIN rather than
+        // per-row correlated subqueries. The subquery form returned NULL for
+        // every parent field (key/title/type/state) at runtime even though the
+        // same SQL resolves by hand — the "Work Product" column rendered blank.
+        // A join is both correct and one pass instead of six subqueries per row.
+        parentKey: parent.itemKey,
+        parentType: parent.type,
+        parentTitle: parent.title,
+        parentScheduleState: parent.scheduleState,
+        releaseId: parent.releaseId,
+        releaseName: release.name,
         assigneeId: tasks.assigneeId,
         estimateHours: tasks.estimateHours,
         todoHours: tasks.todoHours,
@@ -75,6 +69,8 @@ export class TeamStatusDrizzleRepository implements ITeamStatusRepository {
         rank: tasks.rank,
       })
       .from(tasks)
+      .leftJoin(parent, and(eq(parent.id, tasks.parentId), isNull(parent.deletedAt)))
+      .leftJoin(release, eq(release.id, parent.releaseId))
       .where(and(...conditions))
       .orderBy(asc(tasks.rank), asc(tasks.createdAt));
 

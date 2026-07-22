@@ -46,42 +46,33 @@ export const PROJECT_ADMIN_ID = '00000000-0000-7000-8000-000000000022';
 export const WORKSPACE_MEMBER_ID = '00000000-0000-7000-8000-000000000023';
 export const PROJECT_LEAD_ID = '00000000-0000-7000-8000-000000000025';
 
+// ── Single end-to-end demo flow (NXP only) ───────────────────────────────────
+// Team Alpha (with members) → Story + Defect (team-linked) → 2 Tasks under the
+// Story (team/iteration inherited) → Iteration (contains Story + Defect) →
+// Release + Milestone (linked to each other and to the Story). Every FK below
+// resolves to a real, matching row — see demo.ts `seedFlow()`.
 export const NXP_STORY_1_ID = '00000000-0000-7000-8000-000000000030';
-export const NXP_STORY_2_ID = '00000000-0000-7000-8000-000000000031';
-export const MOB_STORY_1_ID = '00000000-0000-7000-8000-000000000032';
+export const NXP_DEFECT_1_ID = '00000000-0000-7000-8000-000000000031';
+export const NXP_TASK_1_ID = '00000000-0000-7000-8000-000000000032';
+export const NXP_TASK_2_ID = '00000000-0000-7000-8000-000000000033';
 
-// ── Phase 2 fixed IDs ────────────────────────────────────────────────────────
 export const TEAM_ALPHA_ID = '00000000-0000-7000-8000-000000000040';
-export const TEAM_BETA_ID = '00000000-0000-7000-8000-000000000041';
 
-// NXP releases
 export const NXP_RELEASE_1_ID = '00000000-0000-7000-8000-000000000050';
-export const NXP_RELEASE_2_ID = '00000000-0000-7000-8000-000000000051';
 
-// NXP iterations (Sprint 26.1 = committed, Sprint 26.2 = planning, Sprint 25.4 = accepted)
-export const NXP_ITER_PREV_ID = '00000000-0000-7000-8000-000000000060'; // accepted
 export const NXP_ITER_CURRENT_ID = '00000000-0000-7000-8000-000000000061'; // committed ← active
-export const NXP_ITER_NEXT_ID = '00000000-0000-7000-8000-000000000062'; // planning
 
-// MOB iterations
-export const MOB_ITER_CURRENT_ID = '00000000-0000-7000-8000-000000000063'; // committed
-
-// Additional NXP work items with richer data
-export const NXP_STORY_7_ID = '00000000-0000-7000-8000-000000000070';
-export const NXP_STORY_8_ID = '00000000-0000-7000-8000-000000000071';
-export const NXP_STORY_9_ID = '00000000-0000-7000-8000-000000000072';
-export const NXP_STORY_10_ID = '00000000-0000-7000-8000-000000000073';
-export const NXP_DEFECT_11_ID = '00000000-0000-7000-8000-000000000074';
-
-// Feature parent + child defects that demo the Feature / Defects / Defect Status columns.
-export const NXP_FEATURE_ID = '00000000-0000-7000-8000-000000000075';
-export const NXP_CHILD_DEFECT_1_ID = '00000000-0000-7000-8000-000000000076'; // child of US-5 (closed)
-export const NXP_CHILD_DEFECT_2_ID = '00000000-0000-7000-8000-000000000077'; // child of US-6 (open)
-export const NXP_CHILD_DEFECT_3_ID = '00000000-0000-7000-8000-000000000078'; // child of US-6 (closed)
+export const NXP_MILESTONE_1_ID = '00000000-0000-7000-8000-0000000000b0';
 
 // ── Seed data constants ───────────────────────────────────────────────────────
 // Format: { id, key, name, description }
 // All are owned by ADMIN_USER_ID and belong to the default workspace.
+//
+// NXP carries the full one-flow fixture (Team/Story/Defect/Tasks/Iteration/
+// Release/Milestone). MOB exists only so the RBAC/PBAC demo user
+// (PROJECT_LEAD_ID) has a second project to be scoped against
+// (project_admin on NXP, project_viewer on MOB) — it intentionally has no
+// work-item/team/release/iteration fixtures of its own.
 export const SEED_PROJECTS = [
   {
     id: '00000000-0000-7000-8000-000000000010',
@@ -94,23 +85,5 @@ export const SEED_PROJECTS = [
     key: 'MOB',
     name: 'Mobile App',
     description: 'Cross-platform React Native application for iOS and Android.',
-  },
-  {
-    id: '00000000-0000-7000-8000-000000000012',
-    key: 'OPS',
-    name: 'DevOps & Infrastructure',
-    description: 'CI/CD pipelines, cloud infrastructure, and observability stack.',
-  },
-  {
-    id: '00000000-0000-7000-8000-000000000013',
-    key: 'LEG',
-    name: 'Legacy Migration',
-    description: 'Incremental migration of legacy monolith services to micro-services.',
-  },
-  {
-    id: '00000000-0000-7000-8000-000000000014',
-    key: 'PRT',
-    name: 'Partner Portal',
-    description: 'Self-service portal for external partners and API consumers.',
   },
 ] as const;
