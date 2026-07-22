@@ -3,7 +3,7 @@
  *
  * Encapsulates the polling machinery that is identical across every outbox-style
  * relay (email, notifications, webhooks, push, …):
- *   - Concurrency guard (isRelaying)
+ *   - Concurrency coalescing (see relay()'s doc comment for the exact contract)
  *   - SELECT … FOR UPDATE SKIP LOCKED inside a DB transaction
  *   - Per-row try/catch with attempt counter and status update
  *   - Post-commit task execution (Valkey pub/sub publishes, etc.)
@@ -56,14 +56,14 @@ export abstract class AbstractOutboxRelay<TRow extends { id: string; attempts: n
   protected readonly batchSize: number = 50;
 
   protected readonly logger: Logger;
-  private isRelaying = false;
+  /** The currently in-flight pass, or null when idle. */
+  private inFlight: Promise<void> | null = null;
   /**
-   * Set to true when relay() is called while isRelaying=true.
-   * Guarantees one more relay run after the current one completes so that rows
-   * inserted during a long relay batch are not left waiting for the next cron
-   * tick (up to 5 s).  Uses setImmediate to avoid stack overflow on bursts.
+   * A pass queued to start once `inFlight` finishes, shared by every caller
+   * that arrived while busy — set only once per in-flight pass (coalesces a
+   * burst of N racing calls into exactly one extra pass, not N).
    */
-  private wakeOnComplete = false;
+  private queued: Promise<void> | null = null;
 
   constructor(protected readonly db: DrizzleDB) {
     // Logger name is the concrete subclass name for precise log attribution.
@@ -137,17 +137,37 @@ export abstract class AbstractOutboxRelay<TRow extends { id: string; attempts: n
    *   @Cron('* /5 * * * * *', { name: 'my-relay' })
    *   @Span('my.relay')
    *   override async relay(): Promise<void> { return super.relay(); }
+   *
+   * Concurrency contract: relay() never no-ops. Calling it while a pass is
+   * already in flight does not start a second, overlapping pass (fetchBatch's
+   * FOR UPDATE SKIP LOCKED already makes that safe, but running two at once
+   * would just contend for the same rows) — instead, ALL callers that arrive
+   * while busy share one pass queued to start immediately after the current
+   * one finishes, and every caller's promise resolves only when a pass that
+   * began at or after their own call has completed. A write made just before
+   * calling relay() is therefore always visible to the pass that caller's
+   * await resolves on — there is no timing window where relay() returns
+   * having silently done nothing. (The previous design set a boolean flag and
+   * returned immediately, so a racing caller's promise resolved before any
+   * corresponding fetchBatch had run — correct for the production cron/wake
+   * callers, who never await the result, but a footgun for anything that
+   * does, e.g. tests asserting on the row relay() was just told to process.)
    */
   async relay(): Promise<void> {
-    if (this.isRelaying) {
-      // Record that a wake arrived while the relay was busy so we schedule one
-      // more run after the current batch completes.  Without this, rows inserted
-      // during a long relay batch would wait up to 5 s for the next cron tick.
-      this.wakeOnComplete = true;
-      return;
+    if (this.inFlight) {
+      // A pass is already running. Coalesce with whatever's already queued
+      // behind it (or start queuing one) so a burst of N racing calls shares
+      // exactly one extra pass, not N — but every caller still awaits a pass
+      // that starts after their own call, not the one already in flight.
+      this.queued ??= this.inFlight.then(() => this.runOnce());
+      return this.queued;
     }
-    this.isRelaying = true;
+    this.inFlight = this.runOnce();
+    return this.inFlight;
+  }
 
+  /** Runs exactly one fetch-process-mark pass, then hands off to any queued pass. */
+  private async runOnce(): Promise<void> {
     // Collect post-commit tasks outside the transaction so they run only after
     // the transaction has durably committed.
     const postCommitTasks: PostCommitTask[] = [];
@@ -187,16 +207,18 @@ export abstract class AbstractOutboxRelay<TRow extends { id: string; attempts: n
         task().catch((err: unknown) => this.logger.error({ err }, 'Post-commit task failed'));
       }
     } finally {
-      this.isRelaying = false;
-      // If a wake arrived while we were busy, schedule one more run immediately.
-      if (this.wakeOnComplete) {
-        this.wakeOnComplete = false;
-        setImmediate(() => {
-          void this.relay().catch((err: unknown) =>
-            this.logger.error({ err }, 'Post-wake relay failed'),
-          );
-        });
-      }
+      // Hand off to the queued pass (if any) BEFORE clearing inFlight, so a
+      // caller that arrives in the gap between this pass finishing and the
+      // queued one starting still sees a truthy inFlight and coalesces onto
+      // the queued pass instead of racing to start a third one. `next` is
+      // already running (it was created via `.then()` in relay() above) and
+      // already returned to whoever queued it — this .catch() only prevents
+      // an unhandled-rejection warning if that caller fired-and-forgot
+      // (e.g. the cron's `void this.relay()`) instead of awaiting it.
+      const next = this.queued;
+      this.queued = null;
+      this.inFlight = next;
+      next?.catch((err: unknown) => this.logger.error({ err }, 'Queued relay pass failed'));
     }
   }
 }

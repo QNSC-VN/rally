@@ -122,7 +122,7 @@ describe('AbstractOutboxRelay.relay() — retry/backoff wiring', () => {
     expect(relay.markFailedCalls.map((c) => c.rowId)).toEqual(['row-bad']);
   });
 
-  it('re-entrant calls while relaying are coalesced into one extra run via wakeOnComplete', async () => {
+  it('re-entrant calls while relaying are coalesced into exactly one extra run, and the caller awaits it directly', async () => {
     const relay = new TestRelay(makeFakeDb());
     let resolveFirstFetch!: () => void;
     let fetchCallCount = 0;
@@ -141,15 +141,52 @@ describe('AbstractOutboxRelay.relay() — retry/backoff wiring', () => {
     });
 
     const firstRun = relay.relay();
-    // Second call arrives while the first is still in-flight — should coalesce,
-    // not run a second transaction concurrently.
+    // Three more calls arrive while the first is still in-flight — all three
+    // must coalesce onto ONE extra pass (not three), and each caller's own
+    // promise must resolve only once that shared extra pass has actually run
+    // — no reliance on an extra microtask/setImmediate tick after Promise.all.
     const secondRun = relay.relay();
+    const thirdRun = relay.relay();
+    const fourthRun = relay.relay();
+    resolveFirstFetch();
+    await Promise.all([firstRun, secondRun, thirdRun, fourthRun]);
+
+    // Exactly 2 fetches: the first in-flight pass, plus ONE coalesced extra —
+    // not 4, one per racing caller.
+    expect(fetchCallCount).toBe(2);
+  });
+
+  it('a write made just before a racing relay() call is visible to the pass that call resolves on', async () => {
+    // This is the exact guarantee the old isRelaying-flag design lacked: a
+    // caller whose relay() call raced an in-flight pass got back a promise
+    // that could resolve before ANY fetch that could see their write had run.
+    const relay = new TestRelay(makeFakeDb());
+    let resolveFirstFetch!: () => void;
+
+    relay.fetchBatchResult = [];
+    const relayAsAny = relay as unknown as { fetchBatch(): Promise<TestRow[]> };
+    vi.spyOn(relayAsAny, 'fetchBatch').mockImplementationOnce(async () => {
+      await new Promise<void>((resolve) => {
+        resolveFirstFetch = resolve;
+      });
+      return []; // first pass sees nothing — the row below is written after it started
+    });
+
+    const firstRun = relay.relay();
+
+    // Simulate a caller writing a new row, THEN calling relay() while the
+    // first pass is still in flight — exactly the notification-outbox insert
+    // + explicit relay() call pattern in the E2E suite.
+    relay.fetchBatchResult = [
+      { id: 'row-written-during-first-pass', attempts: 0, shouldFail: false },
+    ];
+    const secondRun = relay.relay();
+
     resolveFirstFetch();
     await Promise.all([firstRun, secondRun]);
 
-    // setImmediate-scheduled follow-up run happens after this tick.
-    await new Promise((resolve) => setImmediate(resolve));
-
-    expect(fetchCallCount).toBeGreaterThanOrEqual(2);
+    // The row written before the second relay() call must have been picked
+    // up by the pass secondRun awaited — not silently missed.
+    expect(relay.markSentCalls).toContain('row-written-during-first-pass');
   });
 });
