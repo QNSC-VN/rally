@@ -483,15 +483,26 @@ describe('BA flows: Worker relay — real fetchBatch/processRow/markSent/markFai
     const before = Date.now();
     await notificationRelay.relay();
 
-    const [after] = await db
-      .select()
-      .from(notificationOutbox)
-      .where(eq(notificationOutbox.id, row.id));
-    expect(after?.status).toBe('pending'); // attempt 1/5 — not yet terminal
-    expect(after?.attempts).toBe(1);
-    expect(after?.lastError).toBeTruthy();
+    // POLL rather than reading once: AbstractOutboxRelay.relay() no-ops with an
+    // immediate return if `isRelaying` is already true from another in-flight
+    // pass on this same relay instance (see relay()'s early-return branch) —
+    // this test's own explicit call can race one still finishing from an
+    // earlier assertion's wake-triggered pass in this describe block. A single
+    // read right after can then observe attempts still 0. Same race, same fix
+    // as the email-cascade case above: wait for the row to actually reach the
+    // post-failure state instead of assuming this call was the one that did it.
+    const after = await waitFor(async () => {
+      const [row_] = await db
+        .select()
+        .from(notificationOutbox)
+        .where(eq(notificationOutbox.id, row.id));
+      return row_?.attempts && row_.attempts > 0 ? row_ : undefined;
+    });
+    expect(after.status).toBe('pending'); // attempt 1/5 — not yet terminal
+    expect(after.attempts).toBe(1); // exactly one pass touched it, not more
+    expect(after.lastError).toBeTruthy();
     // Backoff pushed scheduledAt forward — NOT immediately re-eligible.
-    expect(after?.scheduledAt.getTime()).toBeGreaterThan(before + 20_000);
+    expect(after.scheduledAt.getTime()).toBeGreaterThan(before + 20_000);
 
     // A relay tick right now must NOT re-process it (scheduledAt is in the future).
     await notificationRelay.relay();
