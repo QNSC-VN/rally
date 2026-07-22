@@ -633,7 +633,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         asc(workItems.rank),
       )
       .limit(limit);
-    return rows as MyWorkItem[];
+    return rows;
   }
 
   /** Exact workspace-wide counts for the Home summary strip. "Open" = the work
