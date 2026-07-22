@@ -50,9 +50,22 @@ export async function bootRallyApp(): Promise<NestFastifyApplication> {
  * DB — the same code the deployed Worker runs. Deliberately does NOT import
  * ScheduleModule.forRoot() or the full WorkerModule (AuditConsumer/SQS,
  * ReportingModule, etc.): the @Cron decorators on relay() then have no
- * scheduler to register against, so nothing fires on its own timer — tests
- * call `.relay()` directly for deterministic, race-free assertions instead of
- * waiting on/racing the live 5s cron.
+ * scheduler to register against, so the 5s cron never fires on its own —
+ * tests call `.relay()` directly instead of waiting on/racing it.
+ *
+ * The Valkey wake-signal subscription is NOT disabled, though, and previously
+ * this comment claimed "nothing fires on its own timer" as if it were —
+ * onModuleInit() (below) subscribes both relays for real, so any code in the
+ * same test file that goes through NotificationSchedulerService/
+ * EmailSchedulerService (not a raw db.insert()) still triggers an
+ * independent, un-awaited relay() pass exactly as it would in production.
+ * That used to make direct `await relay()` calls non-deterministic — a call
+ * could race an in-flight wake-triggered pass and return having silently
+ * processed nothing (see AbstractOutboxRelay.relay()'s old isRelaying-flag
+ * design). Fixed at the source: relay() now guarantees its promise never
+ * resolves before a pass that started at-or-after the call has completed, so
+ * awaiting it is deterministic regardless of whether a cron, a wake signal,
+ * or this harness triggered the pass that got there first.
  */
 export async function bootRallyWorkerRelays(): Promise<{
   module: TestingModule;
