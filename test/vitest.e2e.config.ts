@@ -42,7 +42,16 @@ export default defineConfig({
       // setups (no real SSO configured); the e2e AppModule still needs
       // ConfigModule's Zod schema to validate, so supply harmless placeholders
       // here rather than requiring every local run to configure real Entra.
-      ENTRA_TENANT_ID: 'test-tenant',
+      //
+      // ENTRA_TENANT_ID falls back to 'test-tenant' rather than always
+      // overriding it: sso-rbac.e2e.spec.ts asserts against the SSO connection
+      // db:migrate/db:seed created using the environment's REAL
+      // ENTRA_TENANT_ID (e.g. CI's 'dev-tenant'). An unconditional override
+      // here silently made the test process see a different tenant id than
+      // what got seeded, so ssoConnectionRepo.findByExternalTenantId always
+      // missed and every SSO login failed with SSO_NO_ACCESS — a seed/test
+      // mismatch that read exactly like a real product bug.
+      ENTRA_TENANT_ID: process.env['ENTRA_TENANT_ID'] ?? 'test-tenant',
       ENTRA_CLIENT_ID: 'test-client',
       ENTRA_CLIENT_SECRET: 'test-secret',
       ENTRA_REDIRECT_URI: 'http://localhost:3000/v1/bff/callback',
