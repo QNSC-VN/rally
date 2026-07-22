@@ -9,6 +9,7 @@ import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
 import { IterationsService } from './iterations.service';
 import { ITERATION_REPOSITORY } from '../domain/ports/iteration.repository';
+import { ITERATION_ACTIVITY_LOG_REPOSITORY } from '../domain/ports/iteration-activity-log.repository';
 import type { Iteration } from '../domain/iteration.types';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -114,6 +115,14 @@ describe('IterationsService', () => {
       providers: [
         IterationsService,
         { provide: ITERATION_REPOSITORY, useValue: repo },
+        {
+          provide: ITERATION_ACTIVITY_LOG_REPOSITORY,
+          useValue: {
+            append: vi.fn().mockResolvedValue(undefined),
+            appendMany: vi.fn().mockResolvedValue(undefined),
+            listByIteration: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+          },
+        },
         { provide: ProjectsService, useValue: projects },
         { provide: AccessService, useValue: access },
         { provide: DRIZZLE, useValue: db },

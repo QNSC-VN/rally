@@ -299,6 +299,7 @@ export const releases = workSchema.table(
     id: uuid('id').primaryKey().defaultRandom(),
     workspaceId: uuid('workspace_id').notNull(),
     projectId: uuid('project_id').notNull(),
+    releaseKey: varchar('release_key', { length: 30 }),
     name: varchar('name', { length: 255 }).notNull(),
     description: text('description'),
     status: releaseStatusEnum('status').notNull().default('planning'),
@@ -316,6 +317,7 @@ export const releases = workSchema.table(
   (t) => ({
     workspaceIdx: index('ix_releases_workspace').on(t.workspaceId),
     projectIdx: index('ix_releases_project').on(t.projectId),
+    keyIdx: uniqueIndex('uq_releases_key').on(t.projectId, t.releaseKey),
   }),
 );
 
@@ -532,6 +534,38 @@ export const activityLogs = workSchema.table(
   }),
 );
 
+// ── iteration_activity_logs (Timebox Revision History) ──────────────────────
+//
+// Product-facing revision feed for the Iteration (Timebox) detail "Revision
+// History" tab — the iteration-scoped sibling of `activity_logs` above. The
+// subject is always the iteration itself, so this anchors on `iteration_id`
+// with no entity_type/entity_id split. Written right after the mutation so the
+// actor sees their change immediately. Append-only; never stores rich-text
+// bodies. Workspace isolation is enforced at the application layer (RLS dropped
+// in migration 0025).
+
+export const iterationActivityLogs = workSchema.table(
+  'iteration_activity_logs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id').notNull(),
+    projectId: uuid('project_id').notNull(),
+    iterationId: uuid('iteration_id').notNull(),
+    actorId: uuid('actor_id'), // null = system action
+    action: varchar('action', { length: 60 }).notNull(), // e.g. 'iteration.committed'
+    // { field, old, new } — short scalar values only, never rich-text body.
+    changes: jsonb('changes'),
+    metadata: jsonb('metadata').notNull().default({}),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    workspaceIdx: index('ix_iteration_activity_workspace').on(t.workspaceId),
+    // Primary read path: history for one iteration, newest first.
+    iterationIdx: index('ix_iteration_activity_iteration').on(t.iterationId, t.createdAt),
+    projectIdx: index('ix_iteration_activity_project').on(t.projectId),
+  }),
+);
+
 // ── time_logs ─────────────────────────────────────────────────────────────────
 // Per-user time entries against a work item (added in migration 0012). Retained
 // as an optional worklog/audit trail. As of migration 0052 these entries no
@@ -565,7 +599,7 @@ export const timeLogs = workSchema.table(
 // Composite primary key: one row per (workItem, user) pair.
 
 // F6 — directed links between work items (blocks / duplicates / relates_to /
-// depends_on / causes). Stored once on the canonical source→target direction;
+// depends_on). Stored once on the canonical source→target direction;
 // the app derives the inverse label for the target side.
 export const workItemRelations = workSchema.table(
   'work_item_relations',
@@ -674,6 +708,7 @@ export const milestones = workSchema.table(
     id: uuid('id').primaryKey().defaultRandom(),
     workspaceId: uuid('workspace_id').notNull(),
     projectId: uuid('project_id').notNull(),
+    milestoneKey: varchar('milestone_key', { length: 30 }),
     name: varchar('name', { length: 255 }).notNull(),
     description: text('description'),
     notes: text('notes'),
@@ -687,6 +722,7 @@ export const milestones = workSchema.table(
   (t) => ({
     workspaceIdx: index('ix_milestones_workspace').on(t.workspaceId),
     projectIdx: index('ix_milestones_project').on(t.projectId),
+    keyIdx: uniqueIndex('uq_milestones_key').on(t.projectId, t.milestoneKey),
   }),
 );
 

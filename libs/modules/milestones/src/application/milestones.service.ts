@@ -18,6 +18,21 @@ import { completedScheduleStatesSql } from '../../../../../db/schema/enums';
 import { IMilestoneRepository, MILESTONE_REPOSITORY } from '../domain/ports/milestone.repository';
 import type { Milestone, MilestoneStatus, UpdateMilestoneInput } from '../domain/milestone.types';
 
+/** Walk an error's `.cause` chain looking for a PG unique-violation (code 23505). */
+function isDuplicateKeyError(err: unknown): boolean {
+  let current: unknown = err;
+  while (true) {
+    if (current && typeof current === 'object' && 'code' in current) {
+      if ((current as Record<string, unknown>).code === '23505') return true;
+    }
+    if (current && typeof current === 'object' && 'cause' in current) {
+      current = current.cause;
+    } else {
+      return false;
+    }
+  }
+}
+
 export interface MilestoneProgress {
   totalItems: number;
   completedItems: number;
@@ -156,14 +171,18 @@ export class MilestonesService {
   // ── Recalculate target dates from linked releases ──────────────────────
 
   /**
-   * Recompute targetStartDate / targetEndDate from linked releases and
-   * persist the result.  If no releases are linked, sets both to null.
+   * Derive targetStartDate / targetEndDate from the linked releases
+   * (MIN start / MAX release date) and persist them — but ONLY while at least
+   * one Release is linked. With no linked Release the milestone's dates are
+   * user-managed (reconciled SRS §2 / P3-MS-019), so this is a no-op and the
+   * manually-entered dates are left untouched.
    */
   private async recalcTargetDates(milestoneId: string, workspaceId: string): Promise<void> {
     const result = await this.db
       .select({
         startDate: sql<string | null>`MIN(${releases.startDate})`,
         endDate: sql<string | null>`MAX(${releases.releaseDate})`,
+        linked: sql<number>`COUNT(${releases.id})`,
       })
       .from(milestoneReleases)
       .innerJoin(releases, eq(milestoneReleases.releaseId, releases.id))
@@ -171,11 +190,13 @@ export class MilestonesService {
         and(eq(milestoneReleases.milestoneId, milestoneId), eq(releases.workspaceId, workspaceId)),
       );
 
-    const { startDate, endDate } = result[0] ?? { startDate: null, endDate: null };
+    const row = result[0];
+    // No linked Release → dates are manual; do not override or clear them.
+    if (!row || Number(row.linked) === 0) return;
 
     await this.db
       .update(milestones)
-      .set({ targetStartDate: startDate, targetEndDate: endDate, updatedAt: new Date() })
+      .set({ targetStartDate: row.startDate, targetEndDate: row.endDate, updatedAt: new Date() })
       .where(eq(milestones.id, milestoneId));
   }
 
@@ -209,19 +230,50 @@ export class MilestonesService {
 
     const releaseIds = opts.releaseIds ?? [];
 
-    const milestone = await this.milestoneRepo.create({
-      id: uuidv7(),
-      workspaceId: actor.workspaceId,
-      projectId,
-      name,
-      description: opts.description,
-      notes: opts.notes,
-      status: (opts.status as MilestoneStatus) ?? 'planned',
-      ownerId: opts.ownerId,
-      releaseIds,
-      projectIds: opts.projectIds,
-      teamIds: opts.teamIds,
-    });
+    // milestoneKey reservation reads MAX(existing) + 1 (not atomic under
+    // concurrent creates) and milestones can be deleted, so a collision on
+    // uq_milestones_key is possible; retry once with a freshly computed key.
+    // Only the create is retried — link writes below run once, after success.
+    const MAX_KEY_RETRIES = 2;
+    let milestone: Milestone | undefined;
+    let lastErr: unknown;
+
+    for (let attempt = 0; attempt < MAX_KEY_RETRIES; attempt++) {
+      const keyNumber = await this.milestoneRepo.nextKeyNumber(projectId, actor.workspaceId);
+      try {
+        milestone = await this.milestoneRepo.create({
+          id: uuidv7(),
+          workspaceId: actor.workspaceId,
+          projectId,
+          milestoneKey: `MS-${keyNumber}`,
+          name,
+          description: opts.description,
+          notes: opts.notes,
+          status: (opts.status as MilestoneStatus) ?? 'planned',
+          ownerId: opts.ownerId,
+          // Manual dates persist; recalcTargetDates below overrides them only
+          // when releases are linked (reconciled SRS §2).
+          targetStartDate: opts.targetStartDate,
+          targetEndDate: opts.targetEndDate,
+          releaseIds,
+          projectIds: opts.projectIds,
+          teamIds: opts.teamIds,
+        });
+        break;
+      } catch (err: unknown) {
+        lastErr = err;
+        if (isDuplicateKeyError(err) && attempt < MAX_KEY_RETRIES - 1) {
+          this.logger.warn(
+            { projectId, attempt: attempt + 1 },
+            'Duplicate milestone key — retrying',
+          );
+          continue;
+        }
+        throw err;
+      }
+    }
+
+    if (!milestone) throw lastErr;
 
     if (releaseIds.length > 0) {
       await this.milestoneRepo.setReleaseLinks(milestone.id, releaseIds);
@@ -233,7 +285,8 @@ export class MilestonesService {
       await this.milestoneRepo.setTeamLinks(milestone.id, opts.teamIds);
     }
 
-    // Always derive target dates from linked releases (read-only computed fields)
+    // Derive target dates from linked releases (read-only) when any are linked;
+    // otherwise the manual dates set above are kept (recalc is a no-op).
     await this.recalcTargetDates(milestone.id, actor.workspaceId);
 
     const final = await this.milestoneRepo.findById(milestone.id);
@@ -372,11 +425,9 @@ export class MilestonesService {
       }
     }
 
-    // If releaseIds changed, always recalculate target dates from releases
     if (input.releaseIds !== undefined) {
       await this.assertLinksInWorkspace(actor.workspaceId, { releaseIds: input.releaseIds });
       await this.milestoneRepo.setReleaseLinks(id, input.releaseIds);
-      await this.recalcTargetDates(id, actor.workspaceId);
     }
     if (input.projectIds !== undefined) {
       await this.assertLinksInWorkspace(actor.workspaceId, { projectIds: input.projectIds });
@@ -387,17 +438,18 @@ export class MilestonesService {
       await this.milestoneRepo.setTeamLinks(id, input.teamIds);
     }
 
-    // Target dates are read-only (derived); strip any client-supplied values
-    delete input.targetStartDate;
-    delete input.targetEndDate;
-
+    // Persist the patch (manual target dates included). recalcTargetDates then
+    // overrides the dates with the derived Release window IFF releases are
+    // linked; with none linked the manual dates just written are kept (SRS §2).
     const updated = await this.milestoneRepo.update(id, input);
+    await this.recalcTargetDates(id, actor.workspaceId);
+    const final = (await this.milestoneRepo.findById(id)) ?? updated;
     const [releaseIds, projectIds, teamIds] = await Promise.all([
       this.milestoneRepo.getReleaseIds(id),
       this.milestoneRepo.getProjectIds(id),
       this.milestoneRepo.getTeamIds(id),
     ]);
-    return { ...updated, releaseIds, projectIds, teamIds };
+    return { ...final, releaseIds, projectIds, teamIds };
   }
 
   // ── Artifact management (P3.3) ──────────────────────────────────────

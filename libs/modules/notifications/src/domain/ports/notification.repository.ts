@@ -1,3 +1,4 @@
+import type { CursorPayload, PagedResult } from '@platform';
 import type {
   Notification,
   CreateNotificationInput,
@@ -13,6 +14,12 @@ export interface INotificationRepository {
     recipientId: string,
     filter: NotificationListFilter,
   ): Promise<Notification[]>;
+  listPageForRecipient(
+    workspaceId: string,
+    recipientId: string,
+    filter: { unreadOnly: boolean; types?: readonly string[] },
+    args: { limit: number; cursor: CursorPayload | null },
+  ): Promise<PagedResult<Notification>>;
   /**
    * Returns unread notifications newer than afterId (exclusive), ordered oldest-first.
    * Used by the SSE controller to replay events missed during a reconnect gap.

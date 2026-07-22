@@ -35,3 +35,18 @@ export const IterationOptionSchema = z.object({
 });
 
 export class IterationOptionDto extends createZodDto(IterationOptionSchema) {}
+
+// ── Activity (Revision History) ─────────────────────────────────────────────
+
+export const IterationActivityResponseSchema = z.object({
+  id: z.string().uuid(),
+  createdAt: z.string().datetime(),
+  actorId: z.string().uuid().nullable(),
+  /** Display name of the actor, resolved server-side. */
+  actorName: z.string().nullable(),
+  action: z.string(),
+  changes: z.object({ field: z.string(), old: z.unknown(), new: z.unknown() }).nullable(),
+  metadata: z.record(z.string(), z.unknown()),
+});
+
+export class IterationActivityResponseDto extends createZodDto(IterationActivityResponseSchema) {}

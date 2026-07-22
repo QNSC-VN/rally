@@ -62,6 +62,7 @@ export interface DefectListResult {
  * sort by their semantic Postgres enum declaration order.
  */
 export type QualitySortBy =
+  | 'rank'
   | 'id'
   | 'name'
   | 'userStory'
@@ -76,6 +77,7 @@ export type QualitySortBy =
 
 /** Whitelist of defect sort fields accepted from the `sort` query param. */
 export const DEFECT_SORT_FIELDS = [
+  'rank',
   'id',
   'name',
   'userStory',

@@ -39,6 +39,7 @@ function toReleaseDto(
     id: r.id,
     workspaceId: r.workspaceId,
     projectId: r.projectId,
+    releaseKey: r.releaseKey,
     name: r.name,
     description: r.description,
     theme: r.theme,
@@ -120,7 +121,14 @@ export class ReleasesController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateReleaseDto,
   ): Promise<ReleaseResponseDto> {
-    const release = await this.releasesService.updateRelease(user, id, dto);
+    // The API field is `state` (matching create + the client), but the domain
+    // model uses `status`. Map it here so state changes actually persist
+    // (previously `dto.state` was dropped because the service reads `status`).
+    const { state, ...rest } = dto;
+    const release = await this.releasesService.updateRelease(user, id, {
+      ...rest,
+      ...(state !== undefined ? { status: state } : {}),
+    });
     return toReleaseDto(release);
   }
 

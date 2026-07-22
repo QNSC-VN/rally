@@ -386,6 +386,27 @@
       "when": 1785000000000,
       "tag": "0053_storage_files_generalize_attachments",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1785100000000,
+      "tag": "0054_add_release_milestone_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1785100001000,
+      "tag": "0055_drop_relation_type_causes",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1785100002000,
+      "tag": "0056_iteration_activity_logs",
+      "breakpoints": true
     }
   ]
 }

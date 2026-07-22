@@ -13,3 +13,9 @@ export const ListNotificationsSchema = z.object({
   limit: PageQuerySchema.shape.limit,
 });
 export class ListNotificationsDto extends createZodDto(ListNotificationsSchema) {}
+
+/** Cursor-paginated variant for the full Notifications page (infinite scroll). */
+export const PagedNotificationsSchema = ListNotificationsSchema.extend({
+  cursor: PageQuerySchema.shape.cursor,
+});
+export class PagedNotificationsDto extends createZodDto(PagedNotificationsSchema) {}

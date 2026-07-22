@@ -11,6 +11,8 @@ import {
   tasks,
   milestones,
   milestoneArtifacts,
+  projects,
+  workflowStatuses,
 } from '../../../../../../db/schema/work';
 import type {
   DefectSeverity,
@@ -29,6 +31,8 @@ import type {
   WorkItemFilters,
   WorkItemSortBy,
   TaskTotals,
+  MyWorkItem,
+  WorkspaceSummary,
 } from '../../domain/work-item.types';
 import { UNASSIGNED_FILTER } from '../../domain/work-item.types';
 import { IWorkItemRepository, IterationScope } from '../../domain/ports/work-item.repository';
@@ -209,6 +213,23 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
           isNull(workItems.deletedAt),
         ),
       );
+    // Fall back to the tasks table for any ids not in work_items (Phase 3 split),
+    // mirroring findById — so task-neighbour lookups (e.g. rank reorder) resolve.
+    const found = new Set(rows.map((r) => r.id));
+    const missing = ids.filter((id) => !found.has(id));
+    if (missing.length > 0) {
+      const tRows = await this.db
+        .select()
+        .from(tasks)
+        .where(
+          and(
+            inArray(tasks.id, missing),
+            eq(tasks.workspaceId, workspaceId),
+            isNull(tasks.deletedAt),
+          ),
+        );
+      return [...(rows as WorkItem[]), ...tRows.map((r) => this.mapTaskRow(r))];
+    }
     return rows as WorkItem[];
   }
 
@@ -571,6 +592,84 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       estimateHours: Number(r?.estimateHours ?? 0),
       todoHours: Number(r?.todoHours ?? 0),
       actualHours: Number(r?.actualHours ?? 0),
+    };
+  }
+
+  // ── Home dashboard aggregates ─────────────────────────────────────────────
+  // Bounded / workspace-scoped queries that replace the old per-project fan-out.
+
+  /** Top-N work items assigned to the actor across the workspace, ordered by
+   *  priority (urgent→none) then rank. One query, project key/name joined. */
+  async listMyWork(
+    workspaceId: string,
+    userId: string,
+    { limit }: { limit: number },
+  ): Promise<MyWorkItem[]> {
+    const rows = await this.db
+      .select({
+        id: workItems.id,
+        itemKey: workItems.itemKey,
+        type: workItems.type,
+        title: workItems.title,
+        scheduleState: workItems.scheduleState,
+        priority: workItems.priority,
+        projectId: workItems.projectId,
+        projectKey: projects.key,
+        projectName: projects.name,
+      })
+      .from(workItems)
+      .innerJoin(projects, eq(projects.id, workItems.projectId))
+      .where(
+        and(
+          eq(workItems.workspaceId, workspaceId),
+          eq(workItems.assigneeId, userId),
+          isNull(workItems.deletedAt),
+        ),
+      )
+      .orderBy(
+        desc(
+          sql`case ${workItems.priority} when 'urgent' then 4 when 'high' then 3 when 'normal' then 2 when 'low' then 1 else 0 end`,
+        ),
+        asc(workItems.rank),
+      )
+      .limit(limit);
+    return rows as MyWorkItem[];
+  }
+
+  /** Exact workspace-wide counts for the Home summary strip. "Open" = the work
+   *  item's workflow-status category is not `done`. */
+  async getWorkspaceSummary(workspaceId: string, userId: string): Promise<WorkspaceSummary> {
+    const [projRow] = await this.db
+      .select({ c: sql<number>`count(*)::int` })
+      .from(projects)
+      .where(
+        and(
+          eq(projects.workspaceId, workspaceId),
+          eq(projects.status, 'active'),
+          isNull(projects.deletedAt),
+        ),
+      );
+    const [iterRow] = await this.db
+      .select({ c: sql<number>`count(*)::int` })
+      .from(iterations)
+      .where(and(eq(iterations.workspaceId, workspaceId), eq(iterations.state, 'committed')));
+    const [wiRow] = await this.db
+      .select({
+        open: sql<number>`sum(case when ${workflowStatuses.category} <> 'done' then 1 else 0 end)::int`,
+        blocked: sql<number>`sum(case when ${workItems.isBlocked} and ${workflowStatuses.category} <> 'done' then 1 else 0 end)::int`,
+        defects: sql<number>`sum(case when ${workItems.type} = 'defect' and ${workflowStatuses.category} <> 'done' then 1 else 0 end)::int`,
+        mine: sql<number>`sum(case when ${workItems.assigneeId} = ${userId} and ${workflowStatuses.category} <> 'done' then 1 else 0 end)::int`,
+      })
+      .from(workItems)
+      .innerJoin(workflowStatuses, eq(workflowStatuses.id, workItems.statusId))
+      .where(and(eq(workItems.workspaceId, workspaceId), isNull(workItems.deletedAt)));
+    return {
+      activeProjects: projRow?.c ?? 0,
+      activeSprints: iterRow?.c ?? 0,
+      openWorkItems: wiRow?.open ?? 0,
+      blockedItems: wiRow?.blocked ?? 0,
+      openDefects: wiRow?.defects ?? 0,
+      assignedToMe: wiRow?.mine ?? 0,
     };
   }
 

@@ -9,12 +9,23 @@ import { PERMISSION } from '@shared-kernel';
 import { workItems } from '../../../../../db/schema/work';
 import { acceptedScheduleStatesSql } from '../../../../../db/schema/enums';
 import { IIterationRepository, ITERATION_REPOSITORY } from '../domain/ports/iteration.repository';
+import {
+  IIterationActivityLogRepository,
+  ITERATION_ACTIVITY_LOG_REPOSITORY,
+} from '../domain/ports/iteration-activity-log.repository';
+import { diffIteration } from './iteration-activity-diff';
 import type {
   Iteration,
   IterationOption,
   IterationFilters,
   UpdateIterationInput,
 } from '../domain/iteration.types';
+import type {
+  ActivityChange,
+  CreateIterationActivityLogInput,
+  IterationActivityAction,
+  IterationActivityLog,
+} from '../domain/activity-log.types';
 
 /** Walk an error's `.cause` chain looking for a PG unique-violation (code 23505). */
 function isDuplicateKeyError(err: unknown): boolean {
@@ -38,10 +49,51 @@ export class IterationsService {
 
   constructor(
     @Inject(ITERATION_REPOSITORY) private readonly iterationRepo: IIterationRepository,
+    @Inject(ITERATION_ACTIVITY_LOG_REPOSITORY)
+    private readonly activityRepo: IIterationActivityLogRepository,
     @InjectDrizzle() private readonly db: DrizzleDB,
     private readonly projectsService: ProjectsService,
     private readonly accessService: AccessService,
   ) {}
+
+  // ── Revision History (activity log) ─────────────────────────────────────────
+
+  private buildActivity(
+    iteration: Iteration,
+    actorId: string | null,
+    action: IterationActivityAction,
+    changes: ActivityChange | null,
+  ): CreateIterationActivityLogInput {
+    return {
+      id: uuidv7(),
+      workspaceId: iteration.workspaceId,
+      projectId: iteration.projectId,
+      iterationId: iteration.id,
+      actorId,
+      action,
+      changes,
+    };
+  }
+
+  /** Best-effort append — a revision-log failure must never fail the mutation. */
+  private async appendActivity(inputs: CreateIterationActivityLogInput[]): Promise<void> {
+    if (inputs.length === 0) return;
+    try {
+      await this.activityRepo.appendMany(inputs);
+    } catch (err) {
+      this.logger.warn({ err }, 'Failed to write iteration activity log');
+    }
+  }
+
+  /** Newest-first revision history for one iteration (project-view gated). */
+  async getIterationActivity(
+    actor: JwtPayload,
+    id: string,
+    args: { limit: number; offset: number },
+  ): Promise<{ items: IterationActivityLog[]; total: number }> {
+    await this.getIterationForView(actor, id);
+    return this.activityRepo.listByIteration(id, actor.workspaceId, args);
+  }
 
   // ── List ──────────────────────────────────────────────────────────────────
 
@@ -129,6 +181,9 @@ export class IterationsService {
       { iterationId: iteration.id, projectId, userId: actor.sub },
       'Iteration created',
     );
+    await this.appendActivity([
+      this.buildActivity(iteration, actor.sub, 'iteration.created', null),
+    ]);
     return iteration;
   }
 
@@ -220,7 +275,13 @@ export class IterationsService {
     const fields = { ...input };
     delete fields.state;
     if (Object.keys(fields).length > 0) {
-      return this.iterationRepo.update(id, fields);
+      const updated = await this.iterationRepo.update(id, fields);
+      await this.appendActivity(
+        diffIteration(current, fields).map((e) =>
+          this.buildActivity(updated, actor.sub, 'iteration.updated', e.change),
+        ),
+      );
+      return updated;
     }
     return stateResult ?? current;
   }
@@ -263,6 +324,13 @@ export class IterationsService {
 
     const updated = await this.iterationRepo.update(id, { state: 'committed' });
     this.logger.log({ iterationId: id }, 'Iteration committed');
+    await this.appendActivity([
+      this.buildActivity(updated, actor.sub, 'iteration.committed', {
+        field: 'state',
+        old: 'planning',
+        new: 'committed',
+      }),
+    ]);
     return updated;
   }
 
@@ -321,6 +389,13 @@ export class IterationsService {
       completedAt: new Date(),
     });
     this.logger.log({ iterationId: id }, 'Iteration accepted');
+    await this.appendActivity([
+      this.buildActivity(updated, actor.sub, 'iteration.accepted', {
+        field: 'state',
+        old: 'committed',
+        new: 'accepted',
+      }),
+    ]);
     return updated;
   }
 

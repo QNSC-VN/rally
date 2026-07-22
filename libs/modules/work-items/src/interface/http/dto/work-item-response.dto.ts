@@ -60,6 +60,33 @@ export const TaskTotalsResponseSchema = z.object({
 
 export class TaskTotalsResponseDto extends createZodDto(TaskTotalsResponseSchema) {}
 
+// ── Home dashboard aggregates ────────────────────────────────────────────────
+
+export const MyWorkItemResponseSchema = z.object({
+  id: z.string().uuid(),
+  itemKey: z.string(),
+  type: z.string(),
+  title: z.string(),
+  scheduleState: z.string(),
+  priority: z.string(),
+  projectId: z.string().uuid(),
+  projectKey: z.string(),
+  projectName: z.string(),
+});
+
+export class MyWorkItemResponseDto extends createZodDto(MyWorkItemResponseSchema) {}
+
+export const WorkspaceSummaryResponseSchema = z.object({
+  activeProjects: z.number().int().min(0),
+  openWorkItems: z.number().int().min(0),
+  activeSprints: z.number().int().min(0),
+  blockedItems: z.number().int().min(0),
+  openDefects: z.number().int().min(0),
+  assignedToMe: z.number().int().min(0),
+});
+
+export class WorkspaceSummaryResponseDto extends createZodDto(WorkspaceSummaryResponseSchema) {}
+
 // ── Activity (Revision History) ─────────────────────────────────────────────
 
 export const ActivityResponseSchema = z.object({

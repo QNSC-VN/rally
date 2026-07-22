@@ -16,6 +16,15 @@ export const IterationQuerySchema = PageQuerySchema.extend({
 
 export class IterationQueryDto extends createZodDto(IterationQuerySchema) {}
 
+// ── Activity (Revision History) pagination ──────────────────────────────────
+
+export const IterationActivityQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(50),
+});
+
+export class IterationActivityQueryDto extends createZodDto(IterationActivityQuerySchema) {}
+
 // ── Create ────────────────────────────────────────────────────────────────────
 
 export const CreateIterationSchema = z.object({

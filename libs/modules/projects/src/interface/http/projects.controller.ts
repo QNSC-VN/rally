@@ -26,6 +26,7 @@ import {
 } from './dto/project-request.dto';
 import {
   ProjectResponseDto,
+  ProjectHealthResponseDto,
   WorkflowStatusResponseDto,
   WorkflowTransitionResponseDto,
   LabelResponseDto,
@@ -114,6 +115,21 @@ export class ProjectsController {
     const args = buildPageArgs(query);
     const page = await this.projectsService.listProjects(user, args);
     return { data: page.data.map(toProjectDto), pageInfo: page.pageInfo };
+  }
+
+  // ── Project health (Home widget) ─────────────────────────────────────────────
+  // Declared before @Get(':id') so the static path is not captured as an :id.
+
+  @Get('health')
+  @ApiOperation({ summary: 'Bounded, attention-sorted per-project health rollup (Home widget)' })
+  @ApiResponse({ status: 200, type: ProjectHealthResponseDto, isArray: true })
+  @ApiCommonErrors(400, 401)
+  async listProjectHealth(
+    @CurrentUser() user: JwtPayload,
+    @Query('limit') limit?: string,
+  ): Promise<ProjectHealthResponseDto[]> {
+    const n = Math.min(Math.max(Number(limit) || 10, 1), 50);
+    return this.projectsService.listProjectHealth(user, n);
   }
 
   // ── Create project ─────────────────────────────────────────────────────────

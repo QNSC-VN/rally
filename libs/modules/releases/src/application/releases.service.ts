@@ -20,6 +20,21 @@ import {
 import { IReleaseRepository, RELEASE_REPOSITORY } from '../domain/ports/release.repository';
 import type { Release, UpdateReleaseInput } from '../domain/release.types';
 
+/** Walk an error's `.cause` chain looking for a PG unique-violation (code 23505). */
+function isDuplicateKeyError(err: unknown): boolean {
+  let current: unknown = err;
+  while (true) {
+    if (current && typeof current === 'object' && 'code' in current) {
+      if ((current as Record<string, unknown>).code === '23505') return true;
+    }
+    if (current && typeof current === 'object' && 'cause' in current) {
+      current = current.cause;
+    } else {
+      return false;
+    }
+  }
+}
+
 /** Valid release status transitions (Rally-aligned lifecycle). */
 const RELEASE_TRANSITIONS: Record<ReleaseStatus, ReleaseStatus[]> = {
   planning: ['active', 'planning'],
@@ -109,18 +124,41 @@ export class ReleasesService {
       );
     }
 
-    const release = await this.releaseRepo.create({
-      id: uuidv7(),
-      workspaceId: actor.workspaceId,
-      projectId,
-      name,
-      description: opts.description,
-      theme: opts.theme,
-      startDate: opts.startDate,
-      releaseDate: opts.releaseDate,
-      status: (opts.state as Release['status']) ?? 'planning',
-      releaseNotes: opts.releaseNotes,
-    });
+    // releaseKey reservation reads MAX(existing) + 1 (not atomic under
+    // concurrent creates) and releases can be deleted, so a collision on
+    // uq_releases_key is possible; retry once with a freshly computed key.
+    const MAX_KEY_RETRIES = 2;
+    let release: Release | undefined;
+    let lastErr: unknown;
+
+    for (let attempt = 0; attempt < MAX_KEY_RETRIES; attempt++) {
+      const keyNumber = await this.releaseRepo.nextKeyNumber(projectId, actor.workspaceId);
+      try {
+        release = await this.releaseRepo.create({
+          id: uuidv7(),
+          workspaceId: actor.workspaceId,
+          projectId,
+          releaseKey: `RE-${keyNumber}`,
+          name,
+          description: opts.description,
+          theme: opts.theme,
+          startDate: opts.startDate,
+          releaseDate: opts.releaseDate,
+          status: (opts.state as Release['status']) ?? 'planning',
+          releaseNotes: opts.releaseNotes,
+        });
+        break;
+      } catch (err: unknown) {
+        lastErr = err;
+        if (isDuplicateKeyError(err) && attempt < MAX_KEY_RETRIES - 1) {
+          this.logger.warn({ projectId, attempt: attempt + 1 }, 'Duplicate release key — retrying');
+          continue;
+        }
+        throw err;
+      }
+    }
+
+    if (!release) throw lastErr;
 
     this.logger.log({ releaseId: release.id, projectId, userId: actor.sub }, 'Release created');
     return release;

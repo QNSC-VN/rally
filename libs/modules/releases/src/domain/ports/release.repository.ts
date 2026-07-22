@@ -13,4 +13,6 @@ export interface IReleaseRepository {
   create(input: CreateReleaseInput): Promise<Release>;
   update(id: string, input: UpdateReleaseInput): Promise<Release>;
   delete(id: string): Promise<void>;
+  /** Next per-project display-key number (MAX existing suffix + 1) for `RE-<n>`. */
+  nextKeyNumber(projectId: string, workspaceId: string): Promise<number>;
 }

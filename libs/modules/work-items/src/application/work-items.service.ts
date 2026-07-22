@@ -65,6 +65,8 @@ import type {
   WorkItemFilters,
   UpdateWorkItemInput,
   TaskTotals,
+  MyWorkItem,
+  WorkspaceSummary,
 } from '../domain/work-item.types';
 import type {
   ActivityLog,
@@ -201,6 +203,16 @@ export class WorkItemsService {
     return this.workItemRepo.listByProject(projectId, actor.workspaceId, filters, args);
   }
 
+  /** Home "My Work" widget — top-N items assigned to the actor, workspace-wide. */
+  async listMyWork(actor: JwtPayload, limit: number): Promise<MyWorkItem[]> {
+    return this.workItemRepo.listMyWork(actor.workspaceId, actor.sub, { limit });
+  }
+
+  /** Home summary strip — exact workspace-wide counts (one batched query set). */
+  async getWorkspaceSummary(actor: JwtPayload): Promise<WorkspaceSummary> {
+    return this.workItemRepo.getWorkspaceSummary(actor.workspaceId, actor.sub);
+  }
+
   /** Backlog list — story + defect only, server-side filter/search/pagination. */
   async listBacklog(
     actor: JwtPayload,
@@ -241,6 +253,14 @@ export class WorkItemsService {
           'A defect can only be created under a user story',
         );
       }
+      // Tasks can only sit under a Work Product — a story or defect (DB design
+      // §Work item hierarchy: Story → Task, and task.parent_id → Story/Defect).
+      if (type === 'task' && parent.type !== 'story' && parent.type !== 'defect') {
+        throw new PreconditionFailedException(
+          'WORK_ITEM_INVALID_PARENT_TYPE',
+          'A task can only be created under a user story or defect',
+        );
+      }
       // Non-defect, non-task items cannot have a parent (only tasks and defects)
       if (type !== 'defect' && type !== 'task') {
         throw new PreconditionFailedException(
@@ -248,6 +268,16 @@ export class WorkItemsService {
           'Only defects and tasks can have a parent work item',
         );
       }
+    }
+
+    // A task ALWAYS belongs to a Work Product (parent_id is NOT NULL for tasks).
+    // Reject a missing parent with a clean 422 instead of letting the repo hit a
+    // NOT-NULL violation downstream.
+    if (type === 'task' && !opts.parentId) {
+      throw new PreconditionFailedException(
+        'WORK_ITEM_INVALID_PARENT_TYPE',
+        'A task must be created under a user story or defect',
+      );
     }
 
     const statusId = await this.resolveStatusId(actor.workspaceId, projectId, opts.statusId);
@@ -417,10 +447,12 @@ export class WorkItemsService {
     } = {},
   ): Promise<WorkItem> {
     const parent = await this.getWorkItem(actor.workspaceId, parentId);
-    if (parent.type === 'task') {
+    // A task's parent must be a Work Product — a story or defect (never another
+    // task, and never an initiative/feature). Matches the generic create guard.
+    if (parent.type !== 'story' && parent.type !== 'defect') {
       throw new PreconditionFailedException(
         'WORK_ITEM_INVALID_PARENT_TYPE',
-        'A task cannot be created under another task',
+        'A task can only be created under a user story or defect',
       );
     }
 
@@ -556,12 +588,56 @@ export class WorkItemsService {
           'Work product does not belong to the same project',
         );
       }
-      if (newParent.type === 'task') {
+      if (newParent.type !== 'story' && newParent.type !== 'defect') {
         throw new PreconditionFailedException(
           'WORK_ITEM_INVALID_PARENT_TYPE',
-          'A task cannot be moved under another task',
+          'A task can only belong to a user story or defect',
         );
       }
+    }
+
+    // A defect's User Story (parent_id) can be (re)assigned or cleared. Unlike a
+    // task, a defect MAY be unparented (null), but when set the parent must be a
+    // user story in the SAME project — mirrors the create-time rule so the
+    // "User Story" association can never drift to a non-story or cross-project
+    // item (work item hierarchy: Story → Defect).
+    if (
+      item.type === 'defect' &&
+      input.parentId !== undefined &&
+      input.parentId !== item.parentId &&
+      input.parentId !== null
+    ) {
+      const newParent = await this.getWorkItem(actor.workspaceId, input.parentId);
+      if (newParent.projectId !== item.projectId) {
+        throw new PreconditionFailedException(
+          'WORK_ITEM_PARENT_SCOPE_MISMATCH',
+          'User story does not belong to the same project',
+        );
+      }
+      if (newParent.type !== 'story') {
+        throw new PreconditionFailedException(
+          'WORK_ITEM_INVALID_PARENT_TYPE',
+          'A defect can only be linked to a user story',
+        );
+      }
+    }
+
+    // Only tasks and defects carry a parent (DB design §Work item hierarchy).
+    // Reject any attempt to SET a parent on an initiative / feature / story via
+    // the API — mirrors the create-path rule so update can't back-door a parent
+    // (or a self-parent / cross-project parent) that create forbids. Portfolio
+    // hierarchy editing for these types is out of Phase 1 scope.
+    if (
+      item.type !== 'task' &&
+      item.type !== 'defect' &&
+      input.parentId !== undefined &&
+      input.parentId !== null &&
+      input.parentId !== item.parentId
+    ) {
+      throw new PreconditionFailedException(
+        'WORK_ITEM_INVALID_PARENT_TYPE',
+        'Only defects and tasks can have a parent work item',
+      );
     }
 
     // Validate status transition if statusId is changing
@@ -836,26 +912,9 @@ export class WorkItemsService {
         }
       }
 
-      // Schedule-state change: notify watchers ∪ assignee (minus the actor).
-      if (input.scheduleState !== undefined && updated.scheduleState !== item.scheduleState) {
-        const recipients = await this.resolveRecipients(updated, [updated.assigneeId], actor.sub);
-        if (recipients.length > 0) {
-          await this.emitWorkItemNotification(
-            'WORK_ITEM_STATE_CHANGED',
-            updated,
-            actor.sub,
-            recipients,
-            {
-              itemKey: updated.itemKey,
-              itemTitle: updated.title,
-              newState: updated.scheduleState,
-              projectId: updated.projectId,
-            },
-            updated.scheduleState,
-            tx,
-          );
-        }
-      }
+      // NOTE: schedule-state changes intentionally do NOT notify. The Phase 4.1
+      // notification taxonomy is `assigned` + `mention` only (SRS §5); status
+      // changes are explicitly out of scope.
 
       return updated;
     });
@@ -877,6 +936,9 @@ export class WorkItemsService {
       );
     }
     await this.workItemRepo.softDelete(id, actor.workspaceId);
+    // Remove this item's F6 relations so no dangling links survive the delete
+    // (the relations table has no FK/cascade to work_items).
+    await this.relationRepo.deleteForItem(id, actor.workspaceId);
     this.logger.log({ workItemId: id }, 'Work item soft-deleted');
   }
 
@@ -884,19 +946,6 @@ export class WorkItemsService {
   // Producers enqueue in-app notifications for the item's watchers + assignee
   // (minus the actor). The Worker relay applies each recipient's preference and
   // handles delivery/SSE — this layer only fans out candidates.
-
-  /** Watchers ∪ extra recipients, de-duplicated, actor removed, access-gated. */
-  private async resolveRecipients(
-    item: WorkItem,
-    extra: (string | null | undefined)[],
-    actorId: string,
-  ): Promise<string[]> {
-    const watchers = await this.watcherRepo.listUserIds(item.id);
-    const set = new Set<string>(watchers);
-    for (const id of extra) if (id) set.add(id);
-    set.delete(actorId);
-    return this.filterByProjectAccess(item.workspaceId, item.projectId, [...set]);
-  }
 
   /**
    * FR-019 — restrict notification recipients to users allowed to access the
@@ -991,27 +1040,14 @@ export class WorkItemsService {
       mentionedUserIds.filter((id) => id && id !== actor.sub),
     );
 
-    // Mentions take precedence — a mentioned watcher gets the mention, not the
-    // generic comment notification.
+    // Only @-mentions notify. A generic comment with no mention must NOT create
+    // any notification (SRS FR-018; the taxonomy is `assigned` + `mention` only).
     if (mentioned.length > 0) {
       await this.emitWorkItemNotification(
         'WORK_ITEM_MENTIONED',
         item,
         actor.sub,
         mentioned,
-        vars,
-        workItemId,
-      );
-    }
-    const commentRecipients = (
-      await this.resolveRecipients(item, [item.assigneeId], actor.sub)
-    ).filter((id) => !mentioned.includes(id));
-    if (commentRecipients.length > 0) {
-      await this.emitWorkItemNotification(
-        'WORK_ITEM_COMMENTED',
-        item,
-        actor.sub,
-        commentRecipients,
         vars,
         workItemId,
       );
@@ -1044,13 +1080,26 @@ export class WorkItemsService {
       );
     }
 
-    // Target must exist within the same workspace (cross-project allowed).
-    await this.getWorkItem(actor.workspaceId, targetId);
+    // Target must exist AND the actor must be allowed to view it. Cross-project
+    // links are allowed, but only to items the actor can already see — otherwise
+    // linking would leak a target's key/title/type/state via GET :id/relations.
+    await this.getWorkItemForView(actor, targetId);
 
     if (await this.relationRepo.exists(sourceId, targetId, relationType, actor.workspaceId)) {
       throw new PreconditionFailedException(
         'WORK_ITEM_RELATION_EXISTS',
         'This relation already exists',
+      );
+    }
+
+    // Reject the same relation in the REVERSE direction too (target → source):
+    // for symmetric types (relates_to) it is a duplicate, for directional ones
+    // (blocks / depends_on / duplicates) it is a contradiction. The unique index
+    // only guards the exact source→target→type triple, so check the mirror here.
+    if (await this.relationRepo.exists(targetId, sourceId, relationType, actor.workspaceId)) {
+      throw new PreconditionFailedException(
+        'WORK_ITEM_RELATION_EXISTS',
+        'This relation already exists in the opposite direction',
       );
     }
 

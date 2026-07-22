@@ -24,6 +24,21 @@ export const ProjectResponseSchema = z.object({
 
 export class ProjectResponseDto extends createZodDto(ProjectResponseSchema) {}
 
+/** Home "Project Health" widget row — bounded, attention-sorted rollup. */
+export const ProjectHealthResponseSchema = z.object({
+  id: z.string().uuid(),
+  key: z.string().max(10),
+  name: z.string(),
+  leadId: z.string().uuid().nullable(),
+  leadName: z.string().nullable(),
+  activeSprintName: z.string().nullable(),
+  progressPercent: z.number().int().min(0).max(100),
+  openDefects: z.number().int().min(0),
+  blockedCount: z.number().int().min(0),
+});
+
+export class ProjectHealthResponseDto extends createZodDto(ProjectHealthResponseSchema) {}
+
 export const WorkflowStatusResponseSchema = z.object({
   id: z.string().uuid(),
   projectId: z.string().uuid(),

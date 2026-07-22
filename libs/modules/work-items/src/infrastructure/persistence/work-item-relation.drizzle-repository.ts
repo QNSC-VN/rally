@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray, isNull, or } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
@@ -7,6 +7,7 @@ import { workItemRelations, workItems } from '../../../../../../db/schema/work';
 import type { WorkItemRelationType } from '../../../../../../db/schema/enums';
 import { IWorkItemRelationRepository } from '../../domain/ports/work-item-relation.repository';
 import {
+  ACYCLIC_RELATION_TYPES,
   RELATION_INVERSE,
   RELATION_LABELS,
   type WorkItemRelation,
@@ -36,7 +37,14 @@ export class WorkItemRelationDrizzleRepository implements IWorkItemRelationRepos
       })
       .from(rel)
       .innerJoin(other, eq(other.id, rel.targetItemId))
-      .where(and(eq(rel.sourceItemId, itemId), eq(rel.workspaceId, workspaceId)));
+      // Exclude relations whose other end has been soft-deleted (no ghost links).
+      .where(
+        and(
+          eq(rel.sourceItemId, itemId),
+          eq(rel.workspaceId, workspaceId),
+          isNull(other.deletedAt),
+        ),
+      );
 
     // Inbound: this item is the target → show the inverse label; other = source.
     const inbound = await this.db
@@ -52,7 +60,13 @@ export class WorkItemRelationDrizzleRepository implements IWorkItemRelationRepos
       })
       .from(rel)
       .innerJoin(other, eq(other.id, rel.sourceItemId))
-      .where(and(eq(rel.targetItemId, itemId), eq(rel.workspaceId, workspaceId)));
+      .where(
+        and(
+          eq(rel.targetItemId, itemId),
+          eq(rel.workspaceId, workspaceId),
+          isNull(other.deletedAt),
+        ),
+      );
 
     const views: WorkItemRelationView[] = [
       ...outbound.map((r) => this.toView(r, 'outbound')),
@@ -142,21 +156,44 @@ export class WorkItemRelationDrizzleRepository implements IWorkItemRelationRepos
       .where(and(eq(workItemRelations.id, id), eq(workItemRelations.workspaceId, workspaceId)));
   }
 
+  async deleteForItem(itemId: string, workspaceId: string): Promise<void> {
+    // Remove every relation touching this item (either end) — called when the
+    // item is deleted so no dangling relation rows survive.
+    await this.db
+      .delete(workItemRelations)
+      .where(
+        and(
+          eq(workItemRelations.workspaceId, workspaceId),
+          or(
+            eq(workItemRelations.sourceItemId, itemId),
+            eq(workItemRelations.targetItemId, itemId),
+          ),
+        ),
+      );
+  }
+
   async wouldCreateCycle(
     sourceId: string,
     targetId: string,
     relationType: WorkItemRelationType,
     workspaceId: string,
   ): Promise<boolean> {
-    // Load all edges of this type in the workspace and BFS from targetId,
-    // following source → target. If we can reach sourceId, adding
+    // Ordering relations (blocks, depends_on) share one dependency graph, so a
+    // cycle can span BOTH types (e.g. A blocks B, B depends_on A). Build the
+    // graph from the whole acyclic family — not just `relationType` — otherwise
+    // a mixed-type cycle slips through. Associative types never reach here.
+    const graphTypes = ACYCLIC_RELATION_TYPES.includes(relationType)
+      ? [...ACYCLIC_RELATION_TYPES]
+      : [relationType];
+    // Load all edges of the relevant types in the workspace and BFS from
+    // targetId, following source → target. If we can reach sourceId, adding
     // sourceId → targetId would close a cycle.
     const edges = await this.db
       .select({ from: workItemRelations.sourceItemId, to: workItemRelations.targetItemId })
       .from(workItemRelations)
       .where(
         and(
-          eq(workItemRelations.relationType, relationType),
+          inArray(workItemRelations.relationType, graphTypes),
           eq(workItemRelations.workspaceId, workspaceId),
         ),
       );

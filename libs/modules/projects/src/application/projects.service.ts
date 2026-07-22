@@ -33,6 +33,7 @@ import {
 import type {
   Project,
   ProjectWithStats,
+  ProjectHealth,
   WorkflowStatus,
   WorkflowTransition,
   ProjectTeamLink,
@@ -71,6 +72,11 @@ export class ProjectsService {
     args: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<ProjectWithStats>> {
     return this.projectRepo.listByWorkspaceWithStats(actor.workspaceId, args);
+  }
+
+  /** Home "Project Health" widget — bounded, attention-sorted per-project rollup. */
+  async listProjectHealth(actor: JwtPayload, limit: number): Promise<ProjectHealth[]> {
+    return this.projectRepo.listHealthByWorkspace(actor.workspaceId, { limit });
   }
 
   async createProject(actor: JwtPayload, input: CreateProjectRequest): Promise<Project> {

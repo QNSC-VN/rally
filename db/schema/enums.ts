@@ -193,7 +193,6 @@ export const workItemRelationTypeEnum = pgEnum('work_item_relation_type', [
   'duplicates',
   'relates_to',
   'depends_on',
-  'causes',
 ]);
 
 // P3.3 — Milestone states aligned with BA spec.

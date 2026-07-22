@@ -18,6 +18,7 @@ const ReleaseListItemSchema = z.object({
   id: z.string().uuid(),
   workspaceId: z.string().uuid(),
   projectId: z.string().uuid(),
+  releaseKey: z.string().nullable(),
   name: z.string(),
   description: z.string().nullable(),
   theme: z.string().nullable(),

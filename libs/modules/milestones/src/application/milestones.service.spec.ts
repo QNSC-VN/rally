@@ -30,6 +30,7 @@ const mockMilestone = (o: Partial<Milestone> = {}): Milestone => ({
   id: 'ms-1',
   workspaceId: 'ws-1',
   projectId: 'proj-1',
+  milestoneKey: 'MS-1',
   name: 'MVP Launch',
   description: null,
   notes: null,
@@ -53,6 +54,7 @@ const emptyPage = {
 const makeRepo = () => ({
   findById: vi.fn().mockResolvedValue(mockMilestone()),
   listByProject: vi.fn().mockResolvedValue(emptyPage),
+  nextKeyNumber: vi.fn().mockResolvedValue(1),
   create: vi.fn().mockImplementation((input) => Promise.resolve(mockMilestone(input))),
   update: vi
     .fn()
@@ -190,19 +192,25 @@ describe('MilestonesService', () => {
       expect(repo.findById).toHaveBeenCalledTimes(1);
     });
 
-    it('sets null target dates when no releases linked', async () => {
-      // When no releases, recalcTargetDates still runs but the aggregate query
-      // returns empty array → dates become null
+    it('keeps manual target dates when no releases linked', async () => {
+      // No linked Release → dates are user-managed (SRS §2); the manual values
+      // reach repo.create and recalcTargetDates does not override them.
       await service.createMilestone(actor, 'proj-1', 'MVP', {
         releaseIds: [],
+        targetStartDate: '2024-05-01',
+        targetEndDate: '2024-12-31',
       });
 
       expect(repo.setReleaseLinks).not.toHaveBeenCalled();
-      // recalcTargetDates still runs (it always runs on create)
-      expect(db.select).toHaveBeenCalled();
+      expect(repo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          targetStartDate: '2024-05-01',
+          targetEndDate: '2024-12-31',
+        }),
+      );
     });
 
-    it('ignores manual target dates — always derives from releases', async () => {
+    it('persists manual dates to create and derives from releases when linked', async () => {
       const releaseIds = ['rel-1', 'rel-2'];
       db.select.mockReturnValue(makeChain([{ id: 'rel-1' }, { id: 'rel-2' }]));
 
@@ -212,14 +220,11 @@ describe('MilestonesService', () => {
         targetEndDate: '2024-12-31',
       });
 
-      // Manual dates should be ignored — repo.update should NOT be called
-      // with manual dates (recalcTargetDates uses db directly)
+      // Links are set and manual dates reach repo.create (persisted); the derived
+      // Release window then overrides them via recalcTargetDates.
       expect(repo.setReleaseLinks).toHaveBeenCalledWith(expect.any(String), releaseIds);
-      // The create input should NOT include manual dates (repo.create was called first)
       expect(repo.create).toHaveBeenCalledWith(
-        expect.not.objectContaining({
-          targetStartDate: '2024-05-01',
-        }),
+        expect.objectContaining({ targetStartDate: '2024-05-01' }),
       );
     });
 
@@ -288,7 +293,7 @@ describe('MilestonesService', () => {
       expect(db.select).toHaveBeenCalled();
     });
 
-    it('clears target dates via DB when releaseIds set to empty', async () => {
+    it('does not clear dates when releaseIds set to empty (they become manual)', async () => {
       repo.findById.mockResolvedValue(
         mockMilestone({
           targetStartDate: '2024-06-01',
@@ -301,16 +306,15 @@ describe('MilestonesService', () => {
       });
 
       expect(repo.setReleaseLinks).toHaveBeenCalledWith('ms-1', []);
-      // recalcTargetDates still runs (uses DB directly, not repo.deriveTargetDates)
+      // recalcTargetDates runs its aggregate SELECT but, with no linked Release,
+      // leaves the stored dates untouched (they are now user-managed).
       expect(db.select).toHaveBeenCalled();
     });
 
-    it('does not recalculate when releaseIds is not in the input', async () => {
+    it('does not change release links when releaseIds is not in the input', async () => {
       repo.findById.mockResolvedValue(mockMilestone());
 
       await service.updateMilestone(actor, 'ms-1', { name: 'Renamed' });
-      // recalcTargetDates not called, so no db.select for aggregate
-      // (db.select may still be called by computeProgress via getMilestone → fetchReleaseStats)
       expect(repo.setReleaseLinks).not.toHaveBeenCalled();
     });
 
@@ -329,26 +333,27 @@ describe('MilestonesService', () => {
       );
     });
 
-    it('strips targetStartDate/targetEndDate from input even when provided', async () => {
+    it('persists manual target dates on update when no releases linked', async () => {
       repo.findById.mockResolvedValue(mockMilestone());
-      repo.getReleaseIds.mockResolvedValue(['rel-1']);
+      repo.getReleaseIds.mockResolvedValue([]);
 
       await service.updateMilestone(actor, 'ms-1', {
         targetStartDate: '2024-03-01',
         targetEndDate: '2024-11-30',
       });
 
-      // repo.update should NOT receive target dates (they were deleted from input)
+      // No linked Release → dates are NOT stripped; they reach repo.update and
+      // recalcTargetDates (no-op when unlinked) leaves them in place.
       expect(repo.update).toHaveBeenCalledWith(
         'ms-1',
-        expect.not.objectContaining({
+        expect.objectContaining({
           targetStartDate: '2024-03-01',
           targetEndDate: '2024-11-30',
         }),
       );
     });
 
-    it('strips target dates even when releaseIds also change', async () => {
+    it('persists manual dates to repo but re-derives when releases linked', async () => {
       repo.findById.mockResolvedValue(mockMilestone());
       repo.getReleaseIds.mockResolvedValue(['rel-new']);
       db.select.mockReturnValue(makeChain([{ id: 'rel-new' }]));
@@ -359,13 +364,12 @@ describe('MilestonesService', () => {
         releaseIds: ['rel-new'],
       });
 
-      // setReleaseLinks called, recalcTargetDates runs via DB, but repo.update
-      // should NOT receive the manual target dates
+      // Manual dates are not stripped (reach repo.update); recalcTargetDates then
+      // overrides them with the derived Release window.
+      expect(repo.setReleaseLinks).toHaveBeenCalledWith('ms-1', ['rel-new']);
       expect(repo.update).toHaveBeenCalledWith(
         'ms-1',
-        expect.not.objectContaining({
-          targetStartDate: '2024-03-01',
-        }),
+        expect.objectContaining({ targetStartDate: '2024-03-01' }),
       );
     });
   });

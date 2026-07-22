@@ -5,6 +5,7 @@ export interface Milestone {
   id: string;
   workspaceId: string;
   projectId: string;
+  milestoneKey: string | null;
   name: string;
   description: string | null;
   notes: string | null;
@@ -24,11 +25,15 @@ export interface CreateMilestoneInput {
   id: string;
   workspaceId: string;
   projectId: string;
+  milestoneKey?: string | null;
   name: string;
   description?: string;
   notes?: string;
   status?: MilestoneStatus;
   ownerId?: string;
+  /** Manual target dates — persisted only while no Release is linked (SRS §2). */
+  targetStartDate?: string | null;
+  targetEndDate?: string | null;
   releaseIds?: string[];
   projectIds?: string[];
   teamIds?: string[];

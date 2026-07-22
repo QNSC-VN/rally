@@ -2,6 +2,7 @@ import type { CursorPayload, PagedResult, DbExecutor } from '@platform';
 import type {
   Project,
   ProjectWithStats,
+  ProjectHealth,
   CreateProjectInput,
   UpdateProjectInput,
 } from '../project.types';
@@ -22,6 +23,10 @@ export interface IProjectRepository {
     workspaceId: string,
     args: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<ProjectWithStats>>;
+  listHealthByWorkspace(
+    workspaceId: string,
+    args: { limit: number },
+  ): Promise<ProjectHealth[]>;
   create(input: CreateProjectInput, tx?: DbExecutor): Promise<Project>;
   update(
     id: string,
