@@ -1,16 +1,18 @@
 import { Injectable } from '@nestjs/common';
-import { and, count, desc, eq, lt } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, lt } from 'drizzle-orm';
 import { InjectDrizzle, buildPageResult } from '@platform';
 import type { DrizzleDB, DbExecutor, CursorPayload, PagedResult } from '@platform';
 import { workspaces, workspaceMembers } from '../../../../../../db/schema/workspace';
 import { users } from '../../../../../../db/schema/identity';
 import { systemRoles, userRoleAssignments } from '../../../../../../db/schema/access';
+import { teams, teamMembers } from '../../../../../../db/schema/work';
 import type {
   WorkspaceMember,
   WorkspaceMemberWithProfile,
   WorkspaceMembership,
   AddMemberInput,
   UpdateMemberInput,
+  MemberTeamSummary,
 } from '../../domain/workspace.types';
 import { IWorkspaceMemberRepository } from '../../domain/ports/workspace-member.repository';
 
@@ -126,6 +128,32 @@ export class WorkspaceMemberDrizzleRepository implements IWorkspaceMemberReposit
       .where(eq(workspaceMembers.workspaceId, workspaceId))
       .orderBy(workspaceMembers.joinedAt);
 
+    // Active team memberships per user (single grouped query, no N+1).
+    const teamsByUser: Record<string, MemberTeamSummary[]> = {};
+    if (rows.length > 0) {
+      const userIds = rows.map((r) => r.userId);
+      const teamRows = await this.db
+        .select({
+          userId: teamMembers.userId,
+          id: teams.id,
+          key: teams.key,
+          name: teams.name,
+        })
+        .from(teamMembers)
+        .innerJoin(teams, eq(teamMembers.teamId, teams.id))
+        .where(
+          and(
+            eq(teamMembers.workspaceId, workspaceId),
+            inArray(teamMembers.userId, userIds),
+            eq(teamMembers.status, 'active'),
+          ),
+        )
+        .orderBy(teams.name);
+      for (const tr of teamRows) {
+        (teamsByUser[tr.userId] ??= []).push({ id: tr.id, key: tr.key, name: tr.name });
+      }
+    }
+
     return rows.map((r) => ({
       id: r.id,
       workspaceId: r.workspaceId,
@@ -142,6 +170,7 @@ export class WorkspaceMemberDrizzleRepository implements IWorkspaceMemberReposit
       roleId: r.roleId ?? null,
       roleSlug: r.roleSlug ?? null,
       roleName: r.roleName ?? null,
+      teams: teamsByUser[r.userId] ?? [],
     }));
   }
 

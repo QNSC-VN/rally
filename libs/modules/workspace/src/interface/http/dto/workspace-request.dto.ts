@@ -42,6 +42,8 @@ export class AddMemberDto extends createZodDto(AddMemberSchema) {}
 export const UpdateMemberSchema = z.object({
   roleId: z.string().min(1).max(100).optional(),
   status: z.enum(workspaceMemberStatusEnum.enumValues).optional(),
+  // When supplied, replaces the user's full set of team memberships (SRS §6.3 / USER-FR-008).
+  teamIds: z.array(z.string().uuid()).optional(),
 });
 
 export class UpdateMemberDto extends createZodDto(UpdateMemberSchema) {}

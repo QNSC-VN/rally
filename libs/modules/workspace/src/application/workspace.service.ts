@@ -18,6 +18,10 @@ import {
 import type { JwtPayload, CursorPayload, PagedResult } from '@platform';
 import { IWorkspaceRepository, WORKSPACE_REPOSITORY } from '../domain/ports/workspace.repository';
 import {
+  ITeamMemberRepository,
+  TEAM_MEMBER_REPOSITORY,
+} from '../domain/ports/team-member.repository';
+import {
   IWorkspaceMemberRepository,
   WORKSPACE_MEMBER_REPOSITORY,
 } from '../domain/ports/workspace-member.repository';
@@ -48,6 +52,7 @@ export class WorkspaceService {
   constructor(
     @Inject(WORKSPACE_REPOSITORY) private readonly workspaceRepo: IWorkspaceRepository,
     @Inject(WORKSPACE_MEMBER_REPOSITORY) private readonly memberRepo: IWorkspaceMemberRepository,
+    @Inject(TEAM_MEMBER_REPOSITORY) private readonly teamMemberRepo: ITeamMemberRepository,
     @Inject(WORKSPACE_INVITATION_REPOSITORY)
     private readonly invitationRepo: IWorkspaceInvitationRepository,
     @Inject(WORKSPACE_SETTINGS_REPOSITORY)
@@ -306,7 +311,15 @@ export class WorkspaceService {
     }
 
     const updated = await this.uow.run(async (tx) => {
-      const next = await this.memberRepo.updateMember(memberId, input, tx);
+      // Member row only carries role/status; team memberships are reconciled separately.
+      const next = await this.memberRepo.updateMember(
+        memberId,
+        { roleId: input.roleId, status: input.status },
+        tx,
+      );
+      if (input.teamIds !== undefined) {
+        await this.teamMemberRepo.setTeamsForUser(workspaceId, member.userId, input.teamIds, tx);
+      }
       await this.audit.emit(
         {
           action: AUDIT_ACTION.WORKSPACE_MEMBER_UPDATED,
@@ -314,7 +327,7 @@ export class WorkspaceService {
           resourceId: memberId,
           workspaceId,
           actor: { id: actorId },
-          changes: { before: member, after: next },
+          changes: { before: member, after: { ...next, teamIds: input.teamIds } },
         },
         tx,
       );

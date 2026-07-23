@@ -108,9 +108,11 @@
     "expired": "Expired",
     "expires": "Expires {{date}}",
     "colMember": "Member",
+    "colUser": "User",
     "colEmail": "Email",
     "colPhone": "Phone",
     "colRole": "Role",
+    "colTeams": "Teams",
     "colLastLogin": "Last Login",
     "colJoined": "Joined",
     "noRole": "— no role —",
@@ -179,7 +181,12 @@
     "emptySearch": "No teams match your search",
     "empty": "No teams yet",
     "emptyDescription": "Create a team to group members and assign work items.",
-    "noLead": "No lead"
+    "noLead": "No lead",
+    "colKey": "Key",
+    "colTeam": "Team",
+    "colProject": "Project",
+    "colLead": "Lead",
+    "colUpdated": "Updated"
   },
   "audit": {
     "system": "System",

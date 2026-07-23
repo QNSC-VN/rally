@@ -19,7 +19,14 @@ import {
   IWorkspaceMemberRepository,
   WORKSPACE_MEMBER_REPOSITORY,
 } from '../domain/ports/workspace-member.repository';
-import type { Team, TeamMember, TeamWithStats, UpdateTeamInput } from '../domain/team.types';
+import type {
+  Team,
+  TeamMember,
+  TeamStatus,
+  TeamWithStats,
+  UpdateTeamInput,
+  TeamRelationsInput,
+} from '../domain/team.types';
 
 @Injectable()
 export class TeamService {
@@ -35,16 +42,54 @@ export class TeamService {
     private readonly audit: AuditProducer,
   ) {}
 
-  async listTeams(workspaceId: string): Promise<TeamWithStats[]> {
-    return this.teamRepo.listByWorkspaceWithStats(workspaceId);
+  async listTeams(workspaceId: string, includeInactive = false): Promise<TeamWithStats[]> {
+    return this.teamRepo.listByWorkspaceWithStats(workspaceId, includeInactive);
+  }
+
+  /**
+   * Validate that every id in `projectIds` is a project in this workspace.
+   * The "at least one project" create-form rule (SRS §2A / TEAM-FR-003) is
+   * enforced at the HTTP DTO boundary; the domain still permits an unlinked
+   * team (e.g. once every project is unlinked), so this only checks existence.
+   */
+  private async assertProjectsExist(workspaceId: string, projectIds: string[]): Promise<string[]> {
+    const unique = [...new Set(projectIds)];
+    if (unique.length === 0) return unique;
+    const found = await this.teamRepo.countProjectsInWorkspace(workspaceId, unique);
+    if (found !== unique.length) {
+      throw new PreconditionFailedException(
+        'PROJECT_NOT_FOUND',
+        'One or more selected projects do not exist in this workspace',
+      );
+    }
+    return unique;
+  }
+
+  /** Validate every member id is an active workspace member; returns the deduped set. */
+  private async assertMembers(workspaceId: string, memberUserIds: string[]): Promise<string[]> {
+    const unique = [...new Set(memberUserIds)];
+    for (const userId of unique) {
+      if (!(await this.workspaceMemberRepo.isMember(workspaceId, userId))) {
+        throw new PreconditionFailedException(
+          'TEAM_MEMBER_NOT_WORKSPACE_MEMBER',
+          'One or more selected members are not active members of this workspace',
+        );
+      }
+    }
+    return unique;
   }
 
   async createTeam(
     workspaceId: string,
-    name: string,
-    key: string,
-    description: string | undefined,
-    leadId: string | undefined,
+    input: {
+      name: string;
+      key: string;
+      description?: string;
+      leadId?: string;
+      status?: TeamStatus;
+      projectIds?: string[];
+      memberUserIds?: string[];
+    },
     actorId: string,
   ): Promise<Team> {
     const workspace = await this.workspaceRepo.findById(workspaceId);
@@ -52,13 +97,17 @@ export class TeamService {
       throw new NotFoundException('WORKSPACE_NOT_FOUND', 'Workspace not found');
     }
 
-    const existing = await this.teamRepo.findByKey(workspaceId, key.toUpperCase());
+    const key = input.key.toUpperCase();
+    const existing = await this.teamRepo.findByKey(workspaceId, key);
     if (existing) {
       throw new ConflictException(
         'TEAM_KEY_TAKEN',
-        `Team key "${key.toUpperCase()}" is already taken in this workspace`,
+        `Team key "${key}" is already taken in this workspace`,
       );
     }
+
+    const projectIds = await this.assertProjectsExist(workspaceId, input.projectIds ?? []);
+    const memberUserIds = await this.assertMembers(workspaceId, input.memberUserIds ?? []);
 
     const teamId = uuidv7();
     const team = await this.uow.run(async (tx) => {
@@ -66,13 +115,18 @@ export class TeamService {
         {
           id: teamId,
           workspaceId,
-          name,
-          key: key.toUpperCase(),
-          description,
-          leadId,
+          name: input.name,
+          key,
+          description: input.description,
+          leadId: input.leadId,
         },
         tx,
       );
+      if (input.status && input.status !== 'active') {
+        await this.teamRepo.update(teamId, { status: input.status }, tx);
+      }
+      await this.teamRepo.setProjectLinks(workspaceId, teamId, projectIds, tx);
+      await this.teamMemberRepo.setMembers(workspaceId, teamId, memberUserIds, tx);
       await this.audit.emit(
         {
           action: AUDIT_ACTION.TEAM_CREATED,
@@ -80,7 +134,7 @@ export class TeamService {
           resourceId: teamId,
           workspaceId,
           actor: { id: actorId },
-          changes: { after: { name, key: key.toUpperCase(), leadId } },
+          changes: { after: { name: input.name, key, leadId: input.leadId, projectIds } },
         },
         tx,
       );
@@ -103,7 +157,7 @@ export class TeamService {
 
   async updateTeam(
     id: string,
-    input: UpdateTeamInput,
+    input: UpdateTeamInput & TeamRelationsInput,
     workspaceId: string,
     actorId: string,
   ): Promise<Team> {
@@ -113,8 +167,33 @@ export class TeamService {
       throw new ConflictException('TEAM_ALREADY_ARCHIVED', 'Team is already archived');
     }
 
+    // Validate relations up-front (outside the tx) so a bad request fails fast.
+    const projectIds =
+      input.projectIds !== undefined
+        ? await this.assertProjectsExist(workspaceId, input.projectIds)
+        : undefined;
+    const memberUserIds =
+      input.memberUserIds !== undefined
+        ? await this.assertMembers(workspaceId, input.memberUserIds)
+        : undefined;
+
     return this.uow.run(async (tx) => {
-      const after = await this.teamRepo.update(id, input, tx);
+      const after = await this.teamRepo.update(
+        id,
+        {
+          name: input.name,
+          description: input.description,
+          leadId: input.leadId,
+          status: input.status,
+        },
+        tx,
+      );
+      if (projectIds !== undefined) {
+        await this.teamRepo.setProjectLinks(workspaceId, id, projectIds, tx);
+      }
+      if (memberUserIds !== undefined) {
+        await this.teamMemberRepo.setMembers(workspaceId, id, memberUserIds, tx);
+      }
       await this.audit.emit(
         {
           action: AUDIT_ACTION.TEAM_UPDATED,
@@ -122,7 +201,7 @@ export class TeamService {
           resourceId: id,
           workspaceId,
           actor: { id: actorId },
-          changes: { before: team, after },
+          changes: { before: team, after: { ...after, projectIds, memberUserIds } },
         },
         tx,
       );

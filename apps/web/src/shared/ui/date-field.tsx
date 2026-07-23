@@ -23,6 +23,8 @@ import { Calendar } from '@/shared/ui/calendar'
 import { BRAND } from '@/shared/config/brand'
 import { cn } from '@/shared/lib/utils'
 import { registerOpenPopover, unregisterOpenPopover } from '@/shared/ui/popover-coordinator'
+import { AppPopoverContent } from '@/shared/ui/app-popover'
+import { FIELD_FOCUS_VISIBLE } from '@/shared/ui/field-focus'
 
 /** Render an ISO date-only / timestamp string as `yyyy-MM-dd` (Rally's format). */
 function toIsoLabel(value: string | null | undefined, placeholder: string): string {
@@ -62,9 +64,7 @@ export function DateField({
   const label = toIsoLabel(value, placeholder)
 
   if (readOnly || !onChange) {
-    return (
-      <span className={cn('font-mono text-ui-sm text-foreground', className)}>{label}</span>
-    )
+    return <span className={cn('font-mono text-ui-sm text-foreground', className)}>{label}</span>
   }
 
   const hasValue = !!value
@@ -85,7 +85,7 @@ export function DateField({
           className={cn(
             'group w-full text-left text-foreground',
             variant === 'field'
-              ? 'rounded border border-input bg-white px-3 py-2 text-ui-md transition-colors hover:border-ring focus:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50'
+              ? `rounded border border-input bg-white px-3 py-2 text-ui-md transition-colors hover:border-accent-border-active focus:outline-none ${FIELD_FOCUS_VISIBLE}`
               : 'inline-edit-cell text-ui-sm',
             className,
           )}
@@ -106,36 +106,34 @@ export function DateField({
           </span>
         </button>
       </PopoverPrimitive.Trigger>
-      <PopoverPrimitive.Portal>
-        <PopoverPrimitive.Content
-          align="start"
-          sideOffset={4}
-          className="z-50 rounded-md border border-border bg-card shadow-lg"
-          style={{ backgroundColor: BRAND.surface }}
-        >
-          <Calendar
-            value={value}
-            onSelect={(iso) => {
-              onChange(iso)
-              setOpen(false)
-            }}
-          />
-          {hasValue && (
-            <div className="flex justify-end border-t border-border-subtle px-2 py-1.5">
-              <button
-                type="button"
-                onClick={() => {
-                  onChange(null)
-                  setOpen(false)
-                }}
-                className="rounded px-2 py-0.5 text-ui-sm font-medium text-muted-foreground hover:bg-surface-hover"
-              >
-                Clear
-              </button>
-            </div>
-          )}
-        </PopoverPrimitive.Content>
-      </PopoverPrimitive.Portal>
+      <AppPopoverContent
+        align="start"
+        sideOffset={4}
+        className="z-50 rounded-md border border-border bg-card shadow-lg"
+        style={{ backgroundColor: BRAND.surface }}
+      >
+        <Calendar
+          value={value}
+          onSelect={(iso) => {
+            onChange(iso)
+            setOpen(false)
+          }}
+        />
+        {hasValue && (
+          <div className="flex justify-end border-t border-border-subtle px-2 py-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                onChange(null)
+                setOpen(false)
+              }}
+              className="rounded px-2 py-0.5 text-ui-sm font-medium text-muted-foreground hover:bg-surface-hover"
+            >
+              Clear
+            </button>
+          </div>
+        )}
+      </AppPopoverContent>
     </PopoverPrimitive.Root>
   )
 }

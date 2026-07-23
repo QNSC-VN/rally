@@ -85,10 +85,12 @@ describe('BA flows: Company → Project → Team foundation (real AppModule + se
       const key = uniqueKey('T');
       const team = await teams.createTeam(
         actor.workspaceId,
-        'Platform Team',
-        key.toLowerCase(),
-        'Owns the platform',
-        ADMIN_USER_ID,
+        {
+          name: 'Platform Team',
+          key: key.toLowerCase(),
+          description: 'Owns the platform',
+          leadId: ADMIN_USER_ID,
+        },
         ADMIN_USER_ID,
       );
 
@@ -102,23 +104,9 @@ describe('BA flows: Company → Project → Team foundation (real AppModule + se
 
     it('rejects a duplicate team key with TEAM_KEY_TAKEN', async () => {
       const key = uniqueKey('T');
-      await teams.createTeam(
-        actor.workspaceId,
-        'First Team',
-        key,
-        undefined,
-        undefined,
-        ADMIN_USER_ID,
-      );
+      await teams.createTeam(actor.workspaceId, { name: 'First Team', key }, ADMIN_USER_ID);
       await expect(
-        teams.createTeam(
-          actor.workspaceId,
-          'Second Team',
-          key,
-          undefined,
-          undefined,
-          ADMIN_USER_ID,
-        ),
+        teams.createTeam(actor.workspaceId, { name: 'Second Team', key }, ADMIN_USER_ID),
       ).rejects.toMatchObject({ code: 'TEAM_KEY_TAKEN' });
     });
   });
@@ -132,10 +120,7 @@ describe('BA flows: Company → Project → Team foundation (real AppModule + se
       });
       const team = await teams.createTeam(
         actor.workspaceId,
-        'Delivery Team',
-        uniqueKey('T'),
-        undefined,
-        undefined,
+        { name: 'Delivery Team', key: uniqueKey('T') },
         ADMIN_USER_ID,
       );
 

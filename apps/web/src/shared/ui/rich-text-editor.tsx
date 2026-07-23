@@ -21,6 +21,7 @@
  *   uploading it and rewriting the src to a durable URL before persisting.
  */
 import { BRAND } from '@/shared/config/brand'
+import { FIELD_FOCUS_ACTIVE } from '@/shared/ui/field-focus'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { EditorContent, useEditor, type Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
@@ -216,7 +217,7 @@ function Toolbar({
 
   return (
     <div
-      className="flex flex-wrap items-center gap-0.5 overflow-x-auto border-b border-border-strong bg-card px-2 py-1.5"
+      className="flex flex-wrap items-center gap-0.5 overflow-x-auto bg-card px-2 py-1.5"
       style={{ flexShrink: 0 }}
     >
       <ToolButton
@@ -499,11 +500,19 @@ export function RichTextEditor({
 
       {/* Editor box — one border wrapping toolbar + content, no inner divider. */}
       <section
-        className="flex min-h-0 flex-1 flex-col overflow-hidden rounded bg-card transition-[border-color]"
-        style={{ border: focused ? '1px solid var(--ring)' : `1px solid ${BRAND.border}` }}
+        // Same border + focus treatment as Input / SearchableSelect / DateField:
+        // rest on `border-input`; on focus, `border-ring` + a 3px `ring-ring/50`
+        // halo — so every form control looks identical when clicked/active.
+        className={`flex min-h-0 flex-1 flex-col overflow-hidden rounded border bg-card transition-[color,box-shadow] ${
+          focused ? FIELD_FOCUS_ACTIVE : 'border-input'
+        }`}
       >
         {!readOnly && (
-          <Toolbar editor={editor} expanded={expanded} onToggleExpand={() => setExpanded((v) => !v)} />
+          <Toolbar
+            editor={editor}
+            expanded={expanded}
+            onToggleExpand={() => setExpanded((v) => !v)}
+          />
         )}
 
         {/* Content area */}

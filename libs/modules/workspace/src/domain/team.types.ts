@@ -13,8 +13,17 @@ export interface Team {
   updatedAt: Date;
 }
 
+/** A project this team is actively linked to (via project_teams). */
+export interface TeamProjectLink {
+  projectId: string;
+  key: string;
+  name: string;
+}
+
 export interface TeamWithStats extends Team {
   memberCount: number;
+  /** Active project links, oldest-first — the first is treated as "primary" in the list column. */
+  projects: TeamProjectLink[];
 }
 
 export interface TeamMember {
@@ -40,4 +49,12 @@ export interface UpdateTeamInput {
   description?: string | null;
   leadId?: string | null;
   status?: TeamStatus;
+}
+
+/** Relations that create/update can set atomically alongside the team row. */
+export interface TeamRelationsInput {
+  /** Full set of project ids the team should be linked to (reconciled). */
+  projectIds?: string[];
+  /** Full set of user ids that should be members (reconciled). */
+  memberUserIds?: string[];
 }

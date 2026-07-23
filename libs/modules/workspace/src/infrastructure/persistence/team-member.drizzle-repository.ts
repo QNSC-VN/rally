@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, notInArray } from 'drizzle-orm';
+import { uuidv7 } from 'uuidv7';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB, DbExecutor } from '@platform';
 import { teamMembers } from '../../../../../../db/schema/work';
@@ -60,5 +61,83 @@ export class TeamMemberDrizzleRepository implements ITeamMemberRepository {
       .update(teamMembers)
       .set({ status: 'removed' })
       .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId)));
+  }
+
+  async setMembers(
+    workspaceId: string,
+    teamId: string,
+    userIds: string[],
+    tx: DbExecutor,
+  ): Promise<void> {
+    // Mark any active member not in the desired set as removed.
+    await tx
+      .update(teamMembers)
+      .set({ status: 'removed' })
+      .where(
+        userIds.length > 0
+          ? and(
+              eq(teamMembers.teamId, teamId),
+              eq(teamMembers.status, 'active'),
+              notInArray(teamMembers.userId, userIds),
+            )
+          : and(eq(teamMembers.teamId, teamId), eq(teamMembers.status, 'active')),
+      );
+
+    // Upsert each desired member to active (reactivates a previously-removed row).
+    for (const userId of userIds) {
+      await tx
+        .insert(teamMembers)
+        .values({
+          id: uuidv7(),
+          workspaceId,
+          teamId,
+          userId,
+          status: 'active',
+          joinedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: [teamMembers.teamId, teamMembers.userId],
+          set: { status: 'active' },
+        });
+    }
+  }
+
+  async setTeamsForUser(
+    workspaceId: string,
+    userId: string,
+    teamIds: string[],
+    tx: DbExecutor,
+  ): Promise<void> {
+    // Remove the user from any active team not in the desired set.
+    await tx
+      .update(teamMembers)
+      .set({ status: 'removed' })
+      .where(
+        teamIds.length > 0
+          ? and(
+              eq(teamMembers.userId, userId),
+              eq(teamMembers.status, 'active'),
+              notInArray(teamMembers.teamId, teamIds),
+            )
+          : and(eq(teamMembers.userId, userId), eq(teamMembers.status, 'active')),
+      );
+
+    // Upsert the user into each desired team (reactivates a previously-removed row).
+    for (const teamId of teamIds) {
+      await tx
+        .insert(teamMembers)
+        .values({
+          id: uuidv7(),
+          workspaceId,
+          teamId,
+          userId,
+          status: 'active',
+          joinedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: [teamMembers.teamId, teamMembers.userId],
+          set: { status: 'active' },
+        });
+    }
   }
 }

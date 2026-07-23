@@ -9,42 +9,49 @@ import { Loader2, Mail, UserPlus, X } from 'lucide-react'
 import { BRAND } from '@/shared/config/brand'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
-import type { components } from '@/shared/api/generated/api'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
-import { useWorkspaceMembers } from '@/features/workspaces/api'
-import { useClientPagination } from '@/shared/lib/hooks/use-client-pagination'
+import {
+  useWorkspaceMembers,
+  useUpdateMember,
+  type WorkspaceMember,
+} from '@/features/workspaces/api'
+import { useWorkspaceTeams } from '@/features/teams/api'
 import { notify } from '@/shared/lib/toast'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
-import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { IconButton } from '@/shared/ui/icon-button'
-import { Card, CardHeader, CardBody } from '@/shared/ui/card'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { SearchInput } from '@/shared/ui/search-input'
-import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { StatusBadge } from '@/shared/ui/status-badge'
 import type { StatusStyle } from '@/shared/config/status-colors'
 import { OwnerAvatar } from '@/shared/ui/owner-cell'
+import { MetricStrip } from '@/shared/ui/metric-strip'
+import { MetricCard } from '@/shared/ui/metric-card'
 import { formatDate, formatDateTime } from '@/shared/lib/utils'
 import { useSystemRoles } from '../model/use-system-roles'
 
 type InviteForm = { email: string; roleId: string }
+type MemberStatus = 'active' | 'suspended' | 'removed'
 
-type MemberWithProfile = components['schemas']['MemberWithProfileResponseDto']
+const sameSet = (a: string[], b: string[]) =>
+  a.length === b.length && [...a].sort().join() === [...b].sort().join()
 
 export function MembersTab() {
   const { t } = useTranslation('settings')
   const qc = useQueryClient()
   const { user } = useAuthStore()
   const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
-  const [showInvitePanel, setShowInvitePanel] = useState(false)
-  const [selectedMember, setSelectedMember] = useState<MemberWithProfile | null>(null)
+  const [showInviteModal, setShowInviteModal] = useState(false)
+  const [selectedMember, setSelectedMember] = useState<WorkspaceMember | null>(null)
   const [search, setSearch] = useState('')
+  const [roleFilter, setRoleFilter] = useState('') // '' = all
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended'>('all')
 
   const { data: members = [], isLoading: membersLoading } = useWorkspaceMembers(workspaceId)
+  const { data: roles = [] } = useSystemRoles()
 
   const { data: invitations = [] } = useQuery({
     queryKey: ['workspace-invitations', workspaceId],
@@ -58,34 +65,6 @@ export function MembersTab() {
     enabled: !!workspaceId,
   })
 
-  const { data: roles = [] } = useSystemRoles()
-
-  const changeRole = useMutation({
-    mutationFn: async ({
-      userId,
-      oldAssignmentId,
-      newRoleId,
-    }: {
-      userId: string
-      oldAssignmentId: string | null
-      newRoleId: string
-    }) => {
-      if (oldAssignmentId) {
-        await apiClient.DELETE('/v1/role-assignments/{id}', {
-          params: { path: { id: oldAssignmentId } },
-        })
-      }
-      await apiClient.POST('/v1/role-assignments', {
-        body: { userId, roleId: newRoleId, scopeType: 'workspace' },
-      })
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['workspace-members-profile', workspaceId] })
-      notify.success(t('members.roleUpdated'))
-    },
-    onError: (err) => notify.error(apiErrorMessage(err)),
-  })
-
   const cancelInvite = useMutation({
     mutationFn: async (invitationId: string) => {
       if (!workspaceId) return
@@ -94,39 +73,31 @@ export function MembersTab() {
       })
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['workspace-invitations', workspaceId] })
+      void qc.invalidateQueries({ queryKey: ['workspace-invitations', workspaceId] })
       notify.success(t('members.inviteCancelled'))
     },
     onError: (err) => notify.error(apiErrorMessage(err)),
   })
 
-  const removeMember = useMutation({
-    mutationFn: async (userId: string) => {
-      if (!workspaceId) return
-      await apiClient.DELETE('/v1/workspaces/{id}/members/{userId}', {
-        params: { path: { id: workspaceId, userId } },
-      })
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['workspace-members-profile', workspaceId] })
-      setSelectedMember(null)
-      notify.success(t('members.memberRemoved'))
-    },
-    onError: (err) => notify.error(apiErrorMessage(err)),
-  })
+  const metrics = useMemo(() => {
+    const active = members.filter((m) => m.status === 'active').length
+    const admins = members.filter((m) => m.roleSlug === 'workspace_admin').length
+    return { total: members.length, active, admins }
+  }, [members])
 
   const filteredMembers = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return members
-    return members.filter(
-      (m) =>
+    return members.filter((m) => {
+      if (statusFilter !== 'all' && m.status !== statusFilter) return false
+      if (roleFilter && m.roleId !== roleFilter) return false
+      if (!q) return true
+      return (
         m.displayName?.toLowerCase().includes(q) ||
         m.email?.toLowerCase().includes(q) ||
-        m.phone?.toLowerCase().includes(q),
-    )
-  }, [members, search])
-
-  const { pageItems: pagedMembers, footerProps } = useClientPagination(filteredMembers, 25)
+        m.roleName?.toLowerCase().includes(q)
+      )
+    })
+  }, [members, search, roleFilter, statusFilter])
 
   if (!workspaceId) {
     return <p className="text-ui-lg text-foreground-subtle">{t('members.noWorkspace')}</p>
@@ -142,193 +113,172 @@ export function MembersTab() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* ── Header row: count + search + invite button ── */}
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-ui-md text-foreground-subtle">
-          {t('members.memberCount', { count: members.length })}
-          {invitations.length > 0 && (
-            <span className="ml-2 text-warning">
-              {t('members.pendingInvites', { count: invitations.length })}
-            </span>
-          )}
-        </p>
-        <div className="flex items-center gap-3">
-          <SearchInput
-            value={search}
-            onChange={setSearch}
-            placeholder="Search members…"
-            width={224}
+    <div className="flex flex-col gap-5">
+      {/* Metric strip — Total / Active / Admins (SRS §6.1) */}
+      <MetricStrip className="rounded-lg border">
+        <MetricCard label="Total Users" value={metrics.total} />
+        <MetricCard label="Active" value={metrics.active} valueColor={BRAND.success} />
+        <MetricCard label="Admins" value={metrics.admins} />
+      </MetricStrip>
+
+      {/* Toolbar: search + role + status + invite */}
+      <div className="flex flex-wrap items-center gap-3">
+        <SearchInput value={search} onChange={setSearch} placeholder="Search users…" width={224} />
+        <div className="w-48">
+          <SearchableSelect
+            variant="field"
+            value={roleFilter}
+            ariaLabel="Filter by role"
+            placeholder="All roles"
+            options={[
+              { value: '', label: 'All roles' },
+              ...roles.map((r) => ({ value: r.id, label: r.name })),
+            ]}
+            onChange={(v) => setRoleFilter(v as string)}
           />
-          <Button size="sm" onClick={() => setShowInvitePanel((v) => !v)}>
-            <UserPlus size={13} />
-            {t('members.invite')}
-          </Button>
         </div>
+        <div className="w-40">
+          <SearchableSelect
+            variant="field"
+            value={statusFilter}
+            ariaLabel="Filter by status"
+            options={[
+              { value: 'all', label: 'All statuses' },
+              { value: 'active', label: 'Active' },
+              { value: 'suspended', label: 'Deactive' },
+            ]}
+            onChange={(v) => setStatusFilter(v as 'all' | 'active' | 'suspended')}
+          />
+        </div>
+        <Button size="sm" className="ml-auto" onClick={() => setShowInviteModal(true)}>
+          <UserPlus size={13} /> {t('members.invite')}
+        </Button>
       </div>
 
-      {/* ── Invite panel ── */}
-      {showInvitePanel && (
-        <InvitePanel
+      {showInviteModal && (
+        <InviteUserModal
           workspaceId={workspaceId}
           roles={roles}
-          onClose={() => setShowInvitePanel(false)}
+          onClose={() => setShowInviteModal(false)}
           onSuccess={() => {
-            setShowInvitePanel(false)
-            qc.invalidateQueries({ queryKey: ['workspace-invitations', workspaceId] })
+            setShowInviteModal(false)
+            void qc.invalidateQueries({ queryKey: ['workspace-invitations', workspaceId] })
           }}
         />
       )}
 
-      {/* ── Pending invitations ── */}
-      {invitations.length > 0 && (
-        <section>
-          <h4 className="mb-2 text-ui-sm font-semibold tracking-wide text-foreground-subtle uppercase">
-            {t('members.pendingInvitations')}
-          </h4>
-          <div className="overflow-hidden rounded-md border">
-            {invitations.map(
-              (inv: { id: string; email: string; roleId: string | null; expiresAt: string }) => {
-                const roleLabel = roles.find((r) => r.id === inv.roleId)?.name ?? '—'
-                const expired = new Date(inv.expiresAt) < new Date()
-                return (
-                  <div
-                    key={inv.id}
-                    className={`flex items-center gap-3 border-b border-border-subtle px-4 py-3 text-ui-lg last:border-0 ${
-                      expired ? 'bg-destructive-bg' : ''
-                    }`}
-                  >
-                    <Mail size={14} className="shrink-0 text-foreground-subtle" />
-                    <div className="min-w-0 flex-1">
-                      <span className="text-foreground">{inv.email}</span>
-                      <span className="ml-2 text-ui-sm text-foreground-subtle">
-                        {t('members.asRole')} {roleLabel}
-                      </span>
-                    </div>
-                    <span
-                      className={`shrink-0 text-ui-sm ${expired ? 'text-destructive' : 'text-foreground-subtle'}`}
-                    >
-                      {expired
-                        ? t('members.expired')
-                        : t('members.expires', { date: formatDate(inv.expiresAt) })}
-                    </span>
-                    <IconButton
-                      size="sm"
-                      aria-label="Cancel invitation"
-                      title="Cancel invitation"
-                      onClick={() => cancelInvite.mutate(inv.id)}
-                      disabled={cancelInvite.isPending}
-                    >
-                      <X size={13} />
-                    </IconButton>
-                  </div>
-                )
-              },
-            )}
-          </div>
-        </section>
-      )}
-
-      {/* ── Members table ── */}
-      <table className="w-full border-collapse text-ui-lg">
-        <thead>
-          <tr className="border-b border-border-strong">
-            {[
-              t('members.colMember'),
-              t('members.colEmail'),
-              t('members.colPhone'),
-              t('members.colRole'),
-              t('common:status'),
-              t('members.colLastLogin'),
-              t('members.colJoined'),
-            ].map((h) => (
-              <th
-                key={h}
-                className="pb-2 text-left text-ui-sm font-semibold tracking-wide text-foreground-subtle uppercase"
-              >
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {pagedMembers.map((m) => {
-            const isCurrentUser = m.userId === user?.id
-            return (
-              <tr key={m.id} className="border-b border-border-subtle hover:bg-surface-hover">
-                <td className="py-3 pr-4">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedMember(m)}
-                    className="flex items-center gap-2 text-left hover:underline"
-                  >
-                    <OwnerAvatar name={m.displayName} avatarUrl={m.avatarUrl} size={28} />
-                    <span className="text-foreground">
-                      {m.displayName}
-                      {isCurrentUser && (
-                        <span className="ml-2 rounded bg-primary-lighter px-1 py-0.5 text-ui-xs text-primary">
-                          {t('members.you')}
-                        </span>
-                      )}
-                    </span>
-                  </button>
-                </td>
-                <td className="py-3 pr-4 text-muted-foreground">{m.email}</td>
-                <td className="py-3 pr-4 text-muted-foreground">{m.phone || '—'}</td>
-                <td className="py-3 pr-4">
-                  <SearchableSelect
-                    variant="field"
-                    className="w-auto min-w-[9rem]"
-                    value={m.roleId ?? ''}
-                    readOnly={isCurrentUser || changeRole.isPending}
-                    ariaLabel={`Role for ${m.displayName}`}
-                    options={[
-                      ...(!m.roleId ? [{ value: '', label: t('members.noRole') }] : []),
-                      ...roles.map((r) => ({ value: r.id, label: r.name })),
-                    ]}
-                    onChange={(v) =>
-                      changeRole.mutate({
-                        userId: m.userId,
-                        oldAssignmentId: m.roleAssignmentId,
-                        newRoleId: v,
-                      })
-                    }
-                  />
-                </td>
-                <td className="py-3 pr-4">
-                  <MemberStatusBadge status={m.status} />
-                </td>
-                <td className="py-3 pr-4 text-foreground-subtle">
-                  {formatDate(m.lastLoginAt, t('members.never'))}
-                </td>
-                <td className="py-3 text-foreground-subtle">{formatDate(m.joinedAt)}</td>
-              </tr>
-            )
-          })}
-          {filteredMembers.length === 0 && (
-            <tr>
-              <td colSpan={7} className="py-8 text-center text-ui-lg text-foreground-subtle">
-                {search.trim() ? t('members.noMembersSearch') : t('members.noMembers')}
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-
-      {filteredMembers.length > 0 && (
-        <div className="mt-3 overflow-hidden rounded-lg border">
-          <PaginationFooter {...footerProps} />
+      {/* Unified users list (SRS §6.2): User, Email, Role, Status, Teams, Last Login. */}
+      <div className="overflow-hidden rounded-lg border">
+        <div className="flex items-center gap-4 border-b bg-surface-subtle px-4 py-2 text-ui-sm font-semibold tracking-wide text-foreground-subtle uppercase">
+          <div className="min-w-0 flex-1">{t('members.colUser')}</div>
+          <div className="hidden w-56 shrink-0 md:block">{t('members.colEmail')}</div>
+          <div className="w-32 shrink-0">{t('members.colRole')}</div>
+          <div className="w-24 shrink-0">{t('common:status')}</div>
+          <div className="hidden w-40 shrink-0 lg:block">{t('members.colTeams')}</div>
+          <div className="hidden w-28 shrink-0 xl:block">{t('members.colLastLogin')}</div>
+          <div className="w-8 shrink-0" />
         </div>
-      )}
 
-      {selectedMember && (
-        <UserDetailModal
+        {/* Pending invitations render as Invited rows in the same list. */}
+        {invitations.map(
+          (inv: { id: string; email: string; roleId: string | null; expiresAt: string }) => {
+            const roleLabel = roles.find((r) => r.id === inv.roleId)?.name ?? '—'
+            return (
+              <div
+                key={`inv-${inv.id}`}
+                className="flex items-center gap-4 border-t px-4 py-3 first:border-t-0"
+              >
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  <Mail size={16} className="shrink-0 text-foreground-subtle" />
+                  <span className="truncate text-ui-lg text-foreground-subtle">{inv.email}</span>
+                </div>
+                <div className="hidden w-56 shrink-0 truncate text-ui-md text-muted-foreground md:block">
+                  {inv.email}
+                </div>
+                <div className="w-32 shrink-0 truncate text-ui-md text-muted-foreground">
+                  {roleLabel}
+                </div>
+                <div className="w-24 shrink-0">
+                  <MemberStatusBadge status="invited" />
+                </div>
+                <div className="hidden w-40 shrink-0 text-ui-md text-foreground-disabled lg:block">
+                  —
+                </div>
+                <div className="hidden w-28 shrink-0 text-ui-md text-foreground-disabled xl:block">
+                  —
+                </div>
+                <div className="w-8 shrink-0">
+                  <IconButton
+                    size="sm"
+                    aria-label="Cancel invitation"
+                    title="Cancel invitation"
+                    onClick={() => cancelInvite.mutate(inv.id)}
+                    disabled={cancelInvite.isPending}
+                  >
+                    <X size={13} />
+                  </IconButton>
+                </div>
+              </div>
+            )
+          },
+        )}
+
+        {filteredMembers.map((m) => {
+          const isCurrentUser = m.userId === user?.id
+          const teams = m.teams ?? []
+          return (
+            <button
+              key={m.id}
+              onClick={() => setSelectedMember(m)}
+              className="flex w-full items-center gap-4 border-t px-4 py-3 text-left transition-colors first:border-t-0 hover:bg-surface-hover"
+            >
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <OwnerAvatar name={m.displayName} avatarUrl={m.avatarUrl} size={28} />
+                <span className="truncate text-ui-lg text-foreground">
+                  {m.displayName}
+                  {isCurrentUser && (
+                    <span className="ml-2 rounded bg-primary-lighter px-1 py-0.5 text-ui-xs text-primary">
+                      {t('members.you')}
+                    </span>
+                  )}
+                </span>
+              </div>
+              <div className="hidden w-56 shrink-0 truncate text-ui-md text-muted-foreground md:block">
+                {m.email}
+              </div>
+              <div className="w-32 shrink-0 truncate text-ui-md text-muted-foreground">
+                {m.roleName ?? '—'}
+              </div>
+              <div className="w-24 shrink-0">
+                <MemberStatusBadge status={m.status} />
+              </div>
+              <div className="hidden w-40 shrink-0 truncate text-ui-md text-muted-foreground lg:block">
+                {teams.length > 0 ? teams.map((tm) => tm.name).join(', ') : '—'}
+              </div>
+              <div className="hidden w-28 shrink-0 text-ui-md text-foreground-subtle xl:block">
+                {formatDate(m.lastLoginAt, t('members.never'))}
+              </div>
+              <div className="w-8 shrink-0" />
+            </button>
+          )
+        })}
+
+        {filteredMembers.length === 0 && invitations.length === 0 && (
+          <div className="py-10 text-center text-ui-lg text-foreground-subtle">
+            {search.trim() || roleFilter || statusFilter !== 'all'
+              ? t('members.noMembersSearch')
+              : t('members.noMembers')}
+          </div>
+        )}
+      </div>
+
+      {selectedMember && workspaceId && (
+        <EditUserModal
+          workspaceId={workspaceId}
           member={selectedMember}
           roles={roles}
           isCurrentUser={selectedMember.userId === user?.id}
           onClose={() => setSelectedMember(null)}
-          onRemove={() => removeMember.mutate(selectedMember.userId)}
-          isRemoving={removeMember.isPending}
         />
       )}
     </div>
@@ -353,9 +303,9 @@ function MemberStatusBadge({ status }: { status: string }) {
     },
     suspended: {
       label: 'Deactive',
-      text: BRAND.danger,
-      bg: BRAND.dangerBg,
-      border: BRAND.dangerBorder,
+      text: BRAND.textSecondary,
+      bg: BRAND.surfaceSubtle,
+      border: BRAND.border,
     },
   }
   const style = map[status] ?? {
@@ -364,35 +314,75 @@ function MemberStatusBadge({ status }: { status: string }) {
     bg: BRAND.surfaceSubtle,
     border: BRAND.border,
   }
-  return <StatusBadge style={style} className="capitalize" />
+  return <StatusBadge style={style} />
 }
 
-// ── User detail modal ─────────────────────────────────────────────────────────
+// ── Edit user modal (editable: role, status, teams) ─────────────────────────────
 
-function UserDetailModal({
+function EditUserModal({
+  workspaceId,
   member,
   roles,
   isCurrentUser,
   onClose,
-  onRemove,
-  isRemoving,
 }: {
-  member: MemberWithProfile
-  roles: { id: string; name: string }[]
+  workspaceId: string
+  member: WorkspaceMember
+  roles: { id: string; name: string; slug?: string }[]
   isCurrentUser: boolean
   onClose: () => void
-  onRemove: () => void
-  isRemoving: boolean
 }) {
   const { t } = useTranslation('settings')
-  const [confirmRemove, setConfirmRemove] = useState(false)
-  const roleName = roles.find((r) => r.id === member.roleId)?.name ?? member.roleName ?? '—'
-  const isWorkspaceAdmin = member.roleSlug === 'workspace_admin'
-  const canRemove = !isCurrentUser && !isWorkspaceAdmin
+  const qc = useQueryClient()
+  const { data: teams = [] } = useWorkspaceTeams(workspaceId)
+  const updateMember = useUpdateMember(workspaceId)
+
+  const initialTeamIds = useMemo(() => (member.teams ?? []).map((tm) => tm.id), [member.teams])
+  const [roleId, setRoleId] = useState(member.roleId ?? '')
+  const [status, setStatus] = useState<MemberStatus>(member.status as MemberStatus)
+  const [teamIds, setTeamIds] = useState<string[]>(initialTeamIds)
+  const [saving, setSaving] = useState(false)
+
+  const changeRole = useMutation({
+    mutationFn: async (newRoleId: string) => {
+      if (member.roleAssignmentId) {
+        await apiClient.DELETE('/v1/role-assignments/{id}', {
+          params: { path: { id: member.roleAssignmentId } },
+        })
+      }
+      await apiClient.POST('/v1/role-assignments', {
+        body: { userId: member.userId, roleId: newRoleId, scopeType: 'workspace' },
+      })
+    },
+  })
+
+  async function handleSave() {
+    setSaving(true)
+    try {
+      if (roleId && roleId !== (member.roleId ?? '')) {
+        await changeRole.mutateAsync(roleId)
+      }
+      const statusChanged = status !== member.status
+      const teamsChanged = !sameSet(teamIds, initialTeamIds)
+      if (statusChanged || teamsChanged) {
+        await updateMember.mutateAsync({
+          memberId: member.id,
+          ...(statusChanged ? { status } : {}),
+          ...(teamsChanged ? { teamIds } : {}),
+        })
+      }
+      void qc.invalidateQueries({ queryKey: ['workspace-members-profile', workspaceId] })
+      notify.success('User updated')
+      onClose()
+    } catch (err) {
+      notify.fromError(err, 'Failed to update user')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
-    <>
-    <AppModal open onClose={onClose} title={t('members.detailTitle')} width={440}>
+    <AppModal open onClose={onClose} title="Edit User" width={460}>
       <ModalBody className="space-y-4">
         <div className="flex items-center gap-3">
           <OwnerAvatar name={member.displayName} avatarUrl={member.avatarUrl} size={44} />
@@ -404,15 +394,52 @@ function UserDetailModal({
           </div>
         </div>
 
-        <dl className="grid grid-cols-[110px_1fr] gap-x-3 gap-y-2 text-ui-lg">
-          <dt className="text-foreground-subtle">{t('members.detailPhone')}</dt>
-          <dd className="text-foreground">{member.phone || '—'}</dd>
-          <dt className="text-foreground-subtle">{t('members.detailRole')}</dt>
-          <dd className="text-foreground">{roleName}</dd>
-          <dt className="text-foreground-subtle">{t('common:status')}</dt>
-          <dd>
-            <MemberStatusBadge status={member.status} />
-          </dd>
+        <FormField label="Workspace Role">
+          <SearchableSelect
+            variant="field"
+            value={roleId}
+            ariaLabel="Workspace role"
+            placeholder="Select a role"
+            options={roles.map((r) => ({ value: r.id, label: r.name }))}
+            onChange={(v) => setRoleId(v as string)}
+          />
+        </FormField>
+
+        <FormField
+          label="Status"
+          hint={isCurrentUser ? 'You cannot change your own status' : undefined}
+        >
+          <SearchableSelect
+            variant="field"
+            value={status}
+            readOnly={isCurrentUser}
+            ariaLabel="Status"
+            options={[
+              { value: 'active', label: 'Active' },
+              { value: 'suspended', label: 'Deactive' },
+            ]}
+            onChange={(v) => setStatus(v as MemberStatus)}
+          />
+        </FormField>
+
+        <FormField label="Teams" hint="Project access is derived from team membership">
+          <SearchableSelect
+            variant="field"
+            multiple
+            value={teamIds}
+            ariaLabel="Teams"
+            placeholder="Add teams…"
+            searchPlaceholder="Search teams"
+            options={teams.map((tm) => ({
+              value: tm.id,
+              label: `${tm.key} · ${tm.name}`,
+              searchText: `${tm.key} ${tm.name}`,
+            }))}
+            onChange={(ids) => setTeamIds(ids as string[])}
+          />
+        </FormField>
+
+        <dl className="grid grid-cols-[110px_1fr] gap-x-3 gap-y-1 text-ui-md">
           <dt className="text-foreground-subtle">{t('members.detailLastLogin')}</dt>
           <dd className="text-foreground">
             {formatDateTime(member.lastLoginAt, t('members.never'))}
@@ -422,48 +449,21 @@ function UserDetailModal({
         </dl>
       </ModalBody>
       <ModalFooter>
-        <Button type="button" variant="outline" onClick={onClose}>
-          {t('common:close')}
+        <Button type="button" onClick={() => void handleSave()} disabled={saving}>
+          {saving ? <Loader2 size={12} className="animate-spin" /> : null}
+          {t('common:save')}
         </Button>
-        <Button
-          type="button"
-          variant="destructive"
-          onClick={() => setConfirmRemove(true)}
-          disabled={!canRemove || isRemoving}
-          title={
-            isCurrentUser
-              ? 'You cannot remove yourself'
-              : isWorkspaceAdmin
-                ? 'Workspace admins cannot be removed here'
-                : 'Remove workspace access'
-          }
-        >
-          {isRemoving && <Loader2 size={12} className="animate-spin" />}
-          {t('members.removeAccess')}
+        <Button type="button" variant="outline" onClick={onClose}>
+          {t('common:cancel')}
         </Button>
       </ModalFooter>
     </AppModal>
-    {/* P4-SET-07: Remove User Access requires typing the member name to confirm. */}
-    <ConfirmDialog
-      open={confirmRemove}
-      title={t('members.removeAccess')}
-      message={t('members.removeConfirm', {
-        name: member.displayName,
-        defaultValue: `Remove {{name}}'s workspace access? This cannot be undone.`,
-      })}
-      confirmText={member.displayName}
-      confirmLabel={t('members.removeAccess')}
-      pending={isRemoving}
-      onConfirm={onRemove}
-      onCancel={() => setConfirmRemove(false)}
-    />
-    </>
   )
 }
 
-// ── Invite panel ───────────────────────────────────────────────────────────────
+// ── Invite user modal (email + role; rich invite deferred per SRS §6.4) ─────────
 
-function InvitePanel({
+function InviteUserModal({
   workspaceId,
   roles,
   onClose,
@@ -502,65 +502,51 @@ function InvitePanel({
   })
 
   return (
-    <Card>
-      <CardHeader
-        title={t('members.invitePanelTitle')}
-        actions={
-          <IconButton size="sm" aria-label="Close invite panel" onClick={onClose}>
-            <X size={14} />
-          </IconButton>
-        }
-      />
-      <CardBody>
-        <form onSubmit={form.handleSubmit((d) => invite.mutate(d))} className="flex flex-col gap-4">
-          <div className="flex gap-3">
-            <FormField
-              label={t('members.emailFieldLabel')}
-              error={form.formState.errors.email?.message}
-            >
-              <Input {...form.register('email')} type="email" placeholder="colleague@company.com" />
-            </FormField>
-            <FormField
-              label={t('members.roleFieldLabel')}
-              error={form.formState.errors.roleId?.message}
-            >
-              <Controller
-                control={form.control}
-                name="roleId"
-                render={({ field }) => (
-                  <SearchableSelect
-                    variant="field"
-                    value={field.value ?? ''}
-                    ariaLabel={t('members.roleFieldLabel')}
-                    placeholder={t('members.selectRoleOption')}
-                    options={[
-                      { value: '', label: t('members.selectRoleOption') },
-                      ...roles.map((r) => ({ value: r.id, label: r.name })),
-                    ]}
-                    onChange={field.onChange}
-                  />
-                )}
-              />
-            </FormField>
-          </div>
+    <AppModal open onClose={onClose} title={t('members.invitePanelTitle')} width={460}>
+      <form onSubmit={form.handleSubmit((d) => invite.mutate(d))}>
+        <ModalBody className="space-y-4">
+          <FormField
+            label={t('members.emailFieldLabel')}
+            error={form.formState.errors.email?.message}
+          >
+            <Input {...form.register('email')} type="email" placeholder="colleague@company.com" />
+          </FormField>
+          <FormField
+            label={t('members.roleFieldLabel')}
+            error={form.formState.errors.roleId?.message}
+          >
+            <Controller
+              control={form.control}
+              name="roleId"
+              render={({ field }) => (
+                <SearchableSelect
+                  variant="field"
+                  value={field.value ?? ''}
+                  ariaLabel={t('members.roleFieldLabel')}
+                  placeholder={t('members.selectRoleOption')}
+                  options={[
+                    { value: '', label: t('members.selectRoleOption') },
+                    ...roles.map((r) => ({ value: r.id, label: r.name })),
+                  ]}
+                  onChange={field.onChange}
+                />
+              )}
+            />
+          </FormField>
           {form.formState.errors.root && (
             <p className="text-ui-md text-destructive">{form.formState.errors.root.message}</p>
           )}
-          <div className="flex items-center gap-3">
-            <Button type="submit" disabled={invite.isPending}>
-              {invite.isPending ? (
-                <Loader2 size={13} className="animate-spin" />
-              ) : (
-                <Mail size={13} />
-              )}
-              {t('members.sendInvite')}
-            </Button>
-            <Button type="button" variant="outline" onClick={onClose}>
-              {t('common:cancel')}
-            </Button>
-          </div>
-        </form>
-      </CardBody>
-    </Card>
+        </ModalBody>
+        <ModalFooter>
+          <Button type="submit" disabled={invite.isPending}>
+            {invite.isPending ? <Loader2 size={13} className="animate-spin" /> : <Mail size={13} />}
+            {t('members.sendInvite')}
+          </Button>
+          <Button type="button" variant="outline" onClick={onClose}>
+            {t('common:cancel')}
+          </Button>
+        </ModalFooter>
+      </form>
+    </AppModal>
   )
 }
