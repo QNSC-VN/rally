@@ -1,109 +1,217 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import {
-  Loader2,
-  UserPlus,
-  Pencil,
-  Archive,
-  ArrowLeft,
-  Plus,
-  X,
-  Users,
-  UsersRound,
-  ChevronRight,
-} from 'lucide-react'
+import { Loader2, Plus, UsersRound } from 'lucide-react'
 
 import { BRAND } from '@/shared/config/brand'
-import type { components } from '@/shared/api/generated/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import {
   useWorkspaceTeams,
   useTeamMembers,
   useCreateTeam,
   useUpdateTeam,
-  useAddTeamMember,
-  useRemoveTeamMember,
   type Team,
-  type TeamMember,
 } from '@/features/teams/api'
+import { useProjects } from '@/features/projects/api'
 import { useWorkspaceMembers } from '@/features/workspaces/api'
-import { useClientPagination } from '@/shared/lib/hooks/use-client-pagination'
 import { notify } from '@/shared/lib/toast'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
-import { IconButton } from '@/shared/ui/icon-button'
-import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { SearchInput } from '@/shared/ui/search-input'
-import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { Spinner } from '@/shared/ui/spinner'
 import { StatusBadge } from '@/shared/ui/status-badge'
 import type { StatusStyle } from '@/shared/config/status-colors'
 import { OwnerAvatar } from '@/shared/ui/owner-cell'
 import { TeamAvatar } from '@/shared/ui/team-cell'
+import { MetricStrip } from '@/shared/ui/metric-strip'
+import { MetricCard } from '@/shared/ui/metric-card'
 import { formatDate } from '@/shared/lib/utils'
 
-type MemberWithProfile = components['schemas']['MemberWithProfileResponseDto']
+type TeamStatus = 'active' | 'archived'
 
-/** Normalise free text into a team key: uppercase alphanumerics, max 8 chars. */
+/** Normalise free text into a team key: uppercase alphanumerics, max 10 chars. */
 function sanitizeKey(value: string): string {
   return value
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, '')
-    .slice(0, 8)
+    .slice(0, 10)
 }
 
-function CreateTeamModal({ workspaceId, onClose }: { workspaceId: string; onClose: () => void }) {
-  const { t } = useTranslation('settings')
-  const [name, setName] = useState('')
-  const [key, setKey] = useState('')
-  const [description, setDescription] = useState('')
+const ACTIVE_STYLE: StatusStyle = {
+  label: 'Active',
+  text: BRAND.success,
+  bg: BRAND.successBg,
+  border: BRAND.successBorder,
+}
+const DEACTIVE_STYLE: StatusStyle = {
+  label: 'Deactive',
+  text: BRAND.textSecondary,
+  bg: BRAND.surfaceSubtle,
+  border: BRAND.border,
+}
+
+function TeamStatusBadge({ status }: { status: TeamStatus }) {
+  return <StatusBadge style={status === 'active' ? ACTIVE_STYLE : DEACTIVE_STYLE} />
+}
+
+// ── Create/Edit Team modal (single inline form, real-Rally style) ───────────────
+
+function TeamFormModal({
+  workspaceId,
+  team,
+  onClose,
+}: {
+  workspaceId: string
+  team: Team | null
+  onClose: () => void
+}) {
+  const isEdit = team !== null
   const create = useCreateTeam()
+  const update = useUpdateTeam(team?.id ?? '')
+  const pending = create.isPending || update.isPending
+
+  const { data: projects = [] } = useProjects(workspaceId)
+  const { data: members = [] } = useWorkspaceMembers(workspaceId)
+  const { data: teamMembers = [], isFetched: membersFetched } = useTeamMembers(team?.id)
+
+  const [name, setName] = useState(team?.name ?? '')
+  const [key, setKey] = useState(team?.key ?? '')
+  const [description, setDescription] = useState(team?.description ?? '')
+  const [status, setStatus] = useState<TeamStatus>(team?.status ?? 'active')
+  const [leadId, setLeadId] = useState(team?.leadId ?? '')
+  const [projectIds, setProjectIds] = useState<string[]>(
+    team?.projects?.map((p) => p.projectId) ?? [],
+  )
+  const [memberUserIds, setMemberUserIds] = useState<string[]>([])
+
+  // On edit, seed the member selection once the team's roster resolves.
+  const seededRef = useRef(false)
+  useEffect(() => {
+    if (isEdit && membersFetched && !seededRef.current) {
+      setMemberUserIds(teamMembers.map((m) => m.userId))
+      seededRef.current = true
+    }
+  }, [isEdit, membersFetched, teamMembers])
+
+  const canSubmit = name.trim() !== '' && key.trim() !== '' && projectIds.length > 0
+
+  const projectOptions = projects.map((p) => ({
+    value: p.id,
+    label: `${p.key} · ${p.name}`,
+    searchText: `${p.key} ${p.name}`,
+  }))
+  const memberOptions = members.map((m) => {
+    const n = m.displayName ?? m.email ?? m.userId
+    return { value: m.userId, label: n, searchText: n, icon: <OwnerAvatar name={n} size={16} /> }
+  })
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!name.trim() || !key.trim()) return
+    if (!canSubmit) return
     try {
-      await create.mutateAsync({
-        workspaceId,
-        name: name.trim(),
-        key: key.trim(),
-        description: description.trim() || undefined,
-      })
-      notify.success(t('teams.teamCreated', { name }))
+      if (isEdit) {
+        await update.mutateAsync({
+          name: name.trim(),
+          description: description.trim() || null,
+          leadId: leadId || null,
+          status,
+          projectIds,
+          memberUserIds,
+        })
+        notify.success('Team updated')
+      } else {
+        await create.mutateAsync({
+          workspaceId,
+          name: name.trim(),
+          key: key.trim(),
+          description: description.trim() || undefined,
+          leadId: leadId || null,
+          status,
+          projectIds,
+          memberUserIds,
+        })
+        notify.success(`Team "${name.trim()}" created`)
+      }
       onClose()
     } catch (err) {
-      notify.fromError(err, t('teams.createFailed'))
+      notify.fromError(err, isEdit ? 'Failed to update team' : 'Failed to create team')
     }
   }
 
   return (
-    <AppModal open onClose={onClose} title={t('teams.newTeamTitle')} width={440}>
+    <AppModal
+      open
+      onClose={onClose}
+      title={isEdit ? `Edit ${team.name}` : 'Create Team'}
+      width={480}
+    >
       <form onSubmit={(e) => void handleSubmit(e)}>
         <ModalBody className="space-y-4">
-          <FormField label={t('teams.teamNameLabel')} required>
+          <FormField label="Team Name" required>
             <Input
               value={name}
               onChange={(e) => {
                 setName(e.target.value)
-                if (!key || key === sanitizeKey(name)) setKey(sanitizeKey(e.target.value))
+                if (!isEdit && (!key || key === sanitizeKey(name))) {
+                  setKey(sanitizeKey(e.target.value))
+                }
               }}
               placeholder="Platform Engineering"
-              autoFocus
             />
           </FormField>
-          <FormField label={t('teams.keyLabel')} required hint={t('teams.keyHint')}>
+
+          <FormField label="Team Key" required hint="Uppercase, unique in workspace (max 10)">
             <Input
               value={key}
               onChange={(e) => setKey(sanitizeKey(e.target.value))}
               placeholder="PLAT"
+              disabled={isEdit}
             />
           </FormField>
-          <FormField label={t('common:description')}>
+
+          <FormField label="Projects" required hint="A team must belong to at least one project">
+            <SearchableSelect
+              variant="field"
+              multiple
+              value={projectIds}
+              ariaLabel="Projects"
+              placeholder="Select projects…"
+              searchPlaceholder="Search projects"
+              options={projectOptions}
+              onChange={(ids) => setProjectIds(ids as string[])}
+            />
+          </FormField>
+
+          <FormField label="Team Lead">
+            <SearchableSelect
+              variant="field"
+              value={leadId}
+              ariaLabel="Team lead"
+              placeholder="No lead"
+              searchPlaceholder="Search members"
+              options={[{ value: '', label: 'No lead' }, ...memberOptions]}
+              onChange={(v) => setLeadId(v as string)}
+            />
+          </FormField>
+
+          <FormField label="Members">
+            <SearchableSelect
+              variant="field"
+              multiple
+              value={memberUserIds}
+              ariaLabel="Members"
+              placeholder="Add members…"
+              searchPlaceholder="Search members"
+              options={memberOptions}
+              onChange={(ids) => setMemberUserIds(ids as string[])}
+            />
+          </FormField>
+
+          <FormField label="Description">
             <Textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -111,83 +219,27 @@ function CreateTeamModal({ workspaceId, onClose }: { workspaceId: string; onClos
               rows={2}
             />
           </FormField>
-        </ModalBody>
-        <ModalFooter>
-          <Button type="submit" disabled={create.isPending || !name.trim() || !key.trim()}>
-            {create.isPending ? <Loader2 size={12} className="animate-spin" /> : null}
-            {t('teams.createTeam')}
-          </Button>
-          <Button type="button" variant="outline" onClick={onClose}>
-            {t('common:cancel')}
-          </Button>
-        </ModalFooter>
-      </form>
-    </AppModal>
-  )
-}
 
-function EditTeamModal({ team, onClose }: { team: Team; onClose: () => void }) {
-  const { t } = useTranslation('settings')
-  const [name, setName] = useState(team.name)
-  const [description, setDescription] = useState(team.description ?? '')
-  const [leadId, setLeadId] = useState(team.leadId ?? '')
-  const update = useUpdateTeam(team.id)
-  const { data: members = [] } = useTeamMembers(team.id)
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!name.trim()) return
-    try {
-      await update.mutateAsync({
-        name: name.trim(),
-        description: description.trim() || null,
-        leadId: leadId || null,
-      })
-      notify.success(t('teams.teamUpdated'))
-      onClose()
-    } catch (err) {
-      notify.fromError(err, t('teams.updateFailed'))
-    }
-  }
-
-  return (
-    <AppModal open onClose={onClose} title={t('teams.editTitle', { name: team.name })} width={440}>
-      <form onSubmit={(e) => void handleSubmit(e)}>
-        <ModalBody className="space-y-4">
-          <FormField label={t('teams.teamNameLabel')} required>
-            <Input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-          </FormField>
-          <FormField label={t('teams.teamLeadLabel')} hint={t('teams.teamLeadHint')}>
+          <FormField label="Status" required>
             <SearchableSelect
               variant="field"
-              value={leadId}
-              ariaLabel="Team lead"
-              placeholder={t('teams.noLeadOption')}
+              value={status}
+              ariaLabel="Status"
               options={[
-                { value: '', label: t('teams.noLeadOption') },
-                ...members.map((m) => {
-                  const n = m.displayName ?? m.email ?? m.userId
-                  return { value: m.userId, label: n, icon: <OwnerAvatar name={n} size={16} /> }
-                }),
+                { value: 'active', label: 'Active' },
+                { value: 'archived', label: 'Deactive' },
               ]}
-              onChange={setLeadId}
-            />
-          </FormField>
-          <FormField label={t('common:description')}>
-            <Textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={2}
+              onChange={(v) => setStatus(v as TeamStatus)}
             />
           </FormField>
         </ModalBody>
         <ModalFooter>
-          <Button type="submit" disabled={update.isPending || !name.trim()}>
-            {update.isPending ? <Loader2 size={12} className="animate-spin" /> : null}
-            {t('common:save')}
+          <Button type="submit" disabled={pending || !canSubmit}>
+            {pending ? <Loader2 size={12} className="animate-spin" /> : null}
+            {isEdit ? 'Save' : 'Create'}
           </Button>
           <Button type="button" variant="outline" onClick={onClose}>
-            {t('common:cancel')}
+            Cancel
           </Button>
         </ModalFooter>
       </form>
@@ -195,333 +247,91 @@ function EditTeamModal({ team, onClose }: { team: Team; onClose: () => void }) {
   )
 }
 
-function AddMemberModal({ teamId, onClose }: { teamId: string; onClose: () => void }) {
-  const { t } = useTranslation('settings')
-  const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
-  const [selectedUserId, setSelectedUserId] = useState('')
-  const addMember = useAddTeamMember(teamId)
-  const { data: members = [] } = useTeamMembers(teamId)
-  const { data: workspaceMembers = [] } = useWorkspaceMembers(workspaceId)
-
-  const alreadyAdded = new Set(members.map((m) => m.userId))
-  const available = workspaceMembers.filter((m) => !alreadyAdded.has(m.userId))
-
-  async function handleAdd(e: React.FormEvent) {
-    e.preventDefault()
-    if (!selectedUserId) return
-    try {
-      await addMember.mutateAsync(selectedUserId)
-      notify.success(t('teams.memberAdded'))
-      onClose()
-    } catch (err) {
-      notify.fromError(err, t('teams.addMemberFailed'))
-    }
-  }
-
-  return (
-    <AppModal open onClose={onClose} title={t('teams.addMemberTitle')} width={400}>
-      <form onSubmit={(e) => void handleAdd(e)}>
-        <ModalBody className="space-y-4">
-          {available.length === 0 ? (
-            <p className="text-ui-lg text-foreground-subtle">{t('teams.allMembersOnTeam')}</p>
-          ) : (
-            <FormField label={t('teams.selectMemberLabel')} required>
-              <SearchableSelect
-                variant="field"
-                value={selectedUserId}
-                ariaLabel={t('teams.selectMemberLabel')}
-                placeholder={t('teams.selectMemberOption')}
-                options={[
-                  { value: '', label: t('teams.selectMemberOption') },
-                  ...available.map((m) => {
-                    const n = m.displayName ?? m.email ?? m.userId
-                    return { value: m.userId, label: n, icon: <OwnerAvatar name={n} size={16} /> }
-                  }),
-                ]}
-                onChange={setSelectedUserId}
-              />
-            </FormField>
-          )}
-        </ModalBody>
-        <ModalFooter>
-          <Button
-            type="submit"
-            disabled={addMember.isPending || !selectedUserId || available.length === 0}
-          >
-            {addMember.isPending ? (
-              <Loader2 size={12} className="animate-spin" />
-            ) : (
-              <UserPlus size={13} />
-            )}
-            {t('teams.addToTeam')}
-          </Button>
-          <Button type="button" variant="outline" onClick={onClose}>
-            {t('common:cancel')}
-          </Button>
-        </ModalFooter>
-      </form>
-    </AppModal>
-  )
-}
-
-function TeamStatusBadge({ status }: { status: 'active' | 'archived' }) {
-  const style: StatusStyle =
-    status === 'active'
-      ? { label: 'Active', text: BRAND.success, bg: BRAND.successBg, border: BRAND.successBorder }
-      : {
-          label: 'Deactive',
-          text: BRAND.textSecondary,
-          bg: BRAND.surfaceSubtle,
-          border: BRAND.border,
-        }
-  return <StatusBadge style={style} />
-}
-
-function TeamDetail({
-  team,
-  lead,
-  roster,
-  onBack,
-}: {
-  team: Team
-  lead: MemberWithProfile | null
-  roster: Map<string, MemberWithProfile>
-  onBack: () => void
-}) {
-  const { t } = useTranslation('settings')
-  const { data: members = [], isLoading } = useTeamMembers(team.id)
-  const remove = useRemoveTeamMember(team.id)
-  const update = useUpdateTeam(team.id)
-  const [showEdit, setShowEdit] = useState(false)
-  const [showAddMember, setShowAddMember] = useState(false)
-  const [confirmArchive, setConfirmArchive] = useState(false)
-  const [memberToRemove, setMemberToRemove] = useState<TeamMember | null>(null)
-
-  async function handleRemoveMember(userId: string) {
-    try {
-      await remove.mutateAsync(userId)
-      notify.success(t('teams.memberRemoved'))
-    } catch (err) {
-      notify.fromError(err, t('teams.removeMemberFailed'))
-    } finally {
-      setMemberToRemove(null)
-    }
-  }
-
-  async function handleToggleStatus() {
-    const next = team.status === 'active' ? 'archived' : 'active'
-    try {
-      await update.mutateAsync({ status: next })
-      notify.success(next === 'archived' ? t('teams.teamArchived') : t('teams.teamRestored'))
-    } catch (err) {
-      notify.fromError(err, t('teams.updateStatusFailed'))
-    } finally {
-      setConfirmArchive(false)
-    }
-  }
-
-  return (
-    <div>
-      {/* Back + header */}
-      <div className="mb-5 flex items-center gap-3">
-        <Button variant="link" size="sm" onClick={onBack} className="px-0">
-          <ArrowLeft size={13} /> {t('teams.allTeams')}
-        </Button>
-        <span className="text-border">·</span>
-        <span className="text-ui-lg font-semibold text-foreground">{team.name}</span>
-        <span className="rounded border bg-surface-subtle px-1.5 py-0.5 font-mono text-ui-sm font-medium text-foreground-subtle">
-          {team.key}
-        </span>
-        <div className="ml-auto flex items-center gap-3">
-          <TeamStatusBadge status={team.status} />
-          <Button variant="outline" size="sm" onClick={() => setShowEdit(true)}>
-            <Pencil size={12} /> {t('common:edit')}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() =>
-              team.status === 'active' ? setConfirmArchive(true) : void handleToggleStatus()
-            }
-            disabled={update.isPending}
-          >
-            {update.isPending ? (
-              <Loader2 size={12} className="animate-spin" />
-            ) : (
-              <Archive size={12} />
-            )}
-            {team.status === 'active' ? t('common:archive') : t('common:restore')}
-          </Button>
-        </div>
-      </div>
-
-      {team.description && (
-        <p className="mb-4 text-ui-lg text-muted-foreground">{team.description}</p>
-      )}
-
-      {/* Meta: lead + created date */}
-      <div className="mb-6 flex flex-wrap items-center gap-x-8 gap-y-2">
-        <div className="flex items-center gap-2">
-          <span className="text-ui-sm font-semibold tracking-wide text-foreground-subtle uppercase">
-            {t('teams.leadLabel')}
-          </span>
-          {lead ? (
-            <span className="flex items-center gap-1.5">
-              <OwnerAvatar name={lead.displayName} avatarUrl={lead.avatarUrl} size={20} />
-              <span className="text-ui-lg text-foreground">{lead.displayName}</span>
-            </span>
-          ) : (
-            <span className="text-ui-lg text-foreground-disabled">{t('teams.noLeadAssigned')}</span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-ui-sm font-semibold tracking-wide text-foreground-subtle uppercase">
-            {t('teams.createdLabel')}
-          </span>
-          <span className="text-ui-lg text-foreground">{formatDate(team.createdAt)}</span>
-        </div>
-      </div>
-
-      {/* Members section */}
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-ui-lg font-semibold text-foreground">
-          {t('teams.membersCount', { count: members.length })}
-        </h3>
-        <Button size="sm" onClick={() => setShowAddMember(true)}>
-          <Plus size={12} /> {t('teams.addMember')}
-        </Button>
-      </div>
-
-      {isLoading ? (
-        <div className="flex items-center justify-center py-10">
-          <Spinner size="lg" />
-        </div>
-      ) : members.length === 0 ? (
-        <div className="rounded-lg border border-dashed py-10 text-center">
-          <p className="text-ui-lg text-foreground-subtle">{t('teams.noMembersYet')}</p>
-        </div>
-      ) : (
-        <div className="overflow-hidden rounded-lg border">
-          {members.map((member, idx) => {
-            const isLead = member.userId === team.leadId
-            const profile = roster.get(member.userId)
-            const name = profile?.displayName ?? member.displayName ?? member.userId
-            const email = profile?.email ?? member.email
-            const avatarUrl = profile?.avatarUrl ?? member.avatarUrl
-            return (
-              <div
-                key={member.id}
-                className={`flex items-center gap-3 px-4 py-3 ${idx > 0 ? 'border-t' : ''}`}
-              >
-                <OwnerAvatar name={name} avatarUrl={avatarUrl} size={28} />
-                <div className="min-w-0 flex-1">
-                  <p className="flex items-center gap-2 truncate text-ui-lg font-medium text-foreground">
-                    {name}
-                    {isLead && (
-                      <span className="rounded bg-primary-lighter px-1.5 py-0.5 text-ui-xs font-semibold text-primary">
-                        {t('teams.leadBadge')}
-                      </span>
-                    )}
-                  </p>
-                  {email && <p className="truncate text-ui-sm text-foreground-subtle">{email}</p>}
-                </div>
-                <span className="text-ui-sm text-foreground-subtle capitalize">
-                  {member.status}
-                </span>
-                <IconButton
-                  className="ml-2"
-                  aria-label="Remove from team"
-                  title="Remove from team"
-                  onClick={() => setMemberToRemove(member)}
-                  disabled={remove.isPending}
-                >
-                  <X size={13} />
-                </IconButton>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {showEdit && <EditTeamModal team={team} onClose={() => setShowEdit(false)} />}
-      {showAddMember && <AddMemberModal teamId={team.id} onClose={() => setShowAddMember(false)} />}
-
-      <ConfirmDialog
-        open={confirmArchive}
-        title={t('teams.archiveTitle', { name: team.name })}
-        message={t('teams.archiveMessage')}
-        confirmLabel={t('teams.archiveConfirm')}
-        destructive
-        pending={update.isPending}
-        onConfirm={() => void handleToggleStatus()}
-        onCancel={() => setConfirmArchive(false)}
-      />
-
-      <ConfirmDialog
-        open={memberToRemove !== null}
-        title={t('teams.removeMemberTitle')}
-        message={
-          memberToRemove
-            ? t('teams.removeMemberMessage', {
-                member: memberToRemove.displayName ?? t('teams.thisMember'),
-                team: team.name,
-              })
-            : undefined
-        }
-        confirmLabel={t('teams.removeConfirm')}
-        destructive
-        pending={remove.isPending}
-        onConfirm={() => memberToRemove && void handleRemoveMember(memberToRemove.userId)}
-        onCancel={() => setMemberToRemove(null)}
-      />
-    </div>
-  )
-}
+// ── Teams list ──────────────────────────────────────────────────────────────
 
 export function TeamsTab() {
   const { t } = useTranslation('settings')
   const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
-  const { data: teams = [], isLoading } = useWorkspaceTeams(workspaceId)
+  // Management needs every team (metrics + status filter) — include deactive.
+  const { data: teams = [], isLoading } = useWorkspaceTeams(workspaceId, true)
   const { data: members = [] } = useWorkspaceMembers(workspaceId)
+  const { data: projects = [] } = useProjects(workspaceId)
+
   const [showCreate, setShowCreate] = useState(false)
-  const [selectedTeam, setSelectedTeam] = useState<Team | null>(null)
+  const [editTeam, setEditTeam] = useState<Team | null>(null)
   const [search, setSearch] = useState('')
+  const [projectFilter, setProjectFilter] = useState('') // '' = all
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'archived'>('active')
 
   const memberById = useMemo(() => new Map(members.map((m) => [m.userId, m])), [members])
 
+  const metrics = useMemo(() => {
+    const active = teams.filter((t) => t.status === 'active').length
+    return { total: teams.length, active, deactive: teams.length - active }
+  }, [teams])
+
   const visibleTeams = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return teams
-    return teams.filter(
-      (team) => team.name.toLowerCase().includes(q) || team.key.toLowerCase().includes(q),
-    )
-  }, [teams, search])
-
-  const { pageItems, footerProps } = useClientPagination(visibleTeams, 25)
-
-  if (selectedTeam) {
-    const live = teams.find((team) => team.id === selectedTeam.id) ?? selectedTeam
-    return (
-      <TeamDetail
-        team={live}
-        lead={live.leadId ? (memberById.get(live.leadId) ?? null) : null}
-        roster={memberById}
-        onBack={() => setSelectedTeam(null)}
-      />
-    )
-  }
+    return teams.filter((team) => {
+      if (statusFilter !== 'all' && team.status !== statusFilter) return false
+      if (projectFilter && !(team.projects ?? []).some((p) => p.projectId === projectFilter)) {
+        return false
+      }
+      if (!q) return true
+      const lead = team.leadId ? memberById.get(team.leadId) : undefined
+      const haystack = [
+        team.key,
+        team.name,
+        ...(team.projects ?? []).flatMap((p) => [p.key, p.name]),
+        lead?.displayName ?? '',
+      ]
+        .join(' ')
+        .toLowerCase()
+      return haystack.includes(q)
+    })
+  }, [teams, search, projectFilter, statusFilter, memberById])
 
   return (
     <div>
-      <div className="mb-5 flex items-center justify-between">
-        <p className="text-ui-lg text-muted-foreground">{t('teams.intro')}</p>
-        <Button size="sm" onClick={() => setShowCreate(true)}>
-          <Plus size={13} /> {t('teams.newTeam')}
-        </Button>
-      </div>
+      {/* Metric strip — Total / Active / Deactive (SRS §5.1) */}
+      <MetricStrip className="mb-5 rounded-lg border">
+        <MetricCard label="Total Teams" value={metrics.total} />
+        <MetricCard label="Active" value={metrics.active} valueColor={BRAND.success} />
+        <MetricCard label="Deactive" value={metrics.deactive} valueColor={BRAND.textSecondary} />
+      </MetricStrip>
 
-      <div className="mb-4 flex items-center justify-end gap-3">
+      {/* Toolbar: filters + create */}
+      <div className="mb-4 flex flex-wrap items-center gap-3">
         <SearchInput value={search} onChange={setSearch} placeholder="Search teams…" width={224} />
+        <div className="w-48">
+          <SearchableSelect
+            variant="field"
+            value={projectFilter}
+            ariaLabel="Filter by project"
+            placeholder="All projects"
+            options={[
+              { value: '', label: 'All projects' },
+              ...projects.map((p) => ({ value: p.id, label: `${p.key} · ${p.name}` })),
+            ]}
+            onChange={(v) => setProjectFilter(v as string)}
+          />
+        </div>
+        <div className="w-40">
+          <SearchableSelect
+            variant="field"
+            value={statusFilter}
+            ariaLabel="Filter by status"
+            options={[
+              { value: 'active', label: 'Active' },
+              { value: 'archived', label: 'Deactive' },
+              { value: 'all', label: 'All statuses' },
+            ]}
+            onChange={(v) => setStatusFilter(v as 'all' | 'active' | 'archived')}
+          />
+        </div>
+        <Button size="sm" className="ml-auto" onClick={() => setShowCreate(true)}>
+          <Plus size={13} /> Create Team
+        </Button>
       </div>
 
       {isLoading ? (
@@ -531,27 +341,60 @@ export function TeamsTab() {
       ) : visibleTeams.length === 0 ? (
         <EmptyState
           icon={<UsersRound size={28} className="text-border-strong" />}
-          title={search.trim() ? t('teams.emptySearch') : t('teams.empty')}
-          description={t('teams.emptyDescription')}
+          title={teams.length === 0 ? 'No teams yet' : 'No teams match your filters'}
+          description="Create a team and link it to a project to start assigning work."
         />
       ) : (
         <div className="overflow-hidden rounded-lg border">
-          {pageItems.map((team, idx) => {
+          {/* Column header */}
+          <div className="flex items-center gap-4 border-b bg-surface-subtle px-4 py-2 text-ui-sm font-semibold tracking-wide text-foreground-subtle uppercase">
+            <div className="w-20 shrink-0">{t('teams.colKey')}</div>
+            <div className="min-w-0 flex-1">{t('teams.colTeam')}</div>
+            <div className="hidden w-48 shrink-0 md:block">{t('teams.colProject')}</div>
+            <div className="w-24 shrink-0">{t('common:status')}</div>
+            <div className="hidden w-40 shrink-0 sm:block">{t('teams.colLead')}</div>
+            <div className="hidden w-24 shrink-0 lg:block">{t('teams.colUpdated')}</div>
+          </div>
+          {visibleTeams.map((team, idx) => {
             const lead = team.leadId ? memberById.get(team.leadId) : undefined
+            const primary = team.projects?.[0]
+            const extra = (team.projects?.length ?? 0) - 1
             return (
               <button
                 key={team.id}
-                onClick={() => setSelectedTeam(team)}
+                onClick={() => setEditTeam(team)}
                 className={`flex w-full items-center gap-4 px-4 py-3 text-left transition-colors hover:bg-surface-hover ${
                   idx > 0 ? 'border-t' : ''
                 }`}
               >
-                <TeamAvatar teamKey={team.key} size={32} />
-                <div className="min-w-0 flex-1">
-                  <p className="text-ui-lg font-semibold text-foreground">{team.name}</p>
-                  {team.description && (
-                    <p className="truncate text-ui-md text-foreground-subtle">{team.description}</p>
+                <div className="w-20 shrink-0">
+                  <span className="rounded border bg-surface-subtle px-1.5 py-0.5 font-mono text-ui-sm font-medium text-foreground-subtle">
+                    {team.key}
+                  </span>
+                </div>
+                <div className="flex min-w-0 flex-1 items-center gap-3">
+                  <TeamAvatar teamKey={team.key} size={28} />
+                  <div className="min-w-0">
+                    <p className="truncate text-ui-lg font-semibold text-foreground">{team.name}</p>
+                    {team.description && (
+                      <p className="truncate text-ui-sm text-foreground-subtle">
+                        {team.description}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="hidden w-48 shrink-0 truncate text-ui-md text-muted-foreground md:block">
+                  {primary ? (
+                    <>
+                      <span className="font-mono text-ui-sm">{primary.key}</span> / {primary.name}
+                      {extra > 0 && <span className="text-foreground-subtle"> +{extra}</span>}
+                    </>
+                  ) : (
+                    <span className="text-foreground-disabled">—</span>
                   )}
+                </div>
+                <div className="w-24 shrink-0">
+                  <TeamStatusBadge status={team.status} />
                 </div>
                 <div className="hidden w-40 shrink-0 items-center gap-1.5 sm:flex">
                   {lead ? (
@@ -565,31 +408,24 @@ export function TeamsTab() {
                     <span className="text-ui-md text-foreground-disabled">{t('teams.noLead')}</span>
                   )}
                 </div>
-                {typeof team.memberCount === 'number' && (
-                  <div
-                    className="flex shrink-0 items-center gap-1 text-ui-md text-foreground-subtle"
-                    title={`${team.memberCount} member${team.memberCount === 1 ? '' : 's'}`}
-                  >
-                    <Users size={13} />
-                    {team.memberCount}
-                  </div>
-                )}
-                <TeamStatusBadge status={team.status} />
-                <ChevronRight size={14} className="text-foreground-subtle" />
+                <div className="hidden w-24 shrink-0 text-ui-md text-foreground-subtle lg:block">
+                  {formatDate(team.updatedAt)}
+                </div>
               </button>
             )
           })}
         </div>
       )}
 
-      {!isLoading && visibleTeams.length > 0 && (
-        <div className="mt-3 overflow-hidden rounded-lg border">
-          <PaginationFooter {...footerProps} />
-        </div>
-      )}
-
       {showCreate && workspaceId && (
-        <CreateTeamModal workspaceId={workspaceId} onClose={() => setShowCreate(false)} />
+        <TeamFormModal workspaceId={workspaceId} team={null} onClose={() => setShowCreate(false)} />
+      )}
+      {editTeam && workspaceId && (
+        <TeamFormModal
+          workspaceId={workspaceId}
+          team={editTeam}
+          onClose={() => setEditTeam(null)}
+        />
       )}
     </div>
   )

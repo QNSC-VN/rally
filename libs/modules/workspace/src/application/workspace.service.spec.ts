@@ -7,6 +7,7 @@ import {
   WORKSPACE_MEMBER_REPOSITORY,
   IWorkspaceMemberRepository,
 } from '../domain/ports/workspace-member.repository';
+import { TEAM_MEMBER_REPOSITORY } from '../domain/ports/team-member.repository';
 import {
   WORKSPACE_INVITATION_REPOSITORY,
   IWorkspaceInvitationRepository,
@@ -157,6 +158,7 @@ describe('WorkspaceService', () => {
         WorkspaceService,
         { provide: WORKSPACE_REPOSITORY, useValue: workspaceRepo },
         { provide: WORKSPACE_MEMBER_REPOSITORY, useValue: memberRepo },
+        { provide: TEAM_MEMBER_REPOSITORY, useValue: { setTeamsForUser: vi.fn() } },
         { provide: WORKSPACE_INVITATION_REPOSITORY, useValue: invitationRepo },
         { provide: WORKSPACE_SETTINGS_REPOSITORY, useValue: settingsRepo },
         { provide: AppConfigService, useValue: makeConfig() },

@@ -17,8 +17,20 @@ export interface Workspace {
   updatedAt: string
 }
 
-/** A workspace member enriched with the user's profile + effective role. */
-export type WorkspaceMember = components['schemas']['MemberWithProfileResponseDto']
+export interface MemberTeam {
+  id: string
+  key: string
+  name: string
+}
+
+/**
+ * A workspace member enriched with the user's profile + effective role.
+ * Intersected with `teams` so the field is typed ahead of the next OpenAPI regen
+ * (the backend already returns it).
+ */
+export type WorkspaceMember = components['schemas']['MemberWithProfileResponseDto'] & {
+  teams?: MemberTeam[]
+}
 
 /**
  * Single source of truth for the workspace member roster (profile + role).
@@ -39,6 +51,30 @@ export function useWorkspaceMembers(workspaceId: string | undefined) {
     },
     enabled: !!workspaceId,
     staleTime: 30_000,
+  })
+}
+
+export interface UpdateMemberInput {
+  memberId: string
+  status?: 'active' | 'suspended' | 'removed'
+  /** When supplied, replaces the user's full set of team memberships. */
+  teamIds?: string[]
+}
+
+/** Update a workspace member's status and/or team memberships (soft deactivate via status). */
+export function useUpdateMember(workspaceId: string | undefined) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ memberId, ...body }: UpdateMemberInput) => {
+      const { error, response } = await apiClient.PATCH('/v1/workspaces/{id}/members/{memberId}', {
+        params: { path: { id: workspaceId!, memberId } },
+        body: body as never,
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['workspace-members-profile', workspaceId] })
+    },
   })
 }
 

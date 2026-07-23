@@ -8,8 +8,9 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
-import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Auth, ApiCommonErrors, RequirePermission, NotFoundException } from '@platform';
 import type { JwtPayload } from '@platform';
 import { CurrentUser } from '@modules/identity/interface/http/decorators/current-user.decorator';
@@ -30,6 +31,10 @@ const CreateTeamSchema = z.object({
     .regex(/^[A-Z0-9]+$/i, 'Key must be alphanumeric'),
   description: z.string().max(1000).trim().optional(),
   leadId: z.string().uuid().optional(),
+  status: z.enum(teamStatusEnum.enumValues).optional(),
+  // A team must be linked to at least one project (SRS §2A / TEAM-FR-003/006).
+  projectIds: z.array(z.string().uuid()).min(1),
+  memberUserIds: z.array(z.string().uuid()).optional(),
 });
 class CreateTeamDto extends createZodDto(CreateTeamSchema) {}
 
@@ -38,6 +43,9 @@ const UpdateTeamSchema = z.object({
   description: z.string().max(1000).trim().nullable().optional(),
   leadId: z.string().uuid().nullable().optional(),
   status: z.enum(teamStatusEnum.enumValues).optional(),
+  // When supplied, replaces the full set (reconciled). Omit to leave unchanged.
+  projectIds: z.array(z.string().uuid()).min(1).optional(),
+  memberUserIds: z.array(z.string().uuid()).optional(),
 });
 class UpdateTeamDto extends createZodDto(UpdateTeamSchema) {}
 
@@ -61,7 +69,7 @@ function toTeamDto(t: Team) {
 }
 
 function toTeamWithStatsDto(t: TeamWithStats) {
-  return { ...toTeamDto(t), memberCount: t.memberCount };
+  return { ...toTeamDto(t), memberCount: t.memberCount, projects: t.projects };
 }
 
 function toTeamMemberDto(m: TeamMember) {
@@ -86,16 +94,18 @@ export class TeamController {
   @Get('workspaces/:workspaceId/teams')
   @ApiOperation({ summary: 'List teams in a workspace' })
   @ApiParam({ name: 'workspaceId', type: 'string', format: 'uuid' })
+  @ApiQuery({ name: 'includeInactive', required: false, type: 'boolean' })
   @ApiResponse({ status: 200, schema: { type: 'array', items: { type: 'object' } } })
   @ApiCommonErrors(401, 404)
   async listTeams(
     @CurrentUser() user: JwtPayload,
     @Param('workspaceId', ParseUUIDPipe) workspaceId: string,
+    @Query('includeInactive') includeInactive?: string,
   ) {
     if (workspaceId !== user.workspaceId) {
       throw new NotFoundException('WORKSPACE_NOT_FOUND', 'Workspace not found');
     }
-    const teams = await this.teamService.listTeams(workspaceId);
+    const teams = await this.teamService.listTeams(workspaceId, includeInactive === 'true');
     return teams.map(toTeamWithStatsDto);
   }
 
@@ -115,10 +125,15 @@ export class TeamController {
     }
     const team = await this.teamService.createTeam(
       workspaceId,
-      dto.name,
-      dto.key,
-      dto.description,
-      dto.leadId,
+      {
+        name: dto.name,
+        key: dto.key,
+        description: dto.description,
+        leadId: dto.leadId,
+        status: dto.status,
+        projectIds: dto.projectIds,
+        memberUserIds: dto.memberUserIds,
+      },
       user.sub,
     );
     return toTeamDto(team);

@@ -11,6 +11,7 @@
 import { forwardRef } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
+import { FIELD_FOCUS_VISIBLE } from '@/shared/ui/field-focus'
 
 export interface NativeSelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   className?: string
@@ -23,7 +24,7 @@ export const NativeSelect = forwardRef<HTMLSelectElement, NativeSelectProps>(
         ref={ref}
         className={cn(
           'w-full cursor-pointer rounded border border-input bg-card px-3 py-2 text-ui-md text-foreground transition-colors outline-none',
-          'focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50',
+          FIELD_FOCUS_VISIBLE,
           'disabled:cursor-not-allowed disabled:bg-input-background disabled:opacity-60',
           className,
         )}
@@ -45,7 +46,8 @@ export const InlineSelect = forwardRef<HTMLSelectElement, NativeSelectProps>(
         className={cn(
           'w-full cursor-pointer rounded border border-transparent bg-transparent px-1 py-0.5 text-ui-sm text-foreground transition-colors outline-none',
           'hover:border-input hover:bg-card',
-          'focus-visible:border-ring focus-visible:bg-card focus-visible:ring-[3px] focus-visible:ring-ring/50',
+          'focus-visible:bg-card',
+          FIELD_FOCUS_VISIBLE,
           'disabled:cursor-not-allowed disabled:opacity-60',
           className,
         )}

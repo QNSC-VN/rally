@@ -71,10 +71,7 @@ describe('BA flows: E2E-011 Team Status renders a fully-related task', () => {
     });
     const team = await teams.createTeam(
       admin.workspaceId,
-      'E2E-011 Team',
-      uniqueKey('T'),
-      undefined,
-      ADMIN_USER_ID,
+      { name: 'E2E-011 Team', key: uniqueKey('T'), leadId: ADMIN_USER_ID },
       ADMIN_USER_ID,
     );
     await projects.linkTeam(admin.workspaceId, project.id, team.id);
@@ -142,18 +139,12 @@ describe('BA flows: E2E-011 Team Status renders a fully-related task', () => {
     });
     const teamA = await teams.createTeam(
       admin.workspaceId,
-      'Team A',
-      uniqueKey('T'),
-      undefined,
-      ADMIN_USER_ID,
+      { name: 'Team A', key: uniqueKey('T'), leadId: ADMIN_USER_ID },
       ADMIN_USER_ID,
     );
     const teamB = await teams.createTeam(
       admin.workspaceId,
-      'Team B',
-      uniqueKey('T'),
-      undefined,
-      ADMIN_USER_ID,
+      { name: 'Team B', key: uniqueKey('T'), leadId: ADMIN_USER_ID },
       ADMIN_USER_ID,
     );
     await projects.linkTeam(admin.workspaceId, project.id, teamA.id);

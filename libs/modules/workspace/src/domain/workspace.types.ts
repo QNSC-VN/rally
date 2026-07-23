@@ -39,6 +39,12 @@ export interface WorkspaceMember {
 }
 
 /** Enriched member — includes user profile and current role for the User Management UI. */
+export interface MemberTeamSummary {
+  id: string;
+  key: string;
+  name: string;
+}
+
 export interface WorkspaceMemberWithProfile {
   id: string;
   workspaceId: string;
@@ -55,6 +61,8 @@ export interface WorkspaceMemberWithProfile {
   roleId: string | null;
   roleSlug: string | null;
   roleName: string | null;
+  /** Active team memberships (SRS §6.2 Teams column; project access derives from these). */
+  teams: MemberTeamSummary[];
 }
 
 export interface WorkspaceInvitation {
@@ -106,6 +114,8 @@ export interface AddMemberInput {
 export interface UpdateMemberInput {
   roleId?: string;
   status?: WorkspaceMemberStatus;
+  /** When supplied, replaces the user's full set of team memberships (reconciled). */
+  teamIds?: string[];
 }
 
 export interface CreateInvitationInput {

@@ -81,10 +81,7 @@ describe('BA flows: E2E-002 admin prepares team and user for work management', (
     });
     const team = await teams.createTeam(
       admin.workspaceId,
-      'E2E-002 Team',
-      uniqueKey('T'),
-      undefined,
-      ADMIN_USER_ID,
+      { name: 'E2E-002 Team', key: uniqueKey('T'), leadId: ADMIN_USER_ID },
       ADMIN_USER_ID,
     );
     await projects.linkTeam(admin.workspaceId, project.id, team.id);
@@ -102,10 +99,7 @@ describe('BA flows: E2E-002 admin prepares team and user for work management', (
       });
       const strangerTeam = await teams.createTeam(
         admin.workspaceId,
-        'E2E-002 Unlinked Team',
-        uniqueKey('T'),
-        undefined,
-        ADMIN_USER_ID,
+        { name: 'E2E-002 Unlinked Team', key: uniqueKey('T'), leadId: ADMIN_USER_ID },
         ADMIN_USER_ID,
       );
       // Deliberately NOT linked to `project`.
@@ -162,10 +156,7 @@ describe('BA flows: E2E-002 admin prepares team and user for work management', (
       const { project, team } = await prepareLinkedContext();
       const otherTeam = await teams.createTeam(
         admin.workspaceId,
-        'E2E-002 Other Team',
-        uniqueKey('T'),
-        undefined,
-        ADMIN_USER_ID,
+        { name: 'E2E-002 Other Team', key: uniqueKey('T'), leadId: ADMIN_USER_ID },
         ADMIN_USER_ID,
       );
       await projects.linkTeam(admin.workspaceId, project.id, otherTeam.id);

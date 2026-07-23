@@ -207,18 +207,12 @@ describe('BA flows: releases + milestones + defect lifecycle (real AppModule + s
       });
       const teamIn = await teams.createTeam(
         actor.workspaceId,
-        'Team In Scope',
-        uniqueKey('T'),
-        undefined,
-        undefined,
+        { name: 'Team In Scope', key: uniqueKey('T') },
         actor.sub,
       );
       const teamOut = await teams.createTeam(
         actor.workspaceId,
-        'Team Out Scope',
-        uniqueKey('T'),
-        undefined,
-        undefined,
+        { name: 'Team Out Scope', key: uniqueKey('T') },
         actor.sub,
       );
       // Work items can only join teams linked to their project.

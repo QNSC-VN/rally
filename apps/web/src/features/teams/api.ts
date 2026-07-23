@@ -8,6 +8,13 @@ import { apiErrorMessage } from '@/shared/api/api-error'
 
 // ── Types (generated schema uses Record<string,never> for team types) ─────────
 
+/** A project a team is actively linked to (via project_teams). */
+export interface TeamProjectLink {
+  projectId: string
+  key: string
+  name: string
+}
+
 export interface Team {
   id: string
   workspaceId: string
@@ -17,6 +24,8 @@ export interface Team {
   leadId: string | null
   status: 'active' | 'archived'
   memberCount?: number
+  /** Active project links, oldest-first; first is the "primary" for the list column. */
+  projects?: TeamProjectLink[]
   createdAt: string
   updatedAt: string
 }
@@ -50,7 +59,8 @@ export interface ProjectMember {
 
 export const teamKeys = {
   all: ['teams'] as const,
-  workspaceTeams: (workspaceId: string) => [...teamKeys.all, 'workspace', workspaceId] as const,
+  workspaceTeams: (workspaceId: string, includeInactive = false) =>
+    [...teamKeys.all, 'workspace', workspaceId, includeInactive] as const,
   detail: (id: string) => [...teamKeys.all, 'detail', id] as const,
   members: (id: string) => [...teamKeys.all, 'members', id] as const,
   projectTeams: (projectId: string) => [...teamKeys.all, 'project', projectId] as const,
@@ -59,13 +69,16 @@ export const teamKeys = {
 
 // ── Queries ───────────────────────────────────────────────────────────────────
 
-export function useWorkspaceTeams(workspaceId: string | undefined) {
+export function useWorkspaceTeams(workspaceId: string | undefined, includeInactive = false) {
   return useQuery({
-    queryKey: teamKeys.workspaceTeams(workspaceId ?? ''),
+    queryKey: teamKeys.workspaceTeams(workspaceId ?? '', includeInactive),
     queryFn: async () => {
       if (!workspaceId) return []
       const { data, error, response } = await apiClient.GET('/v1/workspaces/{workspaceId}/teams', {
-        params: { path: { workspaceId } },
+        params: {
+          path: { workspaceId },
+          ...(includeInactive ? { query: { includeInactive: true } } : {}),
+        },
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return (data as Team[]) ?? []
@@ -158,6 +171,11 @@ export interface CreateTeamInput {
   name: string
   key: string
   description?: string
+  leadId?: string | null
+  status?: 'active' | 'archived'
+  /** Required by the API (≥1); a team must link to at least one project. */
+  projectIds: string[]
+  memberUserIds?: string[]
 }
 
 export function useCreateTeam() {
@@ -171,8 +189,10 @@ export function useCreateTeam() {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as Team
     },
-    onSuccess: (team) => {
-      void qc.invalidateQueries({ queryKey: teamKeys.workspaceTeams(team.workspaceId) })
+    // Invalidate the whole teams namespace: workspace lists (both includeInactive
+    // variants), project-team link lists, and any member lists are all affected.
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: teamKeys.all })
     },
   })
 }
@@ -182,6 +202,10 @@ export interface UpdateTeamInput {
   description?: string | null
   leadId?: string | null
   status?: 'active' | 'archived'
+  /** When supplied, replaces the full set of linked projects (≥1). */
+  projectIds?: string[]
+  /** When supplied, replaces the full set of members. */
+  memberUserIds?: string[]
 }
 
 export function useUpdateTeam(id: string) {
@@ -197,7 +221,7 @@ export function useUpdateTeam(id: string) {
     },
     onSuccess: (team) => {
       qc.setQueryData(teamKeys.detail(id), team)
-      void qc.invalidateQueries({ queryKey: teamKeys.workspaceTeams(team.workspaceId) })
+      void qc.invalidateQueries({ queryKey: teamKeys.all })
     },
   })
 }

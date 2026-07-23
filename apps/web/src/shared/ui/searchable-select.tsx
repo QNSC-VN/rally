@@ -20,6 +20,8 @@ import { Popover as PopoverPrimitive } from 'radix-ui'
 import { BRAND } from '@/shared/config/brand'
 import { cn } from '@/shared/lib/utils'
 import { registerOpenPopover, unregisterOpenPopover } from '@/shared/ui/popover-coordinator'
+import { AppPopoverContent } from '@/shared/ui/app-popover'
+import { FIELD_FOCUS_VISIBLE } from '@/shared/ui/field-focus'
 
 export interface SelectOption {
   value: string
@@ -149,9 +151,7 @@ export function SearchableSelect(props: SearchableSelectProps) {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return q
-      ? options.filter((o) => (o.searchText ?? o.label).toLowerCase().includes(q))
-      : options
+    return q ? options.filter((o) => (o.searchText ?? o.label).toLowerCase().includes(q)) : options
   }, [options, query])
 
   // Grouping. Multi-select with NO explicit per-option groups → auto-split into
@@ -215,7 +215,7 @@ export function SearchableSelect(props: SearchableSelectProps) {
           className={cn(
             'group w-full text-left text-foreground',
             variant === 'field'
-              ? 'rounded border border-input bg-white px-3 py-2 text-ui-md transition-colors hover:border-ring focus:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50'
+              ? `rounded border border-input bg-white px-3 py-2 text-ui-md transition-colors hover:border-accent-border-active focus:outline-none ${FIELD_FOCUS_VISIBLE}`
               : 'inline-edit-cell text-ui-sm',
             className,
           )}
@@ -248,80 +248,76 @@ export function SearchableSelect(props: SearchableSelectProps) {
           </span>
         </button>
       </PopoverPrimitive.Trigger>
-      <PopoverPrimitive.Portal>
-        <PopoverPrimitive.Content
-          align="start"
-          sideOffset={3}
-          className="z-50 w-[var(--radix-popover-trigger-width)] min-w-48 overflow-hidden rounded-md p-1 shadow-lg ring-1 ring-black/5"
-          style={{ backgroundColor: BRAND.surface }}
-        >
-          {/* Search box — one full border, blue while focused (Rally parity). */}
-          <div className="flex items-center gap-2 rounded-md border border-input px-2 py-1.5 transition-colors focus-within:border-primary">
-            <Search size={13} className="shrink-0 text-primary" />
-            <input
-              autoFocus
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={searchPlaceholder}
-              aria-label={searchPlaceholder}
-              // Inline `outline: none` overrides the global `:focus-visible`
-              // outline (globals.css) that would otherwise draw a 2px offset
-              // ring inside the search box's own border → a doubled border.
-              style={{ outline: 'none' }}
-              className="w-full bg-transparent text-ui-sm text-foreground placeholder-foreground-subtle"
-            />
-          </div>
+      <AppPopoverContent
+        align="start"
+        sideOffset={3}
+        className="z-50 w-[var(--radix-popover-trigger-width)] min-w-48 overflow-hidden rounded-md p-1 shadow-lg ring-1 ring-black/5"
+        style={{ backgroundColor: BRAND.surface }}
+      >
+        {/* Search box — one full border, blue while focused (Rally parity). */}
+        <div className="flex items-center gap-2 rounded-md border border-input px-2 py-1.5 transition-colors focus-within:border-primary">
+          <Search size={13} className="shrink-0 text-primary" />
+          <input
+            autoFocus
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={searchPlaceholder}
+            aria-label={searchPlaceholder}
+            // Inline `outline: none` overrides the global `:focus-visible`
+            // outline (globals.css) that would otherwise draw a 2px offset
+            // ring inside the search box's own border → a doubled border.
+            style={{ outline: 'none' }}
+            className="w-full bg-transparent text-ui-sm text-foreground placeholder-foreground-subtle"
+          />
+        </div>
 
-          {/* Options */}
-          <div className="mt-1 max-h-60 overflow-y-auto">
-            {filtered.length === 0 && (
-              <div className="px-3 py-2 text-ui-sm text-foreground-subtle">No matches</div>
-            )}
-            {grouped.map((bucket) => (
-              <div key={bucket.name ?? '__ungrouped'}>
-                {bucket.name && (
-                  <div className="px-3 pt-2 pb-1 text-ui-2xs font-semibold tracking-wider text-foreground-subtle uppercase">
-                    {bucket.name}
-                  </div>
-                )}
-                {bucket.items.map((o) => {
-                  const sel = isSelected(o.value)
-                  return (
-                    <button
-                      key={`${bucket.name ?? ''}:${o.value}`}
-                      type="button"
-                      onClick={() => handlePick(o.value)}
-                      className={cn(
-                        'flex w-full items-center gap-2 rounded px-3 py-1.5 text-left text-ui-sm text-foreground transition-colors hover:bg-surface-hover',
-                        // Single-select highlights the chosen row; multi-select shows
-                        // its state via the leading checkbox, so no row highlight.
-                        !multiple && sel && 'bg-primary-lighter',
-                      )}
-                    >
-                      {/* Multi-select: leading checkbox (presentational — the row
+        {/* Options — scroll guard is handled centrally by AppPopoverContent. */}
+        <div className="mt-1 max-h-60 overflow-y-auto">
+          {filtered.length === 0 && (
+            <div className="px-3 py-2 text-ui-sm text-foreground-subtle">No matches</div>
+          )}
+          {grouped.map((bucket) => (
+            <div key={bucket.name ?? '__ungrouped'}>
+              {bucket.name && (
+                <div className="px-3 pt-2 pb-1 text-ui-2xs font-semibold tracking-wider text-foreground-subtle uppercase">
+                  {bucket.name}
+                </div>
+              )}
+              {bucket.items.map((o) => {
+                const sel = isSelected(o.value)
+                return (
+                  <button
+                    key={`${bucket.name ?? ''}:${o.value}`}
+                    type="button"
+                    onClick={() => handlePick(o.value)}
+                    className={cn(
+                      'flex w-full items-center gap-2 rounded px-3 py-1.5 text-left text-ui-sm text-foreground transition-colors hover:bg-surface-hover',
+                      // Single-select highlights the chosen row; multi-select shows
+                      // its state via the leading checkbox, so no row highlight.
+                      !multiple && sel && 'bg-primary-lighter',
+                    )}
+                  >
+                    {/* Multi-select: leading checkbox (presentational — the row
                           button owns the toggle, so no nested interactive input). */}
-                      {multiple && (
-                        <span
-                          className={cn(
-                            'flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border',
-                            sel
-                              ? 'border-primary bg-primary text-white'
-                              : 'border-input bg-white',
-                          )}
-                        >
-                          {sel && <Check size={11} strokeWidth={3} />}
-                        </span>
-                      )}
-                      {o.icon}
-                      <span className="truncate">{o.label}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            ))}
-          </div>
-        </PopoverPrimitive.Content>
-      </PopoverPrimitive.Portal>
+                    {multiple && (
+                      <span
+                        className={cn(
+                          'flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border',
+                          sel ? 'border-primary bg-primary text-white' : 'border-input bg-white',
+                        )}
+                      >
+                        {sel && <Check size={11} strokeWidth={3} />}
+                      </span>
+                    )}
+                    {o.icon}
+                    <span className="truncate">{o.label}</span>
+                  </button>
+                )
+              })}
+            </div>
+          ))}
+        </div>
+      </AppPopoverContent>
     </PopoverPrimitive.Root>
   )
 }

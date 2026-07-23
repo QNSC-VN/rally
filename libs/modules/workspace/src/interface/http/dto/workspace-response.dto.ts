@@ -67,6 +67,9 @@ export const MemberWithProfileResponseSchema = z.object({
   roleId: z.string().uuid().nullable(),
   roleSlug: z.string().nullable(),
   roleName: z.string().nullable(),
+  teams: z
+    .array(z.object({ id: z.string().uuid(), key: z.string(), name: z.string() }))
+    .default([]),
 });
 
 export class MemberWithProfileResponseDto extends createZodDto(MemberWithProfileResponseSchema) {}
