@@ -45,7 +45,7 @@ export const RowGutter = forwardRef<HTMLDivElement, RowGutterProps>(function Row
     <>
       <DragHandle ref={dragRef} disabled={dragDisabled} {...(dragDisabled ? {} : dragListeners)} />
       <div
-        className="flex shrink-0 items-center justify-center px-1.5"
+        className="flex w-6 shrink-0 items-center justify-center"
         onClick={stopPropagation ? (e) => e.stopPropagation() : undefined}
       >
         {checkbox && (
