@@ -9,14 +9,22 @@ vi.mock('@/shared/api/http-client', () => ({
 
 import { apiClient } from '@/shared/api/http-client'
 import { teamStatusKeys, useUpdateCapacity, useUpdateTeamTask } from './api'
-import { WORK_ITEM_VIEW_ROOTS } from '@/shared/api/invalidate-work-item-views'
+import { INVALIDATION_MAP, createInvalidationMutationCache } from '@/shared/api/invalidation'
 
 const mockPATCH = apiClient.PATCH as ReturnType<typeof vi.fn>
 
+// Team-status writes touch work-item-derived data, so they carry the
+// `work-item` tag — its fan-out includes the Team Status read-model.
+const WORK_ITEM_ROOTS = INVALIDATION_MAP['work-item']
+
 function makeClient() {
-  return new QueryClient({
+  const ref: { current: QueryClient | null } = { current: null }
+  const client = new QueryClient({
+    mutationCache: createInvalidationMutationCache(() => ref.current as QueryClient),
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
+  ref.current = client
+  return client
 }
 
 function makeWrapper(qc: QueryClient) {
@@ -52,7 +60,7 @@ describe('useUpdateCapacity', () => {
     })
     // Refreshes every work-item-derived read-model, including Team Status.
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: teamStatusKeys.all })
-    expect(invalidateSpy).toHaveBeenCalledTimes(WORK_ITEM_VIEW_ROOTS.length)
+    expect(invalidateSpy).toHaveBeenCalledTimes(WORK_ITEM_ROOTS.length)
   })
 })
 
@@ -72,8 +80,8 @@ describe('useUpdateTeamTask', () => {
       params: { path: { taskId: 'task-1' } },
       body: { state: 'Completed' },
     })
-    expect(invalidateSpy).toHaveBeenCalledTimes(WORK_ITEM_VIEW_ROOTS.length)
-    for (const queryKey of WORK_ITEM_VIEW_ROOTS) {
+    expect(invalidateSpy).toHaveBeenCalledTimes(WORK_ITEM_ROOTS.length)
+    for (const queryKey of WORK_ITEM_ROOTS) {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey })
     }
   })

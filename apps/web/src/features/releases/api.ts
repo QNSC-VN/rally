@@ -92,10 +92,7 @@ export function useReleases(projectId: string | undefined) {
  * Reuses `releaseKeys.list` so results share cache with `useReleases`.
  */
 export function useReleasesForProjects(projectIds: readonly string[]) {
-  const ids = useMemo(
-    () => [...new Set(projectIds.filter(Boolean))],
-    [projectIds],
-  )
+  const ids = useMemo(() => [...new Set(projectIds.filter(Boolean))], [projectIds])
   const results = useQueries({
     queries: ids.map((projectId) => ({
       queryKey: releaseKeys.list(projectId),
@@ -142,7 +139,7 @@ export function useReleaseBurndown(releaseId: string | undefined) {
         const body = await res.json().catch(() => ({}))
         throw new Error(body.message ?? `Burndown fetch failed (${res.status})`)
       }
-      const json = await res.json() as BurndownPoint[]
+      const json = (await res.json()) as BurndownPoint[]
       return json
     },
     enabled: !!releaseId,
@@ -163,7 +160,6 @@ export interface CreateReleaseInput {
 }
 
 export function useCreateRelease() {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async (body: CreateReleaseInput) => {
       const { data, error, response } = await apiClient.POST('/v1/releases', {
@@ -172,9 +168,7 @@ export function useCreateRelease() {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as unknown as Release
     },
-    onSuccess: (release) => {
-      void qc.invalidateQueries({ queryKey: releaseKeys.list(release.projectId) })
-    },
+    meta: { invalidates: ['release'] },
   })
 }
 
@@ -192,7 +186,7 @@ export interface UpdateReleaseInput {
   state?: ReleaseStatus
 }
 
-export function useUpdateRelease(id: string, projectId: string) {
+export function useUpdateRelease(id: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (body: UpdateReleaseInput) => {
@@ -203,16 +197,14 @@ export function useUpdateRelease(id: string, projectId: string) {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as unknown as Release
     },
-    onSuccess: () => {
-      qc.setQueryData(releaseKeys.detail(id), undefined)
-      void qc.invalidateQueries({ queryKey: releaseKeys.detail(id) })
-      void qc.invalidateQueries({ queryKey: releaseKeys.list(projectId) })
-    },
+    // Clear the detail cache so the refetch (triggered by the registry) can't
+    // briefly show a stale copy; `projectId` retained for call-site symmetry.
+    onSuccess: () => qc.setQueryData(releaseKeys.detail(id), undefined),
+    meta: { invalidates: ['release'] },
   })
 }
 
-export function useDeleteRelease(projectId: string) {
-  const qc = useQueryClient()
+export function useDeleteRelease() {
   return useMutation({
     mutationFn: async (id: string) => {
       const { error, response } = await apiClient.DELETE('/v1/releases/{id}', {
@@ -220,14 +212,12 @@ export function useDeleteRelease(projectId: string) {
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
     },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: releaseKeys.list(projectId) })
-    },
+    meta: { invalidates: ['release'] },
   })
 }
 
 // Inline edit helper — optimistic update for a single field.
-export function useInlineReleaseField(id: string, projectId: string, field: keyof UpdateReleaseInput) {
+export function useInlineReleaseField(id: string, field: keyof UpdateReleaseInput) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (value: unknown) => {
@@ -239,11 +229,8 @@ export function useInlineReleaseField(id: string, projectId: string, field: keyo
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as unknown as Release
     },
-    onSuccess: () => {
-      qc.setQueryData(releaseKeys.detail(id), undefined)
-      void qc.invalidateQueries({ queryKey: releaseKeys.detail(id) })
-      void qc.invalidateQueries({ queryKey: releaseKeys.list(projectId) })
-    },
+    onSuccess: () => qc.setQueryData(releaseKeys.detail(id), undefined),
+    meta: { invalidates: ['release'] },
   })
 }
 
@@ -274,7 +261,8 @@ export function useReleaseArtifacts(
   return useQuery({
     queryKey: ['release', releaseId, 'artifacts', params],
     queryFn: async () => {
-      if (!releaseId) return { data: [], pageInfo: { hasNextPage: false, nextCursor: null, limit: 50, total: 0 } }
+      if (!releaseId)
+        return { data: [], pageInfo: { hasNextPage: false, nextCursor: null, limit: 50, total: 0 } }
       const customClient = apiClient as unknown as {
         GET: (
           url: string,
@@ -283,8 +271,12 @@ export function useReleaseArtifacts(
               path: { id: string }
               query: { limit: number; q: string | undefined }
             }
-          }
-        ) => Promise<{ data?: ReleaseArtifactPageResponse; error?: unknown; response: { status: number } }>
+          },
+        ) => Promise<{
+          data?: ReleaseArtifactPageResponse
+          error?: unknown
+          response: { status: number }
+        }>
       }
       const { data, error, response } = await customClient.GET('/v1/releases/{id}/artifacts', {
         params: {

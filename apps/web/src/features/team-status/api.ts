@@ -2,10 +2,9 @@
  * Team Status API hooks — TanStack Query wrappers.
  * P3.1 Team Status: grouped task rows per iteration by member.
  */
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
-import { invalidateWorkItemViews } from '@/shared/api/invalidate-work-item-views'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -118,7 +117,6 @@ export function useUpdateCapacity(
   teamId: string | undefined,
   iterationId: string,
 ) {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: { userId: string; capacityHours: number }) => {
       const { data, error, response } = await client.PATCH('/v1/team-status/capacity', {
@@ -127,14 +125,11 @@ export function useUpdateCapacity(
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data
     },
-    onSuccess: () => {
-      invalidateWorkItemViews(qc)
-    },
+    meta: { invalidates: ['work-item'] },
   })
 }
 
 export function useUpdateTeamTask() {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: {
       taskId: string
@@ -153,8 +148,6 @@ export function useUpdateTeamTask() {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data
     },
-    onSuccess: () => {
-      invalidateWorkItemViews(qc)
-    },
+    meta: { invalidates: ['work-item'] },
   })
 }

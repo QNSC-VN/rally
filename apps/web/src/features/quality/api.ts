@@ -1,10 +1,9 @@
 /**
  * Quality/Defect API hooks — TanStack Query wrappers.
  */
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
-import { invalidateWorkItemViews } from '@/shared/api/invalidate-work-item-views'
 // Single source of truth for severity lives in the entity layer.
 export type { DefectSeverity } from '@/entities/work-item/model/types'
 import type { DefectSeverity } from '@/entities/work-item/model/types'
@@ -131,7 +130,6 @@ export interface CreateDefectInput {
 }
 
 export function useCreateDefect() {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async (body: CreateDefectInput) => {
       const res = await fetch('/api/v1/work-items', {
@@ -162,9 +160,9 @@ export function useCreateDefect() {
       }
       return json
     },
-    onSuccess: () => {
-      invalidateWorkItemViews(qc)
-    },
+    // A defect is a work item, so refresh the full work-item fan-out (which
+    // includes the Quality/Defects read-model).
+    meta: { invalidates: ['work-item'] },
   })
 }
 

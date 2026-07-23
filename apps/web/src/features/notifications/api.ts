@@ -105,28 +105,22 @@ export function useNotificationsPaged(
 // ── Mark as read ─────────────────────────────────────────────────────────────
 
 export function useMarkNotificationRead() {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async (id: string) => {
       await apiClient.POST('/v1/notifications/{id}/read', {
         params: { path: { id } },
       })
     },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['notifications'] })
-    },
+    meta: { invalidates: ['notification'] },
   })
 }
 
 export function useMarkAllNotificationsRead() {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async () => {
       await apiClient.POST('/v1/notifications/read-all', {})
     },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['notifications'] })
-    },
+    meta: { invalidates: ['notification'] },
   })
 }
 

@@ -6,8 +6,7 @@ import { CSS } from '@dnd-kit/utilities'
 
 import { BRAND } from '@/shared/config/brand'
 import { notify } from '@/shared/lib/toast'
-import { useQueryClient } from '@tanstack/react-query'
-import { useCreateDefect, qualityKeys, type DefectRow } from '@/features/quality/api'
+import { useCreateDefect, type DefectRow } from '@/features/quality/api'
 import { useProjectMembers } from '@/features/teams/api'
 import { useReleases } from '@/features/releases/api'
 import { useIterations } from '@/features/iterations/api'
@@ -51,7 +50,6 @@ function DefectStateInlineCell({
   projectId: string
 }) {
   const { t } = useTranslation('quality')
-  const qc = useQueryClient()
   const update = useUpdateWorkItem(defect.id)
   const currentVal = defect.defectState ?? 'submitted'
   // Only the current state plus its valid next states are selectable; terminal
@@ -65,7 +63,6 @@ function DefectStateInlineCell({
     if (val === currentVal) return
     update.mutate({ defectState: val } as never, {
       onSuccess: () => {
-        void qc.invalidateQueries({ queryKey: qualityKeys.all })
         notify.success(t('toasts.stateUpdated'))
       },
       onError: () => {
@@ -94,7 +91,6 @@ function DefectStateInlineCell({
  * Name column uses (shared {@link InlineEditableCell}). */
 function DefectNameCell({ defect, canEdit }: { defect: DefectRow; canEdit: boolean }) {
   const { t } = useTranslation('quality')
-  const qc = useQueryClient()
   const update = useUpdateWorkItem(defect.id)
 
   function handleCommit(raw: string) {
@@ -102,7 +98,6 @@ function DefectNameCell({ defect, canEdit }: { defect: DefectRow; canEdit: boole
     if (!next || next === defect.title) return
     update.mutate({ title: next } as never, {
       onSuccess: () => {
-        void qc.invalidateQueries({ queryKey: qualityKeys.all })
         notify.success(t('toasts.nameUpdated'))
       },
       onError: () => {
@@ -119,7 +114,7 @@ function DefectNameCell({ defect, canEdit }: { defect: DefectRow; canEdit: boole
         onCommit={handleCommit}
         ariaLabel="Name"
         title={defect.title}
-        className="block w-full break-words whitespace-normal text-ui-md text-foreground"
+        className="block w-full text-ui-md break-words whitespace-normal text-foreground"
         inputClassName="border border-primary text-foreground"
         inputStyle={{
           width: '100%',
@@ -143,7 +138,6 @@ function FixedInBuildCell({
   projectId: string
 }) {
   const { t } = useTranslation('quality')
-  const qc = useQueryClient()
   const update = useUpdateWorkItem(defect.id)
 
   function handleCommit(value: string) {
@@ -151,7 +145,6 @@ function FixedInBuildCell({
     if (trimmed === (defect.fixedInBuild ?? '')) return
     update.mutate({ fixedInBuild: trimmed || null } as never, {
       onSuccess: () => {
-        void qc.invalidateQueries({ queryKey: qualityKeys.all })
         notify.success(t('toasts.fixedInBuildUpdated'))
       },
       onError: () => {
@@ -195,7 +188,6 @@ function IterationInlineCell({
   projectId: string
 }) {
   const { t } = useTranslation('quality')
-  const qc = useQueryClient()
   const update = useUpdateWorkItem(defect.id)
   const { data: iterations = [] } = useIterations(projectId)
 
@@ -212,7 +204,6 @@ function IterationInlineCell({
     if (next === (defect.iterationId ?? null)) return
     update.mutate({ iterationId: next } as never, {
       onSuccess: () => {
-        void qc.invalidateQueries({ queryKey: qualityKeys.all })
         notify.success(t('toasts.iterationUpdated'))
       },
       onError: () => {
@@ -255,7 +246,6 @@ function OwnerInlineCell({
   projectId: string
 }) {
   const { t } = useTranslation('quality')
-  const qc = useQueryClient()
   const update = useUpdateWorkItem(defect.id)
   const { data: members = [] } = useProjectMembers(projectId)
 
@@ -263,7 +253,6 @@ function OwnerInlineCell({
     if (userId === (defect.assigneeId ?? null)) return
     update.mutate({ assigneeId: userId } as never, {
       onSuccess: () => {
-        void qc.invalidateQueries({ queryKey: qualityKeys.all })
         notify.success(t('toasts.ownerUpdated'))
       },
       onError: () => {
@@ -294,7 +283,6 @@ function OwnerInlineCell({
  */
 function FlowStateSelectCell({ defect, canEdit }: { defect: DefectRow; canEdit: boolean }) {
   const { t } = useTranslation('quality')
-  const qc = useQueryClient()
   const update = useUpdateWorkItem(defect.id)
 
   return (
@@ -306,9 +294,7 @@ function FlowStateSelectCell({ defect, canEdit }: { defect: DefectRow; canEdit: 
         options={SCHEDULE_STATE_VALUES.map((s) => ({ value: s, label: SCHEDULE_STATE_LABEL[s] }))}
         onChange={(next) =>
           update.mutate({ flowState: next } as never, {
-            onSuccess: () => {
-              void qc.invalidateQueries({ queryKey: qualityKeys.all })
-            },
+            onSuccess: () => {},
             onError: () => {
               notify.error(t('errors.flowStateUpdateFailed'))
             },
@@ -523,15 +509,12 @@ function DefectInlineCell({
   projectId: string
 }) {
   const { t } = useTranslation('quality')
-  const qc = useQueryClient()
   const update = useUpdateWorkItem(defect.id)
 
   function handleChange(val: string) {
     if (val === currentValue) return
     update.mutate({ [field]: val || undefined } as never, {
-      onSuccess: () => {
-        void qc.invalidateQueries({ queryKey: qualityKeys.all })
-      },
+      onSuccess: () => {},
       onError: () => {
         notify.error(t('errors.updateFailed'))
       },

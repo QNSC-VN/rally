@@ -11,11 +11,7 @@ import { toast } from 'sonner'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import { FileText, Loader2, Package } from 'lucide-react'
 import { DetailLayout, DetailTwoPane } from '@/shared/ui/detail/detail-layout'
-import {
-  DetailField,
-  DetailFieldPair,
-  DetailReadonlyValue,
-} from '@/shared/ui/detail/detail-field'
+import { DetailField, DetailFieldPair, DetailReadonlyValue } from '@/shared/ui/detail/detail-field'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { DateField } from '@/shared/ui/date-field'
 import { Input } from '@/shared/ui/input'
@@ -49,7 +45,7 @@ export function ReleaseDetailPage() {
   const canManage = can('release:create') || can('release:edit') || can('release:delete')
 
   const { data: release, isLoading, isError } = useRelease(releaseId)
-  const update = useUpdateRelease(releaseId, projectId)
+  const update = useUpdateRelease(releaseId)
   const { data: burndown, isLoading: burndownLoading } = useReleaseBurndown(releaseId)
 
   const [activeTab, setActiveTab] = useState<TabKey>('details')

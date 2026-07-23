@@ -3,7 +3,7 @@ import { useForm, Controller } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation } from '@tanstack/react-query'
 import { Loader2, Mail, UserPlus, X } from 'lucide-react'
 
 import { BRAND } from '@/shared/config/brand'
@@ -41,7 +41,6 @@ const sameSet = (a: string[], b: string[]) =>
 
 export function MembersTab() {
   const { t } = useTranslation('settings')
-  const qc = useQueryClient()
   const { user } = useAuthStore()
   const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
   const [showInviteModal, setShowInviteModal] = useState(false)
@@ -72,11 +71,9 @@ export function MembersTab() {
         params: { path: { id: workspaceId, invitationId } },
       })
     },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['workspace-invitations', workspaceId] })
-      notify.success(t('members.inviteCancelled'))
-    },
+    onSuccess: () => notify.success(t('members.inviteCancelled')),
     onError: (err) => notify.error(apiErrorMessage(err)),
+    meta: { invalidates: ['workspace'] },
   })
 
   const metrics = useMemo(() => {
@@ -160,10 +157,7 @@ export function MembersTab() {
           workspaceId={workspaceId}
           roles={roles}
           onClose={() => setShowInviteModal(false)}
-          onSuccess={() => {
-            setShowInviteModal(false)
-            void qc.invalidateQueries({ queryKey: ['workspace-invitations', workspaceId] })
-          }}
+          onSuccess={() => setShowInviteModal(false)}
         />
       )}
 
@@ -333,7 +327,6 @@ function EditUserModal({
   onClose: () => void
 }) {
   const { t } = useTranslation('settings')
-  const qc = useQueryClient()
   const { data: teams = [] } = useWorkspaceTeams(workspaceId)
   const updateMember = useUpdateMember(workspaceId)
 
@@ -354,6 +347,9 @@ function EditUserModal({
         body: { userId: member.userId, roleId: newRoleId, scopeType: 'workspace' },
       })
     },
+    // A role-assignment change updates the member roster and the user's
+    // effective permissions.
+    meta: { invalidates: ['workspace', 'access'] },
   })
 
   async function handleSave() {
@@ -371,7 +367,6 @@ function EditUserModal({
           ...(teamsChanged ? { teamIds } : {}),
         })
       }
-      void qc.invalidateQueries({ queryKey: ['workspace-members-profile', workspaceId] })
       notify.success('User updated')
       onClose()
     } catch (err) {
@@ -499,6 +494,7 @@ function InviteUserModal({
     onError: (err: Error) => {
       form.setError('root', { message: err.message })
     },
+    meta: { invalidates: ['workspace'] },
   })
 
   return (

@@ -56,7 +56,7 @@ export function ReleasesPage() {
   )
 
   const { data: releases = [], isLoading, isError } = useReleases(projectId)
-  const deleteRelease = useDeleteRelease(projectId ?? '')
+  const deleteRelease = useDeleteRelease()
 
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<ReleaseStatus | 'all'>('all')
@@ -244,7 +244,6 @@ export function ReleasesPage() {
           <ReleaseRow
             key={release.id}
             release={release}
-            projectId={projectId!}
             canManage={canManage}
             colStyleFor={colStyleFor}
             gutter={gutter}
