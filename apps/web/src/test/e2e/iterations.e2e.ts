@@ -9,22 +9,29 @@ test.describe('P2.2 Iteration Management (Timeboxes)', () => {
 
     // Toolbar + list chrome render.
     await expect(page.getByRole('heading', { name: 'Timeboxes' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Create Iteration' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Add New' })).toBeVisible()
     await expect(page.getByPlaceholder('Search iterations…')).toBeVisible()
 
     // Create an iteration with a unique name so the test is re-runnable.
     const name = `E2E Iteration ${Date.now()}`
-    await page.getByRole('button', { name: 'Create Iteration' }).click()
+    await page.getByRole('button', { name: 'Add New' }).click()
     await page.getByPlaceholder('Enter iteration name...').fill(name)
-    // Start/End dates are required by the modal — fill them or submit is blocked.
-    await page.locator('input[type="date"]').first().fill('2026-08-01')
-    await page.locator('input[type="date"]').nth(1).fill('2026-08-14')
+    // Start/End dates are required — set them via the shared DateField calendar
+    // (a popover, not a native date input). Day "15" of the current month for both.
+    // Scope the field buttons to the modal (the list behind also has date columns);
+    // the calendar popover portals to <body>, so the day button is page-level.
+    const modal = page.getByRole('dialog')
+    await modal.getByRole('button', { name: 'Start Date' }).click()
+    await page.getByRole('button', { name: '15', exact: true }).click()
+    await modal.getByRole('button', { name: 'End Date' }).click()
+    await page.getByRole('button', { name: '15', exact: true }).click()
     // Create-with-details opens the full-page detail on success.
     await page.getByRole('button', { name: 'Create with details' }).click()
     await settle(page)
 
-    // Detail page shows the iteration name + Theme/Notes editors.
-    await expect(page.getByRole('heading', { name })).toBeVisible()
+    // Detail page shows the iteration name (shared DetailLayout header title) +
+    // Theme/Notes editors.
+    await expect(page.getByText(name).first()).toBeVisible()
     await expect(page.getByText('Theme', { exact: true })).toBeVisible()
     await expect(page.getByText('Notes', { exact: true })).toBeVisible()
 

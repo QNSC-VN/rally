@@ -17,14 +17,21 @@ test.describe('Backlog relation display', () => {
     const iterationName = `E2E Accepted Iter ${Date.now()}`
     await page.goto('/timeboxes')
     await settle(page)
-    await page.getByRole('button', { name: 'Create Iteration' }).click()
+    await page.getByRole('button', { name: 'Add New' }).click()
+    const modal = page.getByRole('dialog')
     await page.getByPlaceholder('Enter iteration name...').fill(iterationName)
-    await page.locator('input[type="date"]').first().fill('2026-08-01')
-    await page.locator('input[type="date"]').nth(1).fill('2026-08-14')
-    await page.getByLabel('State', { exact: true }).selectOption('accepted')
+    // Dates via the shared DateField calendar popover (day "15" of current month);
+    // field buttons scoped to the modal, day button portals to <body>.
+    await modal.getByRole('button', { name: 'Start Date' }).click()
+    await page.getByRole('button', { name: '15', exact: true }).click()
+    await modal.getByRole('button', { name: 'End Date' }).click()
+    await page.getByRole('button', { name: '15', exact: true }).click()
+    // State is the shared SearchableSelect (not a native <select>): open it and pick "Accepted".
+    await modal.getByRole('button', { name: 'State' }).click()
+    await page.getByRole('button', { name: 'Accepted', exact: true }).click()
     await page.getByRole('button', { name: 'Create with details' }).click()
     await settle(page)
-    await expect(page.getByRole('heading', { name: iterationName })).toBeVisible()
+    await expect(page.getByText(iterationName).first()).toBeVisible()
 
     // Create a Story directly INTO that iteration via Iteration Status's Add
     // Item — the Backlog quick-create's Iteration assignment dropdown is (by

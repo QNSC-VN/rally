@@ -53,7 +53,7 @@ test.describe('P2.1 Backlog Enhancement', () => {
     ).toHaveText(targetLetter)
   })
 
-  test('bulk assign bar appears with Release and Iteration actions', async ({ page }) => {
+  test('bulk action bar appears with Delete and Copy actions', async ({ page }) => {
     await loginAndSelectProject(page)
     await page.goto('/backlog')
     await settle(page)
@@ -63,8 +63,8 @@ test.describe('P2.1 Backlog Enhancement', () => {
     test.skip(n === 0, 'No backlog rows to select')
 
     await rowCheckboxes.first().check()
-    await expect(page.getByText(/\d+ selected/)).toBeVisible()
-    await expect(page.getByLabel('Assign release to selected')).toBeVisible()
-    await expect(page.getByLabel('Assign iteration to selected')).toBeVisible()
+    await expect(page.getByText(/\d+ item.*selected/i)).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Delete' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Copy' })).toBeVisible()
   })
 })
