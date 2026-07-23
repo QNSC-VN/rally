@@ -407,6 +407,13 @@
       "when": 1785100002000,
       "tag": "0056_iteration_activity_logs",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1785100003000,
+      "tag": "0057_sso_connection_oidc_fields",
+      "breakpoints": true
     }
   ]
 }

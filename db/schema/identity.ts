@@ -14,7 +14,12 @@ import {
   index,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
-import { userStatusEnum, ssoProviderEnum, ssoConnectionStatusEnum } from './enums';
+import {
+  userStatusEnum,
+  ssoProviderEnum,
+  ssoConnectionStatusEnum,
+  ssoConnectionKindEnum,
+} from './enums';
 
 export const identitySchema = pgSchema('identity');
 
@@ -127,6 +132,24 @@ export const ssoConnections = identitySchema.table(
     externalTenantId: varchar('external_tenant_id', { length: 255 }).notNull(),
     /** Full token issuer URL — optional secondary match key (SAML/OIDC). */
     issuer: varchar('issuer', { length: 512 }),
+    // ── Multi-IdP OIDC broker fields (nullable for legacy rows; a row is only
+    // broker-usable once fully configured — see isBrokerConfigured). ───────────
+    /** Routing model: `directory` (owns its domains) vs `shared` (consumer IdP, invite-gated). */
+    kind: ssoConnectionKindEnum('kind').notNull().default('directory'),
+    /** OIDC issuer base for mandatory `.well-known` discovery. */
+    authorityUrl: varchar('authority_url', { length: 512 }),
+    /** Optional JWKS override; otherwise taken from discovery. */
+    jwksUri: varchar('jwks_uri', { length: 512 }),
+    /** Extra accepted issuers (e.g. Entra v1 + v2). Empty ⇒ [discovery issuer]. */
+    acceptedIssuers: jsonb('accepted_issuers').$type<string[]>().notNull().default([]),
+    /** OAuth scopes. */
+    scopes: varchar('scopes', { length: 255 }).notNull().default('openid profile email'),
+    /** Public IdP client id (also the expected token audience). */
+    clientId: varchar('client_id', { length: 255 }),
+    /** Reference (Secrets Manager name/ARN) to the client secret — never the secret itself. */
+    clientSecretRef: varchar('client_secret_ref', { length: 512 }),
+    /** Human label for the login button + logs/audit. */
+    displayName: varchar('display_name', { length: 255 }),
     /** System-role slug assigned to JIT-provisioned users (e.g. 'project_member'). */
     defaultRoleSlug: varchar('default_role_slug', { length: 64 })
       .notNull()
@@ -145,5 +168,28 @@ export const ssoConnections = identitySchema.table(
       t.provider,
       t.externalTenantId,
     ),
+  }),
+);
+
+/**
+ * Owned email domains for `directory` connections — source of truth for
+ * email-first routing AND the provisioning domain gate. `UNIQUE(domain)`
+ * guarantees a domain maps to at most one connection (no ambiguous routing).
+ * `shared` (consumer-IdP) connections have no rows here — they are invite-gated.
+ */
+export const ssoConnectionDomains = identitySchema.table(
+  'sso_connection_domains',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    connectionId: uuid('connection_id')
+      .notNull()
+      .references(() => ssoConnections.id, { onDelete: 'cascade' }),
+    /** Lower-cased email domain (e.g. "vendor.com"). */
+    domain: varchar('domain', { length: 255 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    domainIdx: uniqueIndex('uq_sso_connection_domains_domain').on(t.domain),
+    connectionIdx: index('ix_sso_connection_domains_connection').on(t.connectionId),
   }),
 );

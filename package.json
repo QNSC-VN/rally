@@ -70,7 +70,7 @@
     "@opentelemetry/sdk-node": "^0.220.0",
     "@opentelemetry/sdk-trace-base": "^2.9.0",
     "@opentelemetry/semantic-conventions": "^1.41.1",
-    "@qnsc-vn/identity": "^5.4.0",
+    "@qnsc-vn/identity": "^5.5.0",
     "@qnsc-vn/platform-cache": "^2.1.0",
     "@qnsc-vn/platform-http": "^3.0.0",
     "argon2": "^0.44.0",
