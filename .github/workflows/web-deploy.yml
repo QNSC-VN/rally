@@ -79,8 +79,11 @@ jobs:
           fi
           # The sibling run may not be registered the instant this job starts;
           # allow a short grace period before concluding there is none.
+          # This job does not check out the repo, so `gh` cannot infer it from a
+          # local remote — pass it explicitly.
           for _ in $(seq 1 12); do
-            ID=$(gh run list --workflow web-ci.yml --branch main --commit "$GITHUB_SHA" \
+            ID=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow web-ci.yml \
+                   --branch main --commit "$GITHUB_SHA" \
                    --limit 1 --json databaseId --jq '.[0].databaseId // empty')
             [ -n "$ID" ] && break
             sleep 10
@@ -90,7 +93,7 @@ jobs:
             exit 1
           fi
           echo "Waiting on Web · CI run $ID …"
-          gh run watch "$ID" --exit-status
+          gh run watch --repo "$GITHUB_REPOSITORY" "$ID" --exit-status
           echo "Web · CI succeeded; deploy may proceed."
 
   deploy:
