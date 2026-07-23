@@ -109,7 +109,7 @@ export function DetailHeaderButton({
       className="flex items-center gap-1.5 rounded px-2.5 py-1.5 text-ui-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40"
       style={{
         backgroundColor: primary ? 'rgba(255,255,255,0.16)' : 'transparent',
-        color: primary ? '#fff' : BRAND.accentBg,
+        color: primary ? 'white' : BRAND.accentBg,
         border: '1px solid',
         borderColor: primary ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.22)',
       }}
