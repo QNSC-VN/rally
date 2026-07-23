@@ -115,8 +115,52 @@ jobs:
           gh run watch "$ID" --exit-status
           echo "Infrastructure applied; deploy may proceed."
 
+  # ───────────────────────────────────────────────────────────────────────────
+  # CI gate — a red main must not deploy.
+  #
+  # Block the develop (push-to-main) deploy until the "Backend · CI" run for THIS
+  # commit has finished successfully. Keys on the commit sha, so it can never
+  # wait on an unrelated run. Same shape as wait-for-infra above.
+  #
+  #   - tag push → CI does not run on tags, and prod is gated by the "production"
+  #     Environment reviewer inside the reusable → nothing to await, proceed.
+  #   - push to main → wait for Backend · CI on this sha; `gh run watch
+  #     --exit-status` propagates its conclusion, so a failed CI blocks deploy.
+  #
+  # Fails closed: if no CI run is found for the sha, block rather than ship blind.
+  # ───────────────────────────────────────────────────────────────────────────
+  wait-for-ci:
+    name: Wait for Backend · CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Wait for Backend · CI on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            echo "Tag deploy — Backend · CI gate not applicable."; exit 0
+          fi
+          for _ in $(seq 1 12); do
+            ID=$(gh run list --workflow backend-ci.yml --branch main --commit "$GITHUB_SHA" \
+                   --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+            [ -n "$ID" ] && break
+            sleep 10
+          done
+          if [ -z "${ID:-}" ]; then
+            echo "::error::No Backend · CI run found for $GITHUB_SHA — blocking deploy (fail closed)."
+            exit 1
+          fi
+          echo "Waiting on Backend · CI run $ID …"
+          gh run watch "$ID" --exit-status
+          echo "Backend · CI succeeded; deploy may proceed."
+
   deploy:
-    needs: wait-for-infra
+    needs: [wait-for-infra, wait-for-ci]
     uses: QNSC-VN/qnsc-ci/.github/workflows/backend-deploy.yml@v1.4.0
     with:
       product: rally
