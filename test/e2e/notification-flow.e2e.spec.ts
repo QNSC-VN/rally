@@ -384,10 +384,21 @@ describe('BA flows: Worker relay — real fetchBatch/processRow/markSent/markFai
     // in_app_notifications.id (a freshly-generated uuidv7), NOT the outbox
     // row's own id — resolve it via sourceEventId, which the relay sets to
     // the outbox row's id when no custom idempotencyKey was supplied.
-    const [delivered] = await db
-      .select()
-      .from(inAppNotifications)
-      .where(eq(inAppNotifications.sourceEventId, row.id));
+    //
+    // POLL for the in-app row instead of reading once. Because both relays boot
+    // with their Valkey wake-signal subscriptions live (see the comment below),
+    // a concurrent wake-triggered relay pass can be mid-transaction when our
+    // awaited relay() returns having found nothing left to claim — a single read
+    // then races the commit and observes undefined (~1 run in N). waitFor()
+    // retries until the cascade's row is committed, matching the email reads
+    // below.
+    const delivered = await waitFor(async () => {
+      const [r] = await db
+        .select()
+        .from(inAppNotifications)
+        .where(eq(inAppNotifications.sourceEventId, row.id));
+      return r;
+    });
     expect(delivered).toBeDefined();
 
     // Both relays are booted with their Valkey wake-signal subscriptions live
@@ -489,10 +500,7 @@ describe('BA flows: Worker relay — real fetchBatch/processRow/markSent/markFai
     // races the relay pass and flakes intermittently in CI (see #125).
     let after: typeof row | undefined = undefined;
     for (let i = 0; i < 40; i++) {
-      [after] = await db
-        .select()
-        .from(notificationOutbox)
-        .where(eq(notificationOutbox.id, row.id));
+      [after] = await db.select().from(notificationOutbox).where(eq(notificationOutbox.id, row.id));
       if ((after?.attempts ?? 0) >= 1) break;
       await new Promise((r) => setTimeout(r, 250));
     }
