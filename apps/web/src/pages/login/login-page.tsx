@@ -26,6 +26,9 @@ export function LoginPage() {
   const { t } = useTranslation('auth')
   const [ssoLoading, setSsoLoading] = useState(false)
   const [ssoError, setSsoError] = useState<string | null>(null)
+  const [email, setEmail] = useState('')
+  const [emailLoading, setEmailLoading] = useState(false)
+  const [emailError, setEmailError] = useState<string | null>(null)
   const [devEmail, setDevEmail] = useState('admin@acme.dev')
   const [devLoading, setDevLoading] = useState(false)
   const [devError, setDevError] = useState<string | null>(null)
@@ -43,6 +46,39 @@ export function LoginPage() {
     } catch {
       setSsoError(t('errors.ssoInit'))
       setSsoLoading(false)
+    }
+  }
+
+  // ── Email-first sign-in (multi-IdP broker) ──────────────────────────────
+  // Resolve the email's federated connection server-side and hand off to its
+  // IdP. Unknown/unmatched email → 401 NO_CONNECTION ("contact administrator").
+  async function handleEmailLogin(e: React.FormEvent) {
+    e.preventDefault()
+    setEmailLoading(true)
+    setEmailError(null)
+    try {
+      const returnTo = new URLSearchParams(window.location.search).get('returnTo') ?? '/'
+      const res = await fetch('/v1/bff/login/start', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, returnTo }),
+      })
+      if (res.status === 401) {
+        setEmailError(t('noAccessError'))
+        setEmailLoading(false)
+        return
+      }
+      if (!res.ok) {
+        setEmailError(t('signInFailed'))
+        setEmailLoading(false)
+        return
+      }
+      const { authorizeUrl } = (await res.json()) as { authorizeUrl: string }
+      window.location.href = authorizeUrl // execution stops at the redirect
+    } catch {
+      setEmailError(t('signInFailed'))
+      setEmailLoading(false)
     }
   }
 
@@ -190,6 +226,50 @@ export function LoginPage() {
             </div>
 
             <div className="px-7 py-6">
+              {/* ── Email-first sign-in (multi-IdP broker) ─────────────────── */}
+              <form onSubmit={handleEmailLogin} className="mb-4 flex flex-col gap-3">
+                {emailError && (
+                  <div
+                    role="alert"
+                    className="flex items-start gap-2 rounded border border-destructive-border bg-destructive-bg px-3 py-2.5 text-ui-sm text-destructive"
+                  >
+                    <AlertCircle size={14} className="mt-px shrink-0" />
+                    {emailError}
+                  </div>
+                )}
+                <div className="flex flex-col gap-1.5">
+                  <label
+                    htmlFor="login-email"
+                    className="text-ui-sm font-medium text-muted-foreground"
+                  >
+                    {t('workEmailLabel')}
+                  </label>
+                  <input
+                    id="login-email"
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="h-10 w-full rounded border border-border-strong px-3 text-ui-lg text-foreground outline-none"
+                    placeholder={t('workEmailPlaceholder')}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={emailLoading}
+                  className="flex w-full items-center justify-center gap-2 rounded bg-primary py-3 text-ui-lg font-medium text-white transition-colors disabled:opacity-60"
+                >
+                  {emailLoading ? t('continuing') : t('continueWithEmail')}
+                </button>
+              </form>
+
+              {/* divider */}
+              <div className="mb-4 flex items-center gap-3 text-ui-xs text-foreground-subtle">
+                <span className="h-px flex-1 bg-border" />
+                {t('orDivider')}
+                <span className="h-px flex-1 bg-border" />
+              </div>
+
               {/* ── SSO sign-in ──────────────────────────────────────────── */}
               {ssoError && (
                 <div

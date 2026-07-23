@@ -20,7 +20,7 @@ import { Pool } from 'pg';
 import { pgOptions } from '../pg-ssl';
 import { inArray, sql } from 'drizzle-orm';
 import * as schema from '../schema';
-import { ssoConnections } from '../schema/identity';
+import { ssoConnections, ssoConnectionDomains } from '../schema/identity';
 import {
   ROLE_PERMISSIONS,
   ROLE_NAMES,
@@ -168,7 +168,28 @@ export async function seedTenantBootstrapInto(database: Db): Promise<void> {
   // >= 5.5.0 (older versions treat jitEnabled=false as block-everyone).
   const jitEnabled = (process.env['SSO_JIT_ENABLED'] ?? 'true').toLowerCase() !== 'false';
 
-  await database
+  // Multi-IdP broker (>= 5.5.0): configure the home connection as a `directory`
+  // connection so the home tenant also works through the generic broker path.
+  // authority drives OIDC discovery; acceptedIssuers covers the Entra v2 + legacy
+  // v1 issuers; the client secret lives in Secrets Manager (ref only, never here).
+  const authorityUrl = `https://login.microsoftonline.com/${entraTid}/v2.0`;
+  const acceptedIssuers = [
+    `https://login.microsoftonline.com/${entraTid}/v2.0`,
+    `https://sts.windows.net/${entraTid}/`,
+  ];
+  const homeClientId = process.env['ENTRA_CLIENT_ID'] ?? null;
+  const homeSecretRef = process.env['IDENTITY_HOME_SECRET_REF'] ?? null;
+
+  const brokerFields = {
+    kind: 'directory' as const,
+    authorityUrl,
+    acceptedIssuers,
+    clientId: homeClientId,
+    clientSecretRef: homeSecretRef,
+    displayName: 'QNSC (home)',
+  };
+
+  const [homeConn] = await database
     .insert(ssoConnections)
     .values({
       workspaceId: WORKSPACE_ID,
@@ -178,9 +199,10 @@ export async function seedTenantBootstrapInto(database: Db): Promise<void> {
       allowedEmailDomains: ssoAllowedDomains,
       jitEnabled,
       status: 'active',
+      ...brokerFields,
     })
-    // Reconcile config on every run so allow-list / default-role / JIT changes
-    // take effect on the existing connection.
+    // Reconcile config on every run so allow-list / default-role / JIT / broker
+    // fields take effect on the existing connection.
     .onConflictDoUpdate({
       target: [ssoConnections.provider, ssoConnections.externalTenantId],
       set: {
@@ -190,8 +212,19 @@ export async function seedTenantBootstrapInto(database: Db): Promise<void> {
         jitEnabled,
         status: 'active',
         updatedAt: new Date(),
+        ...brokerFields,
       },
-    });
+    })
+    .returning({ id: ssoConnections.id });
+
+  // Populate the home connection's owned domains (routing + gate source of truth).
+  // Idempotent via the UNIQUE(domain) constraint.
+  if (homeConn && ssoAllowedDomains.length > 0) {
+    await database
+      .insert(ssoConnectionDomains)
+      .values(ssoAllowedDomains.map((domain) => ({ connectionId: homeConn.id, domain })))
+      .onConflictDoNothing({ target: ssoConnectionDomains.domain });
+  }
 
   console.log(
     `\u2705  Tenant bootstrap: workspace "${workspaceName}" + ${PRESET_WORKSPACE_ROLES.length} preset roles ` +

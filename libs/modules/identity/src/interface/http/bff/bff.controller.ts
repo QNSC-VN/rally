@@ -12,7 +12,7 @@ import {
 import { ApiExcludeController } from '@nestjs/swagger';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import '@fastify/cookie';
-import { Auth, Public, UnauthorizedException } from '@platform';
+import { Auth, Public, RateLimit, UnauthorizedException } from '@platform';
 import type { JwtPayload } from '@platform';
 import { AuthService, BffService, readCookie } from '@qnsc-vn/identity';
 import { AccessService } from '@modules/access';
@@ -70,6 +70,7 @@ export class BffController {
   // surfaces as 401 `NO_CONNECTION` ("contact your administrator").
   @Post('login/start')
   @Public()
+  @RateLimit('AUTH_LOGIN')
   @HttpCode(200)
   async loginStart(
     @Body() dto: LoginStartDto,
