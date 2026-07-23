@@ -25,7 +25,7 @@ test.describe('Releases/Milestones tables lead with the ID column', () => {
 
     const key = page.getByRole('button', { name: 'RE-1', exact: true })
     await expect(key).toBeVisible({ timeout: 20_000 })
-    await assertKeyLeftOfName(key, page.getByRole('button', { name: /NX Platform Upgrade/ }))
+    await assertKeyLeftOfName(key, page.getByText(/NX Platform Upgrade/).first())
 
     await page.screenshot({ path: 'test-results/releases-id-column.png', fullPage: true })
   })
@@ -36,7 +36,7 @@ test.describe('Releases/Milestones tables lead with the ID column', () => {
 
     const key = page.getByRole('button', { name: 'MS-1', exact: true })
     await expect(key).toBeVisible({ timeout: 20_000 })
-    await assertKeyLeftOfName(key, page.getByRole('button', { name: /NX Platform v2/ }))
+    await assertKeyLeftOfName(key, page.getByText(/NX Platform v2/).first())
 
     await page.screenshot({ path: 'test-results/milestones-id-column.png', fullPage: true })
   })
