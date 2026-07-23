@@ -16,8 +16,20 @@ import {
   TRANSACTION_RUNNER,
   AUTH_SERVICE_OPTIONS,
   ENTRA_VERIFIER_OPTIONS,
+  // Multi-IdP OIDC broker
+  OidcDiscovery,
+  OidcClient,
+  OidcTokenVerifier,
+  ConnectionRegistry,
+  SECRET_RESOLVER,
 } from '@qnsc-vn/identity';
-import type { AuthServiceOptions, EntraVerifierOptions, BffOptions } from '@qnsc-vn/identity';
+import type {
+  AuthServiceOptions,
+  EntraVerifierOptions,
+  BffOptions,
+  ISsoConnectionRepository,
+  ISecretResolver,
+} from '@qnsc-vn/identity';
 import { AppConfigService, BFF_SESSION_RESOLVER } from '@platform';
 import { AccessModule, AccessService } from '@modules/access';
 import { WorkspaceModule, WorkspaceService } from '@modules/workspace';
@@ -29,6 +41,7 @@ import { RallyBffSessionResolver } from './application/bff-session.resolver';
 import { UserDrizzleRepository } from './infrastructure/persistence/user.drizzle-repository';
 import { AuthSessionDrizzleRepository } from './infrastructure/persistence/auth-session.drizzle-repository';
 import { SsoConnectionDrizzleRepository } from './infrastructure/persistence/sso-connection.drizzle-repository';
+import { SecretsManagerSecretResolver } from './infrastructure/secrets-manager-secret-resolver';
 import { RallyClaimsProvider } from './application/claims.provider';
 import { DrizzleTransactionRunner } from './application/transaction-runner';
 
@@ -70,6 +83,30 @@ import { DrizzleTransactionRunner } from './application/transaction-runner';
     // Bridge that lets the shared JwtAuthGuard authenticate `/api/*` requests
     // from the BFF session cookie when no Bearer token is present.
     { provide: BFF_SESSION_RESOLVER, useExisting: RallyBffSessionResolver },
+
+    // Multi-IdP OIDC broker collaborators. BffService picks these up via its
+    // @Optional constructor params; the home/legacy path is unaffected when
+    // (as today) no non-home connection is configured.
+    { provide: OidcDiscovery, useFactory: () => new OidcDiscovery() },
+    { provide: OidcClient, useFactory: () => new OidcClient() },
+    { provide: OidcTokenVerifier, useFactory: () => new OidcTokenVerifier() },
+    { provide: SECRET_RESOLVER, useClass: SecretsManagerSecretResolver },
+    {
+      provide: ConnectionRegistry,
+      inject: [SSO_CONNECTION_REPOSITORY, SECRET_RESOLVER, OidcDiscovery, AppConfigService],
+      useFactory: (
+        repo: ISsoConnectionRepository,
+        secrets: ISecretResolver,
+        discovery: OidcDiscovery,
+        config: AppConfigService,
+      ) =>
+        new ConnectionRegistry(
+          repo,
+          secrets,
+          discovery,
+          config.get('IDENTITY_REDIRECT_URI') ?? config.get('ENTRA_REDIRECT_URI'),
+        ),
+    },
 
     // Persistence ports → rally drizzle repositories.
     { provide: USER_REPOSITORY, useClass: UserDrizzleRepository },

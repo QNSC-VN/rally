@@ -19,7 +19,7 @@ import { AccessService } from '@modules/access';
 import { WorkspaceService } from '@modules/workspace';
 import { CurrentUser } from '../decorators/current-user.decorator';
 import { UserProfileResponseDto } from '../dto/auth-response.dto';
-import { DevLoginDto, SwitchWorkspaceDto } from '../dto/login.dto';
+import { DevLoginDto, LoginStartDto, SwitchWorkspaceDto } from '../dto/login.dto';
 import {
   BFF_SESSION_COOKIE,
   BFF_STATE_COOKIE,
@@ -61,6 +61,29 @@ export class BffController {
       maxAge: BFF_STATE_COOKIE_MAX_AGE_SECONDS,
     });
     this.redirect(reply, authorizeUrl);
+  }
+
+  // ── POST /bff/login/start ──────────────────────────────────────────────────
+  // Public: email-first entry for the multi-IdP broker. Resolves the email's
+  // federated connection, sets the browser-bound `state` cookie, and returns the
+  // IdP authorize URL for the SPA to redirect to. An unknown / unmatched email
+  // surfaces as 401 `NO_CONNECTION` ("contact your administrator").
+  @Post('login/start')
+  @Public()
+  @HttpCode(200)
+  async loginStart(
+    @Body() dto: LoginStartDto,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ): Promise<{ authorizeUrl: string }> {
+    const { authorizeUrl, state } = await this.bff.beginLogin(dto.returnTo, dto.email);
+    reply.setCookie(BFF_STATE_COOKIE, state, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'lax', // must survive the top-level redirect back from the IdP
+      path: '/',
+      maxAge: BFF_STATE_COOKIE_MAX_AGE_SECONDS,
+    });
+    return { authorizeUrl };
   }
 
   // ── GET /bff/callback ────────────────────────────────────────────────────
