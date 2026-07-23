@@ -145,8 +145,11 @@ jobs:
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             echo "Tag deploy — Backend · CI gate not applicable."; exit 0
           fi
+          # This job does not check out the repo, so `gh` cannot infer it from a
+          # local remote — pass it explicitly.
           for _ in $(seq 1 12); do
-            ID=$(gh run list --workflow backend-ci.yml --branch main --commit "$GITHUB_SHA" \
+            ID=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow backend-ci.yml \
+                   --branch main --commit "$GITHUB_SHA" \
                    --limit 1 --json databaseId --jq '.[0].databaseId // empty')
             [ -n "$ID" ] && break
             sleep 10
@@ -156,7 +159,7 @@ jobs:
             exit 1
           fi
           echo "Waiting on Backend · CI run $ID …"
-          gh run watch "$ID" --exit-status
+          gh run watch --repo "$GITHUB_REPOSITORY" "$ID" --exit-status
           echo "Backend · CI succeeded; deploy may proceed."
 
   deploy:
