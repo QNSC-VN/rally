@@ -6,6 +6,11 @@ import { ssoConnections, ssoConnectionDomains } from '../../../../../../db/schem
 import { workspaceInvitations } from '../../../../../../db/schema/workspace';
 import type { SsoConnection, ISsoConnectionRepository } from '@qnsc-vn/identity';
 
+/** Lower-cased email domain (the part after `@`), or null for a malformed email. */
+function emailDomain(email: string): string | null {
+  return email.split('@')[1]?.toLowerCase() ?? null;
+}
+
 @Injectable()
 export class SsoConnectionDrizzleRepository implements ISsoConnectionRepository {
   constructor(@InjectDrizzle() private readonly db: DrizzleDB) {}
@@ -33,7 +38,7 @@ export class SsoConnectionDrizzleRepository implements ISsoConnectionRepository 
    * lower-cased.
    */
   async findDirectoryByEmailDomain(email: string): Promise<SsoConnection | null> {
-    const domain = email.split('@')[1]?.toLowerCase();
+    const domain = emailDomain(email);
     if (!domain) return null;
     const rows = await this.db
       .select({ conn: ssoConnections })
@@ -70,6 +75,8 @@ export class SsoConnectionDrizzleRepository implements ISsoConnectionRepository 
           sql`lower(${workspaceInvitations.email}) = ${email.toLowerCase()}`,
         ),
       )
+      // Deterministic when a workspace has >1 shared connection: oldest wins.
+      .orderBy(ssoConnections.createdAt)
       .limit(1);
     return rows[0]?.conn ?? null;
   }
@@ -93,7 +100,7 @@ export class SsoConnectionDrizzleRepository implements ISsoConnectionRepository 
 
   /** True if the email's domain is owned by this (directory) connection — the provisioning gate. */
   async connectionOwnsEmailDomain(connectionId: string, email: string): Promise<boolean> {
-    const domain = email.split('@')[1]?.toLowerCase();
+    const domain = emailDomain(email);
     if (!domain) return false;
     const rows = await this.db
       .select({ id: ssoConnectionDomains.id })

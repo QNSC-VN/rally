@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-secrets-manager';
 import { AppConfigService, buildAwsClientConfig } from '@platform';
 import type { ISecretResolver } from '@qnsc-vn/identity';
@@ -15,8 +15,9 @@ export class SecretsManagerSecretResolver implements ISecretResolver {
   private readonly cache = new Map<string, { value: string; expiresAt: number }>();
   private readonly ttlMs = 300_000;
 
-  constructor(config: AppConfigService) {
-    this.client = new SecretsManagerClient(buildAwsClientConfig(config));
+  /** `client` is an injectable seam for tests; production builds it from config. */
+  constructor(config: AppConfigService, @Optional() client?: SecretsManagerClient) {
+    this.client = client ?? new SecretsManagerClient(buildAwsClientConfig(config));
   }
 
   async get(ref: string): Promise<string> {
