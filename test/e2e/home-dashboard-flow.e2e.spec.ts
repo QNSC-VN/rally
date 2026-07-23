@@ -71,7 +71,16 @@ describe('BA flow: Home dashboard aggregates (real AppModule + seeded DB)', () =
       priority: 'urgent',
     });
 
-    const rows = await workItems.listMyWork(actor, 50);
+    // Generous limit so BOTH fresh items are in the window regardless of seed
+    // size. `actor` is the shared seeded admin, and the e2e DB is never cleaned
+    // between runs, so admin accumulates many assigned items across runs (96+
+    // and growing). my-work orders by `priority DESC, rank ASC` and new rows get
+    // the highest rank — so a default-priority ("normal") item sorts LAST within
+    // its priority band and falls outside a small window once accumulation
+    // exceeds it (the real cause of this test's flake: "expected [50 items] to
+    // include <normal.id>"). The bounded/limit behaviour is asserted separately
+    // below. (Long-term fix is per-test data isolation for the whole e2e suite.)
+    const rows = await workItems.listMyWork(actor, 100_000);
     const ids = rows.map((r) => r.id);
     expect(ids).toContain(normal.id);
     expect(ids).toContain(urgent.id);

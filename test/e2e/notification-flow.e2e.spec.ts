@@ -378,27 +378,28 @@ describe('BA flows: Worker relay — real fetchBatch/processRow/markSent/markFai
       })
       .returning();
 
-    await notificationRelay.relay();
-
-    // The cascade's email idempotency key is scoped to the resulting
-    // in_app_notifications.id (a freshly-generated uuidv7), NOT the outbox
-    // row's own id — resolve it via sourceEventId, which the relay sets to
-    // the outbox row's id when no custom idempotencyKey was supplied.
+    // Drain the outbox until THIS row is delivered, re-driving the relay on
+    // each poll. A single relay() pass fetches only the oldest `batchSize` (50)
+    // pending rows (fetchBatch: `ORDER BY scheduled_at ASC LIMIT 50`). The e2e
+    // DB is shared and never cleaned between runs, so a freshly-inserted row can
+    // sit behind ≥50 older pending rows and miss the first batch — the row is
+    // never processed within a fixed poll window and the read times out (the
+    // real, previously-misdiagnosed cause of this test's flake). Each pass marks
+    // its batch sent — or failed, which pushes scheduled_at into the future so
+    // the row drops out of the next batch — so re-driving deterministically
+    // reaches our row instead of depending on a single pass landing it. `send()`
+    // is idempotent on source_event_id, so extra passes never double-write.
     //
-    // POLL for the in-app row instead of reading once. Because both relays boot
-    // with their Valkey wake-signal subscriptions live (see the comment below),
-    // a concurrent wake-triggered relay pass can be mid-transaction when our
-    // awaited relay() returns having found nothing left to claim — a single read
-    // then races the commit and observes undefined (~1 run in N). waitFor()
-    // retries until the cascade's row is committed, matching the email reads
-    // below.
+    // sourceEventId == row.id here: the relay passes `row.idempotencyKey ?? row.id`
+    // and this row supplied no custom idempotency key.
     const delivered = await waitFor(async () => {
+      await notificationRelay.relay();
       const [r] = await db
         .select()
         .from(inAppNotifications)
         .where(eq(inAppNotifications.sourceEventId, row.id));
       return r;
-    });
+    }, 10_000);
     expect(delivered).toBeDefined();
 
     // Both relays are booted with their Valkey wake-signal subscriptions live
@@ -419,24 +420,18 @@ describe('BA flows: Worker relay — real fetchBatch/processRow/markSent/markFai
     expect(emailRow.template).toBe('notification');
     expect(['pending', 'sent']).toContain(emailRow.status);
 
-    // Drain the email relay too (a no-op if the wake signal already did) —
-    // proves the cascade is delivered end-to-end either way. EMAIL_PROVIDER=dev
-    // (see vitest.e2e.config.ts) so this logs instead of actually sending.
-    await emailRelay.relay();
-
-    // POLL for the terminal state rather than reading once. The wake signal can
-    // have a concurrent relay pass already holding this row claimed-but-not-yet
-    // -marked; our explicit relay() then finds nothing to claim and returns
-    // immediately, so a single read observes 'pending' and the assertion fails.
-    // Measured at roughly 1 run in 10 before this change — enough to train
-    // people to re-run a red build instead of reading it.
-    //
-    // Waiting for 'sent' asserts the same guarantee (the cascade IS delivered)
-    // without depending on which pass gets there first.
+    // Drain the email outbox until OUR row reaches 'sent', re-driving the email
+    // relay on each poll. Same reasoning as the in-app drain above: emailRelay's
+    // fetchBatch is also bounded (oldest N by scheduled_at) and the shared e2e
+    // DB accumulates rows, so a single relay() pass need not include our row.
+    // Re-driving reaches 'sent' deterministically without depending on which
+    // pass gets there first. EMAIL_PROVIDER=dev (see vitest.e2e.config.ts) logs
+    // instead of actually sending.
     const afterEmail = await waitFor(async () => {
+      await emailRelay.relay();
       const [r] = await db.select().from(emailOutbox).where(eq(emailOutbox.id, emailRow.id));
       return r?.status === 'sent' ? r : undefined;
-    });
+    }, 10_000);
     expect(afterEmail.status).toBe('sent');
   });
 
