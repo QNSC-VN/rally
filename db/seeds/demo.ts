@@ -45,9 +45,11 @@ import {
   teams,
   teamMembers,
   tasks,
+  workItemRelations,
   milestones,
   milestoneReleases,
   milestoneProjects,
+  milestoneTeams,
   milestoneArtifacts,
   memberCapacity,
   comments,
@@ -274,6 +276,7 @@ async function seedFlow() {
       id: NXP_RELEASE_1_ID,
       workspaceId: WORKSPACE_ID,
       projectId: nxpId,
+      releaseKey: 'RE-1',
       name: 'v2.0 — NX Platform Upgrade',
       description: 'Major upgrade to NX v21 + ESLint flat-config rollout.',
       status: 'planning',
@@ -311,6 +314,7 @@ async function seedFlow() {
       id: NXP_MILESTONE_1_ID,
       workspaceId: WORKSPACE_ID,
       projectId: nxpId,
+      milestoneKey: 'MS-1',
       name: 'GA — NX Platform v2',
       description: 'General availability of the v2 platform.',
       status: 'planned',
@@ -326,6 +330,12 @@ async function seedFlow() {
   await db
     .insert(milestoneProjects)
     .values({ milestoneId: NXP_MILESTONE_1_ID, projectId: nxpId })
+    .onConflictDoNothing();
+  // Milestone spans the delivering Team (Team Alpha) — completes the
+  // "fully-linked flow": Team links are an optional m2m set explicitly here.
+  await db
+    .insert(milestoneTeams)
+    .values({ milestoneId: NXP_MILESTONE_1_ID, teamId: TEAM_ALPHA_ID })
     .onConflictDoNothing();
 
   // ── 5. Story + Defect (both team-linked, in the iteration + release) ───
@@ -356,7 +366,9 @@ async function seedFlow() {
         type: 'story' as const,
         title: 'Upgrade NX workspace to v21',
         statusId: inProgressStatus,
+        // BR-WI-01: Flow State and Schedule State MIRROR — keep them equal.
         scheduleState: 'in_progress' as const,
+        flowState: 'in_progress' as const,
         priority: 'high' as const,
         storyPoints: '5',
         assigneeId: ADMIN_USER_ID,
@@ -371,9 +383,16 @@ async function seedFlow() {
         iterationId: NXP_ITER_CURRENT_ID,
         itemKey: 'DE-1',
         type: 'defect' as const,
+        // Work-item hierarchy (DB design §Work item hierarchy / §19.3): a Defect
+        // is a child of a Story via parent_id — this is the Defect's "User Story"
+        // shown in the Quality grid. (The relates_to link below is a *secondary*
+        // relation for the Linked Items block, not the hierarchy.)
+        parentId: NXP_STORY_1_ID,
         title: 'CI pipeline fails intermittently on Windows build agents',
         statusId: inProgressStatus,
+        // BR-WI-01: Flow State and Schedule State MIRROR — keep them equal.
         scheduleState: 'in_progress' as const,
+        flowState: 'in_progress' as const,
         priority: 'urgent' as const,
         assigneeId: DEVELOPER_ID,
         createdBy: ADMIN_USER_ID,
@@ -391,6 +410,19 @@ async function seedFlow() {
   await db
     .insert(milestoneArtifacts)
     .values({ milestoneId: NXP_MILESTONE_1_ID, workItemId: NXP_STORY_1_ID })
+    .onConflictDoNothing();
+
+  // Work-item relation — populates the "Linked Items" block on Work Item Detail
+  // (the CI defect relates to the upgrade story). Optional m2m; set explicitly.
+  await db
+    .insert(workItemRelations)
+    .values({
+      workspaceId: WORKSPACE_ID,
+      sourceItemId: NXP_DEFECT_1_ID,
+      targetItemId: NXP_STORY_1_ID,
+      relationType: 'relates_to',
+      createdBy: ADMIN_USER_ID,
+    })
     .onConflictDoNothing();
 
   // ── 6. 2 Tasks under the Story — team/iteration EXPLICITLY inherited from ─
@@ -411,8 +443,11 @@ async function seedFlow() {
         title: 'Update workspace.json for NX v21 breaking changes',
         state: 'completed' as const,
         assigneeId: DEVELOPER_ID,
-        estimateHours: '2',
+        // Task time rule: Estimate = To Do + Actual (read-only, derived).
+        // Completed task: nothing left to do, 1.5h logged → estimate 1.5.
+        todoHours: '0',
         actualHours: '1.5',
+        estimateHours: '1.5',
         rank: getDeterministicRank('TA-1'),
         createdBy: ADMIN_USER_ID,
       },
@@ -427,8 +462,11 @@ async function seedFlow() {
         title: 'Validate all affected generators after upgrade',
         state: 'in_progress' as const,
         assigneeId: ADMIN_USER_ID,
-        estimateHours: '3',
+        // Task time rule: Estimate = To Do + Actual (read-only, derived).
+        // In-progress task: 2h remaining, none logged yet → estimate 2.
         todoHours: '2',
+        actualHours: '0',
+        estimateHours: '2',
         rank: getDeterministicRank('TA-2'),
         createdBy: ADMIN_USER_ID,
       },
@@ -525,6 +563,49 @@ async function seedFlow() {
       },
     ];
     await db.insert(schema.activityLogs).values(rows);
+  }
+
+  // ── 8b. Iteration activity logs (Timebox Revision History tab) ───────────
+  const existingIterActivity = await db
+    .select({ id: schema.iterationActivityLogs.id })
+    .from(schema.iterationActivityLogs)
+    .where(eq(schema.iterationActivityLogs.iterationId, NXP_ITER_CURRENT_ID))
+    .limit(1);
+  if (existingIterActivity.length === 0) {
+    type IterActivityRow = typeof schema.iterationActivityLogs.$inferInsert;
+    const iterRows: IterActivityRow[] = [
+      {
+        id: uuidv7(),
+        workspaceId: WORKSPACE_ID,
+        projectId: nxpId,
+        iterationId: NXP_ITER_CURRENT_ID,
+        actorId: ADMIN_USER_ID,
+        action: 'iteration.created',
+        changes: null,
+        metadata: { name: 'Sprint 26.1' },
+      },
+      {
+        id: uuidv7(),
+        workspaceId: WORKSPACE_ID,
+        projectId: nxpId,
+        iterationId: NXP_ITER_CURRENT_ID,
+        actorId: ADMIN_USER_ID,
+        action: 'iteration.updated',
+        changes: { field: 'plannedVelocity', old: null, new: 21 },
+        metadata: {},
+      },
+      {
+        id: uuidv7(),
+        workspaceId: WORKSPACE_ID,
+        projectId: nxpId,
+        iterationId: NXP_ITER_CURRENT_ID,
+        actorId: ADMIN_USER_ID,
+        action: 'iteration.committed',
+        changes: { field: 'state', old: 'planning', new: 'committed' },
+        metadata: {},
+      },
+    ];
+    await db.insert(schema.iterationActivityLogs).values(iterRows);
   }
 
   // ── 9. Member capacity — Team Alpha in the active iteration (Team Status) ─

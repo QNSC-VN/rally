@@ -126,6 +126,8 @@ export interface CreateDefectInput {
   releaseId?: string
   rootCause?: string
   notes?: string
+  /** Optional linked User Story (P3-QA-FR-007) — the defect's parent work item. */
+  parentId?: string
 }
 
 export function useCreateDefect() {
@@ -151,6 +153,7 @@ export function useCreateDefect() {
           releaseId: body.releaseId,
           rootCause: body.rootCause,
           notes: body.notes,
+          parentId: body.parentId,
         }),
       })
       const json = await res.json().catch(() => ({}))

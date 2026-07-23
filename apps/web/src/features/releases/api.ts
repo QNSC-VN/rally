@@ -26,10 +26,12 @@ export interface Release {
   id: string
   tenantId: string
   projectId: string
+  releaseKey: string | null
   name: string
   description: string | null
   theme: string | null
   notes: string | null
+  releaseNotes: string | null
   status: ReleaseStatus
   startDate: string | null
   releaseDate: string | null
@@ -181,6 +183,7 @@ export interface UpdateReleaseInput {
   description?: string | null
   theme?: string | null
   notes?: string | null
+  releaseNotes?: string | null
   startDate?: string | null
   releaseDate?: string | null
   plannedVelocity?: number | null

@@ -5,17 +5,24 @@
  * and a right sidebar panel for metadata fields, status validation, and task roll-up/acceptance metrics.
  * P3.3: Added Artifacts tab showing linked US/DE work items.
  */
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-/* eslint-disable react-hooks/set-state-in-effect */
-import { Link, useParams } from '@tanstack/react-router'
-import { ChevronLeft, Loader2, Save } from 'lucide-react'
-import { InlineSelect } from '@/shared/ui/native-select'
-import { Button } from '@/shared/ui/button'
+import { Link, useNavigate, useParams } from '@tanstack/react-router'
+import { FileText, Loader2, Package } from 'lucide-react'
+import { DetailLayout, DetailTwoPane } from '@/shared/ui/detail/detail-layout'
+import {
+  DetailField,
+  DetailFieldPair,
+  DetailReadonlyValue,
+} from '@/shared/ui/detail/detail-field'
+import { SearchableSelect } from '@/shared/ui/searchable-select'
+import { DateField } from '@/shared/ui/date-field'
 import { Input } from '@/shared/ui/input'
 import { RichTextEditor } from '@/shared/ui/rich-text-editor'
-import { StatusBadge } from '@/shared/ui/status-badge'
+import { SaveCancelBar } from '@/shared/ui/save-cancel-bar'
+import { usePendingPatch } from '@/shared/lib/hooks/use-pending-patch'
+import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { ReleaseArtifactsTab } from './ui/release-artifacts-tab'
 import { TaskRollupPanel, BurndownPanel } from './ui/release-detail-panels'
 import { RELEASE_STATES, RELEASE_STATUS_STYLE } from './model/release-states'
@@ -25,13 +32,16 @@ import {
   useRelease,
   useUpdateRelease,
   useReleaseBurndown,
+  type Release,
   type ReleaseStatus,
+  type UpdateReleaseInput,
 } from '@/features/releases/api'
 
 type TabKey = 'details' | 'artifacts'
 
 export function ReleaseDetailPage() {
   const { t } = useTranslation('releases')
+  const navigate = useNavigate()
   const { releaseId } = useParams({ from: '/auth/releases/$releaseId' })
   const { project } = useAppContext()
   const projectId = project?.projectId ?? ''
@@ -42,62 +52,42 @@ export function ReleaseDetailPage() {
   const update = useUpdateRelease(releaseId, projectId)
   const { data: burndown, isLoading: burndownLoading } = useReleaseBurndown(releaseId)
 
-  // Local fields state
-  const [name, setName] = useState('')
-  const [startDate, setStartDate] = useState('')
-  const [releaseDate, setReleaseDate] = useState('')
-  const [plannedVelocity, setPlannedVelocity] = useState('')
-  const [planEstimate, setPlanEstimate] = useState('')
-  const [version, setVersion] = useState('')
-  const [state, setState] = useState<ReleaseStatus>('planning')
   const [activeTab, setActiveTab] = useState<TabKey>('details')
 
-  useEffect(() => {
-    if (release) {
-      setName(release.name)
-      setStartDate(release.startDate ?? '')
-      setReleaseDate(release.releaseDate ?? '')
-      setPlannedVelocity(release.plannedVelocity == null ? '' : String(release.plannedVelocity))
-      setPlanEstimate(release.planEstimate == null ? '' : String(release.planEstimate))
-      setVersion(release.version ?? '')
-      setState(release.status)
-    }
-  }, [release])
+  // Broadcom-Rally-style deferred save (matches the Work Item + Timebox detail
+  // pages): every field edit — title, dates, velocity/estimate, version, theme/
+  // notes rich text, lifecycle state — accumulates locally and commits together
+  // via the floating Save/Cancel bar, instead of auto-saving each field on blur.
+  const {
+    value: vrel,
+    isDirty,
+    saving,
+    setField,
+    save,
+    cancel,
+  } = usePendingPatch<Release, UpdateReleaseInput>(
+    release ?? ({} as Release),
+    releaseId,
+    async (patch) => {
+      try {
+        return await update.mutateAsync(patch)
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : t('detail.updateFailed'))
+        throw err
+      }
+    },
+  )
 
-  async function handleSave() {
-    if (!name.trim()) {
+  function handleSave() {
+    if (!(vrel.name ?? '').trim()) {
       toast.error(t('create.nameRequired'))
       return
     }
-    if (startDate && releaseDate && releaseDate < startDate) {
+    if (vrel.startDate && vrel.releaseDate && vrel.releaseDate < vrel.startDate) {
       toast.error(t('create.dateOrder'))
       return
     }
-
-    try {
-      await update.mutateAsync({
-        name: name.trim(),
-        startDate: startDate || null,
-        releaseDate: releaseDate || null,
-        plannedVelocity: plannedVelocity ? Number(plannedVelocity) : null,
-        planEstimate: planEstimate ? Number(planEstimate) : null,
-        version: version.trim() || null,
-        state,
-      })
-      toast.success(t('detailPage.saved'))
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : t('detail.updateFailed'))
-    }
-  }
-
-  // Rich-text fields (Theme, Notes) auto-save individually on blur, matching
-  // the work-item detail page's RichTextEditor pattern.
-  async function handleRichFieldSave(patch: { theme?: string | null; notes?: string | null }) {
-    try {
-      await update.mutateAsync(patch)
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : t('detail.updateFailed'))
-    }
+    void save().catch(() => {})
   }
 
   if (isLoading) {
@@ -119,235 +109,175 @@ export function ReleaseDetailPage() {
     )
   }
 
-  const s = RELEASE_STATUS_STYLE[release.status] ?? RELEASE_STATUS_STYLE.planning
   const rollup = release.taskRollup
 
-  const TABS: { key: TabKey; label: string }[] = [
-    { key: 'details', label: t('detailPage.tabs.details') },
-    { key: 'artifacts', label: t('detailPage.tabs.artifacts') },
+  const TABS = [
+    { key: 'details', label: t('detailPage.tabs.details'), icon: <FileText size={19} /> },
+    { key: 'artifacts', label: t('detailPage.tabs.artifacts'), icon: <Package size={19} /> },
   ]
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden bg-background">
-      {/* Header bar */}
-      <div className="bg-surface flex h-12 shrink-0 items-center justify-between gap-4 border-b border-border px-4">
-        <div className="flex items-center gap-2">
-          <Link
-            to="/releases"
-            className="flex h-7 w-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-surface-hover"
-          >
-            <ChevronLeft size={16} />
-          </Link>
-          <div className="flex items-center gap-3">
-            {canManage ? (
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                onBlur={handleSave}
-                className="w-60 rounded border-0 bg-transparent px-1 py-0.5 text-ui-xl font-semibold text-foreground focus:bg-card focus:ring-1 focus:outline-none"
-              />
-            ) : (
-              <h1 className="text-ui-xl font-semibold text-foreground">{release.name}</h1>
-            )}
-            <StatusBadge style={s} />
-          </div>
-        </div>
-
-        {canManage && (
-          <Button size="sm" onClick={handleSave} disabled={update.isPending}>
-            {update.isPending ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
-            {t('detailPage.saveChanges')}
-          </Button>
-        )}
-      </div>
-
-      {/* Tab bar */}
-      <div className="bg-surface flex shrink-0 items-center gap-0 border-b border-border px-4">
-        {TABS.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={`relative px-4 py-2.5 text-ui-md font-medium transition-colors ${
-              activeTab === tab.key ? 'text-primary' : 'text-muted-foreground'
-            }`}
-          >
-            {tab.label}
-            {activeTab === tab.key && (
-              <span className="absolute right-0 bottom-0 left-0 h-0.5 bg-primary" />
-            )}
-          </button>
-        ))}
-      </div>
-
-      {/* Content area */}
+    <DetailLayout
+      onBack={() => void navigate({ to: '/releases' })}
+      badge={<TypeBadge type="release" />}
+      itemKey={release.releaseKey}
+      title={
+        canManage ? (
+          <input
+            value={vrel.name ?? ''}
+            onChange={(e) => setField({ name: e.target.value })}
+            className="w-72 rounded border-0 bg-transparent px-1 py-0.5 text-base font-semibold text-white placeholder-white/60 focus:bg-white/10 focus:outline-none"
+            aria-label={t('common:name')}
+          />
+        ) : (
+          release.name
+        )
+      }
+      tabs={TABS}
+      activeTab={activeTab}
+      onTabChange={(key) => setActiveTab(key as TabKey)}
+    >
       {activeTab === 'artifacts' ? (
         <ReleaseArtifactsTab releaseId={releaseId} />
       ) : (
-        /* Main Grid split — Details tab */
-        <div className="flex flex-1 overflow-hidden">
-          {/* Left Side: Theme & Notes rich editors */}
-          <div className="flex-1 space-y-6 overflow-y-auto p-6">
-            <RichTextEditor
-              title={t('detailPage.themeTitle')}
-              value={release?.theme}
-              minHeight={100}
-              readOnly={!canManage}
-              onBlur={(html) => handleRichFieldSave({ theme: html || null })}
-            />
-            <RichTextEditor
-              title={t('detailPage.notesTitle')}
-              value={release?.notes}
-              minHeight={140}
-              readOnly={!canManage}
-              onBlur={(html) => handleRichFieldSave({ notes: html || null })}
-            />
-          </div>
+        <DetailTwoPane
+          sidebarTitle={t('detailPage.metadataTitle')}
+          main={
+            <>
+              <RichTextEditor
+                title={t('detailPage.themeTitle')}
+                value={vrel.theme}
+                minHeight={100}
+                readOnly={!canManage}
+                onChange={(html) => setField({ theme: html || null })}
+              />
+              <RichTextEditor
+                title={t('detailPage.notesTitle')}
+                value={vrel.notes}
+                minHeight={140}
+                readOnly={!canManage}
+                onChange={(html) => setField({ notes: html || null })}
+              />
+              {/* Release Notes — separate from Theme/Notes (P3-REL-FR-034). */}
+              <RichTextEditor
+                title={t('detailPage.releaseNotesTitle', 'Release Notes')}
+                value={vrel.releaseNotes}
+                minHeight={120}
+                readOnly={!canManage}
+                onChange={(html) => setField({ releaseNotes: html || null })}
+              />
+            </>
+          }
+          sidebar={
+            <>
+              <div className="space-y-4">
+                <DetailField label={t('detailPage.projectScope')}>
+                  <DetailReadonlyValue>{project?.projectName ?? '—'}</DetailReadonlyValue>
+                </DetailField>
 
-          {/* Right Side Panel */}
-          <div className="bg-surface w-72 shrink-0 space-y-5 overflow-y-auto border-l border-border p-5">
-            <div className="space-y-4">
-              <h2 className="text-ui-sm font-semibold tracking-wider text-foreground-subtle uppercase">
-                {t('detailPage.metadataTitle')}
-              </h2>
-
-              <div className="space-y-1">
-                <label className="text-ui-xs font-medium text-muted-foreground">
-                  {t('detailPage.projectScope')}
-                </label>
-                <div className="py-1 text-ui-md font-semibold text-foreground">
-                  {project?.projectName ?? '—'}
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-ui-xs font-medium text-muted-foreground">
-                  {t('detailPage.lifecycleState')}
-                </label>
-                {canManage ? (
-                  <InlineSelect
-                    value={state}
-                    onChange={(e) => {
-                      setState(e.target.value as ReleaseStatus)
-                      // Auto-trigger save on change
-                      void update.mutateAsync({ state: e.target.value as ReleaseStatus })
-                    }}
-                    className="w-full rounded border border-input bg-card px-2 py-1 text-ui-sm text-foreground focus:outline-none"
-                  >
-                    {RELEASE_STATES.map((st) => (
-                      <option key={st} value={st}>
-                        {RELEASE_STATUS_STYLE[st].label}
-                      </option>
-                    ))}
-                  </InlineSelect>
-                ) : (
-                  <div className="py-1 text-ui-md font-semibold text-foreground">{s.label}</div>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-ui-xs font-medium text-muted-foreground">
-                    {t('detail.startDateLabel')}
-                  </label>
-                  {canManage ? (
-                    <Input
-                      type="date"
-                      value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
-                      onBlur={handleSave}
-                      className="px-2 py-1 text-ui-sm"
-                    />
-                  ) : (
-                    <div className="font-mono text-ui-md text-foreground">{startDate || '—'}</div>
-                  )}
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-ui-xs font-medium text-muted-foreground">
-                    {t('detail.releaseDateLabel')}
-                  </label>
-                  {canManage ? (
-                    <Input
-                      type="date"
-                      value={releaseDate}
-                      onChange={(e) => setReleaseDate(e.target.value)}
-                      onBlur={handleSave}
-                      className="px-2 py-1 text-ui-sm"
-                    />
-                  ) : (
-                    <div className="font-mono text-ui-md text-foreground">{releaseDate || '—'}</div>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-ui-xs font-medium text-muted-foreground">
-                    {t('detail.plannedVelocityLabel')}
-                  </label>
-                  {canManage ? (
-                    <Input
-                      type="number"
-                      min={0}
-                      value={plannedVelocity}
-                      onChange={(e) => setPlannedVelocity(e.target.value)}
-                      onBlur={handleSave}
-                      placeholder="0"
-                      className="px-2 py-1 text-ui-sm"
-                    />
-                  ) : (
-                    <div className="font-mono text-ui-md text-foreground">
-                      {plannedVelocity || '—'}
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-ui-xs font-medium text-muted-foreground">
-                    {t('detail.planEstimateLabel')}
-                  </label>
-                  {canManage ? (
-                    <Input
-                      type="number"
-                      min={0}
-                      value={planEstimate}
-                      onChange={(e) => setPlanEstimate(e.target.value)}
-                      onBlur={handleSave}
-                      placeholder="0"
-                      className="px-2 py-1 text-ui-sm"
-                    />
-                  ) : (
-                    <div className="font-mono text-ui-md text-foreground">
-                      {planEstimate || '—'}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-ui-xs font-medium text-muted-foreground">
-                  {t('detailPage.versionTag')}
-                </label>
-                {canManage ? (
-                  <Input
-                    value={version}
-                    onChange={(e) => setVersion(e.target.value)}
-                    onBlur={handleSave}
-                    placeholder="e.g. v2.4.0"
-                    className="px-2 py-1 text-ui-sm"
+                <DetailField label={t('detailPage.lifecycleState')}>
+                  <SearchableSelect
+                    variant="field"
+                    value={(vrel.state ?? vrel.status) as ReleaseStatus}
+                    readOnly={!canManage}
+                    ariaLabel={t('detailPage.lifecycleState')}
+                    options={RELEASE_STATES.map((st) => ({
+                      value: st,
+                      label: RELEASE_STATUS_STYLE[st].label,
+                    }))}
+                    onChange={(v) => setField({ state: v as ReleaseStatus })}
                   />
-                ) : (
-                  <div className="text-ui-md font-semibold text-foreground">{version || '—'}</div>
-                )}
+                </DetailField>
+
+                <DetailFieldPair>
+                  <DetailField label={t('detail.startDateLabel')}>
+                    <DateField
+                      variant="field"
+                      value={vrel.startDate || null}
+                      readOnly={!canManage}
+                      ariaLabel={t('detail.startDateLabel')}
+                      onChange={canManage ? (v) => setField({ startDate: v }) : undefined}
+                    />
+                  </DetailField>
+
+                  <DetailField label={t('detail.releaseDateLabel')}>
+                    <DateField
+                      variant="field"
+                      value={vrel.releaseDate || null}
+                      readOnly={!canManage}
+                      ariaLabel={t('detail.releaseDateLabel')}
+                      onChange={canManage ? (v) => setField({ releaseDate: v }) : undefined}
+                    />
+                  </DetailField>
+                </DetailFieldPair>
+
+                <DetailFieldPair>
+                  <DetailField label={t('detail.plannedVelocityLabel')}>
+                    {canManage ? (
+                      <Input
+                        type="number"
+                        min={0}
+                        value={vrel.plannedVelocity ?? ''}
+                        onChange={(e) =>
+                          setField({
+                            plannedVelocity: e.target.value === '' ? null : Number(e.target.value),
+                          })
+                        }
+                        placeholder="0"
+                      />
+                    ) : (
+                      <DetailReadonlyValue mono>{vrel.plannedVelocity ?? '—'}</DetailReadonlyValue>
+                    )}
+                  </DetailField>
+
+                  <DetailField label={t('detail.planEstimateLabel')}>
+                    {canManage ? (
+                      <Input
+                        type="number"
+                        min={0}
+                        value={vrel.planEstimate ?? ''}
+                        onChange={(e) =>
+                          setField({
+                            planEstimate: e.target.value === '' ? null : Number(e.target.value),
+                          })
+                        }
+                        placeholder="0"
+                      />
+                    ) : (
+                      <DetailReadonlyValue mono>{vrel.planEstimate ?? '—'}</DetailReadonlyValue>
+                    )}
+                  </DetailField>
+                </DetailFieldPair>
+
+                <DetailField label={t('detailPage.versionTag')}>
+                  {canManage ? (
+                    <Input
+                      value={vrel.version ?? ''}
+                      onChange={(e) => setField({ version: e.target.value || null })}
+                      placeholder="e.g. v2.4.0"
+                    />
+                  ) : (
+                    <DetailReadonlyValue>{vrel.version || '—'}</DetailReadonlyValue>
+                  )}
+                </DetailField>
               </div>
-            </div>
 
-            {rollup && <TaskRollupPanel rollup={rollup} />}
+              {rollup && <TaskRollupPanel rollup={rollup} />}
 
-            <BurndownPanel burndown={burndown} loading={burndownLoading} />
-          </div>
-        </div>
+              <BurndownPanel burndown={burndown} loading={burndownLoading} />
+            </>
+          }
+        />
       )}
-    </div>
+      {activeTab === 'details' && (
+        <SaveCancelBar
+          visible={isDirty && canManage}
+          saving={saving}
+          errorMsg={null}
+          onSave={handleSave}
+          onCancel={cancel}
+        />
+      )}
+    </DetailLayout>
   )
 }

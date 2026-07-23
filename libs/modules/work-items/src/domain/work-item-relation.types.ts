@@ -16,7 +16,6 @@ export const RELATION_INVERSE: Record<WorkItemRelationType, string> = {
   duplicates: 'duplicated_by',
   relates_to: 'relates_to',
   depends_on: 'required_by',
-  causes: 'caused_by',
 };
 
 /** Human-readable labels for both the outbound type and inbound inverse. */
@@ -28,14 +27,12 @@ export const RELATION_LABELS: Record<string, string> = {
   relates_to: 'Relates to',
   depends_on: 'Depends on',
   required_by: 'Required by',
-  causes: 'Causes',
-  caused_by: 'Caused by',
 };
 
 /**
  * Relation types that form a directed acyclic dependency graph — creating a
- * cycle within one of these is rejected. `relates_to`, `duplicates` and
- * `causes` are not cycle-checked (they are associative, not ordering).
+ * cycle within one of these is rejected. `relates_to` and `duplicates` are not
+ * cycle-checked (they are associative, not ordering).
  */
 export const ACYCLIC_RELATION_TYPES: readonly WorkItemRelationType[] = ['blocks', 'depends_on'];
 

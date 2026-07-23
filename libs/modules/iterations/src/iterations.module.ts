@@ -7,8 +7,10 @@ import { IterationStatusService } from './application/iteration-status.service';
 import { IterationsController } from './interface/http/iterations.controller';
 import { IterationDrizzleRepository } from './infrastructure/persistence/iteration.drizzle-repository';
 import { IterationStatusDrizzleRepository } from './infrastructure/persistence/iteration-status.drizzle-repository';
+import { IterationActivityLogDrizzleRepository } from './infrastructure/persistence/iteration-activity-log.drizzle-repository';
 import { ITERATION_REPOSITORY } from './domain/ports/iteration.repository';
 import { ITERATION_STATUS_REPOSITORY } from './domain/ports/iteration-status.repository';
+import { ITERATION_ACTIVITY_LOG_REPOSITORY } from './domain/ports/iteration-activity-log.repository';
 
 @Module({
   imports: [ProjectsModule, WorkItemsModule, AccessModule],
@@ -18,6 +20,7 @@ import { ITERATION_STATUS_REPOSITORY } from './domain/ports/iteration-status.rep
     IterationStatusService,
     { provide: ITERATION_REPOSITORY, useClass: IterationDrizzleRepository },
     { provide: ITERATION_STATUS_REPOSITORY, useClass: IterationStatusDrizzleRepository },
+    { provide: ITERATION_ACTIVITY_LOG_REPOSITORY, useClass: IterationActivityLogDrizzleRepository },
   ],
   exports: [IterationsService],
 })

@@ -47,6 +47,8 @@ import {
 } from './dto/work-item-request.dto';
 import {
   WorkItemResponseDto,
+  MyWorkItemResponseDto,
+  WorkspaceSummaryResponseDto,
   TaskTotalsResponseDto,
   ActivityResponseDto,
   TimeLogResponseDto,
@@ -233,6 +235,30 @@ export class WorkItemsController {
       args,
     );
     return { data: page.data.map(toWorkItemDto), pageInfo: page.pageInfo };
+  }
+
+  // ── Home dashboard aggregates (workspace-scoped; declared before @Get(':id')) ──
+
+  @Get('my')
+  @ApiOperation({ summary: 'Top-N work items assigned to the current user (Home widget)' })
+  @ApiResponse({ status: 200, type: MyWorkItemResponseDto, isArray: true })
+  @ApiCommonErrors(400, 401)
+  async listMyWork(
+    @CurrentUser() user: JwtPayload,
+    @Query('limit') limit?: string,
+  ): Promise<MyWorkItemResponseDto[]> {
+    const n = Math.min(Math.max(Number(limit) || 10, 1), 50);
+    return this.workItemsService.listMyWork(user, n);
+  }
+
+  @Get('summary')
+  @ApiOperation({ summary: 'Workspace-wide summary counts for the Home strip' })
+  @ApiResponse({ status: 200, type: WorkspaceSummaryResponseDto })
+  @ApiCommonErrors(401)
+  async getWorkspaceSummary(
+    @CurrentUser() user: JwtPayload,
+  ): Promise<WorkspaceSummaryResponseDto> {
+    return this.workItemsService.getWorkspaceSummary(user);
   }
 
   // ── Create ─────────────────────────────────────────────────────────────────

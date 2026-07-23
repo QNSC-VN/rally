@@ -1,6 +1,6 @@
 {
   "title": "Defects",
-  "logDefect": "Log Defect",
+  "logDefect": "Add New",
   "metrics": {
     "openDefects": "Open Defects",
     "critical": "Critical",
@@ -57,7 +57,10 @@
   },
   "toasts": {
     "stateUpdated": "Defect state updated",
-    "fixedInBuildUpdated": "Fixed In Build updated"
+    "fixedInBuildUpdated": "Fixed In Build updated",
+    "ownerUpdated": "Owner updated",
+    "iterationUpdated": "Iteration updated",
+    "nameUpdated": "Name updated"
   },
   "errors": {
     "loadFailed": "Failed to load defects",

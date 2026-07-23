@@ -7,7 +7,8 @@
  * mentionedUserIds so the backend fires mention notifications (F7).
  * Read-only mode (viewers) hides the composer and edit/delete controls.
  */
-import { useMemo, useRef, useState } from 'react'
+/* eslint-disable react-hooks/set-state-in-effect */
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { MessageSquare, Pencil, Trash2 } from 'lucide-react'
 import {
   useComments,
@@ -18,7 +19,12 @@ import {
 } from '@/features/collaboration/api'
 import { useProjectMembers } from '@/features/teams/api'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
+import { useClickOutside } from '@/shared/lib/hooks/use-click-outside'
 import { OwnerAvatar } from '@/shared/ui/owner-cell'
+import { Button } from '@/shared/ui/button'
+import { IconButton } from '@/shared/ui/icon-button'
+import { Textarea } from '@/shared/ui/textarea'
+import { cn } from '@/shared/lib/utils'
 
 function relativeTime(iso: string): string {
   try {
@@ -50,6 +56,8 @@ export function CommentThread({ workItemId, projectId, readOnly = false }: Comme
   const [draft, setDraft] = useState('')
   const [mentioned, setMentioned] = useState<Record<string, string>>({}) // userId -> displayName
   const [showPicker, setShowPicker] = useState(false)
+  const pickerRef = useClickOutside<HTMLDivElement>(showPicker, () => setShowPicker(false))
+  const [activeIdx, setActiveIdx] = useState(0)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editBody, setEditBody] = useState('')
   const taRef = useRef<HTMLTextAreaElement>(null)
@@ -69,6 +77,7 @@ export function CommentThread({ workItemId, projectId, readOnly = false }: Comme
         .split(/\s/)
         .pop() ?? ''
     setShowPicker(lastToken.startsWith('@'))
+    setActiveIdx(0)
   }
 
   function pickMention(userId: string, name: string) {
@@ -97,11 +106,38 @@ export function CommentThread({ workItemId, projectId, readOnly = false }: Comme
     setEditingId(null)
   }
 
-  const memberMatches = (() => {
+  const memberMatches = useMemo(() => {
     const lastToken = draft.split(/\s/).pop() ?? ''
     const q = lastToken.replace(/^@/, '').toLowerCase()
     return members.filter((m) => (m.displayName ?? '').toLowerCase().includes(q)).slice(0, 6)
-  })()
+  }, [draft, members])
+
+  // Keep the highlighted suggestion in range as the query narrows the list.
+  useEffect(() => {
+    setActiveIdx((i) => (i >= memberMatches.length ? 0 : i))
+  }, [memberMatches.length])
+
+  // Keyboard nav for the @mention picker: ↑/↓ move, Tab/Enter pick, Esc close.
+  function onDraftKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (!showPicker || memberMatches.length === 0) return
+    const len = memberMatches.length
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setActiveIdx((i) => (i + 1) % len)
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setActiveIdx((i) => (i - 1 + len) % len)
+    } else if (e.key === 'Enter' || e.key === 'Tab') {
+      const m = memberMatches[activeIdx]
+      if (m) {
+        e.preventDefault()
+        pickMention(m.userId, m.displayName ?? m.userId.slice(0, 8))
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      setShowPicker(false)
+    }
+  }
 
   return (
     <div className="mt-5">
@@ -132,47 +168,43 @@ export function CommentThread({ workItemId, projectId, readOnly = false }: Comme
                       {c.isEdited && <span className="italic">(edited)</span>}
                       {mine && !readOnly && editingId !== c.id && (
                         <span className="ml-auto flex gap-1">
-                          <button
+                          <IconButton
+                            size="sm"
                             aria-label="Edit comment"
+                            title="Edit"
                             onClick={() => {
                               setEditingId(c.id)
                               setEditBody(c.body)
                             }}
-                            className="text-foreground-disabled hover:text-primary-light"
                           >
                             <Pencil size={11} />
-                          </button>
-                          <button
+                          </IconButton>
+                          <IconButton
+                            size="sm"
+                            variant="destructive"
                             aria-label="Delete comment"
+                            title="Delete"
                             onClick={() => void deleteMutation.mutate(c.id)}
-                            className="text-foreground-disabled hover:text-destructive"
                           >
                             <Trash2 size={11} />
-                          </button>
+                          </IconButton>
                         </span>
                       )}
                     </div>
                     {editingId === c.id ? (
                       <div className="mt-1">
-                        <textarea
+                        <Textarea
                           value={editBody}
                           onChange={(e) => setEditBody(e.target.value)}
-                          className="w-full rounded border border-input px-2 py-1 text-ui-md"
                           rows={2}
                         />
                         <div className="mt-1 flex gap-2">
-                          <button
-                            onClick={() => void saveEdit(c.id)}
-                            className="rounded bg-primary-light px-2 py-0.5 text-ui-sm text-white"
-                          >
+                          <Button size="sm" onClick={() => void saveEdit(c.id)}>
                             Save
-                          </button>
-                          <button
-                            onClick={() => setEditingId(null)}
-                            className="text-ui-sm text-foreground-subtle"
-                          >
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => setEditingId(null)}>
                             Cancel
-                          </button>
+                          </Button>
                         </div>
                       </div>
                     ) : (
@@ -188,22 +220,26 @@ export function CommentThread({ workItemId, projectId, readOnly = false }: Comme
       )}
 
       {!readOnly && (
-        <div className="relative mt-3">
-          <textarea
+        <div ref={pickerRef} className="relative mt-3">
+          <Textarea
             ref={taRef}
             value={draft}
             onChange={(e) => onDraftChange(e.target.value)}
+            onKeyDown={onDraftKeyDown}
             placeholder="Add a comment… use @ to mention a teammate"
             rows={2}
-            className="w-full rounded border border-input px-2 py-1.5 text-ui-md"
           />
           {showPicker && memberMatches.length > 0 && (
             <ul className="absolute z-50 mt-0.5 max-h-44 w-64 overflow-y-auto rounded border border-input bg-card shadow-lg">
-              {memberMatches.map((m) => (
+              {memberMatches.map((m, i) => (
                 <li key={m.userId}>
                   <button
+                    onMouseEnter={() => setActiveIdx(i)}
                     onClick={() => pickMention(m.userId, m.displayName ?? m.userId.slice(0, 8))}
-                    className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-ui-md hover:bg-surface-hover"
+                    className={cn(
+                      'flex w-full items-center gap-2 px-2 py-1.5 text-left text-ui-md',
+                      i === activeIdx ? 'bg-primary-lighter text-primary-light' : 'hover:bg-surface-hover',
+                    )}
                   >
                     {m.displayName ?? m.userId.slice(0, 8)}
                   </button>
@@ -212,13 +248,13 @@ export function CommentThread({ workItemId, projectId, readOnly = false }: Comme
             </ul>
           )}
           <div className="mt-1 flex justify-end">
-            <button
+            <Button
+              size="sm"
               onClick={() => void post()}
               disabled={!draft.trim() || createMutation.isPending}
-              className="rounded bg-primary-light px-3 py-1 text-ui-md text-white disabled:opacity-50"
             >
               Comment
-            </button>
+            </Button>
           </div>
         </div>
       )}

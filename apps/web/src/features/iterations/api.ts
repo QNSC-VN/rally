@@ -21,6 +21,7 @@ export type IterationStatusItem = IterationStatus['items'][number]
 export type CreateIterationItemInput = components['schemas']['CreateIterationItemDto']
 
 export type IterationOption = components['schemas']['IterationOptionDto']
+export type IterationActivityLog = components['schemas']['IterationActivityResponseDto']
 
 export const iterationKeys = {
   all: ['iterations'] as const,
@@ -28,6 +29,7 @@ export const iterationKeys = {
   options: (projectId: string, teamId?: string | null) =>
     ['iteration-options', projectId, teamId ?? null] as const,
   detail: (id: string) => ['iteration', id] as const,
+  activity: (id: string) => ['iteration', id, 'activity'] as const,
   committedCount: (projectIds: string[]) =>
     ['iterations', 'committed-count', [...projectIds].sort()] as const,
   statusAll: ['iteration-status'] as const,
@@ -35,6 +37,25 @@ export const iterationKeys = {
     filters
       ? ([...iterationKeys.statusAll, id, filters] as const)
       : ([...iterationKeys.statusAll, id] as const),
+}
+
+// ── Revision History (activity log) ─────────────────────────────────────────
+
+export function useIterationActivityLog(iterationId: string | undefined) {
+  return useQuery({
+    queryKey: iterationKeys.activity(iterationId ?? ''),
+    queryFn: async () => {
+      if (!iterationId) return []
+      const { data, error, response } = await apiClient.GET('/v1/iterations/{id}/activity', {
+        params: { path: { id: iterationId }, query: { page: 1, pageSize: 100 } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      // API returns { data: IterationActivityResponseDto[]; total; page; pageSize }
+      return (data as { data?: IterationActivityLog[] } | undefined)?.data ?? []
+    },
+    enabled: !!iterationId,
+    staleTime: 15_000,
+  })
 }
 
 // ── Assignment options (P2-IT-10) — compact picker feed ─────────────────────
@@ -154,6 +175,21 @@ export function useUpdateIteration(id: string) {
     onSuccess: (iteration) => {
       qc.setQueryData(iterationKeys.detail(id), iteration)
       void qc.invalidateQueries({ queryKey: iterationKeys.list(iteration.projectId) })
+    },
+  })
+}
+
+export function useDeleteIteration(projectId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error, response } = await apiClient.DELETE('/v1/iterations/{id}', {
+        params: { path: { id } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: iterationKeys.list(projectId) })
     },
   })
 }

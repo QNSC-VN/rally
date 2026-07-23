@@ -1,6 +1,6 @@
 import { BRAND } from '@/shared/config/brand'
 import type { LucideIcon } from 'lucide-react'
-import { BookOpen, Target, Layers, ClipboardList, Bug } from 'lucide-react'
+import { BookOpen, Target, Layers, ClipboardList, Bug, Rocket, Flag, Repeat } from 'lucide-react'
 
 // ── Const objects (replaces enums for erasableSyntaxOnly compat) ─────────────
 
@@ -88,6 +88,18 @@ export const WORK_ITEM_TYPE_CONFIG: Record<WorkItemType, BadgeStyle> = {
   [WorkItemType.Story]: { label: 'US', color: '#2558a6', bg: '#eef3fb', icon: BookOpen },
   [WorkItemType.Task]: { label: 'TA', color: '#1d3f73', bg: '#e5ebf4', icon: ClipboardList },
   [WorkItemType.Defect]: { label: 'DE', color: '#b91c1c', bg: '#fef2f2', icon: Bug },
+}
+
+/**
+ * Timebox entity type marks (Iteration / Release / Milestone). These are NOT
+ * work items but their list/detail surfaces reuse {@link TypeBadge} + IdCell so
+ * their ID column reads identically to US/DE. Kept beside the work-item config
+ * as the single source for the type glyph; {@link TypeBadge} consults both.
+ */
+export const TIMEBOX_TYPE_CONFIG: Record<string, BadgeStyle> = {
+  iteration: { label: 'IT', color: '#0d9488', bg: '#eefaf8', icon: Repeat },
+  release: { label: 'RE', color: '#9333ea', bg: '#f7effd', icon: Rocket },
+  milestone: { label: 'MS', color: '#b45309', bg: '#fdf5e9', icon: Flag },
 }
 
 export const SCHEDULE_STATE_LABEL: Record<ScheduleState, string> = {

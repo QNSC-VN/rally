@@ -182,3 +182,28 @@ export interface TaskTotals {
   todoHours: number;
   actualHours: number;
 }
+
+/** A single row for the Home "My Work" widget — an item assigned to the actor,
+ *  with its project key/name resolved. Bounded + priority-ordered server-side. */
+export interface MyWorkItem {
+  id: string;
+  itemKey: string;
+  type: WorkItemType;
+  title: string;
+  scheduleState: WorkItemScheduleState;
+  priority: WorkItemPriority;
+  projectId: string;
+  projectKey: string;
+  projectName: string;
+}
+
+/** Workspace-wide counts for the Home summary strip — computed in one batched
+ *  query set (no per-project fan-out), so totals are exact regardless of scale. */
+export interface WorkspaceSummary {
+  activeProjects: number;
+  openWorkItems: number;
+  activeSprints: number;
+  blockedItems: number;
+  openDefects: number;
+  assignedToMe: number;
+}

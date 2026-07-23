@@ -23,8 +23,13 @@ import {
   UpdateIterationDto,
   RolloverIterationDto,
   IterationAssignmentOptionsQueryDto,
+  IterationActivityQueryDto,
 } from './dto/iteration-request.dto';
-import { IterationResponseDto, IterationOptionDto } from './dto/iteration-response.dto';
+import {
+  IterationResponseDto,
+  IterationOptionDto,
+  IterationActivityResponseDto,
+} from './dto/iteration-response.dto';
 import {
   IterationStatusQueryDto,
   CreateIterationItemDto,
@@ -34,6 +39,7 @@ import {
   CreateIterationItemResponseDto,
 } from './dto/iteration-status-response.dto';
 import type { Iteration, IterationOption } from '../../domain/iteration.types';
+import type { IterationActivityLog } from '../../domain/activity-log.types';
 
 // ── Mappers ────────────────────────────────────────────────────────────────────
 
@@ -66,6 +72,18 @@ function toIterationDto(i: Iteration): IterationResponseDto {
     completedAt: i.completedAt ? i.completedAt.toISOString() : null,
     createdAt: i.createdAt.toISOString(),
     updatedAt: i.updatedAt.toISOString(),
+  };
+}
+
+function toIterationActivityDto(a: IterationActivityLog): IterationActivityResponseDto {
+  return {
+    id: a.id,
+    createdAt: a.createdAt.toISOString(),
+    actorId: a.actorId,
+    actorName: a.actorName,
+    action: a.action,
+    changes: a.changes,
+    metadata: a.metadata,
   };
 }
 
@@ -159,6 +177,34 @@ export class IterationsController {
   ): Promise<IterationResponseDto> {
     const iteration = await this.iterationsService.getIterationForView(user, id);
     return toIterationDto(iteration);
+  }
+
+  @Get(':id/activity')
+  @ApiOperation({ summary: 'List the revision history of an iteration' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: IterationActivityResponseDto, isArray: true })
+  @ApiCommonErrors(401, 404)
+  async getActivity(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: IterationActivityQueryDto,
+  ): Promise<{
+    data: IterationActivityResponseDto[];
+    total: number;
+    page: number;
+    pageSize: number;
+  }> {
+    const { page, pageSize } = query;
+    const result = await this.iterationsService.getIterationActivity(user, id, {
+      limit: pageSize,
+      offset: (page - 1) * pageSize,
+    });
+    return {
+      data: result.items.map(toIterationActivityDto),
+      total: result.total,
+      page,
+      pageSize,
+    };
   }
 
   @Patch(':id')

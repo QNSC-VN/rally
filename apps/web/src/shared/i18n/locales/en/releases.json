@@ -61,9 +61,11 @@
     "message": "Delete this release? Work items will keep their release assignment.",
     "confirm": "Delete release",
     "deleted": "Release deleted",
-    "deleteFailed": "Failed to delete release"
+    "deleteFailed": "Failed to delete release",
+    "bulkMessage": "Delete {{count}} release(s)? Accepted releases are skipped."
   },
   "detailPage": {
+    "typeBadge": "Release",
     "loadError": "Release details could not be loaded.",
     "backToReleases": "← Back to Releases",
     "saveChanges": "Save Changes",
@@ -105,5 +107,9 @@
       "page": "Page",
       "of": "of"
     }
+  },
+  "totals": "Totals ({{count}})",
+  "filters": {
+    "allStatuses": "All statuses"
   }
 }

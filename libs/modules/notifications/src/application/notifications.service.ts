@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
 import { NotFoundException } from '@platform';
-import type { JwtPayload } from '@platform';
+import type { JwtPayload, CursorPayload, PagedResult } from '@platform';
 import {
   INotificationRepository,
   NOTIFICATION_REPOSITORY,
@@ -31,6 +31,21 @@ export class NotificationsService {
       types,
       limit: filter.limit ?? 50,
     });
+  }
+
+  /** Cursor-paginated feed for the full Notifications page (infinite scroll). */
+  async listNotificationsPage(
+    actor: JwtPayload,
+    filter: { unreadOnly: boolean; category?: NotificationCategory },
+    args: { limit: number; cursor: CursorPayload | null },
+  ): Promise<PagedResult<Notification>> {
+    const types = filter.category ? NOTIFICATION_CATEGORY_TYPES[filter.category] : undefined;
+    return this.notificationRepo.listPageForRecipient(
+      actor.workspaceId,
+      actor.sub,
+      { unreadOnly: filter.unreadOnly, types },
+      args,
+    );
   }
 
   async markRead(actor: JwtPayload, notificationId: string): Promise<void> {

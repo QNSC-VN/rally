@@ -84,13 +84,15 @@ export class MilestoneDrizzleRepository implements IMilestoneRepository {
         id: input.id,
         workspaceId: input.workspaceId,
         projectId: input.projectId,
+        milestoneKey: input.milestoneKey ?? null,
         name: input.name,
         description: input.description,
         notes: input.notes,
         status: input.status ?? 'planned',
         ownerId: input.ownerId,
-        targetStartDate: null,
-        targetEndDate: null,
+        // Manual dates persist; a linked Release later derives+overrides them.
+        targetStartDate: input.targetStartDate ?? null,
+        targetEndDate: input.targetEndDate ?? null,
       })
       .returning();
     return {
@@ -99,6 +101,22 @@ export class MilestoneDrizzleRepository implements IMilestoneRepository {
       projectIds: input.projectIds ?? [],
       teamIds: input.teamIds ?? [],
     };
+  }
+
+  async nextKeyNumber(projectId: string, workspaceId: string): Promise<number> {
+    // MAX(existing numeric suffix) + 1 (not count+1): milestones can be
+    // deleted, so count() would reissue a key a surviving row still holds.
+    // POSIX '[0-9]+$' (no backslash) — Drizzle's sql template drops a bare '\'
+    // before Postgres sees it, so '\d' would match nothing. Not atomic under
+    // concurrent creates, so createMilestone retries on the uq_milestones_key
+    // violation this can't fully rule out.
+    const rows = await this.db
+      .select({
+        n: sql<number>`COALESCE(MAX(substring(${milestones.milestoneKey} from '[0-9]+$')::int), 0)::int`,
+      })
+      .from(milestones)
+      .where(and(eq(milestones.projectId, projectId), eq(milestones.workspaceId, workspaceId)));
+    return (rows[0]?.n ?? 0) + 1;
   }
 
   async update(id: string, input: UpdateMilestoneInput): Promise<Milestone> {

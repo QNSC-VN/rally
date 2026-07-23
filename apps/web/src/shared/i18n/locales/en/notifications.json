@@ -20,5 +20,7 @@
   },
   "errors": {
     "load": "Failed to load notifications. Please try again."
-  }
+  },
+  "loadMore": "Load more",
+  "loadingMore": "Loading…"
 }

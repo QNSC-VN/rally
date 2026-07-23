@@ -38,6 +38,23 @@ export function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
+/**
+ * Strip HTML tags to plain text for compact displays (e.g. a rich-text field
+ * shown in a table cell). Collapses whitespace; decodes the few common
+ * entities. For inline display only — not a sanitizer.
+ */
+export function stripHtml(html: string | null | undefined): string {
+  if (!html) return ''
+  return html
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 /** Format an ISO date string as a short calendar date, e.g. "Jul 31, 2026". */
 export function formatDate(iso: string | null | undefined, fallback = '—'): string {
   if (!iso) return fallback

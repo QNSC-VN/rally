@@ -24,8 +24,9 @@ import { StateStepper } from '@/entities/work-item/ui/state-stepper'
 import { FeatureCell } from '@/entities/work-item/ui/feature-cell'
 import { SCHEDULE_STATE_STEPS, SIMPLIFIED_STATE_STEPS } from '@/entities/work-item/ui/state-steps'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
+import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
-import { InlineSelect } from '@/shared/ui/native-select'
+import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { OwnerSelectCell } from '@/shared/ui/owner-cell'
 import { RowGutter } from '@/shared/ui/row-gutter'
 import { MilestoneSelectCell, DefectStatusPill, TasksProgress } from './status-cells'
@@ -53,8 +54,8 @@ export function StatusRow({
   item: IterationStatusItem
   rank: number
   memberMap: Map<string, import('@/features/teams/api').ProjectMember>
-  milestoneOptions: readonly { id: string; name: string }[]
-  iterationOptions: readonly { id: string; name: string }[]
+  milestoneOptions: readonly { id: string; name: string; milestoneKey?: string | null }[]
+  iterationOptions: readonly { id: string; name: string; iterationKey?: string | null }[]
   selectedIterationId: string
   canEdit: boolean
   colStyles: Record<string, CSSProperties>
@@ -128,6 +129,11 @@ export function StatusRow({
     save({ devOwnerId: userId }, t('row.devOwnerUpdated'))
   const handleMilestonesChange = (ids: string[]) =>
     milestoneCommit.save(ids, t('row.milestonesUpdated'))
+  const commitBlockedReason = (raw: string) => {
+    const next = raw.trim()
+    if (next === (item.blockedReason ?? '')) return
+    save({ blockedReason: next || null }, t('row.blockedReasonUpdated'))
+  }
   const toggleBlocked = () =>
     save({ isBlocked: !item.isBlocked }, item.isBlocked ? t('row.unblocked') : t('row.blocked'))
 
@@ -137,7 +143,7 @@ export function StatusRow({
         ref={setNodeRef}
         className="group flex items-center border-b border-border-subtle bg-card transition-colors duration-100 hover:bg-primary-lighter"
         style={{
-          height: 34,
+          minHeight: 34,
           paddingLeft: 4,
           paddingRight: 12,
           fontSize: 12,
@@ -166,8 +172,14 @@ export function StatusRow({
           }}
         />
 
-        {/* Rank number + expand toggle */}
-        <div style={colStyles.rank} className="flex items-center justify-center gap-1.5 px-2">
+        {/* Rank number */}
+        <div style={colStyles.rank} className="flex items-center justify-center px-2">
+          <span className="font-mono text-ui-xs text-muted-foreground tabular-nums">{rank}</span>
+        </div>
+
+        {/* ID — expand/collapse toggle lives here (Rally parity), to the left of
+            the item type icon + key. */}
+        <div style={colStyles.id} className="flex items-center gap-1.5 px-2">
           <button
             onClick={(e) => {
               e.stopPropagation()
@@ -182,6 +194,7 @@ export function StatusRow({
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
+              flexShrink: 0,
             }}
           >
             <ChevronDown
@@ -192,11 +205,6 @@ export function StatusRow({
               }}
             />
           </button>
-          <span className="font-mono text-ui-xs text-muted-foreground tabular-nums">{rank}</span>
-        </div>
-
-        {/* ID */}
-        <div style={colStyles.id} className="px-2">
           <IdCell type={item.type} itemKey={item.itemKey} onOpen={onOpen} />
         </div>
 
@@ -212,7 +220,7 @@ export function StatusRow({
             onCommit={commitTitle}
             ariaLabel="Name"
             title={item.title}
-            className="block w-full truncate text-foreground"
+            className="block w-full break-words whitespace-normal text-foreground"
             style={{ fontSize: 12 }}
             inputClassName="border border-primary text-foreground"
             inputStyle={{
@@ -246,20 +254,22 @@ export function StatusRow({
           className="flex items-center overflow-hidden px-2"
           onClick={(e) => e.stopPropagation()}
         >
-          <InlineSelect
+          <SearchableSelect
             value={item.iterationId ?? ''}
-            disabled={!canEdit}
-            aria-label="Iteration"
-            className="w-full"
-            onChange={(e) => handleIterationChange(e.target.value || null)}
-          >
-            <option value="">{t('row.backlog')}</option>
-            {iterationOptions.map((it) => (
-              <option key={it.id} value={it.id}>
-                {it.name}
-              </option>
-            ))}
-          </InlineSelect>
+            readOnly={!canEdit}
+            ariaLabel="Iteration"
+            placeholder={t('row.backlog')}
+            options={[
+              { value: '', label: t('row.backlog') },
+              ...iterationOptions.map((it) => ({
+                value: it.id,
+                label: it.iterationKey ? `${it.iterationKey}: ${it.name}` : it.name,
+                searchText: `${it.iterationKey ?? ''} ${it.name}`,
+                icon: <TypeBadge type="iteration" size={16} />,
+              })),
+            ]}
+            onChange={(v) => handleIterationChange(v || null)}
+          />
         </div>
 
         {/* Schedule State — Rally-style segmented stepper */}
@@ -324,9 +334,29 @@ export function StatusRow({
           </button>
         </div>
 
-        {/* Blocked Reason */}
+        {/* Blocked Reason — inline-editable only while the item is blocked
+            (an unblocked item has no reason to capture). */}
         <div style={colStyles.blockedReason} className="flex items-center px-2">
-          {item.blockedReason ? (
+          {canEdit && item.isBlocked ? (
+            <InlineEditableCell
+              value={item.blockedReason ?? ''}
+              canEdit={canEdit}
+              onCommit={commitBlockedReason}
+              ariaLabel="Blocked reason"
+              title={item.blockedReason ?? 'Add a blocked reason'}
+              className="w-full text-muted-foreground"
+              style={{ fontSize: 12 }}
+              displayValue={
+                item.blockedReason ? (
+                  <span className="block truncate text-muted-foreground">{item.blockedReason}</span>
+                ) : (
+                  <span className="block truncate text-foreground-subtle italic">Add reason…</span>
+                )
+              }
+              inputClassName="border border-primary"
+              inputStyle={{ width: '100%', fontSize: 11, borderRadius: 2, outline: 'none' }}
+            />
+          ) : item.blockedReason ? (
             <span
               className="truncate text-muted-foreground"
               title={item.blockedReason}
@@ -409,12 +439,13 @@ export function StatusRow({
           <TasksProgress total={item.taskTotal} done={item.taskDone} />
         </div>
 
-        {/* Actual — not tracked at story level, only on tasks */}
+        {/* Actual — read-only roll-up of child task actual hours (parity with
+            Task Est / To Do). Edited per-task on the expanded task rows. */}
         <div
-          style={{ ...colStyles.actual, textAlign: 'right', fontSize: 12 }}
-          className="px-2 text-right text-foreground-subtle"
+          style={{ ...colStyles.actual, textAlign: 'right', fontFamily: MONO_FONT, fontSize: 12 }}
+          className="px-2 text-right text-muted-foreground"
         >
-          &mdash;
+          {item.actual || '—'}
         </div>
 
         {/* Owner */}
@@ -599,7 +630,7 @@ function ChildTaskRow({
     <div
       className="flex items-center border-b border-dashed border-border-subtle text-muted-foreground"
       style={{
-        height: 30,
+        minHeight: 30,
         paddingLeft: 4,
         paddingRight: 12,
         fontSize: 11,
@@ -632,7 +663,7 @@ function ChildTaskRow({
           onCommit={commitTaskTitle}
           ariaLabel="Name"
           title={task.title}
-          className="block w-full truncate text-foreground"
+          className="block w-full break-words whitespace-normal text-foreground"
           style={{ fontSize: 12 }}
           inputClassName="border border-primary text-foreground"
           inputStyle={{

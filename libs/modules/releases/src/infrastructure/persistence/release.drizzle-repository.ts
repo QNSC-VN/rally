@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq, lt } from 'drizzle-orm';
+import { and, eq, lt, sql } from 'drizzle-orm';
 import { InjectDrizzle, buildPageResult } from '@platform';
 import type { DrizzleDB, CursorPayload, PagedResult } from '@platform';
 import { releases } from '../../../../../../db/schema/work';
@@ -43,6 +43,7 @@ export class ReleaseDrizzleRepository implements IReleaseRepository {
         id: input.id,
         workspaceId: input.workspaceId,
         projectId: input.projectId,
+        releaseKey: input.releaseKey ?? null,
         name: input.name,
         description: input.description,
         theme: input.theme,
@@ -53,6 +54,22 @@ export class ReleaseDrizzleRepository implements IReleaseRepository {
       })
       .returning();
     return rows[0] as unknown as Release;
+  }
+
+  async nextKeyNumber(projectId: string, workspaceId: string): Promise<number> {
+    // MAX(existing numeric suffix) + 1 (not count+1): releases can be deleted,
+    // so count() would reissue a key a surviving row still holds. POSIX
+    // '[0-9]+$' (no backslash) — Drizzle's sql template drops a bare '\' before
+    // it reaches Postgres, so a '\d' pattern silently matches nothing. Still
+    // not atomic under concurrent creates, so createRelease retries on the
+    // uq_releases_key violation this can't fully rule out.
+    const rows = await this.db
+      .select({
+        n: sql<number>`COALESCE(MAX(substring(${releases.releaseKey} from '[0-9]+$')::int), 0)::int`,
+      })
+      .from(releases)
+      .where(and(eq(releases.projectId, projectId), eq(releases.workspaceId, workspaceId)));
+    return (rows[0]?.n ?? 0) + 1;
   }
 
   async update(id: string, input: UpdateReleaseInput): Promise<Release> {

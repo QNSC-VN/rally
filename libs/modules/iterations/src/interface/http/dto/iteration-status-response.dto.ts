@@ -26,6 +26,7 @@ export const IterationStatusItemSchema = z.object({
   planEstimate: z.number().nullable(),
   taskEstimate: z.number(),
   toDo: z.number(),
+  actual: z.number(),
   taskTotal: z.number().int(),
   taskDone: z.number().int(),
   assigneeId: z.string().uuid().nullable(),

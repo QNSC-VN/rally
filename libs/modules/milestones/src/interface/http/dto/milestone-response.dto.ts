@@ -14,6 +14,7 @@ export const MilestoneResponseSchema = z.object({
   id: z.string().uuid(),
   workspaceId: z.string().uuid(),
   projectId: z.string().uuid(),
+  milestoneKey: z.string().nullable(),
   name: z.string(),
   description: z.string().nullable(),
   notes: z.string().nullable(),

@@ -69,9 +69,14 @@ export function InlineEditableCell({
 
   const triggerProps = trigger === 'dblclick' ? { onDoubleClick: startEdit } : { onClick: startEdit }
 
+  // Editable cells get the shared hover affordance (outline box + text caret,
+  // no layout shift); read-only cells render plain.
+  const affordance = canEdit ? 'inline-edit-cell' : undefined
+  const mergedClassName = [affordance, className].filter(Boolean).join(' ') || undefined
+
   return (
     <span
-      className={className}
+      className={mergedClassName}
       style={{ cursor: canEdit ? 'pointer' : 'default', ...style }}
       title={title}
       {...triggerProps}

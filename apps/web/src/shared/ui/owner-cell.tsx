@@ -1,6 +1,6 @@
 import { cn } from '@/shared/lib/utils'
 import { BRAND } from '@/shared/config/brand'
-import { InlineCellSelect } from '@/shared/ui/native-select'
+import { SearchableSelect, type SelectOption } from '@/shared/ui/searchable-select'
 
 interface OwnerCellProps {
   name?: string | null
@@ -86,6 +86,40 @@ export interface OwnerSelectMember {
   email?: string | null
 }
 
+const memberName = (m: OwnerSelectMember) => m.displayName ?? m.email ?? m.userId
+
+/**
+ * Grouped options for a person picker (Rally parity): a "Quick Picks" group
+ * with "— No Entry —" and the current owner, then an alphabetical "Team
+ * Members" group — each with a round {@link OwnerAvatar} glyph. Shared by the
+ * in-grid {@link OwnerSelectCell} and the form-field OwnerSelectField.
+ */
+export function ownerSelectOptions(
+  members: OwnerSelectMember[],
+  currentId?: string | null,
+  currentName?: string | null,
+): SelectOption[] {
+  const withAvatar = (value: string, label: string, group: string): SelectOption => ({
+    value,
+    label,
+    group,
+    icon: <OwnerAvatar name={label} size={16} />,
+  })
+
+  const options: SelectOption[] = [{ value: '', label: '— No Entry —', group: 'Quick Picks' }]
+
+  const current = currentId ? members.find((m) => m.userId === currentId) : undefined
+  const currentLabel = current ? memberName(current) : (currentName ?? null)
+  if (currentId && currentLabel) {
+    options.push(withAvatar(currentId, currentLabel, 'Quick Picks'))
+  }
+
+  const sorted = [...members].sort((a, b) => memberName(a).localeCompare(memberName(b)))
+  for (const m of sorted) options.push(withAvatar(m.userId, memberName(m), 'Team Members'))
+
+  return options
+}
+
 interface OwnerSelectCellProps {
   /** Resolved display name for the current assignee (null → unassigned). */
   ownerName?: string | null
@@ -99,10 +133,11 @@ interface OwnerSelectCellProps {
 
 /**
  * Owner column — single source of truth for the whole Owner cell across every
- * work-item grid. When editable it renders the shared {@link InlineCellSelect}
- * (overlay select + truncation + "Unassigned" muted state); when read-only it
- * falls back to the initials-chip {@link OwnerCell}. Replaces the hand-rolled
- * `<select>` + `editingOwner` toggles previously duplicated per page.
+ * grid. `owner`/`user`/`team` are the "search dropdown" attribute type: when
+ * editable it renders the shared {@link SearchableSelect} (search a member,
+ * plain-text options, hover-to-edit); when read-only it falls back to the
+ * initials-chip {@link OwnerCell}. Replaces the hand-rolled `<select>` +
+ * `editingOwner` toggles previously duplicated per page.
  */
 export function OwnerSelectCell({
   ownerName,
@@ -113,21 +148,15 @@ export function OwnerSelectCell({
   ariaLabel = 'Owner',
 }: OwnerSelectCellProps) {
   if (!canEdit) return <OwnerCell name={ownerName} />
+
   return (
-    <InlineCellSelect
+    <SearchableSelect
       value={assigneeId ?? ''}
-      displayValue={ownerName ?? 'Unassigned'}
-      muted={!assigneeId}
-      leading={ownerName ? <OwnerAvatar name={ownerName} /> : undefined}
-      onChange={(e) => onChange(e.target.value || null)}
-      aria-label={ariaLabel}
-    >
-      <option value="">Unassigned</option>
-      {members.map((m) => (
-        <option key={m.userId} value={m.userId}>
-          {m.displayName ?? m.email ?? m.userId}
-        </option>
-      ))}
-    </InlineCellSelect>
+      ariaLabel={ariaLabel}
+      placeholder="Unassigned"
+      searchPlaceholder="Search"
+      options={ownerSelectOptions(members, assigneeId, ownerName)}
+      onChange={(v) => onChange(v || null)}
+    />
   )
 }

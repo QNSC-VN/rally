@@ -38,7 +38,7 @@ import {
   SCHEDULE_STATE_VALUES,
   ScheduleState,
 } from '@/entities/work-item/model/types'
-import { TypeBadge } from '@/entities/work-item/ui/badges'
+import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { OwnerCell } from '@/shared/ui/owner-cell'
 import type { IterationStatusItem } from '@/features/iterations/api'
 
@@ -270,17 +270,7 @@ function BoardCard({
       }}
     >
       <div className="flex items-center gap-1.5">
-        <TypeBadge type={item.type} size={16} />
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation()
-            onOpen?.(item.itemKey)
-          }}
-          className="font-mono text-ui-sm text-primary-light hover:underline"
-        >
-          {item.itemKey}
-        </button>
+        <IdCell type={item.type} itemKey={item.itemKey} onOpen={() => onOpen?.(item.itemKey)} />
         {canEdit && dragHandleProps && (
           <span
             {...dragHandleProps}

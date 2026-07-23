@@ -32,5 +32,6 @@
   "settings": "Settings",
   "notifications": "Notifications",
   "appName": "Mini Rally",
-  "platformTagline": "Work Management Platform"
+  "platformTagline": "Work Management Platform",
+  "addNew": "Add New"
 }

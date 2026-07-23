@@ -166,7 +166,15 @@ function Divider() {
 }
 
 // ── Toolbar ───────────────────────────────────────────────────────────────────
-function Toolbar({ editor }: { editor: Editor }) {
+function Toolbar({
+  editor,
+  expanded,
+  onToggleExpand,
+}: {
+  editor: Editor
+  expanded: boolean
+  onToggleExpand: () => void
+}) {
   const handleLink = useCallback(() => {
     const previousUrl = editor.getAttributes('link')['href'] as string | undefined
     const url = window.prompt('Enter URL:', previousUrl ?? '')
@@ -296,6 +304,16 @@ function Toolbar({ editor }: { editor: Editor }) {
       >
         <Code2 size={14} />
       </ToolButton>
+
+      {/* Expand / collapse — pinned to the toolbar's right edge (Rally parity). */}
+      <div className="ml-auto flex items-center">
+        <ToolButton
+          label={expanded ? 'Collapse editor' : 'Expand editor'}
+          onAction={onToggleExpand}
+        >
+          {expanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+        </ToolButton>
+      </div>
     </div>
   )
 }
@@ -386,7 +404,10 @@ export function RichTextEditor({
     content: sanitize(value ?? ''),
     editorProps: {
       attributes: {
+        // min-height lives on the editable element itself (not the wrapper) so
+        // the ENTIRE box is clickable/typable, not just the top text line.
         class: 'px-4 py-3 text-ui-lg leading-6 text-foreground focus:outline-none',
+        style: `min-height:${minHeight}px`,
       },
       handlePaste: (view, event) => {
         const files = event.clipboardData ? imageFilesFromClipboard(event.clipboardData) : []
@@ -455,56 +476,48 @@ export function RichTextEditor({
   if (!editor) return null
 
   return (
-    <section
-      className={`overflow-hidden rounded bg-card transition-[border-color,box-shadow] ${className}`}
-      style={{
-        border: focused ? '1px solid var(--ring)' : `1px solid ${BRAND.border}`,
-        boxShadow: focused ? '0 0 0 3px color-mix(in srgb, var(--ring) 50%, transparent)' : 'none',
-        ...(expanded
+    <div
+      className={`flex flex-col ${className}`}
+      style={
+        expanded
           ? {
               position: 'fixed',
               inset: '10%',
               zIndex: 50,
-              display: 'flex',
-              flexDirection: 'column',
+              backgroundColor: BRAND.surface,
               boxShadow: '0 20px 60px rgba(0,0,0,.25)',
+              borderRadius: 4,
+              padding: 12,
             }
-          : {}),
-      }}
+          : undefined
+      }
     >
-      {/* Section header */}
-      <div
-        className="flex items-center justify-between border-b border-border-strong bg-surface-hover px-4 py-2 text-ui-sm font-semibold text-muted-foreground select-none"
-        style={{ flexShrink: 0 }}
+      {/* Field label — sits ABOVE the box (Rally parity), not inside it. */}
+      <span className="mb-1 text-ui-sm font-semibold text-muted-foreground select-none">
+        {title}
+      </span>
+
+      {/* Editor box — one border wrapping toolbar + content, no inner divider. */}
+      <section
+        className="flex min-h-0 flex-1 flex-col overflow-hidden rounded bg-card transition-[border-color]"
+        style={{ border: focused ? '1px solid var(--ring)' : `1px solid ${BRAND.border}` }}
       >
-        <span>{title}</span>
         {!readOnly && (
-          <button
-            type="button"
-            aria-label={expanded ? 'Collapse editor' : 'Expand editor'}
-            onClick={() => setExpanded((v) => !v)}
-            className="cursor-pointer rounded p-0.5 text-muted-foreground hover:bg-slate-200"
-          >
-            {expanded ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
-          </button>
+          <Toolbar editor={editor} expanded={expanded} onToggleExpand={() => setExpanded((v) => !v)} />
         )}
-      </div>
 
-      {/* Toolbar */}
-      {!readOnly && <Toolbar editor={editor} />}
-
-      {/* Content area */}
-      <div
-        onKeyDownCapture={handleKeyDownCapture}
-        className={readOnly ? 'bg-surface-hover' : 'bg-card'}
-        style={{
-          minHeight,
-          overflowY: expanded ? 'auto' : undefined,
-          flex: expanded ? '1' : undefined,
-        }}
-      >
-        <EditorContent editor={editor} />
-      </div>
-    </section>
+        {/* Content area */}
+        <div
+          onKeyDownCapture={handleKeyDownCapture}
+          className={`rte-content ${readOnly ? 'bg-surface-hover' : 'bg-card'}`}
+          style={{
+            overflowY: expanded ? 'auto' : undefined,
+            flex: expanded ? '1' : undefined,
+          }}
+        >
+          <EditorContent editor={editor} />
+        </div>
+      </section>
+    </div>
   )
 }

@@ -9,27 +9,23 @@ import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
-import { DndContext } from '@dnd-kit/core'
-import { SortableContext } from '@dnd-kit/sortable'
 import { AlertTriangle, PackageOpen, Plus } from 'lucide-react'
+import { PageHeader } from '@/shared/ui/page-header'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
-import { RowGutter } from '@/shared/ui/row-gutter'
 import { MetricCard } from '@/shared/ui/metric-card'
 import { MetricStrip } from '@/shared/ui/metric-strip'
 import { BRAND } from '@/shared/config/brand'
 import { Button } from '@/shared/ui/button'
-import { BulkScheduleBar } from '@/features/work-items/ui/bulk-schedule-bar'
+import { BulkDeleteCopy } from '@/features/work-items/ui/bulk-delete-copy'
 import { useRowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
-import { useDefects, qualityKeys, type DefectRow } from '@/features/quality/api'
+import { useDefects, type DefectRow } from '@/features/quality/api'
 import { useProjectMembers } from '@/features/teams/api'
 import { useReleases } from '@/features/releases/api'
-import { useIterations } from '@/features/iterations/api'
-import { useRankAnyWorkItem } from '@/features/work-items/api'
-import { useQueryClient } from '@tanstack/react-query'
+import { useRankAnyWorkItem, useCreateWorkItem } from '@/features/work-items/api'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
-import { useDataTable, useRowRerank, DataTableFrame } from '@/shared/ui/table'
+import { useDataTable, useRowRerank, SelectableTable, RankSortHeader } from '@/shared/ui/table'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { QUALITY_COLUMNS, FilterSelect, LogDefectModal, DefectTableRow } from './ui/quality-parts'
 import {
@@ -44,7 +40,6 @@ import {
 export function QualityPage() {
   const { t } = useTranslation('quality')
   const navigate = useNavigate()
-  const qc = useQueryClient()
   const { project } = useAppContext()
   const { can } = useProjectPermissions(project?.projectId)
   // Defects are work items; the backend enforces defect mutations via
@@ -120,17 +115,25 @@ export function QualityPage() {
       ),
   })
 
-  // ── Bulk selection (shared pattern: checkbox gutter + BulkScheduleBar) ────────
-  const { data: iterations = [] } = useIterations(project?.projectId)
-  const {
-    selectedIds,
-    allSelected,
-    someSelected,
-    isSelected,
-    toggle: toggleSelect,
-    toggleAll,
-    clear: clearSelection,
-  } = useRowSelection(defects)
+  // ── Bulk selection (shared SelectableTable + BulkDeleteCopy) ────────
+  const selection = useRowSelection(defects)
+  const createItem = useCreateWorkItem()
+  async function copySelected() {
+    const src = defects.find((d) => selection.selectedIds.has(d.id))
+    if (!src || !project?.projectId) return
+    try {
+      await createItem.mutateAsync({
+        projectId: project.projectId,
+        type: 'defect',
+        title: `${src.title} (copy)`,
+        priority: (src.priority ?? 'none') as 'none' | 'low' | 'normal' | 'high' | 'urgent',
+      })
+      selection.clear()
+      toast.success('Defect copied')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Copy failed')
+    }
+  }
 
   const metrics = data?.metrics ?? {
     openDefects: 0,
@@ -154,6 +157,10 @@ export function QualityPage() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
+      {/* Page title bar — sits under the breadcrumb, matching Iteration Status
+          (shared PageHeader). No sprint picker / view toggle here. */}
+      <PageHeader title={t('title')} />
+
       {/* Metrics strip */}
       <MetricStrip>
         <MetricCard
@@ -196,7 +203,6 @@ export function QualityPage() {
 
       {/* Toolbar */}
       <PageToolbar
-        title={t('title')}
         search={{
           value: search,
           onChange: setSearch,
@@ -327,35 +333,34 @@ export function QualityPage() {
         fields={<ColumnFieldsMenu {...table.fieldsMenuProps} />}
       />
 
-      {/* Bulk action bar — appears when ≥1 defect is selected */}
-      <BulkScheduleBar
-        projectId={project?.projectId}
-        selectedIds={selectedIds}
-        clearSelection={clearSelection}
-        releases={releases ?? []}
-        iterations={iterations}
-        canEdit={canManage}
-        onAssigned={() => qc.invalidateQueries({ queryKey: qualityKeys.all })}
-      />
-
-      {/* Defect table */}
-      <div className="flex flex-1 overflow-hidden">
-        <DataTableFrame
-          header={table.headerProps}
+      {/* Defect table — shared SelectableTable shell (selection gutter +
+          BulkActionBar + DnD wrap), same as Backlog / Iteration Status / Tasks. */}
+      <div className="flex flex-1 flex-col overflow-hidden">
+        <SelectableTable
+          rows={rerank.items}
+          selection={selection}
+          headerProps={table.headerProps}
           padClassName="gap-2 px-3"
-          leading={
-            <>
-              <RowGutter
-                dragDisabled
-                checkbox={{
-                  checked: allSelected,
-                  indeterminate: someSelected,
-                  onChange: toggleAll,
-                  ariaLabel: 'Select all',
-                }}
+          leadingExtra={
+            <RankSortHeader
+              active={sortCol === 'rank'}
+              dir={sortDir}
+              onSort={() => handleSort('rank')}
+            />
+          }
+          dnd={{
+            dndContextProps: rerank.dndContextProps,
+            sortableContextProps: rerank.sortableContextProps,
+          }}
+          bulkActions={(sel) =>
+            canManage ? (
+              <BulkDeleteCopy
+                selection={sel}
+                projectId={project?.projectId ?? ''}
+                onCopy={copySelected}
+                copyPending={createItem.isPending}
               />
-              <div className="w-6 shrink-0 px-2 text-right">#</div>
-            </>
+            ) : null
           }
           loading={isLoading}
           skeleton={{ rows: 8 }}
@@ -375,26 +380,21 @@ export function QualityPage() {
               </div>
             ) : undefined
           }
-        >
-          <DndContext {...rerank.dndContextProps}>
-            <SortableContext {...rerank.sortableContextProps}>
-              {rerank.items.map((d, idx) => (
-                <DefectTableRow
-                  key={d.id}
-                  defect={d}
-                  rowNum={idx + 1}
-                  canManage={canManage}
-                  projectId={project?.projectId ?? ''}
-                  dragDisabled={sortCol !== null}
-                  selected={isSelected(d.id)}
-                  onToggleSelect={() => toggleSelect(d.id)}
-                  openItem={(k) => navigate({ to: '/item/$itemKey', params: { itemKey: k } })}
-                  renderCells={table.renderCells}
-                />
-              ))}
-            </SortableContext>
-          </DndContext>
-        </DataTableFrame>
+          renderRow={(d, { selected, onToggleSelect }) => (
+            <DefectTableRow
+              key={d.id}
+              defect={d}
+              rowNum={rerank.items.indexOf(d) + 1}
+              canManage={canManage}
+              projectId={project?.projectId ?? ''}
+              dragDisabled={sortCol !== null}
+              selected={selected}
+              onToggleSelect={onToggleSelect}
+              openItem={(k) => navigate({ to: '/item/$itemKey', params: { itemKey: k } })}
+              renderCells={table.renderCells}
+            />
+          )}
+        />
       </div>
 
       {/* Log Defect Modal */}

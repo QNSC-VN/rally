@@ -6,6 +6,7 @@ import {
   SCHEDULE_STATE_LABEL,
   WORK_ITEM_PRIORITY_CONFIG,
   WORK_ITEM_TYPE_CONFIG,
+  TIMEBOX_TYPE_CONFIG,
   type DefectSeverity,
   type ScheduleState,
   type WorkItemPriority,
@@ -21,10 +22,11 @@ interface TypeBadgeProps {
 }
 
 export function TypeBadge({ type, size = 18 }: TypeBadgeProps) {
-  const cfg = WORK_ITEM_TYPE_CONFIG[type as WorkItemType] ?? {
-    label: type.slice(0, 2).toUpperCase(),
-    ...BADGE_FALLBACK,
-  }
+  const cfg = WORK_ITEM_TYPE_CONFIG[type as WorkItemType] ??
+    TIMEBOX_TYPE_CONFIG[type] ?? {
+      label: type.slice(0, 2).toUpperCase(),
+      ...BADGE_FALLBACK,
+    }
   const Icon = cfg.icon
   // Broadcom Rally parity: a circular, solid-colour chip with a white glyph.
   // Single source for the work-item type mark — reused by IdCell,

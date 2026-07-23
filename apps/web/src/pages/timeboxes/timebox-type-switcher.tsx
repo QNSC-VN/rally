@@ -18,7 +18,7 @@
  */
 import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
-import { InlineSelect } from '@/shared/ui/native-select'
+import { NativeSelect } from '@/shared/ui/native-select'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
 
@@ -50,25 +50,25 @@ export function TimeboxTypeSwitcher({ current }: { current: TimeboxType }) {
   )
 
   return (
-    <label className="flex items-center gap-1.5">
-      <span className="text-ui-xs font-semibold tracking-widest text-foreground-subtle uppercase">
+    <label className="flex items-center gap-2">
+      <span className="text-ui-xs font-semibold tracking-wide text-foreground-subtle">
         {t('type.label')}
       </span>
-      <InlineSelect
+      <NativeSelect
         aria-label={t('type.label')}
         value={current}
         onChange={(e) => {
           const next = e.target.value as TimeboxType
           if (next !== current) void navigate({ to: ROUTE[next] })
         }}
-        className="min-w-[7.5rem]"
+        className="h-8 min-w-[8rem] py-1 text-ui-sm"
       >
         {types.map((type) => (
           <option key={type} value={type}>
             {t(`type.${type}`)}
           </option>
         ))}
-      </InlineSelect>
+      </NativeSelect>
     </label>
   )
 }

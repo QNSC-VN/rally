@@ -62,14 +62,15 @@ describe('useColumnLayout', () => {
     expect(result.current.order).toEqual(['id', 'name', 'status'])
   })
 
-  it('hydrates stored order/hidden and appends newly-added columns', () => {
+  it('hydrates stored order/hidden and splices newly-added columns at their declared index', () => {
     localStorage.setItem(
       `${KEY}:layout`,
       JSON.stringify({ order: ['status', 'name'], hidden: ['status'] }),
     )
     const { result } = renderHook(() => useColumnLayout(COLUMNS, KEY))
-    // stored order first (known keys), then any columns missing from storage ('id')
-    expect(result.current.order).toEqual(['status', 'name', 'id'])
+    // Stored order is preserved; a column missing from storage ('id', declared
+    // first) lands at its declared index rather than drifting to the far right.
+    expect(result.current.order).toEqual(['id', 'status', 'name'])
     expect(result.current.hidden.has('status')).toBe(true)
   })
 

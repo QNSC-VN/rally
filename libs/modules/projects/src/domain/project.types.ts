@@ -84,6 +84,24 @@ export interface ProjectWithStats extends Project {
   leadName: string | null;
 }
 
+/**
+ * Per-project rollup for the Home "Project Health" widget. Computed server-side
+ * in a bounded, batched query set (no per-project N+1) and returned already
+ * sorted by "attention" (blocked, then open defects, then name).
+ */
+export interface ProjectHealth {
+  id: string;
+  key: string;
+  name: string;
+  leadId: string | null;
+  leadName: string | null;
+  activeSprintName: string | null;
+  /** done / total * 100, rounded; 0 when the project has no items. */
+  progressPercent: number;
+  openDefects: number;
+  blockedCount: number;
+}
+
 export interface CreateWorkflowStatusInput {
   id: string;
   workspaceId: string;

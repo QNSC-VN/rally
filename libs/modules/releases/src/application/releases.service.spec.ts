@@ -31,6 +31,7 @@ const mockRelease = (o: Partial<Release> = {}): Release => ({
   id: 'rel-1',
   workspaceId: 'ws-1',
   projectId: 'proj-1',
+  releaseKey: 'RE-1',
   name: 'v1.0',
   description: 'First release',
   theme: null,
@@ -62,6 +63,7 @@ const makeRepo = () => ({
   create: vi.fn().mockImplementation((input) => Promise.resolve(mockRelease(input))),
   update: vi.fn().mockImplementation((id, patch) => Promise.resolve(mockRelease({ id, ...patch }))),
   delete: vi.fn().mockResolvedValue(undefined),
+  nextKeyNumber: vi.fn().mockResolvedValue(1),
 });
 
 const makeProjects = () => ({

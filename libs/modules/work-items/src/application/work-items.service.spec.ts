@@ -126,6 +126,7 @@ const makeRelationRepo = () => ({
   create: vi.fn().mockResolvedValue({ id: 'rel-1' }),
   findById: vi.fn(),
   delete: vi.fn().mockResolvedValue(undefined),
+  deleteForItem: vi.fn().mockResolvedValue(undefined),
   wouldCreateCycle: vi.fn().mockResolvedValue(false),
 });
 
@@ -350,6 +351,66 @@ describe('WorkItemsService', () => {
       );
     });
 
+    // ── Work-item hierarchy rules (DB design §Work item hierarchy / §19.3):
+    //    Initiative → Feature → Story → { Task, Defect }; a defect's parent is a
+    //    user story; a task's parent is a story or defect. ──
+    it('rejects creating a defect under a non-story parent', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ id: 'feat-1', type: 'feature' }));
+      await expect(
+        service.createWorkItem(mockActor, 'proj-1', 'defect', 'Bug', { parentId: 'feat-1' }),
+      ).rejects.toThrow(/user story/i);
+      expect(workItemRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('allows creating a defect under a story parent', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ id: 'story-1', type: 'story' }));
+      workItemRepo.create.mockResolvedValue(mockWorkItem({ type: 'defect', parentId: 'story-1' }));
+      await service.createWorkItem(mockActor, 'proj-1', 'defect', 'Bug', { parentId: 'story-1' });
+      expect(workItemRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ parentId: 'story-1' }),
+        expect.anything(),
+      );
+    });
+
+    it.each(['story', 'defect'] as const)(
+      'allows creating a task under a %s parent',
+      async (parentType) => {
+        workItemRepo.findById.mockResolvedValue(mockWorkItem({ id: 'p-1', type: parentType }));
+        workItemRepo.create.mockResolvedValue(mockWorkItem({ type: 'task', parentId: 'p-1' }));
+        await service.createWorkItem(mockActor, 'proj-1', 'task', 'T', { parentId: 'p-1' });
+        expect(workItemRepo.create).toHaveBeenCalled();
+      },
+    );
+
+    it.each(['feature', 'initiative', 'task'] as const)(
+      'rejects creating a task under a %s parent',
+      async (parentType) => {
+        workItemRepo.findById.mockResolvedValue(mockWorkItem({ id: 'p-1', type: parentType }));
+        await expect(
+          service.createWorkItem(mockActor, 'proj-1', 'task', 'T', { parentId: 'p-1' }),
+        ).rejects.toThrow(/user story or defect/i);
+        expect(workItemRepo.create).not.toHaveBeenCalled();
+      },
+    );
+
+    it('rejects creating a task with no parent', async () => {
+      await expect(service.createWorkItem(mockActor, 'proj-1', 'task', 'T')).rejects.toThrow(
+        /must be created under a user story or defect/i,
+      );
+      expect(workItemRepo.create).not.toHaveBeenCalled();
+    });
+
+    it.each(['story', 'feature', 'initiative'] as const)(
+      'rejects giving a %s a parent (only tasks and defects have parents)',
+      async (childType) => {
+        workItemRepo.findById.mockResolvedValue(mockWorkItem({ id: 'p-1', type: 'story' }));
+        await expect(
+          service.createWorkItem(mockActor, 'proj-1', childType, 'X', { parentId: 'p-1' }),
+        ).rejects.toThrow(/only defects and tasks/i);
+        expect(workItemRepo.create).not.toHaveBeenCalled();
+      },
+    );
+
     it('rejects an iteration that belongs to a different project', async () => {
       workItemRepo.findIterationScope.mockResolvedValue({ projectId: 'other-proj', teamId: null });
       await expect(
@@ -448,6 +509,26 @@ describe('WorkItemsService', () => {
         expect.objectContaining({ estimateHours: '5.00', todoHours: '3', actualHours: '2' }),
         expect.anything(),
       );
+    });
+
+    it.each(['task', 'feature', 'initiative'] as const)(
+      'rejects creating a task under a %s (parent must be a story or defect)',
+      async (parentType) => {
+        workItemRepo.findById.mockResolvedValue(mockWorkItem({ id: 'p-1', type: parentType }));
+        await expect(service.createTask(mockActor, 'p-1', 'T')).rejects.toThrow(
+          /user story or defect/i,
+        );
+        expect(workItemRepo.create).not.toHaveBeenCalled();
+      },
+    );
+
+    it('allows creating a task under a defect', async () => {
+      workItemRepo.findById.mockResolvedValue(
+        mockWorkItem({ id: 'de-1', type: 'defect', projectId: 'proj-1' }),
+      );
+      workItemRepo.create.mockResolvedValue(mockWorkItem({ type: 'task', parentId: 'de-1' }));
+      await service.createTask(mockActor, 'de-1', 'T');
+      expect(workItemRepo.create).toHaveBeenCalled();
     });
   });
 
@@ -633,6 +714,85 @@ describe('WorkItemsService', () => {
       expect(call?.[1]).not.toHaveProperty('todoHours', '0');
       expect(call?.[1]).toMatchObject({ estimateHours: '5.00' });
     });
+
+    // ── Parent reassignment must obey the SAME hierarchy rules as create, so
+    //    update can never back-door an invalid parent (the audit's GAP-2). ──
+    // findById resolves BOTH the edited item and the candidate parent; route by id.
+    const withItemAndParent = (
+      item: ReturnType<typeof mockWorkItem>,
+      parent: ReturnType<typeof mockWorkItem>,
+    ) =>
+      workItemRepo.findById.mockImplementation((id: string) =>
+        Promise.resolve(id === item.id ? item : parent),
+      );
+
+    it('rejects moving a defect under a non-story parent', async () => {
+      withItemAndParent(
+        mockWorkItem({ id: 'de-1', type: 'defect', parentId: null }),
+        mockWorkItem({ id: 'feat-1', type: 'feature' }),
+      );
+      await expect(
+        service.updateWorkItem(mockActor, 'de-1', { parentId: 'feat-1' }),
+      ).rejects.toThrow(/user story/i);
+      expect(workItemRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('allows moving a defect under a story parent', async () => {
+      withItemAndParent(
+        mockWorkItem({ id: 'de-1', type: 'defect', parentId: null }),
+        mockWorkItem({ id: 'story-1', type: 'story' }),
+      );
+      workItemRepo.update.mockResolvedValue(mockWorkItem({ id: 'de-1', type: 'defect' }));
+      await service.updateWorkItem(mockActor, 'de-1', { parentId: 'story-1' });
+      expect(workItemRepo.update).toHaveBeenCalled();
+    });
+
+    it('allows clearing a defect parent (null)', async () => {
+      workItemRepo.findById.mockResolvedValue(
+        mockWorkItem({ id: 'de-1', type: 'defect', parentId: 'story-1' }),
+      );
+      workItemRepo.update.mockResolvedValue(mockWorkItem({ id: 'de-1', type: 'defect' }));
+      await service.updateWorkItem(mockActor, 'de-1', { parentId: null });
+      expect(workItemRepo.update).toHaveBeenCalled();
+    });
+
+    it.each(['task', 'feature', 'initiative'] as const)(
+      'rejects moving a task under a %s',
+      async (parentType) => {
+        withItemAndParent(
+          mockWorkItem({ id: 'task-1', type: 'task', parentId: 'story-0' }),
+          mockWorkItem({ id: 'p-1', type: parentType }),
+        );
+        await expect(
+          service.updateWorkItem(mockActor, 'task-1', { parentId: 'p-1' }),
+        ).rejects.toThrow(/user story or defect/i);
+        expect(workItemRepo.update).not.toHaveBeenCalled();
+      },
+    );
+
+    it('rejects clearing a task parent (a task must belong to a work product)', async () => {
+      workItemRepo.findById.mockResolvedValue(
+        mockWorkItem({ id: 'task-1', type: 'task', parentId: 'story-0' }),
+      );
+      await expect(service.updateWorkItem(mockActor, 'task-1', { parentId: null })).rejects.toThrow(
+        /must belong to a work product/i,
+      );
+      expect(workItemRepo.update).not.toHaveBeenCalled();
+    });
+
+    it.each(['story', 'feature', 'initiative'] as const)(
+      'rejects setting a parent on a %s via update (only tasks/defects have parents)',
+      async (childType) => {
+        withItemAndParent(
+          mockWorkItem({ id: 'c-1', type: childType, parentId: null }),
+          mockWorkItem({ id: 'p-1', type: 'story' }),
+        );
+        await expect(
+          service.updateWorkItem(mockActor, 'c-1', { parentId: 'p-1' }),
+        ).rejects.toThrow(/only defects and tasks/i);
+        expect(workItemRepo.update).not.toHaveBeenCalled();
+      },
+    );
   });
 
   describe('deleteWorkItem', () => {
@@ -642,6 +802,14 @@ describe('WorkItemsService', () => {
       await service.deleteWorkItem(mockActor, 'wi-1');
 
       expect(workItemRepo.softDelete).toHaveBeenCalledWith('wi-1', 'ws-1');
+    });
+
+    it('removes the item’s relations so none dangle after delete (GAP-8)', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ id: 'wi-1', type: 'story' }));
+
+      await service.deleteWorkItem(mockActor, 'wi-1');
+
+      expect(relationRepo.deleteForItem).toHaveBeenCalledWith('wi-1', 'ws-1');
     });
 
     it('throws when work item not found', async () => {
@@ -677,6 +845,18 @@ describe('WorkItemsService', () => {
       relationRepo.exists.mockResolvedValue(true);
       await expect(service.linkWorkItem(mockActor, 'wi-1', 'wi-2', 'relates_to')).rejects.toThrow(
         PreconditionFailedException,
+      );
+      expect(relationRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects the same relation in the reverse direction (GAP-7)', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem());
+      // Forward (wi-1 → wi-2) does not exist, but the reverse (wi-2 → wi-1) does.
+      relationRepo.exists.mockImplementation((src: string) =>
+        Promise.resolve(src === 'wi-2'),
+      );
+      await expect(service.linkWorkItem(mockActor, 'wi-1', 'wi-2', 'blocks')).rejects.toThrow(
+        /opposite direction/i,
       );
       expect(relationRepo.create).not.toHaveBeenCalled();
     });

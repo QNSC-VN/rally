@@ -27,15 +27,34 @@ export interface ColumnSpec<Row, Ctx, K extends string = string> {
   minWidth?: number
   /** When true the column cannot be hidden via the Show-Fields menu (e.g. ID/Name). */
   locked?: boolean
+  /**
+   * Grows to absorb leftover width so the table fills its container (Rally lets
+   * the Name column expand). `defaultWidth` is its minimum. Mark ONE per grid.
+   */
+  grow?: boolean
   /** Header + (via `cellClassName`) body horizontal alignment. */
   align?: 'center' | 'right'
   /** When set, the header cell is click-to-sort and shows a direction arrow. */
   sortCol?: string
   /**
+   * Built-in read-only renderer for a generic attribute type, so a column needs
+   * no `cell` for the common cases. `date` formats via the shared `DateField`
+   * (ISO yyyy-MM-dd), `number` right-aligns monospace, `text` truncates.
+   *
+   * Entity-specific types (status / enum / owner) are NOT covered here — the
+   * shared engine can't import entity style maps — so those declare a `cell`
+   * that returns the shared component (`StatusBadge` / `SearchableSelect` /
+   * `OwnerCell`). `cell` always wins over `type` when both are set.
+   */
+  type?: 'text' | 'number' | 'date'
+  /** Value accessor for {@link type} rendering. Defaults to `row[key]`. */
+  accessor?: (row: Row) => string | number | null | undefined
+  /**
    * Renders the body cell for a given row. Optional: editable grids that own
    * their row structure (per-row mutation hooks / inline inputs) still adopt the
    * engine for layout + header + Show-Fields wiring, but render their own rows
    * instead of calling `renderCells`, so they declare columns without a `cell`.
+   * Takes precedence over {@link type}.
    */
   cell?: (row: Row, ctx: Ctx) => ReactNode
   /**
@@ -55,6 +74,7 @@ export function toColumnDef<Row, Ctx, K extends string>(
     defaultWidth: spec.defaultWidth,
     minWidth: spec.minWidth,
     locked: spec.locked,
+    grow: spec.grow,
   }
 }
 

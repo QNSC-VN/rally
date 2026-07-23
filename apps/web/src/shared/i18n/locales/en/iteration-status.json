@@ -64,6 +64,7 @@
     "movedToBacklog": "Moved to backlog",
     "devOwnerUpdated": "Dev owner updated",
     "milestonesUpdated": "Milestones updated",
+    "blockedReasonUpdated": "Blocked reason updated",
     "blocked": "Work item blocked",
     "unblocked": "Work item unblocked",
     "taskEstimateUpdated": "Task estimate updated",
@@ -72,6 +73,9 @@
   },
   "cells": {
     "noMilestones": "No milestones in this project",
+    "editMilestones": "Edit milestones",
+    "searchMilestones": "Search milestones",
+    "milestoneNone": "—",
     "defectNone": "None",
     "defectClosed": "Closed",
     "defectOpen": "{{value}} Open"

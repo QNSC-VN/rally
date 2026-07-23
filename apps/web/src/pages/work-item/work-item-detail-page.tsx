@@ -6,28 +6,24 @@
  * Task:         2 tabs — Details | Revision History
  * Sidebar differs by type (task shows time fields + Work Product link).
  */
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useParams, useNavigate } from '@tanstack/react-router'
 import {
   Bell,
   BellOff,
   Bug,
-  ChevronLeft,
+  FileText,
   History,
   ListChecks,
-  MoreHorizontal,
   PanelRightOpen,
-  Trash2,
   Users,
 } from 'lucide-react'
-import { toast } from 'sonner'
 import {
   useTasks,
   useUpdateWorkItem,
   useWatchers,
   useToggleWatch,
-  useDeleteWorkItem,
   useChildDefects,
   type WorkItem,
   type UpdateWorkItemInput,
@@ -35,7 +31,8 @@ import {
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { useProjectPermissions } from '@/features/access/api'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
-import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
+import { DetailLayout } from '@/shared/ui/detail/detail-layout'
+import { DetailHeaderButton } from '@/shared/ui/detail-header'
 import { TasksTab } from './ui/tasks-tab'
 import { HistoryTab, DefectsTab } from './ui/detail-tabs'
 import { DetailSidebar } from './ui/detail-sidebar'
@@ -128,9 +125,6 @@ export function WorkItemDetailPage() {
   const { itemKey } = useParams({ from: '/auth/item/$itemKey' })
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<DetailTab>('details')
-  const [moreOpen, setMoreOpen] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(false)
-  const moreRef = useRef<HTMLDivElement>(null)
 
   // P1-10: sidebar collapse — persisted in localStorage so preference survives navigation
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
@@ -155,7 +149,6 @@ export function WorkItemDetailPage() {
   const { data: itemByKey, isLoading: loadingKey } = useWorkItemByKey(itemKey)
 
   const updateMutation = useUpdateWorkItem(itemByKey?.id ?? '')
-  const deleteMutation = useDeleteWorkItem()
   const { status: saveStatus, errorMsg: saveErrorMsg, wrap: wrapSave } = useSaveState()
   const { uploadAndRewrite } = useUploadPastedImages(itemByKey?.id)
 
@@ -220,28 +213,6 @@ export function WorkItemDetailPage() {
     },
   )
 
-  useEffect(() => {
-    if (!moreOpen) return
-    function onClickOutside(e: MouseEvent) {
-      if (moreRef.current && !moreRef.current.contains(e.target as Node)) {
-        setMoreOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', onClickOutside)
-    return () => document.removeEventListener('mousedown', onClickOutside)
-  }, [moreOpen])
-
-  async function handleDelete() {
-    if (!itemByKey) return
-    try {
-      await deleteMutation.mutateAsync({ id: itemByKey.id, projectId: itemByKey.projectId })
-      toast.success(t('delete.success', { key: itemByKey.itemKey }))
-      setConfirmDelete(false)
-      void navigate({ to: '/backlog' })
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : t('delete.failed'))
-    }
-  }
 
   if (loadingKey) {
     return (
@@ -273,22 +244,7 @@ export function WorkItemDetailPage() {
   const tabs: TabDef[] = [
     {
       id: 'details',
-      icon: (
-        <svg
-          width="18"
-          height="18"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.75"
-        >
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-          <polyline points="14 2 14 8 20 8" />
-          <line x1="16" y1="13" x2="8" y2="13" />
-          <line x1="16" y1="17" x2="8" y2="17" />
-          <polyline points="10 9 9 9 8 9" />
-        </svg>
-      ),
+      icon: <FileText size={19} />,
       label: t('tabs.details'),
     },
     ...(!isTask
@@ -326,138 +282,79 @@ export function WorkItemDetailPage() {
     },
   ]
 
+  // The route component persists across itemKey changes, so a Story's "Tasks"
+  // tab could remain selected on a Task that has no such tab. Derive the tab to
+  // render (fall back to Details) instead of resetting state — no effect/ref.
+  const activeTabId: DetailTab = tabs.some((tb) => tb.id === activeTab) ? activeTab : 'details'
+
   return (
-    <div className="flex flex-1 flex-col overflow-hidden bg-card">
-      {/* Header bar */}
-      <div className="shrink-0 bg-primary-dark text-white">
-        {/* Title row */}
-        <div
-          className="flex h-12 items-center gap-3 px-4"
-          style={{ borderBottom: '1px solid rgba(255,255,255,.18)' }}
-        >
-          <button
-            aria-label="Back"
-            onClick={() => void navigate({ to: '/backlog' })}
-            className="rounded p-1.5 hover:bg-white/10"
-          >
-            <ChevronLeft size={18} />
-          </button>
-          <TypeBadge type={item.type} />
-          <span className="font-mono text-ui-lg font-semibold text-white">{item.itemKey}</span>
-          <span className="h-5 w-px bg-white/25" />
-          <h1 className="truncate text-base font-semibold">{item.title}</h1>
-          <div className="flex-1" />
-
-          {/* Watcher count badge */}
-          {watchers.length > 0 && (
-            <div
-              className="flex items-center gap-1 rounded px-2 py-1 text-ui-sm font-medium"
-              style={{ backgroundColor: 'rgba(255,255,255,0.12)', color: BRAND.accentBg }}
-              title={`${watchers.length} watcher${watchers.length !== 1 ? 's' : ''}`}
-            >
-              <Users size={12} />
-              <span>{watchers.length}</span>
-            </div>
-          )}
-
-          {/* Watch / Unwatch button */}
-          <button
-            aria-label={isWatching ? 'Unwatch this item' : 'Watch this item'}
-            title={
-              isWatching
-                ? 'Unwatch — stop receiving notifications'
-                : 'Watch — get notified on changes'
-            }
-            onClick={() => void toggleWatch.mutate(isWatching)}
-            disabled={toggleWatch.isPending}
-            className="flex items-center gap-1.5 rounded px-2.5 py-1.5 text-ui-sm font-medium transition-colors"
-            style={{
-              backgroundColor: isWatching ? 'rgba(255,255,255,0.18)' : 'transparent',
-              color: isWatching ? 'white' : BRAND.accentBg,
-              border: '1px solid',
-              borderColor: isWatching ? 'rgba(255,255,255,0.3)' : 'transparent',
-            }}
-          >
-            {isWatching ? <BellOff size={14} /> : <Bell size={14} />}
-            <span>{isWatching ? t('watch.watching') : t('watch.watch')}</span>
-          </button>
-
-          {/* BA rule (P3.4): defects are never deleted — hide the whole menu for them. */}
-          {!readOnly && itemByKey.type !== 'defect' && (
-            <div ref={moreRef} className="relative">
-              <button
-                aria-label="More actions"
-                onClick={() => setMoreOpen((o) => !o)}
-                className="rounded p-1.5 hover:bg-white/10"
+    <DetailLayout
+      onBack={() => void navigate({ to: '/backlog' })}
+      badge={<TypeBadge type={item.type} />}
+      itemKey={item.itemKey}
+      title={
+        readOnly ? (
+          item.title
+        ) : (
+          <input
+            value={item.title ?? ''}
+            onChange={(e) => setField({ title: e.target.value })}
+            className="w-full rounded border-0 bg-transparent px-1 py-0.5 text-base font-semibold text-white placeholder-white/60 focus:bg-white/10 focus:outline-none"
+            aria-label="Title"
+          />
+        )
+      }
+      tabs={tabs.map((tb) => ({ key: tb.id, label: tb.label, icon: tb.icon }))}
+      activeTab={activeTabId}
+      onTabChange={(k) => setActiveTab(k as DetailTab)}
+      actions={
+            <>
+              {/* Watcher count badge — always shown (Rally parity), even at 0. */}
+              <div
+                className="flex items-center gap-1 rounded px-2 py-1 text-ui-sm font-medium"
+                style={{ backgroundColor: 'rgba(255,255,255,0.12)', color: BRAND.accentBg }}
+                title={`${watchers.length} watcher${watchers.length !== 1 ? 's' : ''}`}
               >
-                <MoreHorizontal size={17} />
-              </button>
-              {moreOpen && (
-                <div className="absolute top-full right-0 z-50 mt-1 w-44 overflow-hidden rounded border border-input bg-card shadow-lg">
-                  <button
-                    onClick={() => {
-                      setMoreOpen(false)
-                      setConfirmDelete(true)
-                    }}
-                    disabled={deleteMutation.isPending}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-ui-md text-destructive transition-colors hover:bg-red-50 disabled:opacity-50"
-                  >
-                    <Trash2 size={13} />
-                    {t('delete.title')}
-                  </button>
-                </div>
-              )}
-              <ConfirmDialog
-                open={confirmDelete}
-                title={t('delete.title')}
-                message={itemByKey ? t('delete.message', { key: itemByKey.itemKey }) : undefined}
-                confirmLabel={t('common:delete')}
-                destructive
-                pending={deleteMutation.isPending}
-                onConfirm={() => void handleDelete()}
-                onCancel={() => setConfirmDelete(false)}
-              />
-            </div>
-          )}
-        </div>
+                <Users size={12} />
+                <span>{watchers.length}</span>
+              </div>
 
-        {/* Tab row */}
-        <div className="flex h-16 items-stretch gap-2 px-5">
-          {tabs.map(({ id, icon, label }) => (
-            <button
-              key={id}
-              onClick={() => setActiveTab(id)}
-              className="flex flex-col items-center justify-center gap-1 px-4 text-ui-sm font-medium"
-              style={{
-                backgroundColor: activeTab === id ? BRAND.primaryLight : 'transparent',
-                color: activeTab === id ? 'white' : BRAND.accentBg,
-              }}
-            >
-              <span className="flex h-5 items-center justify-center">{icon}</span>
-              <span>{label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
+              {/* Watch / Unwatch — shared dark-bar toggle (primary tone when watching) */}
+              <DetailHeaderButton
+                tone={isWatching ? 'primary' : 'ghost'}
+                ariaLabel={isWatching ? 'Unwatch this item' : 'Watch this item'}
+                title={
+                  isWatching
+                    ? 'Unwatch — stop receiving notifications'
+                    : 'Watch — get notified on changes'
+                }
+                onClick={() => void toggleWatch.mutate(isWatching)}
+                disabled={toggleWatch.isPending}
+              >
+                {isWatching ? <BellOff size={14} /> : <Bell size={14} />}
+                <span>{isWatching ? t('watch.watching') : t('watch.watch')}</span>
+              </DetailHeaderButton>
+            </>
+          }
+        >
       {/* Content area */}
       <div className="flex min-h-0 flex-1 bg-avatar">
         {/* Main content */}
         <main className="flex-1 overflow-y-auto bg-surface-subtle p-6">
-          {activeTab === 'details' && (
+          {activeTabId === 'details' && (
             <DetailsTab item={item} onFieldChange={setField} readOnly={readOnly} />
           )}
-          {activeTab === 'tasks' && !isTask && (
+          {activeTabId === 'tasks' && !isTask && (
             <TasksTab workItemId={item.id} projectId={item.projectId} readOnly={readOnly} />
           )}
-          {activeTab === 'defects' && isStory && (
+          {activeTabId === 'defects' && isStory && (
             <DefectsTab workItemId={item.id} projectId={item.projectId} />
           )}
-          {activeTab === 'history' && <HistoryTab workItemId={item.id} />}
+          {activeTabId === 'history' && <HistoryTab workItemId={item.id} />}
         </main>
 
         {/* Sidebar — only on details tab */}
-        {activeTab === 'details' && (
+        {activeTabId === 'details' && (
           <DetailSidebar
             item={item}
             onUpdate={setField}
@@ -470,7 +367,7 @@ export function WorkItemDetailPage() {
           />
         )}
         {/* Collapsed sidebar tab — re-open handle when sidebar is hidden */}
-        {activeTab === 'details' && sidebarCollapsed && (
+        {activeTabId === 'details' && sidebarCollapsed && (
           <button
             onClick={toggleSidebar}
             title="Show sidebar"
@@ -491,7 +388,7 @@ export function WorkItemDetailPage() {
         onSave={() => void save()}
         onCancel={cancel}
       />
-    </div>
+    </DetailLayout>
   )
 }
 

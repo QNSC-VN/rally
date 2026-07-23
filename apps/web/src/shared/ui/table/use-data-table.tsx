@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, type ReactNode } from 'react'
 
 import { useColumnDrag } from '@/shared/lib/hooks/use-column-drag'
 import { useColumnLayout } from '@/shared/lib/hooks/use-column-layout'
@@ -7,8 +7,38 @@ import {
   type DataTableHeaderColumn,
   type DataTableSort,
 } from '@/shared/ui/data-table-header'
+import { DateField } from '@/shared/ui/date-field'
+import { cn } from '@/shared/lib/utils'
 
 import { type ColStyleMap, type ColumnSpec, toColumnDef } from './types'
+
+/**
+ * Built-in read-only renderer for a column's generic {@link ColumnSpec.type}
+ * (used when the column declares no `cell`). Keeps date/number/text display
+ * identical across every config-driven grid.
+ */
+function renderTypedCell<Row, Ctx, K extends string>(
+  c: ColumnSpec<Row, Ctx, K>,
+  row: Row,
+): ReactNode {
+  if (!c.type) return null
+  const raw = c.accessor
+    ? c.accessor(row)
+    : (row as Record<string, unknown>)[c.key] as string | number | null | undefined
+  switch (c.type) {
+    case 'date':
+      return <DateField value={raw == null ? null : String(raw)} readOnly />
+    case 'number':
+      return (
+        <span className="w-full text-right font-mono text-ui-sm tabular-nums text-foreground">
+          {raw ?? '—'}
+        </span>
+      )
+    case 'text':
+    default:
+      return <span className="truncate text-ui-sm text-foreground">{raw ?? '—'}</span>
+  }
+}
 
 interface UseDataTableOptions {
   /** localStorage key for column widths + order + visibility persistence. */
@@ -117,11 +147,14 @@ export function useDataTable<Row, Ctx, K extends string>(
    * `colStyles` reorders them visually (header + body must both be flex rows),
    * and hidden columns collapse via `display:none`.
    */
+  // Base `px-2` matches the shared header's per-column padding so body cells
+  // always align under their header label (tailwind-merge lets a column
+  // override via its own `px-*` in `cellClassName`).
   const renderCells = useCallback(
     (row: Row, ctx: Ctx) =>
       columns.map((c) => (
-        <div key={c.key} style={colStyles[c.key]} className={c.cellClassName}>
-          {c.cell?.(row, ctx)}
+        <div key={c.key} style={colStyles[c.key]} className={cn('px-2', c.cellClassName)}>
+          {c.cell ? c.cell(row, ctx) : renderTypedCell(c, row)}
         </div>
       )),
     [columns, colStyles],

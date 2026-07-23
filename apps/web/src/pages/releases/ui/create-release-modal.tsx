@@ -9,9 +9,10 @@ import { notify } from '@/shared/lib/toast'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
 import { FormField } from '@/shared/ui/form-field'
+import { DateField } from '@/shared/ui/date-field'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
-import { InlineSelect } from '@/shared/ui/native-select'
+import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { RELEASE_STATES, RELEASE_STATUS_STYLE } from '../model/release-states'
 
 // ── Create modal (P3-REL-FR-011/012: Type locked to Release) ─────────────
@@ -119,29 +120,34 @@ export function CreateReleaseModal({
 
         <div className="flex gap-3">
           <FormField label={t('create.startDateLabel')} className="flex-1">
-            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            <DateField
+              variant="field"
+              value={startDate || null}
+              ariaLabel={t('create.startDateLabel')}
+              onChange={(v) => setStartDate(v ?? '')}
+            />
           </FormField>
           <FormField label={t('create.releaseDateLabel')} className="flex-1">
-            <Input
-              type="date"
-              value={releaseDate}
-              onChange={(e) => setReleaseDate(e.target.value)}
+            <DateField
+              variant="field"
+              value={releaseDate || null}
+              ariaLabel={t('create.releaseDateLabel')}
+              onChange={(v) => setReleaseDate(v ?? '')}
             />
           </FormField>
         </div>
 
         <FormField label={t('create.statusLabel')}>
-          <InlineSelect
+          <SearchableSelect
+            variant="field"
             value={status}
-            onChange={(e) => setState(e.target.value as ReleaseStatus)}
-            className="w-full rounded border border-input bg-card px-2 py-1.5 text-ui-sm text-foreground focus:outline-none"
-          >
-            {RELEASE_STATES.map((s) => (
-              <option key={s} value={s}>
-                {RELEASE_STATUS_STYLE[s].label}
-              </option>
-            ))}
-          </InlineSelect>
+            ariaLabel={t('create.statusLabel')}
+            options={RELEASE_STATES.map((s) => ({
+              value: s,
+              label: RELEASE_STATUS_STYLE[s].label,
+            }))}
+            onChange={(v) => setState(v as ReleaseStatus)}
+          />
         </FormField>
 
         <FormField label={t('create.descriptionLabel')}>

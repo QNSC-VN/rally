@@ -5,6 +5,8 @@ import type {
   UpdateWorkItemInput,
   WorkItemFilters,
   TaskTotals,
+  MyWorkItem,
+  WorkspaceSummary,
 } from '../work-item.types';
 
 export const WORK_ITEM_REPOSITORY = Symbol('WORK_ITEM_REPOSITORY');
@@ -67,6 +69,12 @@ export interface IWorkItemRepository {
   ): Promise<string | null>;
   /** Server-side aggregated totals for a parent's tasks (totals row). */
   getTaskTotals(parentId: string, workspaceId: string): Promise<TaskTotals>;
+  listMyWork(
+    workspaceId: string,
+    userId: string,
+    args: { limit: number },
+  ): Promise<MyWorkItem[]>;
+  getWorkspaceSummary(workspaceId: string, userId: string): Promise<WorkspaceSummary>;
   /**
    * Check whether ALL non-deleted child tasks of a parent are in 'completed' state.
    * Returns true if the parent has zero tasks (nothing to block completion).

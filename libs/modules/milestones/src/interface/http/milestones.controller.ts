@@ -34,6 +34,7 @@ function toMilestoneDto(m: Milestone & { progress?: MilestoneProgress }): Milest
     id: m.id,
     workspaceId: m.workspaceId,
     projectId: m.projectId,
+    milestoneKey: m.milestoneKey,
     name: m.name,
     description: m.description,
     notes: m.notes,

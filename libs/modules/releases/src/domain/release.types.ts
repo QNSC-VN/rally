@@ -5,6 +5,7 @@ export interface Release {
   id: string;
   workspaceId: string;
   projectId: string;
+  releaseKey: string | null;
   name: string;
   description: string | null;
   theme: string | null;
@@ -26,6 +27,7 @@ export interface CreateReleaseInput {
   id: string;
   workspaceId: string;
   projectId: string;
+  releaseKey?: string | null;
   name: string;
   description?: string;
   theme?: string;

@@ -13,6 +13,8 @@ export interface IMilestoneRepository {
   create(input: CreateMilestoneInput): Promise<Milestone>;
   update(id: string, input: UpdateMilestoneInput): Promise<Milestone>;
   delete(id: string): Promise<void>;
+  /** Next per-project display-key number (MAX existing suffix + 1) for `MS-<n>`. */
+  nextKeyNumber(projectId: string, workspaceId: string): Promise<number>;
   /** Set linked releases for a milestone (replace all). */
   setReleaseLinks(milestoneId: string, releaseIds: string[]): Promise<void>;
   /** Get linked release IDs for a milestone. */

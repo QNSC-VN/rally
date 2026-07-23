@@ -19,6 +19,7 @@ const AUDIT_DEFAULT_PAGE_SIZE = 50
 /** Full, unambiguous timestamp for an audit entry (audit trails avoid abbreviations). */
 function formatAuditTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
+    weekday: 'short',
     year: 'numeric',
     month: 'long',
     day: 'numeric',

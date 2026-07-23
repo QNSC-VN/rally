@@ -37,7 +37,7 @@ import { EmptyState } from '@/shared/ui/empty-state'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
-import { NativeSelect } from '@/shared/ui/native-select'
+import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { SearchInput } from '@/shared/ui/search-input'
 import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { Spinner } from '@/shared/ui/spinner'
@@ -158,14 +158,20 @@ function EditTeamModal({ team, onClose }: { team: Team; onClose: () => void }) {
             <Input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
           </FormField>
           <FormField label={t('teams.teamLeadLabel')} hint={t('teams.teamLeadHint')}>
-            <NativeSelect value={leadId} onChange={(e) => setLeadId(e.target.value)}>
-              <option value="">{t('teams.noLeadOption')}</option>
-              {members.map((m) => (
-                <option key={m.userId} value={m.userId}>
-                  {m.displayName ?? m.email ?? m.userId}
-                </option>
-              ))}
-            </NativeSelect>
+            <SearchableSelect
+              variant="field"
+              value={leadId}
+              ariaLabel="Team lead"
+              placeholder={t('teams.noLeadOption')}
+              options={[
+                { value: '', label: t('teams.noLeadOption') },
+                ...members.map((m) => {
+                  const n = m.displayName ?? m.email ?? m.userId
+                  return { value: m.userId, label: n, icon: <OwnerAvatar name={n} size={16} /> }
+                }),
+              ]}
+              onChange={setLeadId}
+            />
           </FormField>
           <FormField label={t('common:description')}>
             <Textarea
@@ -220,17 +226,20 @@ function AddMemberModal({ teamId, onClose }: { teamId: string; onClose: () => vo
             <p className="text-ui-lg text-foreground-subtle">{t('teams.allMembersOnTeam')}</p>
           ) : (
             <FormField label={t('teams.selectMemberLabel')} required>
-              <NativeSelect
+              <SearchableSelect
+                variant="field"
                 value={selectedUserId}
-                onChange={(e) => setSelectedUserId(e.target.value)}
-              >
-                <option value="">{t('teams.selectMemberOption')}</option>
-                {available.map((m) => (
-                  <option key={m.userId} value={m.userId}>
-                    {m.displayName ?? m.email ?? m.userId}
-                  </option>
-                ))}
-              </NativeSelect>
+                ariaLabel={t('teams.selectMemberLabel')}
+                placeholder={t('teams.selectMemberOption')}
+                options={[
+                  { value: '', label: t('teams.selectMemberOption') },
+                  ...available.map((m) => {
+                    const n = m.displayName ?? m.email ?? m.userId
+                    return { value: m.userId, label: n, icon: <OwnerAvatar name={n} size={16} /> }
+                  }),
+                ]}
+                onChange={setSelectedUserId}
+              />
             </FormField>
           )}
         </ModalBody>
@@ -260,7 +269,7 @@ function TeamStatusBadge({ status }: { status: 'active' | 'archived' }) {
     status === 'active'
       ? { label: 'Active', text: BRAND.success, bg: BRAND.successBg, border: BRAND.successBorder }
       : {
-          label: 'Archived',
+          label: 'Deactive',
           text: BRAND.textSecondary,
           bg: BRAND.surfaceSubtle,
           border: BRAND.border,

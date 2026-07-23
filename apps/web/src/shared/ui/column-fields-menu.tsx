@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { GripVertical, Columns } from 'lucide-react'
 import type { ColumnDef } from '@/shared/lib/hooks/use-column-layout'
+import { useClickOutside } from '@/shared/lib/hooks/use-click-outside'
 import { BRAND } from '@/shared/config/brand'
 
 interface ColumnFieldsMenuProps<K extends string> {
@@ -35,7 +36,7 @@ export function ColumnFieldsMenu<K extends string>({
   buttonStyle,
 }: ColumnFieldsMenuProps<K>) {
   const [open, setOpen] = useState(false)
-  const rootRef = useRef<HTMLDivElement>(null)
+  const rootRef = useClickOutside<HTMLDivElement>(open, () => setOpen(false))
 
   // ── Ref-based drag state (avoids stale-closure bug) ──
   const dragKeyRef = useRef<K | null>(null)
@@ -47,15 +48,6 @@ export function ColumnFieldsMenu<K extends string>({
     setActiveDragKey(null)
     setDropOverKey(null)
   }, [])
-
-  useEffect(() => {
-    if (!open) return
-    function onDocDown(e: MouseEvent) {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', onDocDown)
-    return () => document.removeEventListener('mousedown', onDocDown)
-  }, [open])
 
   const byKey = new Map(columns.map((c) => [c.key, c]))
   const orderedColumns = order.map((k) => byKey.get(k)).filter((c): c is ColumnDef<K> => !!c)

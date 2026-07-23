@@ -19,6 +19,7 @@ export interface Milestone {
   id: string
   tenantId: string
   projectId: string
+  milestoneKey: string | null
   name: string
   description: string | null
   notes: string | null
@@ -110,6 +111,8 @@ export interface UpdateMilestoneInput {
   targetStartDate?: string | null
   targetEndDate?: string | null
   releaseIds?: string[]
+  projectIds?: string[]
+  teamIds?: string[]
 }
 
 export function useUpdateMilestone() {
@@ -123,8 +126,11 @@ export function useUpdateMilestone() {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as unknown as Milestone
     },
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: milestoneKeys.all })
+      // Relation lists live under a separate ['milestone', id, …] namespace —
+      // refresh them too when a PATCH updates project/team/release links.
+      void qc.invalidateQueries({ queryKey: ['milestone', vars.id] })
     },
   })
 }

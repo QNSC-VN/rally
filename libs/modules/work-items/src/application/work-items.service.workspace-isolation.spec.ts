@@ -282,6 +282,7 @@ describe('WorkItemsService — workspace isolation', () => {
             create: vi.fn().mockResolvedValue({ id: 'rel-1' }),
             findById: vi.fn(),
             delete: vi.fn().mockResolvedValue(undefined),
+            deleteForItem: vi.fn().mockResolvedValue(undefined),
             wouldCreateCycle: vi.fn().mockResolvedValue(false),
           },
         },

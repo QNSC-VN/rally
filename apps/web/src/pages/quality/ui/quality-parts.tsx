@@ -10,16 +10,22 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useCreateDefect, qualityKeys, type DefectRow } from '@/features/quality/api'
 import { useProjectMembers } from '@/features/teams/api'
 import { useReleases } from '@/features/releases/api'
-import { useUpdateWorkItem } from '@/features/work-items/api'
-import { WorkItemType, type ScheduleState } from '@/entities/work-item/model/types'
+import { useIterations } from '@/features/iterations/api'
+import { useUpdateWorkItem, useBacklog } from '@/features/work-items/api'
+import {
+  WorkItemType,
+  SCHEDULE_STATE_VALUES,
+  SCHEDULE_STATE_LABEL,
+} from '@/entities/work-item/model/types'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { WorkItemRefCell } from '@/entities/work-item/ui/work-item-ref-cell'
-import { StateStepper } from '@/entities/work-item/ui/state-stepper'
-import { SCHEDULE_STATE_STEPS } from '@/entities/work-item/ui/state-steps'
-import { OwnerCell } from '@/shared/ui/owner-cell'
+import { OwnerCell, OwnerSelectCell } from '@/shared/ui/owner-cell'
+import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { RowGutter } from '@/shared/ui/row-gutter'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
-import { InlineCellSelect } from '@/shared/ui/native-select'
+import { InlineSelect } from '@/shared/ui/native-select'
+import { SearchableSelect } from '@/shared/ui/searchable-select'
+import { ownerSelectOptions } from '@/shared/ui/owner-cell'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
 import { FormField } from '@/shared/ui/form-field'
@@ -32,7 +38,6 @@ import {
   SEVERITY_STYLE,
   SEVERITY_OPTIONS,
   PRIORITY_OPTIONS,
-  DEFECT_STATE_STYLE,
   DEFECT_STATE_OPTIONS,
   DEFECT_TRANSITIONS,
 } from '../model/quality-config'
@@ -49,7 +54,6 @@ function DefectStateInlineCell({
   const qc = useQueryClient()
   const update = useUpdateWorkItem(defect.id)
   const currentVal = defect.defectState ?? 'submitted'
-  const style = DEFECT_STATE_STYLE[currentVal] ?? DEFECT_STATE_STYLE.submitted
   // Only the current state plus its valid next states are selectable; terminal
   // states collapse to a single (unchangeable) option.
   const allowedNext = DEFECT_TRANSITIONS[currentVal] ?? []
@@ -72,31 +76,59 @@ function DefectStateInlineCell({
 
   return (
     <div onClick={(e) => e.stopPropagation()}>
-      {canEdit ? (
-        <InlineCellSelect
-          value={currentVal}
-          displayValue={style.label}
-          onChange={(e) => handleChange(e.target.value)}
-          disabled={update.isPending}
-        >
-          {stateOptions.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </InlineCellSelect>
-      ) : (
-        <span
-          className="inline-flex items-center rounded-sm px-1.5 py-px text-ui-xs font-medium"
-          style={{
-            backgroundColor: style.bg,
-            color: style.text,
-            border: `1px solid ${style.border}`,
-          }}
-        >
-          {style.label}
-        </span>
-      )}
+      <SearchableSelect
+        value={currentVal}
+        readOnly={!canEdit || update.isPending}
+        ariaLabel="State"
+        options={stateOptions.map((o) => ({
+          value: o.value,
+          label: o.label,
+        }))}
+        onChange={handleChange}
+      />
+    </div>
+  )
+}
+
+/** Name inline editable cell — same click-to-edit input the Iteration Status
+ * Name column uses (shared {@link InlineEditableCell}). */
+function DefectNameCell({ defect, canEdit }: { defect: DefectRow; canEdit: boolean }) {
+  const { t } = useTranslation('quality')
+  const qc = useQueryClient()
+  const update = useUpdateWorkItem(defect.id)
+
+  function handleCommit(raw: string) {
+    const next = raw.trim()
+    if (!next || next === defect.title) return
+    update.mutate({ title: next } as never, {
+      onSuccess: () => {
+        void qc.invalidateQueries({ queryKey: qualityKeys.all })
+        notify.success(t('toasts.nameUpdated'))
+      },
+      onError: () => {
+        notify.error(t('errors.updateFailed'))
+      },
+    })
+  }
+
+  return (
+    <div onClick={(e) => e.stopPropagation()}>
+      <InlineEditableCell
+        value={defect.title}
+        canEdit={canEdit}
+        onCommit={handleCommit}
+        ariaLabel="Name"
+        title={defect.title}
+        className="block w-full break-words whitespace-normal text-ui-md text-foreground"
+        inputClassName="border border-primary text-foreground"
+        inputStyle={{
+          width: '100%',
+          fontSize: 12,
+          borderRadius: 2,
+          outline: 'none',
+          padding: '1px 4px',
+        }}
+      />
     </div>
   )
 }
@@ -134,10 +166,16 @@ function FixedInBuildCell({
         value={defect.fixedInBuild ?? ''}
         canEdit={canEdit}
         onCommit={handleCommit}
-        trigger="dblclick"
         displayValue={defect.fixedInBuild ?? '—'}
-        className="truncate text-ui-xs text-muted-foreground hover:underline"
-        inputClassName="rounded border border-input bg-card px-1 py-0.5 text-ui-xs text-foreground focus:outline-none"
+        className="block w-full truncate text-ui-xs text-muted-foreground"
+        inputClassName="border border-primary text-foreground"
+        inputStyle={{
+          width: '100%',
+          fontSize: 12,
+          borderRadius: 2,
+          outline: 'none',
+          padding: '1px 4px',
+        }}
         ariaLabel="Fixed In Build"
         title={defect.fixedInBuild ?? ''}
       />
@@ -145,24 +183,129 @@ function FixedInBuildCell({
   )
 }
 
+/** Iteration inline editable cell — reuses the shared {@link SearchableSelect}
+ * (same searchable dropdown the State/Owner cells use). */
+function IterationInlineCell({
+  defect,
+  canEdit,
+  projectId,
+}: {
+  defect: DefectRow
+  canEdit: boolean
+  projectId: string
+}) {
+  const { t } = useTranslation('quality')
+  const qc = useQueryClient()
+  const update = useUpdateWorkItem(defect.id)
+  const { data: iterations = [] } = useIterations(projectId)
+
+  if (!canEdit) {
+    return (
+      <span className="block truncate text-muted-foreground" title={defect.iterationName ?? ''}>
+        {defect.iterationName ?? '—'}
+      </span>
+    )
+  }
+
+  function handleChange(value: string) {
+    const next = value || null
+    if (next === (defect.iterationId ?? null)) return
+    update.mutate({ iterationId: next } as never, {
+      onSuccess: () => {
+        void qc.invalidateQueries({ queryKey: qualityKeys.all })
+        notify.success(t('toasts.iterationUpdated'))
+      },
+      onError: () => {
+        notify.error(t('errors.updateFailed'))
+      },
+    })
+  }
+
+  return (
+    <div onClick={(e) => e.stopPropagation()}>
+      <SearchableSelect
+        value={defect.iterationId ?? ''}
+        ariaLabel="Iteration"
+        placeholder="—"
+        searchPlaceholder="Search"
+        options={[
+          { value: '', label: '—' },
+          ...iterations.map((it) => ({
+            value: it.id,
+            label: it.iterationKey ? `${it.iterationKey}: ${it.name}` : it.name,
+            searchText: `${it.iterationKey ?? ''} ${it.name}`,
+            icon: <TypeBadge type="iteration" size={16} />,
+          })),
+        ]}
+        onChange={handleChange}
+      />
+    </div>
+  )
+}
+
+/** Owner inline editable cell — reuses the shared {@link OwnerSelectCell} (same
+ * searchable member picker the Team Status grid uses). */
+function OwnerInlineCell({
+  defect,
+  canEdit,
+  projectId,
+}: {
+  defect: DefectRow
+  canEdit: boolean
+  projectId: string
+}) {
+  const { t } = useTranslation('quality')
+  const qc = useQueryClient()
+  const update = useUpdateWorkItem(defect.id)
+  const { data: members = [] } = useProjectMembers(projectId)
+
+  function handleChange(userId: string | null) {
+    if (userId === (defect.assigneeId ?? null)) return
+    update.mutate({ assigneeId: userId } as never, {
+      onSuccess: () => {
+        void qc.invalidateQueries({ queryKey: qualityKeys.all })
+        notify.success(t('toasts.ownerUpdated'))
+      },
+      onError: () => {
+        notify.error(t('errors.updateFailed'))
+      },
+    })
+  }
+
+  return (
+    <div onClick={(e) => e.stopPropagation()}>
+      <OwnerSelectCell
+        ownerName={defect.assigneeName}
+        assigneeId={defect.assigneeId}
+        members={members ?? []}
+        canEdit={canEdit}
+        onChange={handleChange}
+      />
+    </div>
+  )
+}
+
 /**
- * Flow State cell — the schedule-state segmented stepper, identical to the
- * Iteration Status grid (shared {@link StateStepper} + {@link SCHEDULE_STATE_STEPS}).
- * Single visual language for schedule state across every work-item grid.
+ * Flow State cell — the shared flow-state dropdown ({@link SearchableSelect} over
+ * the flow states), bound to `flowState` exactly like the Backlog grid. Reads the
+ * mirrored `scheduleState` (BR-WI-01: flowState ↔ scheduleState are kept in sync
+ * server-side) and writes `flowState` on change. This is the *Flow State* control,
+ * distinct from the Schedule State segmented stepper.
  */
-function FlowStateStepperCell({ defect, canEdit }: { defect: DefectRow; canEdit: boolean }) {
+function FlowStateSelectCell({ defect, canEdit }: { defect: DefectRow; canEdit: boolean }) {
   const { t } = useTranslation('quality')
   const qc = useQueryClient()
   const update = useUpdateWorkItem(defect.id)
 
   return (
     <div onClick={(e) => e.stopPropagation()}>
-      <StateStepper
-        steps={SCHEDULE_STATE_STEPS}
-        value={defect.scheduleState as ScheduleState}
-        canEdit={canEdit}
+      <SearchableSelect
+        value={defect.scheduleState}
+        readOnly={!canEdit}
+        ariaLabel="Flow state"
+        options={SCHEDULE_STATE_VALUES.map((s) => ({ value: s, label: SCHEDULE_STATE_LABEL[s] }))}
         onChange={(next) =>
-          update.mutate({ scheduleState: next } as never, {
+          update.mutate({ flowState: next } as never, {
             onSuccess: () => {
               void qc.invalidateQueries({ queryKey: qualityKeys.all })
             },
@@ -171,7 +314,6 @@ function FlowStateStepperCell({ defect, canEdit }: { defect: DefectRow; canEdit:
             },
           })
         }
-        ariaLabel="Flow state"
       />
     </div>
   )
@@ -198,9 +340,7 @@ export const QUALITY_COLUMNS: ColumnSpec<DefectRow, QualityCtx, QualityColKey>[]
     minWidth: 120,
     locked: true,
     cellClassName: 'min-w-0 px-2',
-    cell: (d) => (
-      <span className="block truncate text-ui-md font-medium text-foreground">{d.title}</span>
-    ),
+    cell: (d, ctx) => <DefectNameCell defect={d} canEdit={ctx.canManage} />,
   },
   {
     key: 'userStory',
@@ -281,12 +421,12 @@ export const QUALITY_COLUMNS: ColumnSpec<DefectRow, QualityCtx, QualityColKey>[]
   },
   {
     key: 'flowState',
-    label: 'Schedule State',
+    label: 'Flow State',
     sortCol: 'scheduleState',
     defaultWidth: 132,
     minWidth: 132,
     cellClassName: 'flex items-center px-2 select-none',
-    cell: (d, ctx) => <FlowStateStepperCell defect={d} canEdit={ctx.canManage} />,
+    cell: (d, ctx) => <FlowStateSelectCell defect={d} canEdit={ctx.canManage} />,
   },
   {
     key: 'fixedInBuild',
@@ -305,11 +445,9 @@ export const QUALITY_COLUMNS: ColumnSpec<DefectRow, QualityCtx, QualityColKey>[]
     sortCol: 'iteration',
     defaultWidth: 100,
     minWidth: 70,
-    cellClassName: 'min-w-0 px-2 text-ui-xs',
-    cell: (d) => (
-      <span className="block truncate text-muted-foreground" title={d.iterationName ?? ''}>
-        {d.iterationName ?? '—'}
-      </span>
+    cellClassName: 'min-w-0 px-2',
+    cell: (d, ctx) => (
+      <IterationInlineCell defect={d} canEdit={ctx.canManage} projectId={ctx.projectId} />
     ),
   },
   {
@@ -318,12 +456,8 @@ export const QUALITY_COLUMNS: ColumnSpec<DefectRow, QualityCtx, QualityColKey>[]
     sortCol: 'submittedBy',
     defaultWidth: 100,
     minWidth: 70,
-    cellClassName: 'min-w-0 px-2 text-ui-xs',
-    cell: (d) => (
-      <span className="block truncate text-muted-foreground" title={d.createdByName ?? ''}>
-        {d.createdByName ?? '—'}
-      </span>
-    ),
+    cellClassName: 'overflow-hidden px-2',
+    cell: (d) => <OwnerCell name={d.createdByName} />,
   },
   {
     key: 'owner',
@@ -332,7 +466,9 @@ export const QUALITY_COLUMNS: ColumnSpec<DefectRow, QualityCtx, QualityColKey>[]
     defaultWidth: 100,
     minWidth: 70,
     cellClassName: 'overflow-hidden px-2',
-    cell: (d) => <OwnerCell name={d.assigneeName} />,
+    cell: (d, ctx) => (
+      <OwnerInlineCell defect={d} canEdit={ctx.canManage} projectId={ctx.projectId} />
+    ),
   },
 ]
 
@@ -350,18 +486,21 @@ export function FilterSelect({
   label: string
 }) {
   return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="rounded border border-border-strong bg-card px-1.5 py-1 text-ui-sm text-muted-foreground focus:outline-none"
-      aria-label={label}
-    >
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>
-          {o.label}
-        </option>
-      ))}
-    </select>
+    <label className="flex items-center gap-1.5 text-ui-sm font-semibold text-muted-foreground">
+      {label}
+      <InlineSelect
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={label}
+        className="w-auto"
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </InlineSelect>
+    </label>
   )
 }
 
@@ -401,18 +540,14 @@ function DefectInlineCell({
 
   return (
     <div onClick={(e) => e.stopPropagation()}>
-      <InlineCellSelect
+      <SearchableSelect
         value={currentValue}
-        displayValue={displayValue}
-        onChange={(e) => handleChange(e.target.value)}
-        disabled={!canEdit || update.isPending}
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </InlineCellSelect>
+        readOnly={!canEdit || update.isPending}
+        ariaLabel={field}
+        placeholder={displayValue}
+        options={options}
+        onChange={handleChange}
+      />
     </div>
   )
 }
@@ -429,10 +564,13 @@ export function LogDefectModal({ projectId, onClose }: { projectId: string; onCl
   const [rootCause, setRootCause] = useState('')
   const [assigneeId, setAssigneeId] = useState('')
   const [releaseId, setReleaseId] = useState('')
+  const [parentId, setParentId] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   const { data: members } = useProjectMembers(projectId)
   const { data: releases } = useReleases(projectId)
+  const { data: backlog } = useBacklog(projectId, { type: 'story' })
+  const stories = backlog?.data ?? []
   const createDefect = useCreateDefect()
 
   async function handleSubmit() {
@@ -452,6 +590,7 @@ export function LogDefectModal({ projectId, onClose }: { projectId: string; onCl
         rootCause: rootCause || undefined,
         assigneeId: assigneeId || undefined,
         releaseId: releaseId || undefined,
+        parentId: parentId || undefined,
       })
       notify.success(t('create.logged', { name: title.trim() }))
       onClose()
@@ -489,95 +628,97 @@ export function LogDefectModal({ projectId, onClose }: { projectId: string; onCl
           </FormField>
           <div className="grid grid-cols-2 gap-3">
             <FormField label={t('create.severityLabel')}>
-              <select
+              <SearchableSelect
+                variant="field"
                 value={severity}
-                onChange={(e) => setSeverity(e.target.value)}
-                className="w-full rounded-md border border-border-strong px-3 py-1.5 text-sm text-foreground"
-              >
-                <option value="">—</option>
-                {SEVERITY_OPTIONS.map((s) => (
-                  <option key={s.value} value={s.value}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
+                ariaLabel={t('create.severityLabel')}
+                options={[{ value: '', label: '—' }, ...SEVERITY_OPTIONS]}
+                onChange={setSeverity}
+              />
             </FormField>
             <FormField label={t('create.priorityLabel')}>
-              <select
+              <SearchableSelect
+                variant="field"
                 value={priority}
-                onChange={(e) => setPriority(e.target.value)}
-                className="w-full rounded-md border border-border-strong px-3 py-1.5 text-sm text-foreground"
-              >
-                {PRIORITY_OPTIONS.map((p) => (
-                  <option key={p.value} value={p.value}>
-                    {p.label}
-                  </option>
-                ))}
-              </select>
+                ariaLabel={t('create.priorityLabel')}
+                options={PRIORITY_OPTIONS}
+                onChange={setPriority}
+              />
             </FormField>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <FormField label={t('create.foundInLabel')}>
-              <select
+              <SearchableSelect
+                variant="field"
                 value={environment}
-                onChange={(e) => setEnvironment(e.target.value)}
-                className="w-full rounded-md border border-border-strong px-3 py-1.5 text-sm text-foreground"
-              >
-                <option value="">—</option>
-                {(['development', 'staging', 'production', 'testing'] as const).map((e) => (
-                  <option key={e} value={e}>
-                    {e.charAt(0).toUpperCase() + e.slice(1)}
-                  </option>
-                ))}
-              </select>
+                ariaLabel={t('create.foundInLabel')}
+                options={[
+                  { value: '', label: '—' },
+                  ...(['development', 'staging', 'production', 'testing'] as const).map((e) => ({
+                    value: e,
+                    label: e.charAt(0).toUpperCase() + e.slice(1),
+                  })),
+                ]}
+                onChange={setEnvironment}
+              />
             </FormField>
             <FormField label={t('create.rootCauseLabel')}>
-              <select
+              <SearchableSelect
+                variant="field"
                 value={rootCause}
-                onChange={(e) => setRootCause(e.target.value)}
-                className="w-full rounded-md border border-border-strong px-3 py-1.5 text-sm text-foreground"
-              >
-                <option value="">—</option>
-                {(['requirements', 'design', 'code', 'test', 'integration', 'other'] as const).map(
-                  (r) => (
-                    <option key={r} value={r}>
-                      {r.charAt(0).toUpperCase() + r.slice(1)}
-                    </option>
-                  ),
-                )}
-              </select>
+                ariaLabel={t('create.rootCauseLabel')}
+                options={[
+                  { value: '', label: '—' },
+                  ...(
+                    ['requirements', 'design', 'code', 'test', 'integration', 'other'] as const
+                  ).map((r) => ({ value: r, label: r.charAt(0).toUpperCase() + r.slice(1) })),
+                ]}
+                onChange={setRootCause}
+              />
             </FormField>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <FormField label={t('create.assigneeLabel')}>
-              <select
+              <SearchableSelect
+                variant="field"
                 value={assigneeId}
-                onChange={(e) => setAssigneeId(e.target.value)}
-                className="w-full rounded-md border border-border-strong px-3 py-1.5 text-sm text-foreground"
-              >
-                <option value="">{t('create.unassigned')}</option>
-                {(members ?? []).map((m) => (
-                  <option key={m.userId} value={m.userId}>
-                    {m.displayName ?? m.email}
-                  </option>
-                ))}
-              </select>
+                ariaLabel={t('create.assigneeLabel')}
+                placeholder={t('create.unassigned')}
+                options={ownerSelectOptions(members ?? [], assigneeId)}
+                onChange={setAssigneeId}
+              />
             </FormField>
             <FormField label={t('create.releaseLabel')}>
-              <select
+              <SearchableSelect
+                variant="field"
                 value={releaseId}
-                onChange={(e) => setReleaseId(e.target.value)}
-                className="w-full rounded-md border border-border-strong px-3 py-1.5 text-sm text-foreground"
-              >
-                <option value="">—</option>
-                {(releases ?? []).map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                  </option>
-                ))}
-              </select>
+                ariaLabel={t('create.releaseLabel')}
+                options={[
+                  { value: '', label: '—' },
+                  ...(releases ?? []).map((r) => ({ value: r.id, label: r.name })),
+                ]}
+                onChange={setReleaseId}
+              />
             </FormField>
           </div>
+          {/* Optional linked User Story (P3-QA-FR-007) — becomes the defect's parent. */}
+          <FormField label={t('create.userStoryLabel', 'User Story')}>
+            <SearchableSelect
+              variant="field"
+              value={parentId}
+              ariaLabel={t('create.userStoryLabel', 'User Story')}
+              placeholder={t('create.noUserStory', 'No linked story')}
+              options={[
+                { value: '', label: t('create.noUserStory', 'No linked story') },
+                ...stories.map((s) => ({
+                  value: s.id,
+                  label: `${s.itemKey}: ${s.title}`,
+                  searchText: `${s.itemKey} ${s.title}`,
+                })),
+              ]}
+              onChange={setParentId}
+            />
+          </FormField>
         </ModalBody>
         <ModalFooter>
           <Button variant="outline" type="button" onClick={onClose}>
@@ -635,7 +776,7 @@ export function DefectTableRow({
   return (
     <div
       ref={setNodeRef}
-      className="group flex h-[34px] cursor-pointer items-center gap-2 border-b border-border-inner px-3 transition-colors duration-100 hover:bg-primary-lighter"
+      className="group flex min-h-[34px] items-center gap-2 border-b border-border-inner px-3 transition-colors duration-100 hover:bg-primary-lighter"
       style={{
         transform: CSS.Transform.toString(transform),
         transition,
@@ -649,7 +790,6 @@ export function DefectTableRow({
         zIndex: isDragging ? 1 : undefined,
         position: isDragging ? 'relative' : undefined,
       }}
-      onClick={() => openItem(defect.itemKey)}
       {...attributes}
     >
       <RowGutter
@@ -663,7 +803,7 @@ export function DefectTableRow({
           ariaLabel: `Select ${defect.itemKey}`,
         }}
       />
-      <div className="w-6 shrink-0 px-2 text-right font-mono text-ui-xs text-foreground-subtle tabular-nums">
+      <div className="w-12 shrink-0 px-2 text-right font-mono text-ui-xs text-foreground-subtle tabular-nums">
         {rowNum}
       </div>
       {renderCells(defect, { canManage, projectId, openItem })}

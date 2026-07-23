@@ -44,6 +44,8 @@ export interface IterationStatusItem {
   taskEstimate: number;
   /** Rollup: sum of child task to-do hours. */
   toDo: number;
+  /** Rollup: sum of child task actual hours. */
+  actual: number;
   /** Rollup: total non-deleted child tasks (Task % denominator). */
   taskTotal: number;
   /** Rollup: child tasks in the Completed task-state (Task % numerator). */

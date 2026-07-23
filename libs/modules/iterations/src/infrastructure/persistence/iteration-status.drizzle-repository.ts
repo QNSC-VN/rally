@@ -113,6 +113,14 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
       where t.parent_id = ${workItems.id}
         and t.deleted_at is null
     )`;
+    // Actual = roll-up of child task actual_hours (parity with To Do / Task Est,
+    // which also sum from the child tasks). Actual is a manual per-task input.
+    const actual = sql<string>`(
+      select coalesce(sum(t.actual_hours), 0)
+      from ${tasks} t
+      where t.parent_id = ${workItems.id}
+        and t.deleted_at is null
+    )`;
 
     // State-based task rollup (SRS/BA 2026-07-20): Task % = done/total tasks,
     // where "done" is the Completed task-state — NOT derived from To Do hours —
@@ -184,6 +192,7 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
         rank: workItems.rank,
         taskEstimate,
         toDo,
+        actual,
         taskTotal,
         taskDone,
         featureKey,
@@ -211,6 +220,7 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
       planEstimate: r.planEstimate,
       taskEstimate: Number(r.taskEstimate ?? 0),
       toDo: Number(r.toDo ?? 0),
+      actual: Number(r.actual ?? 0),
       taskTotal: Number(r.taskTotal ?? 0),
       taskDone: Number(r.taskDone ?? 0),
       assigneeId: r.assigneeId,

@@ -633,7 +633,7 @@ export function useRankAnyWorkItem() {
 // New endpoints; called via raw fetch (mirrors the attachment-upload pattern)
 // until the generated OpenAPI client is regenerated against the live API.
 
-export type WorkItemRelationType = 'blocks' | 'duplicates' | 'relates_to' | 'depends_on' | 'causes'
+export type WorkItemRelationType = 'blocks' | 'duplicates' | 'relates_to' | 'depends_on'
 
 export interface WorkItemRelationView {
   id: string

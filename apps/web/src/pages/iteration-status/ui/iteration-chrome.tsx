@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 
 import { BRAND } from '@/shared/config/brand'
+import { useClickOutside } from '@/shared/lib/hooks/use-click-outside'
 import { type Iteration } from '@/features/iterations/api'
 import { type ColumnDef } from '@/shared/lib/hooks/use-column-layout'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
@@ -54,6 +55,7 @@ export function IterationHeader({
   setViewMode: (mode: 'list' | 'board') => void
 }) {
   const { t } = useTranslation('iteration-status')
+  const selectorRef = useClickOutside<HTMLDivElement>(selectorOpen, () => setSelectorOpen(false))
   return (
     <div
       className="flex shrink-0 items-center gap-3 border-b border-border-subtle bg-card px-4"
@@ -98,7 +100,7 @@ export function IterationHeader({
         >
           <ChevronLeft size={14} />
         </button>
-        <div className="relative" style={{ height: '100%' }}>
+        <div ref={selectorRef} className="relative" style={{ height: '100%' }}>
           <button
             onClick={() => setSelectorOpen((o) => !o)}
             className="text-foreground"

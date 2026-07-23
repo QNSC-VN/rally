@@ -81,6 +81,7 @@ export class QualityDrizzleRepository implements IQualityRepository {
     // Postgres declaration order; joined columns (names/parent) sort by the
     // joined value. Keyed by the FE column id so the two stay in lock-step.
     const sortColumns: Record<QualitySortBy, SQLWrapper> = {
+      rank: workItems.rank,
       id: workItems.itemKey,
       name: workItems.title,
       userStory: sql`parent_wi.item_key`,

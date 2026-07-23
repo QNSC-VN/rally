@@ -1,13 +1,15 @@
-import { type CSSProperties } from 'react'
+import { type CSSProperties, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
-import { Pencil, Trash2, ExternalLink } from 'lucide-react'
 
 import { useUpdateRelease, type Release, type ReleaseStatus } from '@/features/releases/api'
 import { notify } from '@/shared/lib/toast'
-import { IconButton } from '@/shared/ui/icon-button'
-import { InlineSelect } from '@/shared/ui/native-select'
-import { StatusBadge as StatusPill } from '@/shared/ui/status-badge'
+import { stripHtml } from '@/shared/lib/utils'
+import { useAppContext } from '@/shared/lib/stores/app-context.store'
+import { IdCell } from '@/entities/work-item/ui/id-cell'
+import { DateField } from '@/shared/ui/date-field'
+import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
+import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { type ColKey } from '../model/columns'
 import { RELEASE_STATES, RELEASE_STATUS_STYLE } from '../model/release-states'
 
@@ -17,21 +19,35 @@ export function ReleaseRow({
   release,
   projectId,
   canManage,
-  onDelete,
   colStyleFor,
+  gutter,
 }: {
   release: Release
   projectId: string
   canManage: boolean
-  onDelete: (id: string) => void
   colStyleFor: (key: ColKey, base?: CSSProperties) => CSSProperties
+  /** Selection gutter node supplied by the list scaffold. */
+  gutter: ReactNode
 }) {
   const { t } = useTranslation('releases')
+  const { project } = useAppContext()
   const update = useUpdateRelease(release.id, projectId)
   const status = release.status as ReleaseStatus
 
-  function handleStateChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    const newState = e.target.value as ReleaseStatus
+  function saveName(raw: string) {
+    const val = raw.trim()
+    if (!val || val === release.name) return
+    update.mutate(
+      { name: val },
+      {
+        onSuccess: () => notify.success(t('row.nameUpdated')),
+        onError: (err) => notify.error(err.message),
+      },
+    )
+  }
+
+  function saveState(newState: ReleaseStatus) {
+    if (newState === status) return
     update.mutate(
       { state: newState },
       {
@@ -42,22 +58,9 @@ export function ReleaseRow({
     )
   }
 
-  function handleNameBlur(e: React.FocusEvent<HTMLInputElement>) {
-    const val = e.target.value.trim()
-    if (val && val !== release.name) {
-      update.mutate(
-        { name: val },
-        {
-          onSuccess: () => notify.success(t('row.nameUpdated')),
-          onError: (err) => notify.error(err.message),
-        },
-      )
-    }
-  }
-
-  function handleThemeBlur(e: React.FocusEvent<HTMLInputElement>) {
-    const val = e.target.value.trim()
-    if (val !== (release.theme ?? '')) {
+  function saveTheme(raw: string) {
+    const val = raw.trim()
+    if (val !== stripHtml(release.theme)) {
       update.mutate(
         { theme: val || undefined },
         {
@@ -68,8 +71,8 @@ export function ReleaseRow({
     }
   }
 
-  function handleVersionBlur(e: React.FocusEvent<HTMLInputElement>) {
-    const val = e.target.value.trim()
+  function saveVersion(raw: string) {
+    const val = raw.trim()
     if (val !== (release.version ?? '')) {
       update.mutate(
         { version: val || undefined },
@@ -81,12 +84,11 @@ export function ReleaseRow({
     }
   }
 
-  function handleVelocityBlur(e: React.FocusEvent<HTMLInputElement>) {
-    const val = e.target.value.trim()
+  function saveVelocity(raw: string) {
+    const val = raw.trim()
     const num = val === '' ? null : Number(val)
     if (num !== null && (isNaN(num) || num < 0)) {
       notify.error(t('row.velocityInvalid'))
-      e.target.value = release.plannedVelocity != null ? String(release.plannedVelocity) : ''
       return
     }
     if (num !== release.plannedVelocity) {
@@ -100,30 +102,24 @@ export function ReleaseRow({
     }
   }
 
-  function handleStartDateBlur(e: React.FocusEvent<HTMLInputElement>) {
-    const val = e.target.value
-    if (val !== (release.startDate ?? '')) {
-      update.mutate(
-        { startDate: val || undefined },
-        {
-          onSuccess: () => notify.success(t('row.startDateUpdated')),
-          onError: (err) => notify.error(err.message),
-        },
-      )
-    }
+  function saveStartDate(val: string | null) {
+    update.mutate(
+      { startDate: val },
+      {
+        onSuccess: () => notify.success(t('row.startDateUpdated')),
+        onError: (err) => notify.error(err.message),
+      },
+    )
   }
 
-  function handleReleaseDateBlur(e: React.FocusEvent<HTMLInputElement>) {
-    const val = e.target.value
-    if (val !== (release.releaseDate ?? '')) {
-      update.mutate(
-        { releaseDate: val || undefined },
-        {
-          onSuccess: () => notify.success(t('row.releaseDateUpdated')),
-          onError: (err) => notify.error(err.message),
-        },
-      )
-    }
+  function saveReleaseDate(val: string | null) {
+    update.mutate(
+      { releaseDate: val },
+      {
+        onSuccess: () => notify.success(t('row.releaseDateUpdated')),
+        onError: (err) => notify.error(err.message),
+      },
+    )
   }
 
   const navigate = useNavigate()
@@ -133,133 +129,130 @@ export function ReleaseRow({
   }
 
   return (
-    <div
-      onClick={openDetail}
-      className="group flex h-8 cursor-pointer items-center border-b border-border-inner px-3 text-ui-sm hover:bg-surface-hover"
-    >
-      {/* Name — inline editable (P3-REL-FR-005) */}
+    <div className="group flex min-h-[34px] items-center border-b border-border-inner px-3 text-ui-md transition-colors hover:bg-primary-lighter">
+      {gutter}
+
+      {/* ID — type glyph + per-project key (RE-<n>), matching US/DE */}
+      <div
+        style={colStyleFor('id', { flexShrink: 0 })}
+        className="flex items-center px-2"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <IdCell type="release" itemKey={release.releaseKey ?? '—'} onOpen={openDetail} />
+      </div>
+
+      {/* Name — inline-editable (the ID cell is the click-to-open link),
+          matching Iteration Status. */}
       <div
         style={colStyleFor('name', { flexShrink: 0 })}
-        className="flex items-center pr-2"
+        className="min-w-0 px-2"
         onClick={(e) => e.stopPropagation()}
       >
-        {canManage ? (
-          <input
-            key={release.name}
-            defaultValue={release.name}
-            onBlur={handleNameBlur}
-            aria-label="Release name"
-            onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-            className="w-full rounded border-0 bg-transparent px-0.5 text-ui-sm font-semibold text-foreground focus:bg-card focus:ring-1 focus:outline-none"
-          />
-        ) : (
-          <span className="block truncate font-semibold text-foreground">{release.name}</span>
-        )}
+        <InlineEditableCell
+          value={release.name}
+          canEdit={canManage}
+          onCommit={saveName}
+          ariaLabel="Name"
+          title={release.name}
+          className="block w-full break-words whitespace-normal text-foreground"
+          style={{ fontSize: 12 }}
+          inputClassName="w-full rounded border border-primary bg-transparent px-1 py-0.5 text-ui-sm text-foreground focus:outline-none"
+        />
       </div>
 
-      {/* Theme (P3-REL-FR-005) */}
+      {/* Theme — shared InlineEditableCell */}
       <div
         style={colStyleFor('theme', { flexShrink: 0 })}
-        className="truncate pr-2 text-muted-foreground"
+        className="min-w-0 px-2"
         onClick={(e) => e.stopPropagation()}
       >
-        {canManage ? (
-          <input
-            key={release.theme}
-            defaultValue={release.theme ?? ''}
-            onBlur={handleThemeBlur}
-            aria-label="Theme"
-            placeholder="—"
-            onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-            className="w-full rounded border-0 bg-transparent px-0.5 text-ui-sm text-muted-foreground focus:bg-card focus:ring-1 focus:outline-none"
-          />
-        ) : (
-          <span className="block truncate">{release.theme || '—'}</span>
-        )}
+        <InlineEditableCell
+          value={stripHtml(release.theme)}
+          canEdit={canManage}
+          onCommit={saveTheme}
+          ariaLabel="Theme"
+          displayValue={
+            <span className="block truncate text-muted-foreground">
+              {stripHtml(release.theme) || '—'}
+            </span>
+          }
+          inputClassName="w-full rounded border-0 bg-transparent px-0.5 text-ui-sm text-foreground focus:outline-none"
+        />
       </div>
 
-      {/* Version */}
+      {/* Version — shared InlineEditableCell */}
       <div
         style={colStyleFor('version', { flexShrink: 0 })}
-        className="truncate pr-2 text-muted-foreground"
+        className="min-w-0 px-2"
         onClick={(e) => e.stopPropagation()}
       >
-        {canManage ? (
-          <input
-            key={release.version}
-            defaultValue={release.version ?? ''}
-            onBlur={handleVersionBlur}
-            aria-label="Version"
-            placeholder="—"
-            onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-            className="w-full rounded border-0 bg-transparent px-0.5 text-ui-sm text-muted-foreground focus:bg-card focus:ring-1 focus:outline-none"
-          />
-        ) : (
-          <span className="block truncate">{release.version || '—'}</span>
-        )}
+        <InlineEditableCell
+          value={release.version ?? ''}
+          canEdit={canManage}
+          onCommit={saveVersion}
+          ariaLabel="Version"
+          displayValue={
+            <span className="block truncate text-muted-foreground">{release.version || '—'}</span>
+          }
+          inputClassName="w-full rounded border-0 bg-transparent px-0.5 text-ui-sm text-foreground focus:outline-none"
+        />
       </div>
 
-      {/* Start Date — inline editable */}
+      {/* Start Date — shared DateField */}
       <div
         style={colStyleFor('startDate', { flexShrink: 0 })}
-        className="text-muted-foreground"
+        className="pl-2"
         onClick={(e) => e.stopPropagation()}
       >
-        {canManage ? (
-          <input
-            key={release.startDate}
-            type="date"
-            defaultValue={release.startDate ?? ''}
-            onBlur={handleStartDateBlur}
-            aria-label="Start date"
-            className="w-full rounded border-0 bg-transparent px-0.5 text-ui-sm text-muted-foreground focus:bg-card focus:ring-1 focus:outline-none"
-          />
-        ) : (
-          <span>{release.startDate ?? '—'}</span>
-        )}
+        <DateField
+          value={release.startDate}
+          readOnly={!canManage}
+          ariaLabel="Start date"
+          onChange={canManage ? saveStartDate : undefined}
+        />
       </div>
 
-      {/* Release Date — inline editable */}
+      {/* Release Date — shared DateField */}
       <div
         style={colStyleFor('releaseDate', { flexShrink: 0 })}
-        className="text-muted-foreground"
+        className="pl-2"
         onClick={(e) => e.stopPropagation()}
       >
-        {canManage ? (
-          <input
-            key={release.releaseDate}
-            type="date"
-            defaultValue={release.releaseDate ?? ''}
-            onBlur={handleReleaseDateBlur}
-            aria-label="Release date"
-            className="w-full rounded border-0 bg-transparent px-0.5 text-ui-sm text-muted-foreground focus:bg-card focus:ring-1 focus:outline-none"
-          />
-        ) : (
-          <span>{release.releaseDate ?? '—'}</span>
-        )}
+        <DateField
+          value={release.releaseDate}
+          readOnly={!canManage}
+          ariaLabel="Release date"
+          onChange={canManage ? saveReleaseDate : undefined}
+        />
       </div>
 
-      {/* Planned Velocity — inline editable */}
+      {/* Project — read-only (the list is scoped to the active project) */}
       <div
-        style={colStyleFor('plannedVelocity', { flexShrink: 0 })}
-        className="pr-2 text-muted-foreground"
+        style={colStyleFor('project', { flexShrink: 0 })}
+        className="min-w-0 px-2"
         onClick={(e) => e.stopPropagation()}
       >
-        {canManage ? (
-          <input
-            key={release.plannedVelocity}
-            defaultValue={release.plannedVelocity != null ? String(release.plannedVelocity) : ''}
-            onBlur={handleVelocityBlur}
-            aria-label="Planned velocity"
-            placeholder="—"
-            onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-            className="w-full rounded border-0 bg-transparent px-0.5 text-right font-mono text-ui-sm text-muted-foreground focus:bg-card focus:ring-1 focus:outline-none"
-          />
-        ) : (
-          <span className="block text-right font-mono tabular-nums">
-            {release.plannedVelocity ?? '—'}
-          </span>
-        )}
+        <span className="block truncate text-muted-foreground">{project?.projectName ?? '—'}</span>
+      </div>
+
+      {/* Planned Velocity — shared InlineEditableCell */}
+      <div
+        style={colStyleFor('plannedVelocity', { flexShrink: 0 })}
+        className="px-2"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <InlineEditableCell
+          value={release.plannedVelocity != null ? String(release.plannedVelocity) : ''}
+          canEdit={canManage}
+          onCommit={saveVelocity}
+          ariaLabel="Planned velocity"
+          displayValue={
+            <span className="block text-right font-mono tabular-nums text-muted-foreground">
+              {release.plannedVelocity ?? '—'}
+            </span>
+          }
+          inputClassName="w-full rounded border-0 bg-transparent px-0.5 text-right font-mono text-ui-sm text-foreground focus:outline-none"
+        />
       </div>
 
       {/* Task Estimate — read-only roll-up of assigned work-item estimate hours (P3-REL-FR-004) */}
@@ -271,68 +264,24 @@ export function ReleaseRow({
         <span>{release.taskEstimate ?? 0}</span>
       </div>
 
-      {/* State (P3-REL-FR-008) */}
-      <div style={colStyleFor('state', { flexShrink: 0 })} onClick={(e) => e.stopPropagation()}>
-        {canManage ? (
-          <InlineSelect
-            value={status}
-            onChange={handleStateChange}
-            className="rounded border border-border-subtle bg-card px-1 py-0.5 text-ui-sm text-foreground focus:outline-none"
-          >
-            {RELEASE_STATES.map((s) => (
-              <option key={s} value={s}>
-                {RELEASE_STATUS_STYLE[s].label}
-              </option>
-            ))}
-          </InlineSelect>
-        ) : (
-          <StatusPill style={RELEASE_STATUS_STYLE[status] ?? RELEASE_STATUS_STYLE.planning} />
-        )}
+      {/* State (P3-REL-FR-008) — shared SearchableSelect */}
+      <div
+        style={colStyleFor('state', { flexShrink: 0 })}
+        className="px-2"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <SearchableSelect
+          value={status}
+          readOnly={!canManage}
+          ariaLabel="Release state"
+          options={RELEASE_STATES.map((s) => ({
+            value: s,
+            label: RELEASE_STATUS_STYLE[s].label,
+          }))}
+          onChange={(v) => saveState(v as ReleaseStatus)}
+        />
       </div>
 
-      {/* Actions */}
-      <div style={colStyleFor('actions', { flexShrink: 0 })}>
-        {canManage && (
-          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100">
-            <IconButton
-              size="sm"
-              aria-label="Open detail"
-              title="Open detail"
-              onClick={(e) => {
-                e.stopPropagation()
-                openDetail()
-              }}
-            >
-              <Pencil size={12} />
-            </IconButton>
-            <IconButton
-              size="sm"
-              aria-label="Detail"
-              title="Detail"
-              onClick={(e) => {
-                e.stopPropagation()
-                openDetail()
-              }}
-            >
-              <ExternalLink size={12} />
-            </IconButton>
-            {status !== 'accepted' && (
-              <IconButton
-                size="sm"
-                variant="destructive"
-                aria-label="Delete release"
-                title="Delete release"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onDelete(release.id)
-                }}
-              >
-                <Trash2 size={12} />
-              </IconButton>
-            )}
-          </div>
-        )}
-      </div>
     </div>
   )
 }

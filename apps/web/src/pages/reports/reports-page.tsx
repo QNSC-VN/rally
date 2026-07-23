@@ -282,7 +282,16 @@ export function ReportsPage() {
               />
               <MetricCard
                 label={t('metrics.daysLeft')}
-                value={metrics?.daysLeft ?? '—'}
+                // Overdue iterations show the magnitude + "days overdue" (matching
+                // Iteration Status) instead of a raw negative number.
+                value={metrics?.daysLeft == null ? '—' : String(Math.abs(metrics.daysLeft))}
+                caption={
+                  metrics?.daysLeft != null && metrics.daysLeft < 0
+                    ? metrics.daysLeft === -1
+                      ? 'day overdue'
+                      : 'days overdue'
+                    : undefined
+                }
                 valueColor={
                   metrics?.daysLeft != null && metrics.daysLeft <= 2 ? BRAND.danger : undefined
                 }

@@ -9,13 +9,13 @@
 import { useMemo, useState, useCallback, useEffect } from 'react'
 import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
-import { ChevronDown, ChevronLeft, ChevronRight, Inbox } from 'lucide-react'
+import { ChevronDown, ChevronRight, Inbox } from 'lucide-react'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { WorkItemRefCell } from '@/entities/work-item/ui/work-item-ref-cell'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
-import { useIterations, type Iteration } from '@/features/iterations/api'
+import { useIterations } from '@/features/iterations/api'
 import {
   useTeamStatus,
   useUpdateCapacity,
@@ -26,6 +26,10 @@ import {
 } from '@/features/team-status/api'
 import { Avatar } from '@/shared/ui/avatar'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
+import { InlineSelect } from '@/shared/ui/native-select'
+import { ListPageHeader } from '@/shared/ui/list-page/list-page-header'
+import { PageToolbar } from '@/shared/ui/page-toolbar'
+import { IterationPicker } from '@/shared/ui/iteration-picker'
 import { DataTableFrame, useDataTable, type ColumnSpec } from '@/shared/ui/table'
 import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { NESTED_ROW_INDENT } from '@/shared/config/layout'
@@ -64,18 +68,12 @@ const TEAM_STATUS_COLUMNS: ColumnSpec<TeamStatusTaskRow, unknown, ColKey>[] = [
   { key: 'workProduct', label: 'Work Product', defaultWidth: 140 },
   { key: 'release', label: 'Release', defaultWidth: 96 },
   { key: 'state', label: 'State', defaultWidth: 112 },
-  { key: 'capacity', label: 'Capacity', defaultWidth: 64, align: 'right' },
-  { key: 'estimate', label: 'Estimate', defaultWidth: 64, align: 'right' },
-  { key: 'todo', label: 'To Do', defaultWidth: 56, align: 'right' },
-  { key: 'actuals', label: 'Actuals', defaultWidth: 56, align: 'right' },
+  { key: 'capacity', label: 'Capacity', defaultWidth: 104, minWidth: 90, align: 'right', sortCol: 'capacity' },
+  { key: 'estimate', label: 'Estimate', defaultWidth: 104, minWidth: 90, align: 'right', sortCol: 'estimate' },
+  { key: 'todo', label: 'To Do', defaultWidth: 88, minWidth: 74, align: 'right', sortCol: 'todo' },
+  { key: 'actuals', label: 'Actuals', defaultWidth: 96, minWidth: 80, align: 'right', sortCol: 'actuals' },
   { key: 'owner', label: 'Owner', defaultWidth: 96 },
 ]
-
-function fmtRange(it: Pick<Iteration, 'startDate' | 'endDate'>) {
-  const s = it.startDate ?? '—'
-  const e = it.endDate ?? '—'
-  return `${s} → ${e}`
-}
 
 /**
  * Member progress bar — Rally Team Status style: a percentage label above a
@@ -125,8 +123,22 @@ export function TeamStatusPage() {
   const { data: iterations = [] } = useIterations(projectId)
   const { data: members = [] } = useProjectMembers(projectId)
   const [chosenId, setChosenId] = useState<string | null>(null)
-  const [selectorOpen, setSelectorOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const [stateFilter, setStateFilter] = useState<TeamTaskState | 'all'>('all')
+  // Column sort — orders the member groups by an aggregate (Capacity / Estimate
+  // / To Do / Actuals). Same click-to-sort header wiring as Iteration Status.
+  const [sortCol, setSortCol] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const toggleSort = useCallback(
+    (col: string) => {
+      if (sortCol === col) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+      else {
+        setSortCol(col)
+        setSortDir('asc')
+      }
+    },
+    [sortCol],
+  )
 
   useEffect(() => {
     if (projectId) {
@@ -159,17 +171,6 @@ export function TeamStatusPage() {
     isLoading,
     isError,
   } = useTeamStatus(projectId ?? undefined, teamId ?? undefined, selectedId ?? undefined)
-
-  const selectedIndex = useMemo(
-    () => iterations.findIndex((i) => i.id === selectedId),
-    [iterations, selectedId],
-  )
-  const selected = iterations[selectedIndex]
-
-  function move(dir: -1 | 1) {
-    const next = selectedIndex + dir
-    if (next >= 0 && next < iterations.length) setSelectedId(iterations[next].id)
-  }
 
   // ── Client-side pagination over member groups (Rally parity, 10/page) ──
   // The team-status response is a bounded per-iteration dataset, so we paginate
@@ -213,100 +214,91 @@ export function TeamStatusPage() {
 
   const totals = status?.totals
   const allGroups = status?.groups ?? []
-  const totalWorkItems = allGroups.reduce((sum, g) => sum + g.taskCount, 0)
   const q = search.trim().toLowerCase()
-  const groups = q
+  const hasFilter = q !== '' || stateFilter !== 'all'
+  const groups = hasFilter
     ? allGroups
         .map((g) => ({
           ...g,
           tasks: g.tasks.filter(
             (t) =>
-              t.title.toLowerCase().includes(q) ||
-              t.taskKey.toLowerCase().includes(q) ||
-              t.workProduct.title.toLowerCase().includes(q) ||
-              t.workProduct.key.toLowerCase().includes(q),
+              (stateFilter === 'all' || t.state === stateFilter) &&
+              (!q ||
+                t.title.toLowerCase().includes(q) ||
+                t.taskKey.toLowerCase().includes(q) ||
+                t.workProduct.title.toLowerCase().includes(q) ||
+                t.workProduct.key.toLowerCase().includes(q)),
           ),
         }))
         .filter((g) => g.tasks.length > 0)
     : allGroups
 
+  // Order the member groups by the active aggregate sort (Capacity / Estimate /
+  // To Do / Actuals), then paginate. Plain const (runs after early returns).
+  const sortAggregate = (g: (typeof groups)[number]): number =>
+    sortCol === 'capacity'
+      ? g.capacityHours
+      : sortCol === 'estimate'
+        ? g.estimateHours
+        : sortCol === 'todo'
+          ? g.todoHours
+          : sortCol === 'actuals'
+            ? g.actualHours
+            : 0
+  const sortedGroups = sortCol
+    ? [...groups].sort((a, b) => (sortAggregate(a) - sortAggregate(b)) * (sortDir === 'desc' ? -1 : 1))
+    : groups
+
   // Paginate the visible member groups (see hook block above).
-  const pageCount = Math.max(1, Math.ceil(groups.length / pageSize))
+  const pageCount = Math.max(1, Math.ceil(sortedGroups.length / pageSize))
   const currentPage = Math.min(page, pageCount)
-  const pagedGroups = groups.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+  const pagedGroups = sortedGroups.slice((currentPage - 1) * pageSize, currentPage * pageSize)
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      {/* Selector bar — reuses Iteration Status pattern (P3-TS-FR-003) */}
-      <div className="flex shrink-0 items-center gap-3 border-b border-border-subtle bg-card px-4 py-2">
-        <span className="text-ui-sm font-semibold text-foreground">Iteration</span>
-        <div
-          className="flex items-center overflow-visible rounded border border-accent-border"
-          style={{ height: 28 }}
-        >
-          <button
-            disabled={selectedIndex <= 0}
-            onClick={() => move(-1)}
-            className="flex h-full cursor-pointer items-center border-r border-border-subtle px-2 text-primary-light hover:bg-primary-lighter disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <ChevronLeft size={14} />
-          </button>
-          <div className="relative h-full">
-            <button
-              onClick={() => setSelectorOpen((o) => !o)}
-              className="flex h-full cursor-pointer items-center gap-3 bg-card px-3 text-left text-foreground hover:bg-surface-hover"
-              style={{ minWidth: 280 }}
+      {/* Title + iteration selector (no view toggle, no KPI strip) — matches the
+          Iteration Status layout via the shared ListPageHeader + IterationPicker. */}
+      <ListPageHeader
+        title="Team Status"
+        accessory={
+          <IterationPicker
+            iterations={iterations}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+          />
+        }
+      />
+      {/* Shared toolbar — search + Show Fields (same PageToolbar as Iteration Status). */}
+      <PageToolbar
+        search={{
+          value: search,
+          onChange: setSearch,
+          placeholder: 'Search Tasks',
+          ariaLabel: 'Search tasks',
+          width: 220,
+        }}
+        activeFilterCount={stateFilter !== 'all' ? 1 : 0}
+        defaultFiltersOpen={stateFilter !== 'all'}
+        filters={
+          <label className="flex items-center gap-1.5 text-ui-sm font-semibold text-muted-foreground">
+            State
+            <InlineSelect
+              value={stateFilter}
+              aria-label="Filter by task state"
+              onChange={(e) => setStateFilter(e.target.value as TeamTaskState | 'all')}
+              className="w-auto"
             >
-              <span className="text-ui-md font-semibold whitespace-nowrap">{selected?.name}</span>
-              <span className="text-ui-sm whitespace-nowrap text-muted-foreground">
-                {selected && fmtRange(selected)}
-              </span>
-              <ChevronDown size={12} className="ml-auto text-muted-foreground" />
-            </button>
-            {selectorOpen && (
-              <div className="absolute top-full left-0 z-50 mt-1 max-h-72 w-full overflow-auto rounded border border-border-strong bg-card py-1 shadow-lg">
-                {iterations.map((it) => (
-                  <button
-                    key={it.id}
-                    onClick={() => {
-                      setSelectedId(it.id)
-                      setSelectorOpen(false)
-                    }}
-                    className={`flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-surface-subtle ${selectedId === it.id ? 'bg-primary-lighter' : ''}`}
-                  >
-                    <span
-                      className={`flex-1 text-ui-md font-semibold ${selectedId === it.id ? 'text-primary' : 'text-foreground'}`}
-                    >
-                      {it.name}
-                    </span>
-                    <span className="text-ui-sm text-muted-foreground">{fmtRange(it)}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <button
-            disabled={selectedIndex >= iterations.length - 1}
-            onClick={() => move(1)}
-            className="flex h-full cursor-pointer items-center border-l border-border-subtle px-2 text-primary-light hover:bg-primary-lighter disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <ChevronRight size={14} />
-          </button>
-        </div>
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search Tasks"
-          aria-label="Search Tasks"
-          className="h-7 w-56 rounded border border-accent-border px-2 text-ui-md text-foreground focus:outline-none"
-        />
-        <div className="flex-1" />
-        <span className="text-ui-sm whitespace-nowrap text-muted-foreground">
-          Total Work Items: <span className="font-semibold text-foreground">{totalWorkItems}</span>
-        </span>
-        <ColumnFieldsMenu {...table.fieldsMenuProps} />
-      </div>
+              <option value="all">All States</option>
+              {TEAM_TASK_STATES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </InlineSelect>
+          </label>
+        }
+        fields={<ColumnFieldsMenu {...table.fieldsMenuProps} />}
+      />
 
       {/* Table — shared DataTableFrame owns the scroll region, header, totals,
           loading/error/empty states and footer so every grid's chrome is
@@ -314,7 +306,11 @@ export function TeamStatusPage() {
           totals, no selection/drag gutter (just a w-6 spacer that its member
           rows also render). */}
       <DataTableFrame
-        header={{ ...table.headerProps, colStyles }}
+        header={{
+          ...table.headerProps,
+          colStyles,
+          sort: { col: sortCol, dir: sortDir, onSort: toggleSort },
+        }}
         leading={<div className="w-6 shrink-0" />}
         totals={
           totals ? (
@@ -484,7 +480,7 @@ function MemberGroup({
         </div>
         {/* Capacity (editable on group row — P3-TS-FR-017) */}
         <div
-          className="shrink-0 text-right"
+          className="shrink-0 px-2 text-right"
           style={colStyles.capacity}
           onClick={(e) => e.stopPropagation()}
         >
@@ -499,19 +495,19 @@ function MemberGroup({
           />
         </div>
         <div
-          className="shrink-0 text-right font-mono text-ui-sm text-muted-foreground tabular-nums"
+          className="shrink-0 px-2 text-right font-mono text-ui-sm text-muted-foreground tabular-nums"
           style={colStyles.estimate}
         >
           {group.estimateHours}
         </div>
         <div
-          className="shrink-0 text-right font-mono text-ui-sm text-muted-foreground tabular-nums"
+          className="shrink-0 px-2 text-right font-mono text-ui-sm text-muted-foreground tabular-nums"
           style={colStyles.todo}
         >
           {group.todoHours}
         </div>
         <div
-          className="shrink-0 text-right font-mono text-ui-sm text-muted-foreground tabular-nums"
+          className="shrink-0 px-2 text-right font-mono text-ui-sm text-muted-foreground tabular-nums"
           style={colStyles.actuals}
         >
           {group.actualHours}
@@ -636,9 +632,8 @@ function TaskRow({
 
   return (
     <div
-      className="flex h-[34px] items-center border-b border-border-inner bg-card px-3 text-ui-sm transition-colors duration-100 hover:bg-primary-lighter"
+      className="flex min-h-[34px] items-center border-b border-border-inner bg-card px-3 text-ui-sm transition-colors duration-100 hover:bg-primary-lighter"
       style={{ minWidth: 'max-content' }}
-      onClick={() => onOpenItem(task.taskKey)}
     >
       <div className="w-6 shrink-0" /> {/* Spacer for expand arrow */}
       {/* Rank column — empty on task rows; tasks nest under the member (Rally-style). */}
@@ -666,7 +661,7 @@ function TaskRow({
           onCommit={commitTitle}
           trigger="dblclick"
           displayValue={task.displayName || task.title}
-          className="block truncate text-foreground hover:underline"
+          className="block break-words whitespace-normal text-foreground hover:underline"
           inputClassName="w-full rounded border border-input bg-card px-1 py-0.5 text-ui-sm text-foreground focus:outline-none"
           title={task.displayName || task.title}
           ariaLabel="Task name"

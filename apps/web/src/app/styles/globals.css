@@ -361,6 +361,22 @@
 .ProseMirror {
   outline: none;
 }
+/* Editor fills its container (incl. maximized) so the whole area is clickable/
+   typable, not just the top text line. Chain: content box → EditorContent
+   wrapper → .ProseMirror all stretch. */
+.rte-content {
+  display: flex;
+  flex-direction: column;
+}
+.rte-content > div {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+.rte-content .ProseMirror {
+  flex: 1 1 auto;
+}
 .ProseMirror p {
   margin: 0 0 0.5em;
 }
@@ -454,4 +470,21 @@
   outline: 2px solid var(--ring);
   outline-offset: 2px;
   border-radius: 2px;
+}
+
+/* ── Inline-edit affordance ────────────────────────────────────────────────
+   Shared hover cue for click-to-edit grid cells (Rally parity): a light
+   outline box + text caret on hover, zero layout shift (outline, not border).
+   Applied by shared/ui/inline-editable-cell.tsx only when the cell is editable
+   so every grid's inline edit reads the same. */
+.inline-edit-cell {
+  display: block;
+  width: 100%;
+  border-radius: 2px;
+}
+.inline-edit-cell:hover {
+  outline: 1px solid var(--accent-border-strong);
+  outline-offset: -1px;
+  background-color: var(--surface-hover);
+  cursor: pointer;
 }

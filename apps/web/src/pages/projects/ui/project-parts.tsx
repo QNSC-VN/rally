@@ -15,6 +15,8 @@ import {
 
 import { BRAND } from '@/shared/config/brand'
 import { cn, formatDate } from '@/shared/lib/utils'
+import { DateField } from '@/shared/ui/date-field'
+import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { notify, errorMessage } from '@/shared/lib/toast'
 import { useCreateProject, useUpdateProject, type Project } from '@/features/projects/api'
 import { useWorkspaceMembers } from '@/features/workspaces/api'
@@ -32,7 +34,7 @@ import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
 import { KeyChip } from '@/shared/ui/key-chip'
-import { OwnerCell } from '@/shared/ui/owner-cell'
+import { OwnerCell, OwnerAvatar } from '@/shared/ui/owner-cell'
 import { TeamCell } from '@/shared/ui/team-cell'
 import { StatusBadge } from '@/shared/ui/status-badge'
 import { type ColumnSpec } from '@/shared/ui/table'
@@ -137,20 +139,22 @@ function OwnerSelect({
 }) {
   const { t } = useTranslation('projects')
   const { data: members = [], isLoading } = useWorkspaceMembers(workspaceId)
+  const options = members.map((m) => ({
+    value: m.userId,
+    label: (m.displayName || m.email || m.userId) + (m.userId === currentUserId ? ' (you)' : ''),
+    icon: <OwnerAvatar name={m.displayName || m.email || m.userId} size={16} />,
+    group: 'Team Members',
+  }))
   return (
-    <select
+    <SearchableSelect
+      variant="field"
       value={value}
-      onChange={(e) => onChange(e.target.value)}
-      disabled={isLoading || members.length === 0}
-      className="w-full rounded border border-input bg-input-background px-3 py-2 text-ui-md text-foreground outline-none focus:ring-2"
-    >
-      {members.length === 0 && <option value="">{isLoading ? t('form.loading') : '—'}</option>}
-      {members.map((m) => (
-        <option key={m.userId} value={m.userId}>
-          {(m.displayName || m.email || m.userId) + (m.userId === currentUserId ? ' (you)' : '')}
-        </option>
-      ))}
-    </select>
+      readOnly={isLoading || members.length === 0}
+      ariaLabel={t('form.owner')}
+      placeholder={isLoading ? t('form.loading') : '—'}
+      options={options}
+      onChange={onChange}
+    />
   )
 }
 
@@ -263,7 +267,7 @@ function ProjectFormFields({
                       key: e.target.value
                         .toUpperCase()
                         .replace(/[^A-Z0-9]/g, '')
-                        .slice(0, 6),
+                        .slice(0, 10),
                     })
                 : undefined
             }
@@ -291,10 +295,10 @@ function ProjectFormFields({
           />
         </FormField>
         <FormField label={t('form.startDate')}>
-          <Input
-            type="date"
-            value={values.startDate}
-            onChange={(e) => onPatch({ startDate: e.target.value })}
+          <DateField
+            value={values.startDate || null}
+            ariaLabel={t('form.startDate')}
+            onChange={(v) => onPatch({ startDate: v ?? '' })}
           />
         </FormField>
       </div>
@@ -600,7 +604,9 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
     cellClassName: 'flex min-w-0 flex-col justify-center',
     cell: (p) => (
       <>
-        <div className="truncate text-ui-md font-semibold text-foreground">{p.name}</div>
+        <div className="break-words whitespace-normal text-ui-md font-semibold text-foreground">
+          {p.name}
+        </div>
         {p.description && (
           <div className="truncate text-ui-xs text-foreground-subtle">{p.description}</div>
         )}
@@ -663,13 +669,8 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
     sortCol: 'startDate',
     defaultWidth: 116,
     minWidth: 90,
-    cellClassName: 'flex items-center text-ui-sm',
-    cell: (p) =>
-      p.startDate ? (
-        <span className="text-muted-foreground">{formatDate(p.startDate)}</span>
-      ) : (
-        <span className="text-foreground-subtle">—</span>
-      ),
+    cellClassName: 'flex items-center px-2',
+    type: 'date',
   },
   {
     key: 'updated',

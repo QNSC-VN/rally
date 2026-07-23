@@ -1,10 +1,10 @@
 import { Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Auth, ApiCommonErrors } from '@platform';
-import type { JwtPayload } from '@platform';
+import { Auth, ApiCommonErrors, ApiPagedResponse, buildPageArgs } from '@platform';
+import type { JwtPayload, PagedResult } from '@platform';
 import { CurrentUser } from '@modules/identity';
 import { NotificationsService } from '../../application/notifications.service';
-import { ListNotificationsDto } from './dto/notification-request.dto';
+import { ListNotificationsDto, PagedNotificationsDto } from './dto/notification-request.dto';
 import { NotificationResponseDto } from './dto/notification-response.dto';
 import type { Notification } from '../../domain/notification.types';
 
@@ -53,6 +53,23 @@ export class NotificationsController {
       limit: Number(query.limit),
     });
     return notifications.map(toDto);
+  }
+
+  @Get('paged')
+  @ApiOperation({ summary: 'Cursor-paginated notifications feed (full page, infinite scroll)' })
+  @ApiPagedResponse(NotificationResponseDto)
+  @ApiCommonErrors(400, 401)
+  async listPaged(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: PagedNotificationsDto,
+  ): Promise<PagedResult<NotificationResponseDto>> {
+    const args = buildPageArgs(query);
+    const page = await this.notificationsService.listNotificationsPage(
+      user,
+      { unreadOnly: Boolean(query.unreadOnly), category: query.category },
+      args,
+    );
+    return { data: page.data.map(toDto), pageInfo: page.pageInfo };
   }
 
   @Post(':id/read')

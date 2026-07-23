@@ -25,6 +25,9 @@ export interface IWorkItemRelationRepository {
 
   delete(id: string, workspaceId: string): Promise<void>;
 
+  /** Delete every relation touching `itemId` (either end) — used on item delete. */
+  deleteForItem(itemId: string, workspaceId: string): Promise<void>;
+
   /**
    * Returns true if `targetId` can already reach `sourceId` by following edges
    * of the given relation type in the canonical (source → target) direction.

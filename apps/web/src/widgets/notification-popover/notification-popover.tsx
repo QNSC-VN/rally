@@ -37,23 +37,17 @@ export function NotificationPopover({ open, onClose }: NotificationPopoverProps)
   const [unreadOnly, setUnreadOnly] = useState(false)
 
   const { data: unreadCount = 0 } = useNotificationUnreadCount()
-  const { data: notifications = [], isLoading } = useNotifications({ unreadOnly })
+  // Bounded preview — the bell shows the most-recent slice; the full page owns
+  // deep paging. Fetching a small `limit` avoids pulling the whole feed here.
+  const { data: notifications = [], isLoading } = useNotifications({ unreadOnly, limit: 10 })
   const markRead = useMarkNotificationRead()
   const markAll = useMarkAllNotificationsRead()
   const openNotification = useOpenNotification()
 
-  // Close on outside click
-  useEffect(() => {
-    if (!open) return
-    function handleClick(e: MouseEvent) {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
-        onClose()
-      }
-    }
-    // Use capture phase so clicks on portals (toasts etc.) don't bleed
-    document.addEventListener('mousedown', handleClick, true)
-    return () => document.removeEventListener('mousedown', handleClick, true)
-  }, [open, onClose])
+  // Outside-click close is owned by the app-shell backdrop (a `fixed inset-0`
+  // layer below the header). A second mousedown handler here would also fire on
+  // the bell's own mousedown — closing the popover just before the bell's click
+  // toggled it back open (a flicker) — so it's intentionally NOT duplicated.
 
   // Close on Escape
   useEffect(() => {
@@ -67,7 +61,7 @@ export function NotificationPopover({ open, onClose }: NotificationPopoverProps)
 
   if (!open) return null
 
-  const displayed = notifications.slice(0, 20)
+  const displayed = notifications
 
   return (
     <div
