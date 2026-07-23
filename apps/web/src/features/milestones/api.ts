@@ -1,7 +1,7 @@
 /**
  * Milestones API hooks — TanStack Query wrappers.
  */
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
 
@@ -87,7 +87,6 @@ export interface CreateMilestoneInput {
 }
 
 export function useCreateMilestone() {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async (body: CreateMilestoneInput) => {
       const { data, error, response } = await client.POST('/v1/milestones', {
@@ -96,9 +95,7 @@ export function useCreateMilestone() {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as unknown as Milestone
     },
-    onSuccess: (milestone: Milestone) => {
-      void qc.invalidateQueries({ queryKey: milestoneKeys.list(milestone.projectId) })
-    },
+    meta: { invalidates: ['milestone'] },
   })
 }
 
@@ -116,7 +113,6 @@ export interface UpdateMilestoneInput {
 }
 
 export function useUpdateMilestone() {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async ({ id, ...body }: UpdateMilestoneInput & { id: string }) => {
       const { data, error, response } = await client.PATCH('/v1/milestones/{id}', {
@@ -126,17 +122,13 @@ export function useUpdateMilestone() {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as unknown as Milestone
     },
-    onSuccess: (_data, vars) => {
-      void qc.invalidateQueries({ queryKey: milestoneKeys.all })
-      // Relation lists live under a separate ['milestone', id, …] namespace —
-      // refresh them too when a PATCH updates project/team/release links.
-      void qc.invalidateQueries({ queryKey: ['milestone', vars.id] })
-    },
+    // The `milestone` tag covers both the plural list/detail roots and the
+    // separate singular ['milestone', id, …] relation namespace.
+    meta: { invalidates: ['milestone'] },
   })
 }
 
 export function useDeleteMilestone() {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async (id: string) => {
       const { error, response } = await client.DELETE('/v1/milestones/{id}', {
@@ -144,9 +136,7 @@ export function useDeleteMilestone() {
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
     },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: milestoneKeys.all })
-    },
+    meta: { invalidates: ['milestone'] },
   })
 }
 
@@ -161,7 +151,7 @@ export function useMilestoneProjects(milestoneId: string | undefined) {
         params: { path: { id: milestoneId } },
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
-      return ((data as string[] | undefined) ?? [])
+      return (data as string[] | undefined) ?? []
     },
     enabled: !!milestoneId,
     staleTime: 30_000,
@@ -169,9 +159,14 @@ export function useMilestoneProjects(milestoneId: string | undefined) {
 }
 
 export function useSetMilestoneProjects() {
-  const qc = useQueryClient()
   return useMutation({
-    mutationFn: async ({ milestoneId, projectIds }: { milestoneId: string; projectIds: string[] }) => {
+    mutationFn: async ({
+      milestoneId,
+      projectIds,
+    }: {
+      milestoneId: string
+      projectIds: string[]
+    }) => {
       const { data, error, response } = await client.PUT('/v1/milestones/{id}/projects', {
         params: { path: { id: milestoneId } },
         body: { projectIds } as never,
@@ -179,10 +174,7 @@ export function useSetMilestoneProjects() {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data
     },
-    onSuccess: (_, vars) => {
-      void qc.invalidateQueries({ queryKey: ['milestone', vars.milestoneId, 'projects'] })
-      void qc.invalidateQueries({ queryKey: milestoneKeys.detail(vars.milestoneId) })
-    },
+    meta: { invalidates: ['milestone'] },
   })
 }
 
@@ -195,7 +187,7 @@ export function useMilestoneTeams(milestoneId: string | undefined) {
         params: { path: { id: milestoneId } },
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
-      return ((data as string[] | undefined) ?? [])
+      return (data as string[] | undefined) ?? []
     },
     enabled: !!milestoneId,
     staleTime: 30_000,
@@ -203,7 +195,6 @@ export function useMilestoneTeams(milestoneId: string | undefined) {
 }
 
 export function useSetMilestoneTeams() {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async ({ milestoneId, teamIds }: { milestoneId: string; teamIds: string[] }) => {
       const { data, error, response } = await client.PUT('/v1/milestones/{id}/teams', {
@@ -213,10 +204,7 @@ export function useSetMilestoneTeams() {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data
     },
-    onSuccess: (_, vars) => {
-      void qc.invalidateQueries({ queryKey: ['milestone', vars.milestoneId, 'teams'] })
-      void qc.invalidateQueries({ queryKey: milestoneKeys.detail(vars.milestoneId) })
-    },
+    meta: { invalidates: ['milestone'] },
   })
 }
 
@@ -229,7 +217,7 @@ export function useMilestoneReleases(milestoneId: string | undefined) {
         params: { path: { id: milestoneId } },
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
-      return ((data as string[] | undefined) ?? [])
+      return (data as string[] | undefined) ?? []
     },
     enabled: !!milestoneId,
     staleTime: 30_000,
@@ -237,9 +225,14 @@ export function useMilestoneReleases(milestoneId: string | undefined) {
 }
 
 export function useSetMilestoneReleases() {
-  const qc = useQueryClient()
   return useMutation({
-    mutationFn: async ({ milestoneId, releaseIds }: { milestoneId: string; releaseIds: string[] }) => {
+    mutationFn: async ({
+      milestoneId,
+      releaseIds,
+    }: {
+      milestoneId: string
+      releaseIds: string[]
+    }) => {
       const { data, error, response } = await client.PUT('/v1/milestones/{id}/releases', {
         params: { path: { id: milestoneId } },
         body: { releaseIds } as never,
@@ -247,10 +240,7 @@ export function useSetMilestoneReleases() {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data
     },
-    onSuccess: (_, vars) => {
-      void qc.invalidateQueries({ queryKey: ['milestone', vars.milestoneId, 'releases'] })
-      void qc.invalidateQueries({ queryKey: milestoneKeys.detail(vars.milestoneId) })
-    },
+    meta: { invalidates: ['milestone'] },
   })
 }
 
@@ -281,7 +271,8 @@ export function useMilestoneArtifacts(
   return useQuery({
     queryKey: ['milestone', milestoneId, 'artifacts', params],
     queryFn: async () => {
-      if (!milestoneId) return { data: [], pageInfo: { hasNextPage: false, nextCursor: null, limit: 50, total: 0 } }
+      if (!milestoneId)
+        return { data: [], pageInfo: { hasNextPage: false, nextCursor: null, limit: 50, total: 0 } }
       const { data, error, response } = await client.GET('/v1/milestones/{id}/artifacts', {
         params: {
           path: { id: milestoneId },
@@ -304,9 +295,14 @@ export function useMilestoneArtifacts(
 }
 
 export function useSetMilestoneArtifacts() {
-  const qc = useQueryClient()
   return useMutation({
-    mutationFn: async ({ milestoneId, workItemIds }: { milestoneId: string; workItemIds: string[] }) => {
+    mutationFn: async ({
+      milestoneId,
+      workItemIds,
+    }: {
+      milestoneId: string
+      workItemIds: string[]
+    }) => {
       const { data, error, response } = await client.PUT('/v1/milestones/{id}/artifacts', {
         params: { path: { id: milestoneId } },
         body: { workItemIds } as never,
@@ -314,8 +310,8 @@ export function useSetMilestoneArtifacts() {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data
     },
-    onSuccess: (_, vars) => {
-      void qc.invalidateQueries({ queryKey: ['milestone', vars.milestoneId, 'artifacts'] })
-    },
+    // Linking work items to a milestone also affects work-item milestone lists,
+    // which the `milestone` tag's work-item fan-out covers.
+    meta: { invalidates: ['milestone'] },
   })
 }

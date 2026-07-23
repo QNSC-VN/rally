@@ -32,7 +32,7 @@ export function ProjectsPage() {
   const { user: currentUser } = useAuthStore()
 
   const { data: projects = [], isLoading } = useProjects(workspaceId)
-  const updateProject = useUpdateProject(workspaceId)
+  const updateProject = useUpdateProject()
 
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<'All' | 'active' | 'archived'>('active')

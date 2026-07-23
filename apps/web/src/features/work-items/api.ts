@@ -5,7 +5,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
-import { invalidateWorkItemViews } from '@/shared/api/invalidate-work-item-views'
 import type { components } from '@/shared/api/generated/api'
 
 // ── Response types from generated contract ────────────────────────────────────
@@ -270,7 +269,6 @@ export function useWorkItemMilestones(workItemId: string | undefined) {
  * status, backlog) are refreshed on success.
  */
 export function useSetWorkItemMilestones(workItemId: string) {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async (milestoneIds: string[]) => {
       const { data, error, response } = await apiClient.PUT('/v1/work-items/{id}/milestones', {
@@ -280,9 +278,7 @@ export function useSetWorkItemMilestones(workItemId: string) {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return (data ?? []) as WorkItemMilestone[]
     },
-    onSuccess: () => {
-      invalidateWorkItemViews(qc)
-    },
+    meta: { invalidates: ['work-item'] },
   })
 }
 
@@ -293,19 +289,16 @@ export type UpdateWorkItemInput = components['schemas']['UpdateWorkItemDto']
 export type CreateTaskInput = components['schemas']['CreateTaskDto']
 
 export function useCreateWorkItem() {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: CreateWorkItemInput) => {
       const { data, error, response } = await apiClient.POST('/v1/work-items', { body: input })
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as WorkItem
     },
-    onSuccess: () => {
-      // Refresh every work-item-derived read-model (Backlog, Iteration Status,
-      // Team Status, Quality, Portfolio, Reports) so the new item appears
-      // everywhere it belongs without a manual reload.
-      invalidateWorkItemViews(qc)
-    },
+    // Refresh every work-item-derived read-model + dashboard (Backlog, Iteration
+    // Status, Team Status, Quality, Portfolio, Reports, My Work, counts) so the
+    // new item appears everywhere it belongs without a manual reload.
+    meta: { invalidates: ['work-item'] },
   })
 }
 
@@ -320,9 +313,10 @@ export function useUpdateWorkItem(id: string) {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as WorkItem
     },
+    // Instant, flash-free update of the surfaces the user is most likely looking
+    // at when editing inline: the detail page and the backlog row. The global
+    // registry then refreshes every other work-item-derived read-model.
     onSuccess: (item) => {
-      // Instant, flash-free update of the surfaces the user is most likely
-      // looking at when editing inline: the detail page and the backlog row.
       qc.setQueryData(workItemKeys.detail(id), item)
       // Must pass projectId to match the exact cache key used by useWorkItemByKey().
       qc.setQueriesData({ queryKey: workItemKeys.byKey(item.itemKey, item.projectId) }, item)
@@ -333,16 +327,12 @@ export function useUpdateWorkItem(id: string) {
           return { ...old, data: old.data.map((w) => (w.id === item.id ? item : w)) }
         },
       )
-      // Then refresh every other work-item-derived read-model (Iteration Status,
-      // Team Status, Quality, Portfolio, Reports, child defects, tasks…) so no
-      // view is ever left showing a stale value after an inline save.
-      invalidateWorkItemViews(qc)
     },
+    meta: { invalidates: ['work-item'] },
   })
 }
 
 export function useCreateTask(parentId: string) {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: CreateTaskInput) => {
       const { data, error, response } = await apiClient.POST('/v1/work-items/{id}/tasks', {
@@ -352,14 +342,11 @@ export function useCreateTask(parentId: string) {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as WorkItem
     },
-    onSuccess: () => {
-      invalidateWorkItemViews(qc)
-    },
+    meta: { invalidates: ['work-item'] },
   })
 }
 
 export function useDeleteWorkItem() {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async ({ id, projectId }: { id: string; projectId: string }) => {
       const { error, response } = await apiClient.DELETE('/v1/work-items/{id}', {
@@ -368,9 +355,7 @@ export function useDeleteWorkItem() {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return projectId
     },
-    onSuccess: () => {
-      invalidateWorkItemViews(qc)
-    },
+    meta: { invalidates: ['work-item'] },
   })
 }
 
@@ -394,8 +379,8 @@ export function useUpdateAnyWorkItem() {
     onSuccess: (item) => {
       qc.setQueryData(workItemKeys.detail(item.id), item)
       qc.setQueriesData({ queryKey: workItemKeys.byKey(item.itemKey, item.projectId) }, item)
-      invalidateWorkItemViews(qc)
     },
+    meta: { invalidates: ['work-item'] },
   })
 }
 
@@ -533,7 +518,6 @@ export function useWatchers(workItemId: string | undefined) {
 
 /** Toggle watch on/off for the current user. Returns true = now watching. */
 export function useToggleWatch(workItemId: string | undefined) {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async (watching: boolean) => {
       if (!workItemId) throw new Error('workItemId required')
@@ -549,9 +533,8 @@ export function useToggleWatch(workItemId: string | undefined) {
         if (error) throw new Error(apiErrorMessage(error, response.status))
       }
     },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: workItemKeys.watchers(workItemId ?? '') })
-    },
+    // Narrow, instance-specific: only this item's watcher list changed.
+    meta: { invalidateKeys: [workItemKeys.watchers(workItemId ?? '')] },
   })
 }
 
@@ -562,7 +545,6 @@ export type BulkAssignIterationInput = components['schemas']['BulkAssignIteratio
 export type RankWorkItemInput = components['schemas']['RankWorkItemDto']
 
 export function useBulkAssignRelease() {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: BulkAssignReleaseInput) => {
       const { data, error, response } = await apiClient.PATCH('/v1/work-items/bulk-release', {
@@ -571,14 +553,11 @@ export function useBulkAssignRelease() {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as { updated: number }
     },
-    onSuccess: () => {
-      invalidateWorkItemViews(qc)
-    },
+    meta: { invalidates: ['work-item'] },
   })
 }
 
 export function useBulkAssignIteration() {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: BulkAssignIterationInput) => {
       const { data, error, response } = await apiClient.PATCH('/v1/work-items/bulk-iteration', {
@@ -587,9 +566,7 @@ export function useBulkAssignIteration() {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as { updated: number }
     },
-    onSuccess: () => {
-      invalidateWorkItemViews(qc)
-    },
+    meta: { invalidates: ['work-item'] },
   })
 }
 
@@ -604,10 +581,8 @@ export function useRankWorkItem(id: string) {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as WorkItem
     },
-    onSuccess: (item) => {
-      qc.setQueryData(workItemKeys.detail(item.id), item)
-      invalidateWorkItemViews(qc)
-    },
+    onSuccess: (item) => qc.setQueryData(workItemKeys.detail(item.id), item),
+    meta: { invalidates: ['work-item'] },
   })
 }
 
@@ -622,10 +597,8 @@ export function useRankAnyWorkItem() {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as WorkItem
     },
-    onSuccess: (item) => {
-      qc.setQueryData(workItemKeys.detail(item.id), item)
-      invalidateWorkItemViews(qc)
-    },
+    onSuccess: (item) => qc.setQueryData(workItemKeys.detail(item.id), item),
+    meta: { invalidates: ['work-item'] },
   })
 }
 
@@ -671,7 +644,6 @@ export function useRelations(workItemId: string | undefined) {
 }
 
 export function useLinkWorkItem(workItemId: string | undefined) {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: {
       targetId: string
@@ -690,14 +662,11 @@ export function useLinkWorkItem(workItemId: string | undefined) {
       }
       return (await res.json()) as WorkItemRelationView[]
     },
-    onSuccess: () => {
-      if (workItemId) void qc.invalidateQueries({ queryKey: relationKeys.list(workItemId) })
-    },
+    meta: workItemId ? { invalidateKeys: [relationKeys.list(workItemId)] } : undefined,
   })
 }
 
 export function useUnlinkWorkItem(workItemId: string | undefined) {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async (relationId: string): Promise<void> => {
       if (!workItemId) throw new Error('workItemId required')
@@ -707,8 +676,6 @@ export function useUnlinkWorkItem(workItemId: string | undefined) {
       })
       if (!res.ok) throw new Error(`Failed to remove link (${res.status})`)
     },
-    onSuccess: () => {
-      if (workItemId) void qc.invalidateQueries({ queryKey: relationKeys.list(workItemId) })
-    },
+    meta: workItemId ? { invalidateKeys: [relationKeys.list(workItemId)] } : undefined,
   })
 }

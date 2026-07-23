@@ -1,7 +1,7 @@
 /**
  * Collaboration feature — attachment and comment API hooks.
  */
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
 import type { components } from '@/shared/api/generated/api'
@@ -58,7 +58,6 @@ async function sha256Base64(file: File): Promise<string> {
  * backend, so uploading always 404'd.
  */
 export function useUploadAttachment(workItemId: string | undefined) {
-  const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (file: File): Promise<Attachment> => {
       if (!workItemId) throw new Error('workItemId required')
@@ -110,14 +109,11 @@ export function useUploadAttachment(workItemId: string | undefined) {
       }
       return (await confirmRes.json()) as Attachment
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: attachmentKeys.list(workItemId ?? '') })
-    },
+    meta: workItemId ? { invalidateKeys: [attachmentKeys.list(workItemId)] } : undefined,
   })
 }
 
 export function useDeleteAttachment(workItemId: string | undefined) {
-  const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (attachmentId: string) => {
       if (!workItemId) throw new Error('workItemId required')
@@ -126,9 +122,7 @@ export function useDeleteAttachment(workItemId: string | undefined) {
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: attachmentKeys.list(workItemId ?? '') })
-    },
+    meta: workItemId ? { invalidateKeys: [attachmentKeys.list(workItemId)] } : undefined,
   })
 }
 
@@ -167,7 +161,6 @@ export function useComments(workItemId: string | undefined) {
 }
 
 export function useCreateComment(workItemId: string | undefined) {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: {
       body: string
@@ -184,14 +177,11 @@ export function useCreateComment(workItemId: string | undefined) {
       if (!res.ok) throw new Error(`Failed to add comment (${res.status})`)
       return (await res.json()) as Comment
     },
-    onSuccess: () => {
-      if (workItemId) void qc.invalidateQueries({ queryKey: commentKeys.list(workItemId) })
-    },
+    meta: workItemId ? { invalidateKeys: [commentKeys.list(workItemId)] } : undefined,
   })
 }
 
 export function useUpdateComment(workItemId: string | undefined) {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: { commentId: string; body: string }): Promise<Comment> => {
       if (!workItemId) throw new Error('workItemId required')
@@ -204,14 +194,11 @@ export function useUpdateComment(workItemId: string | undefined) {
       if (!res.ok) throw new Error(`Failed to edit comment (${res.status})`)
       return (await res.json()) as Comment
     },
-    onSuccess: () => {
-      if (workItemId) void qc.invalidateQueries({ queryKey: commentKeys.list(workItemId) })
-    },
+    meta: workItemId ? { invalidateKeys: [commentKeys.list(workItemId)] } : undefined,
   })
 }
 
 export function useDeleteComment(workItemId: string | undefined) {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async (commentId: string): Promise<void> => {
       if (!workItemId) throw new Error('workItemId required')
@@ -221,8 +208,6 @@ export function useDeleteComment(workItemId: string | undefined) {
       })
       if (!res.ok) throw new Error(`Failed to delete comment (${res.status})`)
     },
-    onSuccess: () => {
-      if (workItemId) void qc.invalidateQueries({ queryKey: commentKeys.list(workItemId) })
-    },
+    meta: workItemId ? { invalidateKeys: [commentKeys.list(workItemId)] } : undefined,
   })
 }

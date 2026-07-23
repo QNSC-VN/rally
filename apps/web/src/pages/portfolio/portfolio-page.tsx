@@ -11,7 +11,6 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
-import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { ChevronDown, ChevronRight, AlertTriangle, Plus, Loader2 } from 'lucide-react'
 
@@ -22,7 +21,7 @@ import { useProjectPermissions } from '@/features/access/api'
 import { useProjectMembers } from '@/features/teams/api'
 import { useReleases } from '@/features/releases/api'
 import { useCreateWorkItem } from '@/features/work-items/api'
-import { usePortfolio, portfolioKeys, type PortfolioNode } from '@/features/portfolio/api'
+import { usePortfolio, type PortfolioNode } from '@/features/portfolio/api'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { StateStepper } from '@/entities/work-item/ui/state-stepper'
 import { SCHEDULE_STATE_STEPS } from '@/entities/work-item/ui/state-steps'
@@ -280,7 +279,7 @@ function TreeRow({
 
         <div className={COLS.name}>
           <span
-            className="block break-words whitespace-normal text-ui-md text-foreground"
+            className="block text-ui-md break-words whitespace-normal text-foreground"
             style={{ fontWeight: level === 0 ? 600 : level === 1 ? 500 : 400 }}
             title={item.title}
           >
@@ -368,7 +367,6 @@ function CreateInitiativeModal({
 }) {
   const { t } = useTranslation('portfolio')
   const navigate = useNavigate()
-  const qc = useQueryClient()
   const create = useCreateWorkItem()
   const [title, setTitle] = useState('')
   const [assigneeId, setAssigneeId] = useState('')
@@ -389,7 +387,6 @@ function CreateInitiativeModal({
         priority,
         assigneeId: assigneeId || undefined,
       })
-      void qc.invalidateQueries({ queryKey: portfolioKeys.all })
       toast.success(t('create.created', { name: title.trim() }))
       if (openDetail) void navigate({ to: '/item/$itemKey', params: { itemKey: item.itemKey } })
       else onClose()

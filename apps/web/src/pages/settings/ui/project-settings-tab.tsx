@@ -18,7 +18,7 @@ export function ProjectSettingsTab() {
   const setProject = useAppContext((s) => s.setProject)
   const { data: projects = [] } = useProjects(workspaceId)
   const current = projects.find((p) => p.id === activeProject?.projectId)
-  const update = useUpdateProject(workspaceId)
+  const update = useUpdateProject()
 
   const [name, setName] = useState(current?.name ?? activeProject?.projectName ?? '')
   const [description, setDescription] = useState(current?.description ?? '')

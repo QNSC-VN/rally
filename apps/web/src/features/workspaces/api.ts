@@ -1,7 +1,7 @@
 /**
  * Workspace API hooks — TanStack Query wrappers around the typed openapi-fetch client.
  */
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
 import type { components } from '@/shared/api/generated/api'
@@ -62,19 +62,16 @@ export interface UpdateMemberInput {
 }
 
 /** Update a workspace member's status and/or team memberships (soft deactivate via status). */
-export function useUpdateMember(workspaceId: string | undefined) {
-  const qc = useQueryClient()
+export function useUpdateMember(_workspaceId: string | undefined) {
   return useMutation({
     mutationFn: async ({ memberId, ...body }: UpdateMemberInput) => {
       const { error, response } = await apiClient.PATCH('/v1/workspaces/{id}/members/{memberId}', {
-        params: { path: { id: workspaceId!, memberId } },
+        params: { path: { id: _workspaceId!, memberId } },
         body: body as never,
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
     },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['workspace-members-profile', workspaceId] })
-    },
+    meta: { invalidates: ['workspace'] },
   })
 }
 
@@ -97,7 +94,6 @@ export interface UpdateWorkspaceInput {
 }
 
 export function useUpdateWorkspace(id: string | undefined) {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async (body: UpdateWorkspaceInput) => {
       const { data, error, response } = await apiClient.PATCH('/v1/workspaces/{id}', {
@@ -107,8 +103,6 @@ export function useUpdateWorkspace(id: string | undefined) {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as Workspace
     },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['workspaces'] })
-    },
+    meta: { invalidates: ['workspace'] },
   })
 }

@@ -8,7 +8,7 @@ vi.mock('@/shared/api/http-client', () => ({
 }))
 
 import { apiClient } from '@/shared/api/http-client'
-import { WORK_ITEM_VIEW_ROOTS } from '@/shared/api/invalidate-work-item-views'
+import { INVALIDATION_MAP, createInvalidationMutationCache } from '@/shared/api/invalidation'
 import {
   workItemKeys,
   useCreateWorkItem,
@@ -21,10 +21,20 @@ const mockPOST = apiClient.POST as ReturnType<typeof vi.fn>
 const mockPATCH = apiClient.PATCH as ReturnType<typeof vi.fn>
 const mockDELETE = apiClient.DELETE as ReturnType<typeof vi.fn>
 
+// Keys the `work-item` tag fans out to — the single source the mutations now
+// declare via `meta: { invalidates: ['work-item'] }`.
+const WORK_ITEM_ROOTS = INVALIDATION_MAP['work-item']
+
+// Build a client wired with the real invalidation MutationCache, so the tests
+// exercise the actual meta → registry → invalidateQueries path end to end.
 function makeClient() {
-  return new QueryClient({
+  const ref: { current: QueryClient | null } = { current: null }
+  const client = new QueryClient({
+    mutationCache: createInvalidationMutationCache(() => ref.current as QueryClient),
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
+  ref.current = client
+  return client
 }
 
 function makeWrapper(qc: QueryClient) {
@@ -49,8 +59,8 @@ describe('useCreateWorkItem', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
     expect(mockPOST).toHaveBeenCalledWith('/v1/work-items', { body: { title: 'New' } })
-    expect(invalidateSpy).toHaveBeenCalledTimes(WORK_ITEM_VIEW_ROOTS.length)
-    for (const queryKey of WORK_ITEM_VIEW_ROOTS) {
+    expect(invalidateSpy).toHaveBeenCalledTimes(WORK_ITEM_ROOTS.length)
+    for (const queryKey of WORK_ITEM_ROOTS) {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey })
     }
   })
@@ -84,8 +94,8 @@ describe('useUpdateWorkItem', () => {
 
     // Every read-model root is refreshed exactly once — the single-source fix that
     // stops inline edits reverting until reload on Quality / Team Status / etc.
-    expect(invalidateSpy).toHaveBeenCalledTimes(WORK_ITEM_VIEW_ROOTS.length)
-    for (const queryKey of WORK_ITEM_VIEW_ROOTS) {
+    expect(invalidateSpy).toHaveBeenCalledTimes(WORK_ITEM_ROOTS.length)
+    for (const queryKey of WORK_ITEM_ROOTS) {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey })
     }
   })
@@ -139,8 +149,8 @@ describe('useDeleteWorkItem', () => {
     expect(mockDELETE).toHaveBeenCalledWith('/v1/work-items/{id}', {
       params: { path: { id: 'wi-1' } },
     })
-    expect(invalidateSpy).toHaveBeenCalledTimes(WORK_ITEM_VIEW_ROOTS.length)
-    for (const queryKey of WORK_ITEM_VIEW_ROOTS) {
+    expect(invalidateSpy).toHaveBeenCalledTimes(WORK_ITEM_ROOTS.length)
+    for (const queryKey of WORK_ITEM_ROOTS) {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey })
     }
   })
@@ -166,7 +176,7 @@ describe('useCreateTask', () => {
     })
     // Tasks/totals/activity live under the work-items root; Team Status shows the
     // same task, so all read-models are refreshed via the shared helper.
-    expect(invalidateSpy).toHaveBeenCalledTimes(WORK_ITEM_VIEW_ROOTS.length)
+    expect(invalidateSpy).toHaveBeenCalledTimes(WORK_ITEM_ROOTS.length)
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: workItemKeys.all })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['team-status'] })
   })

@@ -8,7 +8,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
-import { invalidateWorkItemViews } from '@/shared/api/invalidate-work-item-views'
 import type { components } from '@/shared/api/generated/api'
 
 export type IterationState = 'planning' | 'committed' | 'accepted'
@@ -26,6 +25,7 @@ export type IterationActivityLog = components['schemas']['IterationActivityRespo
 export const iterationKeys = {
   all: ['iterations'] as const,
   list: (projectId: string) => ['iterations', projectId] as const,
+  optionsAll: ['iteration-options'] as const,
   options: (projectId: string, teamId?: string | null) =>
     ['iteration-options', projectId, teamId ?? null] as const,
   detail: (id: string) => ['iteration', id] as const,
@@ -148,16 +148,17 @@ export function useIteration(id: string | undefined) {
 // ── Mutations ─────────────────────────────────────────────────────────────────
 
 export function useCreateIteration() {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: CreateIterationInput) => {
       const { data, error, response } = await apiClient.POST('/v1/iterations', { body: input })
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as Iteration
     },
-    onSuccess: (iteration) => {
-      void qc.invalidateQueries({ queryKey: iterationKeys.list(iteration.projectId) })
-    },
+    // The `iteration` tag fans out to the list, the /options picker feed, the
+    // status read-model AND the work-item-derived views — so a created
+    // iteration appears everywhere (header, inline cell, sidebar, filter) at
+    // once. This closes the original stale-picker bug at the registry level.
+    meta: { invalidates: ['iteration'] },
   })
 }
 
@@ -172,15 +173,14 @@ export function useUpdateIteration(id: string) {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as Iteration
     },
-    onSuccess: (iteration) => {
-      qc.setQueryData(iterationKeys.detail(id), iteration)
-      void qc.invalidateQueries({ queryKey: iterationKeys.list(iteration.projectId) })
-    },
+    // Seed the detail cache for an instant, flicker-free update; the global
+    // registry then refreshes the list/options/status/work-item views.
+    onSuccess: (iteration) => qc.setQueryData(iterationKeys.detail(id), iteration),
+    meta: { invalidates: ['iteration'] },
   })
 }
 
-export function useDeleteIteration(projectId: string) {
-  const qc = useQueryClient()
+export function useDeleteIteration() {
   return useMutation({
     mutationFn: async (id: string) => {
       const { error, response } = await apiClient.DELETE('/v1/iterations/{id}', {
@@ -188,9 +188,7 @@ export function useDeleteIteration(projectId: string) {
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
     },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: iterationKeys.list(projectId) })
-    },
+    meta: { invalidates: ['iteration'] },
   })
 }
 
@@ -203,15 +201,9 @@ export function useDeleteIteration(projectId: string) {
 
 export type RolloverIterationInput = components['schemas']['RolloverIterationDto']
 
-/** Invalidate every cached view a lifecycle transition can affect. */
-function invalidateIterationViews(qc: ReturnType<typeof useQueryClient>, id: string) {
-  void qc.invalidateQueries({ queryKey: iterationKeys.detail(id) })
-  void qc.invalidateQueries({ queryKey: iterationKeys.all })
-  void qc.invalidateQueries({ queryKey: ['iteration-options'] })
-  // Commit/accept/rollover move work items between states/iterations, so refresh
-  // every work-item-derived read-model too (this also covers iteration-status).
-  invalidateWorkItemViews(qc)
-}
+// Commit/accept/rollover move work items between states/iterations, so they use
+// the same coarse `iteration` tag as CRUD — which already fans out to every
+// iteration root PLUS the work-item-derived views.
 
 export function useCommitIteration(id: string) {
   const qc = useQueryClient()
@@ -223,10 +215,8 @@ export function useCommitIteration(id: string) {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as Iteration
     },
-    onSuccess: (iteration) => {
-      qc.setQueryData(iterationKeys.detail(id), iteration)
-      invalidateIterationViews(qc, id)
-    },
+    onSuccess: (iteration) => qc.setQueryData(iterationKeys.detail(id), iteration),
+    meta: { invalidates: ['iteration'] },
   })
 }
 
@@ -240,15 +230,12 @@ export function useAcceptIteration(id: string) {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as Iteration
     },
-    onSuccess: (iteration) => {
-      qc.setQueryData(iterationKeys.detail(id), iteration)
-      invalidateIterationViews(qc, id)
-    },
+    onSuccess: (iteration) => qc.setQueryData(iterationKeys.detail(id), iteration),
+    meta: { invalidates: ['iteration'] },
   })
 }
 
 export function useRolloverIteration(id: string) {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: RolloverIterationInput) => {
       const { data, error, response } = await apiClient.POST('/v1/iterations/{id}/rollover', {
@@ -261,7 +248,7 @@ export function useRolloverIteration(id: string) {
       // runtime, hence the cast through `unknown`.
       return data as unknown as { movedCount: number }
     },
-    onSuccess: () => invalidateIterationViews(qc, id),
+    meta: { invalidates: ['iteration'] },
   })
 }
 
@@ -307,7 +294,6 @@ export function useIterationStatus(id: string | undefined, filters: IterationSta
 }
 
 export function useCreateIterationItem(iterationId: string) {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: CreateIterationItemInput) => {
       const { data, error, response } = await apiClient.POST('/v1/iterations/{id}/work-items', {
@@ -317,8 +303,8 @@ export function useCreateIterationItem(iterationId: string) {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as { workItemId: string; itemKey: string }
     },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: iterationKeys.status(iterationId) })
-    },
+    // Creates a work item scoped to the iteration → refresh the whole work-item
+    // fan-out (which includes the iteration-status read-model).
+    meta: { invalidates: ['work-item'] },
   })
 }

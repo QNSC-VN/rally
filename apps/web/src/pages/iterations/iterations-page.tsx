@@ -48,7 +48,7 @@ export function IterationsPage() {
   const canManage = can('iteration:create') || can('iteration:edit') || can('iteration:delete')
 
   const { data: iterations = [], isLoading, isError } = useIterations(projectId)
-  const deleteIteration = useDeleteIteration(projectId ?? '')
+  const deleteIteration = useDeleteIteration()
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
 
   async function handleBulkDelete(selection: RowSelection) {

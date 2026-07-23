@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation } from '@tanstack/react-query'
 import { Shield, Check, Lock, Save, Loader2 } from 'lucide-react'
 
 import { cn } from '@/shared/lib/utils'
@@ -29,7 +29,6 @@ function isRoleEditable(role: Role): boolean {
 
 export function RolesTab() {
   const { t } = useTranslation('settings')
-  const qc = useQueryClient()
   const { hasPermission } = useAuthStore()
   const canManage = hasPermission(PERMISSION.WORKSPACE_MANAGE_MEMBERS)
 
@@ -55,11 +54,9 @@ export function RolesTab() {
       if (res.error) throw new Error(apiErrorMessage(res.error))
       return res.data
     },
-    onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: ['system-roles'] })
-      notify.success(t('roles.permissionsUpdated'))
-    },
+    onSuccess: () => notify.success(t('roles.permissionsUpdated')),
     onError: (err) => notify.fromError(err, t('roles.updateFailed')),
+    meta: { invalidates: ['workspace'] },
   })
 
   const [selectedId, setSelectedId] = useState<string | null>(null)

@@ -17,13 +17,11 @@ import { RELEASE_STATES, RELEASE_STATUS_STYLE } from '../model/release-states'
 
 export function ReleaseRow({
   release,
-  projectId,
   canManage,
   colStyleFor,
   gutter,
 }: {
   release: Release
-  projectId: string
   canManage: boolean
   colStyleFor: (key: ColKey, base?: CSSProperties) => CSSProperties
   /** Selection gutter node supplied by the list scaffold. */
@@ -31,7 +29,7 @@ export function ReleaseRow({
 }) {
   const { t } = useTranslation('releases')
   const { project } = useAppContext()
-  const update = useUpdateRelease(release.id, projectId)
+  const update = useUpdateRelease(release.id)
   const status = release.status as ReleaseStatus
 
   function saveName(raw: string) {
@@ -247,7 +245,7 @@ export function ReleaseRow({
           onCommit={saveVelocity}
           ariaLabel="Planned velocity"
           displayValue={
-            <span className="block text-right font-mono tabular-nums text-muted-foreground">
+            <span className="block text-right font-mono text-muted-foreground tabular-nums">
               {release.plannedVelocity ?? '—'}
             </span>
           }
@@ -281,7 +279,6 @@ export function ReleaseRow({
           onChange={(v) => saveState(v as ReleaseStatus)}
         />
       </div>
-
     </div>
   )
 }

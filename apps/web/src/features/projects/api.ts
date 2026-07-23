@@ -1,7 +1,7 @@
 /**
  * Projects API hooks — TanStack Query wrappers.
  */
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
 
@@ -61,7 +61,6 @@ export function useProjects(workspaceId: string | undefined) {
 // ── Mutations ─────────────────────────────────────────────────────────────────
 
 export function useCreateProject() {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: CreateProjectInput) => {
       const { data, error, response } = await apiClient.POST('/v1/projects', {
@@ -71,14 +70,11 @@ export function useCreateProject() {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as Project
     },
-    onSuccess: (_, vars) => {
-      void qc.invalidateQueries({ queryKey: ['projects', vars.workspaceId] })
-    },
+    meta: { invalidates: ['project'] },
   })
 }
 
-export function useUpdateProject(workspaceId: string | undefined) {
-  const qc = useQueryClient()
+export function useUpdateProject() {
   return useMutation({
     mutationFn: async ({ id, input }: { id: string; input: UpdateProjectInput }) => {
       const { data, error, response } = await apiClient.PATCH('/v1/projects/{id}', {
@@ -89,14 +85,11 @@ export function useUpdateProject(workspaceId: string | undefined) {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as Project
     },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['projects', workspaceId] })
-    },
+    meta: { invalidates: ['project'] },
   })
 }
 
-export function useDeleteProject(workspaceId: string | undefined) {
-  const qc = useQueryClient()
+export function useDeleteProject() {
   return useMutation({
     mutationFn: async (id: string) => {
       const { error, response } = await apiClient.DELETE('/v1/projects/{id}', {
@@ -104,9 +97,7 @@ export function useDeleteProject(workspaceId: string | undefined) {
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
     },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['projects', workspaceId] })
-    },
+    meta: { invalidates: ['project'] },
   })
 }
 
@@ -175,7 +166,6 @@ export interface CreateStatusInput {
 }
 
 export function useCreateStatus(projectId: string | undefined) {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: CreateStatusInput) => {
       if (!projectId) throw new Error('No project selected')
@@ -187,14 +177,11 @@ export function useCreateStatus(projectId: string | undefined) {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as ProjectStatus
     },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['project-statuses', projectId] })
-    },
+    meta: { invalidates: ['project'] },
   })
 }
 
 export function useDeleteStatus(projectId: string | undefined) {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async (statusId: string) => {
       if (!projectId) throw new Error('No project selected')
@@ -206,14 +193,11 @@ export function useDeleteStatus(projectId: string | undefined) {
       )
       if (error) throw new Error(apiErrorMessage(error, response.status))
     },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['project-statuses', projectId] })
-    },
+    meta: { invalidates: ['project'] },
   })
 }
 
 export function useReorderStatuses(projectId: string | undefined) {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async (orderedIds: string[]) => {
       if (!projectId) throw new Error('No project selected')
@@ -226,9 +210,7 @@ export function useReorderStatuses(projectId: string | undefined) {
       )
       if (error) throw new Error(apiErrorMessage(error, response.status))
     },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['project-statuses', projectId] })
-    },
+    meta: { invalidates: ['project'] },
   })
 }
 
@@ -270,7 +252,6 @@ export function useProjectLabels(projectId: string | undefined) {
 }
 
 export function useCreateLabel(projectId: string | undefined) {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: CreateLabelInput) => {
       if (!projectId) throw new Error('No project selected')
@@ -281,14 +262,11 @@ export function useCreateLabel(projectId: string | undefined) {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as ProjectLabel
     },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['project-labels', projectId] })
-    },
+    meta: { invalidates: ['project'] },
   })
 }
 
 export function useUpdateLabel(projectId: string | undefined) {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async ({ labelId, input }: { labelId: string; input: UpdateLabelInput }) => {
       if (!projectId) throw new Error('No project selected')
@@ -302,14 +280,11 @@ export function useUpdateLabel(projectId: string | undefined) {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as ProjectLabel
     },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['project-labels', projectId] })
-    },
+    meta: { invalidates: ['project'] },
   })
 }
 
 export function useDeleteLabel(projectId: string | undefined) {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async (labelId: string) => {
       if (!projectId) throw new Error('No project selected')
@@ -318,8 +293,6 @@ export function useDeleteLabel(projectId: string | undefined) {
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
     },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['project-labels', projectId] })
-    },
+    meta: { invalidates: ['project'] },
   })
 }

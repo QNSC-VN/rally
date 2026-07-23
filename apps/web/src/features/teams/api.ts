@@ -179,7 +179,6 @@ export interface CreateTeamInput {
 }
 
 export function useCreateTeam() {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async ({ workspaceId, ...body }: CreateTeamInput) => {
       const { data, error, response } = await apiClient.POST('/v1/workspaces/{workspaceId}/teams', {
@@ -189,11 +188,9 @@ export function useCreateTeam() {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as Team
     },
-    // Invalidate the whole teams namespace: workspace lists (both includeInactive
-    // variants), project-team link lists, and any member lists are all affected.
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: teamKeys.all })
-    },
+    // The `team` tag invalidates the whole teams namespace (workspace lists,
+    // project-team links, member lists) plus dependent dashboards.
+    meta: { invalidates: ['team'] },
   })
 }
 
@@ -219,15 +216,12 @@ export function useUpdateTeam(id: string) {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as Team
     },
-    onSuccess: (team) => {
-      qc.setQueryData(teamKeys.detail(id), team)
-      void qc.invalidateQueries({ queryKey: teamKeys.all })
-    },
+    onSuccess: (team) => qc.setQueryData(teamKeys.detail(id), team),
+    meta: { invalidates: ['team'] },
   })
 }
 
 export function useAddTeamMember(teamId: string) {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async (userId: string) => {
       const { data, error, response } = await apiClient.POST('/v1/teams/{id}/members', {
@@ -237,14 +231,11 @@ export function useAddTeamMember(teamId: string) {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as TeamMember
     },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: teamKeys.members(teamId) })
-    },
+    meta: { invalidates: ['team'] },
   })
 }
 
 export function useRemoveTeamMember(teamId: string) {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async (userId: string) => {
       const { error, response } = await apiClient.DELETE('/v1/teams/{id}/members/{userId}', {
@@ -252,16 +243,13 @@ export function useRemoveTeamMember(teamId: string) {
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
     },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: teamKeys.members(teamId) })
-    },
+    meta: { invalidates: ['team'] },
   })
 }
 
 // ── Project ⇄ Team links ──────────────────────────────────────────────────────
 
 export function useLinkProjectTeam(projectId: string) {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async (teamId: string) => {
       const { error, response } = await apiClient.POST('/v1/projects/{id}/teams', {
@@ -270,14 +258,13 @@ export function useLinkProjectTeam(projectId: string) {
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
     },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: teamKeys.projectTeams(projectId) })
-    },
+    // A project⇄team link shows on both the team's project list and the
+    // project's team list, so refresh both namespaces.
+    meta: { invalidates: ['team', 'project'] },
   })
 }
 
 export function useUnlinkProjectTeam(projectId: string) {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async (teamId: string) => {
       const { error, response } = await apiClient.DELETE('/v1/projects/{id}/teams/{teamId}', {
@@ -285,8 +272,6 @@ export function useUnlinkProjectTeam(projectId: string) {
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
     },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: teamKeys.projectTeams(projectId) })
-    },
+    meta: { invalidates: ['team', 'project'] },
   })
 }

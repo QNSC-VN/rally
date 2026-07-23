@@ -1,7 +1,6 @@
 /* eslint-disable react-refresh/only-export-components -- PROJECT_COLUMNS is config that must co-locate with the cell renderers it references */
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useQueryClient } from '@tanstack/react-query'
 import {
   AlertTriangle,
   Archive,
@@ -326,7 +325,6 @@ export function EditProjectModal({
 }) {
   const { t } = useTranslation('projects')
   const { user } = useAuthStore()
-  const qc = useQueryClient()
   const { data: linkedTeams = [], isLoading: teamsLoading } = useProjectTeams(project.id)
 
   const [values, setValues] = useState<ProjectFormValues>({
@@ -348,7 +346,7 @@ export function EditProjectModal({
     setValues((v) => ({ ...v, ...p }))
   }
 
-  const { mutateAsync, isPending } = useUpdateProject(workspaceId)
+  const { mutateAsync, isPending } = useUpdateProject()
   const linkTeam = useLinkProjectTeam(project.id)
   const unlinkTeam = useUnlinkProjectTeam(project.id)
   const saving = isPending || linkTeam.isPending || unlinkTeam.isPending
@@ -375,9 +373,6 @@ export function EditProjectModal({
         ...toAdd.map((id) => linkTeam.mutateAsync(id)),
         ...toRemove.map((id) => unlinkTeam.mutateAsync(id)),
       ])
-      if (toAdd.length || toRemove.length) {
-        void qc.invalidateQueries({ queryKey: ['projects', workspaceId] })
-      }
       notify.success(t('edit.updated', { name: values.name }))
       onClose()
     } catch (err) {
@@ -604,7 +599,7 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
     cellClassName: 'flex min-w-0 flex-col justify-center',
     cell: (p) => (
       <>
-        <div className="break-words whitespace-normal text-ui-md font-semibold text-foreground">
+        <div className="text-ui-md font-semibold break-words whitespace-normal text-foreground">
           {p.name}
         </div>
         {p.description && (
