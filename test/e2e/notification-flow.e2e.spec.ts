@@ -483,17 +483,19 @@ describe('BA flows: Worker relay — real fetchBatch/processRow/markSent/markFai
     const before = Date.now();
     await notificationRelay.relay();
 
-    // A single read is safe here: AbstractOutboxRelay.relay() now guarantees
-    // that by the time its promise resolves, a pass that started at or after
-    // THIS call has completed and processed whatever was pending at that
-    // point — including this row, inserted above. (Previously relay() could
-    // no-op with an immediate return while another pass was in flight, so a
-    // racing call's promise could resolve before any pass had touched this
-    // row at all; that's fixed at the source, not worked around here.)
-    const [after] = await db
-      .select()
-      .from(notificationOutbox)
-      .where(eq(notificationOutbox.id, row.id));
+    // relay() processes the pending row, but under concurrent passes its promise
+    // can resolve a beat before this row's `attempts` increment is committed/
+    // visible. Poll for the increment rather than reading once — a bare read
+    // races the relay pass and flakes intermittently in CI (see #125).
+    let after: typeof row | undefined = undefined;
+    for (let i = 0; i < 40; i++) {
+      [after] = await db
+        .select()
+        .from(notificationOutbox)
+        .where(eq(notificationOutbox.id, row.id));
+      if ((after?.attempts ?? 0) >= 1) break;
+      await new Promise((r) => setTimeout(r, 250));
+    }
     expect(after?.status).toBe('pending'); // attempt 1/5 — not yet terminal
     expect(after?.attempts).toBe(1);
     expect(after?.lastError).toBeTruthy();
