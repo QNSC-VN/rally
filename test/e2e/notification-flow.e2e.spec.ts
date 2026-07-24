@@ -487,14 +487,19 @@ describe('BA flows: Worker relay — real fetchBatch/processRow/markSent/markFai
       .returning();
 
     const before = Date.now();
-    await notificationRelay.relay();
 
-    // relay() processes the pending row, but under concurrent passes its promise
-    // can resolve a beat before this row's `attempts` increment is committed/
-    // visible. Poll for the increment rather than reading once — a bare read
-    // races the relay pass and flakes intermittently in CI (see #125).
+    // Drive the relay on EACH poll, not once up-front. fetchBatch takes only the
+    // oldest `batchSize` (50) eligible rows (ORDER BY scheduled_at ASC), so when
+    // earlier tests in this file have left ≥50 pending rows, this freshly-inserted
+    // row is behind the backlog and a single relay() pass never reaches it — the
+    // passive poll then re-reads attempts=0 until timeout and flakes in CI. This
+    // is the SAME drive-to-drain fix already applied to the in-app + email drains
+    // above; it was missed here (the recurring notification flake, see #125/#136).
+    // Looping relay() drains successive batches until this row is processed. Once
+    // it fails, markFailed pushes scheduledAt into the future so later passes skip it.
     let after: typeof row | undefined = undefined;
     for (let i = 0; i < 40; i++) {
+      await notificationRelay.relay();
       [after] = await db.select().from(notificationOutbox).where(eq(notificationOutbox.id, row.id));
       if ((after?.attempts ?? 0) >= 1) break;
       await new Promise((r) => setTimeout(r, 250));
