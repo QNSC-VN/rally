@@ -19,6 +19,7 @@ import {
   ScmConnectionResponseDto,
   ScmChangesetResponseDto,
   ScmRepositoryResponseDto,
+  ScmSyncResponseDto,
 } from './dto/scm-response.dto';
 import { CreateScmRepositoryDto } from './dto/scm-request.dto';
 
@@ -128,6 +129,19 @@ export class ScmController {
       projectIds: dto.projectIds,
     });
     return toRepositoryDto(repo);
+  }
+
+  @Post('scm/repositories/:id/sync')
+  @Auth('workspace:manage_members')
+  @ApiOperation({ summary: 'Enqueue a backfill (Sync now) for a mapped repository' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 201, type: ScmSyncResponseDto })
+  @ApiCommonErrors(400, 401, 403, 404)
+  async syncRepository(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ScmSyncResponseDto> {
+    return this.scm.syncRepository(user, id);
   }
 
   @Delete('scm/repositories/:id')

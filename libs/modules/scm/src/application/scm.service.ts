@@ -39,7 +39,7 @@ export class ScmService {
     return this.store.listRepositories(actor.workspaceId);
   }
 
-  createRepository(
+  async createRepository(
     actor: JwtPayload,
     input: {
       provider: ScmProvider;
@@ -48,11 +48,22 @@ export class ScmService {
       projectIds: string[];
     },
   ): Promise<ScmRepository> {
-    return this.store.createRepository({ workspaceId: actor.workspaceId, ...input });
+    const repo = await this.store.createRepository({ workspaceId: actor.workspaceId, ...input });
+    // Auto-backfill existing PRs/commits on map (drained by the worker relay).
+    await this.store.enqueueBackfill(actor.workspaceId, repo.id);
+    return repo;
   }
 
   deleteRepository(actor: JwtPayload, id: string): Promise<void> {
     return this.store.deleteRepository(actor.workspaceId, id);
+  }
+
+  /** Manual "Sync now": enqueue a backfill job for an already-mapped repo. */
+  async syncRepository(actor: JwtPayload, id: string): Promise<{ enqueued: boolean }> {
+    const repo = await this.store.getRepositoryForBackfill(id);
+    if (!repo || repo.workspaceId !== actor.workspaceId) return { enqueued: false };
+    await this.store.enqueueBackfill(actor.workspaceId, id);
+    return { enqueued: true };
   }
 
   // ── Webhook ingestion (called by the @Public webhook controller) ─────────────

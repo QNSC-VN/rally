@@ -8,6 +8,7 @@ import {
   scmWebhookInbox,
   scmConnections,
   scmChangesets,
+  scmBackfillJobs,
 } from '../../../../../../db/schema/scm';
 import { workItems } from '../../../../../../db/schema/work';
 import type {
@@ -107,6 +108,41 @@ export class ScmDrizzleRepository implements IScmStore {
       .from(scmRepositoryProjects)
       .where(eq(scmRepositoryProjects.repositoryId, repo.id));
     return { workspaceId: repo.workspaceId, projectIds: links.map((l) => l.projectId) };
+  }
+
+  // ── Backfill ───────────────────────────────────────────────────────────────
+
+  async getRepositoryForBackfill(id: string): Promise<{
+    id: string;
+    workspaceId: string;
+    provider: ScmProvider;
+    fullName: string;
+    installationId: string | null;
+  } | null> {
+    const [repo] = await this.db
+      .select()
+      .from(scmRepositories)
+      .where(eq(scmRepositories.id, id))
+      .limit(1);
+    if (!repo) return null;
+    return {
+      id: repo.id,
+      workspaceId: repo.workspaceId,
+      provider: repo.provider,
+      fullName: repo.fullName,
+      installationId: repo.installationId,
+    };
+  }
+
+  async setInstallationId(id: string, installationId: string): Promise<void> {
+    await this.db
+      .update(scmRepositories)
+      .set({ installationId, updatedAt: new Date() })
+      .where(eq(scmRepositories.id, id));
+  }
+
+  async enqueueBackfill(workspaceId: string, repositoryId: string): Promise<void> {
+    await this.db.insert(scmBackfillJobs).values({ workspaceId, repositoryId });
   }
 
   // ── Work-item resolution ──────────────────────────────────────────────────
@@ -264,7 +300,7 @@ export class ScmDrizzleRepository implements IScmStore {
     return {
       id: r.id,
       workspaceId: r.workspaceId,
-      provider: r.provider as ScmProvider,
+      provider: r.provider,
       fullName: r.fullName,
       baseUrl: r.baseUrl,
       active: r.active,
@@ -278,8 +314,8 @@ export class ScmDrizzleRepository implements IScmStore {
     id: r.id,
     workspaceId: r.workspaceId,
     workItemId: r.workItemId,
-    provider: r.provider as ScmProvider,
-    type: r.type as ScmConnection['type'],
+    provider: r.provider,
+    type: r.type,
     externalId: r.externalId,
     name: r.name,
     url: r.url,
@@ -294,7 +330,7 @@ export class ScmDrizzleRepository implements IScmStore {
     id: r.id,
     workspaceId: r.workspaceId,
     workItemId: r.workItemId,
-    provider: r.provider as ScmProvider,
+    provider: r.provider,
     revision: r.revision,
     name: r.name,
     message: r.message,

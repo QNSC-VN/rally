@@ -361,6 +361,14 @@
 .ProseMirror {
   outline: none;
 }
+/* The editor box shows focus via its own field ring (FIELD_FOCUS_ACTIVE); the
+   global :focus-visible outline (below) would otherwise draw a 2px --ring line
+   around the editable, appearing as a divider under the toolbar. Suppress it
+   here with higher specificity than the global rule. */
+.ProseMirror:focus,
+.ProseMirror:focus-visible {
+  outline: none;
+}
 /* Editor fills its container (incl. maximized) so the whole area is clickable/
    typable, not just the top text line. Chain: content box → EditorContent
    wrapper → .ProseMirror all stretch. */

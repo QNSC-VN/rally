@@ -1,11 +1,13 @@
 import { z } from 'zod';
 import { createZodDto } from 'nestjs-zod';
+import { scmProviderEnum, scmConnectionTypeEnum } from '../../../../../../../db/schema/enums';
+import { SCM_CHANGE_ACTIONS } from '../../../domain/scm.types';
 
 export const ScmConnectionResponseSchema = z.object({
   id: z.string().uuid(),
   workItemId: z.string().uuid(),
-  provider: z.enum(['github', 'ghe']),
-  type: z.enum(['pull_request', 'build', 'branch']),
+  provider: z.enum(scmProviderEnum.enumValues),
+  type: z.enum(scmConnectionTypeEnum.enumValues),
   name: z.string(),
   url: z.string(),
   state: z.string().nullable(),
@@ -18,14 +20,14 @@ export const ScmConnectionResponseSchema = z.object({
 export class ScmConnectionResponseDto extends createZodDto(ScmConnectionResponseSchema) {}
 
 const ScmChangeSchema = z.object({
-  action: z.enum(['A', 'M', 'D']),
+  action: z.enum(SCM_CHANGE_ACTIONS),
   path: z.string(),
 });
 
 export const ScmChangesetResponseSchema = z.object({
   id: z.string().uuid(),
   workItemId: z.string().uuid(),
-  provider: z.enum(['github', 'ghe']),
+  provider: z.enum(scmProviderEnum.enumValues),
   revision: z.string(),
   name: z.string(),
   message: z.string().nullable(),
@@ -38,7 +40,7 @@ export class ScmChangesetResponseDto extends createZodDto(ScmChangesetResponseSc
 
 export const ScmRepositoryResponseSchema = z.object({
   id: z.string().uuid(),
-  provider: z.enum(['github', 'ghe']),
+  provider: z.enum(scmProviderEnum.enumValues),
   fullName: z.string(),
   baseUrl: z.string().nullable(),
   active: z.boolean(),
@@ -46,3 +48,8 @@ export const ScmRepositoryResponseSchema = z.object({
   createdAt: z.string().datetime(),
 });
 export class ScmRepositoryResponseDto extends createZodDto(ScmRepositoryResponseSchema) {}
+
+export const ScmSyncResponseSchema = z.object({
+  enqueued: z.boolean().describe('True when a backfill job was queued'),
+});
+export class ScmSyncResponseDto extends createZodDto(ScmSyncResponseSchema) {}

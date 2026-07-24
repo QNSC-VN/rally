@@ -5,7 +5,7 @@
  * the GitHub side.
  */
 import { useMemo, useState } from 'react'
-import { Trash2, Loader2, Plug } from 'lucide-react'
+import { Trash2, Loader2, Plug, RefreshCw } from 'lucide-react'
 
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjects } from '@/features/projects/api'
@@ -13,6 +13,7 @@ import {
   useScmRepositories,
   useCreateScmRepository,
   useDeleteScmRepository,
+  useSyncScmRepository,
   type ScmProvider,
 } from '@/features/scm/api'
 import { notify } from '@/shared/lib/toast'
@@ -28,10 +29,11 @@ export function IntegrationsTab() {
   const { data: projects = [] } = useProjects(workspaceId)
   const createRepo = useCreateScmRepository(workspaceId)
   const deleteRepo = useDeleteScmRepository(workspaceId)
+  const syncRepo = useSyncScmRepository(workspaceId)
 
   const projectName = useMemo(() => new Map(projects.map((p) => [p.id, p.name])), [projects])
 
-  const [provider, setProvider] = useState<ScmProvider>('ghe')
+  const [provider, setProvider] = useState<ScmProvider>('github')
   const [fullName, setFullName] = useState('')
   const [projectIds, setProjectIds] = useState<string[]>([])
 
@@ -90,6 +92,27 @@ export function IntegrationsTab() {
                     </td>
                     <td className="px-3 py-2 text-right">
                       <button
+                        aria-label={`Sync ${r.fullName}`}
+                        title="Sync now — backfill existing PRs & commits"
+                        className="mr-3 text-foreground-subtle hover:text-foreground disabled:opacity-50"
+                        disabled={syncRepo.isPending && syncRepo.variables === r.id}
+                        onClick={() => {
+                          void syncRepo
+                            .mutateAsync(r.id)
+                            .then(() => notify.success(`Sync queued for ${r.fullName}`))
+                            .catch((e: unknown) =>
+                              notify.error(e instanceof Error ? e.message : 'Failed to sync'),
+                            )
+                        }}
+                      >
+                        <RefreshCw
+                          size={14}
+                          className={
+                            syncRepo.isPending && syncRepo.variables === r.id ? 'animate-spin' : ''
+                          }
+                        />
+                      </button>
+                      <button
                         aria-label={`Remove ${r.fullName}`}
                         className="text-foreground-subtle hover:text-destructive"
                         onClick={() => {
@@ -122,8 +145,8 @@ export function IntegrationsTab() {
               value={provider}
               onChange={(e) => setProvider(e.target.value as ScmProvider)}
             >
-              <option value="ghe">GitHub Enterprise</option>
               <option value="github">GitHub.com</option>
+              <option value="ghe">GitHub Enterprise</option>
             </NativeSelect>
           </label>
           <label className="flex flex-1 flex-col gap-1" style={{ minWidth: 220 }}>
@@ -131,7 +154,7 @@ export function IntegrationsTab() {
             <Input
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
-              placeholder="DT-SFI/dt"
+              placeholder="owner/repo"
             />
           </label>
           <Button type="button" onClick={() => void add()} disabled={createRepo.isPending}>
