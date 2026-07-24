@@ -159,6 +159,6 @@ import { DrizzleTransactionRunner } from './application/transaction-runner';
       }),
     },
   ],
-  exports: [AuthService, BFF_SESSION_RESOLVER],
+  exports: [AuthService, BFF_SESSION_RESOLVER, SECRET_RESOLVER],
 })
 export class IdentityModule {}

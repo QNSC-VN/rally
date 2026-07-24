@@ -2019,6 +2019,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v1/scm/repositories/{id}/sync': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Enqueue a backfill (Sync now) for a mapped repository */
+    post: operations['ScmController_syncRepository']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
 }
 export type webhooks = Record<string, never>
 export interface components {
@@ -3200,6 +3217,10 @@ export interface components {
       projectIds: string[]
       /** Format: date-time */
       createdAt: string
+    }
+    ScmSyncResponseDto: {
+      /** @description True when a backfill job was queued */
+      enqueued: boolean
     }
     CreateScmRepositoryDto: {
       /** @enum {string} */
@@ -10270,6 +10291,55 @@ export interface operations {
     responses: {
       /** @description Mapping removed */
       204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  ScmController_syncRepository: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ScmSyncResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
         headers: {
           [name: string]: unknown
         }

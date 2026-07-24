@@ -48,6 +48,19 @@ export function useCreateScmRepository(workspaceId: string | undefined) {
   })
 }
 
+export function useSyncScmRepository(workspaceId: string | undefined) {
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data, error, response } = await apiClient.POST('/v1/scm/repositories/{id}/sync', {
+        params: { path: { id } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data
+    },
+    meta: { invalidateKeys: [scmRepositoryKeys.list(workspaceId ?? '')] },
+  })
+}
+
 export function useDeleteScmRepository(workspaceId: string | undefined) {
   return useMutation({
     mutationFn: async (id: string) => {

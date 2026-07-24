@@ -63,6 +63,16 @@ export const EnvSchema = z
     // Optional so the app boots without SCM configured; the webhook endpoint
     // returns 503 until it is set (prod should source it from Secrets Manager).
     GITHUB_WEBHOOK_SECRET: z.string().optional(),
+    // SCM Phase 2 — GitHub App (backfill + authenticated REST). All optional so
+    // the app boots without them; backfill no-ops until configured.
+    GITHUB_APP_ID: z.string().optional(),
+    // App private key (PEM). Local/dev only — prod resolves it from Secrets
+    // Manager via GITHUB_APP_PRIVATE_KEY_SECRET_REF using the shared SECRET_RESOLVER.
+    GITHUB_APP_PRIVATE_KEY: z.string().optional(),
+    GITHUB_APP_PRIVATE_KEY_SECRET_REF: z.string().optional(),
+    // REST API base — github.com is https://api.github.com; a GHE host would be
+    // https://<host>/api/v3. Defaults to github.com.
+    GITHUB_API_BASE_URL: z.string().url().default('https://api.github.com'),
 
     // AWS
     AWS_REGION: z.string().default('ap-southeast-1'),

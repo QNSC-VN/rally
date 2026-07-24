@@ -3,6 +3,7 @@ export * from './domain/scm.types';
 export * from './domain/ports/scm.store';
 export * from './application/scm.service';
 export * from './application/scm-linker.service';
+export * from './application/scm-backfill.service';
 export * from './application/scm-key-parser';
 export * from './application/github-webhook.parser';
 export * from './interface/http/dto/scm-request.dto';

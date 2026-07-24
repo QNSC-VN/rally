@@ -24,3 +24,9 @@ export function extractWorkItemKeys(...texts: Array<string | null | undefined>):
   }
   return [...found];
 }
+
+/** The repo's short name (last path segment of `owner/name`), used in changeset display names. */
+export function repoShortName(fullName: string): string {
+  const parts = fullName.split('/');
+  return parts[parts.length - 1] || fullName;
+}
