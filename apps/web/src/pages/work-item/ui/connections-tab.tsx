@@ -9,6 +9,7 @@
  * small per work item, so we fetch one generous page and filter client-side.
  */
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { GitCommitHorizontal, GitPullRequest } from 'lucide-react'
 
 import {
@@ -202,6 +203,7 @@ function includesCI(haystack: string, needle: string): boolean {
 // ── Connections (Pull Requests) sub-tab ──────────────────────────────────────
 
 function ConnectionsSubTab({ workItemId }: { workItemId: string }) {
+  const { t } = useTranslation('work-items')
   const { data, isLoading } = useWorkItemConnections(workItemId)
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState<'all' | ScmConnection['type']>('all')
@@ -224,23 +226,23 @@ function ConnectionsSubTab({ workItemId }: { workItemId: string }) {
       search={{
         value: search,
         onChange: setSearch,
-        placeholder: 'Search connections…',
+        placeholder: t('connections.search'),
         width: 220,
       }}
       activeFilterCount={typeFilter === 'all' ? 0 : 1}
       filters={
         <label className="flex items-center gap-1.5 text-ui-sm font-semibold text-muted-foreground">
-          Type
+          {t('connections.type')}
           <InlineSelect
             value={typeFilter}
-            aria-label="Filter by type"
+            aria-label={t('connections.type')}
             onChange={(e) => setTypeFilter(e.target.value as typeof typeFilter)}
             className="w-auto"
           >
-            <option value="all">All types</option>
-            <option value="pull_request">Pull Request</option>
-            <option value="build">Build</option>
-            <option value="branch">Branch</option>
+            <option value="all">{t('connections.allTypes')}</option>
+            <option value="pull_request">{t('connections.types.pull_request')}</option>
+            <option value="build">{t('connections.types.build')}</option>
+            <option value="branch">{t('connections.types.branch')}</option>
           </InlineSelect>
         </label>
       }
@@ -255,7 +257,7 @@ function ConnectionsSubTab({ workItemId }: { workItemId: string }) {
       empty={
         filtered.length === 0 ? (
           <div className="flex flex-1 items-center justify-center px-3 py-10 text-center text-ui-sm text-foreground-subtle">
-            No pull requests linked. Reference this item's key in a PR title, branch, or commit.
+            {t('connections.empty')}
           </div>
         ) : undefined
       }

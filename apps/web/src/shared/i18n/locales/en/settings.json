@@ -216,5 +216,29 @@
     "count_other": "{{count}} permissions",
     "protectedRole": "Protected role — permissions are fixed and cannot be edited.",
     "reset": "Reset"
+  },
+  "integrations": {
+    "connectedRepositories": "Connected repositories",
+    "loading": "Loading…",
+    "empty": {
+      "title": "No repositories connected",
+      "description": "Map a repository to a project below, then add the webhook to GitHub."
+    },
+    "col": {
+      "repository": "Repository",
+      "provider": "Provider",
+      "projects": "Projects"
+    },
+    "remove": "Remove {{name}}",
+    "connect": "Connect a repository",
+    "provider": "Provider",
+    "providers": {
+      "github": "GitHub.com",
+      "ghe": "GitHub Enterprise"
+    },
+    "repositoryLabel": "Repository (owner/name)",
+    "add": "Add",
+    "projectsItReferences": "Projects it references",
+    "noProjects": "No projects"
   }
 }

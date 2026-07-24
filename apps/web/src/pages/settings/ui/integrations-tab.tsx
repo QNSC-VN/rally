@@ -5,6 +5,7 @@
  * the GitHub side.
  */
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Trash2, Loader2, Plug } from 'lucide-react'
 
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
@@ -22,6 +23,7 @@ import { NativeSelect } from '@/shared/ui/native-select'
 import { EmptyState } from '@/shared/ui/empty-state'
 
 export function IntegrationsTab() {
+  const { t } = useTranslation('settings')
   const { workspace } = useAppContext()
   const workspaceId = workspace?.workspaceId
   const { data: repos = [], isLoading } = useScmRepositories(workspaceId)
@@ -60,23 +62,25 @@ export function IntegrationsTab() {
     <div className="max-w-3xl space-y-8">
       {/* Existing mappings */}
       <section>
-        <h3 className="mb-2 text-ui-md font-semibold text-foreground">Connected repositories</h3>
+        <h3 className="mb-2 text-ui-md font-semibold text-foreground">
+          {t('integrations.connectedRepositories')}
+        </h3>
         {isLoading ? (
-          <p className="text-ui-sm text-foreground-subtle">Loading…</p>
+          <p className="text-ui-sm text-foreground-subtle">{t('integrations.loading')}</p>
         ) : repos.length === 0 ? (
           <EmptyState
             icon={<Plug size={22} className="text-border-strong" />}
-            title="No repositories connected"
-            description="Map a repository to a project below, then add the webhook to GitHub."
+            title={t('integrations.empty.title')}
+            description={t('integrations.empty.description')}
           />
         ) : (
           <div className="overflow-hidden rounded-lg border border-border-subtle">
             <table className="w-full border-collapse text-ui-sm">
               <thead className="bg-surface-subtle">
                 <tr className="text-left text-ui-xs text-foreground-subtle">
-                  <th className="px-3 py-2 font-semibold">Repository</th>
-                  <th className="px-3 py-2 font-semibold">Provider</th>
-                  <th className="px-3 py-2 font-semibold">Projects</th>
+                  <th className="px-3 py-2 font-semibold">{t('integrations.col.repository')}</th>
+                  <th className="px-3 py-2 font-semibold">{t('integrations.col.provider')}</th>
+                  <th className="px-3 py-2 font-semibold">{t('integrations.col.projects')}</th>
                   <th className="px-3 py-2" />
                 </tr>
               </thead>
@@ -90,7 +94,7 @@ export function IntegrationsTab() {
                     </td>
                     <td className="px-3 py-2 text-right">
                       <button
-                        aria-label={`Remove ${r.fullName}`}
+                        aria-label={t('integrations.remove', { name: r.fullName })}
                         className="text-foreground-subtle hover:text-destructive"
                         onClick={() => {
                           void deleteRepo
@@ -114,20 +118,22 @@ export function IntegrationsTab() {
 
       {/* Add mapping */}
       <section className="space-y-3">
-        <h3 className="text-ui-md font-semibold text-foreground">Connect a repository</h3>
+        <h3 className="text-ui-md font-semibold text-foreground">{t('integrations.connect')}</h3>
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1">
-            <span className="text-ui-xs text-foreground-subtle">Provider</span>
+            <span className="text-ui-xs text-foreground-subtle">{t('integrations.provider')}</span>
             <NativeSelect
               value={provider}
               onChange={(e) => setProvider(e.target.value as ScmProvider)}
             >
-              <option value="ghe">GitHub Enterprise</option>
-              <option value="github">GitHub.com</option>
+              <option value="ghe">{t('integrations.providers.ghe')}</option>
+              <option value="github">{t('integrations.providers.github')}</option>
             </NativeSelect>
           </label>
           <label className="flex flex-1 flex-col gap-1" style={{ minWidth: 220 }}>
-            <span className="text-ui-xs text-foreground-subtle">Repository (owner/name)</span>
+            <span className="text-ui-xs text-foreground-subtle">
+              {t('integrations.repositoryLabel')}
+            </span>
             <Input
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
@@ -136,15 +142,19 @@ export function IntegrationsTab() {
           </label>
           <Button type="button" onClick={() => void add()} disabled={createRepo.isPending}>
             {createRepo.isPending && <Loader2 size={12} className="animate-spin" />}
-            Add
+            {t('integrations.add')}
           </Button>
         </div>
 
         <div>
-          <span className="text-ui-xs text-foreground-subtle">Projects it references</span>
+          <span className="text-ui-xs text-foreground-subtle">
+            {t('integrations.projectsItReferences')}
+          </span>
           <div className="mt-1 grid max-h-40 grid-cols-2 gap-1.5 overflow-y-auto rounded border border-input bg-input-background p-2">
             {projects.length === 0 ? (
-              <span className="text-ui-sm text-foreground-subtle">No projects</span>
+              <span className="text-ui-sm text-foreground-subtle">
+                {t('integrations.noProjects')}
+              </span>
             ) : (
               projects.map((p) => (
                 <label key={p.id} className="flex items-center gap-2 text-ui-md text-foreground">
