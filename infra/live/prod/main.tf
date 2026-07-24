@@ -483,6 +483,10 @@ module "migrator" {
     # no task-role change here (the migrator already reuses module.api's role).
     ENTRA_CLIENT_ID          = var.entra_client_id
     IDENTITY_HOME_SECRET_REF = module.secrets.secret_arns["entra-client-secret"]
+    # Invite-only access: the seed writes jitEnabled=false onto the home
+    # connection, so SSO authenticates but only invited / already-provisioned
+    # users (+ platform-admins) get in. No silent auto-join for any qnsc.vn user.
+    SSO_JIT_ENABLED = "false"
   }
 
   secrets = {
