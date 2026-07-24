@@ -21,6 +21,17 @@ export const DevLoginSchema = z.object({
 });
 
 export class DevLoginDto extends createZodDto(DevLoginSchema) {}
+
+// ── Email-first login start (multi-IdP broker) ───────────────────────────────
+
+export const LoginStartSchema = z.object({
+  /** The user's email — routed to its federated connection (directory or invited-shared). */
+  email: z.string().email('a valid email is required').max(320),
+  /** Same-origin path to land on after login (validated server-side). */
+  returnTo: z.string().optional(),
+});
+
+export class LoginStartDto extends createZodDto(LoginStartSchema) {}
 // ── Switch workspace ─────────────────────────────────────────────────────────
 
 export const SwitchWorkspaceSchema = z.object({

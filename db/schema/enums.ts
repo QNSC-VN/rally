@@ -19,6 +19,13 @@ export const ssoProviderEnum = pgEnum('sso_provider', ['entra', 'saml', 'google'
 /** Lifecycle state of an SSO connection. */
 export const ssoConnectionStatusEnum = pgEnum('sso_connection_status', ['active', 'disabled']);
 
+/**
+ * Multi-IdP broker routing model. `directory` connections OWN their email
+ * domains (domain-routed, JIT-by-domain); `shared` connections are consumer
+ * IdPs we don't own (e.g. consumer Google) — never domain-routed, invite-gated.
+ */
+export const ssoConnectionKindEnum = pgEnum('sso_connection_kind', ['directory', 'shared']);
+
 // ── workspace ──────────────────────────────────────────────────────────────
 
 export const workspaceStatusEnum = pgEnum('workspace_status', ['active', 'archived']);

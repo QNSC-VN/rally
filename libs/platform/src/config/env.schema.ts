@@ -169,6 +169,18 @@ export const EnvSchema = z
      */
     ENTRA_REDIRECT_URI: z.string().url(),
     /**
+     * Multi-IdP broker: the single app-level OIDC callback shared by every
+     * federated connection (the same `/bff/callback` endpoint). Defaults to
+     * ENTRA_REDIRECT_URI when unset (the home connection reuses it).
+     */
+    IDENTITY_REDIRECT_URI: z.string().url().optional(),
+    /**
+     * Multi-IdP broker: Secrets Manager ref (name/ARN, e.g. `rally/${env}/sso/home`)
+     * holding the HOME Entra client secret for the broker path. When unset the home
+     * connection is seeded without a secret ref and only the legacy home flow works.
+     */
+    IDENTITY_HOME_SECRET_REF: z.string().optional(),
+    /**
      * Same-origin path the browser lands on after a successful BFF login when no
      * safe `returnTo` was supplied. Must be a root-relative path.
      */

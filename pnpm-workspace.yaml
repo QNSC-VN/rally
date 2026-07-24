@@ -18,6 +18,10 @@ overrides:
   "brace-expansion@2": "^2.1.2"
   "brace-expansion@5": "^5.0.7"
   "js-yaml@4": "^4.3.0"
+  # GHSA-c96f-x56v-gq3h — HIGH "DDoS with HTTP2", fixed in 9.7.0. Transitive
+  # via fastify@5.10.0 / @nestjs/platform-fastify (declared range ^9.6.0, so
+  # 9.7.0 is in-range). A newly published advisory that also affects main.
+  "find-my-way@<9.7.0": "9.7.0"
   # GHSA-4c8g-83qw-93j6 — host confusion via failed IDN canonicalization,
   # fixed in 3.1.3. Only reachable as a deep transitive dep (ajv-formats →
   # fast-json-stringify → fastify's ecosystem), so pinned via override rather
