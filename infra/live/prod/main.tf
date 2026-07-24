@@ -209,7 +209,7 @@ module "ecs_cluster" {
 
 # ── ECS Service — API ─────────────────────────────────────────────────────────
 module "api" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v1.3.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v1.4.0"
 
   service_name = "api"
   cluster_name = module.ecs_cluster.cluster_name
@@ -280,6 +280,12 @@ module "api" {
     { name = "ENTRA_TENANT_ID", value = var.entra_tenant_id },
     { name = "ENTRA_CLIENT_ID", value = var.entra_client_id },
     { name = "ENTRA_REDIRECT_URI", value = "${local.app_base_url}/v1/bff/callback" },
+    # Multi-IdP broker: the home (company Entra) connection resolves its client
+    # secret at RUNTIME from this ref. Reuses entra-client-secret (same Entra
+    # app) — no duplicate copy to drift on rotation. Unset leaves the broker
+    # home path dormant (legacy GET /bff/login unaffected). The task role is
+    # granted GetSecretValue on it via task_secret_arns below.
+    { name = "IDENTITY_HOME_SECRET_REF", value = module.secrets.secret_arns["entra-client-secret"] },
     # Comma-separated emails auto-granted workspace_admin on every SSO login
     { name = "PLATFORM_ADMIN_EMAILS", value = "nghiavt@qnsc.vn,quangld@qnsc.vn,hieuvbm@qnsc.vn,anhntn@qnsc.vn" },
     # Messaging — SQS queue URLs injected at deploy time from module outputs
@@ -316,6 +322,16 @@ module "api" {
   sqs_queue_arns = values(module.messaging.queue_arns)
   sns_topic_arns = values(module.messaging.topic_arns)
 
+  # Multi-IdP broker: the TASK role reads per-connection OIDC client secrets at
+  # RUNTIME (resolved from the sso_connections row on demand). The home
+  # connection reuses entra-client-secret; the sso/* prefix covers future
+  # vendor connections added out-of-band (create the secret + the DB row, no TF
+  # change). Distinct from secret_arns above (execution role, boot-time inject).
+  task_secret_arns = [
+    module.secrets.secret_arns["entra-client-secret"],
+    "arn:aws:secretsmanager:${local.region}:${data.aws_caller_identity.current.account_id}:secret:rally/${local.env}/sso/*",
+  ]
+
   cpu_target_pct     = 60 # tighter target in prod
   memory_target_pct  = 70
   log_retention_days = 90 # 90 days — SOC 2 minimum for prod logs
@@ -325,7 +341,7 @@ module "api" {
 
 # ── ECS Service — Worker ──────────────────────────────────────────────────────
 module "worker" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v1.3.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v1.4.0"
 
   service_name = "worker"
   cluster_name = module.ecs_cluster.cluster_name
