@@ -5,7 +5,7 @@
  * We only consume `pull_request` and `push`. Payload shapes are typed minimally
  * (just the fields we read) rather than importing GitHub's full types.
  */
-import { extractWorkItemKeys } from './scm-key-parser';
+import { extractWorkItemKeys, repoShortName } from './scm-key-parser';
 import type { NormalizedPullRequest, NormalizedCommit, ScmChange } from '../domain/scm.types';
 
 interface GhPullRequestPayload {
@@ -48,12 +48,6 @@ const PR_ACTIONS = new Set([
   'closed',
   'ready_for_review',
 ]);
-
-/** Short repo label for a changeset name, e.g. "DT-SFI/dt" → "dt". */
-function repoShort(fullName: string): string {
-  const parts = fullName.split('/');
-  return parts[parts.length - 1] || fullName;
-}
 
 export function parsePullRequestEvent(payload: unknown): NormalizedPullRequest | null {
   const p = payload as GhPullRequestPayload;
@@ -101,7 +95,7 @@ export function parsePushEvent(payload: unknown): NormalizedCommit[] {
       kind: 'commit',
       repositoryFullName: fullName,
       revision: c.id,
-      shortName: `${repoShort(fullName)}:${c.id.slice(0, 8)}`,
+      shortName: `${repoShortName(fullName)}:${c.id.slice(0, 8)}`,
       message: c.message,
       uri: c.url ?? '',
       authorName: c.author?.name ?? c.author?.username ?? null,

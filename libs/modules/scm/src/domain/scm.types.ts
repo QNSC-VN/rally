@@ -3,10 +3,18 @@
  * repo→project mapping, and normalized webhook events.
  */
 
-export type ScmProvider = 'github' | 'ghe';
-export type ScmConnectionType = 'pull_request' | 'build' | 'branch';
-export type ScmChangeAction = 'A' | 'M' | 'D';
-export type ScmInboxStatus = 'pending' | 'processed' | 'ignored' | 'failed';
+// Enum-derived types come from the single source in db/schema/enums (pgEnum),
+// so domain, schema and DTO validators never drift.
+import type {
+  ScmProvider,
+  ScmConnectionType,
+  ScmInboxStatus,
+} from '../../../../../db/schema/enums';
+export type { ScmProvider, ScmConnectionType, ScmInboxStatus };
+
+/** Per-file change action inside a changeset (stored in jsonb, not a column). */
+export const SCM_CHANGE_ACTIONS = ['A', 'M', 'D'] as const;
+export type ScmChangeAction = (typeof SCM_CHANGE_ACTIONS)[number];
 
 export interface ScmChange {
   action: ScmChangeAction;

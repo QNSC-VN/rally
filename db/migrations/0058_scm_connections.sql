@@ -11,10 +11,16 @@
 
 CREATE SCHEMA IF NOT EXISTS "scm";
 --> statement-breakpoint
+CREATE TYPE "public"."scm_provider" AS ENUM('github', 'ghe');
+--> statement-breakpoint
+CREATE TYPE "public"."scm_connection_type" AS ENUM('pull_request', 'build', 'branch');
+--> statement-breakpoint
+CREATE TYPE "public"."scm_inbox_status" AS ENUM('pending', 'processed', 'ignored', 'failed');
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "scm"."repositories" (
   "id"           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   "workspace_id" uuid NOT NULL,
-  "provider"     varchar(20) NOT NULL,
+  "provider"     "public"."scm_provider" NOT NULL,
   "full_name"    varchar(255) NOT NULL,
   "base_url"     varchar(512),
   "active"       boolean NOT NULL DEFAULT true,
@@ -39,11 +45,11 @@ CREATE INDEX IF NOT EXISTS "ix_scm_repository_projects_project"
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "scm"."webhook_inbox" (
   "id"           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  "provider"     varchar(20) NOT NULL,
+  "provider"     "public"."scm_provider" NOT NULL,
   "delivery_id"  varchar(255) NOT NULL,
   "event_type"   varchar(60) NOT NULL,
   "payload"      jsonb NOT NULL,
-  "status"       varchar(20) NOT NULL DEFAULT 'pending',
+  "status"       "public"."scm_inbox_status" NOT NULL DEFAULT 'pending',
   "attempts"     integer NOT NULL DEFAULT 0,
   "last_error"   text,
   "scheduled_at" timestamptz NOT NULL DEFAULT now(),
@@ -61,8 +67,8 @@ CREATE TABLE IF NOT EXISTS "scm"."connections" (
   "id"                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   "workspace_id"      uuid NOT NULL,
   "work_item_id"      uuid NOT NULL,
-  "provider"          varchar(20) NOT NULL,
-  "type"              varchar(20) NOT NULL,
+  "provider"          "public"."scm_provider" NOT NULL,
+  "type"              "public"."scm_connection_type" NOT NULL,
   "external_id"       varchar(255) NOT NULL,
   "name"              text NOT NULL,
   "url"               text NOT NULL,
@@ -86,7 +92,7 @@ CREATE TABLE IF NOT EXISTS "scm"."changesets" (
   "id"                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   "workspace_id"         uuid NOT NULL,
   "work_item_id"         uuid NOT NULL,
-  "provider"             varchar(20) NOT NULL,
+  "provider"             "public"."scm_provider" NOT NULL,
   "revision"             varchar(64) NOT NULL,
   "name"                 varchar(128) NOT NULL,
   "message"              text,

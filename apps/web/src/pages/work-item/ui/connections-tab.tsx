@@ -8,7 +8,7 @@
  * pagination + shared PaginationFooter). No bespoke table/footer. Lists are
  * small per work item, so we fetch one generous page and filter client-side.
  */
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { GitCommitHorizontal, GitPullRequest } from 'lucide-react'
 
@@ -71,6 +71,7 @@ const CONNECTION_COLUMNS: ColumnSpec<ScmConnection, ScmCtx, ConnColKey>[] = [
   {
     key: 'name',
     label: 'Name',
+    sortCol: 'name',
     defaultWidth: 320,
     minWidth: 160,
     locked: true,
@@ -89,6 +90,7 @@ const CONNECTION_COLUMNS: ColumnSpec<ScmConnection, ScmCtx, ConnColKey>[] = [
   {
     key: 'type',
     label: 'Type',
+    sortCol: 'type',
     defaultWidth: 130,
     minWidth: 90,
     cellClassName: 'flex items-center px-2',
@@ -106,6 +108,7 @@ const CONNECTION_COLUMNS: ColumnSpec<ScmConnection, ScmCtx, ConnColKey>[] = [
   {
     key: 'createdAt',
     label: 'Creation Date',
+    sortCol: 'createdAt',
     defaultWidth: 190,
     minWidth: 120,
     cellClassName: 'flex items-center px-2 text-muted-foreground',
@@ -118,6 +121,7 @@ const CHANGESET_COLUMNS: ColumnSpec<ScmChangeset, ScmCtx, ChangeColKey>[] = [
   {
     key: 'name',
     label: 'Name',
+    sortCol: 'name',
     defaultWidth: 130,
     minWidth: 90,
     locked: true,
@@ -131,6 +135,7 @@ const CHANGESET_COLUMNS: ColumnSpec<ScmChangeset, ScmCtx, ChangeColKey>[] = [
   {
     key: 'message',
     label: 'Message',
+    sortCol: 'message',
     defaultWidth: 360,
     minWidth: 160,
     grow: true,
@@ -169,6 +174,7 @@ const CHANGESET_COLUMNS: ColumnSpec<ScmChangeset, ScmCtx, ChangeColKey>[] = [
   {
     key: 'author',
     label: 'Author',
+    sortCol: 'author',
     defaultWidth: 160,
     minWidth: 100,
     cellClassName: 'flex items-center px-2',
@@ -178,6 +184,7 @@ const CHANGESET_COLUMNS: ColumnSpec<ScmChangeset, ScmCtx, ChangeColKey>[] = [
   {
     key: 'committedAt',
     label: 'Commit Timestamp',
+    sortCol: 'committedAt',
     defaultWidth: 190,
     minWidth: 120,
     cellClassName: 'flex items-center px-2 text-muted-foreground',
@@ -200,6 +207,41 @@ function includesCI(haystack: string, needle: string): boolean {
   return haystack.toLowerCase().includes(needle.trim().toLowerCase())
 }
 
+/** Click-to-sort state for the shared header (same contract as the list pages). */
+function useColumnSort() {
+  const [sortCol, setSortCol] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const onSort = useCallback(
+    (col: string) => {
+      if (sortCol === col) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+      else {
+        setSortCol(col)
+        setSortDir('asc')
+      }
+    },
+    [sortCol],
+  )
+  return { sortCol, sortDir, sort: { col: sortCol, dir: sortDir, onSort } }
+}
+
+/** Client-side sort over the (small, fully-loaded) linked list. */
+function sortRows<T>(
+  rows: T[],
+  sortCol: string | null,
+  sortDir: 'asc' | 'desc',
+  keyOf: (row: T, col: string) => string | number,
+): T[] {
+  if (!sortCol) return rows
+  const dir = sortDir === 'asc' ? 1 : -1
+  return [...rows].sort((a, b) => {
+    const av = keyOf(a, sortCol)
+    const bv = keyOf(b, sortCol)
+    if (av < bv) return -1 * dir
+    if (av > bv) return 1 * dir
+    return 0
+  })
+}
+
 // ── Connections (Pull Requests) sub-tab ──────────────────────────────────────
 
 function ConnectionsSubTab({ workItemId }: { workItemId: string }) {
@@ -207,6 +249,7 @@ function ConnectionsSubTab({ workItemId }: { workItemId: string }) {
   const { data, isLoading } = useWorkItemConnections(workItemId)
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState<'all' | ScmConnection['type']>('all')
+  const { sortCol, sortDir, sort } = useColumnSort()
   const table = useDataTable<ScmConnection, ScmCtx, ConnColKey>(CONNECTION_COLUMNS, {
     storageKey: STORAGE_KEYS.SCM_CONNECTIONS_COLUMNS,
   })
@@ -219,6 +262,23 @@ function ConnectionsSubTab({ workItemId }: { workItemId: string }) {
         (search.trim() === '' || includesCI(`${c.name} ${c.url}`, search)),
     )
   }, [data, search, typeFilter])
+
+  const sorted = useMemo(
+    () =>
+      sortRows(filtered, sortCol, sortDir, (c, col) => {
+        switch (col) {
+          case 'name':
+            return c.name.toLowerCase()
+          case 'type':
+            return CONNECTION_TYPE_LABEL[c.type] ?? c.type
+          case 'createdAt':
+            return c.createdAt ?? ''
+          default:
+            return ''
+        }
+      }),
+    [filtered, sortCol, sortDir],
+  )
 
   return (
     <ListPageScaffold<ScmConnection, ConnColKey>
@@ -250,12 +310,13 @@ function ConnectionsSubTab({ workItemId }: { workItemId: string }) {
       headerProps={table.headerProps}
       headerColumns={table.headerColumns}
       colStyles={table.colStyles}
+      sort={sort}
       padClassName="gap-2 px-3"
-      items={filtered}
+      items={sorted}
       loading={isLoading}
       skeleton={{ rows: 6 }}
       empty={
-        filtered.length === 0 ? (
+        sorted.length === 0 ? (
           <div className="flex flex-1 items-center justify-center px-3 py-10 text-center text-ui-sm text-foreground-subtle">
             {t('connections.empty')}
           </div>
@@ -273,36 +334,93 @@ function ConnectionsSubTab({ workItemId }: { workItemId: string }) {
 // ── Changesets (commits) sub-tab ─────────────────────────────────────────────
 
 function ChangesetsSubTab({ workItemId }: { workItemId: string }) {
+  const { t } = useTranslation('work-items')
   const { data, isLoading } = useWorkItemChangesets(workItemId)
   const [search, setSearch] = useState('')
+  const [authorFilter, setAuthorFilter] = useState('all')
+  const { sortCol, sortDir, sort } = useColumnSort()
   const table = useDataTable<ScmChangeset, ScmCtx, ChangeColKey>(CHANGESET_COLUMNS, {
     storageKey: STORAGE_KEYS.SCM_CHANGESETS_COLUMNS,
   })
 
-  const filtered = useMemo(() => {
-    const rows = data?.data ?? []
-    if (search.trim() === '') return rows
-    return rows.filter((c) =>
-      includesCI(`${c.name} ${c.message ?? ''} ${c.authorName ?? ''}`, search),
-    )
-  }, [data, search])
+  const rows = useMemo(() => data?.data ?? [], [data])
+  // Distinct authors present on this item's commits — the changeset filter facet.
+  const authors = useMemo(
+    () => [...new Set(rows.map((c) => c.authorName).filter((a): a is string => !!a))].sort(),
+    [rows],
+  )
+
+  const filtered = useMemo(
+    () =>
+      rows.filter(
+        (c) =>
+          (authorFilter === 'all' || c.authorName === authorFilter) &&
+          (search.trim() === '' ||
+            includesCI(`${c.name} ${c.message ?? ''} ${c.authorName ?? ''}`, search)),
+      ),
+    [rows, search, authorFilter],
+  )
+
+  const sorted = useMemo(
+    () =>
+      sortRows(filtered, sortCol, sortDir, (c, col) => {
+        switch (col) {
+          case 'name':
+            return c.name.toLowerCase()
+          case 'message':
+            return (c.message ?? '').toLowerCase()
+          case 'author':
+            return (c.authorName ?? '').toLowerCase()
+          case 'committedAt':
+            return c.committedAt ?? ''
+          default:
+            return ''
+        }
+      }),
+    [filtered, sortCol, sortDir],
+  )
 
   return (
     <ListPageScaffold<ScmChangeset, ChangeColKey>
       selectable={false}
-      search={{ value: search, onChange: setSearch, placeholder: 'Search changesets…', width: 220 }}
+      search={{
+        value: search,
+        onChange: setSearch,
+        placeholder: t('connections.searchChangesets'),
+        width: 220,
+      }}
+      activeFilterCount={authorFilter === 'all' ? 0 : 1}
+      filters={
+        <label className="flex items-center gap-1.5 text-ui-sm font-semibold text-muted-foreground">
+          {t('connections.author')}
+          <InlineSelect
+            value={authorFilter}
+            aria-label={t('connections.author')}
+            onChange={(e) => setAuthorFilter(e.target.value)}
+            className="w-auto"
+          >
+            <option value="all">{t('connections.allAuthors')}</option>
+            {authors.map((a) => (
+              <option key={a} value={a}>
+                {a}
+              </option>
+            ))}
+          </InlineSelect>
+        </label>
+      }
       fields={<ColumnFieldsMenu {...table.fieldsMenuProps} />}
       headerProps={table.headerProps}
       headerColumns={table.headerColumns}
       colStyles={table.colStyles}
+      sort={sort}
       padClassName="gap-2 px-3"
-      items={filtered}
+      items={sorted}
       loading={isLoading}
       skeleton={{ rows: 6 }}
       empty={
-        filtered.length === 0 ? (
+        sorted.length === 0 ? (
           <div className="flex flex-1 items-center justify-center px-3 py-10 text-center text-ui-sm text-foreground-subtle">
-            No commits linked. Reference this item's key in a commit message.
+            {t('connections.emptyChangesets')}
           </div>
         ) : undefined
       }

@@ -142,6 +142,29 @@ export const notificationJobStatusEnum = pgEnum('notification_job_status', [
   'failed',
 ]);
 
+// ── scm (source-control connections) ─────────────────────────────────────────
+
+/** SCM host. Provider-tagged for future SCMs (GitLab/Bitbucket). */
+export const scmProviderEnum = pgEnum('scm_provider', ['github', 'ghe']);
+
+/** Kind of linked connection artifact. */
+export const scmConnectionTypeEnum = pgEnum('scm_connection_type', [
+  'pull_request',
+  'build',
+  'branch',
+]);
+
+/** Status for rows in scm.webhook_inbox (mirrors the outbox relay lifecycle). */
+export const scmInboxStatusEnum = pgEnum('scm_inbox_status', [
+  'pending',
+  'processed',
+  'ignored',
+  'failed',
+]);
+
+/** Status for rows in scm.backfill_jobs. */
+export const scmBackfillStatusEnum = pgEnum('scm_backfill_status', ['pending', 'done', 'failed']);
+
 // P3.4 — Defect severity (separate from priority). Aligned to BA taxonomy
 // (mini-rally): tokens now equal labels (Critical / Major / Minor / Trivial /
 // None). Migration 0040 renames high→major, medium→minor, low→trivial.
@@ -233,6 +256,10 @@ export type ReleaseStatus = (typeof releaseStatusEnum.enumValues)[number];
 export type OutboxStatus = (typeof outboxStatusEnum.enumValues)[number];
 export type EmailJobStatus = (typeof emailJobStatusEnum.enumValues)[number];
 export type NotificationJobStatus = (typeof notificationJobStatusEnum.enumValues)[number];
+export type ScmProvider = (typeof scmProviderEnum.enumValues)[number];
+export type ScmConnectionType = (typeof scmConnectionTypeEnum.enumValues)[number];
+export type ScmInboxStatus = (typeof scmInboxStatusEnum.enumValues)[number];
+export type ScmBackfillStatus = (typeof scmBackfillStatusEnum.enumValues)[number];
 export type MilestoneStatus = (typeof milestoneStatusEnum.enumValues)[number];
 export type DefectSeverity = (typeof defectSeverityEnum.enumValues)[number];
 export type DefectEnvironment = (typeof defectEnvironmentEnum.enumValues)[number];
