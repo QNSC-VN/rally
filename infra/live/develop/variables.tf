@@ -21,6 +21,19 @@ variable "entra_client_id" {
   default     = ""
 }
 
+variable "github_app_id" {
+  type        = string
+  default     = ""
+  description = <<-EOT
+    GitHub App ID for the SCM Connections backfill (non-secret). Injected via
+    TF_VAR_github_app_id in CI. Leave empty until the "Rally SCM" GitHub App is
+    registered — an empty value keeps backfill dormant (isConfigured() = false)
+    and the stack still applies cleanly. The App private key + webhook secret are
+    NOT here — they live in Secrets Manager (github-app-private-key,
+    github-webhook-secret).
+  EOT
+}
+
 variable "cloudflare_api_token" {
   type        = string
   sensitive   = true
