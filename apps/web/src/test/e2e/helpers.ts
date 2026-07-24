@@ -37,8 +37,12 @@ const SEED_CONTEXT = {
  */
 export async function login(page: Page): Promise<void> {
   await page.goto('/login', { waitUntil: 'domcontentloaded' })
-  await page.fill('input[type="email"]', ADMIN.email)
-  await page.click('button[type="submit"]')
+  // Scope to the dev-login form specifically: the page also renders the
+  // email-first multi-IdP broker form and the Microsoft SSO button, each with
+  // their own email input / submit. `#dev-email` is the dev form's stable id.
+  const devForm = page.locator('form:has(#dev-email)')
+  await devForm.locator('input[type="email"]').fill(ADMIN.email)
+  await devForm.locator('button[type="submit"]').click()
   await page.waitForURL((u) => !u.pathname.includes('login'), { timeout: 20_000 })
   // Seed the project/workspace context so project-scoped screens work without
   // driving the selector UI. The app re-syncs workspace from the API on load.
