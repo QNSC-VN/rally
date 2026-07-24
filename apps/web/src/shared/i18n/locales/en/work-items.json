@@ -29,6 +29,7 @@
     "details": "Details",
     "tasks": "Tasks",
     "defects": "Defects",
+    "connections": "Connections",
     "history": "Revision History"
   },
   "delete": {

@@ -7,6 +7,7 @@ import {
   Users,
   UsersRound,
   Shield,
+  Plug,
   FileText,
   Lock,
 } from 'lucide-react'
@@ -21,6 +22,7 @@ import { MembersTab } from './ui/members-tab'
 import { TeamsTab } from './ui/teams-tab'
 import { AuditLogTab } from './ui/audit-log-tab'
 import { RolesTab } from './ui/roles-tab'
+import { IntegrationsTab } from './ui/integrations-tab'
 
 // ── Tab config (mirrors mockup SettingsPage.tsx) ──────────────────────────────
 
@@ -71,6 +73,12 @@ const SIDEBAR: SettingsGroup[] = [
         key: 'roles',
         label: 'nav.roles',
         icon: Shield,
+        requires: PERMISSION.WORKSPACE_MANAGE_MEMBERS,
+      },
+      {
+        key: 'integrations',
+        label: 'nav.integrations',
+        icon: Plug,
         requires: PERMISSION.WORKSPACE_MANAGE_MEMBERS,
       },
       { key: 'audit', label: 'nav.audit', icon: FileText, requires: PERMISSION.WORKSPACE_ALL },
@@ -158,6 +166,8 @@ export function SettingsPage() {
           <AuditLogTab />
         ) : activeTab === 'roles' ? (
           <RolesTab />
+        ) : activeTab === 'integrations' ? (
+          <IntegrationsTab />
         ) : (
           <ComingSoonTab label={activeLabel} />
         )}
