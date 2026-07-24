@@ -29,6 +29,7 @@
     "details": "Details",
     "tasks": "Tasks",
     "defects": "Defects",
+    "connections": "Connections",
     "history": "Revision History"
   },
   "delete": {
@@ -96,5 +97,20 @@
     "tags": "Tags",
     "creationDate": "Creation Date",
     "readOnlyNotice": "You have read-only access to this item."
+  },
+  "connections": {
+    "search": "Search connections…",
+    "type": "Type",
+    "allTypes": "All types",
+    "types": {
+      "pull_request": "Pull Request",
+      "build": "Build",
+      "branch": "Branch"
+    },
+    "empty": "No pull requests linked. Reference this item's key in a PR title, branch, or commit.",
+    "searchChangesets": "Search changesets…",
+    "author": "Author",
+    "allAuthors": "All authors",
+    "emptyChangesets": "No commits linked. Reference this item's key in a commit message."
   }
 }

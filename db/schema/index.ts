@@ -27,6 +27,9 @@ export * from './work';
 // ── messaging schema ──────────────────────────────────────────────────────
 export * from './messaging';
 
+// ── scm schema (source-control connections + changesets) ──────────────────
+export * from './scm';
+
 // ── notifications schema ──────────────────────────────────────────────────
 export * from './notifications';
 
