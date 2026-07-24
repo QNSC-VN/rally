@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.2.4](https://github.com/QNSC-VN/rally/compare/v0.2.3...v0.2.4) (2026-07-24)
+
+
+### ✨ Features
+
+* align app with BA SRS and unify entity detail pages ([#128](https://github.com/QNSC-VN/rally/issues/128)) ([7074023](https://github.com/QNSC-VN/rally/commit/7074023705c54dcfbc472de11bfdcf6cd48ff873))
+* build Teams & Users management (Module 08) + unify form-control styling ([#134](https://github.com/QNSC-VN/rally/issues/134)) ([cc3139d](https://github.com/QNSC-VN/rally/commit/cc3139d15a089654aae3ca52634f5cd36d8a62f8))
+* **identity:** home SSO shortcut + invite-only access; drop legacy login (T18) ([#144](https://github.com/QNSC-VN/rally/issues/144)) ([33e1c66](https://github.com/QNSC-VN/rally/commit/33e1c668825ff79e8b46472b7f855028276c6e66))
+* **identity:** multi-IdP OIDC broker — email-first login + Secrets Manager ([#140](https://github.com/QNSC-VN/rally/issues/140)) ([8786359](https://github.com/QNSC-VN/rally/commit/8786359509cd7001062517136badd2ebc5ec21fb))
+* **infra:** dedicate rally prod cache per product ([#109](https://github.com/QNSC-VN/rally/issues/109)) ([9a185ea](https://github.com/QNSC-VN/rally/commit/9a185eaeaf092ae7b74b879bb05f4fa0f0e96f67))
+* **infra:** grant api task role runtime read of broker OIDC secrets ([#141](https://github.com/QNSC-VN/rally/issues/141)) ([a5858d4](https://github.com/QNSC-VN/rally/commit/a5858d4bcc426ff32606d485ac0a8e140f057704))
+* **rally:** close BA E2E gaps + FE table DRY refactor ([#111](https://github.com/QNSC-VN/rally/issues/111)) ([21b865b](https://github.com/QNSC-VN/rally/commit/21b865b2b64de76fcef2d74b8559c461c219edea))
+* **web:** frontend component-system migration (P0-P4) — tokens, decomposition, tables, i18n ([#112](https://github.com/QNSC-VN/rally/issues/112)) ([e140754](https://github.com/QNSC-VN/rally/commit/e140754be0df932f79bd657628d82b5c0dbf4b0d))
+* **web:** paste-to-upload images in rich text + page-level Save/Cancel bar ([#123](https://github.com/QNSC-VN/rally/issues/123)) ([0e2f426](https://github.com/QNSC-VN/rally/commit/0e2f426caecbd27159b43740a6e4ec5cf02828fc))
+* **web:** unify Releases and Milestones under the Timeboxes screen (DEV-004) ([#124](https://github.com/QNSC-VN/rally/issues/124)) ([23711de](https://github.com/QNSC-VN/rally/commit/23711de67a8f4b36a21f8b09ac4af6dcfb822b25))
+* **work-items:** rebuild attachment uploads on shared storage layer ([#114](https://github.com/QNSC-VN/rally/issues/114)) ([6246067](https://github.com/QNSC-VN/rally/commit/624606731ce2a869ebdf60602c9551599265e38c))
+
+
+### 🐛 Bug Fixes
+
+* **ci:** bump qnsc-ci web-deploy pin to v1.4.1 ([#126](https://github.com/QNSC-VN/rally/issues/126)) ([a493711](https://github.com/QNSC-VN/rally/commit/a493711069ec27c8177e9309335309fad5f5e003))
+* **db:** read credentials from the RDS-managed secret, not a copy ([#115](https://github.com/QNSC-VN/rally/issues/115)) ([eb37211](https://github.com/QNSC-VN/rally/commit/eb372114857fb31fa993c636953b552a72490ba1))
+* **infra:** give the migrator the broker home-connection env ([#142](https://github.com/QNSC-VN/rally/issues/142)) ([06df0a1](https://github.com/QNSC-VN/rally/commit/06df0a1ceabe98951899f8a82341abfe8183156d))
+* **notifications:** close transaction, preference, and retry gaps in the outbox pipeline ([#117](https://github.com/QNSC-VN/rally/issues/117)) ([2c8c9c6](https://github.com/QNSC-VN/rally/commit/2c8c9c660f1baa1964e49608dc7f2f993a18d6d2))
+* **outbox:** make relay() guarantee forward progress instead of a silent no-op ([#127](https://github.com/QNSC-VN/rally/issues/127)) ([01a5920](https://github.com/QNSC-VN/rally/commit/01a5920b2bc4072b3ed5e402b9890490924cd25d))
+* **seed:** assign team_id to seeded work items and tasks ([#119](https://github.com/QNSC-VN/rally/issues/119)) ([b8fca1d](https://github.com/QNSC-VN/rally/commit/b8fca1ddc04442006aa8b024e0c81f0d2eda27b8))
+* unblock uploads + gate prod tag deploys on infra apply ([#116](https://github.com/QNSC-VN/rally/issues/116)) ([92bae88](https://github.com/QNSC-VN/rally/commit/92bae88cf99d945b7262c3a8f243ae5f1d58f203))
+* **web:** align nested task rows + add BA business-tracker retest suite ([#131](https://github.com/QNSC-VN/rally/issues/131)) ([9279905](https://github.com/QNSC-VN/rally/commit/92799054f90372dcd06f6ce0e73167ee5f845060))
+* **web:** allow R2 in CSP connect-src so uploads can reach the bucket ([#118](https://github.com/QNSC-VN/rally/issues/118)) ([29f4292](https://github.com/QNSC-VN/rally/commit/29f42926c48186665b875b61c6c14191193549f6))
+* **web:** centralize query invalidation with a tag-based registry ([#135](https://github.com/QNSC-VN/rally/issues/135)) ([cb3aeb5](https://github.com/QNSC-VN/rally/commit/cb3aeb5f0329ce22731fb61adc6231d73f967fef))
+* **web:** rewrite RichTextEditor on Tiptap — document.execCommand is dead ([#122](https://github.com/QNSC-VN/rally/issues/122)) ([996c1fc](https://github.com/QNSC-VN/rally/commit/996c1fcd30e51cc9e63d08b6aaf746a135f5ab00))
+* **web:** stop tailwind-merge from dropping button text color ([#120](https://github.com/QNSC-VN/rally/issues/120)) ([928ba11](https://github.com/QNSC-VN/rally/commit/928ba117a4d9ab65c6f8b543c403f67dfcdb3403))
+* **web:** use 'white' keyword instead of raw hex in DetailHeaderButton ([#129](https://github.com/QNSC-VN/rally/issues/129)) ([58d1de4](https://github.com/QNSC-VN/rally/commit/58d1de4da617737fefd3a27dedb833d02198f26a))
+
 ## [0.2.3](https://github.com/QNSC-VN/rally/compare/v0.2.2...v0.2.3) (2026-07-20)
 
 
