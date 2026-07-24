@@ -119,6 +119,11 @@ module "secrets" {
     "jwt-public"          = "EC P-256 (ES256) public key (PEM, base64-encoded)"
     "csrf-secret"         = "CSRF token signing secret"
     "entra-client-secret" = "Microsoft Entra confidential-client secret (BFF OIDC)"
+    # SCM (GitHub App) — minted in GitHub, pasted by hand into Secrets Manager
+    # (Terraform only scaffolds empty containers). Both stay empty/unused until
+    # the App is registered, which keeps the SCM backfill + webhook path dormant.
+    "github-webhook-secret"  = "GitHub App webhook HMAC secret (X-Hub-Signature-256)"
+    "github-app-private-key" = "GitHub App private key (PEM)"
     # MUST be scoped to BOTH R2 buckets (<product>-<env>-attachments AND
     # <product>-<env>-public-assets). StorageService uses one S3 client for both,
     # so a token scoped to attachments alone makes every avatar/logo write 403.
@@ -255,6 +260,10 @@ module "api" {
     { name = "JWT_PUBLIC_KEY", secret_arn = module.secrets.secret_arns["jwt-public"] },
     { name = "CSRF_SECRET", secret_arn = module.secrets.secret_arns["csrf-secret"] },
     { name = "ENTRA_CLIENT_SECRET", secret_arn = module.secrets.secret_arns["entra-client-secret"] },
+    # GitHub App webhook HMAC secret — the API verifies X-Hub-Signature-256 on
+    # inbound SCM webhooks (/v1/scm/webhook/*). Absent → the receiver returns 503,
+    # no boot impact. Execution-role read is covered by secret_arns above.
+    { name = "GITHUB_WEBHOOK_SECRET", secret_arn = module.secrets.secret_arns["github-webhook-secret"] },
     # Cloudflare R2 bucket-scoped credentials (S3-compatible SigV4).
     { name = "STORAGE_ACCESS_KEY_ID", secret_arn = module.secrets.secret_arns["r2-access-key-id"] },
     { name = "STORAGE_SECRET_ACCESS_KEY", secret_arn = module.secrets.secret_arns["r2-secret-access-key"] },
@@ -392,6 +401,14 @@ module "worker" {
     { name = "STORAGE_SECRET_ACCESS_KEY", secret_arn = module.secrets.secret_arns["r2-secret-access-key"] },
   ]
 
+  # SCM backfill runs in the worker (ScmBackfillRelayService): it resolves the
+  # GitHub App private key at RUNTIME to mint the App JWT, so the TASK role — not
+  # the execution role — needs GetSecretValue on it. Distinct from secret_arns
+  # above (execution role, boot-time inject). Mirrors the api's task_secret_arns.
+  task_secret_arns = [
+    module.secrets.secret_arns["github-app-private-key"],
+  ]
+
   environment_vars = [
     { name = "NODE_ENV", value = "production" },
     { name = "REDIS_URL", value = local.redis_url },
@@ -404,6 +421,11 @@ module "worker" {
     { name = "ENTRA_TENANT_ID", value = var.entra_tenant_id },
     { name = "ENTRA_CLIENT_ID", value = var.entra_client_id },
     { name = "ENTRA_REDIRECT_URI", value = "${local.app_base_url}/v1/bff/callback" },
+    # GitHub App (SCM backfill). App ID stays empty until the App is registered,
+    # keeping backfill dormant (GithubAppAuthService.isConfigured() = false). The
+    # private-key ref is the SM ARN, resolved at runtime via the task role above.
+    { name = "GITHUB_APP_ID", value = var.github_app_id },
+    { name = "GITHUB_APP_PRIVATE_KEY_SECRET_REF", value = module.secrets.secret_arns["github-app-private-key"] },
     { name = "SQS_NOTIFICATIONS_URL", value = module.messaging.queue_urls["notifications"] },
     { name = "SQS_AUDIT_URL", value = module.messaging.queue_urls["audit"] },
     { name = "SQS_REPORTING_URL", value = module.messaging.queue_urls["reporting"] },
