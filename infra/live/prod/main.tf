@@ -476,6 +476,13 @@ module "migrator" {
     # directory to the system tenant. The insert is idempotent, so re-running on
     # each deploy is safe; without it, SSO login returns 401 on first prod boot.
     ENTRA_TENANT_ID = var.entra_tenant_id
+    # Broker home connection (identity >= 5.5.0): the seed writes clientId +
+    # clientSecretRef onto the home sso_connections row. Without these it seeds
+    # null refs and broker home login can't run the confidential-client token
+    # exchange. clientSecretRef is a REF (ARN) only — not read at seed time, so
+    # no task-role change here (the migrator already reuses module.api's role).
+    ENTRA_CLIENT_ID          = var.entra_client_id
+    IDENTITY_HOME_SECRET_REF = module.secrets.secret_arns["entra-client-secret"]
   }
 
   secrets = {
