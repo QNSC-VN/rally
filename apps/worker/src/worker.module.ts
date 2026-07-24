@@ -8,12 +8,14 @@ import { PlatformModule } from '@platform';
 import { AuditModule } from '@modules/audit';
 import { NotificationsModule } from '@modules/notifications';
 import { ReportingModule } from '@modules/reporting';
+import { ScmModule } from '@modules/scm';
 import { OutboxRelayService } from './outbox/outbox-relay.service';
 import { AuditConsumer } from './consumers/audit.consumer';
 import { SnapshotCronService } from './cron/snapshot.cron';
 import { CleanupCronService } from './cron/cleanup.cron';
 import { EmailRelayService } from './email/email-relay.service';
 import { NotificationRelayService } from './notifications/notification-relay.service';
+import { ScmWebhookRelayService } from './scm/scm-webhook-relay.service';
 
 /**
  * Worker process module.
@@ -67,6 +69,7 @@ import { NotificationRelayService } from './notifications/notification-relay.ser
     AuditModule,
     NotificationsModule,
     ReportingModule,
+    ScmModule,
   ],
   providers: [
     // Transactional outbox → SNS relay
@@ -75,6 +78,8 @@ import { NotificationRelayService } from './notifications/notification-relay.ser
     EmailRelayService,
     // Notification outbox relay → in_app_notifications
     NotificationRelayService,
+    // SCM webhook inbox relay → connections/changesets
+    ScmWebhookRelayService,
     // SQS long-poll consumers
     AuditConsumer,
     // Scheduled cron jobs

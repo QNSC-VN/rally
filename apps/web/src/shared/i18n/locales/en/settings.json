@@ -16,6 +16,7 @@
     "members": "User Management",
     "teams": "Teams",
     "roles": "Roles & Permissions",
+    "integrations": "Integrations",
     "audit": "Audit Log"
   },
   "comingSoon": "Available in a future release.",
