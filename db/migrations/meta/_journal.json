@@ -414,6 +414,13 @@
       "when": 1785100003000,
       "tag": "0057_sso_connection_oidc_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1785200000000,
+      "tag": "0058_scm_connections",
+      "breakpoints": true
     }
   ]
 }

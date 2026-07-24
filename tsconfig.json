@@ -54,7 +54,9 @@
       "@modules/milestones": ["./libs/modules/milestones/src/index"],
       "@modules/milestones/*": ["./libs/modules/milestones/src/*"],
       "@modules/quality": ["./libs/modules/quality/src/index"],
-      "@modules/quality/*": ["./libs/modules/quality/src/*"]
+      "@modules/quality/*": ["./libs/modules/quality/src/*"],
+      "@modules/scm": ["./libs/modules/scm/src/index"],
+      "@modules/scm/*": ["./libs/modules/scm/src/*"]
     }
   },
   "exclude": ["node_modules", "dist", "apps/web"]

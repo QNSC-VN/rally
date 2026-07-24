@@ -679,3 +679,47 @@ export function useUnlinkWorkItem(workItemId: string | undefined) {
     meta: workItemId ? { invalidateKeys: [relationKeys.list(workItemId)] } : undefined,
   })
 }
+
+// ── SCM Connections + Changesets (Connections tab) ────────────────────────────
+// Read-only lists linked by the worker relay. Keyed under workItemKeys.all so
+// the existing 'work-item' invalidation tag refreshes them. A work item has few
+// PRs/commits, so we fetch a single generous page (mirrors the Artifacts tab).
+
+export type ScmConnection = components['schemas']['ScmConnectionResponseDto']
+export type ScmChangeset = components['schemas']['ScmChangesetResponseDto']
+
+const SCM_PAGE_LIMIT = 100
+
+export function useWorkItemConnections(workItemId: string | undefined) {
+  return useQuery({
+    queryKey: [...workItemKeys.all, 'connections', workItemId ?? ''] as const,
+    queryFn: async () => {
+      if (!workItemId) return { data: [] as ScmConnection[], total: 0 }
+      const { data, error, response } = await apiClient.GET('/v1/work-items/{id}/connections', {
+        params: { path: { id: workItemId }, query: { limit: SCM_PAGE_LIMIT } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      const rows = (data?.data ?? []) as ScmConnection[]
+      return { data: rows, total: data?.pageInfo?.total ?? rows.length }
+    },
+    enabled: !!workItemId,
+    staleTime: 15_000,
+  })
+}
+
+export function useWorkItemChangesets(workItemId: string | undefined) {
+  return useQuery({
+    queryKey: [...workItemKeys.all, 'changesets', workItemId ?? ''] as const,
+    queryFn: async () => {
+      if (!workItemId) return { data: [] as ScmChangeset[], total: 0 }
+      const { data, error, response } = await apiClient.GET('/v1/work-items/{id}/changesets', {
+        params: { path: { id: workItemId }, query: { limit: SCM_PAGE_LIMIT } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      const rows = (data?.data ?? []) as ScmChangeset[]
+      return { data: rows, total: data?.pageInfo?.total ?? rows.length }
+    },
+    enabled: !!workItemId,
+    staleTime: 15_000,
+  })
+}

@@ -14,6 +14,7 @@ import {
   BellOff,
   Bug,
   FileText,
+  GitPullRequest,
   History,
   ListChecks,
   PanelRightOpen,
@@ -25,6 +26,8 @@ import {
   useWatchers,
   useToggleWatch,
   useChildDefects,
+  useWorkItemConnections,
+  useWorkItemChangesets,
   type WorkItem,
   type UpdateWorkItemInput,
 } from '@/features/work-items/api'
@@ -35,6 +38,7 @@ import { DetailLayout } from '@/shared/ui/detail/detail-layout'
 import { DetailHeaderButton } from '@/shared/ui/detail-header'
 import { TasksTab } from './ui/tasks-tab'
 import { HistoryTab, DefectsTab } from './ui/detail-tabs'
+import { ConnectionsTab } from './ui/connections-tab'
 import { DetailSidebar } from './ui/detail-sidebar'
 import { BRAND } from '@/shared/config/brand'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
@@ -50,7 +54,7 @@ import { useUploadPastedImages } from '@/features/collaboration/use-upload-paste
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type DetailTab = 'details' | 'tasks' | 'defects' | 'history'
+type DetailTab = 'details' | 'tasks' | 'defects' | 'connections' | 'history'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -178,6 +182,13 @@ export function WorkItemDetailPage() {
   const { data: tasksForCount = [] } = useTasks(showsTasks ? itemByKey.id : undefined)
   const taskCount = tasksForCount.length
 
+  // Connections tab badge = linked pull requests + changesets (matches Rally,
+  // e.g. 11 connections + 12 changesets → "23"). Both queries live under the
+  // ['work-items'] root, so they refresh with the rest of the work-item views.
+  const { data: scmConnections } = useWorkItemConnections(itemByKey?.id)
+  const { data: scmChangesets } = useWorkItemChangesets(itemByKey?.id)
+  const connectionsCount = (scmConnections?.total ?? 0) + (scmChangesets?.total ?? 0)
+
   // Broadcom-Rally-style Save/Cancel: field edits accumulate locally (sidebar
   // dropdowns AND rich-text editors alike) instead of auto-saving on every
   // change; the floating bar below commits or discards them all at once.
@@ -212,7 +223,6 @@ export function WorkItemDetailPage() {
       })
     },
   )
-
 
   if (loadingKey) {
     return (
@@ -276,6 +286,16 @@ export function WorkItemDetailPage() {
         ]
       : []),
     {
+      id: 'connections',
+      icon: (
+        <span className="flex items-center gap-1.5">
+          <GitPullRequest size={19} />
+          <span className="text-ui-xs font-semibold tabular-nums">{connectionsCount}</span>
+        </span>
+      ),
+      label: t('tabs.connections'),
+    },
+    {
       id: 'history',
       icon: <History size={19} />,
       label: t('tabs.history'),
@@ -308,35 +328,35 @@ export function WorkItemDetailPage() {
       activeTab={activeTabId}
       onTabChange={(k) => setActiveTab(k as DetailTab)}
       actions={
-            <>
-              {/* Watcher count badge — always shown (Rally parity), even at 0. */}
-              <div
-                className="flex items-center gap-1 rounded px-2 py-1 text-ui-sm font-medium"
-                style={{ backgroundColor: 'rgba(255,255,255,0.12)', color: BRAND.accentBg }}
-                title={`${watchers.length} watcher${watchers.length !== 1 ? 's' : ''}`}
-              >
-                <Users size={12} />
-                <span>{watchers.length}</span>
-              </div>
+        <>
+          {/* Watcher count badge — always shown (Rally parity), even at 0. */}
+          <div
+            className="flex items-center gap-1 rounded px-2 py-1 text-ui-sm font-medium"
+            style={{ backgroundColor: 'rgba(255,255,255,0.12)', color: BRAND.accentBg }}
+            title={`${watchers.length} watcher${watchers.length !== 1 ? 's' : ''}`}
+          >
+            <Users size={12} />
+            <span>{watchers.length}</span>
+          </div>
 
-              {/* Watch / Unwatch — shared dark-bar toggle (primary tone when watching) */}
-              <DetailHeaderButton
-                tone={isWatching ? 'primary' : 'ghost'}
-                ariaLabel={isWatching ? 'Unwatch this item' : 'Watch this item'}
-                title={
-                  isWatching
-                    ? 'Unwatch — stop receiving notifications'
-                    : 'Watch — get notified on changes'
-                }
-                onClick={() => void toggleWatch.mutate(isWatching)}
-                disabled={toggleWatch.isPending}
-              >
-                {isWatching ? <BellOff size={14} /> : <Bell size={14} />}
-                <span>{isWatching ? t('watch.watching') : t('watch.watch')}</span>
-              </DetailHeaderButton>
-            </>
-          }
-        >
+          {/* Watch / Unwatch — shared dark-bar toggle (primary tone when watching) */}
+          <DetailHeaderButton
+            tone={isWatching ? 'primary' : 'ghost'}
+            ariaLabel={isWatching ? 'Unwatch this item' : 'Watch this item'}
+            title={
+              isWatching
+                ? 'Unwatch — stop receiving notifications'
+                : 'Watch — get notified on changes'
+            }
+            onClick={() => void toggleWatch.mutate(isWatching)}
+            disabled={toggleWatch.isPending}
+          >
+            {isWatching ? <BellOff size={14} /> : <Bell size={14} />}
+            <span>{isWatching ? t('watch.watching') : t('watch.watch')}</span>
+          </DetailHeaderButton>
+        </>
+      }
+    >
       {/* Content area */}
       <div className="flex min-h-0 flex-1 bg-avatar">
         {/* Main content */}
@@ -350,6 +370,7 @@ export function WorkItemDetailPage() {
           {activeTabId === 'defects' && isStory && (
             <DefectsTab workItemId={item.id} projectId={item.projectId} />
           )}
+          {activeTabId === 'connections' && <ConnectionsTab workItemId={item.id} />}
           {activeTabId === 'history' && <HistoryTab workItemId={item.id} />}
         </main>
 

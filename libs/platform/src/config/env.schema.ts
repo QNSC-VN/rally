@@ -59,6 +59,11 @@ export const EnvSchema = z
     // CSRF
     CSRF_SECRET: z.string().min(32),
 
+    // SCM webhooks (GitHub/GHE) — HMAC shared secret for X-Hub-Signature-256.
+    // Optional so the app boots without SCM configured; the webhook endpoint
+    // returns 503 until it is set (prod should source it from Secrets Manager).
+    GITHUB_WEBHOOK_SECRET: z.string().optional(),
+
     // AWS
     AWS_REGION: z.string().default('ap-southeast-1'),
     AWS_ACCOUNT_ID: z.string().optional(),

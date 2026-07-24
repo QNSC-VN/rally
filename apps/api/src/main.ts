@@ -17,7 +17,9 @@ async function bootstrap(): Promise<void> {
       // Trust X-Forwarded-For from ALB
       trustProxy: true,
     }),
-    { bufferLogs: true },
+    // rawBody: preserve the exact request bytes on req.rawBody so the SCM
+    // webhook controller can verify GitHub's X-Hub-Signature-256 HMAC.
+    { bufferLogs: true, rawBody: true },
   );
 
   await bootstrapApp(app);
