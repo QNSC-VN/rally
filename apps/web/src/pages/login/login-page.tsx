@@ -33,16 +33,28 @@ export function LoginPage() {
   const [devLoading, setDevLoading] = useState(false)
   const [devError, setDevError] = useState<string | null>(null)
 
-  // ── SSO handler ────────────────────────────────────────────────────
+  // ── SSO handler (one-click home shortcut) ───────────────────────────
+  // Broker-native: POST /bff/login/sso starts the home connection directly (no
+  // email typed) and returns its IdP authorize URL; the browser redirects there
+  // and returns with a session cookie set — no in-browser tokens.
   async function handleSsoLogin() {
     setSsoLoading(true)
     setSsoError(null)
     try {
-      // Same-origin BFF: hand off to the server-side login route. The browser
-      // navigates to Entra and returns with a session cookie already set — no
-      // in-browser tokens. Execution stops at the redirect.
       const returnTo = new URLSearchParams(window.location.search).get('returnTo') ?? '/'
-      window.location.href = `/v1/bff/login?returnTo=${encodeURIComponent(returnTo)}`
+      const res = await fetch('/v1/bff/login/sso', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ returnTo }),
+      })
+      if (!res.ok) {
+        setSsoError(t('errors.ssoInit'))
+        setSsoLoading(false)
+        return
+      }
+      const { authorizeUrl } = (await res.json()) as { authorizeUrl: string }
+      window.location.href = authorizeUrl // execution stops at the redirect
     } catch {
       setSsoError(t('errors.ssoInit'))
       setSsoLoading(false)
