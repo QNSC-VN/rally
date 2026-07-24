@@ -107,6 +107,10 @@
       "build": "Build",
       "branch": "Branch"
     },
-    "empty": "No pull requests linked. Reference this item's key in a PR title, branch, or commit."
+    "empty": "No pull requests linked. Reference this item's key in a PR title, branch, or commit.",
+    "searchChangesets": "Search changesets…",
+    "author": "Author",
+    "allAuthors": "All authors",
+    "emptyChangesets": "No commits linked. Reference this item's key in a commit message."
   }
 }

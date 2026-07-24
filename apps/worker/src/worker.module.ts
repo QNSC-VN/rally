@@ -16,6 +16,7 @@ import { CleanupCronService } from './cron/cleanup.cron';
 import { EmailRelayService } from './email/email-relay.service';
 import { NotificationRelayService } from './notifications/notification-relay.service';
 import { ScmWebhookRelayService } from './scm/scm-webhook-relay.service';
+import { ScmBackfillRelayService } from './scm/scm-backfill-relay.service';
 
 /**
  * Worker process module.
@@ -80,6 +81,8 @@ import { ScmWebhookRelayService } from './scm/scm-webhook-relay.service';
     NotificationRelayService,
     // SCM webhook inbox relay → connections/changesets
     ScmWebhookRelayService,
+    // SCM backfill jobs relay → GitHub App REST → connections/changesets
+    ScmBackfillRelayService,
     // SQS long-poll consumers
     AuditConsumer,
     // Scheduled cron jobs

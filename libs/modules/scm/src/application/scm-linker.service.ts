@@ -38,10 +38,7 @@ export class ScmLinkerService {
     return 'ignored';
   }
 
-  private async linkPullRequest(
-    provider: ScmProvider,
-    pr: NormalizedPullRequest,
-  ): Promise<LinkOutcome> {
+  async linkPullRequest(provider: ScmProvider, pr: NormalizedPullRequest): Promise<LinkOutcome> {
     const repo = await this.store.findRepository(provider, pr.repositoryFullName);
     if (!repo) return this.unmapped(pr.repositoryFullName);
     let linked = false;
@@ -63,7 +60,7 @@ export class ScmLinkerService {
     return linked ? 'processed' : 'ignored';
   }
 
-  private async linkCommit(provider: ScmProvider, commit: NormalizedCommit): Promise<LinkOutcome> {
+  async linkCommit(provider: ScmProvider, commit: NormalizedCommit): Promise<LinkOutcome> {
     const repo = await this.store.findRepository(provider, commit.repositoryFullName);
     if (!repo) return this.unmapped(commit.repositoryFullName);
     let linked = false;

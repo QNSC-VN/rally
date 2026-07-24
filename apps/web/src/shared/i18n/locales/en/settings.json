@@ -239,6 +239,8 @@
     "repositoryLabel": "Repository (owner/name)",
     "add": "Add",
     "projectsItReferences": "Projects it references",
-    "noProjects": "No projects"
+    "noProjects": "No projects",
+    "sync": "Sync now — backfill existing PRs & commits",
+    "syncAria": "Sync {{name}}"
   }
 }

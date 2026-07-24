@@ -32,6 +32,20 @@ export interface IScmStore {
     fullName: string,
   ): Promise<{ workspaceId: string; projectIds: string[] } | null>;
 
+  // ── Backfill (GitHub App REST) ────────────────────────────────────────────
+  /** Load the minimal repo identity a backfill run needs. Null if not found. */
+  getRepositoryForBackfill(id: string): Promise<{
+    id: string;
+    workspaceId: string;
+    provider: ScmProvider;
+    fullName: string;
+    installationId: string | null;
+  } | null>;
+  /** Cache the resolved App installation id on the repo. */
+  setInstallationId(id: string, installationId: string): Promise<void>;
+  /** Enqueue a pending backfill job for a repo (drained by the worker relay). */
+  enqueueBackfill(workspaceId: string, repositoryId: string): Promise<void>;
+
   // ── Work-item resolution (key → id), no actor (webhook has no user) ─────────
   resolveWorkItemId(
     itemKey: string,
