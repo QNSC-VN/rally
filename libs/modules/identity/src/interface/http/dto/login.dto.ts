@@ -32,6 +32,16 @@ export const LoginStartSchema = z.object({
 });
 
 export class LoginStartDto extends createZodDto(LoginStartSchema) {}
+
+// ── Home SSO shortcut (one-click "Sign in with Microsoft", no email) ─────────
+
+export const LoginSsoSchema = z.object({
+  /** Same-origin path to land on after login (validated server-side). */
+  returnTo: z.string().optional(),
+});
+
+export class LoginSsoDto extends createZodDto(LoginSsoSchema) {}
+
 // ── Switch workspace ─────────────────────────────────────────────────────────
 
 export const SwitchWorkspaceSchema = z.object({

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, gt, sql } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { ssoConnections, ssoConnectionDomains } from '../../../../../../db/schema/identity';
@@ -109,6 +109,27 @@ export class SsoConnectionDrizzleRepository implements ISsoConnectionRepository 
         and(
           eq(ssoConnectionDomains.connectionId, connectionId),
           eq(ssoConnectionDomains.domain, domain),
+        ),
+      )
+      .limit(1);
+    return rows.length > 0;
+  }
+
+  /**
+   * True if `email` holds a live PENDING invitation to `workspaceId` — lets an
+   * invited-but-not-yet-provisioned user through the invite-only gate
+   * (`jitEnabled=false`) on their first SSO login.
+   */
+  async hasPendingInvitation(workspaceId: string, email: string): Promise<boolean> {
+    const rows = await this.db
+      .select({ id: workspaceInvitations.id })
+      .from(workspaceInvitations)
+      .where(
+        and(
+          eq(workspaceInvitations.workspaceId, workspaceId),
+          eq(workspaceInvitations.status, 'pending'),
+          sql`lower(${workspaceInvitations.email}) = ${email.toLowerCase()}`,
+          gt(workspaceInvitations.expiresAt, new Date()),
         ),
       )
       .limit(1);

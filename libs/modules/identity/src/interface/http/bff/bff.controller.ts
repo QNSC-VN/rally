@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   HttpCode,
+  Inject,
   NotFoundException,
   Post,
   Query,
@@ -12,14 +13,20 @@ import {
 import { ApiExcludeController } from '@nestjs/swagger';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import '@fastify/cookie';
-import { Auth, Public, RateLimit, UnauthorizedException } from '@platform';
+import { Auth, AppConfigService, Public, RateLimit, UnauthorizedException } from '@platform';
 import type { JwtPayload } from '@platform';
-import { AuthService, BffService, readCookie } from '@qnsc-vn/identity';
+import {
+  AuthService,
+  BffService,
+  readCookie,
+  SSO_CONNECTION_REPOSITORY,
+  type ISsoConnectionRepository,
+} from '@qnsc-vn/identity';
 import { AccessService } from '@modules/access';
 import { WorkspaceService } from '@modules/workspace';
 import { CurrentUser } from '../decorators/current-user.decorator';
 import { UserProfileResponseDto } from '../dto/auth-response.dto';
-import { DevLoginDto, LoginStartDto, SwitchWorkspaceDto } from '../dto/login.dto';
+import { DevLoginDto, LoginSsoDto, LoginStartDto, SwitchWorkspaceDto } from '../dto/login.dto';
 import {
   BFF_SESSION_COOKIE,
   BFF_STATE_COOKIE,
@@ -41,26 +48,37 @@ export class BffController {
     private readonly authService: AuthService,
     private readonly accessService: AccessService,
     private readonly workspaceService: WorkspaceService,
+    private readonly config: AppConfigService,
+    @Inject(SSO_CONNECTION_REPOSITORY) private readonly ssoRepo: ISsoConnectionRepository,
   ) {}
 
-  // ── GET /bff/login ───────────────────────────────────────────────────────
-  // Public: starts the flow. Sets the browser-bound `state` cookie and 302s to
-  // Entra. `returnTo` is validated to a same-origin path (open-redirect guard).
-  @Get('login')
-  async login(
-    @Query('returnTo') returnTo: string | undefined,
-    @Res() reply: FastifyReply,
-  ): Promise<void> {
-    const { authorizeUrl, state } = await this.bff.beginLogin(returnTo);
-
+  // ── POST /bff/login/sso ────────────────────────────────────────────────────
+  // Public: one-click "Sign in with Microsoft" shortcut. Starts the HOME
+  // directory connection directly via the broker (no email typed) — the home
+  // tenant's members AND its Entra guests all authenticate through it. Sets the
+  // browser-bound `state` cookie and returns the IdP authorize URL for the SPA.
+  @Post('login/sso')
+  @Public()
+  @RateLimit('AUTH_LOGIN')
+  @HttpCode(200)
+  async loginSso(
+    @Body() dto: LoginSsoDto,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ): Promise<{ authorizeUrl: string }> {
+    const tenantId = this.config.get('ENTRA_TENANT_ID');
+    const home = tenantId ? await this.ssoRepo.findByExternalTenantId('entra', tenantId) : null;
+    if (!home) {
+      throw new UnauthorizedException('SSO_NO_ACCESS', 'No access — contact your administrator');
+    }
+    const { authorizeUrl, state } = await this.bff.beginLoginById(dto.returnTo, home.id);
     reply.setCookie(BFF_STATE_COOKIE, state, {
       httpOnly: true,
       secure: true,
-      sameSite: 'lax', // must survive the top-level redirect back from Entra
+      sameSite: 'lax', // must survive the top-level redirect back from the IdP
       path: '/',
       maxAge: BFF_STATE_COOKIE_MAX_AGE_SECONDS,
     });
-    this.redirect(reply, authorizeUrl);
+    return { authorizeUrl };
   }
 
   // ── POST /bff/login/start ──────────────────────────────────────────────────
