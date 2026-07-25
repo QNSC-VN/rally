@@ -143,10 +143,11 @@ export function ReleaseRow({
           matching Iteration Status. */}
       <div
         style={colStyleFor('name', { flexShrink: 0 })}
-        className="min-w-0 px-2"
+        className="min-w-0 px-0"
         onClick={(e) => e.stopPropagation()}
       >
         <InlineEditableCell
+          fullCell
           value={release.name}
           canEdit={canManage}
           onCommit={saveName}
@@ -161,10 +162,11 @@ export function ReleaseRow({
       {/* Theme — shared InlineEditableCell */}
       <div
         style={colStyleFor('theme', { flexShrink: 0 })}
-        className="min-w-0 px-2"
+        className="min-w-0 px-0"
         onClick={(e) => e.stopPropagation()}
       >
         <InlineEditableCell
+          fullCell
           value={stripHtml(release.theme)}
           canEdit={canManage}
           onCommit={saveTheme}
@@ -181,10 +183,11 @@ export function ReleaseRow({
       {/* Version — shared InlineEditableCell */}
       <div
         style={colStyleFor('version', { flexShrink: 0 })}
-        className="min-w-0 px-2"
+        className="min-w-0 px-0"
         onClick={(e) => e.stopPropagation()}
       >
         <InlineEditableCell
+          fullCell
           value={release.version ?? ''}
           canEdit={canManage}
           onCommit={saveVersion}
@@ -199,7 +202,7 @@ export function ReleaseRow({
       {/* Start Date — shared DateField */}
       <div
         style={colStyleFor('startDate', { flexShrink: 0 })}
-        className="pl-2"
+        className="px-0"
         onClick={(e) => e.stopPropagation()}
       >
         <DateField
@@ -213,7 +216,7 @@ export function ReleaseRow({
       {/* Release Date — shared DateField */}
       <div
         style={colStyleFor('releaseDate', { flexShrink: 0 })}
-        className="pl-2"
+        className="px-0"
         onClick={(e) => e.stopPropagation()}
       >
         <DateField
@@ -236,10 +239,11 @@ export function ReleaseRow({
       {/* Planned Velocity — shared InlineEditableCell */}
       <div
         style={colStyleFor('plannedVelocity', { flexShrink: 0 })}
-        className="px-2"
+        className="px-0"
         onClick={(e) => e.stopPropagation()}
       >
         <InlineEditableCell
+          fullCell
           value={release.plannedVelocity != null ? String(release.plannedVelocity) : ''}
           canEdit={canManage}
           onCommit={saveVelocity}
@@ -265,7 +269,7 @@ export function ReleaseRow({
       {/* State (P3-REL-FR-008) — shared SearchableSelect */}
       <div
         style={colStyleFor('state', { flexShrink: 0 })}
-        className="px-2"
+        className="px-0"
         onClick={(e) => e.stopPropagation()}
       >
         <SearchableSelect

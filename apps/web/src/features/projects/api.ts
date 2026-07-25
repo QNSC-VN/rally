@@ -34,7 +34,7 @@ export interface CreateProjectInput {
 
 export interface UpdateProjectInput {
   name?: string
-  description?: string
+  description?: string | null
   leadId?: string | null
   startDate?: string | null
   status?: 'active' | 'archived'

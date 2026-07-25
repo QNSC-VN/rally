@@ -80,7 +80,7 @@ const NAV_ITEMS: NavItem[] = [
     children: [
       {
         path: '/iteration-status',
-        label: 'Iteration',
+        label: 'Iteration Status',
         featureFlag: 'feature.iteration-status',
         permission: 'work_item:view',
       },
@@ -111,6 +111,17 @@ const NAV_ITEMS: NavItem[] = [
     label: 'Portfolio',
     featureFlag: 'feature.portfolio',
     permission: 'project:view',
+    // SoT §4: Portfolio is a dropdown whose only Phase 0–4 child is the
+    // Release Planning placeholder (real Release management stays under
+    // Plan > Timeboxes > Releases; Release Planning is a Phase-5 surface).
+    children: [
+      {
+        path: '/portfolio',
+        label: 'Release Planning',
+        featureFlag: 'feature.portfolio',
+        permission: 'project:view',
+      },
+    ],
   },
   {
     path: '/reports',
@@ -423,7 +434,7 @@ export function AppShell() {
                 <div className="text-ui-lg font-semibold">
                   {memberships.find((m) => m.workspaceId === activeWorkspaceId)?.name ??
                     workspace?.workspaceName ??
-                    'Select organization'}
+                    'Select workspace'}
                 </div>
                 <div
                   className="max-w-44 truncate text-ui-2xs"
@@ -437,14 +448,14 @@ export function AppShell() {
 
             {wsOpen && (
               <div className="absolute top-full left-0 mt-1 w-72 overflow-hidden rounded border border-border bg-card py-1.5 shadow-xl">
-                {/* Active organization header */}
+                {/* Active workspace header */}
                 <div className="flex items-center gap-2.5 border-b border-border-subtle bg-surface-hover px-3 py-2.5">
                   <div className="flex h-7 w-7 items-center justify-center rounded bg-avatar text-primary">
                     <Layers size={14} />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="text-ui-2xs font-semibold tracking-widest text-foreground-subtle uppercase">
-                      Organization
+                      Workspace
                     </div>
                     <div className="truncate text-ui-lg font-semibold text-foreground">
                       {memberships.find((m) => m.workspaceId === activeWorkspaceId)?.name ??
@@ -457,11 +468,11 @@ export function AppShell() {
                   </span>
                 </div>
 
-                {/* Switch organization — only when user has multiple workspaces */}
+                {/* Switch workspace — only when user has multiple workspaces */}
                 {memberships.length > 1 && (
                   <div className="border-b border-border-subtle px-3 pt-2 pb-1">
                     <div className="mb-1 text-ui-2xs font-semibold tracking-widest text-foreground-subtle uppercase">
-                      Switch Organization
+                      Switch Workspace
                     </div>
                     {memberships
                       .filter((m) => m.workspaceId !== activeWorkspaceId)

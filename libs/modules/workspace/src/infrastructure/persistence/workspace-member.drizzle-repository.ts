@@ -154,7 +154,13 @@ export class WorkspaceMemberDrizzleRepository implements IWorkspaceMemberReposit
       }
     }
 
-    return rows.map((r) => ({
+    // The workspace-scoped role leftJoin emits one row per role assignment, so a
+    // user with a stray duplicate assignment would render as duplicate member
+    // rows. Collapse to one row per membership (first wins, ordered by joinedAt).
+    const seen = new Set<string>();
+    const unique = rows.filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)));
+
+    return unique.map((r) => ({
       id: r.id,
       workspaceId: r.workspaceId,
       userId: r.userId,

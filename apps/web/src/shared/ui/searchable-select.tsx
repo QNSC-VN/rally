@@ -113,12 +113,13 @@ export function SearchableSelect(props: SearchableSelectProps) {
   const display = first?.label ?? placeholder
   const hasSelection = selectedValues.length > 0
 
-  // Multi-select `field` shows EVERY selected value as a wrapping chip (Rally
-  // parity) instead of the compact `first (+N)`. Cell variant stays compact so
-  // grid rows don't grow.
-  const showChips = multiple && variant === 'field' && hasSelection
+  // Multi-select renders EVERY selected value as a stacked chip (Rally parity)
+  // instead of the compact `first (+N)` — in BOTH the cell (grid) and field
+  // (form) variants, so a multi-select reads identically everywhere. Grid rows
+  // grow to fit the stack, matching real Rally.
+  const showChips = multiple && hasSelection
   const chips = (
-    <span className="flex flex-1 flex-wrap items-center gap-1">
+    <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
       {selectedOpts.map((o) => (
         <span
           key={o.value}
@@ -183,7 +184,7 @@ export function SearchableSelect(props: SearchableSelectProps) {
 
   if (readOnly) {
     if (showChips) {
-      return <span className={cn('flex flex-wrap items-center gap-1', className)}>{chips}</span>
+      return <span className={cn('flex flex-col items-start gap-1', className)}>{chips}</span>
     }
     return (
       <span className={cn('flex items-center gap-1.5 text-ui-sm text-foreground', className)}>
@@ -216,7 +217,7 @@ export function SearchableSelect(props: SearchableSelectProps) {
             'group w-full text-left text-foreground',
             variant === 'field'
               ? `rounded border border-input bg-white px-3 py-2 text-ui-md transition-colors hover:border-accent-border-active focus:outline-none ${FIELD_FOCUS_VISIBLE}`
-              : 'inline-edit-cell text-ui-sm',
+              : 'inline-edit-cell px-2 py-1.5 text-ui-sm',
             className,
           )}
         >

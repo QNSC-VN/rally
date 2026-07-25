@@ -39,7 +39,7 @@ import { LabelChips } from '@/entities/work-item/ui/label-chips'
 import { WorkItemRefCell } from '@/entities/work-item/ui/work-item-ref-cell'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { SaveIndicator } from '@/shared/ui/save-indicator'
-import { formatDate } from '@/shared/lib/utils'
+import { formatDateIso } from '@/shared/lib/utils'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 
 type SaveStatus = ReturnType<typeof useSaveState>['status']
@@ -512,7 +512,7 @@ export function DetailSidebar({
         {/* Creation Date (read-only) */}
         <FormField label={t('sidebar.creationDate')}>
           <div className="flex h-9 items-center rounded border border-input bg-input-background px-3 text-ui-md text-muted-foreground">
-            {formatDate(item.createdAt)}
+            {formatDateIso(item.createdAt)}
           </div>
         </FormField>
 

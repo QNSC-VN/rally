@@ -56,6 +56,7 @@ export const workItemKeys = {
 export interface BacklogFilters {
   type?: 'story' | 'defect'
   scheduleState?: WiScheduleState
+  priority?: WiPriority
   assigneeId?: string
   iterationId?: string
   releaseId?: string
@@ -80,6 +81,7 @@ export function useBacklog(projectId: string | undefined, filters: BacklogFilter
             type: filters.type as 'story' | 'defect' | undefined,
             scheduleState: filters.scheduleState as
               'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'release' | undefined,
+            priority: filters.priority as 'none' | 'low' | 'normal' | 'high' | 'urgent' | undefined,
             assigneeId: filters.assigneeId,
             iterationId: filters.iterationId,
             releaseId: filters.releaseId,

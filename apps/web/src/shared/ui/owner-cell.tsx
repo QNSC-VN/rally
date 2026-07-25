@@ -129,6 +129,8 @@ interface OwnerSelectCellProps {
   canEdit: boolean
   onChange: (userId: string | null) => void
   ariaLabel?: string
+  /** Extra classes for the editable trigger (e.g. full-cell padding). */
+  className?: string
 }
 
 /**
@@ -146,6 +148,7 @@ export function OwnerSelectCell({
   canEdit,
   onChange,
   ariaLabel = 'Owner',
+  className,
 }: OwnerSelectCellProps) {
   if (!canEdit) return <OwnerCell name={ownerName} />
 
@@ -155,6 +158,7 @@ export function OwnerSelectCell({
       ariaLabel={ariaLabel}
       placeholder="Unassigned"
       searchPlaceholder="Search"
+      className={className}
       options={ownerSelectOptions(members, assigneeId, ownerName)}
       onChange={(v) => onChange(v || null)}
     />

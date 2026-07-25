@@ -13,7 +13,8 @@
     "allOwners": "All Owners",
     "unassigned": "Unassigned",
     "allReleases": "All Releases",
-    "allIterations": "All Iterations"
+    "allIterations": "All Iterations",
+    "allPriorities": "All Priorities"
   },
   "metrics": {
     "total": "Total Items",

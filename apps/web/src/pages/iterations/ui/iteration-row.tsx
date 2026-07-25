@@ -88,8 +88,9 @@ export function IterationRow({
       </div>
 
       {/* Name — inline-editable */}
-      <div style={colStyleFor('name', { flexShrink: 0 })} className="min-w-0 px-2" onClick={stop}>
+      <div style={colStyleFor('name', { flexShrink: 0 })} className="min-w-0 px-0" onClick={stop}>
         <InlineEditableCell
+          fullCell
           value={it.name}
           canEdit={canManage}
           onCommit={saveName}
@@ -103,8 +104,9 @@ export function IterationRow({
 
       {/* Theme — inline-editable (shared InlineEditableCell, like Name). Full
           rich-text editing remains on the detail page. */}
-      <div style={colStyleFor('theme', { flexShrink: 0 })} className="min-w-0 px-2" onClick={stop}>
+      <div style={colStyleFor('theme', { flexShrink: 0 })} className="min-w-0 px-0" onClick={stop}>
         <InlineEditableCell
+          fullCell
           value={stripHtml(it.theme)}
           canEdit={canManage}
           onCommit={saveTheme}
@@ -117,7 +119,7 @@ export function IterationRow({
       </div>
 
       {/* Start Date — inline-editable */}
-      <div style={colStyleFor('startDate', { flexShrink: 0 })} className="px-2" onClick={stop}>
+      <div style={colStyleFor('startDate', { flexShrink: 0 })} className="px-0" onClick={stop}>
         <DateField
           value={it.startDate}
           readOnly={!canManage}
@@ -127,7 +129,7 @@ export function IterationRow({
       </div>
 
       {/* End Date — inline-editable */}
-      <div style={colStyleFor('endDate', { flexShrink: 0 })} className="px-2" onClick={stop}>
+      <div style={colStyleFor('endDate', { flexShrink: 0 })} className="px-0" onClick={stop}>
         <DateField
           value={it.endDate}
           readOnly={!canManage}
@@ -137,8 +139,9 @@ export function IterationRow({
       </div>
 
       {/* Planned Velocity — inline-editable */}
-      <div style={colStyleFor('plannedVelocity', { flexShrink: 0 })} className="px-2" onClick={stop}>
+      <div style={colStyleFor('plannedVelocity', { flexShrink: 0 })} className="px-0" onClick={stop}>
         <InlineEditableCell
+          fullCell
           value={it.plannedVelocity != null ? String(it.plannedVelocity) : ''}
           canEdit={canManage}
           onCommit={saveVelocity}
@@ -155,7 +158,7 @@ export function IterationRow({
       {/* State — same SearchableSelect enum-dropdown as Iteration Status / Backlog
           Flow State. Editable: the backend routes the change through the gated
           Commit / Accept lifecycle actions and rejects invalid transitions. */}
-      <div style={colStyleFor('state', { flexShrink: 0 })} className="px-2" onClick={stop}>
+      <div style={colStyleFor('state', { flexShrink: 0 })} className="px-0" onClick={stop}>
         <SearchableSelect
           value={it.state}
           readOnly={!canManage}

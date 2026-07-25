@@ -1,21 +1,13 @@
 /* eslint-disable react-refresh/only-export-components -- PROJECT_COLUMNS is config that must co-locate with the cell renderers it references */
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import {
-  AlertTriangle,
-  Archive,
-  Edit3,
-  Loader2,
-  MoreHorizontal,
-  RotateCcw,
-  Users,
-  UsersRound,
-} from 'lucide-react'
+import { AlertTriangle, Loader2, Users, UsersRound } from 'lucide-react'
 
 import { BRAND } from '@/shared/config/brand'
-import { cn, formatDate } from '@/shared/lib/utils'
+import { cn, formatDateIso } from '@/shared/lib/utils'
 import { DateField } from '@/shared/ui/date-field'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
+import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { notify, errorMessage } from '@/shared/lib/toast'
 import { useCreateProject, useUpdateProject, type Project } from '@/features/projects/api'
 import { useWorkspaceMembers } from '@/features/workspaces/api'
@@ -25,17 +17,15 @@ import {
   useLinkProjectTeam,
   useUnlinkProjectTeam,
 } from '@/features/teams/api'
-import { PROJECT_STATUS_STYLE } from '@/features/projects/status-colors'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
-import { KeyChip } from '@/shared/ui/key-chip'
-import { OwnerCell, OwnerAvatar } from '@/shared/ui/owner-cell'
-import { TeamCell } from '@/shared/ui/team-cell'
-import { StatusBadge } from '@/shared/ui/status-badge'
+import { OwnerAvatar, OwnerSelectCell } from '@/shared/ui/owner-cell'
+import { TeamAvatar } from '@/shared/ui/team-cell'
+import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { type ColumnSpec } from '@/shared/ui/table'
 import { type ProjectColKey, type ProjectCtx } from '../model/columns'
 
@@ -116,10 +106,6 @@ export function ArchiveConfirmModal({
 }
 
 // ── Status badge ──────────────────────────────────────────────────────────────
-
-function ProjectStatusBadge({ status }: { status: 'active' | 'archived' }) {
-  return <StatusBadge style={PROJECT_STATUS_STYLE[status]} />
-}
 
 // ── Owner (project lead) picker ──────────────────────────────────────────────
 // Shared by the New Project and Edit Project modals. Backed by the single-source
@@ -353,7 +339,7 @@ export function EditProjectModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!values.name.trim()) return
+    if (values.name.trim().length < 2) return
     try {
       await mutateAsync({
         id: project.id,
@@ -398,7 +384,7 @@ export function EditProjectModal({
           <Button variant="outline" type="button" onClick={onClose}>
             {t('common:cancel')}
           </Button>
-          <Button type="submit" disabled={saving || !values.name.trim()}>
+          <Button type="submit" disabled={saving || values.name.trim().length < 2}>
             {saving && <Loader2 size={12} className="animate-spin" />}
             {t('edit.save')}
           </Button>
@@ -449,7 +435,7 @@ export function NewProjectModal({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const trimmedKey = values.key.trim().toUpperCase()
-    if (!values.name.trim() || !trimmedKey) return
+    if (values.name.trim().length < 2 || !trimmedKey) return
     if (trimmedKey.length < 2) {
       notify.error(t('create.keyTooShort'))
       return
@@ -488,7 +474,10 @@ export function NewProjectModal({
           <Button variant="outline" type="button" onClick={onClose}>
             {t('common:cancel')}
           </Button>
-          <Button type="submit" disabled={isPending || !values.name.trim() || !values.key.trim()}>
+          <Button
+            type="submit"
+            disabled={isPending || values.name.trim().length < 2 || !values.key.trim()}
+          >
             {isPending && <Loader2 size={12} className="animate-spin" />}
             {t('create.submit')}
           </Button>
@@ -500,78 +489,49 @@ export function NewProjectModal({
 
 // ── Teams cell (linked team names, one per line) ─────────────────────────────
 
-function ProjectTeamsCell({ projectId, teamCount }: { projectId: string; teamCount: number }) {
-  // Only fetch team names for rows that actually have linked teams.
-  const { data: teams = [] } = useProjectTeams(teamCount > 0 ? projectId : undefined)
+/** Teams cell — editable inline multi-select (Project↔Team is M2M), matching the
+ *  Milestones cell on Iteration Status: stacked chips + a searchable picker.
+ *  Edited via the dedicated link/unlink endpoints (the project PATCH carries no
+ *  teamIds), so each add/remove commits immediately from the multi-select diff. */
+function ProjectTeamsCell({
+  projectId,
+  workspaceId,
+  canEdit,
+}: {
+  projectId: string
+  workspaceId: string
+  canEdit: boolean
+}) {
+  const { data: teams = [] } = useProjectTeams(projectId)
+  const { data: allTeams = [] } = useWorkspaceTeams(workspaceId)
+  const link = useLinkProjectTeam(projectId)
+  const unlink = useUnlinkProjectTeam(projectId)
 
-  if (teamCount === 0) {
-    return <span className="text-ui-sm text-foreground-subtle">—</span>
-  }
-
-  // Names still loading — show a compact count placeholder.
-  if (teams.length === 0) {
-    return (
-      <span className="inline-flex items-center gap-1 text-ui-sm text-muted-foreground">
-        <UsersRound size={11} className="text-foreground-subtle" />
-        {teamCount}
-      </span>
-    )
-  }
-
-  // Every linked team on its own line (row grows to fit).
   return (
-    <div className="flex w-full flex-col gap-1 py-1">
-      {teams.map((t) => (
-        <TeamCell key={t.id} teamKey={t.key} name={t.name} className="self-start" />
-      ))}
-    </div>
+    <SearchableSelect
+      multiple
+      readOnly={!canEdit}
+      value={teams.map((t) => t.id)}
+      ariaLabel="Teams"
+      placeholder="—"
+      searchPlaceholder="Search"
+      options={allTeams.map((t) => ({
+        value: t.id,
+        label: t.name,
+        searchText: t.name,
+        icon: <TeamAvatar teamKey={t.key} name={t.name} size={16} />,
+      }))}
+      onChange={(ids) => {
+        const next = ids as string[]
+        const cur = teams.map((t) => t.id)
+        next.filter((id) => !cur.includes(id)).forEach((id) => link.mutate(id))
+        cur.filter((id) => !next.includes(id)).forEach((id) => unlink.mutate(id))
+      }}
+    />
   )
 }
 
 // ── Table columns (shared useDataTable engine) ───────────────────────────────
-
-function ProjectActionsCell({ project, ctx }: { project: Project; ctx: ProjectCtx }) {
-  const { t } = useTranslation('projects')
-  const { openMenu, setOpenMenu, onEdit, onToggleArchive } = ctx
-  return (
-    <div className="relative" onClick={(e) => e.stopPropagation()}>
-      <button
-        onClick={() => setOpenMenu(openMenu === project.id ? null : project.id)}
-        className="flex h-6 w-6 items-center justify-center rounded text-foreground-subtle hover:bg-avatar"
-        aria-label="Project actions"
-      >
-        <MoreHorizontal size={14} />
-      </button>
-
-      {openMenu === project.id && (
-        <div className="absolute top-7 right-0 z-20 w-44 overflow-hidden rounded border border-border bg-card py-1 shadow-lg">
-          <button
-            className="flex w-full items-center gap-2 px-3 py-2 text-ui-sm text-foreground hover:bg-surface-subtle"
-            onClick={() => {
-              onEdit(project)
-              setOpenMenu(null)
-            }}
-          >
-            <Edit3 size={12} className="text-muted-foreground" />
-            {t('actions.edit')}
-          </button>
-          <button
-            className="flex w-full items-center gap-2 px-3 py-2 text-ui-sm hover:bg-surface-subtle"
-            style={{ color: project.status === 'active' ? BRAND.danger : BRAND.textPrimary }}
-            onClick={() => onToggleArchive(project)}
-          >
-            {project.status === 'active' ? (
-              <Archive size={12} className="text-destructive" />
-            ) : (
-              <RotateCcw size={12} className="text-muted-foreground" />
-            )}
-            {project.status === 'active' ? t('actions.archive') : t('actions.restore')}
-          </button>
-        </div>
-      )}
-    </div>
-  )
-}
 
 /**
  * Single per-column source of truth. The shared {@link useDataTable} engine
@@ -587,7 +547,9 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
     minWidth: 60,
     locked: true,
     cellClassName: 'flex items-center',
-    cell: (p) => <KeyChip>{p.key}</KeyChip>,
+    // Same as every work-item/timebox grid: the shared IdCell (type glyph +
+    // monospace key link to the detail page).
+    cell: (p, ctx) => <IdCell type="project" itemKey={p.key} onOpen={() => ctx.onOpen(p.key)} />,
   },
   {
     key: 'name',
@@ -596,17 +558,25 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
     defaultWidth: 280,
     minWidth: 160,
     locked: true,
-    cellClassName: 'flex min-w-0 flex-col justify-center',
-    cell: (p) => (
-      <>
-        <div className="text-ui-md font-semibold break-words whitespace-normal text-foreground">
-          {p.name}
-        </div>
-        {p.description && (
-          <div className="truncate text-ui-xs text-foreground-subtle">{p.description}</div>
-        )}
-      </>
-    ),
+    cellClassName: 'overflow-hidden px-0',
+    cell: (p, ctx) =>
+      p.status === 'archived' ? (
+        <div className="truncate px-2 py-1.5 text-ui-md text-foreground">{p.name}</div>
+      ) : (
+        <InlineEditableCell
+          value={p.name}
+          canEdit
+          fullCell
+          ariaLabel="Name"
+          title={p.name}
+          className="truncate text-ui-md text-foreground"
+          inputClassName="text-ui-md text-foreground"
+          onCommit={(v) => {
+            const n = v.trim()
+            if (n && n !== p.name) ctx.onPatch(p.id, { name: n })
+          }}
+        />
+      ),
   },
   {
     key: 'status',
@@ -614,22 +584,37 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
     sortCol: 'status',
     defaultWidth: 96,
     minWidth: 80,
-    cellClassName: 'flex items-center',
-    cell: (p) => <ProjectStatusBadge status={p.status} />,
+    cellClassName: 'flex items-center px-0',
+    cell: (p, ctx) => (
+      <SearchableSelect
+        value={p.status}
+        ariaLabel="Status"
+        options={[
+          { value: 'active', label: 'Active' },
+          { value: 'archived', label: 'Archived' },
+        ]}
+        onChange={(v) => ctx.onPatch(p.id, { status: v as 'active' | 'archived' })}
+      />
+    ),
   },
   {
     key: 'owner',
     label: 'Owner',
     defaultWidth: 140,
     minWidth: 90,
-    cellClassName: 'flex items-center',
+    cellClassName: 'flex items-center px-0',
     cell: (p, ctx) => (
-      <OwnerCell
-        name={
+      <OwnerSelectCell
+        ownerName={
           p.leadId
             ? (p.leadName ?? (p.leadId === ctx.currentUserId ? ctx.currentUserName : null))
             : null
         }
+        assigneeId={p.leadId}
+        members={ctx.members}
+        canEdit={p.status !== 'archived'}
+        ariaLabel="Owner"
+        onChange={(v) => ctx.onPatch(p.id, { leadId: v })}
       />
     ),
   },
@@ -638,8 +623,14 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
     label: 'Teams',
     defaultWidth: 190,
     minWidth: 120,
-    cellClassName: 'flex items-center',
-    cell: (p) => <ProjectTeamsCell projectId={p.id} teamCount={p.teamCount} />,
+    cellClassName: 'flex items-center px-0',
+    cell: (p) => (
+      <ProjectTeamsCell
+        projectId={p.id}
+        workspaceId={p.workspaceId}
+        canEdit={p.status === 'active'}
+      />
+    ),
   },
   {
     key: 'members',
@@ -664,8 +655,15 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
     sortCol: 'startDate',
     defaultWidth: 116,
     minWidth: 90,
-    cellClassName: 'flex items-center px-2',
-    type: 'date',
+    cellClassName: 'flex items-center px-0',
+    cell: (p, ctx) => (
+      <DateField
+        value={p.startDate}
+        readOnly={p.status === 'archived'}
+        ariaLabel="Start Date"
+        onChange={(v) => ctx.onPatch(p.id, { startDate: v })}
+      />
+    ),
   },
   {
     key: 'updated',
@@ -674,16 +672,7 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
     defaultWidth: 128,
     minWidth: 100,
     cellClassName: 'flex items-center text-ui-sm',
-    cell: (p) => <span className="text-muted-foreground">{formatDate(p.updatedAt)}</span>,
-  },
-  {
-    key: 'actions',
-    label: '',
-    defaultWidth: 52,
-    minWidth: 52,
-    locked: true,
-    cellClassName: 'flex items-center justify-end',
-    cell: (p, ctx) => <ProjectActionsCell project={p} ctx={ctx} />,
+    cell: (p) => <span className="text-muted-foreground">{formatDateIso(p.updatedAt)}</span>,
   },
 ]
 

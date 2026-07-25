@@ -13,6 +13,7 @@ import { ChevronDown, ChevronRight, Inbox } from 'lucide-react'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { WorkItemRefCell } from '@/entities/work-item/ui/work-item-ref-cell'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
+import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
 import { useIterations } from '@/features/iterations/api'
@@ -377,6 +378,9 @@ export function TeamStatusPage() {
             onOpenItem={(itemKey) => {
               if (itemKey) navigate({ to: '/item/$itemKey', params: { itemKey } })
             }}
+            onOpenRelease={(releaseId) => {
+              if (releaseId) navigate({ to: '/releases/$releaseId', params: { releaseId } })
+            }}
           />
         ))}
       </DataTableFrame>
@@ -395,6 +399,7 @@ function MemberGroup({
   colStyles,
   members,
   onOpenItem,
+  onOpenRelease,
 }: {
   group: TeamStatusMemberGroup
   projectId: string
@@ -404,6 +409,7 @@ function MemberGroup({
   colStyles: Record<string, React.CSSProperties>
   members: ProjectMember[]
   onOpenItem: (itemKey: string) => void
+  onOpenRelease: (releaseId: string) => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const updateCapacity = useUpdateCapacity(projectId, teamId, iterationId)
@@ -480,17 +486,17 @@ function MemberGroup({
         </div>
         {/* Capacity (editable on group row — P3-TS-FR-017) */}
         <div
-          className="shrink-0 px-2 text-right"
+          className="shrink-0 px-0 text-right"
           style={colStyles.capacity}
           onClick={(e) => e.stopPropagation()}
         >
           <InlineEditableCell
+            fullCell
             value={String(group.capacityHours)}
             canEdit={canEdit}
             onCommit={commitCapacity}
-            trigger="dblclick"
-            className="font-mono text-ui-sm text-muted-foreground tabular-nums hover:underline"
-            inputClassName="w-12 rounded border border-input bg-card px-1 py-0.5 text-right font-mono text-ui-sm text-foreground focus:outline-none"
+            className="font-mono text-ui-sm text-muted-foreground tabular-nums"
+            inputClassName="text-right font-mono text-ui-sm text-foreground"
             ariaLabel="Capacity"
           />
         </div>
@@ -525,6 +531,7 @@ function MemberGroup({
             colStyles={colStyles}
             members={members}
             onOpenItem={onOpenItem}
+            onOpenRelease={onOpenRelease}
           />
         ))}
     </div>
@@ -539,12 +546,14 @@ function TaskRow({
   colStyles,
   members,
   onOpenItem,
+  onOpenRelease,
 }: {
   task: TeamStatusTaskRow
   canEdit: boolean
   colStyles: Record<string, React.CSSProperties>
   members: ProjectMember[]
   onOpenItem: (itemKey: string) => void
+  onOpenRelease: (releaseId: string) => void
 }) {
   const updateTask = useUpdateTeamTask()
 
@@ -651,18 +660,18 @@ function TaskRow({
       </div>
       {/* Task Name (P3-TS-FR-019 — inline editable) */}
       <div
-        className="min-w-[180px] flex-1 px-2"
+        className="min-w-[180px] flex-1 px-0"
         style={colStyles.name}
         onClick={(e) => e.stopPropagation()}
       >
         <InlineEditableCell
+          fullCell
           value={task.title}
           canEdit={canEdit}
           onCommit={commitTitle}
-          trigger="dblclick"
           displayValue={task.displayName || task.title}
-          className="block break-words whitespace-normal text-foreground hover:underline"
-          inputClassName="w-full rounded border border-input bg-card px-1 py-0.5 text-ui-sm text-foreground focus:outline-none"
+          className="block break-words whitespace-normal text-foreground"
+          inputClassName="text-ui-sm text-foreground"
           title={task.displayName || task.title}
           ariaLabel="Task name"
         />
@@ -683,9 +692,31 @@ function TaskRow({
           <span className="text-ui-xs text-foreground-faint">—</span>
         )}
       </div>
-      {/* Release (P3-TS-FR-025) */}
-      <div className="shrink-0 truncate px-2 text-muted-foreground" style={colStyles.release}>
-        {task.release?.name ?? ''}
+      {/* Release (P3-TS-FR-025) — clickable reference to the release detail,
+          same treatment as the Work Product cell (TypeBadge glyph + link). */}
+      <div className="flex shrink-0 items-center overflow-hidden px-2" style={colStyles.release}>
+        {task.release ? (
+          <button
+            type="button"
+            title={task.release.name}
+            onClick={(e) => {
+              e.stopPropagation()
+              onOpenRelease(task.release!.id)
+            }}
+            className="inline-flex max-w-full cursor-pointer items-center gap-1.5 border-none bg-transparent p-0"
+            onMouseOver={(e) => {
+              e.currentTarget.style.textDecoration = 'underline'
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.textDecoration = 'none'
+            }}
+          >
+            <TypeBadge type="release" size={16} />
+            <span className="truncate text-ui-sm text-primary-light">{task.release.name}</span>
+          </button>
+        ) : (
+          <span className="text-ui-xs text-foreground-faint">—</span>
+        )}
       </div>
       {/* State (P3-TS-FR-021 — inline editable) */}
       <div className="shrink-0 px-2" style={colStyles.state} onClick={(e) => e.stopPropagation()}>
@@ -701,53 +732,56 @@ function TaskRow({
       <div className="shrink-0 px-2" style={colStyles.capacity} />
       {/* Estimate / ToDo / Actuals (P3-TS-FR-026 — inline editable) */}
       <div
-        className="shrink-0 px-2 text-right"
+        className="shrink-0 px-0 text-right"
         style={colStyles.estimate}
         onClick={(e) => e.stopPropagation()}
       >
         <InlineEditableCell
+          fullCell
           value={String(task.estimateHours ?? '')}
           canEdit={canEdit}
           onCommit={commitEstimate}
           displayValue={task.estimateHours || '—'}
           className="font-mono text-muted-foreground tabular-nums"
-          inputClassName="w-full rounded border border-input bg-card px-1 py-0.5 text-right font-mono text-ui-sm text-foreground focus:outline-none"
+          inputClassName="text-right font-mono text-ui-sm text-foreground"
           ariaLabel="Estimate hours"
         />
       </div>
       <div
-        className="shrink-0 px-2 text-right"
+        className="shrink-0 px-0 text-right"
         style={colStyles.todo}
         onClick={(e) => e.stopPropagation()}
       >
         <InlineEditableCell
+          fullCell
           value={String(task.todoHours ?? '')}
           canEdit={canEdit}
           onCommit={commitTodo}
           displayValue={task.todoHours || '—'}
           className="font-mono text-muted-foreground tabular-nums"
-          inputClassName="w-full rounded border border-input bg-card px-1 py-0.5 text-right font-mono text-ui-sm text-foreground focus:outline-none"
+          inputClassName="text-right font-mono text-ui-sm text-foreground"
           ariaLabel="To Do hours"
         />
       </div>
       <div
-        className="shrink-0 px-2 text-right"
+        className="shrink-0 px-0 text-right"
         style={colStyles.actuals}
         onClick={(e) => e.stopPropagation()}
       >
         <InlineEditableCell
+          fullCell
           value={String(task.actualHours ?? '')}
           canEdit={canEdit}
           onCommit={commitActual}
           displayValue={task.actualHours || '—'}
           className="font-mono text-muted-foreground tabular-nums"
-          inputClassName="w-full rounded border border-input bg-card px-1 py-0.5 text-right font-mono text-ui-sm text-foreground focus:outline-none"
+          inputClassName="text-right font-mono text-ui-sm text-foreground"
           ariaLabel="Actual hours"
         />
       </div>
       {/* Owner + Dev Owner (UI-only alias — both write assigneeId) */}
       <div
-        className="shrink-0 truncate px-2 text-ui-sm"
+        className="shrink-0 truncate px-0 text-ui-sm"
         style={colStyles.owner}
         onClick={(e) => e.stopPropagation()}
       >

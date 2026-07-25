@@ -18,11 +18,7 @@ import {
   useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core'
-import {
-  arrayMove,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable'
+import { arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -183,6 +179,7 @@ export function BacklogPage() {
   const [search, setSearch] = useState('')
   const [filterType, setFilterType] = useState<'' | 'story' | 'defect'>('')
   const [filterState, setFilterState] = useState('')
+  const [filterPriority, setFilterPriority] = useState('')
   const [filterOwner, setFilterOwner] = useState('')
   const [filterRelease, setFilterRelease] = useState('')
   const [filterIteration, setFilterIteration] = useState('')
@@ -245,6 +242,7 @@ export function BacklogPage() {
   const { data, isLoading, isError, error } = useBacklog(projectId, {
     type: filterType || undefined,
     scheduleState: filterState || undefined,
+    priority: filterPriority || undefined,
     assigneeId: filterOwner || undefined,
     releaseId: filterRelease || undefined,
     iterationId: filterIteration || undefined,
@@ -363,6 +361,8 @@ export function BacklogPage() {
         setFilterType={setFilterType}
         filterState={filterState}
         setFilterState={setFilterState}
+        filterPriority={filterPriority}
+        setFilterPriority={setFilterPriority}
         filterOwner={filterOwner}
         setFilterOwner={setFilterOwner}
         filterRelease={filterRelease}
@@ -515,6 +515,8 @@ interface BacklogToolbarProps {
   setFilterType: (v: '' | 'story' | 'defect') => void
   filterState: string
   setFilterState: (v: string) => void
+  filterPriority: string
+  setFilterPriority: (v: string) => void
   filterOwner: string
   setFilterOwner: (v: string) => void
   filterRelease: string
@@ -540,6 +542,8 @@ function BacklogToolbar({
   setFilterType,
   filterState,
   setFilterState,
+  filterPriority,
+  setFilterPriority,
   filterOwner,
   setFilterOwner,
   filterRelease,
@@ -561,6 +565,7 @@ function BacklogToolbar({
   const activeFilterCount =
     (filterType ? 1 : 0) +
     (filterState ? 1 : 0) +
+    (filterPriority ? 1 : 0) +
     (filterOwner ? 1 : 0) +
     (filterRelease ? 1 : 0) +
     (filterIteration ? 1 : 0)
@@ -611,6 +616,21 @@ function BacklogToolbar({
             {SCHEDULE_STATE_OPTS.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
+              </option>
+            ))}
+          </InlineSelect>
+
+          {/* Priority filter (P2-BL-02) */}
+          <InlineSelect
+            value={filterPriority}
+            onChange={(e) => setFilterPriority(e.target.value)}
+            aria-label="Filter by priority"
+            className="w-auto"
+          >
+            <option value="">{t('filters.allPriorities')}</option>
+            {PRIORITY_VALUES.map((p) => (
+              <option key={p} value={p}>
+                {PRIORITY_LABEL[p]}
               </option>
             ))}
           </InlineSelect>
@@ -778,15 +798,16 @@ function BacklogRow({
       </div>
 
       {/* Title — inline edit */}
-      <div className="min-w-0 shrink-0 px-2" style={colStyles.name} onClick={stop}>
+      <div className="min-w-0 shrink-0 px-0" style={colStyles.name} onClick={stop}>
         {canEdit ? (
           <InlineEditableCell
             value={item.title}
             canEdit
+            fullCell
             onCommit={commitTitle}
-            className="block w-full break-words whitespace-normal text-foreground"
+            className="break-words whitespace-normal text-foreground"
             style={{ cursor: 'text', fontSize: 12 }}
-            inputClassName="w-full rounded border border-accent-border-strong px-1 py-0.5 text-ui-sm text-foreground focus:outline-none"
+            inputStyle={{ fontSize: 12 }}
             ariaLabel="Title"
             title={item.title}
           />
@@ -808,13 +829,15 @@ function BacklogRow({
           steps={SCHEDULE_STATE_STEPS}
           value={item.scheduleState as ScheduleState}
           canEdit={canEdit}
-          onChange={(next) => patch({ scheduleState: next as UpdateWorkItemInput['scheduleState'] })}
+          onChange={(next) =>
+            patch({ scheduleState: next as UpdateWorkItemInput['scheduleState'] })
+          }
           ariaLabel="Schedule state"
         />
       </div>
 
       {/* Flow State — shared SearchableSelect (enum dropdown) */}
-      <div className="shrink-0 overflow-hidden px-2" style={colStyles.flowState} onClick={stop}>
+      <div className="flex items-center shrink-0 overflow-hidden px-0" style={colStyles.flowState} onClick={stop}>
         <SearchableSelect
           value={item.flowState ?? item.scheduleState ?? ''}
           readOnly={!canEdit}
@@ -825,7 +848,7 @@ function BacklogRow({
       </div>
 
       {/* Priority — defects only */}
-      <div className="shrink-0 overflow-hidden px-2" style={colStyles.priority} onClick={stop}>
+      <div className="flex items-center shrink-0 overflow-hidden px-0" style={colStyles.priority} onClick={stop}>
         {item.type === 'defect' ? (
           <SearchableSelect
             value={item.priority ?? ''}
@@ -840,10 +863,11 @@ function BacklogRow({
       </div>
 
       {/* Plan Estimate — shared InlineEditableCell */}
-      <div className="shrink-0 px-2 text-center" style={colStyles.estimate} onClick={stop}>
+      <div className="shrink-0 px-0 text-center" style={colStyles.estimate} onClick={stop}>
         <InlineEditableCell
           value={item.storyPoints != null ? String(item.storyPoints) : ''}
           canEdit={canEdit}
+          fullCell
           ariaLabel="Plan estimate"
           onCommit={(raw) => {
             const next = raw === '' ? null : Number(raw)
@@ -860,7 +884,7 @@ function BacklogRow({
       </div>
 
       {/* Owner — inline select */}
-      <div className="shrink-0 overflow-hidden px-2" style={colStyles.owner} onClick={stop}>
+      <div className="flex items-center shrink-0 overflow-hidden px-0" style={colStyles.owner} onClick={stop}>
         <OwnerSelectCell
           ownerName={ownerName}
           assigneeId={item.assigneeId}
@@ -871,7 +895,7 @@ function BacklogRow({
       </div>
 
       {/* Release — shared SearchableSelect */}
-      <div className="shrink-0 overflow-hidden px-2" style={colStyles.release} onClick={stop}>
+      <div className="flex items-center shrink-0 overflow-hidden px-0" style={colStyles.release} onClick={stop}>
         <SearchableSelect
           value={item.releaseId ?? ''}
           readOnly={!canEdit}
@@ -891,7 +915,7 @@ function BacklogRow({
       </div>
 
       {/* Iteration — shared SearchableSelect */}
-      <div className="shrink-0 overflow-hidden px-2" style={colStyles.iteration} onClick={stop}>
+      <div className="flex items-center shrink-0 overflow-hidden px-0" style={colStyles.iteration} onClick={stop}>
         <SearchableSelect
           value={item.iterationId ?? ''}
           readOnly={!canEdit}
@@ -907,7 +931,9 @@ function BacklogRow({
                     const cur = allIterations.find((it) => it.id === item.iterationId)
                     return {
                       value: item.iterationId,
-                      label: cur?.iterationKey ? `${cur.iterationKey}: ${cur.name}` : (cur?.name ?? '—'),
+                      label: cur?.iterationKey
+                        ? `${cur.iterationKey}: ${cur.name}`
+                        : (cur?.name ?? '—'),
                       icon: <TypeBadge type="iteration" size={16} />,
                     }
                   })(),
