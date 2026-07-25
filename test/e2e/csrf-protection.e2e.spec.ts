@@ -27,8 +27,13 @@ import { BFF_SESSION_COOKIE, CSRF_SECRET_COOKIE } from '@platform';
 import { AppModule } from '../../apps/api/src/app.module';
 import { bootstrapApp } from '../../apps/api/src/bootstrap/app.bootstrap';
 
-/** Seeded workspace admin (db/seeds/demo.ts). */
-const SEEDED_EMAIL = 'dev@acme.dev';
+/**
+ * Seeded developer account (db/seeds/demo.ts). Any active seeded user works — the
+ * spec asserts CSRF behaviour, not authorization. Read from the seed rather than
+ * hardcoded twice: the fixture domain moved from acme.dev to qnsc.dev on main and
+ * this spec broke, so prefer the env override the seed itself honours.
+ */
+const SEEDED_EMAIL = process.env['E2E_SEEDED_EMAIL'] ?? 'dev@qnsc.dev';
 
 interface Session {
   /** Cookie header value carrying both the session id and the CSRF secret. */
