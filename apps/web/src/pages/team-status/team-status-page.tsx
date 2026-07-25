@@ -378,6 +378,9 @@ export function TeamStatusPage() {
             onOpenItem={(itemKey) => {
               if (itemKey) navigate({ to: '/item/$itemKey', params: { itemKey } })
             }}
+            onOpenRelease={(releaseId) => {
+              if (releaseId) navigate({ to: '/releases/$releaseId', params: { releaseId } })
+            }}
           />
         ))}
       </DataTableFrame>
@@ -396,6 +399,7 @@ function MemberGroup({
   colStyles,
   members,
   onOpenItem,
+  onOpenRelease,
 }: {
   group: TeamStatusMemberGroup
   projectId: string
@@ -405,6 +409,7 @@ function MemberGroup({
   colStyles: Record<string, React.CSSProperties>
   members: ProjectMember[]
   onOpenItem: (itemKey: string) => void
+  onOpenRelease: (releaseId: string) => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const updateCapacity = useUpdateCapacity(projectId, teamId, iterationId)
@@ -526,6 +531,7 @@ function MemberGroup({
             colStyles={colStyles}
             members={members}
             onOpenItem={onOpenItem}
+            onOpenRelease={onOpenRelease}
           />
         ))}
     </div>
@@ -540,12 +546,14 @@ function TaskRow({
   colStyles,
   members,
   onOpenItem,
+  onOpenRelease,
 }: {
   task: TeamStatusTaskRow
   canEdit: boolean
   colStyles: Record<string, React.CSSProperties>
   members: ProjectMember[]
   onOpenItem: (itemKey: string) => void
+  onOpenRelease: (releaseId: string) => void
 }) {
   const updateTask = useUpdateTeamTask()
 
@@ -684,14 +692,28 @@ function TaskRow({
           <span className="text-ui-xs text-foreground-faint">—</span>
         )}
       </div>
-      {/* Release (P3-TS-FR-025) — read-only reference; render with the shared
-          release TypeBadge so it reads like every other release cell. */}
+      {/* Release (P3-TS-FR-025) — clickable reference to the release detail,
+          same treatment as the Work Product cell (TypeBadge glyph + link). */}
       <div className="flex shrink-0 items-center overflow-hidden px-2" style={colStyles.release}>
         {task.release ? (
-          <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+          <button
+            type="button"
+            title={task.release.name}
+            onClick={(e) => {
+              e.stopPropagation()
+              onOpenRelease(task.release!.id)
+            }}
+            className="inline-flex max-w-full cursor-pointer items-center gap-1.5 border-none bg-transparent p-0"
+            onMouseOver={(e) => {
+              e.currentTarget.style.textDecoration = 'underline'
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.textDecoration = 'none'
+            }}
+          >
             <TypeBadge type="release" size={16} />
-            <span className="truncate">{task.release.name}</span>
-          </span>
+            <span className="truncate text-ui-sm text-primary-light">{task.release.name}</span>
+          </button>
         ) : (
           <span className="text-ui-xs text-foreground-faint">—</span>
         )}
