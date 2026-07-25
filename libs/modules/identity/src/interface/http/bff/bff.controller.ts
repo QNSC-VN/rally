@@ -12,6 +12,12 @@ import {
 } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
 import type { FastifyReply, FastifyRequest } from 'fastify';
+// `reply.generateCsrf` is a type augmentation contributed by @fastify/csrf-protection.
+// The API registers that plugin in its bootstrap, but the WORKER build compiles this
+// module too (it imports the identity module) without ever touching the bootstrap — so
+// without this type-only import the augmentation is absent from the worker's program and
+// `nest build worker` fails with TS2339. Type-only: no runtime import is emitted.
+import type {} from '@fastify/csrf-protection';
 import '@fastify/cookie';
 import { Auth, AppConfigService, Public, RateLimit, UnauthorizedException } from '@platform';
 import type { JwtPayload } from '@platform';

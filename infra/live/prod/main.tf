@@ -115,9 +115,9 @@ module "secrets" {
   recovery_window_days = 30 # longer recovery in production
 
   secret_names = {
-    "jwt-private"         = "EC P-256 (ES256) private key (PEM, base64-encoded)"
-    "jwt-public"          = "EC P-256 (ES256) public key (PEM, base64-encoded)"
-    "csrf-secret"         = "CSRF token signing secret"
+    "jwt-private" = "EC P-256 (ES256) private key (PEM, base64-encoded)"
+    "jwt-public"  = "EC P-256 (ES256) public key (PEM, base64-encoded)"
+    "csrf-secret" = "CSRF token signing secret"
     # NOTE: give this a value in the Secrets Manager console BEFORE the next app
     # deploy — COOKIE_SECRET is required at startup, so a task wired to an empty
     # secret cannot boot (visible as a failed deploy + rollback, not a silent
