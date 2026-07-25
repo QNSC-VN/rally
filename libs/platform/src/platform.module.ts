@@ -12,6 +12,7 @@ import { permissionGrants } from '@shared-kernel';
 import { RequestContextService } from './context/request-context';
 import { JwtStrategy } from './auth/jwt.strategy';
 import { JwtAuthGuard } from './auth/jwt.guard';
+import { AuthzEpochService } from './auth/authz-epoch.service';
 import { RateLimitGuard } from './rate-limit/rate-limit.guard';
 import { OutboxService } from './outbox/outbox.service';
 import { AuditProducer } from './audit/audit-producer.service';
@@ -78,6 +79,9 @@ import { StorageService } from './storage/storage.service';
     AuthTokenCache,
     JwtStrategy,
     JwtAuthGuard,
+    // Per-user authorization epoch — lets a permission change invalidate
+    // already-minted tokens instead of waiting for JWT_ACCESS_EXPIRY.
+    AuthzEpochService,
     PermissionGuard,
     // Bind the shared PermissionGuard's checker to rally's catalog so the
     // permission catalogue (db/permissions.catalog.ts) stays the single source
@@ -119,6 +123,7 @@ import { StorageService } from './storage/storage.service';
     JwtModule,
     RequestContextService,
     JwtAuthGuard,
+    AuthzEpochService,
     PermissionGuard,
     OutboxService,
     AuditProducer,

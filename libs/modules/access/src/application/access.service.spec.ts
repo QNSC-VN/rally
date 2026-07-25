@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mocked } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
-import { UnitOfWork, AuditProducer } from '@platform';
+import { UnitOfWork, AuditProducer, AuthzEpochService } from '@platform';
 import { AccessService } from './access.service';
 import { ROLE_REPOSITORY, IRoleRepository } from '../domain/ports/role.repository';
 import {
@@ -78,12 +78,22 @@ describe('AccessService — scope-aware permission resolution', () => {
             findExisting: vi.fn(),
             listForUser: vi.fn(),
             listEffectiveForUser: vi.fn(),
+            listUserIdsForRole: vi.fn().mockResolvedValue([]),
             create: vi.fn(),
             delete: vi.fn(),
           },
         },
         { provide: UnitOfWork, useValue: { run: vi.fn((fn: (tx: unknown) => unknown) => fn({})) } },
         { provide: AuditProducer, useValue: { emit: vi.fn().mockResolvedValue(undefined) } },
+        {
+          provide: AuthzEpochService,
+          useValue: {
+            bump: vi.fn().mockResolvedValue(undefined),
+            bumpMany: vi.fn().mockResolvedValue(undefined),
+            current: vi.fn().mockResolvedValue(0),
+            isStale: vi.fn().mockResolvedValue(false),
+          },
+        },
       ],
     }).compile();
 
@@ -329,5 +339,143 @@ describe('AccessService — scope-aware permission resolution', () => {
       );
       expect(result.permissions).toEqual(['project:edit', 'project:view']);
     });
+  });
+});
+
+/**
+ * A permission change must invalidate the tokens that embed the old snapshot,
+ * otherwise `PermissionGuard` keeps authorizing from it until the token expires
+ * (up to JWT_ACCESS_EXPIRY). These tests pin *which* writes invalidate and which
+ * deliberately do not.
+ */
+describe('AccessService — authorization epoch invalidation', () => {
+  let service: AccessService;
+  let roleRepo: Mocked<IRoleRepository>;
+  let assignmentRepo: Mocked<IRoleAssignmentRepository>;
+  let authzEpoch: Mocked<AuthzEpochService>;
+
+  const actor = {
+    sub: 'admin-1',
+    workspaceId: WORKSPACE,
+  } as unknown as Parameters<AccessService['assignRole']>[0];
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        AccessService,
+        {
+          provide: ROLE_REPOSITORY,
+          useValue: { findById: vi.fn(), listForWorkspace: vi.fn(), updatePermissions: vi.fn() },
+        },
+        {
+          provide: ROLE_ASSIGNMENT_REPOSITORY,
+          useValue: {
+            findById: vi.fn(),
+            findExisting: vi.fn().mockResolvedValue(null),
+            listForUser: vi.fn().mockResolvedValue([]),
+            listEffectiveForUser: vi.fn().mockResolvedValue([]),
+            listUserIdsForRole: vi.fn().mockResolvedValue([]),
+            create: vi.fn(),
+            delete: vi.fn().mockResolvedValue(undefined),
+          },
+        },
+        { provide: UnitOfWork, useValue: { run: vi.fn((fn: (tx: unknown) => unknown) => fn({})) } },
+        { provide: AuditProducer, useValue: { emit: vi.fn().mockResolvedValue(undefined) } },
+        {
+          provide: AuthzEpochService,
+          useValue: {
+            bump: vi.fn().mockResolvedValue(undefined),
+            bumpMany: vi.fn().mockResolvedValue(undefined),
+            current: vi.fn().mockResolvedValue(0),
+            isStale: vi.fn().mockResolvedValue(false),
+          },
+        },
+      ],
+    }).compile();
+
+    service = module.get(AccessService);
+    roleRepo = module.get(ROLE_REPOSITORY);
+    assignmentRepo = module.get(ROLE_ASSIGNMENT_REPOSITORY);
+    authzEpoch = module.get(AuthzEpochService);
+  });
+
+  it('invalidates the user when a workspace-scoped role is revoked', async () => {
+    // This is the case that used to leave a revoked admin fully privileged for
+    // up to 15 minutes.
+    assignmentRepo.findById.mockResolvedValue(assignment('role-workspace_admin', 'workspace'));
+
+    await service.revokeRole(actor, 'a-1');
+
+    expect(authzEpoch.bump).toHaveBeenCalledWith(USER);
+  });
+
+  it('invalidates the user when a workspace-scoped role is assigned', async () => {
+    const target = role('workspace_admin', ['workspace:*']);
+    roleRepo.findById.mockResolvedValue(target);
+    assignmentRepo.create.mockResolvedValue(assignment(target.id, 'workspace'));
+
+    await service.assignRole(actor, USER, target.id, 'workspace');
+
+    expect(authzEpoch.bump).toHaveBeenCalledWith(USER);
+  });
+
+  it('does NOT invalidate for a project-scoped assignment', async () => {
+    // Project-tier permissions are never embedded in the token — they are resolved
+    // from the database per request — so a bump would force a pointless re-mint.
+    const target = role('project_admin', ['project:edit']);
+    roleRepo.findById.mockResolvedValue(target);
+    assignmentRepo.create.mockResolvedValue(assignment(target.id, 'project', 'proj-9'));
+
+    await service.assignRole(actor, USER, target.id, 'project', 'proj-9');
+
+    expect(authzEpoch.bump).not.toHaveBeenCalled();
+  });
+
+  it('does NOT invalidate when a project-scoped role is revoked', async () => {
+    assignmentRepo.findById.mockResolvedValue(
+      assignment('role-project_admin', 'project', 'proj-9'),
+    );
+
+    await service.revokeProjectRole(actor, 'proj-9', 'a-1');
+
+    expect(authzEpoch.bump).not.toHaveBeenCalled();
+  });
+
+  it("invalidates every holder when a custom role's permissions change", async () => {
+    const custom: SystemRole = {
+      ...role('release_manager', ['release:create']),
+      id: 'role-custom',
+      workspaceId: WORKSPACE,
+      isSystem: false,
+    };
+    roleRepo.findById.mockResolvedValue(custom);
+    roleRepo.updatePermissions.mockResolvedValue({ ...custom, permissions: ['release:view'] });
+    assignmentRepo.listUserIdsForRole.mockResolvedValue(['user-a', 'user-b']);
+
+    await service.updateRolePermissions(actor, custom.id, ['release:view']);
+
+    expect(assignmentRepo.listUserIdsForRole).toHaveBeenCalledWith(custom.id);
+    expect(authzEpoch.bumpMany).toHaveBeenCalledWith(['user-a', 'user-b']);
+  });
+
+  it('invalidates on elevation to workspace_admin', async () => {
+    const admin = role('workspace_admin', ['workspace:*']);
+    roleRepo.listForWorkspace.mockResolvedValue([admin]);
+    assignmentRepo.listForUser.mockResolvedValue([]);
+    assignmentRepo.create.mockResolvedValue(assignment(admin.id, 'workspace'));
+
+    await expect(service.elevateToWorkspaceAdmin(USER, WORKSPACE)).resolves.toBe(true);
+
+    expect(authzEpoch.bump).toHaveBeenCalledWith(USER);
+  });
+
+  it('does not bump when a failed write throws before commit', async () => {
+    // No role → NotFoundException before the transaction. A bump here would force
+    // every holder of a nonexistent change to re-mint.
+    roleRepo.findById.mockResolvedValue(null);
+
+    await expect(service.assignRole(actor, USER, 'role-missing', 'workspace')).rejects.toThrow();
+
+    expect(authzEpoch.bump).not.toHaveBeenCalled();
   });
 });

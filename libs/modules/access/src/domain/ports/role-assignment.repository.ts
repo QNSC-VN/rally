@@ -23,6 +23,12 @@ export interface IRoleAssignmentRepository {
    * set, in a single query. Used by permission resolution to avoid N+1 lookups.
    */
   listEffectiveForUser(workspaceId: string, userId: string): Promise<EffectiveAssignment[]>;
+  /**
+   * Every user currently holding `roleId`, across all scopes. Used to fan out an
+   * authorization-epoch bump when a role's permission set changes: the role row
+   * moves, but the affected principals are its assignees.
+   */
+  listUserIdsForRole(roleId: string): Promise<string[]>;
   create(input: AssignRoleInput, tx?: DbExecutor): Promise<UserRoleAssignment>;
   delete(id: string, tx?: DbExecutor): Promise<void>;
 }
