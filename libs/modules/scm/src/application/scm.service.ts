@@ -45,7 +45,6 @@ export class ScmService {
       provider: ScmProvider;
       fullName: string;
       baseUrl?: string | null;
-      projectIds: string[];
     },
   ): Promise<ScmRepository> {
     const repo = await this.store.createRepository({ workspaceId: actor.workspaceId, ...input });

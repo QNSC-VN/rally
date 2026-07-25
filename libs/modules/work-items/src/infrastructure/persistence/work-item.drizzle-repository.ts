@@ -1,5 +1,17 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq, isNull, lt, or, ilike, inArray, sql, asc, desc, type AnyColumn } from 'drizzle-orm';
+import {
+  and,
+  eq,
+  isNull,
+  lt,
+  or,
+  ilike,
+  inArray,
+  sql,
+  asc,
+  desc,
+  type AnyColumn,
+} from 'drizzle-orm';
 import { InjectDrizzle, buildPageResult, keysetCondition } from '@platform';
 import type { DrizzleDB, DbExecutor, CursorPayload, PagedResult } from '@platform';
 import {
@@ -109,18 +121,15 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
    * {@link findById}'s work_items→tasks fallback so task detail pages (whose
    * rows live in `work.tasks` since the Phase 3 split) are reachable by key.
    */
-  async findByKey(
-    itemKey: string,
-    projectId: string,
-    workspaceId: string,
-  ): Promise<WorkItem | null> {
+  async findByKey(itemKey: string, workspaceId: string): Promise<WorkItem | null> {
+    // Keys are workspace-unique (Rally FormattedID), so (itemKey, workspaceId)
+    // resolves a single artifact — no projectId needed.
     const rows = await this.db
       .select()
       .from(workItems)
       .where(
         and(
           eq(workItems.itemKey, itemKey),
-          eq(workItems.projectId, projectId),
           eq(workItems.workspaceId, workspaceId),
           isNull(workItems.deletedAt),
         ),
@@ -134,7 +143,6 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       .where(
         and(
           eq(tasks.itemKey, itemKey),
-          eq(tasks.projectId, projectId),
           eq(tasks.workspaceId, workspaceId),
           isNull(tasks.deletedAt),
         ),
@@ -379,9 +387,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     // sort — non-unique columns (title/type/priority), the nullable
     // planEstimate, and the default rank — instead of always seeking by rank.
     const sort = BACKLOG_SORT_COLUMNS[filters.sortBy ?? 'rank'];
-    const direction: 'asc' | 'desc' = filters.sortBy
-      ? (filters.sortDirection ?? 'asc')
-      : 'asc';
+    const direction: 'asc' | 'desc' = filters.sortBy ? (filters.sortDirection ?? 'asc') : 'asc';
     const orderDir = direction === 'desc' ? desc : asc;
 
     // Total matching the filters (before the cursor/limit) so the backlog

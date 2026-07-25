@@ -19,8 +19,8 @@ export interface IterationScope {
 
 export interface IWorkItemRepository {
   findById(id: string, workspaceId: string, executor?: DbExecutor): Promise<WorkItem | null>;
-  /** Resolve a work item by its human item key within a project (work_items→tasks fallback). */
-  findByKey(itemKey: string, projectId: string, workspaceId: string): Promise<WorkItem | null>;
+  /** Resolve a work item by its workspace-unique item key (work_items→tasks fallback). */
+  findByKey(itemKey: string, workspaceId: string): Promise<WorkItem | null>;
   /** Non-deleted work items for the given ids, scoped to a workspace. */
   findByIds(ids: string[], workspaceId: string): Promise<WorkItem[]>;
   /** Project/team scope of an iteration (any workspace guard is applied by caller). */
@@ -69,11 +69,7 @@ export interface IWorkItemRepository {
   ): Promise<string | null>;
   /** Server-side aggregated totals for a parent's tasks (totals row). */
   getTaskTotals(parentId: string, workspaceId: string): Promise<TaskTotals>;
-  listMyWork(
-    workspaceId: string,
-    userId: string,
-    args: { limit: number },
-  ): Promise<MyWorkItem[]>;
+  listMyWork(workspaceId: string, userId: string, args: { limit: number }): Promise<MyWorkItem[]>;
   getWorkspaceSummary(workspaceId: string, userId: string): Promise<WorkspaceSummary>;
   /**
    * Check whether ALL non-deleted child tasks of a parent are in 'completed' state.

@@ -78,20 +78,21 @@ export const projects = workSchema.table(
   }),
 );
 
-// ── project_counters (item_key seq) ───────────────────────────────────────
-// Per-project, per-type sequential counter. Composite PK (projectId, itemType)
-// ensures each work-item type has its own numbering sequence.
+// ── workspace_item_counters (item_key seq) ─────────────────────────────────
+// Per-WORKSPACE, per-type sequential counter (Rally FormattedID model): a
+// work-item key like US-42 is unique across the whole workspace, not per
+// project. Composite PK (workspaceId, itemType) gives each type its own
+// workspace-wide sequence (US-*, DE-*, TA-* …).
 
-export const projectCounters = workSchema.table(
-  'project_counters',
+export const workspaceItemCounters = workSchema.table(
+  'workspace_item_counters',
   {
-    projectId: uuid('project_id').notNull(),
-    itemType: workItemTypeEnum('item_type').notNull().default('story'),
     workspaceId: uuid('workspace_id').notNull(),
+    itemType: workItemTypeEnum('item_type').notNull().default('story'),
     lastItemNumber: integer('last_item_number').notNull().default(0),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [{ pk: primaryKey({ columns: [table.projectId, table.itemType] }) }],
+  (table) => [{ pk: primaryKey({ columns: [table.workspaceId, table.itemType] }) }],
 );
 
 // ── work_items ────────────────────────────────────────────────────────────
@@ -163,7 +164,7 @@ export const workItems = workSchema.table(
   (t) => ({
     workspaceIdx: index('ix_wi_workspace').on(t.workspaceId),
     projectIdx: index('ix_wi_project').on(t.projectId),
-    itemKeyIdx: uniqueIndex('uq_wi_item_key').on(t.projectId, t.itemKey),
+    itemKeyIdx: uniqueIndex('uq_wi_item_key').on(t.workspaceId, t.itemKey),
     boardIdx: index('ix_wi_board').on(t.workspaceId, t.projectId, t.statusId, t.rank),
     backlogIdx: index('ix_wi_backlog').on(t.workspaceId, t.projectId, t.rank),
     // Default list/pagination path: filter (workspaceId, projectId), order by createdAt,
@@ -694,7 +695,7 @@ export const tasks = workSchema.table(
     assigneeIdx: index('ix_tasks_assignee').on(t.assigneeId),
     teamIdx: index('ix_tasks_team').on(t.teamId),
     rankIdx: index('ix_tasks_rank').on(t.parentId, t.rank),
-    itemKeyIdx: uniqueIndex('uq_task_item_key').on(t.projectId, t.itemKey),
+    itemKeyIdx: uniqueIndex('uq_task_item_key').on(t.workspaceId, t.itemKey),
   }),
 );
 

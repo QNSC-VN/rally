@@ -15,8 +15,7 @@ import type { NormalizedPullRequest, NormalizedCommit } from '@modules/scm';
 
 import { adminActor, bootRallyApp, ALL } from './support/flow-harness';
 
-// Seeded fixtures (db/seeds/seed.ts): US-1 lives in this project/workspace.
-const PROJECT_ID = '00000000-0000-7000-8000-000000000010';
+// Seeded fixtures (db/seeds/seed.ts): US-1 is the workspace-unique key for this item.
 const US1_ID = '00000000-0000-7000-8000-000000000030';
 
 describe('BA flow: SCM Connections (real AppModule + seeded DB)', () => {
@@ -37,14 +36,9 @@ describe('BA flow: SCM Connections (real AppModule + seeded DB)', () => {
     await app?.close();
   });
 
-  it('maps a repo (writes the scm_provider enum) and enqueues a backfill job', async () => {
-    const repo = await scm.createRepository(actor, {
-      provider: 'github',
-      fullName,
-      projectIds: [PROJECT_ID],
-    });
+  it('registers a repo (workspace-scoped) and enqueues a backfill job', async () => {
+    const repo = await scm.createRepository(actor, { provider: 'github', fullName });
     expect(repo).toMatchObject({ provider: 'github', fullName, active: true });
-    expect(repo.projectIds).toContain(PROJECT_ID);
 
     const repos = await scm.listRepositories(actor);
     expect(repos.some((r) => r.fullName === fullName)).toBe(true);

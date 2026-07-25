@@ -1,10 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq, lt, isNull, inArray, desc } from 'drizzle-orm';
+import { and, eq, lt, isNull, desc } from 'drizzle-orm';
 import { InjectDrizzle, buildPageResult } from '@platform';
 import type { DrizzleDB, PagedResult } from '@platform';
 import {
   scmRepositories,
-  scmRepositoryProjects,
   scmWebhookInbox,
   scmConnections,
   scmChangesets,
@@ -34,26 +33,12 @@ export class ScmDrizzleRepository implements IScmStore {
       .from(scmRepositories)
       .where(eq(scmRepositories.workspaceId, workspaceId))
       .orderBy(scmRepositories.fullName);
-    if (repos.length === 0) return [];
-    const links = await this.db
-      .select()
-      .from(scmRepositoryProjects)
-      .where(
-        inArray(
-          scmRepositoryProjects.repositoryId,
-          repos.map((r) => r.id),
-        ),
-      );
-    const byRepo = new Map<string, string[]>();
-    for (const l of links) {
-      const arr = byRepo.get(l.repositoryId) ?? [];
-      arr.push(l.projectId);
-      byRepo.set(l.repositoryId, arr);
-    }
-    return repos.map((r) => this.toRepository(r, byRepo.get(r.id) ?? []));
+    return repos.map((r) => this.toRepository(r));
   }
 
   async createRepository(input: CreateScmRepositoryInput): Promise<ScmRepository> {
+    // A repo maps to a WORKSPACE only — work-item keys are workspace-unique, so
+    // any key resolves workspace-wide (no per-project mapping).
     const [repo] = await this.db
       .insert(scmRepositories)
       .values({
@@ -67,32 +52,21 @@ export class ScmDrizzleRepository implements IScmStore {
         set: { baseUrl: input.baseUrl ?? null, active: true, updatedAt: new Date() },
       })
       .returning();
-    // Replace project links.
-    await this.db
-      .delete(scmRepositoryProjects)
-      .where(eq(scmRepositoryProjects.repositoryId, repo.id));
-    if (input.projectIds.length > 0) {
-      await this.db
-        .insert(scmRepositoryProjects)
-        .values(input.projectIds.map((projectId) => ({ repositoryId: repo.id, projectId })))
-        .onConflictDoNothing();
-    }
-    return this.toRepository(repo, input.projectIds);
+    return this.toRepository(repo);
   }
 
   async deleteRepository(workspaceId: string, id: string): Promise<void> {
     await this.db
       .delete(scmRepositories)
       .where(and(eq(scmRepositories.id, id), eq(scmRepositories.workspaceId, workspaceId)));
-    await this.db.delete(scmRepositoryProjects).where(eq(scmRepositoryProjects.repositoryId, id));
   }
 
   async findRepository(
     provider: ScmProvider,
     fullName: string,
-  ): Promise<{ workspaceId: string; projectIds: string[] } | null> {
+  ): Promise<{ workspaceId: string } | null> {
     const [repo] = await this.db
-      .select()
+      .select({ workspaceId: scmRepositories.workspaceId })
       .from(scmRepositories)
       .where(
         and(
@@ -102,12 +76,7 @@ export class ScmDrizzleRepository implements IScmStore {
         ),
       )
       .limit(1);
-    if (!repo) return null;
-    const links = await this.db
-      .select({ projectId: scmRepositoryProjects.projectId })
-      .from(scmRepositoryProjects)
-      .where(eq(scmRepositoryProjects.repositoryId, repo.id));
-    return { workspaceId: repo.workspaceId, projectIds: links.map((l) => l.projectId) };
+    return repo ? { workspaceId: repo.workspaceId } : null;
   }
 
   // ── Backfill ───────────────────────────────────────────────────────────────
@@ -147,18 +116,15 @@ export class ScmDrizzleRepository implements IScmStore {
 
   // ── Work-item resolution ──────────────────────────────────────────────────
 
-  async resolveWorkItemId(
-    itemKey: string,
-    projectId: string,
-    workspaceId: string,
-  ): Promise<string | null> {
+  async resolveWorkItemId(itemKey: string, workspaceId: string): Promise<string | null> {
+    // Workspace-unique keys (Rally FormattedID): (itemKey, workspaceId) resolves a
+    // single work item — no projectId needed, which is what makes linking org-level.
     const [row] = await this.db
       .select({ id: workItems.id })
       .from(workItems)
       .where(
         and(
           eq(workItems.itemKey, itemKey),
-          eq(workItems.projectId, projectId),
           eq(workItems.workspaceId, workspaceId),
           isNull(workItems.deletedAt),
         ),
@@ -293,10 +259,7 @@ export class ScmDrizzleRepository implements IScmStore {
 
   // ── Row mappers ─────────────────────────────────────────────────────────────
 
-  private toRepository(
-    r: typeof scmRepositories.$inferSelect,
-    projectIds: string[],
-  ): ScmRepository {
+  private toRepository(r: typeof scmRepositories.$inferSelect): ScmRepository {
     return {
       id: r.id,
       workspaceId: r.workspaceId,
@@ -304,7 +267,6 @@ export class ScmDrizzleRepository implements IScmStore {
       fullName: r.fullName,
       baseUrl: r.baseUrl,
       active: r.active,
-      projectIds,
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
     };

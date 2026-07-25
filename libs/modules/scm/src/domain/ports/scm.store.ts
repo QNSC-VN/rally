@@ -26,11 +26,8 @@ export interface IScmStore {
   listRepositories(workspaceId: string): Promise<ScmRepository[]>;
   createRepository(input: CreateScmRepositoryInput): Promise<ScmRepository>;
   deleteRepository(workspaceId: string, id: string): Promise<void>;
-  /** Resolve a repo (with its mapped project ids) for linking. Null if unmapped/inactive. */
-  findRepository(
-    provider: ScmProvider,
-    fullName: string,
-  ): Promise<{ workspaceId: string; projectIds: string[] } | null>;
+  /** Resolve a repo's workspace for linking. Null if unregistered/inactive. */
+  findRepository(provider: ScmProvider, fullName: string): Promise<{ workspaceId: string } | null>;
 
   // ── Backfill (GitHub App REST) ────────────────────────────────────────────
   /** Load the minimal repo identity a backfill run needs. Null if not found. */
@@ -46,12 +43,8 @@ export interface IScmStore {
   /** Enqueue a pending backfill job for a repo (drained by the worker relay). */
   enqueueBackfill(workspaceId: string, repositoryId: string): Promise<void>;
 
-  // ── Work-item resolution (key → id), no actor (webhook has no user) ─────────
-  resolveWorkItemId(
-    itemKey: string,
-    projectId: string,
-    workspaceId: string,
-  ): Promise<string | null>;
+  // ── Work-item resolution (workspace-unique key → id), no actor (webhook) ─────
+  resolveWorkItemId(itemKey: string, workspaceId: string): Promise<string | null>;
 
   // ── Webhook inbox ───────────────────────────────────────────────────────────
   /** Insert a raw event; returns false if the delivery id already exists (dedup). */

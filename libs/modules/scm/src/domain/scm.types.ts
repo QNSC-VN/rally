@@ -21,7 +21,7 @@ export interface ScmChange {
   path: string;
 }
 
-/** A registered repository and the projects whose keys it may reference. */
+/** A registered repository, scoped to a workspace (keys resolve workspace-wide). */
 export interface ScmRepository {
   id: string;
   workspaceId: string;
@@ -29,7 +29,6 @@ export interface ScmRepository {
   fullName: string;
   baseUrl: string | null;
   active: boolean;
-  projectIds: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -39,7 +38,6 @@ export interface CreateScmRepositoryInput {
   provider: ScmProvider;
   fullName: string;
   baseUrl?: string | null;
-  projectIds: string[];
 }
 
 /** A Pull Request (or future build/branch) linked to a work item. */

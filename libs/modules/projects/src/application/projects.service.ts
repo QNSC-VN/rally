@@ -137,7 +137,7 @@ export class ProjectsService {
         tx,
       );
 
-      await this.projectRepo.initCounter(projectId, actor.workspaceId, tx);
+      await this.projectRepo.initCounter(actor.workspaceId, tx);
       await this.projectMemberRepo.addMember(
         {
           id: uuidv7(),
@@ -349,9 +349,11 @@ export class ProjectsService {
       );
     }
     const prefix = ProjectsService.TYPE_PREFIX[type];
-    const seq = await this.projectRepo.incrementCounter(projectId, workspaceId, type);
-    // Item keys follow the type-prefix + hyphen convention (e.g. US-42, DE-1), matching
-    // the product UI/UX. The per-type counter provides the sequence; no zero-padding.
+    // Rally FormattedID: the sequence is per-(workspace, type), so US-42 is unique
+    // across the whole workspace (not per project). projectId is still used above
+    // only to enforce the archived-project guard.
+    const seq = await this.projectRepo.incrementCounter(workspaceId, type);
+    // Type-prefix + hyphen convention (e.g. US-42, DE-1); no zero-padding.
     return `${prefix}-${seq}`;
   }
 

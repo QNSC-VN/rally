@@ -420,18 +420,16 @@ export function WorkItemDetailPage() {
 import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
-import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { workItemKeys } from '@/features/work-items/api'
 
 function useWorkItemByKey(itemKey: string) {
-  const { project } = useAppContext()
-  const projectId = project?.projectId
+  // Keys are workspace-unique (Rally FormattedID) — resolve by key alone, no
+  // project context needed (the route /item/$itemKey carries no project).
   return useQuery({
-    queryKey: workItemKeys.byKey(itemKey, projectId),
+    queryKey: workItemKeys.byKey(itemKey),
     queryFn: async (): Promise<WorkItem | null> => {
-      if (!projectId) return null
       const { data, error, response } = await apiClient.GET('/v1/work-items/by-key', {
-        params: { query: { projectId, itemKey } },
+        params: { query: { itemKey } },
       })
       if (error) {
         if (response.status === 404) return null
@@ -439,7 +437,7 @@ function useWorkItemByKey(itemKey: string) {
       }
       return (data as WorkItem | undefined) ?? null
     },
-    enabled: !!itemKey && !!projectId,
+    enabled: !!itemKey,
     staleTime: 15_000,
   })
 }

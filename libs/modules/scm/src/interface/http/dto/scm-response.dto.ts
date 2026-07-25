@@ -44,7 +44,6 @@ export const ScmRepositoryResponseSchema = z.object({
   fullName: z.string(),
   baseUrl: z.string().nullable(),
   active: z.boolean(),
-  projectIds: z.array(z.string().uuid()),
   createdAt: z.string().datetime(),
 });
 export class ScmRepositoryResponseDto extends createZodDto(ScmRepositoryResponseSchema) {}

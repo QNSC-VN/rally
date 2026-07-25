@@ -20,6 +20,7 @@ import {
   parseSort,
   UseIdempotency,
   RateLimit,
+  RequirePermission,
 } from '@platform';
 import type { JwtPayload, PagedResult } from '@platform';
 import { AuthProjectScoped, RequireProjectPermission } from '@modules/access';
@@ -255,9 +256,7 @@ export class WorkItemsController {
   @ApiOperation({ summary: 'Workspace-wide summary counts for the Home strip' })
   @ApiResponse({ status: 200, type: WorkspaceSummaryResponseDto })
   @ApiCommonErrors(401)
-  async getWorkspaceSummary(
-    @CurrentUser() user: JwtPayload,
-  ): Promise<WorkspaceSummaryResponseDto> {
+  async getWorkspaceSummary(@CurrentUser() user: JwtPayload): Promise<WorkspaceSummaryResponseDto> {
     return this.workItemsService.getWorkspaceSummary(user);
   }
 
@@ -311,15 +310,17 @@ export class WorkItemsController {
   // Declared before @Get(':id') so the static path is not captured as an :id
   // (which is ParseUUIDPipe-validated and would 400 on the literal "by-key").
   @Get('by-key')
-  @ApiOperation({ summary: 'Get a work item by its item key within a project' })
-  @RequireProjectPermission('work_item:view', 'query', 'projectId')
+  @ApiOperation({ summary: 'Get a work item by its workspace-unique item key' })
+  // Keys are workspace-unique (Rally FormattedID) — resolve at workspace scope;
+  // the service then enforces work_item:view on the resolved item's own project.
+  @RequirePermission('workspace:view')
   @ApiResponse({ status: 200, type: WorkItemResponseDto })
   @ApiCommonErrors(400, 401, 404)
   async getWorkItemByKey(
     @CurrentUser() user: JwtPayload,
     @Query() query: WorkItemByKeyQueryDto,
   ): Promise<WorkItemResponseDto> {
-    const item = await this.workItemsService.getWorkItemByKey(user, query.projectId, query.itemKey);
+    const item = await this.workItemsService.getWorkItemByKey(user, query.itemKey);
     return toWorkItemDto(item);
   }
 

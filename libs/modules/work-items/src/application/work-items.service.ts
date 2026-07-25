@@ -528,8 +528,10 @@ export class WorkItemsService {
    * live in `work.tasks` since the Phase 3 split and are therefore invisible to
    * the work_items search used previously.
    */
-  async getWorkItemByKey(actor: JwtPayload, projectId: string, itemKey: string): Promise<WorkItem> {
-    const item = await this.workItemRepo.findByKey(itemKey, projectId, actor.workspaceId);
+  async getWorkItemByKey(actor: JwtPayload, itemKey: string): Promise<WorkItem> {
+    // Keys are workspace-unique (Rally FormattedID): resolve across the workspace,
+    // then enforce view permission on the item's OWN project below.
+    const item = await this.workItemRepo.findByKey(itemKey, actor.workspaceId);
     if (!item) {
       throw new NotFoundException('WORK_ITEM_NOT_FOUND', `Work item ${itemKey} not found`);
     }
