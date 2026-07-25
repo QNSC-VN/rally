@@ -17,25 +17,7 @@ test.describe('P2.3 Iteration Status', () => {
     await expect(page.getByText('Tasks').first()).toBeVisible()
   })
 
-  test('creates a Story into the selected iteration via Add Item', async ({ page }) => {
-    await loginAndSelectProject(page)
-    await page.goto('/iteration-status')
-    await settle(page)
-
-    const addBtn = page.getByRole('button', { name: 'Add Item' })
-    test.skip(!(await addBtn.isVisible().catch(() => false)), 'No iteration selected / no create permission')
-
-    await addBtn.click()
-    await expect(page.getByText('Add Item to Iteration')).toBeVisible()
-
-    const title = `E2E Story ${Date.now()}`
-    await page.getByPlaceholder('Enter a concise work item title...').fill(title)
-    await page.getByRole('button', { name: 'Create Item' }).click()
-
-    // On success the modal closes (onCreated); on failure it stays open with an
-    // inline error. Asserting the modal is gone is the stable end-to-end success
-    // signal — the success toast auto-dismisses too fast to assert reliably, and
-    // the list refetch/row-truncation races a title match.
-    await expect(page.getByText('Add Item to Iteration')).toBeHidden({ timeout: 15_000 })
-  })
+  // Creating a Story into the selected iteration via "Add New" is covered by the
+  // end-to-end golden-journey spec (which also verifies it surfaces on the
+  // Backlog + moves schedule state), so it is not duplicated here.
 })

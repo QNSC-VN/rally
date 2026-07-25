@@ -30,6 +30,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx db/migrate.ts",
     "db:seed": "tsx db/seeds/seed.ts",
+    "db:seed:test": "tsx db/seeds/seed.ts --fixtures",
     "db:studio": "drizzle-kit studio",
     "prepare": "husky"
   },

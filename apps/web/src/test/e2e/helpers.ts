@@ -1,13 +1,13 @@
 import { type Page, expect } from '@playwright/test'
 
-export const ADMIN = { email: 'admin@acme.dev' }
+export const ADMIN = { email: 'admin@qnsc.dev' }
 export const SEED_PROJECT = 'NX Platform'
 
 const SEED_CONTEXT = {
   workspace: {
     workspaceId: '00000000-0000-7000-8000-000000000003',
     workspaceSlug: 'main',
-    workspaceName: 'ACME Corp',
+    workspaceName: 'QNSC',
   },
   project: {
     projectId: '00000000-0000-7000-8000-000000000010',
