@@ -7,10 +7,11 @@ export type LinkOutcome = 'processed' | 'ignored';
 
 /**
  * Turns a raw webhook event into linked connections/changesets. Called by the
- * worker relay (once per inbox row). Resolution: repo→mapped project(s), then
- * (key × project) → work item. Upserts are idempotent (unique constraints), so
- * redelivery/retries never duplicate. Workspace is derived from the mapped repo,
- * never trusted from the payload.
+ * worker relay (once per inbox row). Resolution: repo→workspace, then
+ * key → work item (keys are workspace-unique, Rally FormattedID), so linking is
+ * org-level — no per-project mapping. Upserts are idempotent (unique
+ * constraints), so redelivery/retries never duplicate. Workspace is derived from
+ * the registered repo, never trusted from the payload.
  */
 @Injectable()
 export class ScmLinkerService {
@@ -84,17 +85,15 @@ export class ScmLinkerService {
     return linked ? 'processed' : 'ignored';
   }
 
-  /** Resolve every (key × mapped project) to a work item id (skips misses). */
+  /** Resolve each key to a work item id, workspace-wide (skips misses). */
   private async resolve(
-    repo: { workspaceId: string; projectIds: string[] },
+    repo: { workspaceId: string },
     keys: string[],
   ): Promise<Array<{ workItemId: string }>> {
     const out: Array<{ workItemId: string }> = [];
     for (const key of keys) {
-      for (const projectId of repo.projectIds) {
-        const workItemId = await this.store.resolveWorkItemId(key, projectId, repo.workspaceId);
-        if (workItemId) out.push({ workItemId });
-      }
+      const workItemId = await this.store.resolveWorkItemId(key, repo.workspaceId);
+      if (workItemId) out.push({ workItemId });
     }
     return out;
   }

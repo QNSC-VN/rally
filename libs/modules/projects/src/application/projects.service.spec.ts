@@ -443,7 +443,7 @@ describe('ProjectsService', () => {
 
       const key = await service.generateItemKey('ws-1', 'proj-1', 'story');
       expect(key).toBe('US-42');
-      expect(projectRepo.incrementCounter).toHaveBeenCalledWith('proj-1', 'ws-1', 'story');
+      expect(projectRepo.incrementCounter).toHaveBeenCalledWith('ws-1', 'story');
     });
 
     it('generates DE-1 for defect', async () => {

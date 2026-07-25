@@ -4,7 +4,7 @@ import { InjectDrizzle, buildPageResult } from '@platform';
 import type { DrizzleDB, DbExecutor, CursorPayload, PagedResult } from '@platform';
 import {
   projects,
-  projectCounters,
+  workspaceItemCounters,
   projectMembers,
   projectTeams,
   workItems,
@@ -286,55 +286,50 @@ export class ProjectDrizzleRepository implements IProjectRepository {
       .where(and(eq(projects.id, id), eq(projects.workspaceId, workspaceId)));
   }
 
-  async initCounter(projectId: string, workspaceId: string, tx?: DbExecutor): Promise<void> {
+  async initCounter(workspaceId: string, tx?: DbExecutor): Promise<void> {
     const db = tx ?? this.db;
-    // Seed a counter row for every work-item type so any type can be created
+    // Seed a workspace-wide counter row for every work-item type so any type can
+    // be created. Idempotent — the first project in a workspace seeds them; later
+    // projects no-op. (Counter is per-workspace, not per-project.)
     const types = ['initiative', 'feature', 'story', 'task', 'defect'] as const;
     for (const itemType of types) {
       await db
-        .insert(projectCounters)
-        .values({ projectId, workspaceId, itemType, lastItemNumber: 0 })
+        .insert(workspaceItemCounters)
+        .values({ workspaceId, itemType, lastItemNumber: 0 })
         .onConflictDoNothing();
     }
   }
 
   async incrementCounter(
-    projectId: string,
     workspaceId: string,
     itemType: WorkItemType,
     tx?: DbExecutor,
   ): Promise<number> {
     const db = tx ?? this.db;
+    // Upsert-then-increment so a workspace that predates its counter row (or was
+    // never seeded) still allocates from 1 instead of throwing on a missing row.
     const rows = await db
-      .update(projectCounters)
-      .set({
-        lastItemNumber: sql`${projectCounters.lastItemNumber} + 1`,
-        updatedAt: new Date(),
+      .insert(workspaceItemCounters)
+      .values({ workspaceId, itemType, lastItemNumber: 1 })
+      .onConflictDoUpdate({
+        target: [workspaceItemCounters.workspaceId, workspaceItemCounters.itemType],
+        set: {
+          lastItemNumber: sql`${workspaceItemCounters.lastItemNumber} + 1`,
+          updatedAt: new Date(),
+        },
       })
-      .where(
-        and(
-          eq(projectCounters.projectId, projectId),
-          eq(projectCounters.workspaceId, workspaceId),
-          eq(projectCounters.itemType, itemType),
-        ),
-      )
-      .returning({ lastItemNumber: projectCounters.lastItemNumber });
+      .returning({ lastItemNumber: workspaceItemCounters.lastItemNumber });
     return rows[0].lastItemNumber;
   }
 
-  async getMaxItemNumber(
-    projectId: string,
-    workspaceId: string,
-    itemType: WorkItemType,
-  ): Promise<number> {
+  async getMaxItemNumber(workspaceId: string, itemType: WorkItemType): Promise<number> {
     const row = await this.db
-      .select({ max: sql<number>`COALESCE(MAX(${projectCounters.lastItemNumber}), 0)` })
-      .from(projectCounters)
+      .select({ max: sql<number>`COALESCE(MAX(${workspaceItemCounters.lastItemNumber}), 0)` })
+      .from(workspaceItemCounters)
       .where(
         and(
-          eq(projectCounters.projectId, projectId),
-          eq(projectCounters.workspaceId, workspaceId),
-          eq(projectCounters.itemType, itemType),
+          eq(workspaceItemCounters.workspaceId, workspaceId),
+          eq(workspaceItemCounters.itemType, itemType),
         ),
       );
     return row[0].max;

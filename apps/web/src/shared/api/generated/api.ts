@@ -3214,7 +3214,6 @@ export interface components {
       fullName: string
       baseUrl: string | null
       active: boolean
-      projectIds: string[]
       /** Format: date-time */
       createdAt: string
     }
@@ -3227,7 +3226,6 @@ export interface components {
       provider: 'github' | 'ghe'
       fullName: string
       baseUrl?: string | null
-      projectIds: string[]
     }
   }
   responses: never
@@ -6001,7 +5999,6 @@ export interface operations {
   WorkItemsController_getWorkItemByKey: {
     parameters: {
       query: {
-        projectId: string
         itemKey: string
       }
       header?: never

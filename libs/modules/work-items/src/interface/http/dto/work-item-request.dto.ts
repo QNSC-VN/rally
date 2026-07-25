@@ -79,7 +79,6 @@ export class WorkItemQueryDto extends createZodDto(WorkItemQuerySchema) {}
 // ── By-key lookup query ─────────────────────────────────────────────────────────
 
 export const WorkItemByKeyQuerySchema = z.object({
-  projectId: z.string().uuid(),
   itemKey: z.string().trim().min(1).max(64),
 });
 

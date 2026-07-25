@@ -23,10 +23,7 @@ export interface IProjectRepository {
     workspaceId: string,
     args: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<ProjectWithStats>>;
-  listHealthByWorkspace(
-    workspaceId: string,
-    args: { limit: number },
-  ): Promise<ProjectHealth[]>;
+  listHealthByWorkspace(workspaceId: string, args: { limit: number }): Promise<ProjectHealth[]>;
   create(input: CreateProjectInput, tx?: DbExecutor): Promise<Project>;
   update(
     id: string,
@@ -35,12 +32,9 @@ export interface IProjectRepository {
     tx?: DbExecutor,
   ): Promise<Project>;
   softDelete(id: string, workspaceId: string): Promise<void>;
-  initCounter(projectId: string, workspaceId: string, tx?: DbExecutor): Promise<void>;
-  incrementCounter(
-    projectId: string,
-    workspaceId: string,
-    itemType: WorkItemType,
-    tx?: DbExecutor,
-  ): Promise<number>;
-  getMaxItemNumber(projectId: string, workspaceId: string, itemType: WorkItemType): Promise<number>;
+  /** Seed workspace-wide item counters (per type). Idempotent. */
+  initCounter(workspaceId: string, tx?: DbExecutor): Promise<void>;
+  /** Allocate the next workspace-wide sequence for a type (Rally FormattedID). */
+  incrementCounter(workspaceId: string, itemType: WorkItemType, tx?: DbExecutor): Promise<number>;
+  getMaxItemNumber(workspaceId: string, itemType: WorkItemType): Promise<number>;
 }

@@ -30,7 +30,6 @@ import {
   jsonb,
   index,
   uniqueIndex,
-  primaryKey,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import {
@@ -77,18 +76,9 @@ export const scmRepositories = scmSchema.table(
   }),
 );
 
-/** Many-to-many repo↔project: a repo may serve several projects (monorepo). */
-export const scmRepositoryProjects = scmSchema.table(
-  'repository_projects',
-  {
-    repositoryId: uuid('repository_id').notNull(),
-    projectId: uuid('project_id').notNull(),
-  },
-  (t) => ({
-    pk: primaryKey({ columns: [t.repositoryId, t.projectId] }),
-    projectIdx: index('ix_scm_repository_projects_project').on(t.projectId),
-  }),
-);
+// A repo maps to a WORKSPACE (not to specific projects): work-item keys are
+// workspace-unique (Rally FormattedID), so any key in a PR/commit resolves
+// workspace-wide. This makes SCM linking org-level — no per-project mapping.
 
 // ── webhook_inbox — durable raw events (async ingestion) ─────────────────────
 

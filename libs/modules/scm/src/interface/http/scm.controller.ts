@@ -59,7 +59,6 @@ function toRepositoryDto(r: ScmRepository): ScmRepositoryResponseDto {
     fullName: r.fullName,
     baseUrl: r.baseUrl,
     active: r.active,
-    projectIds: r.projectIds,
     createdAt: r.createdAt.toISOString(),
   };
 }
@@ -126,7 +125,6 @@ export class ScmController {
       provider: dto.provider,
       fullName: dto.fullName,
       baseUrl: dto.baseUrl,
-      projectIds: dto.projectIds,
     });
     return toRepositoryDto(repo);
   }

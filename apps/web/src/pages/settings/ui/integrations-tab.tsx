@@ -1,15 +1,14 @@
 /**
- * Settings ▸ Integrations — SCM repository → project mappings. A repo's webhook
- * events (PRs/commits) are linked to work items only in the project(s) mapped
- * here (the SCMRepository analog). Also surfaces the webhook URL to configure on
- * the GitHub side.
+ * Settings ▸ Integrations — SCM repositories registered to this workspace. A
+ * repo's webhook events (PRs/commits) link to work items by their workspace-
+ * unique key (Rally FormattedID) — no per-project mapping needed (org-level).
+ * Also surfaces the webhook URL to configure on the GitHub side.
  */
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Loader2, Plug, RefreshCw } from 'lucide-react'
 
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
-import { useProjects } from '@/features/projects/api'
 import {
   useScmRepositories,
   useCreateScmRepository,
@@ -28,33 +27,24 @@ export function IntegrationsTab() {
   const { workspace } = useAppContext()
   const workspaceId = workspace?.workspaceId
   const { data: repos = [], isLoading } = useScmRepositories(workspaceId)
-  const { data: projects = [] } = useProjects(workspaceId)
   const createRepo = useCreateScmRepository(workspaceId)
   const deleteRepo = useDeleteScmRepository(workspaceId)
   const syncRepo = useSyncScmRepository(workspaceId)
 
-  const projectName = useMemo(() => new Map(projects.map((p) => [p.id, p.name])), [projects])
-
   const [provider, setProvider] = useState<ScmProvider>('github')
   const [fullName, setFullName] = useState('')
-  const [projectIds, setProjectIds] = useState<string[]>([])
 
   const webhookUrl = `${window.location.origin}/v1/scm/webhook/${provider}`
 
-  function toggleProject(id: string) {
-    setProjectIds((cur) => (cur.includes(id) ? cur.filter((p) => p !== id) : [...cur, id]))
-  }
-
   async function add() {
-    if (!fullName.trim() || projectIds.length === 0) {
-      notify.error('Enter a repository (owner/name) and select at least one project.')
+    if (!fullName.trim()) {
+      notify.error('Enter a repository (owner/name).')
       return
     }
     try {
-      await createRepo.mutateAsync({ provider, fullName: fullName.trim(), projectIds })
+      await createRepo.mutateAsync({ provider, fullName: fullName.trim() })
       notify.success(`Linked ${fullName.trim()}`)
       setFullName('')
-      setProjectIds([])
     } catch (e) {
       notify.error(e instanceof Error ? e.message : 'Failed to add repository')
     }
@@ -62,7 +52,7 @@ export function IntegrationsTab() {
 
   return (
     <div className="max-w-3xl space-y-8">
-      {/* Existing mappings */}
+      {/* Existing repositories */}
       <section>
         <h3 className="mb-2 text-ui-md font-semibold text-foreground">
           {t('integrations.connectedRepositories')}
@@ -82,7 +72,6 @@ export function IntegrationsTab() {
                 <tr className="text-left text-ui-xs text-foreground-subtle">
                   <th className="px-3 py-2 font-semibold">{t('integrations.col.repository')}</th>
                   <th className="px-3 py-2 font-semibold">{t('integrations.col.provider')}</th>
-                  <th className="px-3 py-2 font-semibold">{t('integrations.col.projects')}</th>
                   <th className="px-3 py-2" />
                 </tr>
               </thead>
@@ -91,9 +80,6 @@ export function IntegrationsTab() {
                   <tr key={r.id} className="border-t border-border-inner">
                     <td className="px-3 py-2 font-mono text-foreground">{r.fullName}</td>
                     <td className="px-3 py-2 text-muted-foreground uppercase">{r.provider}</td>
-                    <td className="px-3 py-2 text-muted-foreground">
-                      {r.projectIds.map((id) => projectName.get(id) ?? id).join(', ') || '—'}
-                    </td>
                     <td className="px-3 py-2 text-right">
                       <button
                         aria-label={t('integrations.syncAria', { name: r.fullName })}
@@ -139,7 +125,7 @@ export function IntegrationsTab() {
         )}
       </section>
 
-      {/* Add mapping */}
+      {/* Register a repository */}
       <section className="space-y-3">
         <h3 className="text-ui-md font-semibold text-foreground">{t('integrations.connect')}</h3>
         <div className="flex flex-wrap items-end gap-3">
@@ -169,34 +155,11 @@ export function IntegrationsTab() {
           </Button>
         </div>
 
-        <div>
-          <span className="text-ui-xs text-foreground-subtle">
-            {t('integrations.projectsItReferences')}
-          </span>
-          <div className="mt-1 grid max-h-40 grid-cols-2 gap-1.5 overflow-y-auto rounded border border-input bg-input-background p-2">
-            {projects.length === 0 ? (
-              <span className="text-ui-sm text-foreground-subtle">
-                {t('integrations.noProjects')}
-              </span>
-            ) : (
-              projects.map((p) => (
-                <label key={p.id} className="flex items-center gap-2 text-ui-md text-foreground">
-                  <input
-                    type="checkbox"
-                    checked={projectIds.includes(p.id)}
-                    onChange={() => toggleProject(p.id)}
-                  />
-                  <span className="truncate">{p.name}</span>
-                </label>
-              ))
-            )}
-          </div>
-        </div>
-
         <p className="text-ui-xs text-foreground-subtle">
-          Add this webhook URL to the repository (content type <code>application/json</code>,
-          events: Pull requests + Pushes), using the shared secret from your SCM integration
-          settings:
+          Work items are matched by their key (e.g. <code>US-42</code>) in the PR title, branch, or
+          commit message — no per-project setup. Add this webhook URL to the repository (content
+          type <code>application/json</code>, events: Pull requests + Pushes), using the shared
+          secret from your SCM integration settings:
           <br />
           <code className="mt-1 inline-block rounded bg-surface-subtle px-2 py-1 font-mono text-foreground">
             {webhookUrl}

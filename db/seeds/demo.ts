@@ -36,7 +36,7 @@ import { and, eq, isNull, or, sql } from 'drizzle-orm';
 import * as schema from '../schema';
 // Direct imports to avoid barrel tsx/CJS resolution edge cases at runtime.
 import {
-  projectCounters,
+  workspaceItemCounters,
   projectMembers,
   projectTeams,
   workItems,
@@ -124,12 +124,14 @@ async function seedProject(project: {
   }
   if (!actualId) return; // should never happen
 
-  // 2. Initialise the item-key counter per work-item type (mirrors ProjectsService.createProject)
+  // 2. Initialise the WORKSPACE-wide item-key counter per type (Rally FormattedID;
+  //    mirrors ProjectsService.createProject). Runs per project but the workspace
+  //    counter rows are shared — onConflictDoNothing makes later projects no-op.
   const counterTypes = ['initiative', 'feature', 'story', 'task', 'defect'] as const;
   for (const itemType of counterTypes) {
     await db
-      .insert(schema.projectCounters)
-      .values({ projectId: actualId, workspaceId: WORKSPACE_ID, itemType, lastItemNumber: 0 })
+      .insert(schema.workspaceItemCounters)
+      .values({ workspaceId: WORKSPACE_ID, itemType, lastItemNumber: 0 })
       .onConflictDoNothing();
   }
 
@@ -473,21 +475,36 @@ async function seedFlow() {
     ])
     .onConflictDoNothing();
 
-  // ── 7. Per-type counters — keep in lock-step with what was actually ────
-  //    seeded so a later app-created item never collides on the unique
-  //    (project_id, item_key) index.
+  // ── 7. Workspace-wide per-type counters — keep in lock-step with what was
+  //    actually seeded (US-1, DE-1, TA-1/TA-2) so a later app-created item never
+  //    collides on the unique (workspace_id, item_key) index.
   await db
-    .update(projectCounters)
-    .set({ lastItemNumber: sql`GREATEST(${projectCounters.lastItemNumber}, 1)` })
-    .where(and(eq(projectCounters.projectId, nxpId), eq(projectCounters.itemType, 'story')));
+    .update(workspaceItemCounters)
+    .set({ lastItemNumber: sql`GREATEST(${workspaceItemCounters.lastItemNumber}, 1)` })
+    .where(
+      and(
+        eq(workspaceItemCounters.workspaceId, WORKSPACE_ID),
+        eq(workspaceItemCounters.itemType, 'story'),
+      ),
+    );
   await db
-    .update(projectCounters)
-    .set({ lastItemNumber: sql`GREATEST(${projectCounters.lastItemNumber}, 1)` })
-    .where(and(eq(projectCounters.projectId, nxpId), eq(projectCounters.itemType, 'defect')));
+    .update(workspaceItemCounters)
+    .set({ lastItemNumber: sql`GREATEST(${workspaceItemCounters.lastItemNumber}, 1)` })
+    .where(
+      and(
+        eq(workspaceItemCounters.workspaceId, WORKSPACE_ID),
+        eq(workspaceItemCounters.itemType, 'defect'),
+      ),
+    );
   await db
-    .update(projectCounters)
-    .set({ lastItemNumber: sql`GREATEST(${projectCounters.lastItemNumber}, 2)` })
-    .where(and(eq(projectCounters.projectId, nxpId), eq(projectCounters.itemType, 'task')));
+    .update(workspaceItemCounters)
+    .set({ lastItemNumber: sql`GREATEST(${workspaceItemCounters.lastItemNumber}, 2)` })
+    .where(
+      and(
+        eq(workspaceItemCounters.workspaceId, WORKSPACE_ID),
+        eq(workspaceItemCounters.itemType, 'task'),
+      ),
+    );
 
   // ── 8. Activity logs (Revision History tab) ─────────────────────────────
   const existingActivity = await db

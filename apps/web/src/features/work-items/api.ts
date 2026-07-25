@@ -42,8 +42,7 @@ export const workItemKeys = {
   backlog: (projectId: string, filters?: Record<string, unknown>) =>
     [...workItemKeys.all, 'backlog', projectId, filterHash(filters ?? {})] as const,
   detail: (id: string) => [...workItemKeys.all, 'detail', id] as const,
-  byKey: (itemKey: string, projectId?: string | null) =>
-    [...workItemKeys.all, 'by-key', itemKey, projectId ?? null] as const,
+  byKey: (itemKey: string) => [...workItemKeys.all, 'by-key', itemKey] as const,
   tasks: (workItemId: string) => [...workItemKeys.all, 'tasks', workItemId] as const,
   taskTotals: (workItemId: string) => [...workItemKeys.all, 'task-totals', workItemId] as const,
   activity: (workItemId: string) => [...workItemKeys.all, 'activity', workItemId] as const,
@@ -319,7 +318,7 @@ export function useUpdateWorkItem(id: string) {
     onSuccess: (item) => {
       qc.setQueryData(workItemKeys.detail(id), item)
       // Must pass projectId to match the exact cache key used by useWorkItemByKey().
-      qc.setQueriesData({ queryKey: workItemKeys.byKey(item.itemKey, item.projectId) }, item)
+      qc.setQueriesData({ queryKey: workItemKeys.byKey(item.itemKey) }, item)
       qc.setQueriesData<{ data?: WorkItem[]; pageInfo?: unknown }>(
         { queryKey: workItemKeys.backlog(item.projectId) },
         (old) => {
@@ -378,7 +377,7 @@ export function useUpdateAnyWorkItem() {
     },
     onSuccess: (item) => {
       qc.setQueryData(workItemKeys.detail(item.id), item)
-      qc.setQueriesData({ queryKey: workItemKeys.byKey(item.itemKey, item.projectId) }, item)
+      qc.setQueriesData({ queryKey: workItemKeys.byKey(item.itemKey) }, item)
     },
     meta: { invalidates: ['work-item'] },
   })

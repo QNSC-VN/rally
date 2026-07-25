@@ -32,7 +32,6 @@ export interface CreateScmRepositoryInput {
   provider: ScmProvider
   fullName: string
   baseUrl?: string | null
-  projectIds: string[]
 }
 
 export function useCreateScmRepository(workspaceId: string | undefined) {
