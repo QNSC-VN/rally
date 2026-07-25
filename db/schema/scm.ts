@@ -193,3 +193,32 @@ export const scmBackfillJobs = scmSchema.table(
       .where(sql`status = 'pending'`),
   }),
 );
+
+// ── installations — a GitHub App installation bound to a workspace ───────────
+// Org-level auto-discovery: binding an installation to a workspace lets Rally
+// auto-register that installation's repos (via installation_repositories
+// webhooks + the REST discovery) and resolve inbound events to the workspace —
+// no per-repo typing. installation_id is GitHub's numeric id (as text).
+
+export const scmInstallations = scmSchema.table(
+  'installations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id').notNull(),
+    provider: scmProviderEnum('provider').notNull().default('github'),
+    /** GitHub App installation id (numeric, stored as text). */
+    installationId: varchar('installation_id', { length: 64 }).notNull(),
+    /** Owning org/user login, e.g. "QNSC-VN". */
+    accountLogin: varchar('account_login', { length: 255 }),
+    /** 'Organization' | 'User'. */
+    accountType: varchar('account_type', { length: 32 }),
+    active: boolean('active').notNull().default(true),
+    createdBy: uuid('created_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    installIdx: uniqueIndex('uq_scm_installations_installation').on(t.provider, t.installationId),
+    workspaceIdx: index('ix_scm_installations_workspace').on(t.workspaceId),
+  }),
+);

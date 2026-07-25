@@ -32,6 +32,23 @@ export class GithubRestClient {
     private readonly token: string,
   ) {}
 
+  /** Every repo the installation can access (owner/name), paginated. */
+  async listInstallationRepositories({
+    perPage = 100,
+    maxPages = 20,
+  }: { perPage?: number; maxPages?: number } = {}): Promise<string[]> {
+    const out: string[] = [];
+    for (let page = 1; page <= maxPages; page++) {
+      const body = await this.get<{ repositories?: Array<{ full_name: string }> }>(
+        `/installation/repositories?per_page=${perPage}&page=${page}`,
+      );
+      const batch = body.repositories ?? [];
+      out.push(...batch.map((r) => r.full_name));
+      if (batch.length < perPage) break;
+    }
+    return out;
+  }
+
   /** Recent PRs (all states), newest first. Capped by maxPages × perPage. */
   async listPullRequests(
     fullName: string,

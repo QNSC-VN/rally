@@ -38,17 +38,41 @@ export const ScmChangesetResponseSchema = z.object({
 });
 export class ScmChangesetResponseDto extends createZodDto(ScmChangesetResponseSchema) {}
 
+const ScmLastSyncSchema = z.object({
+  status: z.enum(['pending', 'done', 'failed']),
+  at: z.string().datetime().nullable(),
+  prs: z.number().int(),
+  commits: z.number().int(),
+});
+
 export const ScmRepositoryResponseSchema = z.object({
   id: z.string().uuid(),
   provider: z.enum(scmProviderEnum.enumValues),
   fullName: z.string(),
   baseUrl: z.string().nullable(),
   active: z.boolean(),
+  installationId: z.string().nullable(),
+  /** Latest backfill outcome (null until a job has run). */
+  lastSync: ScmLastSyncSchema.nullable(),
   createdAt: z.string().datetime(),
 });
 export class ScmRepositoryResponseDto extends createZodDto(ScmRepositoryResponseSchema) {}
+
+export const ScmInstallationResponseSchema = z.object({
+  installationId: z.string(),
+  accountLogin: z.string().nullable(),
+  accountType: z.string().nullable(),
+  /** For the /available list: already bound to this workspace. */
+  connected: z.boolean().optional(),
+});
+export class ScmInstallationResponseDto extends createZodDto(ScmInstallationResponseSchema) {}
 
 export const ScmSyncResponseSchema = z.object({
   enqueued: z.boolean().describe('True when a backfill job was queued'),
 });
 export class ScmSyncResponseDto extends createZodDto(ScmSyncResponseSchema) {}
+
+export const ScmConnectResponseSchema = z.object({
+  discovered: z.number().int().describe('Repositories discovered + queued for backfill'),
+});
+export class ScmConnectResponseDto extends createZodDto(ScmConnectResponseSchema) {}

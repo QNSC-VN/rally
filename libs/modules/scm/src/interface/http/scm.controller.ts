@@ -14,14 +14,17 @@ import { Auth, ApiCommonErrors, ApiPagedResponse, buildPageArgs, PageQueryDto } 
 import type { JwtPayload, PagedResult } from '@platform';
 import { CurrentUser } from '@modules/identity';
 import { ScmService } from '../../application/scm.service';
-import type { ScmConnection, ScmChangeset, ScmRepository } from '../../domain/scm.types';
+import { ScmInstallationService } from '../../application/scm-installation.service';
+import type { ScmConnection, ScmChangeset, ScmRepositoryWithSync } from '../../domain/scm.types';
 import {
   ScmConnectionResponseDto,
   ScmChangesetResponseDto,
   ScmRepositoryResponseDto,
+  ScmInstallationResponseDto,
+  ScmConnectResponseDto,
   ScmSyncResponseDto,
 } from './dto/scm-response.dto';
-import { CreateScmRepositoryDto } from './dto/scm-request.dto';
+import { CreateScmRepositoryDto, ConnectScmInstallationDto } from './dto/scm-request.dto';
 
 function toConnectionDto(c: ScmConnection): ScmConnectionResponseDto {
   return {
@@ -52,13 +55,22 @@ function toChangesetDto(c: ScmChangeset): ScmChangesetResponseDto {
   };
 }
 
-function toRepositoryDto(r: ScmRepository): ScmRepositoryResponseDto {
+function toRepositoryDto(r: ScmRepositoryWithSync): ScmRepositoryResponseDto {
   return {
     id: r.id,
     provider: r.provider,
     fullName: r.fullName,
     baseUrl: r.baseUrl,
     active: r.active,
+    installationId: r.installationId,
+    lastSync: r.lastSync
+      ? {
+          status: r.lastSync.status,
+          at: r.lastSync.at ? r.lastSync.at.toISOString() : null,
+          prs: r.lastSync.prs,
+          commits: r.lastSync.commits,
+        }
+      : null,
     createdAt: r.createdAt.toISOString(),
   };
 }
@@ -66,7 +78,10 @@ function toRepositoryDto(r: ScmRepository): ScmRepositoryResponseDto {
 @ApiTags('scm')
 @Controller()
 export class ScmController {
-  constructor(private readonly scm: ScmService) {}
+  constructor(
+    private readonly scm: ScmService,
+    private readonly installations: ScmInstallationService,
+  ) {}
 
   // ── Work-item Connections / Changesets ───────────────────────────────────────
 
@@ -100,11 +115,64 @@ export class ScmController {
     return { data: page.data.map(toChangesetDto), pageInfo: page.pageInfo };
   }
 
-  // ── Repository ↔ project mapping (Settings ▸ Integrations) ────────────────────
+  // ── GitHub App installations (org-level auto-discovery) ───────────────────────
+
+  @Get('scm/installations')
+  @Auth('workspace:view')
+  @ApiOperation({ summary: 'GitHub App installations connected to the workspace' })
+  @ApiResponse({ status: 200, type: ScmInstallationResponseDto, isArray: true })
+  @ApiCommonErrors(401)
+  async listInstallations(@CurrentUser() user: JwtPayload): Promise<ScmInstallationResponseDto[]> {
+    const rows = await this.installations.listInstallations(user);
+    return rows.map((i) => ({
+      installationId: i.installationId,
+      accountLogin: i.accountLogin,
+      accountType: i.accountType,
+    }));
+  }
+
+  @Get('scm/installations/available')
+  @Auth('workspace:manage_members')
+  @ApiOperation({ summary: 'GitHub App installations the App can see (to connect)' })
+  @ApiResponse({ status: 200, type: ScmInstallationResponseDto, isArray: true })
+  @ApiCommonErrors(401, 403)
+  async availableInstallations(
+    @CurrentUser() user: JwtPayload,
+  ): Promise<ScmInstallationResponseDto[]> {
+    return this.installations.listAvailable(user);
+  }
+
+  @Post('scm/installations')
+  @Auth('workspace:manage_members')
+  @ApiOperation({ summary: 'Connect a GitHub App installation → auto-discover its repos' })
+  @ApiResponse({ status: 201, type: ScmConnectResponseDto })
+  @ApiCommonErrors(400, 401, 403)
+  async connectInstallation(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: ConnectScmInstallationDto,
+  ): Promise<ScmConnectResponseDto> {
+    return this.installations.connect(user, dto.installationId);
+  }
+
+  @Delete('scm/installations/:installationId')
+  @Auth('workspace:manage_members')
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Disconnect a GitHub App installation (deactivates its repos)' })
+  @ApiParam({ name: 'installationId', type: 'string' })
+  @ApiResponse({ status: 204, description: 'Disconnected' })
+  @ApiCommonErrors(401, 403, 404)
+  async disconnectInstallation(
+    @CurrentUser() user: JwtPayload,
+    @Param('installationId') installationId: string,
+  ): Promise<void> {
+    await this.installations.disconnect(user, installationId);
+  }
+
+  // ── Repositories (Settings ▸ Integrations) ────────────────────────────────────
 
   @Get('scm/repositories')
   @Auth('workspace:view')
-  @ApiOperation({ summary: 'List SCM repository → project mappings for the workspace' })
+  @ApiOperation({ summary: 'List SCM repositories (with sync status) for the workspace' })
   @ApiResponse({ status: 200, type: ScmRepositoryResponseDto, isArray: true })
   @ApiCommonErrors(401)
   async listRepositories(@CurrentUser() user: JwtPayload): Promise<ScmRepositoryResponseDto[]> {
@@ -114,7 +182,7 @@ export class ScmController {
 
   @Post('scm/repositories')
   @Auth('workspace:manage_members')
-  @ApiOperation({ summary: 'Create/update a repository → project mapping' })
+  @ApiOperation({ summary: 'Manually register a repository (workspace-scoped)' })
   @ApiResponse({ status: 201, type: ScmRepositoryResponseDto })
   @ApiCommonErrors(400, 401, 403)
   async createRepository(
@@ -126,7 +194,7 @@ export class ScmController {
       fullName: dto.fullName,
       baseUrl: dto.baseUrl,
     });
-    return toRepositoryDto(repo);
+    return toRepositoryDto({ ...repo, installationId: null, lastSync: null });
   }
 
   @Post('scm/repositories/:id/sync')

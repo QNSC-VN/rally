@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { extractWorkItemKeys } from './scm-key-parser';
-import { parsePullRequestEvent, parsePushEvent } from './github-webhook.parser';
+import {
+  parsePullRequestEvent,
+  parsePushEvent,
+  parseInstallationEvent,
+  parseInstallationRepositoriesEvent,
+} from './github-webhook.parser';
 
 describe('extractWorkItemKeys', () => {
   it('finds keys across title, branch and message; de-dups and upper-cases', () => {
@@ -109,5 +114,50 @@ describe('parsePushEvent', () => {
   it('returns [] when repository or commits are missing', () => {
     expect(parsePushEvent({ commits: [] })).toEqual([]);
     expect(parsePushEvent({ repository: { full_name: 'acme/demo' } })).toEqual([]);
+  });
+});
+
+describe('parseInstallationEvent', () => {
+  it('extracts action, id (as string), account, and repositories', () => {
+    expect(
+      parseInstallationEvent({
+        action: 'created',
+        installation: { id: 42, account: { login: 'acme', type: 'Organization' } },
+        repositories: [{ full_name: 'acme/api' }, { full_name: 'acme/web' }],
+      }),
+    ).toEqual({
+      action: 'created',
+      installationId: '42',
+      accountLogin: 'acme',
+      accountType: 'Organization',
+      repositories: ['acme/api', 'acme/web'],
+    });
+  });
+
+  it('returns null without a numeric installation id or action', () => {
+    expect(parseInstallationEvent({ action: 'created' })).toBeNull();
+    expect(parseInstallationEvent({ installation: { id: 42 } })).toBeNull();
+  });
+});
+
+describe('parseInstallationRepositoriesEvent', () => {
+  it('splits added/removed repositories', () => {
+    expect(
+      parseInstallationRepositoriesEvent({
+        action: 'added',
+        installation: { id: 7 },
+        repositories_added: [{ full_name: 'acme/new' }],
+        repositories_removed: [{ full_name: 'acme/old' }],
+      }),
+    ).toEqual({
+      action: 'added',
+      installationId: '7',
+      added: ['acme/new'],
+      removed: ['acme/old'],
+    });
+  });
+
+  it('returns null when the installation id is missing', () => {
+    expect(parseInstallationRepositoriesEvent({ action: 'added' })).toBeNull();
   });
 });

@@ -15,9 +15,13 @@ import { and, asc, eq, lt, lte } from 'drizzle-orm';
 import { InjectDrizzle, Span } from '@platform';
 import type { DrizzleDB, DrizzleTx } from '@platform';
 import { AbstractOutboxRelay } from '@platform/outbox';
-import { ScmLinkerService } from '@modules/scm';
+import { ScmLinkerService, ScmInstallationService } from '@modules/scm';
 import type { ScmProvider } from '@modules/scm';
 import { scmWebhookInbox } from '../../../../db/schema/scm';
+
+// Management events drive org-level auto-discovery (register/deregister repos),
+// not artifact linking — routed to ScmInstallationService instead of the linker.
+const MANAGEMENT_EVENTS = new Set(['installation', 'installation_repositories']);
 
 type ScmInboxRow = {
   id: string;
@@ -32,6 +36,7 @@ export class ScmWebhookRelayService extends AbstractOutboxRelay<ScmInboxRow> {
   constructor(
     @InjectDrizzle() db: DrizzleDB,
     private readonly linker: ScmLinkerService,
+    private readonly installations: ScmInstallationService,
   ) {
     super(db);
   }
@@ -66,8 +71,12 @@ export class ScmWebhookRelayService extends AbstractOutboxRelay<ScmInboxRow> {
 
   protected async processRow(row: ScmInboxRow): Promise<void> {
     // Both 'processed' and 'ignored' (unmapped repo / no keys) mean "handled";
-    // markSent records completion. Idempotent upserts inside the linker make a
-    // retry after a mid-batch failure a safe no-op.
+    // markSent records completion. Idempotent upserts (linker) + upsert/dedup
+    // (installation) make a retry after a mid-batch failure a safe no-op.
+    if (MANAGEMENT_EVENTS.has(row.eventType)) {
+      await this.installations.handleWebhook(row.eventType, row.payload);
+      return;
+    }
     await this.linker.linkEvent(row.provider as ScmProvider, row.eventType, row.payload);
   }
 

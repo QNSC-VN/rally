@@ -40,6 +40,30 @@ export interface CreateScmRepositoryInput {
   baseUrl?: string | null;
 }
 
+/** A GitHub App installation bound to a workspace (org-level auto-discovery). */
+export interface ScmInstallation {
+  id: string;
+  workspaceId: string;
+  provider: ScmProvider;
+  installationId: string;
+  accountLogin: string | null;
+  accountType: string | null;
+  active: boolean;
+}
+
+/** Latest backfill outcome for a repo, surfaced on the Integrations dashboard. */
+export interface RepoSyncStatus {
+  status: 'pending' | 'done' | 'failed';
+  at: Date | null;
+  prs: number;
+  commits: number;
+}
+
+export interface ScmRepositoryWithSync extends ScmRepository {
+  installationId: string | null;
+  lastSync: RepoSyncStatus | null;
+}
+
 /** A Pull Request (or future build/branch) linked to a work item. */
 export interface ScmConnection {
   id: string;

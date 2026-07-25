@@ -1,7 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { JwtPayload, PagedResult } from '@platform';
 import { SCM_STORE, type IScmStore, type PageArgs } from '../domain/ports/scm.store';
-import type { ScmProvider, ScmRepository, ScmConnection, ScmChangeset } from '../domain/scm.types';
+import type {
+  ScmProvider,
+  ScmRepository,
+  ScmRepositoryWithSync,
+  ScmConnection,
+  ScmChangeset,
+} from '../domain/scm.types';
 
 /** Read-side + repo-mapping use cases for the API. Ingestion/linking is the relay's job. */
 @Injectable()
@@ -35,8 +41,8 @@ export class ScmService {
 
   // ── Repository ↔ project mapping (workspace-scoped) ──────────────────────────
 
-  listRepositories(actor: JwtPayload): Promise<ScmRepository[]> {
-    return this.store.listRepositories(actor.workspaceId);
+  listRepositories(actor: JwtPayload): Promise<ScmRepositoryWithSync[]> {
+    return this.store.listRepositoriesWithSync(actor.workspaceId);
   }
 
   async createRepository(
