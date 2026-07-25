@@ -45,7 +45,7 @@ import { type Db, WORKSPACE_ID } from './constants';
  * reconcile on every run.
  */
 export async function seedTenantBootstrapInto(database: Db): Promise<void> {
-  const workspaceName = process.env['BOOTSTRAP_WORKSPACE_NAME'] ?? 'ACME Corp';
+  const workspaceName = process.env['BOOTSTRAP_WORKSPACE_NAME'] ?? 'QNSC';
   const workspaceSlug = process.env['BOOTSTRAP_WORKSPACE_SLUG'] ?? 'main';
 
   await database

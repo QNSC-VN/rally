@@ -145,7 +145,7 @@ jobs:
       # db:migrate's minimal seedTenantBootstrap. Run the same seed devs use
       # locally so CI ↔ local share one fixture source of truth. Idempotent.
       - name: Seed e2e fixtures
-        run: pnpm db:seed
+        run: pnpm db:seed:test
         env:
           NODE_ENV: test
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rally_test?sslmode=disable

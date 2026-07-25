@@ -6,15 +6,12 @@ try {
 }
 
 /**
- * Demo tier — sample workspace fixtures that populate dev / staging / E2E so
- * the app never renders empty states: demo users, 2 projects (NXP + MOB), and
- * ONE fully-linked end-to-end flow inside NXP — Team (with members) → Story +
- * Defect (team-linked) → 2 Tasks under the Story (team/iteration inherited)
- * → Iteration (contains the Story + Defect) → Release + Milestone (linked to
- * each other and to the Story). See seedFlow() for the full relation graph.
- * MOB carries no work-item/team/release/iteration fixtures of its own — it
- * exists only so the RBAC/PBAC demo user has a second project to be scoped
- * against (project_admin on NXP, project_viewer on MOB).
+ * Demo/fixture tier — ONE sample project (NXP) with a full end-to-end flow, for
+ * E2E + staging + opt-in dev fixtures (`pnpm db:seed:test`): 3 users + Team
+ * (with members) → Story + Defect (team-linked) → 2 Tasks under the Story
+ * (team/iteration inherited) → Iteration (contains the Story + Defect) →
+ * Release + Milestone (linked to each other and to the Story). See seedFlow()
+ * for the full relation graph. Every FK resolves to a real, matching row.
  *
  * These are FIXTURES only — never real production. `seed()` first runs the two
  * prod-safe tiers (seedTenantBootstrapInto + seedSystemRolesInto) so role
@@ -70,9 +67,6 @@ import {
   WORKSPACE_ID,
   DEVELOPER_ID,
   VIEWER_ID,
-  PROJECT_ADMIN_ID,
-  WORKSPACE_MEMBER_ID,
-  PROJECT_LEAD_ID,
   NXP_STORY_1_ID,
   NXP_DEFECT_1_ID,
   NXP_TASK_1_ID,
@@ -202,9 +196,8 @@ async function seedFlow() {
     })
     .onConflictDoNothing();
 
-  // Members: the 3 core users + the 3 RBAC/PBAC demo users, so the Team
-  // Status roster has real coverage (including zero-task members, whose load
-  // bar renders empty) without needing a second team.
+  // Members: the 3 core users (admin/dev/viewer) so the Team Status roster has
+  // real coverage (including zero-task members, whose load bar renders empty).
   await db
     .insert(teamMembers)
     .values([
@@ -227,27 +220,6 @@ async function seedFlow() {
         workspaceId: WORKSPACE_ID,
         teamId: TEAM_ALPHA_ID,
         userId: VIEWER_ID,
-        status: 'active',
-      },
-      {
-        id: '00000000-0000-7000-8000-000000000085',
-        workspaceId: WORKSPACE_ID,
-        teamId: TEAM_ALPHA_ID,
-        userId: PROJECT_ADMIN_ID,
-        status: 'active',
-      },
-      {
-        id: '00000000-0000-7000-8000-000000000086',
-        workspaceId: WORKSPACE_ID,
-        teamId: TEAM_ALPHA_ID,
-        userId: WORKSPACE_MEMBER_ID,
-        status: 'active',
-      },
-      {
-        id: '00000000-0000-7000-8000-000000000087',
-        workspaceId: WORKSPACE_ID,
-        teamId: TEAM_ALPHA_ID,
-        userId: PROJECT_LEAD_ID,
         status: 'active',
       },
     ])
@@ -772,7 +744,7 @@ export async function seed(connectionUrl?: string): Promise<void> {
     // SSO-only: no password. The platform-admin email is seeded so the first
     // Entra SSO login merges into this row (upsertBySsoIdentity matches by email)
     // and PLATFORM_ADMIN_EMAILS auto-elevates it to workspace_admin.
-    const adminEmail = process.env['ADMIN_EMAIL'] ?? 'admin@acme.dev';
+    const adminEmail = process.env['ADMIN_EMAIL'] ?? 'admin@qnsc.dev';
     await db
       .insert(schema.users)
       .values({
@@ -801,7 +773,7 @@ export async function seed(connectionUrl?: string): Promise<void> {
       .values([
         {
           id: DEVELOPER_ID,
-          email: 'dev@acme.dev',
+          email: 'dev@qnsc.dev',
           displayName: 'Alice Developer',
           emailVerified: true,
           locale: 'en',
@@ -809,7 +781,7 @@ export async function seed(connectionUrl?: string): Promise<void> {
         },
         {
           id: VIEWER_ID,
-          email: 'viewer@acme.dev',
+          email: 'viewer@qnsc.dev',
           displayName: 'Bob Viewer',
           emailVerified: true,
           locale: 'en',
@@ -918,135 +890,14 @@ export async function seed(connectionUrl?: string): Promise<void> {
       })
       .onConflictDoNothing();
 
-    // ── RBAC/PBAC demo users (role coverage + per-project scoping) ───────────
-    await seedRbacDemoUsers();
-
     // ── The one end-to-end demo flow (team, story+defect, tasks, iteration, ──
     // release, milestone — see seedFlow() for the full relation graph) ───────
     await seedFlow();
 
     console.log(
-      `✅  Seed complete — ${SEED_PROJECTS.length} projects, 6 users, 1 team, 1 iteration, 1 release, 1 milestone, 1 story + 1 defect + 2 tasks (one fully-linked flow)`,
+      `✅  Test fixture seeded — 1 project (NXP), 3 users, 1 team, 1 iteration, 1 release, 1 milestone, 1 story + 1 defect + 2 tasks (one fully-linked flow)`,
     );
   } finally {
     await pool.end();
   }
-}
-
-// ── RBAC/PBAC demo users ─────────────────────────────────────────────────────
-// The 3 primary users (admin/dev/viewer) only cover workspace_admin,
-// project_member and project_viewer. This seeds one user for each remaining
-// system role so the FE can exercise every role state, plus a PROJECT-scoped
-// "lead" that proves per-project (PBAC) resolution: project_admin on NXP,
-// project_viewer on MOB, and only baseline (workspace_member fallback) elsewhere.
-//
-// Business note: the implemented catalogue roles are workspace_admin /
-// project_admin / project_member / project_viewer / workspace_member.
-// The early UI mockup used Project Manager / Product Owner / Tester instead; the
-// catalogue (db/permissions.catalog.ts) is the current source of truth. If BA
-// re-scopes roles, update the catalogue + these demo assignments together.
-//
-// Idempotent (fixed UUIDs + onConflictDoNothing). All are passwordless — sign in
-// via Entra SSO; the seeded email lets the first SSO login merge into these rows.
-async function seedRbacDemoUsers(): Promise<void> {
-  const demoUsers = [
-    { id: PROJECT_ADMIN_ID, email: 'projectadmin@acme.dev', displayName: 'Carol ProjectAdmin' },
-    { id: WORKSPACE_MEMBER_ID, email: 'member@acme.dev', displayName: 'Dave Member' },
-    { id: PROJECT_LEAD_ID, email: 'lead@acme.dev', displayName: 'Frank Lead' },
-  ];
-
-  await db
-    .insert(schema.users)
-    .values(
-      demoUsers.map((u) => ({
-        id: u.id,
-        email: u.email,
-        displayName: u.displayName,
-        emailVerified: true,
-        locale: 'en',
-        timezone: 'Asia/Ho_Chi_Minh',
-      })),
-    )
-    .onConflictDoNothing();
-
-  await db
-    .insert(schema.workspaceMembers)
-    .values(demoUsers.map((u) => ({ workspaceId: WORKSPACE_ID, userId: u.id })))
-    .onConflictDoNothing();
-
-  // role slug → id (roles were seeded earlier in seed()). Prefer the
-  // workspace-owned editable copy over the global template so demo assignments
-  // point at the row an admin can actually edit.
-  const roleRows = await db
-    .select({
-      id: schema.systemRoles.id,
-      slug: schema.systemRoles.slug,
-      workspaceId: schema.systemRoles.workspaceId,
-    })
-    .from(schema.systemRoles)
-    .where(
-      or(isNull(schema.systemRoles.workspaceId), eq(schema.systemRoles.workspaceId, WORKSPACE_ID)),
-    );
-  const roleIdBySlug = new Map<string, string>();
-  for (const r of roleRows) {
-    if (r.workspaceId === WORKSPACE_ID || !roleIdBySlug.has(r.slug)) {
-      roleIdBySlug.set(r.slug, r.id);
-    }
-  }
-
-  const assign = async (
-    userId: string,
-    slug: SystemRoleSlug,
-    scopeType: 'workspace' | 'project',
-    scopeId: string,
-  ): Promise<void> => {
-    const roleId = roleIdBySlug.get(slug);
-    if (!roleId) return;
-    await db
-      .insert(userRoleAssignments)
-      .values({
-        workspaceId: WORKSPACE_ID,
-        userId,
-        roleId,
-        scopeType,
-        scopeId,
-        grantedBy: ADMIN_USER_ID,
-      })
-      .onConflictDoNothing();
-  };
-
-  // Workspace-wide roles → land in the JWT baseline for these users.
-  await assign(PROJECT_ADMIN_ID, SYSTEM_ROLE.PROJECT_ADMIN, 'workspace', WORKSPACE_ID);
-  await assign(WORKSPACE_MEMBER_ID, SYSTEM_ROLE.WORKSPACE_MEMBER, 'workspace', WORKSPACE_ID);
-
-  // PBAC: Frank has NO workspace/global role — only project-scoped grants,
-  // resolved per-request by getProjectPermissions(). project_admin on NXP,
-  // project_viewer on MOB; every other project falls back to baseline only.
-  const NXP_ID = SEED_PROJECTS[0].id;
-  const MOB_ID = SEED_PROJECTS[1].id;
-  await assign(PROJECT_LEAD_ID, SYSTEM_ROLE.PROJECT_ADMIN, 'project', NXP_ID);
-  await assign(PROJECT_LEAD_ID, SYSTEM_ROLE.PROJECT_VIEWER, 'project', MOB_ID);
-
-  // Make Frank an actual member of both projects (realism + assignee validity).
-  await db
-    .insert(projectMembers)
-    .values([
-      {
-        id: uuidv7(),
-        workspaceId: WORKSPACE_ID,
-        projectId: NXP_ID,
-        userId: PROJECT_LEAD_ID,
-        status: 'active',
-      },
-      {
-        id: uuidv7(),
-        workspaceId: WORKSPACE_ID,
-        projectId: MOB_ID,
-        userId: PROJECT_LEAD_ID,
-        status: 'active',
-      },
-    ])
-    .onConflictDoNothing();
-
-  console.log('✅  RBAC/PBAC demo users seeded (project_admin, workspace_member, PBAC lead)');
 }
