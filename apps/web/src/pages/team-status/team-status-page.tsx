@@ -13,6 +13,7 @@ import { ChevronDown, ChevronRight, Inbox } from 'lucide-react'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { WorkItemRefCell } from '@/entities/work-item/ui/work-item-ref-cell'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
+import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
 import { useIterations } from '@/features/iterations/api'
@@ -489,7 +490,6 @@ function MemberGroup({
             value={String(group.capacityHours)}
             canEdit={canEdit}
             onCommit={commitCapacity}
-            trigger="dblclick"
             className="font-mono text-ui-sm text-muted-foreground tabular-nums"
             inputClassName="text-right font-mono text-ui-sm text-foreground"
             ariaLabel="Capacity"
@@ -661,7 +661,6 @@ function TaskRow({
           value={task.title}
           canEdit={canEdit}
           onCommit={commitTitle}
-          trigger="dblclick"
           displayValue={task.displayName || task.title}
           className="block break-words whitespace-normal text-foreground"
           inputClassName="text-ui-sm text-foreground"
@@ -685,9 +684,17 @@ function TaskRow({
           <span className="text-ui-xs text-foreground-faint">—</span>
         )}
       </div>
-      {/* Release (P3-TS-FR-025) */}
-      <div className="shrink-0 truncate px-2 text-muted-foreground" style={colStyles.release}>
-        {task.release?.name ?? ''}
+      {/* Release (P3-TS-FR-025) — read-only reference; render with the shared
+          release TypeBadge so it reads like every other release cell. */}
+      <div className="flex shrink-0 items-center overflow-hidden px-2" style={colStyles.release}>
+        {task.release ? (
+          <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+            <TypeBadge type="release" size={16} />
+            <span className="truncate">{task.release.name}</span>
+          </span>
+        ) : (
+          <span className="text-ui-xs text-foreground-faint">—</span>
+        )}
       </div>
       {/* State (P3-TS-FR-021 — inline editable) */}
       <div className="shrink-0 px-2" style={colStyles.state} onClick={(e) => e.stopPropagation()}>
