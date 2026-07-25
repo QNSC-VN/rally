@@ -107,6 +107,7 @@ jobs:
         env:
           TF_VAR_entra_tenant_id:    ${{ vars.ENTRA_TENANT_ID }}
           TF_VAR_entra_client_id:    ${{ vars.ENTRA_CLIENT_ID }}
+          TF_VAR_github_app_id:      ${{ vars.SCM_GITHUB_APP_ID }}
           TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           TF_VAR_cloudflare_account_id: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
 
@@ -191,6 +192,7 @@ jobs:
         env:
           TF_VAR_entra_tenant_id:    ${{ vars.ENTRA_TENANT_ID }}
           TF_VAR_entra_client_id:    ${{ vars.ENTRA_CLIENT_ID }}
+          TF_VAR_github_app_id:      ${{ vars.SCM_GITHUB_APP_ID }}
           TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           TF_VAR_cloudflare_account_id: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           # Pin the prod image to the exact release tag that triggered this apply
