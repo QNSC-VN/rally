@@ -11,6 +11,7 @@ import { useProjectTeams } from '@/features/teams/api'
 import { useProjectMembers } from '@/features/teams/api'
 import { useProjects } from '@/features/projects/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
+import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { BRAND } from '@/shared/config/brand'
 import { WORK_ITEM_TYPE_CONFIG } from '@/entities/work-item/model/types'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
@@ -45,7 +46,9 @@ export function CreateWorkItemModal({
   const [selectedProjectId, setSelectedProjectId] = useState(projectId)
   // Auto-fill from the Team selected in the workspace context (falls back to "No team")
   const [teamId, setTeamId] = useState(team?.teamId ?? '')
-  const [assigneeId, setAssigneeId] = useState('')
+  // Owner defaults to the authenticated creator (still changeable, incl. Unassigned).
+  const currentUserId = useAuthStore((s) => s.user?.id)
+  const [assigneeId, setAssigneeId] = useState(() => currentUserId ?? '')
   const [storyPoints, setStoryPoints] = useState('')
   const [parentStoryId, setParentStoryId] = useState('')
   const [error, setError] = useState<string | null>(null)

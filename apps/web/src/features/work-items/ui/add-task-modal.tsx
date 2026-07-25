@@ -3,11 +3,13 @@
  * P1-TASK-CREATE per SRS §04_Task_Management.
  */
 import { useRef, useState } from 'react'
+import { useNavigate } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
 import { useCreateTask } from '@/features/work-items/api'
 import { useProjectMembers } from '@/features/teams/api'
 import { deriveEstimateHours } from '@/entities/work-item/model/task-time'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
+import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
 import { FormField } from '@/shared/ui/form-field'
@@ -22,11 +24,14 @@ interface Props {
 export function AddTaskModal({ workItemId, onClose }: Props) {
   const { project } = useAppContext()
   const { data: members = [] } = useProjectMembers(project?.projectId)
+  const navigate = useNavigate()
 
   const [name, setName] = useState('')
   const [todo, setTodo] = useState('')
   const [actual, setActual] = useState('')
-  const [assigneeId, setAssigneeId] = useState('')
+  // Owner defaults to the authenticated creator (still changeable, incl. Unassigned).
+  const currentUserId = useAuthStore((s) => s.user?.id)
+  const [assigneeId, setAssigneeId] = useState(() => currentUserId ?? '')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -37,7 +42,7 @@ export function AddTaskModal({ workItemId, onClose }: Props) {
   // recomputes and stores it, so we only submit the two manual inputs.
   const estimate = deriveEstimateHours(todo, actual)
 
-  async function submit() {
+  async function submit(withDetails: boolean) {
     if (!name.trim()) {
       setError('Name is required.')
       return
@@ -45,13 +50,16 @@ export function AddTaskModal({ workItemId, onClose }: Props) {
     setError(null)
     setSubmitting(true)
     try {
-      await createTask.mutateAsync({
+      const task = await createTask.mutateAsync({
         title: name.trim(),
         todoHours: todo ? Number(todo) : undefined,
         actualHours: actual ? Number(actual) : undefined,
         assigneeId: assigneeId || undefined,
       })
       onClose()
+      if (withDetails) {
+        void navigate({ to: '/item/$itemKey', params: { itemKey: task.itemKey } })
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to create task.')
     } finally {
@@ -123,14 +131,28 @@ export function AddTaskModal({ workItemId, onClose }: Props) {
         />
       </ModalBody>
 
-      <ModalFooter>
+      <ModalFooter className="justify-between">
         <Button variant="outline" type="button" onClick={onClose} disabled={submitting}>
           Cancel
         </Button>
-        <Button type="button" onClick={() => void submit()} disabled={submitting || !name.trim()}>
-          {submitting && <Loader2 size={11} className="animate-spin" />}
-          {submitting ? 'Creating…' : 'Create Task'}
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            type="button"
+            onClick={() => void submit(true)}
+            disabled={submitting || !name.trim()}
+          >
+            Create with details
+          </Button>
+          <Button
+            type="button"
+            onClick={() => void submit(false)}
+            disabled={submitting || !name.trim()}
+          >
+            {submitting && <Loader2 size={11} className="animate-spin" />}
+            {submitting ? 'Creating…' : 'Create Task'}
+          </Button>
+        </div>
       </ModalFooter>
     </AppModal>
   )
