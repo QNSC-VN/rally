@@ -93,6 +93,13 @@ const projectsRoute = createRoute({
   component: lazyPage(() => import('@/pages/projects/projects-page'), 'ProjectsPage'),
 })
 
+const projectDetailRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: '/projects/$projectKey',
+  staticData: { breadcrumb: 'Project Detail' },
+  component: lazyPage(() => import('@/pages/projects/projects-detail-page'), 'ProjectDetailPage'),
+})
+
 const settingsRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/settings',
@@ -256,6 +263,7 @@ const routeTree = rootRoute.addChildren([
   authRoute.addChildren([
     homeRoute,
     projectsRoute,
+    projectDetailRoute,
     settingsRoute,
     notificationsRoute,
     forbiddenRoute,

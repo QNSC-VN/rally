@@ -6,6 +6,15 @@
   "emptyDesc": "Create your first project to get started.",
   "emptyFiltered": "No projects found",
   "emptyFilteredDesc": "Try adjusting your search or filter.",
+  "detail": {
+    "tabs": { "details": "Details" },
+    "metadataDetails": "Details",
+    "startDate": "Start Date",
+    "saveFailed": "Could not save changes.",
+    "nameRequired": "Project name is required.",
+    "loadError": "Could not load this project.",
+    "backToProjects": "Back to Projects"
+  },
   "status": {
     "all": "All",
     "active": "Active",
