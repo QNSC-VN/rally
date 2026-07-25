@@ -17,6 +17,7 @@
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true,
     "paths": {
+      "@db/*": ["./db/*"],
       "@shared-kernel": ["./libs/shared-kernel/src/index"],
       "@shared-kernel/*": ["./libs/shared-kernel/src/*"],
       "@platform": ["./libs/platform/src/index"],
