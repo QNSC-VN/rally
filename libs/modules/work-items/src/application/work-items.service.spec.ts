@@ -491,8 +491,9 @@ describe('WorkItemsService', () => {
       );
     });
 
-    // ── DEV-013: Task Estimate is read-only derived (Estimate = To Do + Actuals) ──
-    it('derives Estimate from To Do + Actual and ignores any client-supplied estimate', async () => {
+    // ── Real Rally: Estimate is an independent planned value (client-set), not
+    //    derived. To Do / Actuals are independent too. ──
+    it('persists the client-supplied Estimate independently of To Do / Actual', async () => {
       workItemRepo.findById.mockResolvedValue(
         mockWorkItem({ id: 'parent-1', projectId: 'proj-1', teamId: 'team-p' }),
       );
@@ -500,13 +501,29 @@ describe('WorkItemsService', () => {
       workItemRepo.create.mockResolvedValue(mockWorkItem({ type: 'task' }));
 
       await service.createTask(mockActor, 'parent-1', 'My task', {
+        estimateHours: '8',
         todoHours: '3',
         actualHours: '2',
-        estimateHours: '99', // must be ignored — Estimate is derived
       });
 
       expect(workItemRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ estimateHours: '5.00', todoHours: '3', actualHours: '2' }),
+        expect.objectContaining({ estimateHours: '8', todoHours: '3', actualHours: '2' }),
+        expect.anything(),
+      );
+    });
+
+    // ── Real Rally: To Do defaults to the Estimate on create when not given ──
+    it('defaults To Do to the Estimate when To Do is not provided', async () => {
+      workItemRepo.findById.mockResolvedValue(
+        mockWorkItem({ id: 'parent-1', projectId: 'proj-1', teamId: 'team-p' }),
+      );
+      projectsService.listProjectTeams.mockResolvedValue([{ teamId: 'team-p', status: 'active' }]);
+      workItemRepo.create.mockResolvedValue(mockWorkItem({ type: 'task' }));
+
+      await service.createTask(mockActor, 'parent-1', 'My task', { estimateHours: '8' });
+
+      expect(workItemRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ estimateHours: '8', todoHours: '8' }),
         expect.anything(),
       );
     });
@@ -678,30 +695,35 @@ describe('WorkItemsService', () => {
       );
     });
 
-    // ── DEV-013/015: Task Estimate = To Do + Actuals (read-only derived) ──
-    it('recomputes a task Estimate from To Do + Actual on update', async () => {
-      const task = mockWorkItem({ id: 'task-1', type: 'task', todoHours: '1', actualHours: '1' });
+    // ── Real Rally: Estimate is independent — never derived/overwritten on update ──
+    it('does NOT derive or overwrite the Estimate on update', async () => {
+      const task = mockWorkItem({
+        id: 'task-1',
+        type: 'task',
+        todoHours: '1',
+        actualHours: '1',
+        estimateHours: '8',
+      });
       workItemRepo.findById.mockResolvedValue(task);
       workItemRepo.update.mockResolvedValue(mockWorkItem({ id: 'task-1', type: 'task' }));
 
       await service.updateWorkItem(mockActor, 'task-1', { todoHours: '4' });
 
-      // 4 (new To Do) + 1 (existing Actual) = 5.00
-      expect(workItemRepo.update).toHaveBeenCalledWith(
-        'task-1',
-        expect.objectContaining({ estimateHours: '5.00' }),
-        'ws-1',
-        expect.anything(),
-      );
+      const call = workItemRepo.update.mock.calls.find((c) => c[0] === 'task-1');
+      // Only To Do changes; Estimate is left entirely to the client.
+      expect(call?.[1]).not.toHaveProperty('estimateHours');
+      expect(call?.[1]).toMatchObject({ todoHours: '4' });
     });
 
-    it('does NOT auto-zero To Do when a task is completed (DEV-015)', async () => {
+    // ── Real Rally: completing a task auto-zeroes To Do; Estimate untouched ──
+    it('auto-zeroes To Do when a task is completed, leaving Estimate untouched', async () => {
       const task = mockWorkItem({
         id: 'task-1',
         type: 'task',
         scheduleState: 'in_progress',
         todoHours: '3',
         actualHours: '2',
+        estimateHours: '8',
         parentId: null,
       });
       workItemRepo.findById.mockResolvedValue(task);
@@ -710,9 +732,8 @@ describe('WorkItemsService', () => {
       await service.updateWorkItem(mockActor, 'task-1', { scheduleState: 'completed' });
 
       const call = workItemRepo.update.mock.calls.find((c) => c[0] === 'task-1');
-      // To Do must be preserved (not forced to '0'); Estimate stays To Do + Actual = 5.00.
-      expect(call?.[1]).not.toHaveProperty('todoHours', '0');
-      expect(call?.[1]).toMatchObject({ estimateHours: '5.00' });
+      expect(call?.[1]).toMatchObject({ todoHours: '0' });
+      expect(call?.[1]).not.toHaveProperty('estimateHours');
     });
 
     // ── Parent reassignment must obey the SAME hierarchy rules as create, so

@@ -107,13 +107,9 @@ export function StatusRow({
   const milestoneCommit = useWorkItemFieldCommit(setMilestones)
 
   const commitEstimate = (raw: string) =>
-    // Auto-sync To Do to the new Plan Estimate value.
-    saveNumber(
-      raw,
-      (n) => ({ storyPoints: n, todoHours: n }),
-      t('row.planEstimateUpdated'),
-      'Estimate',
-    )
+    // Plan Estimate is story points — an independent planning value; it does not
+    // touch task To Do hours (the displayed To Do is a rollup of child tasks).
+    saveNumber(raw, (n) => ({ storyPoints: n }), t('row.planEstimateUpdated'), 'Estimate')
   const commitTodo = (raw: string) =>
     saveNumber(raw, (n) => ({ todoHours: n }), t('row.todoHoursUpdated'), 'Todo hours')
   const commitTitle = (raw: string) => {
@@ -601,14 +597,11 @@ function ChildTaskRow({
     if (!next || next === task.title) return
     save({ title: next }, t('row.nameUpdated'))
   }
-  // Auto-sync To Do to the new estimate value.
+  // Task Estimate is an independent planned value (real Rally). Editing it does
+  // NOT reset To Do — To Do only defaults to Estimate at create (backend) and
+  // auto-zeroes on completion. Estimate is now inline-editable here.
   const commitTaskEstimate = (raw: string) =>
-    saveNumber(
-      raw,
-      (n) => ({ estimateHours: n, todoHours: n }),
-      t('row.taskEstimateUpdated'),
-      'Estimate',
-    )
+    saveNumber(raw, (n) => ({ estimateHours: n }), t('row.taskEstimateUpdated'), 'Estimate')
   const commitTaskTodo = (raw: string) =>
     saveNumber(raw, (n) => ({ todoHours: n }), t('row.todoHoursUpdated'), 'Todo hours')
   const commitTaskActual = (raw: string) =>
