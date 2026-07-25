@@ -549,10 +549,11 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
         <InlineEditableCell
           value={p.name}
           canEdit
+          fullCell
           ariaLabel="Name"
           title={p.name}
-          className="block w-full truncate px-2 py-1.5 text-ui-md text-foreground"
-          inputClassName="w-full rounded border border-primary bg-white px-2 py-1.5 text-ui-md text-foreground outline-none"
+          className="truncate text-ui-md text-foreground"
+          inputClassName="text-ui-md text-foreground"
           onCommit={(v) => {
             const n = v.trim()
             if (n && n !== p.name) ctx.onPatch(p.id, { name: n })

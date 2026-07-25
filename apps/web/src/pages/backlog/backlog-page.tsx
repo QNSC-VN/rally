@@ -778,11 +778,12 @@ function BacklogRow({
       </div>
 
       {/* Title — inline edit */}
-      <div className="min-w-0 shrink-0 px-2" style={colStyles.name} onClick={stop}>
+      <div className="min-w-0 shrink-0 px-0" style={colStyles.name} onClick={stop}>
         {canEdit ? (
           <InlineEditableCell
             value={item.title}
             canEdit
+            fullCell
             onCommit={commitTitle}
             className="block w-full break-words whitespace-normal text-foreground"
             style={{ cursor: 'text', fontSize: 12 }}
@@ -840,10 +841,11 @@ function BacklogRow({
       </div>
 
       {/* Plan Estimate — shared InlineEditableCell */}
-      <div className="shrink-0 px-2 text-center" style={colStyles.estimate} onClick={stop}>
+      <div className="shrink-0 px-0 text-center" style={colStyles.estimate} onClick={stop}>
         <InlineEditableCell
           value={item.storyPoints != null ? String(item.storyPoints) : ''}
           canEdit={canEdit}
+          fullCell
           ariaLabel="Plan estimate"
           onCommit={(raw) => {
             const next = raw === '' ? null : Number(raw)

@@ -337,11 +337,12 @@ function MilestoneNameCell({ milestone, canEdit }: { milestone: Milestone; canEd
       value={milestone.name}
       canEdit={canEdit}
       onCommit={commit}
+      fullCell
       ariaLabel="Name"
       title={milestone.name}
       className="block w-full break-words whitespace-normal text-foreground"
       style={{ fontSize: 12 }}
-      inputClassName="w-full rounded border border-primary bg-transparent px-1 py-0.5 text-ui-sm text-foreground focus:outline-none"
+      inputClassName="w-full rounded bg-transparent text-ui-sm text-foreground focus:outline-none"
     />
   )
 }
@@ -398,7 +399,7 @@ const MILESTONES_COLUMNS: ColumnSpec<Milestone, MilestoneCtx, MilestoneColKey>[]
     locked: true,
     grow: true,
     sortCol: 'name',
-    cellClassName: 'flex min-w-0 items-center px-2',
+    cellClassName: 'flex min-w-0 items-center px-0',
     cell: (m, ctx) => <MilestoneNameCell milestone={m} canEdit={ctx.canManage} />,
   },
   {

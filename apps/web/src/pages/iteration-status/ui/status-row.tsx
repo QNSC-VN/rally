@@ -211,25 +211,19 @@ export function StatusRow({
         {/* Name — click to edit inline (Rally parity); use the ID link to open */}
         <div
           style={colStyles.name}
-          className="overflow-hidden px-2"
+          className="overflow-hidden px-0"
           onClick={(e) => e.stopPropagation()}
         >
           <InlineEditableCell
             value={item.title}
             canEdit={canEdit}
+            fullCell
             onCommit={commitTitle}
             ariaLabel="Name"
             title={item.title}
-            className="block w-full break-words whitespace-normal text-foreground"
+            className="break-words whitespace-normal text-foreground"
             style={{ fontSize: 12 }}
-            inputClassName="border border-primary text-foreground"
-            inputStyle={{
-              width: '100%',
-              fontSize: 12,
-              borderRadius: 2,
-              outline: 'none',
-              padding: '1px 4px',
-            }}
+            inputStyle={{ fontSize: 12 }}
           />
         </div>
 
@@ -336,11 +330,12 @@ export function StatusRow({
 
         {/* Blocked Reason — inline-editable only while the item is blocked
             (an unblocked item has no reason to capture). */}
-        <div style={colStyles.blockedReason} className="flex items-center px-2">
+        <div style={colStyles.blockedReason} className="flex items-center px-0">
           {canEdit && item.isBlocked ? (
             <InlineEditableCell
               value={item.blockedReason ?? ''}
               canEdit={canEdit}
+              fullCell
               onCommit={commitBlockedReason}
               ariaLabel="Blocked reason"
               title={item.blockedReason ?? 'Add a blocked reason'}
@@ -358,24 +353,25 @@ export function StatusRow({
             />
           ) : item.blockedReason ? (
             <span
-              className="truncate text-muted-foreground"
+              className="truncate px-2 text-muted-foreground"
               title={item.blockedReason}
               style={{ fontSize: 12 }}
             >
               {item.blockedReason}
             </span>
           ) : (
-            <span className="text-foreground-subtle" style={{ fontSize: 12 }}>
+            <span className="px-2 text-foreground-subtle" style={{ fontSize: 12 }}>
               &mdash;
             </span>
           )}
         </div>
 
         {/* Plan Estimate */}
-        <div style={{ ...colStyles.planEstimate, textAlign: 'right' }} className="px-2">
+        <div style={{ ...colStyles.planEstimate, textAlign: 'right' }} className="px-0">
           <InlineEditableCell
             value={String(item.planEstimate ?? '')}
             canEdit={canEdit}
+            fullCell
             onCommit={commitEstimate}
             displayValue={item.planEstimate ?? '—'}
             className="text-muted-foreground"
@@ -410,10 +406,11 @@ export function StatusRow({
         </div>
 
         {/* To Do */}
-        <div style={{ ...colStyles.toDo, textAlign: 'right' }} className="px-2">
+        <div style={{ ...colStyles.toDo, textAlign: 'right' }} className="px-0">
           <InlineEditableCell
             value={String(item.toDo ?? '')}
             canEdit={canEdit}
+            fullCell
             onCommit={commitTodo}
             displayValue={item.toDo ?? '—'}
             className="text-muted-foreground"
@@ -654,25 +651,19 @@ function ChildTaskRow({
       </div>
       <div
         style={colStyles.name}
-        className="overflow-hidden px-2"
+        className="overflow-hidden px-0"
         onClick={(e) => e.stopPropagation()}
       >
         <InlineEditableCell
           value={task.title}
           canEdit={canEdit}
+          fullCell
           onCommit={commitTaskTitle}
           ariaLabel="Name"
           title={task.title}
-          className="block w-full break-words whitespace-normal text-foreground"
+          className="break-words whitespace-normal text-foreground"
           style={{ fontSize: 12 }}
-          inputClassName="border border-primary text-foreground"
-          inputStyle={{
-            width: '100%',
-            fontSize: 12,
-            borderRadius: 2,
-            outline: 'none',
-            padding: '1px 4px',
-          }}
+          inputStyle={{ fontSize: 12 }}
         />
       </div>
       <div style={colStyles.feature} className="px-2" />
@@ -699,10 +690,11 @@ function ChildTaskRow({
       <div style={colStyles.block} className="px-2" />
       <div style={colStyles.blockedReason} className="px-2" />
       <div style={colStyles.planEstimate} className="px-2" />
-      <div style={{ ...colStyles.taskEstimate, textAlign: 'right' }} className="px-2 text-right">
+      <div style={{ ...colStyles.taskEstimate, textAlign: 'right' }} className="px-0 text-right">
         <InlineEditableCell
           value={String(task.estimateHours ?? '')}
           canEdit={canEdit}
+          fullCell
           onCommit={commitTaskEstimate}
           displayValue={task.estimateHours ?? '—'}
           style={{ fontFamily: MONO_FONT, fontSize: 11 }}
@@ -718,10 +710,11 @@ function ChildTaskRow({
           ariaLabel="Task estimate"
         />
       </div>
-      <div style={{ ...colStyles.toDo, textAlign: 'right' }} className="px-2 text-right">
+      <div style={{ ...colStyles.toDo, textAlign: 'right' }} className="px-0 text-right">
         <InlineEditableCell
           value={String(task.todoHours ?? '')}
           canEdit={canEdit}
+          fullCell
           onCommit={commitTaskTodo}
           displayValue={task.todoHours ?? '—'}
           style={{ fontFamily: MONO_FONT, fontSize: 11 }}
@@ -738,10 +731,11 @@ function ChildTaskRow({
         />
       </div>
       <div style={colStyles.tasksPct} className="px-2" />
-      <div style={{ ...colStyles.actual, textAlign: 'right' }} className="px-2 text-right">
+      <div style={{ ...colStyles.actual, textAlign: 'right' }} className="px-0 text-right">
         <InlineEditableCell
           value={String(task.actualHours ?? '')}
           canEdit={canEdit}
+          fullCell
           onCommit={commitTaskActual}
           displayValue={task.actualHours ?? '—'}
           style={{ fontFamily: MONO_FONT, fontSize: 11 }}

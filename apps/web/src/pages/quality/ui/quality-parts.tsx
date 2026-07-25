@@ -112,16 +112,16 @@ function DefectNameCell({ defect, canEdit }: { defect: DefectRow; canEdit: boole
         value={defect.title}
         canEdit={canEdit}
         onCommit={handleCommit}
+        fullCell
         ariaLabel="Name"
         title={defect.title}
         className="block w-full text-ui-md break-words whitespace-normal text-foreground"
-        inputClassName="border border-primary text-foreground"
+        inputClassName="text-foreground"
         inputStyle={{
           width: '100%',
           fontSize: 12,
           borderRadius: 2,
           outline: 'none',
-          padding: '1px 4px',
         }}
       />
     </div>
@@ -159,15 +159,15 @@ function FixedInBuildCell({
         value={defect.fixedInBuild ?? ''}
         canEdit={canEdit}
         onCommit={handleCommit}
+        fullCell
         displayValue={defect.fixedInBuild ?? '—'}
         className="block w-full truncate text-ui-xs text-muted-foreground"
-        inputClassName="border border-primary text-foreground"
+        inputClassName="text-foreground"
         inputStyle={{
           width: '100%',
           fontSize: 12,
           borderRadius: 2,
           outline: 'none',
-          padding: '1px 4px',
         }}
         ariaLabel="Fixed In Build"
         title={defect.fixedInBuild ?? ''}
@@ -325,7 +325,7 @@ export const QUALITY_COLUMNS: ColumnSpec<DefectRow, QualityCtx, QualityColKey>[]
     defaultWidth: 200,
     minWidth: 120,
     locked: true,
-    cellClassName: 'min-w-0 px-2',
+    cellClassName: 'min-w-0 px-0',
     cell: (d, ctx) => <DefectNameCell defect={d} canEdit={ctx.canManage} />,
   },
   {
@@ -420,7 +420,7 @@ export const QUALITY_COLUMNS: ColumnSpec<DefectRow, QualityCtx, QualityColKey>[]
     sortCol: 'fixedInBuild',
     defaultWidth: 100,
     minWidth: 70,
-    cellClassName: 'px-2',
+    cellClassName: 'px-0',
     cell: (d, ctx) => (
       <FixedInBuildCell defect={d} canEdit={ctx.canManage} projectId={ctx.projectId} />
     ),

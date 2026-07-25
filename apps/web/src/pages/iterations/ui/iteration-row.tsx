@@ -88,8 +88,9 @@ export function IterationRow({
       </div>
 
       {/* Name — inline-editable */}
-      <div style={colStyleFor('name', { flexShrink: 0 })} className="min-w-0 px-2" onClick={stop}>
+      <div style={colStyleFor('name', { flexShrink: 0 })} className="min-w-0 px-0" onClick={stop}>
         <InlineEditableCell
+          fullCell
           value={it.name}
           canEdit={canManage}
           onCommit={saveName}
@@ -103,8 +104,9 @@ export function IterationRow({
 
       {/* Theme — inline-editable (shared InlineEditableCell, like Name). Full
           rich-text editing remains on the detail page. */}
-      <div style={colStyleFor('theme', { flexShrink: 0 })} className="min-w-0 px-2" onClick={stop}>
+      <div style={colStyleFor('theme', { flexShrink: 0 })} className="min-w-0 px-0" onClick={stop}>
         <InlineEditableCell
+          fullCell
           value={stripHtml(it.theme)}
           canEdit={canManage}
           onCommit={saveTheme}
@@ -137,8 +139,9 @@ export function IterationRow({
       </div>
 
       {/* Planned Velocity — inline-editable */}
-      <div style={colStyleFor('plannedVelocity', { flexShrink: 0 })} className="px-2" onClick={stop}>
+      <div style={colStyleFor('plannedVelocity', { flexShrink: 0 })} className="px-0" onClick={stop}>
         <InlineEditableCell
+          fullCell
           value={it.plannedVelocity != null ? String(it.plannedVelocity) : ''}
           canEdit={canManage}
           onCommit={saveVelocity}
