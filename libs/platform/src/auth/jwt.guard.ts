@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { RequestContextService } from '../context/request-context';
+import { failOpenLog } from '../observability/fail-open';
 import { AuthTokenCache } from '@qnsc-vn/identity';
 import {
   BFF_SESSION_COOKIE,
@@ -178,7 +179,12 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       }
     } catch (err) {
       if (err instanceof UnauthorizedException) throw err;
-      this.logger.warn({ err }, 'Token denylist check failed; failing open');
+      // Tagged so the CloudWatch metric filter + alarm in infra/live/* can see
+      // it — a cache outage means revoked tokens are being accepted.
+      this.logger.warn(
+        failOpenLog('denylist', { err }),
+        'Token denylist check failed; failing open',
+      );
     }
   }
 

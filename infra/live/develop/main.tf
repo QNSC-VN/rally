@@ -596,3 +596,55 @@ module "dns_api" {
   comment = "rally-develop API → ALB via Cloudflare proxy (managed by rally-infra develop)"
 }
 
+# ── Alerting: security controls that failed OPEN ──────────────────────────────
+# The access-token denylist (JwtAuthGuard) and the rate limiter both fail open
+# when Valkey is unreachable — individually correct, but together a cache outage
+# accepts revoked tokens AND serves unlimited traffic with no signal. The app tags
+# those log lines with `securityFailOpen`; this turns them into a metric + alarm.
+#
+# Log-based, not OTel-based, ON PURPOSE: OTEL_ENABLED is "false" in this
+# environment, so a counter would report nothing while looking like monitoring.
+# Container logs reach CloudWatch regardless.
+#
+# The field name is FAIL_OPEN_FIELD in libs/platform/src/observability/fail-open.ts.
+# Renaming it there silently breaks this filter.
+resource "aws_cloudwatch_log_metric_filter" "security_fail_open" {
+  name           = "${local.name}-security-fail-open"
+  log_group_name = module.api.log_group_name
+  pattern        = "{ $.securityFailOpen = \"*\" }"
+
+  metric_transformation {
+    name          = "SecurityFailOpen"
+    namespace     = "rally/${local.env}"
+    value         = "1"
+    default_value = "0"
+  }
+}
+
+# NOTE: create the email/Slack subscription by hand once — an SNS email
+# subscription needs an out-of-band confirmation click, so Terraform cannot own it:
+#   aws sns subscribe --region REGION --topic-arn <arn> \
+#     --protocol email --notification-endpoint you@qnsc.vn
+resource "aws_sns_topic" "alerts" {
+  name              = "${local.name}-alerts"
+  kms_master_key_id = local.kms_key_arn
+}
+
+resource "aws_cloudwatch_metric_alarm" "security_fail_open" {
+  alarm_name        = "${local.name}-security-fail-open"
+  alarm_description = "A security control failed open (token denylist or rate limiter) — check Valkey health."
+
+  namespace           = "rally/${local.env}"
+  metric_name         = "SecurityFailOpen"
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  # A metric filter emits no data points when nothing matches, which is the
+  # healthy state — treat that as OK rather than INSUFFICIENT_DATA noise.
+  treat_missing_data = "notBreaching"
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+  ok_actions    = [aws_sns_topic.alerts.arn]
+}
