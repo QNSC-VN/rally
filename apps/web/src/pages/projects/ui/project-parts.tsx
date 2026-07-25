@@ -1,16 +1,7 @@
 /* eslint-disable react-refresh/only-export-components -- PROJECT_COLUMNS is config that must co-locate with the cell renderers it references */
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import {
-  AlertTriangle,
-  Archive,
-  Edit3,
-  Loader2,
-  MoreHorizontal,
-  RotateCcw,
-  Users,
-  UsersRound,
-} from 'lucide-react'
+import { AlertTriangle, Loader2, Users, UsersRound } from 'lucide-react'
 
 import { BRAND } from '@/shared/config/brand'
 import { cn, formatDate } from '@/shared/lib/utils'
@@ -530,49 +521,6 @@ function ProjectTeamsCell({ projectId, teamCount }: { projectId: string; teamCou
 
 // ── Table columns (shared useDataTable engine) ───────────────────────────────
 
-function ProjectActionsCell({ project, ctx }: { project: Project; ctx: ProjectCtx }) {
-  const { t } = useTranslation('projects')
-  const { openMenu, setOpenMenu, onEdit, onToggleArchive } = ctx
-  return (
-    <div className="relative" onClick={(e) => e.stopPropagation()}>
-      <button
-        onClick={() => setOpenMenu(openMenu === project.id ? null : project.id)}
-        className="flex h-6 w-6 items-center justify-center rounded text-foreground-subtle hover:bg-avatar"
-        aria-label="Project actions"
-      >
-        <MoreHorizontal size={14} />
-      </button>
-
-      {openMenu === project.id && (
-        <div className="absolute top-7 right-0 z-20 w-44 overflow-hidden rounded border border-border bg-card py-1 shadow-lg">
-          <button
-            className="flex w-full items-center gap-2 px-3 py-2 text-ui-sm text-foreground hover:bg-surface-subtle"
-            onClick={() => {
-              onEdit(project)
-              setOpenMenu(null)
-            }}
-          >
-            <Edit3 size={12} className="text-muted-foreground" />
-            {t('actions.edit')}
-          </button>
-          <button
-            className="flex w-full items-center gap-2 px-3 py-2 text-ui-sm hover:bg-surface-subtle"
-            style={{ color: project.status === 'active' ? BRAND.danger : BRAND.textPrimary }}
-            onClick={() => onToggleArchive(project)}
-          >
-            {project.status === 'active' ? (
-              <Archive size={12} className="text-destructive" />
-            ) : (
-              <RotateCcw size={12} className="text-muted-foreground" />
-            )}
-            {project.status === 'active' ? t('actions.archive') : t('actions.restore')}
-          </button>
-        </div>
-      )}
-    </div>
-  )
-}
-
 /**
  * Single per-column source of truth. The shared {@link useDataTable} engine
  * derives the header, resize / reorder / show-hide behaviour and body cells
@@ -675,15 +623,6 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
     minWidth: 100,
     cellClassName: 'flex items-center text-ui-sm',
     cell: (p) => <span className="text-muted-foreground">{formatDate(p.updatedAt)}</span>,
-  },
-  {
-    key: 'actions',
-    label: '',
-    defaultWidth: 52,
-    minWidth: 52,
-    locked: true,
-    cellClassName: 'flex items-center justify-end',
-    cell: (p, ctx) => <ProjectActionsCell project={p} ctx={ctx} />,
   },
 ]
 

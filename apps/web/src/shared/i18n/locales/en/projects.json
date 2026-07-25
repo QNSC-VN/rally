@@ -45,7 +45,14 @@
     "oneActive": "active project",
     "manyActive": "active projects"
   },
+  "bulk": {
+    "delete": "Delete",
+    "confirmDelete": "Delete {{count}} project(s)? This cannot be undone."
+  },
   "toast": {
+    "archivedN": "{{count}} project(s) archived",
+    "restoredN": "{{count}} project(s) restored",
+    "deletedN": "{{count}} project(s) deleted",
     "restored": "\"{{name}}\" restored",
     "archived": "\"{{name}}\" archived"
   },
