@@ -9,10 +9,17 @@ import type { components } from '@/shared/api/generated/api'
 
 export type ScmRepository = components['schemas']['ScmRepositoryResponseDto']
 export type ScmProvider = ScmRepository['provider']
+export type ScmInstallation = components['schemas']['ScmInstallationResponseDto']
 
 export const scmRepositoryKeys = {
   all: ['scm-repositories'] as const,
   list: (workspaceId: string) => ['scm-repositories', workspaceId] as const,
+}
+
+export const scmInstallationKeys = {
+  all: ['scm-installations'] as const,
+  list: (workspaceId: string) => ['scm-installations', workspaceId] as const,
+  available: (workspaceId: string) => ['scm-installations', workspaceId, 'available'] as const,
 }
 
 export function useScmRepositories(workspaceId: string | undefined) {
@@ -69,5 +76,72 @@ export function useDeleteScmRepository(workspaceId: string | undefined) {
       if (error) throw new Error(apiErrorMessage(error, response.status))
     },
     meta: { invalidateKeys: [scmRepositoryKeys.list(workspaceId ?? '')] },
+  })
+}
+
+// ── GitHub App installations (org-level auto-discovery) ───────────────────────
+
+/** Installations already bound to this workspace (dashboard header). */
+export function useScmInstallations(workspaceId: string | undefined) {
+  return useQuery({
+    queryKey: scmInstallationKeys.list(workspaceId ?? ''),
+    queryFn: async () => {
+      const { data, error, response } = await apiClient.GET('/v1/scm/installations')
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return (data ?? []) as ScmInstallation[]
+    },
+    enabled: !!workspaceId,
+    staleTime: 30_000,
+  })
+}
+
+/** Installations the App can see, flagged with which are already connected (Connect picker). */
+export function useScmInstallationsAvailable(workspaceId: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: scmInstallationKeys.available(workspaceId ?? ''),
+    queryFn: async () => {
+      const { data, error, response } = await apiClient.GET('/v1/scm/installations/available')
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return (data ?? []) as ScmInstallation[]
+    },
+    enabled: !!workspaceId && enabled,
+    staleTime: 15_000,
+  })
+}
+
+export function useConnectGitHub(workspaceId: string | undefined) {
+  return useMutation({
+    mutationFn: async (installationId: string) => {
+      const { data, error, response } = await apiClient.POST('/v1/scm/installations', {
+        body: { installationId },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data
+    },
+    meta: {
+      invalidateKeys: [
+        scmInstallationKeys.list(workspaceId ?? ''),
+        scmInstallationKeys.available(workspaceId ?? ''),
+        scmRepositoryKeys.list(workspaceId ?? ''),
+      ],
+    },
+  })
+}
+
+export function useDisconnectGitHub(workspaceId: string | undefined) {
+  return useMutation({
+    mutationFn: async (installationId: string) => {
+      const { error, response } = await apiClient.DELETE('/v1/scm/installations/{installationId}', {
+        params: { path: { installationId } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+    },
+    meta: {
+      invalidateKeys: [
+        scmInstallationKeys.list(workspaceId ?? ''),
+        scmInstallationKeys.available(workspaceId ?? ''),
+        scmRepositoryKeys.list(workspaceId ?? ''),
+      ],
+    },
   })
 }

@@ -1,171 +1,36 @@
 /**
- * Settings ▸ Integrations — SCM repositories registered to this workspace. A
- * repo's webhook events (PRs/commits) link to work items by their workspace-
- * unique key (Rally FormattedID) — no per-project mapping needed (org-level).
- * Also surfaces the webhook URL to configure on the GitHub side.
+ * Settings ▸ Integrations — source-control (GitHub) dashboard.
+ *
+ * Org-level model: connect the Rally GitHub App once and its repositories are
+ * discovered automatically (from `installation`/`installation_repositories`
+ * webhooks) and back-filled. PRs/commits link to work items by their workspace-
+ * unique key (Rally FormattedID) — no per-project mapping. A manual owner/name
+ * fallback + copyable webhook URLs remain for repos outside an installation.
  */
-import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Trash2, Loader2, Plug, RefreshCw } from 'lucide-react'
 
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
-import {
-  useScmRepositories,
-  useCreateScmRepository,
-  useDeleteScmRepository,
-  useSyncScmRepository,
-  type ScmProvider,
-} from '@/features/scm/api'
-import { notify } from '@/shared/lib/toast'
-import { Button } from '@/shared/ui/button'
-import { Input } from '@/shared/ui/input'
-import { NativeSelect } from '@/shared/ui/native-select'
-import { EmptyState } from '@/shared/ui/empty-state'
+import { ConnectedOrgs } from './integrations/connected-orgs'
+import { RepositoryList } from './integrations/repository-list'
+import { WebhookSetup } from './integrations/webhook-setup'
+import { ManualAddForm } from './integrations/manual-add-form'
 
 export function IntegrationsTab() {
   const { t } = useTranslation('settings')
   const { workspace } = useAppContext()
   const workspaceId = workspace?.workspaceId
-  const { data: repos = [], isLoading } = useScmRepositories(workspaceId)
-  const createRepo = useCreateScmRepository(workspaceId)
-  const deleteRepo = useDeleteScmRepository(workspaceId)
-  const syncRepo = useSyncScmRepository(workspaceId)
-
-  const [provider, setProvider] = useState<ScmProvider>('github')
-  const [fullName, setFullName] = useState('')
-
-  const webhookUrl = `${window.location.origin}/v1/scm/webhook/${provider}`
-
-  async function add() {
-    if (!fullName.trim()) {
-      notify.error('Enter a repository (owner/name).')
-      return
-    }
-    try {
-      await createRepo.mutateAsync({ provider, fullName: fullName.trim() })
-      notify.success(`Linked ${fullName.trim()}`)
-      setFullName('')
-    } catch (e) {
-      notify.error(e instanceof Error ? e.message : 'Failed to add repository')
-    }
-  }
 
   return (
     <div className="max-w-3xl space-y-8">
-      {/* Existing repositories */}
-      <section>
-        <h3 className="mb-2 text-ui-md font-semibold text-foreground">
-          {t('integrations.connectedRepositories')}
-        </h3>
-        {isLoading ? (
-          <p className="text-ui-sm text-foreground-subtle">{t('integrations.loading')}</p>
-        ) : repos.length === 0 ? (
-          <EmptyState
-            icon={<Plug size={22} className="text-border-strong" />}
-            title={t('integrations.empty.title')}
-            description={t('integrations.empty.description')}
-          />
-        ) : (
-          <div className="overflow-hidden rounded-lg border border-border-subtle">
-            <table className="w-full border-collapse text-ui-sm">
-              <thead className="bg-surface-subtle">
-                <tr className="text-left text-ui-xs text-foreground-subtle">
-                  <th className="px-3 py-2 font-semibold">{t('integrations.col.repository')}</th>
-                  <th className="px-3 py-2 font-semibold">{t('integrations.col.provider')}</th>
-                  <th className="px-3 py-2" />
-                </tr>
-              </thead>
-              <tbody>
-                {repos.map((r) => (
-                  <tr key={r.id} className="border-t border-border-inner">
-                    <td className="px-3 py-2 font-mono text-foreground">{r.fullName}</td>
-                    <td className="px-3 py-2 text-muted-foreground uppercase">{r.provider}</td>
-                    <td className="px-3 py-2 text-right">
-                      <button
-                        aria-label={t('integrations.syncAria', { name: r.fullName })}
-                        title={t('integrations.sync')}
-                        className="mr-3 text-foreground-subtle hover:text-foreground disabled:opacity-50"
-                        disabled={syncRepo.isPending && syncRepo.variables === r.id}
-                        onClick={() => {
-                          void syncRepo
-                            .mutateAsync(r.id)
-                            .then(() => notify.success(`Sync queued for ${r.fullName}`))
-                            .catch((e: unknown) =>
-                              notify.error(e instanceof Error ? e.message : 'Failed to sync'),
-                            )
-                        }}
-                      >
-                        <RefreshCw
-                          size={14}
-                          className={
-                            syncRepo.isPending && syncRepo.variables === r.id ? 'animate-spin' : ''
-                          }
-                        />
-                      </button>
-                      <button
-                        aria-label={t('integrations.remove', { name: r.fullName })}
-                        className="text-foreground-subtle hover:text-destructive"
-                        onClick={() => {
-                          void deleteRepo
-                            .mutateAsync(r.id)
-                            .then(() => notify.success(`Removed ${r.fullName}`))
-                            .catch((e: unknown) =>
-                              notify.error(e instanceof Error ? e.message : 'Failed to remove'),
-                            )
-                        }}
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+      <header>
+        <h2 className="text-ui-lg font-semibold text-foreground">{t('integrations.title')}</h2>
+        <p className="mt-1 text-ui-sm text-foreground-subtle">{t('integrations.subtitle')}</p>
+      </header>
 
-      {/* Register a repository */}
-      <section className="space-y-3">
-        <h3 className="text-ui-md font-semibold text-foreground">{t('integrations.connect')}</h3>
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="flex flex-col gap-1">
-            <span className="text-ui-xs text-foreground-subtle">{t('integrations.provider')}</span>
-            <NativeSelect
-              value={provider}
-              onChange={(e) => setProvider(e.target.value as ScmProvider)}
-            >
-              <option value="github">{t('integrations.providers.github')}</option>
-              <option value="ghe">{t('integrations.providers.ghe')}</option>
-            </NativeSelect>
-          </label>
-          <label className="flex flex-1 flex-col gap-1" style={{ minWidth: 220 }}>
-            <span className="text-ui-xs text-foreground-subtle">
-              {t('integrations.repositoryLabel')}
-            </span>
-            <Input
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              placeholder="owner/repo"
-            />
-          </label>
-          <Button type="button" onClick={() => void add()} disabled={createRepo.isPending}>
-            {createRepo.isPending && <Loader2 size={12} className="animate-spin" />}
-            {t('integrations.add')}
-          </Button>
-        </div>
-
-        <p className="text-ui-xs text-foreground-subtle">
-          Work items are matched by their key (e.g. <code>US-42</code>) in the PR title, branch, or
-          commit message — no per-project setup. Add this webhook URL to the repository (content
-          type <code>application/json</code>, events: Pull requests + Pushes), using the shared
-          secret from your SCM integration settings:
-          <br />
-          <code className="mt-1 inline-block rounded bg-surface-subtle px-2 py-1 font-mono text-foreground">
-            {webhookUrl}
-          </code>
-        </p>
-      </section>
+      <ConnectedOrgs workspaceId={workspaceId} />
+      <RepositoryList workspaceId={workspaceId} />
+      <WebhookSetup />
+      <ManualAddForm workspaceId={workspaceId} />
     </div>
   )
 }
