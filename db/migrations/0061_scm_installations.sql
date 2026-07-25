@@ -5,6 +5,13 @@
 -- inbound installation/installation_repositories webhooks to the workspace — no
 -- per-repo typing. installation_id is GitHub's numeric id stored as text.
 
+-- Ensure the provider enum exists in public. Fresh DBs already have it from 0058;
+-- environments that applied a pre-pgEnum-refactor 0058 (which created it elsewhere)
+-- do not, so create it here idempotently rather than assume public.scm_provider.
+DO $$ BEGIN
+  CREATE TYPE "public"."scm_provider" AS ENUM('github', 'ghe');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "scm"."installations" (
   "id"              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   "workspace_id"    uuid NOT NULL,
