@@ -353,7 +353,7 @@ export function EditProjectModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!values.name.trim()) return
+    if (values.name.trim().length < 2) return
     try {
       await mutateAsync({
         id: project.id,
@@ -398,7 +398,7 @@ export function EditProjectModal({
           <Button variant="outline" type="button" onClick={onClose}>
             {t('common:cancel')}
           </Button>
-          <Button type="submit" disabled={saving || !values.name.trim()}>
+          <Button type="submit" disabled={saving || values.name.trim().length < 2}>
             {saving && <Loader2 size={12} className="animate-spin" />}
             {t('edit.save')}
           </Button>
@@ -449,7 +449,7 @@ export function NewProjectModal({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const trimmedKey = values.key.trim().toUpperCase()
-    if (!values.name.trim() || !trimmedKey) return
+    if (values.name.trim().length < 2 || !trimmedKey) return
     if (trimmedKey.length < 2) {
       notify.error(t('create.keyTooShort'))
       return
@@ -488,7 +488,10 @@ export function NewProjectModal({
           <Button variant="outline" type="button" onClick={onClose}>
             {t('common:cancel')}
           </Button>
-          <Button type="submit" disabled={isPending || !values.name.trim() || !values.key.trim()}>
+          <Button
+            type="submit"
+            disabled={isPending || values.name.trim().length < 2 || !values.key.trim()}
+          >
             {isPending && <Loader2 size={12} className="animate-spin" />}
             {t('create.submit')}
           </Button>

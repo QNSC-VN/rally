@@ -36,10 +36,7 @@ import {
   useCreateIterationItem,
   type IterationStatusItem,
 } from '@/features/iterations/api'
-import {
-  useUpdateAnyWorkItem,
-  useRankAnyWorkItem,
-} from '@/features/work-items/api'
+import { useUpdateAnyWorkItem, useRankAnyWorkItem } from '@/features/work-items/api'
 import { useProjectMembers } from '@/features/teams/api'
 import { useMilestones } from '@/features/milestones/api'
 import { ScheduleState } from '@/entities/work-item/model/types'
@@ -71,7 +68,7 @@ export function IterationStatusPage() {
   const canEdit = can('work_item:edit')
   const canCreate = can('work_item:create')
 
-  const { data: iterations = [] } = useIterations(projectId)
+  const { data: iterations = [], isLoading: iterationsLoading } = useIterations(projectId)
   const { data: members = [] } = useProjectMembers(projectId)
   const { data: milestoneOptions = [] } = useMilestones(projectId)
 
@@ -396,6 +393,19 @@ export function IterationStatusPage() {
         style={{ fontSize: 13 }}
       >
         {t('selectProject')}
+      </div>
+    )
+  }
+
+  // Guard the empty state behind the iterations fetch — a first direct visit must
+  // show Loading, never a false "no iterations" flash before the query settles.
+  if (iterationsLoading) {
+    return (
+      <div
+        className="flex flex-1 items-center justify-center text-foreground-subtle"
+        style={{ fontSize: 13 }}
+      >
+        {t('common:loading')}
       </div>
     )
   }

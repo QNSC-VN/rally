@@ -18,11 +18,7 @@ import {
   useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core'
-import {
-  arrayMove,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable'
+import { arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -183,6 +179,7 @@ export function BacklogPage() {
   const [search, setSearch] = useState('')
   const [filterType, setFilterType] = useState<'' | 'story' | 'defect'>('')
   const [filterState, setFilterState] = useState('')
+  const [filterPriority, setFilterPriority] = useState('')
   const [filterOwner, setFilterOwner] = useState('')
   const [filterRelease, setFilterRelease] = useState('')
   const [filterIteration, setFilterIteration] = useState('')
@@ -245,6 +242,7 @@ export function BacklogPage() {
   const { data, isLoading, isError, error } = useBacklog(projectId, {
     type: filterType || undefined,
     scheduleState: filterState || undefined,
+    priority: filterPriority || undefined,
     assigneeId: filterOwner || undefined,
     releaseId: filterRelease || undefined,
     iterationId: filterIteration || undefined,
@@ -363,6 +361,8 @@ export function BacklogPage() {
         setFilterType={setFilterType}
         filterState={filterState}
         setFilterState={setFilterState}
+        filterPriority={filterPriority}
+        setFilterPriority={setFilterPriority}
         filterOwner={filterOwner}
         setFilterOwner={setFilterOwner}
         filterRelease={filterRelease}
@@ -515,6 +515,8 @@ interface BacklogToolbarProps {
   setFilterType: (v: '' | 'story' | 'defect') => void
   filterState: string
   setFilterState: (v: string) => void
+  filterPriority: string
+  setFilterPriority: (v: string) => void
   filterOwner: string
   setFilterOwner: (v: string) => void
   filterRelease: string
@@ -540,6 +542,8 @@ function BacklogToolbar({
   setFilterType,
   filterState,
   setFilterState,
+  filterPriority,
+  setFilterPriority,
   filterOwner,
   setFilterOwner,
   filterRelease,
@@ -561,6 +565,7 @@ function BacklogToolbar({
   const activeFilterCount =
     (filterType ? 1 : 0) +
     (filterState ? 1 : 0) +
+    (filterPriority ? 1 : 0) +
     (filterOwner ? 1 : 0) +
     (filterRelease ? 1 : 0) +
     (filterIteration ? 1 : 0)
@@ -611,6 +616,21 @@ function BacklogToolbar({
             {SCHEDULE_STATE_OPTS.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
+              </option>
+            ))}
+          </InlineSelect>
+
+          {/* Priority filter (P2-BL-02) */}
+          <InlineSelect
+            value={filterPriority}
+            onChange={(e) => setFilterPriority(e.target.value)}
+            aria-label="Filter by priority"
+            className="w-auto"
+          >
+            <option value="">{t('filters.allPriorities')}</option>
+            {PRIORITY_VALUES.map((p) => (
+              <option key={p} value={p}>
+                {PRIORITY_LABEL[p]}
               </option>
             ))}
           </InlineSelect>
@@ -808,7 +828,9 @@ function BacklogRow({
           steps={SCHEDULE_STATE_STEPS}
           value={item.scheduleState as ScheduleState}
           canEdit={canEdit}
-          onChange={(next) => patch({ scheduleState: next as UpdateWorkItemInput['scheduleState'] })}
+          onChange={(next) =>
+            patch({ scheduleState: next as UpdateWorkItemInput['scheduleState'] })
+          }
           ariaLabel="Schedule state"
         />
       </div>
@@ -907,7 +929,9 @@ function BacklogRow({
                     const cur = allIterations.find((it) => it.id === item.iterationId)
                     return {
                       value: item.iterationId,
-                      label: cur?.iterationKey ? `${cur.iterationKey}: ${cur.name}` : (cur?.name ?? '—'),
+                      label: cur?.iterationKey
+                        ? `${cur.iterationKey}: ${cur.name}`
+                        : (cur?.name ?? '—'),
                       icon: <TypeBadge type="iteration" size={16} />,
                     }
                   })(),
