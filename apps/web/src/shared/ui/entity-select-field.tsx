@@ -68,6 +68,9 @@ interface TeamSelectFieldProps {
   placeholder?: string
   id?: string
   disabled?: boolean
+  /** When false, no empty "No team" option is offered (Team is mandatory — SoT). */
+  allowUnassigned?: boolean
+  error?: string
 }
 
 export function TeamSelectField({
@@ -77,9 +80,11 @@ export function TeamSelectField({
   label = 'Team',
   placeholder = 'No team',
   disabled,
+  allowUnassigned = true,
+  error,
 }: TeamSelectFieldProps) {
   const options: SelectOption[] = [
-    { value: '', label: placeholder },
+    ...(allowUnassigned ? [{ value: '', label: placeholder }] : []),
     ...teams.map((t) => ({
       value: t.id,
       label: t.name,
@@ -87,13 +92,13 @@ export function TeamSelectField({
     })),
   ]
   return (
-    <FormField label={label}>
+    <FormField label={label} required={!allowUnassigned} error={error}>
       <SearchableSelect
         variant="field"
         value={value ?? ''}
         readOnly={disabled}
         ariaLabel={label}
-        placeholder={placeholder}
+        placeholder={allowUnassigned ? placeholder : 'Select a team'}
         searchPlaceholder="Search"
         options={options}
         onChange={onChange}

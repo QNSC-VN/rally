@@ -336,7 +336,11 @@ export class WorkItemsService {
               title,
               description: opts.description,
               statusId,
-              scheduleState: opts.scheduleState ?? 'defined',
+              // SoT §2.4: a new Story/Defect defaults Schedule=Flow='idea'
+              // (Tasks have their own lifecycle starting at 'defined'). Flow
+              // mirrors Schedule at create (BR-WI-01) so the pair is never split.
+              scheduleState: opts.scheduleState ?? (type === 'task' ? 'defined' : 'idea'),
+              flowState: opts.scheduleState ?? (type === 'task' ? 'defined' : 'idea'),
               priority: opts.priority ?? 'none',
               assigneeId: opts.assigneeId,
               reporterId: opts.reporterId ?? actor.sub,
