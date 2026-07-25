@@ -814,7 +814,7 @@ export interface paths {
       path?: never
       cookie?: never
     }
-    /** Get a work item by its item key within a project */
+    /** Get a work item by its workspace-unique item key */
     get: operations['WorkItemsController_getWorkItemByKey']
     put?: never
     post?: never
@@ -1984,6 +1984,58 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v1/scm/installations': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** GitHub App installations connected to the workspace */
+    get: operations['ScmController_listInstallations']
+    put?: never
+    /** Connect a GitHub App installation → auto-discover its repos */
+    post: operations['ScmController_connectInstallation']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/scm/installations/available': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** GitHub App installations the App can see (to connect) */
+    get: operations['ScmController_availableInstallations']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/scm/installations/{installationId}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    /** Disconnect a GitHub App installation (deactivates its repos) */
+    delete: operations['ScmController_disconnectInstallation']
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v1/scm/repositories': {
     parameters: {
       query?: never
@@ -1991,11 +2043,28 @@ export interface paths {
       path?: never
       cookie?: never
     }
-    /** List SCM repository → project mappings for the workspace */
+    /** List SCM repositories (with sync status) for the workspace */
     get: operations['ScmController_listRepositories']
     put?: never
-    /** Create/update a repository → project mapping */
+    /** Manually register a repository (workspace-scoped) */
     post: operations['ScmController_createRepository']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/scm/repositories/{id}/sync': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Enqueue a backfill (Sync now) for a mapped repository */
+    post: operations['ScmController_syncRepository']
     delete?: never
     options?: never
     head?: never
@@ -2014,23 +2083,6 @@ export interface paths {
     post?: never
     /** Remove a repository mapping */
     delete: operations['ScmController_deleteRepository']
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/v1/scm/repositories/{id}/sync': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Enqueue a backfill (Sync now) for a mapped repository */
-    post: operations['ScmController_syncRepository']
-    delete?: never
     options?: never
     head?: never
     patch?: never
@@ -3206,6 +3258,19 @@ export interface components {
       }[]
       committedAt: string | null
     }
+    ScmInstallationResponseDto: {
+      installationId: string
+      accountLogin: string | null
+      accountType: string | null
+      connected?: boolean
+    }
+    ConnectScmInstallationDto: {
+      installationId: string
+    }
+    ScmConnectResponseDto: {
+      /** @description Repositories discovered + queued for backfill */
+      discovered: number
+    }
     ScmRepositoryResponseDto: {
       /** Format: uuid */
       id: string
@@ -3214,18 +3279,26 @@ export interface components {
       fullName: string
       baseUrl: string | null
       active: boolean
+      installationId: string | null
+      lastSync: {
+        /** @enum {string} */
+        status: 'pending' | 'done' | 'failed'
+        at: string | null
+        prs: number
+        commits: number
+      } | null
       /** Format: date-time */
       createdAt: string
-    }
-    ScmSyncResponseDto: {
-      /** @description True when a backfill job was queued */
-      enqueued: boolean
     }
     CreateScmRepositoryDto: {
       /** @enum {string} */
       provider: 'github' | 'ghe'
       fullName: string
       baseUrl?: string | null
+    }
+    ScmSyncResponseDto: {
+      /** @description True when a backfill job was queued */
+      enqueued: boolean
     }
   }
   responses: never
@@ -10205,6 +10278,150 @@ export interface operations {
       }
     }
   }
+  ScmController_listInstallations: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ScmInstallationResponseDto'][]
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  ScmController_connectInstallation: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ConnectScmInstallationDto']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ScmConnectResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  ScmController_availableInstallations: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ScmInstallationResponseDto'][]
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  ScmController_disconnectInstallation: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        installationId: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Disconnected */
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
   ScmController_listRepositories: {
     parameters: {
       query?: never
@@ -10275,7 +10492,7 @@ export interface operations {
       }
     }
   }
-  ScmController_deleteRepository: {
+  ScmController_syncRepository: {
     parameters: {
       query?: never
       header?: never
@@ -10286,8 +10503,16 @@ export interface operations {
     }
     requestBody?: never
     responses: {
-      /** @description Mapping removed */
-      204: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ScmSyncResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
         headers: {
           [name: string]: unknown
         }
@@ -10316,7 +10541,7 @@ export interface operations {
       }
     }
   }
-  ScmController_syncRepository: {
+  ScmController_deleteRepository: {
     parameters: {
       query?: never
       header?: never
@@ -10327,16 +10552,8 @@ export interface operations {
     }
     requestBody?: never
     responses: {
-      201: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ScmSyncResponseDto']
-        }
-      }
-      /** @description Bad Request — validation error or malformed input */
-      400: {
+      /** @description Mapping removed */
+      204: {
         headers: {
           [name: string]: unknown
         }

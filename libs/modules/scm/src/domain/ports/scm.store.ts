@@ -2,6 +2,8 @@ import type { CursorPayload, PagedResult } from '@platform';
 import type {
   ScmProvider,
   ScmRepository,
+  ScmRepositoryWithSync,
+  ScmInstallation,
   CreateScmRepositoryInput,
   ScmConnection,
   ScmChangeset,
@@ -24,10 +26,44 @@ export interface PageArgs {
 export interface IScmStore {
   // ── Repositories + mapping ────────────────────────────────────────────────
   listRepositories(workspaceId: string): Promise<ScmRepository[]>;
+  /** Repos + their latest backfill status (for the Integrations dashboard). */
+  listRepositoriesWithSync(workspaceId: string): Promise<ScmRepositoryWithSync[]>;
   createRepository(input: CreateScmRepositoryInput): Promise<ScmRepository>;
   deleteRepository(workspaceId: string, id: string): Promise<void>;
   /** Resolve a repo's workspace for linking. Null if unregistered/inactive. */
   findRepository(provider: ScmProvider, fullName: string): Promise<{ workspaceId: string } | null>;
+
+  // ── Installations (org-level auto-discovery) ──────────────────────────────
+  listInstallations(workspaceId: string): Promise<ScmInstallation[]>;
+  /** Bind (or re-activate) an App installation to a workspace. */
+  bindInstallation(input: {
+    workspaceId: string;
+    provider: ScmProvider;
+    installationId: string;
+    accountLogin: string | null;
+    accountType: string | null;
+    createdBy: string | null;
+  }): Promise<void>;
+  /** Workspace an installation is bound to (for webhook resolution). */
+  findWorkspaceByInstallation(
+    provider: ScmProvider,
+    installationId: string,
+  ): Promise<{ workspaceId: string } | null>;
+  /** Deactivate an installation + all its auto-registered repos. */
+  deactivateInstallation(
+    workspaceId: string,
+    provider: ScmProvider,
+    installationId: string,
+  ): Promise<void>;
+  /** Upsert an auto-discovered repo (active, tagged with its installation). Returns its id. */
+  upsertDiscoveredRepo(input: {
+    workspaceId: string;
+    provider: ScmProvider;
+    fullName: string;
+    installationId: string;
+  }): Promise<{ id: string }>;
+  /** Soft-remove a repo by name (installation_repositories 'removed'). */
+  deactivateRepository(workspaceId: string, provider: ScmProvider, fullName: string): Promise<void>;
 
   // ── Backfill (GitHub App REST) ────────────────────────────────────────────
   /** Load the minimal repo identity a backfill run needs. Null if not found. */

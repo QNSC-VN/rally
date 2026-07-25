@@ -4,6 +4,7 @@ import { InjectDrizzle, buildPageResult } from '@platform';
 import type { DrizzleDB, PagedResult } from '@platform';
 import {
   scmRepositories,
+  scmInstallations,
   scmWebhookInbox,
   scmConnections,
   scmChangesets,
@@ -13,6 +14,9 @@ import { workItems } from '../../../../../../db/schema/work';
 import type {
   ScmProvider,
   ScmRepository,
+  ScmRepositoryWithSync,
+  ScmInstallation,
+  RepoSyncStatus,
   CreateScmRepositoryInput,
   ScmConnection,
   ScmChangeset,
@@ -34,6 +38,176 @@ export class ScmDrizzleRepository implements IScmStore {
       .where(eq(scmRepositories.workspaceId, workspaceId))
       .orderBy(scmRepositories.fullName);
     return repos.map((r) => this.toRepository(r));
+  }
+
+  async listRepositoriesWithSync(workspaceId: string): Promise<ScmRepositoryWithSync[]> {
+    const repos = await this.db
+      .select()
+      .from(scmRepositories)
+      .where(eq(scmRepositories.workspaceId, workspaceId))
+      .orderBy(scmRepositories.fullName);
+    if (repos.length === 0) return [];
+    // Latest backfill job per repo — fetch workspace jobs newest-first, keep the
+    // first seen per repository (small per workspace; no window function needed).
+    const jobs = await this.db
+      .select({
+        repositoryId: scmBackfillJobs.repositoryId,
+        status: scmBackfillJobs.status,
+        counts: scmBackfillJobs.counts,
+        finishedAt: scmBackfillJobs.finishedAt,
+        requestedAt: scmBackfillJobs.requestedAt,
+      })
+      .from(scmBackfillJobs)
+      .where(eq(scmBackfillJobs.workspaceId, workspaceId))
+      .orderBy(desc(scmBackfillJobs.requestedAt));
+    const latest = new Map<string, (typeof jobs)[number]>();
+    for (const j of jobs) if (!latest.has(j.repositoryId)) latest.set(j.repositoryId, j);
+    return repos.map((r) => {
+      const j = latest.get(r.id);
+      const counts = (j?.counts ?? {}) as { prs?: number; commits?: number };
+      const lastSync: RepoSyncStatus | null = j
+        ? {
+            status: j.status,
+            at: j.finishedAt ?? j.requestedAt ?? null,
+            prs: counts.prs ?? 0,
+            commits: counts.commits ?? 0,
+          }
+        : null;
+      return { ...this.toRepository(r), installationId: r.installationId, lastSync };
+    });
+  }
+
+  // ── Installations (org-level auto-discovery) ──────────────────────────────
+
+  async listInstallations(workspaceId: string): Promise<ScmInstallation[]> {
+    const rows = await this.db
+      .select()
+      .from(scmInstallations)
+      .where(and(eq(scmInstallations.workspaceId, workspaceId), eq(scmInstallations.active, true)))
+      .orderBy(scmInstallations.accountLogin);
+    return rows.map((r) => ({
+      id: r.id,
+      workspaceId: r.workspaceId,
+      provider: r.provider,
+      installationId: r.installationId,
+      accountLogin: r.accountLogin,
+      accountType: r.accountType,
+      active: r.active,
+    }));
+  }
+
+  async bindInstallation(input: {
+    workspaceId: string;
+    provider: ScmProvider;
+    installationId: string;
+    accountLogin: string | null;
+    accountType: string | null;
+    createdBy: string | null;
+  }): Promise<void> {
+    await this.db
+      .insert(scmInstallations)
+      .values({
+        workspaceId: input.workspaceId,
+        provider: input.provider,
+        installationId: input.installationId,
+        accountLogin: input.accountLogin,
+        accountType: input.accountType,
+        createdBy: input.createdBy,
+      })
+      .onConflictDoUpdate({
+        target: [scmInstallations.provider, scmInstallations.installationId],
+        set: {
+          workspaceId: input.workspaceId,
+          accountLogin: input.accountLogin,
+          accountType: input.accountType,
+          active: true,
+          updatedAt: new Date(),
+        },
+      });
+  }
+
+  async findWorkspaceByInstallation(
+    provider: ScmProvider,
+    installationId: string,
+  ): Promise<{ workspaceId: string } | null> {
+    const [row] = await this.db
+      .select({ workspaceId: scmInstallations.workspaceId })
+      .from(scmInstallations)
+      .where(
+        and(
+          eq(scmInstallations.provider, provider),
+          eq(scmInstallations.installationId, installationId),
+          eq(scmInstallations.active, true),
+        ),
+      )
+      .limit(1);
+    return row ?? null;
+  }
+
+  async deactivateInstallation(
+    workspaceId: string,
+    provider: ScmProvider,
+    installationId: string,
+  ): Promise<void> {
+    await this.db
+      .update(scmInstallations)
+      .set({ active: false, updatedAt: new Date() })
+      .where(
+        and(
+          eq(scmInstallations.workspaceId, workspaceId),
+          eq(scmInstallations.provider, provider),
+          eq(scmInstallations.installationId, installationId),
+        ),
+      );
+    await this.db
+      .update(scmRepositories)
+      .set({ active: false, updatedAt: new Date() })
+      .where(
+        and(
+          eq(scmRepositories.workspaceId, workspaceId),
+          eq(scmRepositories.provider, provider),
+          eq(scmRepositories.installationId, installationId),
+        ),
+      );
+  }
+
+  async upsertDiscoveredRepo(input: {
+    workspaceId: string;
+    provider: ScmProvider;
+    fullName: string;
+    installationId: string;
+  }): Promise<{ id: string }> {
+    const [repo] = await this.db
+      .insert(scmRepositories)
+      .values({
+        workspaceId: input.workspaceId,
+        provider: input.provider,
+        fullName: input.fullName,
+        installationId: input.installationId,
+      })
+      .onConflictDoUpdate({
+        target: [scmRepositories.workspaceId, scmRepositories.provider, scmRepositories.fullName],
+        set: { active: true, installationId: input.installationId, updatedAt: new Date() },
+      })
+      .returning({ id: scmRepositories.id });
+    return { id: repo.id };
+  }
+
+  async deactivateRepository(
+    workspaceId: string,
+    provider: ScmProvider,
+    fullName: string,
+  ): Promise<void> {
+    await this.db
+      .update(scmRepositories)
+      .set({ active: false, updatedAt: new Date() })
+      .where(
+        and(
+          eq(scmRepositories.workspaceId, workspaceId),
+          eq(scmRepositories.provider, provider),
+          eq(scmRepositories.fullName, fullName),
+        ),
+      );
   }
 
   async createRepository(input: CreateScmRepositoryInput): Promise<ScmRepository> {

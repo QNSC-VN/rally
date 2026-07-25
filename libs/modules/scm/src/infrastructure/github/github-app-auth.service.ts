@@ -51,6 +51,20 @@ export class GithubAppAuthService {
     return String(body.id);
   }
 
+  /** List every installation of this App (App-JWT). Used to connect an org. */
+  async listInstallations(): Promise<
+    Array<{ id: string; accountLogin: string | null; accountType: string | null }>
+  > {
+    const rows = await this.appRequest<
+      Array<{ id: number; account?: { login?: string; type?: string } | null }>
+    >('/app/installations?per_page=100');
+    return rows.map((r) => ({
+      id: String(r.id),
+      accountLogin: r.account?.login ?? null,
+      accountType: r.account?.type ?? null,
+    }));
+  }
+
   /** Get a cached (or fresh) installation access token. */
   async getInstallationToken(installationId: string): Promise<string> {
     const hit = this.tokenCache.get(installationId);

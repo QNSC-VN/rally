@@ -218,29 +218,79 @@
     "reset": "Reset"
   },
   "integrations": {
-    "connectedRepositories": "Connected repositories",
+    "title": "Source control",
+    "subtitle": "Connect GitHub once — repositories are discovered automatically and their pull requests & commits link to work items by key (e.g. US-42).",
     "loading": "Loading…",
-    "empty": {
-      "title": "No repositories connected",
-      "description": "Map a repository to a project below, then add the webhook to GitHub."
+    "orgs": {
+      "title": "Connected organizations",
+      "repoCount_one": "{{count}} repository",
+      "repoCount_other": "{{count}} repositories",
+      "installation": "Installation #{{id}}",
+      "connect": "Connect GitHub",
+      "connecting": "Connecting…",
+      "disconnect": "Disconnect",
+      "disconnectTitle": "Disconnect {{name}}?",
+      "disconnectMessage": "Rally stops receiving events from this installation and its discovered repositories are deactivated. Existing links on work items are kept. You can reconnect at any time.",
+      "empty": {
+        "title": "No GitHub organization connected",
+        "description": "Install the Rally GitHub App on your organization, then connect it here — every repository it can access appears automatically and starts syncing."
+      }
     },
-    "col": {
-      "repository": "Repository",
-      "provider": "Provider",
-      "projects": "Projects"
+    "connectDialog": {
+      "title": "Connect a GitHub organization",
+      "description": "Pick an installation of the Rally GitHub App. Its repositories are discovered automatically and back-filled.",
+      "empty": "No available installations. Install the Rally GitHub App on your organization first, then reopen this dialog.",
+      "connected": "Already connected",
+      "connect": "Connect",
+      "loading": "Loading installations…"
+    },
+    "repos": {
+      "title": "Repositories",
+      "syncAll": "Sync all",
+      "col": {
+        "repository": "Repository",
+        "status": "Sync status",
+        "activity": "Linked activity"
+      },
+      "manual": "Manual",
+      "prs_one": "{{count}} PR",
+      "prs_other": "{{count}} PRs",
+      "commits_one": "{{count}} commit",
+      "commits_other": "{{count}} commits",
+      "syncedAt": "Synced {{time}}",
+      "neverSynced": "Not synced yet",
+      "empty": {
+        "title": "No repositories yet",
+        "description": "Connect a GitHub organization above, or add a repository manually below."
+      }
     },
     "remove": "Remove {{name}}",
-    "connect": "Connect a repository",
-    "provider": "Provider",
-    "providers": {
-      "github": "GitHub.com",
-      "ghe": "GitHub Enterprise"
-    },
-    "repositoryLabel": "Repository (owner/name)",
-    "add": "Add",
-    "projectsItReferences": "Projects it references",
-    "noProjects": "No projects",
+    "removeTitle": "Remove {{name}}?",
+    "removeMessage": "This stops linking new pull requests & commits from this repository. Existing links on work items are kept.",
     "sync": "Sync now — backfill existing PRs & commits",
-    "syncAria": "Sync {{name}}"
+    "syncAria": "Sync {{name}}",
+    "syncQueued": "Sync queued for {{name}}",
+    "syncAllQueued": "Sync queued for {{count}} repositories",
+    "connected": "Connected {{name}}, discovered {{count}} repositories",
+    "disconnected": "Disconnected {{name}}",
+    "removed": "Removed {{name}}",
+    "webhook": {
+      "title": "Manual webhook setup",
+      "description": "Only needed for repositories outside a connected GitHub App installation. Add this webhook to the repository (content type application/json, events: Pull requests + Pushes) using your SCM webhook secret.",
+      "copy": "Copy webhook URL"
+    },
+    "manualAdd": {
+      "title": "Add a repository manually",
+      "description": "For repositories not covered by a connected installation. Matched to this workspace by owner/name.",
+      "provider": "Provider",
+      "providers": {
+        "github": "GitHub.com",
+        "ghe": "GitHub Enterprise"
+      },
+      "repositoryLabel": "Repository (owner/name)",
+      "add": "Add repository",
+      "added": "Added {{name}}",
+      "invalid": "Enter a repository (owner/name)."
+    }
   }
 }

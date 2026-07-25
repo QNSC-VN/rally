@@ -18,7 +18,14 @@ import { Public, AppConfigService } from '@platform';
 import { ScmService } from '../../application/scm.service';
 import type { ScmProvider } from '../../domain/scm.types';
 
-const HANDLED_EVENTS = new Set(['pull_request', 'push']);
+const HANDLED_EVENTS = new Set([
+  'pull_request',
+  'push',
+  // Management events (org-level auto-discovery) — routed to ScmInstallationService
+  // by the worker relay, not the linker.
+  'installation',
+  'installation_repositories',
+]);
 const PROVIDERS = new Set<ScmProvider>(['github', 'ghe']);
 
 /**

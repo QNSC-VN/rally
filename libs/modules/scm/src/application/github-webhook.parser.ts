@@ -107,3 +107,61 @@ export function parsePushEvent(payload: unknown): NormalizedCommit[] {
   }
   return out;
 }
+
+// ── Installation management events (org-level auto-discovery) ────────────────
+
+interface GhInstallationPayload {
+  action?: string;
+  installation?: {
+    id?: number;
+    account?: { login?: string; type?: string } | null;
+  };
+  repositories?: Array<{ full_name?: string }>;
+  repositories_added?: Array<{ full_name?: string }>;
+  repositories_removed?: Array<{ full_name?: string }>;
+}
+
+export interface InstallationEvent {
+  action: string;
+  installationId: string;
+  accountLogin: string | null;
+  accountType: string | null;
+  /** Repos present at install time (`installation` event only). */
+  repositories: string[];
+}
+
+export function parseInstallationEvent(payload: unknown): InstallationEvent | null {
+  const p = payload as GhInstallationPayload;
+  const id = p.installation?.id;
+  if (typeof id !== 'number' || !p.action) return null;
+  return {
+    action: p.action,
+    installationId: String(id),
+    accountLogin: p.installation?.account?.login ?? null,
+    accountType: p.installation?.account?.type ?? null,
+    repositories: (p.repositories ?? []).map((r) => r.full_name).filter((n): n is string => !!n),
+  };
+}
+
+export interface InstallationReposEvent {
+  action: string;
+  installationId: string;
+  added: string[];
+  removed: string[];
+}
+
+export function parseInstallationRepositoriesEvent(
+  payload: unknown,
+): InstallationReposEvent | null {
+  const p = payload as GhInstallationPayload;
+  const id = p.installation?.id;
+  if (typeof id !== 'number' || !p.action) return null;
+  const names = (a?: Array<{ full_name?: string }>) =>
+    (a ?? []).map((r) => r.full_name).filter((n): n is string => !!n);
+  return {
+    action: p.action,
+    installationId: String(id),
+    added: names(p.repositories_added),
+    removed: names(p.repositories_removed),
+  };
+}
