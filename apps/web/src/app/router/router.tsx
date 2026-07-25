@@ -89,7 +89,7 @@ const homeRoute = createRoute({
 const projectsRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/projects',
-  staticData: { breadcrumb: 'Projects' },
+  staticData: { breadcrumb: 'Manage Projects' },
   component: lazyPage(() => import('@/pages/projects/projects-page'), 'ProjectsPage'),
 })
 

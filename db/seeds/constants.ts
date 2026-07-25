@@ -40,12 +40,6 @@ export const WORKSPACE_ID = '00000000-0000-7000-8000-000000000003';
 export const DEVELOPER_ID = '00000000-0000-7000-8000-000000000020';
 export const VIEWER_ID = '00000000-0000-7000-8000-000000000021';
 
-// RBAC/PBAC demo users — one per otherwise-uncovered system role, plus a
-// project-scoped "lead" that proves per-project (PBAC) differentiation.
-export const PROJECT_ADMIN_ID = '00000000-0000-7000-8000-000000000022';
-export const WORKSPACE_MEMBER_ID = '00000000-0000-7000-8000-000000000023';
-export const PROJECT_LEAD_ID = '00000000-0000-7000-8000-000000000025';
-
 // ── Single end-to-end demo flow (NXP only) ───────────────────────────────────
 // Team Alpha (with members) → Story + Defect (team-linked) → 2 Tasks under the
 // Story (team/iteration inherited) → Iteration (contains Story + Defect) →
@@ -69,21 +63,12 @@ export const NXP_MILESTONE_1_ID = '00000000-0000-7000-8000-0000000000b0';
 // All are owned by ADMIN_USER_ID and belong to the default workspace.
 //
 // NXP carries the full one-flow fixture (Team/Story/Defect/Tasks/Iteration/
-// Release/Milestone). MOB exists only so the RBAC/PBAC demo user
-// (PROJECT_LEAD_ID) has a second project to be scoped against
-// (project_admin on NXP, project_viewer on MOB) — it intentionally has no
-// work-item/team/release/iteration fixtures of its own.
+// Release/Milestone) — the single project used by dev fixtures + E2E.
 export const SEED_PROJECTS = [
   {
     id: '00000000-0000-7000-8000-000000000010',
     key: 'NXP',
     name: 'NX Platform',
     description: 'Core NX mono-repo platform upgrades and tooling improvements.',
-  },
-  {
-    id: '00000000-0000-7000-8000-000000000011',
-    key: 'MOB',
-    name: 'Mobile App',
-    description: 'Cross-platform React Native application for iOS and Android.',
   },
 ] as const;

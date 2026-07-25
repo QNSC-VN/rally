@@ -29,7 +29,7 @@ export function LoginPage() {
   const [email, setEmail] = useState('')
   const [emailLoading, setEmailLoading] = useState(false)
   const [emailError, setEmailError] = useState<string | null>(null)
-  const [devEmail, setDevEmail] = useState('admin@acme.dev')
+  const [devEmail, setDevEmail] = useState('admin@qnsc.dev')
   const [devLoading, setDevLoading] = useState(false)
   const [devError, setDevError] = useState<string | null>(null)
 
@@ -348,7 +348,7 @@ export function LoginPage() {
                       value={devEmail}
                       onChange={(e) => setDevEmail(e.target.value)}
                       className="h-10 w-full rounded border border-border-strong px-3 text-ui-lg text-foreground outline-none"
-                      placeholder="you@acme.dev"
+                      placeholder="you@qnsc.dev"
                     />
                   </div>
 

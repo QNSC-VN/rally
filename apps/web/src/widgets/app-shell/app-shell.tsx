@@ -576,7 +576,7 @@ export function AppShell() {
                     className="flex items-center gap-2 hover:underline"
                   >
                     <Settings size={12} />
-                    Manage projects
+                    Manage Projects
                   </Link>
                 </div>
               </div>

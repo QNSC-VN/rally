@@ -1,5 +1,5 @@
 {
-  "title": "Projects",
+  "title": "Manage Projects",
   "new": "New project",
   "search": "Search projects...",
   "empty": "No projects yet",
@@ -26,7 +26,7 @@
     "key": "Project key",
     "name": "Project name",
     "description": "Description",
-    "lead": "Project lead",
+    "lead": "Owner",
     "teams": "Teams"
   },
   "actions": {
