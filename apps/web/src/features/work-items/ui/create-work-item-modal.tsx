@@ -49,6 +49,7 @@ export function CreateWorkItemModal({
   const [storyPoints, setStoryPoints] = useState('')
   const [parentStoryId, setParentStoryId] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [teamError, setTeamError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
   const createMutation = useCreateWorkItem()
@@ -88,7 +89,14 @@ export function CreateWorkItemModal({
       setError('Title is required.')
       return
     }
+    // SoT: Team is required for a Backlog Work Item and must be one linked to
+    // the selected Project (the list is already project-filtered).
+    if (!validTeamId) {
+      setTeamError('Team is required.')
+      return
+    }
     setError(null)
+    setTeamError(null)
     setSubmitting(true)
     try {
       const item = await createMutation.mutateAsync({
@@ -96,7 +104,7 @@ export function CreateWorkItemModal({
         type,
         title: title.trim(),
         priority: 'none',
-        teamId: validTeamId || undefined,
+        teamId: validTeamId,
         assigneeId: assigneeId || undefined,
         storyPoints: storyPoints ? Number(storyPoints) : undefined,
         parentId: type === 'defect' ? parentStoryId || undefined : undefined,
@@ -212,7 +220,17 @@ export function CreateWorkItemModal({
 
         {/* Team + Owner row */}
         <div className="grid grid-cols-2 gap-4">
-          <TeamSelectField id="wi-team" value={validTeamId} onChange={setTeamId} teams={teams} />
+          <TeamSelectField
+            id="wi-team"
+            value={validTeamId}
+            onChange={(v) => {
+              setTeamId(v)
+              setTeamError(null)
+            }}
+            teams={teams}
+            allowUnassigned={false}
+            error={teamError ?? undefined}
+          />
           <OwnerSelectField
             id="wi-owner"
             value={assigneeId}
