@@ -64,6 +64,15 @@ export function formatDate(iso: string | null | undefined, fallback = '—'): st
     : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
+/** Format an ISO date/timestamp as `yyyy-MM-dd` — the shared grid date format
+ *  (matches the DateField cell + every other grid's date column). */
+export function formatDateIso(iso: string | null | undefined, fallback = '—'): string {
+  if (!iso) return fallback
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return fallback
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 /** Format an ISO timestamp as a short date + time, e.g. "Jul 31, 2026, 2:30 PM". */
 export function formatDateTime(iso: string | null | undefined, fallback = '—'): string {
   if (!iso) return fallback

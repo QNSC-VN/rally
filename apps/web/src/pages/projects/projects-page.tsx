@@ -20,6 +20,7 @@ import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { useProjects, useUpdateProject, useDeleteProject } from '@/features/projects/api'
 import type { Project } from '@/features/projects/api'
+import { useWorkspaceMembers } from '@/features/workspaces/api'
 import { type ProjectColKey, type ProjectCtx } from './model/columns'
 import { PROJECT_COLUMNS, NewProjectModal } from './ui/project-parts'
 
@@ -31,6 +32,8 @@ export function ProjectsPage() {
   const { user: currentUser } = useAuthStore()
 
   const { data: projects = [], isLoading } = useProjects(workspaceId)
+  const { data: wsMembers = [] } = useWorkspaceMembers(workspaceId)
+  const update = useUpdateProject()
 
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<'All' | 'active' | 'archived'>('active')
@@ -121,6 +124,9 @@ export function ProjectsPage() {
   const cellCtx: ProjectCtx = {
     currentUserId: currentUser?.id,
     currentUserName: currentUser?.displayName,
+    members: wsMembers,
+    onPatch: (id, input) => update.mutate({ id, input }),
+    onOpen: (key) => void navigate({ to: '/projects/$projectKey', params: { projectKey: key } }),
   }
 
   const statusFilter = (
@@ -224,10 +230,7 @@ export function ProjectsPage() {
         renderRow={(project, { selected, onToggleSelect }) => (
           <div
             key={project.id}
-            onClick={() =>
-              void navigate({ to: '/projects/$projectKey', params: { projectKey: project.key } })
-            }
-            className="flex min-h-12 cursor-pointer items-center gap-2 border-b border-border-inner px-3 transition-colors hover:bg-surface-hover"
+            className="flex min-h-12 items-center gap-2 border-b border-border-inner px-3 transition-colors hover:bg-surface-hover"
             style={{
               opacity: project.status === 'archived' ? 0.7 : 1,
               minWidth: 'max-content',

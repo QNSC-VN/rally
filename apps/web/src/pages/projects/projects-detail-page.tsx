@@ -7,14 +7,17 @@
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
-import { Loader2 } from 'lucide-react'
+import { FileText, Loader2, Users } from 'lucide-react'
 import { DetailLayout, DetailTwoPane } from '@/shared/ui/detail/detail-layout'
-import { DetailField } from '@/shared/ui/detail/detail-field'
+import { DetailField, DetailReadonlyValue } from '@/shared/ui/detail/detail-field'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { OwnerSelectField } from '@/shared/ui/entity-select-field'
 import { RichTextEditor } from '@/shared/ui/rich-text-editor'
 import { DateField } from '@/shared/ui/date-field'
 import { SaveCancelBar } from '@/shared/ui/save-cancel-bar'
+import { TypeBadge } from '@/entities/work-item/ui/badges'
+import { TeamAvatar } from '@/shared/ui/team-cell'
+import { formatDateIso } from '@/shared/lib/utils'
 import { usePendingPatch } from '@/shared/lib/hooks/use-pending-patch'
 import { useProjectPermissions } from '@/features/access/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
@@ -24,7 +27,13 @@ import {
   type Project,
   type UpdateProjectInput,
 } from '@/features/projects/api'
-import { useProjectMembers } from '@/features/teams/api'
+import {
+  useProjectMembers,
+  useProjectTeams,
+  useWorkspaceTeams,
+  useLinkProjectTeam,
+  useUnlinkProjectTeam,
+} from '@/features/teams/api'
 
 const DETAILS_TAB = 'details'
 
@@ -48,6 +57,10 @@ export function ProjectDetailPage() {
   const canManage = can('project:edit') && project?.status === 'active'
 
   const { data: members = [] } = useProjectMembers(project?.id)
+  const { data: teams = [] } = useProjectTeams(project?.id)
+  const { data: allTeams = [] } = useWorkspaceTeams(workspaceId || undefined)
+  const linkTeam = useLinkProjectTeam(project?.id ?? '')
+  const unlinkTeam = useUnlinkProjectTeam(project?.id ?? '')
 
   const {
     value: p,
@@ -99,6 +112,7 @@ export function ProjectDetailPage() {
   return (
     <DetailLayout
       onBack={() => void navigate({ to: '/projects' })}
+      badge={<TypeBadge type="project" />}
       itemKey={project.key}
       title={
         canManage ? (
@@ -112,7 +126,7 @@ export function ProjectDetailPage() {
           project.name
         )
       }
-      tabs={[{ key: DETAILS_TAB, label: t('detail.tabs.details') }]}
+      tabs={[{ key: DETAILS_TAB, label: t('detail.tabs.details'), icon: <FileText size={19} /> }]}
       activeTab={DETAILS_TAB}
       onTabChange={() => {}}
     >
@@ -166,6 +180,44 @@ export function ProjectDetailPage() {
                 ]}
                 onChange={(v) => setField({ status: v as 'active' | 'archived' })}
               />
+            </DetailField>
+
+            {/* Teams — a Project links MANY teams (M2M). Edited via the dedicated
+                link/unlink endpoints (the project PATCH carries no teamIds), so
+                each add/remove commits immediately from the multi-select diff. */}
+            <DetailField label={t('fields.teams')}>
+              <SearchableSelect
+                variant="field"
+                multiple
+                value={teams.map((tm) => tm.id)}
+                readOnly={!canManage}
+                ariaLabel={t('fields.teams')}
+                placeholder="—"
+                searchPlaceholder="Search"
+                options={allTeams.map((tm) => ({
+                  value: tm.id,
+                  label: tm.name,
+                  searchText: tm.name,
+                  icon: <TeamAvatar teamKey={tm.key} name={tm.name} size={16} />,
+                }))}
+                onChange={(ids) => {
+                  const next = ids as string[]
+                  const cur = teams.map((tm) => tm.id)
+                  next.filter((id) => !cur.includes(id)).forEach((id) => linkTeam.mutate(id))
+                  cur.filter((id) => !next.includes(id)).forEach((id) => unlinkTeam.mutate(id))
+                }}
+              />
+            </DetailField>
+
+            <DetailField label={t('detail.members')}>
+              <DetailReadonlyValue>
+                <Users size={13} className="mr-1.5 text-foreground-subtle" />
+                {project.memberCount}
+              </DetailReadonlyValue>
+            </DetailField>
+
+            <DetailField label={t('detail.created')}>
+              <DetailReadonlyValue>{formatDateIso(project.createdAt)}</DetailReadonlyValue>
             </DetailField>
           </>
         }

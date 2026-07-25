@@ -10,6 +10,8 @@
     "tabs": { "details": "Details" },
     "metadataDetails": "Details",
     "startDate": "Start Date",
+    "members": "Members",
+    "created": "Created",
     "saveFailed": "Could not save changes.",
     "nameRequired": "Project name is required.",
     "loadError": "Could not load this project.",

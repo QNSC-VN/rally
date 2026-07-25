@@ -4,9 +4,10 @@ import { useTranslation } from 'react-i18next'
 import { AlertTriangle, Loader2, Users, UsersRound } from 'lucide-react'
 
 import { BRAND } from '@/shared/config/brand'
-import { cn, formatDate } from '@/shared/lib/utils'
+import { cn, formatDateIso } from '@/shared/lib/utils'
 import { DateField } from '@/shared/ui/date-field'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
+import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { notify, errorMessage } from '@/shared/lib/toast'
 import { useCreateProject, useUpdateProject, type Project } from '@/features/projects/api'
 import { useWorkspaceMembers } from '@/features/workspaces/api'
@@ -16,17 +17,15 @@ import {
   useLinkProjectTeam,
   useUnlinkProjectTeam,
 } from '@/features/teams/api'
-import { PROJECT_STATUS_STYLE } from '@/features/projects/status-colors'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
-import { KeyChip } from '@/shared/ui/key-chip'
-import { OwnerCell, OwnerAvatar } from '@/shared/ui/owner-cell'
+import { OwnerAvatar, OwnerSelectCell } from '@/shared/ui/owner-cell'
 import { TeamCell } from '@/shared/ui/team-cell'
-import { StatusBadge } from '@/shared/ui/status-badge'
+import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { type ColumnSpec } from '@/shared/ui/table'
 import { type ProjectColKey, type ProjectCtx } from '../model/columns'
 
@@ -107,10 +106,6 @@ export function ArchiveConfirmModal({
 }
 
 // ── Status badge ──────────────────────────────────────────────────────────────
-
-function ProjectStatusBadge({ status }: { status: 'active' | 'archived' }) {
-  return <StatusBadge style={PROJECT_STATUS_STYLE[status]} />
-}
 
 // ── Owner (project lead) picker ──────────────────────────────────────────────
 // Shared by the New Project and Edit Project modals. Backed by the single-source
@@ -535,7 +530,9 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
     minWidth: 60,
     locked: true,
     cellClassName: 'flex items-center',
-    cell: (p) => <KeyChip>{p.key}</KeyChip>,
+    // Same as every work-item/timebox grid: the shared IdCell (type glyph +
+    // monospace key link to the detail page).
+    cell: (p, ctx) => <IdCell type="project" itemKey={p.key} onOpen={() => ctx.onOpen(p.key)} />,
   },
   {
     key: 'name',
@@ -544,17 +541,24 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
     defaultWidth: 280,
     minWidth: 160,
     locked: true,
-    cellClassName: 'flex min-w-0 flex-col justify-center',
-    cell: (p) => (
-      <>
-        <div className="text-ui-md font-semibold break-words whitespace-normal text-foreground">
-          {p.name}
-        </div>
-        {p.description && (
-          <div className="truncate text-ui-xs text-foreground-subtle">{p.description}</div>
-        )}
-      </>
-    ),
+    cellClassName: 'overflow-hidden px-0',
+    cell: (p, ctx) =>
+      p.status === 'archived' ? (
+        <div className="truncate px-2 py-1.5 text-ui-md text-foreground">{p.name}</div>
+      ) : (
+        <InlineEditableCell
+          value={p.name}
+          canEdit
+          ariaLabel="Name"
+          title={p.name}
+          className="block w-full truncate px-2 py-1.5 text-ui-md text-foreground"
+          inputClassName="w-full rounded border border-primary bg-white px-2 py-1.5 text-ui-md text-foreground outline-none"
+          onCommit={(v) => {
+            const n = v.trim()
+            if (n && n !== p.name) ctx.onPatch(p.id, { name: n })
+          }}
+        />
+      ),
   },
   {
     key: 'status',
@@ -562,22 +566,39 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
     sortCol: 'status',
     defaultWidth: 96,
     minWidth: 80,
-    cellClassName: 'flex items-center',
-    cell: (p) => <ProjectStatusBadge status={p.status} />,
+    cellClassName: 'flex items-center px-0',
+    cell: (p, ctx) => (
+      <SearchableSelect
+        value={p.status}
+        ariaLabel="Status"
+        className="px-2 py-1.5"
+        options={[
+          { value: 'active', label: 'Active' },
+          { value: 'archived', label: 'Archived' },
+        ]}
+        onChange={(v) => ctx.onPatch(p.id, { status: v as 'active' | 'archived' })}
+      />
+    ),
   },
   {
     key: 'owner',
     label: 'Owner',
     defaultWidth: 140,
     minWidth: 90,
-    cellClassName: 'flex items-center',
+    cellClassName: 'flex items-center px-0',
     cell: (p, ctx) => (
-      <OwnerCell
-        name={
+      <OwnerSelectCell
+        ownerName={
           p.leadId
             ? (p.leadName ?? (p.leadId === ctx.currentUserId ? ctx.currentUserName : null))
             : null
         }
+        assigneeId={p.leadId}
+        members={ctx.members}
+        canEdit={p.status !== 'archived'}
+        ariaLabel="Owner"
+        className="px-2 py-1.5"
+        onChange={(v) => ctx.onPatch(p.id, { leadId: v })}
       />
     ),
   },
@@ -612,8 +633,16 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
     sortCol: 'startDate',
     defaultWidth: 116,
     minWidth: 90,
-    cellClassName: 'flex items-center px-2',
-    type: 'date',
+    cellClassName: 'flex items-center px-0',
+    cell: (p, ctx) => (
+      <DateField
+        value={p.startDate}
+        readOnly={p.status === 'archived'}
+        ariaLabel="Start Date"
+        className="px-2 py-1.5"
+        onChange={(v) => ctx.onPatch(p.id, { startDate: v })}
+      />
+    ),
   },
   {
     key: 'updated',
@@ -622,7 +651,7 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
     defaultWidth: 128,
     minWidth: 100,
     cellClassName: 'flex items-center text-ui-sm',
-    cell: (p) => <span className="text-muted-foreground">{formatDate(p.updatedAt)}</span>,
+    cell: (p) => <span className="text-muted-foreground">{formatDateIso(p.updatedAt)}</span>,
   },
 ]
 
