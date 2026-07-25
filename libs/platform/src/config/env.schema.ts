@@ -56,7 +56,14 @@ export const EnvSchema = z
     JWT_ISSUER: z.string().default('rally-api'),
     JWT_AUDIENCE: z.string().default('rally-web'),
 
-    // CSRF
+    // Cookie signing. Distinct from CSRF_SECRET on purpose: this one signs every
+    // cookie rally sets, so rotating it invalidates all of them. Sharing one value
+    // between the two made a cookie-hygiene rotation read as a CSRF change (and
+    // vice versa) in the audit trail.
+    COOKIE_SECRET: z.string().min(32),
+
+    // CSRF — HMAC key binding a token to the session that requested it, so a
+    // token lifted from one session cannot be replayed in another.
     CSRF_SECRET: z.string().min(32),
 
     // SCM webhooks (GitHub/GHE) — HMAC shared secret for X-Hub-Signature-256.

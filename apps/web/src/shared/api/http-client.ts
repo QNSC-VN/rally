@@ -10,6 +10,7 @@
 import createClient from 'openapi-fetch'
 import type { paths } from './generated/api'
 import { ENV } from '@/shared/config/env'
+import { CSRF_HEADER, getCsrfToken } from './csrf'
 
 const BASE_URL = ENV.API_BASE_URL
 
@@ -28,6 +29,13 @@ apiClient.use({
       const traceId = crypto.randomUUID().replace(/-/g, '')
       const spanId = crypto.randomUUID().replace(/-/g, '').slice(0, 16)
       request.headers.set('traceparent', `00-${traceId}-${spanId}-01`)
+    }
+
+    // CSRF: the session cookie rides along ambiently, so every state-changing
+    // request must also present the token only this origin's JS can read.
+    const csrfToken = getCsrfToken()
+    if (csrfToken && !['GET', 'HEAD', 'OPTIONS'].includes(request.method.toUpperCase())) {
+      request.headers.set(CSRF_HEADER, csrfToken)
     }
     return request
   },

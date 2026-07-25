@@ -209,7 +209,11 @@ export class BffController {
   // Session-cookie authenticated mirror of GET /v1/auth/me.
   @Get('me')
   @Auth()
-  async me(@CurrentUser() user: JwtPayload): Promise<UserProfileResponseDto> {
+  async me(
+    @CurrentUser() user: JwtPayload,
+    @Req() req: FastifyRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ): Promise<UserProfileResponseDto> {
     const [profile, { role, permissions }, memberships] = await Promise.all([
       this.authService.getMe(user.sub),
       this.accessService.getUserRoleAndPermissions(user.sub, user.workspaceId),
@@ -229,6 +233,13 @@ export class BffController {
       createdAt: profile.createdAt.toISOString(),
       updatedAt: profile.updatedAt.toISOString(),
       memberships,
+      // Mint the CSRF token here rather than from a dedicated endpoint: the SPA
+      // already calls /bff/me on every start and page refresh, so the token's
+      // lifecycle matches the session's with no extra round-trip. generateCsrf
+      // also plants the signed secret cookie on first call.
+      csrfToken: reply.generateCsrf({
+        userInfo: req.cookies?.[BFF_SESSION_COOKIE] ?? '',
+      }),
     };
   }
 

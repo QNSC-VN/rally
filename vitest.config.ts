@@ -35,6 +35,7 @@ export default defineConfig({
       JWT_AUDIENCE: 'rally-test-app',
       JWT_REFRESH_TOKEN_MAX_FAMILY_SIZE: '10',
       CSRF_SECRET: 'test-csrf-secret-at-least-32-chars!!',
+      COOKIE_SECRET: 'test-cookie-secret-at-least-32-chars!',
       INVITATION_TTL_DAYS: '7',
       LOG_LEVEL: 'error',
       OTEL_ENABLED: 'false',
