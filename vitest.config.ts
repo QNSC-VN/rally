@@ -92,6 +92,7 @@ export default defineConfig({
         'libs/platform/src/auth/authz-epoch.service.ts',
         'libs/platform/src/auth/jwt.guard.ts',
         'libs/platform/src/http/csrf.ts',
+        'libs/platform/src/observability/fail-open.ts',
         'libs/platform/src/outbox/abstract-outbox-relay.ts',
         'libs/platform/src/storage/storage.service.ts',
         'libs/platform/src/utils/lexorank.util.ts',

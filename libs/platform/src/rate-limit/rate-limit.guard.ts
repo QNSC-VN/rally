@@ -10,6 +10,7 @@ import {
   SKIP_RATE_LIMIT_KEY,
   type RateLimitTier,
 } from './rate-limit.constants';
+import { failOpenLog } from '../observability/fail-open';
 
 /**
  * Global rate-limit guard backed by Valkey (Redis-compatible) sliding window.
@@ -108,9 +109,11 @@ export class RateLimitGuard implements CanActivate {
       ));
     } catch (err) {
       // Rate limiting is a protective control, not a hard dependency for serving
-      // traffic. If Valkey is unavailable, fail open and surface the outage via logs.
+      // traffic. If Valkey is unavailable, fail open and surface the outage via
+      // logs — tagged so the CloudWatch alarm in infra/live/* fires, because
+      // "allowing every request" is invisible otherwise.
       this.logger.error(
-        { err, key, tier, ip: req.ip, userId: req.user?.sub },
+        failOpenLog('rate_limit', { err, key, tier, ip: req.ip, userId: req.user?.sub }),
         'Rate limit backend unavailable; allowing request',
       );
       return true;
