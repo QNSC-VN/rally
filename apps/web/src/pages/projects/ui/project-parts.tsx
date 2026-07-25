@@ -24,7 +24,7 @@ import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
 import { OwnerAvatar, OwnerSelectCell } from '@/shared/ui/owner-cell'
-import { TeamCell } from '@/shared/ui/team-cell'
+import { TeamAvatar } from '@/shared/ui/team-cell'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { type ColumnSpec } from '@/shared/ui/table'
 import { type ProjectColKey, type ProjectCtx } from '../model/columns'
@@ -486,31 +486,45 @@ export function NewProjectModal({
 
 // ── Teams cell (linked team names, one per line) ─────────────────────────────
 
-function ProjectTeamsCell({ projectId, teamCount }: { projectId: string; teamCount: number }) {
-  // Only fetch team names for rows that actually have linked teams.
-  const { data: teams = [] } = useProjectTeams(teamCount > 0 ? projectId : undefined)
+/** Teams cell — editable inline multi-select (Project↔Team is M2M), matching the
+ *  Milestones cell on Iteration Status: stacked chips + a searchable picker.
+ *  Edited via the dedicated link/unlink endpoints (the project PATCH carries no
+ *  teamIds), so each add/remove commits immediately from the multi-select diff. */
+function ProjectTeamsCell({
+  projectId,
+  workspaceId,
+  canEdit,
+}: {
+  projectId: string
+  workspaceId: string
+  canEdit: boolean
+}) {
+  const { data: teams = [] } = useProjectTeams(projectId)
+  const { data: allTeams = [] } = useWorkspaceTeams(workspaceId)
+  const link = useLinkProjectTeam(projectId)
+  const unlink = useUnlinkProjectTeam(projectId)
 
-  if (teamCount === 0) {
-    return <span className="text-ui-sm text-foreground-subtle">—</span>
-  }
-
-  // Names still loading — show a compact count placeholder.
-  if (teams.length === 0) {
-    return (
-      <span className="inline-flex items-center gap-1 text-ui-sm text-muted-foreground">
-        <UsersRound size={11} className="text-foreground-subtle" />
-        {teamCount}
-      </span>
-    )
-  }
-
-  // Every linked team on its own line (row grows to fit).
   return (
-    <div className="flex w-full flex-col gap-1 py-1">
-      {teams.map((t) => (
-        <TeamCell key={t.id} teamKey={t.key} name={t.name} className="self-start" />
-      ))}
-    </div>
+    <SearchableSelect
+      multiple
+      readOnly={!canEdit}
+      value={teams.map((t) => t.id)}
+      ariaLabel="Teams"
+      placeholder="—"
+      searchPlaceholder="Search"
+      options={allTeams.map((t) => ({
+        value: t.id,
+        label: t.name,
+        searchText: t.name,
+        icon: <TeamAvatar teamKey={t.key} name={t.name} size={16} />,
+      }))}
+      onChange={(ids) => {
+        const next = ids as string[]
+        const cur = teams.map((t) => t.id)
+        next.filter((id) => !cur.includes(id)).forEach((id) => link.mutate(id))
+        cur.filter((id) => !next.includes(id)).forEach((id) => unlink.mutate(id))
+      }}
+    />
   )
 }
 
@@ -606,8 +620,14 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
     label: 'Teams',
     defaultWidth: 190,
     minWidth: 120,
-    cellClassName: 'flex items-center',
-    cell: (p) => <ProjectTeamsCell projectId={p.id} teamCount={p.teamCount} />,
+    cellClassName: 'flex items-center px-0',
+    cell: (p) => (
+      <ProjectTeamsCell
+        projectId={p.id}
+        workspaceId={p.workspaceId}
+        canEdit={p.status === 'active'}
+      />
+    ),
   },
   {
     key: 'members',
