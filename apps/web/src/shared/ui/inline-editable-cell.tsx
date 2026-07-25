@@ -23,8 +23,15 @@ interface InlineEditableCellProps {
   fullCell?: boolean
 }
 
-/** Baked full-cell edit-input look — mirrors the other cell editors. */
-const FULL_CELL_INPUT = 'w-full rounded border border-primary bg-white px-2 py-1.5 outline-none'
+/** Baked full-cell edit-input look — mirrors the other cell editors: subtle
+ * border at rest, primary border on focus (input is auto-focused on open), and
+ * the same px-2 py-1.5 as the hover affordance so entering edit never shifts
+ * the row. Keep in sync with SearchableSelect/DateField cell variant. */
+/* Full-cell edit input: 1px border is the edit cue; the global focus ring is
+ * suppressed via `outline-none` (now that the base :focus-visible rule is
+ * layered, this utility wins normally — no inline-style override needed). */
+const FULL_CELL_INPUT =
+  'w-full rounded border border-input bg-white px-2 py-1.5 text-inherit outline-none'
 
 // ponytail: editing closes as soon as commit fires (not after the caller's
 // mutation resolves) — the caller still owns validation/toast/revert, this

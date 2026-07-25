@@ -785,9 +785,9 @@ function BacklogRow({
             canEdit
             fullCell
             onCommit={commitTitle}
-            className="block w-full break-words whitespace-normal text-foreground"
+            className="break-words whitespace-normal text-foreground"
             style={{ cursor: 'text', fontSize: 12 }}
-            inputClassName="w-full rounded border border-accent-border-strong px-1 py-0.5 text-ui-sm text-foreground focus:outline-none"
+            inputStyle={{ fontSize: 12 }}
             ariaLabel="Title"
             title={item.title}
           />

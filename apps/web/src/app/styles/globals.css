@@ -473,11 +473,19 @@
   top: 0;
 }
 
-/* ── Accessibility: focus-visible ring ─────────────────────────────────────── */
-:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-  border-radius: 2px;
+/* ── Accessibility: focus-visible ring ───────────────────────────────────────
+   Default keyboard focus ring for any interactive element that doesn't define
+   its own. MUST live in @layer base so component focus treatments — the shared
+   `outline-none` + FIELD_FOCUS_VISIBLE halo, button/tab `focus-visible:ring-*`,
+   and the inline-edit input — override it via normal Tailwind utilities.
+   (Unlayered, it beat every layered utility and forced the heavy navy ring
+   everywhere, fighting the app's own focus design.) */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
 }
 
 /* ── Inline-edit affordance ────────────────────────────────────────────────
