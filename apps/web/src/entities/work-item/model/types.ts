@@ -206,9 +206,9 @@ export const BADGE_FALLBACK: StatusBadgeStyle = { color: '#5c6478', bg: '#edf0f4
 export type SimplifiedState = 'define' | 'in_progress' | 'complete'
 
 export const SIMPLIFIED_STATE_LABEL: Record<SimplifiedState, string> = {
-  define: 'Define',
-  in_progress: 'In Progress',
-  complete: 'Complete',
+  define: 'Defined',
+  in_progress: 'In-Progress',
+  complete: 'Completed',
 }
 
 export interface SimplifiedStateStyle extends StatusBadgeStyle {

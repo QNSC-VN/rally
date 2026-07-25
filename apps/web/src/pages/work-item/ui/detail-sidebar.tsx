@@ -275,9 +275,10 @@ export function DetailSidebar({
         {/* Team */}
         <TeamSelectField
           value={item.teamId}
-          onChange={(v) => onUpdate({ teamId: v || null })}
+          onChange={(v) => onUpdate({ teamId: v })}
           teams={teams}
           disabled={disabled}
+          allowUnassigned={false}
         />
 
         {/* Priority — Defect only */}
