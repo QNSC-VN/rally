@@ -47,7 +47,11 @@ export default defineConfig({
       ENTRA_CLIENT_SECRET: 'test-secret',
       ENTRA_REDIRECT_URI: 'http://localhost:3000/v1/bff/callback',
     },
-    include: ['libs/**/*.spec.ts', 'apps/**/*.spec.ts', 'db/**/*.spec.ts'],
+    // `test/*.spec.ts` (top level only) picks up repo-wide guard specs such as
+    // coverage-include.spec.ts. Deliberately NOT `test/**` — that would drag in
+    // test/e2e/*.e2e.spec.ts, which need a live Postgres + Valkey and run under
+    // test/vitest.e2e.config.ts instead.
+    include: ['libs/**/*.spec.ts', 'apps/**/*.spec.ts', 'db/**/*.spec.ts', 'test/*.spec.ts'],
     // Bare 'node_modules' only matches a top-level segment, not nested ones —
     // apps/**/*.spec.ts otherwise pulls in package-internal specs like
     // apps/web/node_modules/@tiptap/react/src/*.spec.ts, which need jsdom and
@@ -56,24 +60,52 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],
-      // Coverage ratchet: only measure files that have unit specs.
-      // Threshold enforces quality on tested code; adding new files here
-      // is a conscious decision when writing the matching spec.
+      // Coverage ratchet: measure every file that HAS a unit spec — kept in sync
+      // by test/coverage-include.spec.ts, which fails when a spec's subject is
+      // missing from this list. It previously named four files by hand, one of
+      // which (libs/modules/planning/...) had been deleted, so the gate measured
+      // three files while 27 had specs.
       include: [
-        'libs/modules/workspace/src/application/workspace.service.ts',
+        'db/database-url.ts',
+        'libs/modules/access/src/application/access.service.ts',
+        'libs/modules/attachments/src/application/attachments.service.ts',
+        'libs/modules/audit/src/interface/http/audit.controller.ts',
+        'libs/modules/collaboration/src/application/collaboration.service.ts',
+        'libs/modules/identity/src/infrastructure/secrets-manager-secret-resolver.ts',
+        'libs/modules/iterations/src/application/iteration-status.service.ts',
+        'libs/modules/iterations/src/application/iterations.service.ts',
+        'libs/modules/milestones/src/application/milestones.service.ts',
+        'libs/modules/notifications/src/interface/http/notification-preferences.controller.ts',
         'libs/modules/projects/src/application/projects.service.ts',
-        'libs/modules/planning/src/application/planning.service.ts',
+        'libs/modules/releases/src/application/releases.service.ts',
+        'libs/modules/scm/src/application/scm-backfill.service.ts',
+        'libs/modules/scm/src/application/scm-installation.service.ts',
+        'libs/modules/scm/src/infrastructure/github/github-app-auth.service.ts',
+        'libs/modules/scm/src/infrastructure/github/github-rest.mapper.ts',
+        'libs/modules/team-status/src/application/team-status.service.ts',
         'libs/modules/work-items/src/application/work-items.service.ts',
+        'libs/modules/workspace/src/application/invitation.service.ts',
+        'libs/modules/workspace/src/application/team.service.ts',
+        'libs/modules/workspace/src/application/workspace-member.service.ts',
+        'libs/modules/workspace/src/application/workspace.service.ts',
+        'libs/platform/src/auth/jwt.guard.ts',
+        'libs/platform/src/outbox/abstract-outbox-relay.ts',
+        'libs/platform/src/storage/storage.service.ts',
+        'libs/platform/src/utils/lexorank.util.ts',
+        'libs/shared-kernel/src/permissions.ts',
       ],
       exclude: ['**/*.spec.ts'],
-      // Ratchet: raise these incrementally as test coverage improves.
-      // Current baseline measured 2026-06-28: stmts 50%, branches 41%, funcs 51%, lines 50%.
-      // Target: stmts/funcs/lines 70%, branches 60%.
+      // Ratchet: raise these incrementally as coverage improves, NEVER lower them.
+      // Measured 2026-07-26 across all 27 spec'd files: stmts 71.27, branches
+      // 63.98, funcs 67.80, lines 72.21 — floors sit just underneath. The previous
+      // floors (49/40) were set against a 3-file sample and so understated the
+      // real bar by ~20 points.
+      // Target: stmts/funcs/lines 80%, branches 70%.
       thresholds: {
-        lines: 49,
-        functions: 49,
-        branches: 40,
-        statements: 49,
+        lines: 70,
+        functions: 66,
+        branches: 62,
+        statements: 70,
       },
     },
   },
