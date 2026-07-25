@@ -5,6 +5,7 @@ import {
   ConflictException,
   PermissionDeniedException,
   UnitOfWork,
+  AuthzEpochService,
   AuditProducer,
   AUDIT_ACTION,
   AUDIT_RESOURCE,
@@ -40,7 +41,26 @@ export class AccessService {
     private readonly assignmentRepo: IRoleAssignmentRepository,
     private readonly uow: UnitOfWork,
     private readonly audit: AuditProducer,
+    private readonly authzEpoch: AuthzEpochService,
   ) {}
+
+  /**
+   * Invalidate a user's already-minted access tokens after a change to their
+   * BASELINE (global- or workspace-scoped) permissions.
+   *
+   * Project-scoped changes deliberately do NOT bump: those permissions are never
+   * embedded in the token — `getProjectPermissions` resolves them from the
+   * database per request — so a bump would force a pointless re-mint. See
+   * {@link AuthzEpochService} and {@link getUserRoleAndPermissions}.
+   *
+   * Always called AFTER the transaction commits: bumping inside the transaction
+   * would let a concurrent request re-mint from pre-commit state, and a
+   * rolled-back write would leave a bump behind.
+   */
+  private async invalidateBaselineTokens(scopeType: ScopeType, userId: string): Promise<void> {
+    if (scopeType === 'project') return;
+    await this.authzEpoch.bump(userId);
+  }
 
   // ── Roles ─────────────────────────────────────────────────────────────────
 
@@ -99,7 +119,15 @@ export class AccessService {
       );
       return saved;
     });
-    this.logger.log({ roleId, updatedBy: actor.sub }, 'Role permissions updated');
+    // A role's permission set changed, so every holder's token snapshot is stale.
+    // Assignees are read after the commit so the list reflects the new state.
+    const assignees = await this.assignmentRepo.listUserIdsForRole(roleId);
+    await this.authzEpoch.bumpMany(assignees);
+
+    this.logger.log(
+      { roleId, updatedBy: actor.sub, invalidatedUsers: assignees.length },
+      'Role permissions updated',
+    );
     return updated;
   }
 
@@ -162,6 +190,7 @@ export class AccessService {
       );
       return created;
     });
+    await this.invalidateBaselineTokens(scopeType, userId);
     this.logger.log(
       { assignmentId: assignment.id, userId, roleId, scopeType, scopeId },
       'Role assigned',
@@ -198,6 +227,7 @@ export class AccessService {
         tx,
       );
     });
+    await this.invalidateBaselineTokens(assignment.scopeType, assignment.userId);
     this.logger.log({ assignmentId, revokedBy: actor.sub }, 'Role revoked');
   }
 
@@ -326,6 +356,7 @@ export class AccessService {
       grantedBy: userId, // self-assigned by system on JIT provision
     };
     await this.assignmentRepo.create(input);
+    await this.authzEpoch.bump(userId);
     this.logger.log(
       { userId, roleSlug: defaultRole.slug },
       'Default role assigned to JIT-provisioned SSO user',
@@ -365,6 +396,7 @@ export class AccessService {
       scopeId: undefined,
       grantedBy: userId,
     });
+    await this.authzEpoch.bump(userId);
     this.logger.log({ userId }, 'User elevated to workspace_admin via PLATFORM_ADMIN_EMAILS');
     return true;
   }

@@ -87,6 +87,14 @@ export class RoleAssignmentDrizzleRepository implements IRoleAssignmentRepositor
     }));
   }
 
+  async listUserIdsForRole(roleId: string): Promise<string[]> {
+    const rows = await this.db
+      .selectDistinct({ userId: userRoleAssignments.userId })
+      .from(userRoleAssignments)
+      .where(eq(userRoleAssignments.roleId, roleId));
+    return rows.map((r) => r.userId);
+  }
+
   async create(input: AssignRoleInput, tx?: DbExecutor): Promise<UserRoleAssignment> {
     const rows = await (tx ?? this.db)
       .insert(userRoleAssignments)

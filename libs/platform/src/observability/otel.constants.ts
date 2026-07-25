@@ -18,6 +18,13 @@ export const OTEL_METRICS = {
     SESSION_ACTIVE: 'auth.session.active',
   },
 
+  // Authorization (permission epoch / staleness)
+  AUTHZ: {
+    STALE_TOKEN_TOTAL: 'authz.stale_token.total',
+    EPOCH_LOOKUP_FAILURE_TOTAL: 'authz.epoch.lookup.failure.total',
+    EPOCH_BUMP_FAILURE_TOTAL: 'authz.epoch.bump.failure.total',
+  },
+
   // Work-items domain
   WORK_ITEMS: {
     CREATED_TOTAL: 'work_items.created.total',

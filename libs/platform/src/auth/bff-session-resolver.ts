@@ -20,6 +20,18 @@ export interface BffSessionResolver {
    * a session id, or `null` when the session is missing or invalid.
    */
   resolve(sid: string, ip: string): Promise<JwtPayload | null>;
+  /**
+   * Force a re-mint of the session's tokens NOW, regardless of expiry, and return
+   * the freshly-resolved principal — or `null` when the session is gone or the
+   * user may no longer authenticate.
+   *
+   * Used when {@link AuthzEpochService} reports the session's stamped
+   * authorization epoch is behind: the permissions in the session snapshot are
+   * known-stale, so re-resolving them is both correct and invisible to the
+   * browser (the session cookie never changes). Optional so a product without a
+   * re-mint path keeps the plain resolve behaviour.
+   */
+  remint?(sid: string, contextId: string, ip: string): Promise<JwtPayload | null>;
 }
 
 /**
