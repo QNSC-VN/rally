@@ -1,6 +1,16 @@
 import { BRAND } from '@/shared/config/brand'
 import type { LucideIcon } from 'lucide-react'
-import { BookOpen, Target, Layers, ClipboardList, Bug, Rocket, Flag, Repeat } from 'lucide-react'
+import {
+  BookOpen,
+  Target,
+  Layers,
+  ClipboardList,
+  Bug,
+  Rocket,
+  Flag,
+  Repeat,
+  FolderKanban,
+} from 'lucide-react'
 
 // ── Const objects (replaces enums for erasableSyntaxOnly compat) ─────────────
 
@@ -100,6 +110,9 @@ export const TIMEBOX_TYPE_CONFIG: Record<string, BadgeStyle> = {
   iteration: { label: 'IT', color: '#0d9488', bg: '#eefaf8', icon: Repeat },
   release: { label: 'RE', color: '#9333ea', bg: '#f7effd', icon: Rocket },
   milestone: { label: 'MS', color: '#b45309', bg: '#fdf5e9', icon: Flag },
+  // Project mark — reused by the Projects list ID/Key column via TypeBadge/IdCell
+  // so its glyph matches the work-item/timebox ID columns.
+  project: { label: 'PR', color: '#5b6b8c', bg: '#eef1f6', icon: FolderKanban },
 }
 
 export const SCHEDULE_STATE_LABEL: Record<ScheduleState, string> = {

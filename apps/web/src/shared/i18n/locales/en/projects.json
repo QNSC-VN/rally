@@ -6,6 +6,17 @@
   "emptyDesc": "Create your first project to get started.",
   "emptyFiltered": "No projects found",
   "emptyFilteredDesc": "Try adjusting your search or filter.",
+  "detail": {
+    "tabs": { "details": "Details" },
+    "metadataDetails": "Details",
+    "startDate": "Start Date",
+    "members": "Members",
+    "created": "Created",
+    "saveFailed": "Could not save changes.",
+    "nameRequired": "Project name is required.",
+    "loadError": "Could not load this project.",
+    "backToProjects": "Back to Projects"
+  },
   "status": {
     "all": "All",
     "active": "Active",
@@ -36,7 +47,14 @@
     "oneActive": "active project",
     "manyActive": "active projects"
   },
+  "bulk": {
+    "delete": "Delete",
+    "confirmDelete": "Delete {{count}} project(s)? This cannot be undone."
+  },
   "toast": {
+    "archivedN": "{{count}} project(s) archived",
+    "restoredN": "{{count}} project(s) restored",
+    "deletedN": "{{count}} project(s) deleted",
     "restored": "\"{{name}}\" restored",
     "archived": "\"{{name}}\" archived"
   },

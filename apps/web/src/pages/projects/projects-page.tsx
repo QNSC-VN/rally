@@ -1,38 +1,39 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { FolderKanban, Plus } from 'lucide-react'
+import { FolderKanban, Plus, Archive, RotateCcw, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { useNavigate } from '@tanstack/react-router'
 import { BRAND } from '@/shared/config/brand'
-import { SearchInput } from '@/shared/ui/search-input'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { MetricCard } from '@/shared/ui/metric-card'
 import { MetricStrip } from '@/shared/ui/metric-strip'
 import { Button } from '@/shared/ui/button'
-import { PaginationFooter } from '@/shared/ui/pagination-footer'
+import { InlineSelect } from '@/shared/ui/native-select'
+import { RowGutter } from '@/shared/ui/row-gutter'
+import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
-import { useDataTable, DataTableFrame } from '@/shared/ui/table'
+import { PaginationFooter } from '@/shared/ui/pagination-footer'
+import { useDataTable, SelectableTable } from '@/shared/ui/table'
+import { useRowSelection, type RowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
-import { useClickOutside } from '@/shared/lib/hooks/use-click-outside'
-import { useProjects, useUpdateProject } from '@/features/projects/api'
+import { useProjects, useUpdateProject, useDeleteProject } from '@/features/projects/api'
 import type { Project } from '@/features/projects/api'
+import { useWorkspaceMembers } from '@/features/workspaces/api'
 import { type ProjectColKey, type ProjectCtx } from './model/columns'
-import {
-  PROJECT_COLUMNS,
-  ArchiveConfirmModal,
-  EditProjectModal,
-  NewProjectModal,
-} from './ui/project-parts'
+import { PROJECT_COLUMNS, NewProjectModal } from './ui/project-parts'
 
 export function ProjectsPage() {
   const { t } = useTranslation('projects')
+  const navigate = useNavigate()
   const { workspace } = useAppContext()
   const workspaceId = workspace?.workspaceId
   const { user: currentUser } = useAuthStore()
 
   const { data: projects = [], isLoading } = useProjects(workspaceId)
-  const updateProject = useUpdateProject()
+  const { data: wsMembers = [] } = useWorkspaceMembers(workspaceId)
+  const update = useUpdateProject()
 
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<'All' | 'active' | 'archived'>('active')
@@ -40,15 +41,12 @@ export function ProjectsPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const [sortCol, setSortCol] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
-  const [openMenu, setOpenMenu] = useState<string | null>(null)
-  const menuRef = useClickOutside<HTMLDivElement>(openMenu !== null, () => setOpenMenu(null))
   const [showNewModal, setShowNewModal] = useState(false)
 
   const handleSort = useCallback(
     (col: string) => {
-      if (sortCol === col) {
-        setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
-      } else {
+      if (sortCol === col) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+      else {
         setSortCol(col)
         setSortDir('asc')
       }
@@ -56,15 +54,10 @@ export function ProjectsPage() {
     [sortCol],
   )
 
-  // Shared table engine: header + resize / reorder / show-hide + click-to-sort,
-  // persisted per-user. Rows stay page-owned (row-click, actions menu).
   const table = useDataTable<Project, ProjectCtx, ProjectColKey>(PROJECT_COLUMNS, {
     storageKey: STORAGE_KEYS.PROJECTS_COLUMNS,
     sort: { col: sortCol, dir: sortDir, onSort: handleSort },
   })
-
-  const [editingProject, setEditingProject] = useState<Project | null>(null)
-  const [archivingProject, setArchivingProject] = useState<Project | null>(null)
 
   const filtered = useMemo(
     () =>
@@ -77,7 +70,6 @@ export function ProjectsPage() {
     [projects, filter, search],
   )
 
-  // Client-side sort over the filtered set (the projects list is fully loaded).
   const sorted = useMemo(() => {
     if (!sortCol) return filtered
     const dir = sortDir === 'asc' ? 1 : -1
@@ -108,9 +100,6 @@ export function ProjectsPage() {
     })
   }, [filtered, sortCol, sortDir])
 
-  // Client-side pagination over the sorted set. Reset to page 1 (during render,
-  // not in an effect) whenever the filtered shape changes so the visible range
-  // never lands past the last page.
   const resetKey = `${search}|${filter}|${pageSize}`
   const [prevResetKey, setPrevResetKey] = useState(resetKey)
   if (prevResetKey !== resetKey) {
@@ -122,36 +111,9 @@ export function ProjectsPage() {
   const safePage = Math.min(currentPage, pageCount)
   const paged = sorted.slice((safePage - 1) * pageSize, safePage * pageSize)
 
-  async function toggleArchive(project: Project) {
-    if (project.status === 'active') {
-      // Archive requires confirmation (BA SRS UC-PRJ-03)
-      setArchivingProject(project)
-      setOpenMenu(null)
-      return
-    }
-    // Restore doesn't need confirmation
-    try {
-      await updateProject.mutateAsync({ id: project.id, input: { status: 'active' } })
-      toast.success(t('toast.restored', { name: project.name }))
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : t('errors.unexpected'))
-    }
-    setOpenMenu(null)
-  }
-
-  async function confirmArchive() {
-    if (!archivingProject) return
-    try {
-      await updateProject.mutateAsync({ id: archivingProject.id, input: { status: 'archived' } })
-      toast.success(t('toast.archived', { name: archivingProject.name }))
-      setArchivingProject(null)
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : t('errors.unexpected'))
-    }
-  }
+  const selection = useRowSelection(paged)
 
   const activeCount = projects.filter((p) => p.status === 'active').length
-
   const stats = {
     total: projects.length,
     active: activeCount,
@@ -162,30 +124,28 @@ export function ProjectsPage() {
   const cellCtx: ProjectCtx = {
     currentUserId: currentUser?.id,
     currentUserName: currentUser?.displayName,
-    openMenu,
-    setOpenMenu,
-    onEdit: setEditingProject,
-    onToggleArchive: (p) => void toggleArchive(p),
+    members: wsMembers,
+    onPatch: (id, input) => update.mutate({ id, input }),
+    onOpen: (key) => void navigate({ to: '/projects/$projectKey', params: { projectKey: key } }),
   }
+
+  const statusFilter = (
+    <InlineSelect
+      value={filter}
+      onChange={(e) => setFilter(e.target.value as 'All' | 'active' | 'archived')}
+      aria-label={t('common:status')}
+      className="w-auto"
+    >
+      <option value="All">{t('status.all')}</option>
+      <option value="active">{t('status.active')}</option>
+      <option value="archived">{t('status.archived')}</option>
+    </InlineSelect>
+  )
+
   return (
     <div className="flex flex-1 flex-col bg-background">
       {showNewModal && workspaceId && (
         <NewProjectModal workspaceId={workspaceId} onClose={() => setShowNewModal(false)} />
-      )}
-      {editingProject && workspaceId && (
-        <EditProjectModal
-          project={editingProject}
-          workspaceId={workspaceId}
-          onClose={() => setEditingProject(null)}
-        />
-      )}
-      {archivingProject && (
-        <ArchiveConfirmModal
-          project={archivingProject}
-          onConfirm={() => void confirmArchive()}
-          onClose={() => setArchivingProject(null)}
-          isPending={updateProject.isPending}
-        />
       )}
 
       {/* Header */}
@@ -197,13 +157,9 @@ export function ProjectsPage() {
             {activeCount === 1 ? t('subtitle.oneActive') : t('subtitle.manyActive')}
           </p>
         </div>
-        <Button size="sm" onClick={() => setShowNewModal(true)}>
-          <Plus size={13} />
-          {t('create.title')}
-        </Button>
       </div>
 
-      {/* Summary metric strip */}
+      {/* Summary metric strip (KPI) */}
       <MetricStrip>
         <MetricCard label={t('metrics.total')} value={stats.total} minWidth={80} />
         <MetricCard
@@ -216,52 +172,28 @@ export function ProjectsPage() {
         <MetricCard label={t('metrics.linkedTeams')} value={stats.linkedTeams} minWidth={110} />
       </MetricStrip>
 
-      {/* Toolbar */}
-      <div className="flex shrink-0 items-center gap-3 border-b border-border-subtle bg-card px-6 py-2">
-        {/* Search */}
-        <SearchInput
-          value={search}
-          onChange={setSearch}
-          placeholder="Search projects…"
-          ariaLabel="Search projects"
-          iconSize={13}
-          className="w-52 py-1.5 pl-8"
-        />
+      {/* Shared toolbar — search / New Project / Filters / Show Fields (same as
+          iteration-status et al). */}
+      <PageToolbar
+        search={{ value: search, onChange: setSearch, placeholder: t('search') }}
+        actions={
+          <Button size="sm" onClick={() => setShowNewModal(true)}>
+            <Plus size={13} />
+            {t('create.title')}
+          </Button>
+        }
+        filters={statusFilter}
+        activeFilterCount={filter === 'active' ? 0 : 1}
+        fields={<ColumnFieldsMenu {...table.fieldsMenuProps} />}
+      />
 
-        {/* Status filter tabs */}
-        <div className="flex items-center gap-1">
-          {(['All', 'active', 'archived'] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setFilter(tab)}
-              className="rounded px-2.5 py-1 text-ui-sm font-medium capitalize transition-colors"
-              style={{
-                backgroundColor: filter === tab ? BRAND.primaryLighter : 'transparent',
-                color: filter === tab ? BRAND.primary : BRAND.textSecondary,
-              }}
-            >
-              {tab === 'All'
-                ? t('status.all')
-                : tab === 'active'
-                  ? t('status.active')
-                  : t('status.archived')}
-            </button>
-          ))}
-        </div>
-
-        {/* Column show/hide + reorder (shared engine) */}
-        <div className="ml-auto">
-          <ColumnFieldsMenu {...table.fieldsMenuProps} />
-        </div>
-      </div>
-
-      {/* Table — shared DataTableFrame owns the scroll region, header, loading/
-          empty states and footer, so projects' grid chrome matches every other
-          grid (see FRONTEND_COMPONENT_AUDIT §5.2). */}
-      <DataTableFrame
-        header={table.headerProps}
+      <SelectableTable
+        rows={paged}
+        selection={selection}
+        headerProps={table.headerProps}
         padClassName="gap-2 px-3"
         loading={isLoading}
+        skeleton={{ rows: 8, cols: PROJECT_COLUMNS.length }}
         empty={
           filtered.length === 0 ? (
             <EmptyState
@@ -277,6 +209,7 @@ export function ProjectsPage() {
             />
           ) : undefined
         }
+        bulkActions={(sel) => <ProjectsBulkBar selection={sel} projects={paged} />}
         footer={
           filtered.length > 0 ? (
             <PaginationFooter
@@ -294,23 +227,103 @@ export function ProjectsPage() {
             />
           ) : undefined
         }
-      >
-        <div ref={menuRef}>
-          {paged.map((project) => (
-            <div
-              key={project.id}
-              onClick={() => setEditingProject(project)}
-              className="flex min-h-12 cursor-pointer items-center gap-2 border-b border-border-inner px-3 transition-colors hover:bg-surface-hover"
-              style={{
-                opacity: project.status === 'archived' ? 0.7 : 1,
-                minWidth: 'max-content',
+        renderRow={(project, { selected, onToggleSelect }) => (
+          <div
+            key={project.id}
+            className="flex min-h-12 items-center gap-2 border-b border-border-inner px-3 transition-colors hover:bg-surface-hover"
+            style={{
+              opacity: project.status === 'archived' ? 0.7 : 1,
+              minWidth: 'max-content',
+              backgroundColor: selected ? BRAND.surfaceSubtle : undefined,
+            }}
+          >
+            <RowGutter
+              stopPropagation
+              checkbox={{
+                checked: selected,
+                onChange: onToggleSelect,
+                ariaLabel: t('detail.tabs.details'),
               }}
-            >
-              {table.renderCells(project, cellCtx)}
-            </div>
-          ))}
-        </div>
-      </DataTableFrame>
+            />
+            {table.renderCells(project, cellCtx)}
+          </div>
+        )}
+      />
+    </div>
+  )
+}
+
+// ── Bulk action bar (Archive / Restore / Delete over the selection) ──────────
+
+function ProjectsBulkBar({
+  selection,
+  projects,
+}: {
+  selection: RowSelection
+  projects: readonly Project[]
+}) {
+  const { t } = useTranslation('projects')
+  const update = useUpdateProject()
+  const del = useDeleteProject()
+  const ids = [...selection.selectedIds]
+  const selected = projects.filter((p) => selection.selectedIds.has(p.id))
+  const anyActive = selected.some((p) => p.status === 'active')
+  const anyArchived = selected.some((p) => p.status === 'archived')
+
+  async function run(fn: (id: string) => Promise<unknown>, okKey: string) {
+    try {
+      await Promise.all(ids.map(fn))
+      toast.success(t(okKey, { count: ids.length }))
+      selection.clear()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t('errors.unexpected'))
+    }
+  }
+
+  const btn = 'flex items-center gap-1.5 text-ui-sm font-medium'
+
+  return (
+    <div className="flex items-center gap-4">
+      {anyActive && (
+        <button
+          className={btn}
+          style={{ color: BRAND.danger }}
+          onClick={() =>
+            void run(
+              (id) => update.mutateAsync({ id, input: { status: 'archived' } }),
+              'toast.archivedN',
+            )
+          }
+        >
+          <Archive size={13} />
+          {t('actions.archive')}
+        </button>
+      )}
+      {anyArchived && (
+        <button
+          className={btn}
+          onClick={() =>
+            void run(
+              (id) => update.mutateAsync({ id, input: { status: 'active' } }),
+              'toast.restoredN',
+            )
+          }
+        >
+          <RotateCcw size={13} />
+          {t('actions.restore')}
+        </button>
+      )}
+      <button
+        className={btn}
+        style={{ color: BRAND.danger }}
+        onClick={() => {
+          if (window.confirm(t('bulk.confirmDelete', { count: ids.length })))
+            void run((id) => del.mutateAsync(id), 'toast.deletedN')
+        }}
+      >
+        <Trash2 size={13} />
+        {t('bulk.delete')}
+      </button>
     </div>
   )
 }

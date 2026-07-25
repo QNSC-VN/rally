@@ -86,7 +86,7 @@ export function DateField({
             'group w-full text-left text-foreground',
             variant === 'field'
               ? `rounded border border-input bg-white px-3 py-2 text-ui-md transition-colors hover:border-accent-border-active focus:outline-none ${FIELD_FOCUS_VISIBLE}`
-              : 'inline-edit-cell text-ui-sm',
+              : 'inline-edit-cell px-2 py-1.5 text-ui-sm',
             className,
           )}
         >

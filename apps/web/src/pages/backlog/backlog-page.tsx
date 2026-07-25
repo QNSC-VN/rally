@@ -798,15 +798,16 @@ function BacklogRow({
       </div>
 
       {/* Title — inline edit */}
-      <div className="min-w-0 shrink-0 px-2" style={colStyles.name} onClick={stop}>
+      <div className="min-w-0 shrink-0 px-0" style={colStyles.name} onClick={stop}>
         {canEdit ? (
           <InlineEditableCell
             value={item.title}
             canEdit
+            fullCell
             onCommit={commitTitle}
-            className="block w-full break-words whitespace-normal text-foreground"
+            className="break-words whitespace-normal text-foreground"
             style={{ cursor: 'text', fontSize: 12 }}
-            inputClassName="w-full rounded border border-accent-border-strong px-1 py-0.5 text-ui-sm text-foreground focus:outline-none"
+            inputStyle={{ fontSize: 12 }}
             ariaLabel="Title"
             title={item.title}
           />
@@ -836,7 +837,7 @@ function BacklogRow({
       </div>
 
       {/* Flow State — shared SearchableSelect (enum dropdown) */}
-      <div className="shrink-0 overflow-hidden px-2" style={colStyles.flowState} onClick={stop}>
+      <div className="flex items-center shrink-0 overflow-hidden px-0" style={colStyles.flowState} onClick={stop}>
         <SearchableSelect
           value={item.flowState ?? item.scheduleState ?? ''}
           readOnly={!canEdit}
@@ -847,7 +848,7 @@ function BacklogRow({
       </div>
 
       {/* Priority — defects only */}
-      <div className="shrink-0 overflow-hidden px-2" style={colStyles.priority} onClick={stop}>
+      <div className="flex items-center shrink-0 overflow-hidden px-0" style={colStyles.priority} onClick={stop}>
         {item.type === 'defect' ? (
           <SearchableSelect
             value={item.priority ?? ''}
@@ -862,10 +863,11 @@ function BacklogRow({
       </div>
 
       {/* Plan Estimate — shared InlineEditableCell */}
-      <div className="shrink-0 px-2 text-center" style={colStyles.estimate} onClick={stop}>
+      <div className="shrink-0 px-0 text-center" style={colStyles.estimate} onClick={stop}>
         <InlineEditableCell
           value={item.storyPoints != null ? String(item.storyPoints) : ''}
           canEdit={canEdit}
+          fullCell
           ariaLabel="Plan estimate"
           onCommit={(raw) => {
             const next = raw === '' ? null : Number(raw)
@@ -882,7 +884,7 @@ function BacklogRow({
       </div>
 
       {/* Owner — inline select */}
-      <div className="shrink-0 overflow-hidden px-2" style={colStyles.owner} onClick={stop}>
+      <div className="flex items-center shrink-0 overflow-hidden px-0" style={colStyles.owner} onClick={stop}>
         <OwnerSelectCell
           ownerName={ownerName}
           assigneeId={item.assigneeId}
@@ -893,7 +895,7 @@ function BacklogRow({
       </div>
 
       {/* Release — shared SearchableSelect */}
-      <div className="shrink-0 overflow-hidden px-2" style={colStyles.release} onClick={stop}>
+      <div className="flex items-center shrink-0 overflow-hidden px-0" style={colStyles.release} onClick={stop}>
         <SearchableSelect
           value={item.releaseId ?? ''}
           readOnly={!canEdit}
@@ -913,7 +915,7 @@ function BacklogRow({
       </div>
 
       {/* Iteration — shared SearchableSelect */}
-      <div className="shrink-0 overflow-hidden px-2" style={colStyles.iteration} onClick={stop}>
+      <div className="flex items-center shrink-0 overflow-hidden px-0" style={colStyles.iteration} onClick={stop}>
         <SearchableSelect
           value={item.iterationId ?? ''}
           readOnly={!canEdit}
