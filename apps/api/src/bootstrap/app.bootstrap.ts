@@ -16,12 +16,29 @@ export async function bootstrapApp(app: NestFastifyApplication): Promise<void> {
   app.flushLogs();
 
   const config = app.get(AppConfigService);
-  const isDev = config.get('NODE_ENV') !== 'production';
+  // Two independent switches, not one `isDev`. They used to share
+  // `NODE_ENV !== 'production'`, which meant any environment that isn't literally
+  // "production" — staging, preview, a mis-set task definition — silently shipped
+  // with CSP disabled AND the endpoint inventory published. Both now default
+  // closed and are opted into explicitly.
+  const swaggerEnabled = config.get('SWAGGER_ENABLED');
 
   // Register Fastify plugins
   await app.register(fastifyHelmet, {
-    // Relax CSP for Swagger UI in dev
-    contentSecurityPolicy: isDev ? false : undefined,
+    // CSP is always ON. When Swagger UI is served it needs its own inline script
+    // and style, so widen those two directives for it specifically instead of
+    // disabling the whole header (the previous `contentSecurityPolicy: false`).
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: swaggerEnabled ? ["'self'", "'unsafe-inline'"] : ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", 'data:'],
+        connectSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+      },
+    },
   });
 
   // Response compression — reduces JSON payload size 60-80% (gzip/deflate/brotli)
@@ -94,8 +111,8 @@ export async function bootstrapApp(app: NestFastifyApplication): Promise<void> {
   // HEALTHCHECK, and the post-deploy smoke test).
   app.setGlobalPrefix('v1');
 
-  // OpenAPI — only expose in non-prod
-  if (isDev) {
+  // OpenAPI — opt-in per environment via SWAGGER_ENABLED (default off)
+  if (swaggerEnabled) {
     const swaggerConfig = new DocumentBuilder()
       .setTitle('Rally API')
       .setDescription('Rally SaaS — project management platform API')
