@@ -12,6 +12,12 @@ import {
 } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
 import type { FastifyReply, FastifyRequest } from 'fastify';
+// `reply.generateCsrf` is a type augmentation contributed by @fastify/csrf-protection.
+// The API registers that plugin in its bootstrap, but the WORKER build compiles this
+// module too (it imports the identity module) without ever touching the bootstrap — so
+// without this type-only import the augmentation is absent from the worker's program and
+// `nest build worker` fails with TS2339. Type-only: no runtime import is emitted.
+import type {} from '@fastify/csrf-protection';
 import '@fastify/cookie';
 import { Auth, AppConfigService, Public, RateLimit, UnauthorizedException } from '@platform';
 import type { JwtPayload } from '@platform';
@@ -209,7 +215,11 @@ export class BffController {
   // Session-cookie authenticated mirror of GET /v1/auth/me.
   @Get('me')
   @Auth()
-  async me(@CurrentUser() user: JwtPayload): Promise<UserProfileResponseDto> {
+  async me(
+    @CurrentUser() user: JwtPayload,
+    @Req() req: FastifyRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ): Promise<UserProfileResponseDto> {
     const [profile, { role, permissions }, memberships] = await Promise.all([
       this.authService.getMe(user.sub),
       this.accessService.getUserRoleAndPermissions(user.sub, user.workspaceId),
@@ -229,6 +239,13 @@ export class BffController {
       createdAt: profile.createdAt.toISOString(),
       updatedAt: profile.updatedAt.toISOString(),
       memberships,
+      // Mint the CSRF token here rather than from a dedicated endpoint: the SPA
+      // already calls /bff/me on every start and page refresh, so the token's
+      // lifecycle matches the session's with no extra round-trip. generateCsrf
+      // also plants the signed secret cookie on first call.
+      csrfToken: reply.generateCsrf({
+        userInfo: req.cookies?.[BFF_SESSION_COOKIE] ?? '',
+      }),
     };
   }
 

@@ -7,6 +7,7 @@ import { apiErrorMessage } from '@/shared/api/api-error'
 // Single source of truth for severity lives in the entity layer.
 export type { DefectSeverity } from '@/entities/work-item/model/types'
 import type { DefectSeverity } from '@/entities/work-item/model/types'
+import { withCsrfHeader } from '@/shared/api/csrf'
 
 export type DefectEnvironment = 'development' | 'staging' | 'production' | 'testing'
 
@@ -134,9 +135,7 @@ export function useCreateDefect() {
     mutationFn: async (body: CreateDefectInput) => {
       const res = await fetch('/api/v1/work-items', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: withCsrfHeader('POST', { 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           projectId: body.projectId,
           type: 'defect',

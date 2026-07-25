@@ -124,9 +124,14 @@ module "secrets" {
   recovery_window_days = 0
 
   secret_names = {
-    "jwt-private"         = "EC P-256 (ES256) private key (PEM, base64-encoded)"
-    "jwt-public"          = "EC P-256 (ES256) public key (PEM, base64-encoded)"
-    "csrf-secret"         = "CSRF token signing secret"
+    "jwt-private" = "EC P-256 (ES256) private key (PEM, base64-encoded)"
+    "jwt-public"  = "EC P-256 (ES256) public key (PEM, base64-encoded)"
+    "csrf-secret" = "CSRF token signing secret"
+    # NOTE: give this a value in the Secrets Manager console BEFORE the next app
+    # deploy — COOKIE_SECRET is required at startup, so a task wired to an empty
+    # secret cannot boot (visible as a failed deploy + rollback, not a silent
+    # downgrade, which is the intent).
+    "cookie-secret"       = "Cookie signing secret (distinct from csrf-secret)"
     "entra-client-secret" = "Microsoft Entra confidential-client secret (BFF OIDC)"
     # SCM (GitHub App) — minted in GitHub, pasted by hand into Secrets Manager
     # (Terraform only scaffolds empty containers). Both stay empty/unused until
@@ -278,6 +283,7 @@ module "api" {
     { name = "JWT_PRIVATE_KEY", secret_arn = module.secrets.secret_arns["jwt-private"] },
     { name = "JWT_PUBLIC_KEY", secret_arn = module.secrets.secret_arns["jwt-public"] },
     { name = "CSRF_SECRET", secret_arn = module.secrets.secret_arns["csrf-secret"] },
+    { name = "COOKIE_SECRET", secret_arn = module.secrets.secret_arns["cookie-secret"] },
     { name = "ENTRA_CLIENT_SECRET", secret_arn = module.secrets.secret_arns["entra-client-secret"] },
     # GitHub App webhook HMAC secret — the API verifies X-Hub-Signature-256 on
     # inbound SCM webhooks (/v1/scm/webhook/*). Absent → the receiver returns 503,
@@ -417,6 +423,7 @@ module "worker" {
     { name = "JWT_PUBLIC_KEY", secret_arn = module.secrets.secret_arns["jwt-public"] },
     # Shared schema requires CSRF_SECRET even though the worker never uses it as middleware
     { name = "CSRF_SECRET", secret_arn = module.secrets.secret_arns["csrf-secret"] },
+    { name = "COOKIE_SECRET", secret_arn = module.secrets.secret_arns["cookie-secret"] },
     # Shared schema also validates the Entra client secret at boot (worker runs the same env schema).
     { name = "ENTRA_CLIENT_SECRET", secret_arn = module.secrets.secret_arns["entra-client-secret"] },
     # Cloudflare R2 bucket-scoped credentials (worker also reads/writes attachments).

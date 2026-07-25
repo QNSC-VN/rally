@@ -30,6 +30,13 @@ export const UserProfileResponseSchema = UserProfileSchema.extend({
   updatedAt: z.string().datetime(),
   /** All active workspace memberships, most-recently-active first. */
   memberships: z.array(WorkspaceMembershipSchema),
+  /**
+   * CSRF token for this session, minted on each /bff/me call. The SPA echoes it in
+   * the X-CSRF-Token header on every state-changing request. Only present on the
+   * cookie-authenticated BFF route — Bearer callers are not CSRF-exposed and get no
+   * token.
+   */
+  csrfToken: z.string().optional(),
 });
 
 export class UserProfileResponseDto extends createZodDto(UserProfileResponseSchema) {}

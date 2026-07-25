@@ -111,4 +111,39 @@ describe('FE consistency ratchets (only ever decrease)', () => {
     }
     expect(max).toBeLessThanOrEqual(MAX_FILE_LINES)
   })
+
+  it('every state-changing raw fetch() sends the CSRF token', () => {
+    // The API rejects cookie-authenticated writes without X-CSRF-Token, so a new
+    // raw fetch that forgets `withCsrfHeader` fails at runtime with a 403 that
+    // reads like a permissions bug. Catch it here instead.
+    //
+    // Allowlisted, with reasons:
+    //   • login-page      — the login starters run before a session exists and are
+    //                       server-side exempt (they carry the OIDC `state` check).
+    //   • collaboration   — one PUT goes to the R2 bucket, a DIFFERENT origin;
+    //                       sending our token there would leak it. That file's API
+    //                       calls are all covered, verified by the count below.
+    const ALLOWED = ['pages/login/login-page.tsx']
+    const UNSAFE_METHOD = /method:\s*'(POST|PUT|PATCH|DELETE)'/g
+
+    const offenders: string[] = []
+    for (const rel of files(() => true)) {
+      if (ALLOWED.includes(rel)) continue
+      const src = readFileSync(join(SRC, rel), 'utf8')
+      if (!/\bfetch\(/.test(src)) continue
+      const writes = (src.match(UNSAFE_METHOD) ?? []).length
+      if (writes === 0) continue
+      const guarded = (src.match(/withCsrfHeader\(/g) ?? []).length
+      // The R2 upload is the one deliberate omission; every other write must be
+      // guarded, so allow exactly one shortfall in that file and none elsewhere.
+      const allowedShortfall = rel === 'features/collaboration/api.ts' ? 1 : 0
+      if (guarded < writes - allowedShortfall) {
+        offenders.push(`${rel}: ${writes} write(s), ${guarded} guarded`)
+      }
+    }
+
+    expect(offenders, `Add withCsrfHeader(method, headers) to:\n${offenders.join('\n')}`).toEqual(
+      [],
+    )
+  })
 })

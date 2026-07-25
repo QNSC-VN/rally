@@ -7,6 +7,7 @@
  */
 import { ENV } from '@/shared/config/env'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
+import { setCsrfToken } from './csrf'
 
 const BASE = ENV.API_BASE_URL
 
@@ -34,6 +35,9 @@ async function _run(): Promise<void> {
     }
 
     const user = (await meRes.json()) as MeResponse
+    // Session-bound CSRF token for this page's lifetime — every state-changing
+    // request echoes it back in the X-CSRF-Token header.
+    setCsrfToken(user.csrfToken ?? null)
     setUser(
       {
         ...user,
@@ -47,6 +51,7 @@ async function _run(): Promise<void> {
       user.memberships ?? [],
     )
   } catch {
+    setCsrfToken(null)
     clearAuth()
   }
 }
@@ -64,6 +69,7 @@ interface MeResponse {
   emailVerified: boolean
   createdAt: string
   updatedAt: string
+  csrfToken?: string
   memberships: {
     workspaceId: string
     name: string

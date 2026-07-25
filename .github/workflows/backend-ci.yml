@@ -138,6 +138,7 @@ jobs:
           JWT_ACCESS_EXPIRY: 15m
           JWT_REFRESH_EXPIRY: 30d
           CSRF_SECRET: ci-test-csrf-secret-min-32-characters-ok
+          COOKIE_SECRET: ci-test-cookie-secret-min-32-characters-ok
 
       # The BA flow e2e specs boot the real AppModule with a synthetic admin
       # actor (no SSO login), so they need the demo admin to already be an
@@ -166,6 +167,7 @@ jobs:
           JWT_ACCESS_EXPIRY: 15m
           JWT_REFRESH_EXPIRY: 30d
           CSRF_SECRET: ci-test-csrf-secret-min-32-characters-ok
+          COOKIE_SECRET: ci-test-cookie-secret-min-32-characters-ok
           # Entra BFF OIDC — CI test-only placeholders (never used for real auth).
           # ENTRA_TENANT_ID matches the SSO connection seeded during migrations so
           # the SSO → RBAC e2e resolves its workspace; PLATFORM_ADMIN_EMAILS drives
@@ -417,6 +419,7 @@ jobs:
           JWT_ACCESS_EXPIRY: 15m
           JWT_REFRESH_EXPIRY: 30d
           CSRF_SECRET: ci-test-csrf-secret-min-32-characters-ok
+          COOKIE_SECRET: ci-test-cookie-secret-min-32-characters-ok
           OTEL_ENABLED: 'false'
           RESILIENCE_ENABLED: 'false'
           # Entra BFF OIDC — CI test-only placeholders (never used for real auth).
