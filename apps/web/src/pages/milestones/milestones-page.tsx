@@ -425,7 +425,7 @@ const MILESTONES_COLUMNS: ColumnSpec<Milestone, MilestoneCtx, MilestoneColKey>[]
     defaultWidth: 120,
     minWidth: 90,
     sortCol: 'status',
-    cellClassName: 'flex items-center px-2',
+    cellClassName: 'flex items-center px-0',
     // Editable inline via the shared SearchableSelect (matches Releases State).
     cell: (m, ctx) => <MilestoneStatusCell milestone={m} canEdit={ctx.canManage} />,
   },

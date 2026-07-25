@@ -199,7 +199,7 @@ export function ReleaseRow({
       {/* Start Date — shared DateField */}
       <div
         style={colStyleFor('startDate', { flexShrink: 0 })}
-        className="pl-2"
+        className="px-0"
         onClick={(e) => e.stopPropagation()}
       >
         <DateField
@@ -213,7 +213,7 @@ export function ReleaseRow({
       {/* Release Date — shared DateField */}
       <div
         style={colStyleFor('releaseDate', { flexShrink: 0 })}
-        className="pl-2"
+        className="px-0"
         onClick={(e) => e.stopPropagation()}
       >
         <DateField
@@ -265,7 +265,7 @@ export function ReleaseRow({
       {/* State (P3-REL-FR-008) — shared SearchableSelect */}
       <div
         style={colStyleFor('state', { flexShrink: 0 })}
-        className="px-2"
+        className="px-0"
         onClick={(e) => e.stopPropagation()}
       >
         <SearchableSelect

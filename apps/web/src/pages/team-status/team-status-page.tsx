@@ -747,7 +747,7 @@ function TaskRow({
       </div>
       {/* Owner + Dev Owner (UI-only alias — both write assigneeId) */}
       <div
-        className="shrink-0 truncate px-2 text-ui-sm"
+        className="shrink-0 truncate px-0 text-ui-sm"
         style={colStyles.owner}
         onClick={(e) => e.stopPropagation()}
       >

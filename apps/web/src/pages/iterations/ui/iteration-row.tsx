@@ -117,7 +117,7 @@ export function IterationRow({
       </div>
 
       {/* Start Date — inline-editable */}
-      <div style={colStyleFor('startDate', { flexShrink: 0 })} className="px-2" onClick={stop}>
+      <div style={colStyleFor('startDate', { flexShrink: 0 })} className="px-0" onClick={stop}>
         <DateField
           value={it.startDate}
           readOnly={!canManage}
@@ -127,7 +127,7 @@ export function IterationRow({
       </div>
 
       {/* End Date — inline-editable */}
-      <div style={colStyleFor('endDate', { flexShrink: 0 })} className="px-2" onClick={stop}>
+      <div style={colStyleFor('endDate', { flexShrink: 0 })} className="px-0" onClick={stop}>
         <DateField
           value={it.endDate}
           readOnly={!canManage}
@@ -155,7 +155,7 @@ export function IterationRow({
       {/* State — same SearchableSelect enum-dropdown as Iteration Status / Backlog
           Flow State. Editable: the backend routes the change through the gated
           Commit / Accept lifecycle actions and rejects invalid transitions. */}
-      <div style={colStyleFor('state', { flexShrink: 0 })} className="px-2" onClick={stop}>
+      <div style={colStyleFor('state', { flexShrink: 0 })} className="px-0" onClick={stop}>
         <SearchableSelect
           value={it.state}
           readOnly={!canManage}

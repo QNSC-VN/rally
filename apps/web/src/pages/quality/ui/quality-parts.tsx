@@ -353,7 +353,7 @@ export const QUALITY_COLUMNS: ColumnSpec<DefectRow, QualityCtx, QualityColKey>[]
     sortCol: 'severity',
     defaultWidth: 100,
     minWidth: 70,
-    cellClassName: 'px-2',
+    cellClassName: 'px-0',
     cell: (d, ctx) => {
       const sevStyle = d.severity && d.severity !== 'none' ? SEVERITY_STYLE[d.severity] : null
       return sevStyle ? (
@@ -379,7 +379,7 @@ export const QUALITY_COLUMNS: ColumnSpec<DefectRow, QualityCtx, QualityColKey>[]
     sortCol: 'priority',
     defaultWidth: 80,
     minWidth: 60,
-    cellClassName: 'px-2',
+    cellClassName: 'px-0',
     cell: (d, ctx) => (
       <DefectInlineCell
         defect={d}
@@ -400,7 +400,7 @@ export const QUALITY_COLUMNS: ColumnSpec<DefectRow, QualityCtx, QualityColKey>[]
     sortCol: 'state',
     defaultWidth: 100,
     minWidth: 70,
-    cellClassName: 'px-2',
+    cellClassName: 'flex items-center px-0',
     cell: (d, ctx) => (
       <DefectStateInlineCell defect={d} canEdit={ctx.canManage} projectId={ctx.projectId} />
     ),
@@ -411,7 +411,7 @@ export const QUALITY_COLUMNS: ColumnSpec<DefectRow, QualityCtx, QualityColKey>[]
     sortCol: 'scheduleState',
     defaultWidth: 132,
     minWidth: 132,
-    cellClassName: 'flex items-center px-2 select-none',
+    cellClassName: 'flex items-center px-0 select-none',
     cell: (d, ctx) => <FlowStateSelectCell defect={d} canEdit={ctx.canManage} />,
   },
   {
@@ -431,7 +431,7 @@ export const QUALITY_COLUMNS: ColumnSpec<DefectRow, QualityCtx, QualityColKey>[]
     sortCol: 'iteration',
     defaultWidth: 100,
     minWidth: 70,
-    cellClassName: 'min-w-0 px-2',
+    cellClassName: 'min-w-0 px-0',
     cell: (d, ctx) => (
       <IterationInlineCell defect={d} canEdit={ctx.canManage} projectId={ctx.projectId} />
     ),
@@ -451,7 +451,7 @@ export const QUALITY_COLUMNS: ColumnSpec<DefectRow, QualityCtx, QualityColKey>[]
     sortCol: 'owner',
     defaultWidth: 100,
     minWidth: 70,
-    cellClassName: 'overflow-hidden px-2',
+    cellClassName: 'overflow-hidden px-0',
     cell: (d, ctx) => (
       <OwnerInlineCell defect={d} canEdit={ctx.canManage} projectId={ctx.projectId} />
     ),

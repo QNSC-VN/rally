@@ -571,7 +571,6 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
       <SearchableSelect
         value={p.status}
         ariaLabel="Status"
-        className="px-2 py-1.5"
         options={[
           { value: 'active', label: 'Active' },
           { value: 'archived', label: 'Archived' },
@@ -597,7 +596,6 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
         members={ctx.members}
         canEdit={p.status !== 'archived'}
         ariaLabel="Owner"
-        className="px-2 py-1.5"
         onChange={(v) => ctx.onPatch(p.id, { leadId: v })}
       />
     ),
@@ -639,7 +637,6 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
         value={p.startDate}
         readOnly={p.status === 'archived'}
         ariaLabel="Start Date"
-        className="px-2 py-1.5"
         onChange={(v) => ctx.onPatch(p.id, { startDate: v })}
       />
     ),

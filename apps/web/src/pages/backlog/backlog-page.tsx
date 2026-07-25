@@ -814,7 +814,7 @@ function BacklogRow({
       </div>
 
       {/* Flow State — shared SearchableSelect (enum dropdown) */}
-      <div className="shrink-0 overflow-hidden px-2" style={colStyles.flowState} onClick={stop}>
+      <div className="flex items-center shrink-0 overflow-hidden px-0" style={colStyles.flowState} onClick={stop}>
         <SearchableSelect
           value={item.flowState ?? item.scheduleState ?? ''}
           readOnly={!canEdit}
@@ -825,7 +825,7 @@ function BacklogRow({
       </div>
 
       {/* Priority — defects only */}
-      <div className="shrink-0 overflow-hidden px-2" style={colStyles.priority} onClick={stop}>
+      <div className="flex items-center shrink-0 overflow-hidden px-0" style={colStyles.priority} onClick={stop}>
         {item.type === 'defect' ? (
           <SearchableSelect
             value={item.priority ?? ''}
@@ -860,7 +860,7 @@ function BacklogRow({
       </div>
 
       {/* Owner — inline select */}
-      <div className="shrink-0 overflow-hidden px-2" style={colStyles.owner} onClick={stop}>
+      <div className="flex items-center shrink-0 overflow-hidden px-0" style={colStyles.owner} onClick={stop}>
         <OwnerSelectCell
           ownerName={ownerName}
           assigneeId={item.assigneeId}
@@ -871,7 +871,7 @@ function BacklogRow({
       </div>
 
       {/* Release — shared SearchableSelect */}
-      <div className="shrink-0 overflow-hidden px-2" style={colStyles.release} onClick={stop}>
+      <div className="flex items-center shrink-0 overflow-hidden px-0" style={colStyles.release} onClick={stop}>
         <SearchableSelect
           value={item.releaseId ?? ''}
           readOnly={!canEdit}
@@ -891,7 +891,7 @@ function BacklogRow({
       </div>
 
       {/* Iteration — shared SearchableSelect */}
-      <div className="shrink-0 overflow-hidden px-2" style={colStyles.iteration} onClick={stop}>
+      <div className="flex items-center shrink-0 overflow-hidden px-0" style={colStyles.iteration} onClick={stop}>
         <SearchableSelect
           value={item.iterationId ?? ''}
           readOnly={!canEdit}

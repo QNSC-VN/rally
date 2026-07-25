@@ -251,7 +251,7 @@ export function StatusRow({
         {/* Iteration — inline reassign (move item to another iteration or backlog) */}
         <div
           style={colStyles.iteration}
-          className="flex items-center overflow-hidden px-2"
+          className="flex items-center overflow-hidden px-0"
           onClick={(e) => e.stopPropagation()}
         >
           <SearchableSelect
@@ -451,7 +451,7 @@ export function StatusRow({
         {/* Owner */}
         <div
           style={colStyles.owner}
-          className="overflow-hidden px-2"
+          className="overflow-hidden px-0"
           onClick={(e) => e.stopPropagation()}
         >
           <OwnerSelectCell
@@ -485,7 +485,7 @@ export function StatusRow({
         {/* Milestones — inline multi-select (add/remove) */}
         <div
           style={colStyles.milestones}
-          className="flex items-center overflow-hidden px-2"
+          className="flex items-center overflow-hidden px-0"
           onClick={(e) => e.stopPropagation()}
         >
           <MilestoneSelectCell
@@ -500,7 +500,7 @@ export function StatusRow({
         {/* Dev Owner — editable assignee (distinct from Owner) */}
         <div
           style={colStyles.devOwner}
-          className="overflow-hidden px-2"
+          className="overflow-hidden px-0"
           onClick={(e) => e.stopPropagation()}
         >
           <OwnerSelectCell
@@ -759,7 +759,7 @@ function ChildTaskRow({
       </div>
       <div
         style={colStyles.owner}
-        className="overflow-hidden px-2"
+        className="overflow-hidden px-0"
         onClick={(e) => e.stopPropagation()}
       >
         <OwnerSelectCell
@@ -775,7 +775,7 @@ function ChildTaskRow({
       <div style={colStyles.milestones} className="px-2" />
       <div
         style={colStyles.devOwner}
-        className="overflow-hidden px-2"
+        className="overflow-hidden px-0"
         onClick={(e) => e.stopPropagation()}
       >
         <OwnerSelectCell
