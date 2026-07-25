@@ -56,7 +56,6 @@ import {
   workItemWatchers,
 } from '../schema/work';
 import { userRoleAssignments } from '../schema/access';
-import { SYSTEM_ROLE, type SystemRoleSlug } from '../permissions.catalog';
 import { seedSystemRolesInto } from './reference';
 import { seedTenantBootstrapInto } from './bootstrap';
 import {
