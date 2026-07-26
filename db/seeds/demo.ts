@@ -416,11 +416,12 @@ async function seedFlow() {
         title: 'Update workspace.json for NX v21 breaking changes',
         state: 'completed' as const,
         assigneeId: DEVELOPER_ID,
-        // Task time rule: Estimate = To Do + Actual (read-only, derived).
-        // Completed task: nothing left to do, 1.5h logged → estimate 1.5.
+        // Real-Rally task time: Estimate is an independent planned value; a
+        // Completed task has To Do = 0 (nothing left); Actuals is what was
+        // logged. Estimate (2) stays independent of To Do (0) / Actual (1.5).
+        estimateHours: '2',
         todoHours: '0',
         actualHours: '1.5',
-        estimateHours: '1.5',
         rank: getDeterministicRank('TA-1'),
         createdBy: ADMIN_USER_ID,
       },
@@ -435,11 +436,11 @@ async function seedFlow() {
         title: 'Validate all affected generators after upgrade',
         state: 'in_progress' as const,
         assigneeId: ADMIN_USER_ID,
-        // Task time rule: Estimate = To Do + Actual (read-only, derived).
-        // In-progress task: 2h remaining, none logged yet → estimate 2.
-        todoHours: '2',
+        // Real-Rally task time: independent Estimate (3h planned); To Do (3h
+        // remaining, defaulted to Estimate before work started); no Actuals yet.
+        estimateHours: '3',
+        todoHours: '3',
         actualHours: '0',
-        estimateHours: '2',
         rank: getDeterministicRank('TA-2'),
         createdBy: ADMIN_USER_ID,
       },

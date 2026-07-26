@@ -32,18 +32,22 @@ export class GithubRestClient {
     private readonly token: string,
   ) {}
 
-  /** Every repo the installation can access (owner/name), paginated. */
+  /**
+   * Active repos the installation can access (owner/name), paginated. Archived
+   * and disabled repos are skipped: they never emit new PRs/commits, so they'd
+   * sit as permanently-unsynced rows and waste a backfill each on discovery.
+   */
   async listInstallationRepositories({
     perPage = 100,
     maxPages = 20,
   }: { perPage?: number; maxPages?: number } = {}): Promise<string[]> {
     const out: string[] = [];
     for (let page = 1; page <= maxPages; page++) {
-      const body = await this.get<{ repositories?: Array<{ full_name: string }> }>(
-        `/installation/repositories?per_page=${perPage}&page=${page}`,
-      );
+      const body = await this.get<{
+        repositories?: Array<{ full_name: string; archived?: boolean; disabled?: boolean }>;
+      }>(`/installation/repositories?per_page=${perPage}&page=${page}`);
       const batch = body.repositories ?? [];
-      out.push(...batch.map((r) => r.full_name));
+      out.push(...batch.filter((r) => !r.archived && !r.disabled).map((r) => r.full_name));
       if (batch.length < perPage) break;
     }
     return out;

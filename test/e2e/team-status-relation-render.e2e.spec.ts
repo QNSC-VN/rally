@@ -124,8 +124,8 @@ describe('BA flows: E2E-011 Team Status renders a fully-related task', () => {
     expect(row!.release?.id).toBe(release.id);
     // The resolved owner name is what the screen actually renders, not the id.
     expect(row!.owner.id).toBe(DEVELOPER_ID);
-    // Estimate is DERIVED (To Do + Actuals, per DEV-013), not the value passed —
-    // todoHours 2 + actualHours 0 = 2. Assert the roll-up reflects the task.
+    // To Do is an independent input (real Rally) — the task carries the To Do
+    // it was created with (2), and the member roll-up reflects it.
     expect(devGroup!.todoHours).toBeGreaterThanOrEqual(2);
     expect(row!.todoHours).toBe(2);
   });

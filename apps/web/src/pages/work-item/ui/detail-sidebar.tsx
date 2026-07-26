@@ -18,7 +18,6 @@ import { useReleases } from '@/features/releases/api'
 import { useMilestones } from '@/features/milestones/api'
 import { useIterationOptions } from '@/features/iterations/api'
 import { useSaveState } from '@/shared/lib/hooks/use-save-state'
-import { deriveEstimateHours } from '@/entities/work-item/model/task-time'
 import {
   PRIORITY_VALUES,
   ScheduleState,
@@ -359,18 +358,21 @@ export function DetailSidebar({
             </FormField>
           ))}
 
-        {/* Task: time fields — Estimate is read-only derived (To Do + Actuals);
-            To Do and Actuals are the manual inputs (SRS P1-TASK-01 / DEV-015). */}
+        {/* Task time (real Rally): Estimate = independent planned hours (editable);
+            To Do = remaining (auto-zeroes on Complete, backend); Actuals = manual. */}
         {isTask && (
           <>
             <FormField label={t('sidebar.estimateH')}>
-              <div
-                className="flex h-9 items-center rounded border border-input bg-input-background px-3 font-mono text-ui-lg text-foreground"
-                title="Estimate is derived: To Do + Actuals"
-                aria-readonly
-              >
-                {deriveEstimateHours(item.todoHours, item.actualHours)}h
-              </div>
+              <Input
+                type="number"
+                min={0}
+                step={0.5}
+                value={item.estimateHours ?? ''}
+                onChange={(e) =>
+                  onUpdate({ estimateHours: e.target.value ? Number(e.target.value) : null })
+                }
+                disabled={disabled}
+              />
             </FormField>
             <FormField label={t('sidebar.todoH')}>
               <Input

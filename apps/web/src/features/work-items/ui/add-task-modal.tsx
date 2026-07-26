@@ -7,7 +7,6 @@ import { useNavigate } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
 import { useCreateTask } from '@/features/work-items/api'
 import { useProjectMembers } from '@/features/teams/api'
-import { deriveEstimateHours } from '@/entities/work-item/model/task-time'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
@@ -27,6 +26,7 @@ export function AddTaskModal({ workItemId, onClose }: Props) {
   const navigate = useNavigate()
 
   const [name, setName] = useState('')
+  const [estimate, setEstimate] = useState('')
   const [todo, setTodo] = useState('')
   const [actual, setActual] = useState('')
   // Owner defaults to the authenticated creator (still changeable, incl. Unassigned).
@@ -38,10 +38,6 @@ export function AddTaskModal({ workItemId, onClose }: Props) {
   const createTask = useCreateTask(workItemId)
   const nameRef = useRef<HTMLInputElement>(null)
 
-  // Estimate is read-only derived (Estimate = To Do + Actuals); the backend
-  // recomputes and stores it, so we only submit the two manual inputs.
-  const estimate = deriveEstimateHours(todo, actual)
-
   async function submit(withDetails: boolean) {
     if (!name.trim()) {
       setError('Name is required.')
@@ -52,6 +48,7 @@ export function AddTaskModal({ workItemId, onClose }: Props) {
     try {
       const task = await createTask.mutateAsync({
         title: name.trim(),
+        estimateHours: estimate ? Number(estimate) : undefined,
         todoHours: todo ? Number(todo) : undefined,
         actualHours: actual ? Number(actual) : undefined,
         assigneeId: assigneeId || undefined,
@@ -88,6 +85,18 @@ export function AddTaskModal({ workItemId, onClose }: Props) {
         </FormField>
 
         <div className="grid grid-cols-3 gap-4">
+          <FormField label="Estimate (hrs)" htmlFor="task-estimate">
+            <Input
+              id="task-estimate"
+              type="number"
+              min={0}
+              step={0.5}
+              value={estimate}
+              onChange={(e) => setEstimate(e.target.value)}
+              placeholder="0"
+            />
+          </FormField>
+
           <FormField label="To Do (hrs)" htmlFor="task-todo">
             <Input
               id="task-todo"
@@ -96,7 +105,7 @@ export function AddTaskModal({ workItemId, onClose }: Props) {
               step={0.5}
               value={todo}
               onChange={(e) => setTodo(e.target.value)}
-              placeholder="0"
+              placeholder="= Estimate"
             />
           </FormField>
 
@@ -110,16 +119,6 @@ export function AddTaskModal({ workItemId, onClose }: Props) {
               onChange={(e) => setActual(e.target.value)}
               placeholder="0"
             />
-          </FormField>
-
-          <FormField label="Estimate (hrs)">
-            <div
-              className="flex h-9 items-center rounded border border-input bg-input-background px-3 font-mono text-ui-lg text-foreground"
-              title="Estimate is derived: To Do + Actuals"
-              aria-readonly
-            >
-              {estimate}h
-            </div>
           </FormField>
         </div>
 

@@ -116,4 +116,51 @@ describe('ScmInstallationService', () => {
     expect(r).toBe('ignored');
     expect(store.deactivateInstallation).not.toHaveBeenCalled();
   });
+
+  it('connect() skips archived + disabled repos during discovery', async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url.includes('/installation/repositories')) {
+        return Promise.resolve(
+          jsonResponse({
+            repositories: [
+              { full_name: 'acme/live' },
+              { full_name: 'acme/old', archived: true },
+              { full_name: 'acme/dead', disabled: true },
+            ],
+          }),
+        );
+      }
+      throw new Error(`unexpected url ${url}`);
+    });
+    const res = await svc.connect(ACTOR, '42');
+    expect(res).toEqual({ discovered: 1 });
+    expect(store.upsertDiscoveredRepo).toHaveBeenCalledTimes(1);
+    expect(store.upsertDiscoveredRepo).toHaveBeenCalledWith(
+      expect.objectContaining({ fullName: 'acme/live' }),
+    );
+  });
+
+  it('repository "archived" webhook deactivates the repo', async () => {
+    const r = await svc.handleWebhook('repository', {
+      action: 'archived',
+      installation: { id: 42 },
+      repository: { full_name: 'acme/api', archived: true },
+    });
+    expect(r).toBe('processed');
+    expect(store.deactivateRepository).toHaveBeenCalledWith('ws-1', 'github', 'acme/api');
+    expect(store.upsertDiscoveredRepo).not.toHaveBeenCalled();
+  });
+
+  it('repository "unarchived" webhook re-registers the repo', async () => {
+    const r = await svc.handleWebhook('repository', {
+      action: 'unarchived',
+      installation: { id: 42 },
+      repository: { full_name: 'acme/api' },
+    });
+    expect(r).toBe('processed');
+    expect(store.upsertDiscoveredRepo).toHaveBeenCalledWith(
+      expect.objectContaining({ fullName: 'acme/api', installationId: '42' }),
+    );
+    expect(store.enqueueBackfill).toHaveBeenCalledWith('ws-1', 'id-acme/api');
+  });
 });
