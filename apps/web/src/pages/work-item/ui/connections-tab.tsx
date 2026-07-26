@@ -122,12 +122,12 @@ const CHANGESET_COLUMNS: ColumnSpec<ScmChangeset, ScmCtx, ChangeColKey>[] = [
     key: 'name',
     label: 'Name',
     sortCol: 'name',
-    defaultWidth: 130,
-    minWidth: 90,
+    defaultWidth: 240,
+    minWidth: 120,
     locked: true,
-    cellClassName: 'flex items-center px-2',
+    cellClassName: 'flex min-w-0 items-center px-2',
     cell: (c) => (
-      <span className="font-mono whitespace-nowrap">
+      <span className="block truncate font-mono" title={c.name}>
         {c.uri ? <ExtLink href={c.uri}>{c.name}</ExtLink> : c.name}
       </span>
     ),
