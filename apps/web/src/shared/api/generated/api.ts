@@ -2421,6 +2421,8 @@ export interface components {
       leadName: string | null
       /** @description YYYY-MM-DD */
       startDate: string | null
+      /** @description YYYY-MM-DD */
+      endDate: string | null
       /**
        * @description Project status: active | archived
        * @enum {string}
@@ -2455,6 +2457,7 @@ export interface components {
       /** Format: uuid */
       leadId?: string
       startDate?: string
+      endDate?: string
       teamIds?: string[]
     }
     ActivityPageDto: {
@@ -2487,6 +2490,7 @@ export interface components {
       description?: string | null
       leadId?: string | null
       startDate?: string | null
+      endDate?: string | null
       /** @enum {string} */
       status?: 'active' | 'archived'
       settings?: {

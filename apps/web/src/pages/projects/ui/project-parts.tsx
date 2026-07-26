@@ -203,6 +203,7 @@ interface ProjectFormValues {
   description: string
   leadId: string
   startDate: string
+  endDate: string
   teamIds: string[]
 }
 
@@ -286,6 +287,13 @@ function ProjectFormFields({
             onChange={(v) => onPatch({ startDate: v ?? '' })}
           />
         </FormField>
+        <FormField label={t('form.endDate', 'End Date')}>
+          <DateField
+            value={values.endDate || null}
+            ariaLabel={t('form.endDate', 'End Date')}
+            onChange={(v) => onPatch({ endDate: v ?? '' })}
+          />
+        </FormField>
       </div>
       <FormField label={t('fields.teams')}>
         <TeamMultiSelect
@@ -319,6 +327,7 @@ export function EditProjectModal({
     description: project.description ?? '',
     leadId: project.leadId ?? '',
     startDate: project.startDate ?? '',
+    endDate: project.endDate ?? '',
     teamIds: [],
   })
   // Seed the team selection once the linked teams load (during render, not in
@@ -348,6 +357,7 @@ export function EditProjectModal({
           description: values.description.trim() || undefined,
           leadId: values.leadId || null,
           startDate: values.startDate || null,
+          endDate: values.endDate || null,
         },
       })
       // Diff team links against the originally-loaded set.
@@ -411,6 +421,7 @@ export function NewProjectModal({
     description: '',
     leadId: user?.id ?? '',
     startDate: '',
+    endDate: '',
     teamIds: [],
   })
   const { mutateAsync, isPending } = useCreateProject()
@@ -448,6 +459,7 @@ export function NewProjectModal({
         description: values.description.trim() || undefined,
         leadId: values.leadId || user?.id,
         startDate: values.startDate || undefined,
+        endDate: values.endDate || undefined,
         teamIds: values.teamIds.length > 0 ? values.teamIds : undefined,
       })
       notify.success(t('create.created', { name: values.name }))

@@ -34,6 +34,7 @@ export interface Project {
   leadId: string | null
   leadName: string | null
   startDate: string | null
+  endDate: string | null
   status: 'active' | 'archived'
   memberCount: number
   teamCount: number
@@ -49,6 +50,7 @@ export interface CreateProjectInput {
   description?: string
   leadId?: string
   startDate?: string
+  endDate?: string
   teamIds?: string[]
 }
 
@@ -57,6 +59,7 @@ export interface UpdateProjectInput {
   description?: string | null
   leadId?: string | null
   startDate?: string | null
+  endDate?: string | null
   status?: 'active' | 'archived'
 }
 

@@ -6,7 +6,7 @@ import type { ActivityDiffConfig } from '@modules/activity';
  * is intentionally excluded. Rich-text bodies are never logged (name only).
  */
 export const PROJECT_ACTIVITY_CONFIG: ActivityDiffConfig<Record<string, unknown>> = {
-  fields: ['name', 'description', 'leadId', 'startDate', 'status'],
+  fields: ['name', 'description', 'leadId', 'startDate', 'endDate', 'status'],
   richText: ['description'],
   action: (f) => (f === 'status' ? 'project.status_changed' : 'project.updated'),
 };

@@ -188,6 +188,16 @@ export function ProjectDetailPage() {
               />
             </DetailField>
 
+            <DetailField label={t('detail.endDate', 'End Date')}>
+              <DateField
+                variant="field"
+                value={p.endDate ?? null}
+                readOnly={!canManage}
+                ariaLabel={t('detail.endDate', 'End Date')}
+                onChange={canManage ? (v) => setField({ endDate: v }) : undefined}
+              />
+            </DetailField>
+
             <DetailField label={t('common:status')}>
               <SearchableSelect
                 variant="field"
