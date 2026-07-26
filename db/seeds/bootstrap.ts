@@ -65,41 +65,37 @@ export async function seedTenantBootstrapInto(database: Db): Promise<void> {
     .values({ workspaceId: WORKSPACE_ID, timezone: 'Asia/Ho_Chi_Minh', defaultLocale: 'en' })
     .onConflictDoNothing({ target: schema.workspaceSettings.workspaceId });
 
-  // Seed the BA job-function preset roles as EDITABLE workspace-scoped custom
-  // roles (isSystem:false). onConflictDoNothing → created once, never clobbering
-  // a workspace admin's later permission edits. See PRESET_WORKSPACE_ROLES.
-  await database
-    .insert(schema.systemRoles)
-    .values(
-      PRESET_WORKSPACE_ROLES.map((role) => ({
-        workspaceId: WORKSPACE_ID,
-        name: role.name,
-        slug: role.slug,
-        description: role.description,
-        isSystem: false,
-        permissions: role.permissions,
-      })),
-    )
-    .onConflictDoNothing({
-      target: [schema.systemRoles.workspaceId, schema.systemRoles.slug],
-    });
+  // Preset persona roles were removed in the Phase 4.2 baseline (3 canonical
+  // roles only). PRESET_WORKSPACE_ROLES is empty; guard the insert since an
+  // empty VALUES list is a SQL error. Custom roles authored later are untouched.
+  if (PRESET_WORKSPACE_ROLES.length > 0) {
+    await database
+      .insert(schema.systemRoles)
+      .values(
+        PRESET_WORKSPACE_ROLES.map((role) => ({
+          workspaceId: WORKSPACE_ID,
+          name: role.name,
+          slug: role.slug,
+          description: role.description,
+          isSystem: false,
+          permissions: role.permissions,
+        })),
+      )
+      .onConflictDoNothing({
+        target: [schema.systemRoles.workspaceId, schema.systemRoles.slug],
+      });
+  }
 
-  // Seed a per-workspace EDITABLE copy of every tier role EXCEPT Workspace Admin.
-  // The four operational tiers (Project Admin / Member / Viewer, Workspace
-  // Member) become ordinary workspace-owned roles (isSystem:false) so an admin
-  // can tune their permissions without rewriting the shared global template.
-  // Workspace Admin is deliberately omitted — it stays the single global,
-  // immutable lockout anchor (isSystem:true) that guarantees a recovery path.
-  const EDITABLE_TIER_SLUGS = [
-    SYSTEM_ROLE.PROJECT_ADMIN,
-    SYSTEM_ROLE.PROJECT_MEMBER,
-    SYSTEM_ROLE.PROJECT_VIEWER,
-    SYSTEM_ROLE.WORKSPACE_MEMBER,
-  ] as const;
+  // Per-workspace copy of the two operational tiers (Project Admin / Member).
+  // These are the roles actually ASSIGNED to users, so they must track the code
+  // catalogue: canonical roles are immutable in the Phase 4.2 model (only custom
+  // roles are editable), hence onConflictDoUpdate to keep name + permissions in
+  // sync on every deploy. Workspace Admin stays the global immutable anchor.
+  const CANONICAL_TIER_SLUGS = [SYSTEM_ROLE.PROJECT_ADMIN, SYSTEM_ROLE.PROJECT_MEMBER] as const;
   await database
     .insert(schema.systemRoles)
     .values(
-      EDITABLE_TIER_SLUGS.map((slug) => ({
+      CANONICAL_TIER_SLUGS.map((slug) => ({
         workspaceId: WORKSPACE_ID,
         name: ROLE_NAMES[slug],
         slug,
@@ -107,8 +103,9 @@ export async function seedTenantBootstrapInto(database: Db): Promise<void> {
         permissions: ROLE_PERMISSIONS[slug],
       })),
     )
-    .onConflictDoNothing({
+    .onConflictDoUpdate({
       target: [schema.systemRoles.workspaceId, schema.systemRoles.slug],
+      set: { name: sql`excluded.name`, permissions: sql`excluded.permissions` },
     });
 
   // Re-point any EXISTING assignment that still references a global tier
@@ -123,8 +120,8 @@ export async function seedTenantBootstrapInto(database: Db): Promise<void> {
       workspaceId: schema.systemRoles.workspaceId,
     })
     .from(schema.systemRoles)
-    .where(inArray(schema.systemRoles.slug, [...EDITABLE_TIER_SLUGS]));
-  for (const slug of EDITABLE_TIER_SLUGS) {
+    .where(inArray(schema.systemRoles.slug, [...CANONICAL_TIER_SLUGS]));
+  for (const slug of CANONICAL_TIER_SLUGS) {
     const globalId = tierRoleRows.find((r) => r.slug === slug && r.workspaceId === null)?.id;
     const copyId = tierRoleRows.find((r) => r.slug === slug && r.workspaceId === WORKSPACE_ID)?.id;
     if (!globalId || !copyId) continue;
@@ -154,7 +151,7 @@ export async function seedTenantBootstrapInto(database: Db): Promise<void> {
   if (!entraTid) {
     console.log(
       `\u2705  Tenant bootstrap: workspace "${workspaceName}" + ${PRESET_WORKSPACE_ROLES.length} preset roles ` +
-        `+ ${EDITABLE_TIER_SLUGS.length} editable tier roles ensured ` +
+        `+ ${CANONICAL_TIER_SLUGS.length} editable tier roles ensured ` +
         `(no ENTRA_TENANT_ID \u2014 SSO connection skipped, dev-login only)`,
     );
     return;
@@ -237,7 +234,7 @@ export async function seedTenantBootstrapInto(database: Db): Promise<void> {
 
   console.log(
     `\u2705  Tenant bootstrap: workspace "${workspaceName}" + ${PRESET_WORKSPACE_ROLES.length} preset roles ` +
-      `+ ${EDITABLE_TIER_SLUGS.length} editable tier roles + Entra SSO connection ` +
+      `+ ${CANONICAL_TIER_SLUGS.length} editable tier roles + Entra SSO connection ` +
       `reconciled (tid ${entraTid}, domains: ${ssoAllowedDomains.join(', ') || 'any'}, ` +
       `jit: ${jitEnabled ? 'open' : 'invite-only'})`,
   );

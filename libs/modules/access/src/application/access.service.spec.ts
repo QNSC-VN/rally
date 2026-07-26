@@ -103,10 +103,13 @@ describe('AccessService — scope-aware permission resolution', () => {
   });
 
   describe('getUserRoleAndPermissions (JWT baseline)', () => {
-    it('falls back to workspace_member view perms when the user has no assignments', async () => {
+    it('falls back to a minimal baseline (empty role) when the user has no assignments', async () => {
       assignmentRepo.listEffectiveForUser.mockResolvedValue([]);
       const result = await service.getUserRoleAndPermissions(USER, WORKSPACE);
-      expect(result.role).toBe('workspace_member');
+      // workspace_member role was removed in Phase 4.2; a user with no
+      // assignment reports an empty representative role + the minimal read
+      // baseline (project delivery access is granted per-project by a role).
+      expect(result.role).toBe('');
       expect(result.permissions).toEqual(['workspace:view', 'project:view']);
     });
 

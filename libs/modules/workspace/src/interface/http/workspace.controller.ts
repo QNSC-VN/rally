@@ -183,7 +183,7 @@ export class WorkspaceController {
   // ── Update workspace ───────────────────────────────────────────────────────
 
   @Patch(':id')
-  @RequirePermission('workspace:*')
+  @RequirePermission('workspace:edit')
   @ApiOperation({ summary: 'Update workspace' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: WorkspaceResponseDto })
@@ -202,7 +202,7 @@ export class WorkspaceController {
   // MVP constraint: workspace archival is system-only (COMPANY-FR-010).
 
   @Delete(':id')
-  @RequirePermission('workspace:*')
+  @RequirePermission('workspace:delete')
   @ApiExcludeEndpoint()
   @HttpCode(204)
   @ApiOperation({ summary: 'Delete workspace (soft delete)' })
@@ -386,7 +386,7 @@ export class WorkspaceController {
   }
 
   @Patch(':id/settings')
-  @RequirePermission('workspace:*')
+  @RequirePermission('workspace:edit')
   @ApiOperation({ summary: 'Update workspace settings' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: WorkspaceSettingsResponseDto })

@@ -18,8 +18,6 @@ export const SYSTEM_ROLE = {
   WORKSPACE_ADMIN: 'workspace_admin',
   PROJECT_ADMIN: 'project_admin',
   PROJECT_MEMBER: 'project_member',
-  PROJECT_VIEWER: 'project_viewer',
-  WORKSPACE_MEMBER: 'workspace_member',
 } as const;
 
 export const PERMISSION = {
@@ -27,8 +25,11 @@ export const PERMISSION = {
   WORKSPACE_ALL: 'workspace:*',
   WORKSPACE_VIEW: 'workspace:view',
   WORKSPACE_CREATE: 'workspace:create',
+  WORKSPACE_EDIT: 'workspace:edit',
+  WORKSPACE_DELETE: 'workspace:delete',
   WORKSPACE_MANAGE_MEMBERS: 'workspace:manage_members',
   WORKSPACE_MANAGE_TEAMS: 'workspace:manage_teams',
+  AUDIT_VIEW: 'audit:view',
 
   // ── project namespace ──────────────────────────────────────────────────────
   PROJECT_VIEW: 'project:view',
@@ -103,8 +104,11 @@ export const PERMISSION_TIER = {
   [PERMISSION.WORKSPACE_ALL]: 'workspace',
   [PERMISSION.WORKSPACE_VIEW]: 'workspace',
   [PERMISSION.WORKSPACE_CREATE]: 'workspace',
+  [PERMISSION.WORKSPACE_EDIT]: 'workspace',
+  [PERMISSION.WORKSPACE_DELETE]: 'workspace',
   [PERMISSION.WORKSPACE_MANAGE_MEMBERS]: 'workspace',
   [PERMISSION.WORKSPACE_MANAGE_TEAMS]: 'workspace',
+  [PERMISSION.AUDIT_VIEW]: 'workspace',
   [PERMISSION.PROJECT_CREATE]: 'workspace',
 
   [PERMISSION.PROJECT_VIEW]: 'project',
@@ -175,9 +179,9 @@ export function permissionGrants(
  *
  * Two invariants keep this table sane and enterprise-safe — preserve them when
  * editing:
- *   1. MONOTONIC TIERS — project_viewer ⊆ project_member ⊆ project_admin, and
- *      workspace_admin (via `workspace:*`) ⊇ everything. A higher role is always
- *      a strict superset of the one below it.
+ *   1. MONOTONIC TIERS — project_member ⊆ project_admin, and workspace_admin
+ *      (via `workspace:*`) ⊇ everything. A higher role is always a strict
+ *      superset of the one below it.
  *   2. MANAGE IMPLIES VIEW — any role holding an `X:manage` / `X:edit` grant also
  *      holds the matching `X:view`. You can't manage what you can't see.
  *
@@ -194,8 +198,11 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
     PERMISSION.WORKSPACE_ALL,
     PERMISSION.WORKSPACE_VIEW,
     PERMISSION.WORKSPACE_CREATE,
+    PERMISSION.WORKSPACE_EDIT,
+    PERMISSION.WORKSPACE_DELETE,
     PERMISSION.WORKSPACE_MANAGE_MEMBERS,
     PERMISSION.WORKSPACE_MANAGE_TEAMS,
+    PERMISSION.AUDIT_VIEW,
     PERMISSION.PROJECT_VIEW,
     PERMISSION.PROJECT_CREATE,
     PERMISSION.PROJECT_EDIT,
@@ -223,14 +230,12 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
     PERMISSION.MILESTONE_EDIT,
     PERMISSION.MILESTONE_DELETE,
   ],
-  // Full control of an EXISTING project. No project:create / project:delete
-  // (workspace-tier) and no workspace admin powers.
+  // Full DELIVERY control of an assigned project, but NOT its lifecycle or
+  // membership. Per SRS Phase 4.2: project create/archive/restore/delete and
+  // member management are workspace_admin-only (moved off project_admin).
   [SYSTEM_ROLE.PROJECT_ADMIN]: [
     PERMISSION.PROJECT_VIEW,
     PERMISSION.PROJECT_EDIT,
-    PERMISSION.PROJECT_ARCHIVE,
-    PERMISSION.PROJECT_RESTORE,
-    PERMISSION.PROJECT_MANAGE_MEMBERS,
     PERMISSION.WORK_ITEM_VIEW,
     PERMISSION.WORK_ITEM_CREATE,
     PERMISSION.WORK_ITEM_EDIT,
@@ -251,39 +256,16 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
     PERMISSION.MILESTONE_EDIT,
     PERMISSION.MILESTONE_DELETE,
   ],
-  // Contributor: creates/edits work items & defects; reads everything else.
-  // No delete, no manage (iterations/releases/milestones/team capacity).
+  // Delivery contributor inside ONE assigned project. Per SRS Phase 4.2 the
+  // member can create AND delete US/DE + tasks (delete added); no iteration/
+  // release/milestone management, no team capacity, no project settings.
   [SYSTEM_ROLE.PROJECT_MEMBER]: [
     PERMISSION.PROJECT_VIEW,
     PERMISSION.WORK_ITEM_VIEW,
     PERMISSION.WORK_ITEM_CREATE,
     PERMISSION.WORK_ITEM_EDIT,
+    PERMISSION.WORK_ITEM_DELETE,
     PERMISSION.ITERATION_VIEW,
-    PERMISSION.RELEASE_VIEW,
-    PERMISSION.TEAM_STATUS_VIEW,
-    PERMISSION.QUALITY_VIEW,
-    PERMISSION.MILESTONE_VIEW,
-  ],
-  // Read-only across one project.
-  [SYSTEM_ROLE.PROJECT_VIEWER]: [
-    PERMISSION.PROJECT_VIEW,
-    PERMISSION.WORK_ITEM_VIEW,
-    PERMISSION.ITERATION_VIEW,
-    PERMISSION.RELEASE_VIEW,
-    PERMISSION.TEAM_STATUS_VIEW,
-    PERMISSION.QUALITY_VIEW,
-    PERMISSION.MILESTONE_VIEW,
-  ],
-  // Workspace-wide read-only observer (sees the workspace + all project reads).
-  [SYSTEM_ROLE.WORKSPACE_MEMBER]: [
-    PERMISSION.WORKSPACE_VIEW,
-    PERMISSION.PROJECT_VIEW,
-    PERMISSION.WORK_ITEM_VIEW,
-    PERMISSION.ITERATION_VIEW,
-    PERMISSION.RELEASE_VIEW,
-    PERMISSION.TEAM_STATUS_VIEW,
-    PERMISSION.QUALITY_VIEW,
-    PERMISSION.MILESTONE_VIEW,
   ],
 };
 
@@ -292,8 +274,6 @@ export const ROLE_NAMES: Record<SystemRoleSlug, string> = {
   [SYSTEM_ROLE.WORKSPACE_ADMIN]: 'Workspace Admin',
   [SYSTEM_ROLE.PROJECT_ADMIN]: 'Project Admin',
   [SYSTEM_ROLE.PROJECT_MEMBER]: 'Project Member',
-  [SYSTEM_ROLE.PROJECT_VIEWER]: 'Project Viewer',
-  [SYSTEM_ROLE.WORKSPACE_MEMBER]: 'Workspace Member',
 };
 
 /**
@@ -326,85 +306,11 @@ export type PresetWorkspaceRole = {
   permissions: Permission[];
 };
 
-export const PRESET_WORKSPACE_ROLES: readonly PresetWorkspaceRole[] = [
-  {
-    slug: 'scrum_master',
-    name: 'Scrum Master',
-    description:
-      'Runs the delivery process: manages iterations, releases, the board and team capacity; full work-item control. Mirrors the BA "PM / Scrum Master" role.',
-    permissions: [
-      PERMISSION.PROJECT_VIEW,
-      PERMISSION.PROJECT_MANAGE_MEMBERS,
-      PERMISSION.WORK_ITEM_VIEW,
-      PERMISSION.WORK_ITEM_CREATE,
-      PERMISSION.WORK_ITEM_EDIT,
-      PERMISSION.WORK_ITEM_DELETE,
-      PERMISSION.ITERATION_VIEW,
-      PERMISSION.ITERATION_CREATE,
-      PERMISSION.ITERATION_EDIT,
-      PERMISSION.ITERATION_DELETE,
-      PERMISSION.RELEASE_VIEW,
-      PERMISSION.RELEASE_CREATE,
-      PERMISSION.RELEASE_EDIT,
-      PERMISSION.RELEASE_DELETE,
-      PERMISSION.TEAM_STATUS_VIEW,
-      PERMISSION.TEAM_STATUS_EDIT,
-      PERMISSION.QUALITY_VIEW,
-      PERMISSION.MILESTONE_VIEW,
-      PERMISSION.MILESTONE_CREATE,
-      PERMISSION.MILESTONE_EDIT,
-      PERMISSION.MILESTONE_DELETE,
-    ],
-  },
-  {
-    slug: 'product_owner',
-    name: 'Product Owner',
-    description:
-      'Owns the backlog and requirements: creates, grooms, prioritizes and assigns work items. Reads iterations, releases and milestones. Mirrors the BA "Product Owner / BA" role.',
-    permissions: [
-      PERMISSION.PROJECT_VIEW,
-      PERMISSION.WORK_ITEM_VIEW,
-      PERMISSION.WORK_ITEM_CREATE,
-      PERMISSION.WORK_ITEM_EDIT,
-      PERMISSION.ITERATION_VIEW,
-      PERMISSION.RELEASE_VIEW,
-      PERMISSION.TEAM_STATUS_VIEW,
-      PERMISSION.QUALITY_VIEW,
-      PERMISSION.MILESTONE_VIEW,
-    ],
-  },
-  {
-    slug: 'developer',
-    name: 'Developer',
-    description:
-      'Delivers work: updates assigned work items and reports team progress. No create/delete or planning powers. Mirrors the BA "Developer" role.',
-    permissions: [
-      PERMISSION.PROJECT_VIEW,
-      PERMISSION.WORK_ITEM_VIEW,
-      PERMISSION.WORK_ITEM_EDIT,
-      PERMISSION.ITERATION_VIEW,
-      PERMISSION.RELEASE_VIEW,
-      PERMISSION.TEAM_STATUS_VIEW,
-      PERMISSION.TEAM_STATUS_EDIT,
-      PERMISSION.QUALITY_VIEW,
-      PERMISSION.MILESTONE_VIEW,
-    ],
-  },
-  {
-    slug: 'qa_engineer',
-    name: 'QA Engineer',
-    description:
-      'Owns quality: raises and verifies defects, updates work-item status. Mirrors the BA "Tester / QA" role.',
-    permissions: [
-      PERMISSION.PROJECT_VIEW,
-      PERMISSION.WORK_ITEM_VIEW,
-      PERMISSION.WORK_ITEM_CREATE,
-      PERMISSION.WORK_ITEM_EDIT,
-      PERMISSION.ITERATION_VIEW,
-      PERMISSION.RELEASE_VIEW,
-      PERMISSION.TEAM_STATUS_VIEW,
-      PERMISSION.QUALITY_VIEW,
-      PERMISSION.MILESTONE_VIEW,
-    ],
-  },
-];
+/**
+ * No preset persona roles in the Phase 4.2 baseline. The BA reconciliation
+ * removed Scrum Master / Product Owner / Developer / QA (and Viewer) — the
+ * product ships exactly three canonical roles (workspace_admin, project_admin,
+ * project_member). Custom roles can still be authored per workspace later; this
+ * list stays empty so nothing is seeded by default.
+ */
+export const PRESET_WORKSPACE_ROLES: readonly PresetWorkspaceRole[] = [];
