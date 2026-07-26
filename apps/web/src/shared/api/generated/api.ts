@@ -547,6 +547,23 @@ export interface paths {
     patch: operations['ProjectsController_updateProject']
     trace?: never
   }
+  '/v1/projects/{id}/activity': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List the revision history of a project */
+    get: operations['ProjectsController_getActivity']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v1/projects/{id}/archive': {
     parameters: {
       query?: never
@@ -1418,6 +1435,23 @@ export interface paths {
     patch: operations['ReleasesController_updateRelease']
     trace?: never
   }
+  '/v1/releases/{id}/activity': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List the revision history of a release */
+    get: operations['ReleasesController_getActivity']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v1/releases/{id}/burndown': {
     parameters: {
       query?: never
@@ -1861,6 +1895,23 @@ export interface paths {
     patch: operations['MilestonesController_updateMilestone']
     trace?: never
   }
+  '/v1/milestones/{id}/activity': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List the revision history of a milestone */
+    get: operations['MilestonesController_getActivity']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v1/milestones/{id}/artifacts': {
     parameters: {
       query?: never
@@ -2122,6 +2173,7 @@ export interface components {
         roleSlug: string | null
         roleName: string | null
       }[]
+      csrfToken?: string
     }
     RoleResponseDto: {
       /** Format: uuid */
@@ -2404,6 +2456,31 @@ export interface components {
       leadId?: string
       startDate?: string
       teamIds?: string[]
+    }
+    ActivityPageDto: {
+      data: {
+        /** Format: uuid */
+        id: string
+        /** Format: date-time */
+        createdAt: string
+        actorId: string | null
+        actorName: string | null
+        action: string
+        entityType: string
+        /** Format: uuid */
+        entityId: string
+        changes: {
+          field: string
+          old: unknown
+          new: unknown
+        } | null
+        metadata: {
+          [key: string]: unknown
+        } | null
+      }[]
+      total: number
+      page: number
+      pageSize: number
     }
     UpdateProjectDto: {
       name?: string
@@ -5151,6 +5228,44 @@ export interface operations {
       }
       /** @description Unprocessable — business rule violation */
       422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  ProjectsController_getActivity: {
+    parameters: {
+      query?: {
+        page?: number
+        pageSize?: number
+      }
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ActivityPageDto']
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
         headers: {
           [name: string]: unknown
         }
@@ -8414,6 +8529,44 @@ export interface operations {
       }
     }
   }
+  ReleasesController_getActivity: {
+    parameters: {
+      query?: {
+        page?: number
+        pageSize?: number
+      }
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ActivityPageDto']
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
   ReleasesController_getReleaseBurndown: {
     parameters: {
       query?: never
@@ -9740,6 +9893,44 @@ export interface operations {
       }
       /** @description Unprocessable — business rule violation */
       422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  MilestonesController_getActivity: {
+    parameters: {
+      query?: {
+        page?: number
+        pageSize?: number
+      }
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ActivityPageDto']
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
         headers: {
           [name: string]: unknown
         }

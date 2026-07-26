@@ -4,6 +4,26 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
+import type { components } from '@/shared/api/generated/api'
+
+export type MilestoneActivityLog = components['schemas']['ActivityResponseDto']
+
+/** Revision History (activity log) for one milestone — newest first. */
+export function useMilestoneActivityLog(milestoneId: string | undefined) {
+  return useQuery({
+    queryKey: ['milestone', milestoneId ?? '', 'activity'] as const,
+    queryFn: async () => {
+      if (!milestoneId) return []
+      const { data, error, response } = await apiClient.GET('/v1/milestones/{id}/activity', {
+        params: { path: { id: milestoneId }, query: { page: 1, pageSize: 100 } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return (data as { data?: MilestoneActivityLog[] } | undefined)?.data ?? []
+    },
+    enabled: !!milestoneId,
+    staleTime: 15_000,
+  })
+}
 
 export type MilestoneStatus = 'planned' | 'at_risk' | 'met' | 'missed' | 'cancelled' | 'completed'
 
