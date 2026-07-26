@@ -272,6 +272,7 @@ export function StatusRow({
             value={item.scheduleState as ScheduleState}
             canEdit={canEdit}
             onChange={(next) => update.mutate({ scheduleState: next })}
+            blocked={item.isBlocked}
           />
         </div>
 
@@ -787,10 +788,12 @@ function ScheduleStateStepper({
   value,
   canEdit,
   onChange,
+  blocked,
 }: {
   value: ScheduleState
   canEdit: boolean
   onChange: (next: ScheduleState) => void
+  blocked?: boolean
 }) {
   return (
     <StateStepper
@@ -798,6 +801,7 @@ function ScheduleStateStepper({
       value={value}
       canEdit={canEdit}
       onChange={onChange}
+      blocked={blocked}
       ariaLabel="Schedule state"
     />
   )
