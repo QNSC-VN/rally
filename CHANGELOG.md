@@ -1,5 +1,79 @@
 # Changelog
 
+## [0.2.4](https://github.com/QNSC-VN/rally/compare/v0.2.3...v0.2.4) (2026-07-26)
+
+
+### ✨ Features
+
+* **activity:** shared Revision History primitive + expand to all entities ([#174](https://github.com/QNSC-VN/rally/issues/174)) ([25be40a](https://github.com/QNSC-VN/rally/commit/25be40a2b3d46c57cde8a7fb0cfcc0ff9ae067df))
+* align app with BA SRS and unify entity detail pages ([#128](https://github.com/QNSC-VN/rally/issues/128)) ([7074023](https://github.com/QNSC-VN/rally/commit/7074023705c54dcfbc472de11bfdcf6cd48ff873))
+* build Teams & Users management (Module 08) + unify form-control styling ([#134](https://github.com/QNSC-VN/rally/issues/134)) ([cc3139d](https://github.com/QNSC-VN/rally/commit/cc3139d15a089654aae3ca52634f5cd36d8a62f8))
+* **identity:** home SSO shortcut + invite-only access; drop legacy login (T18) ([#144](https://github.com/QNSC-VN/rally/issues/144)) ([33e1c66](https://github.com/QNSC-VN/rally/commit/33e1c668825ff79e8b46472b7f855028276c6e66))
+* **identity:** multi-IdP OIDC broker — email-first login + Secrets Manager ([#140](https://github.com/QNSC-VN/rally/issues/140)) ([8786359](https://github.com/QNSC-VN/rally/commit/8786359509cd7001062517136badd2ebc5ec21fb))
+* **infra:** adopt the shared observability module, drop the duplicate alert topic ([#172](https://github.com/QNSC-VN/rally/issues/172)) ([5fc6d1e](https://github.com/QNSC-VN/rally/commit/5fc6d1e5a692831115e469850dbcd8a14c3051fe))
+* **infra:** dedicate rally prod cache per product ([#109](https://github.com/QNSC-VN/rally/issues/109)) ([9a185ea](https://github.com/QNSC-VN/rally/commit/9a185eaeaf092ae7b74b879bb05f4fa0f0e96f67))
+* **infra:** grant api task role runtime read of broker OIDC secrets ([#141](https://github.com/QNSC-VN/rally/issues/141)) ([a5858d4](https://github.com/QNSC-VN/rally/commit/a5858d4bcc426ff32606d485ac0a8e140f057704))
+* **infra:** wire GitHub App secrets + config for SCM backfill (develop + prod) ([#146](https://github.com/QNSC-VN/rally/issues/146)) ([04c047f](https://github.com/QNSC-VN/rally/commit/04c047f788ddb26add837ff580850f0d9263663e))
+* **observability:** fail-open alarming, Swagger/CSP split, and the observability architecture ([#162](https://github.com/QNSC-VN/rally/issues/162)) ([c9a75aa](https://github.com/QNSC-VN/rally/commit/c9a75aa169cf1932432f63fab48c55b6c0fc6220))
+* **projects:** detail page + list refactor to the shared entity template ([#153](https://github.com/QNSC-VN/rally/issues/153)) ([7b0aec7](https://github.com/QNSC-VN/rally/commit/7b0aec7896ac51ec67f4b2b6e5fe52cf0a93fa54))
+* **projects:** project end date + start/end range validation ([#179](https://github.com/QNSC-VN/rally/issues/179)) ([b98ff81](https://github.com/QNSC-VN/rally/commit/b98ff81c47d17a3b81fa435762ce262158231bbd))
+* **rally:** close BA E2E gaps + FE table DRY refactor ([#111](https://github.com/QNSC-VN/rally/issues/111)) ([21b865b](https://github.com/QNSC-VN/rally/commit/21b865b2b64de76fcef2d74b8559c461c219edea))
+* **rich-text:** selectable + mouse-resizable images in the editor ([#166](https://github.com/QNSC-VN/rally/issues/166)) ([f97e74e](https://github.com/QNSC-VN/rally/commit/f97e74ea30818555ff904cf66dd36b8cc5fe5551))
+* **scm:** connections tab — link GitHub PRs & commits to work items ([#143](https://github.com/QNSC-VN/rally/issues/143)) ([2ffe6f7](https://github.com/QNSC-VN/rally/commit/2ffe6f70f0019d53e234fae80a9f0e2361629de7))
+* **scm:** org-level github app auto-discovery + integrations dashboard ([#155](https://github.com/QNSC-VN/rally/issues/155)) ([442d015](https://github.com/QNSC-VN/rally/commit/442d0157f844e6cc56e6030adf6614d60972d18d))
+* **scm:** paginate the repository table + exclude archived repos ([#168](https://github.com/QNSC-VN/rally/issues/168)) ([2fef17a](https://github.com/QNSC-VN/rally/commit/2fef17a3b11902892ed0a9e4ae4a596eb7d9a393))
+* **scm:** phase 2 — GitHub App backfill + pgEnum schema + list-parity tables ([#145](https://github.com/QNSC-VN/rally/issues/145)) ([a62c76b](https://github.com/QNSC-VN/rally/commit/a62c76beba70ad5fd686bd1faae043dc2fe1c56d))
+* **seed:** clean QNSC dev baseline + one-project fixture + e2e golden journey ([#160](https://github.com/QNSC-VN/rally/issues/160)) ([dc45cc5](https://github.com/QNSC-VN/rally/commit/dc45cc5a9cec746f84fb1ce834576b273e439e2b))
+* **settings:** make timezone + locale actually drive date formatting ([#180](https://github.com/QNSC-VN/rally/issues/180)) ([f621d7d](https://github.com/QNSC-VN/rally/commit/f621d7d8290370bdd94ac7866348b048137c85e5))
+* **ui:** searchable Show Fields column chooser (real-Rally Show Columns) ([#169](https://github.com/QNSC-VN/rally/issues/169)) ([d46a2c9](https://github.com/QNSC-VN/rally/commit/d46a2c9044e32370f6aecf1e94e074a903ef14b3))
+* **ui:** whole ID cell (icon + key) is clickable to open the item ([#170](https://github.com/QNSC-VN/rally/issues/170)) ([a7a01d0](https://github.com/QNSC-VN/rally/commit/a7a01d0a6e07209b2d58f26af0e05d212297b162))
+* **web:** frontend component-system migration (P0-P4) — tokens, decomposition, tables, i18n ([#112](https://github.com/QNSC-VN/rally/issues/112)) ([e140754](https://github.com/QNSC-VN/rally/commit/e140754be0df932f79bd657628d82b5c0dbf4b0d))
+* **web:** paste-to-upload images in rich text + page-level Save/Cancel bar ([#123](https://github.com/QNSC-VN/rally/issues/123)) ([0e2f426](https://github.com/QNSC-VN/rally/commit/0e2f426caecbd27159b43740a6e4ec5cf02828fc))
+* **web:** unify Releases and Milestones under the Timeboxes screen (DEV-004) ([#124](https://github.com/QNSC-VN/rally/issues/124)) ([23711de](https://github.com/QNSC-VN/rally/commit/23711de67a8f4b36a21f8b09ac4af6dcfb822b25))
+* **work-items:** blocked schedule-state stepper turns red ([#178](https://github.com/QNSC-VN/rally/issues/178)) ([c9969b0](https://github.com/QNSC-VN/rally/commit/c9969b0ad745348bdfa2f6e4d8d899ce2b071773))
+* **work-items:** hover-to-preview the schedule-state stepper (real-Rally feel) ([#175](https://github.com/QNSC-VN/rally/issues/175)) ([da23081](https://github.com/QNSC-VN/rally/commit/da230818824a049c6c5e9146ab1eba604cd4b871))
+* **work-items:** real-Rally task time — independent Estimate, To Do zeroes on Complete ([#161](https://github.com/QNSC-VN/rally/issues/161)) ([24b4386](https://github.com/QNSC-VN/rally/commit/24b4386efcf5cfbd7e11f803338950b72d53eeee))
+* **work-items:** rebuild attachment uploads on shared storage layer ([#114](https://github.com/QNSC-VN/rally/issues/114)) ([6246067](https://github.com/QNSC-VN/rally/commit/624606731ce2a869ebdf60602c9551599265e38c))
+* **work-items:** workspace-unique keys (Rally FormattedID) + org-level SCM ([#154](https://github.com/QNSC-VN/rally/issues/154)) ([36c9c4d](https://github.com/QNSC-VN/rally/commit/36c9c4d104a974556e9c119b6ab0cf66c50fd67d))
+
+
+### 🐛 Bug Fixes
+
+* **auth:** enforce CSRF protection instead of only registering it ([#157](https://github.com/QNSC-VN/rally/issues/157)) ([bbccaba](https://github.com/QNSC-VN/rally/commit/bbccabab7bd384fa82f34c7e290a8c2637cfdb8e))
+* **auth:** invalidate access tokens when permissions change ([#156](https://github.com/QNSC-VN/rally/issues/156)) ([b18f900](https://github.com/QNSC-VN/rally/commit/b18f90016f65503a1e00e639cfbc15317ccf3f0a))
+* **ci:** bump qnsc-ci web-deploy pin to v1.4.1 ([#126](https://github.com/QNSC-VN/rally/issues/126)) ([a493711](https://github.com/QNSC-VN/rally/commit/a493711069ec27c8177e9309335309fad5f5e003))
+* **db:** read credentials from the RDS-managed secret, not a copy ([#115](https://github.com/QNSC-VN/rally/issues/115)) ([eb37211](https://github.com/QNSC-VN/rally/commit/eb372114857fb31fa993c636953b552a72490ba1))
+* **infra:** give the migrator the broker home-connection env ([#142](https://github.com/QNSC-VN/rally/issues/142)) ([06df0a1](https://github.com/QNSC-VN/rally/commit/06df0a1ceabe98951899f8a82341abfe8183156d))
+* **infra:** grant the API task role GetSecretValue on github-app-private-key ([#165](https://github.com/QNSC-VN/rally/issues/165)) ([8f1919e](https://github.com/QNSC-VN/rally/commit/8f1919edfe5a200d029eedf96ea7a06508680582))
+* **infra:** wire GitHub App creds into the API task (org-level auto-discovery) ([#163](https://github.com/QNSC-VN/rally/issues/163)) ([65e2650](https://github.com/QNSC-VN/rally/commit/65e2650e1f45b3df4a3bd5ceb1cff821525e92d2))
+* **notifications:** close transaction, preference, and retry gaps in the outbox pipeline ([#117](https://github.com/QNSC-VN/rally/issues/117)) ([2c8c9c6](https://github.com/QNSC-VN/rally/commit/2c8c9c660f1baa1964e49608dc7f2f993a18d6d2))
+* **outbox:** make relay() guarantee forward progress instead of a silent no-op ([#127](https://github.com/QNSC-VN/rally/issues/127)) ([01a5920](https://github.com/QNSC-VN/rally/commit/01a5920b2bc4072b3ed5e402b9890490924cd25d))
+* **scm:** disconnecting an installation clears its repositories ([#171](https://github.com/QNSC-VN/rally/issues/171)) ([f96158b](https://github.com/QNSC-VN/rally/commit/f96158b13d5d442aac4bc7a0ab9dbe93325bcfac))
+* **scm:** ensure public.scm_provider exists in migration 0061 ([#159](https://github.com/QNSC-VN/rally/issues/159)) ([7c258d9](https://github.com/QNSC-VN/rally/commit/7c258d961d0b98f8cf33e56986adc02c11a9cd77))
+* **scm:** provide SECRET_RESOLVER in ScmModule so worker backfill can load the App key ([#167](https://github.com/QNSC-VN/rally/issues/167)) ([4fb9d2d](https://github.com/QNSC-VN/rally/commit/4fb9d2d3c0aff4df2ed15debba5eb5166e1875bb))
+* **scm:** widen + truncate the Changesets Name column ([#176](https://github.com/QNSC-VN/rally/issues/176)) ([4c4606f](https://github.com/QNSC-VN/rally/commit/4c4606faa3569eafc088adce6f93dc1f538dd6f6))
+* **seed:** assign team_id to seeded work items and tasks ([#119](https://github.com/QNSC-VN/rally/issues/119)) ([b8fca1d](https://github.com/QNSC-VN/rally/commit/b8fca1ddc04442006aa8b024e0c81f0d2eda27b8))
+* SRS-align P1/P2 verify-pass residuals (BA DevInt audit) ([#152](https://github.com/QNSC-VN/rally/issues/152)) ([4ab4c29](https://github.com/QNSC-VN/rally/commit/4ab4c29039f5ca60b8c92db10e568d6a65c9c705))
+* unblock uploads + gate prod tag deploys on infra apply ([#116](https://github.com/QNSC-VN/rally/issues/116)) ([92bae88](https://github.com/QNSC-VN/rally/commit/92bae88cf99d945b7262c3a8f243ae5f1d58f203))
+* **web:** align nested task rows + add BA business-tracker retest suite ([#131](https://github.com/QNSC-VN/rally/issues/131)) ([9279905](https://github.com/QNSC-VN/rally/commit/92799054f90372dcd06f6ce0e73167ee5f845060))
+* **web:** allow R2 in CSP connect-src so uploads can reach the bucket ([#118](https://github.com/QNSC-VN/rally/issues/118)) ([29f4292](https://github.com/QNSC-VN/rally/commit/29f42926c48186665b875b61c6c14191193549f6))
+* **web:** centralize query invalidation with a tag-based registry ([#135](https://github.com/QNSC-VN/rally/issues/135)) ([cb3aeb5](https://github.com/QNSC-VN/rally/commit/cb3aeb5f0329ce22731fb61adc6231d73f967fef))
+* **web:** rewrite RichTextEditor on Tiptap — document.execCommand is dead ([#122](https://github.com/QNSC-VN/rally/issues/122)) ([996c1fc](https://github.com/QNSC-VN/rally/commit/996c1fcd30e51cc9e63d08b6aaf746a135f5ab00))
+* **web:** stop tailwind-merge from dropping button text color ([#120](https://github.com/QNSC-VN/rally/issues/120)) ([928ba11](https://github.com/QNSC-VN/rally/commit/928ba117a4d9ab65c6f8b543c403f67dfcdb3403))
+* **web:** use 'white' keyword instead of raw hex in DetailHeaderButton ([#129](https://github.com/QNSC-VN/rally/issues/129)) ([58d1de4](https://github.com/QNSC-VN/rally/commit/58d1de4da617737fefd3a27dedb833d02198f26a))
+* **work-items:** SRS-align P0 residuals — Team mandatory, default Idea, Task state labels ([#149](https://github.com/QNSC-VN/rally/issues/149)) ([8e408a0](https://github.com/QNSC-VN/rally/commit/8e408a0f36e2d11ab797ccdb04ecdc4868a30ae5))
+
+
+### ♻️ Refactors
+
+* **infra:** extract the product stack so develop and prod cannot drift ([#177](https://github.com/QNSC-VN/rally/issues/177)) ([8414254](https://github.com/QNSC-VN/rally/commit/841425459dbedb86f99cb8163af5165b62681652))
+* **observability:** adopt @qnsc-vn/observability and fix four logging defects ([#164](https://github.com/QNSC-VN/rally/issues/164)) ([6b02d4b](https://github.com/QNSC-VN/rally/commit/6b02d4bcf7ef25f3c62db77a61389f9d2c8697d9))
+
+
+### 📦 Dependencies
+
+* clear osv-scanner CVE gate (fastify-static, swagger, postcss, js-yaml) ([#147](https://github.com/QNSC-VN/rally/issues/147)) ([c966c8e](https://github.com/QNSC-VN/rally/commit/c966c8ef2ef7bc6d6c6260037c531bdcd423fa91))
+
 ## [0.2.3](https://github.com/QNSC-VN/rally/compare/v0.2.2...v0.2.3) (2026-07-20)
 
 
