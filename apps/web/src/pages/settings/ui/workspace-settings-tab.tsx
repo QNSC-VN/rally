@@ -13,6 +13,7 @@ import {
 import { useResetOnIdChange } from '@/shared/lib/hooks/use-reset-on-id-change'
 import { notify } from '@/shared/lib/toast'
 import { Button } from '@/shared/ui/button'
+import { Card, CardHeader, CardBody } from '@/shared/ui/card'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
@@ -75,58 +76,67 @@ export function WorkspaceSettingsTab() {
   const saving = update.isPending || updateSettings.isPending
 
   return (
-    <form onSubmit={(e) => void handleSave(e)} className="max-w-lg space-y-5">
-      {/* ── Read-only identity ── */}
-      <div className="rounded-md border">
-        <dl className="grid grid-cols-[130px_1fr] gap-x-3 gap-y-2.5 p-4 text-ui-lg">
-          <dt className="text-foreground-subtle">{t('workspace.slugLabel')}</dt>
-          <dd className="font-mono text-foreground">
-            {current?.slug ?? workspace?.workspaceSlug ?? '—'}
-          </dd>
-          <dt className="text-foreground-subtle">{t('workspace.adminLabel')}</dt>
-          <dd className="text-foreground">
-            {admins.length === 0 ? '—' : admins.map((a) => a.displayName).join(', ')}
-          </dd>
-        </dl>
-      </div>
+    <div className="max-w-2xl space-y-6">
+      <form onSubmit={(e) => void handleSave(e)} className="space-y-6">
+        <Card>
+          <CardHeader title={t('workspace.sectionTitle')} />
+          <CardBody className="space-y-4">
+            {/* Read-only identity */}
+            <dl className="grid grid-cols-[130px_1fr] gap-x-3 gap-y-2.5 text-ui-md">
+              <dt className="text-foreground-subtle">{t('workspace.slugLabel')}</dt>
+              <dd className="font-mono text-foreground">
+                {current?.slug ?? workspace?.workspaceSlug ?? '—'}
+              </dd>
+              <dt className="text-foreground-subtle">{t('workspace.adminLabel')}</dt>
+              <dd className="text-foreground">
+                {admins.length === 0 ? '—' : admins.map((a) => a.displayName).join(', ')}
+              </dd>
+            </dl>
 
-      <FormField label={t('workspace.nameLabel')} required>
-        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Acme Corp" />
-      </FormField>
-      <FormField label={t('common:description')}>
-        <Textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="What does this workspace cover?"
-          rows={3}
-        />
-      </FormField>
+            <FormField label={t('workspace.nameLabel')} required>
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={t('workspace.namePlaceholder')}
+              />
+            </FormField>
+            <FormField label={t('common:description')}>
+              <Textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder={t('workspace.descriptionPlaceholder')}
+                rows={3}
+              />
+            </FormField>
 
-      {/* Company-wide formatting defaults — the fallback each member inherits
-          until they override it in their own Profile. */}
-      <FormField label={t('workspace.defaultTimezone', 'Default timezone')}>
-        <SearchableSelect
-          value={timezone}
-          ariaLabel={t('workspace.defaultTimezone', 'Default timezone')}
-          options={TIMEZONES.map((tz) => ({ value: tz, label: tz }))}
-          onChange={(v) => setTimezone(v ?? '')}
-        />
-      </FormField>
-      <FormField label={t('workspace.defaultLocale', 'Default date/number format')}>
-        <SearchableSelect
-          value={locale}
-          ariaLabel={t('workspace.defaultLocale', 'Default date/number format')}
-          options={LOCALES}
-          onChange={(v) => setLocale(v ?? '')}
-        />
-      </FormField>
+            {/* Company-wide formatting defaults — the fallback each member inherits
+                until they override it in their own Profile. */}
+            <FormField label={t('workspace.defaultTimezone', 'Default timezone')}>
+              <SearchableSelect
+                value={timezone}
+                ariaLabel={t('workspace.defaultTimezone', 'Default timezone')}
+                options={TIMEZONES.map((tz) => ({ value: tz, label: tz }))}
+                onChange={(v) => setTimezone(v ?? '')}
+              />
+            </FormField>
+            <FormField label={t('workspace.defaultLocale', 'Default date/number format')}>
+              <SearchableSelect
+                value={locale}
+                ariaLabel={t('workspace.defaultLocale', 'Default date/number format')}
+                options={LOCALES}
+                onChange={(v) => setLocale(v ?? '')}
+              />
+            </FormField>
+          </CardBody>
+        </Card>
 
-      <div className="flex items-center gap-3 pt-1">
-        <Button type="submit" disabled={saving || !name.trim()}>
-          {saving && <Loader2 size={12} className="animate-spin" />}
-          {t('saveChanges')}
-        </Button>
-      </div>
-    </form>
+        <div className="flex items-center gap-3 pt-1">
+          <Button type="submit" disabled={saving || !name.trim()}>
+            {saving && <Loader2 size={14} className="animate-spin" />}
+            {t('saveChanges')}
+          </Button>
+        </div>
+      </form>
+    </div>
   )
 }

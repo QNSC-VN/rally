@@ -44,6 +44,7 @@ import { SsoConnectionDrizzleRepository } from './infrastructure/persistence/sso
 import { SecretsManagerSecretResolver } from './infrastructure/secrets-manager-secret-resolver';
 import { RallyClaimsProvider } from './application/claims.provider';
 import { DrizzleTransactionRunner } from './application/transaction-runner';
+import { AvatarService } from './application/avatar.service';
 
 /**
  * Rally's identity module. The refresh-rotation auth engine, Entra token
@@ -70,6 +71,7 @@ import { DrizzleTransactionRunner } from './application/transaction-runner';
   controllers: [IdentityController, AuthController, BffController],
   providers: [
     AuthService,
+    AvatarService,
     EntraTokenVerifier,
 
     // BFF (Backend-for-Frontend) same-origin OIDC session — rally's only auth

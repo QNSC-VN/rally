@@ -1,4 +1,4 @@
-import { useForm, Controller } from 'react-hook-form'
+import { useForm, Controller, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -14,9 +14,11 @@ type WorkspaceDefaults = { locale: string | null; timezone: string | null } | nu
 import { useNavigate } from '@tanstack/react-router'
 import { notify } from '@/shared/lib/toast'
 import { Button } from '@/shared/ui/button'
+import { Card, CardHeader, CardBody } from '@/shared/ui/card'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
+import { AvatarUploader } from './avatar-uploader'
 
 type ProfileForm = {
   displayName: string
@@ -24,17 +26,6 @@ type ProfileForm = {
   locale: string
   timezone: string
   phone?: string
-}
-
-/** Uppercase section label used across the profile sections. */
-function SectionTitle({ children, className }: { children: React.ReactNode; className?: string }) {
-  return (
-    <h3
-      className={`text-ui-md font-semibold tracking-wide text-foreground-subtle uppercase ${className ?? ''}`}
-    >
-      {children}
-    </h3>
-  )
 }
 
 export function ProfileTab() {
@@ -61,6 +52,33 @@ export function ProfileTab() {
     },
   })
 
+  // Live values that drive the avatar preview (memoization-safe vs `watch()`).
+  const watchedName = useWatch({ control: profile.control, name: 'displayName' })
+  const watchedAvatar = useWatch({ control: profile.control, name: 'avatarUrl' })
+
+  // Reflect a fresh `/auth/me` payload into the auth store — shared by the
+  // profile save and the avatar uploader.
+  function applyUpdatedUser(updated: unknown) {
+    const u = updated as {
+      id: string
+      email: string
+      displayName: string
+      avatarUrl: string | null
+      locale: string
+      timezone: string
+      phone: string | null
+      role: string
+      permissions: string[]
+      emailVerified: boolean
+      createdAt: string
+      updatedAt: string
+    }
+    setUser(
+      { ...u, avatarUrl: u.avatarUrl ?? undefined, permissions: u.permissions ?? [] },
+      useAuthStore.getState().memberships,
+    )
+  }
+
   async function onSaveProfile(data: ProfileForm) {
     try {
       const body = {
@@ -75,29 +93,12 @@ export function ProfileTab() {
         profile.setError('root', { message: apiErrorMessage(error, response.status) })
         return
       }
-      const u = updated as {
-        id: string
-        email: string
-        displayName: string
-        avatarUrl: string | null
-        locale: string
-        timezone: string
-        phone: string | null
-        role: string
-        permissions: string[]
-        emailVerified: boolean
-        createdAt: string
-        updatedAt: string
-      }
-      setUser(
-        { ...u, avatarUrl: u.avatarUrl ?? undefined, permissions: u.permissions ?? [] },
-        useAuthStore.getState().memberships,
-      )
+      applyUpdatedUser(updated)
       // Apply the new personal locale/timezone to date formatting immediately
       // (workspace default stays the fallback).
       setFormatPrefs(
         resolveFormatPrefs(
-          { locale: u.locale, timezone: u.timezone },
+          { locale: data.locale, timezone: data.timezone },
           (updated as { workspaceDefaults?: WorkspaceDefaults }).workspaceDefaults ?? null,
         ),
       )
@@ -105,6 +106,22 @@ export function ProfileTab() {
     } catch {
       profile.setError('root', { message: t('profile.networkError') })
     }
+  }
+
+  // Avatar changes persist immediately (optimistic) via the existing profile
+  // update — the uploader has already stored the bytes and hands us the CDN URL
+  // (or null to clear).
+  async function commitAvatar(url: string | null) {
+    const {
+      data: updated,
+      error,
+      response,
+    } = await apiClient.PATCH('/v1/auth/me', {
+      body: { avatarUrl: url },
+    })
+    if (error) throw new Error(apiErrorMessage(error, response.status))
+    applyUpdatedUser(updated)
+    profile.setValue('avatarUrl', url ?? '', { shouldDirty: false })
   }
 
   async function handleLogoutAll() {
@@ -119,105 +136,108 @@ export function ProfileTab() {
   }
 
   return (
-    <div className="flex flex-col gap-8">
-      {/* ── Profile info ── */}
-      <section>
-        <SectionTitle className="mb-4">{t('profile.personalInfo')}</SectionTitle>
-        <form
-          onSubmit={profile.handleSubmit(onSaveProfile)}
-          className="flex max-w-md flex-col gap-4"
-        >
-          <FormField
-            label={t('profile.displayNameLabel')}
-            error={profile.formState.errors.displayName?.message}
-          >
-            <Input {...profile.register('displayName')} placeholder="Your display name" />
-          </FormField>
-          <FormField
-            label={t('profile.avatarUrlLabel')}
-            error={profile.formState.errors.avatarUrl?.message}
-          >
-            <Input {...profile.register('avatarUrl')} placeholder="https://..." />
-          </FormField>
-          <FormField
-            label={t('profile.phoneLabel')}
-            error={profile.formState.errors.phone?.message}
-          >
-            <Input {...profile.register('phone')} placeholder="+84 ..." />
-          </FormField>
-          <FormField label={t('profile.localeLabel')}>
-            <Controller
-              control={profile.control}
-              name="locale"
-              render={({ field }) => (
-                <SearchableSelect
-                  variant="field"
-                  value={field.value ?? ''}
-                  ariaLabel={t('profile.localeLabel')}
-                  options={LOCALES}
-                  onChange={field.onChange}
-                />
+    <div className="max-w-2xl space-y-6">
+      {/* Personal Information + Preferences share one RHF form + Save footer. */}
+      <form onSubmit={profile.handleSubmit(onSaveProfile)} className="space-y-6">
+        <Card>
+          <CardHeader title={t('profile.personalInfo')} />
+          <CardBody className="space-y-4">
+            <FormField
+              label={t('profile.displayNameLabel')}
+              error={profile.formState.errors.displayName?.message}
+            >
+              <Input
+                {...profile.register('displayName')}
+                placeholder={t('profile.displayNamePlaceholder')}
+              />
+            </FormField>
+            <FormField label={t('profile.avatarLabel')}>
+              <AvatarUploader
+                name={watchedName || (user?.displayName ?? '')}
+                value={watchedAvatar || (user?.avatarUrl ?? null)}
+                onCommit={commitAvatar}
+              />
+            </FormField>
+            <FormField
+              label={t('profile.phoneLabel')}
+              error={profile.formState.errors.phone?.message}
+            >
+              <Input {...profile.register('phone')} placeholder={t('profile.phonePlaceholder')} />
+            </FormField>
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader title={t('profile.sectionPreferences')} />
+          <CardBody className="space-y-4">
+            <FormField label={t('profile.localeLabel')}>
+              <Controller
+                control={profile.control}
+                name="locale"
+                render={({ field }) => (
+                  <SearchableSelect
+                    variant="field"
+                    value={field.value ?? ''}
+                    ariaLabel={t('profile.localeLabel')}
+                    options={LOCALES}
+                    onChange={field.onChange}
+                  />
+                )}
+              />
+            </FormField>
+            <FormField label={t('profile.timezoneLabel')}>
+              <Controller
+                control={profile.control}
+                name="timezone"
+                render={({ field }) => (
+                  <SearchableSelect
+                    variant="field"
+                    value={field.value ?? ''}
+                    ariaLabel={t('profile.timezoneLabel')}
+                    options={TIMEZONES.map((tz) => ({ value: tz, label: tz }))}
+                    onChange={field.onChange}
+                  />
+                )}
+              />
+            </FormField>
+          </CardBody>
+        </Card>
+
+        {profile.formState.errors.root && (
+          <p className="text-ui-sm text-destructive">{profile.formState.errors.root.message}</p>
+        )}
+        <div className="flex items-center gap-3 pt-1">
+          <Button type="submit" disabled={profile.formState.isSubmitting}>
+            {profile.formState.isSubmitting ? <Loader2 size={14} className="animate-spin" /> : null}
+            {t('saveChanges')}
+          </Button>
+        </div>
+      </form>
+
+      {/* Account — read-only identity + security note + sign-out-all. */}
+      <Card>
+        <CardHeader title={t('profile.account')} />
+        <CardBody className="space-y-4">
+          <dl className="grid grid-cols-[130px_1fr] gap-x-3 gap-y-2.5 text-ui-md">
+            <dt className="text-foreground-subtle">{t('profile.emailLabel')}</dt>
+            <dd className="text-foreground">
+              <span className="font-medium">{user?.email}</span>
+              {user?.emailVerified === false && (
+                <span className="ml-2 text-ui-sm font-semibold text-warning">
+                  {t('profile.notVerified')}
+                </span>
               )}
-            />
-          </FormField>
-          <FormField label={t('profile.timezoneLabel')}>
-            <Controller
-              control={profile.control}
-              name="timezone"
-              render={({ field }) => (
-                <SearchableSelect
-                  variant="field"
-                  value={field.value ?? ''}
-                  ariaLabel={t('profile.timezoneLabel')}
-                  options={TIMEZONES.map((tz) => ({ value: tz, label: tz }))}
-                  onChange={field.onChange}
-                />
-              )}
-            />
-          </FormField>
-          {profile.formState.errors.root && (
-            <p className="text-ui-md text-destructive">{profile.formState.errors.root.message}</p>
-          )}
-          <div>
-            <Button type="submit" disabled={profile.formState.isSubmitting}>
-              {profile.formState.isSubmitting ? (
-                <Loader2 size={13} className="animate-spin" />
-              ) : null}
-              {t('saveChanges')}
+            </dd>
+          </dl>
+          <p className="text-ui-sm text-foreground-subtle">{t('profile.passwordSecurityNote')}</p>
+          <div className="flex items-center gap-3 pt-1">
+            <Button variant="destructive" onClick={() => void handleLogoutAll()}>
+              <LogOut size={14} />
+              {t('profile.signOutAll')}
             </Button>
           </div>
-        </form>
-      </section>
-
-      <hr className="border-border-subtle" />
-
-      {/* ── Password & security ── */}
-      <section>
-        <SectionTitle className="mb-2">{t('profile.passwordSecurity')}</SectionTitle>
-        <p className="max-w-md text-ui-md text-muted-foreground">
-          {t('profile.passwordSecurityNote')}
-        </p>
-      </section>
-
-      <hr className="border-border-subtle" />
-
-      {/* ── Account ── */}
-      <section>
-        <SectionTitle className="mb-1">{t('profile.account')}</SectionTitle>
-        <p className="mb-4 text-ui-md text-muted-foreground">
-          {t('profile.emailLabel')}{' '}
-          <span className="font-medium text-foreground">{user?.email}</span>
-          {user?.emailVerified === false && (
-            <span className="ml-2 text-ui-sm font-semibold text-warning">
-              {t('profile.notVerified')}
-            </span>
-          )}
-        </p>
-        <Button variant="destructive" onClick={() => void handleLogoutAll()}>
-          <LogOut size={13} />
-          {t('profile.signOutAll')}
-        </Button>
-      </section>
+        </CardBody>
+      </Card>
     </div>
   )
 }

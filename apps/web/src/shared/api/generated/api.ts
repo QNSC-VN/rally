@@ -72,6 +72,23 @@ export interface paths {
     patch: operations['AuthController_updateProfile']
     trace?: never
   }
+  '/v1/auth/me/avatar/presign': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Presign a PUT URL to upload the current user avatar */
+    post: operations['AuthController_presignAvatar']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v1/auth/logout-all': {
     parameters: {
       query?: never
@@ -2827,6 +2844,23 @@ export interface components {
       /** Format: date-time */
       watchedAt: string
     }
+    PresignAvatarDto: {
+      /** @enum {string} */
+      contentType: 'image/png' | 'image/jpeg' | 'image/webp'
+      contentLength: number
+    }
+    PresignAvatarResponseDto: {
+      /**
+       * Format: uri
+       * @description Presigned PUT URL — expires in 5 minutes
+       */
+      uploadUrl: string
+      /**
+       * Format: uri
+       * @description CDN URL the uploaded avatar resolves at once stored
+       */
+      publicUrl: string
+    }
     PresignAttachmentDto: {
       filename: string
       mimeType: string
@@ -3589,6 +3623,57 @@ export interface operations {
       }
       /** @description Unauthorized — missing or invalid authentication */
       401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  AuthController_presignAvatar: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PresignAvatarDto']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['PresignAvatarResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Conflict — resource state prevents the operation */
+      409: {
         headers: {
           [name: string]: unknown
         }

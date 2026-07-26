@@ -9,7 +9,9 @@ import { AccessService } from '@modules/access';
 import { WorkspaceService } from '@modules/workspace';
 import { UpdateProfileDto } from './dto/login.dto';
 import { UserProfileResponseDto } from './dto/auth-response.dto';
+import { PresignAvatarDto, PresignAvatarResponseDto } from './dto/avatar.dto';
 import { CurrentUser } from './decorators/current-user.decorator';
+import { AvatarService } from '../../application/avatar.service';
 
 /**
  * Current-user profile surface. All authentication and session lifecycle lives
@@ -24,6 +26,7 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly accessService: AccessService,
     private readonly workspaceService: WorkspaceService,
+    private readonly avatarService: AvatarService,
   ) {}
 
   // ── PATCH /auth/me ─────────────────────────────────────────────────────────
@@ -65,6 +68,23 @@ export class AuthController {
           }
         : null,
     };
+  }
+
+  // ── POST /auth/me/avatar/presign ────────────────────────────────────────────
+
+  @Post('me/avatar/presign')
+  @Auth()
+  @ApiOperation({ summary: 'Presign a PUT URL to upload the current user avatar' })
+  @ApiResponse({ status: 201, type: PresignAvatarResponseDto })
+  @ApiCommonErrors(400, 401, 409, 422)
+  async presignAvatar(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: PresignAvatarDto,
+  ): Promise<PresignAvatarResponseDto> {
+    return this.avatarService.presignUpload(user.sub, {
+      contentType: dto.contentType,
+      contentLength: dto.contentLength,
+    });
   }
 
   // ── POST /auth/logout-all ──────────────────────────────────────────────────

@@ -1,14 +1,20 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Loader2, Plus, UsersRound } from 'lucide-react'
+import { useMutation } from '@tanstack/react-query'
+import { Archive, Loader2, Plus } from 'lucide-react'
+import { BulkBarButton } from '@/shared/ui/bulk-action-bar'
 
 import { BRAND } from '@/shared/config/brand'
+import { apiClient } from '@/shared/api/http-client'
+import { apiErrorMessage } from '@/shared/api/api-error'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import {
   useWorkspaceTeams,
   useTeamMembers,
   useCreateTeam,
   useUpdateTeam,
+  useAddTeamMember,
+  useRemoveTeamMember,
   type Team,
 } from '@/features/teams/api'
 import { useProjects } from '@/features/projects/api'
@@ -16,20 +22,27 @@ import { useWorkspaceMembers } from '@/features/workspaces/api'
 import { notify } from '@/shared/lib/toast'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
-import { EmptyState } from '@/shared/ui/empty-state'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
-import { SearchableSelect } from '@/shared/ui/searchable-select'
-import { SearchInput } from '@/shared/ui/search-input'
-import { Spinner } from '@/shared/ui/spinner'
-import { StatusBadge } from '@/shared/ui/status-badge'
-import type { StatusStyle } from '@/shared/config/status-colors'
-import { OwnerAvatar } from '@/shared/ui/owner-cell'
+import { SearchableSelect, type SelectOption } from '@/shared/ui/searchable-select'
+import { OwnerAvatar, OwnerSelectCell, type OwnerSelectMember } from '@/shared/ui/owner-cell'
 import { TeamAvatar } from '@/shared/ui/team-cell'
 import { MetricStrip } from '@/shared/ui/metric-strip'
 import { MetricCard } from '@/shared/ui/metric-card'
-import { formatDate } from '@/shared/lib/utils'
+import {
+  SelectableTable,
+  useDataTable,
+  type ColumnSpec,
+  type RowSelection,
+} from '@/shared/ui/table'
+import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
+import { PageToolbar } from '@/shared/ui/page-toolbar'
+import { PaginationFooter } from '@/shared/ui/pagination-footer'
+import { RowGutter } from '@/shared/ui/row-gutter'
+import { useRowSelection } from '@/shared/lib/hooks/use-row-selection'
+import { STORAGE_KEYS } from '@/shared/config/storage-keys'
+import { formatDateIso } from '@/shared/lib/utils'
 
 type TeamStatus = 'active' | 'archived'
 
@@ -41,62 +54,538 @@ function sanitizeKey(value: string): string {
     .slice(0, 10)
 }
 
-const ACTIVE_STYLE: StatusStyle = {
-  label: 'Active',
-  text: BRAND.success,
-  bg: BRAND.successBg,
-  border: BRAND.successBorder,
-}
-const DEACTIVE_STYLE: StatusStyle = {
-  label: 'Deactive',
-  text: BRAND.textSecondary,
-  bg: BRAND.surfaceSubtle,
-  border: BRAND.border,
-}
-
-function TeamStatusBadge({ status }: { status: TeamStatus }) {
-  return <StatusBadge style={status === 'active' ? ACTIVE_STYLE : DEACTIVE_STYLE} />
+// ── Config-driven column catalog (rendered by the shared table engine) ─────────
+// Per-render context carrying the shared read-data the inline-edit cells need
+// (workspace members + option lists). Each editable cell is its own component so
+// it can own the per-team mutation hook (useUpdateTeam / add-remove member) —
+// mirrors the Projects ProjectTeamsCell pattern. Users adopts the same paradigm:
+// Lead / Members / Projects / Status are edited directly in their cells.
+interface TeamCtx {
+  members: OwnerSelectMember[]
+  memberOptions: SelectOption[]
+  projectOptions: SelectOption[]
 }
 
-// ── Create/Edit Team modal (single inline form, real-Rally style) ───────────────
+type TeamColKey = 'team' | 'lead' | 'members' | 'projects' | 'status' | 'created'
 
-function TeamFormModal({
-  workspaceId,
-  team,
-  onClose,
-}: {
-  workspaceId: string
-  team: Team | null
-  onClose: () => void
-}) {
-  const isEdit = team !== null
+const TEAM_COLUMNS: ColumnSpec<Team, TeamCtx, TeamColKey>[] = [
+  {
+    key: 'team',
+    label: 'Team',
+    sortCol: 'team',
+    defaultWidth: 260,
+    minWidth: 180,
+    locked: true,
+    grow: true,
+    cellClassName: 'flex min-w-0 items-center gap-2',
+    // Read-only identity: square team glyph + name + key chip (rename is out of
+    // scope here — like Users' read-only name).
+    cell: (team) => (
+      <>
+        <TeamAvatar teamKey={team.key} name={team.name} size={28} />
+        <span className="truncate text-ui-md text-foreground" title={team.name}>
+          {team.name}
+        </span>
+      </>
+    ),
+  },
+  {
+    key: 'lead',
+    label: 'Lead',
+    sortCol: 'lead',
+    defaultWidth: 200,
+    minWidth: 140,
+    cellClassName: 'flex min-w-0 items-center',
+    cell: (team, ctx) => <TeamLeadCell team={team} members={ctx.members} />,
+  },
+  {
+    key: 'members',
+    label: 'Members',
+    defaultWidth: 240,
+    minWidth: 160,
+    cellClassName: 'flex min-w-0 items-center',
+    cell: (team, ctx) => <TeamMembersCell team={team} options={ctx.memberOptions} />,
+  },
+  {
+    key: 'projects',
+    label: 'Projects',
+    defaultWidth: 240,
+    minWidth: 160,
+    cellClassName: 'flex min-w-0 items-center',
+    cell: (team, ctx) => <TeamProjectsCell team={team} options={ctx.projectOptions} />,
+  },
+  {
+    key: 'status',
+    label: 'Status',
+    sortCol: 'status',
+    defaultWidth: 130,
+    minWidth: 100,
+    cellClassName: 'flex min-w-0 items-center',
+    cell: (team) => <TeamStatusCell team={team} />,
+  },
+  {
+    key: 'created',
+    label: 'Created',
+    sortCol: 'created',
+    defaultWidth: 130,
+    minWidth: 100,
+    cellClassName: 'flex items-center',
+    cell: (team) => (
+      <span className="truncate text-ui-md text-foreground-subtle">
+        {formatDateIso(team.createdAt)}
+      </span>
+    ),
+  },
+]
+
+// Match the iteration-status / Users row look exactly (white rows, subtle
+// divider). Rows are not clickable — the cells are the interactive surface.
+const ROW_CLASS =
+  'group flex min-h-[34px] min-w-max items-center gap-2 border-b border-border-subtle bg-card px-3 text-ui-md transition-colors duration-100 hover:bg-primary-lighter'
+
+// ── Inline-edit cells (each owns its per-team mutation hook) ───────────────────
+
+/** Lead — inline person picker (OwnerSelectCell); commits via useUpdateTeam. */
+function TeamLeadCell({ team, members }: { team: Team; members: OwnerSelectMember[] }) {
+  const { t } = useTranslation('settings')
+  const update = useUpdateTeam(team.id)
+  const lead = team.leadId ? members.find((m) => m.userId === team.leadId) : undefined
+  const leadName = lead?.displayName ?? lead?.email ?? null
+  return (
+    <div className="min-w-0 flex-1">
+      <OwnerSelectCell
+        ownerName={leadName}
+        assigneeId={team.leadId}
+        members={members}
+        canEdit
+        ariaLabel={t('teams.editLead')}
+        onChange={(userId) =>
+          void update
+            .mutateAsync({ leadId: userId })
+            .then(() => notify.success(t('teams.leadUpdated')))
+            .catch((err: unknown) => notify.fromError(err, t('teams.leadUpdateError')))
+        }
+      />
+    </div>
+  )
+}
+
+/** Members — inline multi-select chips; commits by diffing add/remove exactly
+ *  like the Projects ProjectTeamsCell (link/unlink). */
+function TeamMembersCell({ team, options }: { team: Team; options: SelectOption[] }) {
+  const { t } = useTranslation('settings')
+  const { data: teamMembers = [] } = useTeamMembers(team.id)
+  const add = useAddTeamMember(team.id)
+  const remove = useRemoveTeamMember(team.id)
+  const current = teamMembers.map((m) => m.userId)
+  return (
+    <div className="min-w-0 flex-1">
+      <SearchableSelect
+        multiple
+        variant="cell"
+        value={current}
+        options={options}
+        ariaLabel={t('teams.editMembers')}
+        placeholder="—"
+        searchPlaceholder={t('teams.searchMembers')}
+        onChange={(ids) => {
+          const next = ids as string[]
+          next.filter((id) => !current.includes(id)).forEach((id) => add.mutate(id))
+          current.filter((id) => !next.includes(id)).forEach((id) => remove.mutate(id))
+        }}
+      />
+    </div>
+  )
+}
+
+/** Projects — inline multi-select; a team must keep ≥1 project, so committing
+ *  the full set via useUpdateTeam({ projectIds }) is guarded against clearing. */
+function TeamProjectsCell({ team, options }: { team: Team; options: SelectOption[] }) {
+  const { t } = useTranslation('settings')
+  const update = useUpdateTeam(team.id)
+  const current = (team.projects ?? []).map((p) => p.projectId)
+  return (
+    <div className="min-w-0 flex-1">
+      <SearchableSelect
+        multiple
+        variant="cell"
+        value={current}
+        options={options}
+        ariaLabel={t('teams.editProjects')}
+        placeholder="—"
+        searchPlaceholder={t('teams.searchProjects')}
+        onChange={(ids) => {
+          const next = ids as string[]
+          if (next.length === 0) {
+            notify.error(t('teams.projectsMinError'))
+            return
+          }
+          void update
+            .mutateAsync({ projectIds: next })
+            .then(() => notify.success(t('teams.projectsUpdated')))
+            .catch((err: unknown) => notify.fromError(err, t('teams.projectsUpdateError')))
+        }}
+      />
+    </div>
+  )
+}
+
+/** Status — inline active/archived picker; commits via useUpdateTeam({ status }). */
+function TeamStatusCell({ team }: { team: Team }) {
+  const { t } = useTranslation('settings')
+  const update = useUpdateTeam(team.id)
+  return (
+    <div className="min-w-0 flex-1">
+      <SearchableSelect
+        variant="cell"
+        value={team.status}
+        options={[
+          { value: 'active', label: t('teams.statusActive') },
+          { value: 'archived', label: t('teams.statusArchived') },
+        ]}
+        ariaLabel={t('teams.editStatus')}
+        onChange={(v) => {
+          const next = v as TeamStatus
+          if (next === team.status) return
+          void update
+            .mutateAsync({ status: next })
+            .then(() => notify.success(t('teams.statusUpdated')))
+            .catch((err: unknown) => notify.fromError(err, t('teams.statusUpdateError')))
+        }}
+      />
+    </div>
+  )
+}
+
+/** Click-to-sort state for the shared header (same contract as the list pages). */
+function useColumnSort() {
+  const [sortCol, setSortCol] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const onSort = useCallback(
+    (col: string) => {
+      if (sortCol === col) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+      else {
+        setSortCol(col)
+        setSortDir('asc')
+      }
+    },
+    [sortCol],
+  )
+  return { sortCol, sortDir, sort: { col: sortCol, dir: sortDir, onSort } }
+}
+
+/** Client-side sort over the (small, fully-loaded) team roster. */
+function sortRows<T>(
+  rows: T[],
+  sortCol: string | null,
+  sortDir: 'asc' | 'desc',
+  keyOf: (row: T, col: string) => string | number,
+): T[] {
+  if (!sortCol) return rows
+  const dir = sortDir === 'asc' ? 1 : -1
+  return [...rows].sort((a, b) => {
+    const av = keyOf(a, sortCol)
+    const bv = keyOf(b, sortCol)
+    if (av < bv) return -1 * dir
+    if (av > bv) return 1 * dir
+    return 0
+  })
+}
+
+export function TeamsTab() {
+  const { t } = useTranslation('settings')
+  const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
+  // Management needs every team (metrics + status filter) — include archived.
+  const { data: teams = [], isLoading } = useWorkspaceTeams(workspaceId, true)
+  const { data: members = [] } = useWorkspaceMembers(workspaceId)
+  const { data: projects = [] } = useProjects(workspaceId)
+
+  const [showCreate, setShowCreate] = useState(false)
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'archived'>('all')
+
+  const memberById = useMemo(() => new Map(members.map((m) => [m.userId, m])), [members])
+
+  const metrics = useMemo(() => {
+    const active = teams.filter((tm) => tm.status === 'active').length
+    return { total: teams.length, active, archived: teams.length - active }
+  }, [teams])
+
+  const filteredTeams = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return teams.filter((team) => {
+      if (statusFilter !== 'all' && team.status !== statusFilter) return false
+      if (!q) return true
+      const lead = team.leadId ? memberById.get(team.leadId) : undefined
+      const haystack = [
+        team.key,
+        team.name,
+        ...(team.projects ?? []).flatMap((p) => [p.key, p.name]),
+        lead?.displayName ?? '',
+      ]
+        .join(' ')
+        .toLowerCase()
+      return haystack.includes(q)
+    })
+  }, [teams, search, statusFilter, memberById])
+
+  // Shared table engine (resize / reorder / Show-Fields) + click-to-sort header.
+  const { sortCol, sortDir, sort } = useColumnSort()
+  const table = useDataTable<Team, TeamCtx, TeamColKey>(TEAM_COLUMNS, {
+    storageKey: STORAGE_KEYS.SETTINGS_TEAMS_COLUMNS,
+  })
+
+  const sortedTeams = useMemo(
+    () =>
+      sortRows(filteredTeams, sortCol, sortDir, (team, col) => {
+        switch (col) {
+          case 'team':
+            return team.name.toLowerCase()
+          case 'status':
+            return team.status
+          case 'created':
+            return team.createdAt
+          case 'lead': {
+            const lead = team.leadId ? memberById.get(team.leadId) : undefined
+            return (lead?.displayName ?? '').toLowerCase()
+          }
+          default:
+            return ''
+        }
+      }),
+    [filteredTeams, sortCol, sortDir, memberById],
+  )
+
+  const ownerMembers = useMemo<OwnerSelectMember[]>(
+    () => members.map((m) => ({ userId: m.userId, displayName: m.displayName, email: m.email })),
+    [members],
+  )
+  const memberOptions = useMemo<SelectOption[]>(
+    () =>
+      members.map((m) => {
+        const n = m.displayName ?? m.email ?? m.userId
+        return {
+          value: m.userId,
+          label: n,
+          searchText: n,
+          icon: <OwnerAvatar name={n} size={16} />,
+        }
+      }),
+    [members],
+  )
+  const projectOptions = useMemo<SelectOption[]>(
+    () =>
+      projects.map((p) => ({
+        value: p.id,
+        label: `${p.key} · ${p.name}`,
+        searchText: `${p.key} ${p.name}`,
+      })),
+    [projects],
+  )
+
+  const cellCtx = useMemo<TeamCtx>(
+    () => ({ members: ownerMembers, memberOptions, projectOptions }),
+    [ownerMembers, memberOptions, projectOptions],
+  )
+
+  const activeFilterCount = statusFilter !== 'all' ? 1 : 0
+
+  // ── Client-side pagination over the filtered/sorted roster ──────────────
+  // Mirrors the Users tab / Iteration Status page.
+  const [pageSize, setPageSize] = useState(25)
+  const [page, setPage] = useState(1)
+  const pageCount = Math.max(1, Math.ceil(sortedTeams.length / pageSize))
+  const pageResetKey = `${search}|${statusFilter}|${sortCol ?? ''}|${sortDir}|${pageSize}`
+  const [syncedPageKey, setSyncedPageKey] = useState(pageResetKey)
+  if (syncedPageKey !== pageResetKey) {
+    setSyncedPageKey(pageResetKey)
+    setPage(1)
+  }
+  const currentPage = Math.min(page, pageCount)
+  const pagedTeams = useMemo(
+    () => sortedTeams.slice((currentPage - 1) * pageSize, currentPage * pageSize),
+    [sortedTeams, currentPage, pageSize],
+  )
+  const goPrevPage = useCallback(() => setPage((p) => Math.max(1, p - 1)), [])
+  const goNextPage = useCallback(() => setPage((p) => p + 1), [])
+
+  // Row selection over the full filtered roster (bulk actions span pages).
+  const selection = useRowSelection(sortedTeams)
+
+  // Bulk archive — archive selected active teams. useUpdateTeam bakes the team
+  // id into the hook, so a bulk action over arbitrary selected ids uses a small
+  // component-local mutation over the SAME PATCH /v1/teams/{id} endpoint (no API
+  // layer change; mirrors the Users tab's inline role mutation).
+  const archiveTeam = useMutation({
+    mutationFn: async (teamId: string) => {
+      const { error, response } = await apiClient.PATCH('/v1/teams/{id}', {
+        params: { path: { id: teamId } },
+        body: { status: 'archived' } as never,
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+    },
+    meta: { invalidates: ['team'] },
+  })
+  async function archiveSelected(sel: RowSelection) {
+    const targets = teams.filter((tm) => sel.selectedIds.has(tm.id) && tm.status === 'active')
+    if (targets.length === 0) {
+      sel.clear()
+      return
+    }
+    try {
+      await Promise.all(targets.map((tm) => archiveTeam.mutateAsync(tm.id)))
+      notify.success(t('teams.bulkArchived', { count: targets.length }))
+    } catch (err) {
+      notify.fromError(err, t('teams.bulkArchiveError'))
+    } finally {
+      sel.clear()
+    }
+  }
+
+  if (!workspaceId) {
+    return <p className="text-ui-lg text-foreground-subtle">{t('members.noWorkspace')}</p>
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 py-10 text-foreground-subtle">
+        <Loader2 size={16} className="animate-spin" />
+        <span className="text-ui-lg">{t('teams.loading')}</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      {/* Page header — the tab owns its title (the settings host renders list
+          tabs full-bleed, without the gray page heading). */}
+      <div className="flex shrink-0 items-center justify-between border-b border-border-subtle px-4 py-3">
+        <h2 className="text-ui-lg font-semibold text-foreground">{t('nav.teams')}</h2>
+      </div>
+
+      {/* Metric strip — Total / Active / Archived. */}
+      <div className="flex shrink-0 flex-col gap-4 px-4 pt-4">
+        <MetricStrip className="rounded-lg border">
+          <MetricCard label="Total Teams" value={metrics.total} />
+          <MetricCard label="Active" value={metrics.active} valueColor={BRAND.success} />
+          <MetricCard label="Archived" value={metrics.archived} valueColor={BRAND.textSecondary} />
+        </MetricStrip>
+      </div>
+
+      {/* ── Toolbar — search · New Team · Filters · Show Fields (same as Users) */}
+      <PageToolbar
+        search={{
+          value: search,
+          onChange: setSearch,
+          placeholder: t('teams.searchPlaceholder'),
+          ariaLabel: t('teams.searchPlaceholder'),
+          width: 224,
+        }}
+        actions={
+          <Button size="sm" onClick={() => setShowCreate(true)}>
+            <Plus size={13} /> {t('teams.newTeam')}
+          </Button>
+        }
+        activeFilterCount={activeFilterCount}
+        defaultFiltersOpen={activeFilterCount > 0}
+        filters={
+          <div className="w-40">
+            <SearchableSelect
+              variant="field"
+              value={statusFilter}
+              ariaLabel={t('teams.filterByStatus')}
+              options={[
+                { value: 'all', label: t('teams.allStatuses') },
+                { value: 'active', label: t('teams.statusActive') },
+                { value: 'archived', label: t('teams.statusArchived') },
+              ]}
+              onChange={(v) => setStatusFilter(v as 'all' | 'active' | 'archived')}
+            />
+          </div>
+        }
+        fields={<ColumnFieldsMenu {...table.fieldsMenuProps} />}
+      />
+
+      {/* ── Table — SelectableTable + PaginationFooter (Users composition) */}
+      <SelectableTable
+        rows={pagedTeams}
+        selection={selection}
+        headerProps={table.headerProps}
+        sort={sort}
+        padClassName="gap-2 px-3"
+        selectAllAriaLabel={t('teams.selectAll')}
+        bulkActions={(sel) => (
+          <BulkBarButton
+            icon={<Archive size={13} />}
+            label={t('teams.bulkArchive')}
+            onClick={() => void archiveSelected(sel)}
+          />
+        )}
+        empty={
+          sortedTeams.length === 0 ? (
+            <div className="flex flex-1 items-center justify-center px-3 py-10 text-center text-ui-sm text-foreground-subtle">
+              {search.trim() || statusFilter !== 'all' ? t('teams.emptySearch') : t('teams.empty')}
+            </div>
+          ) : undefined
+        }
+        footer={
+          sortedTeams.length > 0 ? (
+            <PaginationFooter
+              pageSize={pageSize}
+              setPageSize={setPageSize}
+              currentPage={currentPage}
+              rangeStart={(currentPage - 1) * pageSize + 1}
+              rangeEnd={(currentPage - 1) * pageSize + pagedTeams.length}
+              total={sortedTeams.length}
+              pageCount={pageCount}
+              hasPrevPage={currentPage > 1}
+              hasNextPage={currentPage < pageCount}
+              onPrevPage={goPrevPage}
+              onNextPage={goNextPage}
+            />
+          ) : undefined
+        }
+        renderRow={(team, { selected, onToggleSelect }) => (
+          // Plain row — the cells (Lead/Members/Projects/Status selects) are the
+          // interactive surface; there is no whole-row click. The gutter selects.
+          <div key={team.id} className={`${ROW_CLASS}${selected ? 'bg-accent-bg' : ''}`}>
+            <RowGutter
+              dragDisabled
+              checkbox={{
+                checked: selected,
+                onChange: onToggleSelect,
+                ariaLabel: t('teams.selectRow'),
+              }}
+            />
+            {table.renderCells(team, cellCtx)}
+          </div>
+        )}
+      />
+
+      {showCreate && (
+        <NewTeamModal workspaceId={workspaceId} onClose={() => setShowCreate(false)} />
+      )}
+    </div>
+  )
+}
+
+// ── New Team modal (create-only; inline cells replace the edit path) ────────────
+
+function NewTeamModal({ workspaceId, onClose }: { workspaceId: string; onClose: () => void }) {
+  const { t } = useTranslation('settings')
   const create = useCreateTeam()
-  const update = useUpdateTeam(team?.id ?? '')
-  const pending = create.isPending || update.isPending
-
   const { data: projects = [] } = useProjects(workspaceId)
   const { data: members = [] } = useWorkspaceMembers(workspaceId)
-  const { data: teamMembers = [], isFetched: membersFetched } = useTeamMembers(team?.id)
 
-  const [name, setName] = useState(team?.name ?? '')
-  const [key, setKey] = useState(team?.key ?? '')
-  const [description, setDescription] = useState(team?.description ?? '')
-  const [status, setStatus] = useState<TeamStatus>(team?.status ?? 'active')
-  const [leadId, setLeadId] = useState(team?.leadId ?? '')
-  const [projectIds, setProjectIds] = useState<string[]>(
-    team?.projects?.map((p) => p.projectId) ?? [],
-  )
+  const [name, setName] = useState('')
+  const [key, setKey] = useState('')
+  const [description, setDescription] = useState('')
+  const [status, setStatus] = useState<TeamStatus>('active')
+  const [leadId, setLeadId] = useState('')
+  const [projectIds, setProjectIds] = useState<string[]>([])
   const [memberUserIds, setMemberUserIds] = useState<string[]>([])
 
-  // On edit, seed the member selection once the team's roster resolves.
-  const seededRef = useRef(false)
-  useEffect(() => {
-    if (isEdit && membersFetched && !seededRef.current) {
-      setMemberUserIds(teamMembers.map((m) => m.userId))
-      seededRef.current = true
-    }
-  }, [isEdit, membersFetched, teamMembers])
-
+  // A team must link to ≥1 project (API constraint), so Projects stays required.
   const canSubmit = name.trim() !== '' && key.trim() !== '' && projectIds.length > 0
 
   const projectOptions = projects.map((p) => ({
@@ -113,320 +602,116 @@ function TeamFormModal({
     e.preventDefault()
     if (!canSubmit) return
     try {
-      if (isEdit) {
-        await update.mutateAsync({
-          name: name.trim(),
-          description: description.trim() || null,
-          leadId: leadId || null,
-          status,
-          projectIds,
-          memberUserIds,
-        })
-        notify.success('Team updated')
-      } else {
-        await create.mutateAsync({
-          workspaceId,
-          name: name.trim(),
-          key: key.trim(),
-          description: description.trim() || undefined,
-          leadId: leadId || null,
-          status,
-          projectIds,
-          memberUserIds,
-        })
-        notify.success(`Team "${name.trim()}" created`)
-      }
+      await create.mutateAsync({
+        workspaceId,
+        name: name.trim(),
+        key: key.trim(),
+        description: description.trim() || undefined,
+        leadId: leadId || null,
+        status,
+        projectIds,
+        memberUserIds,
+      })
+      notify.success(t('teams.teamCreated', { name: name.trim() }))
       onClose()
     } catch (err) {
-      notify.fromError(err, isEdit ? 'Failed to update team' : 'Failed to create team')
+      notify.fromError(err, t('teams.createFailed'))
     }
   }
 
   return (
-    <AppModal
-      open
-      onClose={onClose}
-      title={isEdit ? `Edit ${team.name}` : 'Create Team'}
-      width={480}
-    >
+    <AppModal open onClose={onClose} title={t('teams.newTeamTitle')} width={480}>
       <form onSubmit={(e) => void handleSubmit(e)}>
         <ModalBody className="space-y-4">
-          <FormField label="Team Name" required>
+          <FormField label={t('teams.teamNameLabel')} required>
             <Input
               value={name}
               onChange={(e) => {
                 setName(e.target.value)
-                if (!isEdit && (!key || key === sanitizeKey(name))) {
-                  setKey(sanitizeKey(e.target.value))
-                }
+                if (!key || key === sanitizeKey(name)) setKey(sanitizeKey(e.target.value))
               }}
-              placeholder="Platform Engineering"
+              placeholder={t('teams.namePlaceholder')}
             />
           </FormField>
 
-          <FormField label="Team Key" required hint="Uppercase, unique in workspace (max 10)">
+          <FormField label={t('teams.keyLabel')} required hint={t('teams.keyHint')}>
             <Input
               value={key}
               onChange={(e) => setKey(sanitizeKey(e.target.value))}
-              placeholder="PLAT"
-              disabled={isEdit}
+              placeholder={t('teams.keyPlaceholder')}
             />
           </FormField>
 
-          <FormField label="Projects" required hint="A team must belong to at least one project">
+          <FormField label={t('teams.projectsLabel')} required hint={t('teams.projectsHint')}>
             <SearchableSelect
               variant="field"
               multiple
               value={projectIds}
-              ariaLabel="Projects"
-              placeholder="Select projects…"
-              searchPlaceholder="Search projects"
+              ariaLabel={t('teams.projectsLabel')}
+              placeholder={t('teams.projectsPlaceholder')}
+              searchPlaceholder={t('teams.searchProjects')}
               options={projectOptions}
               onChange={(ids) => setProjectIds(ids as string[])}
             />
           </FormField>
 
-          <FormField label="Team Lead">
+          <FormField label={t('teams.teamLeadLabel')}>
             <SearchableSelect
               variant="field"
               value={leadId}
-              ariaLabel="Team lead"
-              placeholder="No lead"
-              searchPlaceholder="Search members"
-              options={[{ value: '', label: 'No lead' }, ...memberOptions]}
+              ariaLabel={t('teams.teamLeadLabel')}
+              placeholder={t('teams.noLeadOption')}
+              searchPlaceholder={t('teams.searchMembers')}
+              options={[{ value: '', label: t('teams.noLeadOption') }, ...memberOptions]}
               onChange={(v) => setLeadId(v as string)}
             />
           </FormField>
 
-          <FormField label="Members">
+          <FormField label={t('teams.membersLabel')}>
             <SearchableSelect
               variant="field"
               multiple
               value={memberUserIds}
-              ariaLabel="Members"
-              placeholder="Add members…"
-              searchPlaceholder="Search members"
+              ariaLabel={t('teams.membersLabel')}
+              placeholder={t('teams.membersPlaceholder')}
+              searchPlaceholder={t('teams.searchMembers')}
               options={memberOptions}
               onChange={(ids) => setMemberUserIds(ids as string[])}
             />
           </FormField>
 
-          <FormField label="Description">
+          <FormField label={t('teams.descriptionLabel')}>
             <Textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="What does this team own?"
+              placeholder={t('teams.descriptionPlaceholder')}
               rows={2}
             />
           </FormField>
 
-          <FormField label="Status" required>
+          <FormField label={t('teams.statusLabel')} required>
             <SearchableSelect
               variant="field"
               value={status}
-              ariaLabel="Status"
+              ariaLabel={t('teams.statusLabel')}
               options={[
-                { value: 'active', label: 'Active' },
-                { value: 'archived', label: 'Deactive' },
+                { value: 'active', label: t('teams.statusActive') },
+                { value: 'archived', label: t('teams.statusArchived') },
               ]}
               onChange={(v) => setStatus(v as TeamStatus)}
             />
           </FormField>
         </ModalBody>
         <ModalFooter>
-          <Button type="submit" disabled={pending || !canSubmit}>
-            {pending ? <Loader2 size={12} className="animate-spin" /> : null}
-            {isEdit ? 'Save' : 'Create'}
+          <Button type="submit" disabled={create.isPending || !canSubmit}>
+            {create.isPending ? <Loader2 size={12} className="animate-spin" /> : null}
+            {t('teams.createTeam')}
           </Button>
           <Button type="button" variant="outline" onClick={onClose}>
-            Cancel
+            {t('common:cancel')}
           </Button>
         </ModalFooter>
       </form>
     </AppModal>
-  )
-}
-
-// ── Teams list ──────────────────────────────────────────────────────────────
-
-export function TeamsTab() {
-  const { t } = useTranslation('settings')
-  const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
-  // Management needs every team (metrics + status filter) — include deactive.
-  const { data: teams = [], isLoading } = useWorkspaceTeams(workspaceId, true)
-  const { data: members = [] } = useWorkspaceMembers(workspaceId)
-  const { data: projects = [] } = useProjects(workspaceId)
-
-  const [showCreate, setShowCreate] = useState(false)
-  const [editTeam, setEditTeam] = useState<Team | null>(null)
-  const [search, setSearch] = useState('')
-  const [projectFilter, setProjectFilter] = useState('') // '' = all
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'archived'>('active')
-
-  const memberById = useMemo(() => new Map(members.map((m) => [m.userId, m])), [members])
-
-  const metrics = useMemo(() => {
-    const active = teams.filter((t) => t.status === 'active').length
-    return { total: teams.length, active, deactive: teams.length - active }
-  }, [teams])
-
-  const visibleTeams = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    return teams.filter((team) => {
-      if (statusFilter !== 'all' && team.status !== statusFilter) return false
-      if (projectFilter && !(team.projects ?? []).some((p) => p.projectId === projectFilter)) {
-        return false
-      }
-      if (!q) return true
-      const lead = team.leadId ? memberById.get(team.leadId) : undefined
-      const haystack = [
-        team.key,
-        team.name,
-        ...(team.projects ?? []).flatMap((p) => [p.key, p.name]),
-        lead?.displayName ?? '',
-      ]
-        .join(' ')
-        .toLowerCase()
-      return haystack.includes(q)
-    })
-  }, [teams, search, projectFilter, statusFilter, memberById])
-
-  return (
-    <div>
-      {/* Metric strip — Total / Active / Deactive (SRS §5.1) */}
-      <MetricStrip className="mb-5 rounded-lg border">
-        <MetricCard label="Total Teams" value={metrics.total} />
-        <MetricCard label="Active" value={metrics.active} valueColor={BRAND.success} />
-        <MetricCard label="Deactive" value={metrics.deactive} valueColor={BRAND.textSecondary} />
-      </MetricStrip>
-
-      {/* Toolbar: filters + create */}
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <SearchInput value={search} onChange={setSearch} placeholder="Search teams…" width={224} />
-        <div className="w-48">
-          <SearchableSelect
-            variant="field"
-            value={projectFilter}
-            ariaLabel="Filter by project"
-            placeholder="All projects"
-            options={[
-              { value: '', label: 'All projects' },
-              ...projects.map((p) => ({ value: p.id, label: `${p.key} · ${p.name}` })),
-            ]}
-            onChange={(v) => setProjectFilter(v as string)}
-          />
-        </div>
-        <div className="w-40">
-          <SearchableSelect
-            variant="field"
-            value={statusFilter}
-            ariaLabel="Filter by status"
-            options={[
-              { value: 'active', label: 'Active' },
-              { value: 'archived', label: 'Deactive' },
-              { value: 'all', label: 'All statuses' },
-            ]}
-            onChange={(v) => setStatusFilter(v as 'all' | 'active' | 'archived')}
-          />
-        </div>
-        <Button size="sm" className="ml-auto" onClick={() => setShowCreate(true)}>
-          <Plus size={13} /> Create Team
-        </Button>
-      </div>
-
-      {isLoading ? (
-        <div className="flex items-center justify-center py-16">
-          <Spinner size="lg" />
-        </div>
-      ) : visibleTeams.length === 0 ? (
-        <EmptyState
-          icon={<UsersRound size={28} className="text-border-strong" />}
-          title={teams.length === 0 ? 'No teams yet' : 'No teams match your filters'}
-          description="Create a team and link it to a project to start assigning work."
-        />
-      ) : (
-        <div className="overflow-hidden rounded-lg border">
-          {/* Column header */}
-          <div className="flex items-center gap-4 border-b bg-surface-subtle px-4 py-2 text-ui-sm font-semibold tracking-wide text-foreground-subtle uppercase">
-            <div className="w-20 shrink-0">{t('teams.colKey')}</div>
-            <div className="min-w-0 flex-1">{t('teams.colTeam')}</div>
-            <div className="hidden w-48 shrink-0 md:block">{t('teams.colProject')}</div>
-            <div className="w-24 shrink-0">{t('common:status')}</div>
-            <div className="hidden w-40 shrink-0 sm:block">{t('teams.colLead')}</div>
-            <div className="hidden w-24 shrink-0 lg:block">{t('teams.colUpdated')}</div>
-          </div>
-          {visibleTeams.map((team, idx) => {
-            const lead = team.leadId ? memberById.get(team.leadId) : undefined
-            const primary = team.projects?.[0]
-            const extra = (team.projects?.length ?? 0) - 1
-            return (
-              <button
-                key={team.id}
-                onClick={() => setEditTeam(team)}
-                className={`flex w-full items-center gap-4 px-4 py-3 text-left transition-colors hover:bg-surface-hover ${
-                  idx > 0 ? 'border-t' : ''
-                }`}
-              >
-                <div className="w-20 shrink-0">
-                  <span className="rounded border bg-surface-subtle px-1.5 py-0.5 font-mono text-ui-sm font-medium text-foreground-subtle">
-                    {team.key}
-                  </span>
-                </div>
-                <div className="flex min-w-0 flex-1 items-center gap-3">
-                  <TeamAvatar teamKey={team.key} size={28} />
-                  <div className="min-w-0">
-                    <p className="truncate text-ui-lg font-semibold text-foreground">{team.name}</p>
-                    {team.description && (
-                      <p className="truncate text-ui-sm text-foreground-subtle">
-                        {team.description}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <div className="hidden w-48 shrink-0 truncate text-ui-md text-muted-foreground md:block">
-                  {primary ? (
-                    <>
-                      <span className="font-mono text-ui-sm">{primary.key}</span> / {primary.name}
-                      {extra > 0 && <span className="text-foreground-subtle"> +{extra}</span>}
-                    </>
-                  ) : (
-                    <span className="text-foreground-disabled">—</span>
-                  )}
-                </div>
-                <div className="w-24 shrink-0">
-                  <TeamStatusBadge status={team.status} />
-                </div>
-                <div className="hidden w-40 shrink-0 items-center gap-1.5 sm:flex">
-                  {lead ? (
-                    <>
-                      <OwnerAvatar name={lead.displayName} avatarUrl={lead.avatarUrl} size={20} />
-                      <span className="truncate text-ui-md text-muted-foreground">
-                        {lead.displayName}
-                      </span>
-                    </>
-                  ) : (
-                    <span className="text-ui-md text-foreground-disabled">{t('teams.noLead')}</span>
-                  )}
-                </div>
-                <div className="hidden w-24 shrink-0 text-ui-md text-foreground-subtle lg:block">
-                  {formatDate(team.updatedAt)}
-                </div>
-              </button>
-            )
-          })}
-        </div>
-      )}
-
-      {showCreate && workspaceId && (
-        <TeamFormModal workspaceId={workspaceId} team={null} onClose={() => setShowCreate(false)} />
-      )}
-      {editTeam && workspaceId && (
-        <TeamFormModal
-          workspaceId={workspaceId}
-          team={editTeam}
-          onClose={() => setEditTeam(null)}
-        />
-      )}
-    </div>
   )
 }

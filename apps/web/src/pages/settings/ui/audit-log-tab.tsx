@@ -1,36 +1,39 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
-import { Clock } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 
 import { apiClient } from '@/shared/api/http-client'
+import type { components } from '@/shared/api/generated/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useWorkspaceMembers } from '@/features/workspaces/api'
 import { useWorkspaceTeams } from '@/features/teams/api'
 import { describeAuditEvent, type AuditNameResolver } from '@/entities/audit/model/describe-audit'
 import { Button } from '@/shared/ui/button'
+import { Input } from '@/shared/ui/input'
 import { PaginationFooter } from '@/shared/ui/pagination-footer'
-import { SearchInput } from '@/shared/ui/search-input'
-import { Spinner } from '@/shared/ui/spinner'
+import { SelectableTable, useDataTable, type ColumnSpec } from '@/shared/ui/table'
+import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
+import { PageToolbar } from '@/shared/ui/page-toolbar'
+import { STORAGE_KEYS } from '@/shared/config/storage-keys'
+import { formatDateTime } from '@/shared/lib/utils'
 import { useSystemRoles } from '../model/use-system-roles'
 
 const AUDIT_DEFAULT_PAGE_SIZE = 50
 
-/** Full, unambiguous timestamp for an audit entry (audit trails avoid abbreviations). */
-function formatAuditTime(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
-    weekday: 'short',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  })
+type AuditRow = components['schemas']['AuditLogResponseDto']
+type AuditColKey = 'time' | 'actor' | 'detail'
+
+// Per-render context: the id→name resolver `describeAuditEvent` needs, plus the
+// resolved "System" fallback for actor-less (system) events.
+interface AuditCtx {
+  resolver: AuditNameResolver
+  systemLabel: string
 }
 
-const DATE_INPUT_CLS = 'rounded border px-2 py-1.5 text-ui-sm text-foreground focus:outline-none'
+// Match the Users / Teams row look, but READ-ONLY: no cursor, no click, no gutter.
+const ROW_CLASS =
+  'group flex min-h-[34px] items-center gap-2 border-b border-border-subtle bg-card px-3 text-ui-md transition-colors duration-100 hover:bg-primary-lighter'
 
 export function AuditLogTab() {
   const { t } = useTranslation('settings')
@@ -45,6 +48,8 @@ export function AuditLogTab() {
   const { data: teams = [] } = useWorkspaceTeams(workspaceId)
   const { data: roles = [] } = useSystemRoles()
 
+  // Server offset/limit pagination — logs are large, so the API is the source of
+  // truth for the page window (never client-sliced).
   const { data, isLoading, isError } = useQuery({
     queryKey: ['audit-logs', offset, pageSize, from, to],
     queryFn: async () => {
@@ -74,10 +79,13 @@ export function AuditLogTab() {
     }
   }, [members, teams, roles])
 
-  const actorLabel = (a: (typeof rows)[number]): string =>
-    a.actorName ?? a.actorEmail ?? t('audit.system')
+  const systemLabel = t('audit.system')
+  const cellCtx = useMemo<AuditCtx>(() => ({ resolver, systemLabel }), [resolver, systemLabel])
 
+  // Client-side search over the CURRENT server page only (matches the previous
+  // behaviour — a quick refine within the loaded window).
   const q = search.trim().toLowerCase()
+  const actorLabel = (a: AuditRow): string => a.actorName ?? a.actorEmail ?? systemLabel
   const filtered = q
     ? rows.filter(
         (a) =>
@@ -86,36 +94,122 @@ export function AuditLogTab() {
       )
     : rows
 
+  // Shared table engine (resize / reorder / Show-Fields). No sortCol on any
+  // column and no `sort` passed: server pagination means click-sort would only
+  // reorder the visible page, which is misleading — so the header stays static.
+  const columns = useMemo<ColumnSpec<AuditRow, AuditCtx, AuditColKey>[]>(
+    () => [
+      {
+        key: 'time',
+        label: t('audit.colTime'),
+        defaultWidth: 230,
+        minWidth: 170,
+        locked: true,
+        cellClassName: 'flex items-center',
+        cell: (r) => (
+          <span className="truncate text-ui-md text-foreground-subtle">
+            {formatDateTime(r.occurredAt)}
+          </span>
+        ),
+      },
+      {
+        key: 'actor',
+        label: t('audit.colActor'),
+        defaultWidth: 200,
+        minWidth: 140,
+        cellClassName: 'flex min-w-0 items-center',
+        cell: (r, ctx) => (
+          <span
+            className="truncate text-ui-md text-foreground"
+            title={r.actorEmail ?? r.actorId ?? undefined}
+          >
+            {r.actorName ?? r.actorEmail ?? ctx.systemLabel}
+          </span>
+        ),
+      },
+      {
+        key: 'detail',
+        label: t('audit.colDetail'),
+        defaultWidth: 420,
+        minWidth: 220,
+        grow: true,
+        cellClassName: 'flex min-w-0 items-center',
+        cell: (r, ctx) => (
+          <span
+            className="truncate text-ui-md text-foreground"
+            title={`${r.action} · ${r.resourceType} · ${r.resourceId}`}
+          >
+            {describeAuditEvent(r, ctx.resolver)}
+          </span>
+        ),
+      },
+    ],
+    [t],
+  )
+
+  const table = useDataTable<AuditRow, AuditCtx, AuditColKey>(columns, {
+    storageKey: STORAGE_KEYS.SETTINGS_AUDIT_COLUMNS,
+  })
+
+  const activeFilterCount = (from ? 1 : 0) + (to ? 1 : 0)
+
+  if (!workspaceId) {
+    return <p className="text-ui-lg text-foreground-subtle">{t('members.noWorkspace')}</p>
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 py-10 text-foreground-subtle">
+        <Loader2 size={16} className="animate-spin" />
+        <span className="text-ui-lg">{t('audit.loading')}</span>
+      </div>
+    )
+  }
+
   return (
-    <div>
-      {/* ── Header: note + filters + search ── */}
-      <div className="mb-3 flex items-end justify-between gap-3">
-        <p className="text-ui-md text-foreground-subtle">{t('audit.intro')}</p>
-        <div className="flex items-center gap-2">
-          <input
-            type="date"
-            value={from}
-            max={to || undefined}
-            onChange={(e) => {
-              setFrom(e.target.value)
-              setOffset(0)
-            }}
-            aria-label="From date"
-            className={DATE_INPUT_CLS}
-          />
-          <span className="text-ui-sm text-foreground-subtle">–</span>
-          <input
-            type="date"
-            value={to}
-            min={from || undefined}
-            onChange={(e) => {
-              setTo(e.target.value)
-              setOffset(0)
-            }}
-            aria-label="To date"
-            className={DATE_INPUT_CLS}
-          />
-          {(from || to) && (
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      {/* Page header — the tab owns its title (the settings host renders list
+          tabs full-bleed, without the gray page heading). */}
+      <div className="flex shrink-0 items-center justify-between border-b border-border-subtle px-4 py-3">
+        <h2 className="text-ui-lg font-semibold text-foreground">{t('nav.audit')}</h2>
+        <p className="text-ui-sm text-foreground-subtle">{t('audit.intro')}</p>
+      </div>
+
+      {/* ── Toolbar — search · date range filters · Show Fields ── */}
+      <PageToolbar
+        search={{
+          value: search,
+          onChange: setSearch,
+          placeholder: t('audit.searchPlaceholder'),
+          ariaLabel: t('audit.searchPlaceholder'),
+          width: 256,
+        }}
+        activeFilterCount={activeFilterCount}
+        defaultFiltersOpen={!!(from || to)}
+        filters={
+          <>
+            <Input
+              type="date"
+              value={from}
+              max={to || undefined}
+              aria-label={t('audit.fromDate')}
+              className="w-40"
+              onChange={(e) => {
+                setFrom(e.target.value)
+                setOffset(0)
+              }}
+            />
+            <Input
+              type="date"
+              value={to}
+              min={from || undefined}
+              aria-label={t('audit.toDate')}
+              className="w-40"
+              onChange={(e) => {
+                setTo(e.target.value)
+                setOffset(0)
+              }}
+            />
             <Button
               variant="outline"
               size="sm"
@@ -127,92 +221,55 @@ export function AuditLogTab() {
             >
               {t('audit.clear')}
             </Button>
-          )}
-          <SearchInput
-            value={search}
-            onChange={setSearch}
-            placeholder="Search actor or description…"
-            width={256}
-          />
-        </div>
-      </div>
+          </>
+        }
+        fields={<ColumnFieldsMenu {...table.fieldsMenuProps} />}
+      />
 
-      {/* ── Table ── */}
-      <div className="overflow-hidden rounded border">
-        <div className="flex h-8 items-center gap-2 border-b bg-background px-3">
-          {[
-            ['w-56', t('audit.colTime')],
-            ['w-48', t('audit.colActor')],
-            ['flex-1', t('audit.colDetail')],
-          ].map(([c, l]) => (
-            <div
-              key={l}
-              className={`${c} text-ui-2xs font-semibold tracking-wider text-foreground-subtle uppercase`}
-            >
-              {l}
+      {/* ── Table — read-only (no selection gutter / bulk bar) ── */}
+      <SelectableTable
+        rows={filtered}
+        selectable={false}
+        headerProps={table.headerProps}
+        padClassName="gap-2 px-3"
+        error={
+          isError ? (
+            <div className="flex flex-1 items-center justify-center px-3 py-10 text-ui-sm text-destructive">
+              {t('audit.loadError')}
             </div>
-          ))}
-        </div>
-
-        {isLoading ? (
-          <div className="flex items-center justify-center gap-2 py-10 text-foreground-subtle">
-            <Spinner size="md" />
-            <span className="text-ui-md">{t('audit.loading')}</span>
-          </div>
-        ) : isError ? (
-          <div className="px-3 py-6 text-center text-ui-sm text-destructive">
-            {t('audit.loadError')}
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="px-3 py-6 text-center text-ui-sm text-foreground-subtle">
-            {t('audit.empty')}
-          </div>
-        ) : (
-          filtered.map((a) => (
-            <div
-              key={a.id}
-              className="flex min-h-10 items-center gap-2 border-b border-border-inner px-3 py-1.5"
-            >
-              <div className="flex w-56 items-center gap-1 text-ui-xs text-foreground-subtle">
-                <Clock size={10} />
-                {formatAuditTime(a.occurredAt)}
-              </div>
-              <div
-                className="w-48 truncate text-ui-sm font-medium text-foreground"
-                title={a.actorEmail ?? a.actorId ?? undefined}
-              >
-                {actorLabel(a)}
-              </div>
-              <div
-                className="min-w-0 flex-1 truncate text-ui-sm text-foreground"
-                title={`${a.action} · ${a.resourceType} · ${a.resourceId}`}
-              >
-                {describeAuditEvent(a, resolver)}
-              </div>
+          ) : undefined
+        }
+        empty={
+          filtered.length === 0 ? (
+            <div className="flex flex-1 items-center justify-center px-3 py-10 text-center text-ui-sm text-foreground-subtle">
+              {t('audit.empty')}
             </div>
-          ))
+          ) : undefined
+        }
+        footer={
+          rows.length > 0 ? (
+            <PaginationFooter
+              pageSize={pageSize}
+              setPageSize={(n) => {
+                setPageSize(n)
+                setOffset(0)
+              }}
+              currentPage={Math.floor(offset / pageSize) + 1}
+              rangeStart={rows.length === 0 ? 0 : offset + 1}
+              rangeEnd={offset + rows.length}
+              hasPrevPage={offset > 0}
+              hasNextPage={hasNextPage}
+              onPrevPage={() => setOffset((o) => Math.max(0, o - pageSize))}
+              onNextPage={() => setOffset((o) => o + pageSize)}
+            />
+          ) : undefined
+        }
+        renderRow={(r) => (
+          <div key={r.id} className={ROW_CLASS} style={{ minWidth: 'max-content' }}>
+            {table.renderCells(r, cellCtx)}
+          </div>
         )}
-      </div>
-
-      {/* ── Pagination ── */}
-      {rows.length > 0 && (
-        <div className="mt-3 overflow-hidden rounded-lg border">
-          <PaginationFooter
-            pageSize={pageSize}
-            setPageSize={(n) => {
-              setPageSize(n)
-              setOffset(0)
-            }}
-            currentPage={Math.floor(offset / pageSize) + 1}
-            rangeStart={rows.length === 0 ? 0 : offset + 1}
-            rangeEnd={offset + rows.length}
-            hasPrevPage={offset > 0}
-            hasNextPage={hasNextPage}
-            onPrevPage={() => setOffset((o) => Math.max(0, o - pageSize))}
-            onNextPage={() => setOffset((o) => o + pageSize)}
-          />
-        </div>
-      )}
+      />
     </div>
   )
 }

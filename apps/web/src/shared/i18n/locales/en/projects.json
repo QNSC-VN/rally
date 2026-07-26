@@ -30,8 +30,8 @@
     "teams": "Teams"
   },
   "actions": {
-    "archive": "Archive project",
-    "restore": "Restore project",
+    "archive": "Archive",
+    "restore": "Restore",
     "edit": "Edit project",
     "viewBacklog": "View backlog",
     "viewBoard": "View board"
