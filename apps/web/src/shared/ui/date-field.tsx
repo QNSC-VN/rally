@@ -17,20 +17,18 @@
 import { useCallback, useState } from 'react'
 import { CalendarDays } from 'lucide-react'
 import { Popover as PopoverPrimitive } from 'radix-ui'
-import { format, parseISO } from 'date-fns'
 
 import { Calendar } from '@/shared/ui/calendar'
 import { BRAND } from '@/shared/config/brand'
-import { cn } from '@/shared/lib/utils'
+import { cn, formatDateIso } from '@/shared/lib/utils'
 import { registerOpenPopover, unregisterOpenPopover } from '@/shared/ui/popover-coordinator'
 import { AppPopoverContent } from '@/shared/ui/app-popover'
 import { FIELD_FOCUS_VISIBLE } from '@/shared/ui/field-focus'
 
-/** Render an ISO date-only / timestamp string as `yyyy-MM-dd` (Rally's format). */
+/** Render an ISO date-only / timestamp string as `yyyy-MM-dd` (Rally's format),
+ *  timezone-aware for timestamps via the shared prefs-driven formatter. */
 function toIsoLabel(value: string | null | undefined, placeholder: string): string {
-  if (!value) return placeholder
-  const d = value.length <= 10 ? parseISO(value) : new Date(value)
-  return Number.isNaN(d.getTime()) ? placeholder : format(d, 'yyyy-MM-dd')
+  return formatDateIso(value, placeholder)
 }
 
 export interface DateFieldProps {

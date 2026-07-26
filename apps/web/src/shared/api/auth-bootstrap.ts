@@ -8,6 +8,7 @@
 import { ENV } from '@/shared/config/env'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { setCsrfToken } from './csrf'
+import { setFormatPrefs, resolveFormatPrefs } from '@/shared/lib/format-prefs'
 
 const BASE = ENV.API_BASE_URL
 
@@ -38,6 +39,14 @@ async function _run(): Promise<void> {
     // Session-bound CSRF token for this page's lifetime — every state-changing
     // request echoes it back in the X-CSRF-Token header.
     setCsrfToken(user.csrfToken ?? null)
+    // Resolve the date/number formatting prefs: user's own settings first, then
+    // the workspace default, then UTC/en. Read by shared/lib/utils formatters.
+    setFormatPrefs(
+      resolveFormatPrefs(
+        { locale: user.locale, timezone: user.timezone },
+        user.workspaceDefaults ?? null,
+      ),
+    )
     setUser(
       {
         ...user,
@@ -78,4 +87,9 @@ interface MeResponse {
     roleSlug: string | null
     roleName: string | null
   }[]
+  workspaceDefaults?: {
+    timezone: string | null
+    locale: string | null
+    dateFormat: string | null
+  } | null
 }

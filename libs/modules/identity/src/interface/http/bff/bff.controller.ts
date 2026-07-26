@@ -220,10 +220,11 @@ export class BffController {
     @Req() req: FastifyRequest,
     @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<UserProfileResponseDto> {
-    const [profile, { role, permissions }, memberships] = await Promise.all([
+    const [profile, { role, permissions }, memberships, settings] = await Promise.all([
       this.authService.getMe(user.sub),
       this.accessService.getUserRoleAndPermissions(user.sub, user.workspaceId),
       this.workspaceService.getMemberships(user.sub),
+      this.workspaceService.getSettings(user.workspaceId).catch(() => null),
     ]);
     return {
       id: profile.id,
@@ -239,6 +240,13 @@ export class BffController {
       createdAt: profile.createdAt.toISOString(),
       updatedAt: profile.updatedAt.toISOString(),
       memberships,
+      workspaceDefaults: settings
+        ? {
+            timezone: settings.timezone,
+            locale: settings.defaultLocale,
+            dateFormat: settings.dateFormat,
+          }
+        : null,
       // Mint the CSRF token here rather than from a dedicated endpoint: the SPA
       // already calls /bff/me on every start and page refresh, so the token's
       // lifecycle matches the session's with no extra round-trip. generateCsrf
