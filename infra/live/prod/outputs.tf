@@ -1,27 +1,19 @@
-output "alb_dns_name" { value = data.terraform_remote_state.runtime.outputs.alb_dns_name }
-output "ecs_cluster_name" { value = module.ecs_cluster.cluster_name }
-output "ecs_api_service" { value = module.api.service_name }
-output "ecs_worker_service" { value = module.worker.service_name }
-output "ecs_migrator_task_def" {
-  value       = module.migrator.family
-  description = "Migrator task definition family name — use with aws ecs run-task"
-}
-output "rds_endpoint" { value = module.rds.endpoint }
-output "rds_master_secret_arn" { value = module.rds.master_secret_arn }
-output "cache_endpoint" { value = local.cache_endpoint }
-output "secret_arns" { value = module.secrets.secret_arns }
-
-# Networking — needed for ECS run-task (migrator) and GitHub env vars.
-# Sourced from the shared runtime layer (runtime-prod) so the CI output-sync stays correct.
-output "private_subnet_ids" { value = data.terraform_remote_state.runtime.outputs.private_subnet_ids }
-output "sg_app_id" { value = data.terraform_remote_state.runtime.outputs.sg_app_id }
-
-# Messaging — useful for verifying queue setup
-output "sqs_queue_urls" { value = module.messaging.queue_urls }
-output "sns_topic_arns" { value = module.messaging.topic_arns }
-
-# Web (Cloudflare Pages) outputs — PAGES_PROJECT is published to GitHub env vars
-# for the rally-web CI (wrangler --project-name).
-output "web_pages_project" { value = try(module.web[0].project_name, null) }
-output "web_custom_domain" { value = try(module.web[0].custom_domain, null) }
-output "web_url" { value = try("https://${module.web[0].custom_domain}", null) }
+// Re-exported from the stack module. CI's output-sync reads these to publish GitHub
+// environment variables (ECS names, RDS id, migrator subnets), so the names must not
+// change even though the resources moved.
+output "alb_dns_name" { value = module.stack.alb_dns_name }
+output "ecs_cluster_name" { value = module.stack.ecs_cluster_name }
+output "ecs_api_service" { value = module.stack.ecs_api_service }
+output "ecs_worker_service" { value = module.stack.ecs_worker_service }
+output "ecs_migrator_task_def" { value = module.stack.ecs_migrator_task_def }
+output "rds_endpoint" { value = module.stack.rds_endpoint }
+output "rds_master_secret_arn" { value = module.stack.rds_master_secret_arn }
+output "secret_arns" { value = module.stack.secret_arns }
+output "private_subnet_ids" { value = module.stack.private_subnet_ids }
+output "sg_app_id" { value = module.stack.sg_app_id }
+output "sqs_queue_urls" { value = module.stack.sqs_queue_urls }
+output "sns_topic_arns" { value = module.stack.sns_topic_arns }
+output "web_pages_project" { value = module.stack.web_pages_project }
+output "web_custom_domain" { value = module.stack.web_custom_domain }
+output "web_url" { value = module.stack.web_url }
+output "alarm_topic_arn" { value = module.stack.alarm_topic_arn }

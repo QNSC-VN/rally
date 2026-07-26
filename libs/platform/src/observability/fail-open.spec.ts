@@ -1,5 +1,5 @@
 /// <reference types="node" />
-import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { FAIL_OPEN_FIELD, failOpenLog } from '@qnsc-vn/observability';
@@ -26,16 +26,31 @@ describe('failOpenLog', () => {
     });
   });
 
-  it('uses the field name both infra environments filter on', () => {
+  it('uses the field name the infra actually filters on', () => {
     // Guards the rename: the alarm is worthless if the field drifts.
     expect(FAIL_OPEN_FIELD).toBe('securityFailOpen');
 
-    const root = join(__dirname, '../../../..');
-    for (const env of ['develop', 'prod']) {
-      const tf = readFileSync(join(root, 'infra/live', env, 'main.tf'), 'utf8');
-      expect(tf, `${env} is missing a metric filter for ${FAIL_OPEN_FIELD}`).toContain(
-        `$.${FAIL_OPEN_FIELD}`,
-      );
-    }
+    // Searches the whole infra tree rather than naming a file. The filter used to
+    // live in each live/<env>/main.tf and moved into modules/stack when the two
+    // environments were de-duplicated; asserting on a path would have to be edited
+    // every time the Terraform is reorganised, which is how a guard quietly stops
+    // guarding. What matters is that SOME Terraform in this repo filters on the
+    // field the application emits.
+    const infra = join(__dirname, '../../../..', 'infra');
+    // --exclude-dir is not optional: .terraform holds the cached provider binaries
+    // and module copies, and scanning them takes long enough to blow the test timeout.
+    const terraform = execFileSync(
+      'grep',
+      ['-rl', '--include=*.tf', '--exclude-dir=.terraform', `$.${FAIL_OPEN_FIELD}`, infra],
+      { encoding: 'utf8' },
+    )
+      .split('\n')
+      .filter(Boolean);
+
+    expect(
+      terraform,
+      `No Terraform under infra/ filters on ${FAIL_OPEN_FIELD}; the fail-open alarm ` +
+        `is disarmed even though the app still emits the field.`,
+    ).not.toEqual([]);
   });
 });
