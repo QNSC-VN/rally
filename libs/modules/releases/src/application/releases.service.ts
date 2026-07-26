@@ -64,7 +64,7 @@ export class ReleasesService {
     id: string,
     args: { limit: number; offset: number },
   ): Promise<{ items: ActivityLog[]; total: number }> {
-    await this.getRelease(actor.workspaceId, id);
+    await this.getReleaseForView(actor, id);
     const page = Math.floor(args.offset / args.limit) + 1;
     const res = await this.activity.listFor(id, page, args.limit);
     return { items: res.data, total: res.total };
@@ -203,6 +203,23 @@ export class ReleasesService {
     return release;
   }
 
+  /**
+   * Load a release for a READ, enforcing `release:view` at the release's project
+   * scope — not just workspace membership. Every read entry point (detail,
+   * activity, burndown, artifacts) goes through this so a user scoped to one
+   * project cannot read another project's releases in the same workspace.
+   * Mirrors getWorkItemForView / getIterationForView.
+   */
+  private async getReleaseForView(actor: JwtPayload, id: string): Promise<Release> {
+    const release = await this.getRelease(actor.workspaceId, id);
+    await this.accessService.assertProjectPermission(
+      actor,
+      release.projectId,
+      PERMISSION.RELEASE_VIEW,
+    );
+    return release;
+  }
+
   // ── Update ────────────────────────────────────────────────────────────────
 
   async updateRelease(actor: JwtPayload, id: string, input: UpdateReleaseInput): Promise<Release> {
@@ -296,7 +313,7 @@ export class ReleasesService {
     return updated;
   }
   async getReleaseDetail(actor: JwtPayload, id: string) {
-    const release = await this.getRelease(actor.workspaceId, id);
+    const release = await this.getReleaseForView(actor, id);
 
     // Task rollup: count of stories/defects linked to this release
     const stats = await this.db
@@ -372,8 +389,8 @@ export class ReleasesService {
       updatedAt: Date;
     }>
   > {
-    // Validates the release exists and is visible to the actor's workspace.
-    await this.getRelease(actor.workspaceId, releaseId);
+    // Validates the release exists and the actor may view it (project-scoped).
+    await this.getReleaseForView(actor, releaseId);
 
     const conditions = [
       eq(workItems.releaseId, releaseId),
@@ -425,11 +442,8 @@ export class ReleasesService {
 
   // ── Burndown ─────────────────────────────────────────────────────────────
 
-  async getReleaseBurndown(workspaceId: string, releaseId: string) {
-    const release = await this.releaseRepo.findById(releaseId);
-    if (!release || release.workspaceId !== workspaceId) {
-      throw new NotFoundException('RELEASE_NOT_FOUND', 'Release not found');
-    }
+  async getReleaseBurndown(actor: JwtPayload, releaseId: string) {
+    await this.getReleaseForView(actor, releaseId);
 
     const snapshots = await this.db
       .select()

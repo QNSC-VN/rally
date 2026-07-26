@@ -86,7 +86,9 @@ export class ScmController {
   // ── Work-item Connections / Changesets ───────────────────────────────────────
 
   @Get('work-items/:id/connections')
-  @Auth('workspace:view')
+  // Authn only at the guard; ScmService enforces work_item:view at the item's
+  // PROJECT scope (workspace:view would wrongly block a project-only member).
+  @Auth()
   @ApiOperation({ summary: 'List SCM connections (pull requests) for a work item' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiPagedResponse(ScmConnectionResponseDto)
@@ -101,7 +103,7 @@ export class ScmController {
   }
 
   @Get('work-items/:id/changesets')
-  @Auth('workspace:view')
+  @Auth()
   @ApiOperation({ summary: 'List SCM changesets (commits) for a work item' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiPagedResponse(ScmChangesetResponseDto)
@@ -132,7 +134,7 @@ export class ScmController {
   }
 
   @Get('scm/installations/available')
-  @Auth('workspace:manage_members')
+  @Auth('scm:manage')
   @ApiOperation({ summary: 'GitHub App installations the App can see (to connect)' })
   @ApiResponse({ status: 200, type: ScmInstallationResponseDto, isArray: true })
   @ApiCommonErrors(401, 403)
@@ -143,7 +145,7 @@ export class ScmController {
   }
 
   @Post('scm/installations')
-  @Auth('workspace:manage_members')
+  @Auth('scm:manage')
   @ApiOperation({ summary: 'Connect a GitHub App installation → auto-discover its repos' })
   @ApiResponse({ status: 201, type: ScmConnectResponseDto })
   @ApiCommonErrors(400, 401, 403)
@@ -155,7 +157,7 @@ export class ScmController {
   }
 
   @Delete('scm/installations/:installationId')
-  @Auth('workspace:manage_members')
+  @Auth('scm:manage')
   @HttpCode(204)
   @ApiOperation({ summary: 'Disconnect a GitHub App installation (deactivates its repos)' })
   @ApiParam({ name: 'installationId', type: 'string' })
@@ -181,7 +183,7 @@ export class ScmController {
   }
 
   @Post('scm/repositories')
-  @Auth('workspace:manage_members')
+  @Auth('scm:manage')
   @ApiOperation({ summary: 'Manually register a repository (workspace-scoped)' })
   @ApiResponse({ status: 201, type: ScmRepositoryResponseDto })
   @ApiCommonErrors(400, 401, 403)
@@ -198,7 +200,7 @@ export class ScmController {
   }
 
   @Post('scm/repositories/:id/sync')
-  @Auth('workspace:manage_members')
+  @Auth('scm:manage')
   @ApiOperation({ summary: 'Enqueue a backfill (Sync now) for a mapped repository' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 201, type: ScmSyncResponseDto })
@@ -211,7 +213,7 @@ export class ScmController {
   }
 
   @Delete('scm/repositories/:id')
-  @Auth('workspace:manage_members')
+  @Auth('scm:manage')
   @HttpCode(204)
   @ApiOperation({ summary: 'Remove a repository mapping' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })

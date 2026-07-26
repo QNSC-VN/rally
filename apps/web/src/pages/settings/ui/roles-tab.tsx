@@ -1,66 +1,92 @@
-import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useQuery, useMutation } from '@tanstack/react-query'
-import { Shield, Check, Lock, Save, Loader2 } from 'lucide-react'
+import { Shield } from 'lucide-react'
 
 import { cn } from '@/shared/lib/utils'
-import { PERMISSION } from '@/shared/config/permissions'
-import { apiClient } from '@/shared/api/http-client'
-import { apiErrorMessage } from '@/shared/api/api-error'
-import { useAuthStore } from '@/shared/lib/stores/auth.store'
-import { notify } from '@/shared/lib/toast'
-import { Button } from '@/shared/ui/button'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { Spinner } from '@/shared/ui/spinner'
 import { useSystemRoles, type Role } from '../model/use-system-roles'
 
-/** Turn `workspace_admin` / `workspace.manage_members` into `Workspace Admin`. */
-function humanizeSlug(value: string): string {
-  return value.replace(/[._:]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+/**
+ * Roles & Permissions — a READ-ONLY capability viewer.
+ *
+ * The product ships three fixed canonical roles; what each can do is defined by
+ * the code catalogue, not edited per company. So this screen is a transparency
+ * grid ("what can each role do") in plain product language — NOT an editable
+ * permission checklist. Every cell is DERIVED from the role's actual permission
+ * codes, so the view can never drift from enforcement.
+ *
+ *   Full = can do it · View = read only · — = no access
+ */
+
+type Cell = 'full' | 'view' | 'none'
+
+/** One human capability row → the permission code(s) that back it. */
+interface CapabilityRow {
+  label: string
+  /** Holding this code (or its namespace / `workspace:*` wildcard) ⇒ Full. */
+  manage?: string
+  /** Holding this ⇒ at least View. */
+  view?: string
+  /** Reads are open to any member (no gate) ⇒ everyone gets at least View. */
+  openView?: boolean
+}
+interface CapabilityGroup {
+  group: string
+  rows: CapabilityRow[]
 }
 
-/** A single assignable permission with its scope tier. */
-type CatalogPermission = { code: string; tier: 'workspace' | 'project' }
+const CAPABILITIES: CapabilityGroup[] = [
+  {
+    group: 'Company',
+    rows: [
+      { label: 'Company settings', view: 'workspace:view', manage: 'workspace:edit' },
+      { label: 'People & invitations', manage: 'users:invite' },
+      { label: 'Roles & permissions', view: 'roles:view', manage: 'roles:edit' },
+      { label: 'Teams', manage: 'teams:create', openView: true },
+      { label: 'Integrations (source control)', manage: 'scm:manage' },
+      { label: 'Audit log', view: 'audit:view' },
+    ],
+  },
+  {
+    group: 'Projects',
+    rows: [
+      { label: 'Project settings', view: 'project:view', manage: 'project:edit' },
+      { label: 'Create · archive · delete project', manage: 'project:create' },
+      { label: 'Project members', manage: 'project:manage_members' },
+    ],
+  },
+  {
+    group: 'Delivery',
+    rows: [
+      { label: 'Backlog & work items', view: 'work_item:view', manage: 'work_item:create' },
+      { label: 'Sprints', view: 'iteration:view', manage: 'iteration:create' },
+      { label: 'Releases', view: 'release:view', manage: 'release:create' },
+      { label: 'Milestones', view: 'milestone:view', manage: 'milestone:create' },
+      { label: 'Team capacity', view: 'team_status:view', manage: 'team_status:edit' },
+      { label: 'Quality dashboard', view: 'quality:view' },
+    ],
+  },
+]
 
-/** A workspace-custom role can be edited; built-in/global roles are read-only. */
-function isRoleEditable(role: Role): boolean {
-  return !role.isSystem && role.workspaceId !== null
+/** The three canonical roles, in display order. */
+const ROLE_ORDER = ['workspace_admin', 'project_admin', 'project_member'] as const
+
+function holds(role: Role, code: string): boolean {
+  if (role.permissions.includes('workspace:*') || role.permissions.includes(code)) return true
+  const ns = code.split(':')[0]
+  return !!ns && role.permissions.includes(`${ns}:*`)
+}
+
+function cellFor(role: Role, row: CapabilityRow): Cell {
+  if (row.manage && holds(role, row.manage)) return 'full'
+  if (row.view && holds(role, row.view)) return 'view'
+  if (row.openView) return 'view'
+  return 'none'
 }
 
 export function RolesTab() {
   const { t } = useTranslation('settings')
-  const { hasPermission } = useAuthStore()
-  const canManage = hasPermission(PERMISSION.WORKSPACE_MANAGE_MEMBERS)
-
   const { data: roles = [], isLoading, isError } = useSystemRoles()
-
-  // The assignable-permission catalogue is the single source of truth for the
-  // editable matrix; only workspace admins may fetch or act on it.
-  const { data: catalog = [] } = useQuery({
-    queryKey: ['permission-catalog'],
-    enabled: canManage,
-    queryFn: async () => {
-      const res = await apiClient.GET('/v1/permissions')
-      return (res.data?.permissions ?? []) as CatalogPermission[]
-    },
-  })
-
-  const updatePermissions = useMutation({
-    mutationFn: async (vars: { roleId: string; permissions: string[] }) => {
-      const res = await apiClient.PATCH('/v1/roles/{roleId}/permissions', {
-        params: { path: { roleId: vars.roleId } },
-        body: { permissions: vars.permissions } as never,
-      })
-      if (res.error) throw new Error(apiErrorMessage(res.error))
-      return res.data
-    },
-    onSuccess: () => notify.success(t('roles.permissionsUpdated')),
-    onError: (err) => notify.fromError(err, t('roles.updateFailed')),
-    meta: { invalidates: ['workspace'] },
-  })
-
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const selected = roles.find((r) => r.id === selectedId) ?? roles[0] ?? null
 
   if (isLoading) {
     return (
@@ -69,219 +95,118 @@ export function RolesTab() {
       </div>
     )
   }
+  if (isError) return <EmptyState title={t('roles.loadError')} />
 
-  if (isError) {
-    return <EmptyState title={t('roles.loadError')} />
-  }
+  // One column per canonical role (dedupe global template vs workspace copy).
+  const columns = ROLE_ORDER.map((slug) => roles.find((r) => r.slug === slug)).filter(
+    (r): r is Role => !!r,
+  )
+  if (columns.length === 0) return <EmptyState title={t('roles.empty')} />
 
-  if (roles.length === 0) {
-    return <EmptyState title={t('roles.empty')} />
-  }
-
-  const editable = selected != null && canManage && isRoleEditable(selected)
+  const GRID = `minmax(220px,1fr) repeat(${columns.length}, 130px)`
 
   return (
-    <div className="flex gap-6">
-      {/* ── Role list ── */}
-      <div className="w-64 shrink-0 space-y-1">
-        <p className="mb-2 text-ui-xs font-semibold tracking-widest text-foreground-subtle uppercase">
-          {t('roles.listTitle')}
-        </p>
-        {roles.map((r) => {
-          const isActive = selected?.id === r.id
-          return (
-            <button
-              key={r.id}
-              type="button"
-              onClick={() => setSelectedId(r.id)}
-              className={cn(
-                'w-full rounded border px-3 py-2 text-left',
-                isActive ? 'border-border bg-surface-hover' : 'border-transparent',
-              )}
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-ui-md font-semibold text-foreground">
-                  {humanizeSlug(r.name)}
-                </span>
-                {r.isSystem && (
-                  <span className="rounded-full bg-surface-hover px-1.5 py-0.5 text-ui-2xs font-medium tracking-wide text-foreground-subtle uppercase">
-                    {t('roles.systemBadge')}
-                  </span>
-                )}
-              </div>
-              <p className="mt-1 font-mono text-ui-xs text-foreground-subtle">{r.slug}</p>
-            </button>
-          )
-        })}
+    <div className="w-full space-y-5">
+      <div className="flex items-start gap-2">
+        <Shield size={16} className="mt-0.5 text-muted-foreground" />
+        <div>
+          <h2 className="text-xl font-semibold text-foreground">
+            {t('roles.viewerTitle', 'Roles & Permissions')}
+          </h2>
+          <p className="mt-1 text-ui-md text-muted-foreground">
+            {t(
+              'roles.viewerSubtitle',
+              'What each role can do. Roles are fixed; assign them to people in User Management.',
+            )}
+          </p>
+        </div>
       </div>
 
-      {/* ── Permissions for the selected role ── */}
-      <div className="min-w-0 flex-1">
-        {selected && (
-          <>
-            <div className="mb-4 flex items-center gap-2">
-              <Shield size={15} className="text-muted-foreground" />
-              <h3 className="text-ui-xl font-semibold text-foreground">
-                {humanizeSlug(selected.name)}
-              </h3>
-              <span className="rounded-full bg-surface-hover px-2 py-0.5 text-ui-xs font-medium text-muted-foreground">
-                {t('roles.permissionCountBadge', { count: selected.permissions.length })}
-              </span>
+      {/* Legend */}
+      <div className="flex items-center gap-4 text-ui-sm text-muted-foreground">
+        <span className="flex items-center gap-1.5">
+          <Dot state="full" /> {t('roles.legendFull', 'Full')}
+        </span>
+        <span className="flex items-center gap-1.5">
+          <Dot state="view" /> {t('roles.legendView', 'View')}
+        </span>
+        <span className="flex items-center gap-1.5">
+          <Dot state="none" /> {t('roles.legendNone', 'No access')}
+        </span>
+      </div>
+
+      <section className="overflow-hidden rounded border border-border-strong bg-card">
+        {/* Header */}
+        <div
+          className="grid border-b border-border-strong bg-surface-hover px-4 py-2.5 text-ui-xs font-semibold tracking-wider text-muted-foreground uppercase"
+          style={{ gridTemplateColumns: GRID }}
+        >
+          <span>{t('roles.capabilityCol', 'Capability')}</span>
+          {columns.map((r) => (
+            <span key={r.id} className="text-center">
+              {r.name}
+            </span>
+          ))}
+        </div>
+
+        {CAPABILITIES.map((grp) => (
+          <div key={grp.group}>
+            <div className="border-b border-border-inner bg-background/40 px-4 py-1.5 text-ui-xs font-semibold tracking-wider text-foreground-subtle uppercase">
+              {t(`roles.group.${grp.group}`, grp.group)}
             </div>
+            {grp.rows.map((row) => (
+              <div
+                key={row.label}
+                className="grid items-center border-b border-border-inner px-4 py-2 text-ui-md text-foreground"
+                style={{ gridTemplateColumns: GRID }}
+              >
+                <span>{t(`roles.cap.${row.label}`, row.label)}</span>
+                {columns.map((r) => (
+                  <span key={r.id} className="flex justify-center">
+                    <CellBadge state={cellFor(r, row)} t={t} />
+                  </span>
+                ))}
+              </div>
+            ))}
+          </div>
+        ))}
+      </section>
 
-            {selected.description && (
-              <p className="mb-5 text-ui-md text-muted-foreground">{selected.description}</p>
-            )}
-
-            {/* Every role renders the same full permission grid; protected roles
-                (Workspace Admin) are simply shown read-only. This keeps the view
-                consistent instead of a separate chip layout for system roles. */}
-            <RolePermissionEditor
-              key={selected.id}
-              role={selected}
-              catalog={catalog}
-              saving={updatePermissions.isPending}
-              readOnly={!editable}
-              onSave={(permissions) =>
-                updatePermissions.mutate({ roleId: selected.id, permissions })
-              }
-            />
-
-            {!editable && !canManage && (
-              <p className="mt-3 text-ui-sm text-foreground-subtle">{t('roles.needPermission')}</p>
-            )}
-          </>
+      <p className="text-ui-sm text-foreground-subtle">
+        {t(
+          'roles.viewerFooter',
+          'Personal settings (profile, notifications) are always available to everyone.',
         )}
-      </div>
+      </p>
     </div>
   )
 }
 
-/**
- * Editable permission matrix for a custom role. Draft state is keyed on the
- * role id (via the parent `key`) so switching roles resets cleanly. Codes the
- * role holds that are not in the catalogue (e.g. a wildcard) are preserved on
- * save rather than silently dropped.
- */
-function RolePermissionEditor({
-  role,
-  catalog,
-  saving,
-  onSave,
-  readOnly = false,
-}: {
-  role: Role
-  catalog: CatalogPermission[]
-  saving: boolean
-  onSave: (permissions: string[]) => void
-  readOnly?: boolean
-}) {
-  const { t } = useTranslation('settings')
-  const initial = new Set(role.permissions)
-  const [draft, setDraft] = useState<Set<string>>(() => new Set(role.permissions))
-
-  const catalogCodes = new Set(catalog.map((c) => c.code))
-  // Codes held by the role but absent from the catalogue (e.g. wildcards) are
-  // not rendered as toggles, but must survive a save.
-  const preserved = [...initial].filter((code) => !catalogCodes.has(code))
-
-  const groups = new Map<string, CatalogPermission[]>()
-  for (const perm of catalog) {
-    const namespace = perm.code.split(':')[0]
-    const list = groups.get(namespace) ?? []
-    list.push(perm)
-    groups.set(namespace, list)
-  }
-
-  const dirty = draft.size !== initial.size || [...draft].some((code) => !initial.has(code))
-
-  function toggle(code: string) {
-    setDraft((prev) => {
-      const next = new Set(prev)
-      if (next.has(code)) next.delete(code)
-      else next.add(code)
-      return next
-    })
-  }
-
-  function handleSave() {
-    const selectedCatalog = [...draft].filter((code) => catalogCodes.has(code))
-    onSave([...new Set([...preserved, ...selectedCatalog])].sort())
-  }
-
+function Dot({ state }: { state: Cell }) {
   return (
-    <div className="space-y-4">
-      {[...groups.entries()].map(([namespace, perms]) => (
-        <div key={namespace}>
-          <p className="mb-1.5 text-ui-sm font-semibold text-foreground">
-            {humanizeSlug(namespace)}
-          </p>
-          <div className="grid grid-cols-2 gap-1.5">
-            {perms.map((perm) => {
-              const checked = draft.has(perm.code)
-              const action = perm.code.split(':')[1] ?? perm.code
-              return (
-                <button
-                  key={perm.code}
-                  type="button"
-                  onClick={() => !readOnly && toggle(perm.code)}
-                  disabled={readOnly}
-                  aria-pressed={checked}
-                  className={cn(
-                    'flex items-center gap-2 rounded border px-2 py-1.5 text-left',
-                    checked ? 'bg-surface-hover' : '',
-                    readOnly ? 'cursor-default' : 'cursor-pointer',
-                    readOnly && !checked ? 'opacity-55' : '',
-                  )}
-                >
-                  <span
-                    className={cn(
-                      'flex h-4 w-4 shrink-0 items-center justify-center rounded border',
-                      checked ? 'border-primary bg-primary' : 'border-border',
-                    )}
-                  >
-                    {checked && <Check size={11} className="text-primary-foreground" />}
-                  </span>
-                  <span className="font-mono text-ui-sm text-muted-foreground">{action}</span>
-                  <span className="ml-auto text-ui-2xs tracking-wide text-foreground-subtle uppercase">
-                    {perm.tier}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      ))}
+    <span
+      className={cn(
+        'inline-block h-2.5 w-2.5 rounded-full',
+        state === 'full' && 'bg-success',
+        state === 'view' && 'bg-primary-light',
+        state === 'none' && 'bg-border-strong',
+      )}
+    />
+  )
+}
 
-      <div className="flex items-center justify-between border-t pt-3">
-        <p className="text-ui-sm text-foreground-subtle">
-          {readOnly
-            ? t('roles.count', { count: draft.size })
-            : t('roles.selectedCount', { count: draft.size })}
-        </p>
-        {readOnly ? (
-          <div className="flex items-center gap-1.5">
-            <Lock size={11} className="text-foreground-subtle" />
-            <p className="text-ui-sm text-foreground-subtle">{t('roles.protectedRole')}</p>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setDraft(new Set(role.permissions))}
-              disabled={!dirty || saving}
-            >
-              {t('roles.reset')}
-            </Button>
-            <Button type="button" size="sm" onClick={handleSave} disabled={!dirty || saving}>
-              {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-              {t('saveChanges')}
-            </Button>
-          </div>
-        )}
-      </div>
-    </div>
+function CellBadge({ state, t }: { state: Cell; t: (k: string, d: string) => string }) {
+  if (state === 'none') return <span className="text-foreground-subtle">—</span>
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-ui-xs font-medium',
+        state === 'full' && 'bg-success/12 text-success',
+        state === 'view' && 'bg-primary-lighter text-primary-light',
+      )}
+    >
+      <Dot state={state} />
+      {state === 'full' ? t('roles.legendFull', 'Full') : t('roles.legendView', 'View')}
+    </span>
   )
 }

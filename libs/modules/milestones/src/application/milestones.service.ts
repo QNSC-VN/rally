@@ -100,7 +100,7 @@ export class MilestonesService {
     id: string,
     args: { limit: number; offset: number },
   ): Promise<{ items: ActivityLog[]; total: number }> {
-    await this.getMilestone(actor.workspaceId, id);
+    await this.getMilestoneForView(actor, id);
     const page = Math.floor(args.offset / args.limit) + 1;
     const res = await this.activity.listFor(id, page, args.limit);
     return { items: res.data, total: res.total };
@@ -328,6 +328,24 @@ export class MilestonesService {
 
   // ── Get ───────────────────────────────────────────────────────────────────
 
+  /**
+   * Load a milestone for a READ, enforcing `milestone:view` at its project scope
+   * — not just workspace membership — so a user scoped to one project cannot read
+   * another project's milestones in the same workspace. Mirrors getWorkItemForView.
+   */
+  async getMilestoneForView(
+    actor: JwtPayload,
+    id: string,
+  ): Promise<Milestone & { progress?: MilestoneProgress }> {
+    const milestone = await this.getMilestone(actor.workspaceId, id);
+    await this.accessService.assertProjectPermission(
+      actor,
+      milestone.projectId,
+      PERMISSION.MILESTONE_VIEW,
+    );
+    return milestone;
+  }
+
   async getMilestone(
     workspaceId: string,
     id: string,
@@ -494,7 +512,7 @@ export class MilestonesService {
   // ── Artifact management (P3.3) ──────────────────────────────────────
 
   async getMilestoneArtifacts(actor: JwtPayload, milestoneId: string): Promise<string[]> {
-    await this.getMilestone(actor.workspaceId, milestoneId);
+    await this.getMilestoneForView(actor, milestoneId);
     return this.milestoneRepo.getArtifactIds(milestoneId);
   }
 
@@ -562,7 +580,7 @@ export class MilestonesService {
   }
 
   async getMilestoneProjects(actor: JwtPayload, milestoneId: string): Promise<string[]> {
-    await this.getMilestone(actor.workspaceId, milestoneId);
+    await this.getMilestoneForView(actor, milestoneId);
     return this.milestoneRepo.getProjectIds(milestoneId);
   }
 
@@ -583,7 +601,7 @@ export class MilestonesService {
   }
 
   async getMilestoneTeams(actor: JwtPayload, milestoneId: string): Promise<string[]> {
-    await this.getMilestone(actor.workspaceId, milestoneId);
+    await this.getMilestoneForView(actor, milestoneId);
     return this.milestoneRepo.getTeamIds(milestoneId);
   }
 
@@ -604,7 +622,7 @@ export class MilestonesService {
   }
 
   async getMilestoneReleases(actor: JwtPayload, milestoneId: string): Promise<string[]> {
-    await this.getMilestone(actor.workspaceId, milestoneId);
+    await this.getMilestoneForView(actor, milestoneId);
     return this.milestoneRepo.getReleaseIds(milestoneId);
   }
 

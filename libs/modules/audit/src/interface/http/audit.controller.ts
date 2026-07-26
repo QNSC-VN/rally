@@ -36,7 +36,7 @@ export class AuditController {
   constructor(private readonly auditService: AuditService) {}
 
   @Get()
-  @RequirePermission('workspace:*')
+  @RequirePermission('audit:view')
   @ApiOperation({ summary: 'Query audit logs for the workspace' })
   @ApiPagedResponse(AuditLogResponseDto)
   @ApiCommonErrors(401, 403, 422)

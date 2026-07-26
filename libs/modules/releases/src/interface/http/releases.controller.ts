@@ -191,7 +191,7 @@ export class ReleasesController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    return this.releasesService.getReleaseBurndown(user.workspaceId, id);
+    return this.releasesService.getReleaseBurndown(user, id);
   }
 
   // ── Release Artifacts (P3) ──────────────────────────────────────────

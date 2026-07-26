@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { SECRET_RESOLVER } from '@qnsc-vn/identity';
 import { SecretsManagerSecretResolver } from '@modules/identity';
+import { AccessModule } from '@modules/access';
 import { ScmService } from './application/scm.service';
 import { ScmLinkerService } from './application/scm-linker.service';
 import { ScmBackfillService } from './application/scm-backfill.service';
@@ -12,6 +13,7 @@ import { GithubAppAuthService } from './infrastructure/github/github-app-auth.se
 import { SCM_STORE } from './domain/ports/scm.store';
 
 @Module({
+  imports: [AccessModule],
   controllers: [ScmController, ScmWebhookController],
   providers: [
     ScmService,

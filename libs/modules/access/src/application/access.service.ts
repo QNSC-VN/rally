@@ -235,7 +235,7 @@ export class AccessService {
    * Assign a role to a user scoped to a SINGLE project. This is the endpoint a
    * project admin (holding `project:manage_members` on that project) uses to
    * manage their own project's membership — distinct from workspace-wide
-   * assignment which requires `workspace:manage_members`.
+   * assignment which requires `users:assign_role`.
    *
    * Privilege-escalation guard: only roles whose permissions are ALL project-tier
    * may be granted here. A role carrying any workspace-tier permission (e.g.
@@ -338,9 +338,7 @@ export class AccessService {
     if (existing.length > 0) return; // already has a role
 
     const roles = await this.roleRepo.listForWorkspace(workspaceId);
-    const defaultRole =
-      roles.find((r) => r.slug === defaultRoleSlug) ??
-      roles.find((r) => r.slug === SYSTEM_ROLE.WORKSPACE_MEMBER);
+    const defaultRole = roles.find((r) => r.slug === defaultRoleSlug);
     if (!defaultRole) {
       this.logger.warn({ userId, workspaceId }, 'No default role found for JIT-provisioned user');
       return;
@@ -423,8 +421,12 @@ export class AccessService {
     );
 
     if (!baseline.length) {
+      // No workspace/global assignment: minimal authenticated baseline so the
+      // app shell + workspace read work; all project delivery access is granted
+      // per-project by an explicit role (SRS: project access is the primary
+      // gate). No canonical role fits, so report an empty representative role.
       return {
-        role: SYSTEM_ROLE.WORKSPACE_MEMBER,
+        role: '',
         permissions: [PERMISSION.WORKSPACE_VIEW, PERMISSION.PROJECT_VIEW],
       };
     }
@@ -435,7 +437,7 @@ export class AccessService {
     const primary = baseline.find((a) => a.scopeType === 'global') ?? baseline[0];
 
     return {
-      role: primary.roleSlug ?? SYSTEM_ROLE.WORKSPACE_MEMBER,
+      role: primary.roleSlug ?? '',
       permissions,
     };
   }
