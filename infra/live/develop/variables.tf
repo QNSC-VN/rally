@@ -55,3 +55,13 @@ variable "alarm_emails" {
   type        = list(string)
   default     = ["nghiavt@qnsc.vn"]
 }
+
+variable "platform_admin_emails" {
+  description = <<-EOT
+    Emails auto-granted workspace_admin on every SSO login. A variable rather than a
+    literal in the stack so the two environments can differ (and so adding a
+    colleague is a values change, not a module change).
+  EOT
+  type        = list(string)
+  default     = ["nghiavt@qnsc.vn", "quangld@qnsc.vn", "hieuvbm@qnsc.vn", "anhntn@qnsc.vn"]
+}
