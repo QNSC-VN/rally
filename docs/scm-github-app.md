@@ -24,14 +24,24 @@ On github.com → your org → **Settings ▸ Developer settings ▸ GitHub Apps
   - Pull requests: **Read-only**
   - Contents: **Read-only**
   - Metadata: **Read-only** (mandatory)
-- **Subscribe to events**: **Pull request**, **Push**.
+- **Subscribe to events** (all five are required for the org-level model):
+  - **Pull request**, **Push** — artifact linking (Connections / Changesets).
+  - **Installation** — App installed/uninstalled/suspended → bind/deactivate.
+  - **Installation repositories** — a repo added to / removed from the install →
+    auto-register + backfill / deactivate. **This is what makes a newly-created
+    repo appear in Rally automatically.**
+  - **Repository** — a repo archived/unarchived after discovery → deactivate /
+    re-register (archived repos stop emitting events, so they are dropped).
 - **Where can this app be installed**: Only on this account.
 
 Create it, then:
 1. Note the **App ID**.
 2. **Generate a private key** — downloads a `.pem` (PKCS#1 or PKCS#8; the auth
    service accepts both).
-3. **Install** the App on the org and choose the repos (or all repos).
+3. **Install** the App on the org. Choose **All repositories** so future repos
+   auto-appear (with *Selected repositories*, an admin must add each new repo to
+   the install before it flows to Rally). Archived/disabled repos are skipped
+   automatically on discovery.
 
 ## 2. Provide credentials to Rally
 
@@ -50,11 +60,28 @@ In production put the private key in Secrets Manager and set
 leave `GITHUB_APP_PRIVATE_KEY` unset. Everything is optional — if unset, backfill
 logs "GitHub App not configured — skipping" and webhooks still function.
 
-## 3. Map a repository (Settings ▸ Integrations)
+## 3. Connect the organization (Settings ▸ Integrations)
 
-Add a repo as `owner/name` and pick the project(s) whose work-item keys it may
-reference. On save, Rally **auto-enqueues a backfill job**. Use **Sync now** on a
-row to re-enqueue at any time.
+Org-level, no per-repo typing. Under **Connected organizations**, click
+**Connect GitHub** and pick the App installation. Rally then:
+
+- binds the installation to the workspace (`scm.installations`),
+- discovers every **active** repo it can access (`GET /installation/repositories`,
+  archived/disabled skipped) and registers each, and
+- **auto-enqueues a backfill** per repo (historical PRs/commits that reference a
+  work-item key). Use **Sync now** on a row, or **Sync all**, to re-enqueue.
+
+Thereafter it stays in sync with no manual step, driven by the webhooks above:
+new repo → auto-registered + back-filled; repo removed/archived → dropped; App
+uninstalled → all its repos deactivated. **Disconnect** clears the org's repos
+from the dashboard (reconnect re-adds the active ones).
+
+Linking needs no repo→project mapping: work-item keys are unique per **workspace**
+(Rally FormattedID), so any `US-42` in a PR title / branch / commit resolves
+workspace-wide — the real-Rally org-scoped model.
+
+**Add manually** (fallback) — for a repo outside a connected installation, add it
+as `owner/name`; same backfill-on-add behaviour.
 
 ## How it works
 
@@ -79,7 +106,8 @@ overlapping with a live webhook never duplicates rows.
 
 ## Verify
 
-1. Map a repo that has PRs/commits referencing existing work-item keys.
+1. Connect the org (or add a repo manually) that has PRs/commits referencing
+   existing work-item keys.
 2. Within ~30 s, open one of those work items → **Connections** tab shows the
    linked PRs; **Changesets** shows the commits.
 3. `select status, counts, last_error from scm.backfill_jobs order by requested_at desc limit 5;`
@@ -92,7 +120,13 @@ overlapping with a live webhook never duplicates rows.
 - **Backfill job stuck `failed`** — check `last_error`. `401/403` → App not installed
   on that repo, or wrong key/App ID. `404` on `/installation` → the App isn't
   installed on the repo's owner.
-- **No links despite a `done` job with `prs`/`commits` > 0** — the PRs/commits don't
-  reference a mapped project's keys, or the repo→project mapping is wrong.
+- **No links despite a `done` job with `prs`/`commits` > 0** — the PRs/commits
+  reference keys that don't exist in this workspace (wrong key, or a different
+  workspace).
+- **Newly-created repo doesn't appear** — the App is on *Selected repositories*
+  (add the repo to the install), or it isn't subscribed to the **Installation
+  repositories** event.
+- **`Connect GitHub` picker is empty** — the API can't read the App private key:
+  check `GITHUB_APP_ID` + the task role's `GetSecretValue` on the key secret.
 - **`SECRET_RESOLVER unavailable`** — `GITHUB_APP_PRIVATE_KEY_SECRET_REF` is set but
   the resolver isn't wired; set the inline `GITHUB_APP_PRIVATE_KEY` for local use.
