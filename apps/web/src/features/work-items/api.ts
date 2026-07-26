@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
 import type { components } from '@/shared/api/generated/api'
+import { withCsrfHeader } from '@/shared/api/csrf'
 
 // ── Response types from generated contract ────────────────────────────────────
 
@@ -653,7 +654,7 @@ export function useLinkWorkItem(workItemId: string | undefined) {
       if (!workItemId) throw new Error('workItemId required')
       const res = await fetch(`/v1/work-items/${workItemId}/relations`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: withCsrfHeader('POST', { 'Content-Type': 'application/json' }),
         credentials: 'include',
         body: JSON.stringify(input),
       })
@@ -674,6 +675,7 @@ export function useUnlinkWorkItem(workItemId: string | undefined) {
       const res = await fetch(`/v1/work-items/${workItemId}/relations/${relationId}`, {
         method: 'DELETE',
         credentials: 'include',
+        headers: withCsrfHeader('DELETE'),
       })
       if (!res.ok) throw new Error(`Failed to remove link (${res.status})`)
     },

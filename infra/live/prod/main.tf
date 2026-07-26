@@ -115,9 +115,14 @@ module "secrets" {
   recovery_window_days = 30 # longer recovery in production
 
   secret_names = {
-    "jwt-private"         = "EC P-256 (ES256) private key (PEM, base64-encoded)"
-    "jwt-public"          = "EC P-256 (ES256) public key (PEM, base64-encoded)"
-    "csrf-secret"         = "CSRF token signing secret"
+    "jwt-private" = "EC P-256 (ES256) private key (PEM, base64-encoded)"
+    "jwt-public"  = "EC P-256 (ES256) public key (PEM, base64-encoded)"
+    "csrf-secret" = "CSRF token signing secret"
+    # NOTE: give this a value in the Secrets Manager console BEFORE the next app
+    # deploy — COOKIE_SECRET is required at startup, so a task wired to an empty
+    # secret cannot boot (visible as a failed deploy + rollback, not a silent
+    # downgrade, which is the intent).
+    "cookie-secret"       = "Cookie signing secret (distinct from csrf-secret)"
     "entra-client-secret" = "Microsoft Entra confidential-client secret (BFF OIDC)"
     # SCM (GitHub App) — minted in GitHub, pasted by hand into Secrets Manager
     # (Terraform only scaffolds empty containers). Both stay empty/unused until
@@ -259,6 +264,7 @@ module "api" {
     { name = "JWT_PRIVATE_KEY", secret_arn = module.secrets.secret_arns["jwt-private"] },
     { name = "JWT_PUBLIC_KEY", secret_arn = module.secrets.secret_arns["jwt-public"] },
     { name = "CSRF_SECRET", secret_arn = module.secrets.secret_arns["csrf-secret"] },
+    { name = "COOKIE_SECRET", secret_arn = module.secrets.secret_arns["cookie-secret"] },
     { name = "ENTRA_CLIENT_SECRET", secret_arn = module.secrets.secret_arns["entra-client-secret"] },
     # GitHub App webhook HMAC secret — the API verifies X-Hub-Signature-256 on
     # inbound SCM webhooks (/v1/scm/webhook/*). Absent → the receiver returns 503,
@@ -289,6 +295,12 @@ module "api" {
     { name = "ENTRA_TENANT_ID", value = var.entra_tenant_id },
     { name = "ENTRA_CLIENT_ID", value = var.entra_client_id },
     { name = "ENTRA_REDIRECT_URI", value = "${local.app_base_url}/v1/bff/callback" },
+    # GitHub App (SCM org-level auto-discovery + backfill). The API enumerates
+    # the App's installations and mints installation tokens, so — like the worker —
+    # it needs the App ID + private-key ref. Empty App ID keeps it dormant
+    # (GithubAppAuthService.isConfigured() = false). Task role reads all secrets.
+    { name = "GITHUB_APP_ID", value = var.github_app_id },
+    { name = "GITHUB_APP_PRIVATE_KEY_SECRET_REF", value = module.secrets.secret_arns["github-app-private-key"] },
     # Multi-IdP broker: the home (company Entra) connection resolves its client
     # secret at RUNTIME from this ref. Reuses entra-client-secret (same Entra
     # app) — no duplicate copy to drift on rotation. Unset leaves the broker
@@ -395,6 +407,7 @@ module "worker" {
     { name = "JWT_PUBLIC_KEY", secret_arn = module.secrets.secret_arns["jwt-public"] },
     # Shared env schema validates these at boot even though the worker never uses them as middleware.
     { name = "CSRF_SECRET", secret_arn = module.secrets.secret_arns["csrf-secret"] },
+    { name = "COOKIE_SECRET", secret_arn = module.secrets.secret_arns["cookie-secret"] },
     { name = "ENTRA_CLIENT_SECRET", secret_arn = module.secrets.secret_arns["entra-client-secret"] },
     # Cloudflare R2 bucket-scoped credentials (worker also reads/writes attachments).
     { name = "STORAGE_ACCESS_KEY_ID", secret_arn = module.secrets.secret_arns["r2-access-key-id"] },
@@ -562,4 +575,57 @@ module "dns_api" {
   content = data.terraform_remote_state.runtime.outputs.alb_dns_name
   proxied = true # orange cloud: shield the ALB, edge WAF/DDoS at Cloudflare
   comment = "rally-prod API → ALB via Cloudflare proxy (managed by rally-infra prod)"
+}
+
+# ── Alerting: security controls that failed OPEN ──────────────────────────────
+# The access-token denylist (JwtAuthGuard) and the rate limiter both fail open
+# when Valkey is unreachable — individually correct, but together a cache outage
+# accepts revoked tokens AND serves unlimited traffic with no signal. The app tags
+# those log lines with `securityFailOpen`; this turns them into a metric + alarm.
+#
+# Log-based, not OTel-based, ON PURPOSE: OTEL_ENABLED is "false" in this
+# environment, so a counter would report nothing while looking like monitoring.
+# Container logs reach CloudWatch regardless.
+#
+# The field name is FAIL_OPEN_FIELD in libs/platform/src/observability/fail-open.ts.
+# Renaming it there silently breaks this filter.
+resource "aws_cloudwatch_log_metric_filter" "security_fail_open" {
+  name           = "${local.name}-security-fail-open"
+  log_group_name = module.api.log_group_name
+  pattern        = "{ $.securityFailOpen = \"*\" }"
+
+  metric_transformation {
+    name          = "SecurityFailOpen"
+    namespace     = "rally/${local.env}"
+    value         = "1"
+    default_value = "0"
+  }
+}
+
+# NOTE: create the email/Slack subscription by hand once — an SNS email
+# subscription needs an out-of-band confirmation click, so Terraform cannot own it:
+#   aws sns subscribe --region REGION --topic-arn <arn> \
+#     --protocol email --notification-endpoint you@qnsc.vn
+resource "aws_sns_topic" "alerts" {
+  name              = "${local.name}-alerts"
+  kms_master_key_id = local.kms_key_arn
+}
+
+resource "aws_cloudwatch_metric_alarm" "security_fail_open" {
+  alarm_name        = "${local.name}-security-fail-open"
+  alarm_description = "A security control failed open (token denylist or rate limiter) — check Valkey health."
+
+  namespace           = "rally/${local.env}"
+  metric_name         = "SecurityFailOpen"
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  # A metric filter emits no data points when nothing matches, which is the
+  # healthy state — treat that as OK rather than INSUFFICIENT_DATA noise.
+  treat_missing_data = "notBreaching"
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+  ok_actions    = [aws_sns_topic.alerts.arn]
 }

@@ -5,6 +5,7 @@ import { useQuery, useMutation } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
 import type { components } from '@/shared/api/generated/api'
+import { withCsrfHeader } from '@/shared/api/csrf'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 export type Attachment = components['schemas']['AttachmentResponseDto']
@@ -67,7 +68,7 @@ export function useUploadAttachment(workItemId: string | undefined) {
       // 1. Reserve the file row and get a signed URL.
       const presignRes = await fetch(`/v1/work-items/${workItemId}/attachments/presign`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: withCsrfHeader('POST', { 'Content-Type': 'application/json' }),
         credentials: 'include',
         body: JSON.stringify({
           filename: file.name,
@@ -87,8 +88,9 @@ export function useUploadAttachment(workItemId: string | undefined) {
 
       // 2. PUT the bytes straight to the bucket. `requiredHeaders` are part of
       //    the signature — sending anything else fails with SignatureDoesNotMatch.
-      //    Deliberately omits credentials: this origin is the bucket, not the API,
-      //    and the presigned URL is the only authorization it needs.
+      //    Deliberately omits credentials AND the CSRF token: this origin is the
+      //    bucket, not the API. Sending our token cross-origin would leak it, and
+      //    the presigned URL is the only authorization this PUT needs.
       const putRes = await fetch(uploadUrl, {
         method: 'PUT',
         headers: requiredHeaders,
@@ -102,7 +104,7 @@ export function useUploadAttachment(workItemId: string | undefined) {
       //    only then links the file to the work item and makes it visible.
       const confirmRes = await fetch(
         `/v1/work-items/${workItemId}/attachments/${attachmentId}/confirm`,
-        { method: 'POST', credentials: 'include' },
+        { method: 'POST', credentials: 'include', headers: withCsrfHeader('POST') },
       )
       if (!confirmRes.ok) {
         throw new Error(await confirmRes.text().catch(() => confirmRes.statusText))
@@ -170,7 +172,7 @@ export function useCreateComment(workItemId: string | undefined) {
       if (!workItemId) throw new Error('workItemId required')
       const res = await fetch(`/v1/work-items/${workItemId}/comments`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: withCsrfHeader('POST', { 'Content-Type': 'application/json' }),
         credentials: 'include',
         body: JSON.stringify(input),
       })
@@ -187,7 +189,7 @@ export function useUpdateComment(workItemId: string | undefined) {
       if (!workItemId) throw new Error('workItemId required')
       const res = await fetch(`/v1/work-items/${workItemId}/comments/${input.commentId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: withCsrfHeader('PATCH', { 'Content-Type': 'application/json' }),
         credentials: 'include',
         body: JSON.stringify({ body: input.body }),
       })
@@ -205,6 +207,7 @@ export function useDeleteComment(workItemId: string | undefined) {
       const res = await fetch(`/v1/work-items/${workItemId}/comments/${commentId}`, {
         method: 'DELETE',
         credentials: 'include',
+        headers: withCsrfHeader('DELETE'),
       })
       if (!res.ok) throw new Error(`Failed to delete comment (${res.status})`)
     },

@@ -25,6 +25,7 @@ import { useProjects } from '@/features/projects/api'
 import { useProjectTeams, type Team } from '@/features/teams/api'
 import { useNotificationUnreadCount, useNotificationSse } from '@/features/notifications/api'
 import { ENV } from '@/shared/config/env'
+import { withCsrfHeader } from '@/shared/api/csrf'
 import { isFeatureEnabled } from '@/shared/config/feature-flags'
 import { queryClient } from '@/shared/api/query-client'
 import { NotificationPopover } from '@/widgets/notification-popover/notification-popover'
@@ -340,6 +341,7 @@ export function AppShell() {
         method: 'POST',
         credentials: 'include',
         referrerPolicy: 'no-referrer',
+        headers: withCsrfHeader('POST'),
       })
     } catch {
       // Ignore network errors on sign-out — always clear local state

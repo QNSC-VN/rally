@@ -138,6 +138,7 @@ jobs:
           JWT_ACCESS_EXPIRY: 15m
           JWT_REFRESH_EXPIRY: 30d
           CSRF_SECRET: ci-test-csrf-secret-min-32-characters-ok
+          COOKIE_SECRET: ci-test-cookie-secret-min-32-characters-ok
 
       # The BA flow e2e specs boot the real AppModule with a synthetic admin
       # actor (no SSO login), so they need the demo admin to already be an
@@ -166,6 +167,7 @@ jobs:
           JWT_ACCESS_EXPIRY: 15m
           JWT_REFRESH_EXPIRY: 30d
           CSRF_SECRET: ci-test-csrf-secret-min-32-characters-ok
+          COOKIE_SECRET: ci-test-cookie-secret-min-32-characters-ok
           # Entra BFF OIDC — CI test-only placeholders (never used for real auth).
           # ENTRA_TENANT_ID matches the SSO connection seeded during migrations so
           # the SSO → RBAC e2e resolves its workspace; PLATFORM_ADMIN_EMAILS drives
@@ -405,9 +407,15 @@ jobs:
           done
           curl -sf http://localhost:3000/api/docs-json -o openapi.json
           kill $API_PID 2>/dev/null || true
+          # Guard the opt-in above: a disabled Swagger returns 404 and would
+          # otherwise leave an empty/absent spec for the breaking-change check.
+          test -s openapi.json
         env:
           NODE_ENV: development
           PORT: 3000
+          # The spec is only served when Swagger is explicitly enabled (it no
+          # longer piggybacks on NODE_ENV), so this job must opt in.
+          SWAGGER_ENABLED: 'true'
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rally_openapi?sslmode=disable
           REDIS_URL: redis://localhost:6379
           JWT_PRIVATE_KEY: ${{ env.CI_JWT_PRIVATE_KEY }}
@@ -417,6 +425,7 @@ jobs:
           JWT_ACCESS_EXPIRY: 15m
           JWT_REFRESH_EXPIRY: 30d
           CSRF_SECRET: ci-test-csrf-secret-min-32-characters-ok
+          COOKIE_SECRET: ci-test-cookie-secret-min-32-characters-ok
           OTEL_ENABLED: 'false'
           RESILIENCE_ENABLED: 'false'
           # Entra BFF OIDC — CI test-only placeholders (never used for real auth).

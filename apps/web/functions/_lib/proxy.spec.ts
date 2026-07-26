@@ -44,6 +44,24 @@ describe('buildProxyRequest', () => {
     expect(proxied.headers.get('cookie')).toBe('__Host-rally_session=abc')
   })
 
+  it('forwards the CSRF token header', () => {
+    // The API rejects a cookie-authenticated write whose X-CSRF-Token is missing,
+    // so a future change to the header filter must not drop this one silently.
+    const request = new Request('https://rally-dev.qnsc.vn/v1/work-items', {
+      method: 'POST',
+      headers: {
+        'cf-connecting-ip': '203.0.113.7',
+        cookie: '__Host-rally_session=abc; __Host-rally_csrf=secret',
+        'x-csrf-token': 'tok-1',
+        'content-type': 'application/json',
+      },
+      body: '{}',
+    })
+    const proxied = buildProxyRequest(request, API_ORIGIN)
+    expect(proxied.headers.get('x-csrf-token')).toBe('tok-1')
+    expect(proxied.headers.get('cookie')).toBe('__Host-rally_session=abc; __Host-rally_csrf=secret')
+  })
+
   it('drops a client-supplied x-forwarded-for and trusts only cf-connecting-ip', () => {
     const request = new Request('https://rally-dev.qnsc.vn/v1/me', {
       headers: {

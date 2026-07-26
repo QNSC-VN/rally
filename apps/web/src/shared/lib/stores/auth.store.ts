@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
+import { withCsrfHeader } from '@/shared/api/csrf'
 import { queryClient } from '@/shared/api/query-client'
 import { ENV } from '@/shared/config/env'
 import { grants } from '@/shared/config/permission-check'
@@ -89,7 +90,7 @@ export const useAuthStore = create<AuthState>()(
             method: 'POST',
             credentials: 'include',
             referrerPolicy: 'no-referrer',
-            headers: { 'Content-Type': 'application/json' },
+            headers: withCsrfHeader('POST', { 'Content-Type': 'application/json' }),
             body: JSON.stringify({ workspaceId }),
           })
           if (!res.ok) throw new Error('Switch failed')

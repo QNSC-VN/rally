@@ -56,8 +56,24 @@ export const EnvSchema = z
     JWT_ISSUER: z.string().default('rally-api'),
     JWT_AUDIENCE: z.string().default('rally-web'),
 
-    // CSRF
+    // Cookie signing. Distinct from CSRF_SECRET on purpose: this one signs every
+    // cookie rally sets, so rotating it invalidates all of them. Sharing one value
+    // between the two made a cookie-hygiene rotation read as a CSRF change (and
+    // vice versa) in the audit trail.
+    COOKIE_SECRET: z.string().min(32),
+
+    // CSRF — HMAC key binding a token to the session that requested it, so a
+    // token lifted from one session cannot be replayed in another.
     CSRF_SECRET: z.string().min(32),
+
+    /**
+     * Serve the OpenAPI document + Swagger UI at /api/docs. Defaults to OFF and
+     * must be turned on explicitly: this used to be derived from
+     * `NODE_ENV !== 'production'`, so any future environment that isn't literally
+     * "production" (staging, preview, a mis-set task definition) would have
+     * published the endpoint inventory without anyone choosing to.
+     */
+    SWAGGER_ENABLED: booleanish(false),
 
     // SCM webhooks (GitHub/GHE) — HMAC shared secret for X-Hub-Signature-256.
     // Optional so the app boots without SCM configured; the webhook endpoint
