@@ -30,7 +30,7 @@ function isRoleEditable(role: Role): boolean {
 export function RolesTab() {
   const { t } = useTranslation('settings')
   const { hasPermission } = useAuthStore()
-  const canManage = hasPermission(PERMISSION.WORKSPACE_MANAGE_MEMBERS)
+  const canManage = hasPermission(PERMISSION.ROLES_EDIT)
 
   const { data: roles = [], isLoading, isError } = useSystemRoles()
 

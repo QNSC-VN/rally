@@ -13,8 +13,15 @@
 export const PERMISSION = {
   WORKSPACE_ALL: 'workspace:*',
   WORKSPACE_VIEW: 'workspace:view',
-  WORKSPACE_MANAGE_MEMBERS: 'workspace:manage_members',
-  WORKSPACE_MANAGE_TEAMS: 'workspace:manage_teams',
+
+  // Company member/role/team/integration management (split out of the former
+  // coarse workspace:manage_members / manage_teams — see db/permissions.catalog).
+  USERS_ASSIGN_ROLE: 'users:assign_role',
+  ROLES_VIEW: 'roles:view',
+  ROLES_EDIT: 'roles:edit',
+  TEAMS_CREATE: 'teams:create',
+  AUDIT_VIEW: 'audit:view',
+  SCM_MANAGE: 'scm:manage',
 
   PROJECT_EDIT: 'project:edit',
   PROJECT_MANAGE_MEMBERS: 'project:manage_members',

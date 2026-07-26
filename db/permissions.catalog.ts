@@ -27,9 +27,33 @@ export const PERMISSION = {
   WORKSPACE_CREATE: 'workspace:create',
   WORKSPACE_EDIT: 'workspace:edit',
   WORKSPACE_DELETE: 'workspace:delete',
-  WORKSPACE_MANAGE_MEMBERS: 'workspace:manage_members',
-  WORKSPACE_MANAGE_TEAMS: 'workspace:manage_teams',
+
+  // ── users namespace (company member + invitation management) ────────────────
+  // Split out of the former coarse `workspace:manage_members` for least-privilege
+  // + audit clarity; each is an independent action. (Roster READS stay open to
+  // any authenticated member — owner pickers need them — so there is no
+  // `users:view` gate.)
+  USERS_INVITE: 'users:invite',
+  USERS_REMOVE: 'users:remove',
+  USERS_ASSIGN_ROLE: 'users:assign_role',
+
+  // ── roles namespace (the Roles & Permissions surface itself) ────────────────
+  // Managing WHAT a role can do is a distinct concern from managing PEOPLE —
+  // previously conflated under `workspace:manage_members`.
+  ROLES_VIEW: 'roles:view',
+  ROLES_EDIT: 'roles:edit',
+
+  // ── teams namespace (split out of the former `workspace:manage_teams`) ───────
+  // Team READS stay open (project pickers); only writes are gated.
+  TEAMS_CREATE: 'teams:create',
+  TEAMS_EDIT: 'teams:edit',
+  TEAMS_MANAGE_MEMBERS: 'teams:manage_members',
+
+  // ── audit + scm (workspace-tier) ─────────────────────────────────────────────
   AUDIT_VIEW: 'audit:view',
+  // Managing SCM installations/repositories is an integrations concern — NOT
+  // people management (was wrongly gated by workspace:manage_members).
+  SCM_MANAGE: 'scm:manage',
 
   // ── project namespace ──────────────────────────────────────────────────────
   PROJECT_VIEW: 'project:view',
@@ -106,9 +130,16 @@ export const PERMISSION_TIER = {
   [PERMISSION.WORKSPACE_CREATE]: 'workspace',
   [PERMISSION.WORKSPACE_EDIT]: 'workspace',
   [PERMISSION.WORKSPACE_DELETE]: 'workspace',
-  [PERMISSION.WORKSPACE_MANAGE_MEMBERS]: 'workspace',
-  [PERMISSION.WORKSPACE_MANAGE_TEAMS]: 'workspace',
+  [PERMISSION.USERS_INVITE]: 'workspace',
+  [PERMISSION.USERS_REMOVE]: 'workspace',
+  [PERMISSION.USERS_ASSIGN_ROLE]: 'workspace',
+  [PERMISSION.ROLES_VIEW]: 'workspace',
+  [PERMISSION.ROLES_EDIT]: 'workspace',
+  [PERMISSION.TEAMS_CREATE]: 'workspace',
+  [PERMISSION.TEAMS_EDIT]: 'workspace',
+  [PERMISSION.TEAMS_MANAGE_MEMBERS]: 'workspace',
   [PERMISSION.AUDIT_VIEW]: 'workspace',
+  [PERMISSION.SCM_MANAGE]: 'workspace',
   [PERMISSION.PROJECT_CREATE]: 'workspace',
 
   [PERMISSION.PROJECT_VIEW]: 'project',
@@ -200,9 +231,16 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
     PERMISSION.WORKSPACE_CREATE,
     PERMISSION.WORKSPACE_EDIT,
     PERMISSION.WORKSPACE_DELETE,
-    PERMISSION.WORKSPACE_MANAGE_MEMBERS,
-    PERMISSION.WORKSPACE_MANAGE_TEAMS,
+    PERMISSION.USERS_INVITE,
+    PERMISSION.USERS_REMOVE,
+    PERMISSION.USERS_ASSIGN_ROLE,
+    PERMISSION.ROLES_VIEW,
+    PERMISSION.ROLES_EDIT,
+    PERMISSION.TEAMS_CREATE,
+    PERMISSION.TEAMS_EDIT,
+    PERMISSION.TEAMS_MANAGE_MEMBERS,
     PERMISSION.AUDIT_VIEW,
+    PERMISSION.SCM_MANAGE,
     PERMISSION.PROJECT_VIEW,
     PERMISSION.PROJECT_CREATE,
     PERMISSION.PROJECT_EDIT,

@@ -235,7 +235,7 @@ export class AccessService {
    * Assign a role to a user scoped to a SINGLE project. This is the endpoint a
    * project admin (holding `project:manage_members` on that project) uses to
    * manage their own project's membership — distinct from workspace-wide
-   * assignment which requires `workspace:manage_members`.
+   * assignment which requires `users:assign_role`.
    *
    * Privilege-escalation guard: only roles whose permissions are ALL project-tier
    * may be granted here. A role carrying any workspace-tier permission (e.g.
