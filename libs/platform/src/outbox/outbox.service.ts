@@ -4,6 +4,7 @@ import type { DomainEvent } from '@shared-kernel/domain/domain-event';
 import { InjectDrizzle } from '../database/drizzle.provider';
 import type { DrizzleDB, DrizzleTx } from '../database/drizzle.provider';
 import { outboxEvents } from '../../../../db/schema/messaging';
+import { currentTraceparent } from '@qnsc-vn/observability';
 
 /**
  * Outbox writer — inserts domain events into outbox_events in the SAME transaction
@@ -38,6 +39,9 @@ export class OutboxService {
       status: 'pending' as const,
       attempts: 0,
       createdAt: new Date(),
+      // Capture the producing request's trace so the relay can continue it. Null
+      // when nothing is tracing, which the relay treats as "start a root span".
+      traceparent: currentTraceparent(),
     }));
 
     await tx.insert(outboxEvents).values(rows);

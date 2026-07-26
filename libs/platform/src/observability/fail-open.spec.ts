@@ -2,12 +2,14 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { FAIL_OPEN_FIELD, failOpenLog } from './fail-open';
+import { FAIL_OPEN_FIELD, failOpenLog } from '@qnsc-vn/observability';
 
 /**
- * The CloudWatch metric filter in each environment's `infra/live` main.tf matches
- * this log field by name, so the coupling is real but invisible from either side.
- * These tests make a rename fail here instead of silently disarming the alarm.
+ * The log helper itself now lives in `@qnsc-vn/observability`; what stays here is the
+ * part only this repo can assert — that the field name the package emits is the one
+ * this repo's Terraform actually filters on. The coupling is invisible from both
+ * sides, so a package rename or an infra edit must fail a test rather than silently
+ * disarm the alarm.
  */
 describe('failOpenLog', () => {
   it('tags the control that degraded', () => {

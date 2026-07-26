@@ -50,6 +50,34 @@ pnpm --filter rally-web dev                      # SPA (proxies /v1 → API)
   raw `<button>`, inline styles, hardcoded copy, file length, and CSRF headers on
   raw `fetch` writes. They may only decrease.
 
+## Observability
+
+The implementation lives in `@qnsc-vn/observability` — shared with opshub, so fix it
+there, not here. `libs/platform` keeps only re-export façades (`observability/index.ts`,
+`context/request-context.ts`) so existing `@platform` import sites stay valid.
+
+- **One AsyncLocalStorage.** `request-context.ts` re-exports the package's store. A
+  second local instance would mean HTTP requests seed one store while the pino mixin
+  reads another, and every request log line would silently lose `workspaceId`,
+  `userId` and `correlationId`. `request-context.spec.ts` pins it.
+- **Don't log `correlationId`/`workspaceId`/`userId` by hand.** The pino mixin adds
+  them to every line from ALS, plus `trace.id`/`span.id`. Background work must call
+  `withJobContext(name, fn)` or it has no context at all.
+- **`@Span` is deliberate, not universal.** Auto-instrumentation already spans every
+  HTTP request, DB query, cache call and AWS SDK call. Add `@Span` for internal
+  fan-out, hot paths, or long-running domain operations — not for CRUD passthroughs,
+  where it just duplicates the pg span underneath. 5 of 23 services have spans and
+  that is fine.
+- **Never put an id in a metric label.** The recorder signatures make it a type
+  error; `normalizeRoute()` is the safety net when a route template isn't available.
+  IDs go on spans and logs.
+- **Metrics are emitted, not declared.** If you add a name to `METRIC_NAMES` in the
+  package, something must record it — a spec asserts instruments == names. This repo
+  previously declared 23 names and implemented none.
+- **`OTEL_ENABLED` is `false` everywhere** and no collector exists yet, so spans and
+  metrics are no-ops today. Logs are the live signal. See
+  `docs/superpowers/specs/2026-07-26-observability-architecture-design.md`.
+
 ## Auth model (read before touching a guard)
 
 - **Browser sessions are BFF, not bearer.** The SPA holds no tokens. It talks to a
@@ -67,9 +95,12 @@ pnpm --filter rally-web dev                      # SPA (proxies /v1 → API)
 - **CSRF is enforced by a hook, not per route.** `requiresCsrfProtection`
   (`libs/platform/src/http/csrf.ts`) is the one place the policy lives. A raw
   `fetch` write in the SPA must send `X-CSRF-Token` via `withCsrfHeader`.
-- **Two controls fail open** when Valkey is down (token denylist, rate limiter).
-  Both tag their log line with `securityFailOpen`, which a CloudWatch metric filter
-  + alarm watches. Keep that field name in sync with `infra/live/*/main.tf`.
+- **Four paths fail open** when Valkey is down: the token denylist, the rate limiter,
+  and the authorization-epoch lookup and bump. Each emits BOTH a `securityFailOpen`
+  log field (matched by a CloudWatch metric filter + alarm) and a
+  `security.fail_open` counter. The `FailOpenControl` union in the package is the one
+  source for both, and `fail-open.spec.ts` greps `infra/live/*` to prove the field the
+  package emits is the field the Terraform filters on.
 
 ## Sibling repo
 

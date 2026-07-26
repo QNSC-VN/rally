@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { CacheService } from '@qnsc-vn/platform-cache';
-import { BaseMetrics } from '../observability/base-metrics';
-import { OTEL_METRICS } from '../observability/otel.constants';
+import { failOpenLog, SecurityMetrics } from '@qnsc-vn/observability';
 
 /** Valkey key prefix for the per-user authorization epoch counter. */
 const AUTHZ_EPOCH_PREFIX = 'authz:epoch:';
@@ -33,30 +32,20 @@ const AUTHZ_EPOCH_PREFIX = 'authz:epoch:';
  * rejected. The next real permission change re-establishes a higher value.
  */
 @Injectable()
-export class AuthzEpochService extends BaseMetrics {
+export class AuthzEpochService {
   private readonly logger = new Logger(AuthzEpochService.name);
 
-  /** Tokens rejected/re-minted because their stamped epoch was behind. */
-  readonly staleTokenTotal = this.createCounter(
-    OTEL_METRICS.AUTHZ.STALE_TOKEN_TOTAL,
-    'Access tokens seen with an authorization epoch behind the current one',
-  );
-
-  /** Epoch reads that could not be answered — each one is a fail-open decision. */
-  readonly lookupFailureTotal = this.createCounter(
-    OTEL_METRICS.AUTHZ.EPOCH_LOOKUP_FAILURE_TOTAL,
-    'Authorization epoch lookups that failed and were allowed through (fail-open)',
-  );
-
-  /** Bumps that could not be persisted — a permission change that will NOT propagate early. */
-  readonly bumpFailureTotal = this.createCounter(
-    OTEL_METRICS.AUTHZ.EPOCH_BUMP_FAILURE_TOTAL,
-    'Authorization epoch bumps that failed to persist',
-  );
-
-  constructor(private readonly cache: CacheService) {
-    super();
-  }
+  /**
+   * Instruments come from the shared package rather than local counters. This class
+   * previously declared three of its own via BaseMetrics, which would now duplicate
+   * `authz.stale_token` and `security.fail_open` — two instruments for one signal
+   * means dashboards disagree with each other. The `control` label distinguishes
+   * which degradation happened.
+   */
+  constructor(
+    private readonly cache: CacheService,
+    private readonly metrics: SecurityMetrics,
+  ) {}
 
   private key(userId: string): string {
     return `${AUTHZ_EPOCH_PREFIX}${userId}`;
@@ -79,8 +68,11 @@ export class AuthzEpochService extends BaseMetrics {
       const parsed = Number.parseInt(raw, 10);
       return Number.isFinite(parsed) ? parsed : 0;
     } catch (err) {
-      this.logger.warn({ err, userId }, 'Authz epoch lookup failed; allowing (fail-open)');
-      this.lookupFailureTotal.add(1);
+      this.logger.warn(
+        failOpenLog('authz_epoch', { err, userId }),
+        'Authz epoch lookup failed; allowing (fail-open)',
+      );
+      this.metrics.recordFailOpen('authz_epoch');
       return null;
     }
   }
@@ -116,7 +108,7 @@ export class AuthzEpochService extends BaseMetrics {
           'Authz epoch bump skipped — cache unavailable; permission change will only ' +
             'take effect on token expiry',
         );
-        this.bumpFailureTotal.add(unique.length);
+        this.metrics.recordFailOpen('authz_epoch_bump');
         return;
       }
       const pipeline = redis.pipeline();
@@ -128,7 +120,7 @@ export class AuthzEpochService extends BaseMetrics {
         { err, userIds: unique },
         'Authz epoch bump failed; permission change will only take effect on token expiry',
       );
-      this.bumpFailureTotal.add(unique.length);
+      this.metrics.recordFailOpen('authz_epoch_bump');
     }
   }
 
@@ -144,7 +136,7 @@ export class AuthzEpochService extends BaseMetrics {
     if (current === null) return false; // unknown — fail open
     const stamped = typeof tokenEpoch === 'number' ? tokenEpoch : 0;
     const stale = current > stamped;
-    if (stale) this.staleTokenTotal.add(1);
+    if (stale) this.metrics.recordStaleToken();
     return stale;
   }
 }

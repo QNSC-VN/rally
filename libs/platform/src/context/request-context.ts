@@ -1,58 +1,20 @@
-import { AsyncLocalStorage } from 'async_hooks';
-import { Injectable } from '@nestjs/common';
-
-export interface RequestContext {
-  workspaceId: string | undefined;
-  userId: string | undefined;
-  sessionId: string | undefined;
-  correlationId: string;
-  /** W3C traceparent from inbound request */
-  traceparent: string | undefined;
-}
-
 /**
- * Exported so the Pino mixin can read request context without going through DI.
- * Do NOT write to this directly — use RequestContextService.
+ * Request context — re-exported from `@qnsc-vn/observability`.
+ *
+ * There must be exactly ONE `AsyncLocalStorage` instance in the process. The
+ * package owns it because the package's logger mixin reads it and `withJobContext`
+ * writes to it; if rally kept its own instance, HTTP requests would seed rally's
+ * store while the mixin read the package's, and every request log line would
+ * silently lose `workspaceId`, `userId` and `correlationId`. Nothing would fail —
+ * the fields would just be absent.
+ *
+ * Kept as a re-export rather than deleted so the ~17 existing
+ * `@platform/context/request-context` import sites stay valid, and so
+ * `RequestContextService` remains the same class object that `PlatformModule`
+ * provides (two copies of an @Injectable would be two DI tokens).
  */
-export const requestContextStorage = new AsyncLocalStorage<RequestContext>();
-
-const als = requestContextStorage;
-
-@Injectable()
-export class RequestContextService {
-  run<T>(context: RequestContext, fn: () => T): T {
-    return als.run(context, fn);
-  }
-
-  get(): RequestContext | undefined {
-    return als.getStore();
-  }
-
-  getOrThrow(): RequestContext {
-    const ctx = als.getStore();
-    if (!ctx) throw new Error('No request context in AsyncLocalStorage');
-    return ctx;
-  }
-
-  getWorkspaceId(): string | undefined {
-    return als.getStore()?.workspaceId;
-  }
-
-  getUserId(): string | undefined {
-    return als.getStore()?.userId;
-  }
-
-  getCorrelationId(): string | undefined {
-    return als.getStore()?.correlationId;
-  }
-
-  /** Mutate workspace + user once populated from JWT in JwtAuthGuard */
-  setAuthContext(workspaceId: string | undefined, userId: string, sessionId: string): void {
-    const ctx = als.getStore();
-    if (ctx) {
-      ctx.workspaceId = workspaceId;
-      ctx.userId = userId;
-      ctx.sessionId = sessionId;
-    }
-  }
-}
+export {
+  RequestContextService,
+  requestContextStorage,
+  type RequestContext,
+} from '@qnsc-vn/observability';
