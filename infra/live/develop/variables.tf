@@ -45,3 +45,13 @@ variable "cloudflare_api_token" {
     bootstrap via _shared remote state (one source of truth, like kms_key_arn).
   EOT
 }
+
+variable "alarm_emails" {
+  description = <<-EOT
+    Addresses subscribed to the alarm topic. Terraform creates the subscription;
+    each recipient must still click the confirmation link AWS emails them, so a
+    freshly-added address receives nothing until it does.
+  EOT
+  type        = list(string)
+  default     = ["nghiavt@qnsc.vn"]
+}

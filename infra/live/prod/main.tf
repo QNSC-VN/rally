@@ -109,7 +109,7 @@ data "terraform_remote_state" "storage" {
 
 # ── Secrets ─────────────────────────────────────────────────────────────────────
 module "secrets" {
-  source               = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/secrets?ref=secrets-v1.0.0"
+  source               = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/secrets?ref=secrets-v1.1.0"
   prefix               = "rally/${local.env}"
   kms_key_arn          = local.kms_key_arn
   recovery_window_days = 30 # longer recovery in production
@@ -487,7 +487,7 @@ module "worker" {
 # Runs `pnpm migration:run` then exits. Never scheduled as a service; the
 # backend deploy triggers it with aws ecs run-task before rolling the API.
 module "migrator" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/oneshot-task?ref=oneshot-task-v1.0.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/oneshot-task?ref=oneshot-task-v1.0.1"
 
   name               = "${local.name}-migrator"
   container_name     = "migrator"
@@ -548,7 +548,7 @@ module "migrator" {
 # cloudflare_account_id); the public hostname is local.app_domain.
 module "web" {
   count  = var.cloudflare_account_id != "" ? 1 : 0
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/pages-web?ref=pages-web-v1.0.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/pages-web?ref=pages-web-v1.0.1"
 
   account_id  = var.cloudflare_account_id
   name        = "rally-prod-web"
@@ -581,6 +581,29 @@ module "dns_api" {
   comment = "rally-prod API → ALB via Cloudflare proxy (managed by rally-infra prod)"
 }
 
+# ── Observability: golden-signal alarms + dashboard ───────────────────────────
+# Shared module (7 alarms across ECS/ALB/RDS, one dashboard, one SNS topic with
+# email subscriptions). It was tagged months ago and never adopted by any stack,
+# which is why rally had no alarms at all until the fail-open one below.
+#
+# It also OWNS the alert topic, so the topic this stack used to declare inline is
+# gone — two topics per environment meant two subscriptions to confirm and two
+# places to look. The fail-open alarm below publishes to this module's topic.
+module "observability" {
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/observability?ref=observability-v1.0.1"
+
+  name              = local.name
+  region            = local.region
+  ecs_cluster_name  = module.ecs_cluster.cluster_name
+  ecs_service_names = [module.api.service_name, module.worker.service_name]
+  # Full ALB ARN — exposed by the runtime stack for exactly this. Without it the
+  # module silently skips the two user-facing ALB alarms.
+  alb_arn         = data.terraform_remote_state.runtime.outputs.alb_arn
+  rds_instance_id = module.rds.instance_id
+  alarm_emails    = var.alarm_emails
+  tags            = { Environment = local.env }
+}
+
 # ── Alerting: security controls that failed OPEN ──────────────────────────────
 # The access-token denylist (JwtAuthGuard) and the rate limiter both fail open
 # when Valkey is unreachable — individually correct, but together a cache outage
@@ -606,14 +629,6 @@ resource "aws_cloudwatch_log_metric_filter" "security_fail_open" {
   }
 }
 
-# NOTE: create the email/Slack subscription by hand once — an SNS email
-# subscription needs an out-of-band confirmation click, so Terraform cannot own it:
-#   aws sns subscribe --region REGION --topic-arn <arn> \
-#     --protocol email --notification-endpoint you@qnsc.vn
-resource "aws_sns_topic" "alerts" {
-  name              = "${local.name}-alerts"
-  kms_master_key_id = local.kms_key_arn
-}
 
 resource "aws_cloudwatch_metric_alarm" "security_fail_open" {
   alarm_name        = "${local.name}-security-fail-open"
@@ -630,6 +645,6 @@ resource "aws_cloudwatch_metric_alarm" "security_fail_open" {
   # healthy state — treat that as OK rather than INSUFFICIENT_DATA noise.
   treat_missing_data = "notBreaching"
 
-  alarm_actions = [aws_sns_topic.alerts.arn]
-  ok_actions    = [aws_sns_topic.alerts.arn]
+  alarm_actions = [module.observability.alarm_topic_arn]
+  ok_actions    = [module.observability.alarm_topic_arn]
 }
