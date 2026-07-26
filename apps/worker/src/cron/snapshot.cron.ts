@@ -21,6 +21,7 @@ import type { DrizzleDB } from '@platform';
 import { ReportingService } from '@modules/reporting';
 import { iterations, workItems, workflowStatuses } from '../../../../db/schema/work';
 import { WORKFLOW_DONE_CATEGORY } from '../../../../db/schema/enums';
+import { withJobContext } from '@qnsc-vn/observability';
 
 @Injectable()
 export class SnapshotCronService {
@@ -37,6 +38,12 @@ export class SnapshotCronService {
   /** Runs at midnight UTC every day. */
   @Cron('0 0 * * *', { name: 'daily-sprint-snapshot', timeZone: 'UTC' })
   async takeDailySnapshots(): Promise<void> {
+    // Job context so every line this run logs carries a correlationId; cron work
+    // previously logged with no context at all.
+    await withJobContext('daily-sprint-snapshot', () => this.takeDailySnapshotsBody());
+  }
+
+  private async takeDailySnapshotsBody(): Promise<void> {
     const acquired = await this.cache.acquireLock('cron:daily-snapshot', this.LOCK_TTL_MS);
     if (!acquired) {
       this.logger.warn('Snapshot cron lock held by another pod — skipping this tick');

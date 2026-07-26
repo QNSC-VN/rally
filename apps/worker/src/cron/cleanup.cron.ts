@@ -16,6 +16,7 @@ import { Cron } from '@nestjs/schedule';
 import { sql } from 'drizzle-orm';
 import { InjectDrizzle, AppConfigService, StorageService, CacheService } from '@platform';
 import type { DrizzleDB } from '@platform';
+import { withJobContext } from '@qnsc-vn/observability';
 
 @Injectable()
 export class CleanupCronService {
@@ -32,6 +33,12 @@ export class CleanupCronService {
 
   @Cron('0 1 * * *', { name: 'daily-cleanup', timeZone: 'UTC' })
   async runCleanup(): Promise<void> {
+    // Job context so every line this run logs carries a correlationId; cron work
+    // previously logged with no context at all.
+    await withJobContext('daily-cleanup', () => this.runCleanupBody());
+  }
+
+  private async runCleanupBody(): Promise<void> {
     const acquired = await this.cache.acquireLock('cron:daily-cleanup', this.LOCK_TTL_MS);
     if (!acquired) {
       this.logger.warn('Cleanup cron lock held by another pod — skipping this tick');

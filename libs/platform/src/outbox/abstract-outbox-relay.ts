@@ -45,6 +45,7 @@
  *   }
  */
 import { Logger } from '@nestjs/common';
+import { withJobContext } from '@qnsc-vn/observability';
 import type { DrizzleDB, DrizzleTx } from '../database/drizzle.provider';
 
 /** Optional callback returned by processRow() to run after the transaction commits. */
@@ -166,8 +167,19 @@ export abstract class AbstractOutboxRelay<TRow extends { id: string; attempts: n
     return this.inFlight;
   }
 
-  /** Runs exactly one fetch-process-mark pass, then hands off to any queued pass. */
-  private async runOnce(): Promise<void> {
+  /**
+   * Runs exactly one fetch-process-mark pass, then hands off to any queued pass.
+   *
+   * Wrapped in a job context so every log line the pass emits — including from the
+   * services it calls — carries a `correlationId`. Without it, relay work logged
+   * with no context at all and could not be tied to the request that queued it.
+   * Done here rather than in each subclass so all five relays inherit it.
+   */
+  private runOnce(): Promise<void> {
+    return withJobContext(this.constructor.name, () => this.runOncePass()) as Promise<void>;
+  }
+
+  private async runOncePass(): Promise<void> {
     // Collect post-commit tasks outside the transaction so they run only after
     // the transaction has durably committed.
     const postCommitTasks: PostCommitTask[] = [];

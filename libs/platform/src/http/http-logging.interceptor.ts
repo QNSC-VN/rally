@@ -72,7 +72,11 @@ export class HttpLoggingInterceptor implements NestInterceptor {
       return next.handle();
     }
 
-    const req = context.switchToHttp().getRequest<FastifyRequest & { user?: { id?: string } }>();
+    // The principal's id is `sub`, not `id` — this read was `req.user?.id`, which
+    // always resolved to undefined, so the access log's userId field was dead. The
+    // pino mixin also supplies userId from AsyncLocalStorage once the guard has run;
+    // this covers the window before that (and requests that never authenticate).
+    const req = context.switchToHttp().getRequest<FastifyRequest & { user?: { sub?: string } }>();
     const method = req.method;
     const url =
       ((req as unknown as Record<string, unknown>)['originalUrl'] as string | undefined) ?? req.url;
@@ -96,7 +100,7 @@ export class HttpLoggingInterceptor implements NestInterceptor {
             .switchToHttp()
             .getResponse<{ statusCode: number }>().statusCode;
           const duration = Date.now() - startTime;
-          const userId = req.user?.id;
+          const userId = req.user?.sub;
 
           this.log(statusCode, {
             msg: `<-- ${method} ${url} ${statusCode} ${duration}ms`,
@@ -129,7 +133,7 @@ export class HttpLoggingInterceptor implements NestInterceptor {
               (err as { getResponse?: () => { code?: string } }).getResponse?.()?.code ??
               'INTERNAL';
           }
-          const userId = req.user?.id;
+          const userId = req.user?.sub;
 
           this.log(statusCode, {
             msg: `<-- ${method} ${url} ${statusCode} ${duration}ms [${errorCode}]`,
