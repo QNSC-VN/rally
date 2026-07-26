@@ -9,7 +9,7 @@ import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
 import { IterationsService } from './iterations.service';
 import { ITERATION_REPOSITORY } from '../domain/ports/iteration.repository';
-import { ITERATION_ACTIVITY_LOG_REPOSITORY } from '../domain/ports/iteration-activity-log.repository';
+import { ActivityLogger } from '@modules/activity';
 import type { Iteration } from '../domain/iteration.types';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -116,11 +116,13 @@ describe('IterationsService', () => {
         IterationsService,
         { provide: ITERATION_REPOSITORY, useValue: repo },
         {
-          provide: ITERATION_ACTIVITY_LOG_REPOSITORY,
+          provide: ActivityLogger,
           useValue: {
-            append: vi.fn().mockResolvedValue(undefined),
-            appendMany: vi.fn().mockResolvedValue(undefined),
-            listByIteration: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+            build: vi.fn(() => ({})),
+            buildDiff: vi.fn(() => []),
+            log: vi.fn().mockResolvedValue(undefined),
+            logSafe: vi.fn().mockResolvedValue(undefined),
+            listFor: vi.fn().mockResolvedValue({ data: [], total: 0, page: 1, pageSize: 50 }),
           },
         },
         { provide: ProjectsService, useValue: projects },

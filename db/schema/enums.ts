@@ -126,6 +126,10 @@ export const activityEntityTypeEnum = pgEnum('activity_entity_type', [
   'work_item',
   'task',
   'attachment',
+  'iteration',
+  'project',
+  'milestone',
+  'release',
 ]);
 
 // ── messaging ──────────────────────────────────────────────────────────────

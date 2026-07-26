@@ -10,9 +10,11 @@ import { workItems } from '../../../../../db/schema/work';
 import { acceptedScheduleStatesSql } from '../../../../../db/schema/enums';
 import { IIterationRepository, ITERATION_REPOSITORY } from '../domain/ports/iteration.repository';
 import {
-  IIterationActivityLogRepository,
-  ITERATION_ACTIVITY_LOG_REPOSITORY,
-} from '../domain/ports/iteration-activity-log.repository';
+  ActivityLogger,
+  type ActivityChange,
+  type ActivityLog,
+  type CreateActivityInput,
+} from '@modules/activity';
 import { diffIteration } from './iteration-activity-diff';
 import type {
   Iteration,
@@ -20,12 +22,6 @@ import type {
   IterationFilters,
   UpdateIterationInput,
 } from '../domain/iteration.types';
-import type {
-  ActivityChange,
-  CreateIterationActivityLogInput,
-  IterationActivityAction,
-  IterationActivityLog,
-} from '../domain/activity-log.types';
 
 /** Walk an error's `.cause` chain looking for a PG unique-violation (code 23505). */
 function isDuplicateKeyError(err: unknown): boolean {
@@ -49,8 +45,7 @@ export class IterationsService {
 
   constructor(
     @Inject(ITERATION_REPOSITORY) private readonly iterationRepo: IIterationRepository,
-    @Inject(ITERATION_ACTIVITY_LOG_REPOSITORY)
-    private readonly activityRepo: IIterationActivityLogRepository,
+    private readonly activity: ActivityLogger,
     @InjectDrizzle() private readonly db: DrizzleDB,
     private readonly projectsService: ProjectsService,
     private readonly accessService: AccessService,
@@ -61,28 +56,25 @@ export class IterationsService {
   private buildActivity(
     iteration: Iteration,
     actorId: string | null,
-    action: IterationActivityAction,
+    action: string,
     changes: ActivityChange | null,
-  ): CreateIterationActivityLogInput {
-    return {
-      id: uuidv7(),
-      workspaceId: iteration.workspaceId,
-      projectId: iteration.projectId,
-      iterationId: iteration.id,
+  ): CreateActivityInput {
+    return this.activity.build(
+      {
+        workspaceId: iteration.workspaceId,
+        projectId: iteration.projectId,
+        entityType: 'iteration',
+        entityId: iteration.id,
+      },
       actorId,
       action,
       changes,
-    };
+    );
   }
 
   /** Best-effort append — a revision-log failure must never fail the mutation. */
-  private async appendActivity(inputs: CreateIterationActivityLogInput[]): Promise<void> {
-    if (inputs.length === 0) return;
-    try {
-      await this.activityRepo.appendMany(inputs);
-    } catch (err) {
-      this.logger.warn({ err }, 'Failed to write iteration activity log');
-    }
+  private async appendActivity(inputs: CreateActivityInput[]): Promise<void> {
+    await this.activity.logSafe(inputs);
   }
 
   /** Newest-first revision history for one iteration (project-view gated). */
@@ -90,9 +82,11 @@ export class IterationsService {
     actor: JwtPayload,
     id: string,
     args: { limit: number; offset: number },
-  ): Promise<{ items: IterationActivityLog[]; total: number }> {
+  ): Promise<{ items: ActivityLog[]; total: number }> {
     await this.getIterationForView(actor, id);
-    return this.activityRepo.listByIteration(id, actor.workspaceId, args);
+    const page = Math.floor(args.offset / args.limit) + 1;
+    const res = await this.activity.listFor(id, page, args.limit);
+    return { items: res.data, total: res.total };
   }
 
   // ── List ──────────────────────────────────────────────────────────────────

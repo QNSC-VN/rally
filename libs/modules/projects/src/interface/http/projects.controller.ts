@@ -33,6 +33,26 @@ import {
 } from './dto/project-response.dto';
 import type { Project, WorkflowStatus, WorkflowTransition } from '../../domain/project.types';
 import type { Label } from '../../domain/label.types';
+import {
+  ActivityQueryDto,
+  ActivityResponseDto,
+  ActivityPageDto,
+  type ActivityLog,
+} from '@modules/activity';
+
+function toActivityDto(a: ActivityLog): ActivityResponseDto {
+  return {
+    id: a.id,
+    createdAt: a.createdAt,
+    actorId: a.actorId,
+    actorName: a.actorName,
+    action: a.action,
+    entityType: a.entityType,
+    entityId: a.entityId,
+    changes: a.changes,
+    metadata: a.metadata ?? {},
+  };
+}
 
 // ── Mappers ──────────────────────────────────────────────────────────────────
 
@@ -167,6 +187,24 @@ export class ProjectsController {
   ): Promise<ProjectResponseDto> {
     const project = await this.projectsService.getProject(user.workspaceId, id);
     return toProjectDto(project);
+  }
+
+  @Get(':id/activity')
+  @ApiOperation({ summary: 'List the revision history of a project' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: ActivityPageDto })
+  @ApiCommonErrors(401, 404)
+  async getActivity(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: ActivityQueryDto,
+  ): Promise<ActivityPageDto> {
+    const { page, pageSize } = query;
+    const result = await this.projectsService.getProjectActivity(user, id, {
+      limit: pageSize,
+      offset: (page - 1) * pageSize,
+    });
+    return { data: result.items.map(toActivityDto), total: result.total, page, pageSize };
   }
 
   // ── Update project ─────────────────────────────────────────────────────────

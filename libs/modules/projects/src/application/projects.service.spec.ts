@@ -7,7 +7,16 @@ import { LABEL_REPOSITORY } from '../domain/ports/label.repository';
 import { PROJECT_TEAM_REPOSITORY } from '../domain/ports/project-team.repository';
 import { PROJECT_MEMBER_REPOSITORY } from '../domain/ports/project-member.repository';
 import { WORKSPACE_MEMBER_REPOSITORY, TeamService } from '@modules/workspace';
+import { ActivityLogger } from '@modules/activity';
 import type { Project, WorkflowStatus } from '../domain/project.types';
+
+const activityMock = () => ({
+  build: vi.fn(() => ({})),
+  buildDiff: vi.fn(() => []),
+  log: vi.fn(async () => undefined),
+  logSafe: vi.fn(async () => undefined),
+  listFor: vi.fn(async () => ({ data: [], total: 0, page: 1, pageSize: 50 })),
+});
 import {
   NotFoundException,
   ConflictException,
@@ -162,6 +171,7 @@ describe('ProjectsService', () => {
         { provide: TeamService, useValue: teamService },
         { provide: UnitOfWork, useValue: uow },
         { provide: AuditProducer, useValue: { emit: vi.fn().mockResolvedValue(undefined) } },
+        { provide: ActivityLogger, useValue: activityMock() },
       ],
     }).compile();
 

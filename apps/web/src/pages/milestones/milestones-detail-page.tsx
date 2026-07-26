@@ -9,7 +9,7 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
-import { FileText, Loader2, Package } from 'lucide-react'
+import { FileText, History, Loader2, Package } from 'lucide-react'
 import { BRAND } from '@/shared/config/brand'
 import { DetailLayout, DetailTwoPane } from '@/shared/ui/detail/detail-layout'
 import { DetailField } from '@/shared/ui/detail/detail-field'
@@ -19,6 +19,7 @@ import { TeamAvatar } from '@/shared/ui/team-cell'
 import { RichTextEditor } from '@/shared/ui/rich-text-editor'
 import { DateField } from '@/shared/ui/date-field'
 import { ArtifactsTab } from './ui/detail-parts'
+import { ActivityHistoryTab } from '@/entities/activity/ui/activity-history-tab'
 import { MILESTONE_STATUS_STYLE } from '@/features/milestones/status-colors'
 import { SaveCancelBar } from '@/shared/ui/save-cancel-bar'
 import { usePendingPatch } from '@/shared/lib/hooks/use-pending-patch'
@@ -27,6 +28,7 @@ import { useProjectPermissions } from '@/features/access/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import {
   useMilestone,
+  useMilestoneActivityLog,
   useUpdateMilestone,
   useMilestoneProjects,
   useMilestoneTeams,
@@ -55,7 +57,7 @@ const MILESTONE_STATUSES: MilestoneStatus[] = [
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
-type TabKey = 'details' | 'artifacts'
+type TabKey = 'details' | 'artifacts' | 'history'
 
 export function MilestoneDetailPage() {
   const { t } = useTranslation('milestones')
@@ -65,6 +67,8 @@ export function MilestoneDetailPage() {
   const workspaceId = workspace?.workspaceId ?? ''
 
   const { data: milestone, isLoading, isError } = useMilestone(milestoneId)
+  const { data: activityLogs = [], isLoading: activityLoading } =
+    useMilestoneActivityLog(milestoneId)
   const update = useUpdateMilestone()
 
   // Relation data (arrays of linked entity IDs)
@@ -164,6 +168,7 @@ export function MilestoneDetailPage() {
   const TABS = [
     { key: 'details', label: t('detail.tabs.details'), icon: <FileText size={19} /> },
     { key: 'artifacts', label: t('detail.tabs.artifacts'), icon: <Package size={19} /> },
+    { key: 'history', label: t('detail.tabs.history', 'History'), icon: <History size={19} /> },
   ]
 
   return (
@@ -189,6 +194,15 @@ export function MilestoneDetailPage() {
     >
       {activeTab === 'artifacts' ? (
         <ArtifactsTab milestoneId={milestoneId} />
+      ) : activeTab === 'history' ? (
+        <div className="flex-1 overflow-y-auto bg-card p-6">
+          <ActivityHistoryTab
+            logs={activityLogs}
+            isLoading={activityLoading}
+            title={t('detail.historyTitle', 'Revision History')}
+            subtitle={t('detail.historySubtitle', 'Every change to this milestone, newest first.')}
+          />
+        </div>
       ) : (
         <DetailTwoPane
           sidebarTitle={t('detail.metadataDetails')}
