@@ -41,3 +41,13 @@ variable "cloudflare_api_token" {
   default     = ""
   description = "Cloudflare API token (Zone:DNS:Edit on qnsc.vn). Supplied via TF_VAR_cloudflare_api_token in CI. Zone ID is read from qnsc-infra bootstrap via _shared remote state, not an input."
 }
+
+variable "alarm_emails" {
+  description = <<-EOT
+    Addresses subscribed to the alarm topic. Terraform creates the subscription;
+    each recipient must still click the confirmation link AWS emails them, so a
+    freshly-added address receives nothing until it does.
+  EOT
+  type        = list(string)
+  default     = ["nghiavt@qnsc.vn"]
+}
