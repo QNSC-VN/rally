@@ -1,38 +1,7 @@
-variable "cloudflare_account_id" {
-  type        = string
-  default     = ""
-  description = <<-EOT
-    Cloudflare account ID that owns the Pages project (account-level input, not
-    a secret). Pass via TF_VAR_cloudflare_account_id in CI. Leave empty to skip
-    the web module while the Cloudflare account is not yet wired.
-  EOT
-}
 
 
-variable "entra_tenant_id" {
-  type        = string
-  description = "Microsoft Entra (Azure AD) tenant ID — required (BFF auth); injected via TF_VAR in CI"
-  default     = ""
-}
 
-variable "entra_client_id" {
-  type        = string
-  description = "Microsoft Entra (Azure AD) app client ID — required (BFF auth); injected via TF_VAR in CI"
-  default     = ""
-}
 
-variable "github_app_id" {
-  type        = string
-  default     = ""
-  description = <<-EOT
-    GitHub App ID for the SCM Connections backfill (non-secret). Injected via
-    TF_VAR_github_app_id in CI. Leave empty until the "Rally SCM" GitHub App is
-    registered — an empty value keeps backfill dormant (isConfigured() = false)
-    and the stack still applies cleanly. The App private key + webhook secret are
-    NOT here — they live in Secrets Manager (github-app-private-key,
-    github-webhook-secret).
-  EOT
-}
 
 variable "cloudflare_api_token" {
   type        = string
@@ -64,4 +33,45 @@ variable "platform_admin_emails" {
   EOT
   type        = list(string)
   default     = ["nghiavt@qnsc.vn", "quangld@qnsc.vn", "hieuvbm@qnsc.vn", "anhntn@qnsc.vn"]
+}
+
+// ── Public identifiers, held in git on purpose ────────────────────────────────
+// These are NOT secrets: an Entra tenant/client id appears in the browser's auth
+// redirect, a GitHub App id is public, and a Cloudflare account id identifies the
+// account without authorising anything. The corresponding SECRETS live in Secrets
+// Manager (entra-client-secret, github-app-private-key) and the Cloudflare API
+// token stays a GitHub secret.
+//
+// They used to arrive as TF_VARs from GitHub Actions variables, which made
+// `infra-plan` lie: ENTRA_CLIENT_ID is environment-scoped, the plan job has no
+// `environment:` context (adding one would gate every PR behind the production
+// reviewer), so it resolved to "" and every plan reported three ECS task
+// definitions "must be replaced". Reviewers who see phantom replacements on every
+// PR stop reading plans — which is exactly when a real one slips through.
+//
+// In git the value is identical at plan and apply time, so the plan tells the truth
+// and the value is reviewable in a diff.
+
+variable "entra_tenant_id" {
+  description = "Microsoft Entra tenant id (public)."
+  type        = string
+  default     = "dc0f2078-ac28-4ff2-b21a-d4b28df32361"
+}
+
+variable "entra_client_id" {
+  description = "Entra application (client) id for this environment — a distinct app registration per environment."
+  type        = string
+  default     = "45fabceb-e51c-446b-894e-af4c4b7f30f8"
+}
+
+variable "github_app_id" {
+  description = "GitHub App id for SCM discovery/backfill (public)."
+  type        = string
+  default     = "4390002"
+}
+
+variable "cloudflare_account_id" {
+  description = "Cloudflare account that owns the Pages project (public identifier)."
+  type        = string
+  default     = "69e52835cf2d08edde5b6ebd741d30fa"
 }
