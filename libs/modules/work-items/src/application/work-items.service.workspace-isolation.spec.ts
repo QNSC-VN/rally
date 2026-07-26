@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
 import { WorkItemsService } from './work-items.service';
 import { WORK_ITEM_REPOSITORY } from '../domain/ports/work-item.repository';
-import { ACTIVITY_LOG_REPOSITORY } from '../domain/ports/activity-log.repository';
+import { ActivityLogger } from '@modules/activity';
 import { TIME_LOG_REPOSITORY } from '../domain/ports/time-log.repository';
 import { WATCHER_REPOSITORY } from '../domain/ports/watcher.repository';
 import { ATTACHMENT_REPOSITORY } from '../domain/ports/attachment.repository';
@@ -210,9 +210,11 @@ const makeWatcherRepo = () => ({
 });
 
 const makeActivityRepo = () => ({
-  append: vi.fn().mockResolvedValue(undefined),
-  appendMany: vi.fn().mockResolvedValue(undefined),
-  listByWorkItem: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+  build: vi.fn(() => ({})),
+  buildDiff: vi.fn(() => []),
+  log: vi.fn().mockResolvedValue(undefined),
+  logSafe: vi.fn().mockResolvedValue(undefined),
+  listFor: vi.fn().mockResolvedValue({ data: [], total: 0, page: 1, pageSize: 50 }),
 });
 
 const makeUnitOfWork = () => ({
@@ -270,7 +272,7 @@ describe('WorkItemsService — workspace isolation', () => {
       providers: [
         WorkItemsService,
         { provide: WORK_ITEM_REPOSITORY, useValue: wiRepo },
-        { provide: ACTIVITY_LOG_REPOSITORY, useValue: activityRepo },
+        { provide: ActivityLogger, useValue: activityRepo },
         { provide: TIME_LOG_REPOSITORY, useValue: tlRepo },
         { provide: WATCHER_REPOSITORY, useValue: watcherRepo },
         { provide: ATTACHMENT_REPOSITORY, useValue: atRepo },
@@ -419,7 +421,7 @@ describe('WorkItemsService — workspace isolation', () => {
       await expect(
         service.getActivity(actorForWorkspace(WORKSPACE_B), 'wi-a', { limit: 10, offset: 0 }),
       ).rejects.toThrow(NotFoundException);
-      expect(activityRepo.listByWorkItem).not.toHaveBeenCalled();
+      expect(activityRepo.listFor).not.toHaveBeenCalled();
     });
   });
 

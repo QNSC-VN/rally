@@ -60,7 +60,7 @@ import {
 } from './dto/work-item-response.dto';
 import type { WorkItem } from '../../domain/work-item.types';
 import { BACKLOG_SORT_FIELDS } from '../../domain/work-item.types';
-import type { ActivityLog } from '../../domain/activity-log.types';
+import type { ActivityLog } from '@modules/activity';
 import type { TimeLog } from '../../domain/time-log.types';
 import type { Watcher } from '../../domain/watcher.types';
 import type { WorkItemAttachment } from '../../domain/attachment.types';
@@ -120,14 +120,14 @@ function toWorkItemDto(w: WorkItem): WorkItemResponseDto {
 function toActivityDto(a: ActivityLog): ActivityResponseDto {
   return {
     id: a.id,
-    createdAt: a.createdAt.toISOString(),
+    createdAt: a.createdAt,
     actorId: a.actorId,
     actorName: a.actorName,
     action: a.action,
     entityType: a.entityType,
     entityId: a.entityId,
     changes: a.changes,
-    metadata: a.metadata,
+    metadata: a.metadata ?? {},
   };
 }
 

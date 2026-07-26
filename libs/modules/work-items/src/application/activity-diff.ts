@@ -1,92 +1,67 @@
 import type { WorkItem, UpdateWorkItemInput } from '../domain/work-item.types';
-import type { ActivityAction, ActivityChange } from '../domain/activity-log.types';
+import { diffFields, type ActivityChange, type ActivityDiffConfig } from '@modules/activity';
 
+/** One work-item revision entry — action always resolved (item vs task). */
 export interface ActivityDiffEntry {
-  action: ActivityAction;
+  action: string;
   change: ActivityChange;
 }
 
-// Rich-text fields: record that they changed, but never the body (SRS §7).
-const RICH_TEXT_FIELDS = new Set([
+// Rich-text fields: record that they changed, never the body (SRS §7).
+const RICH_TEXT = [
   'description',
   'notes',
   'releaseNotes',
   'acceptanceCriteria',
   'blockedReason',
-]);
+] as const;
 
-/** Normalise numeric-string / null for stable comparison. */
-function changed(before: unknown, after: unknown): boolean {
-  const a = before === undefined ? null : before;
-  const b = after === undefined ? null : after;
-  if (a === null && b === null) return false;
-  // eslint-disable-next-line @typescript-eslint/no-base-to-string
-  return String(a) !== String(b);
-}
+// Field → action, per work-item vs task (SRS P1-ACTIVITY §5). Fields not listed
+// fall back to the generic `${type}.updated`.
+const ITEM_ACTIONS: Record<string, string> = {
+  scheduleState: 'work_item.schedule_state_changed',
+  flowState: 'work_item.flow_state_changed',
+  priority: 'work_item.priority_changed',
+  assigneeId: 'work_item.assigned',
+  storyPoints: 'work_item.estimate_updated',
+  estimateHours: 'work_item.estimate_updated',
+};
+const TASK_ACTIONS: Record<string, string> = {
+  scheduleState: 'task.state_changed',
+  storyPoints: 'task.estimate_updated',
+  estimateHours: 'task.estimate_updated',
+  todoHours: 'task.todo_updated',
+  actualHours: 'task.actual_updated',
+};
 
-function entry(
-  field: string,
-  before: WorkItem,
-  next: unknown,
-  itemAction: ActivityAction,
-  taskAction: ActivityAction,
-  isTask: boolean,
-): ActivityDiffEntry {
-  const isRich = RICH_TEXT_FIELDS.has(field);
-  return {
-    action: isTask ? taskAction : itemAction,
-    change: {
-      field,
-      old: isRich ? null : ((before as unknown as Record<string, unknown>)[field] ?? null),
-      new: isRich ? null : (next ?? null),
-    },
-  };
-}
+// Order preserved from the original diff. flowState is a work-item-only dimension
+// (a task has a single state, already logged via scheduleState).
+const ITEM_FIELDS = [
+  'title', 'description', 'notes', 'releaseNotes', 'acceptanceCriteria',
+  'isBlocked', 'blockedReason', 'teamId', 'iterationId', 'releaseId', 'statusId',
+  'scheduleState', 'flowState', 'priority', 'assigneeId', 'storyPoints',
+  'estimateHours', 'todoHours', 'actualHours',
+];
+const TASK_FIELDS = ITEM_FIELDS.filter((f) => f !== 'flowState');
 
 /**
  * Compute the activity-log entries for a work-item/task update by diffing the
- * persisted row against the requested change set. Only changed fields produce
- * an entry; field→action mapping follows SRS P1-ACTIVITY §5.
+ * persisted row against the requested change set (via the shared `diffFields`).
  */
 export function diffWorkItem(
   before: WorkItem,
   input: UpdateWorkItemInput,
   isTask: boolean,
 ): ActivityDiffEntry[] {
-  const out: ActivityDiffEntry[] = [];
-  const cur = before as unknown as Record<string, unknown>;
-
-  const add = (
-    field: keyof UpdateWorkItemInput,
-    itemAction: ActivityAction,
-    taskAction: ActivityAction,
-  ) => {
-    if (input[field] === undefined) return;
-    if (!changed(cur[field], input[field])) return;
-    out.push(entry(field, before, input[field], itemAction, taskAction, isTask));
+  const config: ActivityDiffConfig<Record<string, unknown>> = {
+    fields: isTask ? TASK_FIELDS : ITEM_FIELDS,
+    richText: RICH_TEXT as unknown as string[],
+    action: (f) =>
+      isTask ? (TASK_ACTIONS[f] ?? 'task.updated') : (ITEM_ACTIONS[f] ?? 'work_item.updated'),
   };
-
-  add('title', 'work_item.updated', 'task.updated');
-  add('description', 'work_item.updated', 'task.updated');
-  add('notes', 'work_item.updated', 'task.updated');
-  add('releaseNotes', 'work_item.updated', 'task.updated');
-  add('acceptanceCriteria', 'work_item.updated', 'task.updated');
-  add('isBlocked', 'work_item.updated', 'task.updated');
-  add('blockedReason', 'work_item.updated', 'task.updated');
-  add('teamId', 'work_item.updated', 'task.updated');
-  add('iterationId', 'work_item.updated', 'task.updated');
-  add('releaseId', 'work_item.updated', 'task.updated');
-  add('statusId', 'work_item.updated', 'task.updated');
-  add('scheduleState', 'work_item.schedule_state_changed', 'task.state_changed');
-  // BR-WI-01: Flow State mirrors Schedule State — log it as its own dimension on
-  // work items (a task has a single state, already logged above).
-  if (!isTask) add('flowState', 'work_item.flow_state_changed', 'work_item.flow_state_changed');
-  add('priority', 'work_item.priority_changed', 'task.updated');
-  add('assigneeId', 'work_item.assigned', 'task.updated');
-  add('storyPoints', 'work_item.estimate_updated', 'task.estimate_updated');
-  add('estimateHours', 'work_item.estimate_updated', 'task.estimate_updated');
-  add('todoHours', 'work_item.updated', 'task.todo_updated');
-  add('actualHours', 'work_item.updated', 'task.actual_updated');
-
-  return out;
+  return diffFields(
+    before as unknown as Record<string, unknown>,
+    input as Record<string, unknown>,
+    config,
+  ).map((e) => ({ action: e.action ?? 'work_item.updated', change: e.change }));
 }

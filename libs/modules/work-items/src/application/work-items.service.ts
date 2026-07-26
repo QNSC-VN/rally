@@ -38,9 +38,12 @@ import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
 import { IWorkItemRepository, WORK_ITEM_REPOSITORY } from '../domain/ports/work-item.repository';
 import {
-  IActivityLogRepository,
-  ACTIVITY_LOG_REPOSITORY,
-} from '../domain/ports/activity-log.repository';
+  ActivityLogger,
+  type ActivityChange,
+  type ActivityEntityType,
+  type ActivityLog,
+  type CreateActivityInput,
+} from '@modules/activity';
 import { ITimeLogRepository, TIME_LOG_REPOSITORY } from '../domain/ports/time-log.repository';
 import { IWatcherRepository, WATCHER_REPOSITORY } from '../domain/ports/watcher.repository';
 import {
@@ -67,13 +70,6 @@ import type {
   MyWorkItem,
   WorkspaceSummary,
 } from '../domain/work-item.types';
-import type {
-  ActivityLog,
-  ActivityAction,
-  ActivityChange,
-  ActivityEntityType,
-  CreateActivityLogInput,
-} from '../domain/activity-log.types';
 import type { TimeLog } from '../domain/time-log.types';
 import type { Watcher } from '../domain/watcher.types';
 import type { WorkItemAttachment } from '../domain/attachment.types';
@@ -132,7 +128,7 @@ export class WorkItemsService {
 
   constructor(
     @Inject(WORK_ITEM_REPOSITORY) private readonly workItemRepo: IWorkItemRepository,
-    @Inject(ACTIVITY_LOG_REPOSITORY) private readonly activityRepo: IActivityLogRepository,
+    private readonly activity: ActivityLogger,
     @Inject(TIME_LOG_REPOSITORY) private readonly timeLogRepo: ITimeLogRepository,
     @Inject(WATCHER_REPOSITORY) private readonly watcherRepo: IWatcherRepository,
     @Inject(ATTACHMENT_REPOSITORY) private readonly attachmentRepo: IAttachmentRepository,
@@ -155,23 +151,34 @@ export class WorkItemsService {
     item: WorkItem,
     entityType: ActivityEntityType,
     actorId: string,
-    action: ActivityAction,
+    action: string,
     changes: ActivityChange | null,
     metadata: Record<string, unknown> = {},
-  ): CreateActivityLogInput {
-    return {
-      id: uuidv7(),
-      workspaceId: item.workspaceId,
-      projectId: item.projectId,
-      // Anchor task entries to the parent so the item history shows them too.
-      workItemId: entityType === 'task' ? (item.parentId ?? item.id) : item.id,
-      entityType,
-      entityId: item.id,
+  ): CreateActivityInput {
+    return this.activity.build(
+      {
+        workspaceId: item.workspaceId,
+        projectId: item.projectId,
+        entityType,
+        entityId: item.id,
+        // Anchor task entries to the parent so the item history shows them too.
+        contextId: entityType === 'task' ? (item.parentId ?? item.id) : item.id,
+      },
       actorId,
       action,
       changes,
       metadata,
-    };
+    );
+  }
+
+  /** Batched append participating in the caller's transaction (shared logger). */
+  private appendMany(inputs: CreateActivityInput[], tx?: DbExecutor): Promise<void> {
+    return this.activity.log(inputs, { tx });
+  }
+
+  /** Best-effort single append — a revision-log failure must never fail the mutation. */
+  private append(input: CreateActivityInput): Promise<void> {
+    return this.activity.logSafe([input]);
   }
 
   /** Single entry — used for created/deleted events where there is only one entry. */
@@ -180,14 +187,11 @@ export class WorkItemsService {
     item: WorkItem,
     entityType: ActivityEntityType,
     actorId: string,
-    action: ActivityAction,
+    action: string,
     changes: ActivityChange | null,
     metadata: Record<string, unknown> = {},
   ): Promise<void> {
-    await this.activityRepo.appendMany(
-      [this.buildActivityInput(item, entityType, actorId, action, changes, metadata)],
-      tx,
-    );
+    await this.appendMany([this.buildActivityInput(item, entityType, actorId, action, changes, metadata)], tx);
   }
 
   // ── List ──────────────────────────────────────────────────────────────────
@@ -563,7 +567,9 @@ export class WorkItemsService {
     args: { limit: number; offset: number },
   ): Promise<{ items: ActivityLog[]; total: number }> {
     await this.getWorkItemForView(actor, workItemId);
-    return this.activityRepo.listByWorkItem(workItemId, actor.workspaceId, args);
+    const page = Math.floor(args.offset / args.limit) + 1;
+    const res = await this.activity.listFor(workItemId, page, args.limit);
+    return { items: res.data, total: res.total };
   }
 
   // ── Update ────────────────────────────────────────────────────────────────
@@ -777,7 +783,7 @@ export class WorkItemsService {
       const activityInputs = entries.map((e) =>
         this.buildActivityInput(updated, entityType, actor.sub, e.action, e.change),
       );
-      await this.activityRepo.appendMany(activityInputs, tx);
+      await this.appendMany(activityInputs, tx);
 
       // ── Auto-accept iteration when ALL assigned Story/Defect are accepted (BA F1) ──
       // Fires when this Story/Defect transitions INTO an accepted state and is
@@ -836,7 +842,7 @@ export class WorkItemsService {
               tx,
             );
             if (freshParent) {
-              await this.activityRepo.appendMany(
+              await this.appendMany(
                 [
                   this.buildActivityInput(
                     freshParent,
@@ -873,7 +879,7 @@ export class WorkItemsService {
             tx,
           );
           if (freshParent) {
-            await this.activityRepo.appendMany(
+            await this.appendMany(
               [
                 this.buildActivityInput(
                   freshParent,
@@ -1132,7 +1138,7 @@ export class WorkItemsService {
     );
 
     const source = await this.getWorkItem(actor.workspaceId, sourceId);
-    void this.activityRepo.append(
+    void this.append(
       this.buildActivityInput(source, 'work_item', actor.sub, 'work_item.relation_added', null, {
         relationType,
         targetId,
@@ -1159,7 +1165,7 @@ export class WorkItemsService {
     await this.relationRepo.delete(relationId, actor.workspaceId);
 
     const source = await this.getWorkItem(actor.workspaceId, sourceId);
-    void this.activityRepo.append(
+    void this.append(
       this.buildActivityInput(source, 'work_item', actor.sub, 'work_item.relation_removed', null, {
         relationType: relation.relationType,
         relationId,
@@ -1706,11 +1712,11 @@ export class WorkItemsService {
       attachedBy: actor.sub,
     });
 
-    void this.activityRepo.append({
+    void this.append({
       id: uuidv7(),
       workspaceId: actor.workspaceId,
       projectId: item.projectId,
-      workItemId,
+      contextId: workItemId,
       entityType: 'attachment',
       entityId: attachmentId,
       actorId: actor.sub,
@@ -1797,11 +1803,11 @@ export class WorkItemsService {
     // still references it.
     await this.attachments.softDelete(attachmentId);
 
-    void this.activityRepo.append({
+    void this.append({
       id: uuidv7(),
       workspaceId: actor.workspaceId,
       projectId: item.projectId,
-      workItemId,
+      contextId: workItemId,
       entityType: 'attachment',
       entityId: attachmentId,
       actorId: actor.sub,
