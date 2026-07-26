@@ -78,6 +78,27 @@ there, not here. `libs/platform` keeps only re-export façades (`observability/i
   metrics are no-ops today. Logs are the live signal. See
   `docs/superpowers/specs/2026-07-26-observability-architecture-design.md`.
 
+## Environment flags that look wrong and are not
+
+Two settings in `infra/live/*` read like mistakes. Both are deliberate; changing
+either opens a hole or leaks API surface.
+
+- **`NODE_ENV=production` in DEVELOP.** Not a copy-paste error. `devLoginAllowed`
+  in `@qnsc-vn/identity` is `nodeEnv !== 'production'`, so flipping develop to
+  `development` would expose the **passwordless** `/v1/bff/dev-login` on a public
+  host — anyone knowing a seeded address (`dev@qnsc.dev` is in this repo) could sign
+  in as that user with no password. Develop deliberately requires real Entra SSO.
+  If a local passwordless login is wanted, run the app locally where `.env` sets
+  `NODE_ENV=test`; do not change the deployed value.
+  (`LOG_PRETTY` is pinned `"false"` in infra, so JSON logs do not depend on this.)
+
+- **`SWAGGER_ENABLED` unset (= off) in BOTH environments.** `/api/docs` publishes the
+  full endpoint inventory and every schema, unauthenticated, and both API hosts are
+  public. Explore the API locally instead — `.env` sets `SWAGGER_ENABLED=true`, so
+  `localhost:3000/api/docs` works while developing. It used to be derived from
+  `NODE_ENV !== 'production'`, which meant any non-prod-labelled environment
+  published it without anyone choosing to; that is why it is now explicit opt-in.
+
 ## Auth model (read before touching a guard)
 
 - **Browser sessions are BFF, not bearer.** The SPA holds no tokens. It talks to a
