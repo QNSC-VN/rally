@@ -77,22 +77,12 @@ export function WorkspaceSettingsTab() {
 
   return (
     <div className="max-w-2xl space-y-6">
+      {/* General + Regional defaults share one RHF-less form + Save footer,
+          mirroring the Profile tab's two-card + footer layout. */}
       <form onSubmit={(e) => void handleSave(e)} className="space-y-6">
         <Card>
-          <CardHeader title={t('workspace.sectionTitle')} />
+          <CardHeader title={t('workspace.sectionGeneral')} />
           <CardBody className="space-y-4">
-            {/* Read-only identity */}
-            <dl className="grid grid-cols-[130px_1fr] gap-x-3 gap-y-2.5 text-ui-md">
-              <dt className="text-foreground-subtle">{t('workspace.slugLabel')}</dt>
-              <dd className="font-mono text-foreground">
-                {current?.slug ?? workspace?.workspaceSlug ?? '—'}
-              </dd>
-              <dt className="text-foreground-subtle">{t('workspace.adminLabel')}</dt>
-              <dd className="text-foreground">
-                {admins.length === 0 ? '—' : admins.map((a) => a.displayName).join(', ')}
-              </dd>
-            </dl>
-
             <FormField label={t('workspace.nameLabel')} required>
               <Input
                 value={name}
@@ -108,21 +98,25 @@ export function WorkspaceSettingsTab() {
                 rows={3}
               />
             </FormField>
+          </CardBody>
+        </Card>
 
-            {/* Company-wide formatting defaults — the fallback each member inherits
-                until they override it in their own Profile. */}
-            <FormField label={t('workspace.defaultTimezone', 'Default timezone')}>
+        <Card>
+          <CardHeader title={t('workspace.sectionFormatting')} />
+          <CardBody className="space-y-4">
+            <p className="text-ui-sm text-foreground-subtle">{t('workspace.defaultsHint')}</p>
+            <FormField label={t('workspace.defaultTimezone')}>
               <SearchableSelect
                 value={timezone}
-                ariaLabel={t('workspace.defaultTimezone', 'Default timezone')}
+                ariaLabel={t('workspace.defaultTimezone')}
                 options={TIMEZONES.map((tz) => ({ value: tz, label: tz }))}
                 onChange={(v) => setTimezone(v ?? '')}
               />
             </FormField>
-            <FormField label={t('workspace.defaultLocale', 'Default date/number format')}>
+            <FormField label={t('workspace.defaultLocale')}>
               <SearchableSelect
                 value={locale}
-                ariaLabel={t('workspace.defaultLocale', 'Default date/number format')}
+                ariaLabel={t('workspace.defaultLocale')}
                 options={LOCALES}
                 onChange={(v) => setLocale(v ?? '')}
               />
@@ -137,6 +131,23 @@ export function WorkspaceSettingsTab() {
           </Button>
         </div>
       </form>
+
+      {/* Read-only identity — mirrors the Profile tab's Account card. */}
+      <Card>
+        <CardHeader title={t('workspace.sectionDetails')} />
+        <CardBody>
+          <dl className="grid grid-cols-[130px_1fr] gap-x-3 gap-y-2.5 text-ui-md">
+            <dt className="text-foreground-subtle">{t('workspace.slugLabel')}</dt>
+            <dd className="font-mono text-foreground">
+              {current?.slug ?? workspace?.workspaceSlug ?? '—'}
+            </dd>
+            <dt className="text-foreground-subtle">{t('workspace.adminLabel')}</dt>
+            <dd className="text-foreground">
+              {admins.length === 0 ? '—' : admins.map((a) => a.displayName).join(', ')}
+            </dd>
+          </dl>
+        </CardBody>
+      </Card>
     </div>
   )
 }

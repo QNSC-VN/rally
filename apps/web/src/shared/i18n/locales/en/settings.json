@@ -61,11 +61,17 @@
     "saved": "Workspace settings saved",
     "saveFailed": "Failed to save",
     "sectionTitle": "Workspace",
+    "sectionGeneral": "General",
+    "sectionFormatting": "Regional defaults",
+    "sectionDetails": "Details",
     "slugLabel": "Slug",
     "adminLabel": "Workspace admin",
     "nameLabel": "Workspace name",
     "namePlaceholder": "Acme Corp",
-    "descriptionPlaceholder": "What does this workspace cover?"
+    "descriptionPlaceholder": "What does this workspace cover?",
+    "defaultTimezone": "Default timezone",
+    "defaultLocale": "Default date & number format",
+    "defaultsHint": "Fallback for members who haven't set their own in Profile."
   },
   "workflow": {
     "description": "Define the statuses work items move through in",
