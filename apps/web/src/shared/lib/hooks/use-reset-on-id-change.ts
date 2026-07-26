@@ -4,10 +4,9 @@ import { useState } from 'react'
  * useResetOnIdChange — run `reset` exactly once each time `id` changes.
  *
  * The "sync local form state when the entity first loads / the user switches
- * entity, but NOT on every background refetch" pattern, which was duplicated in
- * WorkspaceSettingsTab and ProjectSettingsTab. Tracking the id (not the object)
- * avoids clobbering an in-progress edit when a refetch returns a new object with
- * the same id.
+ * entity, but NOT on every background refetch" pattern (e.g. WorkspaceSettingsTab).
+ * Tracking the id (not the object) avoids clobbering an in-progress edit when a
+ * refetch returns a new object with the same id.
  *
  * Uses the React "adjust state during render" idiom — `reset` typically calls
  * the component's own setState, so it re-renders immediately with fresh values.
