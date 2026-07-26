@@ -1,5 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { JwtPayload, PagedResult } from '@platform';
+import { and, eq } from 'drizzle-orm';
+import { InjectDrizzle, NotFoundException } from '@platform';
+import type { JwtPayload, PagedResult, DrizzleDB } from '@platform';
+import { AccessService } from '@modules/access';
+import { PERMISSION } from '@shared-kernel';
+import { workItems } from '../../../../../db/schema/work';
 import { SCM_STORE, type IScmStore, type PageArgs } from '../domain/ports/scm.store';
 import type {
   ScmProvider,
@@ -12,30 +17,53 @@ import type {
 /** Read-side + repo-mapping use cases for the API. Ingestion/linking is the relay's job. */
 @Injectable()
 export class ScmService {
-  constructor(@Inject(SCM_STORE) private readonly store: IScmStore) {}
+  constructor(
+    @Inject(SCM_STORE) private readonly store: IScmStore,
+    @InjectDrizzle() private readonly db: DrizzleDB,
+    private readonly accessService: AccessService,
+  ) {}
 
-  // ── Work-item connection/changeset reads (workspace-scoped) ──────────────────
+  /**
+   * SCM links belong to a work item, so viewing them requires `work_item:view`
+   * at that work item's PROJECT scope — not just workspace membership. Resolves
+   * the work item's project and enforces before any connection/changeset read.
+   */
+  private async assertCanViewWorkItem(actor: JwtPayload, workItemId: string): Promise<void> {
+    const rows = await this.db
+      .select({ projectId: workItems.projectId })
+      .from(workItems)
+      .where(and(eq(workItems.id, workItemId), eq(workItems.workspaceId, actor.workspaceId)))
+      .limit(1);
+    const projectId = rows[0]?.projectId;
+    if (!projectId) throw new NotFoundException('WORK_ITEM_NOT_FOUND', 'Work item not found');
+    await this.accessService.assertProjectPermission(actor, projectId, PERMISSION.WORK_ITEM_VIEW);
+  }
 
-  listConnections(
+  // ── Work-item connection/changeset reads (project-scoped: work_item:view) ────
+
+  async listConnections(
     actor: JwtPayload,
     workItemId: string,
     args: PageArgs,
   ): Promise<PagedResult<ScmConnection>> {
+    await this.assertCanViewWorkItem(actor, workItemId);
     return this.store.listConnections(workItemId, actor.workspaceId, args);
   }
 
-  listChangesets(
+  async listChangesets(
     actor: JwtPayload,
     workItemId: string,
     args: PageArgs,
   ): Promise<PagedResult<ScmChangeset>> {
+    await this.assertCanViewWorkItem(actor, workItemId);
     return this.store.listChangesets(workItemId, actor.workspaceId, args);
   }
 
-  counts(
+  async counts(
     actor: JwtPayload,
     workItemId: string,
   ): Promise<{ connections: number; changesets: number }> {
+    await this.assertCanViewWorkItem(actor, workItemId);
     return this.store.countByWorkItem(workItemId, actor.workspaceId);
   }
 

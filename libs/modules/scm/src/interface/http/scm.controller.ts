@@ -86,7 +86,9 @@ export class ScmController {
   // ── Work-item Connections / Changesets ───────────────────────────────────────
 
   @Get('work-items/:id/connections')
-  @Auth('workspace:view')
+  // Authn only at the guard; ScmService enforces work_item:view at the item's
+  // PROJECT scope (workspace:view would wrongly block a project-only member).
+  @Auth()
   @ApiOperation({ summary: 'List SCM connections (pull requests) for a work item' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiPagedResponse(ScmConnectionResponseDto)
@@ -101,7 +103,7 @@ export class ScmController {
   }
 
   @Get('work-items/:id/changesets')
-  @Auth('workspace:view')
+  @Auth()
   @ApiOperation({ summary: 'List SCM changesets (commits) for a work item' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiPagedResponse(ScmChangesetResponseDto)
