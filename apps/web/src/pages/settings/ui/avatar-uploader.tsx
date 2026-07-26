@@ -7,7 +7,9 @@ import { Button } from '@/shared/ui/button'
 import { OwnerAvatar } from '@/shared/ui/owner-cell'
 import {
   useAvatarPresign,
+  useAvatarConfirm,
   uploadAvatarToBucket,
+  sha256Base64,
   type AvatarContentType,
 } from '../model/avatar-upload'
 
@@ -17,22 +19,25 @@ const MAX_BYTES = 2 * 1024 * 1024
 
 /**
  * Profile photo control — shows the current avatar and uploads a replacement
- * directly to the public-assets bucket (presign → PUT → persist `avatarUrl`).
- * `onCommit` persists the resolved CDN URL (or null to clear) via the existing
- * profile update, so the change is saved immediately (optimistic).
+ * via the shared attachment mechanics (presign → PUT to bucket → confirm). The
+ * confirm step persists `avatarUrl` server-side and returns the durable CDN URL,
+ * which `onUploaded` reflects into the auth store + form. `onRemove` clears it.
  */
 export function AvatarUploader({
   name,
   value,
-  onCommit,
+  onUploaded,
+  onRemove,
 }: {
   name: string
   value?: string | null
-  onCommit: (url: string | null) => Promise<void>
+  onUploaded: (url: string) => void
+  onRemove: () => Promise<void>
 }) {
   const { t } = useTranslation('settings')
   const inputRef = useRef<HTMLInputElement>(null)
   const presign = useAvatarPresign()
+  const confirm = useAvatarConfirm()
   const [busy, setBusy] = useState(false)
 
   async function handleFile(file: File) {
@@ -46,12 +51,15 @@ export function AvatarUploader({
     }
     setBusy(true)
     try {
-      const { uploadUrl, publicUrl } = await presign.mutateAsync({
+      const checksumSha256 = await sha256Base64(file)
+      const { fileId, uploadUrl, requiredHeaders } = await presign.mutateAsync({
         contentType: file.type as AvatarContentType,
         contentLength: file.size,
+        checksumSha256,
       })
-      await uploadAvatarToBucket(uploadUrl, file)
-      await onCommit(publicUrl)
+      await uploadAvatarToBucket(uploadUrl, requiredHeaders, file)
+      const { avatarUrl } = await confirm.mutateAsync({ fileId })
+      onUploaded(avatarUrl)
       notify.success(t('profile.avatarUpdated'))
     } catch (err) {
       notify.fromError(err, t('profile.avatarUploadError'))
@@ -63,7 +71,7 @@ export function AvatarUploader({
   async function handleRemove() {
     setBusy(true)
     try {
-      await onCommit(null)
+      await onRemove()
       notify.success(t('profile.avatarRemoved'))
     } catch (err) {
       notify.fromError(err, t('profile.avatarUploadError'))

@@ -89,6 +89,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v1/auth/me/avatar/confirm': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Confirm the uploaded avatar and store it on the profile */
+    post: operations['AuthController_confirmAvatar']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v1/auth/logout-all': {
     parameters: {
       query?: never
@@ -2848,18 +2865,31 @@ export interface components {
       /** @enum {string} */
       contentType: 'image/png' | 'image/jpeg' | 'image/webp'
       contentLength: number
+      checksumSha256: string
     }
     PresignAvatarResponseDto: {
+      /** Format: uuid */
+      fileId: string
       /**
        * Format: uri
        * @description Presigned PUT URL — expires in 5 minutes
        */
       uploadUrl: string
+      /** @description Headers the client MUST send on the PUT — they are part of the signature. */
+      requiredHeaders: {
+        [key: string]: string
+      }
+    }
+    ConfirmAvatarDto: {
+      /** Format: uuid */
+      fileId: string
+    }
+    ConfirmAvatarResponseDto: {
       /**
        * Format: uri
-       * @description CDN URL the uploaded avatar resolves at once stored
+       * @description Durable CDN URL now stored on the user profile
        */
-      publicUrl: string
+      avatarUrl: string
     }
     PresignAttachmentDto: {
       filename: string
@@ -3667,6 +3697,64 @@ export interface operations {
       }
       /** @description Unauthorized — missing or invalid authentication */
       401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Conflict — resource state prevents the operation */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  AuthController_confirmAvatar: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ConfirmAvatarDto']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ConfirmAvatarResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
         headers: {
           [name: string]: unknown
         }

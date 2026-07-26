@@ -34,6 +34,7 @@ import { AppConfigService, BFF_SESSION_RESOLVER } from '@platform';
 import { AccessModule, AccessService } from '@modules/access';
 import { WorkspaceModule, WorkspaceService } from '@modules/workspace';
 import { AuditService } from '@modules/audit';
+import { AttachmentsModule } from '@modules/attachments';
 import { IdentityController } from './interface/http/identity.controller';
 import { AuthController } from './interface/http/auth.controller';
 import { BffController } from './interface/http/bff/bff.controller';
@@ -44,7 +45,6 @@ import { SsoConnectionDrizzleRepository } from './infrastructure/persistence/sso
 import { SecretsManagerSecretResolver } from './infrastructure/secrets-manager-secret-resolver';
 import { RallyClaimsProvider } from './application/claims.provider';
 import { DrizzleTransactionRunner } from './application/transaction-runner';
-import { AvatarService } from './application/avatar.service';
 
 /**
  * Rally's identity module. The refresh-rotation auth engine, Entra token
@@ -67,11 +67,10 @@ import { AvatarService } from './application/avatar.service';
  */
 @Global()
 @Module({
-  imports: [AccessModule, WorkspaceModule],
+  imports: [AccessModule, WorkspaceModule, AttachmentsModule],
   controllers: [IdentityController, AuthController, BffController],
   providers: [
     AuthService,
-    AvatarService,
     EntraTokenVerifier,
 
     // BFF (Backend-for-Frontend) same-origin OIDC session — rally's only auth

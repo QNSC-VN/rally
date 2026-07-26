@@ -108,20 +108,29 @@ export function ProfileTab() {
     }
   }
 
-  // Avatar changes persist immediately (optimistic) via the existing profile
-  // update — the uploader has already stored the bytes and hands us the CDN URL
-  // (or null to clear).
-  async function commitAvatar(url: string | null) {
+  // Reflect an avatar change into the auth store + form. The upload's confirm
+  // step already persisted `avatarUrl` server-side, so this is local-only.
+  function applyAvatar(url: string | null) {
+    const current = useAuthStore.getState().user
+    if (current) {
+      setUser({ ...current, avatarUrl: url ?? undefined }, useAuthStore.getState().memberships)
+    }
+    profile.setValue('avatarUrl', url ?? '', { shouldDirty: false })
+  }
+
+  // Remove has no attachment flow — clear the avatar via the existing profile
+  // update path, then reflect it locally.
+  async function removeAvatar() {
     const {
       data: updated,
       error,
       response,
     } = await apiClient.PATCH('/v1/auth/me', {
-      body: { avatarUrl: url },
+      body: { avatarUrl: null },
     })
     if (error) throw new Error(apiErrorMessage(error, response.status))
     applyUpdatedUser(updated)
-    profile.setValue('avatarUrl', url ?? '', { shouldDirty: false })
+    profile.setValue('avatarUrl', '', { shouldDirty: false })
   }
 
   async function handleLogoutAll() {
@@ -155,7 +164,8 @@ export function ProfileTab() {
               <AvatarUploader
                 name={watchedName || (user?.displayName ?? '')}
                 value={watchedAvatar || (user?.avatarUrl ?? null)}
-                onCommit={commitAvatar}
+                onUploaded={applyAvatar}
+                onRemove={removeAvatar}
               />
             </FormField>
             <FormField
