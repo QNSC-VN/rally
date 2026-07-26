@@ -1,5 +1,6 @@
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ExternalLink, RefreshCw, Trash2 } from 'lucide-react'
+import { ExternalLink, GitBranch, RefreshCw, Trash2 } from 'lucide-react'
 
 import {
   useScmRepositories,
@@ -15,8 +16,8 @@ import { IconButton } from '@/shared/ui/icon-button'
 import { StatusBadge } from '@/shared/ui/status-badge'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
+import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { useDisclosure } from '@/shared/lib/hooks/use-disclosure'
-import { GitBranch } from 'lucide-react'
 
 interface RepositoryListProps {
   workspaceId: string | undefined
@@ -34,6 +35,16 @@ export function RepositoryList({ workspaceId }: RepositoryListProps) {
   const syncRepo = useSyncScmRepository(workspaceId)
   const deleteRepo = useDeleteScmRepository(workspaceId)
   const confirm = useDisclosure<ScmRepository>()
+
+  // Client-side pagination — auto-discovery can register many repos.
+  const [pageSize, setPageSize] = useState(25)
+  const [page, setPage] = useState(1)
+  const pageCount = Math.max(1, Math.ceil(repos.length / pageSize))
+  const currentPage = Math.min(page, pageCount)
+  const pageRepos = useMemo(
+    () => repos.slice((currentPage - 1) * pageSize, currentPage * pageSize),
+    [repos, currentPage, pageSize],
+  )
 
   function sync(r: ScmRepository) {
     void syncRepo
@@ -100,7 +111,7 @@ export function RepositoryList({ workspaceId }: RepositoryListProps) {
               </tr>
             </thead>
             <tbody>
-              {repos.map((r) => {
+              {pageRepos.map((r) => {
                 const style = r.lastSync
                   ? SCM_SYNC_STATUS_STYLE[r.lastSync.status]
                   : NEVER_SYNCED_STYLE
@@ -165,6 +176,24 @@ export function RepositoryList({ workspaceId }: RepositoryListProps) {
               })}
             </tbody>
           </table>
+          {repos.length > 10 && (
+            <PaginationFooter
+              pageSize={pageSize}
+              setPageSize={(n) => {
+                setPageSize(n)
+                setPage(1)
+              }}
+              currentPage={currentPage}
+              rangeStart={(currentPage - 1) * pageSize + 1}
+              rangeEnd={Math.min(currentPage * pageSize, repos.length)}
+              total={repos.length}
+              pageCount={pageCount}
+              hasPrevPage={currentPage > 1}
+              hasNextPage={currentPage < pageCount}
+              onPrevPage={() => setPage((p) => Math.max(1, p - 1))}
+              onNextPage={() => setPage((p) => Math.min(pageCount, p + 1))}
+            />
+          )}
         </div>
       )}
 

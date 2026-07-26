@@ -7,6 +7,7 @@ import { GithubRestClient } from '../infrastructure/github/github-rest.client';
 import {
   parseInstallationEvent,
   parseInstallationRepositoriesEvent,
+  parseRepositoryEvent,
 } from './github-webhook.parser';
 
 /** Org-level auto-discovery — the App is github.com only. */
@@ -110,6 +111,24 @@ export class ScmInstallationService {
         await this.store.deactivateRepository(bound.workspaceId, PROVIDER, fullName);
       }
       return 'processed';
+    }
+    if (eventType === 'repository') {
+      const ev = parseRepositoryEvent(payload);
+      if (!ev) return 'ignored';
+      const bound = await this.store.findWorkspaceByInstallation(PROVIDER, ev.installationId);
+      if (!bound) return 'ignored';
+      // A repo archived/deleted after discovery emits no more PR/push events, so
+      // stop tracking it; unarchiving brings it back. Other actions (renamed,
+      // edited, publicized) are no-ops here.
+      if (ev.action === 'archived' || ev.action === 'deleted') {
+        await this.store.deactivateRepository(bound.workspaceId, PROVIDER, ev.fullName);
+        return 'processed';
+      }
+      if (ev.action === 'unarchived') {
+        await this.registerRepo(bound.workspaceId, ev.installationId, ev.fullName);
+        return 'processed';
+      }
+      return 'ignored';
     }
     return 'ignored';
   }
