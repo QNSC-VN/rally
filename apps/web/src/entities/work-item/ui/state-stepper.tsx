@@ -21,10 +21,6 @@ import type { StateStep } from './state-steps'
 // letter — and its tooltip reads "Move to <State>". Clicking commits it. This
 // is the live, hover-to-preview control from Rally, not a static badge.
 
-const STEPPER_BORDER = BRAND.accentBorderStrong
-const STEPPER_REACHED = BRAND.accentBorder
-const STEPPER_CURRENT = BRAND.primaryLight
-const STEPPER_SEP = BRAND.accentBorderStrong
 const CELL = 16
 
 export function StateStepper<T extends string>({
@@ -33,6 +29,7 @@ export function StateStepper<T extends string>({
   canEdit,
   onChange,
   ariaLabel,
+  blocked = false,
 }: {
   steps: StateStep<T>[]
   value: T
@@ -40,7 +37,16 @@ export function StateStepper<T extends string>({
   /** Omit for a read-only stepper (summary grids). */
   onChange?: (next: T) => void
   ariaLabel?: string
+  /** When true, the track turns red — the item is blocked (mirrors Rally). */
+  blocked?: boolean
 }) {
+  // Blocked flips the whole track from the blue progress scale to red, so a
+  // blocked item reads as red at a glance (matches the Blocked column).
+  const STEPPER_BORDER = blocked ? BRAND.dangerBorder : BRAND.accentBorderStrong
+  const STEPPER_REACHED = blocked ? BRAND.dangerBg : BRAND.accentBorder
+  const STEPPER_CURRENT = blocked ? BRAND.danger : BRAND.primaryLight
+  const STEPPER_SEP = STEPPER_BORDER
+
   const [hovered, setHovered] = useState<number | null>(null)
   const idx = steps.findIndex((s) => s.value === value)
   const interactive = canEdit && !!onChange
