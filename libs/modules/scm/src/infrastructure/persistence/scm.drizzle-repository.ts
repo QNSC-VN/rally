@@ -41,10 +41,12 @@ export class ScmDrizzleRepository implements IScmStore {
   }
 
   async listRepositoriesWithSync(workspaceId: string): Promise<ScmRepositoryWithSync[]> {
+    // Only active repos surface on the dashboard — a disconnected installation or
+    // a removed/archived repo is deactivated, not deleted, so it must drop out.
     const repos = await this.db
       .select()
       .from(scmRepositories)
-      .where(eq(scmRepositories.workspaceId, workspaceId))
+      .where(and(eq(scmRepositories.workspaceId, workspaceId), eq(scmRepositories.active, true)))
       .orderBy(scmRepositories.fullName);
     if (repos.length === 0) return [];
     // Latest backfill job per repo — fetch workspace jobs newest-first, keep the
@@ -157,6 +159,19 @@ export class ScmDrizzleRepository implements IScmStore {
           eq(scmInstallations.workspaceId, workspaceId),
           eq(scmInstallations.provider, provider),
           eq(scmInstallations.installationId, installationId),
+        ),
+      );
+    // Cascade: the installation's discovered repos are deactivated too, so
+    // disconnecting an org clears its repositories from the dashboard. Reconnect
+    // re-activates them (upsertDiscoveredRepo sets active = true on conflict).
+    await this.db
+      .update(scmRepositories)
+      .set({ active: false, updatedAt: new Date() })
+      .where(
+        and(
+          eq(scmRepositories.workspaceId, workspaceId),
+          eq(scmRepositories.provider, provider),
+          eq(scmRepositories.installationId, installationId),
         ),
       );
     await this.db

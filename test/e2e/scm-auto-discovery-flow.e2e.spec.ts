@@ -105,4 +105,29 @@ describe('BA flow: SCM org-level auto-discovery (real AppModule + DB)', () => {
     });
     expect(again).toBe('ignored');
   });
+
+  it('disconnect() cascades: its repos drop off the dashboard', async () => {
+    const instId = String(Math.floor(Math.random() * 1_000_000_000) + 1);
+    const name = `acme/disc-${suffix}`;
+    await store.bindInstallation({
+      workspaceId: actor.workspaceId,
+      provider: 'github',
+      installationId: instId,
+      accountLogin: 'acme',
+      accountType: 'Organization',
+      createdBy: actor.sub,
+    });
+    await installations.handleWebhook('installation_repositories', {
+      action: 'added',
+      installation: { id: Number(instId) },
+      repositories_added: [{ full_name: name }],
+      repositories_removed: [],
+    });
+    expect((await scm.listRepositories(actor)).some((r) => r.fullName === name)).toBe(true);
+
+    await installations.disconnect(actor, instId);
+
+    // Gone from the list entirely (deactivated + filtered out), not just inactive.
+    expect((await scm.listRepositories(actor)).some((r) => r.fullName === name)).toBe(false);
+  });
 });
