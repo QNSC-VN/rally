@@ -5,6 +5,7 @@ import {
   parsePushEvent,
   parseInstallationEvent,
   parseInstallationRepositoriesEvent,
+  parseRepositoryEvent,
 } from './github-webhook.parser';
 
 describe('extractWorkItemKeys', () => {
@@ -159,5 +160,27 @@ describe('parseInstallationRepositoriesEvent', () => {
 
   it('returns null when the installation id is missing', () => {
     expect(parseInstallationRepositoriesEvent({ action: 'added' })).toBeNull();
+  });
+});
+
+describe('parseRepositoryEvent', () => {
+  it('extracts action, id, full name, and archived flag', () => {
+    expect(
+      parseRepositoryEvent({
+        action: 'archived',
+        installation: { id: 42 },
+        repository: { full_name: 'acme/api', archived: true },
+      }),
+    ).toEqual({ action: 'archived', installationId: '42', fullName: 'acme/api', archived: true });
+  });
+
+  it('returns null without a numeric id, action, or repository full name', () => {
+    expect(parseRepositoryEvent({ action: 'archived', installation: { id: 42 } })).toBeNull();
+    expect(
+      parseRepositoryEvent({ installation: { id: 42 }, repository: { full_name: 'a/b' } }),
+    ).toBeNull();
+    expect(
+      parseRepositoryEvent({ action: 'archived', repository: { full_name: 'a/b' } }),
+    ).toBeNull();
   });
 });
