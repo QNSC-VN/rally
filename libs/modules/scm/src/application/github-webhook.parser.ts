@@ -165,3 +165,30 @@ export function parseInstallationRepositoriesEvent(
     removed: names(p.repositories_removed),
   };
 }
+
+export interface RepositoryEvent {
+  action: string;
+  installationId: string;
+  fullName: string;
+  archived: boolean;
+}
+
+/**
+ * `repository` event — a repo was archived/unarchived/deleted/renamed after
+ * discovery. Lets us drop a repo that gets archived later (no more events come
+ * from it) and re-add one that is unarchived.
+ */
+export function parseRepositoryEvent(payload: unknown): RepositoryEvent | null {
+  const p = payload as GhInstallationPayload & {
+    repository?: { full_name?: string; archived?: boolean };
+  };
+  const id = p.installation?.id;
+  const fullName = p.repository?.full_name;
+  if (typeof id !== 'number' || !p.action || !fullName) return null;
+  return {
+    action: p.action,
+    installationId: String(id),
+    fullName,
+    archived: !!p.repository?.archived,
+  };
+}

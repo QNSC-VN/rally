@@ -25,6 +25,7 @@ const HANDLED_EVENTS = new Set([
   // by the worker relay, not the linker.
   'installation',
   'installation_repositories',
+  'repository',
 ]);
 const PROVIDERS = new Set<ScmProvider>(['github', 'ghe']);
 

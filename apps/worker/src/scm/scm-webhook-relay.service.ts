@@ -21,7 +21,7 @@ import { scmWebhookInbox } from '../../../../db/schema/scm';
 
 // Management events drive org-level auto-discovery (register/deregister repos),
 // not artifact linking — routed to ScmInstallationService instead of the linker.
-const MANAGEMENT_EVENTS = new Set(['installation', 'installation_repositories']);
+const MANAGEMENT_EVENTS = new Set(['installation', 'installation_repositories', 'repository']);
 
 type ScmInboxRow = {
   id: string;
