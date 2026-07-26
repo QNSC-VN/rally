@@ -4,10 +4,6 @@ variable "image_tag" {
   description = "Container image tag to deploy for api & worker. CI overrides this with the release sha to pin prod images; defaults to 'latest' for a bare apply."
 }
 
-
-
-
-
 variable "cloudflare_api_token" {
   type        = string
   sensitive   = true
@@ -65,11 +61,9 @@ variable "entra_client_id" {
 }
 
 variable "github_app_id" {
-  # Empty: no GitHub App is installed for production yet, which keeps the SCM
-  # discovery/backfill path dormant rather than half-configured.
-  description = "GitHub App id for SCM discovery/backfill (public)."
+  description = "GitHub App id for SCM discovery/backfill (public). A DISTINCT App from develop's 4390002: an App has one webhook URL, so a shared App would deliver production events to the develop API."
   type        = string
-  default     = ""
+  default     = "4398910"
 }
 
 variable "cloudflare_account_id" {
