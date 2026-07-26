@@ -405,6 +405,49 @@
 .ProseMirror li p {
   margin: 0;
 }
+/* ── Resizable image (RichTextEditor / ResizableImage node view) ──────────────
+   Hover or select an image to outline it (so it's clear it's clickable), and a
+   bottom-right handle drag-resizes it. */
+.rte-img-wrap {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+  max-width: 100%;
+}
+.rte-img-wrap img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 2px;
+}
+.rte-img-wrap:hover img {
+  outline: 1px solid var(--accent-border-active);
+  outline-offset: 2px;
+}
+.ProseMirror-selectednode.rte-img-wrap img,
+.rte-img-wrap[data-selected='true'] img {
+  outline: 1px solid var(--accent-border-strong);
+  outline-offset: 2px;
+}
+.rte-img-handle {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
+  background: var(--accent-border-strong);
+  border: 1px solid var(--surface);
+  cursor: nwse-resize;
+  opacity: 0;
+  transition: opacity 120ms;
+  touch-action: none;
+}
+.rte-img-wrap:hover .rte-img-handle,
+.ProseMirror-selectednode.rte-img-wrap .rte-img-handle,
+.rte-img-wrap[data-selected='true'] .rte-img-handle {
+  opacity: 1;
+}
 .ProseMirror h2 {
   margin: 0.75em 0 0.4em;
   font-size: 1.25em;

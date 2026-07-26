@@ -26,7 +26,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { EditorContent, useEditor, type Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
-import Image from '@tiptap/extension-image'
+import { ResizableImage } from './resizable-image'
 import DOMPurify from 'dompurify'
 import { Tooltip } from './tooltip'
 import {
@@ -91,7 +91,7 @@ export function sanitize(html: string): string {
     // page's Save step uploads it and rewrites src to a durable
     // /attachments/.../content URL. Otherwise identical to DOMPurify's own
     // default (https/ftp/mailto/tel/etc. + relative paths).
-    ALLOWED_ATTR: ['href', 'target', 'rel', 'class', 'src', 'alt'],
+    ALLOWED_ATTR: ['href', 'target', 'rel', 'class', 'src', 'alt', 'width'],
     ALLOWED_URI_REGEXP:
       /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|matrix|blob):|[^a-z]|[a-z+.-]+(?:[^a-z+.:-]|$))/i,
     ALLOW_DATA_ATTR: false,
@@ -400,7 +400,7 @@ export function RichTextEditor({
     extensions: [
       StarterKit,
       Placeholder.configure({ placeholder: `Add ${title.toLowerCase()}…` }),
-      Image.configure({ inline: false, allowBase64: false }),
+      ResizableImage.configure({ inline: false, allowBase64: false }),
     ],
     content: sanitize(value ?? ''),
     editorProps: {
