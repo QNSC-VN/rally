@@ -85,6 +85,8 @@ export function ProjectsPage() {
           return p.memberCount
         case 'startDate':
           return p.startDate ?? ''
+        case 'endDate':
+          return p.endDate ?? ''
         case 'updated':
           return p.updatedAt
         default:

@@ -678,6 +678,22 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
     ),
   },
   {
+    key: 'endDate',
+    label: 'End Date',
+    sortCol: 'endDate',
+    defaultWidth: 116,
+    minWidth: 90,
+    cellClassName: 'flex items-center px-0',
+    cell: (p, ctx) => (
+      <DateField
+        value={p.endDate}
+        readOnly={p.status === 'archived'}
+        ariaLabel="End Date"
+        onChange={(v) => ctx.onPatch(p.id, { endDate: v })}
+      />
+    ),
+  },
+  {
     key: 'updated',
     label: 'Updated',
     sortCol: 'updated',
