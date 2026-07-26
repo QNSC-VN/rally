@@ -97,7 +97,7 @@ export function ColumnFieldsMenu<K extends string>({
             right: 0,
             marginTop: 4,
             width: 260,
-            maxHeight: 380,
+            maxHeight: 300,
             background: PANEL_BG,
             border: `1px solid ${PANEL_BORDER}`,
             borderRadius: 4,
