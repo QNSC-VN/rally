@@ -24,19 +24,14 @@ import { OwnerAvatar } from '@/shared/ui/owner-cell'
 import { Button } from '@/shared/ui/button'
 import { IconButton } from '@/shared/ui/icon-button'
 import { Textarea } from '@/shared/ui/textarea'
-import { cn } from '@/shared/lib/utils'
+import { cn, formatWith } from '@/shared/lib/utils'
 
 function relativeTime(iso: string): string {
-  try {
-    return new Date(iso).toLocaleString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  } catch {
-    return iso
-  }
+  return formatWith(
+    iso,
+    { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' },
+    iso,
+  )
 }
 
 interface CommentThreadProps {

@@ -7,6 +7,10 @@ import { Loader2, LogOut } from 'lucide-react'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
+import { setFormatPrefs, resolveFormatPrefs } from '@/shared/lib/format-prefs'
+import { TIMEZONES, LOCALES } from '@/shared/config/formatting-options'
+
+type WorkspaceDefaults = { locale: string | null; timezone: string | null } | null
 import { useNavigate } from '@tanstack/react-router'
 import { notify } from '@/shared/lib/toast'
 import { Button } from '@/shared/ui/button'
@@ -21,16 +25,6 @@ type ProfileForm = {
   timezone: string
   phone?: string
 }
-
-const TIMEZONES = [
-  'UTC',
-  'Asia/Ho_Chi_Minh',
-  'Asia/Tokyo',
-  'America/New_York',
-  'America/Los_Angeles',
-  'Europe/London',
-  'Europe/Paris',
-]
 
 /** Uppercase section label used across the profile sections. */
 function SectionTitle({ children, className }: { children: React.ReactNode; className?: string }) {
@@ -99,6 +93,14 @@ export function ProfileTab() {
         { ...u, avatarUrl: u.avatarUrl ?? undefined, permissions: u.permissions ?? [] },
         useAuthStore.getState().memberships,
       )
+      // Apply the new personal locale/timezone to date formatting immediately
+      // (workspace default stays the fallback).
+      setFormatPrefs(
+        resolveFormatPrefs(
+          { locale: u.locale, timezone: u.timezone },
+          (updated as { workspaceDefaults?: WorkspaceDefaults }).workspaceDefaults ?? null,
+        ),
+      )
       notify.success(t('profile.profileUpdated'))
     } catch {
       profile.setError('root', { message: t('profile.networkError') })
@@ -152,12 +154,7 @@ export function ProfileTab() {
                   variant="field"
                   value={field.value ?? ''}
                   ariaLabel={t('profile.localeLabel')}
-                  options={[
-                    { value: 'en', label: 'English' },
-                    { value: 'vi', label: 'Tiếng Việt' },
-                    { value: 'ja', label: '日本語' },
-                    { value: 'zh', label: '中文' },
-                  ]}
+                  options={LOCALES}
                   onChange={field.onChange}
                 />
               )}

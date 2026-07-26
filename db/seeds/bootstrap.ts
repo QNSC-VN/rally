@@ -56,6 +56,15 @@ export async function seedTenantBootstrapInto(database: Db): Promise<void> {
       set: { name: workspaceName },
     });
 
+  // Seed the workspace's default formatting (QNSC is Vietnam-based). Members
+  // inherit this timezone/locale until they override it in their own Profile;
+  // an admin can change it in Workspace Settings. onConflictDoNothing so that
+  // later admin edit is never reset on redeploy.
+  await database
+    .insert(schema.workspaceSettings)
+    .values({ workspaceId: WORKSPACE_ID, timezone: 'Asia/Ho_Chi_Minh', defaultLocale: 'en' })
+    .onConflictDoNothing({ target: schema.workspaceSettings.workspaceId });
+
   // Seed the BA job-function preset roles as EDITABLE workspace-scoped custom
   // roles (isSystem:false). onConflictDoNothing → created once, never clobbering
   // a workspace admin's later permission edits. See PRESET_WORKSPACE_ROLES.

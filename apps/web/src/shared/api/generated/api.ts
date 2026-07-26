@@ -2173,6 +2173,11 @@ export interface components {
         roleSlug: string | null
         roleName: string | null
       }[]
+      workspaceDefaults: {
+        timezone: string | null
+        locale: string | null
+        dateFormat: string | null
+      } | null
       csrfToken?: string
     }
     RoleResponseDto: {
