@@ -18,7 +18,17 @@ On github.com → your org → **Settings ▸ Developer settings ▸ GitHub Apps
 
 - **Homepage URL**: your Rally URL.
 - **Webhook ▸ Active**: on.
-  - **Webhook URL**: `https://<rally-host>/v1/scm/webhook/github`
+  - **Webhook URL**: the **API** host, not the SPA host —
+    `https://rally-api.qnsc.vn/v1/scm/webhook/github` (prod) or
+    `https://rally-api-dev.qnsc.vn/v1/scm/webhook/github` (develop).
+
+    Not `rally.qnsc.vn`: that host is the Cloudflare Pages SPA, whose Function
+    proxies `/v1/*` to the API by reconstructing the request and re-streaming the
+    body. The signature is an HMAC over the RAW bytes GitHub sent
+    (`scm-webhook.controller.ts` reads `req.rawBody`), so any buffering or
+    re-encoding at that hop breaks verification — and it surfaces as a 401 that
+    looks exactly like a wrong webhook secret. The proxy exists to give the browser
+    a same-origin cookie; a server-to-server webhook needs none of that.
   - **Webhook secret**: a strong random string — this becomes `GITHUB_WEBHOOK_SECRET`.
 - **Permissions ▸ Repository**:
   - Pull requests: **Read-only**
