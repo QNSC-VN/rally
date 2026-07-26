@@ -1,5 +1,5 @@
-import { useCallback, useRef, useState } from 'react'
-import { GripVertical, Columns } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Columns, Search } from 'lucide-react'
 import type { ColumnDef } from '@/shared/lib/hooks/use-column-layout'
 import { useClickOutside } from '@/shared/lib/hooks/use-click-outside'
 import { BRAND } from '@/shared/config/brand'
@@ -9,7 +9,9 @@ interface ColumnFieldsMenuProps<K extends string> {
   order: K[]
   hidden: Set<K>
   onToggle: (key: K) => void
-  onReorder: (dragKey: K, overKey: K) => void
+  /** Column reorder — accepted for API compatibility; the menu no longer
+   *  exposes drag-reorder (real-Rally "Show Columns" is checkboxes only). */
+  onReorder?: (dragKey: K, overKey: K) => void
   buttonStyle?: React.CSSProperties
 }
 
@@ -18,68 +20,54 @@ const PANEL_BORDER = BRAND.borderSubtle
 const ACCENT = BRAND.primary
 
 /**
- * "Show Fields" trigger button + dropdown panel: checkbox to toggle a
- * column's visibility, drag handle (native HTML5 DnD) to reorder. Shared
- * across Iteration Status / Backlog / Team Status so each page only wires
- * useColumnLayout() and drops this in the toolbar.
- *
- * **Stale-closure fix**: The active drag key is stored in a `useRef`
- * (not `useState`) so `onDrop` always reads the freshest value without
- * depending on a re-render between `dragStart` and `drop`.
+ * "Show Fields" trigger button + dropdown panel (real-Rally "Show Columns"
+ * parity): a search box filters by label, then columns split into SELECTED
+ * (visible — checked) and AVAILABLE (hidden — unchecked), mirroring the shared
+ * SearchableSelect multi-select grouping. Checkboxes only — no drag-reorder.
+ * Shared across Iteration Status / Backlog / Team Status / Projects / etc.
  */
 export function ColumnFieldsMenu<K extends string>({
   columns,
   order,
   hidden,
   onToggle,
-  onReorder,
   buttonStyle,
 }: ColumnFieldsMenuProps<K>) {
   const [open, setOpen] = useState(false)
-  const rootRef = useClickOutside<HTMLDivElement>(open, () => setOpen(false))
+  const [query, setQuery] = useState('')
+  const rootRef = useClickOutside<HTMLDivElement>(open, () => {
+    setOpen(false)
+    setQuery('')
+  })
 
-  // ── Ref-based drag state (avoids stale-closure bug) ──
-  const dragKeyRef = useRef<K | null>(null)
-  const [activeDragKey, setActiveDragKey] = useState<K | null>(null)
-  const [dropOverKey, setDropOverKey] = useState<K | null>(null)
+  // SELECTED = visible columns in their display order; AVAILABLE = hidden ones.
+  const byKey = useMemo(() => new Map(columns.map((c) => [c.key, c])), [columns])
+  const q = query.trim().toLowerCase()
+  const matches = (c: ColumnDef<K>) => !q || c.label.toLowerCase().includes(q)
 
-  const cleanup = useCallback(() => {
-    dragKeyRef.current = null
-    setActiveDragKey(null)
-    setDropOverKey(null)
-  }, [])
+  const selected = order
+    .map((k) => byKey.get(k))
+    .filter((c): c is ColumnDef<K> => !!c && !hidden.has(c.key))
+    .filter(matches)
+  const available = columns.filter((c) => hidden.has(c.key)).filter(matches)
 
-  const byKey = new Map(columns.map((c) => [c.key, c]))
-  const orderedColumns = order.map((k) => byKey.get(k)).filter((c): c is ColumnDef<K> => !!c)
-
-  function handleDragStart(key: K, e: React.DragEvent) {
-    dragKeyRef.current = key
-    setActiveDragKey(key)
-    setDropOverKey(null)
-    e.dataTransfer.effectAllowed = 'move'
-    e.dataTransfer.setData('text/plain', key)
-  }
-
-  function handleDragOver(key: K, e: React.DragEvent) {
-    e.preventDefault()
-    e.dataTransfer.dropEffect = 'move'
-    const from = dragKeyRef.current
-    if (from && from !== key) {
-      setDropOverKey(key)
-    }
-  }
-
-  function handleDrop(key: K, e: React.DragEvent) {
-    e.preventDefault()
-    const from = dragKeyRef.current
-    if (from && from !== key) {
-      onReorder(from, key)
-    }
-    cleanup()
-  }
-
-  function handleDragEnd() {
-    cleanup()
+  function renderRow(col: ColumnDef<K>) {
+    return (
+      <label
+        key={col.key}
+        className="flex items-center gap-2 rounded-sm px-1.5 py-1 hover:bg-surface-subtle"
+        style={{ fontSize: 12.5, color: BRAND.textPrimary, cursor: col.locked ? 'default' : 'pointer' }}
+      >
+        <input
+          type="checkbox"
+          checked={!hidden.has(col.key)}
+          disabled={col.locked}
+          onChange={() => onToggle(col.key)}
+          style={{ accentColor: ACCENT, cursor: col.locked ? 'default' : 'pointer' }}
+        />
+        {col.label}
+      </label>
+    )
   }
 
   return (
@@ -102,97 +90,60 @@ export function ColumnFieldsMenu<K extends string>({
       </button>
       {open && (
         <div
+          className="flex flex-col"
           style={{
             position: 'absolute',
             top: '100%',
             right: 0,
             marginTop: 4,
-            width: 220,
-            maxHeight: 340,
-            overflowY: 'auto',
+            width: 260,
+            maxHeight: 380,
             background: PANEL_BG,
             border: `1px solid ${PANEL_BORDER}`,
             borderRadius: 4,
             boxShadow: '0 4px 14px rgba(0,0,0,0.12)',
             zIndex: 50,
-            padding: 4,
+            padding: 6,
           }}
         >
-          {orderedColumns.map((col) => {
-            const isActive = activeDragKey === col.key
-            const isDropTarget = dropOverKey === col.key
+          {/* Search — same treatment as the shared SearchableSelect popover. */}
+          <div className="mb-1 flex items-center gap-2 rounded-md border border-input px-2 py-1.5 transition-colors focus-within:border-primary">
+            <Search size={13} className="shrink-0 text-primary" />
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search fields…"
+              aria-label="Search fields"
+              className="w-full bg-transparent text-ui-sm text-foreground outline-none placeholder:text-foreground-subtle"
+            />
+          </div>
 
-            return (
-              <div
-                key={col.key}
-                className="relative flex items-center gap-2"
-                style={{
-                  padding: '5px 6px',
-                  borderRadius: 3,
-                  fontSize: 12.5,
-                  color: BRAND.textPrimary,
-                  background: isDropTarget
-                    ? BRAND.primaryLighter
-                    : isActive
-                      ? BRAND.pageBg
-                      : 'transparent',
-                  cursor: 'default',
-                  opacity: isActive ? 0.4 : 1,
-                  transition: 'background-color 0.12s ease, opacity 0.12s ease',
-                }}
-                onDragOver={(e) => handleDragOver(col.key, e)}
-                onDrop={(e) => handleDrop(col.key, e)}
-                onDragLeave={() => setDropOverKey(null)}
-              >
-                {/* ── Drop indicator (horizontal blue line above the target) ── */}
-                {isDropTarget && (
-                  <div
-                    className="absolute top-0 right-1 left-1 z-10 h-[2px] rounded-full"
-                    style={{
-                      backgroundColor: ACCENT,
-                      boxShadow: '0 0 6px rgba(29,63,115,0.45)',
-                    }}
-                  />
-                )}
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {selected.length > 0 && (
+              <>
+                <div className="px-1.5 pt-1.5 pb-1 text-ui-2xs font-semibold tracking-wide text-muted-foreground uppercase">
+                  Selected <span className="text-foreground-subtle">({selected.length})</span>
+                </div>
+                {selected.map(renderRow)}
+              </>
+            )}
 
-                {/* ── Drag handle (only the handle is draggable, not the row) ── */}
-                <span
-                  draggable
-                  onDragStart={(e: React.DragEvent<HTMLSpanElement>) =>
-                    handleDragStart(col.key, e as unknown as React.DragEvent)
-                  }
-                  onDragEnd={handleDragEnd}
-                  tabIndex={0}
-                  aria-label={`Drag to reorder ${col.label} column`}
-                  role="button"
-                  className="flex shrink-0 cursor-grab items-center active:cursor-grabbing"
-                >
-                  <GripVertical
-                    size={13}
-                    style={{
-                      color: isActive ? ACCENT : BRAND.textDisabled,
-                      transition: 'color 0.12s ease',
-                    }}
-                  />
-                </span>
+            {available.length > 0 && (
+              <>
+                <div className="px-1.5 pt-2 pb-1 text-ui-2xs font-semibold tracking-wide text-muted-foreground uppercase">
+                  Available <span className="text-foreground-subtle">({available.length})</span>
+                </div>
+                {available.map(renderRow)}
+              </>
+            )}
 
-                {/* ── Checkbox + label ── */}
-                <label
-                  className="flex items-center gap-2"
-                  style={{ flex: 1, cursor: col.locked ? 'default' : 'pointer' }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={!hidden.has(col.key)}
-                    disabled={col.locked}
-                    onChange={() => onToggle(col.key)}
-                    style={{ accentColor: ACCENT, cursor: col.locked ? 'default' : 'pointer' }}
-                  />
-                  {col.label}
-                </label>
+            {selected.length === 0 && available.length === 0 && (
+              <div className="px-1.5 py-3 text-center text-ui-sm text-foreground-subtle">
+                No fields match “{query}”.
               </div>
-            )
-          })}
+            )}
+          </div>
         </div>
       )}
     </div>
