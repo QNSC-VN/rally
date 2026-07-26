@@ -4,6 +4,7 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { AlertTriangle, ArrowUpRight, Clock, Inbox } from 'lucide-react'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
+import { formatWith } from '@/shared/lib/utils'
 import { BRAND } from '@/shared/config/brand'
 import { PageHeader } from '@/shared/ui/page-header'
 import { EmptyState } from '@/shared/ui/empty-state'
@@ -140,7 +141,7 @@ export function HomePage() {
 
   const now = useMemo(
     () =>
-      new Date().toLocaleDateString('en-US', {
+      formatWith(new Date().toISOString(), {
         weekday: 'long',
         month: 'short',
         day: 'numeric',

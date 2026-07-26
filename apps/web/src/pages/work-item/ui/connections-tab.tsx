@@ -24,6 +24,7 @@ import { ListPageScaffold } from '@/shared/ui/list-page/list-page-scaffold'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
 import { InlineSelect } from '@/shared/ui/native-select'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
+import { formatWith } from '@/shared/lib/utils'
 
 // ── Shared cell helpers ───────────────────────────────────────────────────────
 
@@ -31,17 +32,13 @@ type ScmCtx = Record<string, never>
 const EMPTY_CTX: ScmCtx = {}
 
 function fmtDate(iso: string | null | undefined): string {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  return Number.isNaN(d.getTime())
-    ? '—'
-    : d.toLocaleString(undefined, {
-        year: 'numeric',
-        month: 'short',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-      })
+  return formatWith(iso, {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 const CONNECTION_TYPE_LABEL: Record<string, string> = {

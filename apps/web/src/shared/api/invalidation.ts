@@ -83,6 +83,7 @@ const PROJECT_ROOTS: readonly QueryKey[] = [
 const TEAM_ROOTS: readonly QueryKey[] = [['teams'], ['team-status']]
 const WORKSPACE_ROOTS: readonly QueryKey[] = [
   ['workspaces'],
+  ['workspace-settings'],
   ['workspace-members-profile'],
   ['workspace-invitations'],
   ['system-roles'],

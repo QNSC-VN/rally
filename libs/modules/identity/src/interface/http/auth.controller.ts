@@ -37,10 +37,11 @@ export class AuthController {
     @CurrentUser() user: JwtPayload,
     @Body() dto: UpdateProfileDto,
   ): Promise<UserProfileResponseDto> {
-    const [profile, { role, permissions }, memberships] = await Promise.all([
+    const [profile, { role, permissions }, memberships, settings] = await Promise.all([
       this.authService.updateProfile(user.sub, dto),
       this.accessService.getUserRoleAndPermissions(user.sub, user.workspaceId),
       this.workspaceService.getMemberships(user.sub),
+      this.workspaceService.getSettings(user.workspaceId).catch(() => null),
     ]);
     return {
       id: profile.id,
@@ -56,6 +57,13 @@ export class AuthController {
       createdAt: profile.createdAt.toISOString(),
       updatedAt: profile.updatedAt.toISOString(),
       memberships,
+      workspaceDefaults: settings
+        ? {
+            timezone: settings.timezone,
+            locale: settings.defaultLocale,
+            dateFormat: settings.dateFormat,
+          }
+        : null,
     };
   }
 

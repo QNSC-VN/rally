@@ -31,6 +31,18 @@ export const UserProfileResponseSchema = UserProfileSchema.extend({
   /** All active workspace memberships, most-recently-active first. */
   memberships: z.array(WorkspaceMembershipSchema),
   /**
+   * Active workspace's formatting defaults — the fallback the SPA uses when the
+   * user hasn't set their own locale/timezone. Null if the workspace has no
+   * settings row yet.
+   */
+  workspaceDefaults: z
+    .object({
+      timezone: z.string().nullable(),
+      locale: z.string().nullable(),
+      dateFormat: z.string().nullable(),
+    })
+    .nullable(),
+  /**
    * CSRF token for this session, minted on each /bff/me call. The SPA echoes it in
    * the X-CSRF-Token header on every state-changing request. Only present on the
    * cookie-authenticated BFF route — Bearer callers are not CSRF-exposed and get no

@@ -106,3 +106,40 @@ export function useUpdateWorkspace(id: string | undefined) {
     meta: { invalidates: ['workspace'] },
   })
 }
+
+// ── Workspace formatting settings (timezone / locale / date format) ──────────
+
+export interface WorkspaceSettings {
+  timezone: string | null
+  defaultLocale: string | null
+  dateFormat: string | null
+}
+
+export function useWorkspaceSettings(id: string | undefined) {
+  return useQuery({
+    queryKey: ['workspace-settings', id ?? ''],
+    queryFn: async () => {
+      const { data, error, response } = await apiClient.GET('/v1/workspaces/{id}/settings', {
+        params: { path: { id: id! } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as WorkspaceSettings
+    },
+    enabled: !!id,
+    staleTime: 30_000,
+  })
+}
+
+export function useUpdateWorkspaceSettings(id: string | undefined) {
+  return useMutation({
+    mutationFn: async (body: Partial<WorkspaceSettings>) => {
+      const { data, error, response } = await apiClient.PATCH('/v1/workspaces/{id}/settings', {
+        params: { path: { id: id! } },
+        body: body as never,
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as WorkspaceSettings
+    },
+    meta: { invalidates: ['workspace'] },
+  })
+}
