@@ -9,7 +9,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
-import { FileText, Loader2, Package } from 'lucide-react'
+import { FileText, History, Loader2, Package } from 'lucide-react'
 import { DetailLayout, DetailTwoPane } from '@/shared/ui/detail/detail-layout'
 import { DetailField, DetailFieldPair, DetailReadonlyValue } from '@/shared/ui/detail/detail-field'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
@@ -20,6 +20,7 @@ import { SaveCancelBar } from '@/shared/ui/save-cancel-bar'
 import { usePendingPatch } from '@/shared/lib/hooks/use-pending-patch'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { ReleaseArtifactsTab } from './ui/release-artifacts-tab'
+import { ActivityHistoryTab } from '@/entities/activity/ui/activity-history-tab'
 import { TaskRollupPanel, BurndownPanel } from './ui/release-detail-panels'
 import { RELEASE_STATES, RELEASE_STATUS_STYLE } from './model/release-states'
 import { useProjectPermissions } from '@/features/access/api'
@@ -28,12 +29,13 @@ import {
   useRelease,
   useUpdateRelease,
   useReleaseBurndown,
+  useReleaseActivityLog,
   type Release,
   type ReleaseStatus,
   type UpdateReleaseInput,
 } from '@/features/releases/api'
 
-type TabKey = 'details' | 'artifacts'
+type TabKey = 'details' | 'artifacts' | 'history'
 
 export function ReleaseDetailPage() {
   const { t } = useTranslation('releases')
@@ -45,6 +47,7 @@ export function ReleaseDetailPage() {
   const canManage = can('release:create') || can('release:edit') || can('release:delete')
 
   const { data: release, isLoading, isError } = useRelease(releaseId)
+  const { data: activityLogs = [], isLoading: activityLoading } = useReleaseActivityLog(releaseId)
   const update = useUpdateRelease(releaseId)
   const { data: burndown, isLoading: burndownLoading } = useReleaseBurndown(releaseId)
 
@@ -110,6 +113,7 @@ export function ReleaseDetailPage() {
   const TABS = [
     { key: 'details', label: t('detailPage.tabs.details'), icon: <FileText size={19} /> },
     { key: 'artifacts', label: t('detailPage.tabs.artifacts'), icon: <Package size={19} /> },
+    { key: 'history', label: t('detailPage.tabs.history', 'History'), icon: <History size={19} /> },
   ]
 
   return (
@@ -135,6 +139,15 @@ export function ReleaseDetailPage() {
     >
       {activeTab === 'artifacts' ? (
         <ReleaseArtifactsTab releaseId={releaseId} />
+      ) : activeTab === 'history' ? (
+        <div className="flex-1 overflow-y-auto bg-card p-6">
+          <ActivityHistoryTab
+            logs={activityLogs}
+            isLoading={activityLoading}
+            title={t('detailPage.historyTitle', 'Revision History')}
+            subtitle={t('detailPage.historySubtitle', 'Every change to this release, newest first.')}
+          />
+        </div>
       ) : (
         <DetailTwoPane
           sidebarTitle={t('detailPage.metadataTitle')}

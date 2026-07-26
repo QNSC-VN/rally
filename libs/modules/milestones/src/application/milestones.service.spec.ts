@@ -5,7 +5,16 @@ import { MilestonesService } from './milestones.service';
 import { MILESTONE_REPOSITORY } from '../domain/ports/milestone.repository';
 import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
+import { ActivityLogger } from '@modules/activity';
 import type { Milestone } from '../domain/milestone.types';
+
+const activityMock = () => ({
+  build: vi.fn(() => ({})),
+  buildDiff: vi.fn(() => []),
+  log: vi.fn(async () => undefined),
+  logSafe: vi.fn(async () => undefined),
+  listFor: vi.fn(async () => ({ data: [], total: 0, page: 1, pageSize: 50 })),
+});
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -137,6 +146,7 @@ describe('MilestonesService', () => {
         { provide: ProjectsService, useValue: projects },
         { provide: AccessService, useValue: access },
         { provide: DRIZZLE, useValue: db },
+        { provide: ActivityLogger, useValue: activityMock() },
       ],
     }).compile();
 

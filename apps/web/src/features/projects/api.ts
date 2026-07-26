@@ -4,6 +4,26 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
+import type { components } from '@/shared/api/generated/api'
+
+export type ProjectActivityLog = components['schemas']['ActivityResponseDto']
+
+/** Revision History (activity log) for one project — newest first. */
+export function useProjectActivityLog(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ['project', projectId ?? '', 'activity'] as const,
+    queryFn: async () => {
+      if (!projectId) return []
+      const { data, error, response } = await apiClient.GET('/v1/projects/{id}/activity', {
+        params: { path: { id: projectId }, query: { page: 1, pageSize: 100 } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return (data as { data?: ProjectActivityLog[] } | undefined)?.data ?? []
+    },
+    enabled: !!projectId,
+    staleTime: 15_000,
+  })
+}
 
 export interface Project {
   id: string

@@ -17,6 +17,8 @@ import {
 import { completedScheduleStatesSql } from '../../../../../db/schema/enums';
 import { IMilestoneRepository, MILESTONE_REPOSITORY } from '../domain/ports/milestone.repository';
 import type { Milestone, MilestoneStatus, UpdateMilestoneInput } from '../domain/milestone.types';
+import { ActivityLogger, type ActivityLog } from '@modules/activity';
+import { MILESTONE_ACTIVITY_CONFIG } from './milestone-activity-diff';
 
 /** Walk an error's `.cause` chain looking for a PG unique-violation (code 23505). */
 function isDuplicateKeyError(err: unknown): boolean {
@@ -87,7 +89,31 @@ export class MilestonesService {
     @InjectDrizzle() private readonly db: DrizzleDB,
     private readonly projectsService: ProjectsService,
     private readonly accessService: AccessService,
+    private readonly activity: ActivityLogger,
   ) {}
+
+  // ── Revision History (activity log) ─────────────────────────────────────────
+
+  /** Newest-first revision history for one milestone (workspace-view gated). */
+  async getMilestoneActivity(
+    actor: JwtPayload,
+    id: string,
+    args: { limit: number; offset: number },
+  ): Promise<{ items: ActivityLog[]; total: number }> {
+    await this.getMilestone(actor.workspaceId, id);
+    const page = Math.floor(args.offset / args.limit) + 1;
+    const res = await this.activity.listFor(id, page, args.limit);
+    return { items: res.data, total: res.total };
+  }
+
+  private milestoneSubject(m: Milestone) {
+    return {
+      workspaceId: m.workspaceId,
+      projectId: m.projectId,
+      entityType: 'milestone' as const,
+      entityId: m.id,
+    };
+  }
 
   // ── List ──────────────────────────────────────────────────────────────────
 
@@ -294,6 +320,9 @@ export class MilestonesService {
       { milestoneId: milestone.id, projectId, userId: actor.sub },
       'Milestone created',
     );
+    await this.activity.logSafe([
+      this.activity.build(this.milestoneSubject(final!), actor.sub, 'milestone.created', null),
+    ]);
     return final!;
   }
 
@@ -449,6 +478,16 @@ export class MilestonesService {
       this.milestoneRepo.getProjectIds(id),
       this.milestoneRepo.getTeamIds(id),
     ]);
+    await this.activity.logSafe(
+      this.activity.buildDiff(
+        this.milestoneSubject(final),
+        actor.sub,
+        milestone as unknown as Record<string, unknown>,
+        input as Record<string, unknown>,
+        MILESTONE_ACTIVITY_CONFIG,
+        'milestone.updated',
+      ),
+    );
     return { ...final, releaseIds, projectIds, teamIds };
   }
 

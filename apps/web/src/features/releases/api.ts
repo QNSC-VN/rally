@@ -6,6 +6,26 @@ import { useMemo } from 'react'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
+import type { components } from '@/shared/api/generated/api'
+
+export type ReleaseActivityLog = components['schemas']['ActivityResponseDto']
+
+/** Revision History (activity log) for one release — newest first. */
+export function useReleaseActivityLog(releaseId: string | undefined) {
+  return useQuery({
+    queryKey: ['release', releaseId ?? '', 'activity'] as const,
+    queryFn: async () => {
+      if (!releaseId) return []
+      const { data, error, response } = await apiClient.GET('/v1/releases/{id}/activity', {
+        params: { path: { id: releaseId }, query: { page: 1, pageSize: 100 } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return (data as { data?: ReleaseActivityLog[] } | undefined)?.data ?? []
+    },
+    enabled: !!releaseId,
+    staleTime: 15_000,
+  })
+}
 
 // ── Types ────────────────────────────────────────────────────────────────────
 

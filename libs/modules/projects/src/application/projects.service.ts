@@ -47,6 +47,8 @@ import type {
 import { DEFAULT_WORKFLOW_STATUSES } from '../domain/project.constants';
 import type { Label } from '../domain/label.types';
 import type { WorkItemType } from '../domain/ports/project.repository';
+import { ActivityLogger, type ActivityLog } from '@modules/activity';
+import { PROJECT_ACTIVITY_CONFIG } from './project-activity-diff';
 
 @Injectable()
 export class ProjectsService {
@@ -63,7 +65,31 @@ export class ProjectsService {
     private readonly teamService: TeamService,
     private readonly uow: UnitOfWork,
     private readonly audit: AuditProducer,
+    private readonly activity: ActivityLogger,
   ) {}
+
+  // ── Revision History (activity log) ─────────────────────────────────────────
+
+  /** Newest-first revision history for one project (workspace-view gated). */
+  async getProjectActivity(
+    actor: JwtPayload,
+    projectId: string,
+    args: { limit: number; offset: number },
+  ): Promise<{ items: ActivityLog[]; total: number }> {
+    await this.getProject(actor.workspaceId, projectId);
+    const page = Math.floor(args.offset / args.limit) + 1;
+    const res = await this.activity.listFor(projectId, page, args.limit);
+    return { items: res.data, total: res.total };
+  }
+
+  private projectSubject(p: Project) {
+    return {
+      workspaceId: p.workspaceId,
+      projectId: p.id,
+      entityType: 'project' as const,
+      entityId: p.id,
+    };
+  }
 
   // ── Projects ──────────────────────────────────────────────────────────────
 
@@ -195,6 +221,9 @@ export class ProjectsService {
       { projectId, key: normalizedKey, leadId: resolvedLeadId, teamCount: teamIds.length },
       'Project created',
     );
+    await this.activity.logSafe([
+      this.activity.build(this.projectSubject(project), actor.sub, 'project.created', null),
+    ]);
     return project;
   }
 
@@ -247,8 +276,8 @@ export class ProjectsService {
 
     const isArchiving = project.status !== 'archived' && input.status === 'archived';
 
-    return this.uow.run(async (tx) => {
-      const after = await this.projectRepo.update(projectId, input, actor.workspaceId, tx);
+    const after = await this.uow.run(async (tx) => {
+      const updated = await this.projectRepo.update(projectId, input, actor.workspaceId, tx);
       await this.audit.emit(
         {
           action: isArchiving ? AUDIT_ACTION.PROJECT_ARCHIVED : AUDIT_ACTION.PROJECT_UPDATED,
@@ -257,12 +286,24 @@ export class ProjectsService {
           workspaceId: actor.workspaceId,
           actor: { id: actor.sub },
           projectId,
-          changes: { before: project, after },
+          changes: { before: project, after: updated },
         },
         tx,
       );
-      return after;
+      return updated;
     });
+
+    await this.activity.logSafe(
+      this.activity.buildDiff(
+        this.projectSubject(after),
+        actor.sub,
+        project as unknown as Record<string, unknown>,
+        input as Record<string, unknown>,
+        PROJECT_ACTIVITY_CONFIG,
+        'project.updated',
+      ),
+    );
+    return after;
   }
 
   async deleteProject(workspaceId: string, projectId: string): Promise<void> {

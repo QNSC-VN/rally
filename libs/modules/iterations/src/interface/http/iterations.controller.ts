@@ -39,7 +39,7 @@ import {
   CreateIterationItemResponseDto,
 } from './dto/iteration-status-response.dto';
 import type { Iteration, IterationOption } from '../../domain/iteration.types';
-import type { IterationActivityLog } from '../../domain/activity-log.types';
+import type { ActivityLog as IterationActivityLog } from '@modules/activity';
 
 // ── Mappers ────────────────────────────────────────────────────────────────────
 
@@ -78,12 +78,12 @@ function toIterationDto(i: Iteration): IterationResponseDto {
 function toIterationActivityDto(a: IterationActivityLog): IterationActivityResponseDto {
   return {
     id: a.id,
-    createdAt: a.createdAt.toISOString(),
+    createdAt: a.createdAt,
     actorId: a.actorId,
     actorName: a.actorName,
     action: a.action,
     changes: a.changes,
-    metadata: a.metadata,
+    metadata: a.metadata ?? {},
   };
 }
 
