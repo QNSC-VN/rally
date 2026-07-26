@@ -14,6 +14,7 @@ export interface Project {
   description: string | null;
   leadId: string | null;
   startDate: string | null;
+  endDate: string | null;
   status: ProjectStatus;
   settings: Record<string, unknown>;
   createdAt: Date;
@@ -52,6 +53,7 @@ export interface CreateProjectInput {
   description?: string;
   leadId?: string;
   startDate?: string | null;
+  endDate?: string | null;
 }
 
 /**
@@ -65,6 +67,7 @@ export interface CreateProjectRequest {
   description?: string;
   leadId?: string;
   startDate?: string | null;
+  endDate?: string | null;
   teamIds?: string[];
 }
 
@@ -73,6 +76,7 @@ export interface UpdateProjectInput {
   description?: string | null;
   leadId?: string | null;
   startDate?: string | null;
+  endDate?: string | null;
   status?: ProjectStatus;
   settings?: Record<string, unknown>;
 }

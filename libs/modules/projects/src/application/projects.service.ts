@@ -128,6 +128,15 @@ export class ProjectsService {
       );
     }
 
+    // SRS §9: a project's end date must not precede its start date. ISO date
+    // strings (YYYY-MM-DD) compare chronologically as plain strings.
+    if (input.startDate && input.endDate && input.endDate < input.startDate) {
+      throw new PreconditionFailedException(
+        'PROJECT_INVALID_DATE_RANGE',
+        'End date must be on or after start date',
+      );
+    }
+
     // Validate any teams to link on create belong to this workspace (mirrors the
     // leadId scope check). Dedupe so a repeated id can't violate the unique link.
     const teamIds = [...new Set(input.teamIds ?? [])];
@@ -159,6 +168,7 @@ export class ProjectsService {
           description: input.description,
           leadId: resolvedLeadId,
           startDate: input.startDate ?? null,
+          endDate: input.endDate ?? null,
         },
         tx,
       );
@@ -247,6 +257,17 @@ export class ProjectsService {
       throw new PreconditionFailedException(
         'PROJECT_ARCHIVED',
         'This project is archived and read-only. Only restoring it to active is permitted.',
+      );
+    }
+
+    // SRS §9: end date must not precede start date, checked against the merged
+    // (post-patch) values so changing either side alone is validated too.
+    const nextStart = input.startDate !== undefined ? input.startDate : project.startDate;
+    const nextEnd = input.endDate !== undefined ? input.endDate : project.endDate;
+    if (nextStart && nextEnd && nextEnd < nextStart) {
+      throw new PreconditionFailedException(
+        'PROJECT_INVALID_DATE_RANGE',
+        'End date must be on or after start date',
       );
     }
 

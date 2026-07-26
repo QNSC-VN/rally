@@ -68,6 +68,7 @@ function toProjectDto(
     leadId: p.leadId,
     leadName: p.leadName ?? null,
     startDate: p.startDate ?? null,
+    endDate: p.endDate ?? null,
     status: p.status,
     memberCount: p.memberCount ?? 0,
     teamCount: p.teamCount ?? 0,
@@ -169,6 +170,7 @@ export class ProjectsController {
       description: dto.description,
       leadId: dto.leadId,
       startDate: dto.startDate,
+      endDate: dto.endDate,
       teamIds: dto.teamIds,
     });
     return toProjectDto(project);

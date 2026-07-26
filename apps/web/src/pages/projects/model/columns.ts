@@ -9,6 +9,7 @@ export type ProjectColKey =
   | 'teams'
   | 'members'
   | 'startDate'
+  | 'endDate'
   | 'updated'
 
 /**

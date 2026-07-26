@@ -14,6 +14,7 @@ export const ProjectResponseSchema = z.object({
   leadId: z.string().uuid().nullable(),
   leadName: z.string().nullable(),
   startDate: z.string().nullable().describe('YYYY-MM-DD'),
+  endDate: z.string().nullable().describe('YYYY-MM-DD'),
   status: z.enum(projectStatusEnum.enumValues).describe('Project status: active | archived'),
   memberCount: z.number().int().min(0),
   teamCount: z.number().int().min(0),

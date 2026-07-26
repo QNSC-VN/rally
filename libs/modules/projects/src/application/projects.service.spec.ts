@@ -37,6 +37,7 @@ const mockProject = (o: Partial<Project> = {}): Project => ({
   description: null,
   leadId: null,
   startDate: null,
+  endDate: null,
   status: 'active',
   settings: {},
   createdAt: now,
@@ -256,6 +257,35 @@ describe('ProjectsService', () => {
       ).rejects.toThrow(PreconditionFailedException);
       expect(projectTeamRepo.linkTeam).not.toHaveBeenCalled();
     });
+
+    it('rejects an end date before the start date', async () => {
+      await expect(
+        service.createProject(mockActor, {
+          key: 'proj',
+          name: 'Test Project',
+          startDate: '2026-09-30',
+          endDate: '2026-07-01',
+        }),
+      ).rejects.toThrow(PreconditionFailedException);
+      expect(projectRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('persists endDate when the range is valid', async () => {
+      projectRepo.create.mockResolvedValue(mockProject({ endDate: '2026-09-30' }));
+      statusRepo.create.mockResolvedValue(mockStatus());
+
+      await service.createProject(mockActor, {
+        key: 'proj',
+        name: 'Test Project',
+        startDate: '2026-07-01',
+        endDate: '2026-09-30',
+      });
+
+      expect(projectRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ startDate: '2026-07-01', endDate: '2026-09-30' }),
+        expect.anything(),
+      );
+    });
   });
 
   // ── linkTeam ──────────────────────────────────────────────────────────────
@@ -411,6 +441,15 @@ describe('ProjectsService', () => {
 
       const result = await service.updateProject(mockActor, 'proj-1', { name: 'Renamed' });
       expect(result.name).toBe('Renamed');
+    });
+
+    it('rejects an end date before the existing start date (merged validation)', async () => {
+      projectRepo.findById.mockResolvedValue(mockProject({ startDate: '2026-07-01' }));
+
+      await expect(
+        service.updateProject(mockActor, 'proj-1', { endDate: '2026-01-01' }),
+      ).rejects.toThrow(PreconditionFailedException);
+      expect(projectRepo.update).not.toHaveBeenCalled();
     });
   });
 
