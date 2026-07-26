@@ -11,6 +11,15 @@ import { uuidv7 } from 'uuidv7';
 export class ReportingDrizzleRepository implements IReportingRepository {
   constructor(@InjectDrizzle() private readonly db: DrizzleDB) {}
 
+  async getSprintProjectId(workspaceId: string, sprintId: string): Promise<string | null> {
+    const rows = await this.db
+      .select({ projectId: iterations.projectId })
+      .from(iterations)
+      .where(and(eq(iterations.workspaceId, workspaceId), eq(iterations.id, sprintId)))
+      .limit(1);
+    return rows[0]?.projectId ?? null;
+  }
+
   async getSprintSnapshots(workspaceId: string, sprintId: string): Promise<SprintSnapshot[]> {
     const rows = await this.db
       .select()

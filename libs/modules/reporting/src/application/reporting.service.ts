@@ -1,5 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { NotFoundException } from '@platform';
 import type { JwtPayload } from '@platform';
+import { AccessService } from '@modules/access';
+import { PERMISSION } from '@shared-kernel';
 import { IReportingRepository, REPORTING_REPOSITORY } from '../domain/ports/reporting.repository';
 import { VELOCITY_DEFAULT_SPRINTS } from '../domain/reporting.constants';
 import type {
@@ -10,9 +13,18 @@ import type {
 
 @Injectable()
 export class ReportingService {
-  constructor(@Inject(REPORTING_REPOSITORY) private readonly reportingRepo: IReportingRepository) {}
+  constructor(
+    @Inject(REPORTING_REPOSITORY) private readonly reportingRepo: IReportingRepository,
+    private readonly accessService: AccessService,
+  ) {}
 
   async getSprintBurndown(actor: JwtPayload, sprintId: string): Promise<SprintBurndownReport> {
+    // Reports are project-scoped delivery data — enforce view at the sprint's
+    // project, not just workspace membership (no cross-project report reads).
+    const projectId = await this.reportingRepo.getSprintProjectId(actor.workspaceId, sprintId);
+    if (!projectId) throw new NotFoundException('ITERATION_NOT_FOUND', 'Sprint not found');
+    await this.accessService.assertProjectPermission(actor, projectId, PERMISSION.ITERATION_VIEW);
+
     const snapshots = await this.reportingRepo.getSprintSnapshots(actor.workspaceId, sprintId);
 
     return {
@@ -32,6 +44,7 @@ export class ReportingService {
     projectId: string,
     lastNSprints = VELOCITY_DEFAULT_SPRINTS,
   ): Promise<VelocityReport> {
+    await this.accessService.assertProjectPermission(actor, projectId, PERMISSION.ITERATION_VIEW);
     const sprints = await this.reportingRepo.getVelocity(actor.workspaceId, projectId, lastNSprints);
     return { projectId, sprints };
   }

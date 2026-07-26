@@ -266,6 +266,21 @@ describe('MilestonesService', () => {
       await expect(service.getMilestone('ws-1', 'ms-1')).rejects.toThrow(NotFoundException);
     });
 
+    it('getMilestoneForView denies when the actor lacks milestone:view (cross-project guard)', async () => {
+      repo.findById.mockResolvedValue(mockMilestone());
+      access.assertProjectPermission.mockRejectedValueOnce(
+        new PreconditionFailedException('PROJECT_PERMISSION_DENIED', 'denied'),
+      );
+      await expect(service.getMilestoneForView(actor, 'ms-1')).rejects.toThrow(
+        PreconditionFailedException,
+      );
+      expect(access.assertProjectPermission).toHaveBeenCalledWith(
+        actor,
+        expect.any(String),
+        'milestone:view',
+      );
+    });
+
     it('recalculates target dates on get to ensure they are derived', async () => {
       repo.findById.mockResolvedValue(mockMilestone());
       await service.getMilestone('ws-1', 'ms-1');

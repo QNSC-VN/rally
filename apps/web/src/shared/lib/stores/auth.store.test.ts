@@ -60,7 +60,7 @@ describe('useAuthStore', () => {
       const { hasPermission } = useAuthStore.getState()
       expect(hasPermission('work_item:edit')).toBe(true)
       expect(hasPermission('project:delete')).toBe(true)
-      expect(hasPermission('workspace:manage_teams')).toBe(true)
+      expect(hasPermission('teams:create')).toBe(true)
     })
 
     it('matches an exact permission code', () => {
