@@ -6,6 +6,7 @@ import type { RequestContextService } from '../context/request-context';
 import type { AuthTokenCache } from '@qnsc-vn/identity';
 import type { BffSessionResolver } from './bff-session-resolver';
 import type { AuthzEpochService } from './authz-epoch.service';
+import type { SecurityMetrics } from '@qnsc-vn/observability';
 import { BFF_SESSION_COOKIE } from './bff-session-resolver';
 import type { JwtPayload } from './jwt.strategy';
 
@@ -53,6 +54,10 @@ describe('JwtAuthGuard — BFF session-cookie path', () => {
     remint: ReturnType<typeof vi.fn>;
   };
   let authzEpoch: { isStale: ReturnType<typeof vi.fn> };
+  let securityMetrics: {
+    recordFailOpen: ReturnType<typeof vi.fn>;
+    recordStaleToken: ReturnType<typeof vi.fn>;
+  };
   let guard: JwtAuthGuard;
   let superCanActivate: ReturnType<typeof vi.spyOn>;
 
@@ -68,10 +73,12 @@ describe('JwtAuthGuard — BFF session-cookie path', () => {
       remint: vi.fn().mockResolvedValue(FRESH_CLAIMS),
     };
     authzEpoch = { isStale: vi.fn().mockResolvedValue(false) };
+    securityMetrics = { recordFailOpen: vi.fn(), recordStaleToken: vi.fn() };
     guard = new JwtAuthGuard(
       ctxService as unknown as RequestContextService,
       authCache as unknown as AuthTokenCache,
       authzEpoch as unknown as AuthzEpochService,
+      securityMetrics as unknown as SecurityMetrics,
       resolver as unknown as BffSessionResolver,
     );
     // Neutralise the passport Bearer path so "falls through" cases are observable.
@@ -140,6 +147,7 @@ describe('JwtAuthGuard — BFF session-cookie path', () => {
       ctxService as unknown as RequestContextService,
       authCache as unknown as AuthTokenCache,
       authzEpoch as unknown as AuthzEpochService,
+      securityMetrics as unknown as SecurityMetrics,
     );
     const req: MockReq = {
       headers: {},
@@ -165,12 +173,17 @@ describe('JwtAuthGuard — authorization epoch staleness', () => {
     remint?: ReturnType<typeof vi.fn>;
   };
   let authzEpoch: { isStale: ReturnType<typeof vi.fn> };
+  let securityMetrics: {
+    recordFailOpen: ReturnType<typeof vi.fn>;
+    recordStaleToken: ReturnType<typeof vi.fn>;
+  };
 
   function buildGuard(): JwtAuthGuard {
     return new JwtAuthGuard(
       ctxService as unknown as RequestContextService,
       authCache as unknown as AuthTokenCache,
       authzEpoch as unknown as AuthzEpochService,
+      securityMetrics as unknown as SecurityMetrics,
       resolver as unknown as BffSessionResolver,
     );
   }
@@ -187,6 +200,7 @@ describe('JwtAuthGuard — authorization epoch staleness', () => {
       remint: vi.fn().mockResolvedValue(FRESH_CLAIMS),
     };
     authzEpoch = { isStale: vi.fn().mockResolvedValue(false) };
+    securityMetrics = { recordFailOpen: vi.fn(), recordStaleToken: vi.fn() };
     vi.spyOn(Object.getPrototypeOf(JwtAuthGuard.prototype), 'canActivate').mockResolvedValue(true);
   });
 

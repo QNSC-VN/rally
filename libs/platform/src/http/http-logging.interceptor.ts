@@ -3,10 +3,17 @@ import type { FastifyRequest } from 'fastify';
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { DomainException as SharedDomainException } from '@qnsc-vn/platform-http';
+import { HttpMetrics, IGNORED_REQUEST_PATHS, normalizeRoute } from '@qnsc-vn/observability';
 import { AppConfigService } from '../config/app-config.service';
 
 /** Routes whose access logs are suppressed (probes + favicon spam). */
-const SKIP_LOG_PREFIXES = new Set(['/v1/healthz', '/v1/readyz', '/favicon.ico']);
+/**
+ * Paths worth neither a log line nor a metric. Shared with the tracer via
+ * `IGNORED_REQUEST_PATHS` rather than duplicated here — the two lists had already
+ * diverged once, which meant a path could be traced but not logged with nothing
+ * flagging it.
+ */
+const SKIP_LOG_PREFIXES = IGNORED_REQUEST_PATHS;
 
 /** Body fields that must never appear in logs. */
 const REDACTED_BODY_FIELDS = new Set([
@@ -56,7 +63,13 @@ function sanitizeValue(value: unknown, key?: string): unknown {
  * HttpLoggingInterceptor
  *
  * Emits ONE structured log per request on completion:
- *   <-- POST /v1/auth/login 200 45ms userId=xxx correlationId=xxx
+ *   <-- POST /v1/auth/login 200 45ms userId=xxx
+ *
+ * `correlationId`, `workspaceId` and trace ids are added to every line by the pino
+ * mixin from AsyncLocalStorage, so this interceptor does not repeat them. It used to
+ * read the `x-correlation-id` REQUEST header, which is absent whenever the client
+ * did not send one — i.e. the field was usually undefined while the mixin already
+ * had the generated value.
  *
  * Logs at WARN for 4xx, ERROR for 5xx, LOG for the rest.
  * Body is included for POST/PUT/PATCH with sensitive fields redacted.
@@ -65,14 +78,42 @@ function sanitizeValue(value: unknown, key?: string): unknown {
 @Injectable()
 export class HttpLoggingInterceptor implements NestInterceptor {
   private readonly logger = new Logger('HTTP');
-  constructor(private readonly config: AppConfigService) {}
+  constructor(
+    private readonly config: AppConfigService,
+    private readonly metrics: HttpMetrics,
+  ) {}
+
+  /**
+   * Route TEMPLATE for the metric label. Nest exposes the matched path on the
+   * Fastify request; when it is absent, fall back to normalising the concrete path.
+   * A raw URL here would put one label value per work-item id into the metric
+   * store — the classic cardinality blow-up.
+   */
+  /**
+   * Server-sent-event responses stay open for minutes, so recording that as request
+   * latency would dominate the p95 for the whole route and make the number useless.
+   * Count the request, skip the duration.
+   */
+  private isStreaming(response: { getHeader?: (name: string) => unknown }): boolean {
+    const contentType = response.getHeader?.('content-type');
+    return typeof contentType === 'string' && contentType.includes('text/event-stream');
+  }
+
+  private routeLabel(req: FastifyRequest, url: string): string {
+    const matched = (req as unknown as { routeOptions?: { url?: string } }).routeOptions?.url;
+    return matched ?? normalizeRoute(url);
+  }
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     if (context.getType() !== 'http') {
       return next.handle();
     }
 
-    const req = context.switchToHttp().getRequest<FastifyRequest & { user?: { id?: string } }>();
+    // The principal's id is `sub`, not `id` — this read was `req.user?.id`, which
+    // always resolved to undefined, so the access log's userId field was dead. The
+    // pino mixin also supplies userId from AsyncLocalStorage once the guard has run;
+    // this covers the window before that (and requests that never authenticate).
+    const req = context.switchToHttp().getRequest<FastifyRequest & { user?: { sub?: string } }>();
     const method = req.method;
     const url =
       ((req as unknown as Record<string, unknown>)['originalUrl'] as string | undefined) ?? req.url;
@@ -82,7 +123,6 @@ export class HttpLoggingInterceptor implements NestInterceptor {
     }
 
     const startTime = Date.now();
-    const correlationId = req.headers['x-correlation-id'] as string | undefined;
     const ip =
       (req.headers['x-real-ip'] as string) ||
       (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
@@ -92,11 +132,24 @@ export class HttpLoggingInterceptor implements NestInterceptor {
     return next.handle().pipe(
       tap({
         next: () => {
-          const statusCode = context
+          const response = context
             .switchToHttp()
-            .getResponse<{ statusCode: number }>().statusCode;
+            .getResponse<{ statusCode: number; getHeader?: (name: string) => unknown }>();
+          const statusCode = response.statusCode;
           const duration = Date.now() - startTime;
-          const userId = req.user?.id;
+          const userId = req.user?.sub;
+          // Streams are excluded from HTTP RED entirely rather than recorded with a
+          // connection-lifetime "latency": an SSE response is not a request/response
+          // exchange, and its minutes-long duration would dominate the route's p95.
+          // If connection counts become interesting they want their own instrument.
+          if (!this.isStreaming(response)) {
+            this.metrics.record({
+              route: this.routeLabel(req, url),
+              method,
+              statusCode,
+              durationMs: duration,
+            });
+          }
 
           this.log(statusCode, {
             msg: `<-- ${method} ${url} ${statusCode} ${duration}ms`,
@@ -105,7 +158,6 @@ export class HttpLoggingInterceptor implements NestInterceptor {
             statusCode,
             duration,
             userId,
-            correlationId,
             ip,
             query: this.extractQuery(req),
           });
@@ -129,7 +181,14 @@ export class HttpLoggingInterceptor implements NestInterceptor {
               (err as { getResponse?: () => { code?: string } }).getResponse?.()?.code ??
               'INTERNAL';
           }
-          const userId = req.user?.id;
+          const userId = req.user?.sub;
+          this.metrics.record({
+            route: this.routeLabel(req, url),
+            method,
+            statusCode,
+            durationMs: duration,
+            errorCode,
+          });
 
           this.log(statusCode, {
             msg: `<-- ${method} ${url} ${statusCode} ${duration}ms [${errorCode}]`,
@@ -139,7 +198,6 @@ export class HttpLoggingInterceptor implements NestInterceptor {
             duration,
             errorCode,
             userId,
-            correlationId,
             ip,
             query: this.extractQuery(req),
             body: this.extractBody(req),

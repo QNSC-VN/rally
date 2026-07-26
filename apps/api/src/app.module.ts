@@ -2,8 +2,8 @@ import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 import { AppConfigService } from '@platform/config';
-import { trace, isSpanContextValid } from '@opentelemetry/api';
-import { requestContextStorage, RequestContextService } from '@platform/context/request-context';
+import { RequestContextService } from '@platform/context/request-context';
+import { createLoggerOptions } from '@qnsc-vn/observability';
 import { PlatformModule } from '@platform';
 import { IdentityModule } from '@modules/identity';
 import { WorkspaceModule } from '@modules/workspace';
@@ -29,65 +29,18 @@ import { AsyncLocalStorageMiddleware } from '@platform/context/als.middleware';
 
 @Module({
   imports: [
-    // Pino structured logging — autoLogging disabled; HttpLoggingInterceptor handles per-request logs
+    // Pino structured logging — one shared factory (redaction, trace correlation,
+    // ALS business context) lives in @platform so api and worker cannot drift.
     LoggerModule.forRootAsync({
       inject: [AppConfigService],
-      useFactory: (config: AppConfigService) => {
-        const isDev = config.get('NODE_ENV') !== 'production';
-        const prettyLogs = config.get('LOG_PRETTY') ?? isDev;
-        return {
-          pinoHttp: {
-            level: config.get('LOG_LEVEL'),
-            // pino-pretty for human-readable logs in dev; JSON in prod for log aggregators
-            transport: prettyLogs
-              ? { target: 'pino-pretty', options: { colorize: true, singleLine: false } }
-              : undefined,
-            // Never log credentials in any environment
-            redact: {
-              paths: [
-                'req.headers.authorization',
-                'req.headers.cookie',
-                'res.headers["set-cookie"]',
-                'req.headers["x-api-key"]',
-                'req.headers["x-csrf-token"]',
-              ],
-              censor: '[REDACTED]',
-            },
-            // HttpLoggingInterceptor emits the per-request summary line
-            autoLogging: false,
-            customProps: () => ({
-              service: 'rally-api',
-              env: config.get('NODE_ENV'),
-              version: config.get('SERVICE_VERSION'),
-            }),
-            // mixin: called on every log write — injects active OTEL trace context
-            // and ALS request context (workspaceId, userId, correlationId) automatically.
-            mixin: () => {
-              const result: Record<string, unknown> = {};
-
-              // Trace-log correlation: link this log line to the active OTEL span
-              const span = trace.getActiveSpan();
-              if (span) {
-                const ctx = span.spanContext();
-                if (isSpanContextValid(ctx)) {
-                  result['trace.id'] = ctx.traceId;
-                  result['span.id'] = ctx.spanId;
-                }
-              }
-
-              // Request context: workspaceId / userId / correlationId from ALS
-              const reqCtx = requestContextStorage.getStore();
-              if (reqCtx) {
-                if (reqCtx.workspaceId) result['workspaceId'] = reqCtx.workspaceId;
-                if (reqCtx.userId) result['userId'] = reqCtx.userId;
-                if (reqCtx.correlationId) result['correlationId'] = reqCtx.correlationId;
-              }
-
-              return result;
-            },
-          },
-        };
-      },
+      useFactory: (config: AppConfigService) =>
+        createLoggerOptions({
+          serviceName: 'rally-api',
+          nodeEnv: config.get('NODE_ENV'),
+          serviceVersion: config.get('SERVICE_VERSION'),
+          level: config.get('LOG_LEVEL'),
+          pretty: config.get('LOG_PRETTY'),
+        }),
     }),
 
     // Platform (config, db, auth, cache, outbox, observability)

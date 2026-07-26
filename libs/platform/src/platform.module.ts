@@ -13,6 +13,15 @@ import { RequestContextService } from './context/request-context';
 import { JwtStrategy } from './auth/jwt.strategy';
 import { JwtAuthGuard } from './auth/jwt.guard';
 import { AuthzEpochService } from './auth/authz-epoch.service';
+// Metric instruments come from the shared package so every product emits the same
+// names with the same bounded labels.
+import {
+  DbPoolMetrics,
+  HttpMetrics,
+  JobMetrics,
+  QueueMetrics,
+  SecurityMetrics,
+} from '@qnsc-vn/observability';
 import { RateLimitGuard } from './rate-limit/rate-limit.guard';
 import { OutboxService } from './outbox/outbox.service';
 import { AuditProducer } from './audit/audit-producer.service';
@@ -74,6 +83,11 @@ import { StorageService } from './storage/storage.service';
   controllers: [HealthController],
   providers: [
     RequestContextService,
+    HttpMetrics,
+    JobMetrics,
+    QueueMetrics,
+    DbPoolMetrics,
+    SecurityMetrics,
     // Auth-token cache (denylist / rotation grace / user revocation) owned by
     // @qnsc-vn/identity, composing the shared CacheService primitive.
     AuthTokenCache,
@@ -122,6 +136,11 @@ import { StorageService } from './storage/storage.service';
     AuthTokenCache,
     JwtModule,
     RequestContextService,
+    HttpMetrics,
+    JobMetrics,
+    QueueMetrics,
+    DbPoolMetrics,
+    SecurityMetrics,
     JwtAuthGuard,
     AuthzEpochService,
     PermissionGuard,

@@ -1,8 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { LoggerModule } from 'nestjs-pino';
-import { trace, isSpanContextValid } from '@opentelemetry/api';
-import { requestContextStorage } from '@platform/context/request-context';
+import { createLoggerOptions } from '@qnsc-vn/observability';
 import { AppConfigService } from '@platform/config';
 import { PlatformModule } from '@platform';
 import { AuditModule } from '@modules/audit';
@@ -25,43 +24,19 @@ import { ScmBackfillRelayService } from './scm/scm-backfill-relay.service';
  */
 @Module({
   imports: [
+    // Same shared factory as the API. The worker's own copy of this block had
+    // drifted and was missing the `redact` list entirely, so a logged SDK error
+    // could have written credentials to CloudWatch.
     LoggerModule.forRootAsync({
       inject: [AppConfigService],
-      useFactory: (config: AppConfigService) => {
-        const isDev = config.get('NODE_ENV') !== 'production';
-        const prettyLogs = config.get('LOG_PRETTY') ?? isDev;
-        return {
-          pinoHttp: {
-            level: config.get('LOG_LEVEL'),
-            transport: prettyLogs
-              ? { target: 'pino-pretty', options: { colorize: true, singleLine: false } }
-              : undefined,
-            customProps: () => ({
-              service: 'rally-worker',
-              env: config.get('NODE_ENV'),
-              version: config.get('SERVICE_VERSION'),
-            }),
-            mixin: () => {
-              const result: Record<string, unknown> = {};
-              const span = trace.getActiveSpan();
-              if (span) {
-                const ctx = span.spanContext();
-                if (isSpanContextValid(ctx)) {
-                  result['trace.id'] = ctx.traceId;
-                  result['span.id'] = ctx.spanId;
-                }
-              }
-              const reqCtx = requestContextStorage.getStore();
-              if (reqCtx) {
-                if (reqCtx.workspaceId) result['workspaceId'] = reqCtx.workspaceId;
-                if (reqCtx.userId) result['userId'] = reqCtx.userId;
-                if (reqCtx.correlationId) result['correlationId'] = reqCtx.correlationId;
-              }
-              return result;
-            },
-          },
-        };
-      },
+      useFactory: (config: AppConfigService) =>
+        createLoggerOptions({
+          serviceName: 'rally-worker',
+          nodeEnv: config.get('NODE_ENV'),
+          serviceVersion: config.get('SERVICE_VERSION'),
+          level: config.get('LOG_LEVEL'),
+          pretty: config.get('LOG_PRETTY'),
+        }),
     }),
     ScheduleModule.forRoot(),
     PlatformModule,
