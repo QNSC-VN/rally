@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { BRAND } from '@/shared/config/brand'
 import type { StateStep } from './state-steps'
 
@@ -14,6 +15,11 @@ import type { StateStep } from './state-steps'
 // track reads as discrete steps; every square — including empty future ones —
 // is outlined with the same visible border so the whole set reads as a
 // countable row of squares, exactly like the Rally state control.
+//
+// Interactive (canEdit + onChange): hovering a box previews the transition —
+// the track fills up to the hovered box and it lights up with that state's
+// letter — and its tooltip reads "Move to <State>". Clicking commits it. This
+// is the live, hover-to-preview control from Rally, not a static badge.
 
 const STEPPER_BORDER = BRAND.accentBorderStrong
 const STEPPER_REACHED = BRAND.accentBorder
@@ -35,24 +41,34 @@ export function StateStepper<T extends string>({
   onChange?: (next: T) => void
   ariaLabel?: string
 }) {
+  const [hovered, setHovered] = useState<number | null>(null)
   const idx = steps.findIndex((s) => s.value === value)
+  const interactive = canEdit && !!onChange
+  // While hovering an actionable box, colour the track as if the item were
+  // already there — a live preview of the move.
+  const activeIdx = interactive && hovered !== null ? hovered : idx
+
   return (
     <div
       role="group"
       aria-label={ariaLabel}
       className="inline-flex overflow-hidden rounded-[2px]"
       style={{ border: `1px solid ${STEPPER_BORDER}`, height: CELL }}
+      onMouseLeave={() => setHovered(null)}
     >
       {steps.map((step, i) => {
         const isCurrent = i === idx
-        const reached = i < idx
+        const isActive = i === activeIdx
+        const reached = i < activeIdx
+        const actionable = interactive && !isCurrent
         return (
           <button
             key={step.value}
             type="button"
-            title={step.label}
-            disabled={!canEdit || isCurrent || !onChange}
-            onClick={canEdit && !isCurrent && onChange ? () => onChange(step.value) : undefined}
+            title={actionable ? `Move to ${step.label}` : step.label}
+            disabled={!actionable}
+            onMouseEnter={actionable ? () => setHovered(i) : undefined}
+            onClick={actionable ? () => onChange!(step.value) : undefined}
             style={{
               width: CELL,
               flex: 'none',
@@ -62,16 +78,17 @@ export function StateStepper<T extends string>({
               fontSize: 10,
               fontWeight: 700,
               lineHeight: `${CELL - 2}px`,
-              cursor: canEdit && !isCurrent && onChange ? 'pointer' : 'default',
-              backgroundColor: isCurrent
+              cursor: actionable ? 'pointer' : 'default',
+              backgroundColor: isActive
                 ? STEPPER_CURRENT
                 : reached
                   ? STEPPER_REACHED
                   : BRAND.surface,
-              color: isCurrent ? BRAND.surface : 'transparent',
+              color: isActive ? BRAND.surface : 'transparent',
+              transition: 'background-color 120ms',
             }}
           >
-            {isCurrent ? step.letter : ''}
+            {isActive ? steps[activeIdx].letter : ''}
           </button>
         )
       })}
