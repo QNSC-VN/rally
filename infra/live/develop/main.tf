@@ -314,6 +314,12 @@ module "api" {
     { name = "ENTRA_TENANT_ID", value = var.entra_tenant_id },
     { name = "ENTRA_CLIENT_ID", value = var.entra_client_id },
     { name = "ENTRA_REDIRECT_URI", value = "${local.app_base_url}/v1/bff/callback" },
+    # GitHub App (SCM org-level auto-discovery + backfill). The API enumerates
+    # the App's installations and mints installation tokens, so — like the worker —
+    # it needs the App ID + private-key ref. Empty App ID keeps it dormant
+    # (GithubAppAuthService.isConfigured() = false). Task role reads all secrets.
+    { name = "GITHUB_APP_ID", value = var.github_app_id },
+    { name = "GITHUB_APP_PRIVATE_KEY_SECRET_REF", value = module.secrets.secret_arns["github-app-private-key"] },
     # Multi-IdP broker: the home (company Entra) connection resolves its client
     # secret at RUNTIME from this ref. Reuses entra-client-secret (same Entra
     # app) — no duplicate copy to drift on rotation. Unset leaves the broker
