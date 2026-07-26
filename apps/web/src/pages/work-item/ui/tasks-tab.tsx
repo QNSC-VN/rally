@@ -19,7 +19,6 @@ import {
 import { BRAND } from '@/shared/config/brand'
 import { BulkDeleteCopy } from '@/features/work-items/ui/bulk-delete-copy'
 import { useProjectMembers, useProjectTeams } from '@/features/teams/api'
-import { deriveEstimateHours } from '@/entities/work-item/model/task-time'
 import {
   ScheduleState,
   getSimplifiedState,
@@ -351,7 +350,7 @@ function TaskRow({
     const next = raw.trim()
     if (next && next !== task.title) void update.mutateAsync({ title: next })
   }
-  const commitHours = (field: 'todoHours' | 'actualHours', raw: string) => {
+  const commitHours = (field: 'todoHours' | 'actualHours' | 'estimateHours', raw: string) => {
     const next = raw.trim() === '' ? null : Number(raw)
     if (next != null && (Number.isNaN(next) || next < 0)) return
     const current = task[field] != null ? Number(task[field]) : null
@@ -467,13 +466,17 @@ function TaskRow({
           ariaLabel={`Task ${task.itemKey} actual hours`}
         />
       </div>
-      {/* Estimate — read-only derived (To Do + Actuals) */}
-      <div
-        className="shrink-0 px-2 text-right font-mono text-ui-sm text-muted-foreground"
-        style={colStyles.estimate}
-        title="Estimate is derived: To Do + Actuals"
-      >
-        {deriveEstimateHours(task.todoHours, task.actualHours)}h
+      {/* Estimate — independent planned value, inline editable (real Rally) */}
+      <div className="shrink-0 px-2 text-right" style={colStyles.estimate}>
+        <InlineEditableCell
+          value={task.estimateHours != null ? String(task.estimateHours) : ''}
+          canEdit={canEdit}
+          onCommit={(v) => commitHours('estimateHours', v)}
+          displayValue={task.estimateHours ?? '—'}
+          className="font-mono text-muted-foreground tabular-nums hover:underline"
+          inputClassName={numInput}
+          ariaLabel={`Task ${task.itemKey} estimate hours`}
+        />
       </div>
     </div>
   )

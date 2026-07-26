@@ -36,7 +36,6 @@ import type {
 } from '@platform/notifications/notification.templates';
 import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
-import { deriveTaskEstimateHours } from '../domain/task-time.rules';
 import { IWorkItemRepository, WORK_ITEM_REPOSITORY } from '../domain/ports/work-item.repository';
 import {
   IActivityLogRepository,
@@ -349,13 +348,14 @@ export class WorkItemsService {
               iterationId: opts.iterationId,
               releaseId: opts.releaseId,
               storyPoints: opts.storyPoints,
-              // Task Estimate is read-only derived (Estimate = To Do + Actuals);
-              // any client-supplied estimate for a task is ignored.
-              estimateHours:
-                type === 'task'
-                  ? deriveTaskEstimateHours(opts.todoHours, opts.actualHours)
-                  : opts.estimateHours,
-              todoHours: opts.todoHours,
+              // Real-Rally task time: Estimate is an independent planned value
+              // (client-set, never derived). To Do defaults to the Estimate on
+              // create until edited (Rally: remaining = planned before work
+              // starts). Actuals is a separate manual input. To Do auto-zeroes
+              // on completion (see updateWorkItem).
+              estimateHours: opts.estimateHours,
+              todoHours:
+                type === 'task' ? (opts.todoHours ?? opts.estimateHours) : opts.todoHours,
               actualHours: opts.actualHours,
               acceptanceCriteria: opts.acceptanceCriteria,
               notes: opts.notes,
@@ -748,15 +748,16 @@ export class WorkItemsService {
       input.scheduleState !== undefined &&
       !isCompletedScheduleState(input.scheduleState);
 
-    // Task Estimate is read-only derived (Estimate = To Do + Actuals). Recompute
-    // it from the effective To Do / Actual (incoming patch merged with the stored
-    // value) so it stays consistent everywhere and any client-supplied estimate
-    // is ignored. To Do is NOT auto-zeroed on completion (BA-confirmed DEV-015).
+    // Real-Rally task time: Estimate and Actuals are independent, user-owned
+    // values — never derived/overwritten. A task reaching a done state has no
+    // remaining work, so To Do auto-zeroes (unless the same patch sets it
+    // explicitly). Reopening does NOT restore To Do (Rally parity).
     if (isTask) {
-      const effectiveTodo = input.todoHours !== undefined ? input.todoHours : item.todoHours;
-      const effectiveActual =
-        input.actualHours !== undefined ? input.actualHours : item.actualHours;
-      input.estimateHours = deriveTaskEstimateHours(effectiveTodo, effectiveActual);
+      const completing =
+        input.scheduleState !== undefined && isCompletedScheduleState(input.scheduleState);
+      if (completing && input.todoHours === undefined) {
+        input.todoHours = '0';
+      }
     }
 
     const entries = diffWorkItem(item, input, isTask);

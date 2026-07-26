@@ -589,9 +589,11 @@ function TaskRow({
       toast.error('Estimate must be a positive number')
       return
     }
-    // Auto-sync: editing estimate also sets To Do (client-side mirror of backend auto-sync).
+    // Estimate is an independent planned value (real Rally) — editing it does
+    // NOT touch To Do. To Do defaults to Estimate at create (backend) and
+    // auto-zeroes on completion.
     updateTask.mutate(
-      { taskId: task.id, estimateHours: num, todoHours: num },
+      { taskId: task.id, estimateHours: num },
       {
         onSuccess: () => toast.success('Estimate updated'),
         onError: (e) => toast.error(e.message),

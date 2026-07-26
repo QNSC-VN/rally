@@ -172,18 +172,21 @@ describe('BA flows: project foundation → work items → iteration (real AppMod
       });
       const story = await workItems.createWorkItem(actor, project.id, 'story', 'Story with tasks');
 
-      // Task time model (BA-confirmed): Estimate is read-only derived as
-      // To Do + Actuals; only To Do and Actuals are manual inputs.
+      // Task time model (real Rally): Estimate is an independent planned value;
+      // To Do defaults to the Estimate when not given; Actuals is separate.
       const task = await workItems.createTask(actor, story.id, 'Implement endpoint', {
-        todoHours: '2',
+        estimateHours: '8',
         actualHours: '5',
       });
       expect(task.type).toBe('task');
       expect(task.parentId).toBe(story.id);
+      expect(Number(task.estimateHours)).toBe(8); // independent, client-set
+      expect(Number(task.todoHours)).toBe(8); // defaulted to Estimate (To Do omitted)
 
       const totals = await workItems.getTaskTotals(actor, story.id);
       expect(totals.taskCount).toBe(1);
-      expect(totals.estimateHours).toBe(7); // derived: To Do (2) + Actuals (5)
+      expect(totals.estimateHours).toBe(8); // Σ(estimate), independent
+      expect(totals.todoHours).toBe(8);
       expect(totals.actualHours).toBe(5);
 
       // A task is NOT a backlog item — backlog holds stories + defects only.
