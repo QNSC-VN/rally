@@ -369,6 +369,10 @@ module "api" {
   # change). Distinct from secret_arns above (execution role, boot-time inject).
   task_secret_arns = [
     module.secrets.secret_arns["entra-client-secret"],
+    # GitHub App private key — resolved at RUNTIME by SECRET_RESOLVER (task role),
+    # not injected at boot. listAvailable/connect (API) mint the App JWT, so the
+    # API task role needs GetSecretValue on it, same as the worker.
+    module.secrets.secret_arns["github-app-private-key"],
     "arn:aws:secretsmanager:${local.region}:${data.aws_caller_identity.current.account_id}:secret:rally/${local.env}/sso/*",
   ]
 
