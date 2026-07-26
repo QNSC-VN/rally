@@ -5,6 +5,7 @@ import { AppConfigService } from '../config/app-config.service';
 import * as schema from '../../../../db/schema';
 import { pgOptions } from '../../../../db/pg-ssl';
 import { resolveDatabaseUrl } from '../../../../db/database-url';
+import { DbPoolMetrics } from '@qnsc-vn/observability';
 
 export const DRIZZLE = Symbol('DRIZZLE');
 
@@ -27,7 +28,10 @@ export class DrizzleProvider {
   private pool: Pool;
   private db: DrizzleDB;
 
-  constructor(private readonly config: AppConfigService) {
+  constructor(
+    private readonly config: AppConfigService,
+    poolMetrics: DbPoolMetrics,
+  ) {
     this.pool = new Pool({
       // Composed from DATABASE_* parts when no complete URL is supplied, so the
       // deployed path reads the RDS-managed secret directly and never holds a
@@ -51,6 +55,15 @@ export class DrizzleProvider {
     });
 
     this.db = drizzle(this.pool, { schema, logger: config.get('LOG_SQL') });
+
+    // Pool saturation is the usual cause of a latency cliff: requests queue for a
+    // connection while every individual query still looks fast. Registered as a
+    // pull-based gauge, so OTel reads the live pool at collection time and there is
+    // no timer here to own or to fall out of step with the export interval.
+    poolMetrics.register(() => ({
+      inUse: this.pool.totalCount - this.pool.idleCount,
+      waiting: this.pool.waitingCount,
+    }));
   }
 
   get instance(): DrizzleDB {

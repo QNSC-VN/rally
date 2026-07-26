@@ -8,7 +8,8 @@ import {
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { RequestContextService } from '../context/request-context';
-import { failOpenLog } from '../observability/fail-open';
+
+import { failOpenLog, SecurityMetrics } from '@qnsc-vn/observability';
 import { AuthTokenCache } from '@qnsc-vn/identity';
 import {
   BFF_SESSION_COOKIE,
@@ -47,6 +48,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     private readonly ctx: RequestContextService,
     private readonly authCache: AuthTokenCache,
     private readonly authzEpoch: AuthzEpochService,
+    private readonly securityMetrics: SecurityMetrics,
     @Optional()
     @Inject(BFF_SESSION_RESOLVER)
     private readonly bffResolver?: BffSessionResolver,
@@ -181,10 +183,14 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       if (err instanceof UnauthorizedException) throw err;
       // Tagged so the CloudWatch metric filter + alarm in infra/live/* can see
       // it — a cache outage means revoked tokens are being accepted.
+      // Log AND counter: the log drives today's CloudWatch alarm, the counter drives
+      // the same alert once metrics have a backend. Neither alone survives the
+      // migration without a gap.
       this.logger.warn(
         failOpenLog('denylist', { err }),
         'Token denylist check failed; failing open',
       );
+      this.securityMetrics.recordFailOpen('denylist');
     }
   }
 

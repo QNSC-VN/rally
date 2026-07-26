@@ -21,7 +21,7 @@ import type { DrizzleDB } from '@platform';
 import { ReportingService } from '@modules/reporting';
 import { iterations, workItems, workflowStatuses } from '../../../../db/schema/work';
 import { WORKFLOW_DONE_CATEGORY } from '../../../../db/schema/enums';
-import { withJobContext } from '@qnsc-vn/observability';
+import { JobMetrics, withJobContext } from '@qnsc-vn/observability';
 
 @Injectable()
 export class SnapshotCronService {
@@ -33,14 +33,18 @@ export class SnapshotCronService {
     @InjectDrizzle() private readonly db: DrizzleDB,
     private readonly reportingService: ReportingService,
     private readonly cache: CacheService,
+    private readonly jobMetrics: JobMetrics,
   ) {}
 
   /** Runs at midnight UTC every day. */
   @Cron('0 0 * * *', { name: 'daily-sprint-snapshot', timeZone: 'UTC' })
   async takeDailySnapshots(): Promise<void> {
-    // Job context so every line this run logs carries a correlationId; cron work
-    // previously logged with no context at all.
-    await withJobContext('daily-sprint-snapshot', () => this.takeDailySnapshotsBody());
+    // Job context so every line this run logs carries a correlationId (cron work
+    // previously logged with no context at all), and duration/outcome metrics so a
+    // job that starts failing or slowing is visible without reading logs.
+    await withJobContext('daily-sprint-snapshot', () =>
+      this.jobMetrics.time('daily-sprint-snapshot', () => this.takeDailySnapshotsBody()),
+    );
   }
 
   private async takeDailySnapshotsBody(): Promise<void> {

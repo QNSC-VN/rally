@@ -34,6 +34,12 @@ export const outboxEvents = messagingSchema.table(
     lastError: text('last_error'),
     publishedAt: timestamp('published_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * W3C traceparent of the request that enqueued this event, so the relay can
+     * continue that trace rather than starting an unrelated one. NULL when nothing
+     * was tracing (pre-column rows, or a writer with no active span).
+     */
+    traceparent: varchar('traceparent', { length: 64 }),
     // Partition column — see DATABASE_SCHEMA.md §8 for monthly range partitioning
     partitionKey: timestamp('partition_key', { withTimezone: true }).notNull().defaultNow(),
   },

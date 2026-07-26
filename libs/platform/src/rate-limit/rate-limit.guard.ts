@@ -10,7 +10,8 @@ import {
   SKIP_RATE_LIMIT_KEY,
   type RateLimitTier,
 } from './rate-limit.constants';
-import { failOpenLog } from '../observability/fail-open';
+
+import { failOpenLog, SecurityMetrics } from '@qnsc-vn/observability';
 
 /**
  * Global rate-limit guard backed by Valkey (Redis-compatible) sliding window.
@@ -50,6 +51,7 @@ export class RateLimitGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly cache: CacheService,
+    private readonly securityMetrics: SecurityMetrics,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -116,6 +118,7 @@ export class RateLimitGuard implements CanActivate {
         failOpenLog('rate_limit', { err, key, tier, ip: req.ip, userId: req.user?.sub }),
         'Rate limit backend unavailable; allowing request',
       );
+      this.securityMetrics.recordFailOpen('rate_limit');
       return true;
     }
 

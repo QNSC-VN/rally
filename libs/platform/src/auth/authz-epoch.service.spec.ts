@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CacheService } from '@qnsc-vn/platform-cache';
+import type { SecurityMetrics } from '@qnsc-vn/observability';
 import { AuthzEpochService } from './authz-epoch.service';
 
 /** Minimal ioredis pipeline double — records the INCRs it was handed. */
@@ -24,6 +25,10 @@ describe('AuthzEpochService', () => {
     redis: unknown;
   };
   let pipe: ReturnType<typeof pipelineDouble>;
+  let metrics: {
+    recordFailOpen: ReturnType<typeof vi.fn>;
+    recordStaleToken: ReturnType<typeof vi.fn>;
+  };
   let service: AuthzEpochService;
 
   beforeEach(() => {
@@ -33,7 +38,14 @@ describe('AuthzEpochService', () => {
       isAvailable: true,
       redis: { pipeline: () => pipe.pipeline },
     };
-    service = new AuthzEpochService(cache as unknown as CacheService);
+    metrics = {
+      recordFailOpen: vi.fn(),
+      recordStaleToken: vi.fn(),
+    };
+    service = new AuthzEpochService(
+      cache as unknown as CacheService,
+      metrics as unknown as SecurityMetrics,
+    );
   });
 
   describe('current', () => {

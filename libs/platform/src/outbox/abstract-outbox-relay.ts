@@ -45,7 +45,8 @@
  *   }
  */
 import { Logger } from '@nestjs/common';
-import { withJobContext } from '@qnsc-vn/observability';
+import { QueueMetrics, withJobContext, withRestoredTrace } from '@qnsc-vn/observability';
+
 import type { DrizzleDB, DrizzleTx } from '../database/drizzle.provider';
 
 /** Optional callback returned by processRow() to run after the transaction commits. */
@@ -65,6 +66,20 @@ export abstract class AbstractOutboxRelay<TRow extends { id: string; attempts: n
    * burst of N racing calls into exactly one extra pass, not N).
    */
   private queued: Promise<void> | null = null;
+
+  /**
+   * Constructed directly rather than injected. The alternative — DI — would mean
+   * adding a parameter to all five subclass constructors, and a sixth relay added
+   * later would silently emit nothing. The instruments are process-global (OTel
+   * returns the same instrument for the same name) and QueueMetrics has no
+   * dependencies, so there is nothing for DI to provide.
+   */
+  private readonly queueMetrics = new QueueMetrics();
+
+  /** Metric label for this relay. Bounded: one value per relay subclass. */
+  protected get queueName(): string {
+    return this.constructor.name;
+  }
 
   constructor(protected readonly db: DrizzleDB) {
     // Logger name is the concrete subclass name for precise log attribution.
@@ -191,12 +206,35 @@ export abstract class AbstractOutboxRelay<TRow extends { id: string; attempts: n
 
         this.logger.debug(`Relaying ${batch.length} row(s)`);
 
+        // Backlog age, not just throughput: a relay that is falling behind looks
+        // perfectly healthy on a processed-count graph while the queue grows.
+        const oldest = batch.reduce<Date | undefined>((acc, candidate) => {
+          const occurredAt = (candidate as { occurredAt?: Date }).occurredAt;
+          if (!occurredAt) return acc;
+          return !acc || occurredAt < acc ? occurredAt : acc;
+        }, undefined);
+        if (oldest) {
+          this.queueMetrics.recordLag(this.queueName, (Date.now() - oldest.getTime()) / 1000);
+        }
+
+        let processed = 0;
+        let failed = 0;
+
         for (const row of batch) {
           try {
-            const task = await this.processRow(row);
+            // Continue the trace of the request that enqueued this row, so the API
+            // span and this relay span belong to one trace. Rows without a
+            // traceparent (pre-column, or enqueued with nothing tracing) just start
+            // a root span, exactly as before.
+            const task = await withRestoredTrace(
+              (row as { traceparent?: string | null }).traceparent,
+              () => this.processRow(row),
+            );
             await this.markSent(tx, row.id);
             if (task) postCommitTasks.push(task);
+            processed += 1;
           } catch (err) {
+            failed += 1;
             const errMsg = err instanceof Error ? err.message : String(err);
             const newAttempts = row.attempts + 1;
             const newStatus: 'pending' | 'failed' =
@@ -211,6 +249,9 @@ export abstract class AbstractOutboxRelay<TRow extends { id: string; attempts: n
             );
           }
         }
+
+        this.queueMetrics.recordProcessed(this.queueName, processed);
+        this.queueMetrics.recordFailure(this.queueName, failed);
       });
 
       // Transaction committed — run post-commit tasks (fire-and-forget, non-critical).
