@@ -509,17 +509,24 @@ export const projectMembers = workSchema.table(
 // outbox-fed, SOC2 compliance) — different consistency, retention and access.
 // Append-only; never stores rich-text bodies, secrets or tokens.
 
+// The SINGLE shared activity store for every entity's Revision History
+// (work items, tasks, attachments, iterations, projects, milestones, releases).
+// Polymorphic: entity_type + entity_id = the subject; context_id = an optional
+// parent anchor so a parent's history can include its children (e.g. task and
+// attachment logs surface on the parent work item). Written in the SAME
+// transaction as the mutation (see ActivityLogger) so the actor sees the change
+// immediately. Append-only; never stores rich-text bodies.
 export const activityLogs = workSchema.table(
   'activity_logs',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     workspaceId: uuid('workspace_id').notNull(),
     projectId: uuid('project_id').notNull(),
-    // Anchor row: parent work item id for both item and task activity, so the
-    // item history can show task changes too. entityId is the concrete subject.
-    workItemId: uuid('work_item_id').notNull(),
     entityType: activityEntityTypeEnum('entity_type').notNull(),
     entityId: uuid('entity_id').notNull(),
+    // Optional parent anchor: when set, a parent entity's history query also
+    // returns this row (e.g. task/attachment logs anchored to the work item).
+    contextId: uuid('context_id'),
     actorId: uuid('actor_id'), // null = system action
     action: varchar('action', { length: 60 }).notNull(), // e.g. 'work_item.assigned'
     // { field, old, new } — short scalar values only, never rich-text body.
@@ -529,41 +536,10 @@ export const activityLogs = workSchema.table(
   },
   (t) => ({
     workspaceIdx: index('ix_activity_workspace').on(t.workspaceId),
-    // Primary read path: history for one work item, newest first.
-    workItemIdx: index('ix_activity_work_item').on(t.workItemId, t.createdAt),
+    // Primary read path: history for one entity, newest first.
+    entityIdx: index('ix_activity_entity').on(t.entityType, t.entityId, t.createdAt),
+    contextIdx: index('ix_activity_context').on(t.contextId),
     projectIdx: index('ix_activity_project').on(t.projectId),
-  }),
-);
-
-// ── iteration_activity_logs (Timebox Revision History) ──────────────────────
-//
-// Product-facing revision feed for the Iteration (Timebox) detail "Revision
-// History" tab — the iteration-scoped sibling of `activity_logs` above. The
-// subject is always the iteration itself, so this anchors on `iteration_id`
-// with no entity_type/entity_id split. Written right after the mutation so the
-// actor sees their change immediately. Append-only; never stores rich-text
-// bodies. Workspace isolation is enforced at the application layer (RLS dropped
-// in migration 0025).
-
-export const iterationActivityLogs = workSchema.table(
-  'iteration_activity_logs',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    workspaceId: uuid('workspace_id').notNull(),
-    projectId: uuid('project_id').notNull(),
-    iterationId: uuid('iteration_id').notNull(),
-    actorId: uuid('actor_id'), // null = system action
-    action: varchar('action', { length: 60 }).notNull(), // e.g. 'iteration.committed'
-    // { field, old, new } — short scalar values only, never rich-text body.
-    changes: jsonb('changes'),
-    metadata: jsonb('metadata').notNull().default({}),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    workspaceIdx: index('ix_iteration_activity_workspace').on(t.workspaceId),
-    // Primary read path: history for one iteration, newest first.
-    iterationIdx: index('ix_iteration_activity_iteration').on(t.iterationId, t.createdAt),
-    projectIdx: index('ix_iteration_activity_project').on(t.projectId),
   }),
 );
 

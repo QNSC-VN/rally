@@ -4,10 +4,12 @@
  * reached by clicking a row on the Projects list. Create stays a modal; there is
  * no separate Edit modal — fields are edited here and on the list inline.
  */
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
-import { FileText, Loader2, Users } from 'lucide-react'
+import { FileText, History, Loader2, Users } from 'lucide-react'
+import { ActivityHistoryTab } from '@/entities/activity/ui/activity-history-tab'
 import { DetailLayout, DetailTwoPane } from '@/shared/ui/detail/detail-layout'
 import { DetailField, DetailReadonlyValue } from '@/shared/ui/detail/detail-field'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
@@ -24,6 +26,7 @@ import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import {
   useProjects,
   useUpdateProject,
+  useProjectActivityLog,
   type Project,
   type UpdateProjectInput,
 } from '@/features/projects/api'
@@ -35,7 +38,7 @@ import {
   useUnlinkProjectTeam,
 } from '@/features/teams/api'
 
-const DETAILS_TAB = 'details'
+type TabKey = 'details' | 'history'
 
 /** Plain-text content of an HTML string, for text-equality comparison. */
 const stripTags = (html: string | null | undefined): string =>
@@ -55,6 +58,9 @@ export function ProjectDetailPage() {
   const { can } = useProjectPermissions(project?.id)
   // Archived projects are read-only (the backend rejects edits on them).
   const canManage = can('project:edit') && project?.status === 'active'
+
+  const [activeTab, setActiveTab] = useState<TabKey>('details')
+  const { data: activityLogs = [], isLoading: activityLoading } = useProjectActivityLog(project?.id)
 
   const { data: members = [] } = useProjectMembers(project?.id)
   const { data: teams = [] } = useProjectTeams(project?.id)
@@ -126,10 +132,24 @@ export function ProjectDetailPage() {
           project.name
         )
       }
-      tabs={[{ key: DETAILS_TAB, label: t('detail.tabs.details'), icon: <FileText size={19} /> }]}
-      activeTab={DETAILS_TAB}
-      onTabChange={() => {}}
+      tabs={[
+        { key: 'details', label: t('detail.tabs.details'), icon: <FileText size={19} /> },
+        { key: 'history', label: t('detail.tabs.history', 'History'), icon: <History size={19} /> },
+      ]}
+      activeTab={activeTab}
+      onTabChange={(key) => setActiveTab(key as TabKey)}
     >
+      {activeTab === 'history' ? (
+        <div className="flex-1 overflow-y-auto bg-card p-6">
+          <ActivityHistoryTab
+            logs={activityLogs}
+            isLoading={activityLoading}
+            title={t('detail.historyTitle', 'Revision History')}
+            subtitle={t('detail.historySubtitle', 'Every change to this project, newest first.')}
+          />
+        </div>
+      ) : (
+        <>
       <DetailTwoPane
         sidebarTitle={t('detail.metadataDetails')}
         main={
@@ -229,6 +249,8 @@ export function ProjectDetailPage() {
         onSave={handleSave}
         onCancel={cancel}
       />
+        </>
+      )}
     </DetailLayout>
   )
 }

@@ -13,9 +13,10 @@ import { PROJECT_TEAM_REPOSITORY } from './domain/ports/project-team.repository'
 import { PROJECT_MEMBER_REPOSITORY } from './domain/ports/project-member.repository';
 import { WorkspaceModule } from '@modules/workspace';
 import { AccessModule } from '@modules/access';
+import { ActivityModule } from '@modules/activity';
 
 @Module({
-  imports: [WorkspaceModule, AccessModule],
+  imports: [WorkspaceModule, AccessModule, ActivityModule],
   controllers: [ProjectsController],
   providers: [
     ProjectsService,

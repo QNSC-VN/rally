@@ -5,7 +5,16 @@ import { ReleasesService } from './releases.service';
 import { RELEASE_REPOSITORY } from '../domain/ports/release.repository';
 import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
+import { ActivityLogger } from '@modules/activity';
 import { DRIZZLE } from '@platform';
+
+const activityMock = () => ({
+  build: vi.fn(() => ({})),
+  buildDiff: vi.fn(() => []),
+  log: vi.fn(async () => undefined),
+  logSafe: vi.fn(async () => undefined),
+  listFor: vi.fn(async () => ({ data: [], total: 0, page: 1, pageSize: 50 })),
+});
 import type { Release } from '../domain/release.types';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -121,6 +130,7 @@ describe('ReleasesService', () => {
         { provide: DRIZZLE, useValue: mockDrizzle },
         { provide: ProjectsService, useValue: projects },
         { provide: AccessService, useValue: access },
+        { provide: ActivityLogger, useValue: activityMock() },
       ],
     }).compile();
 

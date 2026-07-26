@@ -482,7 +482,7 @@ async function seedFlow() {
   const existingActivity = await db
     .select({ id: schema.activityLogs.id })
     .from(schema.activityLogs)
-    .where(eq(schema.activityLogs.workItemId, NXP_STORY_1_ID))
+    .where(eq(schema.activityLogs.contextId, NXP_STORY_1_ID))
     .limit(1);
   if (existingActivity.length === 0) {
     type ActivityRow = typeof schema.activityLogs.$inferInsert;
@@ -491,7 +491,7 @@ async function seedFlow() {
         id: uuidv7(),
         workspaceId: WORKSPACE_ID,
         projectId: nxpId,
-        workItemId: NXP_STORY_1_ID,
+        contextId: NXP_STORY_1_ID,
         entityType: 'work_item',
         entityId: NXP_STORY_1_ID,
         actorId: ADMIN_USER_ID,
@@ -503,7 +503,7 @@ async function seedFlow() {
         id: uuidv7(),
         workspaceId: WORKSPACE_ID,
         projectId: nxpId,
-        workItemId: NXP_STORY_1_ID,
+        contextId: NXP_STORY_1_ID,
         entityType: 'work_item',
         entityId: NXP_STORY_1_ID,
         actorId: ADMIN_USER_ID,
@@ -515,7 +515,7 @@ async function seedFlow() {
         id: uuidv7(),
         workspaceId: WORKSPACE_ID,
         projectId: nxpId,
-        workItemId: NXP_STORY_1_ID,
+        contextId: NXP_STORY_1_ID,
         entityType: 'work_item',
         entityId: NXP_STORY_1_ID,
         actorId: DEVELOPER_ID,
@@ -527,7 +527,7 @@ async function seedFlow() {
         id: uuidv7(),
         workspaceId: WORKSPACE_ID,
         projectId: nxpId,
-        workItemId: NXP_DEFECT_1_ID,
+        contextId: NXP_DEFECT_1_ID,
         entityType: 'work_item',
         entityId: NXP_DEFECT_1_ID,
         actorId: DEVELOPER_ID,
@@ -542,7 +542,7 @@ async function seedFlow() {
         id: uuidv7(),
         workspaceId: WORKSPACE_ID,
         projectId: nxpId,
-        workItemId: NXP_DEFECT_1_ID,
+        contextId: NXP_DEFECT_1_ID,
         entityType: 'work_item',
         entityId: NXP_DEFECT_1_ID,
         actorId: ADMIN_USER_ID,
@@ -554,20 +554,26 @@ async function seedFlow() {
     await db.insert(schema.activityLogs).values(rows);
   }
 
-  // ── 8b. Iteration activity logs (Timebox Revision History tab) ───────────
+  // ── 8b. Iteration activity logs — unified activity_logs, entity_type=iteration
   const existingIterActivity = await db
-    .select({ id: schema.iterationActivityLogs.id })
-    .from(schema.iterationActivityLogs)
-    .where(eq(schema.iterationActivityLogs.iterationId, NXP_ITER_CURRENT_ID))
+    .select({ id: schema.activityLogs.id })
+    .from(schema.activityLogs)
+    .where(
+      and(
+        eq(schema.activityLogs.entityType, 'iteration'),
+        eq(schema.activityLogs.entityId, NXP_ITER_CURRENT_ID),
+      ),
+    )
     .limit(1);
   if (existingIterActivity.length === 0) {
-    type IterActivityRow = typeof schema.iterationActivityLogs.$inferInsert;
-    const iterRows: IterActivityRow[] = [
+    type ActivityRow = typeof schema.activityLogs.$inferInsert;
+    const iterRows: ActivityRow[] = [
       {
         id: uuidv7(),
         workspaceId: WORKSPACE_ID,
         projectId: nxpId,
-        iterationId: NXP_ITER_CURRENT_ID,
+        entityType: 'iteration',
+        entityId: NXP_ITER_CURRENT_ID,
         actorId: ADMIN_USER_ID,
         action: 'iteration.created',
         changes: null,
@@ -577,7 +583,8 @@ async function seedFlow() {
         id: uuidv7(),
         workspaceId: WORKSPACE_ID,
         projectId: nxpId,
-        iterationId: NXP_ITER_CURRENT_ID,
+        entityType: 'iteration',
+        entityId: NXP_ITER_CURRENT_ID,
         actorId: ADMIN_USER_ID,
         action: 'iteration.updated',
         changes: { field: 'plannedVelocity', old: null, new: 21 },
@@ -587,14 +594,15 @@ async function seedFlow() {
         id: uuidv7(),
         workspaceId: WORKSPACE_ID,
         projectId: nxpId,
-        iterationId: NXP_ITER_CURRENT_ID,
+        entityType: 'iteration',
+        entityId: NXP_ITER_CURRENT_ID,
         actorId: ADMIN_USER_ID,
         action: 'iteration.committed',
         changes: { field: 'state', old: 'planning', new: 'committed' },
         metadata: {},
       },
     ];
-    await db.insert(schema.iterationActivityLogs).values(iterRows);
+    await db.insert(schema.activityLogs).values(iterRows);
   }
 
   // ── 9. Member capacity — Team Alpha in the active iteration (Team Status) ─

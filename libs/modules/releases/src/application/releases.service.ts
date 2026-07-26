@@ -19,6 +19,8 @@ import {
 } from '../../../../../db/schema/enums';
 import { IReleaseRepository, RELEASE_REPOSITORY } from '../domain/ports/release.repository';
 import type { Release, UpdateReleaseInput } from '../domain/release.types';
+import { ActivityLogger, type ActivityLog } from '@modules/activity';
+import { RELEASE_ACTIVITY_CONFIG } from './release-activity-diff';
 
 /** Walk an error's `.cause` chain looking for a PG unique-violation (code 23505). */
 function isDuplicateKeyError(err: unknown): boolean {
@@ -51,7 +53,31 @@ export class ReleasesService {
     @InjectDrizzle() private readonly db: DrizzleDB,
     private readonly projectsService: ProjectsService,
     private readonly accessService: AccessService,
+    private readonly activity: ActivityLogger,
   ) {}
+
+  // ── Revision History (activity log) ─────────────────────────────────────────
+
+  /** Newest-first revision history for one release (workspace-view gated). */
+  async getReleaseActivity(
+    actor: JwtPayload,
+    id: string,
+    args: { limit: number; offset: number },
+  ): Promise<{ items: ActivityLog[]; total: number }> {
+    await this.getRelease(actor.workspaceId, id);
+    const page = Math.floor(args.offset / args.limit) + 1;
+    const res = await this.activity.listFor(id, page, args.limit);
+    return { items: res.data, total: res.total };
+  }
+
+  private releaseSubject(r: Release) {
+    return {
+      workspaceId: r.workspaceId,
+      projectId: r.projectId,
+      entityType: 'release' as const,
+      entityId: r.id,
+    };
+  }
 
   // ── List ──────────────────────────────────────────────────────────────────
 
@@ -161,6 +187,9 @@ export class ReleasesService {
     if (!release) throw lastErr;
 
     this.logger.log({ releaseId: release.id, projectId, userId: actor.sub }, 'Release created');
+    await this.activity.logSafe([
+      this.activity.build(this.releaseSubject(release), actor.sub, 'release.created', null),
+    ]);
     return release;
   }
 
@@ -210,7 +239,18 @@ export class ReleasesService {
       );
     }
 
-    return this.releaseRepo.update(id, input);
+    const updated = await this.releaseRepo.update(id, input);
+    await this.activity.logSafe(
+      this.activity.buildDiff(
+        this.releaseSubject(updated),
+        actor.sub,
+        release as unknown as Record<string, unknown>,
+        input as Record<string, unknown>,
+        RELEASE_ACTIVITY_CONFIG,
+        'release.updated',
+      ),
+    );
+    return updated;
   }
 
   // ── Delete ────────────────────────────────────────────────────────────────

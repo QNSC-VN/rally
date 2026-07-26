@@ -19,6 +19,26 @@ import { ReleasesService } from '../../application/releases.service';
 import { ReleaseQueryDto, CreateReleaseDto, UpdateReleaseDto } from './dto/release-request.dto';
 import { ReleaseResponseDto } from './dto/release-response.dto';
 import type { Release } from '../../domain/release.types';
+import {
+  ActivityQueryDto,
+  ActivityResponseDto,
+  ActivityPageDto,
+  type ActivityLog,
+} from '@modules/activity';
+
+function toActivityDto(a: ActivityLog): ActivityResponseDto {
+  return {
+    id: a.id,
+    createdAt: a.createdAt,
+    actorId: a.actorId,
+    actorName: a.actorName,
+    action: a.action,
+    entityType: a.entityType,
+    entityId: a.entityId,
+    changes: a.changes,
+    metadata: a.metadata ?? {},
+  };
+}
 
 function toReleaseDto(
   r: Release & {
@@ -109,6 +129,24 @@ export class ReleasesController {
   ): Promise<ReleaseResponseDto> {
     const release = await this.releasesService.getReleaseDetail(user, id);
     return toReleaseDto(release);
+  }
+
+  @Get(':id/activity')
+  @ApiOperation({ summary: 'List the revision history of a release' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: ActivityPageDto })
+  @ApiCommonErrors(401, 404)
+  async getActivity(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: ActivityQueryDto,
+  ): Promise<ActivityPageDto> {
+    const { page, pageSize } = query;
+    const result = await this.releasesService.getReleaseActivity(user, id, {
+      limit: pageSize,
+      offset: (page - 1) * pageSize,
+    });
+    return { data: result.items.map(toActivityDto), total: result.total, page, pageSize };
   }
 
   @Patch(':id')

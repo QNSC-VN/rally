@@ -4,79 +4,25 @@ import { Bug } from 'lucide-react'
 
 import { useActivityLog, useChildDefects, type WorkItem } from '@/features/work-items/api'
 import { useProjectMembers } from '@/features/teams/api'
-import { describeActivity } from '@/entities/work-item/model/activity'
-import { formatDateTime } from '@/shared/lib/utils'
+import { ActivityHistoryTab } from '@/entities/activity/ui/activity-history-tab'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { StateStepper } from '@/entities/work-item/ui/state-stepper'
 import { SCHEDULE_STATE_STEPS } from '@/entities/work-item/ui/state-steps'
 import type { ScheduleState } from '@/entities/work-item/model/types'
-import { OwnerCell, OwnerAvatar } from '@/shared/ui/owner-cell'
+import { OwnerCell } from '@/shared/ui/owner-cell'
 import { PriorityBadge, SeverityBadge } from '@/entities/work-item/ui/badges'
 import { Spinner } from '@/shared/ui/spinner'
 
 export function HistoryTab({ workItemId }: { workItemId: string }) {
   const { t } = useTranslation('work-items')
   const { data: logs = [], isLoading } = useActivityLog(workItemId)
-
-  if (isLoading) {
-    return (
-      <div className="flex h-20 items-center justify-center">
-        <Spinner />
-      </div>
-    )
-  }
-
-  const GRID = '90px 1fr 190px 170px'
-
   return (
-    <div className="w-full space-y-5">
-      <div>
-        <h2 className="text-xl font-semibold text-foreground">{t('tabs.history')}</h2>
-        <p className="mt-1 text-ui-md text-muted-foreground">{t('history.subtitle')}</p>
-      </div>
-
-      <section className="overflow-hidden rounded border border-border-strong bg-card">
-        <div
-          className="grid border-b border-border-strong bg-surface-hover px-4 py-2 text-ui-xs font-semibold tracking-wider text-muted-foreground uppercase"
-          style={{ gridTemplateColumns: GRID }}
-        >
-          <span>{t('history.colRevision')}</span>
-          <span>{t('common:description')}</span>
-          <span>{t('history.colCreationDate')}</span>
-          <span>{t('history.colUser')}</span>
-        </div>
-
-        {logs.length === 0 && (
-          <div className="px-4 py-6 text-center text-sm text-foreground-subtle">
-            {t('history.empty')}
-          </div>
-        )}
-
-        {logs.map((log, i) => {
-          const revision = logs.length - i
-          const userName = log.actorName ?? log.actorId ?? 'System'
-          return (
-            <div
-              key={log.id}
-              className="grid items-start border-b border-border-inner px-4 py-3 text-ui-md text-foreground"
-              style={{ gridTemplateColumns: GRID }}
-            >
-              <span className="font-mono text-ui-sm text-primary-light tabular-nums">
-                {revision}
-              </span>
-              <span className="text-foreground">{describeActivity(log)}</span>
-              <span className="font-mono text-ui-sm text-muted-foreground">
-                {formatDateTime(log.createdAt)}
-              </span>
-              <span className="flex min-w-0 items-center gap-2">
-                <OwnerAvatar name={userName} />
-                <span className="truncate">{userName}</span>
-              </span>
-            </div>
-          )
-        })}
-      </section>
-    </div>
+    <ActivityHistoryTab
+      logs={logs}
+      isLoading={isLoading}
+      title={t('tabs.history')}
+      subtitle={t('history.subtitle')}
+    />
   )
 }
 

@@ -69,6 +69,8 @@ export default defineConfig({
       include: [
         'db/database-url.ts',
         'libs/modules/access/src/application/access.service.ts',
+        'libs/modules/activity/src/application/activity-logger.service.ts',
+        'libs/modules/activity/src/domain/activity-diff.ts',
         'libs/modules/attachments/src/application/attachments.service.ts',
         'libs/modules/audit/src/interface/http/audit.controller.ts',
         'libs/modules/collaboration/src/application/collaboration.service.ts',
