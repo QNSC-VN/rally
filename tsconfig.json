@@ -34,6 +34,8 @@
       "@modules/projects/*": ["./libs/modules/projects/src/*"],
       "@modules/work-items": ["./libs/modules/work-items/src/index"],
       "@modules/work-items/*": ["./libs/modules/work-items/src/*"],
+      "@modules/activity": ["./libs/modules/activity/src/index"],
+      "@modules/activity/*": ["./libs/modules/activity/src/*"],
       "@modules/attachments": ["./libs/modules/attachments/src/index"],
       "@modules/attachments/*": ["./libs/modules/attachments/src/*"],
       "@modules/workflow": ["./libs/modules/workflow/src/index"],
