@@ -72,7 +72,7 @@ export class AccessController {
   }
 
   @Get('permissions')
-  @RequirePermission('workspace:manage_members')
+  @RequirePermission('roles:view')
   @ApiOperation({
     summary: 'List assignable permissions with their scope tier (workspace admin only)',
   })
@@ -83,7 +83,7 @@ export class AccessController {
   }
 
   @Patch('roles/:roleId/permissions')
-  @RequirePermission('workspace:manage_members')
+  @RequirePermission('roles:edit')
   @ApiOperation({ summary: 'Replace a custom role\u2019s permission set (workspace admin only)' })
   @ApiParam({ name: 'roleId', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: RoleResponseDto })
@@ -113,7 +113,7 @@ export class AccessController {
   }
 
   @Post('role-assignments')
-  @RequirePermission('workspace:manage_members')
+  @RequirePermission('users:assign_role')
   @ApiOperation({ summary: 'Assign a role to a user (workspace admin only)' })
   @ApiResponse({ status: 201, type: RoleAssignmentResponseDto })
   @ApiCommonErrors(400, 401, 403, 404, 409, 422)
@@ -132,7 +132,7 @@ export class AccessController {
   }
 
   @Delete('role-assignments/:id')
-  @RequirePermission('workspace:manage_members')
+  @RequirePermission('users:assign_role')
   @HttpCode(204)
   @ApiOperation({ summary: 'Revoke a role assignment (workspace admin only)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })

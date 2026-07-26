@@ -294,5 +294,20 @@ describe('ReleasesService', () => {
       repo.findById.mockResolvedValue(null);
       await expect(service.getReleaseDetail(actor, 'bad')).rejects.toThrow(NotFoundException);
     });
+
+    it('denies the read when the actor lacks release:view for the project (cross-project guard)', async () => {
+      repo.findById.mockResolvedValue(mockRelease());
+      access.assertProjectPermission.mockRejectedValueOnce(
+        new PreconditionFailedException('PROJECT_PERMISSION_DENIED', 'denied'),
+      );
+      await expect(service.getReleaseDetail(actor, 'rel-1')).rejects.toThrow(
+        PreconditionFailedException,
+      );
+      expect(access.assertProjectPermission).toHaveBeenCalledWith(
+        actor,
+        expect.any(String),
+        'release:view',
+      );
+    });
   });
 });

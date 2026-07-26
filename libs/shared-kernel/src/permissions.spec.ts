@@ -41,8 +41,18 @@ describe('PERMISSION_TIER (workspace vs project scope)', () => {
     PERMISSION.WORKSPACE_ALL,
     PERMISSION.WORKSPACE_VIEW,
     PERMISSION.WORKSPACE_CREATE,
-    PERMISSION.WORKSPACE_MANAGE_MEMBERS,
-    PERMISSION.WORKSPACE_MANAGE_TEAMS,
+    PERMISSION.WORKSPACE_EDIT,
+    PERMISSION.WORKSPACE_DELETE,
+    PERMISSION.USERS_INVITE,
+    PERMISSION.USERS_REMOVE,
+    PERMISSION.USERS_ASSIGN_ROLE,
+    PERMISSION.ROLES_VIEW,
+    PERMISSION.ROLES_EDIT,
+    PERMISSION.TEAMS_CREATE,
+    PERMISSION.TEAMS_EDIT,
+    PERMISSION.TEAMS_MANAGE_MEMBERS,
+    PERMISSION.AUDIT_VIEW,
+    PERMISSION.SCM_MANAGE,
     PERMISSION.PROJECT_CREATE,
   ];
 
@@ -68,6 +78,6 @@ describe('PERMISSION_TIER (workspace vs project scope)', () => {
     expect(isProjectTierPermission(PERMISSION.PROJECT_EDIT)).toBe(true);
     // minting a project (no instance yet) and workspace admin are NOT.
     expect(isProjectTierPermission(PERMISSION.PROJECT_CREATE)).toBe(false);
-    expect(isProjectTierPermission(PERMISSION.WORKSPACE_MANAGE_MEMBERS)).toBe(false);
+    expect(isProjectTierPermission(PERMISSION.USERS_ASSIGN_ROLE)).toBe(false);
   });
 });

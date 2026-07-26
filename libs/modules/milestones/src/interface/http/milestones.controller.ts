@@ -122,7 +122,7 @@ export class MilestonesController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<MilestoneResponseDto> {
-    const milestone = await this.milestonesService.getMilestone(user.workspaceId, id);
+    const milestone = await this.milestonesService.getMilestoneForView(user, id);
     return toMilestoneDto(milestone);
   }
 
