@@ -8,6 +8,7 @@
  * fallback + copyable webhook URLs remain for repos outside an installation.
  */
 import { useTranslation } from 'react-i18next'
+import { SettingsTabHeader } from './settings-tab-header'
 
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { ConnectedOrgs } from './integrations/connected-orgs'
@@ -21,16 +22,19 @@ export function IntegrationsTab() {
   const workspaceId = workspace?.workspaceId
 
   return (
-    <div className="max-w-3xl space-y-8">
-      <header>
-        <h2 className="text-ui-lg font-semibold text-foreground">{t('integrations.title')}</h2>
-        <p className="mt-1 text-ui-sm text-foreground-subtle">{t('integrations.subtitle')}</p>
-      </header>
-
-      <ConnectedOrgs workspaceId={workspaceId} />
-      <RepositoryList workspaceId={workspaceId} />
-      <WebhookSetup />
-      <ManualAddForm workspaceId={workspaceId} />
-    </div>
+    <>
+      <SettingsTabHeader
+        title={t('nav.integrations')}
+        description={t('tabDescriptions.integrations')}
+      />
+      <div className="flex-1 overflow-y-auto bg-background px-8 py-6">
+        <div className="max-w-3xl space-y-8">
+          <ConnectedOrgs workspaceId={workspaceId} />
+          <RepositoryList workspaceId={workspaceId} />
+          <WebhookSetup />
+          <ManualAddForm workspaceId={workspaceId} />
+        </div>
+      </div>
+    </>
   )
 }
