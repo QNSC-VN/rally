@@ -2,13 +2,20 @@ import { Body, Controller, HttpCode, Patch, Post, Res } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { FastifyReply } from 'fastify';
 import '@fastify/cookie';
-import { Auth, ApiCommonErrors, BFF_SESSION_COOKIE } from '@platform';
+import { Auth, ApiCommonErrors, BFF_SESSION_COOKIE, ConflictException } from '@platform';
 import type { JwtPayload } from '@platform';
 import { AuthService } from '@qnsc-vn/identity';
 import { AccessService } from '@modules/access';
 import { WorkspaceService } from '@modules/workspace';
+import { AttachmentsService, USER_AVATAR_POLICY } from '@modules/attachments';
 import { UpdateProfileDto } from './dto/login.dto';
 import { UserProfileResponseDto } from './dto/auth-response.dto';
+import {
+  PresignAvatarDto,
+  PresignAvatarResponseDto,
+  ConfirmAvatarDto,
+  ConfirmAvatarResponseDto,
+} from './dto/avatar.dto';
 import { CurrentUser } from './decorators/current-user.decorator';
 
 /**
@@ -24,6 +31,7 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly accessService: AccessService,
     private readonly workspaceService: WorkspaceService,
+    private readonly attachments: AttachmentsService,
   ) {}
 
   // ── PATCH /auth/me ─────────────────────────────────────────────────────────
@@ -65,6 +73,67 @@ export class AuthController {
           }
         : null,
     };
+  }
+
+  // ── POST /auth/me/avatar/presign ────────────────────────────────────────────
+
+  // Avatar upload reuses the shared AttachmentsService + USER_AVATAR_POLICY
+  // (public bucket, 2 MB raster cap, maxPerOwner 1) — the same presign → PUT →
+  // confirm mechanics as work-item attachments. The avatar has no link table in
+  // identity (it is just a URL on the user row), so `currentOwnerCount` is 0:
+  // each upload mints a fresh object and the old one is reaped.
+  @Post('me/avatar/presign')
+  @Auth()
+  @ApiOperation({ summary: 'Presign a PUT URL to upload the current user avatar' })
+  @ApiResponse({ status: 201, type: PresignAvatarResponseDto })
+  @ApiCommonErrors(400, 401, 409, 422)
+  async presignAvatar(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: PresignAvatarDto,
+  ): Promise<PresignAvatarResponseDto> {
+    const { fileId, uploadUrl, requiredHeaders } = await this.attachments.presign(
+      user,
+      USER_AVATAR_POLICY,
+      {
+        filename: 'avatar',
+        mimeType: dto.contentType,
+        sizeBytes: dto.contentLength,
+        checksumSha256: dto.checksumSha256,
+      },
+      0,
+    );
+    return { fileId, uploadUrl, requiredHeaders };
+  }
+
+  // ── POST /auth/me/avatar/confirm ────────────────────────────────────────────
+
+  @Post('me/avatar/confirm')
+  @Auth()
+  @ApiOperation({ summary: 'Confirm the uploaded avatar and store it on the profile' })
+  @ApiResponse({ status: 201, type: ConfirmAvatarResponseDto })
+  @ApiCommonErrors(400, 401, 404, 409, 422)
+  async confirmAvatar(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: ConfirmAvatarDto,
+  ): Promise<ConfirmAvatarResponseDto> {
+    await this.attachments.confirm(user, dto.fileId, USER_AVATAR_POLICY);
+    const { url, expiresInSeconds } = await this.attachments.getDownloadUrl(
+      user,
+      dto.fileId,
+      USER_AVATAR_POLICY,
+    );
+    // A public policy resolves to a durable CDN URL (expiresInSeconds === 0). A
+    // positive TTL means no CDN is configured, so the URL is a short-lived
+    // presigned GET — unsuitable to persist as a stable avatarUrl. Fail clearly
+    // rather than store an expiring link.
+    if (expiresInSeconds > 0) {
+      throw new ConflictException(
+        'AVATAR_STORAGE_UNCONFIGURED',
+        'Avatar storage is not configured (no public CDN base URL).',
+      );
+    }
+    await this.authService.updateProfile(user.sub, { avatarUrl: url });
+    return { avatarUrl: url };
   }
 
   // ── POST /auth/logout-all ──────────────────────────────────────────────────

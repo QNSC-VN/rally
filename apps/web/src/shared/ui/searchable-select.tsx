@@ -14,6 +14,7 @@
  * {@link InlineEditableCell} (text/number) and {@link DateField} (dates).
  */
 import { useCallback, useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
 import { Check, ChevronDown, Search } from 'lucide-react'
 import { Popover as PopoverPrimitive } from 'radix-ui'
 
@@ -76,6 +77,42 @@ interface MultiProps extends BaseProps {
 
 export type SearchableSelectProps = SingleProps | MultiProps
 
+/** Grid CELL chips: show up to this many, the rest collapse into a "+K". */
+const MAX_CELL_CHIPS = 3
+
+function Chip({ icon, label }: { icon?: ReactNode; label: string }) {
+  return (
+    <span className="inline-flex max-w-full items-center gap-1 rounded-full border border-input bg-surface-subtle px-2 py-0.5 text-ui-xs text-foreground">
+      {icon}
+      <span className="truncate">{label}</span>
+    </span>
+  )
+}
+
+/**
+ * Grid-cell chip container: chips flow and wrap to fill the column width, capped
+ * at MAX_CELL_CHIPS with a trailing "+K" for the rest (full list on hover; click
+ * still opens the picker). A fixed cap — not a live line measurement — so it is
+ * reliable regardless of the cell's mount/resize timing.
+ */
+function CellChips({ opts }: { opts: SelectOption[] }) {
+  const visible = opts.slice(0, MAX_CELL_CHIPS)
+  const overflow = opts.length - visible.length
+  return (
+    <span
+      className="flex min-w-0 flex-1 flex-wrap items-center gap-1"
+      title={opts.map((o) => o.label).join(', ')}
+    >
+      {visible.map((o) => (
+        <Chip key={o.value} icon={o.icon} label={o.label} />
+      ))}
+      {overflow > 0 && (
+        <span className="shrink-0 text-ui-xs text-foreground-subtle">+{overflow}</span>
+      )}
+    </span>
+  )
+}
+
 export function SearchableSelect(props: SearchableSelectProps) {
   const {
     options,
@@ -113,21 +150,20 @@ export function SearchableSelect(props: SearchableSelectProps) {
   const display = first?.label ?? placeholder
   const hasSelection = selectedValues.length > 0
 
-  // Multi-select renders EVERY selected value as a stacked chip (Rally parity)
-  // instead of the compact `first (+N)` — in BOTH the cell (grid) and field
-  // (form) variants, so a multi-select reads identically everywhere. Grid rows
-  // grow to fit the stack, matching real Rally.
+  // Multi-select chips — one per line (stacked), each truncating to the column
+  // width. The FIELD variant (forms) shows every selected value. The CELL
+  // variant (data grids) caps at MAX_CELL_CHIPS and collapses the rest into a
+  // trailing "+K" (full list on hover), so a large team/label set can't grow a
+  // row unbounded; clicking still opens the picker to see/edit all.
   const showChips = multiple && hasSelection
-  const chips = (
+  const isCell = variant === 'cell'
+  // Cell (grid): wrap + clamp to MAX_CELL_LINES + "+K". Field (form): stack all.
+  const chips = isCell ? (
+    <CellChips opts={selectedOpts} />
+  ) : (
     <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
       {selectedOpts.map((o) => (
-        <span
-          key={o.value}
-          className="inline-flex max-w-full items-center gap-1 rounded-full border border-input bg-surface-subtle px-2 py-0.5 text-ui-xs text-foreground"
-        >
-          {o.icon}
-          <span className="truncate">{o.label}</span>
-        </span>
+        <Chip key={o.value} icon={o.icon} label={o.label} />
       ))}
     </span>
   )
@@ -184,10 +220,18 @@ export function SearchableSelect(props: SearchableSelectProps) {
 
   if (readOnly) {
     if (showChips) {
-      return <span className={cn('flex flex-col items-start gap-1', className)}>{chips}</span>
+      return <span className={cn('flex', isCell && 'px-2 py-1.5', className)}>{chips}</span>
     }
     return (
-      <span className={cn('flex items-center gap-1.5 text-ui-sm text-foreground', className)}>
+      <span
+        className={cn(
+          'flex items-center gap-1.5 text-ui-sm text-foreground',
+          // Match the editable cell trigger's padding so a read-only inline cell
+          // lines up with the editable ones in the same column.
+          variant === 'cell' && 'px-2 py-1.5',
+          className,
+        )}
+      >
         {first?.icon}
         <span className={cn('truncate', !hasSelection && 'text-foreground-subtle')}>{display}</span>
         {extraCount > 0 && (

@@ -123,7 +123,11 @@ describe('FE consistency ratchets (only ever decrease)', () => {
     //   • collaboration   — one PUT goes to the R2 bucket, a DIFFERENT origin;
     //                       sending our token there would leak it. That file's API
     //                       calls are all covered, verified by the count below.
-    const ALLOWED = ['pages/login/login-page.tsx']
+    //   • avatar-upload   — the avatar PUT goes to the public-assets R2 bucket, a
+    //                       DIFFERENT origin; sending our token there would leak it
+    //                       and fail the bucket CORS. The presigned URL is the only
+    //                       authorization the PUT needs (same class as collaboration).
+    const ALLOWED = ['pages/login/login-page.tsx', 'pages/settings/model/avatar-upload.ts']
     const UNSAFE_METHOD = /method:\s*'(POST|PUT|PATCH|DELETE)'/g
 
     const offenders: string[] = []

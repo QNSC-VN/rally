@@ -17,6 +17,9 @@ export const STORAGE_KEYS = {
   WORK_ITEM_TASKS_COLUMNS: 'rally-work-item-tasks-columns',
   SCM_CONNECTIONS_COLUMNS: 'rally-scm-connections-columns',
   SCM_CHANGESETS_COLUMNS: 'rally-scm-changesets-columns',
+  SETTINGS_USERS_COLUMNS: 'rally-settings-users-columns',
+  SETTINGS_TEAMS_COLUMNS: 'rally-settings-teams-columns',
+  SETTINGS_AUDIT_COLUMNS: 'rally-settings-audit-columns',
   LAST_ACCESSED_ITERATION: 'rally-last-accessed-iteration',
   ITERATION_STATUS_VIEW_MODE: 'rally-iteration-status-view-mode',
 } as const

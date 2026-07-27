@@ -58,7 +58,7 @@ module "ecr" {
 # The web SPA deploys to Cloudflare Pages (see live/*/main.tf module "web"), so
 # it needs no AWS deploy role here.
 module "iam_oidc" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/iam-oidc?ref=iam-oidc-v2.0.1"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/iam-oidc?ref=iam-oidc-v2.1.0"
 
   product           = "rally"
   github_org        = local.github_org

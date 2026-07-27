@@ -23,6 +23,7 @@ import { TeamsTab } from './ui/teams-tab'
 import { AuditLogTab } from './ui/audit-log-tab'
 import { RolesTab } from './ui/roles-tab'
 import { IntegrationsTab } from './ui/integrations-tab'
+import { NotificationsTab } from './ui/notifications-tab'
 
 // ── Tab config (mirrors mockup SettingsPage.tsx) ──────────────────────────────
 
@@ -112,6 +113,30 @@ export function SettingsPage() {
   const allItems = SIDEBAR.flatMap((g) => g.items)
   const activeItem = allItems.find((i) => i.key === activeTab)
   const activeLabel = activeItem ? t(activeItem.label) : t('common:settings')
+  // Tabs that render the shared full-height list scaffold (own scroll) vs the
+  // block-scroll form tabs. Add 'teams' here once it moves to the scaffold too.
+  const isListTab = activeTab === 'members' || activeTab === 'teams' || activeTab === 'audit'
+
+  const tabEl =
+    activeTab === 'profile' ? (
+      <ProfileTab />
+    ) : activeTab === 'notifications' ? (
+      <NotificationsTab />
+    ) : activeTab === 'members' ? (
+      <MembersTab />
+    ) : activeTab === 'teams' ? (
+      <TeamsTab />
+    ) : activeTab === 'workspace' ? (
+      <WorkspaceSettingsTab />
+    ) : activeTab === 'audit' ? (
+      <AuditLogTab />
+    ) : activeTab === 'roles' ? (
+      <RolesTab />
+    ) : activeTab === 'integrations' ? (
+      <IntegrationsTab />
+    ) : (
+      <ComingSoonTab label={activeLabel} />
+    )
 
   return (
     <div className="flex flex-1 overflow-hidden bg-background">
@@ -152,24 +177,20 @@ export function SettingsPage() {
       </aside>
 
       {/* ── Content ── */}
-      <main className="flex-1 overflow-y-auto p-8">
-        <h2 className="mb-6 text-base font-semibold text-foreground">{activeLabel}</h2>
-        {activeTab === 'profile' ? (
-          <ProfileTab />
-        ) : activeTab === 'members' ? (
-          <MembersTab />
-        ) : activeTab === 'teams' ? (
-          <TeamsTab />
-        ) : activeTab === 'workspace' ? (
-          <WorkspaceSettingsTab />
-        ) : activeTab === 'audit' ? (
-          <AuditLogTab />
-        ) : activeTab === 'roles' ? (
-          <RolesTab />
-        ) : activeTab === 'integrations' ? (
-          <IntegrationsTab />
+      {/* Content surface. Two modes:
+          • List tabs (Users/Teams) — a full-bleed WHITE canvas (bg-card), edge
+            to edge, no gray gutter or page heading: the tab owns its own header
+            bar + toolbar + table + footer, exactly like the Iteration Status
+            page. It fills height so the table's own scroll works.
+          • Form tabs — the padded gray page with a heading, as before. */}
+      <main className="flex flex-1 flex-col overflow-hidden">
+        {isListTab ? (
+          <div className="flex min-h-0 flex-1 flex-col bg-card">{tabEl}</div>
         ) : (
-          <ComingSoonTab label={activeLabel} />
+          <div className="flex-1 overflow-y-auto px-8 pt-8 pb-8">
+            <h2 className="mb-6 text-base font-semibold text-foreground">{activeLabel}</h2>
+            {tabEl}
+          </div>
         )}
       </main>
     </div>

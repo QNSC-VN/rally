@@ -124,6 +124,60 @@ export function useMarkAllNotificationsRead() {
   })
 }
 
+// ── Delivery preferences ───────────────────────────────────────────────────
+// Per-type channel opt-in/out. Resolution (mirrors the backend service):
+// a specific-type row wins, else the '*' wildcard row, else default ON.
+
+/** '*' wildcard master switch, or a specific NotificationTemplateName. */
+export interface NotificationPreference {
+  type: string
+  inApp: boolean
+  email: boolean
+  updatedAt: string
+}
+
+const PREFERENCES_KEY = ['notifications', 'preferences'] as const
+
+export function useNotificationPreferences() {
+  return useQuery({
+    queryKey: PREFERENCES_KEY,
+    queryFn: async () => {
+      const { data, error, response } = await apiClient.GET('/v1/notifications/preferences')
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return (data as unknown as NotificationPreference[] | undefined) ?? []
+    },
+    staleTime: 60_000,
+  })
+}
+
+/** Upsert both channels for a type ('*' for the master switch). We always send
+ *  the full resolved state so a partial write can't clobber the other channel. */
+export function useUpsertNotificationPreference() {
+  return useMutation({
+    mutationFn: async (input: { type: string; inApp: boolean; email: boolean }) => {
+      const { error, response } = await apiClient.PUT('/v1/notifications/preferences/{type}', {
+        params: { path: { type: input.type } },
+        body: { inApp: input.inApp, email: input.email },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+    },
+    meta: { invalidates: ['notification'] },
+  })
+}
+
+/** Delete the explicit row for a type — reverts it to the default (both ON). */
+export function useResetNotificationPreference() {
+  return useMutation({
+    mutationFn: async (type: string) => {
+      const { error, response } = await apiClient.DELETE('/v1/notifications/preferences/{type}', {
+        params: { path: { type } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+    },
+    meta: { invalidates: ['notification'] },
+  })
+}
+
 // ── SSE real-time stream ──────────────────────────────────────────────────────
 // Uses fetch-based SSE (not EventSource) so we can send the Authorization header.
 // On `connected` event: seeds the unread-count cache directly.
