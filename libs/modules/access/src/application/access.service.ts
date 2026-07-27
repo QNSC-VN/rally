@@ -185,7 +185,11 @@ export class AccessService {
     if (!role || (role.workspaceId !== null && role.workspaceId !== actor.workspaceId)) {
       throw new NotFoundException('ROLE_NOT_FOUND', 'Role not found');
     }
-    if (role.isSystem || role.workspaceId === null) {
+    // A canonical tier role (workspace_admin/project_admin/project_member) is
+    // never deletable, even as a per-workspace editable copy — only its
+    // permissions may be tuned. Custom roles delete freely.
+    const canonical = (Object.values(SYSTEM_ROLE) as string[]).includes(role.slug);
+    if (role.isSystem || role.workspaceId === null || canonical) {
       throw new ConflictException('ROLE_IMMUTABLE', 'Built-in system roles cannot be deleted');
     }
     const holders = await this.assignmentRepo.listUserIdsForRole(roleId);

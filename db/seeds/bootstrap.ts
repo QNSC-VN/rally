@@ -87,10 +87,11 @@ export async function seedTenantBootstrapInto(database: Db): Promise<void> {
   }
 
   // Per-workspace copy of the two operational tiers (Project Admin / Member).
-  // These are the roles actually ASSIGNED to users, so they must track the code
-  // catalogue: canonical roles are immutable in the Phase 4.2 model (only custom
-  // roles are editable), hence onConflictDoUpdate to keep name + permissions in
-  // sync on every deploy. Workspace Admin stays the global immutable anchor.
+  // These are the roles actually ASSIGNED to users. They SEED from the catalogue
+  // but are now WORKSPACE-EDITABLE (a workspace admin can tune them in Roles &
+  // Permissions), so re-seeding must NOT clobber those edits — it only keeps the
+  // display NAME in sync and inserts the defaults for a brand-new workspace.
+  // Workspace Admin stays the global immutable anchor.
   const CANONICAL_TIER_SLUGS = [SYSTEM_ROLE.PROJECT_ADMIN, SYSTEM_ROLE.PROJECT_MEMBER] as const;
   await database
     .insert(schema.systemRoles)
@@ -104,8 +105,10 @@ export async function seedTenantBootstrapInto(database: Db): Promise<void> {
       })),
     )
     .onConflictDoUpdate({
+      // Preserve any workspace edits to the tier role's permissions — only the
+      // display name tracks the catalogue on re-seed.
       target: [schema.systemRoles.workspaceId, schema.systemRoles.slug],
-      set: { name: sql`excluded.name`, permissions: sql`excluded.permissions` },
+      set: { name: sql`excluded.name` },
     });
 
   // Re-point any EXISTING assignment that still references a global tier

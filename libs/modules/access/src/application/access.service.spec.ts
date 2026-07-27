@@ -444,6 +444,16 @@ describe('AccessService — scope-aware permission resolution', () => {
       expect(roleRepo.delete).not.toHaveBeenCalled();
     });
 
+    it('blocks deleting a canonical tier role even as an editable workspace copy', async () => {
+      // project_admin lives as an isSystem=false workspace copy, yet a tier role
+      // must never be deletable — only its permissions may be tuned.
+      roleRepo.findById.mockResolvedValue(custom({ slug: 'project_admin', isSystem: false }))
+      await expect(service.deleteRole(admin, 'role-custom')).rejects.toMatchObject({
+        code: 'ROLE_IMMUTABLE',
+      })
+      expect(roleRepo.delete).not.toHaveBeenCalled()
+    })
+
     it('blocks deleting a role still assigned to users (409 ROLE_IN_USE)', async () => {
       roleRepo.findById.mockResolvedValue(custom());
       assignmentRepo.listUserIdsForRole.mockResolvedValue(['u1', 'u2']);

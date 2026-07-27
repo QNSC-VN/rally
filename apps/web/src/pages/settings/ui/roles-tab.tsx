@@ -54,14 +54,17 @@ export function RolesTab() {
   const [saving, setSaving] = useState(false)
   const isDirty = Object.keys(edits).length > 0
 
-  // Built-ins are the 3 canonical roles BY SLUG — a workspace may store an
-  // editable copy of a tier role (isSystem=false), so slug is the reliable
-  // discriminator. Everything else is a workspace custom role.
-  const isBuiltin = (r: Role) => (BUILTIN_ROLE_ORDER as readonly string[]).includes(r.slug)
+  // Canonical = the 3 tier slugs (workspace_admin/project_admin/project_member);
+  // used only for column ORDER and to forbid DELETING a tier role.
+  const isCanonical = (r: Role) => (BUILTIN_ROLE_ORDER as readonly string[]).includes(r.slug)
+  // LOCKED = truly immutable = the global anchor (workspace_admin is a global,
+  // isSystem row). project_admin/project_member are per-workspace editable copies
+  // (isSystem=false), so they are editable; only the global row is read-only.
+  const isLocked = (r: Role) => r.isSystem || r.workspaceId === null
   const builtins = BUILTIN_ROLE_ORDER.map((slug) => roles.find((r) => r.slug === slug)).filter(
     (r): r is Role => !!r,
   )
-  const customs = roles.filter((r) => !isBuiltin(r))
+  const customs = roles.filter((r) => !isCanonical(r))
   const columns = [...builtins, ...customs]
   const GRID = `240px repeat(${Math.max(columns.length, 1)}, 168px)`
 
@@ -94,7 +97,7 @@ export function RolesTab() {
         Object.entries(edits).map(([roleId, states]) => {
           // Guard: only persist roles that still exist and are editable.
           const role = byId.get(roleId)
-          if (!role || isBuiltin(role)) return Promise.resolve()
+          if (!role || isLocked(role)) return Promise.resolve()
           return update.mutateAsync({
             roleId,
             permissions: permissionsFromStates(states) as Permission[],
@@ -179,12 +182,12 @@ export function RolesTab() {
                         className="flex items-center justify-center gap-1 bg-surface-hover px-2 py-2.5"
                       >
                         <span className="min-w-0 truncate normal-case">{r.name}</span>
-                        {isBuiltin(r) ? (
+                        {isLocked(r) ? (
                           <Lock
                             className="h-3 w-3 shrink-0 text-foreground-subtle"
                             aria-label={t('roles.builtIn', 'Built-in')}
                           />
-                        ) : canManage ? (
+                        ) : !isCanonical(r) && canManage ? (
                           <IconButton
                             aria-label={t('roles.delete', 'Delete role')}
                             onClick={() => setDeleting(r)}
@@ -211,7 +214,7 @@ export function RolesTab() {
                             {t(`roles.cap.${row.label}`, row.label)}
                           </span>
                           {columns.map((r) =>
-                            isBuiltin(r) || !canManage ? (
+                            isLocked(r) || !canManage ? (
                               <span key={r.id} className="flex justify-center px-2 py-2">
                                 <CellBadge role={r} row={row} t={t} />
                               </span>
