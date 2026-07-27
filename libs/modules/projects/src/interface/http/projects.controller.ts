@@ -11,10 +11,10 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { ApiCommonErrors, ApiPagedResponse, buildPageArgs, RequirePermission } from '@platform';
+import { ApiCommonErrors, ApiPagedResponse, buildPageArgs } from '@platform';
 import type { JwtPayload, PagedResult } from '@platform';
 import { CurrentUser } from '@modules/identity';
-import { RequireProjectPermission, AuthProjectScoped } from '@modules/access';
+import { RequirePermission, AuthPolicy } from '@modules/access';
 import { ProjectsService } from '../../application/projects.service';
 import {
   CreateProjectDto,
@@ -116,10 +116,9 @@ function toLabelDto(l: Label): LabelResponseDto {
 
 @ApiTags('projects')
 @Controller('projects')
-// AuthProjectScoped bundles JwtAuth → Permission → ProjectPermission guards in
-// a guaranteed order. Flat @RequirePermission routes still work (the project
-// guard no-ops without @RequireProjectPermission metadata).
-@AuthProjectScoped()
+// AuthPolicy bundles JwtAuth → PolicyGuard in a guaranteed order. Each route
+// declares its own @RequirePermission; a route with none is authenticated-only.
+@AuthPolicy()
 export class ProjectsController {
   constructor(private readonly projectsService: ProjectsService) {}
 
@@ -212,7 +211,7 @@ export class ProjectsController {
   // ── Update project ─────────────────────────────────────────────────────────
 
   @Patch(':id')
-  @RequireProjectPermission('project:edit')
+  @RequirePermission('project:edit', { from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Update project' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: ProjectResponseDto })
@@ -229,7 +228,7 @@ export class ProjectsController {
   // ── Archive project ────────────────────────────────────────────────────────
 
   @Post(':id/archive')
-  @RequireProjectPermission('project:archive')
+  @RequirePermission('project:archive', { from: 'param', field: 'id' })
   @HttpCode(200)
   @ApiOperation({ summary: 'Archive a project (sets status to archived, becomes read-only)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -246,7 +245,7 @@ export class ProjectsController {
   // ── Restore project ────────────────────────────────────────────────────────
 
   @Post(':id/restore')
-  @RequireProjectPermission('project:restore')
+  @RequirePermission('project:restore', { from: 'param', field: 'id' })
   @HttpCode(200)
   @ApiOperation({ summary: 'Restore an archived project back to active' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -263,7 +262,7 @@ export class ProjectsController {
   // ── Delete project ─────────────────────────────────────────────────────────
 
   @Delete(':id')
-  @RequireProjectPermission('project:delete')
+  @RequirePermission('project:delete', { from: 'param', field: 'id' })
   @HttpCode(204)
   @ApiOperation({ summary: 'Delete project (soft delete)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -321,7 +320,7 @@ export class ProjectsController {
   }
 
   @Post(':id/labels')
-  @RequireProjectPermission('project:edit')
+  @RequirePermission('project:edit', { from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Create a label for a project' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 201, type: LabelResponseDto })
@@ -336,7 +335,7 @@ export class ProjectsController {
   }
 
   @Patch(':id/labels/:labelId')
-  @RequireProjectPermission('project:edit')
+  @RequirePermission('project:edit', { from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Update a label' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiParam({ name: 'labelId', type: 'string', format: 'uuid' })
@@ -354,7 +353,7 @@ export class ProjectsController {
 
   @Delete(':id/labels/:labelId')
   @HttpCode(204)
-  @RequireProjectPermission('project:edit')
+  @RequirePermission('project:edit', { from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Delete a label' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiParam({ name: 'labelId', type: 'string', format: 'uuid' })
@@ -379,7 +378,7 @@ export class ProjectsController {
   }
 
   @Post(':id/teams')
-  @RequireProjectPermission('project:edit')
+  @RequirePermission('project:edit', { from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Link a team to a project' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiCommonErrors(400, 401, 404, 409, 422)
@@ -393,7 +392,7 @@ export class ProjectsController {
 
   @Delete(':id/teams/:teamId')
   @HttpCode(204)
-  @RequireProjectPermission('project:edit')
+  @RequirePermission('project:edit', { from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Unlink a team from a project' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiParam({ name: 'teamId', type: 'string', format: 'uuid' })
@@ -421,7 +420,7 @@ export class ProjectsController {
   }
 
   @Post(':id/members')
-  @RequireProjectPermission('project:manage_members')
+  @RequirePermission('project:manage_members', { from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Add a member to a project' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiCommonErrors(400, 401, 404, 409, 422)
@@ -434,7 +433,7 @@ export class ProjectsController {
   }
 
   @Patch(':id/members/:memberId')
-  @RequireProjectPermission('project:manage_members')
+  @RequirePermission('project:manage_members', { from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Update a project member role/status' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiParam({ name: 'memberId', type: 'string', format: 'uuid' })
@@ -450,7 +449,7 @@ export class ProjectsController {
 
   @Delete(':id/members/:userId')
   @HttpCode(204)
-  @RequireProjectPermission('project:manage_members')
+  @RequirePermission('project:manage_members', { from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Remove a member from a project' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiParam({ name: 'userId', type: 'string', format: 'uuid' })

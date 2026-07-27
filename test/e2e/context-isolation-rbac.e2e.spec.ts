@@ -6,14 +6,48 @@
  * product-docs/projects/mini-rally/testing/E2E_BUSINESS_FLOW_COVERAGE.md,
  * driving the REAL application services against the seeded DB.
  */
+import type { ExecutionContext } from '@nestjs/common';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { ProjectsService } from '@modules/projects';
 import { WorkItemsService } from '@modules/work-items';
 import type { WorkItemFilters } from '@modules/work-items';
+import { PolicyGuard, RequirePermission } from '@modules/access';
+import type { JwtPayload } from '@platform';
 
 import { ALL, adminActor, bootRallyApp, uniqueKey, viewerActor } from './support/flow-harness';
+
+/**
+ * Since P2 the per-route project authorization lives in the PolicyGuard, not in
+ * the work-items service. This service-level harness cannot mint an authenticated
+ * HTTP request, so we exercise the REAL guard directly: a probe class carries the
+ * exact `@RequirePermission` metadata each route declares, and we ask the real
+ * PolicyGuard (resolving the project from the seeded DB via AccessService) whether
+ * a given actor may act. This is the production decision path end-to-end.
+ */
+class WorkItemPolicyProbe {
+  @RequirePermission('work_item:view', { resource: 'work_item', from: 'param', field: 'id' })
+  view(): void {}
+  @RequirePermission('work_item:edit', { resource: 'work_item', from: 'param', field: 'id' })
+  edit(): void {}
+  @RequirePermission('work_item:create', { from: 'body', field: 'projectId' })
+  create(): void {}
+}
+
+function policyContext(
+  handler: (...args: unknown[]) => unknown,
+  actor: JwtPayload,
+  req: { params?: Record<string, string>; query?: Record<string, unknown>; body?: Record<string, unknown> },
+): ExecutionContext {
+  return {
+    getHandler: () => handler,
+    getClass: () => WorkItemPolicyProbe,
+    switchToHttp: () => ({
+      getRequest: () => ({ user: actor, params: {}, query: {}, body: {}, ...req }),
+    }),
+  } as unknown as ExecutionContext;
+}
 
 const NO_WI_FILTERS = {} as WorkItemFilters;
 
@@ -21,6 +55,7 @@ describe('BA flows: context isolation + read-only RBAC (real AppModule + seeded 
   let app: NestFastifyApplication;
   let projects: ProjectsService;
   let workItems: WorkItemsService;
+  let policy: PolicyGuard;
   const admin = adminActor();
   const viewer = viewerActor();
 
@@ -28,6 +63,7 @@ describe('BA flows: context isolation + read-only RBAC (real AppModule + seeded 
     app = await bootRallyApp();
     projects = app.get(ProjectsService);
     workItems = app.get(WorkItemsService);
+    policy = app.get(PolicyGuard);
   });
 
   afterAll(async () => {
@@ -67,7 +103,7 @@ describe('BA flows: context isolation + read-only RBAC (real AppModule + seeded 
     });
   });
 
-  // ── E2E-009: Read-only user behaviour ───────────────────────────────────────
+  // ── E2E-009: Read-only user behaviour (enforced by the PolicyGuard) ──────────
   describe('E2E-009 read-only user', () => {
     it('lets a viewer read but blocks create and edit', async () => {
       const project = await projects.createProject(admin, {
@@ -76,19 +112,36 @@ describe('BA flows: context isolation + read-only RBAC (real AppModule + seeded 
       });
       const story = await workItems.createWorkItem(admin, project.id, 'story', 'Read-only target');
 
-      // Viewer CAN view.
-      const viewed = await workItems.getWorkItemForView(viewer, story.id);
-      expect(viewed.id).toBe(story.id);
-
-      // Viewer CANNOT create.
+      // Viewer CAN view — the guard resolves the item's project and finds
+      // work_item:view in the viewer's effective project permissions.
       await expect(
-        workItems.createWorkItem(viewer, project.id, 'story', 'Blocked create'),
+        policy.canActivate(
+          policyContext(WorkItemPolicyProbe.prototype.view, viewer, { params: { id: story.id } }),
+        ),
+      ).resolves.toBe(true);
+
+      // Viewer CANNOT create — no work_item:create on the project.
+      await expect(
+        policy.canActivate(
+          policyContext(WorkItemPolicyProbe.prototype.create, viewer, {
+            body: { projectId: project.id },
+          }),
+        ),
       ).rejects.toMatchObject({ code: 'PROJECT_PERMISSION_DENIED' });
 
-      // Viewer CANNOT edit.
+      // Viewer CANNOT edit — no work_item:edit on the item's project.
       await expect(
-        workItems.updateWorkItem(viewer, story.id, { description: 'nope' }),
+        policy.canActivate(
+          policyContext(WorkItemPolicyProbe.prototype.edit, viewer, { params: { id: story.id } }),
+        ),
       ).rejects.toMatchObject({ code: 'PROJECT_PERMISSION_DENIED' });
+
+      // And an admin (workspace:*) fast-paths every project-tier check.
+      await expect(
+        policy.canActivate(
+          policyContext(WorkItemPolicyProbe.prototype.edit, admin, { params: { id: story.id } }),
+        ),
+      ).resolves.toBe(true);
     });
   });
 });
