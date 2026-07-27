@@ -100,10 +100,11 @@ export class AccessController {
   // ── Role assignments ───────────────────────────────────────────────────────
 
   @Get('users/:userId/role-assignments')
+  @RequirePermission('roles:view')
   @ApiOperation({ summary: "Get a user's role assignments" })
   @ApiParam({ name: 'userId', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: [RoleAssignmentResponseDto] })
-  @ApiCommonErrors(401, 404)
+  @ApiCommonErrors(401, 403, 404)
   async getUserAssignments(
     @CurrentUser() user: JwtPayload,
     @Param('userId', ParseUUIDPipe) userId: string,
