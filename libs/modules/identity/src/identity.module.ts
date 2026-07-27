@@ -34,6 +34,7 @@ import { AppConfigService, BFF_SESSION_RESOLVER } from '@platform';
 import { AccessModule, AccessService } from '@modules/access';
 import { WorkspaceModule, WorkspaceService } from '@modules/workspace';
 import { AuditService } from '@modules/audit';
+import { AttachmentsModule } from '@modules/attachments';
 import { IdentityController } from './interface/http/identity.controller';
 import { AuthController } from './interface/http/auth.controller';
 import { BffController } from './interface/http/bff/bff.controller';
@@ -66,7 +67,7 @@ import { DrizzleTransactionRunner } from './application/transaction-runner';
  */
 @Global()
 @Module({
-  imports: [AccessModule, WorkspaceModule],
+  imports: [AccessModule, WorkspaceModule, AttachmentsModule],
   controllers: [IdentityController, AuthController, BffController],
   providers: [
     AuthService,

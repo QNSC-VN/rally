@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components -- PROJECT_COLUMNS is config that must co-locate with the cell renderers it references */
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, Loader2, Users, UsersRound } from 'lucide-react'
+import { AlertTriangle, Loader2, UsersRound } from 'lucide-react'
 
 import { BRAND } from '@/shared/config/brand'
 import { cn, formatDateIso } from '@/shared/lib/utils'
@@ -14,6 +14,7 @@ import { useWorkspaceMembers } from '@/features/workspaces/api'
 import {
   useWorkspaceTeams,
   useProjectTeams,
+  useProjectMembers,
   useLinkProjectTeam,
   useUnlinkProjectTeam,
 } from '@/features/teams/api'
@@ -543,6 +544,33 @@ function ProjectTeamsCell({
   )
 }
 
+/** Members cell — read-only chips (a project's members are derived from its
+ *  linked teams, edited via Teams, not here). Same capped chip look as Teams. */
+function ProjectMembersCell({ projectId }: { projectId: string }) {
+  const { data: members = [] } = useProjectMembers(projectId)
+  if (members.length === 0) return <span className="text-foreground-subtle">—</span>
+  return (
+    <SearchableSelect
+      multiple
+      readOnly
+      variant="cell"
+      value={members.map((m) => m.userId)}
+      ariaLabel="Members"
+      placeholder="—"
+      options={members.map((m) => {
+        const name = m.displayName || m.email || m.userId
+        return {
+          value: m.userId,
+          label: name,
+          searchText: name,
+          icon: <OwnerAvatar name={name} size={16} />,
+        }
+      })}
+      onChange={() => {}}
+    />
+  )
+}
+
 // ── Table columns (shared useDataTable engine) ───────────────────────────────
 
 /**
@@ -648,18 +676,10 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
     key: 'members',
     label: 'Members',
     sortCol: 'members',
-    defaultWidth: 96,
-    minWidth: 70,
-    cellClassName: 'flex items-center text-ui-sm',
-    cell: (p) =>
-      p.memberCount > 0 ? (
-        <span className="inline-flex items-center gap-1 text-muted-foreground">
-          <Users size={11} className="text-foreground-subtle" />
-          {p.memberCount}
-        </span>
-      ) : (
-        <span className="text-foreground-subtle">—</span>
-      ),
+    defaultWidth: 220,
+    minWidth: 140,
+    cellClassName: 'flex min-w-0 items-center text-ui-sm',
+    cell: (p) => <ProjectMembersCell projectId={p.id} />,
   },
   {
     key: 'startDate',
