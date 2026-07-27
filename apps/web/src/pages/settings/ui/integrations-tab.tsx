@@ -28,7 +28,7 @@ export function IntegrationsTab() {
         description={t('tabDescriptions.integrations')}
       />
       <div className="flex-1 overflow-y-auto bg-background px-8 py-6">
-        <div className="max-w-3xl space-y-8">
+        <div className="max-w-3xl space-y-6">
           <ConnectedOrgs workspaceId={workspaceId} />
           <RepositoryList workspaceId={workspaceId} />
           <WebhookSetup />
