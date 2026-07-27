@@ -18,7 +18,6 @@ import { Button } from '@/shared/ui/button'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { DateField } from '@/shared/ui/date-field'
-import { NativeSelect } from '@/shared/ui/native-select'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { RichTextEditor } from '@/shared/ui/rich-text-editor'
 import { SaveCancelBar } from '@/shared/ui/save-cancel-bar'
@@ -129,12 +128,6 @@ export function CreateIterationModal({
             onChange={(e) => setName(e.target.value)}
             placeholder="Enter iteration name..."
           />
-        </FormField>
-        {/* Type — Phase 2 shows Iterations only, so the control is fixed (P2-IT-FR-003/011). */}
-        <FormField label={t('create.typeLabel')}>
-          <NativeSelect value="iteration" disabled>
-            <option value="iteration">Iteration</option>
-          </NativeSelect>
         </FormField>
         {/* Project — auto-filled from context, overridable by admin (P2-IT-FR-001C/D). */}
         <FormField label={t('create.projectLabel')} required>

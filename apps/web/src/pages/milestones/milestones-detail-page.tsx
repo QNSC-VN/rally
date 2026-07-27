@@ -168,7 +168,11 @@ export function MilestoneDetailPage() {
   const TABS = [
     { key: 'details', label: t('detail.tabs.details'), icon: <FileText size={19} /> },
     { key: 'artifacts', label: t('detail.tabs.artifacts'), icon: <Package size={19} /> },
-    { key: 'history', label: t('detail.tabs.history', 'History'), icon: <History size={19} /> },
+    {
+      key: 'history',
+      label: t('detail.tabs.history', 'Revision History'),
+      icon: <History size={19} />,
+    },
   ]
 
   return (

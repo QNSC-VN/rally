@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
 
-import { BRAND } from '@/shared/config/brand'
 import { useCreateRelease, type ReleaseStatus } from '@/features/releases/api'
 import { notify } from '@/shared/lib/toast'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
@@ -70,42 +69,13 @@ export function CreateReleaseModal({
   }
 
   return (
-    <AppModal
-      open
-      onClose={onClose}
-      title={t('create.title')}
-      subtitle={t('create.subtitle')}
-      width={460}
-    >
+    <AppModal open onClose={onClose} title={t('create.title')} width={460}>
       <ModalBody className="space-y-4">
         {errors.form && (
           <p role="alert" className="text-ui-sm text-destructive">
             {errors.form}
           </p>
         )}
-        {/* Type selector — disabled, locked to Release (P3-REL-FR-012) */}
-        <FormField label={t('create.typeLabel')}>
-          <div className="flex gap-2">
-            {(['Iteration', 'Release', 'Milestones'] as const).map((type) => (
-              <button
-                key={type}
-                type="button"
-                disabled={type !== 'Release'}
-                className="flex-1 rounded-sm py-1.5 text-ui-sm font-semibold transition-colors"
-                style={{
-                  backgroundColor: type === 'Release' ? BRAND.primaryLighter : 'transparent',
-                  color: type === 'Release' ? BRAND.primary : BRAND.textMuted,
-                  border: `1px solid ${type === 'Release' ? BRAND.accentBorder : BRAND.borderSubtle}`,
-                  opacity: type === 'Release' ? 1 : 0.4,
-                  cursor: type === 'Release' ? 'default' : 'not-allowed',
-                }}
-              >
-                {type}
-              </button>
-            ))}
-          </div>
-        </FormField>
-
         <FormField label={t('create.nameLabel')} required error={errors.name}>
           <Input
             value={name}
