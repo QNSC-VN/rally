@@ -295,7 +295,7 @@ module "ecs_cluster" {
 
 # ── ECS Service — API ─────────────────────────────────────────────────────────
 module "api" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v1.5.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v2.0.0"
 
   service_name = "api"
   cluster_name = module.ecs_cluster.cluster_name
@@ -459,7 +459,7 @@ module "api" {
 
 # ── ECS Service — Worker ──────────────────────────────────────────────────────
 module "worker" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v1.5.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v2.0.0"
 
   service_name = "worker"
   cluster_name = module.ecs_cluster.cluster_name
@@ -600,7 +600,7 @@ module "worker" {
 # Runs `pnpm migration:run` then exits. Never scheduled as a service; deploy
 # pipelines trigger it with: aws ecs run-task ...
 module "migrator" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/oneshot-task?ref=oneshot-task-v1.1.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/oneshot-task?ref=oneshot-task-v2.0.0"
 
   name               = "${local.name}-migrator"
   container_name     = "migrator"
@@ -709,7 +709,7 @@ module "dns_api" {
 # gone — two topics per environment meant two subscriptions to confirm and two
 # places to look. The fail-open alarm below publishes to this module's topic.
 module "observability" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/observability?ref=observability-v1.1.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/observability?ref=observability-v2.0.0"
 
   create_dashboard = var.create_dashboard
 
