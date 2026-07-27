@@ -10,11 +10,11 @@ import {
   Post,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { ApiCommonErrors, RequirePermission } from '@platform';
+import { ApiCommonErrors } from '@platform';
 import type { JwtPayload } from '@platform';
 import { CurrentUser } from '@platform';
 import { AccessService } from '../../application/access.service';
-import { AuthProjectScoped, RequireProjectPermission } from './project-permission.guard';
+import { AuthPolicy, RequirePermission } from './policy.guard';
 import {
   AssignRoleDto,
   AssignProjectRoleDto,
@@ -56,7 +56,7 @@ function toAssignmentDto(a: UserRoleAssignment): RoleAssignmentResponseDto {
 
 @ApiTags('access')
 @Controller()
-@AuthProjectScoped()
+@AuthPolicy()
 export class AccessController {
   constructor(private readonly accessService: AccessService) {}
 
@@ -170,7 +170,7 @@ export class AccessController {
   }
 
   @Post('projects/:projectId/role-assignments')
-  @RequireProjectPermission('project:manage_members', 'param', 'projectId')
+  @RequirePermission('project:manage_members', { from: 'param', field: 'projectId' })
   @ApiOperation({
     summary: 'Assign a project-scoped role to a user (project admin)',
     description:
@@ -196,7 +196,7 @@ export class AccessController {
   }
 
   @Delete('projects/:projectId/role-assignments/:id')
-  @RequireProjectPermission('project:manage_members', 'param', 'projectId')
+  @RequirePermission('project:manage_members', { from: 'param', field: 'projectId' })
   @HttpCode(204)
   @ApiOperation({ summary: 'Revoke a project-scoped role assignment (project admin)' })
   @ApiParam({ name: 'projectId', type: 'string', format: 'uuid' })
