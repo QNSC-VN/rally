@@ -23,6 +23,7 @@ import { TeamsTab } from './ui/teams-tab'
 import { AuditLogTab } from './ui/audit-log-tab'
 import { RolesTab } from './ui/roles-tab'
 import { IntegrationsTab } from './ui/integrations-tab'
+import { NotificationsTab } from './ui/notifications-tab'
 
 // ── Tab config (mirrors mockup SettingsPage.tsx) ──────────────────────────────
 
@@ -119,6 +120,8 @@ export function SettingsPage() {
   const tabEl =
     activeTab === 'profile' ? (
       <ProfileTab />
+    ) : activeTab === 'notifications' ? (
+      <NotificationsTab />
     ) : activeTab === 'members' ? (
       <MembersTab />
     ) : activeTab === 'teams' ? (

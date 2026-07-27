@@ -73,6 +73,48 @@
     "defaultLocale": "Default date & number format",
     "defaultsHint": "Fallback for members who haven't set their own in Profile."
   },
+  "notifications": {
+    "title": "Notification preferences",
+    "sectionTitle": "Delivery",
+    "intro": "Choose how you're notified for each kind of event. Changes apply to your account in this workspace.",
+    "colType": "Notification",
+    "colInApp": "In-app",
+    "colEmail": "Email",
+    "masterTitle": "All notifications",
+    "masterName": "Master switch",
+    "masterHint": "Turns every channel on or off. A specific type below overrides this.",
+    "typesTitle": "By type",
+    "resetAll": "Reset to defaults",
+    "resetHint": "Types with no explicit choice default to both channels on.",
+    "saveFailed": "Could not update your preference.",
+    "resetDone": "Notification preferences reset to defaults.",
+    "types": {
+      "WORKSPACE_INVITATION": {
+        "label": "Workspace invitations",
+        "desc": "You're invited to a workspace."
+      },
+      "WORKSPACE_INVITATION_ACCEPTED": {
+        "label": "Invitation accepted",
+        "desc": "Someone accepts an invitation you sent."
+      },
+      "WORK_ITEM_ASSIGNED": {
+        "label": "Work item assigned",
+        "desc": "A work item is assigned to you."
+      },
+      "WORK_ITEM_STATE_CHANGED": {
+        "label": "Status changed",
+        "desc": "The status of a work item you follow changes."
+      },
+      "WORK_ITEM_COMMENTED": {
+        "label": "New comment",
+        "desc": "Someone comments on your work item."
+      },
+      "WORK_ITEM_MENTIONED": {
+        "label": "Mentions",
+        "desc": "Someone @mentions you."
+      }
+    }
+  },
   "workflow": {
     "description": "Define the statuses work items move through in",
     "addStatus": "Add Status",
