@@ -14,7 +14,7 @@ import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ApiCommonErrors, ApiPagedResponse, buildPageArgs } from '@platform';
 import type { JwtPayload, PagedResult } from '@platform';
 import { CurrentUser } from '@modules/identity';
-import { RequireProjectPermission, AuthProjectScoped } from '@modules/access';
+import { RequirePermission, AuthPolicy } from '@modules/access';
 import { IterationsService } from '../../application/iterations.service';
 import { IterationStatusService } from '../../application/iteration-status.service';
 import {
@@ -95,7 +95,7 @@ function toIterationActivityDto(a: IterationActivityLog): IterationActivityRespo
 // guard; update/delete/commit/accept check per-project in the service (project
 // known only after loading the iteration). Reads use flat iteration:view.
 // Guards run in a guaranteed order (JwtAuth → Permission → ProjectPermission).
-@AuthProjectScoped()
+@AuthPolicy()
 export class IterationsController {
   constructor(
     private readonly iterationsService: IterationsService,
@@ -103,7 +103,7 @@ export class IterationsController {
   ) {}
 
   @Get()
-  @RequireProjectPermission('iteration:view', 'query', 'projectId')
+  @RequirePermission('iteration:view', { from: 'query', field: 'projectId' })
   @ApiOperation({ summary: 'List iterations for a project' })
   @ApiPagedResponse(IterationResponseDto)
   @ApiCommonErrors(400, 401, 404)
@@ -126,7 +126,7 @@ export class IterationsController {
   }
 
   @Post()
-  @RequireProjectPermission('iteration:create', 'body', 'projectId')
+  @RequirePermission('iteration:create', { from: 'body', field: 'projectId' })
   @ApiOperation({ summary: 'Create an iteration' })
   @ApiResponse({ status: 201, type: IterationResponseDto })
   @ApiCommonErrors(400, 401, 404, 422)
@@ -150,7 +150,7 @@ export class IterationsController {
   // ── Assignment options (P2-IT-10) — declared before :id to avoid route conflict ──
 
   @Get('options')
-  @RequireProjectPermission('iteration:view', 'query', 'projectId')
+  @RequirePermission('iteration:view', { from: 'query', field: 'projectId' })
   @ApiOperation({ summary: 'Get assignable iterations for the work-item picker' })
   @ApiResponse({ status: 200, type: [IterationOptionDto] })
   @ApiCommonErrors(400, 401, 404)
@@ -167,6 +167,7 @@ export class IterationsController {
   }
 
   @Get(':id')
+  @RequirePermission('iteration:view', { resource: 'iteration', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Get iteration details' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: IterationResponseDto })
@@ -180,6 +181,7 @@ export class IterationsController {
   }
 
   @Get(':id/activity')
+  @RequirePermission('iteration:view', { resource: 'iteration', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'List the revision history of an iteration' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: IterationActivityResponseDto, isArray: true })
@@ -208,6 +210,7 @@ export class IterationsController {
   }
 
   @Patch(':id')
+  @RequirePermission('iteration:edit', { resource: 'iteration', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Update iteration details' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: IterationResponseDto })
@@ -222,6 +225,7 @@ export class IterationsController {
   }
 
   @Delete(':id')
+  @RequirePermission('iteration:delete', { resource: 'iteration', from: 'param', field: 'id' })
   @HttpCode(204)
   @ApiOperation({ summary: 'Delete a planning-state iteration' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -235,6 +239,7 @@ export class IterationsController {
   }
 
   @Post(':id/commit')
+  @RequirePermission('iteration:edit', { resource: 'iteration', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Commit an iteration (planning → committed)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 201, type: IterationResponseDto })
@@ -248,6 +253,7 @@ export class IterationsController {
   }
 
   @Post(':id/accept')
+  @RequirePermission('iteration:edit', { resource: 'iteration', from: 'param', field: 'id' })
   @ApiOperation({
     summary:
       'Accept an iteration (committed → accepted). Requires ≥1 assigned Story/Defect and all of them accepted.',
@@ -263,6 +269,7 @@ export class IterationsController {
   }
 
   @Post(':id/rollover')
+  @RequirePermission('iteration:edit', { resource: 'iteration', from: 'param', field: 'id' })
   @ApiOperation({
     summary: 'Move unfinished items out of an iteration to another iteration or the backlog',
   })
@@ -281,6 +288,7 @@ export class IterationsController {
   // ── Iteration Status read-model (P2.3) ──────────────────────────────────────
 
   @Get(':id/status')
+  @RequirePermission('iteration:view', { resource: 'iteration', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Get Iteration Status: metrics + assigned work items' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: IterationStatusResponseDto })
@@ -319,6 +327,7 @@ export class IterationsController {
   }
 
   @Post(':id/work-items')
+  @RequirePermission('iteration:edit', { resource: 'iteration', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Create a Story/Defect directly in the iteration' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 201, type: CreateIterationItemResponseDto })

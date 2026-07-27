@@ -223,15 +223,9 @@ describe('ReleasesService', () => {
   // ── updateRelease ────────────────────────────────────────────────────────
 
   describe('updateRelease', () => {
-    it('asserts release:edit permission for the release project', async () => {
-      repo.findById.mockResolvedValue(mockRelease());
-      await service.updateRelease(actor, 'rel-1', { name: 'Renamed' });
-      expect(access.assertProjectPermission).toHaveBeenCalledWith(
-        actor,
-        'proj-1',
-        expect.any(String),
-      );
-    });
+    // Authorization (release:edit) moved to the PolicyGuard at the route (P2);
+    // the guard denies before the service runs, so it is covered by the e2e
+    // suite, not a service-level assert here.
 
     it('rejects releaseDate before startDate on update', async () => {
       repo.findById.mockResolvedValue(mockRelease());
@@ -273,12 +267,8 @@ describe('ReleasesService', () => {
       );
       expect(repo.delete).not.toHaveBeenCalled();
     });
-
-    it('asserts permission before deletion', async () => {
-      repo.findById.mockResolvedValue(mockRelease());
-      await service.deleteRelease(actor, 'rel-1');
-      expect(access.assertProjectPermission).toHaveBeenCalled();
-    });
+    // Authorization (release:delete) is enforced by the PolicyGuard at the route
+    // (P2), covered by the e2e suite — no service-level assert.
   });
 
   // ── getReleaseDetail ─────────────────────────────────────────────────────
@@ -294,20 +284,7 @@ describe('ReleasesService', () => {
       repo.findById.mockResolvedValue(null);
       await expect(service.getReleaseDetail(actor, 'bad')).rejects.toThrow(NotFoundException);
     });
-
-    it('denies the read when the actor lacks release:view for the project (cross-project guard)', async () => {
-      repo.findById.mockResolvedValue(mockRelease());
-      access.assertProjectPermission.mockRejectedValueOnce(
-        new PreconditionFailedException('PROJECT_PERMISSION_DENIED', 'denied'),
-      );
-      await expect(service.getReleaseDetail(actor, 'rel-1')).rejects.toThrow(
-        PreconditionFailedException,
-      );
-      expect(access.assertProjectPermission).toHaveBeenCalledWith(
-        actor,
-        expect.any(String),
-        'release:view',
-      );
-    });
+    // release:view is enforced by the PolicyGuard at the route (P2), resource-
+    // resolved from :id — covered by context-isolation-rbac e2e, not here.
   });
 });
