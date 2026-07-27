@@ -103,7 +103,7 @@ export function SelectionModal({
           ariaLabel={`Search ${title.toLowerCase()}`}
           iconSize={13}
           autoFocus
-          className="w-full rounded-md py-1.5 pl-8 text-xs"
+          className="w-full rounded-md py-1.5 pl-8 text-ui-md"
         />
       </div>
       <ModalBody className="space-y-1">
@@ -121,14 +121,14 @@ export function SelectionModal({
         </label>
         <div className="max-h-60 overflow-y-auto">
           {filtered.length === 0 ? (
-            <p className="py-4 text-center text-xs" style={{ color: BRAND.textMuted }}>
+            <p className="py-4 text-center text-ui-md" style={{ color: BRAND.textMuted }}>
               No items found
             </p>
           ) : (
             filtered.map((item) => (
               <label
                 key={item.id}
-                className="flex cursor-pointer items-center gap-2 rounded px-1 py-1.5 text-xs transition-colors select-none hover:bg-gray-50"
+                className="flex cursor-pointer items-center gap-2 rounded px-1 py-1.5 text-ui-md transition-colors select-none hover:bg-gray-50"
               >
                 <SelectionCheckbox
                   checked={local.includes(item.id)}

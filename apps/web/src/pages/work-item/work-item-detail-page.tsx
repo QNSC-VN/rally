@@ -84,7 +84,7 @@ function DetailsTab({
 
   return (
     <div className="w-full space-y-5">
-      <h2 className="text-xl font-semibold text-foreground">{t('details.heading')}</h2>
+      <h2 className="text-ui-xl font-semibold text-foreground">{t('details.heading')}</h2>
 
       <RichTextEditor
         title={t('common:description')}
@@ -235,12 +235,12 @@ export function WorkItemDetailPage() {
   if (!itemByKey) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3">
-        <p className="text-sm font-medium text-muted-foreground">
+        <p className="text-ui-xl font-medium text-muted-foreground">
           {t('notFound', { key: itemKey })}
         </p>
         <button
           onClick={() => void navigate({ to: '/backlog' })}
-          className="text-xs font-medium text-primary-light"
+          className="text-ui-md font-medium text-primary-light"
         >
           {t('backToBacklog')}
         </button>

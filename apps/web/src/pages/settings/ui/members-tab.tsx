@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
+import { SettingsTabHeader } from './settings-tab-header'
 import { useForm, Controller } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -27,7 +28,7 @@ import { Input } from '@/shared/ui/input'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { StatusBadge } from '@/shared/ui/status-badge'
 import type { StatusStyle } from '@/shared/config/status-colors'
-import { OwnerCell } from '@/shared/ui/owner-cell'
+import { OwnerAvatar } from '@/shared/ui/owner-cell'
 import { TeamAvatar } from '@/shared/ui/team-cell'
 import { MetricStrip } from '@/shared/ui/metric-strip'
 import { MetricCard } from '@/shared/ui/metric-card'
@@ -92,12 +93,16 @@ const MEMBER_COLUMNS: ColumnSpec<WorkspaceMember, MemberCtx, MemberColKey>[] = [
     locked: true,
     grow: true,
     cellClassName: 'flex min-w-0 items-center gap-2',
-    // Read-only identity cell — the shared OwnerCell (avatar + name), same as
-    // every other grid's owner column. Name/avatar are IdP/Profile-owned, so not
-    // editable here; only Role/Status/Teams are admin-editable.
+    // Read-only PRIMARY identity cell: avatar + name at text-ui-md — matches the
+    // Teams grid's Team-name column exactly (OwnerCell is the smaller secondary
+    // treatment used for attribute columns like Owner/Lead). Name/avatar are
+    // IdP/Profile-owned (not editable here); only Role/Status/Teams are editable.
     cell: (m, ctx) => (
       <>
-        <OwnerCell name={m.displayName} className="min-w-0" />
+        <OwnerAvatar name={m.displayName ?? undefined} />
+        <span className="truncate text-ui-md text-foreground" title={m.displayName ?? undefined}>
+          {m.displayName ?? '—'}
+        </span>
         {m.userId === ctx.currentUserId && (
           <span className="shrink-0 rounded bg-primary-lighter px-1 py-0.5 text-ui-xs text-primary">
             {ctx.youLabel}
@@ -483,11 +488,7 @@ export function MembersTab() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      {/* Page header — the tab owns its title (the settings host renders list
-          tabs full-bleed, without the gray page heading). */}
-      <div className="flex shrink-0 items-center justify-between border-b border-border-subtle px-4 py-3">
-        <h2 className="text-ui-lg font-semibold text-foreground">{t('nav.members')}</h2>
-      </div>
+      <SettingsTabHeader title={t('nav.members')} description={t('tabDescriptions.members')} />
       {/* Metric strip + pending invitations render above the toolbar. */}
       <div className="flex shrink-0 flex-col gap-4 px-4 pt-4">
         {/* Metric strip — Total / Active / Admins (SRS §6.1) */}

@@ -502,7 +502,7 @@ function CapacityStrip({
   ]
   return (
     <section>
-      <h2 className="mb-2 text-lg font-semibold text-foreground">{t('capacity.title')}</h2>
+      <h2 className="mb-2 text-ui-xl font-semibold text-foreground">{t('capacity.title')}</h2>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
         {tiles.map((tile) => (
           <div key={tile.label} className="rounded border border-border-subtle bg-card px-3 py-2.5">
@@ -534,7 +534,7 @@ function IterationScope({
   const { t } = useTranslation('iterations')
   return (
     <section>
-      <h2 className="mb-2 text-lg font-semibold text-foreground">
+      <h2 className="mb-2 text-ui-xl font-semibold text-foreground">
         {t('scope.title')}{' '}
         <span className="text-ui-lg font-normal text-foreground-subtle">({items.length})</span>
       </h2>

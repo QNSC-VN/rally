@@ -156,7 +156,7 @@ function MilestoneFormFields({
         <FormField label={t('form.targetStart')}>
           {selectedReleases.length > 0 ? (
             <>
-              <div className="w-full rounded-md border border-border-strong bg-surface-subtle px-3 py-1.5 text-sm text-foreground-subtle">
+              <div className="w-full rounded-md border border-border-strong bg-surface-subtle px-3 py-1.5 text-ui-xl text-foreground-subtle">
                 {t('form.notSet')}
               </div>
               <p className="mt-0.5 text-ui-xs text-foreground-subtle">
@@ -175,7 +175,7 @@ function MilestoneFormFields({
         <FormField label={t('form.targetEnd')}>
           {selectedReleases.length > 0 ? (
             <>
-              <div className="w-full rounded-md border border-border-strong bg-surface-subtle px-3 py-1.5 text-sm text-foreground-subtle">
+              <div className="w-full rounded-md border border-border-strong bg-surface-subtle px-3 py-1.5 text-ui-xl text-foreground-subtle">
                 {t('form.notSet')}
               </div>
               <p className="mt-0.5 text-ui-xs text-foreground-subtle">
@@ -198,7 +198,7 @@ function MilestoneFormFields({
             releases.map((r) => (
               <label
                 key={r.id}
-                className="flex cursor-pointer items-center gap-2 text-xs select-none"
+                className="flex cursor-pointer items-center gap-2 text-ui-md select-none"
               >
                 <input
                   type="checkbox"
@@ -209,7 +209,7 @@ function MilestoneFormFields({
               </label>
             ))
           ) : (
-            <span className="text-xs text-foreground-subtle">{t('form.noReleases')}</span>
+            <span className="text-ui-md text-foreground-subtle">{t('form.noReleases')}</span>
           )}
         </div>
       </FormField>
@@ -509,7 +509,7 @@ export function MilestonesPage() {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8">
         <AlertTriangle size={32} className="text-destructive" />
-        <p className="text-sm text-muted-foreground">
+        <p className="text-ui-xl text-muted-foreground">
           {error instanceof Error ? error.message : t('loadError')}
         </p>
       </div>

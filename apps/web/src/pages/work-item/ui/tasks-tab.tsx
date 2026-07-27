@@ -208,7 +208,7 @@ export function TasksTab({
       {/* Header */}
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-foreground">{t('tasks.heading')}</h2>
+          <h2 className="text-ui-xl font-semibold text-foreground">{t('tasks.heading')}</h2>
           <p className="mt-1 text-ui-sm text-muted-foreground">{t('tasks.subtitle')}</p>
         </div>
         <Button size="sm" onClick={() => setShowAdd(true)}>
@@ -406,7 +406,7 @@ function TaskRow({
           value={task.title}
           canEdit={canEdit}
           onCommit={commitTitle}
-          className="block break-words whitespace-normal text-ui-md font-medium text-foreground"
+          className="block text-ui-md font-medium break-words whitespace-normal text-foreground"
           style={{ cursor: 'text' }}
           inputClassName="w-full rounded border border-accent-border-strong px-1 py-0.5 text-ui-md text-foreground focus:outline-none"
           title={task.title}
@@ -417,7 +417,11 @@ function TaskRow({
       <div className="flex shrink-0 items-center px-2" style={colStyles.state}>
         <StateStepper
           steps={SIMPLIFIED_STATE_STEPS}
-          value={SIMPLIFIED_STATE_TO_SCHEDULE_STATE[getSimplifiedState(task.scheduleState as ScheduleState)]}
+          value={
+            SIMPLIFIED_STATE_TO_SCHEDULE_STATE[
+              getSimplifiedState(task.scheduleState as ScheduleState)
+            ]
+          }
           canEdit={canEdit}
           onChange={(next) => update.mutateAsync({ scheduleState: next })}
           ariaLabel={`Task ${task.itemKey} state`}

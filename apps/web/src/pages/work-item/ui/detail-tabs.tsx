@@ -55,7 +55,7 @@ export function DefectsTab({ workItemId, projectId }: { workItemId: string; proj
     <div className="w-full">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-foreground">{t('tabs.defects')}</h2>
+          <h2 className="text-ui-xl font-semibold text-foreground">{t('tabs.defects')}</h2>
           <p className="mt-0.5 text-ui-md text-muted-foreground">
             {t('defects.countLinked', { count: defects.length })}
           </p>
