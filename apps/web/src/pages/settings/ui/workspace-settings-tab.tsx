@@ -80,7 +80,7 @@ export function WorkspaceSettingsTab() {
   return (
     <>
       <SettingsTabHeader title={t('nav.workspace')} description={t('tabDescriptions.workspace')} />
-      <div className="flex-1 overflow-y-auto bg-background px-8 py-6">
+      <div className="flex-1 overflow-y-auto px-8 py-6">
         <div className="max-w-2xl space-y-6">
           {/* General + Regional defaults share one RHF-less form + Save footer,
           mirroring the Profile tab's two-card + footer layout. */}
