@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 
 import { CopyButton } from '@/shared/ui/copy-button'
+import { Card, CardBody } from '@/shared/ui/card'
 import { useDisclosure } from '@/shared/lib/hooks/use-disclosure'
 
 const PROVIDERS = ['github', 'ghe'] as const
@@ -17,19 +18,23 @@ export function WebhookSetup() {
   const origin = window.location.origin
 
   return (
-    <section className="rounded-lg border border-border-subtle">
+    <Card>
       <button
         type="button"
         onClick={toggle}
         aria-expanded={isOpen}
-        className="flex w-full items-center gap-1.5 px-3 py-2.5 text-ui-sm font-medium text-foreground"
+        className="flex w-full items-center justify-between gap-2 px-4 py-2.5 text-ui-md font-semibold text-foreground"
       >
-        {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
         {t('integrations.webhook.title')}
+        {isOpen ? (
+          <ChevronDown size={16} className="text-foreground-subtle" />
+        ) : (
+          <ChevronRight size={16} className="text-foreground-subtle" />
+        )}
       </button>
       {isOpen && (
-        <div className="space-y-3 border-t border-border-inner px-3 py-3">
-          <p className="text-ui-xs text-foreground-subtle">
+        <CardBody className="space-y-3 border-t border-border-subtle">
+          <p className="text-ui-sm text-foreground-subtle">
             {t('integrations.webhook.description')}
           </p>
           <div className="space-y-2">
@@ -48,8 +53,8 @@ export function WebhookSetup() {
               )
             })}
           </div>
-        </div>
+        </CardBody>
       )}
-    </section>
+    </Card>
   )
 }

@@ -12,6 +12,7 @@ import { SCM_SYNC_STATUS_STYLE, NEVER_SYNCED_STYLE } from '@/features/scm/status
 import { notify } from '@/shared/lib/toast'
 import { relativeTime } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
+import { Card, CardHeader, CardBody } from '@/shared/ui/card'
 import { IconButton } from '@/shared/ui/icon-button'
 import { StatusBadge } from '@/shared/ui/status-badge'
 import { EmptyState } from '@/shared/ui/empty-state'
@@ -70,132 +71,143 @@ export function RepositoryList({ workspaceId }: RepositoryListProps) {
   }
 
   return (
-    <section>
-      <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-ui-md font-semibold text-foreground">
-          {t('integrations.repos.title')}
-        </h3>
-        {repos.length > 0 && (
-          <Button
-            size="sm"
-            variant="ghost"
-            type="button"
-            disabled={syncRepo.isPending}
-            onClick={syncAll}
-          >
-            <RefreshCw size={14} />
-            {t('integrations.repos.syncAll')}
-          </Button>
-        )}
-      </div>
-
-      {isLoading ? (
-        <p className="text-ui-sm text-foreground-subtle">{t('integrations.loading')}</p>
-      ) : repos.length === 0 ? (
-        <EmptyState
-          icon={<GitBranch size={22} className="text-border-strong" />}
-          title={t('integrations.repos.empty.title')}
-          description={t('integrations.repos.empty.description')}
+    <>
+      <Card>
+        <CardHeader
+          title={t('integrations.repos.title')}
+          actions={
+            repos.length > 0 ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                type="button"
+                disabled={syncRepo.isPending}
+                onClick={syncAll}
+              >
+                <RefreshCw size={14} />
+                {t('integrations.repos.syncAll')}
+              </Button>
+            ) : undefined
+          }
         />
-      ) : (
-        <div className="overflow-hidden rounded-lg border border-border-subtle">
-          <table className="w-full border-collapse text-ui-sm">
-            <thead className="bg-surface-subtle">
-              <tr className="text-left text-ui-xs text-foreground-subtle">
-                <th className="px-3 py-2 font-semibold">
-                  {t('integrations.repos.col.repository')}
-                </th>
-                <th className="px-3 py-2 font-semibold">{t('integrations.repos.col.status')}</th>
-                <th className="px-3 py-2 font-semibold">{t('integrations.repos.col.activity')}</th>
-                <th className="px-3 py-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {pageRepos.map((r) => {
-                const style = r.lastSync
-                  ? SCM_SYNC_STATUS_STYLE[r.lastSync.status]
-                  : NEVER_SYNCED_STYLE
-                const syncing = syncRepo.isPending && syncRepo.variables === r.id
-                return (
-                  <tr key={r.id} className="border-t border-border-inner">
-                    <td className="px-3 py-2">
-                      <a
-                        href={repoUrl(r)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 font-mono text-foreground hover:text-primary"
-                      >
-                        {r.fullName}
-                        <ExternalLink size={12} className="text-foreground-subtle" />
-                      </a>
-                      {!r.installationId && (
-                        <span className="ml-2 text-ui-xs text-foreground-subtle">
-                          {t('integrations.repos.manual')}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="flex flex-col gap-0.5">
-                        <StatusBadge style={style} className="w-fit" />
-                        <span className="text-ui-xs text-foreground-subtle">
-                          {r.lastSync?.at
-                            ? t('integrations.repos.syncedAt', {
-                                time: relativeTime(r.lastSync.at),
-                              })
-                            : t('integrations.repos.neverSynced')}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-3 py-2 text-foreground-subtle">
-                      {r.lastSync
-                        ? `${t('integrations.repos.prs', { count: r.lastSync.prs })} · ${t('integrations.repos.commits', { count: r.lastSync.commits })}`
-                        : '—'}
-                    </td>
-                    <td className="px-3 py-2 text-right whitespace-nowrap">
-                      <IconButton
-                        size="sm"
-                        aria-label={t('integrations.syncAria', { name: r.fullName })}
-                        title={t('integrations.sync')}
-                        className="mr-1"
-                        disabled={syncing}
-                        onClick={() => sync(r)}
-                      >
-                        <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
-                      </IconButton>
-                      <IconButton
-                        size="sm"
-                        variant="destructive"
-                        aria-label={t('integrations.remove', { name: r.fullName })}
-                        onClick={() => confirm.open(r)}
-                      >
-                        <Trash2 size={14} />
-                      </IconButton>
-                    </td>
+        <CardBody className="p-0">
+          {isLoading ? (
+            <p className="px-4 py-6 text-ui-sm text-foreground-subtle">
+              {t('integrations.loading')}
+            </p>
+          ) : repos.length === 0 ? (
+            <div className="px-4 py-8">
+              <EmptyState
+                icon={<GitBranch size={22} className="text-border-strong" />}
+                title={t('integrations.repos.empty.title')}
+                description={t('integrations.repos.empty.description')}
+              />
+            </div>
+          ) : (
+            <>
+              <table className="w-full border-collapse text-ui-sm">
+                <thead className="bg-surface-subtle">
+                  <tr className="text-left text-ui-xs text-foreground-subtle">
+                    <th className="px-3 py-2 font-semibold">
+                      {t('integrations.repos.col.repository')}
+                    </th>
+                    <th className="px-3 py-2 font-semibold">
+                      {t('integrations.repos.col.status')}
+                    </th>
+                    <th className="px-3 py-2 font-semibold">
+                      {t('integrations.repos.col.activity')}
+                    </th>
+                    <th className="px-3 py-2" />
                   </tr>
-                )
-              })}
-            </tbody>
-          </table>
-          {repos.length > 10 && (
-            <PaginationFooter
-              pageSize={pageSize}
-              setPageSize={(n) => {
-                setPageSize(n)
-                setPage(1)
-              }}
-              currentPage={currentPage}
-              rangeStart={(currentPage - 1) * pageSize + 1}
-              rangeEnd={Math.min(currentPage * pageSize, repos.length)}
-              total={repos.length}
-              pageCount={pageCount}
-              hasPrevPage={currentPage > 1}
-              hasNextPage={currentPage < pageCount}
-              onPrevPage={() => setPage((p) => Math.max(1, p - 1))}
-              onNextPage={() => setPage((p) => Math.min(pageCount, p + 1))}
-            />
+                </thead>
+                <tbody>
+                  {pageRepos.map((r) => {
+                    const style = r.lastSync
+                      ? SCM_SYNC_STATUS_STYLE[r.lastSync.status]
+                      : NEVER_SYNCED_STYLE
+                    const syncing = syncRepo.isPending && syncRepo.variables === r.id
+                    return (
+                      <tr key={r.id} className="border-t border-border-inner">
+                        <td className="px-3 py-2">
+                          <a
+                            href={repoUrl(r)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1.5 font-mono text-foreground hover:text-primary"
+                          >
+                            {r.fullName}
+                            <ExternalLink size={12} className="text-foreground-subtle" />
+                          </a>
+                          {!r.installationId && (
+                            <span className="ml-2 text-ui-xs text-foreground-subtle">
+                              {t('integrations.repos.manual')}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="flex flex-col gap-0.5">
+                            <StatusBadge style={style} className="w-fit" />
+                            <span className="text-ui-xs text-foreground-subtle">
+                              {r.lastSync?.at
+                                ? t('integrations.repos.syncedAt', {
+                                    time: relativeTime(r.lastSync.at),
+                                  })
+                                : t('integrations.repos.neverSynced')}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 text-foreground-subtle">
+                          {r.lastSync
+                            ? `${t('integrations.repos.prs', { count: r.lastSync.prs })} · ${t('integrations.repos.commits', { count: r.lastSync.commits })}`
+                            : '—'}
+                        </td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">
+                          <IconButton
+                            size="sm"
+                            aria-label={t('integrations.syncAria', { name: r.fullName })}
+                            title={t('integrations.sync')}
+                            className="mr-1"
+                            disabled={syncing}
+                            onClick={() => sync(r)}
+                          >
+                            <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
+                          </IconButton>
+                          <IconButton
+                            size="sm"
+                            variant="destructive"
+                            aria-label={t('integrations.remove', { name: r.fullName })}
+                            onClick={() => confirm.open(r)}
+                          >
+                            <Trash2 size={14} />
+                          </IconButton>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+              {repos.length > 10 && (
+                <PaginationFooter
+                  pageSize={pageSize}
+                  setPageSize={(n) => {
+                    setPageSize(n)
+                    setPage(1)
+                  }}
+                  currentPage={currentPage}
+                  rangeStart={(currentPage - 1) * pageSize + 1}
+                  rangeEnd={Math.min(currentPage * pageSize, repos.length)}
+                  total={repos.length}
+                  pageCount={pageCount}
+                  hasPrevPage={currentPage > 1}
+                  hasNextPage={currentPage < pageCount}
+                  onPrevPage={() => setPage((p) => Math.max(1, p - 1))}
+                  onNextPage={() => setPage((p) => Math.min(pageCount, p + 1))}
+                />
+              )}
+            </>
           )}
-        </div>
-      )}
+        </CardBody>
+      </Card>
 
       <ConfirmDialog
         open={confirm.isOpen}
@@ -207,6 +219,6 @@ export function RepositoryList({ workspaceId }: RepositoryListProps) {
         onConfirm={() => confirm.data && void onRemove(confirm.data)}
         onCancel={confirm.close}
       />
-    </section>
+    </>
   )
 }
