@@ -5,7 +5,6 @@ import { NotFoundException, PreconditionFailedException, InjectDrizzle } from '@
 import type { JwtPayload, CursorPayload, PagedResult, DrizzleDB } from '@platform';
 import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
-import { PERMISSION } from '@shared-kernel';
 import { workItems } from '../../../../../db/schema/work';
 import { acceptedScheduleStatesSql } from '../../../../../db/schema/enums';
 import { IIterationRepository, ITERATION_REPOSITORY } from '../domain/ports/iteration.repository';

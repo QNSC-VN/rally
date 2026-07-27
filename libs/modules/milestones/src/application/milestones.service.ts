@@ -5,7 +5,6 @@ import type { JwtPayload, CursorPayload, PagedResult, DrizzleDB } from '@platfor
 import { and, eq, isNull, sql, inArray } from 'drizzle-orm';
 import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
-import { PERMISSION } from '@shared-kernel';
 import {
   workItems,
   milestones,
@@ -575,7 +574,7 @@ export class MilestonesService {
     milestoneId: string,
     projectIds: string[],
   ): Promise<string[]> {
-    const milestone = await this.getMilestone(actor.workspaceId, milestoneId);
+    await this.getMilestone(actor.workspaceId, milestoneId);
     await this.assertLinksInWorkspace(actor.workspaceId, { projectIds });
     await this.milestoneRepo.setProjectLinks(milestoneId, projectIds);
     return this.milestoneRepo.getProjectIds(milestoneId);
@@ -591,7 +590,7 @@ export class MilestonesService {
     milestoneId: string,
     teamIds: string[],
   ): Promise<string[]> {
-    const milestone = await this.getMilestone(actor.workspaceId, milestoneId);
+    await this.getMilestone(actor.workspaceId, milestoneId);
     await this.assertLinksInWorkspace(actor.workspaceId, { teamIds });
     await this.milestoneRepo.setTeamLinks(milestoneId, teamIds);
     return this.milestoneRepo.getTeamIds(milestoneId);
@@ -607,7 +606,7 @@ export class MilestonesService {
     milestoneId: string,
     releaseIds: string[],
   ): Promise<string[]> {
-    const milestone = await this.getMilestone(actor.workspaceId, milestoneId);
+    await this.getMilestone(actor.workspaceId, milestoneId);
     await this.assertLinksInWorkspace(actor.workspaceId, { releaseIds });
     await this.milestoneRepo.setReleaseLinks(milestoneId, releaseIds);
     // Target dates are derived from the linked releases (SRS FR-011/012), so
@@ -619,7 +618,7 @@ export class MilestonesService {
   // ── Delete ────────────────────────────────────────────────────────────────
 
   async deleteMilestone(actor: JwtPayload, id: string): Promise<void> {
-    const milestone = await this.getMilestone(actor.workspaceId, id);
+    await this.getMilestone(actor.workspaceId, id);
     await this.milestoneRepo.delete(id);
     this.logger.log({ milestoneId: id }, 'Milestone deleted');
   }
