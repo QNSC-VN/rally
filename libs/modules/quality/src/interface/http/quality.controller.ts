@@ -3,20 +3,19 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ApiCommonErrors, parseSort } from '@platform';
 import type { JwtPayload } from '@platform';
 import { CurrentUser } from '@modules/identity';
-import { AuthProjectScoped } from '@modules/access';
-import { RequireProjectPermission } from '@modules/access';
+import { AuthPolicy, RequirePermission } from '@modules/access';
 import { QualityService } from '../../application/quality.service';
 import { DEFECT_SORT_FIELDS } from '../../domain/quality.types';
 import { DefectQueryDto } from './dto/defect-query.dto';
 
 @ApiTags('quality')
 @Controller('quality')
-@AuthProjectScoped()
+@AuthPolicy()
 export class QualityController {
   constructor(private readonly qualityService: QualityService) {}
 
   @Get('defects')
-  @RequireProjectPermission('quality:view', 'query', 'projectId')
+  @RequirePermission('quality:view', { from: 'query', field: 'projectId' })
   @ApiOperation({ summary: 'List defects with metrics for a project' })
   @ApiCommonErrors(400, 401, 403, 404)
   listDefects(@CurrentUser() user: JwtPayload, @Query() query: DefectQueryDto) {

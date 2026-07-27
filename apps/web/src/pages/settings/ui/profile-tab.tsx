@@ -1,4 +1,5 @@
 import { useForm, Controller, useWatch } from 'react-hook-form'
+import { SettingsTabHeader } from './settings-tab-header'
 import { useTranslation } from 'react-i18next'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -145,109 +146,121 @@ export function ProfileTab() {
   }
 
   return (
-    <div className="max-w-2xl space-y-6">
-      {/* Personal Information + Preferences share one RHF form + Save footer. */}
-      <form onSubmit={profile.handleSubmit(onSaveProfile)} className="space-y-6">
-        <Card>
-          <CardHeader title={t('profile.personalInfo')} />
-          <CardBody className="space-y-4">
-            <FormField
-              label={t('profile.displayNameLabel')}
-              error={profile.formState.errors.displayName?.message}
-            >
-              <Input
-                {...profile.register('displayName')}
-                placeholder={t('profile.displayNamePlaceholder')}
-              />
-            </FormField>
-            <FormField label={t('profile.avatarLabel')}>
-              <AvatarUploader
-                name={watchedName || (user?.displayName ?? '')}
-                value={watchedAvatar || (user?.avatarUrl ?? null)}
-                onUploaded={applyAvatar}
-                onRemove={removeAvatar}
-              />
-            </FormField>
-            <FormField
-              label={t('profile.phoneLabel')}
-              error={profile.formState.errors.phone?.message}
-            >
-              <Input {...profile.register('phone')} placeholder={t('profile.phonePlaceholder')} />
-            </FormField>
-          </CardBody>
-        </Card>
-
-        <Card>
-          <CardHeader title={t('profile.sectionPreferences')} />
-          <CardBody className="space-y-4">
-            <FormField label={t('profile.localeLabel')}>
-              <Controller
-                control={profile.control}
-                name="locale"
-                render={({ field }) => (
-                  <SearchableSelect
-                    variant="field"
-                    value={field.value ?? ''}
-                    ariaLabel={t('profile.localeLabel')}
-                    options={LOCALES}
-                    onChange={field.onChange}
+    <>
+      <SettingsTabHeader title={t('nav.profile')} description={t('tabDescriptions.profile')} />
+      <div className="flex-1 overflow-y-auto bg-background px-8 py-6">
+        <div className="max-w-2xl space-y-6">
+          {/* Personal Information + Preferences share one RHF form + Save footer. */}
+          <form onSubmit={profile.handleSubmit(onSaveProfile)} className="space-y-6">
+            <Card>
+              <CardHeader title={t('profile.personalInfo')} />
+              <CardBody className="space-y-4">
+                <FormField
+                  label={t('profile.displayNameLabel')}
+                  error={profile.formState.errors.displayName?.message}
+                >
+                  <Input
+                    {...profile.register('displayName')}
+                    placeholder={t('profile.displayNamePlaceholder')}
                   />
-                )}
-              />
-            </FormField>
-            <FormField label={t('profile.timezoneLabel')}>
-              <Controller
-                control={profile.control}
-                name="timezone"
-                render={({ field }) => (
-                  <SearchableSelect
-                    variant="field"
-                    value={field.value ?? ''}
-                    ariaLabel={t('profile.timezoneLabel')}
-                    options={TIMEZONES.map((tz) => ({ value: tz, label: tz }))}
-                    onChange={field.onChange}
+                </FormField>
+                <FormField label={t('profile.avatarLabel')}>
+                  <AvatarUploader
+                    name={watchedName || (user?.displayName ?? '')}
+                    value={watchedAvatar || (user?.avatarUrl ?? null)}
+                    onUploaded={applyAvatar}
+                    onRemove={removeAvatar}
                   />
-                )}
-              />
-            </FormField>
-          </CardBody>
-        </Card>
+                </FormField>
+                <FormField
+                  label={t('profile.phoneLabel')}
+                  error={profile.formState.errors.phone?.message}
+                >
+                  <Input
+                    {...profile.register('phone')}
+                    placeholder={t('profile.phonePlaceholder')}
+                  />
+                </FormField>
+              </CardBody>
+            </Card>
 
-        {profile.formState.errors.root && (
-          <p className="text-ui-sm text-destructive">{profile.formState.errors.root.message}</p>
-        )}
-        <div className="flex items-center gap-3 pt-1">
-          <Button type="submit" disabled={profile.formState.isSubmitting}>
-            {profile.formState.isSubmitting ? <Loader2 size={14} className="animate-spin" /> : null}
-            {t('saveChanges')}
-          </Button>
+            <Card>
+              <CardHeader title={t('profile.sectionPreferences')} />
+              <CardBody className="space-y-4">
+                <FormField label={t('profile.localeLabel')}>
+                  <Controller
+                    control={profile.control}
+                    name="locale"
+                    render={({ field }) => (
+                      <SearchableSelect
+                        variant="field"
+                        value={field.value ?? ''}
+                        ariaLabel={t('profile.localeLabel')}
+                        options={LOCALES}
+                        onChange={field.onChange}
+                      />
+                    )}
+                  />
+                </FormField>
+                <FormField label={t('profile.timezoneLabel')}>
+                  <Controller
+                    control={profile.control}
+                    name="timezone"
+                    render={({ field }) => (
+                      <SearchableSelect
+                        variant="field"
+                        value={field.value ?? ''}
+                        ariaLabel={t('profile.timezoneLabel')}
+                        options={TIMEZONES.map((tz) => ({ value: tz, label: tz }))}
+                        onChange={field.onChange}
+                      />
+                    )}
+                  />
+                </FormField>
+              </CardBody>
+            </Card>
+
+            {profile.formState.errors.root && (
+              <p className="text-ui-sm text-destructive">{profile.formState.errors.root.message}</p>
+            )}
+            <div className="flex items-center gap-3 pt-1">
+              <Button type="submit" disabled={profile.formState.isSubmitting}>
+                {profile.formState.isSubmitting ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : null}
+                {t('saveChanges')}
+              </Button>
+            </div>
+          </form>
+
+          {/* Account — read-only identity + security note + sign-out-all. */}
+          <Card>
+            <CardHeader title={t('profile.account')} />
+            <CardBody className="space-y-4">
+              <dl className="grid grid-cols-[130px_1fr] gap-x-3 gap-y-2.5 text-ui-md">
+                <dt className="text-foreground-subtle">{t('profile.emailLabel')}</dt>
+                <dd className="text-foreground">
+                  <span className="font-medium">{user?.email}</span>
+                  {user?.emailVerified === false && (
+                    <span className="ml-2 text-ui-sm font-semibold text-warning">
+                      {t('profile.notVerified')}
+                    </span>
+                  )}
+                </dd>
+              </dl>
+              <p className="text-ui-sm text-foreground-subtle">
+                {t('profile.passwordSecurityNote')}
+              </p>
+              <div className="flex items-center gap-3 pt-1">
+                <Button variant="destructive" onClick={() => void handleLogoutAll()}>
+                  <LogOut size={14} />
+                  {t('profile.signOutAll')}
+                </Button>
+              </div>
+            </CardBody>
+          </Card>
         </div>
-      </form>
-
-      {/* Account — read-only identity + security note + sign-out-all. */}
-      <Card>
-        <CardHeader title={t('profile.account')} />
-        <CardBody className="space-y-4">
-          <dl className="grid grid-cols-[130px_1fr] gap-x-3 gap-y-2.5 text-ui-md">
-            <dt className="text-foreground-subtle">{t('profile.emailLabel')}</dt>
-            <dd className="text-foreground">
-              <span className="font-medium">{user?.email}</span>
-              {user?.emailVerified === false && (
-                <span className="ml-2 text-ui-sm font-semibold text-warning">
-                  {t('profile.notVerified')}
-                </span>
-              )}
-            </dd>
-          </dl>
-          <p className="text-ui-sm text-foreground-subtle">{t('profile.passwordSecurityNote')}</p>
-          <div className="flex items-center gap-3 pt-1">
-            <Button variant="destructive" onClick={() => void handleLogoutAll()}>
-              <LogOut size={14} />
-              {t('profile.signOutAll')}
-            </Button>
-          </div>
-        </CardBody>
-      </Card>
-    </div>
+      </div>
+    </>
   )
 }

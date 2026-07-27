@@ -17,15 +17,33 @@ on:
   push:
     branches: [main]
     # Skip the develop build+deploy when a merge touches ONLY paths this service
-    # doesn't ship: docs, infra (own apply flow), and the web app. paths-ignore
-    # fires only if EVERY changed file matches — a shared change (libs, db, root
-    # lockfile) still deploys, so under-deploy is impossible. Release tags always
-    # change package.json + manifest (root, never ignored) → prod never skipped.
+    # doesn't ship: docs and the web app. paths-ignore fires only if EVERY changed
+    # file matches — a shared change (libs, db, root lockfile) still deploys, so
+    # under-deploy is impossible. Release tags always change package.json +
+    # manifest (root, never ignored) → prod never skipped.
+    #
+    # `infra/**` is deliberately NOT ignored, though it once was. Terraform owns
+    # the task definition's environment (REDIS_URL, DATABASE_*, CORS_ORIGINS, …),
+    # but the ecs-service module sets `ignore_changes = [task_definition]` so the
+    # SERVICE is never moved onto the revision Terraform registers — the deploy
+    # pipeline owns that. With infra ignored here, an infra-only merge registered a
+    # new task definition that nothing ever rolled onto, and the change silently
+    # did not take effect. That is how develop ended up running against a DELETED
+    # cache endpoint (`valkey: down` on /v1/readyz) after the cache migration:
+    # the apply succeeded, the new definition was correct, and no deploy ran.
+    #
+    # Rolling the service from infra-apply instead would be worse: Terraform's
+    # newest revision carries a new IMAGE, so rolling onto it would ship app code
+    # ahead of `Run database migrations`. Deploying through this pipeline keeps
+    # migrations, attestation and health checks in the loop, and `wait-for-infra`
+    # below already sequences it after the apply for the same commit.
+    #
+    # Cost: a Terraform-only merge now rebuilds images it does not strictly need.
+    # That is minutes of CI in exchange for removing a class of silent drift.
     paths-ignore:
       - '**/*.md'
       - 'docs/**'
       - '.claude/**'
-      - 'infra/**'
       - 'apps/web/**'
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'   # semver only — no -rc suffix

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { SettingsTabHeader } from './settings-tab-header'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
@@ -168,12 +169,7 @@ export function AuditLogTab() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      {/* Page header — the tab owns its title (the settings host renders list
-          tabs full-bleed, without the gray page heading). */}
-      <div className="flex shrink-0 items-center justify-between border-b border-border-subtle px-4 py-3">
-        <h2 className="text-ui-lg font-semibold text-foreground">{t('nav.audit')}</h2>
-        <p className="text-ui-sm text-foreground-subtle">{t('audit.intro')}</p>
-      </div>
+      <SettingsTabHeader title={t('nav.audit')} description={t('tabDescriptions.audit')} />
 
       {/* ── Toolbar — search · date range filters · Show Fields ── */}
       <PageToolbar

@@ -113,10 +113,6 @@ export function SettingsPage() {
   const allItems = SIDEBAR.flatMap((g) => g.items)
   const activeItem = allItems.find((i) => i.key === activeTab)
   const activeLabel = activeItem ? t(activeItem.label) : t('common:settings')
-  // Tabs that render the shared full-height list scaffold (own scroll) vs the
-  // block-scroll form tabs. Add 'teams' here once it moves to the scaffold too.
-  const isListTab = activeTab === 'members' || activeTab === 'teams' || activeTab === 'audit'
-
   const tabEl =
     activeTab === 'profile' ? (
       <ProfileTab />
@@ -183,15 +179,13 @@ export function SettingsPage() {
             bar + toolbar + table + footer, exactly like the Iteration Status
             page. It fills height so the table's own scroll works.
           • Form tabs — the padded gray page with a heading, as before. */}
-      <main className="flex flex-1 flex-col overflow-hidden">
-        {isListTab ? (
-          <div className="flex min-h-0 flex-1 flex-col bg-card">{tabEl}</div>
-        ) : (
-          <div className="flex-1 overflow-y-auto px-8 pt-8 pb-8">
-            <h2 className="mb-6 text-base font-semibold text-foreground">{activeLabel}</h2>
-            {tabEl}
-          </div>
-        )}
+      {/* Every tab renders its own <SettingsTabHeader> as the first element, so
+          the heading size + position are identical across list and form tabs.
+          List tabs own a full-height white surface (their own scroll); form tabs
+          get the header band (white) followed by a scrolling padded body they
+          render themselves. */}
+      <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="flex min-h-0 flex-1 flex-col bg-card">{tabEl}</div>
       </main>
     </div>
   )
