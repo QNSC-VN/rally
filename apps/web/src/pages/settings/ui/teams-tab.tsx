@@ -148,13 +148,16 @@ function TeamNameCell({ team }: { team: Team }) {
   return (
     <>
       <TeamAvatar teamKey={team.key} name={team.name} size={20} />
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 px-0">
         <InlineEditableCell
           value={team.name}
           canEdit
+          fullCell
           ariaLabel={t('teams.editName')}
           title={team.name}
-          className="truncate text-ui-md text-foreground"
+          className="break-words whitespace-normal text-foreground"
+          style={{ fontSize: 12 }}
+          inputStyle={{ fontSize: 12 }}
           onCommit={(v) => {
             const next = v.trim()
             if (!next || next === team.name) return
