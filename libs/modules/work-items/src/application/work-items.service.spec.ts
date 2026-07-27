@@ -960,46 +960,12 @@ describe('WorkItemsService', () => {
     });
   });
 
-  // ── project-scoped write authorization ─────────────────────────────────────
-  // Writes are gated per PROJECT (the item's own project), not workspace-wide.
-  describe('project-scoped write enforcement', () => {
-    it('authorizes a create against the target project', async () => {
-      workItemRepo.create.mockResolvedValue(mockWorkItem());
-      await service.createWorkItem(mockActor, 'proj-1', 'story', 'Title');
-      expect(accessService.assertProjectPermission).toHaveBeenCalledWith(
-        mockActor,
-        'proj-1',
-        'work_item:create',
-      );
-    });
-
-    it('authorizes an edit against the item’s own project and rejects when denied', async () => {
-      workItemRepo.findById.mockResolvedValue(mockWorkItem({ projectId: 'proj-9' }));
-      const denied = new Error('PROJECT_PERMISSION_DENIED');
-      accessService.assertProjectPermission.mockRejectedValueOnce(denied);
-
-      await expect(service.updateWorkItem(mockActor, 'wi-1', { title: 'x' })).rejects.toThrow(
-        denied,
-      );
-      expect(accessService.assertProjectPermission).toHaveBeenCalledWith(
-        mockActor,
-        'proj-9',
-        'work_item:edit',
-      );
-      // Denied before any write.
-      expect(workItemRepo.update).not.toHaveBeenCalled();
-    });
-
-    it('authorizes delete with work_item:delete on the item’s project', async () => {
-      workItemRepo.findById.mockResolvedValue(mockWorkItem({ projectId: 'proj-9' }));
-      await service.deleteWorkItem(mockActor, 'wi-1');
-      expect(accessService.assertProjectPermission).toHaveBeenCalledWith(
-        mockActor,
-        'proj-9',
-        'work_item:delete',
-      );
-    });
-  });
+  // Note: per-route project authorization (create/edit/delete/view) now lives in
+  // the PolicyGuard (@RequirePermission on the controller), covered by
+  // policy.guard.spec.ts and the work-items e2e authz suite. The service no
+  // longer calls assertProjectPermission for its primary route id — only for
+  // SECONDARY targets a route-scoped guard cannot see (relation link target) and
+  // the multi-project reorder batch, which are asserted in their own describes.
 
   // ── moveWorkItem ──────────────────────────────────────────────────────────
 

@@ -22,6 +22,7 @@
  */
 import { randomUUID } from 'node:crypto';
 
+import type { ExecutionContext } from '@nestjs/common';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -30,7 +31,8 @@ import { AuditService } from '@modules/audit';
 import { ProjectsService } from '@modules/projects';
 import { WorkItemsService } from '@modules/work-items';
 import { WorkspaceService } from '@modules/workspace';
-import { DRIZZLE, type DrizzleDB } from '@platform';
+import { PolicyGuard, RequirePermission } from '@modules/access';
+import { DRIZZLE, type DrizzleDB, type JwtPayload } from '@platform';
 
 import { outboxEvents } from '../../db/schema/messaging';
 import {
@@ -41,6 +43,28 @@ import {
   viewerActor,
 } from './support/flow-harness';
 
+/**
+ * Since P2, destructive-action authorization lives in the PolicyGuard (not the
+ * work-items service). This service-level harness cannot mint an authenticated
+ * HTTP request, so E2E-019 exercises the REAL guard directly: the probe carries
+ * the same `@RequirePermission` metadata the delete route declares, and the guard
+ * resolves the item's project from the seeded DB via AccessService.
+ */
+class DeleteWorkItemProbe {
+  @RequirePermission('work_item:delete', { resource: 'work_item', from: 'param', field: 'id' })
+  delete(): void {}
+}
+
+function deletePolicyContext(actor: JwtPayload, workItemId: string): ExecutionContext {
+  return {
+    getHandler: () => DeleteWorkItemProbe.prototype.delete,
+    getClass: () => DeleteWorkItemProbe,
+    switchToHttp: () => ({
+      getRequest: () => ({ user: actor, params: { id: workItemId }, query: {}, body: {} }),
+    }),
+  } as unknown as ExecutionContext;
+}
+
 describe('BA flows: Phase 4 governance — RBAC + audit (real AppModule + seeded DB)', () => {
   let app: NestFastifyApplication;
   let projects: ProjectsService;
@@ -48,6 +72,7 @@ describe('BA flows: Phase 4 governance — RBAC + audit (real AppModule + seeded
   let workspace: WorkspaceService;
   let audit: AuditService;
   let db: DrizzleDB;
+  let policy: PolicyGuard;
   const admin = adminActor();
   const viewer = viewerActor();
 
@@ -58,6 +83,7 @@ describe('BA flows: Phase 4 governance — RBAC + audit (real AppModule + seeded
     workspace = app.get(WorkspaceService);
     audit = app.get(AuditService);
     db = app.get<DrizzleDB>(DRIZZLE);
+    policy = app.get(PolicyGuard);
   });
 
   afterAll(async () => {
@@ -146,9 +172,12 @@ describe('BA flows: Phase 4 governance — RBAC + audit (real AppModule + seeded
       });
       const story = await workItems.createWorkItem(admin, project.id, 'story', 'Protected');
 
-      await expect(workItems.deleteWorkItem(viewer, story.id)).rejects.toMatchObject({
-        code: 'PROJECT_PERMISSION_DENIED',
-      });
+      // The guard denies work_item:delete for a read-only principal on the item's
+      // project; an admin (workspace:*) fast-paths through.
+      await expect(
+        policy.canActivate(deletePolicyContext(viewer, story.id)),
+      ).rejects.toMatchObject({ code: 'PROJECT_PERMISSION_DENIED' });
+      await expect(policy.canActivate(deletePolicyContext(admin, story.id))).resolves.toBe(true);
     });
 
     it('blocks a non-member viewer from archiving a project', async () => {

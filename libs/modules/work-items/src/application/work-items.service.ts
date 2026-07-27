@@ -23,7 +23,7 @@ import {
   between,
 } from '@platform';
 import type { JwtPayload, CursorPayload, PagedResult, DbExecutor } from '@platform';
-import { PERMISSION, permissionGrants, type ProjectPermission } from '@shared-kernel';
+import { PERMISSION, permissionGrants } from '@shared-kernel';
 import {
   isAcceptedScheduleState,
   isCompletedScheduleState,
@@ -238,7 +238,6 @@ export class WorkItemsService {
     opts: CreateWorkItemOpts = {},
   ): Promise<WorkItem> {
     await this.projectsService.getProject(actor.workspaceId, projectId);
-    await this.accessService.assertProjectPermission(actor, projectId, PERMISSION.WORK_ITEM_CREATE);
 
     // P1-15: parentId must belong to the same project
     if (opts.parentId) {
@@ -491,30 +490,11 @@ export class WorkItemsService {
   }
 
   /**
-   * Load a work item for a MUTATION and authorize the actor against the item's
-   * OWN project. This is the single seam that makes every write project-scoped:
-   * a workspace-wide grant fast-paths inside assertProjectPermission, while a
-   * user who only holds the permission on a different project is rejected. Use
-   * this instead of getWorkItem() in every method that changes an item.
-   */
-  private async getWorkItemForWrite(
-    actor: JwtPayload,
-    id: string,
-    required: ProjectPermission,
-  ): Promise<WorkItem> {
-    const item = await this.getWorkItem(actor.workspaceId, id);
-    await this.accessService.assertProjectPermission(actor, item.projectId, required);
-    return item;
-  }
-
-  /**
    * Load a work item for a READ and authorize the actor against the item's OWN
-   * project via `work_item:view`. The read counterpart of getWorkItemForWrite:
-   * a workspace-wide grant fast-paths inside assertProjectPermission, while a
-   * user who lacks view on the item's project is rejected — closing the
-   * project-isolation gap on sub-resource reads (tasks, activity, labels,
-   * time logs, watchers, attachments). Use this instead of getWorkItem() in
-   * every actor-facing read that exposes a single item or its sub-resources.
+   * project via `work_item:view`. Now that the PolicyGuard authorizes the route
+   * id up-front, this remains only for SECONDARY targets a route-scoped guard
+   * cannot see — e.g. the far end of a relation link, where the actor must be
+   * able to view the target too or linking would leak its key/title/state.
    */
   async getWorkItemForView(actor: JwtPayload, id: string): Promise<WorkItem> {
     const item = await this.getWorkItem(actor.workspaceId, id);
@@ -550,12 +530,12 @@ export class WorkItemsService {
   // ── Tasks (list + totals) ───────────────────────────────────────────────────
 
   async listTasks(actor: JwtPayload, parentId: string): Promise<WorkItem[]> {
-    await this.getWorkItemForView(actor, parentId);
+    await this.getWorkItem(actor.workspaceId, parentId);
     return this.workItemRepo.listTasksByParent(parentId, actor.workspaceId);
   }
 
   async getTaskTotals(actor: JwtPayload, parentId: string): Promise<TaskTotals> {
-    await this.getWorkItemForView(actor, parentId);
+    await this.getWorkItem(actor.workspaceId, parentId);
     return this.workItemRepo.getTaskTotals(parentId, actor.workspaceId);
   }
 
@@ -566,7 +546,7 @@ export class WorkItemsService {
     workItemId: string,
     args: { limit: number; offset: number },
   ): Promise<{ items: ActivityLog[]; total: number }> {
-    await this.getWorkItemForView(actor, workItemId);
+    await this.getWorkItem(actor.workspaceId, workItemId);
     const page = Math.floor(args.offset / args.limit) + 1;
     const res = await this.activity.listFor(workItemId, page, args.limit);
     return { items: res.data, total: res.total };
@@ -580,7 +560,7 @@ export class WorkItemsService {
     id: string,
     input: UpdateWorkItemInput,
   ): Promise<WorkItem> {
-    const item = await this.getWorkItemForWrite(actor, id, PERMISSION.WORK_ITEM_EDIT);
+    const item = await this.getWorkItem(actor.workspaceId, id);
 
     // TASK-FR-012: a task's Work Product (parent) can be reassigned, but the new
     // parent must be a valid work product (US/DE, never a task) in the SAME
@@ -939,7 +919,7 @@ export class WorkItemsService {
 
   @Span('work-items.delete')
   async deleteWorkItem(actor: JwtPayload, id: string): Promise<void> {
-    const item = await this.getWorkItemForWrite(actor, id, PERMISSION.WORK_ITEM_DELETE);
+    const item = await this.getWorkItem(actor.workspaceId, id);
     // BA rule (P3.4): defects are never deleted — they are resolved by moving to
     // the 'closed' / 'closed_declined' defect state so the audit trail survives.
     if (item.type === 'defect') {
@@ -1072,7 +1052,7 @@ export class WorkItemsService {
   @Span('work-items.list-relations')
   async listRelations(actor: JwtPayload, id: string): Promise<WorkItemRelationView[]> {
     // Authorize a read on the item's own project (project isolation).
-    await this.getWorkItemForView(actor, id);
+    await this.getWorkItem(actor.workspaceId, id);
     return this.relationRepo.listForItem(id, actor.workspaceId);
   }
 
@@ -1084,7 +1064,7 @@ export class WorkItemsService {
     relationType: WorkItemRelationType,
   ): Promise<WorkItemRelationView[]> {
     // Editing the source item's links requires edit on its project.
-    await this.getWorkItemForWrite(actor, sourceId, PERMISSION.WORK_ITEM_EDIT);
+    await this.getWorkItem(actor.workspaceId, sourceId);
 
     if (sourceId === targetId) {
       throw new PreconditionFailedException(
@@ -1150,7 +1130,7 @@ export class WorkItemsService {
 
   @Span('work-items.unlink')
   async unlinkWorkItem(actor: JwtPayload, sourceId: string, relationId: string): Promise<void> {
-    await this.getWorkItemForWrite(actor, sourceId, PERMISSION.WORK_ITEM_EDIT);
+    await this.getWorkItem(actor.workspaceId, sourceId);
     const relation = await this.relationRepo.findById(relationId, actor.workspaceId);
     if (!relation) {
       throw new NotFoundException('WORK_ITEM_RELATION_NOT_FOUND', 'Relation not found');
@@ -1216,7 +1196,7 @@ export class WorkItemsService {
     id: string,
     opts: { projectId: string; beforeId?: string | null; afterId?: string | null },
   ): Promise<WorkItem> {
-    const item = await this.getWorkItemForWrite(actor, id, PERMISSION.WORK_ITEM_EDIT);
+    const item = await this.getWorkItem(actor.workspaceId, id);
     if (item.projectId !== opts.projectId) {
       throw new PreconditionFailedException(
         'WORK_ITEM_PARENT_SCOPE_MISMATCH',
@@ -1348,7 +1328,8 @@ export class WorkItemsService {
     projectId: string,
     itemIds: string[],
   ): Promise<WorkItem[]> {
-    await this.accessService.assertProjectPermission(actor, projectId, PERMISSION.WORK_ITEM_EDIT);
+    // Authorization (work_item:edit on projectId) is enforced by the PolicyGuard
+    // on the bulk routes; here we only validate the selection is in-scope.
     const ids = [...new Set(itemIds)];
     if (ids.length === 0) {
       throw new PreconditionFailedException('WORK_ITEM_EMPTY_SELECTION', 'No items selected');
@@ -1502,19 +1483,19 @@ export class WorkItemsService {
     actor: JwtPayload,
     id: string,
   ): Promise<Array<{ id: string; name: string; color: string }>> {
-    await this.getWorkItemForView(actor, id);
+    await this.getWorkItem(actor.workspaceId, id);
     return this.workItemRepo.listLabels(id);
   }
 
   async addLabelToWorkItem(actor: JwtPayload, id: string, labelId: string): Promise<void> {
-    const item = await this.getWorkItemForWrite(actor, id, PERMISSION.WORK_ITEM_EDIT);
+    const item = await this.getWorkItem(actor.workspaceId, id);
     // P1-15: label must belong to the same project as the work item
     await this.projectsService.assertLabelBelongsToProject(item.projectId, labelId);
     await this.workItemRepo.addLabel(id, labelId, actor.workspaceId);
   }
 
   async removeLabelFromWorkItem(actor: JwtPayload, id: string, labelId: string): Promise<void> {
-    await this.getWorkItemForWrite(actor, id, PERMISSION.WORK_ITEM_EDIT);
+    await this.getWorkItem(actor.workspaceId, id);
     await this.workItemRepo.removeLabel(id, labelId, actor.workspaceId);
   }
 
@@ -1524,7 +1505,7 @@ export class WorkItemsService {
     actor: JwtPayload,
     id: string,
   ): Promise<Array<{ id: string; name: string }>> {
-    await this.getWorkItemForView(actor, id);
+    await this.getWorkItem(actor.workspaceId, id);
     return this.workItemRepo.listMilestones(id);
   }
 
@@ -1537,7 +1518,7 @@ export class WorkItemsService {
     id: string,
     milestoneIds: string[],
   ): Promise<Array<{ id: string; name: string }>> {
-    const item = await this.getWorkItemForWrite(actor, id, PERMISSION.WORK_ITEM_EDIT);
+    const item = await this.getWorkItem(actor.workspaceId, id);
     const uniqueIds = [...new Set(milestoneIds)];
     if (uniqueIds.length > 0) {
       const inProject = await this.workItemRepo.countMilestonesInProject(uniqueIds, item.projectId);
@@ -1560,7 +1541,7 @@ export class WorkItemsService {
     workItemId: string,
     args: { page: number; pageSize: number },
   ): Promise<{ items: TimeLog[]; total: number }> {
-    await this.getWorkItemForView(actor, workItemId);
+    await this.getWorkItem(actor.workspaceId, workItemId);
     return this.timeLogRepo.listByWorkItem(workItemId, actor.workspaceId, {
       limit: args.pageSize,
       offset: (args.page - 1) * args.pageSize,
@@ -1573,7 +1554,7 @@ export class WorkItemsService {
     workItemId: string,
     input: { loggedDate: string; hours: string; description?: string },
   ): Promise<TimeLog> {
-    await this.getWorkItemForWrite(actor, workItemId, PERMISSION.WORK_ITEM_EDIT);
+    await this.getWorkItem(actor.workspaceId, workItemId);
     const log = await this.timeLogRepo.create({
       id: uuidv7(),
       workspaceId: actor.workspaceId,
@@ -1598,7 +1579,7 @@ export class WorkItemsService {
     logId: string,
     input: { loggedDate?: string; hours?: string; description?: string | null },
   ): Promise<TimeLog> {
-    await this.getWorkItemForWrite(actor, workItemId, PERMISSION.WORK_ITEM_EDIT);
+    await this.getWorkItem(actor.workspaceId, workItemId);
     const log = await this.timeLogRepo.findById(logId, actor.workspaceId);
     if (!log || log.workItemId !== workItemId) {
       throw new NotFoundException('TIME_LOG_NOT_FOUND', 'Time log entry not found');
@@ -1615,7 +1596,7 @@ export class WorkItemsService {
 
   @Span('work-items.delete-time-log')
   async deleteTimeLog(actor: JwtPayload, workItemId: string, logId: string): Promise<void> {
-    await this.getWorkItemForWrite(actor, workItemId, PERMISSION.WORK_ITEM_EDIT);
+    await this.getWorkItem(actor.workspaceId, workItemId);
     const log = await this.timeLogRepo.findById(logId, actor.workspaceId);
     if (!log || log.workItemId !== workItemId) {
       throw new NotFoundException('TIME_LOG_NOT_FOUND', 'Time log entry not found');
@@ -1636,19 +1617,19 @@ export class WorkItemsService {
 
   @Span('work-items.list-watchers')
   async listWatchers(actor: JwtPayload, workItemId: string): Promise<Watcher[]> {
-    await this.getWorkItemForView(actor, workItemId);
+    await this.getWorkItem(actor.workspaceId, workItemId);
     return this.watcherRepo.listByWorkItem(workItemId, actor.workspaceId);
   }
 
   @Span('work-items.watch')
   async watch(actor: JwtPayload, workItemId: string): Promise<void> {
-    await this.getWorkItemForWrite(actor, workItemId, PERMISSION.WORK_ITEM_EDIT);
+    await this.getWorkItem(actor.workspaceId, workItemId);
     await this.watcherRepo.watch(workItemId, actor.sub, actor.workspaceId);
   }
 
   @Span('work-items.unwatch')
   async unwatch(actor: JwtPayload, workItemId: string): Promise<void> {
-    await this.getWorkItemForWrite(actor, workItemId, PERMISSION.WORK_ITEM_EDIT);
+    await this.getWorkItem(actor.workspaceId, workItemId);
     await this.watcherRepo.unwatch(workItemId, actor.sub);
   }
 
@@ -1667,7 +1648,7 @@ export class WorkItemsService {
     workItemId: string,
     input: { filename: string; mimeType: string; sizeBytes: number; checksumSha256: string },
   ): Promise<{ attachmentId: string; uploadUrl: string; requiredHeaders: Record<string, string> }> {
-    await this.getWorkItemForWrite(actor, workItemId, PERMISSION.WORK_ITEM_EDIT);
+    await this.getWorkItem(actor.workspaceId, workItemId);
 
     const current = await this.attachmentRepo.countByWorkItem(workItemId, actor.workspaceId);
 
@@ -1687,7 +1668,7 @@ export class WorkItemsService {
     workItemId: string,
     attachmentId: string,
   ): Promise<WorkItemAttachment> {
-    const item = await this.getWorkItemForWrite(actor, workItemId, PERMISSION.WORK_ITEM_EDIT);
+    const item = await this.getWorkItem(actor.workspaceId, workItemId);
 
     // Verifies the object landed and matches the declared size + checksum.
     const file = await this.attachments.confirm(actor, attachmentId, WORK_ITEM_ATTACHMENT_POLICY);
@@ -1740,7 +1721,7 @@ export class WorkItemsService {
 
   @Span('work-items.list-attachments')
   async listAttachments(actor: JwtPayload, workItemId: string): Promise<WorkItemAttachment[]> {
-    await this.getWorkItemForView(actor, workItemId);
+    await this.getWorkItem(actor.workspaceId, workItemId);
     return this.attachmentRepo.listByWorkItem(workItemId, actor.workspaceId);
   }
 
@@ -1750,7 +1731,7 @@ export class WorkItemsService {
     workItemId: string,
     attachmentId: string,
   ): Promise<{ downloadUrl: string }> {
-    await this.getWorkItemForView(actor, workItemId);
+    await this.getWorkItem(actor.workspaceId, workItemId);
 
     // Scoped to the work item, not just the workspace: without this a viewer of
     // work item A could mint a URL for an attachment on work item B in a project
@@ -1778,7 +1759,7 @@ export class WorkItemsService {
     workItemId: string,
     attachmentId: string,
   ): Promise<void> {
-    const item = await this.getWorkItemForWrite(actor, workItemId, PERMISSION.WORK_ITEM_EDIT);
+    const item = await this.getWorkItem(actor.workspaceId, workItemId);
 
     const link = await this.attachmentRepo.findByWorkItemAndFile(
       workItemId,
