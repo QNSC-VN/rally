@@ -75,7 +75,6 @@
     "@qnsc-vn/observability": "^0.1.4",
     "@qnsc-vn/platform-cache": "^2.1.0",
     "@qnsc-vn/platform-http": "^3.0.0",
-    "argon2": "^0.44.0",
     "cockatiel": "^4.0.0",
     "drizzle-orm": "^0.45.0",
     "drizzle-zod": "^0.8.0",
