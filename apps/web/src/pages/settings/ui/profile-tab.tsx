@@ -148,7 +148,7 @@ export function ProfileTab() {
   return (
     <>
       <SettingsTabHeader title={t('nav.profile')} description={t('tabDescriptions.profile')} />
-      <div className="flex-1 overflow-y-auto bg-background px-8 py-6">
+      <div className="flex-1 overflow-y-auto px-8 py-6">
         <div className="max-w-2xl space-y-6">
           {/* Personal Information + Preferences share one RHF form + Save footer. */}
           <form onSubmit={profile.handleSubmit(onSaveProfile)} className="space-y-6">
