@@ -337,13 +337,9 @@ export class MilestonesService {
     actor: JwtPayload,
     id: string,
   ): Promise<Milestone & { progress?: MilestoneProgress }> {
-    const milestone = await this.getMilestone(actor.workspaceId, id);
-    await this.accessService.assertProjectPermission(
-      actor,
-      milestone.projectId,
-      PERMISSION.MILESTONE_VIEW,
-    );
-    return milestone;
+    // Project-scoped milestone:view is enforced by the PolicyGuard at the route
+    // (resource-resolved from :id); this just loads the row.
+    return this.getMilestone(actor.workspaceId, id);
   }
 
   async getMilestone(
@@ -455,11 +451,6 @@ export class MilestonesService {
     input: UpdateMilestoneInput,
   ): Promise<Milestone> {
     const milestone = await this.getMilestone(actor.workspaceId, id);
-    await this.accessService.assertProjectPermission(
-      actor,
-      milestone.projectId,
-      PERMISSION.MILESTONE_EDIT,
-    );
 
     // Validate status transition
     if (input.status && input.status !== milestone.status) {
@@ -522,11 +513,6 @@ export class MilestonesService {
     workItemIds: string[],
   ): Promise<string[]> {
     const milestone = await this.getMilestone(actor.workspaceId, milestoneId);
-    await this.accessService.assertProjectPermission(
-      actor,
-      milestone.projectId,
-      PERMISSION.MILESTONE_EDIT,
-    );
     const uniqueIds = [...new Set(workItemIds)];
     if (uniqueIds.length > 0) {
       // Milestone scope per SRS §5.2 / FR-021/023: an artifact must belong to
@@ -590,11 +576,6 @@ export class MilestonesService {
     projectIds: string[],
   ): Promise<string[]> {
     const milestone = await this.getMilestone(actor.workspaceId, milestoneId);
-    await this.accessService.assertProjectPermission(
-      actor,
-      milestone.projectId,
-      PERMISSION.MILESTONE_EDIT,
-    );
     await this.assertLinksInWorkspace(actor.workspaceId, { projectIds });
     await this.milestoneRepo.setProjectLinks(milestoneId, projectIds);
     return this.milestoneRepo.getProjectIds(milestoneId);
@@ -611,11 +592,6 @@ export class MilestonesService {
     teamIds: string[],
   ): Promise<string[]> {
     const milestone = await this.getMilestone(actor.workspaceId, milestoneId);
-    await this.accessService.assertProjectPermission(
-      actor,
-      milestone.projectId,
-      PERMISSION.MILESTONE_EDIT,
-    );
     await this.assertLinksInWorkspace(actor.workspaceId, { teamIds });
     await this.milestoneRepo.setTeamLinks(milestoneId, teamIds);
     return this.milestoneRepo.getTeamIds(milestoneId);
@@ -632,11 +608,6 @@ export class MilestonesService {
     releaseIds: string[],
   ): Promise<string[]> {
     const milestone = await this.getMilestone(actor.workspaceId, milestoneId);
-    await this.accessService.assertProjectPermission(
-      actor,
-      milestone.projectId,
-      PERMISSION.MILESTONE_EDIT,
-    );
     await this.assertLinksInWorkspace(actor.workspaceId, { releaseIds });
     await this.milestoneRepo.setReleaseLinks(milestoneId, releaseIds);
     // Target dates are derived from the linked releases (SRS FR-011/012), so
@@ -649,11 +620,6 @@ export class MilestonesService {
 
   async deleteMilestone(actor: JwtPayload, id: string): Promise<void> {
     const milestone = await this.getMilestone(actor.workspaceId, id);
-    await this.accessService.assertProjectPermission(
-      actor,
-      milestone.projectId,
-      PERMISSION.MILESTONE_DELETE,
-    );
     await this.milestoneRepo.delete(id);
     this.logger.log({ milestoneId: id }, 'Milestone deleted');
   }
