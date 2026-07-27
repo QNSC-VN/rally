@@ -625,6 +625,7 @@ function NewTeamModal({ workspaceId, onClose }: { workspaceId: string; onClose: 
         <ModalBody className="space-y-4">
           <FormField label={t('teams.teamNameLabel')} required>
             <Input
+              autoFocus
               value={name}
               onChange={(e) => {
                 setName(e.target.value)
@@ -703,12 +704,12 @@ function NewTeamModal({ workspaceId, onClose }: { workspaceId: string; onClose: 
           </FormField>
         </ModalBody>
         <ModalFooter>
+          <Button type="button" variant="outline" onClick={onClose}>
+            {t('common:cancel')}
+          </Button>
           <Button type="submit" disabled={create.isPending || !canSubmit}>
             {create.isPending ? <Loader2 size={12} className="animate-spin" /> : null}
             {t('teams.createTeam')}
-          </Button>
-          <Button type="button" variant="outline" onClick={onClose}>
-            {t('common:cancel')}
           </Button>
         </ModalFooter>
       </form>

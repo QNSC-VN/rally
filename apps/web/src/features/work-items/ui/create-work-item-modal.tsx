@@ -5,6 +5,7 @@
  * "Create" stays on backlog; "Create with details" navigates to the detail page.
  */
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Loader2 } from 'lucide-react'
 import { useCreateWorkItem, useBacklog, type WorkItem } from '@/features/work-items/api'
 import { useProjectTeams } from '@/features/teams/api'
@@ -36,6 +37,7 @@ export function CreateWorkItemModal({
   onCreated,
   onCreatedWithDetails,
 }: Props) {
+  const { t } = useTranslation('work-items')
   const { workspace, team } = useAppContext()
   const workspaceId = workspace?.workspaceId ?? ''
   const [type, setType] = useState<CreatableType>('story')
@@ -89,13 +91,13 @@ export function CreateWorkItemModal({
 
   async function submit(withDetails: boolean) {
     if (!title.trim()) {
-      setError('Title is required.')
+      setError(t('create.titleRequired'))
       return
     }
     // SoT: Team is required for a Backlog Work Item and must be one linked to
     // the selected Project (the list is already project-filtered).
     if (!validTeamId) {
-      setTeamError('Team is required.')
+      setTeamError(t('create.teamRequired'))
       return
     }
     setError(null)
@@ -118,7 +120,7 @@ export function CreateWorkItemModal({
         onCreated?.(item)
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to create work item.')
+      setError(e instanceof Error ? e.message : t('create.createFailed'))
     } finally {
       setSubmitting(false)
     }
@@ -136,21 +138,21 @@ export function CreateWorkItemModal({
   }, [])
 
   const TYPE_OPTIONS: { value: CreatableType; label: string }[] = [
-    { value: 'story', label: 'Story' },
-    { value: 'defect', label: 'Defect' },
+    { value: 'story', label: t('types.story') },
+    { value: 'defect', label: t('types.defect') },
   ]
 
   return (
     <AppModal
       open
       onClose={onClose}
-      title="New Work Item"
-      subtitle={type === 'story' ? 'User Story' : 'Defect'}
+      title={t('create.title')}
+      subtitle={type === 'story' ? t('create.subtitleStory') : t('create.subtitleDefect')}
       width={520}
     >
       <ModalBody className="space-y-4">
         {/* Type selector */}
-        <FormField label="Type">
+        <FormField label={t('create.typeLabel')}>
           <div className="flex gap-2">
             {TYPE_OPTIONS.map(({ value, label }) => {
               const cfg = WORK_ITEM_TYPE_CONFIG[value]
@@ -176,20 +178,25 @@ export function CreateWorkItemModal({
         </FormField>
 
         {/* Title — intentionally larger font for primary field */}
-        <FormField label="Title" required htmlFor="wi-title" error={error ?? undefined}>
+        <FormField
+          label={t('create.titleLabel')}
+          required
+          htmlFor="wi-title"
+          error={error ?? undefined}
+        >
           <Input
             id="wi-title"
             ref={titleRef}
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="Enter a concise, descriptive title…"
+            placeholder={t('create.titlePlaceholder')}
             className="text-ui-lg"
           />
         </FormField>
 
         {/* Project — required, default current project (WIC-FR-004) */}
-        <FormField label="Project" required htmlFor="wi-project">
+        <FormField label={t('create.projectLabel')} required htmlFor="wi-project">
           <NativeSelect
             id="wi-project"
             value={selectedProjectId}
@@ -205,13 +212,13 @@ export function CreateWorkItemModal({
 
         {/* Parent Story — Defect only */}
         {type === 'defect' && (
-          <FormField label="Parent Story" htmlFor="wi-parent-story">
+          <FormField label={t('create.parentStoryLabel')} htmlFor="wi-parent-story">
             <NativeSelect
               id="wi-parent-story"
               value={parentStoryId}
               onChange={(e) => setParentStoryId(e.target.value)}
             >
-              <option value="">No parent story</option>
+              <option value="">{t('sidebar.noParentStory')}</option>
               {stories.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.itemKey} — {s.title}
@@ -243,7 +250,7 @@ export function CreateWorkItemModal({
         </div>
 
         {/* Plan estimate */}
-        <FormField label="Plan Estimate (pts)" htmlFor="wi-estimate">
+        <FormField label={t('create.planEstimateLabel')} htmlFor="wi-estimate">
           <Input
             id="wi-estimate"
             type="number"
@@ -251,16 +258,16 @@ export function CreateWorkItemModal({
             step={1}
             value={storyPoints}
             onChange={(e) => setStoryPoints(e.target.value)}
-            placeholder="0"
+            placeholder={t('create.estimatePlaceholder')}
           />
         </FormField>
       </ModalBody>
 
       <ModalFooter className="justify-between">
-        <span className="text-ui-xs text-foreground-subtle">Ctrl+Enter to save</span>
+        <span className="text-ui-xs text-foreground-subtle">{t('create.saveHint')}</span>
         <div className="flex gap-2">
           <Button variant="outline" type="button" onClick={onClose} disabled={submitting}>
-            Cancel
+            {t('common:cancel')}
           </Button>
           <Button
             variant="secondary"
@@ -268,7 +275,7 @@ export function CreateWorkItemModal({
             onClick={() => void submit(true)}
             disabled={submitting || !title.trim()}
           >
-            Create with details
+            {t('create.createWithDetails')}
           </Button>
           <Button
             type="button"
@@ -276,7 +283,7 @@ export function CreateWorkItemModal({
             disabled={submitting || !title.trim()}
           >
             {submitting && <Loader2 size={11} className="animate-spin" />}
-            {submitting ? 'Creating…' : 'Create Item'}
+            {submitting ? t('create.creating') : t('create.createButton')}
           </Button>
         </div>
       </ModalFooter>

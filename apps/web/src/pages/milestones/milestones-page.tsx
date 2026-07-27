@@ -8,7 +8,7 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
-import { AlertTriangle, Plus, Trash2, PackageOpen } from 'lucide-react'
+import { AlertTriangle, Plus, Trash2, PackageOpen, Loader2 } from 'lucide-react'
 import { TimeboxTypeSwitcher } from '@/pages/timeboxes/timebox-type-switcher'
 import { MILESTONE_STATUS_STYLE } from '@/features/milestones/status-colors'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
@@ -253,8 +253,7 @@ function CreateMilestoneModal({ projectId, onClose }: { projectId: string; onClo
         releaseIds: selectedReleases,
         // Manual dates only apply when no Release is linked; when releases are
         // selected the server derives + overrides them, so don't send stale input.
-        targetStartDate:
-          selectedReleases.length === 0 ? targetStartDate || undefined : undefined,
+        targetStartDate: selectedReleases.length === 0 ? targetStartDate || undefined : undefined,
         targetEndDate: selectedReleases.length === 0 ? targetEndDate || undefined : undefined,
       })
       toast.success(t('create.created', { name }))
@@ -298,6 +297,7 @@ function CreateMilestoneModal({ projectId, onClose }: { projectId: string; onClo
             {t('common:cancel')}
           </Button>
           <Button type="submit" disabled={create.isPending || !name.trim()}>
+            {create.isPending && <Loader2 size={12} className="animate-spin" />}
             {create.isPending ? t('create.creating') : t('create.createButton')}
           </Button>
         </ModalFooter>

@@ -480,6 +480,7 @@ export function NewProjectModal({
             values={values}
             onPatch={patch}
             keyEditable
+            autoFocusName
             currentUserId={user?.id}
           />
         </ModalBody>
