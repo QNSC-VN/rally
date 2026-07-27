@@ -14,7 +14,7 @@ export const TIMEZONES = [
 ] as const
 
 export const LOCALES: { value: string; label: string }[] = [
-  { value: 'en', label: 'English (US) — Jul 31, 2026' },
-  { value: 'en-GB', label: 'English (UK) — 31 Jul 2026' },
-  { value: 'vi', label: 'Tiếng Việt — 31 thg 7, 2026' },
+  { value: 'en', label: 'English (US) - Jul 31, 2026' },
+  { value: 'en-GB', label: 'English (UK) - 31 Jul 2026' },
+  { value: 'vi', label: 'Tiếng Việt - 31 thg 7, 2026' },
 ]
