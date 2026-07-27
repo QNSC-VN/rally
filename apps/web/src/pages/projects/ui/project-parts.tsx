@@ -9,7 +9,7 @@ import { DateField } from '@/shared/ui/date-field'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { notify, errorMessage } from '@/shared/lib/toast'
-import { useCreateProject, useUpdateProject, type Project } from '@/features/projects/api'
+import { useCreateProject, type Project } from '@/features/projects/api'
 import { useWorkspaceMembers } from '@/features/workspaces/api'
 import {
   useWorkspaceTeams,
@@ -304,104 +304,6 @@ function ProjectFormFields({
         />
       </FormField>
     </>
-  )
-}
-
-// ── Edit Project modal ───────────────────────────────────────────────────────
-
-export function EditProjectModal({
-  project,
-  workspaceId,
-  onClose,
-}: {
-  project: Project
-  workspaceId: string
-  onClose: () => void
-}) {
-  const { t } = useTranslation('projects')
-  const { user } = useAuthStore()
-  const { data: linkedTeams = [], isLoading: teamsLoading } = useProjectTeams(project.id)
-
-  const [values, setValues] = useState<ProjectFormValues>({
-    name: project.name,
-    key: project.key,
-    description: project.description ?? '',
-    leadId: project.leadId ?? '',
-    startDate: project.startDate ?? '',
-    endDate: project.endDate ?? '',
-    teamIds: [],
-  })
-  // Seed the team selection once the linked teams load (during render, not in
-  // an effect), then diff against this original set on save.
-  const [seeded, setSeeded] = useState(false)
-  if (!teamsLoading && !seeded) {
-    setSeeded(true)
-    setValues((v) => ({ ...v, teamIds: linkedTeams.map((team) => team.id) }))
-  }
-  function patch(p: Partial<ProjectFormValues>) {
-    setValues((v) => ({ ...v, ...p }))
-  }
-
-  const { mutateAsync, isPending } = useUpdateProject()
-  const linkTeam = useLinkProjectTeam(project.id)
-  const unlinkTeam = useUnlinkProjectTeam(project.id)
-  const saving = isPending || linkTeam.isPending || unlinkTeam.isPending
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (values.name.trim().length < 2) return
-    try {
-      await mutateAsync({
-        id: project.id,
-        input: {
-          name: values.name.trim(),
-          description: values.description.trim() || undefined,
-          leadId: values.leadId || null,
-          startDate: values.startDate || null,
-          endDate: values.endDate || null,
-        },
-      })
-      // Diff team links against the originally-loaded set.
-      const original = new Set(linkedTeams.map((team) => team.id))
-      const next = new Set(values.teamIds)
-      const toAdd = values.teamIds.filter((id) => !original.has(id))
-      const toRemove = [...original].filter((id) => !next.has(id))
-      await Promise.all([
-        ...toAdd.map((id) => linkTeam.mutateAsync(id)),
-        ...toRemove.map((id) => unlinkTeam.mutateAsync(id)),
-      ])
-      notify.success(t('edit.updated', { name: values.name }))
-      onClose()
-    } catch (err) {
-      const msg = errorMessage(err)
-      notify.error(msg)
-    }
-  }
-
-  return (
-    <AppModal open onClose={onClose} title={t('edit.title')} width={560}>
-      <form onSubmit={handleSubmit}>
-        <ModalBody className="space-y-4">
-          <ProjectFormFields
-            workspaceId={workspaceId}
-            values={values}
-            onPatch={patch}
-            keyEditable={false}
-            currentUserId={user?.id}
-            autoFocusName
-          />
-        </ModalBody>
-        <ModalFooter>
-          <Button variant="outline" type="button" onClick={onClose}>
-            {t('common:cancel')}
-          </Button>
-          <Button type="submit" disabled={saving || values.name.trim().length < 2}>
-            {saving && <Loader2 size={12} className="animate-spin" />}
-            {t('edit.save')}
-          </Button>
-        </ModalFooter>
-      </form>
-    </AppModal>
   )
 }
 
