@@ -418,5 +418,14 @@
       "added": "Added {{name}}",
       "invalid": "Enter a repository (owner/name)."
     }
+  },
+  "tabDescriptions": {
+    "profile": "Your personal account details and preferences.",
+    "notifications": "Choose how you're notified for each kind of event.",
+    "workspace": "Workspace name, regional defaults, and details.",
+    "members": "Manage who can access this workspace, their role and status.",
+    "teams": "Organize people into teams, assign leads and projects.",
+    "audit": "Review recent activity and changes across the workspace.",
+    "integrations": "Connect GitHub and manage repository sync."
   }
 }

@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { SettingsTabHeader } from './settings-tab-header'
 import { Loader2, RotateCcw } from 'lucide-react'
 
 import { Button } from '@/shared/ui/button'
@@ -69,76 +70,84 @@ export function NotificationsTab() {
   const busy = upsert.isPending || reset.isPending
 
   return (
-    <div className="max-w-2xl space-y-6">
-      <Card>
-        <CardHeader
-          title={t('notifications.sectionTitle')}
-          actions={
-            prefs.length > 0 ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={busy}
-                onClick={() => void resetAll()}
-                title={t('notifications.resetHint')}
+    <>
+      <SettingsTabHeader
+        title={t('nav.notifications')}
+        description={t('tabDescriptions.notifications')}
+      />
+      <div className="flex-1 overflow-y-auto bg-background px-8 py-6">
+        <div className="max-w-2xl space-y-6">
+          <Card>
+            <CardHeader
+              title={t('notifications.sectionTitle')}
+              actions={
+                prefs.length > 0 ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => void resetAll()}
+                    title={t('notifications.resetHint')}
+                  >
+                    {reset.isPending ? (
+                      <Loader2 size={13} className="animate-spin" />
+                    ) : (
+                      <RotateCcw size={13} />
+                    )}
+                    {t('notifications.resetAll')}
+                  </Button>
+                ) : undefined
+              }
+            />
+            <CardBody className="p-0">
+              {/* Column header */}
+              <div
+                className={`${GRID} border-b border-border-subtle bg-surface-hover px-4 py-2 text-ui-xs font-semibold tracking-wide text-foreground-subtle uppercase`}
               >
-                {reset.isPending ? (
-                  <Loader2 size={13} className="animate-spin" />
-                ) : (
-                  <RotateCcw size={13} />
-                )}
-                {t('notifications.resetAll')}
-              </Button>
-            ) : undefined
-          }
-        />
-        <CardBody className="p-0">
-          {/* Column header */}
-          <div
-            className={`${GRID} border-b border-border-subtle bg-surface-hover px-4 py-2 text-ui-xs font-semibold tracking-wide text-foreground-subtle uppercase`}
-          >
-            <span>{t('notifications.colType')}</span>
-            <span className="text-center">{t('notifications.colInApp')}</span>
-            <span className="text-center">{t('notifications.colEmail')}</span>
-          </div>
+                <span>{t('notifications.colType')}</span>
+                <span className="text-center">{t('notifications.colInApp')}</span>
+                <span className="text-center">{t('notifications.colEmail')}</span>
+              </div>
 
-          {isLoading ? (
-            <div className="flex items-center justify-center gap-2 px-4 py-8 text-ui-sm text-foreground-subtle">
-              <Loader2 size={14} className="animate-spin" />
-            </div>
-          ) : (
-            <>
-              {/* Master switch — sits above the per-type rows and applies to all
+              {isLoading ? (
+                <div className="flex items-center justify-center gap-2 px-4 py-8 text-ui-sm text-foreground-subtle">
+                  <Loader2 size={14} className="animate-spin" />
+                </div>
+              ) : (
+                <>
+                  {/* Master switch — sits above the per-type rows and applies to all
                   types unless a specific type below overrides it. */}
-              <PrefRow
-                label={t('notifications.masterName')}
-                desc={t('notifications.masterHint')}
-                inApp={resolve('*', 'inApp')}
-                email={resolve('*', 'email')}
-                disabled={busy}
-                onToggle={(ch) => toggle('*', ch)}
-                emphasis
-                colInApp={t('notifications.colInApp')}
-                colEmail={t('notifications.colEmail')}
-              />
-              {TYPES.map((type) => (
-                <PrefRow
-                  key={type}
-                  label={t(`notifications.types.${type}.label`)}
-                  desc={t(`notifications.types.${type}.desc`)}
-                  inApp={resolve(type, 'inApp')}
-                  email={resolve(type, 'email')}
-                  disabled={busy}
-                  onToggle={(ch) => toggle(type, ch)}
-                  colInApp={t('notifications.colInApp')}
-                  colEmail={t('notifications.colEmail')}
-                />
-              ))}
-            </>
-          )}
-        </CardBody>
-      </Card>
-    </div>
+                  <PrefRow
+                    label={t('notifications.masterName')}
+                    desc={t('notifications.masterHint')}
+                    inApp={resolve('*', 'inApp')}
+                    email={resolve('*', 'email')}
+                    disabled={busy}
+                    onToggle={(ch) => toggle('*', ch)}
+                    emphasis
+                    colInApp={t('notifications.colInApp')}
+                    colEmail={t('notifications.colEmail')}
+                  />
+                  {TYPES.map((type) => (
+                    <PrefRow
+                      key={type}
+                      label={t(`notifications.types.${type}.label`)}
+                      desc={t(`notifications.types.${type}.desc`)}
+                      inApp={resolve(type, 'inApp')}
+                      email={resolve(type, 'email')}
+                      disabled={busy}
+                      onToggle={(ch) => toggle(type, ch)}
+                      colInApp={t('notifications.colInApp')}
+                      colEmail={t('notifications.colEmail')}
+                    />
+                  ))}
+                </>
+              )}
+            </CardBody>
+          </Card>
+        </div>
+      </div>
+    </>
   )
 }
 

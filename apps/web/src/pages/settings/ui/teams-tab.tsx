@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
+import { SettingsTabHeader } from './settings-tab-header'
 import { useTranslation } from 'react-i18next'
 import { useMutation } from '@tanstack/react-query'
 import { Archive, Loader2, Plus } from 'lucide-react'
@@ -82,7 +83,7 @@ const TEAM_COLUMNS: ColumnSpec<Team, TeamCtx, TeamColKey>[] = [
     // scope here — like Users' read-only name).
     cell: (team) => (
       <>
-        <TeamAvatar teamKey={team.key} name={team.name} size={28} />
+        <TeamAvatar teamKey={team.key} name={team.name} size={20} />
         <span className="truncate text-ui-md text-foreground" title={team.name}>
           {team.name}
         </span>
@@ -457,11 +458,7 @@ export function TeamsTab() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      {/* Page header — the tab owns its title (the settings host renders list
-          tabs full-bleed, without the gray page heading). */}
-      <div className="flex shrink-0 items-center justify-between border-b border-border-subtle px-4 py-3">
-        <h2 className="text-ui-lg font-semibold text-foreground">{t('nav.teams')}</h2>
-      </div>
+      <SettingsTabHeader title={t('nav.teams')} description={t('tabDescriptions.teams')} />
 
       {/* Metric strip — Total / Active / Archived. */}
       <div className="flex shrink-0 flex-col gap-4 px-4 pt-4">
