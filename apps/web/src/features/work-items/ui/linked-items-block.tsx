@@ -7,9 +7,11 @@
  * Mirrors the AttachmentBlock layout/readOnly conventions.
  */
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { Link2, Plus, Trash2, X } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
+import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { IconButton } from '@/shared/ui/icon-button'
 import { Input } from '@/shared/ui/input'
 import { NativeSelect } from '@/shared/ui/native-select'
@@ -48,6 +50,7 @@ export function LinkedItemsBlock({
   projectId,
   readOnly = false,
 }: LinkedItemsBlockProps) {
+  const { t } = useTranslation('work-items')
   const navigate = useNavigate()
   const { data: relations = [], isLoading } = useRelations(workItemId)
   const linkMutation = useLinkWorkItem(workItemId)
@@ -58,6 +61,8 @@ export function LinkedItemsBlock({
   const [search, setSearch] = useState('')
   const [hits, setHits] = useState<SearchHit[]>([])
   const [error, setError] = useState<string | null>(null)
+  // Holds the relation id pending an unlink confirmation (null = dialog closed).
+  const [unlinkId, setUnlinkId] = useState<string | null>(null)
 
   // Group relations by their (side-resolved) label for display.
   const grouped = useMemo(() => {
@@ -189,7 +194,7 @@ export function LinkedItemsBlock({
                         variant="destructive"
                         aria-label="Remove link"
                         title="Remove link"
-                        onClick={() => void unlinkMutation.mutate(r.id)}
+                        onClick={() => setUnlinkId(r.id)}
                         disabled={unlinkMutation.isPending}
                       >
                         <Trash2 size={12} />
@@ -202,6 +207,20 @@ export function LinkedItemsBlock({
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!unlinkId}
+        title={t('relations.unlinkTitle', 'Remove link')}
+        message={t('relations.unlinkConfirm', 'Remove this link? You can add it again later.')}
+        confirmLabel={t('relations.unlink', 'Remove link')}
+        pending={unlinkMutation.isPending}
+        onConfirm={() => {
+          const id = unlinkId
+          setUnlinkId(null)
+          if (id) unlinkMutation.mutate(id)
+        }}
+        onCancel={() => setUnlinkId(null)}
+      />
     </div>
   )
 }
