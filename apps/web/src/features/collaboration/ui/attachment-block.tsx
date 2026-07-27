@@ -17,8 +17,10 @@
 import { formatDate, relativeTime, cn } from '@/shared/lib/utils'
 import { useClickOutside } from '@/shared/lib/hooks/use-click-outside'
 import { useRef, useState, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Plus, Settings, Trash2, X } from 'lucide-react'
 import { IconButton } from '@/shared/ui/icon-button'
+import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import {
   useAttachments,
   useUploadAttachment,
@@ -42,6 +44,7 @@ interface AttachmentBlockProps {
 }
 
 export function AttachmentBlock({ workItemId, readOnly = false }: AttachmentBlockProps) {
+  const { t } = useTranslation('work-items')
   const { data: attachments = [], isLoading } = useAttachments(workItemId)
   const uploadMutation = useUploadAttachment(workItemId)
   const deleteMutation = useDeleteAttachment(workItemId)
@@ -50,6 +53,8 @@ export function AttachmentBlock({ workItemId, readOnly = false }: AttachmentBloc
   const [dragging, setDragging] = useState(false)
   const [sizeError, setSizeError] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  // Holds the attachment id pending a delete confirmation (null = dialog closed).
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [menuId, setMenuId] = useState<string | null>(null)
   const menuRef = useClickOutside<HTMLDivElement>(menuId !== null, () => setMenuId(null))
 
@@ -156,7 +161,7 @@ export function AttachmentBlock({ workItemId, readOnly = false }: AttachmentBloc
                               <div className="absolute top-full left-0 z-50 mt-1 w-32 overflow-hidden rounded border border-input bg-card shadow-lg">
                                 <button
                                   type="button"
-                                  onClick={() => void handleDelete(a.id)}
+                                  onClick={() => setConfirmDeleteId(a.id)}
                                   className="flex w-full items-center gap-2 px-3 py-1.5 text-ui-sm text-destructive transition-colors hover:bg-destructive-bg"
                                 >
                                   <Trash2 size={12} /> Delete
@@ -272,6 +277,21 @@ export function AttachmentBlock({ workItemId, readOnly = false }: AttachmentBloc
           </button>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!confirmDeleteId}
+        title={t('attachments.deleteTitle', 'Delete attachment')}
+        message={t('attachments.deleteConfirm', 'Delete this attachment? This cannot be undone.')}
+        confirmLabel={t('attachments.delete', 'Delete')}
+        destructive
+        pending={deleteMutation.isPending}
+        onConfirm={() => {
+          const id = confirmDeleteId
+          setConfirmDeleteId(null)
+          if (id) void handleDelete(id)
+        }}
+        onCancel={() => setConfirmDeleteId(null)}
+      />
     </section>
   )
 }

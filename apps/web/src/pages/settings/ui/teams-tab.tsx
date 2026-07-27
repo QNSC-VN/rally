@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useMutation } from '@tanstack/react-query'
 import { Archive, Loader2, Plus } from 'lucide-react'
 import { BulkBarButton } from '@/shared/ui/bulk-action-bar'
+import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 
 import { BRAND } from '@/shared/config/brand'
 import { apiClient } from '@/shared/api/http-client'
@@ -412,6 +413,8 @@ export function TeamsTab() {
 
   // Row selection over the full filtered roster (bulk actions span pages).
   const selection = useRowSelection(sortedTeams)
+  // Holds the selection pending an archive confirmation (null = dialog closed).
+  const [archiveTarget, setArchiveTarget] = useState<RowSelection | null>(null)
 
   // Bulk archive — archive selected active teams. useUpdateTeam bakes the team
   // id into the hook, so a bulk action over arbitrary selected ids uses a small
@@ -515,7 +518,7 @@ export function TeamsTab() {
           <BulkBarButton
             icon={<Archive size={13} />}
             label={t('teams.bulkArchive')}
-            onClick={() => void archiveSelected(sel)}
+            onClick={() => setArchiveTarget(sel)}
           />
         )}
         empty={
@@ -562,6 +565,23 @@ export function TeamsTab() {
       {showCreate && (
         <NewTeamModal workspaceId={workspaceId} onClose={() => setShowCreate(false)} />
       )}
+
+      <ConfirmDialog
+        open={!!archiveTarget}
+        title={t('teams.archiveTitle', 'Archive teams')}
+        message={t(
+          'teams.archiveConfirm',
+          'Archive the selected teams? You can restore them later.',
+        )}
+        confirmLabel={t('teams.bulkArchive')}
+        pending={archiveTeam.isPending}
+        onConfirm={() => {
+          const sel = archiveTarget
+          setArchiveTarget(null)
+          if (sel) void archiveSelected(sel)
+        }}
+        onCancel={() => setArchiveTarget(null)}
+      />
     </div>
   )
 }

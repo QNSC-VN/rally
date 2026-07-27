@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { Loader2, Mail, Send, UserPlus, UserX, X } from 'lucide-react'
 import { BulkBarButton } from '@/shared/ui/bulk-action-bar'
+import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 
 import { BRAND } from '@/shared/config/brand'
 import { apiClient } from '@/shared/api/http-client'
@@ -464,6 +465,8 @@ export function MembersTab() {
 
   // Row selection over the full filtered roster (bulk actions span pages).
   const selection = useRowSelection(sortedMembers)
+  // Holds the selection pending a deactivate confirmation (null = dialog closed).
+  const [confirmDeactivate, setConfirmDeactivate] = useState<RowSelection | null>(null)
 
   // Bulk action over selected rows — deactivate active members (never the
   // current user). Mirrors the per-user status change in the edit modal.
@@ -621,7 +624,7 @@ export function MembersTab() {
           <BulkBarButton
             icon={<UserX size={13} />}
             label={t('members.bulkDeactivate')}
-            onClick={() => void deactivateSelected(sel)}
+            onClick={() => setConfirmDeactivate(sel)}
           />
         )}
         empty={
@@ -679,6 +682,21 @@ export function MembersTab() {
           onSuccess={() => setShowInviteModal(false)}
         />
       )}
+
+      <ConfirmDialog
+        open={!!confirmDeactivate}
+        title={t('members.deactivateTitle', 'Deactivate members')}
+        message={t('members.deactivateConfirm', 'Deactivate the selected members? They lose access until reactivated.')}
+        confirmLabel={t('members.bulkDeactivate')}
+        destructive
+        pending={bulkUpdate.isPending}
+        onConfirm={() => {
+          const sel = confirmDeactivate
+          setConfirmDeactivate(null)
+          if (sel) void deactivateSelected(sel)
+        }}
+        onCancel={() => setConfirmDeactivate(null)}
+      />
     </div>
   )
 }

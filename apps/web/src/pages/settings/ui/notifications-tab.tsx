@@ -1,8 +1,10 @@
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { SettingsTabHeader } from './settings-tab-header'
 import { Loader2, RotateCcw } from 'lucide-react'
 
 import { Button } from '@/shared/ui/button'
+import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { Card, CardHeader, CardBody } from '@/shared/ui/card'
 import { Switch } from '@/shared/ui/switch'
 import { notify } from '@/shared/lib/toast'
@@ -32,6 +34,8 @@ export function NotificationsTab() {
   const { data: prefs = [], isLoading } = useNotificationPreferences()
   const upsert = useUpsertNotificationPreference()
   const reset = useResetNotificationPreference()
+  // Open state for the reset-all confirmation dialog.
+  const [confirmReset, setConfirmReset] = useState(false)
 
   const byType = new Map(prefs.map((p) => [p.type, p]))
 
@@ -87,7 +91,7 @@ export function NotificationsTab() {
                     variant="ghost"
                     size="sm"
                     disabled={busy}
-                    onClick={() => void resetAll()}
+                    onClick={() => setConfirmReset(true)}
                     title={t('notifications.resetHint')}
                   >
                     {reset.isPending ? (
@@ -148,6 +152,22 @@ export function NotificationsTab() {
           </Card>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmReset}
+        title={t('notifications.resetTitle', 'Reset preferences')}
+        message={t(
+          'notifications.resetConfirm',
+          'Reset all notification preferences to their defaults?',
+        )}
+        confirmLabel={t('notifications.resetAll')}
+        pending={reset.isPending}
+        onConfirm={() => {
+          setConfirmReset(false)
+          void resetAll()
+        }}
+        onCancel={() => setConfirmReset(false)}
+      />
     </>
   )
 }
