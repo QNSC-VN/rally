@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
 import { BRAND } from '@/shared/config/brand'
 import { BulkBarButton } from '@/shared/ui/bulk-action-bar'
+import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { MetricCard } from '@/shared/ui/metric-card'
 import { MetricStrip } from '@/shared/ui/metric-strip'
@@ -268,6 +269,7 @@ function ProjectsBulkBar({
   const { t } = useTranslation('projects')
   const update = useUpdateProject()
   const del = useDeleteProject()
+  const [confirm, setConfirm] = useState<'archive' | 'delete' | null>(null)
   const ids = [...selection.selectedIds]
   const selected = projects.filter((p) => selection.selectedIds.has(p.id))
   const anyActive = selected.some((p) => p.status === 'active')
@@ -289,12 +291,7 @@ function ProjectsBulkBar({
         <BulkBarButton
           icon={<Archive size={13} />}
           label={t('actions.archive')}
-          onClick={() =>
-            void run(
-              (id) => update.mutateAsync({ id, input: { status: 'archived' } }),
-              'toast.archivedN',
-            )
-          }
+          onClick={() => setConfirm('archive')}
         />
       )}
       {anyArchived && (
@@ -313,10 +310,36 @@ function ProjectsBulkBar({
         danger
         icon={<Trash2 size={13} />}
         label={t('bulk.delete')}
-        onClick={() => {
-          if (window.confirm(t('bulk.confirmDelete', { count: ids.length })))
-            void run((id) => del.mutateAsync(id), 'toast.deletedN')
+        onClick={() => setConfirm('delete')}
+      />
+
+      <ConfirmDialog
+        open={confirm === 'archive'}
+        title={t('actions.archive')}
+        message={t('bulk.confirmArchive', {
+          defaultValue: 'Archive {{count}} project(s)? You can restore them later.',
+          count: ids.length,
+        })}
+        confirmLabel={t('actions.archive')}
+        pending={update.isPending}
+        onConfirm={() => {
+          setConfirm(null)
+          void run((id) => update.mutateAsync({ id, input: { status: 'archived' } }), 'toast.archivedN')
         }}
+        onCancel={() => setConfirm(null)}
+      />
+      <ConfirmDialog
+        open={confirm === 'delete'}
+        title={t('bulk.delete')}
+        message={t('bulk.confirmDelete', { count: ids.length })}
+        confirmLabel={t('bulk.delete')}
+        destructive
+        pending={del.isPending}
+        onConfirm={() => {
+          setConfirm(null)
+          void run((id) => del.mutateAsync(id), 'toast.deletedN')
+        }}
+        onCancel={() => setConfirm(null)}
       />
     </div>
   )
