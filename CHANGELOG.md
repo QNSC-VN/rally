@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.3.0](https://github.com/QNSC-VN/rally/compare/v0.2.4...v0.3.0) (2026-07-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* **infra:** develop's cache node is REPLACED, which drops every develop session. BFF sessions live only in the cache, so all develop users must sign in again. Production is unaffected: moved.tf relocates module.cache to module.stack.module.cache as state-only, so its replication group, subnet group and KMS association are untouched.
+* **access:** reconcile RBAC — fix read leaks, 3-role model, catalog + capability viewer ([#183](https://github.com/QNSC-VN/rally/issues/183))
+
+### ✨ Features
+
+* **access:** single PolicyGuard core + migrate releases/milestones/iterations (P2) ([#190](https://github.com/QNSC-VN/rally/issues/190)) ([64343ce](https://github.com/QNSC-VN/rally/commit/64343ce63cae2debef132bb1f9d51dc8319fc6f6))
+* **web:** enterprise-consistent Settings + shared grid/cell polish ([#184](https://github.com/QNSC-VN/rally/issues/184)) ([53cc180](https://github.com/QNSC-VN/rally/commit/53cc18013b1663d58d83041659b26f586c471ee1))
+
+
+### 🐛 Bug Fixes
+
+* **access:** update audit-controller authz test to audit:view ([#188](https://github.com/QNSC-VN/rally/issues/188)) ([5d1ab26](https://github.com/QNSC-VN/rally/commit/5d1ab261ae04228e70bc2764b87435d367d43441))
+* **iterations:** include team-less iterations in the assignment picker ([#194](https://github.com/QNSC-VN/rally/issues/194)) ([e398467](https://github.com/QNSC-VN/rally/commit/e398467656dd121d9854fef321b8ef2c4c9e7d2f))
+* **web:** modal validation errors under their own field + UIUX consistency pass ([#195](https://github.com/QNSC-VN/rally/issues/195)) ([710911a](https://github.com/QNSC-VN/rally/commit/710911a57e868b3a2e23f233027499ae865f112c))
+* **web:** show 0 for zero hours instead of em dash ([#193](https://github.com/QNSC-VN/rally/issues/193)) ([4b9ed99](https://github.com/QNSC-VN/rally/commit/4b9ed991df464e7fab3a59a9394722316843fd5f))
+
+
+### ♻️ Refactors
+
+* **access:** reconcile RBAC — fix read leaks, 3-role model, catalog + capability viewer ([#183](https://github.com/QNSC-VN/rally/issues/183)) ([0e476a3](https://github.com/QNSC-VN/rally/commit/0e476a3e823d2e9b06775d95cef22a6bf89be3fc))
+* **infra:** unify the cache into the stack module, harden prod RDS ([#191](https://github.com/QNSC-VN/rally/issues/191)) ([f73abb7](https://github.com/QNSC-VN/rally/commit/f73abb730e21cbaf384e4ed6f5ca9a046128e679))
+
 ## [0.2.4](https://github.com/QNSC-VN/rally/compare/v0.2.3...v0.2.4) (2026-07-26)
 
 
