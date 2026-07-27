@@ -133,7 +133,13 @@ const makeRelationRepo = () => ({
 const makeActivityRepo = () => ({
   build: vi.fn(
     (
-      subject: { workspaceId: string; projectId: string; entityType: string; entityId: string; contextId?: string | null },
+      subject: {
+        workspaceId: string;
+        projectId: string;
+        entityType: string;
+        entityId: string;
+        contextId?: string | null;
+      },
       actorId: string | null,
       action: string,
       changes: unknown = null,
@@ -693,7 +699,7 @@ describe('WorkItemsService', () => {
       );
     });
 
-    it('never reverts a parent already Accepted when a child task reopens', async () => {
+    it('reverts an Accepted parent to In-Progress when a child task reopens (P3-TS-FR-041; Accepted is not exempt)', async () => {
       const task = mockWorkItem({
         id: 'task-1',
         type: 'task',
@@ -708,9 +714,9 @@ describe('WorkItemsService', () => {
 
       await service.updateWorkItem(mockActor, 'task-1', { scheduleState: 'in_progress' });
 
-      expect(workItemRepo.update).not.toHaveBeenCalledWith(
+      expect(workItemRepo.update).toHaveBeenCalledWith(
         'parent-1',
-        expect.anything(),
+        expect.objectContaining({ scheduleState: 'in_progress' }),
         'ws-1',
         expect.anything(),
       );
@@ -829,9 +835,9 @@ describe('WorkItemsService', () => {
           mockWorkItem({ id: 'c-1', type: childType, parentId: null }),
           mockWorkItem({ id: 'p-1', type: 'story' }),
         );
-        await expect(
-          service.updateWorkItem(mockActor, 'c-1', { parentId: 'p-1' }),
-        ).rejects.toThrow(/only defects and tasks/i);
+        await expect(service.updateWorkItem(mockActor, 'c-1', { parentId: 'p-1' })).rejects.toThrow(
+          /only defects and tasks/i,
+        );
         expect(workItemRepo.update).not.toHaveBeenCalled();
       },
     );
@@ -894,9 +900,7 @@ describe('WorkItemsService', () => {
     it('rejects the same relation in the reverse direction (GAP-7)', async () => {
       workItemRepo.findById.mockResolvedValue(mockWorkItem());
       // Forward (wi-1 → wi-2) does not exist, but the reverse (wi-2 → wi-1) does.
-      relationRepo.exists.mockImplementation((src: string) =>
-        Promise.resolve(src === 'wi-2'),
-      );
+      relationRepo.exists.mockImplementation((src: string) => Promise.resolve(src === 'wi-2'));
       await expect(service.linkWorkItem(mockActor, 'wi-1', 'wi-2', 'blocks')).rejects.toThrow(
         /opposite direction/i,
       );
