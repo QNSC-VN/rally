@@ -245,15 +245,7 @@ function ProjectTreeItem({
 }
 
 export function AppShell() {
-  const {
-    user,
-    hasPermission,
-    clearAuth,
-    memberships,
-    activeWorkspaceId,
-    switchWorkspace,
-    isSwitchingWorkspace,
-  } = useAuthStore()
+  const { user, hasPermission, clearAuth, memberships, activeWorkspaceId } = useAuthStore()
   const { workspace, project, team, setWorkspace, setProject, setTeam } = useAppContext()
   const navigate = useNavigate()
   const routerState = useRouterState()
@@ -470,38 +462,8 @@ export function AppShell() {
                   </span>
                 </div>
 
-                {/* Switch workspace — only when user has multiple workspaces */}
-                {memberships.length > 1 && (
-                  <div className="border-b border-border-subtle px-3 pt-2 pb-1">
-                    <div className="mb-1 text-ui-2xs font-semibold tracking-widest text-foreground-subtle uppercase">
-                      Switch Workspace
-                    </div>
-                    {memberships
-                      .filter((m) => m.workspaceId !== activeWorkspaceId)
-                      .map((m) => (
-                        <button
-                          key={m.workspaceId}
-                          disabled={isSwitchingWorkspace}
-                          onClick={async () => {
-                            await switchWorkspace(m.workspaceId)
-                            closeAll()
-                            window.location.reload()
-                          }}
-                          className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-left hover:bg-surface-subtle disabled:opacity-50"
-                        >
-                          <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-avatar text-ui-2xs font-bold text-primary">
-                            {m.name[0].toUpperCase()}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="truncate text-ui-md text-foreground">{m.name}</div>
-                            {m.roleName && (
-                              <div className="text-ui-xs text-foreground-subtle">{m.roleName}</div>
-                            )}
-                          </div>
-                        </button>
-                      ))}
-                  </div>
-                )}
+                {/* Single-company MVP: no workspace switcher (COMPANY-FR-010 /
+                    SHELL-FR-002). The current workspace is shown above, read-only. */}
 
                 <div className="px-3 py-2 text-ui-sm text-muted-foreground">
                   {/* Projects & Teams — searchable, scrollable accordion tree.
