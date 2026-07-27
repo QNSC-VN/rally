@@ -27,6 +27,27 @@ locals {
   # unconditionally, so a plaintext scheme would simply fail to connect.
   redis_url = "rediss://${module.cache.endpoint}:${module.cache.port}"
 
+  # Computed, not read from `module.api.log_group_name`, to break a dependency
+  # cycle: the agent needs a log group, the api needs the agent's container
+  # definition, and the api is what creates the log group. `ecs-service` names it
+  # `/ecs/<cluster>-<service>` deterministically, and the `check` blocks at the
+  # bottom of this file fail the plan if that convention ever changes.
+  api_log_group    = "/ecs/${local.name}-api"
+  worker_log_group = "/ecs/${local.name}-worker"
+
+  # Telemetry env shared by api and worker. Both must agree, or the two halves of
+  # one trace land under different environments or sampling ratios.
+  otel_env = [
+    # DEPLOYMENT_ENV, not NODE_ENV. NODE_ENV is pinned to "production" in DEVELOP
+    # too (see the env-flag notes in CLAUDE.md), so deriving deployment identity
+    # from it labelled every develop span, metric and log as production.
+    { name = "DEPLOYMENT_ENV", value = var.env },
+    # Terraform already knows the deployed tag, so `service.version` needs no CI
+    # plumbing. Prod pins a release tag; develop is honestly "latest".
+    { name = "SERVICE_VERSION", value = var.image_tag },
+    { name = "OTEL_SAMPLING_PROBABILITY", value = tostring(var.observability.sampling_probability) },
+  ]
+
   ecr_base         = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.region}.amazonaws.com"
   ecr_api_url      = "${local.ecr_base}/${var.product}-api:${var.image_tag}"
   ecr_worker_url   = "${local.ecr_base}/${var.product}-worker:${var.image_tag}"
@@ -96,6 +117,12 @@ module "secrets" {
     # Terraform — re-mint with both buckets selected when adding a bucket.
     "r2-access-key-id"     = "Cloudflare R2 access key ID (attachments + public-assets)"
     "r2-secret-access-key" = "Cloudflare R2 secret access key (attachments + public-assets)"
+    # The COMPLETE Authorization header the collector sidecar sends upstream, e.g.
+    # `Basic base64(instanceID:token)` — not the bare token. Assembling it in
+    # Terraform would put the instance id in state and the credential in the
+    # collector's plaintext config. Empty until a telemetry backend exists, which
+    # keeps the whole OTel path dormant.
+    "observability-token" = "Authorization header for the OTLP backend (e.g. 'Basic <base64>')"
   }
 
   tags = local.tags
@@ -141,6 +168,37 @@ module "cache" {
   node_type = var.cache.node_type
 
   tags = local.tags
+}
+
+# ── Telemetry collector sidecars ──────────────────────────────────────────────
+# One per service: each needs its own log group, and a sidecar can only ever see
+# the task it lives in.
+#
+# Both are a NO-OP until `observability.otlp_endpoint` is set AND the
+# `observability-token` secret holds a value — the module returns empty lists, and
+# `OTEL_ENABLED` below is gated on the same flag, so the app is never told to
+# export into a void. That is what makes turning telemetry on a one-line change
+# per environment rather than a migration.
+module "otel_agent_api" {
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/observability-agent?ref=observability-agent-v1.0.0"
+
+  product          = var.product
+  env              = var.env
+  otlp_endpoint    = var.observability.otlp_endpoint
+  token_secret_arn = module.secrets.secret_arns["observability-token"]
+  log_group        = local.api_log_group
+  region           = var.region
+}
+
+module "otel_agent_worker" {
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/observability-agent?ref=observability-agent-v1.0.0"
+
+  product          = var.product
+  env              = var.env
+  otlp_endpoint    = var.observability.otlp_endpoint
+  token_secret_arn = module.secrets.secret_arns["observability-token"]
+  log_group        = local.worker_log_group
+  region           = var.region
 }
 
 # ── Messaging (SQS + SNS) ─────────────────────────────────────────────────────
@@ -243,7 +301,7 @@ module "api" {
     { name = "STORAGE_SECRET_ACCESS_KEY", secret_arn = module.secrets.secret_arns["r2-secret-access-key"] },
   ]
 
-  environment_vars = [
+  environment_vars = concat([
     { name = "NODE_ENV", value = "production" },
     { name = "PORT", value = "3000" },
     { name = "REDIS_URL", value = local.redis_url },
@@ -304,9 +362,16 @@ module "api" {
     # Observability
     { name = "LOG_LEVEL", value = "info" },
     { name = "LOG_PRETTY", value = "false" },
-    { name = "OTEL_ENABLED", value = "false" },
     { name = "OTEL_SERVICE_NAME", value = "${var.product}-api" },
-  ]
+    # Gated on the sidecar actually existing, so the app can never export into a
+    # void. False until observability.otlp_endpoint is set.
+    { name = "OTEL_ENABLED", value = tostring(module.otel_agent_api.enabled) },
+    { name = "OTEL_EXPORTER_OTLP_ENDPOINT", value = module.otel_agent_api.endpoint },
+  ], local.otel_env)
+
+  # Merged into the task definition; reachable from the app at 127.0.0.1 via the
+  # shared task network namespace. Empty list until a backend is configured.
+  additional_containers = module.otel_agent_api.container_definitions
 
   sqs_queue_arns = values(module.messaging.queue_arns)
   sns_topic_arns = values(module.messaging.topic_arns)
@@ -398,7 +463,7 @@ module "worker" {
     module.secrets.secret_arns["github-app-private-key"],
   ]
 
-  environment_vars = [
+  environment_vars = concat([
     { name = "NODE_ENV", value = "production" },
     { name = "REDIS_URL", value = local.redis_url },
     { name = "AWS_REGION", value = var.region },
@@ -437,9 +502,16 @@ module "worker" {
     { name = "EMAIL_PROVIDER", value = "ses" },
     { name = "LOG_LEVEL", value = "info" },
     { name = "LOG_PRETTY", value = "false" },
-    { name = "OTEL_ENABLED", value = "false" },
     { name = "OTEL_SERVICE_NAME", value = "${var.product}-worker" },
-  ]
+    # Gated on the sidecar actually existing, so the app can never export into a
+    # void. False until observability.otlp_endpoint is set.
+    { name = "OTEL_ENABLED", value = tostring(module.otel_agent_worker.enabled) },
+    { name = "OTEL_EXPORTER_OTLP_ENDPOINT", value = module.otel_agent_worker.endpoint },
+  ], local.otel_env)
+
+  # Merged into the task definition; reachable from the app at 127.0.0.1 via the
+  # shared task network namespace. Empty list until a backend is configured.
+  additional_containers = module.otel_agent_worker.container_definitions
 
   sqs_queue_arns = values(module.messaging.queue_arns)
   sns_topic_arns = values(module.messaging.topic_arns)
@@ -621,4 +693,27 @@ resource "aws_cloudwatch_metric_alarm" "security_fail_open" {
 
   alarm_actions = [module.observability.alarm_topic_arn]
   ok_actions    = [module.observability.alarm_topic_arn]
+}
+
+# ── Guard: the sidecar log groups must match the ones ecs-service creates ──────
+# `local.{api,worker}_log_group` is COMPUTED rather than read from
+# `module.<svc>.log_group_name`, because reading it would form a cycle: the agent
+# needs a log group, the service needs the agent's container definition, and the
+# service is what creates the log group.
+#
+# That means this stack now depends on `ecs-service` naming its log group
+# `/ecs/<cluster>-<service>`. A `check` block is evaluated AFTER the resources it
+# references, so it can assert the coupling without recreating the cycle. If a
+# future ecs-service release renames the group, the collector would silently log
+# into a group nobody reads — this turns that into a loud failure instead.
+check "otel_agent_log_groups_match_services" {
+  assert {
+    condition     = local.api_log_group == module.api.log_group_name
+    error_message = "api sidecar log group '${local.api_log_group}' != '${module.api.log_group_name}'. ecs-service changed its log-group naming; update local.api_log_group."
+  }
+
+  assert {
+    condition     = local.worker_log_group == module.worker.log_group_name
+    error_message = "worker sidecar log group '${local.worker_log_group}' != '${module.worker.log_group_name}'. ecs-service changed its log-group naming; update local.worker_log_group."
+  }
 }

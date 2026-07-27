@@ -101,6 +101,15 @@ module "stack" {
     use_spot  = true
   }
 
+  // Telemetry stays DORMANT until otlp_endpoint is set: no sidecar, OTEL_ENABLED
+  // false. Set the `observability-token` secret FIRST, then this.
+  observability = {
+    otlp_endpoint = var.otlp_endpoint
+    // Full fidelity: develop volume is trivial, and validating the
+    // instrumentation is the reason to enable it here at all.
+    sampling_probability = 1.0
+  }
+
   alarm_emails          = var.alarm_emails
   cloudflare_account_id = var.cloudflare_account_id
 }

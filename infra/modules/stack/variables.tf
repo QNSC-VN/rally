@@ -183,6 +183,30 @@ variable "worker" {
   })
 }
 
+variable "observability" {
+  description = <<-EOT
+    Telemetry export. `otlp_endpoint` is the master switch: while it is empty no
+    collector sidecar is created, `OTEL_ENABLED` stays false, and the whole OTel
+    path is dormant — so this can be adopted before a backend exists.
+
+    Turning it on is two steps, in this order:
+      1. put the Authorization header in the `observability-token` secret
+      2. set `otlp_endpoint` here
+    Reversing them starts a collector that cannot authenticate.
+
+    `sampling_probability` is HEAD sampling, the only lever the SDK has alone.
+    1.0 in develop (volume is trivial and full fidelity is the point of enabling it
+    there); lower in production for cost. Be aware that anything below 1.0 drops
+    most ERROR traces too — keeping all errors needs tail sampling, which needs a
+    gateway that sees whole traces, not a per-task sidecar.
+  EOT
+  type = object({
+    otlp_endpoint        = optional(string, "")
+    sampling_probability = optional(number, 1.0)
+  })
+  default = {}
+}
+
 variable "alarm_emails" {
   description = "Addresses subscribed to the alarm topic. Terraform creates the subscription; each recipient must still confirm by email."
   type        = list(string)

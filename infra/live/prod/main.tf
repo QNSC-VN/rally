@@ -113,6 +113,15 @@ module "stack" {
     use_spot  = false
   }
 
+  // Telemetry stays DORMANT until otlp_endpoint is set: no sidecar, OTEL_ENABLED
+  // false. Set the `observability-token` secret FIRST, then this.
+  observability = {
+    otlp_endpoint = var.otlp_endpoint
+    // Cost control. Note this drops most ERROR traces too — keeping every
+    // error needs tail sampling, which needs a gateway, not a sidecar.
+    sampling_probability = 0.1
+  }
+
   alarm_emails          = var.alarm_emails
   cloudflare_account_id = var.cloudflare_account_id
 }
