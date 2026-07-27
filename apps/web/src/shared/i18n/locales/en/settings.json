@@ -65,6 +65,7 @@
     "sectionFormatting": "Regional defaults",
     "sectionDetails": "Details",
     "slugLabel": "Slug",
+    "slugHint": "A short, URL-safe identifier for this workspace. Set at creation and can't be changed.",
     "adminLabel": "Workspace admin",
     "nameLabel": "Workspace name",
     "namePlaceholder": "Acme Corp",

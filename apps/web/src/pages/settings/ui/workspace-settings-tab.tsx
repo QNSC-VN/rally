@@ -19,6 +19,7 @@ import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
+import { OwnerAvatar } from '@/shared/ui/owner-cell'
 import { TIMEZONES, LOCALES } from '@/shared/config/formatting-options'
 
 export function WorkspaceSettingsTab() {
@@ -108,9 +109,9 @@ export function WorkspaceSettingsTab() {
             <Card>
               <CardHeader title={t('workspace.sectionFormatting')} />
               <CardBody className="space-y-4">
-                <p className="text-ui-sm text-foreground-subtle">{t('workspace.defaultsHint')}</p>
                 <FormField label={t('workspace.defaultTimezone')}>
                   <SearchableSelect
+                    variant="field"
                     value={timezone}
                     ariaLabel={t('workspace.defaultTimezone')}
                     options={TIMEZONES.map((tz) => ({ value: tz, label: tz }))}
@@ -119,6 +120,7 @@ export function WorkspaceSettingsTab() {
                 </FormField>
                 <FormField label={t('workspace.defaultLocale')}>
                   <SearchableSelect
+                    variant="field"
                     value={locale}
                     ariaLabel={t('workspace.defaultLocale')}
                     options={LOCALES}
@@ -139,17 +141,42 @@ export function WorkspaceSettingsTab() {
           {/* Read-only identity — mirrors the Profile tab's Account card. */}
           <Card>
             <CardHeader title={t('workspace.sectionDetails')} />
-            <CardBody>
-              <dl className="grid grid-cols-[130px_1fr] gap-x-3 gap-y-2.5 text-ui-md">
-                <dt className="text-foreground-subtle">{t('workspace.slugLabel')}</dt>
-                <dd className="font-mono text-foreground">
+            <CardBody className="divide-y divide-border-subtle">
+              {/* Slug — a URL-safe identifier, shown as a mono pill with a hint. */}
+              <div className="flex items-start justify-between gap-4 pb-4">
+                <div className="min-w-0">
+                  <p className="text-ui-md font-medium text-foreground">
+                    {t('workspace.slugLabel')}
+                  </p>
+                  <p className="mt-0.5 text-ui-sm text-foreground-subtle">
+                    {t('workspace.slugHint')}
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-md border border-input bg-surface-subtle px-2 py-0.5 font-mono text-ui-sm text-foreground">
                   {current?.slug ?? workspace?.workspaceSlug ?? '—'}
-                </dd>
-                <dt className="text-foreground-subtle">{t('workspace.adminLabel')}</dt>
-                <dd className="text-foreground">
-                  {admins.length === 0 ? '—' : admins.map((a) => a.displayName).join(', ')}
-                </dd>
-              </dl>
+                </span>
+              </div>
+              {/* Admins — avatar chips. */}
+              <div className="flex items-start justify-between gap-4 pt-4">
+                <p className="text-ui-md font-medium text-foreground">
+                  {t('workspace.adminLabel')}
+                </p>
+                <div className="flex min-w-0 flex-wrap justify-end gap-1.5">
+                  {admins.length === 0 ? (
+                    <span className="text-ui-md text-foreground-subtle">—</span>
+                  ) : (
+                    admins.map((a) => (
+                      <span
+                        key={a.userId}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-border-subtle bg-surface-subtle py-0.5 pr-2.5 pl-0.5 text-ui-sm text-foreground"
+                      >
+                        <OwnerAvatar name={a.displayName ?? a.email ?? undefined} size={18} />
+                        <span className="truncate">{a.displayName ?? a.email}</span>
+                      </span>
+                    ))
+                  )}
+                </div>
+              </div>
             </CardBody>
           </Card>
         </div>
