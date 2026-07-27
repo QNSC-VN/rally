@@ -37,9 +37,9 @@ interface CapabilityGroup {
 
 const CAPABILITIES: CapabilityGroup[] = [
   {
-    group: 'Company',
+    group: 'Workspace',
     rows: [
-      { label: 'Company settings', view: 'workspace:view', manage: 'workspace:edit' },
+      { label: 'Workspace settings', view: 'workspace:view', manage: 'workspace:edit' },
       { label: 'People & invitations', manage: 'users:invite' },
       { label: 'Roles & permissions', view: 'roles:view', manage: 'roles:edit' },
       { label: 'Teams', manage: 'teams:create', openView: true },
