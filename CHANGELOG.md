@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.3.1](https://github.com/QNSC-VN/rally/compare/v0.3.0...v0.3.1) (2026-07-27)
+
+
+### ✨ Features
+
+* **access:** [P2] migrate projects/workflow/quality/access onto PolicyGuard ([#199](https://github.com/QNSC-VN/rally/issues/199)) ([0fc050e](https://github.com/QNSC-VN/rally/commit/0fc050eae0b55241f74c99f9e3e1524c41a91cfa))
+* **access:** [P2] migrate reporting/collaboration/team-status onto PolicyGuard ([#203](https://github.com/QNSC-VN/rally/issues/203)) ([3e73fb1](https://github.com/QNSC-VN/rally/commit/3e73fb1613a512be9b72a58f913f531fa8910c8d))
+* **access:** [P2] migrate work-items onto the single PolicyGuard ([#198](https://github.com/QNSC-VN/rally/issues/198)) ([23fe903](https://github.com/QNSC-VN/rally/commit/23fe9039a0dd3780fbbbe03ae2b51d8c1447d9d1))
+* **access:** custom roles — backend CRUD (Phase 1) ([#207](https://github.com/QNSC-VN/rally/issues/207)) ([911860a](https://github.com/QNSC-VN/rally/commit/911860a584ffd06019352e11c9bd45fa3e312264))
+* **infra:** wire the OpenTelemetry collector so telemetry can be switched on ([#211](https://github.com/QNSC-VN/rally/issues/211)) ([c9535a7](https://github.com/QNSC-VN/rally/commit/c9535a7ff55ab5f2b18efe72e122a8d18cf93ee8))
+* **web:** consistent settings tab headers, identity cells and roles polish ([#201](https://github.com/QNSC-VN/rally/issues/201)) ([1f04076](https://github.com/QNSC-VN/rally/commit/1f04076b6cb96022ac9aaf2386932e2e9532b6c0))
+* **web:** custom roles editor — inline matrix (Phase 2) ([#213](https://github.com/QNSC-VN/rally/issues/213)) ([ae1695b](https://github.com/QNSC-VN/rally/commit/ae1695bcc68dcc66b2ed088354f9ec14f79cf79d))
+* **web:** unify Integrations sections on the Card standard ([#206](https://github.com/QNSC-VN/rally/issues/206)) ([7d9f69c](https://github.com/QNSC-VN/rally/commit/7d9f69c302853c493c01d56386d85fc5e03c8204))
+* **workspace:** resend workspace invitation ([#209](https://github.com/QNSC-VN/rally/issues/209)) ([b319090](https://github.com/QNSC-VN/rally/commit/b31909091203c854fadd4439237ba1ed4fe019ed))
+
+
+### 🐛 Bug Fixes
+
+* **web:** drop redundant timebox Type selector + unify History tab label ([#214](https://github.com/QNSC-VN/rally/issues/214)) ([0aece0b](https://github.com/QNSC-VN/rally/commit/0aece0b1095bdf70f4fced3df895c8ba905d5a6a))
+* **web:** route modal server errors to a form-level banner ([#196](https://github.com/QNSC-VN/rally/issues/196)) ([486c1b3](https://github.com/QNSC-VN/rally/commit/486c1b30a164606de6816a01c31ab96d1a4b94a4))
+
+
+### ♻️ Refactors
+
+* **access:** [P2] delete the dead ProjectPermissionGuard ([#204](https://github.com/QNSC-VN/rally/issues/204)) ([6e8c322](https://github.com/QNSC-VN/rally/commit/6e8c322f7a89e90da67dd47d96d8b56bcbce8ad8))
+* **web:** standardize fonts on the ui type scale + ratchet ([#202](https://github.com/QNSC-VN/rally/issues/202)) ([9c289f9](https://github.com/QNSC-VN/rally/commit/9c289f924ace0c90648e650ea34fb49866a6ee8a))
+
 ## [0.3.0](https://github.com/QNSC-VN/rally/compare/v0.2.4...v0.3.0) (2026-07-27)
 
 
