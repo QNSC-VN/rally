@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components -- QUALITY_COLUMNS is config that must co-locate with the cell renderers it references */
 import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Loader2 } from 'lucide-react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 
@@ -708,6 +709,7 @@ export function LogDefectModal({ projectId, onClose }: { projectId: string; onCl
             {t('common:cancel')}
           </Button>
           <Button type="submit" disabled={createDefect.isPending || !title.trim()}>
+            {createDefect.isPending && <Loader2 size={12} className="animate-spin" />}
             {createDefect.isPending ? t('create.logging') : t('logDefect')}
           </Button>
         </ModalFooter>

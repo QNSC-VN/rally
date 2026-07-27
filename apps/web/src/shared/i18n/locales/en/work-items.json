@@ -19,6 +19,25 @@
     "normal": "Normal",
     "low": "Low"
   },
+  "create": {
+    "title": "New Work Item",
+    "subtitleStory": "User Story",
+    "subtitleDefect": "Defect",
+    "typeLabel": "Type",
+    "titleLabel": "Title",
+    "titlePlaceholder": "Enter a concise, descriptive title…",
+    "projectLabel": "Project",
+    "parentStoryLabel": "Parent Story",
+    "planEstimateLabel": "Plan Estimate (pts)",
+    "estimatePlaceholder": "0",
+    "saveHint": "Ctrl+Enter to save",
+    "titleRequired": "Title is required.",
+    "teamRequired": "Team is required.",
+    "createFailed": "Failed to create work item.",
+    "creating": "Creating…",
+    "createButton": "Create Item",
+    "createWithDetails": "Create with details"
+  },
   "notFound": "Work item \"{{key}}\" not found.",
   "backToBacklog": "← Back to Backlog",
   "watch": {
@@ -48,7 +67,24 @@
     "subtitle": "Break this work item into trackable delivery tasks.",
     "add": "Add Task",
     "totals": "Totals",
-    "emptyTitle": "No tasks yet"
+    "emptyTitle": "No tasks yet",
+    "create": {
+      "title": "Create Task",
+      "subtitle": "Create a child task under this work item.",
+      "nameLabel": "Name",
+      "namePlaceholder": "Enter task name",
+      "estimateLabel": "Estimate (hrs)",
+      "estimatePlaceholder": "0",
+      "todoLabel": "To Do (hrs)",
+      "todoPlaceholder": "= Estimate",
+      "actualLabel": "Actuals (hrs)",
+      "actualPlaceholder": "0",
+      "nameRequired": "Name is required.",
+      "createFailed": "Failed to create task.",
+      "creating": "Creating…",
+      "createButton": "Create Task",
+      "createWithDetails": "Create with details"
+    }
   },
   "history": {
     "subtitle": "Activity log for field changes, task updates, and work item creation.",

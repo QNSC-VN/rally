@@ -26,11 +26,7 @@ import { usePendingPatch } from '@/shared/lib/hooks/use-pending-patch'
 import { DetailLayout, DetailTwoPane } from '@/shared/ui/detail/detail-layout'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { IterationHistoryTab } from './iteration-history-tab'
-import {
-  DetailField,
-  DetailFieldPair,
-  DetailReadonlyValue,
-} from '@/shared/ui/detail/detail-field'
+import { DetailField, DetailFieldPair, DetailReadonlyValue } from '@/shared/ui/detail/detail-field'
 import { Spinner } from '@/shared/ui/spinner'
 import {
   useIteration,
@@ -69,7 +65,14 @@ export function CreateIterationModal({
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [state, setState] = useState<IterationState>('planning')
-  const [error, setError] = useState<string | null>(null)
+  // Per-field validation errors render under their own field; `form` is a
+  // modal-level error (server/submit failures not tied to one input).
+  const [errors, setErrors] = useState<{
+    name?: string
+    startDate?: string
+    endDate?: string
+    form?: string
+  }>({})
 
   // A pre-filled/inherited team that isn't linked to the selected project is
   // treated as unset so the create can't be rejected with
@@ -83,19 +86,15 @@ export function CreateIterationModal({
   }
 
   async function submit(openDetail: boolean) {
-    setError(null)
-    if (!name.trim()) {
-      setError(t('create.nameRequired'))
+    const next: typeof errors = {}
+    if (!name.trim()) next.name = t('create.nameRequired')
+    if (!startDate) next.startDate = t('create.startDateRequired')
+    if (!endDate) next.endDate = t('create.endDateRequired')
+    if (Object.keys(next).length > 0) {
+      setErrors(next)
       return
     }
-    if (!startDate) {
-      setError(t('create.startDateRequired'))
-      return
-    }
-    if (!endDate) {
-      setError(t('create.endDateRequired'))
-      return
-    }
+    setErrors({})
     try {
       const it = await create.mutateAsync({
         projectId: selectedProjectId,
@@ -110,7 +109,7 @@ export function CreateIterationModal({
       else onClose()
     } catch (e) {
       const msg = e instanceof Error ? e.message : t('create.createFailed')
-      setError(msg)
+      setErrors({ form: msg })
       notify.error(msg)
     }
   }
@@ -118,7 +117,12 @@ export function CreateIterationModal({
   return (
     <AppModal open onClose={onClose} title={t('create.title')} width={480}>
       <ModalBody className="space-y-4">
-        <FormField label={t('common:name')} required error={error ?? undefined}>
+        {errors.form && (
+          <p role="alert" className="text-ui-sm text-destructive">
+            {errors.form}
+          </p>
+        )}
+        <FormField label={t('common:name')} required error={errors.name}>
           <Input
             autoFocus
             value={name}
@@ -160,7 +164,7 @@ export function CreateIterationModal({
           />
         </FormField>
         <div className="grid grid-cols-2 gap-4">
-          <FormField label={t('create.startDateLabel')} required>
+          <FormField label={t('create.startDateLabel')} required error={errors.startDate}>
             <DateField
               variant="field"
               value={startDate || null}
@@ -168,7 +172,7 @@ export function CreateIterationModal({
               onChange={(v) => setStartDate(v ?? '')}
             />
           </FormField>
-          <FormField label={t('create.endDateLabel')} required>
+          <FormField label={t('create.endDateLabel')} required error={errors.endDate}>
             <DateField
               variant="field"
               value={endDate || null}
@@ -277,7 +281,8 @@ export function IterationDetail({
     if (!it || v === it.state) return
     void update.mutateAsync({ state: v as IterationState }).then(
       () => notify.success(t('detail.stateUpdated', 'State updated')),
-      (e: unknown) => notify.error(e instanceof Error ? e.message : t('detail.saveFailed', 'Failed to save')),
+      (e: unknown) =>
+        notify.error(e instanceof Error ? e.message : t('detail.saveFailed', 'Failed to save')),
     )
   }
 
@@ -334,116 +339,118 @@ export function IterationDetail({
           </div>
         ) : (
           <>
-        <DetailTwoPane
-          sidebarTitle={t('detail.details')}
-          main={
-            <>
-              {canManage && it.state !== 'accepted' && (
-                <p className="text-ui-md text-muted-foreground">
-                  {it.state === 'planning'
-                    ? t('detail.planningHint')
-                    : t('detail.unfinishedHint', { count: unfinishedCount })}
-                </p>
-              )}
-              <CapacityStrip metrics={status?.metrics} scopeCount={scopeItems.length} />
-              <IterationScope
-                items={scopeItems}
-                memberName={memberName}
-                onOpen={(itemKey) => navigate({ to: '/item/$itemKey', params: { itemKey } })}
-              />
-              <RichTextEditor
-                title={t('detail.themeLabel')}
-                value={vit.theme}
-                minHeight={200}
-                readOnly={disabled}
-                onChange={(html) => setField({ theme: html || null })}
-              />
-              <RichTextEditor
-                title={t('detail.notesLabel')}
-                value={vit.notes}
-                minHeight={160}
-                readOnly={disabled}
-                onChange={(html) => setField({ notes: html || null })}
-              />
-            </>
-          }
-          sidebar={
-            <div className="space-y-4">
-              <DetailField label={t('detail.projectLabel')}>
-                <DetailReadonlyValue>{project?.projectName ?? '—'}</DetailReadonlyValue>
-              </DetailField>
-
-              <TeamSelectField
-                label={t('detail.teamLabel')}
-                value={vit.teamId}
-                onChange={(v) => setField({ teamId: v || null })}
-                teams={teams}
-                disabled={disabled}
-                placeholder={t('detail.noTeam')}
-              />
-
-              <DetailFieldPair>
-                <DetailField label={t('detail.startDateLabel')}>
-                  <DateField
-                    variant="field"
-                    value={vit.startDate}
+            <DetailTwoPane
+              sidebarTitle={t('detail.details')}
+              main={
+                <>
+                  {canManage && it.state !== 'accepted' && (
+                    <p className="text-ui-md text-muted-foreground">
+                      {it.state === 'planning'
+                        ? t('detail.planningHint')
+                        : t('detail.unfinishedHint', { count: unfinishedCount })}
+                    </p>
+                  )}
+                  <CapacityStrip metrics={status?.metrics} scopeCount={scopeItems.length} />
+                  <IterationScope
+                    items={scopeItems}
+                    memberName={memberName}
+                    onOpen={(itemKey) => navigate({ to: '/item/$itemKey', params: { itemKey } })}
+                  />
+                  <RichTextEditor
+                    title={t('detail.themeLabel')}
+                    value={vit.theme}
+                    minHeight={200}
                     readOnly={disabled}
-                    ariaLabel={t('detail.startDateLabel')}
-                    onChange={disabled ? undefined : (v) => setField({ startDate: v })}
+                    onChange={(html) => setField({ theme: html || null })}
                   />
-                </DetailField>
-                <DetailField label={t('detail.endDateLabel')}>
-                  <DateField
-                    variant="field"
-                    value={vit.endDate}
+                  <RichTextEditor
+                    title={t('detail.notesLabel')}
+                    value={vit.notes}
+                    minHeight={160}
                     readOnly={disabled}
-                    ariaLabel={t('detail.endDateLabel')}
-                    onChange={disabled ? undefined : (v) => setField({ endDate: v })}
+                    onChange={(html) => setField({ notes: html || null })}
                   />
-                </DetailField>
-              </DetailFieldPair>
+                </>
+              }
+              sidebar={
+                <div className="space-y-4">
+                  <DetailField label={t('detail.projectLabel')}>
+                    <DetailReadonlyValue>{project?.projectName ?? '—'}</DetailReadonlyValue>
+                  </DetailField>
 
-              <DetailField label={t('detail.stateLabel')}>
-                <SearchableSelect
-                  variant="field"
-                  value={it.state}
-                  readOnly={disabled}
-                  ariaLabel={t('detail.stateLabel')}
-                  options={(['planning', 'committed', 'accepted'] as IterationState[]).map((s) => ({
-                    value: s,
-                    label: ITERATION_STATE_STYLE[s].label,
-                  }))}
-                  onChange={saveState}
-                />
-              </DetailField>
-
-              <DetailField label={t('detail.plannedVelocityLabel')}>
-                {!disabled ? (
-                  <Input
-                    type="number"
-                    min={0}
-                    value={vit.plannedVelocity ?? ''}
-                    onChange={(e) =>
-                      setField({
-                        plannedVelocity: e.target.value === '' ? null : Number(e.target.value),
-                      })
-                    }
-                    placeholder="0"
+                  <TeamSelectField
+                    label={t('detail.teamLabel')}
+                    value={vit.teamId}
+                    onChange={(v) => setField({ teamId: v || null })}
+                    teams={teams}
+                    disabled={disabled}
+                    placeholder={t('detail.noTeam')}
                   />
-                ) : (
-                  <DetailReadonlyValue mono>{vit.plannedVelocity ?? '—'}</DetailReadonlyValue>
-                )}
-              </DetailField>
-            </div>
-          }
-        />
-        <SaveCancelBar
-          visible={isDirty && !disabled}
-          saving={saving}
-          errorMsg={null}
-          onSave={() => void save().catch(() => {})}
-          onCancel={cancel}
-        />
+
+                  <DetailFieldPair>
+                    <DetailField label={t('detail.startDateLabel')}>
+                      <DateField
+                        variant="field"
+                        value={vit.startDate}
+                        readOnly={disabled}
+                        ariaLabel={t('detail.startDateLabel')}
+                        onChange={disabled ? undefined : (v) => setField({ startDate: v })}
+                      />
+                    </DetailField>
+                    <DetailField label={t('detail.endDateLabel')}>
+                      <DateField
+                        variant="field"
+                        value={vit.endDate}
+                        readOnly={disabled}
+                        ariaLabel={t('detail.endDateLabel')}
+                        onChange={disabled ? undefined : (v) => setField({ endDate: v })}
+                      />
+                    </DetailField>
+                  </DetailFieldPair>
+
+                  <DetailField label={t('detail.stateLabel')}>
+                    <SearchableSelect
+                      variant="field"
+                      value={it.state}
+                      readOnly={disabled}
+                      ariaLabel={t('detail.stateLabel')}
+                      options={(['planning', 'committed', 'accepted'] as IterationState[]).map(
+                        (s) => ({
+                          value: s,
+                          label: ITERATION_STATE_STYLE[s].label,
+                        }),
+                      )}
+                      onChange={saveState}
+                    />
+                  </DetailField>
+
+                  <DetailField label={t('detail.plannedVelocityLabel')}>
+                    {!disabled ? (
+                      <Input
+                        type="number"
+                        min={0}
+                        value={vit.plannedVelocity ?? ''}
+                        onChange={(e) =>
+                          setField({
+                            plannedVelocity: e.target.value === '' ? null : Number(e.target.value),
+                          })
+                        }
+                        placeholder="0"
+                      />
+                    ) : (
+                      <DetailReadonlyValue mono>{vit.plannedVelocity ?? '—'}</DetailReadonlyValue>
+                    )}
+                  </DetailField>
+                </div>
+              }
+            />
+            <SaveCancelBar
+              visible={isDirty && !disabled}
+              saving={saving}
+              errorMsg={null}
+              onSave={() => void save().catch(() => {})}
+              onCancel={cancel}
+            />
           </>
         )}
       </DetailLayout>
@@ -549,10 +556,7 @@ function IterationScope({
             </thead>
             <tbody>
               {items.map((i) => (
-                <tr
-                  key={i.id}
-                  className="border-b border-border-subtle hover:bg-primary-lighter"
-                >
+                <tr key={i.id} className="border-b border-border-subtle hover:bg-primary-lighter">
                   <td className="px-3 py-2">
                     <IdCell type={i.type} itemKey={i.itemKey} onOpen={() => onOpen(i.itemKey)} />
                   </td>
