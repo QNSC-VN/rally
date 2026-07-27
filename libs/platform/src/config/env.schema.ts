@@ -167,6 +167,20 @@ export const EnvSchema = z
     OTEL_SAMPLING_PROBABILITY: z.coerce.number().min(0).max(1).optional(),
     /** Semver string injected into OTEL resource and Pino logs. */
     SERVICE_VERSION: z.string().default('dev'),
+    /**
+     * Deployment identity for telemetry (`deployment.environment.name`) — NOT the
+     * same thing as `NODE_ENV`.
+     *
+     * `NODE_ENV` is a runtime mode, and DEVELOP deliberately runs it as
+     * `production` so `/v1/bff/dev-login` stays disabled on a public host (see the
+     * env-flag notes in CLAUDE.md). Deriving deployment identity from it labelled
+     * every develop span, metric and log as `production` — indistinguishable from
+     * real production — and silently applied the production sampling ratio there.
+     *
+     * Infra sets this to `develop` / `production`. Left unset, `@qnsc-vn/observability`
+     * falls back to `NODE_ENV`, which is why this is optional rather than required.
+     */
+    DEPLOYMENT_ENV: z.string().optional(),
     LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
     LOG_PRETTY: booleanish(false),
     LOG_SQL: booleanish(false),

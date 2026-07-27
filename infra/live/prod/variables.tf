@@ -77,3 +77,17 @@ variable "cloudflare_account_id" {
   type        = string
   default     = "69e52835cf2d08edde5b6ebd741d30fa"
 }
+
+variable "otlp_endpoint" {
+  description = <<-EOT
+    OTLP/HTTP base URL of the telemetry backend, e.g.
+    `https://otlp-gateway-prod-ap-southeast-1.grafana.net/otlp`.
+
+    Empty (the default) keeps telemetry DORMANT: no collector sidecar is created
+    and OTEL_ENABLED stays false. Populate the `observability-token` secret with
+    the Authorization header BEFORE setting this, or the collector starts and
+    cannot authenticate.
+  EOT
+  type        = string
+  default     = ""
+}
