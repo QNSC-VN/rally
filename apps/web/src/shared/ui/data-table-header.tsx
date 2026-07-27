@@ -82,10 +82,16 @@ export function DataTableHeader<K extends string>({
     <div
       className={`sticky top-0 z-10 flex items-center select-none ${className ?? ''}`}
       style={{
-        height: 34,
+        // Taller than the 34px body rows so the header has breathing room above
+        // and below the label and reads as a distinct header band, not just
+        // another row. Shared across every table.
+        height: 40,
         backgroundColor: HEADER_BG,
         borderBottom: `1px solid ${HEADER_BORDER}`,
-        fontSize: 11,
+        // 12px so the header is never smaller than the densest body rows
+        // (some grids render rows at text-ui-md/12px); a header must read as
+        // >= its body.
+        fontSize: 12,
         fontWeight: 700,
         color: HEADER_TEXT,
         minWidth: 'max-content',

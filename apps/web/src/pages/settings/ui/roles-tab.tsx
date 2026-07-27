@@ -97,11 +97,12 @@ export function RolesTab() {
   return (
     <>
       <SettingsTabHeader
+        contained
         title={t('nav.roles')}
         description={t('roles.viewerSubtitle', 'What each role can do. Roles are fixed.')}
       />
       <div className="flex-1 overflow-y-auto px-8 py-6">
-        <div className="max-w-3xl space-y-5">
+        <div className="mx-auto max-w-3xl space-y-5">
           {isLoading ? (
             <div className="flex items-center justify-center py-20">
               <Spinner size="lg" />

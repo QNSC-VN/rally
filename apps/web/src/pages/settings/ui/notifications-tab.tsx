@@ -72,11 +72,12 @@ export function NotificationsTab() {
   return (
     <>
       <SettingsTabHeader
+        contained
         title={t('nav.notifications')}
         description={t('tabDescriptions.notifications')}
       />
       <div className="flex-1 overflow-y-auto px-8 py-6">
-        <div className="max-w-2xl space-y-6">
+        <div className="mx-auto max-w-3xl space-y-6">
           <Card>
             <CardHeader
               title={t('notifications.sectionTitle')}
