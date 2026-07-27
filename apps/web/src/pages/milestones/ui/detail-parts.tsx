@@ -23,7 +23,7 @@ export function RelationButton({
       type="button"
       onClick={onClick}
       disabled={!canManage}
-      className="flex w-full items-center gap-2 rounded-md border border-border-subtle px-3 py-2 text-left text-xs text-foreground transition-colors hover:bg-gray-50 disabled:cursor-default disabled:opacity-80"
+      className="flex w-full items-center gap-2 rounded-md border border-border-subtle px-3 py-2 text-left text-ui-md text-foreground transition-colors hover:bg-gray-50 disabled:cursor-default disabled:opacity-80"
     >
       <Icon size={14} className="text-foreground-subtle" />
       <span className="flex-1 font-medium">{label}</span>

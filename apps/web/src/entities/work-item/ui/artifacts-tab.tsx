@@ -53,7 +53,7 @@ export function ArtifactsTabView({
           ariaLabel="Search artifacts"
           width={220}
           iconSize={13}
-          className="rounded-md py-1.5 pl-8 text-xs"
+          className="rounded-md py-1.5 pl-8 text-ui-md"
         />
         <div className="flex-1" />
         <span className="text-ui-sm text-foreground-subtle">

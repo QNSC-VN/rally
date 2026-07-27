@@ -57,7 +57,7 @@ export function DetailHeader({
           <span className="h-5 w-px bg-white/25" />
         </>
       )}
-      <div className="min-w-0 flex-1 truncate text-base font-semibold">{title}</div>
+      <div className="min-w-0 flex-1 truncate text-ui-xl font-semibold">{title}</div>
       {status}
       {actions}
       {/* Close detail editor — shared trailing control on every detail page, so
