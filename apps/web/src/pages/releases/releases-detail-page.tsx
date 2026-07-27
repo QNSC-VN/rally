@@ -113,7 +113,11 @@ export function ReleaseDetailPage() {
   const TABS = [
     { key: 'details', label: t('detailPage.tabs.details'), icon: <FileText size={19} /> },
     { key: 'artifacts', label: t('detailPage.tabs.artifacts'), icon: <Package size={19} /> },
-    { key: 'history', label: t('detailPage.tabs.history', 'History'), icon: <History size={19} /> },
+    {
+      key: 'history',
+      label: t('detailPage.tabs.history', 'Revision History'),
+      icon: <History size={19} />,
+    },
   ]
 
   return (
@@ -145,7 +149,10 @@ export function ReleaseDetailPage() {
             logs={activityLogs}
             isLoading={activityLoading}
             title={t('detailPage.historyTitle', 'Revision History')}
-            subtitle={t('detailPage.historySubtitle', 'Every change to this release, newest first.')}
+            subtitle={t(
+              'detailPage.historySubtitle',
+              'Every change to this release, newest first.',
+            )}
           />
         </div>
       ) : (
