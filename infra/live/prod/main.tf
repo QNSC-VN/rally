@@ -2,9 +2,9 @@
 //
 // Structurally identical to ../develop by construction: the entire stack lives in
 // ../../modules/stack and only the values below differ. Production takes the
-// DEDICATED, durable settings — on-demand Fargate, larger RDS with deletion
-// protection and 30-day backups, 90-day retention, a pinned image tag — while
-// develop takes the shared, cheap ones.
+// DEDICATED, durable settings — on-demand Fargate, Multi-AZ RDS with deletion
+// protection, 30-day backups and Enhanced Monitoring, 90-day retention, a pinned
+// image tag — while develop takes the shared, cheap ones.
 //
 // Security posture is NOT a per-environment value: the cache module always
 // enables KMS at rest and TLS in transit, so develop cannot be the weaker one.
@@ -80,14 +80,19 @@ module "stack" {
   secrets_recovery_window_days = 30
   dlq_max_receive_count        = 3 # move to the DLQ sooner in production
 
+  // Multi-AZ is the reason a single-AZ failure is a failover rather than an
+  // outage-plus-restore. It also makes the "prod RDS is Multi-AZ, never stopped"
+  // assumption in the qnsc-ci deploy reusable's dev-wake step actually true.
+  // t4g.small over micro for 2 GB rather than 1 GB; Enhanced Monitoring at 60 s
+  // gives per-process and per-device visibility CloudWatch metrics alone do not.
   rds = {
-    instance_class           = "db.t4g.micro"
+    instance_class           = "db.t4g.small"
     allocated_storage_gb     = 100
     max_allocated_storage_gb = 500
-    multi_az                 = false
+    multi_az                 = true
     deletion_protection      = true
     backup_retention_days    = 30
-    monitoring_interval      = 0
+    monitoring_interval      = 60
   }
 
   // On-demand, not Spot: an interruption here is user-visible. Tighter autoscale
