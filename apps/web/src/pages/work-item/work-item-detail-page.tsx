@@ -84,7 +84,7 @@ function DetailsTab({
 
   return (
     <div className="w-full space-y-5">
-      <h2 className="text-xl font-semibold text-foreground">{t('details.heading')}</h2>
+      <h2 className="text-ui-xl font-semibold text-foreground">{t('details.heading')}</h2>
 
       <RichTextEditor
         title={t('common:description')}

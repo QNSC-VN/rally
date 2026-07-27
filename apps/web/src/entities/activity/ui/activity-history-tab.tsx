@@ -44,7 +44,7 @@ export function ActivityHistoryTab({
   return (
     <div className="w-full space-y-5">
       <div>
-        <h2 className="text-xl font-semibold text-foreground">{title}</h2>
+        <h2 className="text-ui-xl font-semibold text-foreground">{title}</h2>
         <p className="mt-1 text-ui-md text-muted-foreground">{subtitle}</p>
       </div>
 
