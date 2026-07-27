@@ -187,6 +187,14 @@ jobs:
       product: rally
       has_worker: true
       has_migrator: true
+      # Fargate Graviton: ~20% off every vCPU-hour and GB-hour at the same sizing.
+      # These two MUST move together with `fargate_architecture` in
+      # infra/modules/stack — a mismatch fails at container start with "image
+      # Manifest does not contain descriptor matching platform". Building on an ARM
+      # runner rather than cross-building under QEMU keeps build minutes flat; rally
+      # has no native dependency left to compile.
+      build_runner: ubuntu-24.04-arm
+      image_platforms: linux/arm64
     # Least-privilege: pass only what the reusable declares (no `secrets: inherit`).
     secrets:
       AWS_ACCOUNT_ID:       ${{ vars.AWS_ACCOUNT_ID }}

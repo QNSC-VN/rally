@@ -2,9 +2,13 @@
 //
 // Structurally identical to ../develop by construction: the entire stack lives in
 // ../../modules/stack and only the values below differ. Production takes the
-// DEDICATED, durable settings — on-demand Fargate, Multi-AZ RDS with deletion
-// protection, 30-day backups and Enhanced Monitoring, 90-day retention, a pinned
-// image tag — while develop takes the shared, cheap ones.
+// DEDICATED, durable settings — on-demand Fargate, RDS with deletion protection and
+// 30-day backups, 90-day retention, a pinned image tag — while develop takes the
+// shared, cheap ones.
+//
+// RDS is deliberately PRE-LAUNCH sized right now (single-AZ, t4g.micro, Enhanced
+// Monitoring off). See the go-live checklist above the `rds` block: those settings flip
+// back to the Multi-AZ posture before the first real user, not after.
 //
 // Security posture is NOT a per-environment value: the cache module always
 // enables KMS at rest and TLS in transit, so develop cannot be the weaker one.
@@ -80,19 +84,58 @@ module "stack" {
   secrets_recovery_window_days = 30
   dlq_max_receive_count        = 3 # move to the DLQ sooner in production
 
-  // Multi-AZ is the reason a single-AZ failure is a failover rather than an
-  // outage-plus-restore. It also makes the "prod RDS is Multi-AZ, never stopped"
-  // assumption in the qnsc-ci deploy reusable's dev-wake step actually true.
-  // t4g.small over micro for 2 GB rather than 1 GB; Enhanced Monitoring at 60 s
-  // gives per-process and per-device visibility CloudWatch metrics alone do not.
+  // OFF, including in production. Audited every consumer: all 7 alarms and all 6
+  // dashboard widgets read AWS/ECS, AWS/ApplicationELB and AWS/RDS — native namespaces
+  // that are free and published whether Container Insights is on or off. Nothing reads
+  // the ECS/ContainerInsights namespace at all, so "enabled" was billing custom metrics
+  // no alarm, no autoscaling target and no dashboard panel queries. Application metrics
+  // go to the OTLP backend, not CloudWatch, so they are unaffected too.
+  //
+  // Turn it to "enhanced" temporarily when you need per-task or per-container drilldown
+  // during an incident, then turn it back. For right-sizing, AWS/ECS CPUUtilization as a
+  // percentage of a known task size is the same arithmetic.
+  container_insights = "disabled"
+
+  // Kept here and dropped in develop. This is the one someone opens during an
+  // incident, and it is inside the 3-per-account free tier.
+  create_dashboard = true
+
+  // Zero running tasks is never normal here, so "no registered targets" breaching is
+  // exactly the signal wanted — this is the only alarm that catches an outage which
+  // produces no load to make CPU, latency or 5xx move.
+  monitor_target_health = true
+
+  // PRE-LAUNCH sizing. Multi-AZ t4g.small with Enhanced Monitoring is the right
+  // production posture and it is what this becomes at go-live — but it costs about
+  // $101/mo, and every dollar of it currently buys durability for a database with no
+  // users. Multi-AZ doubles the instance rate AND bills the mirrored volume, so 100 GB
+  // allocated meant paying for 200 GB nothing had written to.
+  //
+  // GO-LIVE CHECKLIST — flip all four together, before the first real user:
+  //     instance_class      = "db.t4g.small"  # 2 GB rather than 1 GB
+  //     multi_az            = true            # AZ failure becomes a failover,
+  //                                           # not an outage plus restore
+  //     monitoring_interval = 60              # per-process and per-device visibility
+  //                                           # CloudWatch metrics alone do not give
+  //     allocated_storage_gb: raise on evidence, never speculatively (see below)
+  //
+  // Reverting Multi-AZ does NOT break the deploy pipeline: the `ensure_rds` step in
+  // qnsc-ci's backend-deploy reusable checks status and starts a stopped instance
+  // regardless of AZ topology, so it is a no-op on an always-available database.
+  //
+  // 30 GB, not 100: `max_allocated_storage_gb` below already autoscales, and RDS gp3
+  // gives the same 3,000 baseline IOPS and 125 MiB/s at every size under 400 GB, so
+  // over-allocating buys nothing. Treat any increase as PERMANENT — RDS refuses to
+  // shrink a volume and a snapshot restore cannot land smaller, so coming back down
+  // needs the instance replaced (docs/runbooks/rds-storage-shrink.md).
   rds = {
-    instance_class           = "db.t4g.small"
-    allocated_storage_gb     = 100
+    instance_class           = "db.t4g.micro"
+    allocated_storage_gb     = 30
     max_allocated_storage_gb = 500
-    multi_az                 = true
+    multi_az                 = false
     deletion_protection      = true
     backup_retention_days    = 30
-    monitoring_interval      = 60
+    monitoring_interval      = 0
   }
 
   // On-demand, not Spot: an interruption here is user-visible. Tighter autoscale
