@@ -8,6 +8,7 @@ export type ColKey =
   | 'feature'
   | 'iteration'
   | 'state'
+  | 'flowState'
   | 'block'
   | 'blockedReason'
   | 'planEstimate'
@@ -28,6 +29,7 @@ export const ITERATION_STATUS_COLUMNS: ColumnSpec<unknown, unknown, ColKey>[] = 
   { key: 'feature', label: 'Feature', defaultWidth: 200, minWidth: 120 },
   { key: 'iteration', label: 'Iteration', defaultWidth: 160, minWidth: 120 },
   { key: 'state', label: 'Schedule State', defaultWidth: 132, minWidth: 132 },
+  { key: 'flowState', label: 'Flow State', defaultWidth: 132, minWidth: 120 },
   { key: 'block', label: 'Block', defaultWidth: 60, minWidth: 56 },
   { key: 'blockedReason', label: 'Blocked Reason', defaultWidth: 160, minWidth: 100 },
   { key: 'planEstimate', label: 'Plan Estimate', defaultWidth: 80 },
@@ -55,6 +57,7 @@ export const HEADER_META: DataTableHeaderColumn<ColKey>[] = [
   { key: 'feature', label: 'Feature' },
   { key: 'iteration', label: 'Iteration' },
   { key: 'state', label: 'Schedule State', sortCol: 'scheduleState' },
+  { key: 'flowState', label: 'Flow State', sortCol: 'flowState' },
   { key: 'block', label: 'Block', sortCol: 'block', align: 'center' },
   { key: 'blockedReason', label: 'Blocked Reason' },
   { key: 'planEstimate', label: 'Plan Est', sortCol: 'planEstimate', align: 'right' },

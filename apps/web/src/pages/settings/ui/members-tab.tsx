@@ -133,11 +133,15 @@ const MEMBER_COLUMNS: ColumnSpec<WorkspaceMember, MemberCtx, MemberColKey>[] = [
     minWidth: 100,
     cellClassName: 'flex min-w-0 items-center',
     // Inline role picker — commits a role-assignment change (delete + recreate).
+    // Workspace Admin accounts are guarded (P4-SET-07): their role/status/teams
+    // are read-only in this grid, so an admin can't casually demote or lock out
+    // another workspace owner from the roster.
     cell: (m, ctx) => (
       <div className="min-w-0 flex-1">
         <SearchableSelect
           variant="cell"
           value={m.roleId ?? ''}
+          readOnly={m.roleSlug === 'workspace_admin'}
           options={ctx.roleOptions}
           ariaLabel={ctx.labels.role}
           placeholder={ctx.labels.rolePlaceholder}
@@ -159,7 +163,7 @@ const MEMBER_COLUMNS: ColumnSpec<WorkspaceMember, MemberCtx, MemberColKey>[] = [
         <SearchableSelect
           variant="cell"
           value={m.status}
-          readOnly={m.userId === ctx.currentUserId}
+          readOnly={m.userId === ctx.currentUserId || m.roleSlug === 'workspace_admin'}
           options={ctx.statusOptions}
           ariaLabel={ctx.labels.status}
           onChange={(v) => ctx.commitStatus(m, v as MemberStatus)}
@@ -183,6 +187,7 @@ const MEMBER_COLUMNS: ColumnSpec<WorkspaceMember, MemberCtx, MemberColKey>[] = [
           multiple
           variant="cell"
           value={(m.teams ?? []).map((tm) => tm.id)}
+          readOnly={m.roleSlug === 'workspace_admin'}
           options={ctx.teamOptions}
           ariaLabel={ctx.labels.teams}
           placeholder="—"
@@ -686,7 +691,10 @@ export function MembersTab() {
       <ConfirmDialog
         open={!!confirmDeactivate}
         title={t('members.deactivateTitle', 'Deactivate members')}
-        message={t('members.deactivateConfirm', 'Deactivate the selected members? They lose access until reactivated.')}
+        message={t(
+          'members.deactivateConfirm',
+          'Deactivate the selected members? They lose access until reactivated.',
+        )}
         confirmLabel={t('members.bulkDeactivate')}
         destructive
         pending={bulkUpdate.isPending}
