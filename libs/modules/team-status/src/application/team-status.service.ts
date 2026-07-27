@@ -1,7 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { PreconditionFailedException, ValidationException, type JwtPayload } from '@platform';
-import { PERMISSION } from '@shared-kernel';
-import { AccessService } from '@modules/access';
 import { IterationsService } from '@modules/iterations';
 import { WorkItemsService, type UpdateWorkItemInput } from '@modules/work-items';
 import {
@@ -44,7 +42,6 @@ export class TeamStatusService {
     private readonly repo: ITeamStatusRepository,
     private readonly iterationsService: IterationsService,
     private readonly workItemsService: WorkItemsService,
-    private readonly accessService: AccessService,
   ) {}
 
   /**
@@ -170,7 +167,7 @@ export class TeamStatusService {
     actor: JwtPayload,
     input: UpdateCapacityInput,
   ): Promise<{ userId: string; capacityHours: number }> {
-    await this.assertEditPermission(actor, input.projectId);
+    // team_status:edit on input.projectId is enforced by the PolicyGuard.
     if (input.capacityHours < 0) {
       throw new ValidationException('TEAM_STATUS_INVALID_CAPACITY', 'capacityHours must be >= 0');
     }
@@ -221,10 +218,8 @@ export class TeamStatusService {
     state: TeamTaskState;
     workProduct?: { id: string; key: string; status: string };
   }> {
-    // Look up the task to get its projectId for permission check.
-    const task = await this.workItemsService.getWorkItem(actor.workspaceId, taskId);
-    await this.assertEditPermission(actor, task.projectId);
-
+    // team_status:edit on the task's project is enforced by the PolicyGuard,
+    // which resolves the project from taskId (a work_item) up-front.
     const updateInput: UpdateWorkItemInput = {};
     if (input.title !== undefined) {
       const trimmed = input.title.trim();
@@ -352,9 +347,5 @@ export class TeamStatusService {
       },
       rank: row.rank,
     };
-  }
-
-  private async assertEditPermission(actor: JwtPayload, projectId: string) {
-    await this.accessService.assertProjectPermission(actor, projectId, PERMISSION.TEAM_STATUS_EDIT);
   }
 }

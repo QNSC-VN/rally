@@ -10,9 +10,10 @@ import {
   Post,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Auth, ApiCommonErrors } from '@platform';
+import { ApiCommonErrors } from '@platform';
 import type { JwtPayload } from '@platform';
 import { CurrentUser } from '@modules/identity';
+import { AuthPolicy, RequirePermission } from '@modules/access';
 import { CollaborationService } from '../../application/collaboration.service';
 import { CreateCommentDto, UpdateCommentDto } from './dto/collaboration-request.dto';
 import { CommentResponseDto } from './dto/collaboration-response.dto';
@@ -34,13 +35,14 @@ function toCommentDto(c: Comment): CommentResponseDto {
 
 @ApiTags('collaboration')
 @Controller('work-items/:workItemId')
-@Auth()
+@AuthPolicy()
 export class CollaborationController {
   constructor(private readonly collaborationService: CollaborationService) {}
 
   // ── Comments ───────────────────────────────────────────────────────────────
 
   @Get('comments')
+  @RequirePermission('work_item:view', { resource: 'work_item', from: 'param', field: 'workItemId' })
   @ApiOperation({ summary: 'List comments for a work item' })
   @ApiParam({ name: 'workItemId', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: [CommentResponseDto] })
@@ -54,6 +56,7 @@ export class CollaborationController {
   }
 
   @Post('comments')
+  @RequirePermission('work_item:edit', { resource: 'work_item', from: 'param', field: 'workItemId' })
   @ApiOperation({ summary: 'Add a comment to a work item' })
   @ApiParam({ name: 'workItemId', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 201, type: CommentResponseDto })
