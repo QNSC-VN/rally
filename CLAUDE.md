@@ -93,6 +93,26 @@ there, not here. `libs/platform` keeps only re-export façades (`observability/i
 - **Sessions live only in the cache.** That is why it sits outside the ECS tasks:
   it survives task replacement, so a deploy does not log everyone out. Replacing
   the cache node *does* log everyone out — treat that as a user-visible change.
+- **An infra change alone does not take effect — it needs a deploy.** Terraform
+  owns the task definition's environment and the Pages project's `API_ORIGIN`, but
+  `ecs-service` sets `ignore_changes = [task_definition]` and Pages env changes
+  only apply to the next deployment. Terraform registers the new revision; the
+  deploy pipeline is what moves the service onto it. So `infra/**` is deliberately
+  **not** in either deploy workflow's `paths-ignore`, and both have a
+  `wait-for-infra` gate to sequence deploy-after-apply on the same sha. Re-adding
+  `infra/**` there recreates a silent failure: the apply succeeds, the new
+  definition is correct, nothing rolls, and the old value stays live. That is
+  exactly how develop ran against a deleted cache endpoint (`valkey: down` on
+  `/v1/readyz`) after the cache migration.
+- **Don't roll the service from `infra-apply` instead.** Terraform's newest task
+  definition carries a new *image*, so rolling onto it there would ship app code
+  ahead of `Run database migrations`.
+- **ElastiCache cluster ids and replication-group ids share one namespace.**
+  `CreateReplicationGroup` fails with `InvalidParameterValue: Cannot have a
+  cluster and replication group with same identifier` while a same-named cluster
+  is still deleting. Terraform runs an unrelated destroy and create in parallel,
+  so a same-name migration between the two resource types needs two applies — the
+  plan cannot show you this.
 
 ## Environment flags that look wrong and are not
 
