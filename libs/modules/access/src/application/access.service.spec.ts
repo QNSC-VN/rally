@@ -69,7 +69,13 @@ describe('AccessService — scope-aware permission resolution', () => {
         AccessService,
         {
           provide: ROLE_REPOSITORY,
-          useValue: { findById: vi.fn(), listForWorkspace: vi.fn(), updatePermissions: vi.fn() },
+          useValue: {
+            findById: vi.fn(),
+            listForWorkspace: vi.fn().mockResolvedValue([]),
+            updatePermissions: vi.fn(),
+            create: vi.fn(),
+            delete: vi.fn(),
+          },
         },
         {
           provide: ROLE_ASSIGNMENT_REPOSITORY,
@@ -275,7 +281,9 @@ describe('AccessService — scope-aware permission resolution', () => {
   });
 
   describe('updateRolePermissions', () => {
-    const actor = { sub: USER, workspaceId: WORKSPACE, permissions: [] } as never;
+    // workspace_admin (workspace:*) — holds every code, so the no-escalation
+    // guard is satisfied and these tests exercise the rest of the method.
+    const actor = { sub: USER, workspaceId: WORKSPACE, permissions: ['workspace:*'] } as never;
     const customRole = (overrides: Partial<SystemRole> = {}): SystemRole => ({
       id: 'role-custom',
       workspaceId: WORKSPACE,
@@ -286,6 +294,15 @@ describe('AccessService — scope-aware permission resolution', () => {
       permissions: ['project:view'],
       createdAt: new Date(),
       ...overrides,
+    });
+
+    it('rejects a permission the actor does not themselves hold (no escalation)', async () => {
+      roleRepo.findById.mockResolvedValue(customRole());
+      const weakActor = { sub: USER, workspaceId: WORKSPACE, permissions: ['work_item:view'] } as never;
+      await expect(
+        service.updateRolePermissions(weakActor, 'role-custom', ['project:delete']),
+      ).rejects.toMatchObject({ code: 'ROLE_PERMISSION_ESCALATION' });
+      expect(roleRepo.updatePermissions).not.toHaveBeenCalled();
     });
 
     it('throws ROLE_NOT_FOUND when the role does not exist', async () => {
@@ -343,6 +360,106 @@ describe('AccessService — scope-aware permission resolution', () => {
       expect(result.permissions).toEqual(['project:edit', 'project:view']);
     });
   });
+
+  describe('createRole', () => {
+    const admin = { sub: USER, workspaceId: WORKSPACE, permissions: ['workspace:*'] } as never;
+    const saved = (overrides: Partial<SystemRole> = {}): SystemRole => ({
+      id: 'role-new',
+      workspaceId: WORKSPACE,
+      name: 'QA Lead',
+      slug: 'qa_lead',
+      description: null,
+      isSystem: false,
+      permissions: ['quality:view'],
+      createdAt: new Date(),
+      ...overrides,
+    });
+
+    it('creates a workspace custom role with a derived, unique slug', async () => {
+      roleRepo.listForWorkspace.mockResolvedValue([]);
+      roleRepo.create.mockImplementation(async (input) => saved({ slug: input.slug, name: input.name, permissions: input.permissions }));
+
+      const role = await service.createRole(admin, { name: 'QA Lead', permissions: ['quality:view'] });
+
+      expect(role.slug).toBe('qa_lead');
+      expect(role.isSystem).toBe(false);
+      expect(roleRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ workspaceId: WORKSPACE, slug: 'qa_lead', permissions: ['quality:view'] }),
+        expect.anything(),
+      );
+    });
+
+    it('de-duplicates the slug against existing roles', async () => {
+      roleRepo.listForWorkspace.mockResolvedValue([saved({ slug: 'qa_lead' })]);
+      roleRepo.create.mockImplementation(async (input) => saved({ slug: input.slug }));
+      await service.createRole(admin, { name: 'QA Lead', permissions: [] });
+      expect(roleRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ slug: 'qa_lead_2' }),
+        expect.anything(),
+      );
+    });
+
+    it('rejects a wildcard permission', async () => {
+      await expect(
+        service.createRole(admin, { name: 'Super', permissions: ['workspace:*'] }),
+      ).rejects.toMatchObject({ code: 'ROLE_WILDCARD_FORBIDDEN' });
+      expect(roleRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects a permission the creator does not hold (no escalation)', async () => {
+      const weak = { sub: USER, workspaceId: WORKSPACE, permissions: ['work_item:view'] } as never;
+      await expect(
+        service.createRole(weak, { name: 'X', permissions: ['project:delete'] }),
+      ).rejects.toMatchObject({ code: 'ROLE_PERMISSION_ESCALATION' });
+      expect(roleRepo.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('deleteRole', () => {
+    const admin = { sub: USER, workspaceId: WORKSPACE, permissions: ['workspace:*'] } as never;
+    const custom = (overrides: Partial<SystemRole> = {}): SystemRole => ({
+      id: 'role-custom',
+      workspaceId: WORKSPACE,
+      name: 'Custom',
+      slug: 'custom',
+      description: null,
+      isSystem: false,
+      permissions: [],
+      createdAt: new Date(),
+      ...overrides,
+    });
+
+    it('deletes an unused custom role', async () => {
+      roleRepo.findById.mockResolvedValue(custom());
+      assignmentRepo.listUserIdsForRole.mockResolvedValue([]);
+      await service.deleteRole(admin, 'role-custom');
+      expect(roleRepo.delete).toHaveBeenCalledWith('role-custom', expect.anything());
+    });
+
+    it('blocks deleting a built-in system role', async () => {
+      roleRepo.findById.mockResolvedValue(custom({ isSystem: true }));
+      await expect(service.deleteRole(admin, 'role-custom')).rejects.toMatchObject({
+        code: 'ROLE_IMMUTABLE',
+      });
+      expect(roleRepo.delete).not.toHaveBeenCalled();
+    });
+
+    it('blocks deleting a role still assigned to users (409 ROLE_IN_USE)', async () => {
+      roleRepo.findById.mockResolvedValue(custom());
+      assignmentRepo.listUserIdsForRole.mockResolvedValue(['u1', 'u2']);
+      await expect(service.deleteRole(admin, 'role-custom')).rejects.toMatchObject({
+        code: 'ROLE_IN_USE',
+      });
+      expect(roleRepo.delete).not.toHaveBeenCalled();
+    });
+
+    it('throws ROLE_NOT_FOUND for another workspace’s role', async () => {
+      roleRepo.findById.mockResolvedValue(custom({ workspaceId: 'ws-OTHER' }));
+      await expect(service.deleteRole(admin, 'role-custom')).rejects.toMatchObject({
+        code: 'ROLE_NOT_FOUND',
+      });
+    });
+  });
 });
 
 /**
@@ -360,6 +477,7 @@ describe('AccessService — authorization epoch invalidation', () => {
   const actor = {
     sub: 'admin-1',
     workspaceId: WORKSPACE,
+    permissions: ['workspace:*'],
   } as unknown as Parameters<AccessService['assignRole']>[0];
 
   beforeEach(async () => {
@@ -368,7 +486,13 @@ describe('AccessService — authorization epoch invalidation', () => {
         AccessService,
         {
           provide: ROLE_REPOSITORY,
-          useValue: { findById: vi.fn(), listForWorkspace: vi.fn(), updatePermissions: vi.fn() },
+          useValue: {
+            findById: vi.fn(),
+            listForWorkspace: vi.fn().mockResolvedValue([]),
+            updatePermissions: vi.fn(),
+            create: vi.fn(),
+            delete: vi.fn(),
+          },
         },
         {
           provide: ROLE_ASSIGNMENT_REPOSITORY,

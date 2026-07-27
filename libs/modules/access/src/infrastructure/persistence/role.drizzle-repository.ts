@@ -4,7 +4,7 @@ import { InjectDrizzle } from '@platform';
 import type { DrizzleDB, DbExecutor } from '@platform';
 import { systemRoles } from '../../../../../../db/schema/access';
 import type { SystemRole } from '../../domain/access.types';
-import { IRoleRepository } from '../../domain/ports/role.repository';
+import { IRoleRepository, type NewCustomRole } from '../../domain/ports/role.repository';
 
 @Injectable()
 export class RoleDrizzleRepository implements IRoleRepository {
@@ -42,6 +42,25 @@ export class RoleDrizzleRepository implements IRoleRepository {
       .where(eq(systemRoles.id, id))
       .returning();
     return this.toRole(rows[0]);
+  }
+
+  async create(input: NewCustomRole, tx?: DbExecutor): Promise<SystemRole> {
+    const rows = await (tx ?? this.db)
+      .insert(systemRoles)
+      .values({
+        workspaceId: input.workspaceId,
+        name: input.name,
+        slug: input.slug,
+        description: input.description,
+        isSystem: false,
+        permissions: input.permissions,
+      })
+      .returning();
+    return this.toRole(rows[0]);
+  }
+
+  async delete(id: string, tx?: DbExecutor): Promise<void> {
+    await (tx ?? this.db).delete(systemRoles).where(eq(systemRoles.id, id));
   }
 
   private toRole(row: typeof systemRoles.$inferSelect): SystemRole {
