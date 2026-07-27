@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { AccessService } from './application/access.service';
+import { ProjectScopeResolver } from './application/project-scope.resolver';
 import { AccessController } from './interface/http/access.controller';
 import { ProjectPermissionGuard } from './interface/http/project-permission.guard';
+import { PolicyGuard } from './interface/http/policy.guard';
 import { RoleDrizzleRepository } from './infrastructure/persistence/role.drizzle-repository';
 import { RoleAssignmentDrizzleRepository } from './infrastructure/persistence/role-assignment.drizzle-repository';
 import { ROLE_REPOSITORY } from './domain/ports/role.repository';
@@ -12,9 +14,11 @@ import { ROLE_ASSIGNMENT_REPOSITORY } from './domain/ports/role-assignment.repos
   providers: [
     AccessService,
     ProjectPermissionGuard,
+    ProjectScopeResolver,
+    PolicyGuard,
     { provide: ROLE_REPOSITORY, useClass: RoleDrizzleRepository },
     { provide: ROLE_ASSIGNMENT_REPOSITORY, useClass: RoleAssignmentDrizzleRepository },
   ],
-  exports: [AccessService, ProjectPermissionGuard],
+  exports: [AccessService, ProjectPermissionGuard, ProjectScopeResolver, PolicyGuard],
 })
 export class AccessModule {}

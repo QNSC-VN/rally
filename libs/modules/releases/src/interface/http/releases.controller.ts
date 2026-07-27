@@ -14,7 +14,7 @@ import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ApiCommonErrors, ApiPagedResponse, buildPageArgs } from '@platform';
 import type { JwtPayload, PagedResult } from '@platform';
 import { CurrentUser } from '@modules/identity';
-import { RequireProjectPermission, AuthProjectScoped } from '@modules/access';
+import { RequirePermission, AuthPolicy } from '@modules/access';
 import { ReleasesService } from '../../application/releases.service';
 import { ReleaseQueryDto, CreateReleaseDto, UpdateReleaseDto } from './dto/release-request.dto';
 import { ReleaseResponseDto } from './dto/release-response.dto';
@@ -81,11 +81,12 @@ function toReleaseDto(
 
 @ApiTags('releases')
 @Controller('releases')
-@AuthProjectScoped()
+@AuthPolicy()
 export class ReleasesController {
   constructor(private readonly releasesService: ReleasesService) {}
 
   @Get()
+  @RequirePermission('release:view', { from: 'query', field: 'projectId' })
   @ApiOperation({ summary: 'List releases for a project' })
   @ApiPagedResponse(ReleaseResponseDto)
   @ApiCommonErrors(400, 401, 404)
@@ -99,7 +100,7 @@ export class ReleasesController {
   }
 
   @Post()
-  @RequireProjectPermission('release:create', 'body', 'projectId')
+  @RequirePermission('release:create', { from: 'body', field: 'projectId' })
   @ApiOperation({ summary: 'Create a release' })
   @ApiResponse({ status: 201, type: ReleaseResponseDto })
   @ApiCommonErrors(400, 401, 404, 422)
@@ -119,6 +120,7 @@ export class ReleasesController {
   }
 
   @Get(':id')
+  @RequirePermission('release:view', { resource: 'release', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Get release details' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: ReleaseResponseDto })
@@ -132,6 +134,7 @@ export class ReleasesController {
   }
 
   @Get(':id/activity')
+  @RequirePermission('release:view', { resource: 'release', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'List the revision history of a release' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: ActivityPageDto })
@@ -150,6 +153,7 @@ export class ReleasesController {
   }
 
   @Patch(':id')
+  @RequirePermission('release:edit', { resource: 'release', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Update release details' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: ReleaseResponseDto })
@@ -171,6 +175,7 @@ export class ReleasesController {
   }
 
   @Delete(':id')
+  @RequirePermission('release:delete', { resource: 'release', from: 'param', field: 'id' })
   @HttpCode(204)
   @ApiOperation({ summary: 'Delete a planned release' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -184,6 +189,7 @@ export class ReleasesController {
   }
 
   @Get(':id/burndown')
+  @RequirePermission('release:view', { resource: 'release', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Get release burndown data' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiCommonErrors(400, 401, 404)
@@ -197,6 +203,7 @@ export class ReleasesController {
   // ── Release Artifacts (P3) ──────────────────────────────────────────
 
   @Get(':id/artifacts')
+  @RequirePermission('release:view', { resource: 'release', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'List artifacts (stories/defects) in a release' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiPagedResponse(ReleaseResponseDto)

@@ -15,7 +15,7 @@ import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ApiCommonErrors, ApiPagedResponse, buildPageArgs } from '@platform';
 import type { JwtPayload, PagedResult } from '@platform';
 import { CurrentUser } from '@modules/identity';
-import { RequireProjectPermission, AuthProjectScoped } from '@modules/access';
+import { RequirePermission, AuthPolicy } from '@modules/access';
 import { MilestonesService, type MilestoneProgress } from '../../application/milestones.service';
 import {
   MilestoneQueryDto,
@@ -73,11 +73,12 @@ function toMilestoneDto(m: Milestone & { progress?: MilestoneProgress }): Milest
 
 @ApiTags('milestones')
 @Controller('milestones')
-@AuthProjectScoped()
+@AuthPolicy()
 export class MilestonesController {
   constructor(private readonly milestonesService: MilestonesService) {}
 
   @Get()
+  @RequirePermission('milestone:view', { from: 'query', field: 'projectId' })
   @ApiOperation({ summary: 'List milestones for a project' })
   @ApiPagedResponse(MilestoneListItemDto)
   @ApiCommonErrors(400, 401, 404)
@@ -91,7 +92,7 @@ export class MilestonesController {
   }
 
   @Post()
-  @RequireProjectPermission('milestone:create', 'body', 'projectId')
+  @RequirePermission('milestone:create', { from: 'body', field: 'projectId' })
   @ApiOperation({ summary: 'Create a milestone' })
   @ApiResponse({ status: 201, type: MilestoneResponseDto })
   @ApiCommonErrors(400, 401, 404, 422)
@@ -114,6 +115,7 @@ export class MilestonesController {
   }
 
   @Get(':id')
+  @RequirePermission('milestone:view', { resource: 'milestone', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Get milestone details' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: MilestoneResponseDto })
@@ -127,6 +129,7 @@ export class MilestonesController {
   }
 
   @Get(':id/activity')
+  @RequirePermission('milestone:view', { resource: 'milestone', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'List the revision history of a milestone' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: ActivityPageDto })
@@ -145,6 +148,7 @@ export class MilestonesController {
   }
 
   @Patch(':id')
+  @RequirePermission('milestone:edit', { resource: 'milestone', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Update milestone details' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: MilestoneResponseDto })
@@ -159,6 +163,7 @@ export class MilestonesController {
   }
 
   @Delete(':id')
+  @RequirePermission('milestone:delete', { resource: 'milestone', from: 'param', field: 'id' })
   @HttpCode(204)
   @ApiOperation({ summary: 'Delete a milestone' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -174,6 +179,7 @@ export class MilestonesController {
   // ── P3.3 — Artifact/Project/Team junction endpoints ───────────────
 
   @Get(':id/artifacts')
+  @RequirePermission('milestone:view', { resource: 'milestone', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'List milestone artifacts (US/DE work items)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, description: 'Array of work item IDs' })
@@ -186,6 +192,7 @@ export class MilestonesController {
   }
 
   @Put(':id/artifacts')
+  @RequirePermission('milestone:edit', { resource: 'milestone', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Set milestone artifacts (replace all)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, description: 'Updated artifact IDs' })
@@ -199,6 +206,7 @@ export class MilestonesController {
   }
 
   @Get(':id/projects')
+  @RequirePermission('milestone:view', { resource: 'milestone', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'List linked projects for a milestone' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, description: 'Array of project IDs' })
@@ -211,6 +219,7 @@ export class MilestonesController {
   }
 
   @Put(':id/projects')
+  @RequirePermission('milestone:edit', { resource: 'milestone', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Set linked projects for a milestone (replace all)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, description: 'Updated project IDs' })
@@ -224,6 +233,7 @@ export class MilestonesController {
   }
 
   @Get(':id/teams')
+  @RequirePermission('milestone:view', { resource: 'milestone', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'List linked teams for a milestone' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, description: 'Array of team IDs' })
@@ -236,6 +246,7 @@ export class MilestonesController {
   }
 
   @Put(':id/teams')
+  @RequirePermission('milestone:edit', { resource: 'milestone', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Set linked teams for a milestone (replace all)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, description: 'Updated team IDs' })
@@ -249,6 +260,7 @@ export class MilestonesController {
   }
 
   @Get(':id/releases')
+  @RequirePermission('milestone:view', { resource: 'milestone', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'List linked releases for a milestone' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, description: 'Array of release IDs' })
@@ -261,6 +273,7 @@ export class MilestonesController {
   }
 
   @Put(':id/releases')
+  @RequirePermission('milestone:edit', { resource: 'milestone', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Set linked releases for a milestone (replace all)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, description: 'Updated release IDs' })
