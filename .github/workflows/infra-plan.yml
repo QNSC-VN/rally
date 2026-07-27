@@ -10,6 +10,10 @@ on:
     branches: [main]
     paths:
       - "infra/live/**"
+      # modules/** matters too: `module "stack"` is a LOCAL path module, so editing it
+      # changes the plan for both environments. Without this a module-only PR merged
+      # with no plan reviewed at all, and infra-apply (same filter) then skipped it.
+      - "infra/modules/**"
       - ".github/workflows/infra-plan.yml"
 
 # Granted at the caller so the reusable can request them (a reusable workflow
