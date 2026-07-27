@@ -369,6 +369,7 @@ export function IterationStatusPage() {
       feature: styleFor('feature', { flexShrink: 0 }),
       iteration: styleFor('iteration', { flexShrink: 0 }),
       state: styleFor('state', { flexShrink: 0 }),
+      flowState: styleFor('flowState', { flexShrink: 0 }),
       block: styleFor('block', { flexShrink: 0 }),
       blockedReason: styleFor('blockedReason', { flexShrink: 0 }),
       planEstimate: styleFor('planEstimate', { flexShrink: 0 }),

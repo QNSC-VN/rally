@@ -30,6 +30,7 @@ import { Textarea } from '@/shared/ui/textarea'
 import { SearchableSelect, type SelectOption } from '@/shared/ui/searchable-select'
 import { OwnerAvatar, OwnerSelectCell, type OwnerSelectMember } from '@/shared/ui/owner-cell'
 import { TeamAvatar } from '@/shared/ui/team-cell'
+import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { MetricStrip } from '@/shared/ui/metric-strip'
 import { MetricCard } from '@/shared/ui/metric-card'
 import {
@@ -80,16 +81,8 @@ const TEAM_COLUMNS: ColumnSpec<Team, TeamCtx, TeamColKey>[] = [
     locked: true,
     grow: true,
     cellClassName: 'flex min-w-0 items-center gap-2',
-    // Read-only identity: square team glyph + name + key chip (rename is out of
-    // scope here — like Users' read-only name).
-    cell: (team) => (
-      <>
-        <TeamAvatar teamKey={team.key} name={team.name} size={20} />
-        <span className="truncate text-ui-md text-foreground" title={team.name}>
-          {team.name}
-        </span>
-      </>
-    ),
+    // Team glyph + inline-editable name (key stays immutable, like Project key).
+    cell: (team) => <TeamNameCell team={team} />,
   },
   {
     key: 'lead',
@@ -146,6 +139,38 @@ const ROW_CLASS =
   'group flex min-h-[34px] min-w-max items-center gap-2 border-b border-border-subtle bg-card px-3 text-ui-md transition-colors duration-100 hover:bg-primary-lighter'
 
 // ── Inline-edit cells (each owns its per-team mutation hook) ───────────────────
+
+/** Team name — inline rename (key stays immutable, like Project key); commits
+ *  via useUpdateTeam. Empty/unchanged commits are ignored. */
+function TeamNameCell({ team }: { team: Team }) {
+  const { t } = useTranslation('settings')
+  const update = useUpdateTeam(team.id)
+  return (
+    <>
+      <TeamAvatar teamKey={team.key} name={team.name} size={20} />
+      <div className="min-w-0 flex-1 px-0">
+        <InlineEditableCell
+          value={team.name}
+          canEdit
+          fullCell
+          ariaLabel={t('teams.editName')}
+          title={team.name}
+          className="break-words whitespace-normal text-foreground"
+          style={{ fontSize: 12 }}
+          inputStyle={{ fontSize: 12 }}
+          onCommit={(v) => {
+            const next = v.trim()
+            if (!next || next === team.name) return
+            void update
+              .mutateAsync({ name: next })
+              .then(() => notify.success(t('teams.nameUpdated')))
+              .catch((err: unknown) => notify.fromError(err, t('teams.nameUpdateError')))
+          }}
+        />
+      </div>
+    </>
+  )
+}
 
 /** Lead — inline person picker (OwnerSelectCell); commits via useUpdateTeam. */
 function TeamLeadCell({ team, members }: { team: Team; members: OwnerSelectMember[] }) {
@@ -463,12 +488,12 @@ export function TeamsTab() {
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <SettingsTabHeader title={t('nav.teams')} description={t('tabDescriptions.teams')} />
 
-      {/* Metric strip — Total / Active / Archived. */}
+      {/* Metric strip — Total / Active / Deactive. */}
       <div className="flex shrink-0 flex-col gap-4 px-4 pt-4">
         <MetricStrip className="rounded-lg border">
           <MetricCard label="Total Teams" value={metrics.total} />
           <MetricCard label="Active" value={metrics.active} valueColor={BRAND.success} />
-          <MetricCard label="Archived" value={metrics.archived} valueColor={BRAND.textSecondary} />
+          <MetricCard label="Deactive" value={metrics.archived} valueColor={BRAND.textSecondary} />
         </MetricStrip>
       </div>
 

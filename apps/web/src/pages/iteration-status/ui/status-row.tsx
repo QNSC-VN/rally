@@ -19,6 +19,8 @@ import {
   type ScheduleState,
   getSimplifiedState,
   SIMPLIFIED_STATE_TO_SCHEDULE_STATE,
+  SCHEDULE_STATE_VALUES,
+  SCHEDULE_STATE_LABEL,
 } from '@/entities/work-item/model/types'
 import { StateStepper } from '@/entities/work-item/ui/state-stepper'
 import { FeatureCell } from '@/entities/work-item/ui/feature-cell'
@@ -273,6 +275,24 @@ export function StatusRow({
             canEdit={canEdit}
             onChange={(next) => update.mutate({ scheduleState: next })}
             blocked={item.isBlocked}
+          />
+        </div>
+
+        {/* Flow State — mirrors Schedule State (bidirectional); enum dropdown */}
+        <div
+          style={colStyles.flowState}
+          className="flex items-center overflow-hidden px-0"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <SearchableSelect
+            value={item.scheduleState as string}
+            readOnly={!canEdit}
+            ariaLabel="Flow State"
+            options={SCHEDULE_STATE_VALUES.map((v) => ({
+              value: v,
+              label: SCHEDULE_STATE_LABEL[v],
+            }))}
+            onChange={(v) => update.mutate({ flowState: v as ScheduleState })}
           />
         </div>
 
@@ -681,6 +701,7 @@ function ChildTaskRow({
           }}
         />
       </div>
+      <div style={colStyles.flowState} className="px-2" />
       <div style={colStyles.block} className="px-2" />
       <div style={colStyles.blockedReason} className="px-2" />
       <div style={colStyles.planEstimate} className="px-2" />

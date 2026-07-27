@@ -16,10 +16,11 @@ import type { StateStep } from './state-steps'
 // is outlined with the same visible border so the whole set reads as a
 // countable row of squares, exactly like the Rally state control.
 //
-// Interactive (canEdit + onChange): hovering a box previews the transition —
-// the track fills up to the hovered box and it lights up with that state's
-// letter — and its tooltip reads "Move to <State>". Clicking commits it. This
-// is the live, hover-to-preview control from Rally, not a static badge.
+// Interactive (canEdit + onChange): hovering an actionable box just recolours
+// THAT box (no letter — only the current box shows its letter), while the
+// resting progress fill (up to the current state) stays put; its tooltip reads
+// "Move to <State>". Clicking commits it. This mirrors Broadcom Rally, where
+// hovering a segment only changes that segment's colour, not the whole track.
 
 const CELL = 16
 
@@ -50,9 +51,6 @@ export function StateStepper<T extends string>({
   const [hovered, setHovered] = useState<number | null>(null)
   const idx = steps.findIndex((s) => s.value === value)
   const interactive = canEdit && !!onChange
-  // While hovering an actionable box, colour the track as if the item were
-  // already there — a live preview of the move.
-  const activeIdx = interactive && hovered !== null ? hovered : idx
 
   return (
     <div
@@ -64,9 +62,11 @@ export function StateStepper<T extends string>({
     >
       {steps.map((step, i) => {
         const isCurrent = i === idx
-        const isActive = i === activeIdx
-        const reached = i < activeIdx
+        const reached = i < idx
         const actionable = interactive && !isCurrent
+        // Only the hovered box previews the target; the resting fill is untouched.
+        const isPreview = interactive && hovered === i && !isCurrent
+        const lit = isCurrent || isPreview
         return (
           <button
             key={step.value}
@@ -85,16 +85,14 @@ export function StateStepper<T extends string>({
               fontWeight: 700,
               lineHeight: `${CELL - 2}px`,
               cursor: actionable ? 'pointer' : 'default',
-              backgroundColor: isActive
-                ? STEPPER_CURRENT
-                : reached
-                  ? STEPPER_REACHED
-                  : BRAND.surface,
-              color: isActive ? BRAND.surface : 'transparent',
+              backgroundColor: lit ? STEPPER_CURRENT : reached ? STEPPER_REACHED : BRAND.surface,
+              // Only the CURRENT box shows its letter; a hover preview just
+              // recolours the box (no letter), matching Rally.
+              color: isCurrent ? BRAND.surface : 'transparent',
               transition: 'background-color 120ms',
             }}
           >
-            {isActive ? steps[activeIdx].letter : ''}
+            {isCurrent ? step.letter : ''}
           </button>
         )
       })}
