@@ -20,10 +20,9 @@ import {
   parseSort,
   UseIdempotency,
   RateLimit,
-  RequirePermission,
 } from '@platform';
 import type { JwtPayload, PagedResult } from '@platform';
-import { AuthProjectScoped, RequireProjectPermission } from '@modules/access';
+import { RequirePermission, AuthPolicy } from '@modules/access';
 import { CurrentUser } from '@modules/identity';
 import { WorkItemsService } from '../../application/work-items.service';
 import {
@@ -167,7 +166,7 @@ function toAttachmentDto(a: WorkItemAttachment): AttachmentResponseDto {
 
 @ApiTags('work-items')
 @Controller('work-items')
-@AuthProjectScoped()
+@AuthPolicy()
 export class WorkItemsController {
   constructor(private readonly workItemsService: WorkItemsService) {}
 
@@ -175,7 +174,7 @@ export class WorkItemsController {
 
   @Get()
   @ApiOperation({ summary: 'List work items in a project' })
-  @RequireProjectPermission('work_item:view', 'query', 'projectId')
+  @RequirePermission('work_item:view', { from: 'query', field: 'projectId' })
   @ApiPagedResponse(WorkItemResponseDto)
   @ApiCommonErrors(400, 401, 404)
   async listWorkItems(
@@ -207,7 +206,7 @@ export class WorkItemsController {
 
   @Get('backlog')
   @ApiOperation({ summary: 'List backlog items (stories and defects) in a project' })
-  @RequireProjectPermission('work_item:view', 'query', 'projectId')
+  @RequirePermission('work_item:view', { from: 'query', field: 'projectId' })
   @ApiPagedResponse(WorkItemResponseDto)
   @ApiCommonErrors(400, 401, 404)
   async listBacklog(
@@ -264,6 +263,7 @@ export class WorkItemsController {
 
   @Post()
   @ApiOperation({ summary: 'Create a work item' })
+  @RequirePermission('work_item:create', { from: 'body', field: 'projectId' })
   @ApiResponse({ status: 201, type: WorkItemResponseDto })
   @ApiCommonErrors(400, 401, 404, 409, 422)
   async createWorkItem(
@@ -326,6 +326,7 @@ export class WorkItemsController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Get a work item by ID' })
+  @RequirePermission('work_item:view', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: WorkItemResponseDto })
   @ApiCommonErrors(401, 404)
@@ -342,6 +343,7 @@ export class WorkItemsController {
 
   @Patch('bulk-release')
   @ApiOperation({ summary: 'Bulk assign (or clear) a release on selected work items' })
+  @RequirePermission('work_item:edit', { from: 'body', field: 'projectId' })
   @ApiResponse({
     status: 200,
     description: 'Number of items updated',
@@ -363,6 +365,7 @@ export class WorkItemsController {
 
   @Patch('bulk-iteration')
   @ApiOperation({ summary: 'Bulk assign (or clear) an iteration on selected work items' })
+  @RequirePermission('work_item:edit', { from: 'body', field: 'projectId' })
   @ApiResponse({
     status: 200,
     description: 'Number of items updated',
@@ -386,6 +389,7 @@ export class WorkItemsController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update a work item' })
+  @RequirePermission('work_item:edit', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: WorkItemResponseDto })
   @ApiCommonErrors(400, 401, 404, 422)
@@ -403,6 +407,7 @@ export class WorkItemsController {
   @Delete(':id')
   @HttpCode(204)
   @ApiOperation({ summary: 'Delete a work item (soft delete)' })
+  @RequirePermission('work_item:delete', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 204, description: 'Work item deleted' })
   @ApiCommonErrors(401, 404)
@@ -417,6 +422,7 @@ export class WorkItemsController {
 
   @Patch(':id/move')
   @ApiOperation({ summary: 'Transition a work item to a new workflow status' })
+  @RequirePermission('work_item:edit', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: WorkItemResponseDto })
   @ApiCommonErrors(400, 401, 404)
@@ -447,6 +453,7 @@ export class WorkItemsController {
 
   @Patch(':id/rank')
   @ApiOperation({ summary: 'Reorder a work item between two backlog neighbours' })
+  @RequirePermission('work_item:edit', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: WorkItemResponseDto })
   @ApiCommonErrors(400, 401, 404, 422)
@@ -467,6 +474,7 @@ export class WorkItemsController {
 
   @Get(':id/tasks')
   @ApiOperation({ summary: 'List child tasks of a work item' })
+  @RequirePermission('work_item:view', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: WorkItemResponseDto, isArray: true })
   @ApiCommonErrors(401, 404)
@@ -480,6 +488,7 @@ export class WorkItemsController {
 
   @Get(':id/tasks/totals')
   @ApiOperation({ summary: 'Aggregate task hour totals for a work item' })
+  @RequirePermission('work_item:view', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: TaskTotalsResponseDto })
   @ApiCommonErrors(401, 404)
@@ -492,6 +501,7 @@ export class WorkItemsController {
 
   @Post(':id/tasks')
   @ApiOperation({ summary: 'Create a child task under a work item' })
+  @RequirePermission('work_item:create', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 201, type: WorkItemResponseDto })
   @ApiCommonErrors(400, 401, 404, 409, 422)
@@ -517,6 +527,7 @@ export class WorkItemsController {
 
   @Get(':id/activity')
   @ApiOperation({ summary: 'List the revision history of a work item' })
+  @RequirePermission('work_item:view', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: ActivityResponseDto, isArray: true })
   @ApiCommonErrors(401, 404)
@@ -542,6 +553,7 @@ export class WorkItemsController {
 
   @Get(':id/labels')
   @ApiOperation({ summary: 'List labels on a work item' })
+  @RequirePermission('work_item:view', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({
     status: 200,
@@ -564,6 +576,7 @@ export class WorkItemsController {
   @Post(':id/labels')
   @HttpCode(204)
   @ApiOperation({ summary: 'Add a label to a work item' })
+  @RequirePermission('work_item:edit', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 204, description: 'Label added' })
   @ApiCommonErrors(400, 401, 404, 422)
@@ -578,6 +591,7 @@ export class WorkItemsController {
   @Delete(':id/labels/:labelId')
   @HttpCode(204)
   @ApiOperation({ summary: 'Remove a label from a work item' })
+  @RequirePermission('work_item:edit', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiParam({ name: 'labelId', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 204, description: 'Label removed' })
@@ -594,6 +608,7 @@ export class WorkItemsController {
 
   @Get(':id/relations')
   @ApiOperation({ summary: 'List work items linked to this work item' })
+  @RequirePermission('work_item:view', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, description: 'Resolved relation views (outbound + inbound)' })
   @ApiCommonErrors(401, 404)
@@ -603,6 +618,7 @@ export class WorkItemsController {
 
   @Post(':id/relations')
   @ApiOperation({ summary: 'Link this work item to another (blocks/duplicates/relates/…)' })
+  @RequirePermission('work_item:edit', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 201, description: 'Relation created; returns the updated relation list' })
   @ApiCommonErrors(400, 401, 404, 422)
@@ -617,6 +633,7 @@ export class WorkItemsController {
   @Delete(':id/relations/:relationId')
   @HttpCode(204)
   @ApiOperation({ summary: 'Remove a link between work items' })
+  @RequirePermission('work_item:edit', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiParam({ name: 'relationId', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 204, description: 'Relation removed' })
@@ -633,6 +650,7 @@ export class WorkItemsController {
 
   @Get(':id/milestones')
   @ApiOperation({ summary: 'List milestones assigned to a work item' })
+  @RequirePermission('work_item:view', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({
     status: 200,
@@ -654,6 +672,7 @@ export class WorkItemsController {
 
   @Put(':id/milestones')
   @ApiOperation({ summary: 'Replace the set of milestones assigned to a work item' })
+  @RequirePermission('work_item:edit', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({
     status: 200,
@@ -678,6 +697,7 @@ export class WorkItemsController {
 
   @Get(':id/time-logs')
   @ApiOperation({ summary: 'List time log entries for a work item' })
+  @RequirePermission('work_item:view', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: TimeLogResponseDto, isArray: true })
   @ApiCommonErrors(401, 404)
@@ -696,6 +716,7 @@ export class WorkItemsController {
   @Post(':id/time-logs')
   @UseIdempotency()
   @ApiOperation({ summary: 'Log hours against a work item' })
+  @RequirePermission('work_item:edit', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 201, type: TimeLogResponseDto })
   @ApiCommonErrors(400, 401, 404, 422)
@@ -714,6 +735,7 @@ export class WorkItemsController {
 
   @Patch(':id/time-logs/:logId')
   @ApiOperation({ summary: 'Edit a time log entry (owner only)' })
+  @RequirePermission('work_item:edit', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiParam({ name: 'logId', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: TimeLogResponseDto })
@@ -735,6 +757,7 @@ export class WorkItemsController {
   @Delete(':id/time-logs/:logId')
   @HttpCode(204)
   @ApiOperation({ summary: 'Delete a time log entry (owner or admin)' })
+  @RequirePermission('work_item:edit', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiParam({ name: 'logId', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 204, description: 'Time log deleted' })
@@ -751,6 +774,7 @@ export class WorkItemsController {
 
   @Get(':id/watchers')
   @ApiOperation({ summary: 'List watchers (followers) of a work item' })
+  @RequirePermission('work_item:view', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: WatcherResponseDto, isArray: true })
   @ApiCommonErrors(401, 404)
@@ -765,6 +789,7 @@ export class WorkItemsController {
   @Post(':id/watchers')
   @HttpCode(204)
   @ApiOperation({ summary: 'Watch (follow) a work item' })
+  @RequirePermission('work_item:edit', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 204, description: 'Now watching' })
   @ApiCommonErrors(401, 404)
@@ -778,6 +803,7 @@ export class WorkItemsController {
   @Delete(':id/watchers')
   @HttpCode(204)
   @ApiOperation({ summary: 'Unwatch (unfollow) a work item' })
+  @RequirePermission('work_item:edit', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 204, description: 'No longer watching' })
   @ApiCommonErrors(401, 404)
@@ -792,6 +818,7 @@ export class WorkItemsController {
   @Post(':id/attachments/presign')
   @RateLimit('STRICT')
   @ApiOperation({ summary: 'Get presigned S3 PUT URL to upload an attachment' })
+  @RequirePermission('work_item:edit', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 201, type: PresignAttachmentResponseDto })
   @ApiCommonErrors(400, 401, 404, 422)
@@ -811,6 +838,7 @@ export class WorkItemsController {
   @Post(':id/attachments/:aid/confirm')
   @HttpCode(200)
   @ApiOperation({ summary: 'Confirm file upload completed — activates the attachment' })
+  @RequirePermission('work_item:edit', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiParam({ name: 'aid', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: AttachmentResponseDto })
@@ -826,6 +854,7 @@ export class WorkItemsController {
 
   @Get(':id/attachments')
   @ApiOperation({ summary: 'List completed attachments for a work item' })
+  @RequirePermission('work_item:view', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: AttachmentResponseDto, isArray: true })
   @ApiCommonErrors(401, 404)
@@ -839,6 +868,7 @@ export class WorkItemsController {
 
   @Get(':id/attachments/:aid/download')
   @ApiOperation({ summary: 'Get a presigned S3 GET URL for downloading an attachment' })
+  @RequirePermission('work_item:view', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiParam({ name: 'aid', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: DownloadUrlResponseDto })
@@ -866,6 +896,7 @@ export class WorkItemsController {
   @Get(':id/attachments/:aid/content')
   @Redirect(undefined, 302)
   @ApiOperation({ summary: 'Redirect to the attachment bytes (stable, authenticated URL)' })
+  @RequirePermission('work_item:view', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiParam({ name: 'aid', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 302, description: 'Redirect to a short-lived presigned URL' })
@@ -882,6 +913,7 @@ export class WorkItemsController {
   @Delete(':id/attachments/:aid')
   @HttpCode(204)
   @ApiOperation({ summary: 'Delete an attachment (uploader or admin only)' })
+  @RequirePermission('work_item:edit', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiParam({ name: 'aid', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 204, description: 'Attachment deleted' })
