@@ -53,60 +53,75 @@ export function ConnectedOrgs({ workspaceId }: ConnectedOrgsProps) {
   }
 
   return (
-    <section>
-      <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-ui-md font-semibold text-foreground">{t('integrations.orgs.title')}</h3>
-        {installations.length > 0 && (
-          <Button size="sm" variant="secondary" type="button" onClick={() => connectDialog.open()}>
-            <Plus size={14} />
-            {t('integrations.orgs.connect')}
-          </Button>
-        )}
-      </div>
-
-      {isLoading ? (
-        <div className="flex items-center gap-2 py-4 text-ui-sm text-foreground-subtle">
-          <Spinner size="sm" />
-          {t('integrations.loading')}
-        </div>
-      ) : installations.length === 0 ? (
-        <EmptyState
-          icon={<GitBranch size={22} className="text-border-strong" />}
-          title={t('integrations.orgs.empty.title')}
-          description={t('integrations.orgs.empty.description')}
-          action={
-            <Button type="button" onClick={() => connectDialog.open()}>
-              <GitBranch size={14} />
-              {t('integrations.orgs.connect')}
-            </Button>
+    <>
+      <Card>
+        <CardHeader
+          title={t('integrations.orgs.title')}
+          actions={
+            installations.length > 0 ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                type="button"
+                onClick={() => connectDialog.open()}
+              >
+                <Plus size={14} />
+                {t('integrations.orgs.connect')}
+              </Button>
+            ) : undefined
           }
         />
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
-          {installations.map((i) => (
-            <Card key={i.installationId}>
-              <CardHeader
-                icon={<Building2 size={16} className="text-foreground-subtle" />}
-                title={label(i)}
+        <CardBody className="p-0">
+          {isLoading ? (
+            <div className="flex items-center gap-2 px-4 py-6 text-ui-sm text-foreground-subtle">
+              <Spinner size="sm" />
+              {t('integrations.loading')}
+            </div>
+          ) : installations.length === 0 ? (
+            <div className="px-4 py-8">
+              <EmptyState
+                icon={<GitBranch size={22} className="text-border-strong" />}
+                title={t('integrations.orgs.empty.title')}
+                description={t('integrations.orgs.empty.description')}
+                action={
+                  <Button type="button" onClick={() => connectDialog.open()}>
+                    <GitBranch size={14} />
+                    {t('integrations.orgs.connect')}
+                  </Button>
+                }
               />
-              <CardBody className="flex items-center justify-between py-3">
-                <span className="text-ui-sm text-foreground-subtle">
-                  {t('integrations.orgs.repoCount', { count: repoCount(i.installationId) })}
-                </span>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  type="button"
-                  className="text-destructive hover:text-destructive"
-                  onClick={() => confirm.open(i)}
+            </div>
+          ) : (
+            <div className="divide-y divide-border-subtle">
+              {installations.map((i) => (
+                <div
+                  key={i.installationId}
+                  className="flex items-center justify-between gap-3 px-4 py-3"
                 >
-                  {t('integrations.orgs.disconnect')}
-                </Button>
-              </CardBody>
-            </Card>
-          ))}
-        </div>
-      )}
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <Building2 size={18} className="shrink-0 text-foreground-subtle" />
+                    <div className="min-w-0">
+                      <p className="truncate text-ui-md font-medium text-foreground">{label(i)}</p>
+                      <p className="text-ui-sm text-foreground-subtle">
+                        {t('integrations.orgs.repoCount', { count: repoCount(i.installationId) })}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    type="button"
+                    className="text-destructive hover:text-destructive"
+                    onClick={() => confirm.open(i)}
+                  >
+                    {t('integrations.orgs.disconnect')}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardBody>
+      </Card>
 
       <ConnectInstallationDialog
         open={connectDialog.isOpen}
@@ -125,6 +140,6 @@ export function ConnectedOrgs({ workspaceId }: ConnectedOrgsProps) {
         onConfirm={() => confirm.data && void onDisconnect(confirm.data)}
         onCancel={confirm.close}
       />
-    </section>
+    </>
   )
 }
