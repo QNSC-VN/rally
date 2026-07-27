@@ -34,6 +34,7 @@ import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { OwnerSelectCell } from '@/shared/ui/owner-cell'
 import { BulkDeleteCopy } from '@/features/work-items/ui/bulk-delete-copy'
+import { BulkScheduleActions } from '@/features/work-items/ui/bulk-schedule-bar'
 import { useRowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
@@ -215,6 +216,26 @@ export function BacklogPage() {
   // '—' for any item whose iteration had since become Accepted, even though
   // the relation was genuinely set (see RELATION_DATA_TRACEABILITY.md).
   const { data: allIterations = [] } = useIterations(projectId, team?.teamId)
+
+  // Bulk Assign Release/Iteration choices — same composite "KEY: name" labels as
+  // the inline row pickers, so the bulk bar and per-row selects stay consistent.
+  // Only assignable iterations (planning/committed) are offered for bulk assign.
+  const releaseChoices = useMemo(
+    () =>
+      releases.map((r) => ({
+        id: r.id,
+        name: r.releaseKey ? `${r.releaseKey}: ${r.name}` : r.name,
+      })),
+    [releases],
+  )
+  const iterationChoices = useMemo(
+    () =>
+      iterationOptions.map((it) => ({
+        id: it.id,
+        name: it.iterationKey ? `${it.iterationKey}: ${it.name}` : it.name,
+      })),
+    [iterationOptions],
+  )
 
   // Reset pagination on filter/project change (synchronously, before useBacklog reads cursor)
   const prevTeamRef = useRef(team?.teamId)
@@ -416,12 +437,22 @@ export function BacklogPage() {
           }}
           bulkActions={(sel) =>
             canEdit ? (
-              <BulkDeleteCopy
-                selection={sel}
-                projectId={projectId!}
-                onCopy={copySelected}
-                copyPending={createItem.isPending}
-              />
+              <>
+                <BulkScheduleActions
+                  projectId={projectId}
+                  selectedIds={sel.selectedIds}
+                  clearSelection={sel.clear}
+                  releases={releaseChoices}
+                  iterations={iterationChoices}
+                  canEdit={canEdit}
+                />
+                <BulkDeleteCopy
+                  selection={sel}
+                  projectId={projectId!}
+                  onCopy={copySelected}
+                  copyPending={createItem.isPending}
+                />
+              </>
             ) : null
           }
           loading={isLoading}
