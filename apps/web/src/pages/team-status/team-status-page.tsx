@@ -69,10 +69,31 @@ const TEAM_STATUS_COLUMNS: ColumnSpec<TeamStatusTaskRow, unknown, ColKey>[] = [
   { key: 'workProduct', label: 'Work Product', defaultWidth: 140 },
   { key: 'release', label: 'Release', defaultWidth: 96 },
   { key: 'state', label: 'State', defaultWidth: 112 },
-  { key: 'capacity', label: 'Capacity', defaultWidth: 104, minWidth: 90, align: 'right', sortCol: 'capacity' },
-  { key: 'estimate', label: 'Estimate', defaultWidth: 104, minWidth: 90, align: 'right', sortCol: 'estimate' },
+  {
+    key: 'capacity',
+    label: 'Capacity',
+    defaultWidth: 104,
+    minWidth: 90,
+    align: 'right',
+    sortCol: 'capacity',
+  },
+  {
+    key: 'estimate',
+    label: 'Estimate',
+    defaultWidth: 104,
+    minWidth: 90,
+    align: 'right',
+    sortCol: 'estimate',
+  },
   { key: 'todo', label: 'To Do', defaultWidth: 88, minWidth: 74, align: 'right', sortCol: 'todo' },
-  { key: 'actuals', label: 'Actuals', defaultWidth: 96, minWidth: 80, align: 'right', sortCol: 'actuals' },
+  {
+    key: 'actuals',
+    label: 'Actuals',
+    defaultWidth: 96,
+    minWidth: 80,
+    align: 'right',
+    sortCol: 'actuals',
+  },
   { key: 'owner', label: 'Owner', defaultWidth: 96 },
 ]
 
@@ -247,7 +268,9 @@ export function TeamStatusPage() {
             ? g.actualHours
             : 0
   const sortedGroups = sortCol
-    ? [...groups].sort((a, b) => (sortAggregate(a) - sortAggregate(b)) * (sortDir === 'desc' ? -1 : 1))
+    ? [...groups].sort(
+        (a, b) => (sortAggregate(a) - sortAggregate(b)) * (sortDir === 'desc' ? -1 : 1),
+      )
     : groups
 
   // Paginate the visible member groups (see hook block above).
@@ -743,7 +766,7 @@ function TaskRow({
           value={String(task.estimateHours ?? '')}
           canEdit={canEdit}
           onCommit={commitEstimate}
-          displayValue={task.estimateHours || '—'}
+          displayValue={task.estimateHours ?? '—'}
           className="font-mono text-muted-foreground tabular-nums"
           inputClassName="text-right font-mono text-ui-sm text-foreground"
           ariaLabel="Estimate hours"
@@ -759,7 +782,7 @@ function TaskRow({
           value={String(task.todoHours ?? '')}
           canEdit={canEdit}
           onCommit={commitTodo}
-          displayValue={task.todoHours || '—'}
+          displayValue={task.todoHours ?? '—'}
           className="font-mono text-muted-foreground tabular-nums"
           inputClassName="text-right font-mono text-ui-sm text-foreground"
           ariaLabel="To Do hours"
@@ -775,7 +798,7 @@ function TaskRow({
           value={String(task.actualHours ?? '')}
           canEdit={canEdit}
           onCommit={commitActual}
-          displayValue={task.actualHours || '—'}
+          displayValue={task.actualHours ?? '—'}
           className="font-mono text-muted-foreground tabular-nums"
           inputClassName="text-right font-mono text-ui-sm text-foreground"
           ariaLabel="Actual hours"
