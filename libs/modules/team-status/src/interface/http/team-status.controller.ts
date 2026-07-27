@@ -11,7 +11,7 @@ import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ApiCommonErrors } from '@platform';
 import type { JwtPayload } from '@platform';
 import { CurrentUser } from '@modules/identity';
-import { RequireProjectPermission, AuthProjectScoped } from '@modules/access';
+import { RequirePermission, AuthPolicy } from '@modules/access';
 import { TeamStatusService } from '../../application/team-status.service';
 import {
   TeamStatusQueryDto,
@@ -26,14 +26,14 @@ import type {
 
 @ApiTags('team-status')
 @Controller('team-status')
-@AuthProjectScoped()
+@AuthPolicy()
 export class TeamStatusController {
   constructor(private readonly teamStatusService: TeamStatusService) {}
 
   // ── GET /team-status ──────────────────────────────────────────────────
 
   @Get()
-  @RequireProjectPermission('team_status:view', 'query', 'projectId')
+  @RequirePermission('team_status:view', { from: 'query', field: 'projectId' })
   @ApiOperation({ summary: 'Get Team Status for an iteration' })
   @ApiResponse({ status: 200, description: 'Grouped task status by member' })
   @ApiCommonErrors(400, 401, 403, 404)
@@ -52,7 +52,7 @@ export class TeamStatusController {
   // ── PATCH /team-status/capacity ───────────────────────────────────────
 
   @Patch('capacity')
-  @RequireProjectPermission('team_status:edit', 'body', 'projectId')
+  @RequirePermission('team_status:edit', { from: 'body', field: 'projectId' })
   @ApiOperation({ summary: 'Update member capacity for an iteration' })
   @ApiResponse({ status: 200, description: 'Updated capacity' })
   @ApiCommonErrors(400, 401, 403)
@@ -73,6 +73,7 @@ export class TeamStatusController {
   // ── PATCH /team-status/tasks/:taskId ──────────────────────────────────
 
   @Patch('tasks/:taskId')
+  @RequirePermission('team_status:edit', { resource: 'work_item', from: 'param', field: 'taskId' })
   @ApiOperation({ summary: 'Update a task from Team Status (title/state)' })
   @ApiParam({ name: 'taskId', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, description: 'Updated task' })

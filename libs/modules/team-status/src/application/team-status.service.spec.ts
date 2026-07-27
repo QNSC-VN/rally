@@ -350,7 +350,7 @@ describe('TeamStatusService', () => {
   // ── updateCapacity ───────────────────────────────────────────────────────
 
   describe('updateCapacity', () => {
-    it('delegates to repo after asserting edit permission', async () => {
+    it('delegates to repo (authorization is enforced by the PolicyGuard)', async () => {
       await service.updateCapacity(actor, {
         projectId: 'proj-1',
         teamId: 'team-a',
@@ -359,11 +359,8 @@ describe('TeamStatusService', () => {
         capacityHours: 40,
       });
 
-      expect(access.assertProjectPermission).toHaveBeenCalledWith(
-        actor,
-        'proj-1',
-        expect.any(String),
-      );
+      // team_status:edit is now checked by the guard, not the service.
+      expect(access.assertProjectPermission).not.toHaveBeenCalled();
       expect(repo.upsertCapacity).toHaveBeenCalledWith(
         expect.objectContaining({ userId: 'alice', capacityHours: 40 }),
       );
@@ -431,9 +428,13 @@ describe('TeamStatusService', () => {
     });
 
     it('never force-completes the parent — reports the parent status decided by the gated roll-up', async () => {
-      workItems.getWorkItem
-        .mockResolvedValueOnce({ id: 'task-1', projectId: 'proj-1', workspaceId: 'ws-1' })
-        .mockResolvedValueOnce({ id: 'story-1', itemKey: 'PROJ-5', scheduleState: 'in_progress' });
+      // Only the parent re-read hits getWorkItem now — the task is loaded by
+      // updateWorkItem, and authorization is on the guard.
+      workItems.getWorkItem.mockResolvedValue({
+        id: 'story-1',
+        itemKey: 'PROJ-5',
+        scheduleState: 'in_progress',
+      });
       workItems.updateWorkItem.mockResolvedValue({
         id: 'task-1',
         itemKey: 'PROJ-10',
@@ -458,9 +459,11 @@ describe('TeamStatusService', () => {
     });
 
     it('reports parent as completed when the gated roll-up completed it', async () => {
-      workItems.getWorkItem
-        .mockResolvedValueOnce({ id: 'task-1', projectId: 'proj-1', workspaceId: 'ws-1' })
-        .mockResolvedValueOnce({ id: 'story-1', itemKey: 'PROJ-5', scheduleState: 'completed' });
+      workItems.getWorkItem.mockResolvedValue({
+        id: 'story-1',
+        itemKey: 'PROJ-5',
+        scheduleState: 'completed',
+      });
       workItems.updateWorkItem.mockResolvedValue({
         id: 'task-1',
         itemKey: 'PROJ-10',
@@ -480,9 +483,11 @@ describe('TeamStatusService', () => {
     });
 
     it('re-reads parent on non-Completed edits too, without updating it', async () => {
-      workItems.getWorkItem
-        .mockResolvedValueOnce({ id: 'task-1', projectId: 'proj-1', workspaceId: 'ws-1' })
-        .mockResolvedValueOnce({ id: 'story-1', itemKey: 'PROJ-5', scheduleState: 'in_progress' });
+      workItems.getWorkItem.mockResolvedValue({
+        id: 'story-1',
+        itemKey: 'PROJ-5',
+        scheduleState: 'in_progress',
+      });
       workItems.updateWorkItem.mockResolvedValue({
         id: 'task-1',
         itemKey: 'PROJ-10',
@@ -496,10 +501,8 @@ describe('TeamStatusService', () => {
     });
 
     it('gracefully handles a parent re-read failure (logs warning, non-fatal)', async () => {
-      // Task load succeeds; parent re-read throws.
-      workItems.getWorkItem
-        .mockResolvedValueOnce({ id: 'task-1', projectId: 'proj-1', workspaceId: 'ws-1' })
-        .mockRejectedValueOnce(new Error('Parent read failed'));
+      // The only getWorkItem call is the parent re-read; make it throw.
+      workItems.getWorkItem.mockRejectedValue(new Error('Parent read failed'));
       workItems.updateWorkItem.mockResolvedValue({
         id: 'task-1',
         itemKey: 'PROJ-10',

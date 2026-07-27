@@ -1,19 +1,21 @@
 import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Auth, ApiCommonErrors } from '@platform';
+import { ApiCommonErrors } from '@platform';
 import type { JwtPayload } from '@platform';
 import { CurrentUser } from '@modules/identity';
+import { AuthPolicy, RequirePermission } from '@modules/access';
 import { ReportingService } from '../../application/reporting.service';
 import { VELOCITY_DEFAULT_SPRINTS, VELOCITY_MAX_SPRINTS } from '../../domain/reporting.constants';
 import type { SprintBurndownReport, VelocityReport } from '../../domain/reporting.types';
 
 @ApiTags('reporting')
 @Controller('reports')
-@Auth()
+@AuthPolicy()
 export class ReportingController {
   constructor(private readonly reportingService: ReportingService) {}
 
   @Get('sprints/:sprintId/burndown')
+  @RequirePermission('iteration:view', { resource: 'iteration', from: 'param', field: 'sprintId' })
   @ApiOperation({ summary: 'Get sprint burndown chart data' })
   @ApiParam({ name: 'sprintId', type: 'string', format: 'uuid' })
   @ApiResponse({
@@ -46,6 +48,7 @@ export class ReportingController {
   }
 
   @Get('projects/:projectId/velocity')
+  @RequirePermission('iteration:view', { from: 'param', field: 'projectId' })
   @ApiOperation({ summary: 'Get sprint velocity for a project' })
   @ApiParam({ name: 'projectId', type: 'string', format: 'uuid' })
   @ApiQuery({ name: 'lastNSprints', required: false, type: Number, example: 6 })

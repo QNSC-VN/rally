@@ -81,21 +81,12 @@ describe('CollaborationService — project-scoped comment writes', () => {
   });
 
   describe('createComment', () => {
-    it('authorizes work_item:edit against the item’s project before creating', async () => {
+    // POST .../comments is now authorized by the PolicyGuard (work_item:edit on
+    // the path workItemId's project); the service just writes the comment.
+    it('creates the comment without a service-level project check', async () => {
       await service.createComment(mockActor, 'wi-1', 'hi');
-      expect(workItemsService.getWorkItem).toHaveBeenCalledWith('ws-1', 'wi-1');
-      expect(accessService.assertProjectPermission).toHaveBeenCalledWith(
-        mockActor,
-        'proj-9',
-        'work_item:edit',
-      );
       expect(commentRepo.create).toHaveBeenCalledOnce();
-    });
-
-    it('does not create when authorization is denied', async () => {
-      accessService.assertProjectPermission.mockRejectedValueOnce(new Error('DENIED'));
-      await expect(service.createComment(mockActor, 'wi-1', 'hi')).rejects.toThrow('DENIED');
-      expect(commentRepo.create).not.toHaveBeenCalled();
+      expect(accessService.assertProjectPermission).not.toHaveBeenCalled();
     });
   });
 

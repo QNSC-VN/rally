@@ -46,7 +46,9 @@ export class CollaborationService {
     parentId?: string,
     mentionedUserIds: string[] = [],
   ): Promise<Comment> {
-    await this.assertCanCollaborate(actor, workItemId);
+    // Authorization (work_item:edit on the item's project) is enforced by the
+    // PolicyGuard on POST .../comments; update/delete stay service-checked below
+    // because their subject is the loaded comment's own work item, not the path.
     const comment = await this.commentRepo.create({
       id: uuidv7(),
       workspaceId: actor.workspaceId,
