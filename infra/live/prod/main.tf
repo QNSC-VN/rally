@@ -2,9 +2,12 @@
 //
 // Structurally identical to ../develop by construction: the entire stack lives in
 // ../../modules/stack and only the values below differ. Production takes the
-// DEDICATED, durable settings — on-demand Fargate, larger RDS with deletion
-// protection and 30-day backups, 90-day retention, a pinned image tag — while
-// develop takes the shared, cheap ones.
+// DEDICATED, durable settings — on-demand Fargate, Multi-AZ RDS with deletion
+// protection, 30-day backups and Enhanced Monitoring, 90-day retention, a pinned
+// image tag — while develop takes the shared, cheap ones.
+//
+// Security posture is NOT a per-environment value: the cache module always
+// enables KMS at rest and TLS in transit, so develop cannot be the weaker one.
 terraform {
   required_version = ">= 1.9"
   required_providers {
@@ -37,45 +40,7 @@ provider "cloudflare" {
 }
 
 locals {
-  name   = "rally-prod"
   region = "ap-southeast-1"
-}
-
-// ── Cache ─────────────────────────────────────────────────────────────────────
-// Dedicated per-product node from the shared module: KMS at rest and TLS in transit,
-// hence `rediss://`. Declared here rather than in the stack module only until develop
-// adopts the same module — see ../develop/main.tf for why that migration is separate.
-module "cache" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/cache?ref=cache-v1.0.0"
-
-  name              = "${local.name}-cache"
-  subnet_ids        = data.terraform_remote_state.runtime.outputs.data_subnet_ids
-  security_group_id = data.terraform_remote_state.runtime.outputs.sg_cache_id
-  kms_key_arn       = data.terraform_remote_state.shared.outputs.kms_key_arn
-
-  mode      = "node" # single cache.t4g.micro (~$12/mo) — serverless floors at ~$90
-  node_type = "cache.t4g.micro"
-
-  tags = { Environment = "production" }
-}
-
-data "terraform_remote_state" "runtime" {
-  backend = "s3"
-  config = {
-    bucket = "qnsc-tofu-state"
-    key    = "platform/runtime-prod/terraform.tfstate"
-    region = "ap-southeast-1"
-  }
-}
-
-// The cache module needs the KMS key, which the product's _shared stack owns.
-data "terraform_remote_state" "shared" {
-  backend = "s3"
-  config = {
-    bucket = "qnsc-tofu-state"
-    key    = "rally/shared/terraform.tfstate"
-    region = "ap-southeast-1"
-  }
 }
 
 // ── The stack ─────────────────────────────────────────────────────────────────
@@ -100,7 +65,6 @@ module "stack" {
 
   // Production runs the tag the release built, never a floating `latest`.
   image_tag = var.image_tag
-  redis_url = "rediss://${module.cache.endpoint}:${module.cache.port}"
 
   // Never seed demo data into production.
   seed_on_deploy        = false
@@ -116,14 +80,19 @@ module "stack" {
   secrets_recovery_window_days = 30
   dlq_max_receive_count        = 3 # move to the DLQ sooner in production
 
+  // Multi-AZ is the reason a single-AZ failure is a failover rather than an
+  // outage-plus-restore. It also makes the "prod RDS is Multi-AZ, never stopped"
+  // assumption in the qnsc-ci deploy reusable's dev-wake step actually true.
+  // t4g.small over micro for 2 GB rather than 1 GB; Enhanced Monitoring at 60 s
+  // gives per-process and per-device visibility CloudWatch metrics alone do not.
   rds = {
-    instance_class           = "db.t4g.micro"
+    instance_class           = "db.t4g.small"
     allocated_storage_gb     = 100
     max_allocated_storage_gb = 500
-    multi_az                 = false
+    multi_az                 = true
     deletion_protection      = true
     backup_retention_days    = 30
-    monitoring_interval      = 0
+    monitoring_interval      = 60
   }
 
   // On-demand, not Spot: an interruption here is user-visible. Tighter autoscale

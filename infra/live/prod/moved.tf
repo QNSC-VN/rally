@@ -67,3 +67,12 @@ moved {
   from = aws_cloudwatch_metric_alarm.security_fail_open
   to   = module.stack.aws_cloudwatch_metric_alarm.security_fail_open
 }
+
+// The cache moved from a caller-level module into the stack module when develop
+// adopted the same module. State relocation only — the replication group, its
+// subnet group and the KMS association are untouched, so production sessions
+// survive. Without this, prod's cache would be destroyed and recreated.
+moved {
+  from = module.cache
+  to   = module.stack.module.cache
+}

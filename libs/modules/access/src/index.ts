@@ -4,5 +4,7 @@ export * from './domain/ports/role.repository';
 export * from './domain/ports/role-assignment.repository';
 export * from './application/access.service';
 export * from './interface/http/project-permission.guard';
+export * from './interface/http/policy.guard';
+export * from './application/project-scope.resolver';
 export * from './interface/http/dto/access-request.dto';
 export * from './interface/http/dto/access-response.dto';

@@ -39,43 +39,7 @@ provider "cloudflare" {
 }
 
 locals {
-  name   = "rally-develop"
   region = "ap-southeast-1"
-}
-
-// ── Cache ─────────────────────────────────────────────────────────────────────
-// Still declared here rather than in the module: production uses the shared `cache`
-// module (KMS at rest, TLS in transit, `rediss://`) while this inline node has
-// neither. Unifying them REPLACES this node and changes the connection scheme, which
-// logs every develop user out — BFF sessions live only in the cache. That is a
-// deliberate follow-up change, not something to bury inside a structural refactor.
-resource "aws_elasticache_subnet_group" "cache" {
-  name       = "${local.name}-cache"
-  subnet_ids = data.terraform_remote_state.runtime.outputs.data_subnet_ids
-  tags       = { Environment = "develop" }
-}
-
-resource "aws_elasticache_cluster" "cache" {
-  cluster_id         = "${local.name}-cache"
-  engine             = "redis"
-  node_type          = "cache.t4g.micro" # smallest node — dev cost stays low
-  num_cache_nodes    = 1
-  port               = 6379
-  subnet_group_name  = aws_elasticache_subnet_group.cache.name
-  security_group_ids = [data.terraform_remote_state.runtime.outputs.sg_cache_id]
-  apply_immediately  = true # dev: no maintenance-window wait
-  tags               = { Environment = "develop" }
-}
-
-// The cache lives outside the ECS tasks so it survives task replacement — the fix
-// for "every dev deploy logs users out", since BFF sessions are stored only here.
-data "terraform_remote_state" "runtime" {
-  backend = "s3"
-  config = {
-    bucket = "qnsc-tofu-state"
-    key    = "platform/runtime-dev/terraform.tfstate"
-    region = "ap-southeast-1"
-  }
 }
 
 // ── The stack ─────────────────────────────────────────────────────────────────
@@ -98,7 +62,6 @@ module "stack" {
 
   // Develop tracks the newest image; production pins a release tag.
   image_tag = "latest"
-  redis_url = "redis://${aws_elasticache_cluster.cache.cache_nodes[0].address}:6379"
 
   // Develop seeds demo data after migrating; production must never.
   seed_on_deploy        = true

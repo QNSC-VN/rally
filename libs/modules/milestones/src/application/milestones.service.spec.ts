@@ -266,20 +266,8 @@ describe('MilestonesService', () => {
       await expect(service.getMilestone('ws-1', 'ms-1')).rejects.toThrow(NotFoundException);
     });
 
-    it('getMilestoneForView denies when the actor lacks milestone:view (cross-project guard)', async () => {
-      repo.findById.mockResolvedValue(mockMilestone());
-      access.assertProjectPermission.mockRejectedValueOnce(
-        new PreconditionFailedException('PROJECT_PERMISSION_DENIED', 'denied'),
-      );
-      await expect(service.getMilestoneForView(actor, 'ms-1')).rejects.toThrow(
-        PreconditionFailedException,
-      );
-      expect(access.assertProjectPermission).toHaveBeenCalledWith(
-        actor,
-        expect.any(String),
-        'milestone:view',
-      );
-    });
+    // milestone:view is enforced by the PolicyGuard at the route (P2,
+    // resource-resolved from :id), covered by e2e — not a service assert.
 
     it('recalculates target dates on get to ensure they are derived', async () => {
       repo.findById.mockResolvedValue(mockMilestone());
@@ -294,15 +282,7 @@ describe('MilestonesService', () => {
   // ── updateMilestone ──────────────────────────────────────────────────────
 
   describe('updateMilestone', () => {
-    it('asserts milestone:edit permission', async () => {
-      repo.findById.mockResolvedValue(mockMilestone());
-      await service.updateMilestone(actor, 'ms-1', { name: 'Renamed' });
-      expect(access.assertProjectPermission).toHaveBeenCalledWith(
-        actor,
-        'proj-1',
-        expect.any(String),
-      );
-    });
+    // Authorization (milestone:edit) enforced by the PolicyGuard at the route (P2).
 
     it('recalculates target dates via DB when releaseIds change', async () => {
       repo.findById.mockResolvedValue(mockMilestone());
@@ -540,11 +520,7 @@ describe('MilestonesService', () => {
       expect(repo.delete).toHaveBeenCalledWith('ms-1');
     });
 
-    it('asserts permission before deletion', async () => {
-      repo.findById.mockResolvedValue(mockMilestone());
-      await service.deleteMilestone(actor, 'ms-1');
-      expect(access.assertProjectPermission).toHaveBeenCalled();
-    });
+    // Authorization (milestone:delete) enforced by the PolicyGuard at the route (P2).
 
     it('throws when milestone not found', async () => {
       repo.findById.mockResolvedValue(null);
