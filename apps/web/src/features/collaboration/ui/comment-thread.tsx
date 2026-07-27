@@ -9,6 +9,7 @@
  */
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { MessageSquare, Pencil, Trash2 } from 'lucide-react'
 import {
   useComments,
@@ -24,6 +25,7 @@ import { OwnerAvatar } from '@/shared/ui/owner-cell'
 import { Button } from '@/shared/ui/button'
 import { IconButton } from '@/shared/ui/icon-button'
 import { Textarea } from '@/shared/ui/textarea'
+import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { cn, formatWith } from '@/shared/lib/utils'
 
 function relativeTime(iso: string): string {
@@ -41,6 +43,7 @@ interface CommentThreadProps {
 }
 
 export function CommentThread({ workItemId, projectId, readOnly = false }: CommentThreadProps) {
+  const { t } = useTranslation('work-items')
   const { data: comments = [], isLoading } = useComments(workItemId)
   const { data: members = [] } = useProjectMembers(projectId)
   const createMutation = useCreateComment(workItemId)
@@ -55,6 +58,8 @@ export function CommentThread({ workItemId, projectId, readOnly = false }: Comme
   const [activeIdx, setActiveIdx] = useState(0)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editBody, setEditBody] = useState('')
+  // Holds the comment id pending a delete confirmation (null = dialog closed).
+  const [deleteId, setDeleteId] = useState<string | null>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
 
   const nameById = useMemo(() => {
@@ -179,7 +184,7 @@ export function CommentThread({ workItemId, projectId, readOnly = false }: Comme
                             variant="destructive"
                             aria-label="Delete comment"
                             title="Delete"
-                            onClick={() => void deleteMutation.mutate(c.id)}
+                            onClick={() => setDeleteId(c.id)}
                           >
                             <Trash2 size={11} />
                           </IconButton>
@@ -253,6 +258,21 @@ export function CommentThread({ workItemId, projectId, readOnly = false }: Comme
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!deleteId}
+        title={t('comments.deleteTitle', 'Delete comment')}
+        message={t('comments.deleteConfirm', 'Delete this comment? This cannot be undone.')}
+        confirmLabel={t('comments.delete', 'Delete')}
+        destructive
+        pending={deleteMutation.isPending}
+        onConfirm={() => {
+          const id = deleteId
+          setDeleteId(null)
+          if (id) deleteMutation.mutate(id)
+        }}
+        onCancel={() => setDeleteId(null)}
+      />
     </div>
   )
 }

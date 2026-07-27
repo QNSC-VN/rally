@@ -4,6 +4,7 @@ import { Loader2, Trash2, Upload } from 'lucide-react'
 
 import { notify } from '@/shared/lib/toast'
 import { Button } from '@/shared/ui/button'
+import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { OwnerAvatar } from '@/shared/ui/owner-cell'
 import {
   useAvatarPresign,
@@ -39,6 +40,8 @@ export function AvatarUploader({
   const presign = useAvatarPresign()
   const confirm = useAvatarConfirm()
   const [busy, setBusy] = useState(false)
+  // Open state for the remove-photo confirmation dialog.
+  const [confirmRemove, setConfirmRemove] = useState(false)
 
   async function handleFile(file: File) {
     if (!ALLOWED_TYPES.includes(file.type as AvatarContentType)) {
@@ -101,7 +104,7 @@ export function AvatarUploader({
               variant="outline"
               size="sm"
               disabled={busy}
-              onClick={() => void handleRemove()}
+              onClick={() => setConfirmRemove(true)}
             >
               <Trash2 size={14} />
               {t('profile.avatarRemove')}
@@ -120,6 +123,20 @@ export function AvatarUploader({
           if (file) void handleFile(file)
           e.target.value = ''
         }}
+      />
+
+      <ConfirmDialog
+        open={confirmRemove}
+        title={t('profile.avatarRemoveTitle', 'Remove photo')}
+        message={t('profile.avatarRemoveConfirm', 'Remove your profile photo?')}
+        confirmLabel={t('profile.avatarRemove')}
+        destructive
+        pending={busy}
+        onConfirm={() => {
+          setConfirmRemove(false)
+          void handleRemove()
+        }}
+        onCancel={() => setConfirmRemove(false)}
       />
     </div>
   )
