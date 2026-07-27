@@ -204,32 +204,18 @@ export class ReleasesService {
   }
 
   /**
-   * Load a release for a READ, enforcing `release:view` at the release's project
-   * scope — not just workspace membership. Every read entry point (detail,
-   * activity, burndown, artifacts) goes through this so a user scoped to one
-   * project cannot read another project's releases in the same workspace.
-   * Mirrors getWorkItemForView / getIterationForView.
+   * Load a release for a READ. Project-scoped `release:view` is enforced by the
+   * PolicyGuard at the route (resource-resolved), so this just loads the row.
    */
   private async getReleaseForView(actor: JwtPayload, id: string): Promise<Release> {
-    const release = await this.getRelease(actor.workspaceId, id);
-    await this.accessService.assertProjectPermission(
-      actor,
-      release.projectId,
-      PERMISSION.RELEASE_VIEW,
-    );
-    return release;
+    return this.getRelease(actor.workspaceId, id);
   }
 
   // ── Update ────────────────────────────────────────────────────────────────
 
   async updateRelease(actor: JwtPayload, id: string, input: UpdateReleaseInput): Promise<Release> {
+    // Authorization (release:edit at this project) is enforced by the PolicyGuard.
     const release = await this.getRelease(actor.workspaceId, id);
-    // Per-project check: the caller must hold release:edit for THIS release's project.
-    await this.accessService.assertProjectPermission(
-      actor,
-      release.projectId,
-      PERMISSION.RELEASE_EDIT,
-    );
 
     // Validate status transition
     if (input.status && input.status !== release.status) {
@@ -273,12 +259,8 @@ export class ReleasesService {
   // ── Delete ────────────────────────────────────────────────────────────────
 
   async deleteRelease(actor: JwtPayload, id: string): Promise<void> {
+    // Authorization (release:delete at this project) is enforced by the PolicyGuard.
     const release = await this.getRelease(actor.workspaceId, id);
-    await this.accessService.assertProjectPermission(
-      actor,
-      release.projectId,
-      PERMISSION.RELEASE_DELETE,
-    );
     // Accepted releases cannot be deleted
     if (release.status === 'accepted') {
       throw new PreconditionFailedException(
