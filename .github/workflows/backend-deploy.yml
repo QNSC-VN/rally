@@ -164,7 +164,7 @@ jobs:
 
   deploy:
     needs: [wait-for-infra, wait-for-ci]
-    uses: QNSC-VN/qnsc-ci/.github/workflows/backend-deploy.yml@v1.5.0
+    uses: QNSC-VN/qnsc-ci/.github/workflows/backend-deploy.yml@v1.5.1
     with:
       product: rally
       has_worker: true
