@@ -133,7 +133,8 @@ export interface paths {
     /** List all roles available to the workspace */
     get: operations['AccessController_listRoles']
     put?: never
-    post?: never
+    /** Create a workspace custom role (workspace admin only) */
+    post: operations['AccessController_createRole']
     delete?: never
     options?: never
     head?: never
@@ -172,6 +173,23 @@ export interface paths {
     head?: never
     /** Replace a custom role’s permission set (workspace admin only) */
     patch: operations['AccessController_updateRolePermissions']
+    trace?: never
+  }
+  '/v1/roles/{roleId}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    /** Delete a workspace custom role (workspace admin only) */
+    delete: operations['AccessController_deleteRole']
+    options?: never
+    head?: never
+    patch?: never
     trace?: never
   }
   '/v1/users/{userId}/role-assignments': {
@@ -2280,6 +2298,54 @@ export interface components {
         tier: 'workspace' | 'project'
       }[]
     }
+    CreateRoleDto: {
+      name: string
+      description?: string | null
+      /** @default [] */
+      permissions: (
+        | 'workspace:*'
+        | 'workspace:view'
+        | 'workspace:create'
+        | 'workspace:edit'
+        | 'workspace:delete'
+        | 'users:invite'
+        | 'users:remove'
+        | 'users:assign_role'
+        | 'roles:view'
+        | 'roles:edit'
+        | 'teams:create'
+        | 'teams:edit'
+        | 'teams:manage_members'
+        | 'audit:view'
+        | 'scm:manage'
+        | 'project:view'
+        | 'project:create'
+        | 'project:edit'
+        | 'project:archive'
+        | 'project:restore'
+        | 'project:delete'
+        | 'project:manage_members'
+        | 'work_item:view'
+        | 'work_item:create'
+        | 'work_item:edit'
+        | 'work_item:delete'
+        | 'iteration:view'
+        | 'iteration:create'
+        | 'iteration:edit'
+        | 'iteration:delete'
+        | 'release:view'
+        | 'release:create'
+        | 'release:edit'
+        | 'release:delete'
+        | 'team_status:view'
+        | 'team_status:edit'
+        | 'quality:view'
+        | 'milestone:view'
+        | 'milestone:create'
+        | 'milestone:edit'
+        | 'milestone:delete'
+      )[]
+    }
     UpdateRolePermissionsDto: {
       permissions: (
         | 'workspace:*'
@@ -3857,6 +3923,64 @@ export interface operations {
       }
     }
   }
+  AccessController_createRole: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateRoleDto']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['RoleResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Conflict — duplicate record or state conflict */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
   AccessController_getPermissionCatalog: {
     parameters: {
       query?: never
@@ -3950,6 +4074,54 @@ export interface operations {
       }
       /** @description Unprocessable — business rule violation */
       422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  AccessController_deleteRole: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        roleId: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Role deleted */
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Conflict — duplicate record or state conflict */
+      409: {
         headers: {
           [name: string]: unknown
         }
