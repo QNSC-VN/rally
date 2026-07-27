@@ -76,6 +76,7 @@ export default defineConfig({
         'libs/modules/audit/src/interface/http/audit.controller.ts',
         'libs/modules/collaboration/src/application/collaboration.service.ts',
         'libs/modules/identity/src/infrastructure/secrets-manager-secret-resolver.ts',
+        'libs/platform/src/config/env.schema.ts',
         'libs/modules/iterations/src/application/iteration-status.service.ts',
         'libs/modules/iterations/src/application/iterations.service.ts',
         'libs/modules/milestones/src/application/milestones.service.ts',
