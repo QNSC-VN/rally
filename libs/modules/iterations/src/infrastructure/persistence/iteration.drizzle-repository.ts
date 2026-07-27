@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, ilike, inArray, lt, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 import { InjectDrizzle, buildPageResult } from '@platform';
 import type { DrizzleDB, CursorPayload, PagedResult } from '@platform';
 import { iterations } from '../../../../../../db/schema/work';
@@ -132,7 +132,13 @@ export class IterationDrizzleRepository implements IIterationRepository {
       eq(iterations.workspaceId, workspaceId),
       inArray(iterations.state, ['planning', 'committed']),
     ];
-    if (teamId) conditions.push(eq(iterations.teamId, teamId));
+    // Team-less iterations are project-wide (assignable to any work item, per
+    // the backend guard), so a team-scoped picker must still offer them:
+    // match the team OR a NULL team. A plain `= teamId` would drop them
+    // (SQL equality never matches NULL).
+    if (teamId) {
+      conditions.push(or(isNull(iterations.teamId), eq(iterations.teamId, teamId))!);
+    }
 
     const rows = await this.db
       .select({
