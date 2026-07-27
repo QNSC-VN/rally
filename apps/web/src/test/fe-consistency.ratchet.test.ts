@@ -23,6 +23,7 @@ import { describe, expect, it } from 'vitest'
 const MAX_RAW_BUTTON = 80 // occurrences in pages/features/entities/widgets
 const MAX_INLINE_STYLE = 194 // `style={{` in pages/features/entities/widgets (remainder is data-driven/dynamic)
 const MAX_ARBITRARY_TEXT = 2 // `text-[` app-wide (only text-[0] + one navy placeholder rgba remain)
+const MAX_RAW_FONT_SIZE = 12 // raw Tailwind text-{xs,sm,base,lg,xl,2xl,3xl} in consumer layers; use the text-ui-* scale. Residual = deliberate display text (login hero, big numbers, entity-title inputs)
 const MAX_HARDCODED_TEXT = 23 // capitalized JSX text nodes in consumer layers (P4 fleet done; residual = enum <option> labels)
 const MAX_FILE_LINES = 1024 // largest single source file (after monolith decomposition)
 
@@ -86,6 +87,16 @@ describe('FE consistency ratchets (only ever decrease)', () => {
   it(`arbitrary text-[Npx] app-wide <= ${MAX_ARBITRARY_TEXT}`, () => {
     const { total, byFile } = countMatches((f) => f.endsWith('.tsx'), /text-\[/g)
     assertRatchet('arbitrary text-[ count', total, MAX_ARBITRARY_TEXT, byFile)
+  })
+
+  it(`raw Tailwind font sizes in consumer layers <= ${MAX_RAW_FONT_SIZE}`, () => {
+    // Type size must come from the `text-ui-*` scale, not raw Tailwind sizes.
+    // `\b` avoids matching `text-ui-xs` etc. Residual is deliberate display text.
+    const { total, byFile } = countMatches(
+      inConsumerLayers,
+      /\btext-(?:xs|sm|base|lg|xl|2xl|3xl)\b/g,
+    )
+    assertRatchet('raw font-size count', total, MAX_RAW_FONT_SIZE, byFile)
   })
 
   it(`hardcoded JSX copy in consumer layers <= ${MAX_HARDCODED_TEXT}`, () => {
