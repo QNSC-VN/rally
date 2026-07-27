@@ -550,6 +550,9 @@ export function LogDefectModal({ projectId, onClose }: { projectId: string; onCl
   const [releaseId, setReleaseId] = useState('')
   const [parentId, setParentId] = useState('')
   const [error, setError] = useState<string | null>(null)
+  // Server/submit failures aren't tied to one input — shown as a modal-level
+  // banner, not under the Title field.
+  const [formError, setFormError] = useState<string | null>(null)
 
   const { data: members } = useProjectMembers(projectId)
   const { data: releases } = useReleases(projectId)
@@ -559,6 +562,7 @@ export function LogDefectModal({ projectId, onClose }: { projectId: string; onCl
 
   async function handleSubmit() {
     setError(null)
+    setFormError(null)
     if (!title.trim()) {
       setError(t('create.titleRequired'))
       return
@@ -580,7 +584,7 @@ export function LogDefectModal({ projectId, onClose }: { projectId: string; onCl
       onClose()
     } catch (err) {
       const msg = err instanceof Error ? err.message : t('create.logFailed')
-      setError(msg)
+      setFormError(msg)
       notify.error(msg)
     }
   }
@@ -594,6 +598,11 @@ export function LogDefectModal({ projectId, onClose }: { projectId: string; onCl
         }}
       >
         <ModalBody className="space-y-4">
+          {formError && (
+            <p role="alert" className="text-ui-sm text-destructive">
+              {formError}
+            </p>
+          )}
           <FormField label={t('create.titleLabel')} required error={error ?? undefined}>
             <Input
               value={title}

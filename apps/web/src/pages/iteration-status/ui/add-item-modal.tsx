@@ -35,16 +35,22 @@ export function AddItemModal({
   const { project } = useAppContext()
   // Project / Team / Iteration are inherited from the iteration context and shown
   // read-only (P2-IS-FR-044/045); the created item picks them up server-side.
-  const teamName = teams.find((tm) => tm.id === iteration.teamId)?.name ?? t('toolbar.noTeam', 'No team')
-  const roBox = 'flex h-9 items-center rounded border border-input bg-input-background px-3 text-ui-md text-muted-foreground'
+  const teamName =
+    teams.find((tm) => tm.id === iteration.teamId)?.name ?? t('toolbar.noTeam', 'No team')
+  const roBox =
+    'flex h-9 items-center rounded border border-input bg-input-background px-3 text-ui-md text-muted-foreground'
   const [type, setType] = useState<'story' | 'defect'>('story')
   const [title, setTitle] = useState('')
   const [planEstimate, setPlanEstimate] = useState('')
   const [assigneeId, setAssigneeId] = useState('')
   const [error, setError] = useState<string | null>(null)
+  // Server/submit failures aren't tied to one input — shown as a modal-level
+  // banner, not under the Title field.
+  const [formError, setFormError] = useState<string | null>(null)
 
   async function submit(openDetail = false) {
     setError(null)
+    setFormError(null)
     if (!title.trim()) {
       setError(t('create.titleRequired'))
       return
@@ -69,7 +75,7 @@ export function AddItemModal({
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : t('create.createFailed')
-      setError(msg)
+      setFormError(msg)
       notify.error(msg)
     }
   }
@@ -83,6 +89,11 @@ export function AddItemModal({
       width={460}
     >
       <ModalBody className="space-y-4">
+        {formError && (
+          <p role="alert" className="text-ui-sm text-destructive">
+            {formError}
+          </p>
+        )}
         {/* Type toggle */}
         <FormField label={t('create.typeLabel')}>
           <div className="flex gap-2">
