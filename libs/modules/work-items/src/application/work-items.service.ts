@@ -191,7 +191,10 @@ export class WorkItemsService {
     changes: ActivityChange | null,
     metadata: Record<string, unknown> = {},
   ): Promise<void> {
-    await this.appendMany([this.buildActivityInput(item, entityType, actorId, action, changes, metadata)], tx);
+    await this.appendMany(
+      [this.buildActivityInput(item, entityType, actorId, action, changes, metadata)],
+      tx,
+    );
   }
 
   // ── List ──────────────────────────────────────────────────────────────────
@@ -357,8 +360,7 @@ export class WorkItemsService {
               // starts). Actuals is a separate manual input. To Do auto-zeroes
               // on completion (see updateWorkItem).
               estimateHours: opts.estimateHours,
-              todoHours:
-                type === 'task' ? (opts.todoHours ?? opts.estimateHours) : opts.todoHours,
+              todoHours: type === 'task' ? (opts.todoHours ?? opts.estimateHours) : opts.todoHours,
               actualHours: opts.actualHours,
               acceptanceCriteria: opts.acceptanceCriteria,
               notes: opts.notes,
@@ -840,13 +842,16 @@ export class WorkItemsService {
         }
       }
 
-      // ── Reverse roll-up (BR-TASK-02 / DEV-018): reopening a child task moves
-      // its parent back to In-Progress — but only from 'completed'. A parent the
-      // team has manually advanced to a more mature terminal (accepted/release)
-      // is never auto-reverted (BA F3 guard). The repo mirrors Flow State too.
+      // ── Reverse roll-up (BR-TASK-02 / P3-TS-FR-041): reopening a child task
+      // moves its parent back to In-Progress from ANY at-or-past-completed state
+      // — `completed`, `accepted` OR `release`. Real Rally keeps the parent's
+      // Schedule State consistent with its tasks ("otherwise → In Progress") and
+      // overrides a manual promotion, so `Accepted` is NOT exempt (BA-confirmed
+      // 2026-07-24, superseding the earlier F3 accepted-exempt guard). The repo
+      // mirrors Flow State too.
       if (taskTransitioningFromComplete && item.parentId) {
         const parentBefore = await this.workItemRepo.findById(item.parentId, actor.workspaceId, tx);
-        if (parentBefore && parentBefore.scheduleState === 'completed') {
+        if (parentBefore && isCompletedScheduleState(parentBefore.scheduleState)) {
           await this.workItemRepo.update(
             item.parentId,
             { scheduleState: 'in_progress', updatedBy: actor.sub },
@@ -866,7 +871,11 @@ export class WorkItemsService {
                   'work_item',
                   actor.sub,
                   'work_item.schedule_state_changed',
-                  { field: 'scheduleState', old: 'completed', new: 'in_progress' },
+                  {
+                    field: 'scheduleState',
+                    old: parentBefore.scheduleState,
+                    new: 'in_progress',
+                  },
                   { auto: true },
                 ),
               ],
