@@ -114,11 +114,15 @@ export function makeActor(userId: string, permissions: string[] = []): JwtPayloa
 export const adminActor = (): JwtPayload => makeActor(ADMIN_USER_ID, ['workspace:*']);
 
 /**
- * Read-only actor. Empty token permissions force `assertProjectPermission` to
- * fall back to the store, where VIEWER_ID resolves to `project_viewer`
- * (grants `work_item:view` but NOT `work_item:create` / `work_item:edit`).
+ * Read-only actor — a view-only principal. The `project_viewer` role was removed
+ * in the Phase 4.2 reconciliation (#183), so instead of relying on a seeded role
+ * this actor carries an explicit read-only permission set in its token: it may
+ * VIEW work items but holds neither `work_item:create` nor `work_item:edit`, so
+ * the guard allows reads and denies writes. Exercises enforcement of a read-only
+ * grant independent of any canonical role.
  */
-export const viewerActor = (): JwtPayload => makeActor(VIEWER_ID, []);
+export const viewerActor = (): JwtPayload =>
+  makeActor(VIEWER_ID, ['project:view', 'work_item:view']);
 
 /**
  * Unique, uppercase project/team key (≤10 chars — the DB column is
