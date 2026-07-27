@@ -35,6 +35,9 @@ export function AddTaskModal({ workItemId, onClose }: Props) {
   const currentUserId = useAuthStore((s) => s.user?.id)
   const [assigneeId, setAssigneeId] = useState(() => currentUserId ?? '')
   const [error, setError] = useState<string | null>(null)
+  // Server/submit failures aren't tied to one input — shown as a modal-level
+  // banner, not under the Name field.
+  const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
   const createTask = useCreateTask(workItemId)
@@ -46,6 +49,7 @@ export function AddTaskModal({ workItemId, onClose }: Props) {
       return
     }
     setError(null)
+    setFormError(null)
     setSubmitting(true)
     try {
       const task = await createTask.mutateAsync({
@@ -60,7 +64,7 @@ export function AddTaskModal({ workItemId, onClose }: Props) {
         void navigate({ to: '/item/$itemKey', params: { itemKey: task.itemKey } })
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('tasks.create.createFailed'))
+      setFormError(e instanceof Error ? e.message : t('tasks.create.createFailed'))
     } finally {
       setSubmitting(false)
     }
@@ -75,6 +79,11 @@ export function AddTaskModal({ workItemId, onClose }: Props) {
       width={520}
     >
       <ModalBody className="space-y-4">
+        {formError && (
+          <p role="alert" className="text-ui-sm text-destructive">
+            {formError}
+          </p>
+        )}
         <FormField
           label={t('tasks.create.nameLabel')}
           htmlFor="task-name"

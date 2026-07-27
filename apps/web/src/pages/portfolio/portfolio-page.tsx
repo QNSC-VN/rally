@@ -372,9 +372,13 @@ function CreateInitiativeModal({
   const [assigneeId, setAssigneeId] = useState('')
   const [priority, setPriority] = useState<'none' | 'low' | 'normal' | 'high' | 'urgent'>('normal')
   const [error, setError] = useState<string | null>(null)
+  // Server/submit failures aren't tied to one input — shown as a modal-level
+  // banner, not under the Title field.
+  const [formError, setFormError] = useState<string | null>(null)
 
   async function submit(openDetail = false) {
     setError(null)
+    setFormError(null)
     if (!title.trim()) {
       setError(t('create.titleRequired'))
       return
@@ -392,7 +396,7 @@ function CreateInitiativeModal({
       else onClose()
     } catch (e) {
       const msg = e instanceof Error ? e.message : t('create.createFailed')
-      setError(msg)
+      setFormError(msg)
       toast.error(msg)
     }
   }
@@ -400,6 +404,11 @@ function CreateInitiativeModal({
   return (
     <AppModal open onClose={onClose} title={t('create.title')} width={460}>
       <ModalBody className="space-y-4">
+        {formError && (
+          <p role="alert" className="text-ui-sm text-destructive">
+            {formError}
+          </p>
+        )}
         <FormField label={t('create.titleLabel')} required error={error ?? undefined}>
           <Input
             autoFocus

@@ -55,6 +55,9 @@ export function CreateWorkItemModal({
   const [parentStoryId, setParentStoryId] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [teamError, setTeamError] = useState<string | null>(null)
+  // Server/submit failures aren't tied to one input — shown as a modal-level
+  // banner, not under the Title field.
+  const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
   const createMutation = useCreateWorkItem()
@@ -102,6 +105,7 @@ export function CreateWorkItemModal({
     }
     setError(null)
     setTeamError(null)
+    setFormError(null)
     setSubmitting(true)
     try {
       const item = await createMutation.mutateAsync({
@@ -120,7 +124,7 @@ export function CreateWorkItemModal({
         onCreated?.(item)
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('create.createFailed'))
+      setFormError(e instanceof Error ? e.message : t('create.createFailed'))
     } finally {
       setSubmitting(false)
     }
@@ -151,6 +155,11 @@ export function CreateWorkItemModal({
       width={520}
     >
       <ModalBody className="space-y-4">
+        {formError && (
+          <p role="alert" className="text-ui-sm text-destructive">
+            {formError}
+          </p>
+        )}
         {/* Type selector */}
         <FormField label={t('create.typeLabel')}>
           <div className="flex gap-2">
