@@ -14,6 +14,7 @@ import {
   text,
   timestamp,
   jsonb,
+  integer,
   index,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
@@ -85,6 +86,10 @@ export const workspaceInvitations = workspaceSchema.table(
     status: invitationStatusEnum('status').notNull().default('pending'),
     invitedBy: uuid('invited_by').notNull(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    // Resend tracking: how many times the invite was re-sent (0 on create) and
+    // when the last email went out (drives the per-invite resend cooldown).
+    resendCount: integer('resend_count').notNull().default(0),
+    lastSentAt: timestamp('last_sent_at', { withTimezone: true }).notNull().defaultNow(),
     acceptedBy: uuid('accepted_by'),
     acceptedAt: timestamp('accepted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

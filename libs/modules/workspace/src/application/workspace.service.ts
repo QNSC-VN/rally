@@ -15,7 +15,7 @@ import {
   AUDIT_RESOURCE,
   addDays,
 } from '@platform';
-import type { JwtPayload, CursorPayload, PagedResult } from '@platform';
+import type { JwtPayload, CursorPayload, PagedResult, DbExecutor } from '@platform';
 import { IWorkspaceRepository, WORKSPACE_REPOSITORY } from '../domain/ports/workspace.repository';
 import {
   ITeamMemberRepository,
@@ -378,6 +378,49 @@ export class WorkspaceService {
 
   // ── Invitations ─────────────────────────────────────────────────────────────
 
+  /** Minimum gap between sends of the same invitation (anti email-bombing). */
+  private static readonly RESEND_COOLDOWN_MS = 60_000;
+
+  /** Fresh random invite credential — the raw token is emailed, only its hash stored. */
+  private mintInviteToken(): { rawToken: string; tokenHash: string } {
+    const rawToken = randomBytes(32).toString('base64url');
+    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+    return { rawToken, tokenHash };
+  }
+
+  /**
+   * Enqueue the transactional invitation email (shared by create + resend).
+   * `idempotencyKey` MUST be unique per send — email_outbox dedups on it — so
+   * create passes the invitation id and resend passes `${id}:r${n}`.
+   */
+  private async scheduleInviteEmail(
+    tx: DbExecutor,
+    opts: {
+      to: string;
+      rawToken: string;
+      workspaceName: string;
+      ttlDays: number;
+      idempotencyKey: string;
+    },
+  ): Promise<void> {
+    const baseUrl = this.config.get('APP_BASE_URL');
+    const inviteUrl = `${baseUrl}/accept-invitation?token=${opts.rawToken}`;
+    await this.emailScheduler.schedule(
+      {
+        to: opts.to,
+        template: 'workspace-invitation',
+        vars: {
+          inviteUrl,
+          workspaceName: opts.workspaceName,
+          expiresInDays: String(opts.ttlDays),
+          recipientEmail: opts.to,
+        },
+        idempotencyKey: opts.idempotencyKey,
+      },
+      tx,
+    );
+  }
+
   @Span('workspace.inviteMember')
   async inviteMember(
     workspaceId: string,
@@ -388,13 +431,9 @@ export class WorkspaceService {
     const workspace = await this.getWorkspace(workspaceId);
 
     const normalizedEmail = email.toLowerCase().trim();
-    const rawToken = randomBytes(32).toString('base64url');
-    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
-    const invitationTtlDays = this.config.get('INVITATION_TTL_DAYS');
-    const expiresAt = addDays(invitationTtlDays);
-
-    const baseUrl = this.config.get('APP_BASE_URL');
-    const inviteUrl = `${baseUrl}/accept-invitation?token=${rawToken}`;
+    const { rawToken, tokenHash } = this.mintInviteToken();
+    const ttlDays = this.config.get('INVITATION_TTL_DAYS');
+    const expiresAt = addDays(ttlDays);
 
     // Atomic: rotate any prior pending invite, create the new one, and enqueue
     // the email in ONE transaction. idempotencyKey = invitation.id so retrying
@@ -415,20 +454,13 @@ export class WorkspaceService {
         tx,
       );
 
-      await this.emailScheduler.schedule(
-        {
-          to: normalizedEmail,
-          template: 'workspace-invitation',
-          vars: {
-            inviteUrl,
-            workspaceName: workspace.name,
-            expiresInDays: String(invitationTtlDays),
-            recipientEmail: normalizedEmail,
-          },
-          idempotencyKey: inv.id,
-        },
-        tx,
-      );
+      await this.scheduleInviteEmail(tx, {
+        to: normalizedEmail,
+        rawToken,
+        workspaceName: workspace.name,
+        ttlDays,
+        idempotencyKey: inv.id,
+      });
 
       await this.audit.emit(
         {
@@ -446,6 +478,79 @@ export class WorkspaceService {
     });
 
     return invitation;
+  }
+
+  /**
+   * Resend an invitation: rotate to a fresh token + expiry on the SAME row
+   * (invalidating the old emailed link), revive it to `pending` if it had
+   * lapsed, and re-send the email. Guarded by status (pending|expired) and a
+   * per-invite cooldown; the route also carries @RateLimit('STRICT').
+   */
+  @Span('workspace.resendInvitation')
+  async resendInvitation(
+    workspaceId: string,
+    invitationId: string,
+    actorId: string,
+  ): Promise<WorkspaceInvitation> {
+    const workspace = await this.getWorkspace(workspaceId);
+
+    const invitation = await this.invitationRepo.findById(invitationId);
+    if (!invitation || invitation.workspaceId !== workspaceId) {
+      throw new NotFoundException('INVITATION_NOT_FOUND', 'Invitation not found');
+    }
+    if (invitation.status !== 'pending' && invitation.status !== 'expired') {
+      throw new PreconditionFailedException(
+        'INVITATION_NOT_PENDING',
+        'Only a pending or expired invitation can be resent',
+      );
+    }
+    if (Date.now() - invitation.lastSentAt.getTime() < WorkspaceService.RESEND_COOLDOWN_MS) {
+      throw new PreconditionFailedException(
+        'INVITATION_RESEND_TOO_SOON',
+        'This invitation was just sent — please wait a moment before resending',
+      );
+    }
+
+    const { rawToken, tokenHash } = this.mintInviteToken();
+    const ttlDays = this.config.get('INVITATION_TTL_DAYS');
+    const expiresAt = addDays(ttlDays);
+
+    const updated = await this.uow.run(async (tx) => {
+      const inv = await this.invitationRepo.rotateForResend(
+        invitationId,
+        { tokenHash, expiresAt, lastSentAt: new Date() },
+        tx,
+      );
+
+      await this.scheduleInviteEmail(tx, {
+        to: inv.email,
+        rawToken,
+        workspaceName: workspace.name,
+        ttlDays,
+        // Fresh key per send — resendCount was just incremented by rotateForResend.
+        idempotencyKey: `${inv.id}:r${inv.resendCount}`,
+      });
+
+      await this.audit.emit(
+        {
+          action: AUDIT_ACTION.WORKSPACE_INVITATION_RESENT,
+          resourceType: AUDIT_RESOURCE.WORKSPACE_INVITATION,
+          resourceId: inv.id,
+          workspaceId,
+          actor: { id: actorId },
+          changes: { after: { email: inv.email, resendCount: inv.resendCount } },
+        },
+        tx,
+      );
+
+      return inv;
+    });
+
+    this.logger.log(
+      { invitationId, actorId, resendCount: updated.resendCount },
+      'Invitation resent',
+    );
+    return updated;
   }
 
   async listInvitations(workspaceId: string): Promise<WorkspaceInvitation[]> {

@@ -91,6 +91,8 @@ function toInvitationDto(i: WorkspaceInvitation): InvitationResponseDto {
     status: i.status,
     invitedBy: i.invitedBy,
     expiresAt: i.expiresAt.toISOString(),
+    resendCount: i.resendCount,
+    lastSentAt: i.lastSentAt.toISOString(),
     acceptedBy: i.acceptedBy,
     acceptedAt: i.acceptedAt?.toISOString() ?? null,
     createdAt: i.createdAt.toISOString(),
@@ -348,6 +350,26 @@ export class WorkspaceController {
     this.assertActive(user, id);
     const invitations = await this.workspaceService.listInvitations(id);
     return invitations.map(toInvitationDto);
+  }
+
+  // ── Resend invitation ──────────────────────────────────────────────────────
+
+  @Post(':id/invitations/:invitationId/resend')
+  @RequirePermission('users:invite')
+  @RateLimit('STRICT')
+  @ApiOperation({ summary: 'Resend a pending or expired workspace invitation' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiParam({ name: 'invitationId', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: InvitationResponseDto })
+  @ApiCommonErrors(400, 401, 404, 409)
+  async resendInvitation(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('invitationId', ParseUUIDPipe) invitationId: string,
+  ): Promise<InvitationResponseDto> {
+    this.assertActive(user, id);
+    const invitation = await this.workspaceService.resendInvitation(id, invitationId, user.sub);
+    return toInvitationDto(invitation);
   }
 
   // ── Cancel invitation ──────────────────────────────────────────────────────

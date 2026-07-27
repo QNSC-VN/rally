@@ -160,6 +160,8 @@
   "members": {
     "roleUpdated": "Role updated",
     "inviteCancelled": "Invitation cancelled",
+    "inviteResent": "Invitation resent",
+    "resendInvitation": "Resend invitation",
     "memberRemoved": "Member removed",
     "inviteSent": "Invitation sent",
     "noWorkspace": "No workspace selected.",

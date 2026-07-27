@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq, gt } from 'drizzle-orm';
+import { and, eq, gt, sql } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB, DbExecutor } from '@platform';
 import { workspaceInvitations } from '../../../../../../db/schema/workspace';
@@ -20,7 +20,7 @@ export class WorkspaceInvitationDrizzleRepository implements IWorkspaceInvitatio
       .from(workspaceInvitations)
       .where(eq(workspaceInvitations.tokenHash, tokenHash))
       .limit(1);
-    return (rows[0]) ?? null;
+    return rows[0] ?? null;
   }
 
   async findById(id: string): Promise<WorkspaceInvitation | null> {
@@ -29,7 +29,7 @@ export class WorkspaceInvitationDrizzleRepository implements IWorkspaceInvitatio
       .from(workspaceInvitations)
       .where(eq(workspaceInvitations.id, id))
       .limit(1);
-    return (rows[0]) ?? null;
+    return rows[0] ?? null;
   }
 
   async findPendingByEmail(
@@ -48,7 +48,7 @@ export class WorkspaceInvitationDrizzleRepository implements IWorkspaceInvitatio
         ),
       )
       .limit(1);
-    return (rows[0]) ?? null;
+    return rows[0] ?? null;
   }
 
   async listByWorkspace(workspaceId: string): Promise<WorkspaceInvitation[]> {
@@ -93,6 +93,26 @@ export class WorkspaceInvitationDrizzleRepository implements IWorkspaceInvitatio
         updatedAt: new Date(),
       })
       .where(eq(workspaceInvitations.id, id));
+  }
+
+  async rotateForResend(
+    id: string,
+    input: { tokenHash: string; expiresAt: Date; lastSentAt: Date },
+    tx?: DbExecutor,
+  ): Promise<WorkspaceInvitation> {
+    const rows = await (tx ?? this.db)
+      .update(workspaceInvitations)
+      .set({
+        tokenHash: input.tokenHash,
+        expiresAt: input.expiresAt,
+        status: 'pending',
+        lastSentAt: input.lastSentAt,
+        resendCount: sql`${workspaceInvitations.resendCount} + 1`,
+        updatedAt: new Date(),
+      })
+      .where(eq(workspaceInvitations.id, id))
+      .returning();
+    return rows[0];
   }
 
   async cancelExistingForEmail(workspaceId: string, email: string, tx?: DbExecutor): Promise<void> {

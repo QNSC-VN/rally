@@ -34,6 +34,8 @@ export const InvitationResponseSchema = z.object({
   status: z.string().describe('Invitation status: pending | accepted | cancelled | expired'),
   invitedBy: z.string().uuid(),
   expiresAt: z.string().datetime(),
+  resendCount: z.number().int(),
+  lastSentAt: z.string().datetime(),
   acceptedBy: z.string().uuid().nullable(),
   acceptedAt: z.string().datetime().nullable(),
   createdAt: z.string().datetime(),

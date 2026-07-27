@@ -90,17 +90,18 @@ function Chip({ icon, label }: { icon?: ReactNode; label: string }) {
 }
 
 /**
- * Grid-cell chip container: chips flow and wrap to fill the column width, capped
- * at MAX_CELL_CHIPS with a trailing "+K" for the rest (full list on hover; click
- * still opens the picker). A fixed cap — not a live line measurement — so it is
- * reliable regardless of the cell's mount/resize timing.
+ * Grid-cell chip container: chips sit on a SINGLE line (no wrap) so the cell
+ * never grows past the fixed row height and clips against the row divider,
+ * capped at MAX_CELL_CHIPS with a trailing "+K" for the rest (full list on
+ * hover; click still opens the picker). A fixed cap — not a live line
+ * measurement — so it is reliable regardless of the cell's mount/resize timing.
  */
 function CellChips({ opts }: { opts: SelectOption[] }) {
   const visible = opts.slice(0, MAX_CELL_CHIPS)
   const overflow = opts.length - visible.length
   return (
     <span
-      className="flex min-w-0 flex-1 flex-wrap items-center gap-1"
+      className="flex min-w-0 flex-1 flex-nowrap items-center gap-1 overflow-hidden"
       title={opts.map((o) => o.label).join(', ')}
     >
       {visible.map((o) => (

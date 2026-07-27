@@ -47,6 +47,8 @@ const mockInvitation = (o: Partial<WorkspaceInvitation> = {}): WorkspaceInvitati
   status: 'pending',
   invitedBy: 'user-1',
   expiresAt: new Date(Date.now() + 7 * 24 * 3600 * 1000),
+  resendCount: 0,
+  lastSentAt: now,
   acceptedBy: null,
   acceptedAt: null,
   createdAt: now,
@@ -75,6 +77,7 @@ const makeInvitationRepo = (): Mocked<IWorkspaceInvitationRepository> => ({
   create: vi.fn(),
   updateStatus: vi.fn().mockResolvedValue(undefined),
   cancelExistingForEmail: vi.fn().mockResolvedValue(undefined),
+  rotateForResend: vi.fn(),
 });
 
 const makeMemberRepo = (): Mocked<IWorkspaceMemberRepository> => ({

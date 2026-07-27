@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import { Loader2, Mail, UserPlus, UserX, X } from 'lucide-react'
+import { Loader2, Mail, Send, UserPlus, UserX, X } from 'lucide-react'
 import { BulkBarButton } from '@/shared/ui/bulk-action-bar'
 
 import { BRAND } from '@/shared/config/brand'
@@ -283,6 +283,20 @@ export function MembersTab() {
     meta: { invalidates: ['workspace'] },
   })
 
+  const resendInvite = useMutation({
+    mutationFn: async (invitationId: string) => {
+      if (!workspaceId) return
+      const { error, response } = await apiClient.POST(
+        '/v1/workspaces/{id}/invitations/{invitationId}/resend',
+        { params: { path: { id: workspaceId, invitationId } } },
+      )
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+    },
+    onSuccess: () => notify.success(t('members.inviteResent')),
+    onError: (err) => notify.error(apiErrorMessage(err)),
+    meta: { invalidates: ['workspace'] },
+  })
+
   const metrics = useMemo(() => {
     const active = members.filter((m) => m.status === 'active').length
     const admins = members.filter((m) => m.roleSlug === 'workspace_admin').length
@@ -498,13 +512,15 @@ export function MembersTab() {
           <MetricCard label="Admins" value={metrics.admins} />
         </MetricStrip>
 
-        {/* Pending invitations — a compact section above the sortable table. */}
+        {/* Pending invitations — a compact section above the sortable table.
+            Height-capped with its own scroll so a long backlog of pending
+            invites never pushes the members table off-screen. */}
         {invitations.length > 0 && (
           <div className="flex flex-col gap-1.5">
             <h3 className="text-ui-sm font-semibold tracking-wide text-foreground-subtle uppercase">
-              {t('members.pendingInvitations')}
+              {t('members.pendingInvitations')} ({invitations.length})
             </h3>
-            <div className="overflow-hidden rounded-lg border">
+            <div className="max-h-56 overflow-y-auto rounded-lg border">
               {invitations.map((inv: { id: string; email: string; roleId: string | null }) => {
                 const roleLabel = roles.find((r) => r.id === inv.roleId)?.name ?? '—'
                 return (
@@ -518,6 +534,15 @@ export function MembersTab() {
                     </span>
                     <span className="shrink-0 text-ui-md text-muted-foreground">{roleLabel}</span>
                     <MemberStatusBadge status="invited" />
+                    <IconButton
+                      size="sm"
+                      aria-label={t('members.resendInvitation')}
+                      title={t('members.resendInvitation')}
+                      onClick={() => resendInvite.mutate(inv.id)}
+                      disabled={resendInvite.isPending}
+                    >
+                      <Send size={13} className={resendInvite.isPending ? 'animate-pulse' : ''} />
+                    </IconButton>
                     <IconButton
                       size="sm"
                       aria-label={t('members.cancelInvitation')}
