@@ -17,6 +17,7 @@ export const AUDIT_ACTION = {
   WORKSPACE_MEMBER_REMOVED: 'workspace.member.removed',
   WORKSPACE_MEMBER_INVITED: 'workspace.member.invited',
   WORKSPACE_INVITATION_CANCELLED: 'workspace.invitation.cancelled',
+  WORKSPACE_INVITATION_RESENT: 'workspace.invitation.resent',
   WORKSPACE_INVITATION_ACCEPTED: 'workspace.invitation.accepted',
   // ── Access / RBAC ──
   ROLE_ASSIGNED: 'role.assigned',

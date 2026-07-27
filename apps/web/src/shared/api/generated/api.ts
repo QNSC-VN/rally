@@ -404,6 +404,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v1/workspaces/{id}/invitations/{invitationId}/resend': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Resend a pending or expired workspace invitation */
+    post: operations['WorkspaceController_resendInvitation']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v1/workspaces/{id}/invitations/{invitationId}': {
     parameters: {
       query?: never
@@ -2214,6 +2231,36 @@ export interface components {
       } | null
       csrfToken?: string
     }
+    PresignAvatarDto: {
+      /** @enum {string} */
+      contentType: 'image/png' | 'image/jpeg' | 'image/webp'
+      contentLength: number
+      checksumSha256: string
+    }
+    PresignAvatarResponseDto: {
+      /** Format: uuid */
+      fileId: string
+      /**
+       * Format: uri
+       * @description Presigned PUT URL — expires in 5 minutes
+       */
+      uploadUrl: string
+      /** @description Headers the client MUST send on the PUT — they are part of the signature. */
+      requiredHeaders: {
+        [key: string]: string
+      }
+    }
+    ConfirmAvatarDto: {
+      /** Format: uuid */
+      fileId: string
+    }
+    ConfirmAvatarResponseDto: {
+      /**
+       * Format: uri
+       * @description Durable CDN URL now stored on the user profile
+       */
+      avatarUrl: string
+    }
     RoleResponseDto: {
       /** Format: uuid */
       id: string
@@ -2411,6 +2458,9 @@ export interface components {
       invitedBy: string
       /** Format: date-time */
       expiresAt: string
+      resendCount: number
+      /** Format: date-time */
+      lastSentAt: string
       acceptedBy: string | null
       acceptedAt: string | null
       /** Format: date-time */
@@ -2870,36 +2920,6 @@ export interface components {
       userId: string
       /** Format: date-time */
       watchedAt: string
-    }
-    PresignAvatarDto: {
-      /** @enum {string} */
-      contentType: 'image/png' | 'image/jpeg' | 'image/webp'
-      contentLength: number
-      checksumSha256: string
-    }
-    PresignAvatarResponseDto: {
-      /** Format: uuid */
-      fileId: string
-      /**
-       * Format: uri
-       * @description Presigned PUT URL — expires in 5 minutes
-       */
-      uploadUrl: string
-      /** @description Headers the client MUST send on the PUT — they are part of the signature. */
-      requiredHeaders: {
-        [key: string]: string
-      }
-    }
-    ConfirmAvatarDto: {
-      /** Format: uuid */
-      fileId: string
-    }
-    ConfirmAvatarResponseDto: {
-      /**
-       * Format: uri
-       * @description Durable CDN URL now stored on the user profile
-       */
-      avatarUrl: string
     }
     PresignAttachmentDto: {
       filename: string
@@ -3712,7 +3732,7 @@ export interface operations {
         }
         content?: never
       }
-      /** @description Conflict — resource state prevents the operation */
+      /** @description Conflict — duplicate record or state conflict */
       409: {
         headers: {
           [name: string]: unknown
@@ -3770,7 +3790,7 @@ export interface operations {
         }
         content?: never
       }
-      /** @description Conflict — resource state prevents the operation */
+      /** @description Conflict — duplicate record or state conflict */
       409: {
         headers: {
           [name: string]: unknown
@@ -3958,6 +3978,13 @@ export interface operations {
       }
       /** @description Unauthorized — missing or invalid authentication */
       401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
         headers: {
           [name: string]: unknown
         }
@@ -4668,6 +4695,63 @@ export interface operations {
       }
       /** @description Unprocessable — business rule violation */
       422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Too Many Requests — rate limit exceeded. Check Retry-After header. */
+      429: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  WorkspaceController_resendInvitation: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+        invitationId: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['InvitationResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Conflict — duplicate record or state conflict */
+      409: {
         headers: {
           [name: string]: unknown
         }

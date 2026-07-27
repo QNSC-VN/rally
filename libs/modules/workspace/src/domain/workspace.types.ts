@@ -73,6 +73,8 @@ export interface WorkspaceInvitation {
   status: InvitationStatus;
   invitedBy: string;
   expiresAt: Date;
+  resendCount: number;
+  lastSentAt: Date;
   acceptedBy: string | null;
   acceptedAt: Date | null;
   createdAt: Date;

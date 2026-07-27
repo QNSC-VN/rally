@@ -477,6 +477,13 @@
       "when": 1786000000000,
       "tag": "0066_rbac_role_reduction",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1786000100000,
+      "tag": "0067_invitation_resend",
+      "breakpoints": true
     }
   ]
 }

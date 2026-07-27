@@ -66,6 +66,8 @@ const mockInvitation = (o: Partial<WorkspaceInvitation> = {}): WorkspaceInvitati
   status: 'pending',
   invitedBy: 'user-1',
   expiresAt: new Date(Date.now() + 7 * 24 * 3600 * 1000),
+  resendCount: 0,
+  lastSentAt: now,
   acceptedBy: null,
   acceptedAt: null,
   createdAt: now,
@@ -109,6 +111,7 @@ const makeInvitationRepo = (): Mocked<IWorkspaceInvitationRepository> => ({
   create: vi.fn(),
   updateStatus: vi.fn().mockResolvedValue(undefined),
   cancelExistingForEmail: vi.fn().mockResolvedValue(undefined),
+  rotateForResend: vi.fn(),
 });
 
 const makeSettingsRepo = (): Mocked<IWorkspaceSettingsRepository> => ({
@@ -515,6 +518,72 @@ describe('WorkspaceService', () => {
         mockInvitation({ status: 'pending', expiresAt: new Date(Date.now() - 1000) }),
       );
       await expect(service.acceptInvitation('expired-token', 'user-1')).rejects.toThrow();
+    });
+  });
+
+  // ── resendInvitation ─────────────────────────────────────────────────────────
+
+  describe('resendInvitation', () => {
+    const staleSent = () => new Date(Date.now() - 5 * 60_000); // outside the cooldown
+
+    beforeEach(() => {
+      workspaceRepo.findById.mockResolvedValue(mockWorkspace());
+    });
+
+    it('rotates the token and re-sends the email with a fresh idempotency key', async () => {
+      invitationRepo.findById.mockResolvedValue(
+        mockInvitation({ status: 'pending', lastSentAt: staleSent(), resendCount: 0 }),
+      );
+      invitationRepo.rotateForResend.mockResolvedValue(
+        mockInvitation({ status: 'pending', resendCount: 1 }),
+      );
+
+      await service.resendInvitation('ws-1', 'inv-1', 'actor-1');
+
+      expect(invitationRepo.rotateForResend).toHaveBeenCalledOnce();
+      expect(emailScheduler.schedule).toHaveBeenCalledWith(
+        expect.objectContaining({ template: 'workspace-invitation', idempotencyKey: 'inv-1:r1' }),
+        expect.anything(),
+      );
+    });
+
+    it('revives an expired invitation', async () => {
+      invitationRepo.findById.mockResolvedValue(
+        mockInvitation({ status: 'expired', lastSentAt: staleSent() }),
+      );
+      invitationRepo.rotateForResend.mockResolvedValue(
+        mockInvitation({ status: 'pending', resendCount: 1 }),
+      );
+
+      await expect(service.resendInvitation('ws-1', 'inv-1', 'actor-1')).resolves.toBeDefined();
+      expect(invitationRepo.rotateForResend).toHaveBeenCalledOnce();
+    });
+
+    it('rejects an accepted or cancelled invitation', async () => {
+      invitationRepo.findById.mockResolvedValue(mockInvitation({ status: 'accepted' }));
+      await expect(service.resendInvitation('ws-1', 'inv-1', 'actor-1')).rejects.toMatchObject({
+        code: 'INVITATION_NOT_PENDING',
+      });
+      expect(invitationRepo.rotateForResend).not.toHaveBeenCalled();
+    });
+
+    it('enforces the per-invitation resend cooldown', async () => {
+      invitationRepo.findById.mockResolvedValue(
+        mockInvitation({ status: 'pending', lastSentAt: new Date() }),
+      );
+      await expect(service.resendInvitation('ws-1', 'inv-1', 'actor-1')).rejects.toMatchObject({
+        code: 'INVITATION_RESEND_TOO_SOON',
+      });
+      expect(emailScheduler.schedule).not.toHaveBeenCalled();
+    });
+
+    it('404s an invitation belonging to another workspace', async () => {
+      invitationRepo.findById.mockResolvedValue(
+        mockInvitation({ workspaceId: 'other-ws', lastSentAt: staleSent() }),
+      );
+      await expect(service.resendInvitation('ws-1', 'inv-1', 'actor-1')).rejects.toMatchObject({
+        code: 'INVITATION_NOT_FOUND',
+      });
     });
   });
 });
