@@ -5,6 +5,9 @@
 // DEDICATED, durable settings — on-demand Fargate, larger RDS with deletion
 // protection and 30-day backups, 90-day retention, a pinned image tag — while
 // develop takes the shared, cheap ones.
+//
+// Security posture is NOT a per-environment value: the cache module always
+// enables KMS at rest and TLS in transit, so develop cannot be the weaker one.
 terraform {
   required_version = ">= 1.9"
   required_providers {
@@ -37,45 +40,7 @@ provider "cloudflare" {
 }
 
 locals {
-  name   = "rally-prod"
   region = "ap-southeast-1"
-}
-
-// ── Cache ─────────────────────────────────────────────────────────────────────
-// Dedicated per-product node from the shared module: KMS at rest and TLS in transit,
-// hence `rediss://`. Declared here rather than in the stack module only until develop
-// adopts the same module — see ../develop/main.tf for why that migration is separate.
-module "cache" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/cache?ref=cache-v1.0.0"
-
-  name              = "${local.name}-cache"
-  subnet_ids        = data.terraform_remote_state.runtime.outputs.data_subnet_ids
-  security_group_id = data.terraform_remote_state.runtime.outputs.sg_cache_id
-  kms_key_arn       = data.terraform_remote_state.shared.outputs.kms_key_arn
-
-  mode      = "node" # single cache.t4g.micro (~$12/mo) — serverless floors at ~$90
-  node_type = "cache.t4g.micro"
-
-  tags = { Environment = "production" }
-}
-
-data "terraform_remote_state" "runtime" {
-  backend = "s3"
-  config = {
-    bucket = "qnsc-tofu-state"
-    key    = "platform/runtime-prod/terraform.tfstate"
-    region = "ap-southeast-1"
-  }
-}
-
-// The cache module needs the KMS key, which the product's _shared stack owns.
-data "terraform_remote_state" "shared" {
-  backend = "s3"
-  config = {
-    bucket = "qnsc-tofu-state"
-    key    = "rally/shared/terraform.tfstate"
-    region = "ap-southeast-1"
-  }
 }
 
 // ── The stack ─────────────────────────────────────────────────────────────────
@@ -100,7 +65,6 @@ module "stack" {
 
   // Production runs the tag the release built, never a floating `latest`.
   image_tag = var.image_tag
-  redis_url = "rediss://${module.cache.endpoint}:${module.cache.port}"
 
   // Never seed demo data into production.
   seed_on_deploy        = false

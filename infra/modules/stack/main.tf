@@ -23,6 +23,10 @@ locals {
   cloudflare_zone_id = try(data.terraform_remote_state.shared.outputs.cloudflare_zone_id, "")
   cloudflare_ipv4    = data.terraform_remote_state.shared.outputs.cloudflare_ipv4
 
+  # `rediss://`, never `redis://`: the cache module enables transit encryption
+  # unconditionally, so a plaintext scheme would simply fail to connect.
+  redis_url = "rediss://${module.cache.endpoint}:${module.cache.port}"
+
   ecr_base         = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.region}.amazonaws.com"
   ecr_api_url      = "${local.ecr_base}/${var.product}-api:${var.image_tag}"
   ecr_worker_url   = "${local.ecr_base}/${var.product}-worker:${var.image_tag}"
@@ -117,6 +121,28 @@ module "rds" {
   tags = local.tags
 }
 
+# ── Cache (Valkey/Redis) ──────────────────────────────────────────────────────
+# Sessions live ONLY here, so this sits outside the ECS tasks and survives task
+# replacement — that is what stops every deploy logging users out.
+#
+# `node` mode is an aws_elasticache_replication_group with at-rest KMS encryption
+# and transit encryption both on, which is why the URL scheme below is `rediss://`.
+# ioredis turns TLS on from that scheme alone (verified: `rediss://` yields
+# `options.tls === true`), so no client-side configuration is needed.
+module "cache" {
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/cache?ref=cache-v1.0.0"
+
+  name              = "${local.name}-cache"
+  subnet_ids        = data.terraform_remote_state.runtime.outputs.data_subnet_ids
+  security_group_id = data.terraform_remote_state.runtime.outputs.sg_cache_id
+  kms_key_arn       = local.kms_key_arn
+
+  mode      = var.cache.mode
+  node_type = var.cache.node_type
+
+  tags = local.tags
+}
+
 # ── Messaging (SQS + SNS) ─────────────────────────────────────────────────────
 module "messaging" {
   source                = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/messaging?ref=messaging-v1.0.0"
@@ -184,7 +210,7 @@ module "api" {
   alb_host_headers  = [var.api_domain] # host-based routing on the shared ALB
   health_check_path = "/v1/healthz"
 
-  # Cache is the shared ElastiCache node (aws_elasticache_cluster.cache), not an
+  # Cache is the shared ElastiCache replication group (module.cache), not an
   # in-task sidecar — so sessions in Valkey survive api deploys/recycles.
 
   # Includes the AWS-managed RDS secret: the execution role needs GetSecretValue
@@ -220,7 +246,7 @@ module "api" {
   environment_vars = [
     { name = "NODE_ENV", value = "production" },
     { name = "PORT", value = "3000" },
-    { name = "REDIS_URL", value = var.redis_url }, # dev: shared ElastiCache node
+    { name = "REDIS_URL", value = local.redis_url },
     { name = "AWS_REGION", value = var.region },
     # Non-secret connection parts; DATABASE_USER/PASSWORD arrive via secrets.
     { name = "DATABASE_HOST", value = module.rds.address },
@@ -331,7 +357,7 @@ module "worker" {
   health_check_command = "pgrep -x node || exit 1"
   container_port       = 3001
 
-  # Cache is the shared ElastiCache node (aws_elasticache_cluster.cache) — the
+  # Cache is the shared ElastiCache replication group (module.cache) — the
   # worker and api now share one cache, so their Redis pub/sub (notification
   # wake-ups) actually connects across tasks instead of each hitting its own
   # isolated sidecar.
@@ -374,7 +400,7 @@ module "worker" {
 
   environment_vars = [
     { name = "NODE_ENV", value = "production" },
-    { name = "REDIS_URL", value = var.redis_url }, # dev: shared ElastiCache node
+    { name = "REDIS_URL", value = local.redis_url },
     { name = "AWS_REGION", value = var.region },
     # Non-secret connection parts; DATABASE_USER/PASSWORD arrive via secrets.
     { name = "DATABASE_HOST", value = module.rds.address },

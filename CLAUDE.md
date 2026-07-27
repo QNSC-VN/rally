@@ -78,6 +78,22 @@ there, not here. `libs/platform` keeps only re-export façades (`observability/i
   metrics are no-ops today. Logs are the live signal. See
   `docs/superpowers/specs/2026-07-26-observability-architecture-design.md`.
 
+## Infrastructure invariants
+
+- **`infra/live/{develop,prod}/main.tf` hold values, never resources.** The whole
+  stack is `infra/modules/stack`, so the two environments cannot drift
+  structurally — only in what they feed in. Adding a resource means editing the
+  module once. Relocating an existing address needs a `moved{}` block in
+  `infra/live/*/moved.tf`, or Terraform destroys and recreates it.
+- **Security posture is not a per-environment knob.** The cache module always
+  enables KMS at rest and TLS in transit, which is why `REDIS_URL` is always
+  `rediss://`. ioredis turns TLS on from that scheme alone — no client option is
+  needed, and `redis://` against these nodes simply fails to connect. Develop
+  cannot be configured weaker than production here; sizing is the only difference.
+- **Sessions live only in the cache.** That is why it sits outside the ECS tasks:
+  it survives task replacement, so a deploy does not log everyone out. Replacing
+  the cache node *does* log everyone out — treat that as a user-visible change.
+
 ## Environment flags that look wrong and are not
 
 Two settings in `infra/live/*` read like mistakes. Both are deliberate; changing

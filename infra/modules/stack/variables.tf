@@ -82,17 +82,20 @@ variable "image_tag" {
   default     = "latest"
 }
 
-variable "redis_url" {
+variable "cache" {
   description = <<-EOT
-    Cache connection URL, supplied by the caller.
+    Cache sizing. Encryption is NOT an option here: the module always enables
+    KMS at rest and TLS in transit, so both environments get the same posture and
+    the URL is always `rediss://`.
 
-    The cache itself is NOT in this module yet: develop runs an inline
-    ElastiCache node without encryption while production uses the shared `cache`
-    module with KMS + TLS (`rediss://`). Unifying them replaces the develop node
-    and changes the connection scheme, so it is a deliberate follow-up rather
-    than part of a structural refactor.
+    `serverless` mode floors at roughly $90/month, so `node` is the default for
+    both environments; a single cache.t4g.micro is about $12/month.
   EOT
-  type        = string
+  type = object({
+    mode      = optional(string, "node")
+    node_type = optional(string, "cache.t4g.micro")
+  })
+  default = {}
 }
 
 variable "platform_admin_emails" {
