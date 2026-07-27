@@ -4,6 +4,7 @@ import { FolderKanban, Plus, Archive, RotateCcw, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
 import { BRAND } from '@/shared/config/brand'
+import { BulkBarButton } from '@/shared/ui/bulk-action-bar'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { MetricCard } from '@/shared/ui/metric-card'
 import { MetricStrip } from '@/shared/ui/metric-strip'
@@ -282,50 +283,41 @@ function ProjectsBulkBar({
     }
   }
 
-  const btn = 'flex items-center gap-1.5 text-ui-sm font-medium'
-
   return (
-    <div className="flex items-center gap-4">
+    <div className="flex items-center gap-1">
       {anyActive && (
-        <button
-          className={btn}
-          style={{ color: BRAND.danger }}
+        <BulkBarButton
+          icon={<Archive size={13} />}
+          label={t('actions.archive')}
           onClick={() =>
             void run(
               (id) => update.mutateAsync({ id, input: { status: 'archived' } }),
               'toast.archivedN',
             )
           }
-        >
-          <Archive size={13} />
-          {t('actions.archive')}
-        </button>
+        />
       )}
       {anyArchived && (
-        <button
-          className={btn}
+        <BulkBarButton
+          icon={<RotateCcw size={13} />}
+          label={t('actions.restore')}
           onClick={() =>
             void run(
               (id) => update.mutateAsync({ id, input: { status: 'active' } }),
               'toast.restoredN',
             )
           }
-        >
-          <RotateCcw size={13} />
-          {t('actions.restore')}
-        </button>
+        />
       )}
-      <button
-        className={btn}
-        style={{ color: BRAND.danger }}
+      <BulkBarButton
+        danger
+        icon={<Trash2 size={13} />}
+        label={t('bulk.delete')}
         onClick={() => {
           if (window.confirm(t('bulk.confirmDelete', { count: ids.length })))
             void run((id) => del.mutateAsync(id), 'toast.deletedN')
         }}
-      >
-        <Trash2 size={13} />
-        {t('bulk.delete')}
-      </button>
+      />
     </div>
   )
 }
