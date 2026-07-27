@@ -736,12 +736,19 @@ function InviteUserModal({
         <ModalBody className="space-y-4">
           <FormField
             label={t('members.emailFieldLabel')}
+            required
             error={form.formState.errors.email?.message}
           >
-            <Input {...form.register('email')} type="email" placeholder="colleague@company.com" />
+            <Input
+              {...form.register('email')}
+              type="email"
+              autoFocus
+              placeholder="colleague@company.com"
+            />
           </FormField>
           <FormField
             label={t('members.roleFieldLabel')}
+            required
             error={form.formState.errors.roleId?.message}
           >
             <Controller
@@ -763,16 +770,18 @@ function InviteUserModal({
             />
           </FormField>
           {form.formState.errors.root && (
-            <p className="text-ui-md text-destructive">{form.formState.errors.root.message}</p>
+            <p role="alert" className="text-ui-md text-destructive">
+              {form.formState.errors.root.message}
+            </p>
           )}
         </ModalBody>
         <ModalFooter>
+          <Button type="button" variant="outline" onClick={onClose}>
+            {t('common:cancel')}
+          </Button>
           <Button type="submit" disabled={invite.isPending}>
             {invite.isPending ? <Loader2 size={13} className="animate-spin" /> : <Mail size={13} />}
             {t('members.sendInvite')}
-          </Button>
-          <Button type="button" variant="outline" onClick={onClose}>
-            {t('common:cancel')}
           </Button>
         </ModalFooter>
       </form>

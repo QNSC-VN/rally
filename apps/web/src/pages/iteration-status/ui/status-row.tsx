@@ -399,7 +399,7 @@ export function StatusRow({
           }}
           className="px-2 text-right text-muted-foreground"
         >
-          {item.taskEstimate || '—'}
+          {item.taskEstimate ?? '—'}
         </div>
 
         {/* To Do */}
@@ -439,7 +439,7 @@ export function StatusRow({
           style={{ ...colStyles.actual, textAlign: 'right', fontFamily: MONO_FONT, fontSize: 12 }}
           className="px-2 text-right text-muted-foreground"
         >
-          {item.actual || '—'}
+          {item.actual ?? '—'}
         </div>
 
         {/* Owner */}

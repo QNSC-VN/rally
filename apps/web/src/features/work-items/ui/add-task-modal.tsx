@@ -3,6 +3,7 @@
  * P1-TASK-CREATE per SRS §04_Task_Management.
  */
 import { useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
 import { useCreateTask } from '@/features/work-items/api'
@@ -21,6 +22,7 @@ interface Props {
 }
 
 export function AddTaskModal({ workItemId, onClose }: Props) {
+  const { t } = useTranslation('work-items')
   const { project } = useAppContext()
   const { data: members = [] } = useProjectMembers(project?.projectId)
   const navigate = useNavigate()
@@ -33,6 +35,9 @@ export function AddTaskModal({ workItemId, onClose }: Props) {
   const currentUserId = useAuthStore((s) => s.user?.id)
   const [assigneeId, setAssigneeId] = useState(() => currentUserId ?? '')
   const [error, setError] = useState<string | null>(null)
+  // Server/submit failures aren't tied to one input — shown as a modal-level
+  // banner, not under the Name field.
+  const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
   const createTask = useCreateTask(workItemId)
@@ -40,10 +45,11 @@ export function AddTaskModal({ workItemId, onClose }: Props) {
 
   async function submit(withDetails: boolean) {
     if (!name.trim()) {
-      setError('Name is required.')
+      setError(t('tasks.create.nameRequired'))
       return
     }
     setError(null)
+    setFormError(null)
     setSubmitting(true)
     try {
       const task = await createTask.mutateAsync({
@@ -58,7 +64,7 @@ export function AddTaskModal({ workItemId, onClose }: Props) {
         void navigate({ to: '/item/$itemKey', params: { itemKey: task.itemKey } })
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to create task.')
+      setFormError(e instanceof Error ? e.message : t('tasks.create.createFailed'))
     } finally {
       setSubmitting(false)
     }
@@ -68,24 +74,34 @@ export function AddTaskModal({ workItemId, onClose }: Props) {
     <AppModal
       open
       onClose={onClose}
-      title="Create Task"
-      subtitle="Create a child task under this work item."
+      title={t('tasks.create.title')}
+      subtitle={t('tasks.create.subtitle')}
       width={520}
     >
       <ModalBody className="space-y-4">
-        <FormField label="Name" htmlFor="task-name" required error={error ?? undefined}>
+        {formError && (
+          <p role="alert" className="text-ui-sm text-destructive">
+            {formError}
+          </p>
+        )}
+        <FormField
+          label={t('tasks.create.nameLabel')}
+          htmlFor="task-name"
+          required
+          error={error ?? undefined}
+        >
           <Input
             id="task-name"
             ref={nameRef}
             autoFocus
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Enter task name"
+            placeholder={t('tasks.create.namePlaceholder')}
           />
         </FormField>
 
         <div className="grid grid-cols-3 gap-4">
-          <FormField label="Estimate (hrs)" htmlFor="task-estimate">
+          <FormField label={t('tasks.create.estimateLabel')} htmlFor="task-estimate">
             <Input
               id="task-estimate"
               type="number"
@@ -93,11 +109,11 @@ export function AddTaskModal({ workItemId, onClose }: Props) {
               step={0.5}
               value={estimate}
               onChange={(e) => setEstimate(e.target.value)}
-              placeholder="0"
+              placeholder={t('tasks.create.estimatePlaceholder')}
             />
           </FormField>
 
-          <FormField label="To Do (hrs)" htmlFor="task-todo">
+          <FormField label={t('tasks.create.todoLabel')} htmlFor="task-todo">
             <Input
               id="task-todo"
               type="number"
@@ -105,11 +121,11 @@ export function AddTaskModal({ workItemId, onClose }: Props) {
               step={0.5}
               value={todo}
               onChange={(e) => setTodo(e.target.value)}
-              placeholder="= Estimate"
+              placeholder={t('tasks.create.todoPlaceholder')}
             />
           </FormField>
 
-          <FormField label="Actuals (hrs)" htmlFor="task-actual">
+          <FormField label={t('tasks.create.actualLabel')} htmlFor="task-actual">
             <Input
               id="task-actual"
               type="number"
@@ -117,7 +133,7 @@ export function AddTaskModal({ workItemId, onClose }: Props) {
               step={0.5}
               value={actual}
               onChange={(e) => setActual(e.target.value)}
-              placeholder="0"
+              placeholder={t('tasks.create.actualPlaceholder')}
             />
           </FormField>
         </div>
@@ -132,16 +148,16 @@ export function AddTaskModal({ workItemId, onClose }: Props) {
 
       <ModalFooter className="justify-between">
         <Button variant="outline" type="button" onClick={onClose} disabled={submitting}>
-          Cancel
+          {t('common:cancel')}
         </Button>
         <div className="flex gap-2">
           <Button
-            variant="outline"
+            variant="secondary"
             type="button"
             onClick={() => void submit(true)}
             disabled={submitting || !name.trim()}
           >
-            Create with details
+            {t('tasks.create.createWithDetails')}
           </Button>
           <Button
             type="button"
@@ -149,7 +165,7 @@ export function AddTaskModal({ workItemId, onClose }: Props) {
             disabled={submitting || !name.trim()}
           >
             {submitting && <Loader2 size={11} className="animate-spin" />}
-            {submitting ? 'Creating…' : 'Create Task'}
+            {submitting ? t('tasks.create.creating') : t('tasks.create.createButton')}
           </Button>
         </div>
       </ModalFooter>

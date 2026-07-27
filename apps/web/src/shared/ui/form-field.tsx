@@ -48,7 +48,11 @@ export function FormField({
       </Label>
       {children}
       {hint && <p className="text-ui-xs text-foreground-subtle">{hint}</p>}
-      {error && <p className="text-ui-sm text-destructive">{error}</p>}
+      {error && (
+        <p role="alert" className="text-ui-sm text-destructive">
+          {error}
+        </p>
+      )}
     </div>
   )
 }

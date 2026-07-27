@@ -32,19 +32,21 @@ export function CreateReleaseModal({
   const [releaseDate, setReleaseDate] = useState('')
   const [theme, setTheme] = useState('')
   const [status, setState] = useState<ReleaseStatus>('planning')
-  const [error, setError] = useState<string | null>(null)
+  // Per-field validation errors render under their own field; `form` is a
+  // modal-level error (server/submit failures not tied to one input).
+  const [errors, setErrors] = useState<{ name?: string; releaseDate?: string; form?: string }>({})
   const create = useCreateRelease()
 
   async function submit(goToDetails?: boolean) {
-    setError(null)
-    if (!name.trim()) {
-      setError(t('create.nameRequired'))
+    const next: typeof errors = {}
+    if (!name.trim()) next.name = t('create.nameRequired')
+    if (startDate && releaseDate && releaseDate < startDate)
+      next.releaseDate = t('create.dateOrder')
+    if (Object.keys(next).length > 0) {
+      setErrors(next)
       return
     }
-    if (startDate && releaseDate && releaseDate < startDate) {
-      setError(t('create.dateOrder'))
-      return
-    }
+    setErrors({})
     try {
       const result = await create.mutateAsync({
         projectId,
@@ -62,7 +64,7 @@ export function CreateReleaseModal({
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : t('create.createFailed')
-      setError(msg)
+      setErrors({ form: msg })
       notify.error(msg)
     }
   }
@@ -76,6 +78,11 @@ export function CreateReleaseModal({
       width={460}
     >
       <ModalBody className="space-y-4">
+        {errors.form && (
+          <p role="alert" className="text-ui-sm text-destructive">
+            {errors.form}
+          </p>
+        )}
         {/* Type selector — disabled, locked to Release (P3-REL-FR-012) */}
         <FormField label={t('create.typeLabel')}>
           <div className="flex gap-2">
@@ -99,7 +106,7 @@ export function CreateReleaseModal({
           </div>
         </FormField>
 
-        <FormField label={t('create.nameLabel')} required error={error ?? undefined}>
+        <FormField label={t('create.nameLabel')} required error={errors.name}>
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -127,7 +134,11 @@ export function CreateReleaseModal({
               onChange={(v) => setStartDate(v ?? '')}
             />
           </FormField>
-          <FormField label={t('create.releaseDateLabel')} className="flex-1">
+          <FormField
+            label={t('create.releaseDateLabel')}
+            className="flex-1"
+            error={errors.releaseDate}
+          >
             <DateField
               variant="field"
               value={releaseDate || null}
