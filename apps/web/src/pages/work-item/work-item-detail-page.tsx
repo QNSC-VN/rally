@@ -235,12 +235,12 @@ export function WorkItemDetailPage() {
   if (!itemByKey) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3">
-        <p className="text-sm font-medium text-muted-foreground">
+        <p className="text-ui-xl font-medium text-muted-foreground">
           {t('notFound', { key: itemKey })}
         </p>
         <button
           onClick={() => void navigate({ to: '/backlog' })}
-          className="text-xs font-medium text-primary-light"
+          className="text-ui-md font-medium text-primary-light"
         >
           {t('backToBacklog')}
         </button>

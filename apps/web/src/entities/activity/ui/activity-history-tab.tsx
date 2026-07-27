@@ -60,7 +60,7 @@ export function ActivityHistoryTab({
         </div>
 
         {logs.length === 0 && (
-          <div className="px-4 py-6 text-center text-sm text-foreground-subtle">
+          <div className="px-4 py-6 text-center text-ui-xl text-foreground-subtle">
             {t('common:noRevisions', 'No revisions yet.')}
           </div>
         )}
@@ -74,7 +74,9 @@ export function ActivityHistoryTab({
               className="grid items-start border-b border-border-inner px-4 py-3 text-ui-md text-foreground"
               style={{ gridTemplateColumns: GRID }}
             >
-              <span className="font-mono text-ui-sm text-primary-light tabular-nums">{revision}</span>
+              <span className="font-mono text-ui-sm text-primary-light tabular-nums">
+                {revision}
+              </span>
               <span className="text-foreground">{describeActivity(log)}</span>
               <span className="font-mono text-ui-sm text-muted-foreground">
                 {formatDateTime(log.createdAt)}

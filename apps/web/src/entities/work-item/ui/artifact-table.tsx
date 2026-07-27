@@ -52,7 +52,7 @@ function ArtifactRow({
       </td>
       {/* Name */}
       <td className="h-8 px-3">
-        <span className="block max-w-[300px] truncate text-xs font-medium text-foreground">
+        <span className="block max-w-[300px] truncate text-ui-md font-medium text-foreground">
           {item.title}
         </span>
       </td>
@@ -104,7 +104,7 @@ export function ArtifactTable({
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 p-8">
         <Layers size={32} className="text-foreground-faint" />
-        <p className="text-xs text-foreground-subtle">
+        <p className="text-ui-md text-foreground-subtle">
           {search ? 'No artifacts match your search' : `No artifacts linked to this ${entityNoun}`}
         </p>
       </div>

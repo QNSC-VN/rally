@@ -96,7 +96,7 @@ export function PortfolioPage() {
   if (!projectId) {
     return (
       <div className="flex h-full items-center justify-center text-foreground-subtle">
-        <p className="text-sm">{t('selectProject')}</p>
+        <p className="text-ui-xl">{t('selectProject')}</p>
       </div>
     )
   }
