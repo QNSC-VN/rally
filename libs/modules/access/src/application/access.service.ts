@@ -101,6 +101,7 @@ export class AccessService {
     if (role.isSystem || role.workspaceId === null) {
       throw new ConflictException('ROLE_IMMUTABLE', 'Built-in system roles cannot be edited');
     }
+    this.assertGrantablePermissions(actor, permissions);
 
     const next = [...new Set(permissions)].sort();
 
@@ -129,6 +130,127 @@ export class AccessService {
       'Role permissions updated',
     );
     return updated;
+  }
+
+  /**
+   * Create a workspace-owned custom role. Built-ins stay immutable; this is the
+   * only way a workspace gains a new role. The permission set must be grantable
+   * (see {@link assertGrantablePermissions}); the slug is derived from the name
+   * and de-duplicated against the roles already visible to the workspace.
+   */
+  async createRole(
+    actor: JwtPayload,
+    input: { name: string; description?: string | null; permissions: string[] },
+  ): Promise<SystemRole> {
+    this.assertGrantablePermissions(actor, input.permissions);
+    const permissions = [...new Set(input.permissions)].sort();
+    const slug = await this.deriveUniqueSlug(actor.workspaceId, input.name);
+
+    const created = await this.uow.run(async (tx) => {
+      const saved = await this.roleRepo.create(
+        {
+          workspaceId: actor.workspaceId,
+          name: input.name.trim(),
+          slug,
+          description: input.description?.trim() || null,
+          permissions,
+        },
+        tx,
+      );
+      await this.audit.emit(
+        {
+          action: AUDIT_ACTION.ROLE_CREATED,
+          resourceType: AUDIT_RESOURCE.ROLE,
+          resourceId: saved.id,
+          workspaceId: actor.workspaceId,
+          actor: { id: actor.sub },
+          changes: { after: { name: saved.name, slug: saved.slug, permissions } },
+        },
+        tx,
+      );
+      return saved;
+    });
+    // A brand-new role has no holders yet — no token epoch bump needed.
+    this.logger.log({ roleId: created.id, slug, createdBy: actor.sub }, 'Custom role created');
+    return created;
+  }
+
+  /**
+   * Delete a workspace-owned custom role. Built-ins are immutable; a role still
+   * held by any user is blocked (409) so no one silently loses access — the admin
+   * must reassign holders first.
+   */
+  async deleteRole(actor: JwtPayload, roleId: string): Promise<void> {
+    const role = await this.roleRepo.findById(roleId);
+    if (!role || (role.workspaceId !== null && role.workspaceId !== actor.workspaceId)) {
+      throw new NotFoundException('ROLE_NOT_FOUND', 'Role not found');
+    }
+    if (role.isSystem || role.workspaceId === null) {
+      throw new ConflictException('ROLE_IMMUTABLE', 'Built-in system roles cannot be deleted');
+    }
+    const holders = await this.assignmentRepo.listUserIdsForRole(roleId);
+    if (holders.length > 0) {
+      throw new ConflictException(
+        'ROLE_IN_USE',
+        `This role is still assigned to ${holders.length} user(s); reassign them before deleting it`,
+      );
+    }
+
+    await this.uow.run(async (tx) => {
+      await this.roleRepo.delete(roleId, tx);
+      await this.audit.emit(
+        {
+          action: AUDIT_ACTION.ROLE_DELETED,
+          resourceType: AUDIT_RESOURCE.ROLE,
+          resourceId: roleId,
+          workspaceId: actor.workspaceId,
+          actor: { id: actor.sub },
+          changes: { before: { name: role.name, slug: role.slug } },
+        },
+        tx,
+      );
+    });
+    this.logger.log({ roleId, deletedBy: actor.sub }, 'Custom role deleted');
+  }
+
+  /**
+   * A custom role may only carry concrete codes the ACTOR themselves holds
+   * (no privilege escalation) and never a wildcard (`ns:*` is reserved for
+   * built-ins). Today only workspace_admin (workspace:*) manages roles, so this
+   * is a guard-rail for future finer-grained role admins.
+   */
+  private assertGrantablePermissions(actor: JwtPayload, permissions: string[]): void {
+    for (const code of permissions) {
+      if (code.endsWith(':*')) {
+        throw new ConflictException(
+          'ROLE_WILDCARD_FORBIDDEN',
+          `Wildcard permission "${code}" cannot be granted to a custom role`,
+        );
+      }
+      if (!permissionGrants(actor.permissions, code)) {
+        throw new PermissionDeniedException(
+          'ROLE_PERMISSION_ESCALATION',
+          `You cannot grant "${code}" because you do not hold it`,
+        );
+      }
+    }
+  }
+
+  /** Slug from the name, unique among the roles visible to the workspace. */
+  private async deriveUniqueSlug(workspaceId: string, name: string): Promise<string> {
+    const base =
+      name
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 80) || 'role';
+    const taken = new Set((await this.roleRepo.listForWorkspace(workspaceId)).map((r) => r.slug));
+    if (!taken.has(base)) return base;
+    for (let i = 2; ; i++) {
+      const candidate = `${base}_${i}`;
+      if (!taken.has(candidate)) return candidate;
+    }
   }
 
   // ── Assignments ───────────────────────────────────────────────────────────

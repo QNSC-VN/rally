@@ -21,6 +21,8 @@ export const AUDIT_ACTION = {
   // ── Access / RBAC ──
   ROLE_ASSIGNED: 'role.assigned',
   ROLE_REVOKED: 'role.revoked',
+  ROLE_CREATED: 'role.created',
+  ROLE_DELETED: 'role.deleted',
   ROLE_PERMISSIONS_UPDATED: 'role.permissions.updated',
   // ── Projects ──
   PROJECT_CREATED: 'project.created',

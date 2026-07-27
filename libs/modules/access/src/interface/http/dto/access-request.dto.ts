@@ -17,6 +17,14 @@ export const UpdateRolePermissionsSchema = z.object({
 });
 export class UpdateRolePermissionsDto extends createZodDto(UpdateRolePermissionsSchema) {}
 
+/** Body for creating a workspace-owned custom role (workspace admin only). */
+export const CreateRoleSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+  description: z.string().trim().max(500).nullish(),
+  permissions: z.array(z.nativeEnum(PERMISSION)).max(100).default([]),
+});
+export class CreateRoleDto extends createZodDto(CreateRoleSchema) {}
+
 /** Body for project-scoped role assignment — scope is fixed to the URL project. */
 export const AssignProjectRoleSchema = z.object({
   userId: z.string().uuid(),

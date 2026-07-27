@@ -18,6 +18,7 @@ import { AuthPolicy, RequirePermission } from './policy.guard';
 import {
   AssignRoleDto,
   AssignProjectRoleDto,
+  CreateRoleDto,
   UpdateRolePermissionsDto,
 } from './dto/access-request.dto';
 import {
@@ -82,6 +83,23 @@ export class AccessController {
     return { permissions: this.accessService.getPermissionCatalog() };
   }
 
+  @Post('roles')
+  @RequirePermission('roles:edit')
+  @ApiOperation({ summary: 'Create a workspace custom role (workspace admin only)' })
+  @ApiResponse({ status: 201, type: RoleResponseDto })
+  @ApiCommonErrors(400, 401, 403, 409, 422)
+  async createRole(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: CreateRoleDto,
+  ): Promise<RoleResponseDto> {
+    const role = await this.accessService.createRole(user, {
+      name: dto.name,
+      description: dto.description ?? null,
+      permissions: dto.permissions,
+    });
+    return toRoleDto(role);
+  }
+
   @Patch('roles/:roleId/permissions')
   @RequirePermission('roles:edit')
   @ApiOperation({ summary: 'Replace a custom role\u2019s permission set (workspace admin only)' })
@@ -95,6 +113,20 @@ export class AccessController {
   ): Promise<RoleResponseDto> {
     const role = await this.accessService.updateRolePermissions(user, roleId, dto.permissions);
     return toRoleDto(role);
+  }
+
+  @Delete('roles/:roleId')
+  @RequirePermission('roles:edit')
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Delete a workspace custom role (workspace admin only)' })
+  @ApiParam({ name: 'roleId', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 204, description: 'Role deleted' })
+  @ApiCommonErrors(401, 403, 404, 409)
+  async deleteRole(
+    @CurrentUser() user: JwtPayload,
+    @Param('roleId', ParseUUIDPipe) roleId: string,
+  ): Promise<void> {
+    await this.accessService.deleteRole(user, roleId);
   }
 
   // ── Role assignments ───────────────────────────────────────────────────────
