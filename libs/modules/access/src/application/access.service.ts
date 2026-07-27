@@ -445,8 +445,8 @@ export class AccessService {
   /**
    * Effective permissions for a specific PROJECT: the user's workspace-wide
    * baseline (global + workspace) unioned with any role they hold that is
-   * scoped to exactly this project. Used by ProjectPermissionGuard at request
-   * time so "admin of Project X, viewer of Project Y" is actually enforced.
+   * scoped to exactly this project. Used by the PolicyGuard at request time so
+   * "admin of Project X, viewer of Project Y" is actually enforced.
    */
   async getProjectPermissions(
     userId: string,
@@ -465,13 +465,14 @@ export class AccessService {
   }
 
   /**
-   * Service-layer per-project check, for routes where the project id is only
-   * known after loading a resource (e.g. updateRelease knows the release's
-   * projectId, not from the URL). Throws PermissionDeniedException (403) when the
-   * caller lacks `required` for `projectId`. Wildcards are honoured.
+   * Service-layer per-project check, kept for the few authorizations a
+   * route-scoped guard cannot express: a project id known only after loading a
+   * resource, a multi-project batch, or a secondary target. Throws
+   * PermissionDeniedException (403) when the caller lacks `required` for
+   * `projectId`. Wildcards are honoured.
    *
-   * Guard-based routes (projectId on the request) use @RequireProjectPermission
-   * instead — don't double-check.
+   * Guard-based routes (project id resolvable from the request) use
+   * @RequirePermission + PolicyGuard instead — don't double-check.
    */
   async assertProjectPermission(
     user: JwtPayload,
