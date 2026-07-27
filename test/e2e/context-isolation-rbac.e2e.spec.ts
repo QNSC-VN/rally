@@ -16,7 +16,15 @@ import type { WorkItemFilters } from '@modules/work-items';
 import { PolicyGuard, RequirePermission } from '@modules/access';
 import type { JwtPayload } from '@platform';
 
-import { ALL, adminActor, bootRallyApp, uniqueKey, viewerActor } from './support/flow-harness';
+import {
+  ALL,
+  DEVELOPER_ID,
+  adminActor,
+  bootRallyApp,
+  makeActor,
+  uniqueKey,
+  viewerActor,
+} from './support/flow-harness';
 
 /**
  * Since P2 the per-route project authorization lives in the PolicyGuard, not in
@@ -33,6 +41,12 @@ class WorkItemPolicyProbe {
   edit(): void {}
   @RequirePermission('work_item:create', { from: 'body', field: 'projectId' })
   create(): void {}
+  @RequirePermission('work_item:delete', { resource: 'work_item', from: 'param', field: 'id' })
+  delete(): void {}
+  @RequirePermission('release:create', { from: 'param', field: 'projectId' })
+  releaseCreate(): void {}
+  @RequirePermission('iteration:create', { from: 'param', field: 'projectId' })
+  iterationCreate(): void {}
 }
 
 function policyContext(
@@ -142,6 +156,55 @@ describe('BA flows: context isolation + read-only RBAC (real AppModule + seeded 
           policyContext(WorkItemPolicyProbe.prototype.edit, admin, { params: { id: story.id } }),
         ),
       ).resolves.toBe(true);
+    });
+  });
+
+  // ── Role × route matrix: prove each canonical role's allow/deny through the
+  // REAL guard against the seeded DB. Covers all three resolution paths:
+  //   admin  → workspace:* fast-path
+  //   member → DB-resolved project_member role (empty token forces the DB path)
+  //   viewer → flat JWT baseline (token-only work_item:view)
+  describe('E2E-RBAC canonical role × route matrix', () => {
+    it('enforces the reconciled catalog for every role', async () => {
+      const project = await projects.createProject(admin, { key: uniqueKey(), name: 'Matrix' });
+      const story = await workItems.createWorkItem(admin, project.id, 'story', 'Matrix target');
+
+      // DEVELOPER_ID is a seeded workspace-scoped project_member; its token is
+      // deliberately empty so the guard MUST resolve the role from the DB.
+      const member = makeActor(DEVELOPER_ID, []);
+
+      const P = WorkItemPolicyProbe.prototype;
+      const byId = { params: { id: story.id } };
+      const byProject = { params: { projectId: project.id } };
+      const bodyProject = { body: { projectId: project.id } };
+
+      const allow = (h: (...a: unknown[]) => unknown, who: JwtPayload, req: object) =>
+        expect(policy.canActivate(policyContext(h, who, req))).resolves.toBe(true);
+      const deny = (h: (...a: unknown[]) => unknown, who: JwtPayload, req: object) =>
+        expect(policy.canActivate(policyContext(h, who, req))).rejects.toMatchObject({
+          code: 'PROJECT_PERMISSION_DENIED',
+        });
+
+      // workspace_admin (workspace:*) — everything.
+      await allow(P.view, admin, byId);
+      await allow(P.delete, admin, byId);
+      await allow(P.releaseCreate, admin, byProject);
+      await allow(P.iterationCreate, admin, byProject);
+
+      // project_member — full work-item CRUD (incl. delete), but NOT release or
+      // iteration management (per the Phase 4.2 reconciliation).
+      await allow(P.view, member, byId);
+      await allow(P.create, member, bodyProject);
+      await allow(P.edit, member, byId);
+      await allow(P.delete, member, byId);
+      await deny(P.releaseCreate, member, byProject);
+      await deny(P.iterationCreate, member, byProject);
+
+      // read-only viewer — view only.
+      await allow(P.view, viewer, byId);
+      await deny(P.create, viewer, bodyProject);
+      await deny(P.edit, viewer, byId);
+      await deny(P.delete, viewer, byId);
     });
   });
 });
