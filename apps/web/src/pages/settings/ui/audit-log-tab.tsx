@@ -17,10 +17,24 @@ import { SelectableTable, useDataTable, type ColumnSpec } from '@/shared/ui/tabl
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
-import { formatDateTime } from '@/shared/lib/utils'
+import { formatWith } from '@/shared/lib/utils'
 import { useSystemRoles } from '../model/use-system-roles'
 
 const AUDIT_DEFAULT_PAGE_SIZE = 50
+
+// Audit needs a precise "who did what, exactly when" timestamp, so — unlike the
+// app-wide short `formatDateTime` — it includes the weekday and seconds, e.g.
+// "Fri, Jul 31, 2026, 2:30:45 PM". Uses the `formatWith` escape hatch so it
+// still resolves the user→workspace locale + timezone.
+const AUDIT_TIME_FORMAT: Intl.DateTimeFormatOptions = {
+  weekday: 'short',
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+  second: '2-digit',
+}
 
 type AuditRow = components['schemas']['AuditLogResponseDto']
 type AuditColKey = 'time' | 'actor' | 'detail'
@@ -103,13 +117,13 @@ export function AuditLogTab() {
       {
         key: 'time',
         label: t('audit.colTime'),
-        defaultWidth: 230,
-        minWidth: 170,
+        defaultWidth: 264,
+        minWidth: 210,
         locked: true,
         cellClassName: 'flex items-center',
         cell: (r) => (
           <span className="truncate text-ui-md text-foreground-subtle">
-            {formatDateTime(r.occurredAt)}
+            {formatWith(r.occurredAt, AUDIT_TIME_FORMAT)}
           </span>
         ),
       },
