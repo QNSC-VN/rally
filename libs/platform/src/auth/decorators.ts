@@ -23,9 +23,10 @@ export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);
  *
  * The signature only accepts workspace-tier codes on purpose: a project-tier
  * permission (work_item:*, iteration:*, project:edit, …) must be resolved
- * per-project, so passing one here is a COMPILE error — use
- * @RequireProjectPermission (project id in the request) or
- * AccessService.assertProjectPermission (project id known only after a load).
+ * per-project, so passing one here is a COMPILE error — use the unified
+ * @RequirePermission from @modules/access with @AuthPolicy (which resolves the
+ * project via the PolicyGuard), or AccessService.assertProjectPermission when
+ * the project id is known only after a load.
  */
 export const RequirePermission = (permission: WorkspacePermission) =>
   SetMetadata(PERMISSION_KEY, permission);
