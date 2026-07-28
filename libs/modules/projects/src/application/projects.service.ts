@@ -78,7 +78,7 @@ export class ProjectsService {
   ): Promise<{ items: ActivityLog[]; total: number }> {
     await this.getProject(actor.workspaceId, projectId);
     const page = Math.floor(args.offset / args.limit) + 1;
-    const res = await this.activity.listFor(projectId, page, args.limit);
+    const res = await this.activity.listFor(projectId, actor.workspaceId, page, args.limit);
     return { items: res.data, total: res.total };
   }
 

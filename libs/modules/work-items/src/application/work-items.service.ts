@@ -550,7 +550,7 @@ export class WorkItemsService {
   ): Promise<{ items: ActivityLog[]; total: number }> {
     await this.getWorkItem(actor.workspaceId, workItemId);
     const page = Math.floor(args.offset / args.limit) + 1;
-    const res = await this.activity.listFor(workItemId, page, args.limit);
+    const res = await this.activity.listFor(workItemId, actor.workspaceId, page, args.limit);
     return { items: res.data, total: res.total };
   }
 

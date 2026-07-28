@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { count, desc, eq, or } from 'drizzle-orm';
+import { and, count, desc, eq, or } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB, DbExecutor } from '@platform';
 import { activityLogs } from '../../../../../../db/schema/work';
@@ -34,10 +34,22 @@ export class ActivityLogDrizzleRepository implements IActivityLogRepository {
     );
   }
 
-  async listFor(entityId: string, page: number, pageSize: number): Promise<ActivityPage> {
+  async listFor(
+    entityId: string,
+    workspaceId: string,
+    page: number,
+    pageSize: number,
+  ): Promise<ActivityPage> {
     const offset = (page - 1) * pageSize;
-    // Entity's own logs + any child logs anchored to it (context_id).
-    const where = or(eq(activityLogs.entityId, entityId), eq(activityLogs.contextId, entityId));
+    // Entity's own logs + any child logs anchored to it (context_id), scoped to
+    // the caller's workspace. The workspace predicate is not redundant with the
+    // callers' pre-load checks: entity ids are globally unique and arrive from
+    // the request, so without it a borrowed id resolves to another workspace's
+    // history the moment a caller forgets to pre-load the parent.
+    const where = and(
+      eq(activityLogs.workspaceId, workspaceId),
+      or(eq(activityLogs.entityId, entityId), eq(activityLogs.contextId, entityId)),
+    );
 
     const rows = await this.db
       .select({
@@ -58,10 +70,7 @@ export class ActivityLogDrizzleRepository implements IActivityLogRepository {
       .limit(pageSize)
       .offset(offset);
 
-    const [totalRow] = await this.db
-      .select({ total: count() })
-      .from(activityLogs)
-      .where(where);
+    const [totalRow] = await this.db.select({ total: count() }).from(activityLogs).where(where);
 
     return {
       data: rows.map((r) => ({

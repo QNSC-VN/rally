@@ -53,14 +53,28 @@ describe('ActivityLogger', () => {
     };
 
     it('maps each changed field to an input, using the config action', () => {
-      const inputs = logger.buildDiff(SUBJECT, 'actor', { name: 'A' }, { name: 'B' }, config, 'wi.updated');
+      const inputs = logger.buildDiff(
+        SUBJECT,
+        'actor',
+        { name: 'A' },
+        { name: 'B' },
+        config,
+        'wi.updated',
+      );
       expect(inputs).toHaveLength(1);
       expect(inputs[0].action).toBe('wi.name_changed');
       expect(inputs[0].changes).toEqual({ field: 'name', old: 'A', new: 'B' });
     });
 
     it('falls back to fallbackAction when the config maps no action', () => {
-      const inputs = logger.buildDiff(SUBJECT, 'a', { name: 'A' }, { name: 'B' }, { fields: ['name'] }, 'wi.updated');
+      const inputs = logger.buildDiff(
+        SUBJECT,
+        'a',
+        { name: 'A' },
+        { name: 'B' },
+        { fields: ['name'] },
+        'wi.updated',
+      );
       expect(inputs[0].action).toBe('wi.updated');
     });
   });
@@ -92,8 +106,8 @@ describe('ActivityLogger', () => {
     });
   });
 
-  it('listFor delegates to the repository', async () => {
-    await logger.listFor('wi-1', 2, 25);
-    expect(repo.listFor).toHaveBeenCalledWith('wi-1', 2, 25);
+  it('listFor delegates to the repository, carrying the workspace scope', async () => {
+    await logger.listFor('wi-1', 'ws-1', 2, 25);
+    expect(repo.listFor).toHaveBeenCalledWith('wi-1', 'ws-1', 2, 25);
   });
 });

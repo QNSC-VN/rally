@@ -33,9 +33,7 @@ export interface ActivitySubject {
 export class ActivityLogger {
   private readonly logger = new Logger(ActivityLogger.name);
 
-  constructor(
-    @Inject(ACTIVITY_LOG_REPOSITORY) private readonly repo: IActivityLogRepository,
-  ) {}
+  constructor(@Inject(ACTIVITY_LOG_REPOSITORY) private readonly repo: IActivityLogRepository) {}
 
   /** Build one entry (does not persist). */
   build(
@@ -90,7 +88,7 @@ export class ActivityLogger {
   }
 
   /** Newest-first history for one entity (own logs + child logs anchored to it). */
-  listFor(entityId: string, page = 1, pageSize = 50): Promise<ActivityPage> {
-    return this.repo.listFor(entityId, page, pageSize);
+  listFor(entityId: string, workspaceId: string, page = 1, pageSize = 50): Promise<ActivityPage> {
+    return this.repo.listFor(entityId, workspaceId, page, pageSize);
   }
 }
