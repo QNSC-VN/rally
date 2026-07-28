@@ -114,10 +114,17 @@ module "iam_oidc" {
   }
 }
 
-# ── RDS dev-cost-saver guard — develop deploy role only ──────────────────────
-# Allows the CI deploy job to detect + start a stopped RDS instance before
-# running migrations. Scoped to develop only; prod RDS is always-on and this
-# permission is intentionally absent from the production deploy role.
+# ── RDS wake guard — develop deploy role only ────────────────────────────────
+# Allows the CI deploy job to detect + start a stopped RDS instance before running
+# migrations. Scoped to develop only, and deliberately absent from the production
+# deploy role.
+#
+# NOTE: nothing currently stops develop's RDS. There is no scheduler — no EventBridge
+# rule, no Lambda, no scheduled action — anywhere in qnsc-infra or this repo. Only the
+# waking half was built. This grant exists so that stopping develop BY HAND is safe,
+# and so an off-hours scheduler can be added later without a permissions change.
+# Do not read it as evidence one is running: an earlier comment claiming a
+# "cost-saver" was cited to justify disabling a real outage alarm.
 #
 # The ARN is constructed directly (account_id + region + fixed identifier)
 # instead of via a `data "aws_db_instance"` lookup. A data-source lookup
