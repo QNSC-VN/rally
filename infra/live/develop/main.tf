@@ -99,6 +99,13 @@ module "stack" {
   // second reason rather than assuming it.
   monitor_target_health = false
 
+  // Both halves of rally/develop/r2-public-* are populated, so the public-bucket
+  // credential can be injected. This is a FIX, not hardening: the primary token
+  // (`rally-develop-r2-app`) is scoped to `rally-develop-attachments` alone, so while
+  // this was false every avatar and workspace-logo write went to the public bucket
+  // with a credential that has no grant on it.
+  storage_public_credentials = true
+
   rds = {
     instance_class           = "db.t4g.micro"
     allocated_storage_gb     = 20

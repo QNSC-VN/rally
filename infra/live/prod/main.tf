@@ -105,6 +105,12 @@ module "stack" {
   // produces no load to make CPU, latency or 5xx move.
   monitor_target_health = true
 
+  // Both halves of rally/production/r2-public-* are populated, so the public-bucket
+  // credential can be injected. Same fix as develop: `rally-production-r2-app` is scoped
+  // to `rally-prod-attachments` alone, so public-asset writes had no grant. Production
+  // has had no users, so nothing has hit it yet — this lands before it can.
+  storage_public_credentials = true
+
   // PRE-LAUNCH sizing. Multi-AZ t4g.small with Enhanced Monitoring is the right
   // production posture and it is what this becomes at go-live — but it costs about
   // $101/mo, and every dollar of it currently buys durability for a database with no
