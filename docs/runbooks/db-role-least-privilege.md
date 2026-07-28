@@ -1,6 +1,9 @@
 # Cutting the app over to least-privilege database roles
 
-**Status:** roles exist, cutover NOT done.
+**Status:** roles exist. Passwords generated and stored in Secrets Manager
+(2026-07-28) and `db_role_passwords_set = true` in both environments, so step 1 is
+done and step 2's Terraform half is in place. The **cutover task has not run** in
+either environment, and `db_least_privilege` is still false in both.
 **Owner:** whoever runs the next infra change.
 
 ## Why
@@ -35,11 +38,14 @@ the credentials handed to each task change.
 
 ## What already proves the grants are complete
 
-`backend-ci.yml` runs `scripts/ci/enable-least-privilege-role.mjs` before the e2e
-job, then runs **the entire e2e suite as `rally_app`** rather than as the
-superuser every other job uses. So a schema, table or sequence that migration
-0068 forgot to `GRANT` fails CI — not the production cutover. The script also
-asserts the role *cannot* run DDL, so widening the grants to ownership fails too.
+`backend-ci.yml` runs `pnpm db:roles:enable` before the e2e job, then runs **the
+entire e2e suite as `rally_app`** rather than as the superuser every other job
+uses. So a schema, table or sequence that migration 0068 forgot to `GRANT` fails
+CI — not the production cutover. The script also asserts the role *cannot* run
+DDL, so widening the grants to ownership fails too.
+
+That is the **same script** the cutover in step 2 below runs, so CI exercises the
+production code path rather than a parallel implementation of it.
 
 Verified locally at the time of writing: 865 unit tests and 133 e2e tests pass
 with `DATABASE_URL` pointing at `rally_app`, with no `permission denied`. `pnpm
@@ -71,51 +77,104 @@ Do this in **develop first**, leave it a full deploy cycle, then prod.
 - `var.db_least_privilege` (**default `false`**) selects, via
   `local.api_db_secrets` / `local.worker_db_secrets`, whether api and worker take
   their credentials from the RDS master secret or from the new ones.
-- The migrator is untouched by the flag; it keeps the master credential because
-  it needs DDL.
+- `var.db_role_passwords_set` (**default `false`**) injects the two passwords into
+  the MIGRATOR, so the step-2 cutover task can read them.
+- The migrator's own connection is untouched by either flag; it keeps the master
+  credential because it needs DDL.
 
 So applying the current code creates two empty secrets and changes no running
 task. Everything below is the deliberate part.
 
 ### 1. Put a password in each secret
 
-In the Secrets Manager console, set a value on `<product>/<env>/db-app-password`
-and `<product>/<env>/db-worker-password`. Plain string, not JSON — the module
-injects the whole secret as `DATABASE_PASSWORD`, and `DATABASE_USER` travels as
-plain env (`rally_app` is an identifier, not a credential).
+**Done for rally/develop and rally/production on 2026-07-28.** Kept here for new
+environments.
+
+Set a value on `<product>/<env>/db-app-password` and
+`<product>/<env>/db-worker-password`. Plain string, not JSON — the module injects
+the whole secret as `DATABASE_PASSWORD`, and `DATABASE_USER` travels as plain env
+(`rally_app` is an identifier, not a credential).
 
 Use `[A-Za-z0-9_-]` only. `db/database-url.ts` composes a DSN from the parts, and
-avoiding `@ : / ?` sidesteps URL-encoding entirely.
+avoiding `@ : / ?` sidesteps URL-encoding entirely. The cutover script rejects
+anything outside that class rather than producing a DSN that silently misparses.
+
+```bash
+for role in app worker; do
+  PW=$(LC_ALL=C tr -dc 'A-Za-z0-9_-' </dev/urandom | head -c 32)
+  aws secretsmanager put-secret-value \
+    --secret-id "<product>/<env>/db-$role-password" --secret-string "$PW" >/dev/null
+  unset PW
+done
+```
+
+Generated and piped straight in, so the value never reaches a terminal or shell
+history. Nobody needs to read these back — step 2 runs inside the VPC and reads
+them from Secrets Manager directly.
 
 > Do not hand-write these passwords into `.env`, CI, or a task definition. The
 > deploy preflight in qnsc-ci already refuses to deploy while an injected secret
 > is still empty, which is what makes step 3 fail loudly rather than silently.
 
-### 2. Grant LOGIN
+### 2. Grant LOGIN — the cutover task
 
-Connect as the RDS master and, for each environment:
+There is **no interactive route to the database**. Both instances are
+`PubliclyAccessible: false` and `enableExecuteCommand` is false on all four
+services, so there is no psql session to run `ALTER ROLE` from. The migrator task
+definition is the only workload holding the RDS master credential inside the
+database's subnets, so the cutover runs there.
 
-```sql
-ALTER ROLE rally_app    LOGIN PASSWORD '<from secrets manager>';
-ALTER ROLE rally_worker LOGIN PASSWORD '<from secrets manager>';
+First let the migrator read the two passwords, in `infra/live/<env>/main.tf`:
+
+```hcl
+db_role_passwords_set = true
 ```
 
-Verify the role is not privileged and cannot escalate:
+Apply. This is inert: it adds two `secrets` entries to the migrator task
+definition and nothing else. The normal entrypoint (`node dist/db/migrate.js`)
+ignores them, and api/worker are untouched.
 
-```sql
-SELECT rolname, rolcanlogin, rolsuper, rolbypassrls, rolcreatedb, rolcreaterole
-FROM pg_roles WHERE rolname LIKE 'rally%';
--- rally_app / rally_worker: rolcanlogin=t and every other column MUST be f
+> Why this is a separate flag from `db_least_privilege`: one apply cannot do both.
+> Handing the migrator the passwords and pointing the runtime at the roles in a
+> single change means api and worker restart against roles that are still NOLOGIN
+> and fail `28P01` before the cutover task could ever run. The module has a
+> `validation` block that rejects `db_least_privilege` while this is false.
+>
+> It fires at **plan** time, not `tofu validate` — cross-variable validation is
+> evaluated with real values, so `validate` will happily accept the bad ordering.
+
+Then run the cutover, once per environment:
+
+```bash
+aws ecs run-task \
+  --cluster rally-<env> \
+  --task-definition rally-<env>-migrator \
+  --launch-type FARGATE \
+  --network-configuration "awsvpcConfiguration={subnets=[<private-subnet-ids>],securityGroups=[<migrator-sg>],assignPublicIp=DISABLED}" \
+  --overrides '{"containerOverrides":[{"name":"migrator","command":["node","dist/db/enable-least-privilege-roles.js"]}]}'
 ```
 
-Then prove the grant actually works before pointing anything at it:
+Then read the task's log stream in `/ecs/rally-<env>-migrator`. Success is two
+lines, one per role:
 
-```sql
-SET ROLE rally_app;
-SELECT count(*) FROM work.work_items;          -- must succeed
-CREATE TABLE work.should_fail (id int);        -- must fail: permission denied
-RESET ROLE;
 ```
+✅  rally_app can log in, holds no privileged attributes, and cannot run DDL.
+✅  rally_worker can log in, holds no privileged attributes, and cannot run DDL.
+```
+
+The script does the verification the old manual SQL asked for, and fails the task
+rather than printing a warning:
+
+- the role exists (else migration 0068 never ran here);
+- `rolcanlogin` is true afterwards;
+- `rolsuper`, `rolbypassrls`, `rolcreatedb`, `rolcreaterole`, `rolreplication` are
+  all false — `rolbypassrls` especially, since a role that bypasses RLS is worse
+  than the master credential it replaces, because it looks restricted;
+- connecting as the role and running `CREATE TABLE` is **denied**. That probe runs
+  inside a transaction that always rolls back, so it cannot leave a stray table in
+  a real schema even if the grants are wrong.
+
+It is idempotent — `ALTER ROLE` re-sets the same password — so a re-run is safe.
 
 ### 3. Flip the flag
 

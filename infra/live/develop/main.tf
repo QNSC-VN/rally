@@ -106,6 +106,13 @@ module "stack" {
   // with a credential that has no grant on it.
   storage_public_credentials = true
 
+  // Step 2 of docs/runbooks/db-role-least-privilege.md: rally/develop/db-*-password
+  // are populated, so the migrator can read them and the one-off cutover task can
+  // set them on the roles. Inert on its own — the normal migrate entrypoint ignores
+  // these, and api/worker stay on the master credential until `db_least_privilege`
+  // flips in a LATER apply, after the cutover task has actually run.
+  db_role_passwords_set = true
+
   rds = {
     instance_class           = "db.t4g.micro"
     allocated_storage_gb     = 20
