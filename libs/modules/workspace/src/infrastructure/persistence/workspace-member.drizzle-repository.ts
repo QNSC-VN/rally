@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { and, count, desc, eq, inArray, lt } from 'drizzle-orm';
-import { InjectDrizzle, buildPageResult } from '@platform';
+import { and, asc, count, desc, eq, inArray } from 'drizzle-orm';
+import { InjectDrizzle, buildPageResult, keysetCondition } from '@platform';
 import type { DrizzleDB, DbExecutor, CursorPayload, PagedResult } from '@platform';
 import { workspaces, workspaceMembers } from '../../../../../../db/schema/workspace';
 import { users } from '../../../../../../db/schema/identity';
@@ -63,7 +63,7 @@ export class WorkspaceMemberDrizzleRepository implements IWorkspaceMemberReposit
       )
       .leftJoin(systemRoles, eq(systemRoles.id, userRoleAssignments.roleId))
       .where(and(eq(workspaceMembers.userId, userId), eq(workspaceMembers.status, 'active')))
-      .orderBy(desc(workspaceMembers.lastActiveAt));
+      .orderBy(desc(workspaceMembers.lastActiveAt), asc(workspaceMembers.id));
 
     return rows.map((r) => ({
       workspaceId: r.workspaceId,
@@ -82,14 +82,14 @@ export class WorkspaceMemberDrizzleRepository implements IWorkspaceMemberReposit
     const conditions = [eq(workspaceMembers.workspaceId, workspaceId)];
 
     if (cursor) {
-      conditions.push(lt(workspaceMembers.joinedAt, new Date(cursor.k[0] as string)));
+      conditions.push(keysetCondition(workspaceMembers.joinedAt, workspaceMembers.id, cursor));
     }
 
     const rows = await this.db
       .select()
       .from(workspaceMembers)
       .where(and(...conditions))
-      .orderBy(workspaceMembers.joinedAt)
+      .orderBy(asc(workspaceMembers.joinedAt), asc(workspaceMembers.id))
       .limit(limit + 1);
 
     return buildPageResult(rows as WorkspaceMember[], limit, (m) => [m.joinedAt.toISOString()]);
@@ -126,7 +126,7 @@ export class WorkspaceMemberDrizzleRepository implements IWorkspaceMemberReposit
       )
       .leftJoin(systemRoles, eq(systemRoles.id, userRoleAssignments.roleId))
       .where(eq(workspaceMembers.workspaceId, workspaceId))
-      .orderBy(workspaceMembers.joinedAt);
+      .orderBy(workspaceMembers.joinedAt, asc(workspaceMembers.id));
 
     // Active team memberships per user (single grouped query, no N+1).
     const teamsByUser: Record<string, MemberTeamSummary[]> = {};
@@ -148,7 +148,7 @@ export class WorkspaceMemberDrizzleRepository implements IWorkspaceMemberReposit
             eq(teamMembers.status, 'active'),
           ),
         )
-        .orderBy(teams.name);
+        .orderBy(teams.name, asc(teams.id));
       for (const tr of teamRows) {
         (teamsByUser[tr.userId] ??= []).push({ id: tr.id, key: tr.key, name: tr.name });
       }

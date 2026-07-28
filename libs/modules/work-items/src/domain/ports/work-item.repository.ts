@@ -59,13 +59,28 @@ export interface IWorkItemRepository {
   /** Direct child tasks of a parent work item, ordered by rank. */
   listTasksByParent(parentId: string, workspaceId: string): Promise<WorkItem[]>;
   /**
+   * Take a transaction-scoped advisory lock on one (project, parent) rank scope.
+   *
+   * Deriving a new rank is a read-modify-write, so it is only safe if the read
+   * and the insert are serialised against other creates in the same scope. Call
+   * this first, then {@link findMaxRank} with the SAME executor.
+   */
+  lockRankScope(
+    scope: { projectId: string; parentId?: string | null },
+    executor: DbExecutor,
+  ): Promise<void>;
+  /**
    * Highest existing rank in the given scope (siblings under a parent task
    * list, or top-level project items when parentId is omitted). Null if the
    * scope is empty. Used to append newly-created items at the end of order.
+   *
+   * Pass the caller's transaction as `executor`: read on the pool while the
+   * insert happens in a transaction and the max is stale by construction.
    */
   findMaxRank(
     scope: { projectId: string; parentId?: string | null },
     workspaceId: string,
+    executor?: DbExecutor,
   ): Promise<string | null>;
   /** Server-side aggregated totals for a parent's tasks (totals row). */
   getTaskTotals(parentId: string, workspaceId: string): Promise<TaskTotals>;

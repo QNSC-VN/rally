@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, count, desc, eq, gt, inArray, lt, or } from 'drizzle-orm';
-import { InjectDrizzle, buildPageResult } from '@platform';
+import { and, asc, count, desc, eq, gt, inArray } from 'drizzle-orm';
+import { InjectDrizzle, buildPageResult, keysetCondition } from '@platform';
 import type { DrizzleDB, CursorPayload, PagedResult } from '@platform';
 import { inAppNotifications } from '../../../../../../db/schema/notifications';
 import type {
@@ -43,7 +43,7 @@ export class NotificationDrizzleRepository implements INotificationRepository {
       .select()
       .from(inAppNotifications)
       .where(and(...conditions))
-      .orderBy(desc(inAppNotifications.createdAt))
+      .orderBy(desc(inAppNotifications.createdAt), asc(inAppNotifications.id))
       .limit(filter.limit);
     return rows as Notification[];
   }
@@ -68,16 +68,13 @@ export class NotificationDrizzleRepository implements INotificationRepository {
       conditions.push(inArray(inAppNotifications.type, [...filter.types]));
     }
     if (cursor) {
-      // DESC keyset with the id as tie-breaker. The cursor value is an ISO
-      // string; convert to a Date so drizzle binds the timestamptz param
-      // correctly (keysetCondition would pass the raw string and fail).
-      const cv = new Date(cursor.k[0] as string);
-      conditions.push(
-        or(
-          lt(inAppNotifications.createdAt, cv),
-          and(eq(inAppNotifications.createdAt, cv), gt(inAppNotifications.id, cursor.id)),
-        )!,
-      );
+      // Hand-rolled previously, to dodge keysetCondition binding the cursor's
+      // ISO string straight into a timestamptz comparison. It carried a subtler
+      // bug of its own: `new Date(...)` is millisecond-precision while the stored
+      // value is microsecond, so `lt` also excluded every row inside the cursor's
+      // millisecond. keysetCondition now reads the boundary back from the row by
+      // id for date columns, which is exact, so use it.
+      conditions.push(keysetCondition(inAppNotifications.createdAt, inAppNotifications.id, cursor));
     }
 
     const rows = await this.db

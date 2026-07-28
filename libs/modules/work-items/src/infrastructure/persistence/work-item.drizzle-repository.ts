@@ -1,17 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import {
-  and,
-  eq,
-  isNull,
-  lt,
-  or,
-  ilike,
-  inArray,
-  sql,
-  asc,
-  desc,
-  type AnyColumn,
-} from 'drizzle-orm';
+import { and, eq, isNull, or, ilike, inArray, sql, asc, desc, type AnyColumn } from 'drizzle-orm';
 import { InjectDrizzle, buildPageResult, keysetCondition } from '@platform';
 import type { DrizzleDB, DbExecutor, CursorPayload, PagedResult } from '@platform';
 import {
@@ -359,17 +347,20 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
   ): Promise<PagedResult<WorkItem>> {
     const conditions = this.buildFilters(projectId, workspaceId, filters);
     if (cursor) {
-      conditions.push(lt(workItems.createdAt, new Date(cursor.k[0] as string)));
+      conditions.push(keysetCondition(workItems.createdAt, workItems.id, cursor));
     }
 
     const rows = await this.db
       .select()
       .from(workItems)
       .where(and(...conditions))
-      .orderBy(desc(workItems.createdAt))
+      .orderBy(desc(workItems.createdAt), asc(workItems.id))
       .limit(limit + 1);
 
-    return buildPageResult(rows as WorkItem[], limit, (w) => [w.createdAt.toISOString()]);
+    // 'desc' is required, not cosmetic: keysetCondition reads cursor.d to pick gt
+    // vs lt, and buildPageResult defaults it to 'asc'. Omitting it here would
+    // page the wrong way against this DESC order.
+    return buildPageResult(rows as WorkItem[], limit, (w) => [w.createdAt.toISOString()], 'desc');
   }
 
   async listBacklog(
@@ -472,17 +463,41 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
           isNull(tasks.deletedAt),
         ),
       )
-      .orderBy(tasks.rank, tasks.createdAt);
+      .orderBy(tasks.rank, tasks.createdAt, asc(tasks.id));
     return rows as WorkItem[];
+  }
+
+  /**
+   * Serialise rank assignment for one (project, parent) scope.
+   *
+   * `pg_advisory_xact_lock` is held until the surrounding transaction commits or
+   * rolls back, so it cannot leak, and it is keyed on the scope rather than the
+   * table — concurrent creates in different projects never contend. Callers MUST
+   * take this before {@link findMaxRank} and pass the same `tx` to both, or the
+   * read-modify-write is unprotected again.
+   *
+   * `hashtext` returns int4 and the two-argument lock form takes two, so the
+   * scope maps onto the key directly. A hash collision only means two unrelated
+   * scopes serialise against each other, which is harmless.
+   */
+  async lockRankScope(
+    scope: { projectId: string; parentId?: string | null },
+    executor: DbExecutor,
+  ): Promise<void> {
+    await executor.execute(
+      sql`select pg_advisory_xact_lock(hashtext(${scope.projectId}), hashtext(${scope.parentId ?? 'root'}))`,
+    );
   }
 
   async findMaxRank(
     scope: { projectId: string; parentId?: string | null },
     workspaceId: string,
+    executor?: DbExecutor,
   ): Promise<string | null> {
+    const exec = executor ?? this.db;
     // P3: When parentId is set, this is for a task — query the `tasks` table.
     if (scope.parentId) {
-      const rows = await this.db
+      const rows = await exec
         .select({ rank: tasks.rank })
         .from(tasks)
         .where(
@@ -492,18 +507,18 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
             isNull(tasks.deletedAt),
           ),
         )
-        .orderBy(desc(tasks.rank))
+        .orderBy(desc(tasks.rank), asc(tasks.id))
         .limit(1);
       return rows[0]?.rank ?? null;
     }
 
     const conditions = [eq(workItems.workspaceId, workspaceId), isNull(workItems.deletedAt)];
     conditions.push(eq(workItems.projectId, scope.projectId), isNull(workItems.parentId));
-    const rows = await this.db
+    const rows = await exec
       .select({ rank: workItems.rank })
       .from(workItems)
       .where(and(...conditions))
-      .orderBy(desc(workItems.rank))
+      .orderBy(desc(workItems.rank), asc(workItems.id))
       .limit(1);
     return rows[0]?.rank ?? null;
   }
@@ -637,6 +652,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
           sql`case ${workItems.priority} when 'urgent' then 4 when 'high' then 3 when 'normal' then 2 when 'low' then 1 else 0 end`,
         ),
         asc(workItems.rank),
+        asc(workItems.id),
       )
       .limit(limit);
     return rows;
@@ -970,7 +986,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       .from(workItemLabels)
       .innerJoin(labels, eq(workItemLabels.labelId, labels.id))
       .where(eq(workItemLabels.workItemId, workItemId))
-      .orderBy(labels.name);
+      .orderBy(labels.name, asc(labels.id));
     return rows;
   }
 
@@ -980,7 +996,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       .from(milestoneArtifacts)
       .innerJoin(milestones, eq(milestoneArtifacts.milestoneId, milestones.id))
       .where(eq(milestoneArtifacts.workItemId, workItemId))
-      .orderBy(milestones.name);
+      .orderBy(milestones.name, asc(milestones.id));
     return rows;
   }
 

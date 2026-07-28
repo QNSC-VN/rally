@@ -21,7 +21,7 @@ export class ReportingDrizzleRepository implements IReportingRepository {
           eq(iterationDailySnapshots.iterationId, sprintId),
         ),
       )
-      .orderBy(asc(iterationDailySnapshots.snapshotDate));
+      .orderBy(asc(iterationDailySnapshots.snapshotDate), asc(iterationDailySnapshots.id));
     // Reporting domain still speaks "sprintId" (Phase 5 rename); map the renamed
     // physical column back onto the domain field. Points are numeric (string from
     // Drizzle) — coerce to number for the domain contract.
@@ -53,7 +53,7 @@ export class ReportingDrizzleRepository implements IReportingRepository {
           eq(iterations.state, 'accepted'),
         ),
       )
-      .orderBy(desc(iterations.completedAt))
+      .orderBy(desc(iterations.completedAt), asc(iterations.id))
       .limit(lastNSprints);
 
     if (!completedSprints.length) return [];
@@ -74,7 +74,11 @@ export class ReportingDrizzleRepository implements IReportingRepository {
           inArray(iterationDailySnapshots.iterationId, sprintIds),
         ),
       )
-      .orderBy(iterationDailySnapshots.iterationId, desc(iterationDailySnapshots.snapshotDate));
+      .orderBy(
+        iterationDailySnapshots.iterationId,
+        desc(iterationDailySnapshots.snapshotDate),
+        asc(iterationDailySnapshots.id),
+      );
 
     const snapshotBySprintId = new Map(latestSnapshots.map((s) => [s.sprintId, s]));
 

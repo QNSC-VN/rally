@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB, DbExecutor } from '@platform';
 import { projectMembers } from '../../../../../../db/schema/work';
@@ -27,7 +27,7 @@ export class ProjectMemberDrizzleRepository implements IProjectMemberRepository 
         ),
       )
       .limit(1);
-    return (rows[0]) ?? null;
+    return rows[0] ?? null;
   }
 
   async findMemberById(id: string): Promise<ProjectMember | null> {
@@ -36,7 +36,7 @@ export class ProjectMemberDrizzleRepository implements IProjectMemberRepository 
       .from(projectMembers)
       .where(eq(projectMembers.id, id))
       .limit(1);
-    return (rows[0]) ?? null;
+    return rows[0] ?? null;
   }
 
   async listByProject(projectId: string): Promise<ProjectMember[]> {
@@ -57,7 +57,7 @@ export class ProjectMemberDrizzleRepository implements IProjectMemberRepository 
       .from(projectMembers)
       .leftJoin(users, eq(projectMembers.userId, users.id))
       .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.status, 'active')))
-      .orderBy(projectMembers.joinedAt);
+      .orderBy(projectMembers.joinedAt, asc(projectMembers.id));
     return rows;
   }
 

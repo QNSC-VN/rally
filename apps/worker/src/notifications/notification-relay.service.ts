@@ -121,7 +121,7 @@ export class NotificationRelayService
           lte(notificationOutbox.scheduledAt, new Date()),
         ),
       )
-      .orderBy(asc(notificationOutbox.scheduledAt))
+      .orderBy(asc(notificationOutbox.scheduledAt), asc(notificationOutbox.id))
       .limit(this.batchSize)
       .for('update', { skipLocked: true });
   }

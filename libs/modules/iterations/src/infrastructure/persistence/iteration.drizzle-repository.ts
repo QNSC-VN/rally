@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, ilike, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
-import { InjectDrizzle, buildPageResult } from '@platform';
+import { and, asc, desc, eq, ilike, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
+import { InjectDrizzle, buildPageResult, keysetCondition } from '@platform';
 import type { DrizzleDB, CursorPayload, PagedResult } from '@platform';
 import { iterations } from '../../../../../../db/schema/work';
 import type {
@@ -40,14 +40,14 @@ export class IterationDrizzleRepository implements IIterationRepository {
     }
 
     if (cursor) {
-      conditions.push(lt(iterations.createdAt, new Date(cursor.k[0] as string)));
+      conditions.push(keysetCondition(iterations.createdAt, iterations.id, cursor));
     }
 
     const rows = await this.db
       .select()
       .from(iterations)
       .where(and(...conditions))
-      .orderBy(asc(iterations.createdAt))
+      .orderBy(asc(iterations.createdAt), asc(iterations.id))
       .limit(limit + 1);
 
     return buildPageResult(rows as Iteration[], limit, (i) => [i.createdAt.toISOString()]);
@@ -151,7 +151,7 @@ export class IterationDrizzleRepository implements IIterationRepository {
       })
       .from(iterations)
       .where(and(...conditions))
-      .orderBy(desc(iterations.startDate), asc(iterations.name));
+      .orderBy(desc(iterations.startDate), asc(iterations.name), asc(iterations.id));
 
     return rows;
   }

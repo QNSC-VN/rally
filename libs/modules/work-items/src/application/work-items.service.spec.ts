@@ -104,6 +104,7 @@ const makeWorkItemRepo = () => ({
   listByProject: vi.fn(),
   listBacklog: vi.fn(),
   listTasksByParent: vi.fn(),
+  lockRankScope: vi.fn().mockResolvedValue(undefined),
   findMaxRank: vi.fn().mockResolvedValue(null),
   getTaskTotals: vi.fn(),
   create: vi.fn(),

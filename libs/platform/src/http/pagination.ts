@@ -10,6 +10,7 @@ import {
   lt,
   isNull,
   isNotNull,
+  sql,
   type Column,
   type GetColumnData,
   type SQL,
@@ -118,12 +119,35 @@ export function buildPageResult<T extends { id: string }>(
  *
  * Null ordering follows the Postgres (and Drizzle `asc`/`desc`) defaults:
  * ASC → NULLS LAST, DESC → NULLS FIRST.
+ *
+ * Timestamp columns never round-trip their value through the cursor, and must
+ * not: Postgres stores `timestamptz` to MICROsecond precision, while the pg
+ * driver hands JavaScript a `Date`, which holds MILLIseconds. A cursor built
+ * from that Date is therefore strictly SMALLER than the row it points at
+ * (…134512 stored vs …134000 remembered), so `>` re-selects that row for ever —
+ * a list that never terminates — and `<` skips every row inside the boundary
+ * millisecond. The old hand-rolled `lt(col, new Date(cursor.k[0]))` predicates
+ * had the skipping half of that bug.
+ *
+ * So for date columns the boundary is read back FROM THE ROW, by id, and never
+ * leaves the database. `date_trunc` on both sides would also be consistent, but
+ * it is not sargable and would cost the index. If the cursor's row has since
+ * been deleted the subquery yields NULL, every comparison is unknown, and the
+ * page comes back empty — the walk ends instead of looping.
  */
 export function keysetCondition<TSort extends Column>(
   sortCol: TSort,
   tieBreakCol: Column,
   cursor: CursorPayload,
 ): SQL {
+  if (sortCol.dataType === 'date') {
+    const boundary = sql`(select ${sortCol} from ${sortCol.table} where ${tieBreakCol} = ${cursor.id})`;
+    const afterTieAt = and(eq(sortCol, boundary), gt(tieBreakCol, cursor.id));
+    return cursor.d === 'asc'
+      ? or(gt(sortCol, boundary), afterTieAt)!
+      : or(lt(sortCol, boundary), afterTieAt)!;
+  }
+
   const value = cursor.k[0] as GetColumnData<TSort, 'raw'> | null | undefined;
   const afterTie = gt(tieBreakCol, cursor.id);
   if (cursor.d === 'asc') {

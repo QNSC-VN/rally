@@ -21,7 +21,7 @@ export class WorkflowStatusDrizzleRepository implements IWorkflowStatusRepositor
       .from(workflowStatuses)
       .where(eq(workflowStatuses.id, id))
       .limit(1);
-    return (rows[0]) ?? null;
+    return rows[0] ?? null;
   }
 
   async listByProject(projectId: string): Promise<WorkflowStatus[]> {
@@ -29,7 +29,7 @@ export class WorkflowStatusDrizzleRepository implements IWorkflowStatusRepositor
       .select()
       .from(workflowStatuses)
       .where(eq(workflowStatuses.projectId, projectId))
-      .orderBy(asc(workflowStatuses.position));
+      .orderBy(asc(workflowStatuses.position), asc(workflowStatuses.id));
     return rows;
   }
 
@@ -74,7 +74,7 @@ export class WorkflowStatusDrizzleRepository implements IWorkflowStatusRepositor
       .from(workflowStatuses)
       .where(and(eq(workflowStatuses.projectId, projectId), eq(workflowStatuses.isDefault, true)))
       .limit(1);
-    return (rows[0]) ?? null;
+    return rows[0] ?? null;
   }
 
   async canTransition(
@@ -111,7 +111,7 @@ export class WorkflowStatusDrizzleRepository implements IWorkflowStatusRepositor
       .from(workflowTransitions)
       .where(eq(workflowTransitions.id, id))
       .limit(1);
-    return (rows[0]) ?? null;
+    return rows[0] ?? null;
   }
 
   async createTransition(input: CreateWorkflowTransitionInput): Promise<WorkflowTransition> {

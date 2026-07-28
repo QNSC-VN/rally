@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq, lt, sql, inArray } from 'drizzle-orm';
-import { InjectDrizzle, buildPageResult } from '@platform';
+import { and, asc, eq, sql, inArray } from 'drizzle-orm';
+import { InjectDrizzle, buildPageResult, keysetCondition } from '@platform';
 import type { DrizzleDB, CursorPayload, PagedResult } from '@platform';
 import {
   milestones,
@@ -42,14 +42,14 @@ export class MilestoneDrizzleRepository implements IMilestoneRepository {
       eq(milestones.workspaceId, workspaceId),
     ];
     if (cursor) {
-      conditions.push(lt(milestones.createdAt, new Date(cursor.k[0] as string)));
+      conditions.push(keysetCondition(milestones.createdAt, milestones.id, cursor));
     }
 
     const rows = await this.db
       .select()
       .from(milestones)
       .where(and(...conditions))
-      .orderBy(milestones.createdAt)
+      .orderBy(asc(milestones.createdAt), asc(milestones.id))
       .limit(limit + 1);
 
     // Batch-fetch release IDs for ALL milestones in a single query (fixes N+1)

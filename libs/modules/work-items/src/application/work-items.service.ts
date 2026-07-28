@@ -305,14 +305,13 @@ export class WorkItemsService {
       memberIds: [opts.assigneeId, opts.reporterId, opts.devOwnerId],
     });
 
-    // New items append to the end of their scope's order (top-level backlog,
-    // or the parent's task list). A degenerate '' rank would sort correctly
-    // once but corrupt subsequent between() math on drag-reorder.
-    const maxRank = await this.workItemRepo.findMaxRank(
-      { projectId, parentId: opts.parentId ?? null },
-      actor.workspaceId,
-    );
-    const rank = between(maxRank, null);
+    // Rank is assigned INSIDE the transaction below, under a per-scope advisory
+    // lock — see the `create` call. It used to be computed here, on the pool
+    // connection, before the transaction opened: a plain read-modify-write with
+    // no lock, so two creates in the same project could both read the same max
+    // and derive the same rank. That is not hypothetical — this database holds 22
+    // scopes where a story and a defect share rank 'i', and equal neighbours make
+    // `between()` throw LEXORANK_NEIGHBOURS_OUT_OF_ORDER on the next drag-reorder.
 
     // item_key reservation is atomic (advisory-locked counter). A failed insert
     // after this point only leaves a numbering gap, which is acceptable.
@@ -331,6 +330,18 @@ export class WorkItemsService {
 
       try {
         workItem = await this.uow.run(async (tx) => {
+          // Serialise rank assignment for this (project, parent) scope. The lock
+          // is transaction-scoped, so it releases on commit or rollback, and it
+          // only blocks other creates in the SAME scope. Both the read and the
+          // insert now happen on `tx`, so the max cannot go stale between them.
+          const rankScope = { projectId, parentId: opts.parentId ?? null };
+          await this.workItemRepo.lockRankScope(rankScope, tx);
+          const maxRank = await this.workItemRepo.findMaxRank(rankScope, actor.workspaceId, tx);
+          // New items append to the end of their scope's order (top-level
+          // backlog, or the parent's task list). A degenerate '' rank would sort
+          // correctly once but corrupt subsequent between() math on drag-reorder.
+          const rank = between(maxRank, null);
+
           const created = await this.workItemRepo.create(
             {
               id: uuidv7(),
@@ -751,9 +762,25 @@ export class WorkItemsService {
     const entries = diffWorkItem(item, input, isTask);
 
     const updated = await this.uow.run(async (tx) => {
+      // Re-parenting moves the item into a DIFFERENT rank scope, and a rank only
+      // orders items within one scope. Carrying the old value across means it
+      // lands at an arbitrary position, and usually collides: a defect ranked
+      // first under story A keeps that rank when re-parented to story B or back
+      // to top level, where the first item already holds it. Re-append it to the
+      // end of the destination scope instead, under the same per-scope lock the
+      // create path uses.
+      const reparenting = input.parentId !== undefined && input.parentId !== item.parentId;
+      let rerank: { rank: string } | Record<string, never> = {};
+      if (reparenting) {
+        const destination = { projectId: item.projectId, parentId: input.parentId ?? null };
+        await this.workItemRepo.lockRankScope(destination, tx);
+        const maxRank = await this.workItemRepo.findMaxRank(destination, actor.workspaceId, tx);
+        rerank = { rank: between(maxRank, null) };
+      }
+
       const updatedInTx = await this.workItemRepo.update(
         id,
-        { ...input, updatedBy: actor.sub },
+        { ...input, ...rerank, updatedBy: actor.sub },
         actor.workspaceId,
         tx,
       );

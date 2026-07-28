@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq, lt, isNull, desc } from 'drizzle-orm';
-import { InjectDrizzle, buildPageResult } from '@platform';
+import { and, asc, eq, isNull, desc } from 'drizzle-orm';
+import { InjectDrizzle, buildPageResult, keysetCondition } from '@platform';
 import type { DrizzleDB, PagedResult } from '@platform';
 import {
   scmRepositories,
@@ -36,7 +36,7 @@ export class ScmDrizzleRepository implements IScmStore {
       .select()
       .from(scmRepositories)
       .where(eq(scmRepositories.workspaceId, workspaceId))
-      .orderBy(scmRepositories.fullName);
+      .orderBy(scmRepositories.fullName, asc(scmRepositories.id));
     return repos.map((r) => this.toRepository(r));
   }
 
@@ -47,7 +47,7 @@ export class ScmDrizzleRepository implements IScmStore {
       .select()
       .from(scmRepositories)
       .where(and(eq(scmRepositories.workspaceId, workspaceId), eq(scmRepositories.active, true)))
-      .orderBy(scmRepositories.fullName);
+      .orderBy(scmRepositories.fullName, asc(scmRepositories.id));
     if (repos.length === 0) return [];
     // Latest backfill job per repo — fetch workspace jobs newest-first, keep the
     // first seen per repository (small per workspace; no window function needed).
@@ -61,7 +61,7 @@ export class ScmDrizzleRepository implements IScmStore {
       })
       .from(scmBackfillJobs)
       .where(eq(scmBackfillJobs.workspaceId, workspaceId))
-      .orderBy(desc(scmBackfillJobs.requestedAt));
+      .orderBy(desc(scmBackfillJobs.requestedAt), asc(scmBackfillJobs.id));
     const latest = new Map<string, (typeof jobs)[number]>();
     for (const j of jobs) if (!latest.has(j.repositoryId)) latest.set(j.repositoryId, j);
     return repos.map((r) => {
@@ -86,7 +86,7 @@ export class ScmDrizzleRepository implements IScmStore {
       .select()
       .from(scmInstallations)
       .where(and(eq(scmInstallations.workspaceId, workspaceId), eq(scmInstallations.active, true)))
-      .orderBy(scmInstallations.accountLogin);
+      .orderBy(scmInstallations.accountLogin, asc(scmInstallations.id));
     return rows.map((r) => ({
       id: r.id,
       workspaceId: r.workspaceId,
@@ -382,12 +382,12 @@ export class ScmDrizzleRepository implements IScmStore {
       eq(scmConnections.workspaceId, workspaceId),
     ];
     if (args.cursor)
-      conditions.push(lt(scmConnections.createdAt, new Date(args.cursor.k[0] as string)));
+      conditions.push(keysetCondition(scmConnections.createdAt, scmConnections.id, args.cursor));
     const rows = await this.db
       .select()
       .from(scmConnections)
       .where(and(...conditions))
-      .orderBy(desc(scmConnections.createdAt))
+      .orderBy(desc(scmConnections.createdAt), asc(scmConnections.id))
       .limit(args.limit + 1);
     return buildPageResult(
       rows.map(this.toConnection),
@@ -407,12 +407,12 @@ export class ScmDrizzleRepository implements IScmStore {
       eq(scmChangesets.workspaceId, workspaceId),
     ];
     if (args.cursor)
-      conditions.push(lt(scmChangesets.createdAt, new Date(args.cursor.k[0] as string)));
+      conditions.push(keysetCondition(scmChangesets.createdAt, scmChangesets.id, args.cursor));
     const rows = await this.db
       .select()
       .from(scmChangesets)
       .where(and(...conditions))
-      .orderBy(desc(scmChangesets.createdAt))
+      .orderBy(desc(scmChangesets.createdAt), asc(scmChangesets.id))
       .limit(args.limit + 1);
     return buildPageResult(
       rows.map(this.toChangeset),

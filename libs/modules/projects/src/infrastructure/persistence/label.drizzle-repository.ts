@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { labels } from '../../../../../../db/schema/work';
@@ -12,7 +12,7 @@ export class LabelDrizzleRepository implements ILabelRepository {
 
   async findById(id: string): Promise<Label | null> {
     const rows = await this.db.select().from(labels).where(eq(labels.id, id)).limit(1);
-    return (rows[0]) ?? null;
+    return rows[0] ?? null;
   }
 
   async listByProject(projectId: string, workspaceId: string): Promise<Label[]> {
@@ -20,7 +20,7 @@ export class LabelDrizzleRepository implements ILabelRepository {
       .select()
       .from(labels)
       .where(and(eq(labels.projectId, projectId), eq(labels.workspaceId, workspaceId)))
-      .orderBy(labels.name);
+      .orderBy(labels.name, asc(labels.id));
     return rows;
   }
 

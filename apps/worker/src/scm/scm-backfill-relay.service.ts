@@ -59,7 +59,7 @@ export class ScmBackfillRelayService extends AbstractOutboxRelay<BackfillJobRow>
           lte(scmBackfillJobs.scheduledAt, new Date()),
         ),
       )
-      .orderBy(asc(scmBackfillJobs.scheduledAt))
+      .orderBy(asc(scmBackfillJobs.scheduledAt), asc(scmBackfillJobs.id))
       .limit(this.batchSize)
       .for('update', { skipLocked: true });
   }

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, count, desc, eq, isNull } from 'drizzle-orm';
+import { and, asc, count, desc, eq, isNull } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { timeLogs } from '../../../../../../db/schema/work';
@@ -14,9 +14,11 @@ export class TimeLogDrizzleRepository implements ITimeLogRepository {
     const rows = await this.db
       .select()
       .from(timeLogs)
-      .where(and(eq(timeLogs.id, id), eq(timeLogs.workspaceId, workspaceId), isNull(timeLogs.deletedAt)))
+      .where(
+        and(eq(timeLogs.id, id), eq(timeLogs.workspaceId, workspaceId), isNull(timeLogs.deletedAt)),
+      )
       .limit(1);
-    return (rows[0]) ?? null;
+    return rows[0] ?? null;
   }
 
   async listByWorkItem(
@@ -35,7 +37,7 @@ export class TimeLogDrizzleRepository implements ITimeLogRepository {
         .select()
         .from(timeLogs)
         .where(condition)
-        .orderBy(desc(timeLogs.loggedDate), desc(timeLogs.createdAt))
+        .orderBy(desc(timeLogs.loggedDate), desc(timeLogs.createdAt), asc(timeLogs.id))
         .limit(limit)
         .offset(offset),
       this.db.select({ cnt: count() }).from(timeLogs).where(condition),

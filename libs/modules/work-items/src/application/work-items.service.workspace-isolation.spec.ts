@@ -132,6 +132,7 @@ const makeScopedWorkItemRepo = (items: WorkItem[]) => ({
   listByProject: vi.fn(),
   listBacklog: vi.fn(),
   listTasksByParent: vi.fn().mockResolvedValue([]),
+  lockRankScope: vi.fn().mockResolvedValue(undefined),
   findMaxRank: vi.fn().mockResolvedValue(null),
   getTaskTotals: vi.fn(),
   create: vi.fn(),

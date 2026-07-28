@@ -97,7 +97,7 @@ export class OutboxRelayService
       })
       .from(outboxEvents)
       .where(and(eq(outboxEvents.status, 'pending'), lt(outboxEvents.attempts, this.maxAttempts)))
-      .orderBy(asc(outboxEvents.createdAt))
+      .orderBy(asc(outboxEvents.createdAt), asc(outboxEvents.id))
       .limit(this.batchSize)
       .for('update', { skipLocked: true });
   }

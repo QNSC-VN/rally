@@ -491,6 +491,13 @@
       "when": 1786000200000,
       "tag": "0068_app_role_least_privilege",
       "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1786000300000,
+      "tag": "0069_dedupe_work_item_ranks",
+      "breakpoints": true
     }
   ]
 }

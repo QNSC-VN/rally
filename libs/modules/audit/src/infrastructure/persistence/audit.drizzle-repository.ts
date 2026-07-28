@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, desc, eq, gte, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, lte, sql } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB, PagedResult } from '@platform';
 import { auditLogs } from '../../../../../../db/schema/audit';
@@ -74,7 +74,7 @@ export class AuditDrizzleRepository implements IAuditRepository {
       .from(auditLogs)
       .leftJoin(users, eq(auditLogs.actorId, users.id))
       .where(and(...conditions))
-      .orderBy(desc(auditLogs.occurredAt))
+      .orderBy(desc(auditLogs.occurredAt), asc(auditLogs.id))
       .limit(limit)
       .offset(args.offset);
 
