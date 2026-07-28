@@ -1,3 +1,4 @@
+import { createPrivateKey, createPublicKey } from 'node:crypto';
 import { z } from 'zod';
 
 const booleanish = (defaultValue: boolean) =>
@@ -46,11 +47,19 @@ export const EnvSchema = z
       .min(1)
       .transform((v) => (v.includes('-----BEGIN') ? v : Buffer.from(v, 'base64').toString('utf8')))
       .refine((v) => v.includes('-----BEGIN'), 'JWT_PRIVATE_KEY must be a PEM-encoded private key'),
+    /**
+     * OPTIONAL — derived from JWT_PRIVATE_KEY when absent (see the transform at the
+     * bottom of this file). Supply it only to override, e.g. a local .env that already
+     * has a pair. Nothing needs it configured: an ES256 public key is a pure function
+     * of its private key, and rally publishes no JWKS, so no verifier exists that
+     * lacks the private key.
+     */
     JWT_PUBLIC_KEY: z
       .string()
       .min(1)
       .transform((v) => (v.includes('-----BEGIN') ? v : Buffer.from(v, 'base64').toString('utf8')))
-      .refine((v) => v.includes('-----BEGIN'), 'JWT_PUBLIC_KEY must be a PEM-encoded public key'),
+      .refine((v) => v.includes('-----BEGIN'), 'JWT_PUBLIC_KEY must be a PEM-encoded public key')
+      .optional(),
     JWT_ACCESS_EXPIRY: z.string().default('15m'),
     JWT_REFRESH_EXPIRY: z.string().default('30d'),
     JWT_ISSUER: z.string().default('rally-api'),
@@ -269,6 +278,60 @@ export const EnvSchema = z
           `DATABASE_NAME, DATABASE_USER, DATABASE_PASSWORD. Missing: ${missing.join(', ')}.`,
       });
     }
+  })
+  .transform((env, ctx) => {
+    // JWT_PUBLIC_KEY is DERIVED, not configured.
+    //
+    // Storing the public half alongside the private one invited the single failure a
+    // key pair cannot otherwise have: a MISMATCHED pair, where signing succeeds and
+    // every verification rejects — total auth outage. Nothing caught it, because both
+    // values were individually valid to Terraform, to the deploy preflight, and to
+    // this schema. Deriving removes the possibility rather than monitoring for it.
+    //
+    // An explicit value still wins, so a local .env with a real pair keeps working and
+    // infra can keep injecting one through the transition.
+    if (env.JWT_PUBLIC_KEY) return { ...env, JWT_PUBLIC_KEY: env.JWT_PUBLIC_KEY };
+
+    const reject = (message: string) => {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['JWT_PRIVATE_KEY'], message });
+      return z.NEVER;
+    };
+
+    // createPrivateKey FIRST, deliberately. createPublicKey happily accepts a public
+    // key as its input and hands it straight back, so deriving from it would silently
+    // succeed for the likeliest paste error there is — the public half dropped into
+    // the private slot — and fail much later at the first sign().
+    let privateKey;
+    try {
+      privateKey = createPrivateKey(env.JWT_PRIVATE_KEY);
+    } catch {
+      return reject(
+        'JWT_PRIVATE_KEY is PEM but not a PRIVATE key. A public key pasted here would ' +
+          'pass the format check and then break signing at runtime.',
+      );
+    }
+
+    // ES256 means P-256 specifically. Any other curve signs happily and produces
+    // tokens every verifier rejects, which reads as a broken deploy with no cause.
+    const curve = privateKey.asymmetricKeyDetails?.namedCurve;
+    if (privateKey.asymmetricKeyType !== 'ec' || curve !== 'prime256v1') {
+      return reject(
+        `JWT_PRIVATE_KEY must be an EC P-256 key for ES256, got ` +
+          `${privateKey.asymmetricKeyType}${curve ? `/${curve}` : ''}.`,
+      );
+    }
+
+    return {
+      ...env,
+      // Derived from the validated PEM rather than the KeyObject: @types/node's
+      // createPublicKey overloads do not accept a bare KeyObject, though the runtime
+      // does. Re-exporting keeps this typed without a cast.
+      JWT_PUBLIC_KEY: createPublicKey(
+        privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(),
+      )
+        .export({ type: 'spki', format: 'pem' })
+        .toString(),
+    };
   });
 
 export type Env = z.infer<typeof EnvSchema>;

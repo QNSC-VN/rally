@@ -207,6 +207,85 @@ variable "observability" {
   default = {}
 }
 
+variable "monitor_target_health" {
+  description = <<-EOT
+    Create the per-service UnHealthyHostCount alarm.
+
+    OFF in develop on purpose. The alarm treats missing data as breaching, because a
+    target group with no registered targets publishes nothing at all and that is exactly
+    the outage worth paging on. But develop has an off-hours cost-saver that scales
+    services to 0 (qnsc-ci's deploy reusable restores them), so zero tasks is a NORMAL
+    state there and the alarm would sit permanently in ALARM — noise that trains people
+    to ignore the topic every other alarm publishes to.
+  EOT
+  type        = bool
+  default     = true
+}
+
+variable "container_insights" {
+  description = <<-EOT
+    ECS Container Insights mode: "enhanced", "enabled" or "disabled".
+
+    Stated here rather than inherited, because the ecs-cluster module defaults to
+    "enhanced" and that default is expensive: enhanced adds per-task and per-container
+    metrics that CloudWatch bills as CUSTOM metrics at $0.07 each. Four clusters
+    silently on that default produced 606 metric-months (~$42) on the July 2026 bill,
+    and the count grows with task churn rather than with traffic.
+
+    Defaults to "disabled" because an audit of every consumer found none: all 7 alarms
+    and all 6 dashboard widgets read AWS/ECS, AWS/ApplicationELB and AWS/RDS, which are
+    free and published regardless, and application metrics go to the OTLP backend rather
+    than CloudWatch. Both environments state "disabled" explicitly; this default exists
+    so a NEW environment does not start paying for metrics nothing queries.
+
+    Raise an environment to "enhanced" while debugging a per-container resource problem,
+    then put it back.
+  EOT
+  type        = string
+  default     = "disabled"
+
+  validation {
+    condition     = contains(["enhanced", "enabled", "disabled"], var.container_insights)
+    error_message = "container_insights must be enhanced, enabled, or disabled."
+  }
+}
+
+variable "create_dashboard" {
+  description = <<-EOT
+    Create the CloudWatch dashboard for this environment. Alarms are created either way.
+
+    CloudWatch bills dashboards per ACCOUNT: three free, then $3/mo each. Two products
+    at two environments is four, so the fourth starts charging. Develop is the one to
+    drop — alarms are what page someone, a dashboard is what you open afterwards, and
+    nobody opens develop's.
+  EOT
+  type        = bool
+  default     = true
+}
+
+variable "fargate_architecture" {
+  description = <<-EOT
+    CPU architecture for every Fargate task in this stack: "ARM64" or "X86_64".
+
+    ARM64 (Graviton) bills roughly 20% less per vCPU-hour and GB-hour for identical
+    sizing, and rally has no native dependency that cares — `argon2` was the only one
+    in package.json and nothing imported it.
+
+    Deliberately NOT per-environment. Production runs the image develop tested,
+    promoted by tag without a rebuild, so the two cannot differ in architecture even in
+    principle. It must also match `image_platforms` in
+    .github/workflows/backend-deploy.yml: an x86 image on an ARM64 task fails at
+    container start with "image Manifest does not contain descriptor matching platform".
+  EOT
+  type        = string
+  default     = "ARM64"
+
+  validation {
+    condition     = contains(["ARM64", "X86_64"], var.fargate_architecture)
+    error_message = "fargate_architecture must be ARM64 or X86_64."
+  }
+}
+
 variable "alarm_emails" {
   description = "Addresses subscribed to the alarm topic. Terraform creates the subscription; each recipient must still confirm by email."
   type        = list(string)

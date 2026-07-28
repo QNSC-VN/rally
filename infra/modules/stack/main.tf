@@ -48,6 +48,17 @@ locals {
     { name = "OTEL_SAMPLING_PROBABILITY", value = tostring(var.observability.sampling_probability) },
   ]
 
+  # Collector footprint, scaled to the task it rides in. A sidecar's container-level
+  # `memory` is a HARD limit carved out of the TASK's total, not additional capacity, so
+  # the module's 128 CPU / 256 MiB default is half of develop's 256/512 worker task —
+  # enough to OOM a NestJS process the moment telemetry is switched on. Cap the collector
+  # at an eighth of task memory with a 128 MiB floor, and keep the soft memory_limiter
+  # threshold at the module's 62.5% ratio so it sheds telemetry before it is killed.
+  otel_api_memory    = max(128, min(256, floor(var.api.memory / 8)))
+  otel_worker_memory = max(128, min(256, floor(var.worker.memory / 8)))
+  otel_api_cpu       = max(64, min(128, floor(var.api.cpu / 8)))
+  otel_worker_cpu    = max(64, min(128, floor(var.worker.cpu / 8)))
+
   ecr_base         = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.region}.amazonaws.com"
   ecr_api_url      = "${local.ecr_base}/${var.product}-api:${var.image_tag}"
   ecr_worker_url   = "${local.ecr_base}/${var.product}-worker:${var.image_tag}"
@@ -95,33 +106,65 @@ module "secrets" {
   # recreate. Prod keeps the default recovery window for safety.
   recovery_window_days = var.secrets_recovery_window_days
 
+  # ONE store: AWS Secrets Manager. The only other Secrets Manager secrets on the
+  # account are the `rds!db-*` credentials RDS creates and rotates itself.
+  #
+  # Parameter Store SecureString would be free where this is $0.40 per secret per
+  # month, and that was tried — but at 22 secrets it is $8.80/mo, 1.2% of the bill, and
+  # Secrets Manager buys something Parameter Store cannot: a secret can exist while
+  # holding NO value. That empty state is what makes "unpopulated" unambiguous and
+  # gives the failure mode this stack wants everywhere — a task that cannot boot, a
+  # failed deploy and a rollback, rather than a silent downgrade. Parameter Store
+  # rejects an empty value, so the same guarantee needed a placeholder, a version-number
+  # check in CI, and a runtime guard: three mechanisms replacing one property, plus a
+  # new failure mode (a value that looks set and is not).
+  #
+  # Revisit past roughly 30 secrets, where the per-secret fee starts to outweigh that.
+  # The `secure_parameters` input on this module supports the switch when it does.
+  #
+  # Terraform creates these EMPTY; values are pasted in out of band and never enter
+  # state. The deploy preflight in qnsc-ci refuses to deploy while any injected secret
+  # is still an empty container.
   secret_names = {
     "jwt-private" = "EC P-256 (ES256) private key (PEM, base64-encoded)"
-    "jwt-public"  = "EC P-256 (ES256) public key (PEM, base64-encoded)"
+    # PENDING REMOVAL — deliberately still created and still injected.
+    #
+    # The app no longer needs it: `env.schema.ts` derives JWT_PUBLIC_KEY from
+    # JWT_PRIVATE_KEY when absent, because an ES256 public key is a pure function of its
+    # private key and rally publishes no JWKS. Storing both allowed a MISMATCHED pair —
+    # signing succeeds, every verification rejects — which nothing could detect, since
+    # both halves were individually valid to Terraform, to the preflight and to the
+    # schema. Remove this line together with the two JWT_PUBLIC_KEY entries in the
+    # api/worker `secrets` blocks: docs/runbooks/jwt-public-key-derivation.md.
+    "jwt-public"  = "EC P-256 (ES256) public key — PENDING REMOVAL, now derived from jwt-private"
     "csrf-secret" = "CSRF token signing secret"
-    # NOTE: give this a value in the Secrets Manager console BEFORE the next app
-    # deploy — COOKIE_SECRET is required at startup, so a task wired to an empty
-    # secret cannot boot (visible as a failed deploy + rollback, not a silent
-    # downgrade, which is the intent).
+    # NOTE: give this a value BEFORE the next app deploy — COOKIE_SECRET is required at
+    # startup, so a task wired to an empty secret cannot boot (a failed deploy plus
+    # rollback, not a silent downgrade, which is the intent).
     "cookie-secret"       = "Cookie signing secret (distinct from csrf-secret)"
     "entra-client-secret" = "Microsoft Entra confidential-client secret (BFF OIDC)"
-    # SCM (GitHub App) — minted in GitHub, pasted by hand into Secrets Manager
-    # (Terraform only scaffolds empty containers). Both stay empty/unused until
-    # the App is registered, which keeps the SCM backfill + webhook path dormant.
+    # SCM (GitHub App) — minted in GitHub, pasted by hand (Terraform only scaffolds
+    # empty containers). Both stay empty until the App is registered, which keeps the
+    # SCM backfill and webhook paths dormant.
     "github-webhook-secret"  = "GitHub App webhook HMAC secret (X-Hub-Signature-256)"
     "github-app-private-key" = "GitHub App private key (PEM)"
     # MUST be scoped to BOTH R2 buckets (<product>-<env>-attachments AND
-    # <product>-<env>-public-assets). StorageService uses one S3 client for both,
-    # so a token scoped to attachments alone makes every avatar/logo write 403.
-    # R2 API tokens are minted by hand in the Cloudflare dashboard, not by
-    # Terraform — re-mint with both buckets selected when adding a bucket.
+    # <product>-<env>-public-assets). StorageService uses one S3 client for both, so a
+    # token scoped to attachments alone makes every avatar/logo write 403. R2 tokens are
+    # minted by hand in the Cloudflare dashboard — re-mint with both buckets selected
+    # when adding a bucket.
+    #
+    # The access key ID is an identifier rather than a credential (useless without the
+    # secret half, and Cloudflare shows it in the dashboard), so it is the one value
+    # here that could live in Parameter Store as a plain String. It does not, because
+    # that module input takes the VALUE in Terraform — which would put it in state to
+    # save $0.40/mo. Kept alongside its secret half instead.
     "r2-access-key-id"     = "Cloudflare R2 access key ID (attachments + public-assets)"
     "r2-secret-access-key" = "Cloudflare R2 secret access key (attachments + public-assets)"
     # The COMPLETE Authorization header the collector sidecar sends upstream, e.g.
-    # `Basic base64(instanceID:token)` — not the bare token. Assembling it in
-    # Terraform would put the instance id in state and the credential in the
-    # collector's plaintext config. Empty until a telemetry backend exists, which
-    # keeps the whole OTel path dormant.
+    # `Basic base64(instanceID:token)` — not the bare token. Assembling it in Terraform
+    # would put the instance id in state and the credential in the collector's plaintext
+    # config. Empty keeps the whole OTel path dormant.
     "observability-token" = "Authorization header for the OTLP backend (e.g. 'Basic <base64>')"
   }
 
@@ -188,6 +231,10 @@ module "otel_agent_api" {
   token_secret_arn = module.secrets.secret_arns["observability-token"]
   log_group        = local.api_log_group
   region           = var.region
+
+  cpu              = local.otel_api_cpu
+  memory           = local.otel_api_memory
+  memory_limit_mib = floor(local.otel_api_memory * 0.625)
 }
 
 module "otel_agent_worker" {
@@ -199,6 +246,10 @@ module "otel_agent_worker" {
   token_secret_arn = module.secrets.secret_arns["observability-token"]
   log_group        = local.worker_log_group
   region           = var.region
+
+  cpu              = local.otel_worker_cpu
+  memory           = local.otel_worker_memory
+  memory_limit_mib = floor(local.otel_worker_memory * 0.625)
 }
 
 # ── Messaging (SQS + SNS) ─────────────────────────────────────────────────────
@@ -236,11 +287,15 @@ module "ecs_cluster" {
   source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-cluster?ref=ecs-cluster-v1.0.0"
   name   = local.name
   tags   = local.tags
+
+  # Always stated, never inherited: the module default is "enhanced", whose per-task
+  # metrics are billed as custom CloudWatch metrics. See the variable.
+  container_insights = var.container_insights
 }
 
 # ── ECS Service — API ─────────────────────────────────────────────────────────
 module "api" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v1.4.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v2.0.0"
 
   service_name = "api"
   cluster_name = module.ecs_cluster.cluster_name
@@ -259,6 +314,7 @@ module "api" {
   min_count          = 1
   max_count          = var.api.max_count
   use_spot           = var.api.use_spot
+  cpu_architecture   = var.fargate_architecture
   log_retention_days = var.log_retention_days
 
   attach_alb        = true
@@ -275,6 +331,10 @@ module "api" {
   # on it to inject DATABASE_USER/PASSWORD. Omit it and the task cannot start at
   # all ("unable to pull secrets") — it is not a runtime error, it is a boot
   # failure. The migrator reuses this role, so it is covered here too.
+  # Includes the AWS-managed RDS secret: the execution role needs GetSecretValue on it
+  # to inject DATABASE_USER/PASSWORD. Omit it and the task cannot start at all ("unable
+  # to pull secrets") — a boot failure, not a runtime error. The migrator reuses this
+  # role, so it is covered here too.
   secret_arns = concat(values(module.secrets.secret_arns), [module.rds.master_secret_arn])
   kms_key_arn = local.kms_key_arn
   secrets = [
@@ -288,6 +348,8 @@ module "api" {
     { name = "DATABASE_USER", secret_arn = "${module.rds.master_secret_arn}:username::" },
     { name = "DATABASE_PASSWORD", secret_arn = "${module.rds.master_secret_arn}:password::" },
     { name = "JWT_PRIVATE_KEY", secret_arn = module.secrets.secret_arns["jwt-private"] },
+    # PENDING REMOVAL alongside the `jwt-public` secret — the app derives this from
+    # JWT_PRIVATE_KEY when unset. Supplying it keeps current behaviour byte-identical.
     { name = "JWT_PUBLIC_KEY", secret_arn = module.secrets.secret_arns["jwt-public"] },
     { name = "CSRF_SECRET", secret_arn = module.secrets.secret_arns["csrf-secret"] },
     { name = "COOKIE_SECRET", secret_arn = module.secrets.secret_arns["cookie-secret"] },
@@ -382,11 +444,13 @@ module "api" {
   # vendor connections added out-of-band (create the secret + the DB row, no TF
   # change). Distinct from secret_arns above (execution role, boot-time inject).
   task_secret_arns = [
+    # Resolved at RUNTIME by SecretsManagerSecretResolver under the task role, not
+    # injected at boot: the broker's home connection needs the Entra secret when a login
+    # happens, and listAvailable/connect mint the GitHub App JWT on demand.
     module.secrets.secret_arns["entra-client-secret"],
-    # GitHub App private key — resolved at RUNTIME by SECRET_RESOLVER (task role),
-    # not injected at boot. listAvailable/connect (API) mint the App JWT, so the
-    # API task role needs GetSecretValue on it, same as the worker.
     module.secrets.secret_arns["github-app-private-key"],
+    # Future per-connection OIDC secrets, created out of band (a secret plus an
+    # sso_connections row, no Terraform change), so the grant has to be a wildcard.
     "arn:aws:secretsmanager:${var.region}:${data.aws_caller_identity.current.account_id}:secret:${var.product}/${var.env}/sso/*",
   ]
 
@@ -395,7 +459,7 @@ module "api" {
 
 # ── ECS Service — Worker ──────────────────────────────────────────────────────
 module "worker" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v1.4.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v2.0.0"
 
   service_name = "worker"
   cluster_name = module.ecs_cluster.cluster_name
@@ -414,6 +478,7 @@ module "worker" {
   min_count          = 1
   max_count          = var.worker.max_count
   use_spot           = var.worker.use_spot
+  cpu_architecture   = var.fargate_architecture
   log_retention_days = var.log_retention_days
 
   attach_alb = false
@@ -431,6 +496,10 @@ module "worker" {
   # on it to inject DATABASE_USER/PASSWORD. Omit it and the task cannot start at
   # all ("unable to pull secrets") — it is not a runtime error, it is a boot
   # failure. The migrator reuses this role, so it is covered here too.
+  # Includes the AWS-managed RDS secret: the execution role needs GetSecretValue on it
+  # to inject DATABASE_USER/PASSWORD. Omit it and the task cannot start at all ("unable
+  # to pull secrets") — a boot failure, not a runtime error. The migrator reuses this
+  # role, so it is covered here too.
   secret_arns = concat(values(module.secrets.secret_arns), [module.rds.master_secret_arn])
   kms_key_arn = local.kms_key_arn
   secrets = [
@@ -444,6 +513,8 @@ module "worker" {
     { name = "DATABASE_USER", secret_arn = "${module.rds.master_secret_arn}:username::" },
     { name = "DATABASE_PASSWORD", secret_arn = "${module.rds.master_secret_arn}:password::" },
     { name = "JWT_PRIVATE_KEY", secret_arn = module.secrets.secret_arns["jwt-private"] },
+    # PENDING REMOVAL alongside the `jwt-public` secret — the app derives this from
+    # JWT_PRIVATE_KEY when unset. Supplying it keeps current behaviour byte-identical.
     { name = "JWT_PUBLIC_KEY", secret_arn = module.secrets.secret_arns["jwt-public"] },
     # Shared schema requires CSRF_SECRET even though the worker never uses it as middleware
     { name = "CSRF_SECRET", secret_arn = module.secrets.secret_arns["csrf-secret"] },
@@ -529,7 +600,7 @@ module "worker" {
 # Runs `pnpm migration:run` then exits. Never scheduled as a service; deploy
 # pipelines trigger it with: aws ecs run-task ...
 module "migrator" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/oneshot-task?ref=oneshot-task-v1.0.1"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/oneshot-task?ref=oneshot-task-v2.0.0"
 
   name               = "${local.name}-migrator"
   container_name     = "migrator"
@@ -540,6 +611,8 @@ module "migrator" {
   task_role_arn      = module.api.task_role_arn
   region             = var.region
   log_retention_days = var.log_retention_days
+  # Same image build as api/worker, so necessarily the same architecture.
+  cpu_architecture = var.fargate_architecture
 
   environment = {
     NODE_ENV       = "production"
@@ -636,7 +709,9 @@ module "dns_api" {
 # gone — two topics per environment meant two subscriptions to confirm and two
 # places to look. The fail-open alarm below publishes to this module's topic.
 module "observability" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/observability?ref=observability-v1.0.1"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/observability?ref=observability-v2.0.0"
+
+  create_dashboard = var.create_dashboard
 
   name              = local.name
   region            = var.region
@@ -646,8 +721,14 @@ module "observability" {
   # module silently skips the two user-facing ALB alarms.
   alb_arn         = data.terraform_remote_state.runtime.outputs.alb_arn
   rds_instance_id = module.rds.instance_id
-  alarm_emails    = var.alarm_emails
-  tags            = local.tags
+
+  # Per-service UnHealthyHostCount. Every other alarm here fires on a symptom of load,
+  # so a service whose tasks are simply not running reads as quiet. Scoped by target
+  # group because the ALB is shared with other products, and gated because zero tasks is
+  # a normal state wherever the cost-saver runs — see the variable.
+  target_group_arns = var.monitor_target_health ? { api = module.api.target_group_arn } : {}
+  alarm_emails      = var.alarm_emails
+  tags              = local.tags
 }
 
 # ── Alerting: security controls that failed OPEN ──────────────────────────────

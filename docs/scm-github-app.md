@@ -53,12 +53,22 @@ Config keys (`libs/platform/src/config/env.schema.ts`):
 | `GITHUB_WEBHOOK_SECRET` | the webhook secret above | already used by the Phase-1 receiver |
 | `GITHUB_API_BASE_URL` | `https://api.github.com` | default; only change for GHE |
 | `GITHUB_APP_PRIVATE_KEY` | the PEM contents | **local/dev** — literal `\n` are normalised |
-| `GITHUB_APP_PRIVATE_KEY_SECRET_REF` | a Secrets Manager ref | **prod** — resolved via `SECRET_RESOLVER`; takes over from the inline key |
+| `GITHUB_APP_PRIVATE_KEY_SECRET_REF` | a Secrets Manager ARN | **prod** — resolved via `SECRET_RESOLVER`; takes over from the inline key |
 
-In production put the private key in Secrets Manager and set
-`GITHUB_APP_PRIVATE_KEY_SECRET_REF` (e.g. `rally/<env>/scm/github-app-private-key`);
-leave `GITHUB_APP_PRIVATE_KEY` unset. Everything is optional — if unset, backfill
-logs "GitHub App not configured — skipping" and webhooks still function.
+In production the private key lives in Secrets Manager and Terraform already wires the
+ref — the secret is `rally/<env>/github-app-private-key`, created empty. Paste the PEM in
+and leave `GITHUB_APP_PRIVATE_KEY` unset:
+
+```bash
+aws secretsmanager put-secret-value \
+  --secret-id rally/<env>/github-app-private-key \
+  --secret-string file://rally-scm.private-key.pem \
+  --region ap-southeast-1
+```
+
+Everything is optional — if unset, backfill logs "GitHub App not configured — skipping"
+and webhooks still function. An empty secret cannot be injected, so the deploy preflight
+in qnsc-ci blocks the deploy rather than letting a task start without it.
 
 ## 3. Connect the organization (Settings ▸ Integrations)
 

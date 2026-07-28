@@ -1,0 +1,94 @@
+import { describe, it, expect } from 'vitest';
+import { generateKeyPairSync, createPublicKey } from 'node:crypto';
+import { EnvSchema } from './env.schema';
+
+const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+const privatePem = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
+const publicPem = publicKey.export({ type: 'spki', format: 'pem' }).toString();
+
+/** Minimum that satisfies the rest of the schema, so these tests isolate the key pair. */
+function env(overrides: Record<string, string> = {}) {
+  return {
+    DATABASE_URL: 'postgres://u:p@localhost:5432/rally',
+    JWT_PRIVATE_KEY: privatePem,
+    CSRF_SECRET: 'x'.repeat(32),
+    COOKIE_SECRET: 'y'.repeat(32),
+    ENTRA_TENANT_ID: 'tenant',
+    ENTRA_CLIENT_ID: 'client',
+    ENTRA_CLIENT_SECRET: 'secret',
+    ENTRA_REDIRECT_URI: 'https://rally.example/v1/bff/callback',
+    ...overrides,
+  };
+}
+
+describe('EnvSchema — JWT key pair', () => {
+  // The point of the derivation: a mismatched pair is the one failure a key pair
+  // cannot otherwise have (signing succeeds, every verification rejects) and nothing
+  // upstream can detect it, because both halves are individually valid.
+  it('derives JWT_PUBLIC_KEY from JWT_PRIVATE_KEY when it is not supplied', () => {
+    const result = EnvSchema.safeParse(env());
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.JWT_PUBLIC_KEY).toBe(publicPem);
+  });
+
+  it('derives a key that actually matches the private half', () => {
+    const result = EnvSchema.safeParse(env());
+    if (!result.success) throw new Error('expected parse to succeed');
+    const fromPrivate = createPublicKey(result.data.JWT_PRIVATE_KEY)
+      .export({ type: 'spki', format: 'pem' })
+      .toString();
+    expect(result.data.JWT_PUBLIC_KEY).toBe(fromPrivate);
+  });
+
+  it('honours an explicitly supplied JWT_PUBLIC_KEY', () => {
+    const result = EnvSchema.safeParse(env({ JWT_PUBLIC_KEY: publicPem }));
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.JWT_PUBLIC_KEY).toBe(publicPem);
+  });
+
+  it('accepts a base64-encoded private key and still derives from it', () => {
+    const result = EnvSchema.safeParse(
+      env({ JWT_PRIVATE_KEY: Buffer.from(privatePem).toString('base64') }),
+    );
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.JWT_PUBLIC_KEY).toBe(publicPem);
+  });
+
+  // A public key pasted into the private slot is well-formed PEM, so it passes the
+  // field-level refine and would otherwise fail much later, at the first sign().
+  it('fails with a message naming JWT_PRIVATE_KEY when a public key is supplied as the private one', () => {
+    const result = EnvSchema.safeParse(env({ JWT_PRIVATE_KEY: publicPem }));
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    const issue = result.error.issues.find((i) => i.path.includes('JWT_PRIVATE_KEY'));
+    expect(issue?.message).toMatch(/not a PRIVATE key/);
+  });
+
+  // ES256 is P-256 specifically. Another curve signs fine and every verifier rejects
+  // the result, which presents as a broken deploy with no obvious cause.
+  it('rejects an EC key on the wrong curve', () => {
+    const p384 = generateKeyPairSync('ec', { namedCurve: 'secp384r1' })
+      .privateKey.export({ type: 'pkcs8', format: 'pem' })
+      .toString();
+    const result = EnvSchema.safeParse(env({ JWT_PRIVATE_KEY: p384 }));
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    const issue = result.error.issues.find((i) => i.path.includes('JWT_PRIVATE_KEY'));
+    expect(issue?.message).toMatch(/must be an EC P-256 key for ES256/);
+  });
+
+  it('rejects an RSA key', () => {
+    const rsa = generateKeyPairSync('rsa', { modulusLength: 2048 })
+      .privateKey.export({ type: 'pkcs8', format: 'pem' })
+      .toString();
+    expect(EnvSchema.safeParse(env({ JWT_PRIVATE_KEY: rsa })).success).toBe(false);
+  });
+
+  it('still rejects a JWT_PRIVATE_KEY that is not PEM at all', () => {
+    const result = EnvSchema.safeParse(env({ JWT_PRIVATE_KEY: 'not-a-key' }));
+    expect(result.success).toBe(false);
+  });
+});

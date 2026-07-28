@@ -76,6 +76,20 @@ module "stack" {
   log_retention_days           = 7
   secrets_recovery_window_days = 0
 
+  // OFF here and in production alike — see ../prod/main.tf for the audit. Per-task
+  // metrics are billed as custom CloudWatch metrics at $0.07 each and no alarm,
+  // dashboard or autoscaling target in this stack reads that namespace.
+  container_insights = "disabled"
+
+  // Three dashboards are free per ACCOUNT; four environments across two products
+  // means one is billable. Develop is the one to drop — its alarms still fire.
+  create_dashboard = false
+
+  // The unhealthy-target alarm treats "no registered targets" as breaching, which is
+  // right for an always-on environment and wrong here: the off-hours cost-saver scales
+  // these services to 0, so the alarm would sit permanently in ALARM.
+  monitor_target_health = false
+
   rds = {
     instance_class           = "db.t4g.micro"
     allocated_storage_gb     = 20

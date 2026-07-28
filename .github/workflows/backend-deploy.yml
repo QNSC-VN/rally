@@ -103,7 +103,11 @@ jobs:
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             echo "infra=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
-          if git diff --name-only HEAD~1 HEAD | grep -q '^infra/live/'; then
+          # infra/modules/** counts too: `module "stack"` is a LOCAL path module, so a
+          # module-only commit changes the plan and now triggers infra-apply. Matching
+          # only infra/live/ here would let the deploy race ahead of that apply —
+          # exactly the failure the paths-ignore comment above describes.
+          if git diff --name-only HEAD~1 HEAD | grep -qE '^infra/(live|modules)/'; then
             echo "infra=true" >> "$GITHUB_OUTPUT"
           else
             echo "infra=false" >> "$GITHUB_OUTPUT"
@@ -182,11 +186,19 @@ jobs:
 
   deploy:
     needs: [wait-for-infra, wait-for-ci]
-    uses: QNSC-VN/qnsc-ci/.github/workflows/backend-deploy.yml@v1.5.1
+    uses: QNSC-VN/qnsc-ci/.github/workflows/backend-deploy.yml@v1.6.0
     with:
       product: rally
       has_worker: true
       has_migrator: true
+      # Fargate Graviton: ~20% off every vCPU-hour and GB-hour at the same sizing.
+      # These two MUST move together with `fargate_architecture` in
+      # infra/modules/stack — a mismatch fails at container start with "image
+      # Manifest does not contain descriptor matching platform". Building on an ARM
+      # runner rather than cross-building under QEMU keeps build minutes flat; rally
+      # has no native dependency left to compile.
+      build_runner: ubuntu-24.04-arm
+      image_platforms: linux/arm64
     # Least-privilege: pass only what the reusable declares (no `secrets: inherit`).
     secrets:
       AWS_ACCOUNT_ID:       ${{ vars.AWS_ACCOUNT_ID }}
