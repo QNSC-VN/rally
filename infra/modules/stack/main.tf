@@ -161,6 +161,16 @@ module "secrets" {
     # save $0.40/mo. Kept alongside its secret half instead.
     "r2-access-key-id"     = "Cloudflare R2 access key ID (attachments + public-assets)"
     "r2-secret-access-key" = "Cloudflare R2 secret access key (attachments + public-assets)"
+    # PUBLIC-bucket-only credential. Optional: while empty, StorageService reuses the
+    # pair above and behaviour is unchanged, so this can be adopted without a flag day.
+    #
+    # The point is blast radius. One token covering both buckets means a leak exposes
+    # every permission-gated attachment AND lets an attacker overwrite avatars and logos.
+    # Scope this one to <product>-<env>-public-assets only, set it, deploy, THEN re-mint
+    # the pair above scoped to attachments alone — in that order, or public writes 403
+    # between the two steps.
+    "r2-public-access-key-id"     = "Cloudflare R2 access key ID (public-assets ONLY)"
+    "r2-public-secret-access-key" = "Cloudflare R2 secret access key (public-assets ONLY)"
     # The COMPLETE Authorization header the collector sidecar sends upstream, e.g.
     # `Basic base64(instanceID:token)` — not the bare token. Assembling it in Terraform
     # would put the instance id in state and the credential in the collector's plaintext
@@ -408,6 +418,10 @@ module "api" {
     # Cloudflare R2 bucket-scoped credentials (S3-compatible SigV4).
     { name = "STORAGE_ACCESS_KEY_ID", secret_arn = module.secrets.secret_arns["r2-access-key-id"] },
     { name = "STORAGE_SECRET_ACCESS_KEY", secret_arn = module.secrets.secret_arns["r2-secret-access-key"] },
+    # Public-bucket-scoped pair. Empty until minted, and StorageService falls back to the
+    # pair above when either is empty — so injecting them early is inert.
+    { name = "STORAGE_PUBLIC_ACCESS_KEY_ID", secret_arn = module.secrets.secret_arns["r2-public-access-key-id"] },
+    { name = "STORAGE_PUBLIC_SECRET_ACCESS_KEY", secret_arn = module.secrets.secret_arns["r2-public-secret-access-key"] },
   ])
 
   environment_vars = concat(local.api_db_env, [
@@ -569,6 +583,10 @@ module "worker" {
     # Cloudflare R2 bucket-scoped credentials (worker also reads/writes attachments).
     { name = "STORAGE_ACCESS_KEY_ID", secret_arn = module.secrets.secret_arns["r2-access-key-id"] },
     { name = "STORAGE_SECRET_ACCESS_KEY", secret_arn = module.secrets.secret_arns["r2-secret-access-key"] },
+    # Public-bucket-scoped pair. Empty until minted, and StorageService falls back to the
+    # pair above when either is empty — so injecting them early is inert.
+    { name = "STORAGE_PUBLIC_ACCESS_KEY_ID", secret_arn = module.secrets.secret_arns["r2-public-access-key-id"] },
+    { name = "STORAGE_PUBLIC_SECRET_ACCESS_KEY", secret_arn = module.secrets.secret_arns["r2-public-secret-access-key"] },
   ])
 
   # SCM backfill runs in the worker (ScmBackfillRelayService): it resolves the

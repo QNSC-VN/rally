@@ -141,10 +141,28 @@ export const EnvSchema = z
     //  - STORAGE_ENDPOINT set → S3-compatible backend (Cloudflare R2, MinIO).
     // R2 requires STORAGE_ENDPOINT + STORAGE_ACCESS_KEY_ID + STORAGE_SECRET_ACCESS_KEY
     // + STORAGE_FORCE_PATH_STYLE=true. Bucket names stay S3_ATTACHMENTS_BUCKET /
-    // S3_PUBLIC_ASSETS_BUCKET — both buckets share one endpoint and credential pair.
+    // S3_PUBLIC_ASSETS_BUCKET; both buckets share the one endpoint.
     STORAGE_ENDPOINT: z.string().url().optional(),
     STORAGE_ACCESS_KEY_ID: z.string().optional(),
     STORAGE_SECRET_ACCESS_KEY: z.string().optional(),
+
+    /**
+     * OPTIONAL credentials scoped to the PUBLIC bucket only.
+     *
+     * When set, StorageService builds a second S3 client for public-asset operations,
+     * so the credential that can write world-readable avatars and logos is NOT the
+     * credential that can read every permission-gated attachment. One leaked token
+     * then costs one bucket instead of both.
+     *
+     * When unset, public operations reuse STORAGE_ACCESS_KEY_ID/SECRET — identical to
+     * the previous behaviour, so this can be adopted without a flag day: set these,
+     * deploy, then re-mint the primary token scoped to attachments alone.
+     *
+     * Both must be set together; one alone is a configuration error and is rejected
+     * below rather than silently ignored.
+     */
+    STORAGE_PUBLIC_ACCESS_KEY_ID: z.string().optional(),
+    STORAGE_PUBLIC_SECRET_ACCESS_KEY: z.string().optional(),
     STORAGE_FORCE_PATH_STYLE: booleanish(false),
 
     // ── Email ──────────────────────────────────────────────────────────────────
@@ -268,6 +286,21 @@ export const EnvSchema = z
         'DATABASE_PASSWORD',
       ] as const
     ).filter((k) => !env[k]);
+
+    // Half a credential pair is a misconfiguration, not a partial feature: an id
+    // without a secret silently falls back to the private-bucket credential, which is
+    // the separation this pair exists to create.
+    const pubId = Boolean(env.STORAGE_PUBLIC_ACCESS_KEY_ID);
+    const pubSecret = Boolean(env.STORAGE_PUBLIC_SECRET_ACCESS_KEY);
+    if (pubId !== pubSecret) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [pubId ? 'STORAGE_PUBLIC_SECRET_ACCESS_KEY' : 'STORAGE_PUBLIC_ACCESS_KEY_ID'],
+        message:
+          'STORAGE_PUBLIC_ACCESS_KEY_ID and STORAGE_PUBLIC_SECRET_ACCESS_KEY must be set ' +
+          'together, or both left unset to reuse the primary storage credential.',
+      });
+    }
 
     if (missing.length > 0) {
       ctx.addIssue({

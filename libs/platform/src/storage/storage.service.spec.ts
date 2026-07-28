@@ -97,3 +97,86 @@ describe('StorageService — presigned PUT contract', () => {
     ).rejects.toThrow(/S3_PUBLIC_ASSETS_BUCKET/);
   });
 });
+
+/**
+ * The credential split is only real if the SIGNATURE differs — object identity of the
+ * client proves nothing about which key R2 will check. So these read the access key id
+ * back out of `X-Amz-Credential` on a presigned URL produced by the real presigner.
+ *
+ * Why it matters: one token covering both buckets means a leak exposes every
+ * permission-gated attachment AND allows overwriting world-readable avatars and logos.
+ */
+describe('StorageService — public/private credential separation', () => {
+  const resilience = {
+    execute: <T>(_n: string, fn: () => Promise<T>) => fn(),
+  } as unknown as ResilienceService;
+
+  const baseEnv: Record<string, unknown> = {
+    S3_ATTACHMENTS_BUCKET: 'rally-test-attachments',
+    S3_PUBLIC_ASSETS_BUCKET: 'rally-test-public',
+    CDN_PUBLIC_ASSETS_BASE_URL: undefined,
+    STORAGE_ENDPOINT: 'https://acct.r2.cloudflarestorage.com',
+    STORAGE_ACCESS_KEY_ID: 'PRIVATEKEYID',
+    STORAGE_SECRET_ACCESS_KEY: 'privatesecret',
+    STORAGE_FORCE_PATH_STYLE: true,
+    AWS_REGION: 'ap-southeast-1',
+  };
+
+  const make = (extra: Record<string, unknown> = {}) =>
+    new StorageService(
+      {
+        get: (k: string) => ({ ...baseEnv, ...extra })[k],
+      } as unknown as AppConfigService,
+      resilience,
+    );
+
+  /** Access key id out of the SigV4 credential scope on a presigned URL. */
+  const keyIdOf = (url: string) =>
+    decodeURIComponent(new URL(url).searchParams.get('X-Amz-Credential') ?? '').split('/')[0];
+
+  const presign = (svc: StorageService, visibility: 'private' | 'public') =>
+    svc.presignGet({
+      key: 'k',
+      filename: 'f.png',
+      mimeType: 'image/png',
+      inline: false,
+      visibility,
+    });
+
+  it('signs public-bucket URLs with the public credential when one is configured', async () => {
+    const svc = make({
+      STORAGE_PUBLIC_ACCESS_KEY_ID: 'PUBLICKEYID',
+      STORAGE_PUBLIC_SECRET_ACCESS_KEY: 'publicsecret',
+    });
+    expect(keyIdOf(await presign(svc, 'public'))).toBe('PUBLICKEYID');
+  });
+
+  it('still signs private-bucket URLs with the private credential', async () => {
+    const svc = make({
+      STORAGE_PUBLIC_ACCESS_KEY_ID: 'PUBLICKEYID',
+      STORAGE_PUBLIC_SECRET_ACCESS_KEY: 'publicsecret',
+    });
+    expect(keyIdOf(await presign(svc, 'private'))).toBe('PRIVATEKEYID');
+  });
+
+  // The rollout depends on this: infra injects the new env vars as empty secrets before
+  // anyone mints the token, and that must behave exactly as it did before the split.
+  it('falls back to the private credential for public assets when none is configured', async () => {
+    const svc = make();
+    expect(keyIdOf(await presign(svc, 'public'))).toBe('PRIVATEKEYID');
+  });
+
+  it('ignores a half-configured pair rather than signing with a partial credential', async () => {
+    const svc = make({ STORAGE_PUBLIC_ACCESS_KEY_ID: 'PUBLICKEYID' });
+    expect(keyIdOf(await presign(svc, 'public'))).toBe('PRIVATEKEYID');
+  });
+
+  it('targets the right bucket either way', async () => {
+    const svc = make({
+      STORAGE_PUBLIC_ACCESS_KEY_ID: 'PUBLICKEYID',
+      STORAGE_PUBLIC_SECRET_ACCESS_KEY: 'publicsecret',
+    });
+    expect(await presign(svc, 'public')).toContain('rally-test-public');
+    expect(await presign(svc, 'private')).toContain('rally-test-attachments');
+  });
+});
