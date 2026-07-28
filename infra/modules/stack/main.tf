@@ -127,16 +127,17 @@ module "secrets" {
   # is still an empty container.
   secret_names = {
     "jwt-private" = "EC P-256 (ES256) private key (PEM, base64-encoded)"
-    # PENDING REMOVAL — deliberately still created and still injected.
+    # PHASE 2 DONE — no longer injected; api and worker now DERIVE the public key.
     #
-    # The app no longer needs it: `env.schema.ts` derives JWT_PUBLIC_KEY from
-    # JWT_PRIVATE_KEY when absent, because an ES256 public key is a pure function of its
-    # private key and rally publishes no JWKS. Storing both allowed a MISMATCHED pair —
-    # signing succeeds, every verification rejects — which nothing could detect, since
-    # both halves were individually valid to Terraform, to the preflight and to the
-    # schema. Remove this line together with the two JWT_PUBLIC_KEY entries in the
-    # api/worker `secrets` blocks: docs/runbooks/jwt-public-key-derivation.md.
-    "jwt-public"  = "EC P-256 (ES256) public key — PENDING REMOVAL, now derived from jwt-private"
+    # `env.schema.ts` computes it from JWT_PRIVATE_KEY when absent, because an ES256
+    # public key is a pure function of its private key and rally publishes no JWKS.
+    # Storing both allowed a MISMATCHED pair — signing succeeds, every verification
+    # rejects — which nothing could detect, since both halves were individually valid to
+    # Terraform, to the preflight and to the schema.
+    #
+    # The secret stays ONE more release so a revert needs no secret restore. Phase 3
+    # deletes this line: docs/runbooks/jwt-public-key-derivation.md.
+    "jwt-public"  = "EC P-256 (ES256) public key — UNUSED, derived from jwt-private; delete at phase 3"
     "csrf-secret" = "CSRF token signing secret"
     # NOTE: give this a value BEFORE the next app deploy — COOKIE_SECRET is required at
     # startup, so a task wired to an empty secret cannot boot (a failed deploy plus
@@ -196,7 +197,7 @@ module "secrets" {
 
 # ── RDS PostgreSQL 17 ─────────────────────────────────────────────────────────
 module "rds" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/rds?ref=rds-v1.1.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/rds?ref=rds-v2.0.0"
 
   identifier        = local.name
   subnet_ids        = data.terraform_remote_state.runtime.outputs.data_subnet_ids
@@ -405,9 +406,6 @@ module "api" {
     # with nothing drifting in Terraform to explain why. Host/port/name are
     # non-secret and passed as plain env below; the app composes the URL.
     { name = "JWT_PRIVATE_KEY", secret_arn = module.secrets.secret_arns["jwt-private"] },
-    # PENDING REMOVAL alongside the `jwt-public` secret — the app derives this from
-    # JWT_PRIVATE_KEY when unset. Supplying it keeps current behaviour byte-identical.
-    { name = "JWT_PUBLIC_KEY", secret_arn = module.secrets.secret_arns["jwt-public"] },
     { name = "CSRF_SECRET", secret_arn = module.secrets.secret_arns["csrf-secret"] },
     { name = "COOKIE_SECRET", secret_arn = module.secrets.secret_arns["cookie-secret"] },
     { name = "ENTRA_CLIENT_SECRET", secret_arn = module.secrets.secret_arns["entra-client-secret"] },
@@ -418,11 +416,13 @@ module "api" {
     # Cloudflare R2 bucket-scoped credentials (S3-compatible SigV4).
     { name = "STORAGE_ACCESS_KEY_ID", secret_arn = module.secrets.secret_arns["r2-access-key-id"] },
     { name = "STORAGE_SECRET_ACCESS_KEY", secret_arn = module.secrets.secret_arns["r2-secret-access-key"] },
-    # Public-bucket-scoped pair. Empty until minted, and StorageService falls back to the
-    # pair above when either is empty — so injecting them early is inert.
+    ], var.storage_public_credentials ? [
+    # Public-bucket-scoped pair, injected only once populated. NOT unconditional: the
+    # deploy preflight blocks on an injected secret that holds no value, so wiring these
+    # while empty broke every develop deploy. See the variable.
     { name = "STORAGE_PUBLIC_ACCESS_KEY_ID", secret_arn = module.secrets.secret_arns["r2-public-access-key-id"] },
     { name = "STORAGE_PUBLIC_SECRET_ACCESS_KEY", secret_arn = module.secrets.secret_arns["r2-public-secret-access-key"] },
-  ])
+  ] : [])
 
   environment_vars = concat(local.api_db_env, [
     { name = "NODE_ENV", value = "production" },
@@ -572,9 +572,6 @@ module "worker" {
     # with nothing drifting in Terraform to explain why. Host/port/name are
     # non-secret and passed as plain env below; the app composes the URL.
     { name = "JWT_PRIVATE_KEY", secret_arn = module.secrets.secret_arns["jwt-private"] },
-    # PENDING REMOVAL alongside the `jwt-public` secret — the app derives this from
-    # JWT_PRIVATE_KEY when unset. Supplying it keeps current behaviour byte-identical.
-    { name = "JWT_PUBLIC_KEY", secret_arn = module.secrets.secret_arns["jwt-public"] },
     # Shared schema requires CSRF_SECRET even though the worker never uses it as middleware
     { name = "CSRF_SECRET", secret_arn = module.secrets.secret_arns["csrf-secret"] },
     { name = "COOKIE_SECRET", secret_arn = module.secrets.secret_arns["cookie-secret"] },
@@ -583,11 +580,13 @@ module "worker" {
     # Cloudflare R2 bucket-scoped credentials (worker also reads/writes attachments).
     { name = "STORAGE_ACCESS_KEY_ID", secret_arn = module.secrets.secret_arns["r2-access-key-id"] },
     { name = "STORAGE_SECRET_ACCESS_KEY", secret_arn = module.secrets.secret_arns["r2-secret-access-key"] },
-    # Public-bucket-scoped pair. Empty until minted, and StorageService falls back to the
-    # pair above when either is empty — so injecting them early is inert.
+    ], var.storage_public_credentials ? [
+    # Public-bucket-scoped pair, injected only once populated. NOT unconditional: the
+    # deploy preflight blocks on an injected secret that holds no value, so wiring these
+    # while empty broke every develop deploy. See the variable.
     { name = "STORAGE_PUBLIC_ACCESS_KEY_ID", secret_arn = module.secrets.secret_arns["r2-public-access-key-id"] },
     { name = "STORAGE_PUBLIC_SECRET_ACCESS_KEY", secret_arn = module.secrets.secret_arns["r2-public-secret-access-key"] },
-  ])
+  ] : [])
 
   # SCM backfill runs in the worker (ScmBackfillRelayService): it resolves the
   # GitHub App private key at RUNTIME to mint the App JWT, so the TASK role — not
@@ -775,7 +774,7 @@ module "dns_api" {
 # gone — two topics per environment meant two subscriptions to confirm and two
 # places to look. The fail-open alarm below publishes to this module's topic.
 module "observability" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/observability?ref=observability-v2.0.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/observability?ref=observability-v3.0.0"
 
   create_dashboard = var.create_dashboard
 
@@ -785,8 +784,16 @@ module "observability" {
   ecs_service_names = [module.api.service_name, module.worker.service_name]
   # Full ALB ARN — exposed by the runtime stack for exactly this. Without it the
   # module silently skips the two user-facing ALB alarms.
-  alb_arn         = data.terraform_remote_state.runtime.outputs.alb_arn
-  rds_instance_id = module.rds.instance_id
+  alb_arn = data.terraform_remote_state.runtime.outputs.alb_arn
+  # `identifier` (rally-prod), NOT `instance_id` (db-F35NKOG…). CloudWatch publishes RDS
+  # metrics under the DBInstanceIdentifier dimension, and `aws_db_instance.id` returns the
+  # RESOURCE id on AWS provider 5.x — so this pointed at a dimension value that does not
+  # exist. Six alarms sat in INSUFFICIENT_DATA permanently: RDS CPU, connections and free
+  # storage were unmonitored in BOTH environments while appearing covered.
+  #
+  # observability-v3.0.0 now rejects a resource id outright, so this cannot regress
+  # silently — it fails the plan instead.
+  rds_instance_id = module.rds.identifier
 
   # Per-service UnHealthyHostCount. Every other alarm here fires on a symptom of load,
   # so a service whose tasks are simply not running reads as quiet. Scoped by target
