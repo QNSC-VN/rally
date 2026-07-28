@@ -16,7 +16,6 @@ import {
   BFF_SESSION_RESOLVER,
   type BffSessionResolver,
 } from './bff-session-resolver';
-import { AuthzEpochService } from './authz-epoch.service';
 import type { JwtPayload } from './jwt.strategy';
 
 /**
@@ -25,12 +24,10 @@ import type { JwtPayload } from './jwt.strategy';
  * workspaceId / userId / sessionId so downstream scoping works correctly.
  * Also checks the access-token denylist in the cache (set on logout).
  *
- * Staleness: the token's `permissions` are a mint-time snapshot, so the guard
- * additionally compares the token's authorization epoch against the live one
- * (see {@link AuthzEpochService}). A Bearer caller holding a superseded snapshot
- * gets 401 `TOKEN_STALE` and refreshes; a BFF session is re-minted in place so
- * the browser never notices. Without this, a revoked permission stayed effective
- * until the token expired (up to JWT_ACCESS_EXPIRY).
+ * AUTHENTICATION only. The token carries no permissions — `PolicyGuard` resolves
+ * those from the database per request — so there is no snapshot here that can go
+ * stale, and no authorization epoch to compare. What the guard still enforces is
+ * revocation: the per-token (logout) and per-user (offboarding) denylists.
  *
  * BFF (same-origin) mode: when a {@link BffSessionResolver} is bound and no
  * Bearer token is present, the guard instead authenticates from the opaque
@@ -47,7 +44,6 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
   constructor(
     private readonly ctx: RequestContextService,
     private readonly authCache: AuthTokenCache,
-    private readonly authzEpoch: AuthzEpochService,
     private readonly securityMetrics: SecurityMetrics,
     @Optional()
     @Inject(BFF_SESSION_RESOLVER)
@@ -89,79 +85,28 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
 
     const user = req.user as JwtPayload;
     await this.enforceDenylist(user.jti, user.sub);
-
-    // Bearer path: the caller owns its token, so the correct response to a
-    // superseded snapshot is to make it refresh. `TOKEN_STALE` distinguishes this
-    // from an expired or revoked token so the client can refresh silently instead
-    // of sending the user back to login.
-    if (await this.authzEpoch.isStale(user.sub, user.authzEpoch)) {
-      this.logger.log({ userId: user.sub }, 'Access token authz epoch is stale; refresh required');
-      throw new UnauthorizedException('TOKEN_STALE');
-    }
     return true;
   }
 
   /**
-   * Authenticate a request from a BFF session id: resolve/refresh the session,
-   * enforce the same denylist as the Bearer path, then populate `req.user`,
-   * `req.bffSid`, and the request context so downstream code is path-agnostic.
+   * Authenticate a request from a BFF session id: resolve the session, enforce the
+   * same denylist as the Bearer path, then populate `req.user`, `req.bffSid`, and
+   * the request context so downstream code is path-agnostic.
    */
   private async authenticateFromSession(
     req: { ip: string; user?: JwtPayload; bffSid?: string },
     sid: string,
   ): Promise<boolean> {
-    let claims = await this.bffResolver!.resolve(sid, req.ip);
+    const claims = await this.bffResolver!.resolve(sid, req.ip);
     if (!claims) {
       throw new UnauthorizedException('Invalid or expired session');
     }
     await this.enforceDenylist(claims.jti, claims.sub);
-    claims = await this.refreshIfStale(sid, req.ip, claims);
 
     req.user = claims;
     req.bffSid = sid;
     this.ctx.setAuthContext(claims.workspaceId, claims.sub, claims.sessionId);
     return true;
-  }
-
-  /**
-   * BFF path staleness handling: when the session's snapshot predates a permission
-   * change, re-mint it in place and use the fresh claims for this very request.
-   * The session id — and therefore the browser's cookie — is unchanged, so this is
-   * invisible to the user.
-   *
-   * Re-minting happens at most once per request. If the freshly-minted claims are
-   * *still* behind (a concurrent bump, or an epoch that cannot be satisfied), the
-   * request is rejected rather than retried, so a pathological loop can never mint
-   * sessions in a tight cycle.
-   */
-  private async refreshIfStale(sid: string, ip: string, claims: JwtPayload): Promise<JwtPayload> {
-    if (!(await this.authzEpoch.isStale(claims.sub, claims.authzEpoch))) return claims;
-
-    // A product without a re-mint path can only fail closed here: the snapshot is
-    // known-stale, so serving it would be the exact bug this check exists to fix.
-    if (!this.bffResolver?.remint) {
-      this.logger.warn(
-        { userId: claims.sub },
-        'BFF session authz epoch is stale and the resolver cannot re-mint; denying',
-      );
-      throw new UnauthorizedException('Session authorization is stale');
-    }
-
-    const refreshed = await this.bffResolver.remint(sid, claims.workspaceId, ip);
-    if (!refreshed) {
-      // The re-mint validates workspace membership and account status, so a null
-      // here usually means the user genuinely lost access.
-      throw new UnauthorizedException('Invalid or expired session');
-    }
-    if (await this.authzEpoch.isStale(refreshed.sub, refreshed.authzEpoch)) {
-      this.logger.warn(
-        { userId: refreshed.sub },
-        'BFF session still stale after re-mint; denying rather than retrying',
-      );
-      throw new UnauthorizedException('Session authorization is stale');
-    }
-    this.logger.log({ userId: refreshed.sub }, 'BFF session re-minted after authz epoch bump');
-    return refreshed;
   }
 
   /**

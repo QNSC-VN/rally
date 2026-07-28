@@ -24,6 +24,7 @@ import {
   makeActor,
   uniqueKey,
   viewerActor,
+  ensureViewerGrant,
 } from './support/flow-harness';
 
 /**
@@ -52,7 +53,11 @@ class WorkItemPolicyProbe {
 function policyContext(
   handler: (...args: unknown[]) => unknown,
   actor: JwtPayload,
-  req: { params?: Record<string, string>; query?: Record<string, unknown>; body?: Record<string, unknown> },
+  req: {
+    params?: Record<string, string>;
+    query?: Record<string, unknown>;
+    body?: Record<string, unknown>;
+  },
 ): ExecutionContext {
   return {
     getHandler: () => handler,
@@ -78,6 +83,9 @@ describe('BA flows: context isolation + read-only RBAC (real AppModule + seeded 
     projects = app.get(ProjectsService);
     workItems = app.get(WorkItemsService);
     policy = app.get(PolicyGuard);
+    // The viewer needs a REAL read-only grant: a principal's permission list is
+    // inert now that the guard resolves from the database.
+    await ensureViewerGrant(app);
   });
 
   afterAll(async () => {
