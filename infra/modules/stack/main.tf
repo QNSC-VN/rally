@@ -144,11 +144,16 @@ module "secrets" {
     # SCM backfill and webhook paths dormant.
     "github-webhook-secret"  = "GitHub App webhook HMAC secret (X-Hub-Signature-256)"
     "github-app-private-key" = "GitHub App private key (PEM)"
-    # MUST be scoped to BOTH R2 buckets (<product>-<env>-attachments AND
-    # <product>-<env>-public-assets). StorageService uses one S3 client for both, so a
-    # token scoped to attachments alone makes every avatar/logo write 403. R2 tokens are
-    # minted by hand in the Cloudflare dashboard — re-mint with both buckets selected
-    # when adding a bucket.
+    # Scoped to <product>-<env>-attachments ONLY. The public bucket gets its own pair
+    # below, gated on `storage_public_credentials` — one token per bucket, so a leaked
+    # avatar-writer cannot read permission-gated attachments.
+    #
+    # This comment previously demanded the OPPOSITE (one token scoped to both buckets),
+    # because StorageService then used a single S3 client for both. It no longer does:
+    # `clientFor(visibility)` picks the public pair when injected. The comment outlived
+    # that change, and the tokens in Cloudflare were attachments-only the whole time —
+    # so the file documented a requirement reality never met, and public writes 403'd.
+    # R2 tokens are minted by hand in the Cloudflare dashboard; add a BUCKET, add a TOKEN.
     #
     # The access key ID is an identifier rather than a credential (useless without the
     # secret half, and Cloudflare shows it in the dashboard), so it is the one value

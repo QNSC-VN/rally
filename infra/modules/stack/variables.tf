@@ -291,11 +291,14 @@ variable "storage_public_credentials" {
       1. mint an R2 API token scoped to `<product>-<env>-public-assets` ONLY;
       2. put both halves into the `r2-public-access-key-id` /
          `r2-public-secret-access-key` secrets.
-    Then set this true. Afterwards, re-mint the PRIMARY token scoped to attachments alone —
-    in that order, or public writes 403 in between.
+    Then set this true.
 
-    While false, StorageService reuses the primary credential for both buckets, which is
-    the behaviour that predates the split.
+    While false, StorageService reuses the PRIMARY credential for both buckets — and in
+    this account that credential is scoped to `<product>-<env>-attachments` alone, so every
+    public-asset write 403s. Turning this on is therefore a FIX, not hardening. An earlier
+    version of this text called the false path "the behaviour that predates the split" as
+    though it were merely less isolated, and told you to re-mint the primary token
+    afterwards; both were wrong. The primary tokens were never wider than attachments.
   EOT
   type        = bool
   default     = false
