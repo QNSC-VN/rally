@@ -126,18 +126,13 @@ module "secrets" {
   # state. The deploy preflight in qnsc-ci refuses to deploy while any injected secret
   # is still an empty container.
   secret_names = {
+    # There is deliberately NO jwt-public here. `env.schema.ts` derives the public key
+    # from this one, because an ES256 public key is a pure function of its private half and
+    # rally publishes no JWKS. Storing both allowed the one failure a key pair cannot
+    # otherwise have — a mismatched pair, where signing succeeds and every verification
+    # rejects — which nothing detected, since both halves were individually valid to
+    # Terraform, to the deploy preflight and to the schema. Do not add it back.
     "jwt-private" = "EC P-256 (ES256) private key (PEM, base64-encoded)"
-    # PHASE 2 DONE — no longer injected; api and worker now DERIVE the public key.
-    #
-    # `env.schema.ts` computes it from JWT_PRIVATE_KEY when absent, because an ES256
-    # public key is a pure function of its private key and rally publishes no JWKS.
-    # Storing both allowed a MISMATCHED pair — signing succeeds, every verification
-    # rejects — which nothing could detect, since both halves were individually valid to
-    # Terraform, to the preflight and to the schema.
-    #
-    # The secret stays ONE more release so a revert needs no secret restore. Phase 3
-    # deletes this line: docs/runbooks/jwt-public-key-derivation.md.
-    "jwt-public"  = "EC P-256 (ES256) public key — UNUSED, derived from jwt-private; delete at phase 3"
     "csrf-secret" = "CSRF token signing secret"
     # NOTE: give this a value BEFORE the next app deploy — COOKIE_SECRET is required at
     # startup, so a task wired to an empty secret cannot boot (a failed deploy plus
