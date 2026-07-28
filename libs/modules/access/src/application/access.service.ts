@@ -1,11 +1,11 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
+import { CacheService } from '@qnsc-vn/platform-cache';
 import {
   NotFoundException,
   ConflictException,
   PermissionDeniedException,
   UnitOfWork,
-  AuthzEpochService,
   AuditProducer,
   AUDIT_ACTION,
   AUDIT_RESOURCE,
@@ -41,25 +41,92 @@ export class AccessService {
     private readonly assignmentRepo: IRoleAssignmentRepository,
     private readonly uow: UnitOfWork,
     private readonly audit: AuditProducer,
-    private readonly authzEpoch: AuthzEpochService,
+    private readonly cache: CacheService,
   ) {}
 
+  // ── Effective-assignment resolution (the one read every check goes through) ──
+
+  private static readonly ASSIGNMENTS_TTL_SECONDS = 300;
+
+  private assignmentsKey(workspaceId: string, userId: string): string {
+    return `authz:assign:${workspaceId}:${userId}`;
+  }
+
   /**
-   * Invalidate a user's already-minted access tokens after a change to their
-   * BASELINE (global- or workspace-scoped) permissions.
+   * Every authorization decision in rally reduces to this one read: the user's
+   * role assignments in a workspace, each with its permission codes. Baseline
+   * (global + workspace) and per-project sets are then filtered out of it in
+   * memory, so one cached read serves both tiers.
    *
-   * Project-scoped changes deliberately do NOT bump: those permissions are never
-   * embedded in the token — `getProjectPermissions` resolves them from the
-   * database per request — so a bump would force a pointless re-mint. See
-   * {@link AuthzEpochService} and {@link getUserRoleAndPermissions}.
+   * Cached in Valkey for 5 minutes under a per-(workspace, user) key, which the
+   * write paths delete explicitly — so a role change lands on the user's NEXT
+   * request, on every replica, rather than when their token happens to rotate.
+   * The TTL is only the backstop for a missed invalidation.
    *
-   * Always called AFTER the transaction commits: bumping inside the transaction
-   * would let a concurrent request re-mint from pre-commit state, and a
-   * rolled-back write would leave a bump behind.
+   * Fails OPEN to the database, not to deny: a cache outage must degrade
+   * latency, not authorization. A read error means every check does the join it
+   * used to do before this cache existed.
    */
-  private async invalidateBaselineTokens(scopeType: ScopeType, userId: string): Promise<void> {
-    if (scopeType === 'project') return;
-    await this.authzEpoch.bump(userId);
+  private async effectiveAssignments(
+    workspaceId: string,
+    userId: string,
+  ): Promise<
+    Array<{
+      scopeType: ScopeType;
+      scopeId: string | null;
+      roleSlug: string | null;
+      permissions: string[];
+    }>
+  > {
+    const key = this.assignmentsKey(workspaceId, userId);
+    try {
+      const cached = await this.cache.getJson<
+        Array<{
+          scopeType: ScopeType;
+          scopeId: string | null;
+          roleSlug: string | null;
+          permissions: string[];
+        }>
+      >(key);
+      if (cached) return cached;
+    } catch (err) {
+      this.logger.warn(
+        { err, userId },
+        'Effective-assignment cache read failed; using the database',
+      );
+    }
+
+    const rows = await this.assignmentRepo.listEffectiveForUser(workspaceId, userId);
+    try {
+      await this.cache.setJson(key, rows, AccessService.ASSIGNMENTS_TTL_SECONDS);
+    } catch (err) {
+      this.logger.warn({ err, userId }, 'Effective-assignment cache write failed; continuing');
+    }
+    return rows;
+  }
+
+  /**
+   * Drop a user's cached assignments so their next request re-resolves.
+   *
+   * Call AFTER the write commits: invalidating first lets a concurrent request
+   * repopulate the cache from pre-commit state, which is the staleness this
+   * exists to remove. Never throws — the write already succeeded, and the TTL
+   * bounds the damage of a failed delete.
+   */
+  async invalidateUser(workspaceId: string, userId: string): Promise<void> {
+    try {
+      await this.cache.del(this.assignmentsKey(workspaceId, userId));
+    } catch (err) {
+      this.logger.error(
+        { err, userId, workspaceId },
+        'Failed to invalidate cached permissions; the change takes effect within the cache TTL',
+      );
+    }
+  }
+
+  /** Fan-out invalidation — e.g. editing a role's permission set affects every holder. */
+  async invalidateUsers(workspaceId: string, userIds: readonly string[]): Promise<void> {
+    await Promise.all([...new Set(userIds)].map((id) => this.invalidateUser(workspaceId, id)));
   }
 
   // ── Roles ─────────────────────────────────────────────────────────────────
@@ -101,7 +168,7 @@ export class AccessService {
     if (role.isSystem || role.workspaceId === null) {
       throw new ConflictException('ROLE_IMMUTABLE', 'Built-in system roles cannot be edited');
     }
-    this.assertGrantablePermissions(actor, permissions);
+    await this.assertGrantablePermissions(actor, permissions);
 
     const next = [...new Set(permissions)].sort();
 
@@ -120,10 +187,10 @@ export class AccessService {
       );
       return saved;
     });
-    // A role's permission set changed, so every holder's token snapshot is stale.
-    // Assignees are read after the commit so the list reflects the new state.
+    // A role's permission set changed, so every holder's cached resolution is
+    // stale. Assignees are read after the commit so the list reflects the new state.
     const assignees = await this.assignmentRepo.listUserIdsForRole(roleId);
-    await this.authzEpoch.bumpMany(assignees);
+    await this.invalidateUsers(actor.workspaceId, assignees);
 
     this.logger.log(
       { roleId, updatedBy: actor.sub, invalidatedUsers: assignees.length },
@@ -142,7 +209,7 @@ export class AccessService {
     actor: JwtPayload,
     input: { name: string; description?: string | null; permissions: string[] },
   ): Promise<SystemRole> {
-    this.assertGrantablePermissions(actor, input.permissions);
+    await this.assertGrantablePermissions(actor, input.permissions);
     const permissions = [...new Set(input.permissions)].sort();
     const slug = await this.deriveUniqueSlug(actor.workspaceId, input.name);
 
@@ -223,7 +290,14 @@ export class AccessService {
    * built-ins). Today only workspace_admin (workspace:*) manages roles, so this
    * is a guard-rail for future finer-grained role admins.
    */
-  private assertGrantablePermissions(actor: JwtPayload, permissions: string[]): void {
+  private async assertGrantablePermissions(
+    actor: JwtPayload,
+    permissions: string[],
+  ): Promise<void> {
+    // The actor's own baseline is resolved, not read off the token: no-escalation
+    // must be judged against what the actor holds RIGHT NOW, or an admin whose
+    // grant was just revoked could still hand it out until their token rotated.
+    const held = await this.getWorkspacePermissions(actor.sub, actor.workspaceId);
     for (const code of permissions) {
       if (code.endsWith(':*')) {
         throw new ConflictException(
@@ -231,7 +305,7 @@ export class AccessService {
           `Wildcard permission "${code}" cannot be granted to a custom role`,
         );
       }
-      if (!permissionGrants(actor.permissions, code)) {
+      if (!permissionGrants(held, code)) {
         throw new PermissionDeniedException(
           'ROLE_PERMISSION_ESCALATION',
           `You cannot grant "${code}" because you do not hold it`,
@@ -316,7 +390,10 @@ export class AccessService {
       );
       return created;
     });
-    await this.invalidateBaselineTokens(scopeType, userId);
+    // Every scope type invalidates: unlike the old token epoch — which skipped
+    // project-scoped changes because they were never in the token — the cache now
+    // holds the assignment rows the project-tier check reads too.
+    await this.invalidateUser(actor.workspaceId, userId);
     this.logger.log(
       { assignmentId: assignment.id, userId, roleId, scopeType, scopeId },
       'Role assigned',
@@ -353,7 +430,7 @@ export class AccessService {
         tx,
       );
     });
-    await this.invalidateBaselineTokens(assignment.scopeType, assignment.userId);
+    await this.invalidateUser(assignment.workspaceId, assignment.userId);
     this.logger.log({ assignmentId, revokedBy: actor.sub }, 'Role revoked');
   }
 
@@ -436,7 +513,7 @@ export class AccessService {
    * each segment boundary (e.g. `workspace:admin:*` matches `workspace:admin:write`).
    */
   async hasPermission(workspaceId: string, userId: string, permission: string): Promise<boolean> {
-    const effective = await this.assignmentRepo.listEffectiveForUser(workspaceId, userId);
+    const effective = await this.effectiveAssignments(workspaceId, userId);
     if (!effective.length) return false;
 
     const [reqNs] = permission.split(':');
@@ -480,7 +557,7 @@ export class AccessService {
       grantedBy: userId, // self-assigned by system on JIT provision
     };
     await this.assignmentRepo.create(input);
-    await this.authzEpoch.bump(userId);
+    await this.invalidateUser(workspaceId, userId);
     this.logger.log(
       { userId, roleSlug: defaultRole.slug },
       'Default role assigned to JIT-provisioned SSO user',
@@ -520,7 +597,7 @@ export class AccessService {
       scopeId: undefined,
       grantedBy: userId,
     });
-    await this.authzEpoch.bump(userId);
+    await this.invalidateUser(workspaceId, userId);
     this.logger.log({ userId }, 'User elevated to workspace_admin via PLATFORM_ADMIN_EMAILS');
     return true;
   }
@@ -537,11 +614,25 @@ export class AccessService {
    * `role` is the single most-representative role slug (highest baseline scope),
    * kept for display / audit; authorization decisions use `permissions`.
    */
+  /**
+   * The user's workspace-tier permissions, resolved (and cached) from the
+   * database. This is what `PolicyGuard` checks a workspace-tier code against,
+   * and what an escalation check judges an actor by.
+   *
+   * Deliberately a thin projection of {@link getUserRoleAndPermissions} rather
+   * than a second resolution path — two ways to compute a baseline is exactly how
+   * a guard and a UI end up disagreeing about what a user can do.
+   */
+  async getWorkspacePermissions(userId: string, workspaceId: string): Promise<string[]> {
+    const { permissions } = await this.getUserRoleAndPermissions(userId, workspaceId);
+    return permissions;
+  }
+
   async getUserRoleAndPermissions(
     userId: string,
     workspaceId: string,
   ): Promise<{ role: string; permissions: string[] }> {
-    const effective = await this.assignmentRepo.listEffectiveForUser(workspaceId, userId);
+    const effective = await this.effectiveAssignments(workspaceId, userId);
     const baseline = effective.filter(
       (a) => a.scopeType === 'global' || a.scopeType === 'workspace',
     );
@@ -579,7 +670,7 @@ export class AccessService {
     workspaceId: string,
     projectId: string,
   ): Promise<string[]> {
-    const effective = await this.assignmentRepo.listEffectiveForUser(workspaceId, userId);
+    const effective = await this.effectiveAssignments(workspaceId, userId);
     const relevant = effective.filter(
       (a) =>
         a.scopeType === 'global' ||
@@ -605,9 +696,9 @@ export class AccessService {
     projectId: string,
     required: ProjectPermission,
   ): Promise<void> {
-    // Fast path: a workspace-wide grant in the JWT covers every project.
-    if (permissionGrants(user.permissions, required)) return;
-
+    // No token fast path: `getProjectPermissions` already unions the workspace
+    // baseline, and it reads through the cache, so the old shortcut only added a
+    // way to answer from a stale snapshot.
     const effective = await this.getProjectPermissions(user.sub, user.workspaceId, projectId);
     if (permissionGrants(effective, required)) return;
 

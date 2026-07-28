@@ -1,21 +1,28 @@
 /**
  * End-to-end proof that a permission change takes effect on the user's NEXT
- * request instead of when their access token expires.
+ * request — with no token refresh, no re-login, and nothing for the client to do.
  *
  * Flow: none. Authorization infrastructure, like `sso-rbac.e2e.spec.ts` — it
  * underpins every business flow but proves no single one. Recorded explicitly so
  * the coverage matrix can tell "deliberately not a flow" from "untraced".
  *
- * The defect this pins: `PermissionGuard` authorizes from `claims.permissions`,
- * a snapshot embedded at mint time, and nothing invalidated it. Revoking a role
- * updated the database while the already-issued token kept working for up to
- * `JWT_ACCESS_EXPIRY` (15 minutes). The fix stamps an authorization epoch into
- * every token and bumps it on every baseline permission change, so a superseded
- * token is rejected with `TOKEN_STALE` and the client refreshes.
+ * History, because it explains the shape of these assertions. Rally used to embed
+ * `claims.permissions` in every access token and authorize from that snapshot, so
+ * revoking a role left the issued token working for up to `JWT_ACCESS_EXPIRY`.
+ * That was patched with an authorization epoch: a counter bumped on every change,
+ * compared on every request, rejecting a superseded token with `TOKEN_STALE` so the
+ * client refreshed. It worked, but it made a token's authority one cache lookup away
+ * from valid, and it needed a re-mint path on the BFF session to stay invisible.
+ *
+ * The token now carries identity only. `PolicyGuard` resolves permissions from the
+ * database on every check, cached per (workspace, user) in Valkey and invalidated
+ * by the write paths. So there is no snapshot to supersede: the same token simply
+ * gets a different answer. These tests assert exactly that — a 403 becomes a 200
+ * (and back) across an admin action, on the SAME bearer token.
  *
  * This boots the REAL `AppModule` (real Nest DI, real Drizzle against the seeded
  * `rally-postgres`, real Valkey) and drives REAL HTTP requests through
- * `app.inject()`, so the JwtAuthGuard, the epoch lookup, and the route all run
+ * `app.inject()`, so the guard chain, the cached resolution and the route all run
  * exactly as in production. The ONLY stub is the Microsoft signature check
  * (`EntraTokenVerifier.verify`), which cannot be satisfied locally.
  *
@@ -29,7 +36,6 @@ import { Test } from '@nestjs/testing';
 import { AuthService, EntraTokenVerifier, type EntraClaims } from '@qnsc-vn/identity';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AccessService } from '@modules/access';
-import { AuthzEpochService } from '@platform';
 import type { JwtPayload } from '@platform';
 import { AppModule } from '../../apps/api/src/app.module';
 
@@ -37,11 +43,12 @@ const TENANT = process.env['ENTRA_TENANT_ID'] ?? 'dev-tenant';
 const DOMAIN = (process.env['SSO_ALLOWED_EMAIL_DOMAINS'] ?? 'qnsc.vn').split(',')[0].trim();
 
 /**
- * Any authenticated route works as a probe; this one is `@Auth()` with no
- * permission requirement and no path params, so a failure can only come from the
- * guard chain — which is what's under test.
+ * The probe must be gated by a WORKSPACE-tier permission a JIT-provisioned user
+ * does NOT hold, so the same request flips its answer as the grant changes.
+ * `audit:view` fits: held only by workspace_admin, and the route takes no path
+ * params, so a non-200 can only come from the authorization decision.
  */
-const PROBE_ROUTE = '/notifications/unread-count';
+const PROBE_ROUTE = '/audit-logs';
 
 /**
  * Seeded `workspace_admin` (see db/seeds/seed.ts). Used as the acting admin for
@@ -53,7 +60,7 @@ const SEEDED_ADMIN_ID = '00000000-0000-7000-8000-000000000002';
 interface DecodedAccessToken {
   sub: string;
   contextId: string | null;
-  claims: { permissions: string[]; authzEpoch?: number };
+  claims: Record<string, unknown>;
 }
 
 function decodeAccessToken(token: string): DecodedAccessToken {
@@ -61,18 +68,17 @@ function decodeAccessToken(token: string): DecodedAccessToken {
   return JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as DecodedAccessToken;
 }
 
-describe('Permission revocation takes effect on the next request (real AppModule)', () => {
+describe('Permission changes take effect on the next request (real AppModule)', () => {
   let app: NestFastifyApplication;
   let auth: AuthService;
   let access: AccessService;
-  let epochs: AuthzEpochService;
 
   /** Log in a brand-new JIT-provisioned SSO user, so each test owns its principal. */
   async function loginFreshUser() {
     const claims: EntraClaims = {
       oid: `e2e-authz-${randomUUID()}`,
       email: `authz-e2e-${randomUUID().slice(0, 8)}@${DOMAIN}`,
-      displayName: 'E2E Authz Epoch User',
+      displayName: 'E2E Authz User',
       externalTenantId: TENANT,
       roles: [],
     };
@@ -86,6 +92,10 @@ describe('Permission revocation takes effect on the next request (real AppModule
       url: PROBE_ROUTE,
       headers: { authorization: `Bearer ${accessToken}` },
     });
+  }
+
+  function actorFor(workspaceId: string): JwtPayload {
+    return { sub: SEEDED_ADMIN_ID, workspaceId } as unknown as JwtPayload;
   }
 
   beforeAll(async () => {
@@ -103,87 +113,87 @@ describe('Permission revocation takes effect on the next request (real AppModule
 
     auth = app.get(AuthService);
     access = app.get(AccessService);
-    epochs = app.get(AuthzEpochService);
   });
 
   afterAll(async () => {
     await app?.close();
   });
 
-  it('stamps the authorization epoch the permissions were resolved at', async () => {
+  it('mints tokens that carry no permissions at all', async () => {
+    // The absence IS the fix. While a token carried its own permission list, every
+    // authorization answer was as old as the token, and an epoch counter had to
+    // exist to expire it early.
     const { token } = await loginFreshUser();
-    const current = await epochs.current(token.sub);
 
-    expect(token.claims.authzEpoch).toBe(current ?? 0);
+    expect(token.claims['permissions']).toBeUndefined();
+    expect(token.claims['authzEpoch']).toBeUndefined();
   });
 
-  it('rejects an access token whose permissions were superseded, and accepts it again after refresh', async () => {
+  it('a GRANT takes effect on the same token, on the very next request', async () => {
     const { result, token } = await loginFreshUser();
 
-    // 1. The freshly-minted token works.
-    expect((await probe(result.accessToken)).statusCode).toBe(200);
+    // 1. A JIT-provisioned user holds no `audit:view`.
+    expect((await probe(result.accessToken)).statusCode).toBe(403);
 
-    // 2. A baseline permission change lands — this is the admin action that used
-    //    to leave the old snapshot effective for up to JWT_ACCESS_EXPIRY.
+    // 2. The admin action that used to require the victim to refresh.
     await access.elevateToWorkspaceAdmin(token.sub, token.contextId!);
 
-    // 3. The SAME token is now rejected on the very next request. Before the fix
-    //    this assertion returned 200 for another ~15 minutes.
-    const stale = await probe(result.accessToken);
-    expect(stale.statusCode).toBe(401);
-    expect(stale.body).toContain('TOKEN_STALE');
-
-    // 4. Refreshing mints a token at the new epoch, and the client recovers
-    //    without the user re-authenticating.
-    const refreshed = await auth.refresh(result.refreshToken, result.csrfToken, '127.0.0.1');
-    expect((await probe(refreshed.accessToken)).statusCode).toBe(200);
-
-    // 5. The recovered token reflects the change that caused the rejection.
-    const after = decodeAccessToken(refreshed.accessToken);
-    expect(after.claims.permissions).toContain('workspace:*');
-    expect(after.claims.authzEpoch).toBe(await epochs.current(token.sub));
+    // 3. Same bearer token, no refresh, no re-login: allowed now.
+    expect((await probe(result.accessToken)).statusCode).toBe(200);
   });
 
-  it('rejects the token of a user whose workspace-scoped role was revoked', async () => {
+  it('a REVOCATION takes effect on the same token, on the very next request', async () => {
     const { result, token } = await loginFreshUser();
+    await access.elevateToWorkspaceAdmin(token.sub, token.contextId!);
     expect((await probe(result.accessToken)).statusCode).toBe(200);
 
-    // Revoke the workspace-scoped assignment JIT provisioning granted. The actor
-    // is the seeded workspace admin — this spec proves the revocation's effect on
-    // the victim's token, not the admin's own authorization (covered by sso-rbac).
-    const actor = {
-      sub: SEEDED_ADMIN_ID,
-      workspaceId: token.contextId!,
-    } as unknown as JwtPayload;
+    // Revoke the workspace-scoped assignments that grant left behind. The actor is
+    // the seeded workspace admin — this proves the effect on the VICTIM's
+    // authorization, not the admin's own (covered by sso-rbac).
     const assignments = await access.getUserAssignments(token.contextId!, token.sub);
-    const baseline = assignments.find((a) => a.scopeType === 'workspace');
-    expect(baseline).toBeDefined();
+    const workspaceScoped = assignments.filter((a) => a.scopeType === 'workspace');
+    expect(workspaceScoped.length).toBeGreaterThan(0);
+    for (const assignment of workspaceScoped) {
+      await access.revokeRole(actorFor(token.contextId!), assignment.id);
+    }
 
-    await access.revokeRole(actor, baseline!.id);
-
-    const stale = await probe(result.accessToken);
-    expect(stale.statusCode).toBe(401);
-    expect(stale.body).toContain('TOKEN_STALE');
+    // The token is still perfectly valid — it just no longer authorizes this route.
+    // 403, not 401: authentication never became the problem.
+    expect((await probe(result.accessToken)).statusCode).toBe(403);
   });
 
-  it('leaves tokens alone when only a PROJECT-scoped assignment changes', async () => {
-    // Project-tier permissions are resolved from the database per request, never
-    // embedded in the token, so bumping the epoch for them would force a
-    // needless re-mint on every project membership edit.
-    const { result, token } = await loginFreshUser();
-    const before = await epochs.current(token.sub);
+  it('a PROJECT-scoped grant is visible immediately too', async () => {
+    // Under the old epoch, project-scoped changes deliberately did NOT bump,
+    // because project permissions were never in the token — they were resolved per
+    // request, uncached, on every check. They now share the same cached read, so
+    // this asserts the invalidation covers the project tier as well.
+    const { token } = await loginFreshUser();
+    const projectId = randomUUID();
+
+    const before = await access.getProjectPermissions(token.sub, token.contextId!, projectId);
 
     const roles = await access.listRoles(token.contextId!);
     const projectRole = roles.find((r) => r.slug === 'project_admin');
     expect(projectRole).toBeDefined();
+    await access.assignRole(
+      actorFor(token.contextId!),
+      token.sub,
+      projectRole!.id,
+      'project',
+      projectId,
+    );
 
-    const actor = {
-      sub: SEEDED_ADMIN_ID,
-      workspaceId: token.contextId!,
-    } as unknown as JwtPayload;
-    await access.assignRole(actor, token.sub, projectRole!.id, 'project', randomUUID());
+    // Asserted as a delta rather than a hardcoded code: the JIT baseline already
+    // carries the common project-member codes, so naming one would only prove the
+    // seed's contents. What matters is that the new grant is visible AT ONCE — no
+    // token refresh, no TTL wait — and that the baseline survived the union.
+    const after = await access.getProjectPermissions(token.sub, token.contextId!, projectId);
+    const added = after.filter((code) => !before.includes(code));
 
-    expect(await epochs.current(token.sub)).toBe(before);
-    expect((await probe(result.accessToken)).statusCode).toBe(200);
+    expect(added.length).toBeGreaterThan(0);
+    expect(after).toEqual(expect.arrayContaining(before));
+    expect(added).toEqual(
+      expect.arrayContaining(projectRole!.permissions.filter((code) => !before.includes(code))),
+    );
   });
 });
