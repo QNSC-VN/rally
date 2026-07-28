@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq, lt, sql } from 'drizzle-orm';
-import { InjectDrizzle, buildPageResult } from '@platform';
+import { and, asc, eq, sql } from 'drizzle-orm';
+import { InjectDrizzle, buildPageResult, keysetCondition } from '@platform';
 import type { DrizzleDB, CursorPayload, PagedResult } from '@platform';
 import { releases } from '../../../../../../db/schema/work';
 import type { Release, CreateReleaseInput, UpdateReleaseInput } from '../../domain/release.types';
@@ -23,14 +23,14 @@ export class ReleaseDrizzleRepository implements IReleaseRepository {
     const conditions = [eq(releases.projectId, projectId), eq(releases.workspaceId, workspaceId)];
 
     if (cursor) {
-      conditions.push(lt(releases.createdAt, new Date(cursor.k[0] as string)));
+      conditions.push(keysetCondition(releases.createdAt, releases.id, cursor));
     }
 
     const rows = await this.db
       .select()
       .from(releases)
       .where(and(...conditions))
-      .orderBy(releases.createdAt)
+      .orderBy(asc(releases.createdAt), asc(releases.id))
       .limit(limit + 1);
 
     return buildPageResult(rows as unknown as Release[], limit, (r) => [r.createdAt.toISOString()]);
@@ -88,11 +88,7 @@ export class ReleaseDrizzleRepository implements IReleaseRepository {
     if (input.releasedAt !== undefined) set.releasedAt = input.releasedAt;
     if (input.releaseNotes !== undefined) set.releaseNotes = input.releaseNotes;
 
-    const rows = await this.db
-      .update(releases)
-      .set(set)
-      .where(eq(releases.id, id))
-      .returning();
+    const rows = await this.db.update(releases).set(set).where(eq(releases.id, id)).returning();
     return rows[0] as unknown as Release;
   }
 

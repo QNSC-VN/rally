@@ -1,9 +1,10 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
-import { and, eq, isNull, sql, desc, lt, inArray } from 'drizzle-orm';
+import { and, asc, eq, isNull, sql, desc, inArray } from 'drizzle-orm';
 import {
   InjectDrizzle,
   buildPageResult,
+  keysetCondition,
   NotFoundException,
   PreconditionFailedException,
 } from '@platform';
@@ -385,7 +386,7 @@ export class ReleasesService {
     const baseConditions = [...conditions];
 
     if (args.cursor) {
-      conditions.push(lt(workItems.createdAt, new Date(args.cursor.k[0] as string)));
+      conditions.push(keysetCondition(workItems.createdAt, workItems.id, args.cursor));
     }
 
     const rows = await this.db
@@ -405,7 +406,7 @@ export class ReleasesService {
       })
       .from(workItems)
       .where(and(...conditions))
-      .orderBy(desc(workItems.createdAt))
+      .orderBy(desc(workItems.createdAt), asc(workItems.id))
       .limit(args.limit + 1);
 
     const [countRow] = await this.db
@@ -431,7 +432,7 @@ export class ReleasesService {
       .select()
       .from(releaseDailySnapshots)
       .where(eq(releaseDailySnapshots.releaseId, releaseId))
-      .orderBy(releaseDailySnapshots.snapshotDate);
+      .orderBy(releaseDailySnapshots.snapshotDate, asc(releaseDailySnapshots.id));
 
     return snapshots.map((s) => ({
       date: s.snapshotDate,

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, eq, ilike, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, ilike, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import { InjectDrizzle, buildPageResult } from '@platform';
+import { InjectDrizzle, buildPageResult, keysetCondition } from '@platform';
 import type { DrizzleDB, CursorPayload, PagedResult } from '@platform';
 import { workItems, tasks, milestones, milestoneArtifacts } from '../../../../../../db/schema/work';
 import { acceptedScheduleStatesSql } from '../../../../../../db/schema/enums';
@@ -171,9 +171,26 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
       where ma.work_item_id = ${workItems.id}
     ), '[]'::json)`;
 
-    // Keyset pagination on rank (stable, matches default backlog ordering).
+    // Keyset pagination on (rank, id) — the pair the ORDER BY below uses.
+    //
+    // `rank` is NOT unique here. It is a LexoRank assigned per SCOPE — the
+    // top-level items of a project, or the children of one parent — so it is only
+    // unique within a scope. This grid deliberately flattens that: an iteration
+    // contains a story and its child defect side by side, and each was ranked
+    // first in its own scope, so both legitimately hold the same value.
+    //
+    // Ordering by a non-unique column leaves tied rows in an order SQL does not
+    // define, so Postgres returns whatever the scan yields — and an UPDATE that
+    // relocates a tuple to a new page silently changes it. That is what made a
+    // work item jump below its neighbour after nothing but a schedule-state edit.
+    //
+    // The previous predicate was also inverted: `rank < cursor` under ORDER BY
+    // rank ASC walks backwards, so page 2 re-served rows from page 1.
+    //
+    // Both are fixed by using the same helper the backlog already uses
+    // (work-item.drizzle-repository.ts), which compares (sort, id) as a pair.
     if (cursor) {
-      conditions.push(lt(workItems.rank, cursor.k[0] as string));
+      conditions.push(keysetCondition(workItems.rank, workItems.id, cursor));
     }
 
     const rows = await this.db
@@ -205,7 +222,10 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
       .leftJoin(parentItem, eq(parentItem.id, workItems.parentId))
       .leftJoin(grandparentItem, eq(grandparentItem.id, parentItem.parentId))
       .where(and(...conditions))
-      .orderBy(asc(workItems.rank))
+      // `id` is the tiebreaker that makes this total rather than partial. Without
+      // it, rows sharing a rank come back in physical-tuple order, which changes
+      // whenever one of them is updated.
+      .orderBy(asc(workItems.rank), asc(workItems.id))
       .limit(limit + 1);
 
     const items: IterationStatusItem[] = rows.map((r) => ({

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
-import { InjectDrizzle, buildPageResult } from '@platform';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { InjectDrizzle, buildPageResult, keysetCondition } from '@platform';
 import type { DrizzleDB, DbExecutor, CursorPayload, PagedResult } from '@platform';
 import {
   projects,
@@ -57,14 +57,14 @@ export class ProjectDrizzleRepository implements IProjectRepository {
     const conditions = [eq(projects.workspaceId, workspaceId), isNull(projects.deletedAt)];
 
     if (cursor) {
-      conditions.push(lt(projects.createdAt, new Date(cursor.k[0] as string)));
+      conditions.push(keysetCondition(projects.createdAt, projects.id, cursor));
     }
 
     const rows = await this.db
       .select()
       .from(projects)
       .where(and(...conditions))
-      .orderBy(projects.createdAt)
+      .orderBy(asc(projects.createdAt), asc(projects.id))
       .limit(limit + 1);
 
     return buildPageResult(rows as Project[], limit, (p) => [p.createdAt.toISOString()]);
@@ -77,14 +77,14 @@ export class ProjectDrizzleRepository implements IProjectRepository {
     const conditions = [eq(projects.workspaceId, workspaceId), isNull(projects.deletedAt)];
 
     if (cursor) {
-      conditions.push(lt(projects.createdAt, new Date(cursor.k[0] as string)));
+      conditions.push(keysetCondition(projects.createdAt, projects.id, cursor));
     }
 
     const rows = await this.db
       .select()
       .from(projects)
       .where(and(...conditions))
-      .orderBy(projects.createdAt)
+      .orderBy(asc(projects.createdAt), asc(projects.id))
       .limit(limit + 1);
 
     const page = buildPageResult(rows as Project[], limit, (p) => [p.createdAt.toISOString()]);

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { and, count, desc, eq, isNull, lt } from 'drizzle-orm';
-import { InjectDrizzle, buildPageResult } from '@platform';
+import { and, asc, count, desc, eq, isNull } from 'drizzle-orm';
+import { InjectDrizzle, buildPageResult, keysetCondition } from '@platform';
 import type { DrizzleDB, DbExecutor, CursorPayload, PagedResult } from '@platform';
 import { workspaces, workspaceMembers } from '../../../../../../db/schema/workspace';
 import type {
@@ -39,7 +39,7 @@ export class WorkspaceDrizzleRepository implements IWorkspaceRepository {
     ];
 
     if (cursor) {
-      conditions.push(lt(workspaces.createdAt, new Date(cursor.k[0] as string)));
+      conditions.push(keysetCondition(workspaces.createdAt, workspaces.id, cursor));
     }
 
     const rows = await this.db
@@ -47,13 +47,15 @@ export class WorkspaceDrizzleRepository implements IWorkspaceRepository {
       .from(workspaceMembers)
       .innerJoin(workspaces, eq(workspaces.id, workspaceMembers.workspaceId))
       .where(and(...conditions))
-      .orderBy(desc(workspaces.createdAt))
+      .orderBy(desc(workspaces.createdAt), asc(workspaces.id))
       .limit(limit + 1);
 
+    // 'desc' must match the ORDER BY — keysetCondition reads cursor.d.
     return buildPageResult(
       rows.map((r) => r.ws as Workspace),
       limit,
       (w) => [w.createdAt.toISOString()],
+      'desc',
     );
   }
 
@@ -62,7 +64,7 @@ export class WorkspaceDrizzleRepository implements IWorkspaceRepository {
       .select()
       .from(workspaces)
       .where(isNull(workspaces.deletedAt))
-      .orderBy(workspaces.createdAt);
+      .orderBy(workspaces.createdAt, asc(workspaces.id));
     return rows as Workspace[];
   }
 
