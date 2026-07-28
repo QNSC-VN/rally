@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.3.2](https://github.com/QNSC-VN/rally/compare/v0.3.1...v0.3.2) (2026-07-28)
+
+
+### ✨ Features
+
+* **access:** make project_admin + project_member workspace-editable ([#216](https://github.com/QNSC-VN/rally/issues/216)) ([cb1ac7c](https://github.com/QNSC-VN/rally/commit/cb1ac7c96888b4465e0582adf520a2800bc012ba))
+* **backlog:** wire bulk Assign Release/Iteration into the bulk bar ([#219](https://github.com/QNSC-VN/rally/issues/219)) ([930adf2](https://github.com/QNSC-VN/rally/commit/930adf231b868ea7a4a6c1869f2800bfe2463ff4))
+* **settings:** show weekday + seconds in the Audit Log timestamp ([#220](https://github.com/QNSC-VN/rally/issues/220)) ([7ae7fbc](https://github.com/QNSC-VN/rally/commit/7ae7fbcdff330dd487910f34edee9794b806dc92))
+
+
+### 🐛 Bug Fixes
+
+* **api:** deterministic ordering, working cursor pagination, race-free ranks ([#232](https://github.com/QNSC-VN/rally/issues/232)) ([2b161a1](https://github.com/QNSC-VN/rally/commit/2b161a18db43142ea669830aace7ba0777111e60))
+* **ci:** align every qnsc-ci pin to v1.6.2 and guard the run-lookup retries ([#229](https://github.com/QNSC-VN/rally/issues/229)) ([51d377d](https://github.com/QNSC-VN/rally/commit/51d377dc517aa8e44fccf7dea78116f3d8b0112a))
+* **ci:** bump qnsc-ci reusable to v1.6.2 ([#225](https://github.com/QNSC-VN/rally/issues/225)) ([13d1070](https://github.com/QNSC-VN/rally/commit/13d10701a7d6ccbca97b588a0d03de304df84b34))
+* cost-posture pass — Container Insights, pre-launch RDS, ARM64, derived JWT public key ([#224](https://github.com/QNSC-VN/rally/issues/224)) ([a93d75b](https://github.com/QNSC-VN/rally/commit/a93d75bd76afccd60af66f16ccd3e781cfd6df42))
+* **db:** defer the rally_migrate default privileges to cutover ([#228](https://github.com/QNSC-VN/rally/issues/228)) ([9698f50](https://github.com/QNSC-VN/rally/commit/9698f50124587789ecff7545f427a5de4eab1a8a))
+* **infra:** adopt ecr-v2.0.0 so the lifecycle policy actually prunes ([#230](https://github.com/QNSC-VN/rally/issues/230)) ([696a458](https://github.com/QNSC-VN/rally/commit/696a4588379d2ecf30e7a2b428c90755724adc43))
+* **infra:** revert Fargate to x86 — ARM64 Spot has no capacity ([#227](https://github.com/QNSC-VN/rally/issues/227)) ([06aed86](https://github.com/QNSC-VN/rally/commit/06aed86a98db6905f711c7355cf0a2a27ea5730c))
+* **infra:** stop injecting JWT_PUBLIC_KEY — phase 2 of its retirement ([#233](https://github.com/QNSC-VN/rally/issues/233)) ([5ca2ba1](https://github.com/QNSC-VN/rally/commit/5ca2ba17c04a38787e29a0712acf175a1aad6ddc))
+* **web:** align iteration status flow state, WA account guard, team status + rally-parity polish ([#221](https://github.com/QNSC-VN/rally/issues/221)) ([92e5e07](https://github.com/QNSC-VN/rally/commit/92e5e073097fb31319fdaf4fd05046ea3a0d7b43))
+* **web:** confirm every destructive action; drop native prompts ([#218](https://github.com/QNSC-VN/rally/issues/218)) ([ea31f0c](https://github.com/QNSC-VN/rally/commit/ea31f0cd359f51367a57731036734bf334b56e21))
+* **web:** remove workspace switcher (single-company MVP) ([#215](https://github.com/QNSC-VN/rally/issues/215)) ([cfd02ff](https://github.com/QNSC-VN/rally/commit/cfd02ff490eb29fdb6f7ce7f292214aad01308bd))
+* **work-items:** reopening a child task reverts an Accepted parent to In-Progress ([#222](https://github.com/QNSC-VN/rally/issues/222)) ([d422ba7](https://github.com/QNSC-VN/rally/commit/d422ba7db80a5ba76d4001c22ec2dc3557ef263f))
+
+
+### 🔒 Security
+
+* **db:** least-privilege DB roles, workspace/project isolation ratchets ([#226](https://github.com/QNSC-VN/rally/issues/226)) ([2459152](https://github.com/QNSC-VN/rally/commit/2459152816ad2fef2bad16692f3257a5c0e651ef))
+* **storage:** separate the public-bucket credential from the private one ([#231](https://github.com/QNSC-VN/rally/issues/231)) ([5c6ce15](https://github.com/QNSC-VN/rally/commit/5c6ce15f6040729d011562d9c30daa1fa0109cdf))
+
 ## [0.3.1](https://github.com/QNSC-VN/rally/compare/v0.3.0...v0.3.1) (2026-07-27)
 
 
