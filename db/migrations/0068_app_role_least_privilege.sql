@@ -77,10 +77,12 @@ BEGIN
     EXECUTE format('GRANT ALL ON ALL TABLES IN SCHEMA %I TO rally_migrate', s);
     EXECUTE format('GRANT ALL ON ALL SEQUENCES IN SCHEMA %I TO rally_migrate', s);
 
-    -- Tables created LATER by the migrator must be reachable too, or the first
-    -- migration after cutover silently leaves the app unable to read its own new
-    -- table. Default privileges are per grantor, so this is set for both the
-    -- current owner (the master role running this) and rally_migrate.
+    -- Tables created LATER must be reachable too, or the first migration after this
+    -- one silently leaves the app unable to read its own new table.
+    --
+    -- Default privileges are per GRANTOR, and the grantor here is the role running
+    -- this migration — the RDS master user, which still owns every object until
+    -- cutover. So these two cover everything the migrator creates today.
     EXECUTE format(
       'ALTER DEFAULT PRIVILEGES IN SCHEMA %I '
       'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO rally_app, rally_worker', s
@@ -89,14 +91,22 @@ BEGIN
       'ALTER DEFAULT PRIVILEGES IN SCHEMA %I '
       'GRANT USAGE, SELECT ON SEQUENCES TO rally_app, rally_worker', s
     );
-    EXECUTE format(
-      'ALTER DEFAULT PRIVILEGES FOR ROLE rally_migrate IN SCHEMA %I '
-      'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO rally_app, rally_worker', s
-    );
-    EXECUTE format(
-      'ALTER DEFAULT PRIVILEGES FOR ROLE rally_migrate IN SCHEMA %I '
-      'GRANT USAGE, SELECT ON SEQUENCES TO rally_app, rally_worker', s
-    );
+
+    -- The equivalent `... FOR ROLE rally_migrate ...` pair belongs to the CUTOVER
+    -- migration, not here, and was removed because it made this one fail with
+    -- "permission denied to change default privileges", aborting the whole
+    -- migration and breaking the develop deploy.
+    --
+    -- Postgres only lets you set another role's default privileges if you hold
+    -- ADMIN OPTION on it. Whether the master user does depends on who created
+    -- rally_migrate — the creator gets it implicitly — so the statement's success
+    -- varied by environment. Granting membership first is possible but equally
+    -- conditional, and buys nothing yet: rally_migrate is NOLOGIN and creates no
+    -- objects until cutover, so it has no default privileges to apply.
+    --
+    -- Set them in the migration that transfers ownership to rally_migrate. That one
+    -- necessarily runs as, or as a member of, rally_migrate, so it can do it without
+    -- any membership gymnastics.
   END LOOP;
 
   -- Drizzle's own bookkeeping table lives in `drizzle`; only the migrator needs it.
