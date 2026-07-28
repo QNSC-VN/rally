@@ -39,7 +39,7 @@ import { describe, expect, it } from 'vitest';
  */
 
 // ── Baseline — LOWER as routes get decorated, NEVER raise ────────────────────
-const MAX_UNPOLICED_ROUTES = 54;
+const MAX_UNPOLICED_ROUTES = 44;
 
 /** Sanity floor: if the scanner stops finding routes, fail loudly, not silently. */
 const MIN_ROUTES_FOUND = 150;

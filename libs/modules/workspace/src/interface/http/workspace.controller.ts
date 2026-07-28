@@ -26,10 +26,10 @@ import {
   PageQueryDto,
   UseIdempotency,
   RateLimit,
-  RequirePermission,
   NotFoundException,
 } from '@platform';
 import type { JwtPayload, PagedResult } from '@platform';
+import { AuthPolicy, RequirePermission } from '@modules/access';
 import { CurrentUser } from '@modules/identity/interface/http/decorators/current-user.decorator';
 import { WorkspaceService } from '../../application/workspace.service';
 import {
@@ -113,7 +113,7 @@ function toSettingsDto(s: WorkspaceSettings): WorkspaceSettingsResponseDto {
 
 @ApiTags('workspaces')
 @Controller('workspaces')
-@Auth()
+@AuthPolicy()
 export class WorkspaceController {
   constructor(private readonly workspaceService: WorkspaceService) {}
 

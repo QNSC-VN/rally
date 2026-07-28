@@ -422,30 +422,6 @@ export class ScmDrizzleRepository implements IScmStore {
     );
   }
 
-  async countByWorkItem(
-    workItemId: string,
-    workspaceId: string,
-  ): Promise<{ connections: number; changesets: number }> {
-    const [conns, changes] = await Promise.all([
-      this.db
-        .select({ id: scmConnections.id })
-        .from(scmConnections)
-        .where(
-          and(
-            eq(scmConnections.workItemId, workItemId),
-            eq(scmConnections.workspaceId, workspaceId),
-          ),
-        ),
-      this.db
-        .select({ id: scmChangesets.id })
-        .from(scmChangesets)
-        .where(
-          and(eq(scmChangesets.workItemId, workItemId), eq(scmChangesets.workspaceId, workspaceId)),
-        ),
-    ]);
-    return { connections: conns.length, changesets: changes.length };
-  }
-
   // ── Row mappers ─────────────────────────────────────────────────────────────
 
   private toRepository(r: typeof scmRepositories.$inferSelect): ScmRepository {

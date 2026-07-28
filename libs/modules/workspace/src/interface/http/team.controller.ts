@@ -11,8 +11,9 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Auth, ApiCommonErrors, RequirePermission, NotFoundException } from '@platform';
+import { ApiCommonErrors, NotFoundException } from '@platform';
 import type { JwtPayload } from '@platform';
+import { AuthPolicy, RequirePermission } from '@modules/access';
 import { CurrentUser } from '@modules/identity/interface/http/decorators/current-user.decorator';
 import { TeamService } from '../../application/team.service';
 import { z } from 'zod';
@@ -86,7 +87,7 @@ function toTeamMemberDto(m: TeamMember) {
 
 @ApiTags('teams')
 @Controller()
-@Auth()
+@AuthPolicy()
 export class TeamController {
   constructor(private readonly teamService: TeamService) {}
 
