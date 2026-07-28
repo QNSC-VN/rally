@@ -161,10 +161,16 @@ jobs:
       # forgot to GRANT passes CI and only fails after the production cutover —
       # as a boot-time or first-write `permission denied for …`. The roles are
       # created NOLOGIN, so CI grants LOGIN here; nothing else changes.
+      # Same script the deployed cutover runs as a one-off migrator task, so what
+      # CI exercises here is the code path production uses (see
+      # docs/runbooks/db-role-least-privilege.md). Only DATABASE_APP_PASSWORD is
+      # set: `rally_worker` is skipped because nothing in the e2e suite connects
+      # as it.
       - name: Enable the least-privilege role for the e2e run
-        run: node scripts/ci/enable-least-privilege-role.mjs
+        run: pnpm db:roles:enable
         env:
-          ADMIN_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rally_test?sslmode=disable
+          DATABASE_MIGRATION_URL: postgresql://postgres:postgres@localhost:5432/rally_test?sslmode=disable
+          DATABASE_APP_PASSWORD: rally_app
 
       - name: E2E tests
         run: pnpm test:e2e

@@ -316,12 +316,16 @@ variable "db_least_privilege" {
     RLS unless FORCE ROW LEVEL SECURITY is also set. That exemption is what made
     the RLS layer in migration 0005 inert.
 
-    Turning this on is the SECOND half of a two-step cutover, and the order is
-    not enforceable in Terraform. Before flipping it, in this environment:
+    This is the LAST of three steps, and the order is not fully enforceable in
+    Terraform. Before flipping it, in this environment:
       1. `pnpm db:migrate` has run, so migration 0068 has created the roles;
-      2. the `db-app-password` / `db-worker-password` secrets hold a value;
-      3. that same value was applied with `ALTER ROLE ... LOGIN PASSWORD ...`.
+      2. the `db-app-password` / `db-worker-password` secrets hold a value, and
+         `db_role_passwords_set` is true;
+      3. the cutover task has run, applying those values with
+         `ALTER ROLE ... LOGIN PASSWORD ...` (see `db_role_passwords_set`).
     Flip it first and the tasks boot, fail to authenticate (28P01) and roll back.
+    Step 2 is enforced by the validation below; step 3 cannot be, because Terraform
+    has no way to observe `pg_roles`.
 
     The MIGRATOR is deliberately unaffected — it needs DDL, and narrowing it
     means transferring schema ownership, a separate and more disruptive step.
@@ -330,4 +334,41 @@ variable "db_least_privilege" {
   EOT
   type        = bool
   default     = false
+}
+
+variable "db_role_passwords_set" {
+  description = <<-EOT
+    Inject `db-app-password` / `db-worker-password` into the MIGRATOR, so the
+    one-off cutover task can run `ALTER ROLE ... LOGIN PASSWORD ...` against them.
+
+    A SEPARATE flag from `db_least_privilege`, and it has to be. The two steps are
+    strictly ordered — the roles need a password before anything authenticates as
+    them — and each flag drives a different workload:
+
+      db_role_passwords_set = true   → migrator can read the passwords, so the
+                                       cutover task can set them on the roles
+      db_least_privilege    = true   → api and worker authenticate as those roles
+
+    Folding them into one flag makes the cutover impossible: a single apply would
+    both hand the migrator the passwords and point the runtime at roles that are
+    still NOLOGIN, so api and worker fail with 28P01 before the cutover task could
+    run. Hence two flags, flipped in two applies.
+
+    OFF by default for the same reason `storage_public_credentials` is: the deploy
+    preflight refuses to deploy while an INJECTED Secrets Manager secret is empty,
+    so a new environment that turned this on before populating the secrets would
+    block every deploy. Populate first, then flip.
+
+    Runbook: docs/runbooks/db-role-least-privilege.md
+  EOT
+  type        = bool
+  default     = false
+
+  validation {
+    # Catches the ordering mistake that is actually reachable in Terraform.
+    # `db_least_privilege` without this flag means the cutover task was never able
+    # to run, so the roles have no password and both runtime tasks would 28P01.
+    condition     = var.db_role_passwords_set || !var.db_least_privilege
+    error_message = "db_least_privilege requires db_role_passwords_set = true first: the roles need a password before api/worker can authenticate as them. Populate the secrets, set db_role_passwords_set, apply, run the cutover task, then set db_least_privilege."
+  }
 }
