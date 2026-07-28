@@ -45,8 +45,19 @@ data "terraform_remote_state" "platform" {
 
 # ── ECR Repositories ──────────────────────────────────────────────────────────
 module "ecr" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecr?ref=ecr-v1.1.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecr?ref=ecr-v2.0.0"
 
+  # ecr-v2.0.0 splits the keep-count lifecycle rule by tag prefix. The single rule it
+  # replaces was provably dead: `tagPrefixList` is AND, not OR, so one rule listing
+  # ["sha-", "v"] only ever selected images carrying BOTH prefixes — the handful of
+  # promoted releases — and never fired. Verified live: 105 `sha-` images sat under a
+  # policy claiming to keep 30, so tagged history grew without bound.
+  #
+  # Defaults are keep 30 releases (v*) and keep 20 builds (sha-*). Previewed against the
+  # live repositories before bumping: 180/178/173 images expire, of which ~90 each are
+  # untagged and already expirable under the old policy, and ZERO carry a release tag or
+  # `latest`. Re-run `aws ecr start-lifecycle-policy-preview` before changing these
+  # counts — it is a dry run and it is the only way to see what a policy will delete.
   repository_names     = ["rally-api", "rally-worker", "rally-migrator"]
   image_tag_mutability = "MUTABLE" # allows re-tagging :latest
   kms_key_arn          = data.terraform_remote_state.platform.outputs.kms_key_arn
@@ -103,10 +114,17 @@ module "iam_oidc" {
   }
 }
 
-# ── RDS dev-cost-saver guard — develop deploy role only ──────────────────────
-# Allows the CI deploy job to detect + start a stopped RDS instance before
-# running migrations. Scoped to develop only; prod RDS is always-on and this
-# permission is intentionally absent from the production deploy role.
+# ── RDS wake guard — develop deploy role only ────────────────────────────────
+# Allows the CI deploy job to detect + start a stopped RDS instance before running
+# migrations. Scoped to develop only, and deliberately absent from the production
+# deploy role.
+#
+# NOTE: nothing currently stops develop's RDS. There is no scheduler — no EventBridge
+# rule, no Lambda, no scheduled action — anywhere in qnsc-infra or this repo. Only the
+# waking half was built. This grant exists so that stopping develop BY HAND is safe,
+# and so an off-hours scheduler can be added later without a permissions change.
+# Do not read it as evidence one is running: an earlier comment claiming a
+# "cost-saver" was cited to justify disabling a real outage alarm.
 #
 # The ARN is constructed directly (account_id + region + fixed identifier)
 # instead of via a `data "aws_db_instance"` lookup. A data-source lookup
