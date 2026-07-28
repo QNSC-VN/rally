@@ -166,6 +166,19 @@ module "secrets" {
     # would put the instance id in state and the credential in the collector's plaintext
     # config. Empty keeps the whole OTel path dormant.
     "observability-token" = "Authorization header for the OTLP backend (e.g. 'Basic <base64>')"
+    # Passwords for the least-privilege database roles created by migration 0068
+    # (rally_app / rally_worker). Empty containers only: the value is set by hand
+    # at the same moment the role is granted LOGIN, so the password exists in
+    # exactly two places — Secrets Manager and pg_authid — and never in state.
+    #
+    # Creating these changes nothing on its own. The api/worker tasks keep using
+    # the RDS master credential until `db_least_privilege` flips to true, which is
+    # a separate, per-environment apply. Order matters and is not enforceable in
+    # Terraform: grant LOGIN and set the value FIRST, flip the flag second, or the
+    # task boots and dies on 28P01. Full sequence in
+    # docs/runbooks/db-role-least-privilege.md.
+    "db-app-password"    = "Password for the rally_app Postgres role (api) — set with the LOGIN grant"
+    "db-worker-password" = "Password for the rally_worker Postgres role (worker) — set with the LOGIN grant"
   }
 
   tags = local.tags
@@ -293,6 +306,42 @@ module "ecs_cluster" {
   container_insights = var.container_insights
 }
 
+# ── Database credentials — master vs least-privilege ──────────────────────────
+# Today api, worker AND migrator all connect as the RDS master, which owns every
+# table: an ordinary HTTP request runs with rights to DROP the schema it reads,
+# and any row-level policy would be skipped, because Postgres exempts a table's
+# owner from RLS unless FORCE ROW LEVEL SECURITY is also set. That exemption is
+# what made the RLS layer in migration 0005 inert, and it is the audit's top
+# finding in the drop-multi-tenant design doc.
+#
+# Migration 0068 creates rally_app / rally_worker with DML rights only. Flipping
+# `db_least_privilege` per environment points the two runtime tasks at them. The
+# MIGRATOR deliberately stays on master — it needs DDL, and narrowing it means
+# transferring schema ownership, which is a separate and more disruptive step.
+#
+# Both branches keep the same shape the RDS-managed secret established: nothing
+# is a hand-maintained copy, and the app composes the URL from parts. The only
+# difference is that the username stops being a secret field — `rally_app` is not
+# a credential — so it moves to plain env alongside host/port/name.
+locals {
+  api_db_secrets = var.db_least_privilege ? [
+    { name = "DATABASE_PASSWORD", secret_arn = module.secrets.secret_arns["db-app-password"] },
+    ] : [
+    { name = "DATABASE_USER", secret_arn = "${module.rds.master_secret_arn}:username::" },
+    { name = "DATABASE_PASSWORD", secret_arn = "${module.rds.master_secret_arn}:password::" },
+  ]
+
+  worker_db_secrets = var.db_least_privilege ? [
+    { name = "DATABASE_PASSWORD", secret_arn = module.secrets.secret_arns["db-worker-password"] },
+    ] : [
+    { name = "DATABASE_USER", secret_arn = "${module.rds.master_secret_arn}:username::" },
+    { name = "DATABASE_PASSWORD", secret_arn = "${module.rds.master_secret_arn}:password::" },
+  ]
+
+  api_db_env    = var.db_least_privilege ? [{ name = "DATABASE_USER", value = "rally_app" }] : []
+  worker_db_env = var.db_least_privilege ? [{ name = "DATABASE_USER", value = "rally_worker" }] : []
+}
+
 # ── ECS Service — API ─────────────────────────────────────────────────────────
 module "api" {
   source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v2.0.0"
@@ -337,16 +386,15 @@ module "api" {
   # role, so it is covered here too.
   secret_arns = concat(values(module.secrets.secret_arns), [module.rds.master_secret_arn])
   kms_key_arn = local.kms_key_arn
-  secrets = [
-    # Credentials come STRAIGHT from the RDS-managed secret that AWS owns and
-    # rotates — never a hand-maintained copy. `:key::` selects one JSON field.
+  secrets = concat(local.api_db_secrets, [
+    # DB credentials come from local.api_db_secrets above: the RDS-managed secret
+    # AWS owns and rotates, or the rally_app password once db_least_privilege is
+    # on. Never a hand-maintained copy either way. `:key::` selects one JSON field.
     #
-    # This replaces a static `db-url` secret. That copy went stale on every
+    # This replaced a static `db-url` secret. That copy went stale on every
     # rotation and the next deploy died with 28P01 (auth failed for app_admin),
     # with nothing drifting in Terraform to explain why. Host/port/name are
     # non-secret and passed as plain env below; the app composes the URL.
-    { name = "DATABASE_USER", secret_arn = "${module.rds.master_secret_arn}:username::" },
-    { name = "DATABASE_PASSWORD", secret_arn = "${module.rds.master_secret_arn}:password::" },
     { name = "JWT_PRIVATE_KEY", secret_arn = module.secrets.secret_arns["jwt-private"] },
     # PENDING REMOVAL alongside the `jwt-public` secret — the app derives this from
     # JWT_PRIVATE_KEY when unset. Supplying it keeps current behaviour byte-identical.
@@ -361,9 +409,9 @@ module "api" {
     # Cloudflare R2 bucket-scoped credentials (S3-compatible SigV4).
     { name = "STORAGE_ACCESS_KEY_ID", secret_arn = module.secrets.secret_arns["r2-access-key-id"] },
     { name = "STORAGE_SECRET_ACCESS_KEY", secret_arn = module.secrets.secret_arns["r2-secret-access-key"] },
-  ]
+  ])
 
-  environment_vars = concat([
+  environment_vars = concat(local.api_db_env, [
     { name = "NODE_ENV", value = "production" },
     { name = "PORT", value = "3000" },
     { name = "REDIS_URL", value = local.redis_url },
@@ -502,16 +550,15 @@ module "worker" {
   # role, so it is covered here too.
   secret_arns = concat(values(module.secrets.secret_arns), [module.rds.master_secret_arn])
   kms_key_arn = local.kms_key_arn
-  secrets = [
-    # Credentials come STRAIGHT from the RDS-managed secret that AWS owns and
-    # rotates — never a hand-maintained copy. `:key::` selects one JSON field.
+  secrets = concat(local.worker_db_secrets, [
+    # DB credentials come from local.worker_db_secrets above: the RDS-managed
+    # secret AWS owns and rotates, or the rally_worker password once
+    # db_least_privilege is on. Never a hand-maintained copy either way.
     #
-    # This replaces a static `db-url` secret. That copy went stale on every
+    # This replaced a static `db-url` secret. That copy went stale on every
     # rotation and the next deploy died with 28P01 (auth failed for app_admin),
     # with nothing drifting in Terraform to explain why. Host/port/name are
     # non-secret and passed as plain env below; the app composes the URL.
-    { name = "DATABASE_USER", secret_arn = "${module.rds.master_secret_arn}:username::" },
-    { name = "DATABASE_PASSWORD", secret_arn = "${module.rds.master_secret_arn}:password::" },
     { name = "JWT_PRIVATE_KEY", secret_arn = module.secrets.secret_arns["jwt-private"] },
     # PENDING REMOVAL alongside the `jwt-public` secret — the app derives this from
     # JWT_PRIVATE_KEY when unset. Supplying it keeps current behaviour byte-identical.
@@ -524,7 +571,7 @@ module "worker" {
     # Cloudflare R2 bucket-scoped credentials (worker also reads/writes attachments).
     { name = "STORAGE_ACCESS_KEY_ID", secret_arn = module.secrets.secret_arns["r2-access-key-id"] },
     { name = "STORAGE_SECRET_ACCESS_KEY", secret_arn = module.secrets.secret_arns["r2-secret-access-key"] },
-  ]
+  ])
 
   # SCM backfill runs in the worker (ScmBackfillRelayService): it resolves the
   # GitHub App private key at RUNTIME to mint the App JWT, so the TASK role — not
@@ -534,7 +581,7 @@ module "worker" {
     module.secrets.secret_arns["github-app-private-key"],
   ]
 
-  environment_vars = concat([
+  environment_vars = concat(local.worker_db_env, [
     { name = "NODE_ENV", value = "production" },
     { name = "REDIS_URL", value = local.redis_url },
     { name = "AWS_REGION", value = var.region },
@@ -640,9 +687,14 @@ module "migrator" {
   }
 
   secrets = {
-    # Same RDS-managed credential as the services — the master user holds full
-    # DDL rights. Read live from the AWS-managed secret so a rotation can never
-    # leave the migrator holding a stale password.
+    # The master credential, and it stays that way even when `db_least_privilege`
+    # moves the api and worker off it: the migrator runs DDL, so it needs the
+    # owner. Narrowing it to `rally_migrate` additionally requires transferring
+    # schema ownership (`REASSIGN OWNED BY`), which is step 4 of the runbook and
+    # deliberately not bundled with the runtime cutover.
+    #
+    # Read live from the AWS-managed secret so a rotation can never leave the
+    # migrator holding a stale password.
     DATABASE_USER     = "${module.rds.master_secret_arn}:username::"
     DATABASE_PASSWORD = "${module.rds.master_secret_arn}:password::"
   }
