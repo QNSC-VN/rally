@@ -17,7 +17,7 @@
  *
  * What it proves:
  *  1. A brand-new corporate-domain SSO user is JIT-provisioned and lands as
- *     `project_member`, and the PBAC permissions embedded in the minted access
+ *     `project_member`, and the PBAC permissions resolved for the minted access
  *     token EXACTLY match what `AccessService` resolves for that user+workspace.
  *  2. A user whose email is in `PLATFORM_ADMIN_EMAILS` is elevated to
  *     `workspace_admin` on SSO login and their token carries `workspace:*`.
@@ -63,7 +63,7 @@ interface DecodedAccessToken {
   sub: string;
   contextId: string | null;
   authMethod: 'password' | 'sso';
-  claims: { permissions: string[] };
+  claims: Record<string, unknown>;
 }
 
 /** Decode a JWT payload without verifying — we only read the claims we minted. */
@@ -119,22 +119,20 @@ describe('SSO login → RBAC/PBAC (real AppModule + seeded DB)', () => {
     expect(token.authMethod).toBe('sso');
     expect(token.contextId).toEqual(expect.any(String));
 
-    // PBAC is present and non-empty.
-    expect(Array.isArray(token.claims.permissions)).toBe(true);
-    expect(token.claims.permissions.length).toBeGreaterThan(0);
+    // The token carries NO permissions: there is no login-time snapshot to drift
+    // from the store, because every check resolves from the store.
+    expect(token.claims['permissions']).toBeUndefined();
 
-    // The permissions baked into the token must EXACTLY equal what the access
-    // store resolves for this user in this workspace — no drift between the
-    // login-time snapshot and the source of truth.
+    // The store is the single source of authority, so assert against it directly.
     const resolved = await access.getUserRoleAndPermissions(token.sub, token.contextId!);
     expect(resolved.role).toBe('project_member');
-    expect([...token.claims.permissions].sort()).toEqual([...resolved.permissions].sort());
+    expect(resolved.permissions.length).toBeGreaterThan(0);
 
     // A plain member is NOT a workspace admin.
-    expect(token.claims.permissions).not.toContain(WORKSPACE_ALL);
+    expect(resolved.permissions).not.toContain(WORKSPACE_ALL);
   });
 
-  it('elevates a PLATFORM_ADMIN_EMAILS user to workspace_admin (token carries workspace:*)', async () => {
+  it('elevates a PLATFORM_ADMIN_EMAILS user to workspace_admin', async () => {
     const claims: EntraClaims = {
       oid: 'e2e-sso-admin',
       email: PLATFORM_ADMIN_EMAIL,
@@ -149,9 +147,9 @@ describe('SSO login → RBAC/PBAC (real AppModule + seeded DB)', () => {
     const resolved = await access.getUserRoleAndPermissions(token.sub, token.contextId!);
     expect(resolved.role).toBe('workspace_admin');
 
-    // workspace_admin carries the `workspace:*` wildcard, both in the store and
-    // in the freshly minted token.
+    // workspace_admin carries the `workspace:*` wildcard in the store — which is
+    // now the only place it lives.
     expect(resolved.permissions).toContain(WORKSPACE_ALL);
-    expect(token.claims.permissions).toContain(WORKSPACE_ALL);
+    expect(token.claims['permissions']).toBeUndefined();
   });
 });

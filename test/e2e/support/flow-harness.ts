@@ -18,7 +18,9 @@ import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test, type TestingModule } from '@nestjs/testing';
+import type { INestApplication } from '@nestjs/common';
 import type { JwtPayload } from '@platform';
+import { AccessService } from '@modules/access';
 import { PlatformModule } from '@platform';
 import { NotificationsModule } from '@modules/notifications';
 
@@ -114,15 +116,50 @@ export function makeActor(userId: string, permissions: string[] = []): JwtPayloa
 export const adminActor = (): JwtPayload => makeActor(ADMIN_USER_ID, ['workspace:*']);
 
 /**
- * Read-only actor — a view-only principal. The `project_viewer` role was removed
- * in the Phase 4.2 reconciliation (#183), so instead of relying on a seeded role
- * this actor carries an explicit read-only permission set in its token: it may
- * VIEW work items but holds neither `work_item:create` nor `work_item:edit`, so
- * the guard allows reads and denies writes. Exercises enforcement of a read-only
- * grant independent of any canonical role.
+ * Read-only actor — a view-only principal.
+ *
+ * The permission list on a principal is INERT: authorization resolves from the
+ * database on every check, so a fixture cannot grant itself anything by declaring
+ * it here. This actor therefore needs a real grant in the database — call
+ * {@link ensureViewerGrant} in a spec's `beforeAll` before using it.
+ *
+ * (It used to work the other way: the token carried
+ * `['project:view', 'work_item:view']` and the guard read that list, which is
+ * exactly the snapshot authority that was removed.)
  */
-export const viewerActor = (): JwtPayload =>
-  makeActor(VIEWER_ID, ['project:view', 'work_item:view']);
+export const viewerActor = (): JwtPayload => makeActor(VIEWER_ID);
+
+/** Slug of the workspace-owned custom role that backs {@link viewerActor}. */
+const VIEWER_ROLE_NAME = 'E2E Read Only';
+
+/**
+ * Give {@link viewerActor} a REAL read-only grant: a workspace-owned custom role
+ * holding `project:view` + `work_item:view` and nothing else, assigned at
+ * workspace scope. Idempotent, so every spec can call it and repeated runs
+ * against the same seeded database stay clean.
+ *
+ * `project_viewer` was removed in the Phase 4.2 reconciliation (#183), and no
+ * canonical role is read-only — a custom role is the supported way to express one,
+ * so this exercises the real mechanism rather than a fixture shortcut.
+ */
+export async function ensureViewerGrant(app: INestApplication): Promise<void> {
+  const access = app.get(AccessService);
+  const admin = adminActor();
+
+  const roles = await access.listRoles(WORKSPACE_ID);
+  const existing = roles.find((r) => r.name === VIEWER_ROLE_NAME);
+  const role =
+    existing ??
+    (await access.createRole(admin, {
+      name: VIEWER_ROLE_NAME,
+      permissions: ['project:view', 'work_item:view'],
+    }));
+
+  const assignments = await access.getUserAssignments(WORKSPACE_ID, VIEWER_ID);
+  if (assignments.some((a) => a.roleId === role.id && a.scopeType === 'workspace')) return;
+
+  await access.assignRole(admin, VIEWER_ID, role.id, 'workspace');
+}
 
 /**
  * Unique, uppercase project/team key (≤10 chars — the DB column is

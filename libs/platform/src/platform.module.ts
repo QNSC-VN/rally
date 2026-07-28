@@ -11,7 +11,6 @@ import { AuthTokenCache } from '@qnsc-vn/identity';
 import { RequestContextService } from './context/request-context';
 import { JwtStrategy } from './auth/jwt.strategy';
 import { JwtAuthGuard } from './auth/jwt.guard';
-import { AuthzEpochService } from './auth/authz-epoch.service';
 // Metric instruments come from the shared package so every product emits the same
 // names with the same bounded labels.
 import {
@@ -92,9 +91,6 @@ import { StorageService } from './storage/storage.service';
     AuthTokenCache,
     JwtStrategy,
     JwtAuthGuard,
-    // Per-user authorization epoch — lets a permission change invalidate
-    // already-minted tokens instead of waiting for JWT_ACCESS_EXPIRY.
-    AuthzEpochService,
     // Global rate-limit guard — applies to every route.
     // Use @RateLimit('TIER') to override, @SkipRateLimit() to opt out.
     { provide: APP_GUARD, useClass: RateLimitGuard },
@@ -136,7 +132,6 @@ import { StorageService } from './storage/storage.service';
     DbPoolMetrics,
     SecurityMetrics,
     JwtAuthGuard,
-    AuthzEpochService,
     OutboxService,
     AuditProducer,
     EmailService,

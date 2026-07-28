@@ -158,18 +158,34 @@ either opens a hole or leaks API surface.
   returns `true` when it finds no metadata, and `@AuthPolicy()` sets none. That is
   why `test/route-policy.ratchet.spec.ts` counts undecorated handlers and only
   ever lets the number fall.
+- **Permissions are NEVER in the token.** The access token carries identity only.
+  `PolicyGuard` resolves them from the database on every check, through one cached
+  read per (workspace, user) (`authz:assign:<ws>:<user>`, 5-min TTL) that serves
+  both tiers. Write paths call `AccessService.invalidateUser(s)` after commit, so a
+  grant or revocation lands on the user's NEXT request — on every replica. Do not
+  reintroduce `claims.permissions`: that snapshot is what forced the old
+  authorization-epoch counter, and the epoch is gone with it.
+- **A principal's `permissions` array is inert.** Nothing reads it. An e2e fixture
+  cannot grant itself anything by declaring a list — it needs a real assignment
+  (see `ensureViewerGrant` in `test/e2e/support/flow-harness.ts`).
 - **Project scope is additive.** A project-scoped role can only add permissions; it
   cannot subtract a workspace-wide grant. Known limitation, tracked in
   `RALLY_HARDENING_PLAN.md` (R3).
 - **CSRF is enforced by a hook, not per route.** `requiresCsrfProtection`
   (`libs/platform/src/http/csrf.ts`) is the one place the policy lives. A raw
   `fetch` write in the SPA must send `X-CSRF-Token` via `withCsrfHeader`.
-- **Four paths fail open** when Valkey is down: the token denylist, the rate limiter,
-  and the authorization-epoch lookup and bump. Each emits BOTH a `securityFailOpen`
-  log field (matched by a CloudWatch metric filter + alarm) and a
-  `security.fail_open` counter. The `FailOpenControl` union in the package is the one
-  source for both, and `fail-open.spec.ts` greps `infra/live/*` to prove the field the
-  package emits is the field the Terraform filters on.
+- **Two paths fail open** when Valkey is down: the token denylist and the rate
+  limiter. Each emits BOTH a `securityFailOpen` log field (matched by a CloudWatch
+  metric filter + alarm) and a `security.fail_open` counter. The `FailOpenControl`
+  union in the package is the one source for both, and `fail-open.spec.ts` greps
+  `infra/live/*` to prove the field the package emits is the field the Terraform
+  filters on. (The union still declares `authz_epoch` / `authz_epoch_bump` from the
+  deleted epoch service — nothing emits them now; drop them on the package's next
+  major.)
+- **The permission cache degrades, it does not fail open.** A read or write error
+  falls back to the database, so authorization stays correct and only latency
+  suffers. It logs a warning and is deliberately NOT tagged `securityFailOpen` —
+  that field means "a security control was skipped", which is not what happens here.
 
 ## Sibling repo
 

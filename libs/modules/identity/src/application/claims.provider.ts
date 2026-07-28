@@ -1,36 +1,28 @@
 import { Injectable } from '@nestjs/common';
 import type { IClaimsProvider, ProductClaims } from '@qnsc-vn/identity';
-import { AuthzEpochService } from '@platform';
-import { AccessService } from '@modules/access';
 
 /**
- * Rally's {@link IClaimsProvider}. Rally is permission-based (PBAC), so the
- * authorization claims embedded in every access token are the user's effective
- * permission codes, resolved for the active workspace (`contextId`). Called by
- * the shared auth core on every token mint, so permissions are refreshed on
- * each rotation and bounded by the access-token TTL.
+ * Rally's {@link IClaimsProvider}.
  *
- * Every token also carries the `authzEpoch` those permissions were resolved at.
- * The platform JwtAuthGuard compares it against the live epoch, which is what
- * lets a revoked permission take effect on the user's *next request* rather than
- * at token expiry. Reading the epoch here — not at check time — is what makes the
- * comparison meaningful: the pair (permissions, epoch) is captured together.
+ * Deliberately empty. Rally used to embed the user's effective permission codes
+ * (plus the authorization epoch they were resolved at) in every access token, and
+ * `PolicyGuard` authorized from that snapshot. That is what made a revoked
+ * permission stay effective until the token rotated, and it is why an epoch
+ * counter had to exist at all to invalidate tokens early.
+ *
+ * Authorization now resolves from the database on every check, cached per
+ * (workspace, user) in Valkey and invalidated by the write paths — so the token
+ * carries identity only, and there is no snapshot to go stale. Anything a caller
+ * needs about its own permissions comes from `/v1/bff/me`, which resolves through
+ * the same path the guard uses.
+ *
+ * Kept as a bound port rather than deleted: the shared auth core requires a
+ * CLAIMS_PROVIDER, and a product that later wants a claim has one obvious place
+ * to add it.
  */
 @Injectable()
 export class RallyClaimsProvider implements IClaimsProvider {
-  constructor(
-    private readonly access: AccessService,
-    private readonly authzEpoch: AuthzEpochService,
-  ) {}
-
-  async getClaims(userId: string, contextId?: string | null): Promise<ProductClaims> {
-    const [{ permissions }, epoch] = await Promise.all([
-      this.access.getUserRoleAndPermissions(userId, contextId ?? ''),
-      this.authzEpoch.current(userId),
-    ]);
-    // An unreadable epoch stamps 0, so the token is treated as pre-epoch and the
-    // next bump invalidates it. Stamping a guessed value would do the opposite —
-    // mint a token that outlives the change it should have seen.
-    return { permissions, authzEpoch: epoch ?? 0 };
+  getClaims(): Promise<ProductClaims> {
+    return Promise.resolve({});
   }
 }
