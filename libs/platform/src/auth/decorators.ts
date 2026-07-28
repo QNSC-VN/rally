@@ -7,29 +7,12 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from './jwt.guard';
-import { PermissionGuard } from '@qnsc-vn/identity';
 import type { JwtPayload } from './jwt.strategy';
-import type { WorkspacePermission } from '@shared-kernel';
 
 export const IS_PUBLIC_KEY = 'isPublic';
-export const PERMISSION_KEY = 'requiredPermission';
 
 /** Mark a route as unauthenticated (skip JwtAuthGuard). */
 export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);
-
-/**
- * Require a WORKSPACE-tier permission, checked against the flat workspace-wide
- * baseline in the JWT (via PermissionGuard).
- *
- * The signature only accepts workspace-tier codes on purpose: a project-tier
- * permission (work_item:*, iteration:*, project:edit, …) must be resolved
- * per-project, so passing one here is a COMPILE error — use the unified
- * @RequirePermission from @modules/access with @AuthPolicy (which resolves the
- * project via the PolicyGuard), or AccessService.assertProjectPermission when
- * the project id is known only after a load.
- */
-export const RequirePermission = (permission: WorkspacePermission) =>
-  SetMetadata(PERMISSION_KEY, permission);
 
 /**
  * Extract the authenticated user's JWT payload from the request.
@@ -69,12 +52,17 @@ export const ApiCommonErrors = (...codes: HttpErrorCode[]) =>
     ...codes.map((c) => ApiResponse({ status: c, description: HTTP_ERROR_DESCRIPTIONS[c] })),
   );
 
-/** Apply JWT auth + permission guard + Swagger bearer annotation in one decorator. */
-export const Auth = (permission?: WorkspacePermission) =>
-  applyDecorators(
-    ...[
-      UseGuards(JwtAuthGuard, PermissionGuard),
-      ApiBearerAuth('access-token'),
-      ...(permission ? [RequirePermission(permission)] : []),
-    ],
-  );
+/**
+ * Authentication only: verify the caller (Bearer or BFF session) and annotate
+ * Swagger. It carries NO authorization — a route under `@Auth()` alone is open to
+ * every authenticated caller, which is correct only for surfaces that are
+ * self-scoped by construction (`me/*`, `notifications/*` — addressed by
+ * `user.sub`) or that run around a session existing (`auth/*`).
+ *
+ * For anything that resolves a workspace or project resource, use `@AuthPolicy()`
+ * on the controller plus `@RequirePermission(...)` from `@modules/access`, which
+ * is the single authorization decision point. `@Auth()` used to also mount the
+ * `PermissionGuard` from `@qnsc-vn/identity` and accept a workspace-tier code;
+ * both are gone now that every permission check runs through `PolicyGuard`.
+ */
+export const Auth = () => applyDecorators(UseGuards(JwtAuthGuard), ApiBearerAuth('access-token'));

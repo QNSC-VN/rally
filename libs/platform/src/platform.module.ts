@@ -7,8 +7,7 @@ import { AppConfigModule } from './config/config.module';
 import { AppConfigService } from './config/app-config.service';
 import { DatabaseModule } from './database/database.module';
 import { CacheModule } from '@qnsc-vn/platform-cache';
-import { AuthTokenCache, PermissionGuard, PERMISSION_CHECKER } from '@qnsc-vn/identity';
-import { permissionGrants } from '@shared-kernel';
+import { AuthTokenCache } from '@qnsc-vn/identity';
 import { RequestContextService } from './context/request-context';
 import { JwtStrategy } from './auth/jwt.strategy';
 import { JwtAuthGuard } from './auth/jwt.guard';
@@ -96,11 +95,6 @@ import { StorageService } from './storage/storage.service';
     // Per-user authorization epoch — lets a permission change invalidate
     // already-minted tokens instead of waiting for JWT_ACCESS_EXPIRY.
     AuthzEpochService,
-    PermissionGuard,
-    // Bind the shared PermissionGuard's checker to rally's catalog so the
-    // permission catalogue (db/permissions.catalog.ts) stays the single source
-    // of truth for wildcard/tier semantics instead of identity's default.
-    { provide: PERMISSION_CHECKER, useValue: permissionGrants },
     // Global rate-limit guard — applies to every route.
     // Use @RateLimit('TIER') to override, @SkipRateLimit() to opt out.
     { provide: APP_GUARD, useClass: RateLimitGuard },
@@ -143,7 +137,6 @@ import { StorageService } from './storage/storage.service';
     SecurityMetrics,
     JwtAuthGuard,
     AuthzEpochService,
-    PermissionGuard,
     OutboxService,
     AuditProducer,
     EmailService,

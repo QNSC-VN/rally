@@ -142,10 +142,22 @@ either opens a hole or leaks API surface.
   proxies to the API, and authentication rides an opaque `__Host-rally_session`
   cookie backed by a server-side Valkey session. Bearer still works for machine
   clients — `JwtAuthGuard` handles both paths.
-- **`@RequirePermission` only accepts workspace-tier codes.** Project-tier
-  permissions must be resolved per project: use `@RequireProjectPermission` (id on
-  the request) or `AccessService.assertProjectPermission` (id known after a load).
-  Passing the wrong tier is a compile error, deliberately.
+- **One guard, one decorator.** `PolicyGuard`
+  (`libs/modules/access/src/interface/http/policy.guard.ts`) is the single
+  authorization decision point. Controllers carry `@AuthPolicy()`; routes carry
+  `@RequirePermission(...)` from `@modules/access`. The signature is tier-safe by
+  overload: a workspace-tier code takes NO scope, a project-tier code REQUIRES one
+  (`{ from: 'param'|'query'|'body', field }`, or `{ resource, from, field }` to
+  resolve the project by loading the row). Passing the wrong shape is a compile
+  error, deliberately. `@Auth()` is authentication ONLY — it grants every
+  authenticated caller, so use it only where the surface is self-scoped
+  (`me/*`, `notifications/*`) or runs around a session existing (`auth/*`).
+  The old `@platform` `RequirePermission` + the `PermissionGuard` from
+  `@qnsc-vn/identity` are gone; so is `@RequireProjectPermission`.
+- **A route with no `@RequirePermission` is OPEN, not denied.** `PolicyGuard`
+  returns `true` when it finds no metadata, and `@AuthPolicy()` sets none. That is
+  why `test/route-policy.ratchet.spec.ts` counts undecorated handlers and only
+  ever lets the number fall.
 - **Project scope is additive.** A project-scoped role can only add permissions; it
   cannot subtract a workspace-wide grant. Known limitation, tracked in
   `RALLY_HARDENING_PLAN.md` (R3).
