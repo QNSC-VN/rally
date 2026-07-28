@@ -45,8 +45,19 @@ data "terraform_remote_state" "platform" {
 
 # ── ECR Repositories ──────────────────────────────────────────────────────────
 module "ecr" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecr?ref=ecr-v1.1.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecr?ref=ecr-v2.0.0"
 
+  # ecr-v2.0.0 splits the keep-count lifecycle rule by tag prefix. The single rule it
+  # replaces was provably dead: `tagPrefixList` is AND, not OR, so one rule listing
+  # ["sha-", "v"] only ever selected images carrying BOTH prefixes — the handful of
+  # promoted releases — and never fired. Verified live: 105 `sha-` images sat under a
+  # policy claiming to keep 30, so tagged history grew without bound.
+  #
+  # Defaults are keep 30 releases (v*) and keep 20 builds (sha-*). Previewed against the
+  # live repositories before bumping: 180/178/173 images expire, of which ~90 each are
+  # untagged and already expirable under the old policy, and ZERO carry a release tag or
+  # `latest`. Re-run `aws ecr start-lifecycle-policy-preview` before changing these
+  # counts — it is a dry run and it is the only way to see what a policy will delete.
   repository_names     = ["rally-api", "rally-worker", "rally-migrator"]
   image_tag_mutability = "MUTABLE" # allows re-tagging :latest
   kms_key_arn          = data.terraform_remote_state.platform.outputs.kms_key_arn
