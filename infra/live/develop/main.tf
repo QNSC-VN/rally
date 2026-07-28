@@ -118,8 +118,17 @@ module "stack" {
   // The cutover task ran here on 2026-07-29 (task
   // 17d5bd4504bd43959c7dc531cbd36c95, exit 0) and verified BOTH roles against this
   // database: LOGIN works, none of rolsuper/rolbypassrls/rolcreatedb/rolcreaterole/
-  // rolreplication is set, and CREATE TABLE as the role is denied. So the
-  // precondition this flag cannot enforce is satisfied.
+  // rolreplication is set, and CREATE TABLE as the role is denied.
+  //
+  // Enabling this the first time (#246) broke every file write, and the fix is a
+  // migration rather than this flag. Moving off master also moves the app off being
+  // the table OWNER, and Postgres exempts only the owner from row-level security, so
+  // two leftover `tenant_isolation` policies on storage.files and
+  // work.work_item_attachments executed for the first time. They require
+  // `app.workspace_id`, which nothing sets, so they denied every insert. Migration
+  // 0070 drops them, completing the teardown migration 0025 began — Rally is
+  // single-tenant and DB-level isolation is an explicit non-goal, so those two
+  // policies (2 of 41 workspace-scoped tables) were never a boundary.
   //
   // The MIGRATOR keeps the master credential — it needs DDL. Narrowing it means
   // transferring schema ownership, which is step 4 and deliberately separate.

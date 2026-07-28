@@ -498,6 +498,13 @@
       "when": 1786000300000,
       "tag": "0069_dedupe_work_item_ranks",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1786000400000,
+      "tag": "0070_drop_vestigial_rls",
+      "breakpoints": true
     }
   ]
 }
