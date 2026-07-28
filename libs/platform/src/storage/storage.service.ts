@@ -43,6 +43,12 @@ import { DOWNLOAD_URL_TTL_SECONDS, UPLOAD_URL_TTL_SECONDS } from './storage.type
 export class StorageService {
   private readonly logger = new Logger(StorageService.name);
   private readonly s3: S3Client;
+  /**
+   * Client for the PUBLIC bucket. A distinct instance when public-scoped credentials
+   * are configured, otherwise the same object as `s3` — so the unsplit case costs
+   * nothing and behaves exactly as before.
+   */
+  private readonly publicS3: S3Client;
   private readonly privateBucket: string;
   private readonly publicBucket: string | null;
   private readonly cdnBaseUrl: string | null;
@@ -64,20 +70,44 @@ export class StorageService {
     const accessKeyId = config.get('STORAGE_ACCESS_KEY_ID');
     const secretAccessKey = config.get('STORAGE_SECRET_ACCESS_KEY');
 
-    this.s3 = new S3Client({
-      region: endpoint ? 'auto' : config.get('AWS_REGION'),
-      ...(endpoint ? { endpoint, forcePathStyle: config.get('STORAGE_FORCE_PATH_STYLE') } : {}),
-      ...(accessKeyId && secretAccessKey ? { credentials: { accessKeyId, secretAccessKey } } : {}),
-      // SDK v3 defaults to auto-attaching a CRC32 checksum (x-amz-checksum-crc32 /
-      // x-amz-sdk-checksum-algorithm) to PutObjectCommand, which bleeds into the
-      // presigned URL's query string below. presignPut deliberately signs only
-      // content-type/content-length (see its docstring — signableHeaders drift
-      // here previously broke every upload), so an unsigned checksum param the
-      // bucket's CORS AllowedHeaders doesn't list fails preflight with the same
-      // opaque "Failed to fetch" that comment warns about. Disable it at the
-      // client so PutObjectCommand never adds checksum params in the first place.
-      requestChecksumCalculation: 'WHEN_REQUIRED',
-    });
+    const publicAccessKeyId = config.get('STORAGE_PUBLIC_ACCESS_KEY_ID');
+    const publicSecretAccessKey = config.get('STORAGE_PUBLIC_SECRET_ACCESS_KEY');
+
+    const makeClient = (id?: string, secret?: string) =>
+      new S3Client({
+        region: endpoint ? 'auto' : config.get('AWS_REGION'),
+        ...(endpoint ? { endpoint, forcePathStyle: config.get('STORAGE_FORCE_PATH_STYLE') } : {}),
+        ...(id && secret ? { credentials: { accessKeyId: id, secretAccessKey: secret } } : {}),
+        // SDK v3 defaults to auto-attaching a CRC32 checksum (x-amz-checksum-crc32 /
+        // x-amz-sdk-checksum-algorithm) to PutObjectCommand, which bleeds into the
+        // presigned URL's query string below. presignPut deliberately signs only
+        // content-type/content-length (see its docstring — signableHeaders drift
+        // here previously broke every upload), so an unsigned checksum param the
+        // bucket's CORS AllowedHeaders doesn't list fails preflight with the same
+        // opaque "Failed to fetch" that comment warns about. Disable it at the
+        // client so PutObjectCommand never adds checksum params in the first place.
+        requestChecksumCalculation: 'WHEN_REQUIRED',
+      });
+
+    this.s3 = makeClient(accessKeyId, secretAccessKey);
+
+    // A SEPARATE client for the public bucket when it has its own credentials, so the
+    // token that writes world-readable avatars cannot also read every permission-gated
+    // attachment. Falls back to the same instance when they are unset, which keeps the
+    // unsplit deployment byte-identical to before.
+    this.publicS3 =
+      publicAccessKeyId && publicSecretAccessKey
+        ? makeClient(publicAccessKeyId, publicSecretAccessKey)
+        : this.s3;
+  }
+
+  /**
+   * The client that owns `visibility`'s bucket. Pairs with `bucketFor` — the two must
+   * always be called with the SAME visibility, or a request is signed with the wrong
+   * credential and R2 answers 403.
+   */
+  private clientFor(visibility: StorageVisibility): S3Client {
+    return visibility === 'private' ? this.s3 : this.publicS3;
   }
 
   /**
@@ -113,7 +143,7 @@ export class StorageService {
       'storage.presignPut',
       () =>
         getSignedUrl(
-          this.s3,
+          this.clientFor(req.visibility),
           new PutObjectCommand({
             Bucket: this.bucketFor(req.visibility),
             Key: req.key,
@@ -147,7 +177,7 @@ export class StorageService {
       'storage.presignGet',
       () =>
         getSignedUrl(
-          this.s3,
+          this.clientFor(req.visibility),
           new GetObjectCommand({
             Bucket: this.bucketFor(req.visibility),
             Key: req.key,
@@ -172,7 +202,7 @@ export class StorageService {
       const result = await this.resilience.execute(
         'storage.headObject',
         () =>
-          this.s3.send(
+          this.clientFor(visibility).send(
             new HeadObjectCommand({
               Bucket: this.bucketFor(visibility),
               Key: key,
@@ -201,7 +231,9 @@ export class StorageService {
       await this.resilience.execute(
         'storage.deleteObject',
         () =>
-          this.s3.send(new DeleteObjectCommand({ Bucket: this.bucketFor(visibility), Key: key })),
+          this.clientFor(visibility).send(
+            new DeleteObjectCommand({ Bucket: this.bucketFor(visibility), Key: key }),
+          ),
         ResiliencePreset.STORAGE,
       );
     } catch (err) {
