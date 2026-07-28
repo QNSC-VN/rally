@@ -26,10 +26,22 @@ would sign happily and produce tokens every verifier rejects.
 supplied value still wins**, and infra still supplies one, so this phase changes nothing
 observable. That is the point: it is safe to deploy on its own.
 
-## Phase 2 — verify derivation actually runs
+## Phase 2 — DONE (injection removed)
 
-The value is still being injected, so derivation is not yet exercised in a deployed
-environment. Prove it locally first, then in develop.
+The two `{ name = "JWT_PUBLIC_KEY", ... }` entries are gone from the api and worker
+`secrets` blocks, so both services now derive the key. The secret still exists, which is
+what keeps a revert cheap: revert the commit, re-apply, and the value is still there.
+
+Before this landed, both environments' `jwt-private` were checked against the exact
+validation the schema performs — `createPrivateKey`, `asymmetricKeyType == 'ec'`,
+`namedCurve == 'prime256v1'`, then `createPublicKey` — and both passed:
+
+```
+develop      PASS: ec/prime256v1, public key derives
+production   PASS: ec/prime256v1, public key derives
+```
+
+### Verify after the develop deploy
 
 **Locally**, comment `JWT_PUBLIC_KEY` out of `.env` and run the API:
 
@@ -41,13 +53,9 @@ Boot must succeed. Then get a bearer token and call an authenticated endpoint wi
 this is the check that matters, because it exercises sign *and* verify with the derived
 key. A mismatch would show as a 401 on a token the same process just issued.
 
-**In develop**, remove only the injection, keeping the secret:
-
-1. Delete the two `{ name = "JWT_PUBLIC_KEY", ... }` lines from the api and worker
-   `secrets` blocks in `infra/modules/stack/main.tf`. Leave `"jwt-public"` in
-   `secret_names`.
-2. `cd infra/live/develop && tofu apply`
-3. Force new deployments, then verify:
+Develop picks this up on merge to `main`. Production picks it up on the next `v*.*.*`
+tag — so **let the develop deploy go green before tagging**, which makes develop the canary
+the pipeline is designed to be. Then:
 
 ```bash
 aws ecs update-service --cluster rally-develop --service rally-develop-api    --force-new-deployment --region ap-southeast-1

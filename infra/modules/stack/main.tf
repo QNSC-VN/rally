@@ -127,16 +127,17 @@ module "secrets" {
   # is still an empty container.
   secret_names = {
     "jwt-private" = "EC P-256 (ES256) private key (PEM, base64-encoded)"
-    # PENDING REMOVAL — deliberately still created and still injected.
+    # PHASE 2 DONE — no longer injected; api and worker now DERIVE the public key.
     #
-    # The app no longer needs it: `env.schema.ts` derives JWT_PUBLIC_KEY from
-    # JWT_PRIVATE_KEY when absent, because an ES256 public key is a pure function of its
-    # private key and rally publishes no JWKS. Storing both allowed a MISMATCHED pair —
-    # signing succeeds, every verification rejects — which nothing could detect, since
-    # both halves were individually valid to Terraform, to the preflight and to the
-    # schema. Remove this line together with the two JWT_PUBLIC_KEY entries in the
-    # api/worker `secrets` blocks: docs/runbooks/jwt-public-key-derivation.md.
-    "jwt-public"  = "EC P-256 (ES256) public key — PENDING REMOVAL, now derived from jwt-private"
+    # `env.schema.ts` computes it from JWT_PRIVATE_KEY when absent, because an ES256
+    # public key is a pure function of its private key and rally publishes no JWKS.
+    # Storing both allowed a MISMATCHED pair — signing succeeds, every verification
+    # rejects — which nothing could detect, since both halves were individually valid to
+    # Terraform, to the preflight and to the schema.
+    #
+    # The secret stays ONE more release so a revert needs no secret restore. Phase 3
+    # deletes this line: docs/runbooks/jwt-public-key-derivation.md.
+    "jwt-public"  = "EC P-256 (ES256) public key — UNUSED, derived from jwt-private; delete at phase 3"
     "csrf-secret" = "CSRF token signing secret"
     # NOTE: give this a value BEFORE the next app deploy — COOKIE_SECRET is required at
     # startup, so a task wired to an empty secret cannot boot (a failed deploy plus
@@ -405,9 +406,6 @@ module "api" {
     # with nothing drifting in Terraform to explain why. Host/port/name are
     # non-secret and passed as plain env below; the app composes the URL.
     { name = "JWT_PRIVATE_KEY", secret_arn = module.secrets.secret_arns["jwt-private"] },
-    # PENDING REMOVAL alongside the `jwt-public` secret — the app derives this from
-    # JWT_PRIVATE_KEY when unset. Supplying it keeps current behaviour byte-identical.
-    { name = "JWT_PUBLIC_KEY", secret_arn = module.secrets.secret_arns["jwt-public"] },
     { name = "CSRF_SECRET", secret_arn = module.secrets.secret_arns["csrf-secret"] },
     { name = "COOKIE_SECRET", secret_arn = module.secrets.secret_arns["cookie-secret"] },
     { name = "ENTRA_CLIENT_SECRET", secret_arn = module.secrets.secret_arns["entra-client-secret"] },
@@ -572,9 +570,6 @@ module "worker" {
     # with nothing drifting in Terraform to explain why. Host/port/name are
     # non-secret and passed as plain env below; the app composes the URL.
     { name = "JWT_PRIVATE_KEY", secret_arn = module.secrets.secret_arns["jwt-private"] },
-    # PENDING REMOVAL alongside the `jwt-public` secret — the app derives this from
-    # JWT_PRIVATE_KEY when unset. Supplying it keeps current behaviour byte-identical.
-    { name = "JWT_PUBLIC_KEY", secret_arn = module.secrets.secret_arns["jwt-public"] },
     # Shared schema requires CSRF_SECRET even though the worker never uses it as middleware
     { name = "CSRF_SECRET", secret_arn = module.secrets.secret_arns["csrf-secret"] },
     { name = "COOKIE_SECRET", secret_arn = module.secrets.secret_arns["cookie-secret"] },
