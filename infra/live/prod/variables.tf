@@ -65,11 +65,21 @@ variable "entra_client_id" {
 }
 
 variable "github_app_id" {
-  # Empty: no GitHub App is installed for production yet, which keeps the SCM
-  # discovery/backfill path dormant rather than half-configured.
+  # Production has its OWN App registration, separate from develop's 4390002, so a
+  # develop misconfiguration cannot touch production's installation or its webhooks.
+  #
+  # This was empty while no App existed, which left the SCM path dormant — correct at
+  # the time. It stayed empty after the App was registered, so production shipped with
+  # GITHUB_APP_ID="" on the running task definition: no PR/commit linking, no backfill,
+  # and the webhook receiver answering 503. The id lived only in a GitHub environment
+  # variable that nothing reads.
+  #
+  # Held in git, not in an Actions variable, for the reason in .github/workflows/
+  # infra-plan.yml: an environment-scoped variable is invisible to a plan job, which
+  # made every plan report three phantom task-definition replacements.
   description = "GitHub App id for SCM discovery/backfill (public)."
   type        = string
-  default     = ""
+  default     = "4398910"
 }
 
 variable "cloudflare_account_id" {
