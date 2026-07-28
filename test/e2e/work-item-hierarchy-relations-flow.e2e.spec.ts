@@ -17,7 +17,7 @@ import { ProjectsService } from '@modules/projects';
 import { WorkItemsService } from '@modules/work-items';
 import { QualityService } from '@modules/quality';
 
-import { ALL, adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
+import { adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
 
 describe('BA flows: work-item hierarchy + relations (real AppModule + seeded DB)', () => {
   let app: NestFastifyApplication;

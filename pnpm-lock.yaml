@@ -109,8 +109,8 @@ importers:
         specifier: ^1.41.1
         version: 1.41.1
       '@qnsc-vn/identity':
-        specifier: ^5.6.0
-        version: 5.6.0(167ab1cd89eca33b95ef729cbd2fb65a)
+        specifier: 6.0.0
+        version: 6.0.0(af15cdc2b5815e30840d882b914489a1)
       '@qnsc-vn/observability':
         specifier: ^0.1.4
         version: 0.1.4(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@opentelemetry/api@1.9.1)(@opentelemetry/auto-instrumentations-node@0.78.0(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1)))(@opentelemetry/exporter-metrics-otlp-http@0.220.0(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.220.0(@opentelemetry/api@1.9.1))(@opentelemetry/resources@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-node@0.220.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.41.1)(nestjs-pino@4.6.1(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(pino-http@11.0.0)(pino@10.3.1)(rxjs@7.8.2))
@@ -2490,22 +2490,16 @@ packages:
   '@protobufjs/utf8@1.1.1':
     resolution: {integrity: sha512-oOAWABowe8EAbMyWKM0tYDKi8Yaox52D+HWZhAIJqQXbqe0xI/GV7FhLWqlEKreMkfDjshR5FKgi3mnle0h6Eg==}
 
-  '@qnsc-vn/identity@5.6.0':
-    resolution: {integrity: sha512-0KADi4KfW4nxTWd31znyyWgK5EuObJyW0SNvh/d3po4NyFX9I+Uwu2Xtm5+YvMxuT+pT9wOWS9j1CeG2BXTIVg==, tarball: https://npm.pkg.github.com/download/@qnsc-vn/identity/5.6.0/b0a8c3e5df3677dedd489b4f6f4ddd388773100e}
+  '@qnsc-vn/identity@6.0.0':
+    resolution: {integrity: sha512-truDsw9QwgKhlLOdnLdZ+KFKFC/cPYcxhBrb3sy6WLyDa+cZVYrZhuIaKrmsCl11ZRuQ1LVzu8zwa5N37m+E8Q==, tarball: https://npm.pkg.github.com/download/@qnsc-vn/identity/6.0.0/593a4e82e69da03265c360106c03dee2278c7896}
     peerDependencies:
-      '@fastify/cookie': '>=11'
       '@nestjs/common': '>=11'
-      '@nestjs/core': '>=11'
       '@nestjs/jwt': '>=11'
       '@nestjs/passport': '>=11'
-      '@nestjs/swagger': '>=11'
       '@qnsc-vn/platform-cache': '>=2.0.0'
       '@qnsc-vn/platform-http': '>=2.0.0'
-      fastify: 5.10.0
-      nestjs-zod: '>=5'
       passport: '>=0.7'
       passport-jwt: '>=4'
-      zod: '>=4'
 
   '@qnsc-vn/observability@0.1.4':
     resolution: {integrity: sha512-mvPd7MHPx4rI3ma2dHh+OdEgCyLAFd8Ooy35S2rlLwqv4ob3Dobi+lSafx0+djktnrPWoH5Sq9jkPrcJgmiGAw==, tarball: https://npm.pkg.github.com/download/@qnsc-vn/observability/0.1.4/d8179695d0480bbbfb9306fcfb6baffd02563743}
@@ -10530,23 +10524,17 @@ snapshots:
 
   '@protobufjs/utf8@1.1.1': {}
 
-  '@qnsc-vn/identity@5.6.0(167ab1cd89eca33b95ef729cbd2fb65a)':
+  '@qnsc-vn/identity@6.0.0(af15cdc2b5815e30840d882b914489a1)':
     dependencies:
-      '@fastify/cookie': 11.0.2
       '@nestjs/common': 11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2)
-      '@nestjs/core': 11.1.27(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@nestjs/jwt': 11.0.2(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))
       '@nestjs/passport': 11.0.5(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(passport@0.7.0)
-      '@nestjs/swagger': 11.4.6(@fastify/static@10.1.2)(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)
       '@qnsc-vn/platform-cache': 2.1.0(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(ioredis@5.11.1)
       '@qnsc-vn/platform-http': 3.0.0(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/swagger@11.4.6(@fastify/static@10.1.2)(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2))(@qnsc-vn/platform-cache@2.1.0(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(ioredis@5.11.1))(fastify@5.10.0)(ioredis@5.11.1)(nestjs-zod@5.4.0(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/swagger@11.4.6(@fastify/static@10.1.2)(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2))(rxjs@7.8.2)(zod@4.4.3))(zod@4.4.3)
-      fastify: 5.10.0
       jose: 6.2.3
-      nestjs-zod: 5.4.0(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/swagger@11.4.6(@fastify/static@10.1.2)(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2))(rxjs@7.8.2)(zod@4.4.3)
       passport: 0.7.0
       passport-jwt: 4.0.1
       uuidv7: 1.2.1
-      zod: 4.4.3
 
   '@qnsc-vn/observability@0.1.4(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@opentelemetry/api@1.9.1)(@opentelemetry/auto-instrumentations-node@0.78.0(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1)))(@opentelemetry/exporter-metrics-otlp-http@0.220.0(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.220.0(@opentelemetry/api@1.9.1))(@opentelemetry/resources@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-node@0.220.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.41.1)(nestjs-pino@4.6.1(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(pino-http@11.0.0)(pino@10.3.1)(rxjs@7.8.2))':
     dependencies:
