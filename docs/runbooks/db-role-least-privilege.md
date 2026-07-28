@@ -8,11 +8,38 @@
 | 1. passwords in Secrets Manager | yes (2026-07-28) | yes (2026-07-28) |
 | 2. `db_role_passwords_set` | yes | yes |
 | 2. cutover task run | **yes (2026-07-29)** | **no** |
-| 3. `db_least_privilege` | **being enabled** | no |
+| 3. `db_least_privilege` | **yes** | no |
 | 4. ownership transfer | no | no |
 
 Develop's cutover task was `17d5bd4504bd43959c7dc531cbd36c95` on
 `rally-develop-migrator:105`, exit 0, both roles verified.
+
+### What step 3 exposed in develop, and what fixed it
+
+Enabling it (#246) broke every file write. Moving off the master credential also
+moves the app off being the table OWNER, and Postgres exempts only the owner from
+row-level security — so two surviving `tenant_isolation` policies on `storage.files`
+and `work.work_item_attachments` executed for the first time. They require
+`app.workspace_id`, which no application code sets, so they denied every insert:
+
+```
+POST /v1/auth/me/avatar/presign  →  500
+new row violates row-level security policy for table "files"
+```
+
+Those policies should not have existed. Rally is single-tenant, DB-level isolation
+is an explicit non-goal of the drop-multi-tenant design, and migration 0025 tore the
+apparatus down; 0053 re-added it to two tables believing it "mirrors the policy every
+other workspace-scoped table carries", which was already untrue. Coverage was 2 of 41
+workspace-scoped tables.
+
+**Migration 0070 drops them** and completes 0025's teardown, so step 3 stands. Isolation
+remains where it has always actually run — the repository layer, guarded by
+`test/workspace-scope.ratchet.spec.ts`.
+
+CI ran this whole suite as `rally_app` and stayed green throughout, because no e2e
+spec touched a file or attachment. `test/e2e/file-storage-flow.e2e.spec.ts` closes
+that gap and fails if RLS is ever re-enabled.
 
 **Production still needs step 2's task run** before its flag can be flipped — do
 that only after develop has run a full deploy cycle on the restricted roles.
