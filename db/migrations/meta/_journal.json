@@ -484,6 +484,13 @@
       "when": 1786000100000,
       "tag": "0067_invitation_resend",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1786000200000,
+      "tag": "0068_app_role_least_privilege",
+      "breakpoints": true
     }
   ]
 }

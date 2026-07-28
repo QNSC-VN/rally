@@ -11,7 +11,14 @@ export interface IActivityLogRepository {
    * Newest-first history for one entity. Returns rows whose `entity_id` OR
    * `context_id` equals `entityId`, so a parent's history includes its children
    * (e.g. a work item's tasks/attachments). Ids are globally unique so no
-   * entity_type filter is needed.
+   * entity_type filter is needed — which is exactly why `workspaceId` is
+   * mandatory: it is the only thing keeping a borrowed id from resolving to
+   * another workspace's history.
    */
-  listFor(entityId: string, page: number, pageSize: number): Promise<ActivityPage>;
+  listFor(
+    entityId: string,
+    workspaceId: string,
+    page: number,
+    pageSize: number,
+  ): Promise<ActivityPage>;
 }

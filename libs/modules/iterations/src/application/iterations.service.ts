@@ -84,7 +84,7 @@ export class IterationsService {
   ): Promise<{ items: ActivityLog[]; total: number }> {
     await this.getIterationForView(actor, id);
     const page = Math.floor(args.offset / args.limit) + 1;
-    const res = await this.activity.listFor(id, page, args.limit);
+    const res = await this.activity.listFor(id, actor.workspaceId, page, args.limit);
     return { items: res.data, total: res.total };
   }
 

@@ -298,3 +298,31 @@ variable "cloudflare_account_id" {
   default     = ""
 }
 
+
+variable "db_least_privilege" {
+  description = <<-EOT
+    Point the api and worker tasks at the least-privilege Postgres roles
+    (`rally_app` / `rally_worker`) instead of the RDS master credential.
+
+    OFF by default so merging this changes nothing that is running. Today all
+    three tasks connect as the master user, which OWNS every table: an ordinary
+    HTTP request carries rights to DROP the schema it is reading, and any
+    row-level policy is skipped, because Postgres exempts a table's owner from
+    RLS unless FORCE ROW LEVEL SECURITY is also set. That exemption is what made
+    the RLS layer in migration 0005 inert.
+
+    Turning this on is the SECOND half of a two-step cutover, and the order is
+    not enforceable in Terraform. Before flipping it, in this environment:
+      1. `pnpm db:migrate` has run, so migration 0068 has created the roles;
+      2. the `db-app-password` / `db-worker-password` secrets hold a value;
+      3. that same value was applied with `ALTER ROLE ... LOGIN PASSWORD ...`.
+    Flip it first and the tasks boot, fail to authenticate (28P01) and roll back.
+
+    The MIGRATOR is deliberately unaffected — it needs DDL, and narrowing it
+    means transferring schema ownership, a separate and more disruptive step.
+
+    Full sequence, verification and rollback: docs/runbooks/db-role-least-privilege.md
+  EOT
+  type        = bool
+  default     = false
+}

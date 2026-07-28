@@ -153,11 +153,26 @@ jobs:
           ENTRA_TENANT_ID: dev-tenant
           SSO_ALLOWED_EMAIL_DOMAINS: qnsc.vn
 
+      # Prove the least-privilege grants from migration 0068 are COMPLETE, by
+      # running the whole e2e suite as `rally_app` instead of the superuser.
+      #
+      # Without this the split is untested: every job above connects as
+      # `postgres`, which owns everything, so a schema or sequence the migration
+      # forgot to GRANT passes CI and only fails after the production cutover —
+      # as a boot-time or first-write `permission denied for …`. The roles are
+      # created NOLOGIN, so CI grants LOGIN here; nothing else changes.
+      - name: Enable the least-privilege role for the e2e run
+        run: node scripts/ci/enable-least-privilege-role.mjs
+        env:
+          ADMIN_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rally_test?sslmode=disable
+
       - name: E2E tests
         run: pnpm test:e2e
         env:
           NODE_ENV: test
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rally_test?sslmode=disable
+          # The APP connects as the restricted role, the MIGRATOR as the owner —
+          # the same split infra/modules/stack/main.tf gets at cutover.
+          DATABASE_URL: postgresql://rally_app:rally_app@localhost:5432/rally_test?sslmode=disable
           DATABASE_MIGRATION_URL: postgresql://postgres:postgres@localhost:5432/rally_test?sslmode=disable
           REDIS_URL: redis://localhost:6379
           JWT_PRIVATE_KEY: ${{ env.CI_JWT_PRIVATE_KEY }}
