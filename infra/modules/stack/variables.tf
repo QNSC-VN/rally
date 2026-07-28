@@ -263,28 +263,6 @@ variable "create_dashboard" {
   default     = true
 }
 
-variable "fargate_architecture" {
-  description = <<-EOT
-    CPU architecture for every Fargate task in this stack: "ARM64" or "X86_64".
-
-    ARM64 (Graviton) bills roughly 20% less per vCPU-hour and GB-hour for identical
-    sizing, and rally has no native dependency that cares — `argon2` was the only one
-    in package.json and nothing imported it.
-
-    Deliberately NOT per-environment. Production runs the image develop tested,
-    promoted by tag without a rebuild, so the two cannot differ in architecture even in
-    principle. It must also match `image_platforms` in
-    .github/workflows/backend-deploy.yml: an x86 image on an ARM64 task fails at
-    container start with "image Manifest does not contain descriptor matching platform".
-  EOT
-  type        = string
-  default     = "ARM64"
-
-  validation {
-    condition     = contains(["ARM64", "X86_64"], var.fargate_architecture)
-    error_message = "fargate_architecture must be ARM64 or X86_64."
-  }
-}
 
 variable "alarm_emails" {
   description = "Addresses subscribed to the alarm topic. Terraform creates the subscription; each recipient must still confirm by email."

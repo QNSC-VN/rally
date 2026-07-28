@@ -363,7 +363,6 @@ module "api" {
   min_count          = 1
   max_count          = var.api.max_count
   use_spot           = var.api.use_spot
-  cpu_architecture   = var.fargate_architecture
   log_retention_days = var.log_retention_days
 
   attach_alb        = true
@@ -526,7 +525,6 @@ module "worker" {
   min_count          = 1
   max_count          = var.worker.max_count
   use_spot           = var.worker.use_spot
-  cpu_architecture   = var.fargate_architecture
   log_retention_days = var.log_retention_days
 
   attach_alb = false
@@ -658,8 +656,6 @@ module "migrator" {
   task_role_arn      = module.api.task_role_arn
   region             = var.region
   log_retention_days = var.log_retention_days
-  # Same image build as api/worker, so necessarily the same architecture.
-  cpu_architecture = var.fargate_architecture
 
   environment = {
     NODE_ENV       = "production"
