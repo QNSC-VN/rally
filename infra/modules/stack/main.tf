@@ -422,7 +422,7 @@ module "api" {
     # while empty broke every develop deploy. See the variable.
     { name = "STORAGE_PUBLIC_ACCESS_KEY_ID", secret_arn = module.secrets.secret_arns["r2-public-access-key-id"] },
     { name = "STORAGE_PUBLIC_SECRET_ACCESS_KEY", secret_arn = module.secrets.secret_arns["r2-public-secret-access-key"] },
-    ] : [])
+  ] : [])
 
   environment_vars = concat(local.api_db_env, [
     { name = "NODE_ENV", value = "production" },
@@ -586,7 +586,7 @@ module "worker" {
     # while empty broke every develop deploy. See the variable.
     { name = "STORAGE_PUBLIC_ACCESS_KEY_ID", secret_arn = module.secrets.secret_arns["r2-public-access-key-id"] },
     { name = "STORAGE_PUBLIC_SECRET_ACCESS_KEY", secret_arn = module.secrets.secret_arns["r2-public-secret-access-key"] },
-    ] : [])
+  ] : [])
 
   # SCM backfill runs in the worker (ScmBackfillRelayService): it resolves the
   # GitHub App private key at RUNTIME to mint the App JWT, so the TASK role — not
@@ -784,7 +784,7 @@ module "observability" {
   ecs_service_names = [module.api.service_name, module.worker.service_name]
   # Full ALB ARN — exposed by the runtime stack for exactly this. Without it the
   # module silently skips the two user-facing ALB alarms.
-  alb_arn         = data.terraform_remote_state.runtime.outputs.alb_arn
+  alb_arn = data.terraform_remote_state.runtime.outputs.alb_arn
   # `identifier` (rally-prod), NOT `instance_id` (db-F35NKOG…). CloudWatch publishes RDS
   # metrics under the DBInstanceIdentifier dimension, and `aws_db_instance.id` returns the
   # RESOURCE id on AWS provider 5.x — so this pointed at a dimension value that does not
