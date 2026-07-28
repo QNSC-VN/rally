@@ -93,7 +93,6 @@ export default defineConfig({
         'libs/modules/workspace/src/application/team.service.ts',
         'libs/modules/workspace/src/application/workspace-member.service.ts',
         'libs/modules/workspace/src/application/workspace.service.ts',
-        'libs/platform/src/auth/authz-epoch.service.ts',
         'libs/platform/src/auth/jwt.guard.ts',
         'libs/platform/src/context/request-context.ts',
         'libs/platform/src/http/csrf.ts',

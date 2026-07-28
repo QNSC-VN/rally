@@ -50,11 +50,17 @@ function makeCtx(
 }
 
 describe('PolicyGuard', () => {
-  let access: { getProjectPermissions: ReturnType<typeof vi.fn> };
+  let access: {
+    getProjectPermissions: ReturnType<typeof vi.fn>;
+    getWorkspacePermissions: ReturnType<typeof vi.fn>;
+  };
   let resolver: { resolve: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
-    access = { getProjectPermissions: vi.fn() };
+    access = {
+      getProjectPermissions: vi.fn(),
+      getWorkspacePermissions: vi.fn().mockResolvedValue([]),
+    };
     resolver = { resolve: vi.fn() };
   });
 
@@ -79,14 +85,19 @@ describe('PolicyGuard', () => {
 
   // ── Workspace tier ────────────────────────────────────────────────────────
   describe('workspace-tier', () => {
-    it('allows when the flat JWT baseline grants the code', async () => {
-      const { ctx, reflector } = makeCtx({ permission: WS_CODE }, { user: actor([WS_CODE]) });
+    it('allows when the DB-resolved baseline grants the code', async () => {
+      // Resolved, not read off the token: the principal below deliberately carries
+      // no permissions, because a token no longer has any.
+      access.getWorkspacePermissions.mockResolvedValue([WS_CODE]);
+      const { ctx, reflector } = makeCtx({ permission: WS_CODE }, { user: actor([]) });
       await expect(guardFor(reflector).canActivate(ctx)).resolves.toBe(true);
+      expect(access.getWorkspacePermissions).toHaveBeenCalledWith('user-1', 'ws-1');
       expect(access.getProjectPermissions).not.toHaveBeenCalled();
     });
 
     it('denies when the baseline lacks the code — never touches project resolution', async () => {
-      const { ctx, reflector } = makeCtx({ permission: WS_CODE }, { user: actor(['audit:view']) });
+      access.getWorkspacePermissions.mockResolvedValue(['audit:view']);
+      const { ctx, reflector } = makeCtx({ permission: WS_CODE }, { user: actor([]) });
       await expect(guardFor(reflector).canActivate(ctx)).rejects.toBeInstanceOf(
         PermissionDeniedException,
       );
@@ -94,8 +105,19 @@ describe('PolicyGuard', () => {
     });
 
     it('honours a workspace wildcard', async () => {
-      const { ctx, reflector } = makeCtx({ permission: WS_CODE }, { user: actor(['workspace:*']) });
+      access.getWorkspacePermissions.mockResolvedValue(['workspace:*']);
+      const { ctx, reflector } = makeCtx({ permission: WS_CODE }, { user: actor([]) });
       await expect(guardFor(reflector).canActivate(ctx)).resolves.toBe(true);
+    });
+
+    it('ignores a permissions array smuggled onto the principal', async () => {
+      // Belt-and-braces on the whole point of the change: even if something puts a
+      // permission list on req.user, the decision comes from the database.
+      access.getWorkspacePermissions.mockResolvedValue([]);
+      const { ctx, reflector } = makeCtx({ permission: WS_CODE }, { user: actor(['workspace:*']) });
+      await expect(guardFor(reflector).canActivate(ctx)).rejects.toBeInstanceOf(
+        PermissionDeniedException,
+      );
     });
   });
 
@@ -103,14 +125,18 @@ describe('PolicyGuard', () => {
   describe('project-tier', () => {
     const scope: PolicyScope = { resource: 'work_item', from: 'param', field: 'id' };
 
-    it('fast-paths a workspace-wide grant without resolving the project', async () => {
+    it('resolves the project even for a workspace-wide holder', async () => {
+      // The old fast path answered from the token when the caller held a
+      // workspace-wide grant. `getProjectPermissions` already unions the baseline,
+      // so the shortcut only bought a way to answer from a stale snapshot.
+      resolver.resolve.mockResolvedValue('proj-9');
+      access.getProjectPermissions.mockResolvedValue(['workspace:*']);
       const { ctx, reflector } = makeCtx(
         { permission: PROJ_CODE, scope },
-        { user: actor(['workspace:*']), params: { id: 'wi-1' } },
+        { user: actor([]), params: { id: 'wi-1' } },
       );
       await expect(guardFor(reflector).canActivate(ctx)).resolves.toBe(true);
-      expect(resolver.resolve).not.toHaveBeenCalled();
-      expect(access.getProjectPermissions).not.toHaveBeenCalled();
+      expect(access.getProjectPermissions).toHaveBeenCalledWith('user-1', 'ws-1', 'proj-9');
     });
 
     it('resolves the project from the resource and allows when the project role grants it', async () => {

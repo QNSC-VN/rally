@@ -19,7 +19,10 @@ import {
   type Permission,
 } from '@shared-kernel';
 import { AccessService } from '../../application/access.service';
-import { ProjectScopeResolver, type ScopedResource } from '../../application/project-scope.resolver';
+import {
+  ProjectScopeResolver,
+  type ScopedResource,
+} from '../../application/project-scope.resolver';
 
 export const POLICY_KEY = 'policy';
 
@@ -45,7 +48,9 @@ interface PolicyMeta {
  *     (`{ resource, from, field }`).
  * Passing the wrong shape is a compile error.
  */
-export function RequirePermission(permission: WorkspacePermission): MethodDecorator & ClassDecorator;
+export function RequirePermission(
+  permission: WorkspacePermission,
+): MethodDecorator & ClassDecorator;
 export function RequirePermission(
   permission: ProjectPermission,
   scope: PolicyScope,
@@ -57,10 +62,11 @@ export function RequirePermission(permission: Permission, scope?: PolicyScope) {
 /**
  * ONE guard for every authorization decision (replaces PermissionGuard +
  * ProjectPermissionGuard + service-level assertProjectPermission):
- *   - workspace-tier ⇒ check the JWT baseline;
- *   - project-tier   ⇒ fast-path a workspace-wide grant, else resolve the
- *     project (from the request or by loading the resource) and check
- *     `baseline ∪ project-scoped role`.
+ *   - workspace-tier ⇒ check the DB-resolved workspace baseline;
+ *   - project-tier   ⇒ resolve the project (from the request or by loading the
+ *     resource) and check `baseline ∪ project-scoped role`.
+ * Both tiers read through one cached per-(workspace, user) assignment lookup, so
+ * neither answers from a token snapshot.
  * Deny ⇒ PROJECT_PERMISSION_DENIED. Fail-closed if the user is missing.
  */
 @Injectable()
@@ -94,14 +100,14 @@ export class PolicyGuard implements CanActivate {
 
     const { permission, scope } = meta;
 
-    // Workspace-tier: the flat baseline in the JWT is authoritative.
+    // Workspace-tier: resolved from the database (Valkey-cached), never from the
+    // token. A token is a mint-time snapshot, so reading permissions off it meant a
+    // revoked grant stayed effective until the token rotated.
     if (!isProjectTierPermission(permission)) {
-      if (permissionGrants(user.permissions, permission)) return true;
+      const baseline = await this.accessService.getWorkspacePermissions(user.sub, user.workspaceId);
+      if (permissionGrants(baseline, permission)) return true;
       throw this.deny();
     }
-
-    // Project-tier fast path: a workspace-wide grant covers every project.
-    if (permissionGrants(user.permissions, permission)) return true;
 
     const projectId = await this.resolveProjectId(request, scope, user.workspaceId);
     if (!projectId) throw this.deny();

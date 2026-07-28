@@ -1638,7 +1638,10 @@ export class WorkItemsService {
       throw new NotFoundException('TIME_LOG_NOT_FOUND', 'Time log entry not found');
     }
     // Workspace admins can retract any log; regular users only their own.
-    const isAdmin = actor.permissions?.includes('workspace:*');
+    const isAdmin = permissionGrants(
+      await this.accessService.getWorkspacePermissions(actor.sub, actor.workspaceId),
+      PERMISSION.WORKSPACE_EDIT,
+    );
     if (!isAdmin && log.userId !== actor.sub) {
       throw new PermissionDeniedException(
         'TIME_LOG_NOT_OWNER',
@@ -1806,7 +1809,10 @@ export class WorkItemsService {
       throw new NotFoundException('ATTACHMENT_NOT_FOUND', 'Attachment not found');
     }
 
-    const isAdmin = actor.permissions?.includes('workspace:*');
+    const isAdmin = permissionGrants(
+      await this.accessService.getWorkspacePermissions(actor.sub, actor.workspaceId),
+      PERMISSION.WORKSPACE_EDIT,
+    );
     if (!isAdmin && link.uploadedBy !== actor.sub) {
       throw new PermissionDeniedException(
         'ATTACHMENT_NOT_OWNER',

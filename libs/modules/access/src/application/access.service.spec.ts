@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mocked } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
-import { UnitOfWork, AuditProducer, AuthzEpochService } from '@platform';
+import { UnitOfWork, AuditProducer } from '@platform';
+import { CacheService } from '@qnsc-vn/platform-cache';
 import { AccessService } from './access.service';
 import { ROLE_REPOSITORY, IRoleRepository } from '../domain/ports/role.repository';
 import {
@@ -92,12 +93,13 @@ describe('AccessService — scope-aware permission resolution', () => {
         { provide: UnitOfWork, useValue: { run: vi.fn((fn: (tx: unknown) => unknown) => fn({})) } },
         { provide: AuditProducer, useValue: { emit: vi.fn().mockResolvedValue(undefined) } },
         {
-          provide: AuthzEpochService,
+          provide: CacheService,
           useValue: {
-            bump: vi.fn().mockResolvedValue(undefined),
-            bumpMany: vi.fn().mockResolvedValue(undefined),
-            current: vi.fn().mockResolvedValue(0),
-            isStale: vi.fn().mockResolvedValue(false),
+            // Always a miss, so every resolution reaches the repository mocks the
+            // assertions below are written against.
+            getJson: vi.fn().mockResolvedValue(null),
+            setJson: vi.fn().mockResolvedValue(undefined),
+            del: vi.fn().mockResolvedValue(undefined),
           },
         },
       ],
@@ -106,9 +108,21 @@ describe('AccessService — scope-aware permission resolution', () => {
     service = module.get(AccessService);
     roleRepo = module.get(ROLE_REPOSITORY);
     assignmentRepo = module.get(ROLE_ASSIGNMENT_REPOSITORY);
+    // Default: the acting user is a workspace admin. Escalation checks now resolve
+    // the ACTOR's own permissions from the database instead of reading the token,
+    // so tests that exercise a write need a resolvable actor; the no-escalation
+    // cases narrow this deliberately.
+    assignmentRepo.listEffectiveForUser.mockResolvedValue([
+      {
+        scopeType: 'workspace',
+        scopeId: null,
+        roleSlug: 'workspace_admin',
+        permissions: ['workspace:*'],
+      },
+    ] as never);
   });
 
-  describe('getUserRoleAndPermissions (JWT baseline)', () => {
+  describe('getUserRoleAndPermissions (workspace baseline)', () => {
     it('falls back to a minimal baseline (empty role) when the user has no assignments', async () => {
       assignmentRepo.listEffectiveForUser.mockResolvedValue([]);
       const result = await service.getUserRoleAndPermissions(USER, WORKSPACE);
@@ -183,11 +197,16 @@ describe('AccessService — scope-aware permission resolution', () => {
     const actor = (permissions: string[]) =>
       ({ sub: USER, workspaceId: WORKSPACE, permissions }) as never;
 
-    it('passes immediately on a JWT wildcard, without a DB lookup', async () => {
+    it('passes on a workspace wildcard, resolved from the database', async () => {
+      // There is no token fast path any more: `getProjectPermissions` unions the
+      // workspace baseline, so a workspace-wide holder passes via resolution.
+      const adminRole = role('workspace_admin', ['workspace:*']);
+      assignmentRepo.listEffectiveForUser.mockResolvedValue([eff(adminRole, 'workspace')]);
+
       await expect(
-        service.assertProjectPermission(actor(['workspace:*']), 'proj-9', 'release:edit'),
+        service.assertProjectPermission(actor([]), 'proj-9', 'release:edit'),
       ).resolves.toBeUndefined();
-      expect(assignmentRepo.listEffectiveForUser).not.toHaveBeenCalled();
+      expect(assignmentRepo.listEffectiveForUser).toHaveBeenCalledWith(WORKSPACE, USER);
     });
 
     it('passes when the project-scoped role grants the permission', async () => {
@@ -298,7 +317,12 @@ describe('AccessService — scope-aware permission resolution', () => {
 
     it('rejects a permission the actor does not themselves hold (no escalation)', async () => {
       roleRepo.findById.mockResolvedValue(customRole());
-      const weakActor = { sub: USER, workspaceId: WORKSPACE, permissions: ['work_item:view'] } as never;
+      // Narrow what the ACTOR resolves to — a token-carried list would no longer
+      // matter, which is the point: escalation is judged on live grants.
+      assignmentRepo.listEffectiveForUser.mockResolvedValue([
+        eff(role('project_member', ['work_item:view']), 'workspace'),
+      ]);
+      const weakActor = { sub: USER, workspaceId: WORKSPACE } as never;
       await expect(
         service.updateRolePermissions(weakActor, 'role-custom', ['project:delete']),
       ).rejects.toMatchObject({ code: 'ROLE_PERMISSION_ESCALATION' });
@@ -377,14 +401,23 @@ describe('AccessService — scope-aware permission resolution', () => {
 
     it('creates a workspace custom role with a derived, unique slug', async () => {
       roleRepo.listForWorkspace.mockResolvedValue([]);
-      roleRepo.create.mockImplementation(async (input) => saved({ slug: input.slug, name: input.name, permissions: input.permissions }));
+      roleRepo.create.mockImplementation(async (input) =>
+        saved({ slug: input.slug, name: input.name, permissions: input.permissions }),
+      );
 
-      const role = await service.createRole(admin, { name: 'QA Lead', permissions: ['quality:view'] });
+      const role = await service.createRole(admin, {
+        name: 'QA Lead',
+        permissions: ['quality:view'],
+      });
 
       expect(role.slug).toBe('qa_lead');
       expect(role.isSystem).toBe(false);
       expect(roleRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ workspaceId: WORKSPACE, slug: 'qa_lead', permissions: ['quality:view'] }),
+        expect.objectContaining({
+          workspaceId: WORKSPACE,
+          slug: 'qa_lead',
+          permissions: ['quality:view'],
+        }),
         expect.anything(),
       );
     });
@@ -407,7 +440,10 @@ describe('AccessService — scope-aware permission resolution', () => {
     });
 
     it('rejects a permission the creator does not hold (no escalation)', async () => {
-      const weak = { sub: USER, workspaceId: WORKSPACE, permissions: ['work_item:view'] } as never;
+      assignmentRepo.listEffectiveForUser.mockResolvedValue([
+        eff(role('project_member', ['work_item:view']), 'workspace'),
+      ]);
+      const weak = { sub: USER, workspaceId: WORKSPACE } as never;
       await expect(
         service.createRole(weak, { name: 'X', permissions: ['project:delete'] }),
       ).rejects.toMatchObject({ code: 'ROLE_PERMISSION_ESCALATION' });
@@ -447,12 +483,12 @@ describe('AccessService — scope-aware permission resolution', () => {
     it('blocks deleting a canonical tier role even as an editable workspace copy', async () => {
       // project_admin lives as an isSystem=false workspace copy, yet a tier role
       // must never be deletable — only its permissions may be tuned.
-      roleRepo.findById.mockResolvedValue(custom({ slug: 'project_admin', isSystem: false }))
+      roleRepo.findById.mockResolvedValue(custom({ slug: 'project_admin', isSystem: false }));
       await expect(service.deleteRole(admin, 'role-custom')).rejects.toMatchObject({
         code: 'ROLE_IMMUTABLE',
-      })
-      expect(roleRepo.delete).not.toHaveBeenCalled()
-    })
+      });
+      expect(roleRepo.delete).not.toHaveBeenCalled();
+    });
 
     it('blocks deleting a role still assigned to users (409 ROLE_IN_USE)', async () => {
       roleRepo.findById.mockResolvedValue(custom());
@@ -478,11 +514,11 @@ describe('AccessService — scope-aware permission resolution', () => {
  * (up to JWT_ACCESS_EXPIRY). These tests pin *which* writes invalidate and which
  * deliberately do not.
  */
-describe('AccessService — authorization epoch invalidation', () => {
+describe('AccessService — cached-permission invalidation', () => {
   let service: AccessService;
   let roleRepo: Mocked<IRoleRepository>;
   let assignmentRepo: Mocked<IRoleAssignmentRepository>;
-  let authzEpoch: Mocked<AuthzEpochService>;
+  let cache: Mocked<CacheService>;
 
   const actor = {
     sub: 'admin-1',
@@ -519,12 +555,13 @@ describe('AccessService — authorization epoch invalidation', () => {
         { provide: UnitOfWork, useValue: { run: vi.fn((fn: (tx: unknown) => unknown) => fn({})) } },
         { provide: AuditProducer, useValue: { emit: vi.fn().mockResolvedValue(undefined) } },
         {
-          provide: AuthzEpochService,
+          provide: CacheService,
           useValue: {
-            bump: vi.fn().mockResolvedValue(undefined),
-            bumpMany: vi.fn().mockResolvedValue(undefined),
-            current: vi.fn().mockResolvedValue(0),
-            isStale: vi.fn().mockResolvedValue(false),
+            // Always a miss, so every resolution reaches the repository mocks the
+            // assertions below are written against.
+            getJson: vi.fn().mockResolvedValue(null),
+            setJson: vi.fn().mockResolvedValue(undefined),
+            del: vi.fn().mockResolvedValue(undefined),
           },
         },
       ],
@@ -533,7 +570,17 @@ describe('AccessService — authorization epoch invalidation', () => {
     service = module.get(AccessService);
     roleRepo = module.get(ROLE_REPOSITORY);
     assignmentRepo = module.get(ROLE_ASSIGNMENT_REPOSITORY);
-    authzEpoch = module.get(AuthzEpochService);
+    cache = module.get(CacheService);
+    // The acting admin's own permissions are resolved from the database now, so the
+    // write paths under test need a resolvable actor.
+    assignmentRepo.listEffectiveForUser.mockResolvedValue([
+      {
+        scopeType: 'workspace',
+        scopeId: null,
+        roleSlug: 'workspace_admin',
+        permissions: ['workspace:*'],
+      },
+    ] as never);
   });
 
   it('invalidates the user when a workspace-scoped role is revoked', async () => {
@@ -543,7 +590,7 @@ describe('AccessService — authorization epoch invalidation', () => {
 
     await service.revokeRole(actor, 'a-1');
 
-    expect(authzEpoch.bump).toHaveBeenCalledWith(USER);
+    expect(cache.del).toHaveBeenCalledWith(`authz:assign:${WORKSPACE}:${USER}`);
   });
 
   it('invalidates the user when a workspace-scoped role is assigned', async () => {
@@ -553,19 +600,20 @@ describe('AccessService — authorization epoch invalidation', () => {
 
     await service.assignRole(actor, USER, target.id, 'workspace');
 
-    expect(authzEpoch.bump).toHaveBeenCalledWith(USER);
+    expect(cache.del).toHaveBeenCalledWith(`authz:assign:${WORKSPACE}:${USER}`);
   });
 
-  it('does NOT invalidate for a project-scoped assignment', async () => {
-    // Project-tier permissions are never embedded in the token — they are resolved
-    // from the database per request — so a bump would force a pointless re-mint.
+  it('DOES invalidate for a project-scoped assignment', async () => {
+    // The old token epoch skipped project scope, because project permissions were
+    // never in the token. The cache holds the assignment rows BOTH tiers read, so
+    // skipping it here would leave a project grant invisible for up to the TTL.
     const target = role('project_admin', ['project:edit']);
     roleRepo.findById.mockResolvedValue(target);
     assignmentRepo.create.mockResolvedValue(assignment(target.id, 'project', 'proj-9'));
 
     await service.assignRole(actor, USER, target.id, 'project', 'proj-9');
 
-    expect(authzEpoch.bump).not.toHaveBeenCalled();
+    expect(cache.del).toHaveBeenCalledWith(`authz:assign:${WORKSPACE}:${USER}`);
   });
 
   it('does NOT invalidate when a project-scoped role is revoked', async () => {
@@ -575,7 +623,7 @@ describe('AccessService — authorization epoch invalidation', () => {
 
     await service.revokeProjectRole(actor, 'proj-9', 'a-1');
 
-    expect(authzEpoch.bump).not.toHaveBeenCalled();
+    expect(cache.del).not.toHaveBeenCalled();
   });
 
   it("invalidates every holder when a custom role's permissions change", async () => {
@@ -592,7 +640,8 @@ describe('AccessService — authorization epoch invalidation', () => {
     await service.updateRolePermissions(actor, custom.id, ['release:view']);
 
     expect(assignmentRepo.listUserIdsForRole).toHaveBeenCalledWith(custom.id);
-    expect(authzEpoch.bumpMany).toHaveBeenCalledWith(['user-a', 'user-b']);
+    expect(cache.del).toHaveBeenCalledWith(`authz:assign:${WORKSPACE}:user-a`);
+    expect(cache.del).toHaveBeenCalledWith(`authz:assign:${WORKSPACE}:user-b`);
   });
 
   it('invalidates on elevation to workspace_admin', async () => {
@@ -603,7 +652,7 @@ describe('AccessService — authorization epoch invalidation', () => {
 
     await expect(service.elevateToWorkspaceAdmin(USER, WORKSPACE)).resolves.toBe(true);
 
-    expect(authzEpoch.bump).toHaveBeenCalledWith(USER);
+    expect(cache.del).toHaveBeenCalledWith(`authz:assign:${WORKSPACE}:${USER}`);
   });
 
   it('does not bump when a failed write throws before commit', async () => {
@@ -613,6 +662,6 @@ describe('AccessService — authorization epoch invalidation', () => {
 
     await expect(service.assignRole(actor, USER, 'role-missing', 'workspace')).rejects.toThrow();
 
-    expect(authzEpoch.bump).not.toHaveBeenCalled();
+    expect(cache.del).not.toHaveBeenCalled();
   });
 });
