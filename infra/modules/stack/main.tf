@@ -197,7 +197,7 @@ module "secrets" {
 
 # ── RDS PostgreSQL 17 ─────────────────────────────────────────────────────────
 module "rds" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/rds?ref=rds-v1.1.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/rds?ref=rds-v2.0.0"
 
   identifier        = local.name
   subnet_ids        = data.terraform_remote_state.runtime.outputs.data_subnet_ids
@@ -416,11 +416,13 @@ module "api" {
     # Cloudflare R2 bucket-scoped credentials (S3-compatible SigV4).
     { name = "STORAGE_ACCESS_KEY_ID", secret_arn = module.secrets.secret_arns["r2-access-key-id"] },
     { name = "STORAGE_SECRET_ACCESS_KEY", secret_arn = module.secrets.secret_arns["r2-secret-access-key"] },
-    # Public-bucket-scoped pair. Empty until minted, and StorageService falls back to the
-    # pair above when either is empty — so injecting them early is inert.
+    ], var.storage_public_credentials ? [
+    # Public-bucket-scoped pair, injected only once populated. NOT unconditional: the
+    # deploy preflight blocks on an injected secret that holds no value, so wiring these
+    # while empty broke every develop deploy. See the variable.
     { name = "STORAGE_PUBLIC_ACCESS_KEY_ID", secret_arn = module.secrets.secret_arns["r2-public-access-key-id"] },
     { name = "STORAGE_PUBLIC_SECRET_ACCESS_KEY", secret_arn = module.secrets.secret_arns["r2-public-secret-access-key"] },
-  ])
+    ] : [])
 
   environment_vars = concat(local.api_db_env, [
     { name = "NODE_ENV", value = "production" },
@@ -578,11 +580,13 @@ module "worker" {
     # Cloudflare R2 bucket-scoped credentials (worker also reads/writes attachments).
     { name = "STORAGE_ACCESS_KEY_ID", secret_arn = module.secrets.secret_arns["r2-access-key-id"] },
     { name = "STORAGE_SECRET_ACCESS_KEY", secret_arn = module.secrets.secret_arns["r2-secret-access-key"] },
-    # Public-bucket-scoped pair. Empty until minted, and StorageService falls back to the
-    # pair above when either is empty — so injecting them early is inert.
+    ], var.storage_public_credentials ? [
+    # Public-bucket-scoped pair, injected only once populated. NOT unconditional: the
+    # deploy preflight blocks on an injected secret that holds no value, so wiring these
+    # while empty broke every develop deploy. See the variable.
     { name = "STORAGE_PUBLIC_ACCESS_KEY_ID", secret_arn = module.secrets.secret_arns["r2-public-access-key-id"] },
     { name = "STORAGE_PUBLIC_SECRET_ACCESS_KEY", secret_arn = module.secrets.secret_arns["r2-public-secret-access-key"] },
-  ])
+    ] : [])
 
   # SCM backfill runs in the worker (ScmBackfillRelayService): it resolves the
   # GitHub App private key at RUNTIME to mint the App JWT, so the TASK role — not
@@ -770,7 +774,7 @@ module "dns_api" {
 # gone — two topics per environment meant two subscriptions to confirm and two
 # places to look. The fail-open alarm below publishes to this module's topic.
 module "observability" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/observability?ref=observability-v2.0.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/observability?ref=observability-v3.0.0"
 
   create_dashboard = var.create_dashboard
 
@@ -781,7 +785,15 @@ module "observability" {
   # Full ALB ARN — exposed by the runtime stack for exactly this. Without it the
   # module silently skips the two user-facing ALB alarms.
   alb_arn         = data.terraform_remote_state.runtime.outputs.alb_arn
-  rds_instance_id = module.rds.instance_id
+  # `identifier` (rally-prod), NOT `instance_id` (db-F35NKOG…). CloudWatch publishes RDS
+  # metrics under the DBInstanceIdentifier dimension, and `aws_db_instance.id` returns the
+  # RESOURCE id on AWS provider 5.x — so this pointed at a dimension value that does not
+  # exist. Six alarms sat in INSUFFICIENT_DATA permanently: RDS CPU, connections and free
+  # storage were unmonitored in BOTH environments while appearing covered.
+  #
+  # observability-v3.0.0 now rejects a resource id outright, so this cannot regress
+  # silently — it fails the plan instead.
+  rds_instance_id = module.rds.identifier
 
   # Per-service UnHealthyHostCount. Every other alarm here fires on a symptom of load,
   # so a service whose tasks are simply not running reads as quiet. Scoped by target

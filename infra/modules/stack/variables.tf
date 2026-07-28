@@ -277,6 +277,30 @@ variable "cloudflare_account_id" {
 }
 
 
+variable "storage_public_credentials" {
+  description = <<-EOT
+    Inject the PUBLIC-bucket R2 credential into api and worker, so the token that writes
+    world-readable avatars is not the token that reads every permission-gated attachment.
+
+    OFF by default, and the default matters: the deploy preflight refuses to deploy when
+    an injected Secrets Manager secret holds no value, so injecting these before they are
+    populated BLOCKS every deploy. That is exactly what happened when they were wired
+    unconditionally.
+
+    Two-step, same shape as `db_least_privilege`. Before flipping it, in this environment:
+      1. mint an R2 API token scoped to `<product>-<env>-public-assets` ONLY;
+      2. put both halves into the `r2-public-access-key-id` /
+         `r2-public-secret-access-key` secrets.
+    Then set this true. Afterwards, re-mint the PRIMARY token scoped to attachments alone —
+    in that order, or public writes 403 in between.
+
+    While false, StorageService reuses the primary credential for both buckets, which is
+    the behaviour that predates the split.
+  EOT
+  type        = bool
+  default     = false
+}
+
 variable "db_least_privilege" {
   description = <<-EOT
     Point the api and worker tasks at the least-privilege Postgres roles
