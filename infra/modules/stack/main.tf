@@ -351,6 +351,35 @@ locals {
 
   api_db_env    = var.db_least_privilege ? [{ name = "DATABASE_USER", value = "rally_app" }] : []
   worker_db_env = var.db_least_privilege ? [{ name = "DATABASE_USER", value = "rally_worker" }] : []
+
+  # Public HTTPS origin for the public-assets bucket, from the storage stack's
+  # `<product>_public_assets_base_url` output. Null until that stack attaches a
+  # `custom_domain`; try() also covers a storage stack applied before the output
+  # existed, so this module stays appliable against either.
+  #
+  # Injected as CDN_PUBLIC_ASSETS_BASE_URL only when non-empty, and that matters:
+  # env.schema.ts validates it with `z.string().url()`, so an empty string fails
+  # validation and the task refuses to boot. Absent is the supported "no CDN" state;
+  # empty is not.
+  #
+  # NEVER source this from an attachments bucket. Objects on this origin are readable
+  # by anyone holding the key, with no auth and no expiry, so pointing it at
+  # permission-gated files bypasses every authorization check silently —
+  # `StorageService.cdnUrl()` has no private-bucket path for exactly this reason.
+  public_assets_base_url = try(
+    data.terraform_remote_state.storage.outputs["${var.product}_public_assets_base_url"],
+    null,
+  )
+
+  # Explicit null check rather than coalesce(): coalesce rejects an empty string as
+  # well as null, so `coalesce(x, "")` throws "no non-null, non-empty-string
+  # arguments" in precisely the case this guard exists for — storage stack not yet
+  # applied, output absent, try() returning null.
+  public_assets_cdn_env = (
+    local.public_assets_base_url != null && local.public_assets_base_url != ""
+    ) ? [
+    { name = "CDN_PUBLIC_ASSETS_BASE_URL", value = local.public_assets_base_url },
+  ] : []
 }
 
 # ── ECS Service — API ─────────────────────────────────────────────────────────
@@ -473,11 +502,14 @@ module "api" {
     # bucket — a silent fallback would put world-readable objects next to
     # permission-gated ones.
     { name = "S3_PUBLIC_ASSETS_BUCKET", value = data.terraform_remote_state.storage.outputs["${var.product}_public_assets_name"] },
-    # CDN_PUBLIC_ASSETS_BASE_URL is deliberately NOT set yet — the public bucket
-    # has no custom domain until cf-r2-v1.1.0 ships. Unset means public assets
-    # fall back to a presigned GET, which is correct, just not edge-cached.
-    # When wiring it: source it from the storage stack output, never hand-enter
-    # it, and never point it at the attachments bucket.
+    # CDN_PUBLIC_ASSETS_BASE_URL travels via local.public_assets_cdn_env at the end of
+    # this list, sourced from the storage stack rather than hand-entered.
+    #
+    # An earlier version of this comment said an unset value meant public assets "fall
+    # back to a presigned GET, which is correct, just not edge-cached". That was wrong:
+    # there is no fallback for the avatar surface. cdnUrl() returns null and the API
+    # rejects the upload with 409 "Avatar storage is not configured (no public CDN base
+    # URL)", which is what develop did until the buckets got a custom domain.
     { name = "STORAGE_ENDPOINT", value = data.terraform_remote_state.storage.outputs["${var.product}_attachments_endpoint"] },
     { name = "STORAGE_FORCE_PATH_STYLE", value = "true" },
     # Email — SES in production
@@ -490,7 +522,7 @@ module "api" {
     # void. False until observability.otlp_endpoint is set.
     { name = "OTEL_ENABLED", value = tostring(module.otel_agent_api.enabled) },
     { name = "OTEL_EXPORTER_OTLP_ENDPOINT", value = module.otel_agent_api.endpoint },
-  ], local.otel_env)
+  ], local.public_assets_cdn_env, local.otel_env)
 
   # Merged into the task definition; reachable from the app at 127.0.0.1 via the
   # shared task network namespace. Empty list until a backend is configured.
@@ -625,11 +657,14 @@ module "worker" {
     # bucket — a silent fallback would put world-readable objects next to
     # permission-gated ones.
     { name = "S3_PUBLIC_ASSETS_BUCKET", value = data.terraform_remote_state.storage.outputs["${var.product}_public_assets_name"] },
-    # CDN_PUBLIC_ASSETS_BASE_URL is deliberately NOT set yet — the public bucket
-    # has no custom domain until cf-r2-v1.1.0 ships. Unset means public assets
-    # fall back to a presigned GET, which is correct, just not edge-cached.
-    # When wiring it: source it from the storage stack output, never hand-enter
-    # it, and never point it at the attachments bucket.
+    # CDN_PUBLIC_ASSETS_BASE_URL travels via local.public_assets_cdn_env at the end of
+    # this list, sourced from the storage stack rather than hand-entered.
+    #
+    # An earlier version of this comment said an unset value meant public assets "fall
+    # back to a presigned GET, which is correct, just not edge-cached". That was wrong:
+    # there is no fallback for the avatar surface. cdnUrl() returns null and the API
+    # rejects the upload with 409 "Avatar storage is not configured (no public CDN base
+    # URL)", which is what develop did until the buckets got a custom domain.
     { name = "STORAGE_ENDPOINT", value = data.terraform_remote_state.storage.outputs["${var.product}_attachments_endpoint"] },
     { name = "STORAGE_FORCE_PATH_STYLE", value = "true" },
     { name = "EMAIL_PROVIDER", value = "ses" },
@@ -640,7 +675,7 @@ module "worker" {
     # void. False until observability.otlp_endpoint is set.
     { name = "OTEL_ENABLED", value = tostring(module.otel_agent_worker.enabled) },
     { name = "OTEL_EXPORTER_OTLP_ENDPOINT", value = module.otel_agent_worker.endpoint },
-  ], local.otel_env)
+  ], local.public_assets_cdn_env, local.otel_env)
 
   # Merged into the task definition; reachable from the app at 127.0.0.1 via the
   # shared task network namespace. Empty list until a backend is configured.
