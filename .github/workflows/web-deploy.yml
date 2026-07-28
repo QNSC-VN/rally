@@ -108,10 +108,14 @@ jobs:
           set -euo pipefail
           # The sibling run may not be registered the instant this job starts;
           # allow a short grace period before concluding there is none.
+            # `|| ID=""` keeps a transient gh/API failure from ending the step: these
+            # runners use `set -e`, and an assignment takes its command substitution's
+            # exit status, so a rate-limited or flaky `gh run list` skipped the retry
+            # loop entirely and turned a recoverable blip into a failed gate.
           for _ in $(seq 1 12); do
             ID=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow=infra-apply.yml \
                    --commit "$GITHUB_SHA" \
-                   --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+                   --limit 1 --json databaseId --jq '.[0].databaseId // empty') || ID=""
             [ -n "$ID" ] && break
             sleep 10
           done
@@ -164,7 +168,7 @@ jobs:
           for _ in $(seq 1 12); do
             ID=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow web-ci.yml \
                    --branch main --commit "$GITHUB_SHA" \
-                   --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+                   --limit 1 --json databaseId --jq '.[0].databaseId // empty') || ID=""
             [ -n "$ID" ] && break
             sleep 10
           done
@@ -178,7 +182,7 @@ jobs:
 
   deploy:
     needs: [wait-for-infra, wait-for-ci]
-    uses: QNSC-VN/qnsc-ci/.github/workflows/web-deploy.yml@v1.5.1
+    uses: QNSC-VN/qnsc-ci/.github/workflows/web-deploy.yml@v1.6.2
     with:
       product: rally
       # Monorepo: run wrangler from the web package dir so it discovers the
