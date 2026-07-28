@@ -113,6 +113,21 @@ module "stack" {
   // flips in a LATER apply, after the cutover task has actually run.
   db_role_passwords_set = true
 
+  // Step 3, the last one: api and worker stop connecting as the RDS master.
+  //
+  // The cutover task ran here on 2026-07-29 (task
+  // 17d5bd4504bd43959c7dc531cbd36c95, exit 0) and verified BOTH roles against this
+  // database: LOGIN works, none of rolsuper/rolbypassrls/rolcreatedb/rolcreaterole/
+  // rolreplication is set, and CREATE TABLE as the role is denied. So the
+  // precondition this flag cannot enforce is satisfied.
+  //
+  // The MIGRATOR keeps the master credential — it needs DDL. Narrowing it means
+  // transferring schema ownership, which is step 4 and deliberately separate.
+  //
+  // Rollback is this line and a rolling restart: the master credential is untouched
+  // and the app holds no state tied to the role it connected as.
+  db_least_privilege = true
+
   rds = {
     instance_class           = "db.t4g.micro"
     allocated_storage_gb     = 20

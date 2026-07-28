@@ -1,9 +1,22 @@
 # Cutting the app over to least-privilege database roles
 
-**Status:** roles exist. Passwords generated and stored in Secrets Manager
-(2026-07-28) and `db_role_passwords_set = true` in both environments, so step 1 is
-done and step 2's Terraform half is in place. The **cutover task has not run** in
-either environment, and `db_least_privilege` is still false in both.
+**Status:**
+
+| | develop | production |
+|---|---|---|
+| roles exist (migration 0068) | yes | yes |
+| 1. passwords in Secrets Manager | yes (2026-07-28) | yes (2026-07-28) |
+| 2. `db_role_passwords_set` | yes | yes |
+| 2. cutover task run | **yes (2026-07-29)** | **no** |
+| 3. `db_least_privilege` | **being enabled** | no |
+| 4. ownership transfer | no | no |
+
+Develop's cutover task was `17d5bd4504bd43959c7dc531cbd36c95` on
+`rally-develop-migrator:105`, exit 0, both roles verified.
+
+**Production still needs step 2's task run** before its flag can be flipped — do
+that only after develop has run a full deploy cycle on the restricted roles.
+
 **Owner:** whoever runs the next infra change.
 
 ## Why
