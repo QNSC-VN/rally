@@ -86,8 +86,17 @@ module "stack" {
   create_dashboard = false
 
   // The unhealthy-target alarm treats "no registered targets" as breaching, which is
-  // right for an always-on environment and wrong here: the off-hours cost-saver scales
-  // these services to 0, so the alarm would sit permanently in ALARM.
+  // right for an always-on environment and wrong here: these services run on Fargate
+  // SPOT, and a Spot interruption leaves zero registered targets until a replacement
+  // task passes its health check. Past the 3x60s evaluation window that fires the alarm
+  // — in an environment nobody is paged for. Interruptions are not hypothetical here;
+  // `SpotInterruption` shows up in this service's stopped-task reasons.
+  //
+  // NOT justified by an off-hours cost-saver. An earlier version of this comment said
+  // so, and no such scheduler exists: qnsc-ci's deploy reusable can wake a stopped RDS
+  // and restore services scaled to 0, and _shared grants rds:StartDBInstance, but
+  // nothing schedules any of it. If that scheduler is ever built, add it here as a
+  // second reason rather than assuming it.
   monitor_target_health = false
 
   rds = {
