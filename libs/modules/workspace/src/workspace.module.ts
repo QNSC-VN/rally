@@ -1,4 +1,5 @@
 import { Module, Logger, type OnApplicationBootstrap } from '@nestjs/common';
+import { AccessModule } from '@modules/access';
 import { WorkspaceService } from './application/workspace.service';
 import { TeamService } from './application/team.service';
 import { WorkspaceController, InvitationController } from './interface/http/workspace.controller';
@@ -17,6 +18,10 @@ import { TEAM_REPOSITORY } from './domain/ports/team.repository';
 import { TEAM_MEMBER_REPOSITORY } from './domain/ports/team-member.repository';
 
 @Module({
+  // AccessModule supplies the PolicyGuard (and the AccessService +
+  // ProjectScopeResolver it resolves through) that both controllers here are
+  // authorized by. AccessModule imports nothing, so this cannot form a cycle.
+  imports: [AccessModule],
   controllers: [WorkspaceController, InvitationController, TeamController],
   providers: [
     WorkspaceService,

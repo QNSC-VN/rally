@@ -104,10 +104,6 @@ export interface IScmStore {
     workspaceId: string,
     args: PageArgs,
   ): Promise<PagedResult<ScmChangeset>>;
-  countByWorkItem(
-    workItemId: string,
-    workspaceId: string,
-  ): Promise<{ connections: number; changesets: number }>;
 }
 // The worker relay drains scm.webhook_inbox directly against its own tx
 // (FOR UPDATE SKIP LOCKED), mirroring notification-relay — no store port needed.

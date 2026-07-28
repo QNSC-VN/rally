@@ -10,8 +10,8 @@ const AUTHZ_EPOCH_PREFIX = 'authz:epoch:';
  * already-minted access tokens the moment a user's effective permissions change.
  *
  * Why this exists: a token carries `claims.permissions` resolved at mint time,
- * and `PermissionGuard` authorizes from that snapshot without touching the
- * database. Without an epoch, revoking a role only takes effect when the token
+ * and `PolicyGuard` authorizes workspace-tier codes from that snapshot without
+ * touching the database. Without an epoch, revoking a role only takes effect when the token
  * next rotates — up to `JWT_ACCESS_EXPIRY` (15m) later. Every permission-changing
  * write bumps the epoch; {@link JwtAuthGuard} compares the epoch stamped into the
  * token against the current one and rejects (Bearer) or transparently re-mints

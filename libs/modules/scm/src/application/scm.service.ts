@@ -1,10 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
-import { InjectDrizzle, NotFoundException } from '@platform';
-import type { JwtPayload, PagedResult, DrizzleDB } from '@platform';
-import { AccessService } from '@modules/access';
-import { PERMISSION } from '@shared-kernel';
-import { workItems } from '../../../../../db/schema/work';
+import type { JwtPayload, PagedResult } from '@platform';
 import { SCM_STORE, type IScmStore, type PageArgs } from '../domain/ports/scm.store';
 import type {
   ScmProvider,
@@ -17,54 +12,31 @@ import type {
 /** Read-side + repo-mapping use cases for the API. Ingestion/linking is the relay's job. */
 @Injectable()
 export class ScmService {
-  constructor(
-    @Inject(SCM_STORE) private readonly store: IScmStore,
-    @InjectDrizzle() private readonly db: DrizzleDB,
-    private readonly accessService: AccessService,
-  ) {}
-
-  /**
-   * SCM links belong to a work item, so viewing them requires `work_item:view`
-   * at that work item's PROJECT scope — not just workspace membership. Resolves
-   * the work item's project and enforces before any connection/changeset read.
-   */
-  private async assertCanViewWorkItem(actor: JwtPayload, workItemId: string): Promise<void> {
-    const rows = await this.db
-      .select({ projectId: workItems.projectId })
-      .from(workItems)
-      .where(and(eq(workItems.id, workItemId), eq(workItems.workspaceId, actor.workspaceId)))
-      .limit(1);
-    const projectId = rows[0]?.projectId;
-    if (!projectId) throw new NotFoundException('WORK_ITEM_NOT_FOUND', 'Work item not found');
-    await this.accessService.assertProjectPermission(actor, projectId, PERMISSION.WORK_ITEM_VIEW);
-  }
+  constructor(@Inject(SCM_STORE) private readonly store: IScmStore) {}
 
   // ── Work-item connection/changeset reads (project-scoped: work_item:view) ────
+  //
+  // `work_item:view` at the item's PROJECT scope is enforced by `PolicyGuard`
+  // via `@RequirePermission('work_item:view', { resource: 'work_item', … })`,
+  // which loads the work item to find its project — exactly what the private
+  // assert here used to do. The workspace predicate below is the remaining
+  // re-check: the store filters by `workspaceId`, so a work item id from another
+  // workspace reads back empty even if the guard were bypassed.
 
-  async listConnections(
+  listConnections(
     actor: JwtPayload,
     workItemId: string,
     args: PageArgs,
   ): Promise<PagedResult<ScmConnection>> {
-    await this.assertCanViewWorkItem(actor, workItemId);
     return this.store.listConnections(workItemId, actor.workspaceId, args);
   }
 
-  async listChangesets(
+  listChangesets(
     actor: JwtPayload,
     workItemId: string,
     args: PageArgs,
   ): Promise<PagedResult<ScmChangeset>> {
-    await this.assertCanViewWorkItem(actor, workItemId);
     return this.store.listChangesets(workItemId, actor.workspaceId, args);
-  }
-
-  async counts(
-    actor: JwtPayload,
-    workItemId: string,
-  ): Promise<{ connections: number; changesets: number }> {
-    await this.assertCanViewWorkItem(actor, workItemId);
-    return this.store.countByWorkItem(workItemId, actor.workspaceId);
   }
 
   // ── Repository ↔ project mapping (workspace-scoped) ──────────────────────────

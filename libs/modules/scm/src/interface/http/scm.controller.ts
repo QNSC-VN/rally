@@ -10,8 +10,9 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Auth, ApiCommonErrors, ApiPagedResponse, buildPageArgs, PageQueryDto } from '@platform';
+import { ApiCommonErrors, ApiPagedResponse, buildPageArgs, PageQueryDto } from '@platform';
 import type { JwtPayload, PagedResult } from '@platform';
+import { AuthPolicy, RequirePermission } from '@modules/access';
 import { CurrentUser } from '@modules/identity';
 import { ScmService } from '../../application/scm.service';
 import { ScmInstallationService } from '../../application/scm-installation.service';
@@ -77,6 +78,7 @@ function toRepositoryDto(r: ScmRepositoryWithSync): ScmRepositoryResponseDto {
 
 @ApiTags('scm')
 @Controller()
+@AuthPolicy()
 export class ScmController {
   constructor(
     private readonly scm: ScmService,
@@ -86,9 +88,11 @@ export class ScmController {
   // ── Work-item Connections / Changesets ───────────────────────────────────────
 
   @Get('work-items/:id/connections')
-  // Authn only at the guard; ScmService enforces work_item:view at the item's
-  // PROJECT scope (workspace:view would wrongly block a project-only member).
-  @Auth()
+  // SCM links belong to a work item, so the check is work_item:view at that
+  // item's PROJECT scope — workspace:view would wrongly block a project-only
+  // member. The guard resolves the project by loading the work item, which is
+  // what the service used to do for itself.
+  @RequirePermission('work_item:view', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'List SCM connections (pull requests) for a work item' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiPagedResponse(ScmConnectionResponseDto)
@@ -103,7 +107,7 @@ export class ScmController {
   }
 
   @Get('work-items/:id/changesets')
-  @Auth()
+  @RequirePermission('work_item:view', { resource: 'work_item', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'List SCM changesets (commits) for a work item' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiPagedResponse(ScmChangesetResponseDto)
@@ -120,7 +124,7 @@ export class ScmController {
   // ── GitHub App installations (org-level auto-discovery) ───────────────────────
 
   @Get('scm/installations')
-  @Auth('workspace:view')
+  @RequirePermission('workspace:view')
   @ApiOperation({ summary: 'GitHub App installations connected to the workspace' })
   @ApiResponse({ status: 200, type: ScmInstallationResponseDto, isArray: true })
   @ApiCommonErrors(401)
@@ -134,7 +138,7 @@ export class ScmController {
   }
 
   @Get('scm/installations/available')
-  @Auth('scm:manage')
+  @RequirePermission('scm:manage')
   @ApiOperation({ summary: 'GitHub App installations the App can see (to connect)' })
   @ApiResponse({ status: 200, type: ScmInstallationResponseDto, isArray: true })
   @ApiCommonErrors(401, 403)
@@ -145,7 +149,7 @@ export class ScmController {
   }
 
   @Post('scm/installations')
-  @Auth('scm:manage')
+  @RequirePermission('scm:manage')
   @ApiOperation({ summary: 'Connect a GitHub App installation → auto-discover its repos' })
   @ApiResponse({ status: 201, type: ScmConnectResponseDto })
   @ApiCommonErrors(400, 401, 403)
@@ -157,7 +161,7 @@ export class ScmController {
   }
 
   @Delete('scm/installations/:installationId')
-  @Auth('scm:manage')
+  @RequirePermission('scm:manage')
   @HttpCode(204)
   @ApiOperation({ summary: 'Disconnect a GitHub App installation (deactivates its repos)' })
   @ApiParam({ name: 'installationId', type: 'string' })
@@ -173,7 +177,7 @@ export class ScmController {
   // ── Repositories (Settings ▸ Integrations) ────────────────────────────────────
 
   @Get('scm/repositories')
-  @Auth('workspace:view')
+  @RequirePermission('workspace:view')
   @ApiOperation({ summary: 'List SCM repositories (with sync status) for the workspace' })
   @ApiResponse({ status: 200, type: ScmRepositoryResponseDto, isArray: true })
   @ApiCommonErrors(401)
@@ -183,7 +187,7 @@ export class ScmController {
   }
 
   @Post('scm/repositories')
-  @Auth('scm:manage')
+  @RequirePermission('scm:manage')
   @ApiOperation({ summary: 'Manually register a repository (workspace-scoped)' })
   @ApiResponse({ status: 201, type: ScmRepositoryResponseDto })
   @ApiCommonErrors(400, 401, 403)
@@ -200,7 +204,7 @@ export class ScmController {
   }
 
   @Post('scm/repositories/:id/sync')
-  @Auth('scm:manage')
+  @RequirePermission('scm:manage')
   @ApiOperation({ summary: 'Enqueue a backfill (Sync now) for a mapped repository' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 201, type: ScmSyncResponseDto })
@@ -213,7 +217,7 @@ export class ScmController {
   }
 
   @Delete('scm/repositories/:id')
-  @Auth('scm:manage')
+  @RequirePermission('scm:manage')
   @HttpCode(204)
   @ApiOperation({ summary: 'Remove a repository mapping' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
