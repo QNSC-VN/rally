@@ -1,0 +1,80 @@
+# Declared divergence from opshub
+
+rally and opshub share one architecture on purpose, and the boilerplate is meant to
+stay identical: `.github/workflows`, `infra/`, `libs/platform`, `libs/shared-kernel`,
+`apps/*/bootstrap`, `apps/web/src/{shared,app}`.
+
+Where they differ, it is either **declared here** or it is drift. The point of the
+list is that an unlisted difference is a bug, so nobody has to guess whether they
+found a decision or an accident.
+
+Keep the opshub copy of this file in sync — it is the same register from the other
+side.
+
+## Allowed: product domain
+
+Not drift, never converging. Rally plans software delivery; opshub runs IT
+operations.
+
+| | rally | opshub |
+| --- | --- | --- |
+| domain modules | work items, iterations, releases, milestones, backlog, quality, SCM | assets, access requests, compliance, workforce, licences, security posture, catalog |
+| tenancy | workspace-scoped (`contextId` is the workspace) | single-tenant (`contextId` unused) |
+| permission vocabulary | `namespace:action` with `ns:*` wildcards (`work_item:edit`) | `resource.action` with `*` wildcard (`asset.read`) |
+
+The vocabulary difference is why `permissionGrants` could not stay in the shared
+package: its `ns:*` semantics cannot express opshub's dotted codes.
+
+## Allowed: authorization scope model
+
+| | rally | opshub |
+| --- | --- | --- |
+| scope dimensions | `global`, `workspace`, `project` | `global`, `self`, `team`, `dept`, `region` |
+| delegation | none | `authz/delegation.service.ts` |
+| grant expiry | none | `expiresAt` on assignments |
+| IdP role mapping | none | Entra App Roles → global assignments |
+| custom roles | editor UI + backend CRUD | none |
+
+Both resolve from the database, cached per user, invalidated on write — that part is
+the same model (`docs/superpowers/specs/2026-07-28-auth-convergence.md`). Only the
+dimensions differ, and they differ because the products do.
+
+**Convergence intent:** opshub's evaluator is the more general one. If rally ever
+needs to *subtract* a permission at project scope — the additive-only limitation in
+`RALLY_HARDENING_PLAN.md` R3 — the answer is to adopt opshub's shape, not to invent
+a third.
+
+## Temporary: rally is ahead, opshub should catch up
+
+Tracked as work, not as divergence. Ordered plan in the convergence spec.
+
+| gap | opshub state as of 2026-07-28 |
+| --- | --- |
+| typed permission catalogue + contract specs | keys are `string`; a typo compiles |
+| single guard, declarative scope descriptors | `RoleGuard` (JWT roles, stale) coexists with `PolicyGuard`; scope via per-route closures |
+| BFF browser auth | MSAL in-page, access token in JS memory |
+| CSRF enforcement | only on `/v1/auth/refresh` |
+| shared cache in develop | per-task Valkey sidecar |
+| `infra/modules/stack` | develop and prod duplicate ~370 lines each |
+| deploy on infra change | `infra/**` still in `paths-ignore`, so a Terraform-owned env change registers a task definition nothing rolls onto |
+| observability package + alarms | not adopted; no alarms |
+| migration-upgrade CI job, expand-contract advisory, deploy gating | absent |
+| e2e depth | no Playwright, no service-level flow suite |
+| R2 storage | S3 app-buckets, while `opshub_attachments_*` R2 buckets already exist unused |
+
+## Temporary: opshub is ahead, rally should catch up
+
+| gap | rally state |
+| --- | --- |
+| scoped authorization dimensions, delegation, grant expiry | workspace/project only |
+| IdP role mapping (`ISsoProvisioningHook`) | not bound; roles are app-assigned only |
+| cross-tab refresh coordination (Web Locks) | not applicable under BFF, but the idea is opshub's |
+
+## Not divergence — fix on sight
+
+- `FailOpenControl` in `@qnsc-vn/observability` still declares `authz_epoch` and
+  `authz_epoch_bump`. Nothing emits them since #238. Removing union members is
+  breaking, so they come out on the package's next major.
+- Neither repo has the weekly diff gate over the shared paths yet. Until it exists,
+  this register is maintained by hand, which means it will rot — the gate is what
+  makes an unlisted difference *visible* rather than merely wrong.

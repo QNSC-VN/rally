@@ -11,6 +11,8 @@ non-obvious tooling behaviour. Read this before changing build, auth, or DB code
 | Entity surface pattern (list + detail scaffolds) | `apps/web/ADR-001-entity-surface-pattern.md` |
 | Component migration state + ratchets | `apps/web/FRONTEND_COMPONENT_AUDIT.md` |
 | Design specs and wave plans | `docs/superpowers/{specs,plans}/` |
+| Auth model shared with opshub (+ what opshub must do) | `docs/superpowers/specs/2026-07-28-auth-convergence.md` |
+| Declared differences from opshub | `docs/DIVERGENCE.md` |
 | SCM (GitHub App) setup | `docs/scm-github-app.md` |
 
 ## Local stack
@@ -192,10 +194,24 @@ either opens a hole or leaks API surface.
 `opshub` (`../opshub`) is a second product on the same architecture, and the
 boilerplate is meant to stay identical: workflows, `infra/`, `libs/platform`,
 `libs/shared-kernel`, `apps/*/bootstrap`, `apps/web/src/{shared,app}`. A fix to any
-of those here should be ported there in the same week, and vice versa. OpsHub is
-ahead on scoped authorization (DB-resolved, cached, `self|team|dept|region`); rally
-is ahead on infra, CI gates, BFF auth, and test depth. See
+of those here should be ported there in the same week, and vice versa.
+
+**A difference between the two repos is either declared in `docs/DIVERGENCE.md` or it
+is drift.** Read that before "aligning" anything — several differences are deliberate
+(opshub is single-tenant with `self|team|dept|region` scopes and dotted permission
+codes; rally is workspace-scoped with `ns:*` wildcards).
+
+rally is ahead on infra, CI gates, BFF auth and test depth; opshub is ahead on
+authorization scope dimensions, delegation and IdP role mapping. Both now resolve
+permissions from the database — see
+`docs/superpowers/specs/2026-07-28-auth-convergence.md` for the shared model and the
+ordered list of what opshub still has to do. Wider audit:
 `OPSHUB_RALLY_PARITY_PLAN.md` and `RALLY_HARDENING_PLAN.md` one directory up.
+
+What may live in a *shared package* is a separate rule, recorded in
+`qnsc-app-platform/docs/ADMISSION-TEST.md`: divergence that would be a security
+defect or a cross-repo contract break belongs there; divergence that would merely be
+inconsistent stays in the product.
 
 ## Conventions
 
