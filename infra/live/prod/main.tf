@@ -111,6 +111,12 @@ module "stack" {
   // has had no users, so nothing has hit it yet — this lands before it can.
   storage_public_credentials = true
 
+  // Step 2 of docs/runbooks/db-role-least-privilege.md, same as develop and equally
+  // inert: the migrator can read the role passwords so the one-off cutover task can
+  // set them. `db_least_privilege` stays false here until develop has run a full
+  // deploy cycle on the restricted roles — the runbook's develop-first rule.
+  db_role_passwords_set = true
+
   // PRE-LAUNCH sizing. Multi-AZ t4g.small with Enhanced Monitoring is the right
   // production posture and it is what this becomes at go-live — but it costs about
   // $101/mo, and every dollar of it currently buys durability for a database with no

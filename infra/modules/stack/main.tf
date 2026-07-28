@@ -699,7 +699,7 @@ module "migrator" {
     SSO_JIT_ENABLED = "false"
   }
 
-  secrets = {
+  secrets = merge({
     # The master credential, and it stays that way even when `db_least_privilege`
     # moves the api and worker off it: the migrator runs DDL, so it needs the
     # owner. Narrowing it to `rally_migrate` additionally requires transferring
@@ -710,7 +710,27 @@ module "migrator" {
     # migrator holding a stale password.
     DATABASE_USER     = "${module.rds.master_secret_arn}:username::"
     DATABASE_PASSWORD = "${module.rds.master_secret_arn}:password::"
-  }
+    },
+    # The least-privilege role passwords, for the ONE-OFF cutover task only:
+    #   aws ecs run-task --task-definition <name>-migrator --overrides \
+    #     '{"containerOverrides":[{"name":"migrator","command":
+    #       ["node","dist/db/enable-least-privilege-roles.js"]}]}'
+    #
+    # They live on the migrator because it is the ONLY workload that holds the RDS
+    # master credential and sits in the database's subnets. RDS is not publicly
+    # accessible and ECS Exec is disabled on every service, so there is no other
+    # route to run `ALTER ROLE ... LOGIN PASSWORD`.
+    #
+    # `run-task --overrides` cannot add SECRETS — containerOverrides supports
+    # `environment` only — so passing them at invocation time would mean plaintext
+    # passwords in the API call. They have to be on the task definition.
+    #
+    # The normal entrypoint (`node dist/db/migrate.js`) ignores these, so the
+    # migrator's behaviour is unchanged when the flag is on.
+    var.db_role_passwords_set ? {
+      DATABASE_APP_PASSWORD    = module.secrets.secret_arns["db-app-password"]
+      DATABASE_WORKER_PASSWORD = module.secrets.secret_arns["db-worker-password"]
+  } : {})
 
   tags = merge(local.tags, { Service = "migrator" })
 }

@@ -29,6 +29,7 @@
     "test:e2e": "vitest run --config test/vitest.e2e.config.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx db/migrate.ts",
+    "db:roles:enable": "tsx db/enable-least-privilege-roles.ts",
     "db:seed": "tsx db/seeds/seed.ts",
     "db:seed:test": "tsx db/seeds/seed.ts --fixtures",
     "db:studio": "drizzle-kit studio",
