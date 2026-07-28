@@ -32,14 +32,25 @@ on:
       - ".github/workflows/infra-apply.yml"
   workflow_dispatch:
 
-# Serialize ALL infra applies for this repo (constant group, NOT keyed on
-# github.ref). Merging a release PR pushes main AND creates the vX.Y.Z tag
-# near-simultaneously; both runs execute apply-shared against the same
-# infra/live/_shared state. A ref-keyed group put them in different groups →
-# concurrent tofu apply → state-lock failure on every release. One group makes
-# the tag run queue behind the branch run. Never cancel a running apply.
+# Serialize by ENVIRONMENT, matching backend-deploy.yml and web-deploy.yml: all
+# prod (tag) applies share one group, all develop (branch) applies share another,
+# and the two run in PARALLEL.
+#
+# This was one constant group for the whole repo, to stop a release's near-
+# simultaneous main push and vX.Y.Z tag running apply-shared against the same
+# infra/live/_shared state concurrently — a real bug, state-lock failure on every
+# release. But a repo-wide group also makes DEVELOP queue behind PROD, and prod is
+# gated on a required reviewer, so an unapproved production apply froze every
+# develop apply until a human noticed. It silently swallowed two of them.
+#
+# The shared-state collision is a property of ONE JOB, so it is fixed at that job
+# (see apply-shared's own `concurrency` below) instead of by serialising the whole
+# workflow. Develop and prod touch different state files and different
+# environments; nothing else about them needs to be mutually exclusive.
+#
+# Never cancel a running apply.
 concurrency:
-  group: infra-apply-${{ github.repository }}
+  group: infra-apply-${{ github.repository }}-${{ github.ref_type == 'tag' && 'prod' || 'develop' }}
   cancel-in-progress: false
 
 permissions:
@@ -58,6 +69,19 @@ jobs:
     runs-on: ubuntu-latest
     environment: shared
     timeout-minutes: 60
+
+    # The one thing that genuinely must not run twice at once, and the reason the
+    # whole workflow used to share a group: a release pushes main and the vX.Y.Z tag
+    # near-simultaneously, so both runs reach this job and would apply the same
+    # infra/live/_shared state concurrently — state-lock failure on every release.
+    #
+    # A CONSTANT group here (not keyed on ref) keeps that serialised while leaving the
+    # per-environment applies free to run in parallel. This job holds the lock only
+    # while it is actually applying: the production approval gate is on apply-prod, a
+    # separate job, so a release waiting for a reviewer no longer blocks develop.
+    concurrency:
+      group: infra-apply-shared-${{ github.repository }}
+      cancel-in-progress: false
 
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0   # v7.0.0
