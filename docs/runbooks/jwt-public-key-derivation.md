@@ -79,7 +79,18 @@ names the reason.
 **Rollback at this point is free**: revert the commit and re-apply. The secret still
 exists and still holds the value.
 
-## Phase 3 — delete the secret
+## Phase 3 — delete the secret (DONE)
+
+The `"jwt-public"` entry is gone from `secret_names`, so Terraform destroys the secret in
+both environments. Phase 2 was verified in develop AND production first — task definitions
+carried no `JWT_PUBLIC_KEY`, both services logged `Nest application successfully started`,
+and neither log group contained a `JWT_PRIVATE_KEY` complaint.
+
+Plans reviewed before merge: develop `1 to destroy` (the secret); production `4 to destroy`,
+which is the secret plus three task-definition **replacements** — Terraform counts a
+replacement as a destroy plus an add, so that number is expected rather than alarming.
+
+### Original procedure, kept for reference
 
 Only after develop has run on derivation for a few deploys, and production has been
 through phase 2 as well.
