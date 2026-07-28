@@ -72,7 +72,7 @@ export class TeamStatusDrizzleRepository implements ITeamStatusRepository {
       .leftJoin(parent, and(eq(parent.id, tasks.parentId), isNull(parent.deletedAt)))
       .leftJoin(release, eq(release.id, parent.releaseId))
       .where(and(...conditions))
-      .orderBy(asc(tasks.rank), asc(tasks.createdAt));
+      .orderBy(asc(tasks.rank), asc(tasks.createdAt), asc(tasks.id));
 
     // Batch-fetch user display info for all assignees.
     const assigneeIds = [...new Set(taskRows.map((r) => r.assigneeId).filter(Boolean))] as string[];
@@ -137,7 +137,7 @@ export class TeamStatusDrizzleRepository implements ITeamStatusRepository {
             eq(teamMembers.status, 'active'),
           ),
         )
-        .orderBy(asc(users.displayName));
+        .orderBy(asc(users.displayName), asc(users.id));
     }
 
     return this.db
@@ -151,7 +151,7 @@ export class TeamStatusDrizzleRepository implements ITeamStatusRepository {
           eq(projectMembers.status, 'active'),
         ),
       )
-      .orderBy(asc(users.displayName));
+      .orderBy(asc(users.displayName), asc(users.id));
   }
 
   async getCapacities(iterationId: string, userIds: string[]): Promise<Map<string, number>> {

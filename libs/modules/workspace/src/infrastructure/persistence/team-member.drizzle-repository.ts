@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq, notInArray } from 'drizzle-orm';
+import { and, asc, eq, notInArray } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB, DbExecutor } from '@platform';
@@ -31,7 +31,7 @@ export class TeamMemberDrizzleRepository implements ITeamMemberRepository {
       .select()
       .from(teamMembers)
       .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.status, 'active')))
-      .orderBy(teamMembers.joinedAt);
+      .orderBy(teamMembers.joinedAt, asc(teamMembers.id));
     return rows;
   }
 

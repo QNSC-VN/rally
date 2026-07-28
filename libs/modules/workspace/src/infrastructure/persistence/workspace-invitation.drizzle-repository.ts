@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq, gt, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, sql } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB, DbExecutor } from '@platform';
 import { workspaceInvitations } from '../../../../../../db/schema/workspace';
@@ -56,7 +56,7 @@ export class WorkspaceInvitationDrizzleRepository implements IWorkspaceInvitatio
       .select()
       .from(workspaceInvitations)
       .where(eq(workspaceInvitations.workspaceId, workspaceId))
-      .orderBy(workspaceInvitations.createdAt);
+      .orderBy(workspaceInvitations.createdAt, asc(workspaceInvitations.id));
     return rows;
   }
 

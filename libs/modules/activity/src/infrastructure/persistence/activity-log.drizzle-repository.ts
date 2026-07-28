@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, count, desc, eq, or } from 'drizzle-orm';
+import { and, asc, count, desc, eq, or } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB, DbExecutor } from '@platform';
 import { activityLogs } from '../../../../../../db/schema/work';
@@ -66,7 +66,7 @@ export class ActivityLogDrizzleRepository implements IActivityLogRepository {
       .from(activityLogs)
       .leftJoin(users, eq(users.id, activityLogs.actorId))
       .where(where)
-      .orderBy(desc(activityLogs.createdAt))
+      .orderBy(desc(activityLogs.createdAt), asc(activityLogs.id))
       .limit(pageSize)
       .offset(offset);
 

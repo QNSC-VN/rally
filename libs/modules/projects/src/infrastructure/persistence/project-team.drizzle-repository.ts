@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB, DbExecutor } from '@platform';
 import { projectTeams, teams } from '../../../../../../db/schema/work';
@@ -41,7 +41,7 @@ export class ProjectTeamDrizzleRepository implements IProjectTeamRepository {
       .from(projectTeams)
       .leftJoin(teams, eq(projectTeams.teamId, teams.id))
       .where(and(eq(projectTeams.projectId, projectId), eq(projectTeams.status, 'active')))
-      .orderBy(projectTeams.linkedAt);
+      .orderBy(projectTeams.linkedAt, asc(projectTeams.id));
     return rows.map((r) => ({
       ...r,
       name: r.name ?? undefined,

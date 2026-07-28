@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq, gt, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, sql } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { ssoConnections, ssoConnectionDomains } from '../../../../../../db/schema/identity';
@@ -76,7 +76,7 @@ export class SsoConnectionDrizzleRepository implements ISsoConnectionRepository 
         ),
       )
       // Deterministic when a workspace has >1 shared connection: oldest wins.
-      .orderBy(ssoConnections.createdAt)
+      .orderBy(ssoConnections.createdAt, asc(ssoConnections.id))
       .limit(1);
     return rows[0]?.conn ?? null;
   }

@@ -87,7 +87,7 @@ export class EmailRelayService
           lte(emailOutbox.scheduledAt, new Date()),
         ),
       )
-      .orderBy(asc(emailOutbox.scheduledAt))
+      .orderBy(asc(emailOutbox.scheduledAt), asc(emailOutbox.id))
       .limit(this.batchSize)
       .for('update', { skipLocked: true });
   }

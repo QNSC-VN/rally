@@ -64,7 +64,7 @@ export class ScmWebhookRelayService extends AbstractOutboxRelay<ScmInboxRow> {
           lte(scmWebhookInbox.scheduledAt, new Date()),
         ),
       )
-      .orderBy(asc(scmWebhookInbox.scheduledAt))
+      .orderBy(asc(scmWebhookInbox.scheduledAt), asc(scmWebhookInbox.id))
       .limit(this.batchSize)
       .for('update', { skipLocked: true });
   }

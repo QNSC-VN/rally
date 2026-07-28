@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, count, eq, isNull } from 'drizzle-orm';
+import { and, asc, count, eq, isNull } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { workItemAttachments } from '../../../../../../db/schema/work';
@@ -40,7 +40,13 @@ export class AttachmentDrizzleRepository implements IAttachmentRepository {
           isNull(files.deletedAt),
         ),
       )
-      .orderBy(workItemAttachments.createdAt);
+      .orderBy(
+        workItemAttachments.createdAt,
+        // No surrogate id on this junction table — its composite PK is the
+        // (work_item_id, file_id) pair, so that pair is the tiebreaker.
+        asc(workItemAttachments.workItemId),
+        asc(workItemAttachments.fileId),
+      );
   }
 
   async countByWorkItem(workItemId: string, workspaceId: string): Promise<number> {

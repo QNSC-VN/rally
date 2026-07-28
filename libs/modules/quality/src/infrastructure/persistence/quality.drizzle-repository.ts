@@ -97,9 +97,15 @@ export class QualityDrizzleRepository implements IQualityRepository {
     const dir = opts.sortDirection === 'desc' ? desc : asc;
     // Default (no explicit sort) keeps the natural backlog rank order; an
     // explicit sort leads, with rank as a stable tie-breaker.
+    // Both branches end on `id`. Without it the order is only partial: `rank` is
+    // unique only within one scope (a project's top-level items, or one parent's
+    // children), and this list spans scopes, so ties are normal. Tied defects
+    // would then come back in physical-tuple order, reshuffling on any write
+    // and — because this list is paged with limit/offset — dropping or repeating
+    // rows between pages.
     const orderBy: SQL[] = opts.sortBy
-      ? [dir(sortColumns[opts.sortBy]), asc(workItems.rank)]
-      : [asc(workItems.rank), asc(workItems.createdAt)];
+      ? [dir(sortColumns[opts.sortBy]), asc(workItems.rank), asc(workItems.id)]
+      : [asc(workItems.rank), asc(workItems.createdAt), asc(workItems.id)];
 
     const rows = await this.db
       .select({

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq, inArray, notInArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB, DbExecutor } from '@platform';
@@ -51,7 +51,7 @@ export class TeamDrizzleRepository implements ITeamRepository {
           ? eq(teams.workspaceId, workspaceId)
           : and(eq(teams.workspaceId, workspaceId), eq(teams.status, 'active')),
       )
-      .orderBy(teams.name);
+      .orderBy(teams.name, asc(teams.id));
 
     if (rows.length === 0) {
       return [];
@@ -85,7 +85,7 @@ export class TeamDrizzleRepository implements ITeamRepository {
       .from(projectTeams)
       .innerJoin(projects, eq(projectTeams.projectId, projects.id))
       .where(and(inArray(projectTeams.teamId, teamIds), eq(projectTeams.status, 'active')))
-      .orderBy(projectTeams.linkedAt);
+      .orderBy(projectTeams.linkedAt, asc(projectTeams.id));
 
     const projectsMap: Record<string, TeamProjectLink[]> = {};
     for (const row of linkRows) {
