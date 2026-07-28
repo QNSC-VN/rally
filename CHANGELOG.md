@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.3](https://github.com/QNSC-VN/rally/compare/v0.3.2...v0.3.3) (2026-07-28)
+
+
+### ♻️ Refactors
+
+* **access:** one authorization decision point — retire the legacy permission path ([d69221a](https://github.com/QNSC-VN/rally/commit/d69221a00f8c968c79748c05c5bef0aa87693362))
+* **access:** retire the legacy permission path ([a3a4571](https://github.com/QNSC-VN/rally/commit/a3a4571aad8e41cbc6f12baccb984cbc2675bd83))
+* **scm:** move SCM routes onto the single PolicyGuard ([a883b71](https://github.com/QNSC-VN/rally/commit/a883b7195a0c12b34956bc53168d9ce0e5636a71))
+
 ## [0.3.2](https://github.com/QNSC-VN/rally/compare/v0.3.1...v0.3.2) (2026-07-28)
 
 
