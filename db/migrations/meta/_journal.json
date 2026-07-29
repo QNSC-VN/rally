@@ -505,6 +505,13 @@
       "when": 1786000400000,
       "tag": "0070_drop_vestigial_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1786000500000,
+      "tag": "0071_portfolio_capacity_planning",
+      "breakpoints": true
     }
   ]
 }

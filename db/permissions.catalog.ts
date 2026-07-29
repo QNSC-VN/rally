@@ -97,6 +97,25 @@ export const PERMISSION = {
   MILESTONE_CREATE: 'milestone:create',
   MILESTONE_EDIT: 'milestone:edit',
   MILESTONE_DELETE: 'milestone:delete',
+
+  // ── portfolio namespace (P5.1 — Epic + Feature) ────────────────────────────
+  // The BA spec calls the gate `manageFeatures`; translated to the house
+  // <entity>:<action> convention. One namespace covers both types: Epic and
+  // Feature share a table, a list and a create flow, so a separate epic:* set
+  // would be four codes nobody could explain the difference of.
+  PORTFOLIO_VIEW: 'portfolio:view',
+  PORTFOLIO_CREATE: 'portfolio:create',
+  PORTFOLIO_EDIT: 'portfolio:edit',
+  // Archive, not delete — the spec has no hard delete for portfolio items.
+  PORTFOLIO_ARCHIVE: 'portfolio:archive',
+
+  // ── capacity namespace (P5.2) ──────────────────────────────────────────────
+  CAPACITY_VIEW: 'capacity:view',
+  CAPACITY_MANAGE: 'capacity:manage',
+  // Separate from MANAGE on purpose: publishing WRITES BACK to Feature release and
+  // planned dates, so it changes records outside the plan. Editing a draft does not.
+  // Different blast radius, different grant.
+  CAPACITY_PUBLISH: 'capacity:publish',
 } as const;
 
 /** Union of every valid permission code. */
@@ -167,6 +186,15 @@ export const PERMISSION_TIER = {
   [PERMISSION.MILESTONE_CREATE]: 'project',
   [PERMISSION.MILESTONE_EDIT]: 'project',
   [PERMISSION.MILESTONE_DELETE]: 'project',
+  // Project tier: a portfolio item and a capacity plan both belong to a Project, and
+  // the spec scopes visibility by the Projects a user administers or is a member of.
+  [PERMISSION.PORTFOLIO_VIEW]: 'project',
+  [PERMISSION.PORTFOLIO_CREATE]: 'project',
+  [PERMISSION.PORTFOLIO_EDIT]: 'project',
+  [PERMISSION.PORTFOLIO_ARCHIVE]: 'project',
+  [PERMISSION.CAPACITY_VIEW]: 'project',
+  [PERMISSION.CAPACITY_MANAGE]: 'project',
+  [PERMISSION.CAPACITY_PUBLISH]: 'project',
 } as const satisfies Record<Permission, 'workspace' | 'project'>;
 
 /** Permissions enforced against the workspace-wide JWT baseline. */
@@ -267,6 +295,13 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
     PERMISSION.MILESTONE_CREATE,
     PERMISSION.MILESTONE_EDIT,
     PERMISSION.MILESTONE_DELETE,
+    PERMISSION.PORTFOLIO_VIEW,
+    PERMISSION.PORTFOLIO_CREATE,
+    PERMISSION.PORTFOLIO_EDIT,
+    PERMISSION.PORTFOLIO_ARCHIVE,
+    PERMISSION.CAPACITY_VIEW,
+    PERMISSION.CAPACITY_MANAGE,
+    PERMISSION.CAPACITY_PUBLISH,
   ],
   // Full DELIVERY control of an assigned project, but NOT its lifecycle or
   // membership. Per SRS Phase 4.2: project create/archive/restore/delete and
@@ -293,6 +328,13 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
     PERMISSION.MILESTONE_CREATE,
     PERMISSION.MILESTONE_EDIT,
     PERMISSION.MILESTONE_DELETE,
+    PERMISSION.PORTFOLIO_VIEW,
+    PERMISSION.PORTFOLIO_CREATE,
+    PERMISSION.PORTFOLIO_EDIT,
+    PERMISSION.PORTFOLIO_ARCHIVE,
+    PERMISSION.CAPACITY_VIEW,
+    PERMISSION.CAPACITY_MANAGE,
+    PERMISSION.CAPACITY_PUBLISH,
   ],
   // Delivery contributor inside ONE assigned project. Per SRS Phase 4.2 the
   // member can create AND delete US/DE + tasks (delete added); no iteration/
@@ -304,6 +346,10 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
     PERMISSION.WORK_ITEM_EDIT,
     PERMISSION.WORK_ITEM_DELETE,
     PERMISSION.ITERATION_VIEW,
+    // Read-only portfolio access: the spec lets a Project Member see the Epics,
+    // Features and capacity plans for their Project/Team but never mutate them.
+    PERMISSION.PORTFOLIO_VIEW,
+    PERMISSION.CAPACITY_VIEW,
   ],
 };
 

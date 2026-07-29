@@ -68,6 +68,8 @@ export default defineConfig({
       // three files while 27 had specs.
       include: [
         'db/database-url.ts',
+        'libs/shared-kernel/src/health.ts',
+        'libs/modules/portfolio/src/domain/portfolio-rollup.ts',
         'libs/modules/access/src/application/access.service.ts',
         'libs/modules/access/src/interface/http/policy.guard.ts',
         'libs/modules/activity/src/application/activity-logger.service.ts',

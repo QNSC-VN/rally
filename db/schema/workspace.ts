@@ -112,6 +112,17 @@ export const workspaceSettings = workspaceSchema.table(
     timezone: varchar('timezone', { length: 64 }).notNull().default('UTC'),
     defaultLocale: varchar('default_locale', { length: 10 }).notNull().default('en'),
     dateFormat: varchar('date_format', { length: 20 }),
+    // Preliminary Estimate size → { points, count } (P5.1/P5.2).
+    //
+    // Configuration, not a constant, from day one. The BA spec calls the seeded
+    // XS=1/S=3/M=5/L=8/XL=13 values "temporary mockup data" and defers the real scale
+    // to `Settings > Workspace > Project Management`; Rally makes the same mapping a
+    // workspace-admin setting. Shipping it as a service constant would make that later
+    // slice a data migration plus a silent change to every existing estimate.
+    //
+    // Shape: `PreliminaryEstimateMap` in db/schema/enums.ts. Seeded from
+    // DEFAULT_PRELIMINARY_ESTIMATE_MAP; the Settings UI arrives later and edits this.
+    preliminaryEstimateMap: jsonb('preliminary_estimate_map').notNull().default({}),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
