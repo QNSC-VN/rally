@@ -90,13 +90,33 @@ export function buildProxyRequest(request: Request, apiOrigin: string): Request 
  * Copy the upstream response back to the client, preserving status and every
  * `Set-Cookie` header individually (a naive `new Headers(res.headers)` collapses
  * multiple cookies into one comma-joined value and corrupts them).
+ *
+ * NOTE for anyone tempted to simplify this back to `new Headers(upstream.headers)`:
+ * the unit suite will stay green if you do, because undici (Node) preserves the
+ * set-cookie list through the Headers constructor. The Cloudflare Workers runtime this
+ * actually runs on historically does not, and a corrupted `__Host-` session cookie is a
+ * silent login failure. That difference is only observable under `wrangler pages dev`.
  */
 export function buildClientResponse(upstream: Response): Response {
   const headers = new Headers()
+
+  // Collected during the same pass, and used ONLY if `getSetCookie` turns out to be
+  // unavailable. The previous version paired the skip below with `?? []`, so on a runtime
+  // without `getSetCookie` every Set-Cookie header was skipped and then nothing was
+  // appended — the cookies vanished. That is the worst shape this bug can take: the API
+  // returns 200, the proxy returns 200, and the browser simply never receives the session
+  // cookie, so a successful login presents as an immediate silent logout.
+  const fallbackSetCookie: string[] = []
+
   upstream.headers.forEach((value, key) => {
-    if (key.toLowerCase() !== 'set-cookie') headers.set(key, value)
+    if (key.toLowerCase() === 'set-cookie') {
+      fallbackSetCookie.push(value)
+      return
+    }
+    headers.set(key, value)
   })
-  const setCookies = upstream.headers.getSetCookie?.() ?? []
+
+  const setCookies = upstream.headers.getSetCookie?.() ?? fallbackSetCookie
   for (const cookie of setCookies) headers.append('set-cookie', cookie)
 
   return new Response(upstream.body, {
