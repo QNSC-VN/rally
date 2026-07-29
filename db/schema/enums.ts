@@ -239,6 +239,69 @@ export const milestoneStatusEnum = pgEnum('milestone_status', [
   'completed',
 ]);
 
+// ── P5 Portfolio ──────────────────────────────────────────────────────────
+//
+// Epic and Feature share ONE table (`work.portfolio_items`) discriminated by
+// this type, because the BA spec gives them one list, one state enum, one create
+// template, one rank column and one archive rule. Their only differences are
+// three nullable columns (parent/team/release) and which rollup applies — see the
+// CHECK constraints on the table. Rally models every portfolio item type in one
+// collection too, so this also matches the reference product.
+//
+// Mini Rally's `epic` is Rally's `Initiative` level, renamed by BA decision
+// 2026-07-28. Rally's own hierarchy is Feature → Initiative → Theme and has no
+// "Epic"; keep that mapping in mind before aligning anything with Rally docs.
+export const portfolioItemTypeEnum = pgEnum('portfolio_item_type', ['epic', 'feature']);
+
+// Portfolio Item State — 11 values, BA-confirmed (Portfolio Items SRS §7).
+//
+// Deliberately NOT `workItemScheduleStateEnum`. A portfolio item's lifecycle is a
+// funnel (intake → discovery → prioritisation → developing → measuring), while a
+// story's is a delivery flow. Rally likewise defines portfolio state per item type
+// at workspace level, separately from schedule state. Conflating the two is the
+// same class of mistake the D1/D2 note above warns about.
+export const portfolioItemStateEnum = pgEnum('portfolio_item_state', [
+  'no_entry',
+  'intake',
+  'idea_prioritization',
+  'problem_discovery',
+  'solution_discovery',
+  'feature_prioritization',
+  'developing',
+  'accepted',
+  'measuring',
+  'done',
+  'cancelled',
+]);
+
+// Top-down t-shirt sizing on a portfolio item (Rally's `PreliminaryEstimate`).
+//
+// The size→points/count MAPPING is NOT here: it is workspace configuration
+// (`workspace.workspace_settings.preliminary_estimate_map`), because the BA spec
+// calls the mockup's XS=1/S=3/M=5/L=8/XL=13 table "temporary mockup data" and
+// defers the real values to Settings > Workspace > Project Management. Rally also
+// makes it a workspace-admin setting. Hard-coding it here would turn that later
+// slice into a data migration plus a silent behaviour change.
+export const preliminaryEstimateSizeEnum = pgEnum('preliminary_estimate_size', [
+  'no_entry',
+  'xs',
+  's',
+  'm',
+  'l',
+  'xl',
+]);
+
+// Capacity plan lifecycle. `published` is read-only; Revert to Draft returns to
+// `draft` but does NOT roll back fields a publish already wrote to Features.
+export const capacityPlanStatusEnum = pgEnum('capacity_plan_status', ['draft', 'published']);
+
+// Unit a capacity plan is planned in, chosen at creation and FIXED afterwards
+// ("View Work Items By" — Capacity Planning SRS §5). Every metric on the plan —
+// Complete, Rollup, Estimated, Capacity and each allocation value — is expressed
+// in this unit, which is why it cannot change once demand has been committed.
+// Matches Rally, where the same choice is made when the plan is created.
+export const capacityPlanUnitEnum = pgEnum('capacity_plan_unit', ['points', 'count']);
+
 // ── TypeScript types (derived — never drift from DB) ──────────────────────
 
 export type UserStatus = (typeof userStatusEnum.enumValues)[number];
@@ -265,6 +328,11 @@ export type ScmConnectionType = (typeof scmConnectionTypeEnum.enumValues)[number
 export type ScmInboxStatus = (typeof scmInboxStatusEnum.enumValues)[number];
 export type ScmBackfillStatus = (typeof scmBackfillStatusEnum.enumValues)[number];
 export type MilestoneStatus = (typeof milestoneStatusEnum.enumValues)[number];
+export type PortfolioItemType = (typeof portfolioItemTypeEnum.enumValues)[number];
+export type PortfolioItemState = (typeof portfolioItemStateEnum.enumValues)[number];
+export type PreliminaryEstimateSize = (typeof preliminaryEstimateSizeEnum.enumValues)[number];
+export type CapacityPlanStatus = (typeof capacityPlanStatusEnum.enumValues)[number];
+export type CapacityPlanUnit = (typeof capacityPlanUnitEnum.enumValues)[number];
 export type DefectSeverity = (typeof defectSeverityEnum.enumValues)[number];
 export type DefectEnvironment = (typeof defectEnvironmentEnum.enumValues)[number];
 export type DefectRootCause = (typeof defectRootCauseEnum.enumValues)[number];
@@ -324,6 +392,39 @@ export const OPEN_SCHEDULE_STATES = [
   'defined',
   'in_progress',
 ] as const satisfies readonly WorkItemScheduleState[];
+
+/**
+ * Points/count a Preliminary Estimate size stands for, per workspace.
+ *
+ * WHICH DIMENSION APPLIES WHERE — both are used, and by different surfaces:
+ *   • `points` — Estimated Progress by Story Points, and a `points` capacity plan
+ *   • `count`  — Estimated Progress by Story Count, and a `count` capacity plan
+ * A capacity plan reads exactly one of them, fixed by `capacity_plans.unit`.
+ */
+export interface PreliminaryEstimateEntry {
+  points: number;
+  count: number;
+}
+
+export type PreliminaryEstimateMap = Record<PreliminaryEstimateSize, PreliminaryEstimateEntry>;
+
+/**
+ * SEED DEFAULT ONLY — not a product rule.
+ *
+ * The BA spec calls these values "temporary mockup data" and defers the real scale
+ * to `Settings > Workspace > Project Management`; Rally makes the equivalent mapping
+ * a workspace-admin setting. They are the DEFAULT for a new workspace row, and every
+ * read must go through `workspace_settings.preliminary_estimate_map` so an operator's
+ * change is honoured. Do not import this constant to compute an estimate.
+ */
+export const DEFAULT_PRELIMINARY_ESTIMATE_MAP: PreliminaryEstimateMap = {
+  no_entry: { points: 0, count: 0 },
+  xs: { points: 1, count: 1 },
+  s: { points: 3, count: 2 },
+  m: { points: 5, count: 3 },
+  l: { points: 8, count: 5 },
+  xl: { points: 13, count: 8 },
+};
 
 /**
  * Defect "open" states for the Quality dashboard — intentionally NARROWER than

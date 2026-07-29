@@ -47,6 +47,11 @@ import {
   defectStateEnum,
   taskStateEnum,
   workItemRelationTypeEnum,
+  portfolioItemTypeEnum,
+  portfolioItemStateEnum,
+  preliminaryEstimateSizeEnum,
+  capacityPlanStatusEnum,
+  capacityPlanUnitEnum,
 } from './enums';
 import { files } from './storage';
 
@@ -124,6 +129,14 @@ export const workItems = workSchema.table(
     teamId: uuid('team_id'),
     iterationId: uuid('iteration_id'),
     releaseId: uuid('release_id'),
+    // Link to a portfolio item of type 'feature' (P5.1). Nullable — most work items
+    // belong to no Feature, and the Backlog must keep working unchanged.
+    //
+    // Stories and Defects only; a Task is linked through its parent, never directly.
+    // Postgres cannot FK to a filtered subset of a table, so "must be a feature, not
+    // an epic" is asserted in the portfolio service on write. Every Percent Done and
+    // Capacity metric aggregates over this column, hence the index.
+    featureId: uuid('feature_id'),
     // Plan Estimate. numeric(6,2) allows fractional points (e.g. 0.5) per SRS §8;
     // Drizzle returns numeric as a string to preserve precision.
     storyPoints: numeric('story_points', { precision: 6, scale: 2 }),
@@ -168,6 +181,11 @@ export const workItems = workSchema.table(
     itemKeyIdx: uniqueIndex('uq_wi_item_key').on(t.workspaceId, t.itemKey),
     boardIdx: index('ix_wi_board').on(t.workspaceId, t.projectId, t.statusId, t.rank),
     backlogIdx: index('ix_wi_backlog').on(t.workspaceId, t.projectId, t.rank),
+    // Every portfolio rollup and capacity metric aggregates by feature_id. Partial:
+    // the column is null for most rows, and a null-heavy full index is mostly waste.
+    featureIdx: index('ix_wi_feature')
+      .on(t.featureId)
+      .where(sql`feature_id IS NOT NULL AND deleted_at IS NULL`),
     // Default list/pagination path: filter (workspaceId, projectId), order by createdAt,
     // excluding soft-deleted rows. Partial index keeps it lean and sort-free.
     listIdx: index('ix_wi_list')
@@ -320,6 +338,177 @@ export const releases = workSchema.table(
     workspaceIdx: index('ix_releases_workspace').on(t.workspaceId),
     projectIdx: index('ix_releases_project').on(t.projectId),
     keyIdx: uniqueIndex('uq_releases_key').on(t.projectId, t.releaseKey),
+  }),
+);
+
+// ── portfolio_items (P5.1) ────────────────────────────────────────────────
+//
+// Epic and Feature in ONE table, discriminated by `type`. See the note on
+// `portfolioItemTypeEnum` for why; the CHECK constraints in migration 0071 are
+// what actually hold the two shapes apart:
+//
+//   epic    → parent_id, team_id, release_id are ALL null (project-level grouping)
+//   feature → may carry parent_id (its Epic), team_id and release_id
+//
+// The checks live in the DATABASE deliberately. `db/seeds/**` writes rows without
+// going through the service layer, so an invariant enforced only in a service is
+// not an invariant — the same lesson as flow=schedule.
+//
+// No stored progress. Percent Done and the Estimated Progress indicators are
+// aggregated from linked work items on read (see the portfolio module's
+// repository). Rally stores its rollups and consequently ships a "Correct rollup
+// discrepancy" action to repair drift; computing on read means that cannot happen.
+export const portfolioItems = workSchema.table(
+  'portfolio_items',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id').notNull(),
+    projectId: uuid('project_id').notNull(),
+    // 'EP-101' / 'FE-318'. Per-project sequence, same convention as release_key.
+    itemKey: varchar('item_key', { length: 30 }).notNull(),
+    type: portfolioItemTypeEnum('type').notNull(),
+    name: varchar('name', { length: 255 }).notNull(),
+    description: text('description'),
+    state: portfolioItemStateEnum('state').notNull().default('no_entry'),
+    preliminaryEstimate: preliminaryEstimateSizeEnum('preliminary_estimate')
+      .notNull()
+      .default('no_entry'),
+    // Optional TOP-DOWN forecasts. Feed only the two "Estimated Progress by…"
+    // indicators; when null the Preliminary Estimate mapping supplies the fallback.
+    // Deliberately not a "Plan Estimate": a portfolio item never stores the sum of
+    // its children, which is what makes the rollups authoritative.
+    refinedEstimate: numeric('refined_estimate', { precision: 8, scale: 2 }),
+    refinedItemCountEstimate: integer('refined_item_count_estimate'),
+    // Feature → Epic. Null for an Epic (no deeper hierarchy: Theme is out of scope).
+    parentId: uuid('parent_id'),
+    // Feature only. Epic is project-level and has no Team (BA spec §11.1).
+    teamId: uuid('team_id'),
+    // Feature only — Rally likewise allows Release on the lowest portfolio level
+    // only, to schedule a feature into a roadmap timeframe.
+    releaseId: uuid('release_id'),
+    ownerId: uuid('owner_id'),
+    // Both nullable dates. Rally allows a portfolio item with no planned dates (it
+    // simply drops off the timeline), and health is only computable once they exist.
+    plannedStartDate: date('planned_start_date'),
+    plannedEndDate: date('planned_end_date'),
+    marketReleaseDate: date('market_release_date'),
+    // LexoRank string, same scheme as work_items.rank — reorder via
+    // `between()` from @platform's lexorank util under an advisory lock on the
+    // rank scope. Never an integer position: renumbering rows on every move is
+    // what the lexorank approach exists to avoid.
+    rank: varchar('rank', { length: 255 }).notNull().default(''),
+    // Archive, never hard delete (BA spec §5.5). `Delete` in the UI sets this.
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    workspaceIdx: index('ix_portfolio_workspace').on(t.workspaceId),
+    projectIdx: index('ix_portfolio_project').on(t.projectId),
+    keyIdx: uniqueIndex('uq_portfolio_item_key').on(t.workspaceId, t.itemKey),
+    // The list query: filter (workspace, type), hide archived, order by rank.
+    listIdx: index('ix_portfolio_list').on(t.workspaceId, t.type, t.archivedAt, t.rank),
+    // Children-of-Epic preview and the Epic rollup.
+    parentIdx: index('ix_portfolio_parent').on(t.parentId, t.rank),
+    teamIdx: index('ix_portfolio_team').on(t.teamId),
+    releaseIdx: index('ix_portfolio_release').on(t.releaseId),
+  }),
+);
+
+// ── capacity_plans (P5.2) ─────────────────────────────────────────────────
+//
+// One plan per (project, release) — enforced by the unique index below, not by a
+// service check, because that is the rule the whole feature rests on.
+export const capacityPlans = workSchema.table(
+  'capacity_plans',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id').notNull(),
+    projectId: uuid('project_id').notNull(),
+    releaseId: uuid('release_id').notNull(),
+    name: varchar('name', { length: 255 }).notNull(),
+    status: capacityPlanStatusEnum('status').notNull().default('draft'),
+    // Chosen at creation, FIXED afterwards. Every number on the plan is in this
+    // unit, including each allocation value — which is why it cannot change once
+    // demand exists.
+    unit: capacityPlanUnitEnum('unit').notNull(),
+    // Compared against the Release's own dates at publish time: Feature Release and
+    // planned dates are written only when they match, otherwise publish returns an
+    // advisory and writes nothing.
+    plannedStartDate: date('planned_start_date'),
+    plannedEndDate: date('planned_end_date'),
+    // Advisory load ceiling, below 100%. Rally's own guidance is to leave ~20% of a
+    // team's capacity for unplanned work, so a team at 95% needs a warning even
+    // though it is not technically over capacity. Never blocks an action.
+    targetLoadPct: integer('target_load_pct').notNull().default(80),
+    publishedAt: timestamp('published_at', { withTimezone: true }),
+    publishedBy: uuid('published_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    workspaceIdx: index('ix_capacity_plans_workspace').on(t.workspaceId),
+    projectIdx: index('ix_capacity_plans_project').on(t.projectId),
+    uniquePlanIdx: uniqueIndex('uq_capacity_plan_project_release').on(t.projectId, t.releaseId),
+  }),
+);
+
+// ── capacity_plan_teams ───────────────────────────────────────────────────
+//
+// A Team participating in a plan, plus the capacity a planner typed for it.
+// Capacity is MANUAL: `Calculate Capacity Forecast` only proposes values from a
+// supplied historic velocity, and the planner may edit every one before publish.
+// Nothing derives capacity automatically (explicitly out of scope).
+export const capacityPlanTeams = workSchema.table(
+  'capacity_plan_teams',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    planId: uuid('plan_id').notNull(),
+    teamId: uuid('team_id').notNull(),
+    // In the plan's unit. Null = capacity not yet entered, which is different from
+    // zero capacity and must render as blank rather than 0.
+    capacity: numeric('capacity', { precision: 10, scale: 2 }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    planIdx: index('ix_capacity_plan_teams_plan').on(t.planId),
+    uniqueTeamIdx: uniqueIndex('uq_capacity_plan_team').on(t.planId, t.teamId),
+  }),
+);
+
+// ── capacity_plan_allocations ─────────────────────────────────────────────
+//
+// Committed demand: this much of this Feature, to this Team, in this plan.
+//
+// `value` is THE ONLY stored number in Phase 5 — everything else is aggregated on
+// read. That is deliberate and load-bearing: planning demand must stay fixed even
+// when the Feature's child estimates change afterwards, so a plan records what was
+// committed rather than what the children currently add up to. Do not "improve"
+// this into a rollup.
+//
+// `team_id` is nullable and models the Unallocated bucket without a second table.
+// It is also why "Total Allocated" counts only rows WHERE team_id IS NOT NULL — an
+// unallocated placeholder must not outrank a Refined or Preliminary estimate.
+//
+// One Feature may hold several rows (Rally calls this sharing a feature between
+// teams; each allocated team appears as its own row under the feature).
+export const capacityPlanAllocations = workSchema.table(
+  'capacity_plan_allocations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    planId: uuid('plan_id').notNull(),
+    portfolioItemId: uuid('portfolio_item_id').notNull(),
+    teamId: uuid('team_id'),
+    value: numeric('value', { precision: 10, scale: 2 }).notNull().default('0'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    planIdx: index('ix_capacity_allocations_plan').on(t.planId),
+    itemIdx: index('ix_capacity_allocations_item').on(t.portfolioItemId),
+    // Team grid: rows for one team within one plan.
+    planTeamIdx: index('ix_capacity_allocations_plan_team').on(t.planId, t.teamId),
   }),
 );
 
