@@ -241,6 +241,16 @@ const portfolioRoute = createRoute({
   component: lazyPage(() => import('@/pages/portfolio/portfolio-page'), 'PortfolioPage'),
 })
 
+const portfolioDetailRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: '/portfolio/$itemId',
+  staticData: { breadcrumb: 'Portfolio Item' },
+  component: lazyPage(
+    () => import('@/pages/portfolio/portfolio-detail-page'),
+    'PortfolioDetailPage',
+  ),
+})
+
 const reportsRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/reports',
@@ -280,6 +290,7 @@ const routeTree = rootRoute.addChildren([
     teamBoardRoute,
     reportsRoute,
     portfolioRoute,
+    portfolioDetailRoute,
     workItemDetailRoute,
     notFoundRoute,
   ]),

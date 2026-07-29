@@ -2053,6 +2053,74 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v1/portfolio-items': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List Epics or Features */
+    get: operations['PortfolioItemsController_listItems']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/portfolio-items/{id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Get an Epic or Feature with its rollups */
+    get: operations['PortfolioItemsController_getItem']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/portfolio-items/{id}/children': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List the Story/Defect linked to a Feature */
+    get: operations['PortfolioItemsController_listChildren']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/portfolio-items/{id}/features': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List an Epic's child Features */
+    get: operations['PortfolioItemsController_listChildFeatures']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v1/quality/defects': {
     parameters: {
       query?: never
@@ -2344,6 +2412,13 @@ export interface components {
         | 'milestone:create'
         | 'milestone:edit'
         | 'milestone:delete'
+        | 'portfolio:view'
+        | 'portfolio:create'
+        | 'portfolio:edit'
+        | 'portfolio:archive'
+        | 'capacity:view'
+        | 'capacity:manage'
+        | 'capacity:publish'
       )[]
     }
     UpdateRolePermissionsDto: {
@@ -2389,6 +2464,13 @@ export interface components {
         | 'milestone:create'
         | 'milestone:edit'
         | 'milestone:delete'
+        | 'portfolio:view'
+        | 'portfolio:create'
+        | 'portfolio:edit'
+        | 'portfolio:archive'
+        | 'capacity:view'
+        | 'capacity:manage'
+        | 'capacity:publish'
       )[]
     }
     RoleAssignmentResponseDto: {
@@ -2788,7 +2870,7 @@ export interface components {
       /** Format: uuid */
       projectId: string
       /** @enum {string} */
-      type: 'initiative' | 'feature' | 'story' | 'task' | 'defect'
+      type: 'story' | 'task' | 'defect'
       title: string
       description?: string
       /** Format: uuid */
@@ -3138,7 +3220,7 @@ export interface components {
         id: string
         itemKey: string
         /** @enum {string} */
-        type: 'initiative' | 'feature' | 'story' | 'task' | 'defect'
+        type: 'story' | 'task' | 'defect'
         title: string
         /** @enum {string} */
         scheduleState: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'release'
@@ -3154,6 +3236,7 @@ export interface components {
         assigneeId: string | null
         devOwnerId: string | null
         rank: string
+        featureId: string | null
         featureKey: string | null
         featureTitle: string | null
         defectCount: number
@@ -3465,6 +3548,100 @@ export interface components {
     }
     SetMilestoneReleasesDto: {
       releaseIds: string[]
+    }
+    PortfolioItemResponseDto: {
+      /** Format: uuid */
+      id: string
+      /** Format: uuid */
+      workspaceId: string
+      /** Format: uuid */
+      projectId: string
+      /** @description Resolved server-side — this list is cross-project */
+      projectName: string | null
+      /** @description EP-101 or FE-318 */
+      itemKey: string
+      /** @enum {string} */
+      type: 'epic' | 'feature'
+      name: string
+      description: string | null
+      /** @enum {string} */
+      state:
+        | 'no_entry'
+        | 'intake'
+        | 'idea_prioritization'
+        | 'problem_discovery'
+        | 'solution_discovery'
+        | 'feature_prioritization'
+        | 'developing'
+        | 'accepted'
+        | 'measuring'
+        | 'done'
+        | 'cancelled'
+      /** @enum {string} */
+      preliminaryEstimate: 'no_entry' | 'xs' | 's' | 'm' | 'l' | 'xl'
+      /** @description Top-down points forecast */
+      refinedEstimate: number | null
+      /** @description Top-down child-count forecast */
+      refinedItemCountEstimate: number | null
+      /** @description Feature → Epic. Always null for an Epic. */
+      parentId: string | null
+      parentKey: string | null
+      /** @description Feature only */
+      teamId: string | null
+      teamName: string | null
+      /** @description Feature only */
+      releaseId: string | null
+      releaseName: string | null
+      ownerId: string | null
+      ownerName: string | null
+      /** @description YYYY-MM-DD */
+      plannedStartDate: string | null
+      /** @description YYYY-MM-DD */
+      plannedEndDate: string | null
+      /** @description YYYY-MM-DD */
+      marketReleaseDate: string | null
+      rank: string
+      archivedAt: string | null
+      /** Format: date-time */
+      createdAt: string
+      /** Format: date-time */
+      updatedAt: string
+      /** @description Active child Features. Epic only; 0 for a Feature. */
+      childFeatureCount: number
+      rollup: {
+        rollupPoints: number
+        rollupCount: number
+        /** @description ACCEPTED_SCHEDULE_STATES: accepted, release */
+        acceptedPoints: number
+        acceptedCount: number
+        /** @description COMPLETED_SCHEDULE_STATES: completed, accepted, release — capacity, not Percent Done */
+        completedPoints: number
+        completedCount: number
+      }
+      progress: {
+        /** @description Accepted points / all linked points. Null when nothing is linked. */
+        percentDoneByPlanEstimate: number | null
+        /** @description Accepted item count / all linked count. Null when nothing is linked. */
+        percentDoneByCount: number | null
+        /** @description Accepted points / refined-or-preliminary points forecast. May exceed 1. */
+        estimatedProgressByPoints: number | null
+        /** @description Accepted count / refined-or-preliminary count forecast. May exceed 1. */
+        estimatedProgressByCount: number | null
+      }
+    }
+    PortfolioChildResponseDto: {
+      /** Format: uuid */
+      id: string
+      itemKey: string
+      /** @enum {string} */
+      type: 'story' | 'defect'
+      title: string
+      scheduleState: string
+      storyPoints: number | null
+      releaseName: string | null
+      projectName: string | null
+      teamName: string | null
+      ownerName: string | null
     }
     ScmConnectionResponseDto: {
       /** Format: uuid */
@@ -6386,7 +6563,7 @@ export interface operations {
         cursor?: string
         sort?: string
         projectId: string
-        type?: 'initiative' | 'feature' | 'story' | 'task' | 'defect'
+        type?: 'story' | 'task' | 'defect'
         parentId?: string
         statusId?: string
         scheduleState?: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'release'
@@ -6511,7 +6688,7 @@ export interface operations {
         cursor?: string
         sort?: string
         projectId: string
-        type?: 'initiative' | 'feature' | 'story' | 'task' | 'defect'
+        type?: 'story' | 'task' | 'defect'
         parentId?: string
         statusId?: string
         scheduleState?: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'release'
@@ -8629,7 +8806,7 @@ export interface operations {
         cursor?: string
         sort?: string
         q?: string
-        type?: 'initiative' | 'feature' | 'story' | 'task' | 'defect'
+        type?: 'story' | 'task' | 'defect'
         scheduleState?: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'release'
         isBlocked?: boolean
         assigneeId?: string
@@ -10716,6 +10893,189 @@ export interface operations {
       }
       /** @description Forbidden — insufficient permissions */
       403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  PortfolioItemsController_listItems: {
+    parameters: {
+      query: {
+        limit?: number
+        cursor?: string
+        sort?: string
+        type: 'epic' | 'feature'
+        projectId?: string
+        teamId?: string
+        search?: string
+        includeArchived?: boolean
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Paginated list */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': {
+            data?: components['schemas']['PortfolioItemResponseDto'][]
+            pageInfo?: {
+              /** @description Opaque cursor token for the next page */
+              nextCursor: string | null
+              hasNextPage: boolean
+              /** @description Number of items returned per page */
+              limit: number
+              /** @description Total rows matching the filters (ignoring cursor/limit); present only on endpoints that expose a count */
+              total?: number
+            }
+          }
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  PortfolioItemsController_getItem: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['PortfolioItemResponseDto']
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  PortfolioItemsController_listChildren: {
+    parameters: {
+      query?: {
+        limit?: number
+        cursor?: string
+        sort?: string
+        search?: string
+      }
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Paginated list */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': {
+            data?: components['schemas']['PortfolioChildResponseDto'][]
+            pageInfo?: {
+              /** @description Opaque cursor token for the next page */
+              nextCursor: string | null
+              hasNextPage: boolean
+              /** @description Number of items returned per page */
+              limit: number
+              /** @description Total rows matching the filters (ignoring cursor/limit); present only on endpoints that expose a count */
+              total?: number
+            }
+          }
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  PortfolioItemsController_listChildFeatures: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['PortfolioItemResponseDto'][]
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
         headers: {
           [name: string]: unknown
         }

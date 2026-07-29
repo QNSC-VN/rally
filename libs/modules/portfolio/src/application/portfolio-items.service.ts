@@ -23,6 +23,17 @@ export interface PortfolioItemWithProgress extends PortfolioItemView {
   progress: PortfolioProgress;
 }
 
+/**
+ * An empty page for the cases this service refuses to send to SQL.
+ *
+ * Carries `total: 0` because the list endpoint otherwise always reports a count, and a
+ * footer that reads "0 of —" for a denied caller but "0 of 0" for a genuinely empty
+ * project would look like two different bugs.
+ */
+function emptyPage(limit: number): PagedResult<PortfolioItemWithProgress> {
+  return { data: [], pageInfo: { nextCursor: null, hasNextPage: false, limit, total: 0 } };
+}
+
 @Injectable()
 export class PortfolioItemsService {
   constructor(
@@ -40,10 +51,7 @@ export class PortfolioItemsService {
     // shows an explicit "Filter not show item" message for Epic + specific Team rather
     // than an empty grid, so return empty here and let the UI say why.
     if (filter.teamId && filter.type === 'epic') {
-      return {
-        data: [],
-        pageInfo: { nextCursor: null, hasNextPage: false, limit: args.limit },
-      };
+      return emptyPage(args.limit);
     }
 
     // The authorization boundary for this cross-project list.
@@ -64,7 +72,7 @@ export class PortfolioItemsService {
 
     if (readable !== null) {
       if (readable.length === 0) {
-        return { data: [], pageInfo: { nextCursor: null, hasNextPage: false, limit: args.limit } };
+        return emptyPage(args.limit);
       }
       // An explicit projectId must be one the caller can read; narrowing to the
       // intersection means a request for someone else's project returns empty rather

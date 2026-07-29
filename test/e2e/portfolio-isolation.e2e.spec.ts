@@ -147,6 +147,27 @@ describe('portfolio cross-project isolation (e2e)', () => {
     expect(page.data.map((i) => i.itemKey)).toContain(featureAKey);
   });
 
+  it('resolves the project NAME server-side, for the cross-project Project column', async () => {
+    // The grid has a Project column because this list spans projects, so the name is
+    // row data. Resolving it on the client would mean fetching every project a page
+    // touches just to render one column.
+    const page = await portfolio.listItems(admin, { type: 'feature' }, ALL);
+    const row = page.data.find((i) => i.itemKey === featureAKey);
+    expect(row?.projectName).toBe('Portfolio Iso A');
+  });
+
+  it('the total count is subject to the SAME filter as the rows', async () => {
+    // A count computed without `readableProjectIds` would still leak: the rows would be
+    // correctly hidden while the footer announced how many Features exist in projects the
+    // caller cannot read. So the admin's total must be strictly larger than the scoped
+    // caller's, and the scoped caller's must equal what they can actually see.
+    const adminPage = await portfolio.listItems(admin, { type: 'feature' }, ALL);
+    const scopedPage = await portfolio.listItems(scopedActor, { type: 'feature' }, ALL);
+
+    expect(scopedPage.pageInfo.total).toBe(scopedPage.data.length);
+    expect(adminPage.pageInfo.total).toBeGreaterThan(scopedPage.pageInfo.total as number);
+  });
+
   it('a caller with no project grant at all sees nothing', async () => {
     // Fails CLOSED: an empty readable list must return no rows, never every row.
     const stranger = makeActor(randomUUID(), []);

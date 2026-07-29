@@ -1,9 +1,14 @@
 import { TypeBadge } from '@/entities/work-item/ui/badges'
-import type { WorkItemType } from '@/entities/work-item/model/types'
+import type { PortfolioItemType, WorkItemType } from '@/entities/work-item/model/types'
 
 interface WorkItemRefCellProps {
-  /** Referenced work-item type — drives the leading glyph + colour. */
-  type: WorkItemType
+  /**
+   * Referenced artifact type — drives the leading glyph + colour. Accepts a
+   * portfolio type too: the Feature column on Backlog/Iteration Status points at
+   * a `portfolio_items` row, and it renders through this same cell so a reference
+   * looks identical wherever it appears.
+   */
+  type: WorkItemType | PortfolioItemType
   /** Referenced item key, e.g. `FE-1` / `US-6`. */
   itemKey: string
   /** Optional title; when present it is appended as `KEY: Title` (Rally parity). */

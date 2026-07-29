@@ -7,7 +7,9 @@ import {
   WORK_ITEM_PRIORITY_CONFIG,
   WORK_ITEM_TYPE_CONFIG,
   TIMEBOX_TYPE_CONFIG,
+  PORTFOLIO_TYPE_CONFIG,
   type DefectSeverity,
+  type PortfolioItemType,
   type ScheduleState,
   type WorkItemPriority,
   type WorkItemType,
@@ -23,6 +25,7 @@ interface TypeBadgeProps {
 
 export function TypeBadge({ type, size = 18 }: TypeBadgeProps) {
   const cfg = WORK_ITEM_TYPE_CONFIG[type as WorkItemType] ??
+    PORTFOLIO_TYPE_CONFIG[type as PortfolioItemType] ??
     TIMEBOX_TYPE_CONFIG[type] ?? {
       label: type.slice(0, 2).toUpperCase(),
       ...BADGE_FALLBACK,

@@ -14,7 +14,11 @@ import { PriorityBadge } from '@/entities/work-item/ui/badges'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { StateStepper } from '@/entities/work-item/ui/state-stepper'
 import { SCHEDULE_STATE_STEPS } from '@/entities/work-item/ui/state-steps'
-import { WorkItemType, WorkItemPriority, type ScheduleState } from '@/entities/work-item/model/types'
+import {
+  WorkItemType,
+  WorkItemPriority,
+  type ScheduleState,
+} from '@/entities/work-item/model/types'
 import {
   useWorkspaceSummary,
   useMyWork,
@@ -37,8 +41,6 @@ const PROJECT_HEALTH_LIMIT = 10
 
 function toWiType(raw: string): WorkItemType {
   const map: Record<string, WorkItemType> = {
-    initiative: WorkItemType.Initiative,
-    feature: WorkItemType.Feature,
     story: WorkItemType.Story,
     task: WorkItemType.Task,
     defect: WorkItemType.Defect,
@@ -170,7 +172,12 @@ export function HomePage() {
       path: '/backlog',
       alert: true,
     },
-    { label: t('metrics.openDefects'), value: summary?.openDefects ?? 0, path: '/quality', alert: true },
+    {
+      label: t('metrics.openDefects'),
+      value: summary?.openDefects ?? 0,
+      path: '/quality',
+      alert: true,
+    },
     { label: t('metrics.assignedToMe'), value: summary?.assignedToMe ?? 0, path: '/backlog' },
   ]
 

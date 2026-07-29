@@ -54,6 +54,9 @@ export interface IterationStatusItem {
   /** work_items.dev_owner_id — Rally "Dev Owner" (distinct from Owner/assignee). */
   devOwnerId: string | null;
   rank: string;
+  /** The linked Feature's id — the Feature column links to portfolio detail, not
+   * to `/item/:key`: a Feature is a portfolio item, so no work-item key resolves it. */
+  featureId: string | null;
   /** Nearest ancestor Feature key (Rally "Feature" column); null when none. */
   featureKey: string | null;
   /** Nearest ancestor Feature title, for the chip tooltip. */

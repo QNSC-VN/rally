@@ -410,7 +410,7 @@ export function useWorkItems(params: ListWorkItemsParams | null) {
         params: {
           query: {
             projectId: params.projectId,
-            type: params.type as 'initiative' | 'feature' | 'story' | 'task' | 'defect' | undefined,
+            type: params.type as 'story' | 'task' | 'defect' | undefined,
             statusId: params.statusId,
             assigneeId: params.assigneeId,
             iterationId: params.iterationId,

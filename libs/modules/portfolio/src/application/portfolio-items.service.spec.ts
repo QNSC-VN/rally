@@ -14,46 +14,46 @@ import type { PortfolioItemView } from '../domain/portfolio-item.types';
 const WORKSPACE = 'ws-1';
 const actor = { sub: 'user-1', workspaceId: WORKSPACE } as JwtPayload;
 
-const view = (over: Partial<PortfolioItemView> = {}): PortfolioItemView =>
-  ({
-    id: 'pi-1',
-    workspaceId: WORKSPACE,
-    projectId: 'proj-a',
-    itemKey: 'FE-1',
-    type: 'feature',
-    name: 'A feature',
-    description: null,
-    state: 'developing',
-    preliminaryEstimate: 'm',
-    refinedEstimate: null,
-    refinedItemCountEstimate: null,
-    parentId: null,
-    teamId: null,
-    releaseId: null,
-    ownerId: null,
-    plannedStartDate: null,
-    plannedEndDate: null,
-    marketReleaseDate: null,
-    rank: 'a',
-    archivedAt: null,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    ownerName: null,
-    teamName: null,
-    releaseName: null,
-    parentKey: null,
-    childFeatureCount: 0,
-    rollup: {
-      portfolioItemId: 'pi-1',
-      rollupPoints: 40,
-      rollupCount: 2,
-      acceptedPoints: 10,
-      acceptedCount: 1,
-      completedPoints: 10,
-      completedCount: 1,
-    },
-    ...over,
-  });
+const view = (over: Partial<PortfolioItemView> = {}): PortfolioItemView => ({
+  id: 'pi-1',
+  workspaceId: WORKSPACE,
+  projectId: 'proj-a',
+  itemKey: 'FE-1',
+  type: 'feature',
+  name: 'A feature',
+  description: null,
+  state: 'developing',
+  preliminaryEstimate: 'm',
+  refinedEstimate: null,
+  refinedItemCountEstimate: null,
+  parentId: null,
+  teamId: null,
+  releaseId: null,
+  ownerId: null,
+  plannedStartDate: null,
+  plannedEndDate: null,
+  marketReleaseDate: null,
+  rank: 'a',
+  archivedAt: null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  ownerName: null,
+  teamName: null,
+  releaseName: null,
+  projectName: null,
+  parentKey: null,
+  childFeatureCount: 0,
+  rollup: {
+    portfolioItemId: 'pi-1',
+    rollupPoints: 40,
+    rollupCount: 2,
+    acceptedPoints: 10,
+    acceptedCount: 1,
+    completedPoints: 10,
+    completedCount: 1,
+  },
+  ...over,
+});
 
 const emptyPage = <T>(data: T[]) => ({
   data,
@@ -132,6 +132,9 @@ describe('PortfolioItemsService', () => {
 
       expect(page.data).toEqual([]);
       expect(repo.listByFilter).not.toHaveBeenCalled();
+      // Reports a real zero rather than omitting the count: the grid footer always shows
+      // "of N" on this endpoint, and a missing total renders differently from 0.
+      expect(page.pageInfo.total).toBe(0);
     });
 
     it('rejects an explicit projectId the caller cannot read', async () => {
@@ -178,6 +181,7 @@ describe('PortfolioItemsService', () => {
       expect(page.data).toEqual([]);
       expect(repo.listByFilter).not.toHaveBeenCalled();
       expect(access.listReadableProjectIds).not.toHaveBeenCalled();
+      expect(page.pageInfo.total).toBe(0);
     });
   });
 
