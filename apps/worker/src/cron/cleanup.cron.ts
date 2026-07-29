@@ -8,6 +8,8 @@
  *   3. storage.files that are unreachable — either presigned but never confirmed
  *      (older than 24 h), or soft-deleted, or no longer referenced by any link
  *      table. Deletes the object, then the row.
+ *   4. scm.webhook_inbox rows that have been dealt with, past their retention
+ *      window. Terminal rows are the whole table over time — see the constants.
  *
  * N is configured via SESSION_CLEANUP_OLDER_THAN_DAYS (default 7).
  */
@@ -23,6 +25,25 @@ export class CleanupCronService {
   private readonly logger = new Logger(CleanupCronService.name);
   /** Lock TTL: 55 min — slightly less than the 1h cron interval to avoid overlap. */
   private readonly LOCK_TTL_MS = 55 * 60 * 1_000;
+
+  /**
+   * SCM inbox retention. Constants rather than env vars: this is housekeeping with
+   * no per-environment decision behind it, and a new env var costs four touchpoints
+   * (env.schema.ts, .env.example, CI, infra/live/*) for a number nobody will tune.
+   *
+   * `processed`/`ignored` rows are kept 30 days purely to answer "did we receive
+   * that delivery?" during an incident. `failed` rows are kept far longer because
+   * they are the dead-letter queue — each one is a link that never happened, and
+   * deleting it destroys the only record. They are also self-limiting: a row only
+   * reaches `failed` after 5 attempts, so healthy periods produce none.
+   *
+   * Bounded per run because each row carries the full webhook payload as jsonb
+   * (~25 KB observed), so a first sweep over a long-neglected table would otherwise
+   * be one very large transaction.
+   */
+  private readonly SCM_INBOX_HANDLED_RETENTION_DAYS = 30;
+  private readonly SCM_INBOX_FAILED_RETENTION_DAYS = 180;
+  private readonly SCM_INBOX_SWEEP_LIMIT = 5_000;
 
   constructor(
     @InjectDrizzle() private readonly db: DrizzleDB,
@@ -156,5 +177,49 @@ export class CleanupCronService {
         'Purged unreachable storage files',
       );
     }
+
+    // 4. Terminal scm.webhook_inbox rows past retention.
+    //
+    // The inbox is an append-only log of every delivery GitHub sends — one row per
+    // push and per pull_request event, each holding the raw payload as jsonb. Nothing
+    // deleted them, so the table and its TOAST storage grew without bound on an
+    // instance sized for 30 GB. It is bounded by activity, not by users: a busy repo
+    // generates rows whether or not anyone opens rally.
+    //
+    // Only TERMINAL rows are eligible. `pending` is excluded no matter how old,
+    // because a row waiting on backoff is still work owed — the relay retries with
+    // exponentially increasing delays and a stalled queue must not be silently
+    // truncated. `status` is the whole filter, not age alone.
+    //
+    // COALESCE because processed_at is nullable and only the relay's markSent
+    // populates it: any other path to a terminal status would leave it NULL, and a
+    // NULL comparison is false, so those rows would be retained forever by an
+    // omission nobody would notice. received_at always has a default.
+    //
+    // Deliberately unindexed. ix_scm_inbox_pending is PARTIAL (WHERE status =
+    // 'pending'), so this scans — which is the right trade for a once-daily sweep
+    // over a table this keeps small, rather than paying index maintenance on every
+    // webhook insert to speed up a job nothing waits on.
+    const inboxResult = await this.db.execute(
+      sql`
+        DELETE FROM scm.webhook_inbox
+        WHERE id IN (
+          SELECT id FROM scm.webhook_inbox
+          WHERE (
+              status IN ('processed', 'ignored')
+              AND COALESCE(processed_at, received_at) < NOW() - (${this.SCM_INBOX_HANDLED_RETENTION_DAYS} || ' days')::interval
+            )
+            OR (
+              status = 'failed'
+              AND received_at < NOW() - (${this.SCM_INBOX_FAILED_RETENTION_DAYS} || ' days')::interval
+            )
+          LIMIT ${this.SCM_INBOX_SWEEP_LIMIT}
+        )
+      `,
+    );
+    this.logger.log(
+      { deleted: (inboxResult as { rowCount?: number }).rowCount },
+      'Purged terminal SCM webhook inbox rows',
+    );
   }
 }

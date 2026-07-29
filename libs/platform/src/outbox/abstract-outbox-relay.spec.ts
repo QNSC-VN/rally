@@ -4,8 +4,14 @@
  * concrete relays (email, notifications, SNS outbox) inherit this behavior,
  * so covering it once here covers all three.
  */
+import { execFileSync } from 'node:child_process';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { AbstractOutboxRelay, type PostCommitTask } from './abstract-outbox-relay';
+import {
+  AbstractOutboxRelay,
+  DEAD_LETTER_FIELD,
+  type PostCommitTask,
+} from './abstract-outbox-relay';
 import type { DrizzleDB, DrizzleTx } from '../database/drizzle.provider';
 
 interface TestRow {
@@ -188,5 +194,33 @@ describe('AbstractOutboxRelay.relay() — retry/backoff wiring', () => {
     // The row written before the second relay() call must have been picked
     // up by the pass secondRun awaited — not silently missed.
     expect(relay.markSentCalls).toContain('row-written-during-first-pass');
+  });
+});
+
+describe('DEAD_LETTER_FIELD', () => {
+  it('uses the field name the infra actually filters on', () => {
+    // Guards the rename: the alarm is worthless if the field drifts.
+    expect(DEAD_LETTER_FIELD).toBe('outboxDeadLetter');
+
+    // Searches the whole infra tree rather than naming a file, for the same reason
+    // fail-open.spec.ts does: asserting on a path would need editing every time the
+    // Terraform is reorganised, which is how a guard quietly stops guarding. What
+    // matters is that SOME Terraform in this repo filters on the emitted field.
+    const infra = join(__dirname, '../../../..', 'infra');
+    // --exclude-dir is not optional: .terraform holds cached provider binaries and
+    // module copies, and scanning them blows the test timeout.
+    const terraform = execFileSync(
+      'grep',
+      ['-rl', '--include=*.tf', '--exclude-dir=.terraform', `$.${DEAD_LETTER_FIELD}`, infra],
+      { encoding: 'utf8' },
+    )
+      .split('\n')
+      .filter(Boolean);
+
+    expect(
+      terraform,
+      `No Terraform under infra/ filters on ${DEAD_LETTER_FIELD}; a relay can exhaust ` +
+        `its retries and lose work with nothing alarming, even though the app emits the field.`,
+    ).not.toEqual([]);
   });
 });

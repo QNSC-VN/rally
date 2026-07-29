@@ -519,6 +519,13 @@
       "when": 1786000600000,
       "tag": "0072_drop_portfolio_work_item_types",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1786000700000,
+      "tag": "0073_role_statement_timeouts",
+      "breakpoints": true
     }
   ]
 }
