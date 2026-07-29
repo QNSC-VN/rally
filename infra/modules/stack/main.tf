@@ -352,6 +352,39 @@ locals {
   api_db_env    = var.db_least_privilege ? [{ name = "DATABASE_USER", value = "rally_app" }] : []
   worker_db_env = var.db_least_privilege ? [{ name = "DATABASE_USER", value = "rally_worker" }] : []
 
+  # ── Connection-pool budget ──────────────────────────────────────────────────
+  # `DATABASE_POOL_MAX` defaults to 20 per PROCESS in env.schema.ts, and nothing
+  # here used to set it. That default is a per-task number multiplied by the
+  # autoscaler's ceiling, so production could legitimately open
+  # 10 api tasks x 20 + 6 worker tasks x 20 = 320 connections against an instance
+  # that accepts ~112. The failure mode is not a clean rejection either: the pool
+  # queues, `connectionTimeoutMillis` (5s, drizzle.provider.ts) elapses, and every
+  # affected request pays five seconds before erroring — while CPU-target
+  # autoscaling adds MORE tasks, each bringing its own pool, which starves the
+  # database further. Derive the per-task ceiling from the ceiling that matters.
+  #
+  # Postgres computes max_connections as LEAST(DBInstanceClassMemory/9531392, 5000).
+  # Listed per class rather than computed, so an unlisted class fails the plan
+  # instead of silently inheriting a number that does not hold for it.
+  db_max_connections_by_class = {
+    "db.t4g.micro"  = 112
+    "db.t4g.small"  = 225
+    "db.t4g.medium" = 450
+  }
+  db_max_connections = local.db_max_connections_by_class[var.rds.instance_class]
+
+  # Reserved off the top: 3 for Postgres' superuser slots, 10 for the migrator
+  # one-off task (its own pool, and it runs DURING a deploy while api and worker
+  # are still up), 5 for an operator holding a psql session while debugging.
+  db_pool_budget = local.db_max_connections - 18
+
+  # Split 60/40 api:worker. The worker's share is not proportional to its task
+  # count: AbstractOutboxRelay holds one connection for the whole batch
+  # transaction while `processRow` does its work on a SECOND connection, so a
+  # relay tick needs at least two per task.
+  api_pool_max    = max(4, floor(local.db_pool_budget * 0.6 / var.api.max_count))
+  worker_pool_max = max(4, floor(local.db_pool_budget * 0.4 / var.worker.max_count))
+
   # Public HTTPS origin for the public-assets bucket, from the storage stack's
   # `<product>_public_assets_base_url` output. Null until that stack attaches a
   # `custom_domain`; try() also covers a storage stack applied before the output
@@ -467,6 +500,8 @@ module "api" {
     { name = "DATABASE_HOST", value = module.rds.address },
     { name = "DATABASE_PORT", value = tostring(module.rds.port) },
     { name = "DATABASE_NAME", value = module.rds.db_name },
+    # Per-task pool ceiling, derived from the RDS class — see local.api_pool_max.
+    { name = "DATABASE_POOL_MAX", value = tostring(local.api_pool_max) },
     { name = "CORS_ORIGINS", value = local.app_base_url },
     { name = "APP_BASE_URL", value = local.app_base_url },
     # JWT config — defaults match app .env.example; override if needed
@@ -641,6 +676,8 @@ module "worker" {
     { name = "DATABASE_HOST", value = module.rds.address },
     { name = "DATABASE_PORT", value = tostring(module.rds.port) },
     { name = "DATABASE_NAME", value = module.rds.db_name },
+    # Per-task pool ceiling, derived from the RDS class — see local.worker_pool_max.
+    { name = "DATABASE_POOL_MAX", value = tostring(local.worker_pool_max) },
     # Entra SSO — the worker validates the shared env schema, so these are required to boot.
     { name = "ENTRA_TENANT_ID", value = var.entra_tenant_id },
     { name = "ENTRA_CLIENT_ID", value = var.entra_client_id },
@@ -834,7 +871,7 @@ module "dns_api" {
 # gone — two topics per environment meant two subscriptions to confirm and two
 # places to look. The fail-open alarm below publishes to this module's topic.
 module "observability" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/observability?ref=observability-v3.0.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/observability?ref=observability-v4.0.0"
 
   create_dashboard = var.create_dashboard
 
@@ -855,13 +892,19 @@ module "observability" {
   # silently — it fails the plan instead.
   rds_instance_id = module.rds.identifier
 
-  # Per-service UnHealthyHostCount. Every other alarm here fires on a symptom of load,
-  # so a service whose tasks are simply not running reads as quiet. Scoped by target
-  # group because the ALB is shared with other products, and gated because zero tasks is
-  # a normal state wherever the cost-saver runs — see the variable.
-  target_group_arns = var.monitor_target_health ? { api = module.api.target_group_arn } : {}
-  alarm_emails      = var.alarm_emails
-  tags              = local.tags
+  # Drives BOTH per-target-group alarms: response latency and UnHealthyHostCount.
+  # Scoped by target group because the ALB is shared with other products — a
+  # load-balancer-wide dimension aggregated rally and opshub into one p95 and paged
+  # under a rally name for traffic that was not always rally's.
+  #
+  # Passed unconditionally now. It used to be gated on `monitor_target_health`, which
+  # meant develop — where the cost-saver makes zero tasks a normal state — gave up
+  # LATENCY monitoring to silence the health alarm. Only the health alarm needs that
+  # opt-out; the latency alarm evaluates nothing in a period with no traffic.
+  target_group_arns     = { api = module.api.target_group_arn }
+  monitor_target_health = var.monitor_target_health
+  alarm_emails          = var.alarm_emails
+  tags                  = local.tags
 }
 
 # ── Alerting: security controls that failed OPEN ──────────────────────────────
@@ -929,5 +972,30 @@ check "otel_agent_log_groups_match_services" {
   assert {
     condition     = local.worker_log_group == module.worker.log_group_name
     error_message = "worker sidecar log group '${local.worker_log_group}' != '${module.worker.log_group_name}'. ecs-service changed its log-group naming; update local.worker_log_group."
+  }
+}
+
+# ── Guard: the pool arithmetic must fit the instance ──────────────────────────
+# `local.api_pool_max` / `worker_pool_max` divide a connection budget by the
+# AUTOSCALER'S CEILING, so the arithmetic only holds while both ceilings and the
+# instance class stay in step. Raise `api.max_count` without touching anything
+# else and the per-task pool shrinks to compensate — correct. Shrink the RDS
+# class, though, and the budget moves under both. This asserts the invariant
+# that matters: everything this stack can open at full scale-out still fits.
+#
+# Worth an assertion rather than a comment because the failure is invisible in a
+# plan and indirect at runtime — requests stall for `connectionTimeoutMillis`
+# rather than anything reporting "out of connections".
+check "db_pool_fits_instance_class" {
+  assert {
+    condition = (var.api.max_count * local.api_pool_max
+    + var.worker.max_count * local.worker_pool_max) <= local.db_pool_budget
+    error_message = join(" ", [
+      "DB pool ceiling exceeds the budget for ${var.rds.instance_class}:",
+      "api ${var.api.max_count}x${local.api_pool_max}",
+      "+ worker ${var.worker.max_count}x${local.worker_pool_max}",
+      "> ${local.db_pool_budget} usable of ${local.db_max_connections}.",
+      "Lower a max_count or move to a larger instance class.",
+    ])
   }
 }
