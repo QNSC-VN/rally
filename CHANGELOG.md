@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/QNSC-VN/rally/compare/v0.4.0...v0.4.1) (2026-07-29)
+
+
+### ✨ Features
+
+* **infra:** move production's api and worker off the RDS master credential ([#251](https://github.com/QNSC-VN/rally/issues/251)) ([fb8be77](https://github.com/QNSC-VN/rally/commit/fb8be779bdd50da55c9b2844f4eaf8d166deeebc))
+
 ## [0.4.0](https://github.com/QNSC-VN/rally/compare/v0.3.3...v0.4.0) (2026-07-29)
 
 
