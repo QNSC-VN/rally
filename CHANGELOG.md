@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.4.0](https://github.com/QNSC-VN/rally/compare/v0.3.3...v0.4.0) (2026-07-29)
+
+
+### ⚠ BREAKING CHANGES
+
+* **access:** access tokens no longer contain `claims.permissions` or `claims.authzEpoch`, and `TOKEN_STALE` is never returned. Any client branching on that response code can drop the branch; permissions for UI gating come from `/v1/bff/me`, which resolves through the same path the guard uses and is unchanged. Tokens minted before this deploy keep working — their extra claims are simply ignored.
+
+### ✨ Features
+
+* **db:** run the least-privilege role cutover as a one-off migrator task ([09f8969](https://github.com/QNSC-VN/rally/commit/09f89697c081eeb2700b9d1c0bd1fe63fc3c814f))
+* **infra:** inject CDN_PUBLIC_ASSETS_BASE_URL for avatars and workspace logos ([bb1f64b](https://github.com/QNSC-VN/rally/commit/bb1f64b47f83a5566780ecfeb2e3c88623689e23))
+* **infra:** move develop's api and worker off the RDS master credential ([cf3d092](https://github.com/QNSC-VN/rally/commit/cf3d092f3d920acf689cf790a66c8cdcf6e6f926))
+
+
+### 🐛 Bug Fixes
+
+* **ci:** stop an unapproved prod infra apply from blocking every develop apply ([d5db9f6](https://github.com/QNSC-VN/rally/commit/d5db9f6e181de6d10a5302b7f716e7426d20f8d2))
+* **db:** drop the last two RLS policies, which deny every file write ([120448c](https://github.com/QNSC-VN/rally/commit/120448ce9bc4f72019eec4a9f82a0f4da782cbd4))
+* **infra:** inject the public-bucket R2 credential in both environments ([49b37d8](https://github.com/QNSC-VN/rally/commit/49b37d894a2188aef18bbbc5a8cdc6dcb7958c0e))
+* **scm:** wire production's GitHub App id — SCM was silently dormant ([46b00f8](https://github.com/QNSC-VN/rally/commit/46b00f82473f295d4e728dc9238be9ead95fe3d8))
+* **web:** allow the public-asset origins in the CSP img-src directive ([83c39bd](https://github.com/QNSC-VN/rally/commit/83c39bd644f66cf5898687afd5605f783210ebb2))
+
+
+### ♻️ Refactors
+
+* **access:** resolve permissions from the database, delete the authz epoch ([7add892](https://github.com/QNSC-VN/rally/commit/7add892ecec7cadf4aae7027c94dc9277594acf0))
+
 ## [0.3.3](https://github.com/QNSC-VN/rally/compare/v0.3.2...v0.3.3) (2026-07-28)
 
 
