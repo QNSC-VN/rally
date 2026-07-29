@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.1](https://github.com/QNSC-VN/rally/compare/v0.5.0...v0.5.1) (2026-07-29)
+
+
+### ✨ Features
+
+* **portfolio:** create, edit and archive Epics and Features ([#262](https://github.com/QNSC-VN/rally/issues/262)) ([1662b88](https://github.com/QNSC-VN/rally/commit/1662b8882be5bee07dbfd5d3f7d13028adf88ede))
+
+
+### 🐛 Bug Fixes
+
+* **observability:** attribute request latency to the interval that caused it ([#264](https://github.com/QNSC-VN/rally/issues/264)) ([dbd9fe3](https://github.com/QNSC-VN/rally/commit/dbd9fe33af2b80fca8d1b854fef33f6e1199810c))
+
 ## [0.5.0](https://github.com/QNSC-VN/rally/compare/v0.4.1...v0.5.0) (2026-07-29)
 
 
