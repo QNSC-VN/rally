@@ -162,14 +162,23 @@ variable "rds" {
 }
 
 variable "api" {
-  description = "API service sizing and scaling."
+  description = <<-EOT
+    API service sizing and scaling.
+
+    The autoscaling targets restate the ecs-service module's own defaults (65/75) rather
+    than defaulting to null. `null` is NOT "use the module's default" for a nested
+    optional attribute — it is passed straight through, and
+    `target_tracking_scaling_policy_configuration.target_value` is a required argument,
+    so the plan fails with "Missing required argument". Restating the numbers also keeps
+    every environment's target explicit and reviewable.
+  EOT
   type = object({
     cpu               = number
     memory            = number
     max_count         = number
     use_spot          = optional(bool, false)
-    cpu_target_pct    = optional(number, null)
-    memory_target_pct = optional(number, null)
+    cpu_target_pct    = optional(number, 65)
+    memory_target_pct = optional(number, 75)
   })
 }
 
