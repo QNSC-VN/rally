@@ -9,25 +9,17 @@
 
 ### ✨ Features
 
-* **db:** run the least-privilege role cutover as a one-off migrator task ([21c21b7](https://github.com/QNSC-VN/rally/commit/21c21b70e359a66660937119be8ea0f2f4fa61dd))
 * **db:** run the least-privilege role cutover as a one-off migrator task ([09f8969](https://github.com/QNSC-VN/rally/commit/09f89697c081eeb2700b9d1c0bd1fe63fc3c814f))
-* **infra:** inject CDN_PUBLIC_ASSETS_BASE_URL for avatars and workspace logos ([43687a5](https://github.com/QNSC-VN/rally/commit/43687a566d856ceaaa549a89e8f2a81f8f4669e9))
 * **infra:** inject CDN_PUBLIC_ASSETS_BASE_URL for avatars and workspace logos ([bb1f64b](https://github.com/QNSC-VN/rally/commit/bb1f64b47f83a5566780ecfeb2e3c88623689e23))
-* **infra:** move develop's api and worker off the RDS master credential ([135b658](https://github.com/QNSC-VN/rally/commit/135b65814d5b939de1852e114f258cad09ca8903))
 * **infra:** move develop's api and worker off the RDS master credential ([cf3d092](https://github.com/QNSC-VN/rally/commit/cf3d092f3d920acf689cf790a66c8cdcf6e6f926))
 
 
 ### 🐛 Bug Fixes
 
-* **ci:** stop an unapproved prod infra apply from blocking every develop apply ([c0e653d](https://github.com/QNSC-VN/rally/commit/c0e653d20600af335f6171d78d5768de3911114b))
 * **ci:** stop an unapproved prod infra apply from blocking every develop apply ([d5db9f6](https://github.com/QNSC-VN/rally/commit/d5db9f6e181de6d10a5302b7f716e7426d20f8d2))
-* **db:** drop the last two RLS policies, which deny every file write ([e0f2ec2](https://github.com/QNSC-VN/rally/commit/e0f2ec2511b0a949302de66957d6c05a00ba27e9))
 * **db:** drop the last two RLS policies, which deny every file write ([120448c](https://github.com/QNSC-VN/rally/commit/120448ce9bc4f72019eec4a9f82a0f4da782cbd4))
-* **infra:** inject the public-bucket R2 credential in both environments ([5d8e404](https://github.com/QNSC-VN/rally/commit/5d8e404bed3d4186ed682e108ec3901e4c14b0ae))
 * **infra:** inject the public-bucket R2 credential in both environments ([49b37d8](https://github.com/QNSC-VN/rally/commit/49b37d894a2188aef18bbbc5a8cdc6dcb7958c0e))
-* **scm:** wire production's GitHub App id — SCM was silently dormant ([ff344cb](https://github.com/QNSC-VN/rally/commit/ff344cb9a58e02ddb035f9f3095447bc7a0243da))
 * **scm:** wire production's GitHub App id — SCM was silently dormant ([46b00f8](https://github.com/QNSC-VN/rally/commit/46b00f82473f295d4e728dc9238be9ead95fe3d8))
-* **web:** allow the public-asset origins in the CSP img-src directive ([715341c](https://github.com/QNSC-VN/rally/commit/715341c6eef1ee2bd3de489e7ac57b4fd24b2b4a))
 * **web:** allow the public-asset origins in the CSP img-src directive ([83c39bd](https://github.com/QNSC-VN/rally/commit/83c39bd644f66cf5898687afd5605f783210ebb2))
 
 
