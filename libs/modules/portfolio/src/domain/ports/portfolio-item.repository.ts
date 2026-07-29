@@ -1,9 +1,12 @@
-import type { CursorPayload, PagedResult } from '@platform';
+import type { CursorPayload, DbExecutor, PagedResult } from '@platform';
 import type {
+  CreatePortfolioItemInput,
   PortfolioItem,
   PortfolioItemView,
   PortfolioListFilter,
+  PortfolioRankScope,
   PortfolioRollupRow,
+  UpdatePortfolioItemInput,
 } from '../portfolio-item.types';
 
 export const PORTFOLIO_ITEM_REPOSITORY = Symbol('PORTFOLIO_ITEM_REPOSITORY');
@@ -42,6 +45,60 @@ export interface IPortfolioItemRepository {
 
   /** Active child Features of an Epic, for the list preview and the Children tab. */
   listChildFeatures(epicId: string, workspaceId: string): Promise<PortfolioItemView[]>;
+
+  /** Several items by id, for validating rank neighbours and parent references. */
+  findByIds(ids: string[], workspaceId: string): Promise<PortfolioItem[]>;
+
+  // ── Writes ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Next number for `EP-<n>` / `FE-<n>`, scoped to (workspace, type).
+   *
+   * `MAX(existing) + 1`, which is NOT atomic under concurrent creates — the same
+   * trade-off releases/iterations/milestones make. `uq_portfolio_item_key` is what
+   * actually protects us, so the service retries once on a collision. The atomic
+   * counter work items use is unavailable here: `workspace_item_counters.item_type`
+   * is the `work_item_type` enum, which migration 0072 narrowed to story/task/defect.
+   */
+  nextKeyNumber(scope: PortfolioRankScope, executor?: DbExecutor): Promise<number>;
+
+  /**
+   * Take a transaction-scoped advisory lock on one (workspace, type) rank scope.
+   *
+   * Deriving a rank is a read-modify-write, so it is only safe when the read and the
+   * insert are serialised against other creates in the same scope. Call this first,
+   * then {@link findMaxRank} with the SAME executor. Without it two creates read the
+   * same max, derive the SAME rank, and the next drag-reorder throws
+   * LEXORANK_NEIGHBOURS_OUT_OF_ORDER on the equal neighbours — this already happened
+   * to work items in 22 scopes.
+   */
+  lockRankScope(scope: PortfolioRankScope, executor: DbExecutor): Promise<void>;
+
+  /** Highest rank in the scope, or null when empty. Used to append at the end. */
+  findMaxRank(scope: PortfolioRankScope, executor?: DbExecutor): Promise<string | null>;
+
+  create(
+    input: CreatePortfolioItemInput & { id: string; itemKey: string; rank: string },
+    executor?: DbExecutor,
+  ): Promise<PortfolioItem>;
+
+  update(
+    id: string,
+    input: UpdatePortfolioItemInput & { rank?: string },
+    workspaceId: string,
+    executor?: DbExecutor,
+  ): Promise<PortfolioItem>;
+
+  /** Archive or restore. Archiving is a soft delete — `archived_at`, never a DELETE. */
+  setArchived(
+    id: string,
+    archived: boolean,
+    workspaceId: string,
+    executor?: DbExecutor,
+  ): Promise<PortfolioItem>;
+
+  /** Count of ACTIVE child Features, for the archive guard on an Epic. */
+  countActiveChildFeatures(epicId: string, workspaceId: string): Promise<number>;
 }
 
 /** A linked Story/Defect as the Children tab renders it. */

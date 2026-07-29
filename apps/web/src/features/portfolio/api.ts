@@ -12,11 +12,11 @@
  * downloading every child story to add up points the API already summed, and the
  * two implementations would drift the first time "accepted" was redefined.
  */
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo } from 'react'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
-import type { components } from '@/shared/api/generated/api'
+import type { components, paths } from '@/shared/api/generated/api'
 import type { PortfolioItemType } from '@/entities/work-item/model/types'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -183,5 +183,64 @@ export function usePortfolioChildFeatures(id: string | undefined) {
     },
     enabled: !!id,
     staleTime: 30_000,
+  })
+}
+
+// ── Mutations ────────────────────────────────────────────────────────────────
+
+/**
+ * All four write hooks tag `invalidates: ['portfolio']`, which the central
+ * `INVALIDATION_MAP` fans out to `['portfolio']` — so the list, the detail and an
+ * Epic's children all refresh from one declaration. Nothing here calls
+ * `queryClient.invalidateQueries` by hand; `createInvalidationMutationCache` does it
+ * from this meta, which is what keeps the fan-out in a single reviewable place.
+ */
+export type CreatePortfolioItemBody =
+  paths['/v1/portfolio-items']['post']['requestBody']['content']['application/json']
+
+export type UpdatePortfolioItemBody =
+  paths['/v1/portfolio-items/{id}']['patch']['requestBody']['content']['application/json']
+
+export function useCreatePortfolioItem() {
+  return useMutation({
+    mutationFn: async (body: CreatePortfolioItemBody) => {
+      const { data, error, response } = await apiClient.POST('/v1/portfolio-items', { body })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as PortfolioItem
+    },
+    meta: { invalidates: ['portfolio'] },
+  })
+}
+
+export function useUpdatePortfolioItem() {
+  return useMutation({
+    mutationFn: async ({ id, patch }: { id: string; patch: UpdatePortfolioItemBody }) => {
+      const { data, error, response } = await apiClient.PATCH('/v1/portfolio-items/{id}', {
+        params: { path: { id } },
+        body: patch,
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as PortfolioItem
+    },
+    meta: { invalidates: ['portfolio'] },
+  })
+}
+
+/**
+ * Archive or restore. One hook for both directions because they are the same
+ * permission (`portfolio:archive`) and the same cache fan-out — splitting them would
+ * duplicate everything except the URL segment.
+ */
+export function useSetPortfolioItemArchived() {
+  return useMutation({
+    mutationFn: async ({ id, archived }: { id: string; archived: boolean }) => {
+      const path = archived
+        ? ('/v1/portfolio-items/{id}/archive' as const)
+        : ('/v1/portfolio-items/{id}/unarchive' as const)
+      const { data, error, response } = await apiClient.POST(path, { params: { path: { id } } })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as PortfolioItem
+    },
+    meta: { invalidates: ['portfolio'] },
   })
 }

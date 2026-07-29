@@ -79,7 +79,10 @@ describe('portfolio cross-project isolation (e2e)', () => {
         itemKey: featureAKey,
         type: 'feature',
         name: 'Feature in A',
-        rank: 'a',
+        // Ranks must be DISTINCT even in fixtures: two rows sharing a rank make
+        // `between()` throw LEXORANK_NEIGHBOURS_OUT_OF_ORDER on the next reorder, so
+        // hardcoding the same value here would leave a landmine for the ranking slice.
+        rank: `a${featureAKey}`,
       },
       {
         workspaceId: WORKSPACE_ID,
@@ -87,7 +90,7 @@ describe('portfolio cross-project isolation (e2e)', () => {
         itemKey: featureBKey,
         type: 'feature',
         name: 'Feature in B',
-        rank: 'a',
+        rank: `a${featureBKey}`,
       },
     ]);
 

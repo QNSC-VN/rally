@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mocked } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
-import { DRIZZLE, NotFoundException } from '@platform';
+import { DRIZZLE, NotFoundException, UnitOfWork } from '@platform';
 import type { JwtPayload } from '@platform';
 import { AccessService } from '@modules/access';
 import { PortfolioItemsService } from './portfolio-items.service';
@@ -80,12 +80,31 @@ describe('PortfolioItemsService', () => {
             rollupsFor: vi.fn().mockResolvedValue([]),
             listChildren: vi.fn().mockResolvedValue(emptyPage([])),
             listChildFeatures: vi.fn().mockResolvedValue([]),
+            findByIds: vi.fn().mockResolvedValue([]),
+            nextKeyNumber: vi.fn().mockResolvedValue(1),
+            lockRankScope: vi.fn().mockResolvedValue(undefined),
+            findMaxRank: vi.fn().mockResolvedValue(null),
+            create: vi.fn(),
+            update: vi.fn(),
+            setArchived: vi.fn(),
+            countActiveChildFeatures: vi.fn().mockResolvedValue(0),
           },
         },
         {
           provide: AccessService,
           // Default: unrestricted, so tests that are not about authorization stay short.
-          useValue: { listReadableProjectIds: vi.fn().mockResolvedValue(null) },
+          useValue: {
+            listReadableProjectIds: vi.fn().mockResolvedValue(null),
+            assertProjectPermission: vi.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: UnitOfWork,
+          // Runs the callback with a stub executor: these tests assert the SERVICE's
+          // ordering and validation, and the repository is mocked, so a real transaction
+          // would add nothing. The advisory-lock/rank behaviour is proven in e2e against
+          // a real database, where it can actually be observed.
+          useValue: { run: (fn: (tx: unknown) => unknown) => fn({}) },
         },
         {
           provide: DRIZZLE,
@@ -254,6 +273,215 @@ describe('PortfolioItemsService', () => {
         NotFoundException,
       );
       expect(repo.listChildFeatures).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('createItem', () => {
+    const newFeature = { projectId: 'proj-a', type: 'feature' as const, name: 'A feature' };
+
+    beforeEach(() => {
+      repo.create.mockImplementation((input) => Promise.resolve(input as never));
+      repo.findViewById.mockResolvedValue(view());
+    });
+
+    it('checks project permission BEFORE touching the database', async () => {
+      access.assertProjectPermission.mockRejectedValue(new Error('denied'));
+      await expect(service.createItem(actor, newFeature)).rejects.toThrow('denied');
+      expect(repo.create).not.toHaveBeenCalled();
+      expect(repo.lockRankScope).not.toHaveBeenCalled();
+    });
+
+    it('mints the key from the (workspace, type) sequence with the type prefix', async () => {
+      repo.nextKeyNumber.mockResolvedValue(318);
+      await service.createItem(actor, newFeature);
+      expect(repo.nextKeyNumber).toHaveBeenCalledWith(
+        { workspaceId: WORKSPACE, type: 'feature' },
+        expect.anything(),
+      );
+      expect(repo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ itemKey: 'FE-318' }),
+        expect.anything(),
+      );
+    });
+
+    it('uses the EP- prefix for an Epic', async () => {
+      repo.nextKeyNumber.mockResolvedValue(7);
+      await service.createItem(actor, { projectId: 'proj-a', type: 'epic', name: 'An epic' });
+      expect(repo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ itemKey: 'EP-7' }),
+        expect.anything(),
+      );
+    });
+
+    it('LOCKS the rank scope before reading the max rank', async () => {
+      // The whole point of the lock. If the read happens first, two concurrent creates
+      // derive the SAME rank and the next drag-reorder throws on equal neighbours —
+      // exactly the corruption work items already suffered in 22 scopes.
+      await service.createItem(actor, newFeature);
+      expect(repo.lockRankScope.mock.invocationCallOrder[0]).toBeLessThan(
+        repo.findMaxRank.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('appends after the current max rank, never a degenerate empty rank', async () => {
+      repo.findMaxRank.mockResolvedValue('m');
+      await service.createItem(actor, newFeature);
+      const rank = repo.create.mock.calls[0][0].rank;
+      expect(rank > 'm').toBe(true);
+      expect(rank).not.toBe('');
+    });
+
+    it('retries once with a fresh key when the unique index rejects the first', async () => {
+      // MAX+1 is not atomic, so a concurrent create can take the same number.
+      repo.create.mockRejectedValueOnce(new Error('duplicate key uq_portfolio_item_key'));
+      repo.nextKeyNumber.mockResolvedValueOnce(4).mockResolvedValueOnce(5);
+
+      await service.createItem(actor, newFeature);
+
+      expect(repo.create).toHaveBeenCalledTimes(2);
+      expect(repo.create.mock.calls[1][0].itemKey).toBe('FE-5');
+    });
+
+    it('gives up after the retry rather than looping', async () => {
+      repo.create.mockRejectedValue(new Error('still colliding'));
+      await expect(service.createItem(actor, newFeature)).rejects.toThrow('still colliding');
+      expect(repo.create).toHaveBeenCalledTimes(2);
+    });
+
+    it('refuses an Epic that carries Feature-only fields', async () => {
+      // `ck_portfolio_epic_shape` would also catch this, but as a 500 with a Postgres
+      // message. The named error tells the caller which field is the problem.
+      await expect(
+        service.createItem(actor, {
+          projectId: 'proj-a',
+          type: 'epic',
+          name: 'An epic',
+          teamId: 'team-1',
+        }),
+      ).rejects.toMatchObject({ code: 'PORTFOLIO_ITEM_INVALID_TYPE' });
+      expect(repo.create).not.toHaveBeenCalled();
+    });
+
+    it('refuses a parent that is not an Epic', async () => {
+      repo.findByIds.mockResolvedValue([
+        { id: 'pi-2', type: 'feature', archivedAt: null } as never,
+      ]);
+      await expect(
+        service.createItem(actor, { ...newFeature, parentId: 'pi-2' }),
+      ).rejects.toMatchObject({ code: 'PORTFOLIO_ITEM_INVALID_PARENT' });
+    });
+
+    it('refuses an archived parent Epic', async () => {
+      repo.findByIds.mockResolvedValue([
+        { id: 'pi-2', type: 'epic', archivedAt: new Date() } as never,
+      ]);
+      await expect(
+        service.createItem(actor, { ...newFeature, parentId: 'pi-2' }),
+      ).rejects.toMatchObject({ code: 'PORTFOLIO_ITEM_INVALID_PARENT' });
+    });
+
+    it('refuses a parent id that does not resolve at all', async () => {
+      // No FK on parent_id, so an unchecked bogus uuid would persist and then render as
+      // an empty Epic column — indistinguishable from "not set".
+      repo.findByIds.mockResolvedValue([]);
+      await expect(
+        service.createItem(actor, { ...newFeature, parentId: 'nope' }),
+      ).rejects.toMatchObject({ code: 'PORTFOLIO_ITEM_INVALID_PARENT' });
+    });
+  });
+
+  describe('updateItem', () => {
+    beforeEach(() => {
+      repo.findViewById.mockResolvedValue(view());
+      repo.update.mockResolvedValue(view());
+    });
+
+    it('validates the shape against the STORED type, so an Epic cannot gain a Team', async () => {
+      // `type` is not updatable, so the only way an Epic could acquire Feature fields is
+      // if the check used the request body's type instead of the row's.
+      repo.findById.mockResolvedValue({ id: 'pi-1', type: 'epic', projectId: 'proj-a' } as never);
+      await expect(service.updateItem(actor, 'pi-1', { teamId: 'team-1' })).rejects.toMatchObject({
+        code: 'PORTFOLIO_ITEM_INVALID_TYPE',
+      });
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it('refuses to make an item its own Epic', async () => {
+      repo.findById.mockResolvedValue({
+        id: 'pi-1',
+        type: 'feature',
+        projectId: 'proj-a',
+      } as never);
+      await expect(service.updateItem(actor, 'pi-1', { parentId: 'pi-1' })).rejects.toMatchObject({
+        code: 'PORTFOLIO_ITEM_INVALID_PARENT',
+      });
+    });
+
+    it('passes null through as "clear" and omits absent fields entirely', async () => {
+      // The repository distinguishes the two; this proves the service does not normalise
+      // one into the other on the way down.
+      repo.findById.mockResolvedValue({
+        id: 'pi-1',
+        type: 'feature',
+        projectId: 'proj-a',
+      } as never);
+      await service.updateItem(actor, 'pi-1', { releaseId: null });
+      const patch = repo.update.mock.calls[0][1];
+      expect(patch).toHaveProperty('releaseId', null);
+      expect(patch).not.toHaveProperty('name');
+    });
+
+    it('404s for an unknown id before checking permission', async () => {
+      repo.findById.mockResolvedValue(null);
+      await expect(service.updateItem(actor, 'missing', { name: 'x' })).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('setArchived', () => {
+    beforeEach(() => {
+      repo.findViewById.mockResolvedValue(view());
+      repo.setArchived.mockResolvedValue(view());
+    });
+
+    it('refuses to archive an Epic that still has active child Features', async () => {
+      // Archiving it would leave those Features pointing at a parent the user can no
+      // longer open, while the Epic's rollup kept aggregating through them.
+      repo.findById.mockResolvedValue({ id: 'ep-1', type: 'epic', projectId: 'proj-a' } as never);
+      repo.countActiveChildFeatures.mockResolvedValue(2);
+
+      await expect(service.setArchived(actor, 'ep-1', true)).rejects.toMatchObject({
+        code: 'PORTFOLIO_EPIC_HAS_ACTIVE_FEATURES',
+      });
+      expect(repo.setArchived).not.toHaveBeenCalled();
+    });
+
+    it('archives an Epic once its Features are gone', async () => {
+      repo.findById.mockResolvedValue({ id: 'ep-1', type: 'epic', projectId: 'proj-a' } as never);
+      repo.countActiveChildFeatures.mockResolvedValue(0);
+      await service.setArchived(actor, 'ep-1', true);
+      expect(repo.setArchived).toHaveBeenCalledWith('ep-1', true, WORKSPACE);
+    });
+
+    it('does not apply the child guard to a Feature', async () => {
+      // A Feature's children are Stories/Defects, which keep working when it is archived
+      // — only the Epic→Feature link would dangle.
+      repo.findById.mockResolvedValue({
+        id: 'fe-1',
+        type: 'feature',
+        projectId: 'proj-a',
+      } as never);
+      await service.setArchived(actor, 'fe-1', true);
+      expect(repo.countActiveChildFeatures).not.toHaveBeenCalled();
+      expect(repo.setArchived).toHaveBeenCalledWith('fe-1', true, WORKSPACE);
+    });
+
+    it('never applies the guard when RESTORING, even for an Epic', async () => {
+      repo.findById.mockResolvedValue({ id: 'ep-1', type: 'epic', projectId: 'proj-a' } as never);
+      repo.countActiveChildFeatures.mockResolvedValue(5);
+      await service.setArchived(actor, 'ep-1', false);
+      expect(repo.setArchived).toHaveBeenCalledWith('ep-1', false, WORKSPACE);
     });
   });
 });

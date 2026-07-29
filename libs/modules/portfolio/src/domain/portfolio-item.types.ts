@@ -23,7 +23,15 @@ export interface PortfolioItem {
   id: string;
   workspaceId: string;
   projectId: string;
-  /** `EP-101` / `FE-318`. Per-project sequence. */
+  /**
+   * `EP-101` / `FE-318`.
+   *
+   * WORKSPACE-wide sequence per type, not per project — `uq_portfolio_item_key` is
+   * on (workspace_id, item_key), so a per-project sequence would make two projects
+   * both mint `EP-1` and collide. Matches Rally, where a FormattedID is unique
+   * across the workspace, and the work-item counter, which is workspace-scoped too.
+   * (Releases differ deliberately: `uq_releases_key` is per-project.)
+   */
   itemKey: string;
   type: PortfolioItemType;
   name: string;
@@ -113,4 +121,65 @@ export interface PortfolioListRequest {
  */
 export interface PortfolioListFilter extends PortfolioListRequest {
   readableProjectIds: string[] | null;
+}
+
+/**
+ * The rank scope for a portfolio item: (workspace, type).
+ *
+ * NOT (project, parent) as work items use. The Portfolio list is cross-project and
+ * flat per type — `ix_portfolio_list` is on (workspace_id, type, archived_at, rank)
+ * and the list orders by rank alone — so Epics are ranked among Epics and Features
+ * among Features, regardless of project or parent Epic. Ranking per parent instead
+ * would leave the flat list with interleaved, non-comparable ranks, and the capacity
+ * cutline (which reads rank order) would be meaningless.
+ */
+export interface PortfolioRankScope {
+  workspaceId: string;
+  type: PortfolioItemType;
+}
+
+/** Fields accepted when creating a portfolio item. Key and rank are server-assigned. */
+export interface CreatePortfolioItemInput {
+  workspaceId: string;
+  projectId: string;
+  type: PortfolioItemType;
+  name: string;
+  description?: string | null;
+  state?: PortfolioItemState;
+  preliminaryEstimate?: PreliminaryEstimateSize;
+  refinedEstimate?: string | null;
+  refinedItemCountEstimate?: number | null;
+  /** Feature only — an Epic must leave these null (`ck_portfolio_epic_shape`). */
+  parentId?: string | null;
+  teamId?: string | null;
+  releaseId?: string | null;
+  ownerId?: string | null;
+  plannedStartDate?: string | null;
+  plannedEndDate?: string | null;
+  marketReleaseDate?: string | null;
+}
+
+/**
+ * Fields a caller may change. Every one is optional, and `undefined` means "leave
+ * alone" while `null` means "clear" — so the repository must distinguish the two
+ * rather than spreading the object.
+ *
+ * `type` is absent on purpose: changing an Epic into a Feature (or back) would have to
+ * move child links, re-key the item and re-rank it into another scope. Rally does not
+ * offer it either.
+ */
+export interface UpdatePortfolioItemInput {
+  name?: string;
+  description?: string | null;
+  state?: PortfolioItemState;
+  preliminaryEstimate?: PreliminaryEstimateSize;
+  refinedEstimate?: string | null;
+  refinedItemCountEstimate?: number | null;
+  parentId?: string | null;
+  teamId?: string | null;
+  releaseId?: string | null;
+  ownerId?: string | null;
+  plannedStartDate?: string | null;
+  plannedEndDate?: string | null;
+  marketReleaseDate?: string | null;
 }
