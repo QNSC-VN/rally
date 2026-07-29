@@ -110,6 +110,12 @@ describe('buildClientResponse', () => {
     expect(result.headers.get('content-type')).toBe('text/plain')
   })
 
+  // LIMIT OF THE TEST BELOW, stated because it is easy to over-read: it pins the
+  // CONTRACT (two cookies in, two out, values intact) and would catch cookies being
+  // dropped, but it does NOT distinguish the per-cookie loop from a naive
+  // `new Headers(upstream.headers)` — undici preserves the set-cookie list through the
+  // constructor, so that swap keeps this suite green. See the note on
+  // buildClientResponse; verifying it needs the Workers runtime, not vitest.
   it('preserves multiple Set-Cookie headers individually', () => {
     const upstream = new Response(null, { status: 204 })
     upstream.headers.append('set-cookie', '__Host-rally_session=abc; Path=/; Secure')
@@ -119,6 +125,34 @@ describe('buildClientResponse', () => {
     expect(cookies).toHaveLength(2)
     expect(cookies).toContain('__Host-rally_session=abc; Path=/; Secure')
     expect(cookies).toContain('__Host-bff_state=; Path=/; Max-Age=0')
+  })
+
+  // The fallback path, and the reason it exists. `getSetCookie` is skipped over in the
+  // header loop, so pairing that skip with `?? []` meant a runtime WITHOUT it dropped
+  // every cookie: 200 from the API, 200 from the proxy, and no session cookie at the
+  // browser — a successful login that presents as an immediate silent logout. Cookies
+  // must survive even when the capability does not.
+  it('still forwards Set-Cookie when the runtime has no getSetCookie', () => {
+    const upstream = new Response(null, {
+      status: 204,
+      headers: { 'set-cookie': '__Host-rally_session=abc; Path=/; Secure' },
+    })
+    Object.defineProperty(upstream.headers, 'getSetCookie', { value: undefined })
+
+    const result = buildClientResponse(upstream)
+
+    expect(result.headers.get('set-cookie')).toBe('__Host-rally_session=abc; Path=/; Secure')
+  })
+
+  it('does not leak the fallback into the normal path', () => {
+    // With getSetCookie present the per-cookie list wins, so a cookie is appended once
+    // rather than twice — a double-append would corrupt the header.
+    const upstream = new Response(null, { status: 204 })
+    upstream.headers.append('set-cookie', 'a=1; Path=/')
+
+    const result = buildClientResponse(upstream)
+
+    expect(result.headers.getSetCookie?.() ?? []).toEqual(['a=1; Path=/'])
   })
 })
 
