@@ -8,7 +8,7 @@ import type {
 } from '../project.types';
 
 /** Work item type values — mirrors db/schema/enums workItemTypeEnum */
-export type WorkItemType = 'initiative' | 'feature' | 'story' | 'task' | 'defect';
+export type WorkItemType = 'story' | 'task' | 'defect';
 
 export const PROJECT_REPOSITORY = Symbol('PROJECT_REPOSITORY');
 

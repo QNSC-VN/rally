@@ -57,35 +57,41 @@ describe('BA flows: work-item hierarchy + relations (real AppModule + seeded DB)
 
     it('rejects a defect under a non-story parent', async () => {
       const project = await newProject('Defect Bad Parent');
-      const feature = await workItems.createWorkItem(actor, project.id, 'feature', 'A feature');
+      // A defect's parent must be a STORY. Another defect is the available
+      // non-story work item now that `feature` is not a work-item type — a Feature is
+      // a portfolio item, and portfolio membership travels via feature_id, not parent_id.
+      const otherDefect = await workItems.createWorkItem(actor, project.id, 'defect', 'Other bug');
       await expect(
-        workItems.createWorkItem(actor, project.id, 'defect', 'Bug', { parentId: feature.id }),
+        workItems.createWorkItem(actor, project.id, 'defect', 'Bug', { parentId: otherDefect.id }),
       ).rejects.toMatchObject({ code: 'WORK_ITEM_INVALID_PARENT_TYPE' });
     });
 
-    it('creates a task under a story and under a defect, but not under a feature', async () => {
+    it('creates a task under a story and under a defect, but not under another task', async () => {
       const project = await newProject('Task Parents');
       const story = await workItems.createWorkItem(actor, project.id, 'story', 'Story');
       const defect = await workItems.createWorkItem(actor, project.id, 'defect', 'Defect', {
         parentId: story.id,
       });
-      const feature = await workItems.createWorkItem(actor, project.id, 'feature', 'Feature');
 
       const t1 = await workItems.createTask(actor, story.id, 'Task under story');
       const t2 = await workItems.createTask(actor, defect.id, 'Task under defect');
       expect(t1.parentId).toBe(story.id);
       expect(t2.parentId).toBe(defect.id);
 
-      await expect(workItems.createTask(actor, feature.id, 'Bad task')).rejects.toMatchObject({
+      // Tasks are leaves. Previously this asserted "not under a feature"; a task is now
+      // the available invalid parent, and it exercises the same rule through the
+      // tasks-table fallback in findById.
+      await expect(workItems.createTask(actor, t1.id, 'Bad task')).rejects.toMatchObject({
         code: 'WORK_ITEM_INVALID_PARENT_TYPE',
       });
     });
 
     it('rejects giving a story a parent (only tasks and defects have parents)', async () => {
       const project = await newProject('Story No Parent');
-      const feature = await workItems.createWorkItem(actor, project.id, 'feature', 'Feature');
+      // Any parent is invalid for a story, so the parent's own type is immaterial.
+      const other = await workItems.createWorkItem(actor, project.id, 'story', 'Other story');
       await expect(
-        workItems.createWorkItem(actor, project.id, 'story', 'Story', { parentId: feature.id }),
+        workItems.createWorkItem(actor, project.id, 'story', 'Story', { parentId: other.id }),
       ).rejects.toMatchObject({ code: 'WORK_ITEM_INVALID_PARENT_TYPE' });
     });
   });
@@ -110,21 +116,21 @@ describe('BA flows: work-item hierarchy + relations (real AppModule + seeded DB)
     it('rejects re-parenting a defect under a non-story item (update honours create rule)', async () => {
       const project = await newProject('Defect Reparent Bad');
       const story = await workItems.createWorkItem(actor, project.id, 'story', 'Story');
-      const feature = await workItems.createWorkItem(actor, project.id, 'feature', 'Feature');
+      const otherDefect = await workItems.createWorkItem(actor, project.id, 'defect', 'Other bug');
       const defect = await workItems.createWorkItem(actor, project.id, 'defect', 'Bug', {
         parentId: story.id,
       });
       await expect(
-        workItems.updateWorkItem(actor, defect.id, { parentId: feature.id }),
+        workItems.updateWorkItem(actor, defect.id, { parentId: otherDefect.id }),
       ).rejects.toMatchObject({ code: 'WORK_ITEM_INVALID_PARENT_TYPE' });
     });
 
     it('rejects setting a parent on a story via update (portfolio hierarchy is out of Phase 1 scope)', async () => {
       const project = await newProject('Story Reparent Bad');
-      const feature = await workItems.createWorkItem(actor, project.id, 'feature', 'Feature');
+      const other = await workItems.createWorkItem(actor, project.id, 'story', 'Other story');
       const story = await workItems.createWorkItem(actor, project.id, 'story', 'Story');
       await expect(
-        workItems.updateWorkItem(actor, story.id, { parentId: feature.id }),
+        workItems.updateWorkItem(actor, story.id, { parentId: other.id }),
       ).rejects.toMatchObject({ code: 'WORK_ITEM_INVALID_PARENT_TYPE' });
     });
   });

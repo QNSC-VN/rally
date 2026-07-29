@@ -383,7 +383,7 @@ describe('WorkItemsService', () => {
     //    Initiative → Feature → Story → { Task, Defect }; a defect's parent is a
     //    user story; a task's parent is a story or defect. ──
     it('rejects creating a defect under a non-story parent', async () => {
-      workItemRepo.findById.mockResolvedValue(mockWorkItem({ id: 'feat-1', type: 'feature' }));
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ id: 'feat-1', type: 'task' }));
       await expect(
         service.createWorkItem(mockActor, 'proj-1', 'defect', 'Bug', { parentId: 'feat-1' }),
       ).rejects.toThrow(/user story/i);
@@ -410,16 +410,13 @@ describe('WorkItemsService', () => {
       },
     );
 
-    it.each(['feature', 'initiative', 'task'] as const)(
-      'rejects creating a task under a %s parent',
-      async (parentType) => {
-        workItemRepo.findById.mockResolvedValue(mockWorkItem({ id: 'p-1', type: parentType }));
-        await expect(
-          service.createWorkItem(mockActor, 'proj-1', 'task', 'T', { parentId: 'p-1' }),
-        ).rejects.toThrow(/user story or defect/i);
-        expect(workItemRepo.create).not.toHaveBeenCalled();
-      },
-    );
+    it.each(['task'] as const)('rejects creating a task under a %s parent', async (parentType) => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ id: 'p-1', type: parentType }));
+      await expect(
+        service.createWorkItem(mockActor, 'proj-1', 'task', 'T', { parentId: 'p-1' }),
+      ).rejects.toThrow(/user story or defect/i);
+      expect(workItemRepo.create).not.toHaveBeenCalled();
+    });
 
     it('rejects creating a task with no parent', async () => {
       await expect(service.createWorkItem(mockActor, 'proj-1', 'task', 'T')).rejects.toThrow(
@@ -428,7 +425,7 @@ describe('WorkItemsService', () => {
       expect(workItemRepo.create).not.toHaveBeenCalled();
     });
 
-    it.each(['story', 'feature', 'initiative'] as const)(
+    it.each(['story'] as const)(
       'rejects giving a %s a parent (only tasks and defects have parents)',
       async (childType) => {
         workItemRepo.findById.mockResolvedValue(mockWorkItem({ id: 'p-1', type: 'story' }));
@@ -556,7 +553,7 @@ describe('WorkItemsService', () => {
       );
     });
 
-    it.each(['task', 'feature', 'initiative'] as const)(
+    it.each(['task'] as const)(
       'rejects creating a task under a %s (parent must be a story or defect)',
       async (parentType) => {
         workItemRepo.findById.mockResolvedValue(mockWorkItem({ id: 'p-1', type: parentType }));
@@ -778,7 +775,7 @@ describe('WorkItemsService', () => {
     it('rejects moving a defect under a non-story parent', async () => {
       withItemAndParent(
         mockWorkItem({ id: 'de-1', type: 'defect', parentId: null }),
-        mockWorkItem({ id: 'feat-1', type: 'feature' }),
+        mockWorkItem({ id: 'feat-1', type: 'task' }),
       );
       await expect(
         service.updateWorkItem(mockActor, 'de-1', { parentId: 'feat-1' }),
@@ -805,19 +802,16 @@ describe('WorkItemsService', () => {
       expect(workItemRepo.update).toHaveBeenCalled();
     });
 
-    it.each(['task', 'feature', 'initiative'] as const)(
-      'rejects moving a task under a %s',
-      async (parentType) => {
-        withItemAndParent(
-          mockWorkItem({ id: 'task-1', type: 'task', parentId: 'story-0' }),
-          mockWorkItem({ id: 'p-1', type: parentType }),
-        );
-        await expect(
-          service.updateWorkItem(mockActor, 'task-1', { parentId: 'p-1' }),
-        ).rejects.toThrow(/user story or defect/i);
-        expect(workItemRepo.update).not.toHaveBeenCalled();
-      },
-    );
+    it.each(['task'] as const)('rejects moving a task under a %s', async (parentType) => {
+      withItemAndParent(
+        mockWorkItem({ id: 'task-1', type: 'task', parentId: 'story-0' }),
+        mockWorkItem({ id: 'p-1', type: parentType }),
+      );
+      await expect(
+        service.updateWorkItem(mockActor, 'task-1', { parentId: 'p-1' }),
+      ).rejects.toThrow(/user story or defect/i);
+      expect(workItemRepo.update).not.toHaveBeenCalled();
+    });
 
     it('rejects clearing a task parent (a task must belong to a work product)', async () => {
       workItemRepo.findById.mockResolvedValue(
@@ -829,7 +823,7 @@ describe('WorkItemsService', () => {
       expect(workItemRepo.update).not.toHaveBeenCalled();
     });
 
-    it.each(['story', 'feature', 'initiative'] as const)(
+    it.each(['story'] as const)(
       'rejects setting a parent on a %s via update (only tasks/defects have parents)',
       async (childType) => {
         withItemAndParent(

@@ -389,9 +389,9 @@ export class ProjectsService {
   }
 
   /** Used by work-items to generate the next sequential item key (e.g. "US-42"). */
+  // `IN`/`FE` are gone with the initiative/feature work-item types. Portfolio items
+  // mint their own `EP-`/`FE-` keys from work.portfolio_items (P5.1).
   private static readonly TYPE_PREFIX: Record<WorkItemType, string> = {
-    initiative: 'IN',
-    feature: 'FE',
     story: 'US',
     task: 'TA',
     defect: 'DE',
