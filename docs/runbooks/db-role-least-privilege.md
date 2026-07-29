@@ -7,8 +7,8 @@
 | roles exist (migration 0068) | yes | yes |
 | 1. passwords in Secrets Manager | yes (2026-07-28) | yes (2026-07-28) |
 | 2. `db_role_passwords_set` | yes | yes |
-| 2. cutover task run | **yes (2026-07-29)** | **no** |
-| 3. `db_least_privilege` | **yes** | no |
+| 2. cutover task run | yes (2026-07-29) | **yes (2026-07-29)** |
+| 3. `db_least_privilege` | yes | **being enabled** |
 | 4. ownership transfer | no | no |
 
 Develop's cutover task was `17d5bd4504bd43959c7dc531cbd36c95` on
@@ -41,8 +41,11 @@ CI ran this whole suite as `rally_app` and stayed green throughout, because no e
 spec touched a file or attachment. `test/e2e/file-storage-flow.e2e.spec.ts` closes
 that gap and fails if RLS is ever re-enabled.
 
-**Production still needs step 2's task run** before its flag can be flipped — do
-that only after develop has run a full deploy cycle on the restricted roles.
+Production's cutover task was `747f5e5183c046d6afb399b3810f007e` on
+`rally-prod-migrator:15`, exit 0. Verified independently afterwards against that
+database: both roles report `rolcanlogin=true` with no privileged attributes, and a
+real connection as `rally_app` succeeded. Production also reports zero RLS-enabled
+tables, so the blocker above does not apply there.
 
 **Owner:** whoever runs the next infra change.
 

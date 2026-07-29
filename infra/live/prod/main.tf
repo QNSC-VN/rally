@@ -113,9 +113,33 @@ module "stack" {
 
   // Step 2 of docs/runbooks/db-role-least-privilege.md, same as develop and equally
   // inert: the migrator can read the role passwords so the one-off cutover task can
-  // set them. `db_least_privilege` stays false here until develop has run a full
-  // deploy cycle on the restricted roles — the runbook's develop-first rule.
+  // set them.
   db_role_passwords_set = true
+
+  // Step 3, the last one: api and worker stop connecting as the RDS master.
+  //
+  // Until this, every production connection was `app_admin`, which OWNS every table —
+  // so an ordinary HTTP request carried the right to DROP the schema it was reading.
+  //
+  // The develop-first rule this file used to cite has been satisfied, and it earned its
+  // keep: enabling it in develop first is what exposed two `tenant_isolation` RLS
+  // policies that denied every file write once the app stopped being the table owner.
+  // Had both environments flipped together that would have been a production outage.
+  // Migration 0070 dropped those policies, `test/e2e/file-storage-flow.e2e.spec.ts`
+  // now fails if RLS ever returns, and this database reports zero RLS-enabled tables.
+  //
+  // The cutover task ran here on 2026-07-29 (task
+  // 747f5e5183c046d6afb399b3810f007e on rally-prod-migrator:15, exit 0). Verified
+  // independently afterwards against this database: rally_app and rally_worker both
+  // have rolcanlogin=true with rolsuper/rolbypassrls/rolcreatedb/rolcreaterole all
+  // false, and a real connection as rally_app succeeded.
+  //
+  // The MIGRATOR keeps the master credential — it needs DDL. Narrowing it means
+  // transferring schema ownership, which is step 4 and deliberately separate.
+  //
+  // Rollback is this line and a rolling restart: the master credential is untouched
+  // and the app holds no state tied to the role it connected as.
+  db_least_privilege = true
 
   // PRE-LAUNCH sizing. Multi-AZ t4g.small with Enhanced Monitoring is the right
   // production posture and it is what this becomes at go-live — but it costs about
