@@ -5,6 +5,7 @@ import { tap } from 'rxjs/operators';
 import { DomainException as SharedDomainException } from '@qnsc-vn/platform-http';
 import { HttpMetrics, IGNORED_REQUEST_PATHS, normalizeRoute } from '@qnsc-vn/observability';
 import { AppConfigService } from '../config/app-config.service';
+import { albReceivedAtMs, arrivalAtMs } from './request-timing';
 
 /** Routes whose access logs are suppressed (probes + favicon spam). */
 /**
@@ -123,6 +124,20 @@ export class HttpLoggingInterceptor implements NestInterceptor {
     }
 
     const startTime = Date.now();
+
+    // Interval attribution. `startTime` is the Nest pipeline entry, so `duration`
+    // below has never included the time before it — which is why this app reported
+    // `202 3ms` for the same webhook requests the ALB recorded at 2-27s. Both
+    // numbers were correct and the log still read as an alibi.
+    //
+    // `bodyWaitMs` also covers guards, which run ahead of interceptors; that is
+    // acceptable because the routes this exists to explain are @Public.
+    const arrival = arrivalAtMs(req);
+    const traceHeader = req.headers['x-amzn-trace-id'];
+    const albAt = albReceivedAtMs(Array.isArray(traceHeader) ? traceHeader[0] : traceHeader);
+    const albWaitMs = arrival !== undefined && albAt !== undefined ? arrival - albAt : undefined;
+    const bodyWaitMs = arrival !== undefined ? startTime - arrival : undefined;
+
     const ip =
       (req.headers['x-real-ip'] as string) ||
       (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
@@ -157,6 +172,8 @@ export class HttpLoggingInterceptor implements NestInterceptor {
             url,
             statusCode,
             duration,
+            albWaitMs,
+            bodyWaitMs,
             userId,
             ip,
             query: this.extractQuery(req),
@@ -196,6 +213,8 @@ export class HttpLoggingInterceptor implements NestInterceptor {
             url,
             statusCode,
             duration,
+            albWaitMs,
+            bodyWaitMs,
             errorCode,
             userId,
             ip,
