@@ -1,5 +1,10 @@
 # Runbook — take production RDS back to pre-launch sizing
 
+**Executed on rally-prod 2026-07-29.** 100 GB → 30 GB, ~45 minutes end to end, no data
+worth keeping lost. The three corrections that run produced are folded in below: the ECS
+service names, applying through CI instead of locally, and step 8 — which did not exist
+and without which the restored services cannot authenticate.
+
 Applies the `rds` block in `infra/live/prod/main.tf` to the live instance: Multi-AZ
 `db.t4g.small` with 100 GB and Enhanced Monitoring becomes single-AZ `db.t4g.micro`
 with 30 GB and monitoring off.
@@ -71,11 +76,11 @@ wanted those you could stop after step 3 and skip the replace entirely.
 3. **Stop writes.** Scale both services to zero so nothing reconnects mid-flight.
 
    ```bash
-   aws ecs update-service --cluster rally-prod --service rally-prod-api    --desired-count 0 --region ap-southeast-1
-   aws ecs update-service --cluster rally-prod --service rally-prod-worker --desired-count 0 --region ap-southeast-1
+   aws ecs update-service --cluster rally-prod --service api    --desired-count 0 --region ap-southeast-1
+   aws ecs update-service --cluster rally-prod --service worker --desired-count 0 --region ap-southeast-1
 
    aws ecs wait services-stable --cluster rally-prod \
-     --services rally-prod-api rally-prod-worker --region ap-southeast-1
+     --services api worker --region ap-southeast-1
    ```
 
    Terraform still declares `desired_count = 1`, so step 6's apply restores it. The
@@ -116,12 +121,28 @@ wanted those you could stop after step 3 and skip the replace entirely.
    wants to touch `module.stack.module.cache`, the ECS cluster or the secrets, stop —
    something else drifted and this is no longer the change you reviewed.
 
+   Apply through CI, not locally. Two reasons: the prod stack needs
+   `TF_VAR_cloudflare_api_token`, which only CI holds, and a local apply bypasses the
+   `production` environment's required reviewer — the gate exists precisely for changes
+   like this one.
+
+   `apply-prod` is `if: github.ref_type == 'tag'`, so dispatch it against the CURRENT
+   RELEASE TAG rather than a branch; a `main` dispatch silently skips the prod job.
+
    ```bash
-   tofu apply
+   gh workflow run infra-apply.yml --repo QNSC-VN/rally --ref vX.Y.Z
    ```
 
+   Then approve `apply-prod` on the run. Review the plan in its log before approving: it
+   must CREATE exactly one `aws_db_instance`, REPLACE the three task definitions, and
+   update the two `execution_secrets` policies in place — the task definitions and
+   policies move because the managed master secret ARN changes. Anything touching
+   `module.stack.module.cache`, the ECS cluster or `module.secrets` means something else
+   drifted; stop.
+
    The new instance comes up empty with a **new** managed master secret; the same apply
-   re-registers the task definitions against that ARN.
+   re-registers the task definitions against that ARN. Terraform also restores
+   `deletion_protection = true`, so the CLI removal in step 4 never reaches a commit.
 
 7. **Migrate**, with the task CI uses so the schema comes from `db/migrations/*.sql`:
 
@@ -137,12 +158,33 @@ wanted those you could stop after step 3 and skip the replace entirely.
    Tail `/ecs/rally-prod-migrator` until it exits 0. It runs the tenant bootstrap seed
    and **not** the demo seed — `seed_on_deploy = false` in production, and that stays.
 
-8. **Bring the services back** and confirm.
+8. **Re-apply the least-privilege role passwords.** Migration 0068 recreates
+   `rally_app` and `rally_worker` on the new instance as **NOLOGIN**, and the Secrets
+   Manager passwords were only ever applied to the OLD database. So while
+   `db_least_privilege = true` the api and worker cannot authenticate at all — every
+   task fails `28P01`, the health check fails and the deploy rolls back.
+
+   This step is easy to miss because step 7 exits 0 and the database looks healthy.
+
+   ```bash
+   aws ecs run-task \
+     --cluster rally-prod \
+     --task-definition rally-prod-migrator \
+     --launch-type FARGATE \
+     --network-configuration "awsvpcConfiguration={subnets=[<private-subnet-ids>],securityGroups=[<migrator-sg>],assignPublicIp=DISABLED}" \
+     --overrides '{"containerOverrides":[{"name":"migrator","command":["node","dist/db/enable-least-privilege-roles.js"]}]}' \
+     --region ap-southeast-1
+   ```
+
+   Expect two `✅` lines in `/ecs/rally-prod-migrator`. See
+   `docs/runbooks/db-role-least-privilege.md`.
+
+9. **Bring the services back** and confirm.
 
    ```bash
    tofu apply    # restores desired_count = 1
    aws ecs wait services-stable --cluster rally-prod \
-     --services rally-prod-api rally-prod-worker --region ap-southeast-1
+     --services api worker --region ap-southeast-1
 
    aws rds describe-db-instances --db-instance-identifier rally-prod \
      --region ap-southeast-1 \
