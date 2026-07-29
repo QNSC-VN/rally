@@ -30,7 +30,7 @@ import { MetricStrip } from '@/shared/ui/metric-strip'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { InlineSelect } from '@/shared/ui/native-select'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
-import { useDataTable } from '@/shared/ui/table'
+import { useDataTable, useRowRerank } from '@/shared/ui/table'
 import { ListPageScaffold } from '@/shared/ui/list-page/list-page-scaffold'
 import { ListPageHeader } from '@/shared/ui/list-page/list-page-header'
 import { useTableSort } from '@/shared/lib/hooks/use-table-sort'
@@ -38,6 +38,7 @@ import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { PortfolioItemType } from '@/entities/work-item/model/types'
 import {
   usePortfolioItems,
+  useRankPortfolioItem,
   useSetPortfolioItemArchived,
   type PortfolioItem,
 } from '@/features/portfolio/api'
@@ -111,6 +112,25 @@ export function PortfolioPage() {
     })
   }, [filtered, sortField, sortDir])
 
+  /**
+   * Drag-to-rank.
+   *
+   * Disabled unless the grid is in NATURAL rank order (`sortField === null`). Rank only
+   * means anything in that order; dragging inside a Name-sorted view would hand the API
+   * neighbours whose ranks bear no relation to what the user sees, and the derived rank
+   * would drop the row somewhere else entirely.
+   *
+   * Also disabled without edit rights. That is per-row on this cross-project grid, so the
+   * grip is gated per row too — this flag only turns the whole mechanism off.
+   */
+  const rank = useRankPortfolioItem()
+  const rerank = useRowRerank({
+    items: sorted,
+    disabled: sortField !== null,
+    onReorder: ({ id, beforeId, afterId }) =>
+      rank.mutate({ id, beforeId, afterId }, { onError: (err) => notify.error(err.message) }),
+  })
+
   // Accepted/done counts come from the loaded rows; `total` is the server's count for
   // the whole filter set, so it stays correct while later pages are still arriving.
   const stats = useMemo(
@@ -129,7 +149,7 @@ export function PortfolioPage() {
    * that still has active Features is refused by the API; that message surfaces per item.
    */
   async function archiveSelected(selection: RowSelection) {
-    const targets = sorted.filter(
+    const targets = rerank.items.filter(
       (i) => selection.selectedIds.has(i.id) && rowPerms.can(i.projectId, 'portfolio:archive'),
     )
     const results = await Promise.allSettled(
@@ -227,7 +247,11 @@ export function PortfolioPage() {
         headerColumns={table.headerColumns}
         colStyles={table.colStyles}
         sort={{ col: sortField ?? '', dir: sortDir ?? 'asc', onSort: (c) => toggle(c as ColKey) }}
-        items={sorted}
+        items={rerank.items}
+        dnd={{
+          dndContextProps: rerank.dndContextProps,
+          sortableContextProps: rerank.sortableContextProps,
+        }}
         loading={isLoading}
         skeleton={{ rows: 8, cols: 8 }}
         error={
@@ -246,13 +270,14 @@ export function PortfolioPage() {
             />
           ) : undefined
         }
-        renderRow={(item, { gutter }) => (
+        renderRow={(item, { gutterProps }) => (
           <PortfolioRow
             key={item.id}
             item={item}
             canEdit={rowPerms.can(item.projectId, 'portfolio:edit')}
+            canRank={sortField === null && rowPerms.can(item.projectId, 'portfolio:edit')}
             colStyleFor={colStyleFor}
-            gutter={gutter}
+            gutterProps={gutterProps}
             onOpen={openDetail}
           />
         )}

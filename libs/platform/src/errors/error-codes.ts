@@ -97,6 +97,8 @@ export const ErrorCodes = {
   PORTFOLIO_ITEM_INVALID_PARENT: 'PORTFOLIO_ITEM_INVALID_PARENT',
   /** Archiving an Epic that still has active child Features would orphan them. */
   PORTFOLIO_EPIC_HAS_ACTIVE_FEATURES: 'PORTFOLIO_EPIC_HAS_ACTIVE_FEATURES',
+  /** Drop neighbours arrived out of order — a stale client view of the rank order. */
+  PORTFOLIO_ITEM_RANK_CONFLICT: 'PORTFOLIO_ITEM_RANK_CONFLICT',
 
   // Workflow
   WORKFLOW_STATUS_NOT_FOUND: 'WORKFLOW_STATUS_NOT_FOUND',

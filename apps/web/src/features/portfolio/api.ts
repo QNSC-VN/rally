@@ -244,3 +244,28 @@ export function useSetPortfolioItemArchived() {
     meta: { invalidates: ['portfolio'] },
   })
 }
+
+export type RankPortfolioItemBody =
+  paths['/v1/portfolio-items/{id}/rank']['patch']['requestBody']['content']['application/json']
+
+/**
+ * Move an item between two neighbours.
+ *
+ * No optimistic cache write: `useRowRerank` already reorders the rendered list locally,
+ * so the row moves immediately, and the tag invalidation then reconciles with the ranks
+ * the server actually derived. Writing an optimistic rank here as well would mean
+ * inventing a LexoRank on the client that `between()` may not agree with.
+ */
+export function useRankPortfolioItem() {
+  return useMutation({
+    mutationFn: async ({ id, ...body }: { id: string } & RankPortfolioItemBody) => {
+      const { data, error, response } = await apiClient.PATCH('/v1/portfolio-items/{id}/rank', {
+        params: { path: { id } },
+        body,
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as PortfolioItem
+    },
+    meta: { invalidates: ['portfolio'] },
+  })
+}

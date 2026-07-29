@@ -2106,6 +2106,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v1/portfolio-items/{id}/rank': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    /** Move an Epic or Feature between two neighbours */
+    patch: operations['PortfolioItemsController_rankItem']
+    trace?: never
+  }
   '/v1/portfolio-items/{id}/archive': {
     parameters: {
       query?: never
@@ -3738,6 +3755,10 @@ export interface components {
       plannedStartDate?: string | null
       plannedEndDate?: string | null
       marketReleaseDate?: string | null
+    }
+    RankPortfolioItemDto: {
+      beforeId?: string | null
+      afterId?: string | null
     }
     ScmConnectionResponseDto: {
       /** Format: uuid */
@@ -11255,6 +11276,66 @@ export interface operations {
       }
       /** @description Not Found */
       404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  PortfolioItemsController_rankItem: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['RankPortfolioItemDto']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['PortfolioItemResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
         headers: {
           [name: string]: unknown
         }

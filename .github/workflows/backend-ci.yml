@@ -50,8 +50,17 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      - name: Typecheck
+      - name: Typecheck (shipped sources)
         run: npx tsc -p tsconfig.build.json --noEmit
+
+      - name: Typecheck (including tests)
+        # `tsconfig.build.json` excludes `**/*spec.ts`, `**/*.test.ts` and `test/**`, so
+        # the step above cannot see a type error in a test file. That is how a wrong
+        # service-call signature reached main in #262 behind a green check: the spec still
+        # PASSED at runtime, so nothing else caught it either. `tsconfig.json` is a
+        # superset, hence both steps rather than a replacement — the first one stays as
+        # the fast gate that matches exactly what the Docker build compiles.
+        run: pnpm typecheck
 
   # ─────────────────────────────────────────────────────────────────────────
   # 2. Unit + e2e tests (needs Postgres + Redis)

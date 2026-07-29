@@ -484,4 +484,92 @@ describe('PortfolioItemsService', () => {
       expect(repo.setArchived).toHaveBeenCalledWith('ep-1', false, WORKSPACE);
     });
   });
+
+  describe('rankItem', () => {
+    const feature = (over = {}) =>
+      ({ id: 'pi-1', type: 'feature', projectId: 'proj-a', rank: 'm', ...over }) as never;
+
+    beforeEach(() => {
+      repo.findById.mockResolvedValue(feature());
+      repo.findViewById.mockResolvedValue(view());
+      repo.update.mockResolvedValue(view());
+    });
+
+    it('derives a rank strictly between the two neighbours', async () => {
+      repo.findByIds.mockResolvedValue([
+        feature({ id: 'a', rank: 'a' }),
+        feature({ id: 'c', rank: 'c' }),
+      ]);
+
+      await service.rankItem(actor, 'pi-1', { beforeId: 'a', afterId: 'c' });
+
+      const rank = repo.update.mock.calls[0][1].rank as string;
+      expect(rank > 'a').toBe(true);
+      expect(rank < 'c').toBe(true);
+    });
+
+    it('treats a null neighbour as the list edge', async () => {
+      repo.findByIds.mockResolvedValue([feature({ id: 'c', rank: 'c' })]);
+      await service.rankItem(actor, 'pi-1', { beforeId: null, afterId: 'c' });
+      expect((repo.update.mock.calls[0][1].rank as string) < 'c').toBe(true);
+    });
+
+    it('refuses a body with NEITHER neighbour', async () => {
+      // `between(null, null)` returns a mid-range rank unrelated to the list, which would
+      // silently teleport the row somewhere the user never dropped it.
+      await expect(service.rankItem(actor, 'pi-1', {})).rejects.toMatchObject({
+        code: 'PORTFOLIO_ITEM_RANK_CONFLICT',
+      });
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it('refuses to use itself as a neighbour', async () => {
+      await expect(service.rankItem(actor, 'pi-1', { beforeId: 'pi-1' })).rejects.toMatchObject({
+        code: 'PORTFOLIO_ITEM_RANK_CONFLICT',
+      });
+    });
+
+    it('refuses a neighbour of the OTHER type — a different rank scope', async () => {
+      // Epics and Features are ranked independently. Mixing them would interleave two
+      // orderings and make the next drag throw on incomparable neighbours.
+      repo.findByIds.mockResolvedValue([feature({ id: 'ep', type: 'epic', rank: 'b' })]);
+      await expect(service.rankItem(actor, 'pi-1', { beforeId: 'ep' })).rejects.toMatchObject({
+        code: 'PORTFOLIO_ITEM_RANK_CONFLICT',
+      });
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it('refuses a neighbour that no longer exists', async () => {
+      repo.findByIds.mockResolvedValue([]);
+      await expect(service.rankItem(actor, 'pi-1', { beforeId: 'gone' })).rejects.toMatchObject({
+        code: 'PORTFOLIO_ITEM_RANK_CONFLICT',
+      });
+    });
+
+    it('refuses neighbours supplied OUT OF ORDER instead of corrupting the order', async () => {
+      // A stale client view: `before` ranks above `after`. `between()` throws and we turn
+      // that into a refusal rather than writing a rank neither neighbour implies.
+      repo.findByIds.mockResolvedValue([
+        feature({ id: 'hi', rank: 'z' }),
+        feature({ id: 'lo', rank: 'a' }),
+      ]);
+      await expect(
+        service.rankItem(actor, 'pi-1', { beforeId: 'hi', afterId: 'lo' }),
+      ).rejects.toMatchObject({ code: 'PORTFOLIO_ITEM_RANK_CONFLICT' });
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it("checks permission on the item's own project", async () => {
+      access.assertProjectPermission.mockRejectedValue(new Error('denied'));
+      await expect(service.rankItem(actor, 'pi-1', { beforeId: 'a' })).rejects.toThrow('denied');
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it('404s for an unknown item', async () => {
+      repo.findById.mockResolvedValue(null);
+      await expect(service.rankItem(actor, 'missing', { beforeId: 'a' })).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+  });
 });

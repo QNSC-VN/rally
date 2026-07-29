@@ -27,6 +27,7 @@ import { portfolioItems } from '@db/schema/work';
 import { and, eq, sql } from 'drizzle-orm';
 
 import {
+  ALL,
   WORKSPACE_ID,
   adminActor,
   bootRallyApp,
@@ -172,9 +173,8 @@ describe('portfolio write paths (e2e)', () => {
       // Release column describing something outside its own project.
       const { ReleasesService } = await import('@modules/releases');
       const releases = app.get(ReleasesService);
-      const release = await releases.createRelease(admin, projectBId, {
-        name: `Rel ${uniqueKey()}`,
-      });
+      // `name` is a POSITIONAL argument here, not part of `opts`.
+      const release = await releases.createRelease(admin, projectBId, `Rel ${uniqueKey()}`, {});
 
       await expect(
         portfolio.createItem(admin, {
@@ -389,5 +389,98 @@ describe('portfolio write paths (e2e)', () => {
         name: 'Wrong project',
       }),
     ).rejects.toMatchObject({ code: 'PROJECT_PERMISSION_DENIED' });
+  });
+
+  describe('rank', () => {
+    /** Three Features in a fresh Epic-free order, returned lowest rank first. */
+    async function threeFeatures() {
+      const made = [];
+      for (const n of ['Rank A', 'Rank B', 'Rank C']) {
+        made.push(
+          await portfolio.createItem(admin, {
+            projectId: projectAId,
+            type: 'feature',
+            name: `${n} ${uniqueKey()}`,
+          }),
+        );
+      }
+      return made;
+    }
+
+    it('moves an item between two neighbours and the list order follows', async () => {
+      const [a, b, c] = await threeFeatures();
+      // Created in order, so ranks ascend a < b < c.
+      expect(a.rank < b.rank && b.rank < c.rank).toBe(true);
+
+      // Drag C up between A and B.
+      const moved = await portfolio.rankItem(admin, c.id, { beforeId: a.id, afterId: b.id });
+      expect(moved.rank > a.rank).toBe(true);
+      expect(moved.rank < b.rank).toBe(true);
+
+      // And the LIST reflects it — the ordering is what the user actually sees.
+      const page = await portfolio.listItems(admin, { type: 'feature' }, ALL);
+      const order = page.data.filter((i) => [a.id, b.id, c.id].includes(i.id)).map((i) => i.id);
+      expect(order).toEqual([a.id, c.id, b.id]);
+    });
+
+    it('moves an item to the very top when there is no upper neighbour', async () => {
+      const [a, , c] = await threeFeatures();
+      const moved = await portfolio.rankItem(admin, c.id, { beforeId: null, afterId: a.id });
+      expect(moved.rank < a.rank).toBe(true);
+    });
+
+    it('never writes an EQUAL rank, so the next drag still works', async () => {
+      // Equal neighbours are what make `between()` throw. Moving repeatedly into the same
+      // gap is the sequence most likely to exhaust precision and collide.
+      const [a, b, c] = await threeFeatures();
+      let last = c;
+      for (let i = 0; i < 6; i++) {
+        last = await portfolio.rankItem(admin, last.id, { beforeId: a.id, afterId: b.id });
+        expect(last.rank > a.rank).toBe(true);
+        expect(last.rank < b.rank).toBe(true);
+      }
+      // Scoped to the three rows this test owns. A scope-wide check would police rows
+      // other suites left behind — this database still holds fixtures inserted with a
+      // hardcoded rank before that spec was corrected.
+      const rows = await portfolio.listItems(admin, { type: 'feature' }, ALL);
+      const mine = rows.data.filter((r) => [a.id, b.id, last.id].includes(r.id));
+      const ranks = mine.map((r) => r.rank);
+      expect(new Set(ranks).size).toBe(ranks.length);
+    });
+
+    it('refuses an Epic as a Feature neighbour', async () => {
+      const [a] = await threeFeatures();
+      const epic = await portfolio.createItem(admin, {
+        projectId: projectAId,
+        type: 'epic',
+        name: `Rank epic ${uniqueKey()}`,
+      });
+      await expect(portfolio.rankItem(admin, a.id, { beforeId: epic.id })).rejects.toMatchObject({
+        code: 'PORTFOLIO_ITEM_RANK_CONFLICT',
+      });
+    });
+
+    it('ranks across PROJECTS, because the scope is (workspace, type)', async () => {
+      // The Portfolio list is cross-project and flat per type, so a Feature in project B
+      // is a legitimate neighbour for one in project A. This is the deliberate difference
+      // from work items, which rank within (project, parent).
+      const [a, b] = await threeFeatures();
+      const inB = await portfolio.createItem(admin, {
+        projectId: projectBId,
+        type: 'feature',
+        name: `Rank cross ${uniqueKey()}`,
+      });
+      const moved = await portfolio.rankItem(admin, inB.id, { beforeId: a.id, afterId: b.id });
+      expect(moved.rank > a.rank).toBe(true);
+      expect(moved.rank < b.rank).toBe(true);
+    });
+
+    it('refuses a caller without permission on the item', async () => {
+      const [a, b, c] = await threeFeatures();
+      const stranger = makeActor(randomUUID(), []);
+      await expect(
+        portfolio.rankItem(stranger, c.id, { beforeId: a.id, afterId: b.id }),
+      ).rejects.toMatchObject({ code: 'PROJECT_PERMISSION_DENIED' });
+    });
   });
 });
