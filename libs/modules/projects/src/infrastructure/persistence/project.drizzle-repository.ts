@@ -293,7 +293,7 @@ export class ProjectDrizzleRepository implements IProjectRepository {
     // Seed a workspace-wide counter row for every work-item type so any type can
     // be created. Idempotent — the first project in a workspace seeds them; later
     // projects no-op. (Counter is per-workspace, not per-project.)
-    const types = ['initiative', 'feature', 'story', 'task', 'defect'] as const;
+    const types = ['story', 'task', 'defect'] as const;
     for (const itemType of types) {
       await db
         .insert(workspaceItemCounters)

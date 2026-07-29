@@ -59,13 +59,17 @@ export const projectMemberStatusEnum = pgEnum('project_member_status', ['active'
 
 export const projectTeamStatusEnum = pgEnum('project_team_status', ['active', 'unlinked']);
 
-export const workItemTypeEnum = pgEnum('work_item_type', [
-  'initiative',
-  'feature',
-  'story',
-  'task',
-  'defect',
-]);
+// `initiative` and `feature` were removed in migration 0072. A Feature is a
+// PORTFOLIO ITEM (work.portfolio_items), not a schedulable work item — Rally keeps
+// PortfolioItem and HierarchicalRequirement as separate object families joined by a
+// field, and the BA spec gives a Feature an 11-value portfolio state, its own
+// estimates and rollups FROM linked stories. Keeping the value meant two tables both
+// minting `FE-` keys and both meaning Feature.
+//
+// `task` stays: tasks live in work.tasks (P3 refactor) but the repository still
+// projects a task into a WorkItem shape with type 'task' for service compatibility
+// (`mapTaskRow`), so the value is load-bearing even though nothing inserts one here.
+export const workItemTypeEnum = pgEnum('work_item_type', ['story', 'task', 'defect']);
 
 // Defect priority (Rally vocabulary). Story items carry 'none' (UI shows —).
 // Migration 0011 remaps legacy critical→urgent, medium→normal.

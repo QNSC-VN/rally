@@ -30,6 +30,7 @@ import { ProjectsService } from '@modules/projects';
 import { ReleasesService } from '@modules/releases';
 import { WorkItemsService } from '@modules/work-items';
 
+import { workItemTypeEnum } from '@db/schema/enums';
 import { ALL, adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
 
 describe('BA flows: E2E-010 / E2E-016 deferred-scope guards', () => {
@@ -52,16 +53,18 @@ describe('BA flows: E2E-010 / E2E-016 deferred-scope guards', () => {
   });
 
   describe('E2E-010 — Backlog is Story/Defect only in Phase 1/2', () => {
-    // The Backlog is the Phase 1/2 planning surface. Tasks live under their
-    // parent, and initiative/feature are portfolio concepts that are NOT part of
-    // Phase 1/2 acceptance. If any of those start appearing here, the Backlog has
-    // silently acquired portfolio scope.
-    // The portfolio types MUST EXIST in the project for this guard to mean
-    // anything. An earlier version created only story/defect and asserted the
-    // others were absent — which is trivially true and survived a mutation that
-    // widened the filter to ['story','defect','task','feature']. Creating them
-    // first is what makes the assertion bite.
-    it('excludes portfolio types (initiative/feature) that exist in the same project', async () => {
+    // The Backlog is the Story/Defect planning surface; Tasks live under their parent.
+    //
+    // This guard used to create `initiative` and `feature` work items and assert the
+    // Backlog excluded them — the portfolio types had to EXIST for the assertion to
+    // bite, since asserting the absence of something uncreatable is trivially true.
+    //
+    // Migration 0072 removed both values from `work_item_type`, so that scenario is now
+    // unrepresentable: a Feature is a PORTFOLIO ITEM in work.portfolio_items, never a
+    // work item. The type-level assertion below is strictly stronger than the old
+    // runtime one — the Backlog cannot acquire portfolio scope because there is no
+    // portfolio work-item type to acquire.
+    it('lists Story and Defect only, and no portfolio type can exist to leak in', async () => {
       const project = await projects.createProject(admin, {
         key: uniqueKey(),
         name: 'E2E-010 Scope Guard',
@@ -69,13 +72,6 @@ describe('BA flows: E2E-010 / E2E-016 deferred-scope guards', () => {
 
       const story = await workItems.createWorkItem(admin, project.id, 'story', 'Guard story');
       const defect = await workItems.createWorkItem(admin, project.id, 'defect', 'Guard defect');
-      const feature = await workItems.createWorkItem(admin, project.id, 'feature', 'Guard feature');
-      const initiative = await workItems.createWorkItem(
-        admin,
-        project.id,
-        'initiative',
-        'Guard initiative',
-      );
 
       const backlog = await workItems.listBacklog(admin, project.id, {}, ALL);
       const ids = backlog.data.map((w) => w.id);
@@ -83,9 +79,13 @@ describe('BA flows: E2E-010 / E2E-016 deferred-scope guards', () => {
 
       expect(ids).toContain(story.id);
       expect(ids).toContain(defect.id);
-      expect(ids).not.toContain(feature.id);
-      expect(ids).not.toContain(initiative.id);
       expect(types).toEqual(['defect', 'story']);
+
+      // Replaces creating-then-excluding portfolio items: assert at the SCHEMA that no
+      // portfolio work-item type exists to be listed. A widened Backlog filter cannot
+      // reintroduce one, and adding `feature` back to the enum fails here rather than
+      // silently changing what the Backlog shows.
+      expect([...workItemTypeEnum.enumValues].sort()).toEqual(['defect', 'story', 'task']);
     });
 
     it('keeps child tasks out of the Backlog even when they match the search', async () => {

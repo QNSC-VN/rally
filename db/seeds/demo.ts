@@ -120,7 +120,7 @@ async function seedProject(project: {
   // 2. Initialise the WORKSPACE-wide item-key counter per type (Rally FormattedID;
   //    mirrors ProjectsService.createProject). Runs per project but the workspace
   //    counter rows are shared — onConflictDoNothing makes later projects no-op.
-  const counterTypes = ['initiative', 'feature', 'story', 'task', 'defect'] as const;
+  const counterTypes = ['story', 'task', 'defect'] as const;
   for (const itemType of counterTypes) {
     await db
       .insert(schema.workspaceItemCounters)

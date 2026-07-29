@@ -512,6 +512,13 @@
       "when": 1786000500000,
       "tag": "0071_portfolio_capacity_planning",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1786000600000,
+      "tag": "0072_drop_portfolio_work_item_types",
+      "breakpoints": true
     }
   ]
 }
