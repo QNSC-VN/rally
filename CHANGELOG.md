@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.5.0](https://github.com/QNSC-VN/rally/compare/v0.4.1...v0.5.0) (2026-07-29)
+
+
+### ⚠ BREAKING CHANGES
+
+* **work-items:** a Feature is a portfolio item, not a work item ([#256](https://github.com/QNSC-VN/rally/issues/256))
+
+### ✨ Features
+
+* **portfolio:** epic/feature list and detail on the P5 backend ([#261](https://github.com/QNSC-VN/rally/issues/261)) ([cb44359](https://github.com/QNSC-VN/rally/commit/cb4435937887ef9f7de48846ab6c2cdd5973f031))
+* **portfolio:** P5 schema, permissions and progress arithmetic ([#254](https://github.com/QNSC-VN/rally/issues/254)) ([21ef681](https://github.com/QNSC-VN/rally/commit/21ef681c29b41b43278a0efd6621d6c7af68b795))
+* **portfolio:** portfolio item read paths with cross-project authorization ([#257](https://github.com/QNSC-VN/rally/issues/257)) ([6d66a61](https://github.com/QNSC-VN/rally/commit/6d66a617d302db3b3cc294ba4e428c80823c7d4e))
+
+
+### 🐛 Bug Fixes
+
+* **infra:** actually wire the API autoscaling targets through the stack module ([#258](https://github.com/QNSC-VN/rally/issues/258)) ([e7bab36](https://github.com/QNSC-VN/rally/commit/e7bab36b9d25f0bbb3479de104ea0f3aa6916329))
+* **infra:** stop the ALB latency alarm paging on noise, and bound the DB pool ([#260](https://github.com/QNSC-VN/rally/issues/260)) ([1f7d322](https://github.com/QNSC-VN/rally/commit/1f7d3223e04a4f75c9ea5c8658eec4c99018ec77))
+* **web:** stop dropping Set-Cookie when the runtime has no getSetCookie ([#259](https://github.com/QNSC-VN/rally/issues/259)) ([f9c5751](https://github.com/QNSC-VN/rally/commit/f9c5751d7cb5a93db2ab2e7a7871bd2ca3218d24))
+
+
+### ♻️ Refactors
+
+* **work-items:** a Feature is a portfolio item, not a work item ([#256](https://github.com/QNSC-VN/rally/issues/256)) ([b397157](https://github.com/QNSC-VN/rally/commit/b397157bbc93f322c58dafd1cb28bd236371a54c))
+
 ## [0.4.1](https://github.com/QNSC-VN/rally/compare/v0.4.0...v0.4.1) (2026-07-29)
 
 
