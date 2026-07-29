@@ -18,7 +18,10 @@ import {
   isProjectTierPermission,
   type ProjectPermission,
 } from '@shared-kernel';
-import type { JwtPayload } from '@platform';
+import type { JwtPayload, DrizzleDB } from '@platform';
+import { InjectDrizzle } from '@platform';
+import { and, eq } from 'drizzle-orm';
+import { projectMembers, projects } from '../../../../../db/schema/work';
 import { IRoleRepository, ROLE_REPOSITORY } from '../domain/ports/role.repository';
 import {
   IRoleAssignmentRepository,
@@ -42,6 +45,9 @@ export class AccessService {
     private readonly uow: UnitOfWork,
     private readonly audit: AuditProducer,
     private readonly cache: CacheService,
+    // Read-only, for `listReadableProjectIds`: project membership is the roster
+    // equivalent of Rally's ProjectPermission and has no repository port of its own.
+    @InjectDrizzle() private readonly db: DrizzleDB,
   ) {}
 
   // ── Effective-assignment resolution (the one read every check goes through) ──
@@ -679,6 +685,69 @@ export class AccessService {
     );
 
     return [...new Set(relevant.flatMap((a) => a.permissions))];
+  }
+
+  /**
+   * Project ids the user may READ in this workspace.
+   *
+   * The authorization fact behind every CROSS-PROJECT list. It belongs here, not in a
+   * feature repository, because more than one surface needs it (portfolio items now,
+   * capacity plans next) and because getting it wrong leaks another project's data.
+   *
+   * Mirrors Rally, where access to an artifact follows from permission on its PROJECT
+   * rather than from any per-artifact grant: Rally stores one `ProjectPermission` row
+   * per (user, project, workspace) and a Viewer sees everything in that project.
+   *
+   * Three sources, unioned:
+   *   1. a workspace-wide grant (`workspace:*` or an explicit workspace-tier `:view`)
+   *      sees every project — Rally's Workspace Admin;
+   *   2. project-scoped role assignments (`scope_type='project'`) — Rally's per-project
+   *      Editor/Viewer/Project Admin;
+   *   3. active project membership — the roster equivalent, so a member who holds no
+   *      explicit role assignment still sees their own project.
+   *
+   * Returns `null` to mean UNRESTRICTED, deliberately: an empty array is a legitimate
+   * answer ("no projects"), so a sentinel is needed to distinguish it from "all". A
+   * caller that treats `null` as empty fails closed, which is the safe direction.
+   */
+  async listReadableProjectIds(
+    workspaceId: string,
+    userId: string,
+    permission: ProjectPermission,
+  ): Promise<string[] | null> {
+    const effective = await this.effectiveAssignments(workspaceId, userId);
+
+    // Workspace-wide grant → every project. Wildcards honoured the same way the guard
+    // honours them, so `workspace:*` behaves consistently in both places.
+    const workspaceWide = effective.some(
+      (a) =>
+        (a.scopeType === 'global' || a.scopeType === 'workspace') &&
+        permissionGrants(a.permissions, permission),
+    );
+    if (workspaceWide) return null;
+
+    const fromAssignments = effective
+      .filter(
+        (a) =>
+          a.scopeType === 'project' &&
+          a.scopeId !== null &&
+          permissionGrants(a.permissions, permission),
+      )
+      .map((a) => a.scopeId as string);
+
+    const memberships = await this.db
+      .select({ projectId: projectMembers.projectId })
+      .from(projectMembers)
+      .innerJoin(projects, eq(projects.id, projectMembers.projectId))
+      .where(
+        and(
+          eq(projectMembers.workspaceId, workspaceId),
+          eq(projectMembers.userId, userId),
+          eq(projectMembers.status, 'active'),
+        ),
+      );
+
+    return [...new Set([...fromAssignments, ...memberships.map((m) => m.projectId)])];
   }
 
   /**

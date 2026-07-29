@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mocked } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
-import { UnitOfWork, AuditProducer } from '@platform';
+import { UnitOfWork, AuditProducer, DRIZZLE } from '@platform';
 import { CacheService } from '@qnsc-vn/platform-cache';
 import { AccessService } from './access.service';
 import { ROLE_REPOSITORY, IRoleRepository } from '../domain/ports/role.repository';
@@ -17,6 +17,8 @@ import type {
 } from '../domain/access.types';
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
+
+let projectMemberRows: Array<{ projectId: string }> = [];
 
 const WORKSPACE = 'ws-1';
 const USER = 'user-1';
@@ -93,6 +95,20 @@ describe('AccessService — scope-aware permission resolution', () => {
         { provide: UnitOfWork, useValue: { run: vi.fn((fn: (tx: unknown) => unknown) => fn({})) } },
         { provide: AuditProducer, useValue: { emit: vi.fn().mockResolvedValue(undefined) } },
         {
+          // `listReadableProjectIds` reads project_members directly (no port exists for
+          // the roster). Chainable stub; `projectMemberRows` is what each test controls.
+          provide: DRIZZLE,
+          useValue: {
+            select: () => ({
+              from: () => ({
+                innerJoin: () => ({
+                  where: () => Promise.resolve(projectMemberRows),
+                }),
+              }),
+            }),
+          },
+        },
+        {
           provide: CacheService,
           useValue: {
             // Always a miss, so every resolution reaches the repository mocks the
@@ -112,6 +128,7 @@ describe('AccessService — scope-aware permission resolution', () => {
     // the ACTOR's own permissions from the database instead of reading the token,
     // so tests that exercise a write need a resolvable actor; the no-escalation
     // cases narrow this deliberately.
+    projectMemberRows = [];
     assignmentRepo.listEffectiveForUser.mockResolvedValue([
       {
         scopeType: 'workspace',
@@ -120,6 +137,130 @@ describe('AccessService — scope-aware permission resolution', () => {
         permissions: ['workspace:*'],
       },
     ] as never);
+  });
+
+  describe('listReadableProjectIds — the boundary behind every cross-project list', () => {
+    // Mirrors Rally, where access to an artifact follows from permission on its PROJECT
+    // rather than any per-artifact grant. Getting this wrong leaks another project's data,
+    // so each source and each degenerate case is asserted separately.
+
+    it('returns null (unrestricted) for a workspace-wide wildcard', () => {
+      // `workspace:*` is Rally's Workspace Admin — every project, no filter.
+      // null, not "every id": enumerating projects would race with project creation.
+      return expect(
+        service.listReadableProjectIds(WORKSPACE, USER, 'portfolio:view'),
+      ).resolves.toBeNull();
+    });
+
+    it('returns null for an explicit workspace-tier grant of the same permission', async () => {
+      assignmentRepo.listEffectiveForUser.mockResolvedValue([
+        {
+          scopeType: 'workspace',
+          scopeId: null,
+          roleSlug: 'custom',
+          permissions: ['portfolio:view'],
+        },
+      ] as never);
+      await expect(
+        service.listReadableProjectIds(WORKSPACE, USER, 'portfolio:view'),
+      ).resolves.toBeNull();
+    });
+
+    it('returns only the projects a project-scoped role grants', async () => {
+      assignmentRepo.listEffectiveForUser.mockResolvedValue([
+        {
+          scopeType: 'project',
+          scopeId: 'proj-a',
+          roleSlug: 'project_admin',
+          permissions: ['portfolio:view'],
+        },
+        {
+          scopeType: 'project',
+          scopeId: 'proj-b',
+          roleSlug: 'project_member',
+          permissions: ['work_item:view'],
+        },
+      ] as never);
+
+      const ids = await service.listReadableProjectIds(WORKSPACE, USER, 'portfolio:view');
+      // proj-b is excluded: the role there does not grant THIS permission. A grant on
+      // one project must never imply the same grant elsewhere.
+      expect(ids).toEqual(['proj-a']);
+    });
+
+    it('unions project-scoped roles with active project membership', async () => {
+      assignmentRepo.listEffectiveForUser.mockResolvedValue([
+        {
+          scopeType: 'project',
+          scopeId: 'proj-a',
+          roleSlug: 'project_admin',
+          permissions: ['portfolio:view'],
+        },
+      ] as never);
+      projectMemberRows = [{ projectId: 'proj-c' }];
+
+      const ids = await service.listReadableProjectIds(WORKSPACE, USER, 'portfolio:view');
+      expect(ids?.sort()).toEqual(['proj-a', 'proj-c']);
+    });
+
+    it('de-duplicates a project reachable through both sources', async () => {
+      assignmentRepo.listEffectiveForUser.mockResolvedValue([
+        {
+          scopeType: 'project',
+          scopeId: 'proj-a',
+          roleSlug: 'project_admin',
+          permissions: ['portfolio:view'],
+        },
+      ] as never);
+      projectMemberRows = [{ projectId: 'proj-a' }];
+
+      // A duplicate id would make `inArray` redundant rather than wrong, but a caller
+      // counting the result would be misled.
+      expect(await service.listReadableProjectIds(WORKSPACE, USER, 'portfolio:view')).toEqual([
+        'proj-a',
+      ]);
+    });
+
+    it('returns an EMPTY ARRAY, not null, when nothing is readable', async () => {
+      // The distinction that keeps this fail-closed: [] means "no projects" and must
+      // return no rows, while null means "all". A caller conflating them opens a leak.
+      assignmentRepo.listEffectiveForUser.mockResolvedValue([] as never);
+      const ids = await service.listReadableProjectIds(WORKSPACE, USER, 'portfolio:view');
+      expect(ids).toEqual([]);
+      expect(ids).not.toBeNull();
+    });
+
+    it('honours a namespace wildcard on a project-scoped role', async () => {
+      assignmentRepo.listEffectiveForUser.mockResolvedValue([
+        {
+          scopeType: 'project',
+          scopeId: 'proj-a',
+          roleSlug: 'custom',
+          permissions: ['portfolio:*'],
+        },
+      ] as never);
+      // Same wildcard semantics the guard applies, so the two cannot disagree about
+      // what a grant means.
+      await expect(
+        service.listReadableProjectIds(WORKSPACE, USER, 'portfolio:view'),
+      ).resolves.toEqual(['proj-a']);
+    });
+
+    it('ignores a project assignment with a null scopeId', async () => {
+      // Defensive: scope_id is nullable in the schema (global scope uses null), so a
+      // malformed project-scoped row must not become a filter of `[null]`.
+      assignmentRepo.listEffectiveForUser.mockResolvedValue([
+        {
+          scopeType: 'project',
+          scopeId: null,
+          roleSlug: 'custom',
+          permissions: ['portfolio:view'],
+        },
+      ] as never);
+      await expect(
+        service.listReadableProjectIds(WORKSPACE, USER, 'portfolio:view'),
+      ).resolves.toEqual([]);
+    });
   });
 
   describe('getUserRoleAndPermissions (workspace baseline)', () => {
@@ -554,6 +695,20 @@ describe('AccessService — cached-permission invalidation', () => {
         },
         { provide: UnitOfWork, useValue: { run: vi.fn((fn: (tx: unknown) => unknown) => fn({})) } },
         { provide: AuditProducer, useValue: { emit: vi.fn().mockResolvedValue(undefined) } },
+        {
+          // `listReadableProjectIds` reads project_members directly (no port exists for
+          // the roster). Chainable stub; `projectMemberRows` is what each test controls.
+          provide: DRIZZLE,
+          useValue: {
+            select: () => ({
+              from: () => ({
+                innerJoin: () => ({
+                  where: () => Promise.resolve(projectMemberRows),
+                }),
+              }),
+            }),
+          },
+        },
         {
           provide: CacheService,
           useValue: {

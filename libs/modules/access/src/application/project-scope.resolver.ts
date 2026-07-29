@@ -2,7 +2,13 @@ import { Injectable } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
 import { InjectDrizzle, NotFoundException } from '@platform';
 import type { DrizzleDB, ErrorCode } from '@platform';
-import { workItems, iterations, releases, milestones } from '../../../../../db/schema/work';
+import {
+  workItems,
+  iterations,
+  releases,
+  milestones,
+  portfolioItems,
+} from '../../../../../db/schema/work';
 
 /**
  * Resource kinds whose project scope the PolicyGuard resolves by LOADING the row
@@ -10,13 +16,15 @@ import { workItems, iterations, releases, milestones } from '../../../../../db/s
  * request body/query). Tasks are nested under work-items (`/:id/tasks`), so a
  * task endpoint resolves via its parent's `work_item` id — no `task` kind needed.
  */
-export type ScopedResource = 'work_item' | 'iteration' | 'release' | 'milestone';
+export type ScopedResource = 'work_item' | 'iteration' | 'release' | 'milestone' | 'portfolio_item';
 
 const TABLES = {
   work_item: workItems,
   iteration: iterations,
   release: releases,
   milestone: milestones,
+  // Epic and Feature share one table, so one kind covers both.
+  portfolio_item: portfolioItems,
 } as const;
 
 const NOT_FOUND: Record<ScopedResource, [ErrorCode, string]> = {
@@ -24,6 +32,7 @@ const NOT_FOUND: Record<ScopedResource, [ErrorCode, string]> = {
   iteration: ['ITERATION_NOT_FOUND', 'Iteration not found'],
   release: ['RELEASE_NOT_FOUND', 'Release not found'],
   milestone: ['MILESTONE_NOT_FOUND', 'Milestone not found'],
+  portfolio_item: ['PORTFOLIO_ITEM_NOT_FOUND', 'Portfolio item not found'],
 };
 
 /**
