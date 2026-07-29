@@ -75,4 +75,62 @@ test.describe('Portfolio', () => {
     await expect(page.getByText('Guest checkout flow')).toBeVisible()
     await expect(page.getByText('Saved payment methods')).toBeVisible()
   })
+
+  test('creates a Feature, renames it in place, then archives it', async ({ page }) => {
+    // One test covering the whole write loop on purpose: each step needs the row the
+    // previous one produced, and splitting them would leave orphaned fixtures behind in
+    // a suite that shares one seeded database.
+    const unique = `E2E Feature ${Date.now()}`
+    const renamed = `${unique} renamed`
+
+    await login(page)
+    await page.goto('/portfolio', { waitUntil: 'domcontentloaded' })
+
+    // ── Create ──────────────────────────────────────────────────────────────
+    // Scoped to the dialog throughout: the grid header also exposes a "Name column"
+    // label and a "Resize Name column" separator, so an unscoped getByLabel('Name')
+    // matches three elements.
+    await page.getByRole('button', { name: /Add New/i }).click()
+    const dialog = page.getByRole('dialog', { name: 'New Feature' })
+    await dialog.getByRole('textbox', { name: 'Name' }).fill(unique)
+    await dialog.getByRole('button', { name: 'Create', exact: true }).click()
+    await expect(dialog).toBeHidden()
+
+    // `exact: true` on every row assertion: the toast reads `"<name>" created`, which
+    // contains the name, so a substring match would pass on the toast alone.
+    // Find it by SEARCH rather than expecting it on screen. New items append to the END
+    // of rank order and the grid pages at 25, so on a populated workspace a fresh row is
+    // genuinely off-page. Asserting `getByText(unique)` here would also pass for the
+    // wrong reason — the success toast repeats the name.
+    const search = page.getByRole('searchbox', { name: /Search portfolio/i })
+    await search.fill(unique)
+    await expect(page.getByText(unique, { exact: true })).toBeVisible()
+
+    // ── Inline rename ───────────────────────────────────────────────────────
+    // The Name cell is the inline editor; the ID cell is the click-to-open link.
+    await page.getByText(unique, { exact: true }).click()
+    const editor = page.getByRole('textbox', { name: 'Name' })
+    await expect(editor).toBeVisible()
+    await editor.fill(renamed)
+    await editor.press('Enter')
+    await expect(page.getByText(renamed, { exact: true })).toBeVisible()
+
+    // Survives a reload, so it was persisted rather than only held in cache.
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await search.fill(renamed)
+    await expect(page.getByText(renamed, { exact: true })).toBeVisible()
+
+    // ── Archive ─────────────────────────────────────────────────────────────
+    // The row WRAPPER carries `group`; filtering plain divs and taking `.last()` lands on
+    // the innermost text node's parent, which has no selection gutter.
+    const row = page.locator('div.group').filter({ hasText: renamed }).first()
+    await row.getByRole('checkbox').check()
+    // The bulk bar's Archive opens a confirm dialog whose button carries the same label,
+    // so the confirmation is scoped to the dialog rather than picked by position.
+    await page.getByRole('button', { name: 'Archive', exact: true }).first().click()
+    await page.getByRole('dialog').getByRole('button', { name: 'Archive', exact: true }).click()
+
+    // Archived items drop out of the default list — a soft delete, not a hard one.
+    await expect(page.getByText(renamed, { exact: true })).toHaveCount(0)
+  })
 })

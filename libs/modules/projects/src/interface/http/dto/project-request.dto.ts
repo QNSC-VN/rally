@@ -1,9 +1,7 @@
 import { z } from 'zod';
 import { createZodDto } from 'nestjs-zod';
-import { PageQuerySchema } from '@platform';
+import { ISO_DATE, PageQuerySchema } from '@platform';
 import { projectStatusEnum, projectMemberStatusEnum } from '../../../../../../../db/schema/enums';
-
-const ISO_DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be a date in YYYY-MM-DD format');
 
 // ── Create Project ───────────────────────────────────────────────────────────
 

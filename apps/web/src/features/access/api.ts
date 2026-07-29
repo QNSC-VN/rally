@@ -12,7 +12,8 @@
  * user who is, say, admin of one project but only a viewer workspace-wide sees
  * the correct actions on that project.
  */
-import { useQuery } from '@tanstack/react-query'
+import { useMemo } from 'react'
+import { useQueries, useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
@@ -63,5 +64,60 @@ export function useProjectPermissions(projectId: string | undefined): ProjectPer
     can: (code: string) => grants(permissions, code),
     isLoading: query.isLoading,
     isError: query.isError,
+  }
+}
+
+/**
+ * Effective permissions for SEVERAL projects at once, keyed by project id.
+ *
+ * For cross-project grids — the Portfolio list spans projects, so "can I edit this row"
+ * is a different answer per row and `useProjectPermissions` (one project) cannot express
+ * it. Gating the whole grid on the currently-selected project would either hide actions
+ * the user does have elsewhere or show ones they do not.
+ *
+ * Reuses `accessKeys.myProjectPermissions`, so every entry shares cache with the
+ * single-project hook and a project already resolved costs no extra request — the same
+ * arrangement `useReleasesForProjects` uses.
+ */
+export function useProjectPermissionsFor(projectIds: readonly string[]): {
+  can: (projectId: string | undefined, code: string) => boolean
+  isLoading: boolean
+} {
+  const baseline = useAuthStore((s) => s.user?.permissions ?? [])
+  const ids = useMemo(() => [...new Set(projectIds.filter(Boolean))], [projectIds])
+
+  const results = useQueries({
+    queries: ids.map((projectId) => ({
+      queryKey: accessKeys.myProjectPermissions(projectId),
+      queryFn: async () => {
+        const { data, error, response } = await apiClient.GET(
+          '/v1/projects/{projectId}/my-permissions',
+          { params: { path: { projectId } } },
+        )
+        if (error) throw new Error(apiErrorMessage(error, response.status))
+        return data?.permissions ?? []
+      },
+      staleTime: 60_000,
+    })),
+  })
+
+  // Stable signature so the map is rebuilt only when a fetch actually lands, not on
+  // every render (same reason `useReleasesForProjects` does it).
+  const signature = results.map((r) => r.dataUpdatedAt).join(',')
+  const idKey = ids.join(',')
+  const byProject = useMemo(() => {
+    const map = new Map<string, string[]>()
+    ids.forEach((id, i) => map.set(id, results[i]?.data ?? baseline))
+    return map
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signature, idKey])
+
+  return {
+    // Falls back to the workspace baseline, which is safe because the model is purely
+    // additive: the effective set only grows once project grants resolve, so no action a
+    // baseline grant already allows is ever hidden mid-load.
+    can: (projectId, code) =>
+      grants(projectId ? (byProject.get(projectId) ?? baseline) : baseline, code),
+    isLoading: results.some((r) => r.isLoading),
   }
 }

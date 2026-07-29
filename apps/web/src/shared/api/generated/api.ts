@@ -2063,7 +2063,8 @@ export interface paths {
     /** List Epics or Features */
     get: operations['PortfolioItemsController_listItems']
     put?: never
-    post?: never
+    /** Create an Epic or Feature */
+    post: operations['PortfolioItemsController_createItem']
     delete?: never
     options?: never
     head?: never
@@ -2084,7 +2085,8 @@ export interface paths {
     delete?: never
     options?: never
     head?: never
-    patch?: never
+    /** Update an Epic or Feature */
+    patch: operations['PortfolioItemsController_updateItem']
     trace?: never
   }
   '/v1/portfolio-items/{id}/children': {
@@ -2098,6 +2100,40 @@ export interface paths {
     get: operations['PortfolioItemsController_listChildren']
     put?: never
     post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/portfolio-items/{id}/archive': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Archive an Epic or Feature (soft delete) */
+    post: operations['PortfolioItemsController_archiveItem']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/portfolio-items/{id}/unarchive': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Restore an archived Epic or Feature */
+    post: operations['PortfolioItemsController_unarchiveItem']
     delete?: never
     options?: never
     head?: never
@@ -3642,6 +3678,66 @@ export interface components {
       projectName: string | null
       teamName: string | null
       ownerName: string | null
+    }
+    CreatePortfolioItemDto: {
+      /** Format: uuid */
+      projectId: string
+      /** @enum {string} */
+      type: 'epic' | 'feature'
+      name: string
+      description?: string | null
+      /** @enum {string} */
+      state?:
+        | 'no_entry'
+        | 'intake'
+        | 'idea_prioritization'
+        | 'problem_discovery'
+        | 'solution_discovery'
+        | 'feature_prioritization'
+        | 'developing'
+        | 'accepted'
+        | 'measuring'
+        | 'done'
+        | 'cancelled'
+      /** @enum {string} */
+      preliminaryEstimate?: 'no_entry' | 'xs' | 's' | 'm' | 'l' | 'xl'
+      refinedEstimate?: number | null
+      refinedItemCountEstimate?: number | null
+      parentId?: string | null
+      teamId?: string | null
+      releaseId?: string | null
+      ownerId?: string | null
+      plannedStartDate?: string | null
+      plannedEndDate?: string | null
+      marketReleaseDate?: string | null
+    }
+    UpdatePortfolioItemDto: {
+      name?: string
+      description?: string | null
+      /** @enum {string} */
+      state?:
+        | 'no_entry'
+        | 'intake'
+        | 'idea_prioritization'
+        | 'problem_discovery'
+        | 'solution_discovery'
+        | 'feature_prioritization'
+        | 'developing'
+        | 'accepted'
+        | 'measuring'
+        | 'done'
+        | 'cancelled'
+      /** @enum {string} */
+      preliminaryEstimate?: 'no_entry' | 'xs' | 's' | 'm' | 'l' | 'xl'
+      refinedEstimate?: number | null
+      refinedItemCountEstimate?: number | null
+      parentId?: string | null
+      teamId?: string | null
+      releaseId?: string | null
+      ownerId?: string | null
+      plannedStartDate?: string | null
+      plannedEndDate?: string | null
+      marketReleaseDate?: string | null
     }
     ScmConnectionResponseDto: {
       /** Format: uuid */
@@ -10961,6 +11057,57 @@ export interface operations {
       }
     }
   }
+  PortfolioItemsController_createItem: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreatePortfolioItemDto']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['PortfolioItemResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
   PortfolioItemsController_getItem: {
     parameters: {
       query?: never
@@ -10989,6 +11136,66 @@ export interface operations {
       }
       /** @description Not Found */
       404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  PortfolioItemsController_updateItem: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdatePortfolioItemDto']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['PortfolioItemResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
         headers: {
           [name: string]: unknown
         }
@@ -11041,6 +11248,97 @@ export interface operations {
       }
       /** @description Unauthorized — missing or invalid authentication */
       401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  PortfolioItemsController_archiveItem: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['PortfolioItemResponseDto']
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  PortfolioItemsController_unarchiveItem: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['PortfolioItemResponseDto']
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
         headers: {
           [name: string]: unknown
         }

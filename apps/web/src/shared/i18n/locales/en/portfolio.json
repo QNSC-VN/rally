@@ -41,7 +41,9 @@
   },
   "row": {
     "pointsTooltip": "{{accepted}} / {{total}} points accepted",
-    "countTooltip": "{{accepted}} / {{total}} items accepted"
+    "countTooltip": "{{accepted}} / {{total}} items accepted",
+    "nameUpdated": "Name updated",
+    "stateUpdated": "State updated"
   },
   "detail": {
     "tabs": {
@@ -77,5 +79,27 @@
       "epicNote": "An Epic rolls up through its child Features."
     },
     "notFound": "Portfolio item not found."
+  },
+  "create": {
+    "titleEpic": "New Epic",
+    "titleFeature": "New Feature",
+    "nameLabel": "Name",
+    "nameRequired": "Name is required",
+    "noEpic": "No Epic",
+    "createWithDetails": "Create with details",
+    "createButton": "Create",
+    "created": "\"{{name}}\" created",
+    "createFailed": "Failed to create the portfolio item"
+  },
+  "archive": {
+    "action": "Archive",
+    "title": "Archive portfolio items",
+    "message": "Archive {{count}} selected item(s)? They stay recoverable.",
+    "confirm": "Archive",
+    "archived": "{{count}} item(s) archived",
+    "failed": "Failed to archive"
+  },
+  "columns": {
+    "name": "Name"
   }
 }

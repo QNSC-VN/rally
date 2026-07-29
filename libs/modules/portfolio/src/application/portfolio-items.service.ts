@@ -1,8 +1,16 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { NotFoundException, PermissionDeniedException } from '@platform';
+import { uuidv7 } from 'uuidv7';
+import {
+  NotFoundException,
+  PermissionDeniedException,
+  PreconditionFailedException,
+  UnitOfWork,
+  between,
+} from '@platform';
 import { AccessService } from '@modules/access';
 import type { CursorPayload, JwtPayload, PagedResult } from '@platform';
 import { workspaceSettings } from '../../../../../db/schema/workspace';
+import { releases, teams } from '../../../../../db/schema/work';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { and, eq } from 'drizzle-orm';
@@ -16,7 +24,18 @@ import {
   type IPortfolioItemRepository,
   type PortfolioChildItem,
 } from '../domain/ports/portfolio-item.repository';
-import type { PortfolioItemView, PortfolioListRequest } from '../domain/portfolio-item.types';
+import type {
+  CreatePortfolioItemInput,
+  PortfolioItem,
+  PortfolioItemView,
+  PortfolioListRequest,
+  PortfolioRankScope,
+  UpdatePortfolioItemInput,
+} from '../domain/portfolio-item.types';
+import type { PortfolioItemType } from '../../../../../db/schema/enums';
+
+/** `EP-` / `FE-` — the display-key prefix per portfolio type. */
+const KEY_PREFIX: Record<PortfolioItemType, string> = { epic: 'EP', feature: 'FE' };
 
 /** A portfolio item with its four computed progress indicators. */
 export interface PortfolioItemWithProgress extends PortfolioItemView {
@@ -40,6 +59,7 @@ export class PortfolioItemsService {
     @Inject(PORTFOLIO_ITEM_REPOSITORY) private readonly repo: IPortfolioItemRepository,
     @InjectDrizzle() private readonly db: DrizzleDB,
     private readonly access: AccessService,
+    private readonly uow: UnitOfWork,
   ) {}
 
   async listItems(
@@ -132,6 +152,220 @@ export class PortfolioItemsService {
     const map = await this.estimateMap(actor.workspaceId);
     const children = await this.repo.listChildFeatures(id, actor.workspaceId);
     return children.map((c) => this.withProgress(c, map));
+  }
+
+  // ── Writes ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Create an Epic or a Feature.
+   *
+   * Authorization is per-PROJECT here, unlike the cross-project list: a write targets
+   * exactly one project, so `assertProjectPermission` can and must check it.
+   */
+  async createItem(
+    actor: JwtPayload,
+    input: Omit<CreatePortfolioItemInput, 'workspaceId'>,
+  ): Promise<PortfolioItemWithProgress> {
+    await this.access.assertProjectPermission(actor, input.projectId, 'portfolio:create');
+    this.assertShape(input.type, input);
+    await this.assertReferences(actor.workspaceId, input.projectId, input);
+
+    const scope: PortfolioRankScope = { workspaceId: actor.workspaceId, type: input.type };
+
+    // The key is MAX+1, which is not atomic, so a concurrent create can take the same
+    // number and lose the `uq_portfolio_item_key` race. Retry once with a fresh key —
+    // the same shape releases use. A failed insert only leaves a numbering gap.
+    const MAX_KEY_RETRIES = 2;
+    let created: PortfolioItem | undefined;
+    let lastErr: unknown;
+
+    for (let attempt = 0; attempt < MAX_KEY_RETRIES; attempt++) {
+      try {
+        created = await this.uow.run(async (tx) => {
+          // Rank is derived INSIDE the transaction under a per-scope advisory lock, and
+          // both the read and the insert use `tx`. Computing it outside is a lock-free
+          // read-modify-write: two creates read the same max, derive the SAME rank, and
+          // the next drag-reorder throws on the equal neighbours. That is exactly how
+          // work items ended up with 22 scopes sharing a rank.
+          await this.repo.lockRankScope(scope, tx);
+          const maxRank = await this.repo.findMaxRank(scope, tx);
+          const keyNumber = await this.repo.nextKeyNumber(scope, tx);
+
+          return this.repo.create(
+            {
+              ...input,
+              workspaceId: actor.workspaceId,
+              id: uuidv7(),
+              itemKey: `${KEY_PREFIX[input.type]}-${keyNumber}`,
+              // New items append to the end of their scope. A degenerate '' rank sorts
+              // correctly once but corrupts later `between()` math.
+              rank: between(maxRank, null),
+            },
+            tx,
+          );
+        });
+        break;
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+
+    if (!created) throw lastErr;
+    return this.getItem(actor, created.id);
+  }
+
+  async updateItem(
+    actor: JwtPayload,
+    id: string,
+    input: UpdatePortfolioItemInput,
+  ): Promise<PortfolioItemWithProgress> {
+    const existing = await this.requireItem(actor, id);
+    await this.access.assertProjectPermission(actor, existing.projectId, 'portfolio:edit');
+    // Validated against the EXISTING type: `type` is immutable, so an Epic can never
+    // acquire a parent/team/release by editing.
+    this.assertShape(existing.type, input);
+    await this.assertReferences(actor.workspaceId, existing.projectId, input, id);
+
+    await this.repo.update(id, input, actor.workspaceId);
+    return this.getItem(actor, id);
+  }
+
+  /**
+   * Archive (soft delete) or restore.
+   *
+   * An Epic with ACTIVE child Features is refused. Archiving it would leave those
+   * Features pointing at a hidden parent: they would still appear in the Feature list
+   * with an Epic column referencing something the user can no longer open, and the
+   * Epic's rollup would keep aggregating through them.
+   */
+  async setArchived(
+    actor: JwtPayload,
+    id: string,
+    archived: boolean,
+  ): Promise<PortfolioItemWithProgress> {
+    const existing = await this.requireItem(actor, id);
+    await this.access.assertProjectPermission(actor, existing.projectId, 'portfolio:archive');
+
+    if (archived && existing.type === 'epic') {
+      const children = await this.repo.countActiveChildFeatures(id, actor.workspaceId);
+      if (children > 0) {
+        throw new PreconditionFailedException(
+          'PORTFOLIO_EPIC_HAS_ACTIVE_FEATURES',
+          `Archive or move the ${children} active Feature(s) under this Epic first`,
+        );
+      }
+    }
+
+    await this.repo.setArchived(id, archived, actor.workspaceId);
+    return this.getItem(actor, id);
+  }
+
+  private async requireItem(actor: JwtPayload, id: string): Promise<PortfolioItem> {
+    const item = await this.repo.findById(id, actor.workspaceId);
+    if (!item) {
+      throw new NotFoundException('PORTFOLIO_ITEM_NOT_FOUND', 'Portfolio item not found');
+    }
+    return item;
+  }
+
+  /**
+   * Reject Epic-illegal fields with a clear error before the DB CHECK does.
+   *
+   * `ck_portfolio_epic_shape` already guarantees this, but a raw constraint violation
+   * surfaces as a 500 with a Postgres message. Callers get a 422 naming the field.
+   */
+  private assertShape(
+    type: PortfolioItemType,
+    input: Pick<UpdatePortfolioItemInput, 'parentId' | 'teamId' | 'releaseId'>,
+  ): void {
+    if (type !== 'epic') return;
+    const offending = (['parentId', 'teamId', 'releaseId'] as const).filter(
+      (f) => input[f] !== undefined && input[f] !== null,
+    );
+    if (offending.length > 0) {
+      throw new PreconditionFailedException(
+        'PORTFOLIO_ITEM_INVALID_TYPE',
+        `An Epic cannot have ${offending.join(', ')} — those belong to a Feature`,
+      );
+    }
+  }
+
+  /**
+   * Verify every id the caller supplied actually resolves.
+   *
+   * None of `parent_id`, `team_id` or `release_id` carries a database foreign key, so an
+   * unchecked bogus uuid would persist happily and then render as an empty Epic/Team/
+   * Release column — indistinguishable from "not set", and impossible to explain later.
+   */
+  private async assertReferences(
+    workspaceId: string,
+    projectId: string,
+    input: Pick<UpdatePortfolioItemInput, 'parentId' | 'teamId' | 'releaseId'>,
+    selfId?: string,
+  ): Promise<void> {
+    if (input.parentId) {
+      if (selfId && input.parentId === selfId) {
+        // `ck_portfolio_no_self_parent` also covers this; named error beats a 500.
+        throw new PreconditionFailedException(
+          'PORTFOLIO_ITEM_INVALID_PARENT',
+          'An item cannot be its own Epic',
+        );
+      }
+      const [parent] = await this.repo.findByIds([input.parentId], workspaceId);
+      if (!parent) {
+        // 422 rather than 404: the missing thing is a field the caller sent, not the
+        // resource they addressed, so the failure belongs to the request body.
+        throw new PreconditionFailedException(
+          'PORTFOLIO_ITEM_INVALID_PARENT',
+          'Parent Epic not found',
+        );
+      }
+      if (parent.type !== 'epic') {
+        throw new PreconditionFailedException(
+          'PORTFOLIO_ITEM_INVALID_PARENT',
+          'A Feature’s parent must be an Epic',
+        );
+      }
+      if (parent.archivedAt !== null) {
+        throw new PreconditionFailedException(
+          'PORTFOLIO_ITEM_INVALID_PARENT',
+          'Cannot attach a Feature to an archived Epic',
+        );
+      }
+    }
+
+    if (input.releaseId) {
+      // Releases are per-project (`uq_releases_key` is on project), so a release from
+      // another project would put the Release column out of step with the row's project.
+      const rows = await this.db
+        .select({ id: releases.id })
+        .from(releases)
+        .where(
+          and(
+            eq(releases.id, input.releaseId),
+            eq(releases.workspaceId, workspaceId),
+            eq(releases.projectId, projectId),
+          ),
+        )
+        .limit(1);
+      if (rows.length === 0) {
+        throw new PreconditionFailedException(
+          'PORTFOLIO_ITEM_PROJECT_MISMATCH',
+          'Release not found in this project',
+        );
+      }
+    }
+
+    if (input.teamId) {
+      const rows = await this.db
+        .select({ id: teams.id })
+        .from(teams)
+        .where(and(eq(teams.id, input.teamId), eq(teams.workspaceId, workspaceId)))
+        .limit(1);
+      if (rows.length === 0) {
+        throw new PreconditionFailedException('PORTFOLIO_ITEM_TEAM_MISMATCH', 'Team not found');
+      }
+    }
   }
 
   /**

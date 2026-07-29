@@ -1,4 +1,4 @@
-import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ApiCommonErrors, ApiPagedResponse, buildPageArgs } from '@platform';
 import type { JwtPayload, PagedResult } from '@platform';
@@ -9,7 +9,12 @@ import {
   type PortfolioItemWithProgress,
 } from '../../application/portfolio-items.service';
 import type { PortfolioChildItem } from '../../domain/ports/portfolio-item.repository';
-import { PortfolioChildrenQueryDto, PortfolioListQueryDto } from './dto/portfolio-item-request.dto';
+import {
+  CreatePortfolioItemDto,
+  PortfolioChildrenQueryDto,
+  PortfolioListQueryDto,
+  UpdatePortfolioItemDto,
+} from './dto/portfolio-item-request.dto';
 import {
   PortfolioChildResponseDto,
   PortfolioItemResponseDto,
@@ -49,6 +54,26 @@ function toDto(i: PortfolioItemWithProgress): PortfolioItemResponseDto {
     childFeatureCount: i.childFeatureCount,
     rollup: i.rollup,
     progress: i.progress,
+  };
+}
+
+/**
+ * The inbound mirror of `toDto`'s numeric handling.
+ *
+ * `refined_estimate` is a Postgres `numeric`, which Drizzle reads and writes as a STRING
+ * to preserve precision, while the API contract is a number. `toDto` converts one way, so
+ * this converts the other — both at the boundary, so no other layer sees the mismatch.
+ * Preserved exactly: `undefined` stays "not supplied", `null` stays "clear it".
+ */
+function toWriteInput<T extends { refinedEstimate?: number | null }>(
+  body: T,
+): Omit<T, 'refinedEstimate'> & { refinedEstimate?: string | null } {
+  const { refinedEstimate, ...rest } = body;
+  return {
+    ...rest,
+    ...(refinedEstimate === undefined
+      ? {}
+      : { refinedEstimate: refinedEstimate === null ? null : String(refinedEstimate) }),
   };
 }
 
@@ -137,6 +162,72 @@ export class PortfolioItemsController {
     const args = buildPageArgs(query);
     const page = await this.service.listChildren(user, id, { ...args, search: query.search });
     return { data: page.data.map(toChildDto), pageInfo: page.pageInfo };
+  }
+
+  @Post()
+  // Scoped from the BODY: a create names its project explicitly, so unlike the list
+  // route the guard CAN resolve one project and check `portfolio:create` against it.
+  @RequirePermission('portfolio:create', { from: 'body', field: 'projectId' })
+  @ApiOperation({ summary: 'Create an Epic or Feature' })
+  @ApiResponse({ status: 201, type: PortfolioItemResponseDto })
+  @ApiCommonErrors(400, 401, 403, 422)
+  async createItem(
+    @CurrentUser() user: JwtPayload,
+    @Body() body: CreatePortfolioItemDto,
+  ): Promise<PortfolioItemResponseDto> {
+    return toDto(await this.service.createItem(user, toWriteInput(body)));
+  }
+
+  @Patch(':id')
+  // Resolved by LOADING the row — the project is only reachable through `:id`, and the
+  // body deliberately cannot carry a projectId (moving projects is not supported).
+  @RequirePermission('portfolio:edit', { resource: 'portfolio_item', from: 'param', field: 'id' })
+  @ApiOperation({ summary: 'Update an Epic or Feature' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: PortfolioItemResponseDto })
+  @ApiCommonErrors(400, 401, 403, 404, 422)
+  async updateItem(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: UpdatePortfolioItemDto,
+  ): Promise<PortfolioItemResponseDto> {
+    return toDto(await this.service.updateItem(user, id, toWriteInput(body)));
+  }
+
+  @Post(':id/archive')
+  @RequirePermission('portfolio:archive', {
+    resource: 'portfolio_item',
+    from: 'param',
+    field: 'id',
+  })
+  @ApiOperation({ summary: 'Archive an Epic or Feature (soft delete)' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: PortfolioItemResponseDto })
+  @ApiCommonErrors(401, 403, 404, 422)
+  async archiveItem(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<PortfolioItemResponseDto> {
+    return toDto(await this.service.setArchived(user, id, true));
+  }
+
+  @Post(':id/unarchive')
+  // Restoring is the inverse of archiving, so it takes the SAME permission rather than
+  // `portfolio:edit` — anyone who can hide an item can bring it back, and no one else.
+  @RequirePermission('portfolio:archive', {
+    resource: 'portfolio_item',
+    from: 'param',
+    field: 'id',
+  })
+  @ApiOperation({ summary: 'Restore an archived Epic or Feature' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: PortfolioItemResponseDto })
+  @ApiCommonErrors(401, 403, 404)
+  async unarchiveItem(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<PortfolioItemResponseDto> {
+    return toDto(await this.service.setArchived(user, id, false));
   }
 
   @Get(':id/features')

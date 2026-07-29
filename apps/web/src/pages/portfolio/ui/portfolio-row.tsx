@@ -1,26 +1,39 @@
 import { type CSSProperties, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { type PortfolioItem } from '@/features/portfolio/api'
+import {
+  useUpdatePortfolioItem,
+  type PortfolioItem,
+  type PortfolioItemState,
+} from '@/features/portfolio/api'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { OwnerCell } from '@/shared/ui/owner-cell'
 import { ProgressBar } from '@/shared/ui/progress-bar'
+import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
+import { SearchableSelect } from '@/shared/ui/searchable-select'
+import { notify } from '@/shared/lib/toast'
 import { type ColKey } from '../model/columns'
+import { PORTFOLIO_STATES } from '../model/portfolio-states'
 
 /**
  * One Portfolio grid row.
  *
- * Read-only: creating, editing, ranking and archiving portfolio items land in a
- * later slice, so this deliberately does NOT use `InlineEditableCell`. Adding it
- * now would render editable-looking cells with no mutation behind them.
+ * Name and State edit in place; everything else is display-only here and edited on the
+ * detail page. `canEdit` is decided per ROW rather than per page: this list is
+ * cross-project, so the answer differs between rows and a page-level flag would either
+ * hide actions the user has elsewhere or offer ones they do not.
+ *
+ * Rank (drag to reorder) is deliberately absent — it lands with its own slice.
  */
 export function PortfolioRow({
   item,
+  canEdit,
   colStyleFor,
   gutter,
   onOpen,
 }: {
   item: PortfolioItem
+  canEdit: boolean
   colStyleFor: (key: ColKey, base?: CSSProperties) => CSSProperties
   /** Selection gutter node supplied by the list scaffold. */
   gutter: ReactNode
@@ -28,6 +41,14 @@ export function PortfolioRow({
 }) {
   const { t } = useTranslation('portfolio')
   const { progress, rollup } = item
+  const update = useUpdatePortfolioItem()
+
+  function save(patch: Parameters<typeof update.mutate>[0]['patch'], success: string) {
+    update.mutate(
+      { id: item.id, patch },
+      { onSuccess: () => notify.success(success), onError: (err) => notify.error(err.message) },
+    )
+  }
 
   return (
     <div className="group flex min-h-[34px] items-center border-b border-border-inner px-3 text-ui-md transition-colors hover:bg-primary-lighter">
@@ -38,16 +59,41 @@ export function PortfolioRow({
         <IdCell type={item.type} itemKey={item.itemKey} onOpen={() => onOpen(item.id)} />
       </div>
 
-      <div style={colStyleFor('name', { flexShrink: 0 })} className="min-w-0 px-2">
-        <span className="block truncate text-foreground" title={item.name}>
-          {item.name}
-        </span>
+      <div
+        style={colStyleFor('name', { flexShrink: 0 })}
+        className="min-w-0 px-0"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <InlineEditableCell
+          fullCell
+          value={item.name}
+          canEdit={canEdit}
+          onCommit={(v) => {
+            const next = v.trim()
+            if (next && next !== item.name) save({ name: next }, t('row.nameUpdated'))
+          }}
+          ariaLabel={t('columns.name')}
+          title={item.name}
+          className="block w-full truncate text-foreground"
+        />
       </div>
 
-      <div style={colStyleFor('state', { flexShrink: 0 })} className="min-w-0 px-2">
-        <span className="truncate text-muted-foreground">
-          {t(`states.${item.state}`, { defaultValue: item.state })}
-        </span>
+      <div
+        style={colStyleFor('state', { flexShrink: 0 })}
+        className="min-w-0 px-0"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <SearchableSelect
+          variant="cell"
+          value={item.state}
+          readOnly={!canEdit}
+          ariaLabel={t('filters.state')}
+          options={PORTFOLIO_STATES.map((s) => ({ value: s, label: t(`states.${s}`) }))}
+          onChange={(v) => {
+            if (v && v !== item.state)
+              save({ state: v as PortfolioItemState }, t('row.stateUpdated'))
+          }}
+        />
       </div>
 
       <div style={colStyleFor('parent', { flexShrink: 0 })} className="min-w-0 px-2">
