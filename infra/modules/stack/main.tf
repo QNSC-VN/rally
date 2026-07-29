@@ -405,6 +405,11 @@ module "api" {
   use_spot           = var.api.use_spot
   log_retention_days = var.log_retention_days
 
+  # Both callers set these; neither reached the module until now, so production ran on
+  # the ecs-service defaults (65/75) while ../../live/prod/main.tf said 60/70.
+  cpu_target_pct    = var.api.cpu_target_pct
+  memory_target_pct = var.api.memory_target_pct
+
   attach_alb        = true
   alb_listener_arn  = data.terraform_remote_state.runtime.outputs.https_listener_arn
   alb_priority      = 100
