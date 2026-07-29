@@ -952,6 +952,58 @@ resource "aws_cloudwatch_metric_alarm" "security_fail_open" {
   ok_actions    = [module.observability.alarm_topic_arn]
 }
 
+# ── Alerting: outbox rows that will never be retried ─────────────────────────
+# Every relay (notifications, email, SCM webhook inbox, …) retries a failing row
+# with exponential backoff and then gives up, setting status = 'failed'. That row
+# is silent work loss: a notification nobody receives, or a pull request that
+# never links to its work item. Nothing surfaced it — the state lived only in a
+# column someone had to think to query, so the first symptom was a user asking why
+# their PR was not showing up.
+#
+# On the WORKER log group, not the api's: the relays run in the worker. Pointing
+# this at the api would match nothing and look like coverage.
+#
+# Log-based for the same reason as the fail-open alarm above: QueueMetrics already
+# counts this, but OTEL_ENABLED is "false" in every deployed environment and no
+# collector exists, so that counter reports nothing while appearing to be
+# monitoring. Container logs reach CloudWatch either way.
+#
+# The field name is DEAD_LETTER_FIELD in
+# libs/platform/src/outbox/abstract-outbox-relay.ts, and only the TERMINAL failure
+# carries it — a row still inside its retry budget does not page. A spec asserts
+# the field the application emits is the field filtered on here.
+resource "aws_cloudwatch_log_metric_filter" "outbox_dead_letter" {
+  name           = "${local.name}-outbox-dead-letter"
+  log_group_name = module.worker.log_group_name
+  pattern        = "{ $.outboxDeadLetter = \"*\" }"
+
+  metric_transformation {
+    name          = "OutboxDeadLetter"
+    namespace     = "${var.product}/${var.env}"
+    value         = "1"
+    default_value = "0"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "outbox_dead_letter" {
+  alarm_name        = "${local.name}-outbox-dead-letter"
+  alarm_description = "A relay gave up on a row after exhausting its retries — work has been lost. Query the outbox table for status = 'failed'."
+
+  namespace           = "${var.product}/${var.env}"
+  metric_name         = "OutboxDeadLetter"
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  # A metric filter emits no data points when nothing matches, which is the
+  # healthy state — treat that as OK rather than INSUFFICIENT_DATA noise.
+  treat_missing_data = "notBreaching"
+
+  alarm_actions = [module.observability.alarm_topic_arn]
+  ok_actions    = [module.observability.alarm_topic_arn]
+}
+
 # ── Guard: the sidecar log groups must match the ones ecs-service creates ──────
 # `local.{api,worker}_log_group` is COMPUTED rather than read from
 # `module.<svc>.log_group_name`, because reading it would form a cycle: the agent

@@ -52,6 +52,27 @@ import type { DrizzleDB, DrizzleTx } from '../database/drizzle.provider';
 /** Optional callback returned by processRow() to run after the transaction commits. */
 export type PostCommitTask = () => Promise<void>;
 
+/**
+ * Log field marking a row that has exhausted `maxAttempts` and will never be retried.
+ *
+ * A dead-lettered row is silent work loss: an email nobody receives, a notification
+ * nobody sees, a pull request that never links to its work item. The row records it,
+ * but only for someone who thinks to query `status = 'failed'` — so in practice the
+ * queue stops doing its job and the first symptom is a user asking why.
+ *
+ * A distinct field rather than a distinguishable message, because a CloudWatch metric
+ * filter matches structured fields, and pattern-matching on prose breaks the day
+ * someone rewords a log line. Same reasoning and same shape as FAIL_OPEN_FIELD in
+ * `@qnsc-vn/observability`.
+ *
+ * `QueueMetrics.recordFailure` already counts this, but OTEL_ENABLED is "false" in
+ * every deployed environment and no collector exists, so that counter reports nothing
+ * today. Container logs reach CloudWatch regardless, which is why the alarm is
+ * log-based. Renaming this constant silently disarms that alarm — a spec asserts the
+ * infra filters on this exact field.
+ */
+export const DEAD_LETTER_FIELD = 'outboxDeadLetter';
+
 export abstract class AbstractOutboxRelay<TRow extends { id: string; attempts: number }> {
   /** Override in subclass to tune per-relay. */
   protected readonly maxAttempts: number = 5;
@@ -243,10 +264,21 @@ export abstract class AbstractOutboxRelay<TRow extends { id: string; attempts: n
 
             await this.markFailed(tx, row.id, newAttempts, newStatus, errMsg, nextAttemptAt);
 
-            this.logger.error(
-              { rowId: row.id, err },
-              `Relay failed (attempt ${newAttempts}/${this.maxAttempts})`,
-            );
+            // Only the TERMINAL failure carries DEAD_LETTER_FIELD. A row that is
+            // still retrying is the retry machinery working as designed and must
+            // not page — tagging every attempt would make the alarm fire on
+            // transient errors that resolve themselves on the next tick.
+            if (newStatus === 'failed') {
+              this.logger.error(
+                { rowId: row.id, err, [DEAD_LETTER_FIELD]: this.queueName },
+                `Relay dead-lettered a row after ${newAttempts}/${this.maxAttempts} attempts — it will never be retried`,
+              );
+            } else {
+              this.logger.error(
+                { rowId: row.id, err },
+                `Relay failed (attempt ${newAttempts}/${this.maxAttempts})`,
+              );
+            }
           }
         }
 
