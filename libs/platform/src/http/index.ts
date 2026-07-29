@@ -9,3 +9,4 @@ export * from './pagination';
 export * from './http-logging.interceptor';
 export * from './idempotency.interceptor';
 export * from './csrf';
+export * from './request-timing';
