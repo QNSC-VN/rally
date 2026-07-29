@@ -14,14 +14,28 @@ import {
 
 // ── Const objects (replaces enums for erasableSyntaxOnly compat) ─────────────
 
+/**
+ * The schedulable work-item types — exactly the `work_item_type` DB enum.
+ *
+ * Epic and Feature are deliberately ABSENT. They are portfolio items living in
+ * `work.portfolio_items`, not work items, and migration 0072 dropped them from
+ * `work_item_type`. Their glyphs live in {@link PORTFOLIO_TYPE_CONFIG}. Putting
+ * them back here would let a caller send `type=feature` to `/v1/work-items`,
+ * which the API now rejects with a 400.
+ */
 export const WorkItemType = {
-  Initiative: 'initiative',
-  Feature: 'feature',
   Story: 'story',
   Task: 'task',
   Defect: 'defect',
 } as const
 export type WorkItemType = (typeof WorkItemType)[keyof typeof WorkItemType]
+
+/** Portfolio item types — the `portfolio_item_type` DB enum. */
+export const PortfolioItemType = {
+  Epic: 'epic',
+  Feature: 'feature',
+} as const
+export type PortfolioItemType = (typeof PortfolioItemType)[keyof typeof PortfolioItemType]
 
 /** Schedule State — business readiness dimension (BA design §P1-05).
  * Aligned to BA flow-state vocabulary: 6 states, terminal state 'release'. */
@@ -93,11 +107,24 @@ export interface BadgeStyle {
 }
 
 export const WORK_ITEM_TYPE_CONFIG: Record<WorkItemType, BadgeStyle> = {
-  [WorkItemType.Initiative]: { label: 'IN', color: '#059669', bg: '#ecfdf5', icon: Target },
-  [WorkItemType.Feature]: { label: 'FE', color: '#7c3aed', bg: '#f3effd', icon: Layers },
   [WorkItemType.Story]: { label: 'US', color: '#2558a6', bg: '#eef3fb', icon: BookOpen },
   [WorkItemType.Task]: { label: 'TA', color: '#1d3f73', bg: '#e5ebf4', icon: ClipboardList },
   [WorkItemType.Defect]: { label: 'DE', color: '#b91c1c', bg: '#fef2f2', icon: Bug },
+}
+
+/**
+ * Portfolio item marks (Epic / Feature). Like {@link TIMEBOX_TYPE_CONFIG} these
+ * are NOT work items, but their ID column goes through the same
+ * {@link TypeBadge} + IdCell pair so `EP-12` reads exactly like `US-12`.
+ *
+ * Feature keeps the purple/Layers mark it has always had — it is already shipped
+ * on the Backlog and Iteration Status "Feature" columns via `FeatureCell`, so
+ * changing it would silently restyle two live grids. Epic inherits the mark the
+ * old Initiative type used, since P5 renamed that level rather than adding one.
+ */
+export const PORTFOLIO_TYPE_CONFIG: Record<PortfolioItemType, BadgeStyle> = {
+  [PortfolioItemType.Epic]: { label: 'EP', color: '#059669', bg: '#ecfdf5', icon: Target },
+  [PortfolioItemType.Feature]: { label: 'FE', color: '#7c3aed', bg: '#f3effd', icon: Layers },
 }
 
 /**

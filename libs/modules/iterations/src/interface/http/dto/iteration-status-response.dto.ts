@@ -32,6 +32,7 @@ export const IterationStatusItemSchema = z.object({
   assigneeId: z.string().uuid().nullable(),
   devOwnerId: z.string().uuid().nullable(),
   rank: z.string(),
+  featureId: z.string().uuid().nullable(),
   featureKey: z.string().nullable(),
   featureTitle: z.string().nullable(),
   defectCount: z.number().int(),

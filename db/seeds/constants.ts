@@ -58,6 +58,14 @@ export const NXP_ITER_CURRENT_ID = '00000000-0000-7000-8000-000000000061'; // co
 
 export const NXP_MILESTONE_1_ID = '00000000-0000-7000-8000-0000000000b0';
 
+// Portfolio fixture (P5): Epic → two Features, with the first Feature linked to
+// the Story + Defect above so its rollup is non-empty and the second left empty so
+// the "unmeasurable" rendering (em-dash, not 0%) has a case. Seeded because the
+// Portfolio screen has no write paths yet, so E2E cannot create its own fixture.
+export const NXP_EPIC_1_ID = '00000000-0000-7000-8000-0000000000c0';
+export const NXP_FEATURE_1_ID = '00000000-0000-7000-8000-0000000000c1';
+export const NXP_FEATURE_2_ID = '00000000-0000-7000-8000-0000000000c2';
+
 // ── Seed data constants ───────────────────────────────────────────────────────
 // Format: { id, key, name, description }
 // All are owned by ADMIN_USER_ID and belong to the default workspace.

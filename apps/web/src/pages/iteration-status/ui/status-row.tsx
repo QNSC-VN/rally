@@ -76,6 +76,7 @@ export function StatusRow({
   const devOwnerName = devOwner?.displayName ?? devOwner?.email ?? null
 
   // Narrowed locals so closures below keep the non-null type.
+  const featureId = item.featureId
   const featureKey = item.featureKey
   const featureTitle = item.featureTitle
   const milestones = item.milestones
@@ -231,7 +232,14 @@ export function StatusRow({
             <FeatureCell
               featureKey={featureKey}
               featureTitle={featureTitle}
-              onOpen={() => navigate({ to: '/item/$itemKey', params: { itemKey: featureKey } })}
+              // A Feature is a portfolio item, so it opens portfolio detail. Sending
+              // its key to `/item/:itemKey` used to work when Feature was a
+              // work-item type; that lookup can no longer resolve it.
+              onOpen={() =>
+                featureId
+                  ? void navigate({ to: '/portfolio/$itemId', params: { itemId: featureId } })
+                  : undefined
+              }
             />
           ) : (
             <span className="text-foreground-subtle" style={{ fontSize: 12 }}>

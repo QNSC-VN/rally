@@ -76,6 +76,11 @@ export interface PortfolioItemView extends PortfolioItem {
   ownerName: string | null;
   teamName: string | null;
   releaseName: string | null;
+  /**
+   * Resolved here rather than on the client because this list is CROSS-project —
+   * the grid carries a Project column, so the name is row data, not page context.
+   */
+  projectName: string | null;
   /** Parent Epic's key, for the Feature row's context. Null for an Epic. */
   parentKey: string | null;
   rollup: PortfolioRollupRow;

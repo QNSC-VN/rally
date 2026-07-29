@@ -20,6 +20,7 @@ function toDto(i: PortfolioItemWithProgress): PortfolioItemResponseDto {
     id: i.id,
     workspaceId: i.workspaceId,
     projectId: i.projectId,
+    projectName: i.projectName,
     itemKey: i.itemKey,
     type: i.type,
     name: i.name,

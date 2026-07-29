@@ -29,7 +29,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import { pgOptions } from '../pg-ssl';
 import { uuidv7 } from 'uuidv7';
-import { and, eq, isNull, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import * as schema from '../schema';
 // Direct imports to avoid barrel tsx/CJS resolution edge cases at runtime.
 import {
@@ -54,6 +54,7 @@ import {
   workItemLabels,
   timeLogs,
   workItemWatchers,
+  portfolioItems,
 } from '../schema/work';
 import { userRoleAssignments } from '../schema/access';
 import { seedSystemRolesInto } from './reference';
@@ -74,6 +75,9 @@ import {
   NXP_RELEASE_1_ID,
   NXP_ITER_CURRENT_ID,
   NXP_MILESTONE_1_ID,
+  NXP_EPIC_1_ID,
+  NXP_FEATURE_1_ID,
+  NXP_FEATURE_2_ID,
   SEED_PROJECTS,
 } from './constants';
 
@@ -378,6 +382,67 @@ async function seedFlow() {
       },
     ])
     .onConflictDoNothing();
+
+  // Portfolio fixture (P5): one Epic over two Features.
+  //
+  // Seeded rather than created by E2E because the Portfolio screen is read-only
+  // until the write slice lands, so a test has no way to make its own. FE-1 gets
+  // the Story + Defect linked below so its rollup is non-empty; FE-2 stays childless
+  // so the "no denominator" rendering has a case.
+  //
+  // Epics carry no parent/team/release by CHECK constraint (`ck_portfolio_epic_shape`).
+  await db
+    .insert(portfolioItems)
+    .values([
+      {
+        id: NXP_EPIC_1_ID,
+        workspaceId: WORKSPACE_ID,
+        projectId: nxpId,
+        itemKey: 'EP-1',
+        type: 'epic' as const,
+        name: 'Unified checkout platform',
+        state: 'developing' as const,
+        preliminaryEstimate: 'l' as const,
+        ownerId: ADMIN_USER_ID,
+        rank: getDeterministicRank('EP-1'),
+      },
+      {
+        id: NXP_FEATURE_1_ID,
+        workspaceId: WORKSPACE_ID,
+        projectId: nxpId,
+        parentId: NXP_EPIC_1_ID,
+        teamId: TEAM_ALPHA_ID,
+        releaseId: NXP_RELEASE_1_ID,
+        itemKey: 'FE-1',
+        type: 'feature' as const,
+        name: 'Guest checkout flow',
+        state: 'developing' as const,
+        preliminaryEstimate: 'm' as const,
+        ownerId: ADMIN_USER_ID,
+        rank: getDeterministicRank('FE-1'),
+      },
+      {
+        id: NXP_FEATURE_2_ID,
+        workspaceId: WORKSPACE_ID,
+        projectId: nxpId,
+        parentId: NXP_EPIC_1_ID,
+        itemKey: 'FE-2',
+        type: 'feature' as const,
+        name: 'Saved payment methods',
+        state: 'intake' as const,
+        preliminaryEstimate: 's' as const,
+        rank: getDeterministicRank('FE-2'),
+      },
+    ])
+    .onConflictDoNothing();
+
+  // Link the Story + Defect to FE-1 so the Feature (and, through it, the Epic)
+  // has a real rollup. `feature_id` is the ONLY link between a work item and the
+  // portfolio — a Story is never a child of an Epic directly.
+  await db
+    .update(workItems)
+    .set({ featureId: NXP_FEATURE_1_ID })
+    .where(inArray(workItems.id, [NXP_STORY_1_ID, NXP_DEFECT_1_ID]));
 
   // Assign the Story to the milestone (Iteration Status "Milestones" column).
   await db

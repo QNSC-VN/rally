@@ -135,6 +135,11 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
         or(ilike(portfolioItems.name, like), ilike(portfolioItems.itemKey, like)) as SQL,
       );
     }
+    // Snapshot the filters BEFORE the cursor is applied. The count must describe the
+    // whole result set, not the remainder after the current page — otherwise the grid's
+    // "of N" shrinks as the reader pages forward. Same split as the work-item list.
+    const baseConditions = [...conditions];
+
     // Rank + id, matching the Backlog convention: `id` is the tiebreaker that makes
     // the order TOTAL. Without it, rows sharing a rank come back in physical-tuple
     // order, which changes whenever one of them is updated — and a keyset cursor over
@@ -144,7 +149,16 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
     }
 
     const items = await this.selectViews(and(...conditions), args);
-    return buildPageResult(items, args.limit, (i) => [i.rank]);
+
+    // No joins: every filter above constrains `portfolio_items` alone, and the view's
+    // joins are all LEFT, so they cannot change the row count. Counting the bare table
+    // keeps this cheap enough to run on every page.
+    const [countRow] = await this.db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(portfolioItems)
+      .where(and(...baseConditions));
+
+    return buildPageResult(items, args.limit, (i) => [i.rank], 'asc', Number(countRow?.total ?? 0));
   }
 
   async rollupsFor(ids: string[], workspaceId: string): Promise<PortfolioRollupRow[]> {
@@ -243,6 +257,7 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
         ownerName: owner.displayName,
         teamName: teams.name,
         releaseName: releases.name,
+        projectName: projects.name,
         parentKey: parent.itemKey,
         childFeatureCount: this.childFeatureCountSql(),
         ...r,
@@ -251,6 +266,7 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
       .leftJoin(owner, eq(owner.id, portfolioItems.ownerId))
       .leftJoin(teams, eq(teams.id, portfolioItems.teamId))
       .leftJoin(releases, eq(releases.id, portfolioItems.releaseId))
+      .leftJoin(projects, eq(projects.id, portfolioItems.projectId))
       .leftJoin(parent, eq(parent.id, portfolioItems.parentId))
       .where(where)
       .orderBy(asc(portfolioItems.rank), asc(portfolioItems.id))
@@ -261,6 +277,7 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
       ownerName: row.ownerName,
       teamName: row.teamName,
       releaseName: row.releaseName,
+      projectName: row.projectName,
       parentKey: row.parentKey,
       childFeatureCount: Number(row.childFeatureCount ?? 0),
       rollup: this.mapRollup({ portfolioItemId: row.item.id, ...row }),

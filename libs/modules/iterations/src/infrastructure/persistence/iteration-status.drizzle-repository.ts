@@ -163,6 +163,7 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
     // its own feature_id. Simpler, and it matches Rally, where the association is an
     // explicit field on each artifact rather than something inferred from ancestry.
     const featureItem = alias(portfolioItems, 'pi_feature');
+    const featureId = featureItem.id;
     const featureKey = featureItem.itemKey;
     const featureTitle = featureItem.name;
 
@@ -227,6 +228,7 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
         actual,
         taskTotal,
         taskDone,
+        featureId,
         featureKey,
         featureTitle,
         defectCount,
@@ -265,6 +267,7 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
       assigneeId: r.assigneeId,
       devOwnerId: r.devOwnerId,
       rank: r.rank,
+      featureId: r.featureId,
       featureKey: r.featureKey,
       featureTitle: r.featureTitle,
       defectCount: Number(r.defectCount ?? 0),

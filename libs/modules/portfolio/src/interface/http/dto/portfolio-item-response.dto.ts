@@ -55,6 +55,7 @@ const PortfolioItemSchema = z.object({
   id: z.string().uuid(),
   workspaceId: z.string().uuid(),
   projectId: z.string().uuid(),
+  projectName: z.string().nullable().describe('Resolved server-side — this list is cross-project'),
   itemKey: z.string().describe('EP-101 or FE-318'),
   type: z.enum(TYPES),
   name: z.string(),

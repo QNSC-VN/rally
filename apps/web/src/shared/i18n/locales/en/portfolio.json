@@ -1,40 +1,81 @@
 {
-  "selectProject": "Select a project to view its portfolio.",
-  "title": "Portfolio Hierarchy",
-  "newInitiative": "New Initiative",
-  "loadError": "Failed to load portfolio data.",
-  "empty": "No initiatives yet. Create an initiative to start planning the portfolio.",
-  "metrics": {
-    "initiatives": "Initiatives",
-    "features": "Features",
-    "totalStories": "Total Stories",
-    "acceptedStories": "Accepted Stories",
-    "totalPoints": "Total Points"
+  "title": "Portfolio",
+  "loadError": "Failed to load portfolio items.",
+  "empty": "No portfolio items yet.",
+  "emptySearch": "No portfolio items match your search.",
+  "searchPlaceholder": "Search portfolio…",
+  "types": {
+    "epic": "Epic",
+    "feature": "Feature"
   },
-  "columns": {
-    "id": "ID",
+  "filters": {
     "type": "Type",
-    "progress": "Progress",
-    "targetRelease": "Target Release",
-    "related": "Related",
-    "blocked": "Blocked"
+    "state": "State",
+    "allStates": "All states"
   },
-  "create": {
-    "title": "New Initiative",
-    "titleLabel": "Title",
-    "titleRequired": "Title is required",
-    "unassigned": "Unassigned",
-    "priorityLabel": "Priority",
-    "priority": {
-      "none": "None",
-      "low": "Low",
-      "normal": "Normal",
-      "high": "High",
-      "urgent": "Urgent"
+  "metrics": {
+    "total": "Total",
+    "developing": "Developing",
+    "done": "Done"
+  },
+  "states": {
+    "no_entry": "No Entry",
+    "intake": "Intake",
+    "idea_prioritization": "Idea Prioritization",
+    "problem_discovery": "Problem Discovery",
+    "solution_discovery": "Solution Discovery",
+    "feature_prioritization": "Feature Prioritization",
+    "developing": "Developing",
+    "accepted": "Accepted",
+    "measuring": "Measuring",
+    "done": "Done",
+    "cancelled": "Cancelled"
+  },
+  "sizes": {
+    "no_entry": "—",
+    "xs": "XS",
+    "s": "S",
+    "m": "M",
+    "l": "L",
+    "xl": "XL"
+  },
+  "row": {
+    "pointsTooltip": "{{accepted}} / {{total}} points accepted",
+    "countTooltip": "{{accepted}} / {{total}} items accepted"
+  },
+  "detail": {
+    "tabs": {
+      "details": "Details",
+      "children": "Children"
     },
-    "createWithDetails": "Create with details",
-    "createButton": "Create Initiative",
-    "created": "Initiative \"{{name}}\" created",
-    "createFailed": "Failed to create initiative"
+    "fields": {
+      "state": "State",
+      "owner": "Owner",
+      "project": "Project",
+      "team": "Team",
+      "release": "Release",
+      "parent": "Epic",
+      "preliminaryEstimate": "Preliminary Estimate",
+      "refinedEstimate": "Refined Estimate",
+      "refinedItemCountEstimate": "Refined Item Count",
+      "plannedStartDate": "Planned Start Date",
+      "plannedEndDate": "Planned End Date",
+      "marketReleaseDate": "Market Release Date",
+      "description": "Description"
+    },
+    "progress": {
+      "heading": "Progress",
+      "percentDonePoints": "% Done by Plan Estimate",
+      "percentDoneCount": "% Done by Count",
+      "estimatedPoints": "Estimated Progress (points)",
+      "estimatedCount": "Estimated Progress (count)"
+    },
+    "children": {
+      "featuresHeading": "Child Features",
+      "itemsHeading": "Linked Work Items",
+      "empty": "Nothing linked yet.",
+      "epicNote": "An Epic rolls up through its child Features."
+    },
+    "notFound": "Portfolio item not found."
   }
 }
