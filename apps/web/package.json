@@ -23,7 +23,9 @@
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
     "test:e2e": "playwright test",
-    "codegen": "openapi-typescript http://localhost:3000/api/docs-json -o src/shared/api/generated/api.ts",
+    "codegen": "openapi-typescript http://localhost:3000/api/docs-json -o src/shared/api/generated/api.ts && prettier --write src/shared/api/generated/api.ts",
+    "codegen:from-spec": "openapi-typescript \"$OPENAPI_SPEC\" -o src/shared/api/generated/api.ts && prettier --write src/shared/api/generated/api.ts",
+    "codegen:check": "pnpm codegen:from-spec && git diff --exit-code -- src/shared/api/generated/api.ts",
     "prepare": "husky"
   },
   "dependencies": {
