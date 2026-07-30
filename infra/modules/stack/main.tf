@@ -433,7 +433,7 @@ module "api" {
   security_group_id = data.terraform_remote_state.runtime.outputs.sg_app_id
 
   desired_count      = 1
-  min_count          = 1
+  min_count          = var.api.min_count
   max_count          = var.api.max_count
   use_spot           = var.api.use_spot
   log_retention_days = var.log_retention_days
@@ -608,7 +608,7 @@ module "worker" {
   security_group_id = data.terraform_remote_state.runtime.outputs.sg_app_id
 
   desired_count      = 1
-  min_count          = 1
+  min_count          = var.worker.min_count
   max_count          = var.worker.max_count
   use_spot           = var.worker.use_spot
   log_retention_days = var.log_retention_days
@@ -1049,5 +1049,87 @@ check "db_pool_fits_instance_class" {
       "> ${local.db_pool_budget} usable of ${local.db_max_connections}.",
       "Lower a max_count or move to a larger instance class.",
     ])
+  }
+}
+
+# ── RDS stop scheduler (optional) ─────────────────────────────────────────────
+# The half that was missing. `_shared` grants the develop deploy role
+# `rds:StartDBInstance` and qnsc-ci's deploy reusable wakes a stopped instance and
+# restores services scaled to 0 — but nothing ever STOPPED anything. Only the waking
+# side existed, and a comment claiming otherwise was once used to justify disabling a
+# real outage alarm, so this is deliberately built rather than assumed.
+#
+# Two uses, one mechanism:
+#   * production idled before go-live — AWS force-starts a stopped instance after
+#     SEVEN DAYS, so without a recurring re-stop the saving silently evaporates and
+#     nothing reports it.
+#   * develop off-hours, if that is ever wanted — same resource, tighter cron.
+#
+# EventBridge Scheduler's universal target calls the RDS API directly: no Lambda to
+# own, patch or pay for.
+resource "aws_iam_role" "rds_stopper" {
+  count = var.rds_stop_schedule == null ? 0 : 1
+  name  = "${local.name}-rds-stopper"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "scheduler.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+      # Confused-deputy guard: without it any other account's schedule could assume
+      # this role. Scoped to this account's schedules only.
+      Condition = { StringEquals = { "aws:SourceAccount" = data.aws_caller_identity.current.account_id } }
+    }]
+  })
+
+  tags = local.tags
+}
+
+resource "aws_iam_role_policy" "rds_stopper" {
+  count = var.rds_stop_schedule == null ? 0 : 1
+  name  = "stop-db-instance"
+  role  = aws_iam_role.rds_stopper[0].id
+
+  # Stop only. Not Start, and not Reboot: the schedule's whole job is to remove
+  # capacity, and a role that can also start an instance turns a scheduling mistake
+  # into a cost increase. Waking is the deploy pipeline's job and has its own grant.
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = "rds:StopDBInstance"
+      Resource = module.rds.instance_arn
+    }]
+  })
+}
+
+resource "aws_scheduler_schedule" "rds_stop" {
+  count       = var.rds_stop_schedule == null ? 0 : 1
+  name        = "${local.name}-rds-stop"
+  description = "Stops ${module.rds.identifier}; see var.rds_stop_schedule for why this exists"
+
+  schedule_expression          = var.rds_stop_schedule
+  schedule_expression_timezone = "Asia/Ho_Chi_Minh"
+
+  # OFF, not a window: this is not load-sensitive work, and an exact time makes the
+  # relationship between a run and its CloudTrail entry unambiguous.
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  target {
+    arn      = "arn:aws:scheduler:::aws-sdk:rds:stopDBInstance"
+    role_arn = aws_iam_role.rds_stopper[0].arn
+    input    = jsonencode({ DbInstanceIdentifier = module.rds.identifier })
+
+    # No retries and no dead-letter queue ON PURPOSE. The common outcome is
+    # InvalidDBInstanceState because the instance is ALREADY STOPPED — which is the
+    # desired state, not an error. Retrying it would generate noise for a success, and
+    # a DLQ would collect messages nobody should act on. A genuine permissions failure
+    # still surfaces in CloudTrail and in the schedule's own metrics.
+    retry_policy {
+      maximum_retry_attempts = 0
+    }
   }
 }

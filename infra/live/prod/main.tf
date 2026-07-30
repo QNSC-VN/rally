@@ -100,10 +100,24 @@ module "stack" {
   // incident, and it is inside the 3-per-account free tier.
   create_dashboard = true
 
-  // Zero running tasks is never normal here, so "no registered targets" breaching is
-  // exactly the signal wanted — this is the only alarm that catches an outage which
-  // produces no load to make CPU, latency or 5xx move.
-  monitor_target_health = true
+  // OFF while production is IDLE (see the idle posture on api/worker below). This alarm
+  // treats missing data as breaching, because a target group with no registered targets
+  // publishes nothing at all and that is normally the outage worth paging on — which is
+  // exactly why it cannot stay on while zero tasks is the intended state. Leaving it
+  // enabled during the idle turned the deliberate shutdown into a page.
+  //
+  // TURN THIS BACK ON at go-live, in the same change that restores min_count. It is the
+  // only alarm that catches an outage producing no load to move CPU, latency or 5xx.
+  monitor_target_health = false
+
+  // Weekly re-stop, because AWS force-starts a stopped instance after 7 days. Sunday
+  // 01:00 local sits well inside that window, so the instance is never up for more than
+  // a few hours of a week it is not being used.
+  //
+  // REMOVE THIS AT GO-LIVE, in the same change that restores min_count and
+  // monitor_target_health. A schedule that stops production every Sunday is precisely
+  // the kind of leftover that becomes an outage nobody can explain.
+  rds_stop_schedule = "cron(0 1 ? * SUN *)"
 
   // Both halves of rally/production/r2-public-* are populated, so the public-bucket
   // credential can be injected. Same fix as develop: `rally-production-r2-app` is scoped
@@ -176,19 +190,42 @@ module "stack" {
 
   // On-demand, not Spot: an interruption here is user-visible. Tighter autoscale
   // targets and more headroom than develop.
+  // ── IDLE UNTIL GO-LIVE ──────────────────────────────────────────────────────
+  // `min_count = 0` on both services, so production runs no tasks. Production has
+  // never served a user — the ALB logged 4, 1, 0, 1 requests on four consecutive days,
+  // and the only non-zero days since are SCM webhooks and synthetic probes — while
+  // costing ~$52/mo in on-demand Fargate alone, a third of the account.
+  //
+  // The floor is what makes it hold. `desired_count` is under `ignore_changes`, so
+  // scaling to zero by hand is expected and non-drifting, but Application Auto Scaling
+  // restores the service to `min_count` within minutes, so a scale-to-zero against a
+  // floor of 1 silently undoes itself.
+  //
+  // TO RESTORE AT GO-LIVE: set both min_count back to 1, set monitor_target_health back
+  // to true above, and deploy. The deploy pipeline sets desired_count, and qnsc-ci's
+  // `ensure_rds` starts the stopped instance, so no manual step is needed beyond this
+  // file. Nothing else about the environment changed — same task definitions, same
+  // secrets, same database, same cache.
+  //
+  // RDS run-state is not a Terraform concept, so the instance is stopped out of band —
+  // but AWS FORCE-STARTS a stopped instance after 7 days, so `rds_stop_schedule` below
+  // re-stops it weekly. Without that the saving silently evaporates.
   api = {
     cpu               = 1024
     memory            = 2048
     max_count         = 10
+    min_count         = 0
     use_spot          = false
     cpu_target_pct    = 60
     memory_target_pct = 70
   }
 
+  // Idled with the api — see the note above.
   worker = {
     cpu       = 512
     memory    = 1024
     max_count = 6
+    min_count = 0
     use_spot  = false
   }
 

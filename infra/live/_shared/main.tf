@@ -134,6 +134,7 @@ module "iam_oidc" {
 # lifecycle. An ARN string doesn't require the resource to exist.
 locals {
   rally_develop_rds_arn = "arn:aws:rds:ap-southeast-1:${data.aws_caller_identity.current.account_id}:db:rally-develop"
+  rally_prod_rds_arn    = "arn:aws:rds:ap-southeast-1:${data.aws_caller_identity.current.account_id}:db:rally-prod"
 }
 
 resource "aws_iam_role_policy" "deploy_rds_dev_guard" {
@@ -151,6 +152,45 @@ resource "aws_iam_role_policy" "deploy_rds_dev_guard" {
           "rds:StartDBInstance",
         ]
         Resource = local.rally_develop_rds_arn
+      }
+    ]
+  })
+}
+
+# ── RDS wake guard — PRODUCTION deploy role ──────────────────────────────────
+# This grant was deliberately ABSENT until production was idled, and the reason it is
+# here now is a posture change rather than a loosening: production's instance is
+# STOPPED on purpose until go-live (see `min_count = 0` and `rds_stop_schedule` in
+# ../prod/main.tf), so waking it is a normal step of deploying rather than an
+# exception to be denied.
+#
+# Without it, idling production silently broke the release pipeline: the deploy would
+# reach `Run database migrations` and fail against a stopped instance, with the cause
+# two repos away from the symptom. Two releases were cut the same day the idle landed,
+# so this is not hypothetical.
+#
+# Still Start and Describe only — never Stop. Stopping is the scheduler's job and it
+# has its own narrowly-scoped role; a deploy role that can stop production is a
+# deploy that can cause an outage.
+#
+# REMOVE AT GO-LIVE together with the idle settings. Once production is meant to be
+# running continuously, a deploy role able to start a stopped database is again the
+# exception it used to be, and its absence is what makes an accidental stop loud.
+resource "aws_iam_role_policy" "deploy_rds_prod_guard" {
+  name = "rally-deploy-prod-rds-guard"
+  role = split("/", module.iam_oidc.deploy_role_arns["production"])[1]
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "RDSProdWakeWhileIdled"
+        Effect = "Allow"
+        Action = [
+          "rds:DescribeDBInstances",
+          "rds:StartDBInstance",
+        ]
+        Resource = local.rally_prod_rds_arn
       }
     ]
   })
