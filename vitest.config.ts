@@ -99,6 +99,7 @@ export default defineConfig({
         'libs/platform/src/auth/jwt.guard.ts',
         'libs/platform/src/context/request-context.ts',
         'libs/platform/src/http/csrf.ts',
+        'libs/platform/src/http/request-timing.ts',
         'libs/platform/src/outbox/abstract-outbox-relay.ts',
         'libs/platform/src/storage/storage.service.ts',
         'libs/platform/src/utils/lexorank.util.ts',

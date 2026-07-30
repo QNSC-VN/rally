@@ -8,6 +8,7 @@ import fastifyHelmet from '@fastify/helmet';
 import fastifyMultipart from '@fastify/multipart';
 import { AppConfigService } from '@platform/config';
 import { CSRF_HEADER, CSRF_SECRET_COOKIE, requiresCsrfProtection } from '@platform/http/csrf';
+import { registerRequestTiming } from '@platform/http/request-timing';
 import { BFF_SESSION_COOKIE } from '@platform/auth';
 
 export async function bootstrapApp(app: NestFastifyApplication): Promise<void> {
@@ -75,6 +76,13 @@ export async function bootstrapApp(app: NestFastifyApplication): Promise<void> {
   // check once here — rather than per route — means a new controller is covered by
   // default instead of opting in and being forgotten.
   const fastify = app.getHttpAdapter().getInstance();
+
+  // Registered BEFORE the CSRF gate, and before any hook that can reject: this only
+  // stamps an arrival timestamp, and it has to run on every request that reaches the
+  // process — including the ones something later refuses — or the access log loses
+  // the arrival time for exactly the requests worth investigating.
+  registerRequestTiming(fastify);
+
   fastify.addHook('onRequest', function csrfGate(req, reply, done) {
     if (!requiresCsrfProtection(req)) return done();
     fastify.csrfProtection(req, reply, done);
