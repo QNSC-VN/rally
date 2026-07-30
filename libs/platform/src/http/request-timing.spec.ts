@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { albReceivedAtMs, arrivalAtMs, registerRequestTiming } from './request-timing';
+import {
+  ALB_WAIT_REPORTING_FLOOR_MS,
+  albReceivedAtMs,
+  albWaitMs,
+  arrivalAtMs,
+  registerRequestTiming,
+} from './request-timing';
 
 /**
  * The decoding is the whole value of this module — a wrong epoch would produce a
@@ -67,5 +73,35 @@ describe('registerRequestTiming', () => {
 
   it('reports undefined arrival on a request the hook never saw', () => {
     expect(arrivalAtMs({} as never)).toBeUndefined();
+  });
+});
+
+describe('albWaitMs', () => {
+  it('suppresses gaps inside the trace id quantisation noise', () => {
+    // The trace id carries whole seconds, so a request with NO delay still computes a
+    // gap anywhere in [0, 1000). Reporting that produced a measured ~500ms median that
+    // reads as real proxy delay to anyone scanning logs — the exact misattribution this
+    // instrumentation exists to prevent.
+    expect(albWaitMs(1_000_000_500, 1_000_000_000)).toBeUndefined();
+    expect(albWaitMs(1_000_000_636, 1_000_000_000)).toBeUndefined();
+    expect(albWaitMs(1_000_000_999, 1_000_000_000)).toBeUndefined();
+    expect(albWaitMs(1_000_000_000, 1_000_000_000)).toBeUndefined();
+  });
+
+  it('reports a gap that cannot be truncation alone', () => {
+    // At or above the quantisation width, something real happened.
+    expect(albWaitMs(1_000_001_000, 1_000_000_000)).toBe(ALB_WAIT_REPORTING_FLOOR_MS);
+    expect(albWaitMs(1_000_019_021, 1_000_000_000)).toBe(19_021);
+  });
+
+  it('reports nothing when either timestamp is missing', () => {
+    expect(albWaitMs(undefined, 1_000_000_000)).toBeUndefined();
+    expect(albWaitMs(1_000_000_000, undefined)).toBeUndefined();
+    expect(albWaitMs(undefined, undefined)).toBeUndefined();
+  });
+
+  it('does not report a negative gap as a signal', () => {
+    // Clock skew between the ALB and the task can put arrival "before" the ALB second.
+    expect(albWaitMs(1_000_000_000, 1_000_005_000)).toBeUndefined();
   });
 });
