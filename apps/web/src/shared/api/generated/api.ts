@@ -3917,6 +3917,8 @@ export interface components {
           estimated: number
           capacity: number | null
           warnings: (
+            | 'feature_missing_estimate'
+            | 'team_missing_capacity'
             | 'rollup_exceeds_estimated'
             | 'rollup_exceeds_capacity'
             | 'estimated_exceeds_capacity'
@@ -3945,6 +3947,8 @@ export interface components {
           estimated: number
           capacity: number | null
           warnings: (
+            | 'feature_missing_estimate'
+            | 'team_missing_capacity'
             | 'rollup_exceeds_estimated'
             | 'rollup_exceeds_capacity'
             | 'estimated_exceeds_capacity'

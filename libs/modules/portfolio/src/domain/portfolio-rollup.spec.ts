@@ -195,84 +195,119 @@ describe('defaultAllocationEstimate — the anti-circularity rule', () => {
 });
 
 describe('computeCapacityWarnings', () => {
+  /** A team row with a real ceiling — the common case. */
+  const team = (over: Partial<Parameters<typeof computeCapacityWarnings>[0]> = {}) =>
+    computeCapacityWarnings({ kind: 'team', rollup: 0, estimated: 0, capacity: 100, ...over });
+
+  /** A Feature row: no ceiling of its own, and an estimate that came from some tier. */
+  const feature = (over: Partial<Parameters<typeof computeCapacityWarnings>[0]> = {}) =>
+    computeCapacityWarnings({
+      kind: 'feature',
+      rollup: 0,
+      estimated: 30,
+      capacity: null,
+      tier: 'refined',
+      ...over,
+    });
+
   it('warns when the rollup outgrows the commitment', () => {
-    expect(computeCapacityWarnings({ rollup: 40, estimated: 30, capacity: 100 })).toContain(
-      'rollup_exceeds_estimated',
-    );
+    expect(team({ rollup: 40, estimated: 30 })).toContain('rollup_exceeds_estimated');
   });
 
   it('warns when the rollup exceeds capacity', () => {
-    expect(computeCapacityWarnings({ rollup: 120, estimated: 130, capacity: 100 })).toContain(
-      'rollup_exceeds_capacity',
-    );
+    expect(team({ rollup: 120, estimated: 130 })).toContain('rollup_exceeds_capacity');
   });
 
   it('warns when committed demand exceeds capacity', () => {
-    expect(computeCapacityWarnings({ rollup: 0, estimated: 130, capacity: 100 })).toContain(
-      'estimated_exceeds_capacity',
-    );
+    expect(team({ estimated: 130 })).toContain('estimated_exceeds_capacity');
   });
 
   it('returns nothing when everything fits', () => {
-    expect(computeCapacityWarnings({ rollup: 20, estimated: 30, capacity: 100 })).toEqual([]);
+    expect(team({ rollup: 20, estimated: 30 })).toEqual([]);
   });
 
-  describe('Feature rows carry no capacity of their own', () => {
-    it('evaluates only the rollup-vs-estimated rule when capacity is null', () => {
-      // The spec's Feature-row behaviour, with no separate code path.
-      expect(computeCapacityWarnings({ rollup: 40, estimated: 30, capacity: null })).toEqual([
+  describe("Rally's missing-data errors, which are the CAUSE of the comparison ones", () => {
+    it('warns that a team has no capacity entered', () => {
+      // Rally raises this by itself and describes it as cascading into the capacity
+      // comparisons. Silence here would read as "all clear" on a row whose checks were
+      // skipped entirely.
+      expect(team({ capacity: null })).toContain('team_missing_capacity');
+      expect(team({ capacity: 0 })).toContain('team_missing_capacity');
+    });
+
+    it('reports the missing capacity INSTEAD of unevaluable comparisons', () => {
+      // With no ceiling, "exceeds capacity" has no meaning — only the estimate comparison,
+      // which does not need one, may still fire.
+      const w = team({ capacity: null, rollup: 40, estimated: 30 });
+      expect(w).toEqual(['team_missing_capacity', 'rollup_exceeds_estimated']);
+    });
+
+    it("warns that a Feature has no estimate at all — Rally's Missing Estimate Error", () => {
+      // Tier `none` means no allocation, no refined forecast, no preliminary mapping.
+      expect(feature({ tier: 'none', estimated: 0 })).toContain('feature_missing_estimate');
+    });
+
+    it('reports the missing estimate BEFORE the rollup comparison it causes', () => {
+      // A zero estimate is why the rollup exceeds it. Leading with the consequence would
+      // send the planner to fix the wrong field.
+      expect(feature({ tier: 'none', estimated: 0, rollup: 12 })).toEqual([
+        'feature_missing_estimate',
         'rollup_exceeds_estimated',
       ]);
     });
 
+    it('stays quiet for a Feature whose estimate came from any real tier', () => {
+      expect(feature({ tier: 'preliminary' })).toEqual([]);
+      expect(feature({ tier: 'allocated' })).toEqual([]);
+    });
+
+    it('never raises the Feature rule on a team row, or the team rule on a Feature', () => {
+      // The two rules are mutually exclusive by row kind, which is exactly why `kind` is
+      // stated rather than inferred from a null capacity.
+      expect(team({ capacity: null })).not.toContain('feature_missing_estimate');
+      expect(feature({ tier: 'none', estimated: 0 })).not.toContain('team_missing_capacity');
+    });
+  });
+
+  describe('Feature rows carry no capacity of their own', () => {
+    it('evaluates only the rollup-vs-estimated rule', () => {
+      expect(feature({ rollup: 40, estimated: 30 })).toEqual(['rollup_exceeds_estimated']);
+    });
+
     it('returns nothing for a healthy Feature row', () => {
-      expect(computeCapacityWarnings({ rollup: 10, estimated: 30, capacity: null })).toEqual([]);
+      expect(feature({ rollup: 10, estimated: 30 })).toEqual([]);
     });
   });
 
   describe('target load — Rally advises leaving ~20% spare', () => {
     it('warns above the target but under capacity', () => {
       // 95 of 100 with an 80% target: not over capacity, but no room for a defect.
-      expect(
-        computeCapacityWarnings({ rollup: 0, estimated: 95, capacity: 100, targetLoadPct: 80 }),
-      ).toContain('load_above_target');
+      expect(team({ estimated: 95, targetLoadPct: 80 })).toContain('load_above_target');
     });
 
     it('stays silent at or below the target', () => {
-      expect(
-        computeCapacityWarnings({ rollup: 0, estimated: 80, capacity: 100, targetLoadPct: 80 }),
-      ).toEqual([]);
+      expect(team({ estimated: 80, targetLoadPct: 80 })).toEqual([]);
     });
 
     it('does not add the target warning once genuinely over capacity', () => {
       // The over-capacity rule already fired; repeating the point is noise.
-      const w = computeCapacityWarnings({
-        rollup: 0,
-        estimated: 130,
-        capacity: 100,
-        targetLoadPct: 80,
-      });
+      const w = team({ estimated: 130, targetLoadPct: 80 });
       expect(w).toContain('estimated_exceeds_capacity');
       expect(w).not.toContain('load_above_target');
     });
 
     it('is disabled by a target of 100 or an absent target', () => {
-      const at100 = computeCapacityWarnings({
-        rollup: 0,
-        estimated: 95,
-        capacity: 100,
-        targetLoadPct: 100,
-      });
-      const absent = computeCapacityWarnings({ rollup: 0, estimated: 95, capacity: 100 });
-      expect(at100).toEqual([]);
-      expect(absent).toEqual([]);
+      expect(team({ estimated: 95, targetLoadPct: 100 })).toEqual([]);
+      expect(team({ estimated: 95 })).toEqual([]);
     });
   });
 
-  it('ignores capacity rules when capacity is zero', () => {
-    // Zero capacity is a planner statement, but dividing a target by it is meaningless.
-    const w = computeCapacityWarnings({ rollup: 5, estimated: 5, capacity: 0, targetLoadPct: 80 });
-    expect(w).toEqual([]);
+  it('treats a zero capacity as missing rather than as a ceiling of zero', () => {
+    // Dividing a target by zero is meaningless, and a planner who typed 0 has not yet
+    // stated a real ceiling — Rally's missing-capacity error is the honest report.
+    expect(team({ rollup: 5, estimated: 5, capacity: 0, targetLoadPct: 80 })).toEqual([
+      'team_missing_capacity',
+    ]);
   });
 });
 

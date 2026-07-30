@@ -87,6 +87,54 @@ test.describe('Capacity Planning', () => {
     await expect(teamRow(page)).toContainText('Not entered')
   })
 
+  test('warnings say WHICH rule fired, and Breakdown spells out the numbers', async ({ page }) => {
+    await openSeededPlan(page)
+
+    // Seeded Team Alpha has no capacity, which is Rally's own missing-capacity error. Reset
+    // to blank first: this spec shares the plan with the capacity-editing test above, and a
+    // leftover value would make the warning legitimately absent.
+    const reset = await editCapacity(page)
+    await reset.fill('')
+    await reset.press('Enter')
+    await expect(teamRow(page)).toContainText('Not entered')
+
+    // The glyph carries the reason as its accessible name — before this slice it was an
+    // unlabelled triangle, so "something is wrong" was the entire message.
+    const glyph = teamRow(page).getByRole('img', { name: /No capacity entered/ })
+    await expect(glyph).toBeVisible()
+
+    // ── Breakdown ───────────────────────────────────────────────────────────
+    await page.getByRole('button', { name: 'Breakdown', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: /Capacity breakdown/i })
+    await expect(dialog).toBeVisible()
+
+    // Rally's four columns, by name rather than by position.
+    for (const column of ['Complete', 'Rollup', 'Estimated', 'Capacity', 'Remaining']) {
+      await expect(dialog.getByRole('columnheader', { name: column, exact: true })).toBeVisible()
+    }
+    // The team is a row header, and its missing capacity is reported here too rather than
+    // rendering as a zero ceiling.
+    await expect(dialog.getByRole('rowheader', { name: /Team Alpha/ })).toBeVisible()
+    await expect(dialog.getByRole('row', { name: /Total/ })).toContainText('Not entered')
+
+    // The modal's own X — this overlay adds no footer, so there is exactly one Close.
+    await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+    await expect(dialog).toBeHidden()
+
+    // Entering a capacity clears that warning — the plan is now measurable. Restores the
+    // seeded blank afterwards so re-runs start where this began.
+    let editor = await editCapacity(page)
+    await editor.fill('500')
+    await editor.press('Enter')
+    await expect(teamRow(page)).toContainText('500')
+    await expect(teamRow(page).getByRole('img', { name: /No capacity entered/ })).toHaveCount(0)
+
+    editor = await editCapacity(page)
+    await editor.fill('')
+    await editor.press('Enter')
+    await expect(teamRow(page)).toContainText('Not entered')
+  })
+
   test('the plan list renders its columns and the seeded plan', async ({ page }) => {
     await loginAndSelectProject(page)
     await page.goto('/capacity-planning', { waitUntil: 'domcontentloaded' })

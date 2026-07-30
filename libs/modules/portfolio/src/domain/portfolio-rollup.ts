@@ -139,20 +139,43 @@ export function defaultAllocationEstimate(
 
 // ── Capacity warnings ───────────────────────────────────────────────────────
 
-/** Advisory warnings. Never block a planning action — they inform, they do not gate. */
+/**
+ * Advisory warnings. Never block a planning action — they inform, they do not gate.
+ *
+ * The first three mirror the errors Rally's Capacity Planning page raises by name:
+ * "Feature Missing Estimate Error", "Feature Rollup Exceeds Estimate Error" and "Team
+ * Estimate Exceeds Team Capacity", plus the missing-team-capacity case that Rally
+ * describes as cascading into the others. `rollup_exceeds_capacity` and
+ * `load_above_target` are ours: the first because a team's live children can outgrow the
+ * ceiling even when the commitment did not, the second because Rally's own guidance is to
+ * leave roughly 20% for unplanned work and `capacity_plans.target_load_pct` records it.
+ */
 export type CapacityWarning =
+  | 'feature_missing_estimate'
+  | 'team_missing_capacity'
   | 'rollup_exceeds_estimated'
   | 'rollup_exceeds_capacity'
   | 'estimated_exceeds_capacity'
   | 'load_above_target';
 
 export interface CapacityWarningInput {
+  /**
+   * Which kind of row this is, stated rather than inferred.
+   *
+   * `capacity: null` used to carry two different meanings — "a Feature has no ceiling of
+   * its own" and "nobody has entered this team's capacity yet" — and the second is the one
+   * Rally raises an error for. Inferring the row kind from the ceiling made that error
+   * unexpressible, so the kind is now explicit.
+   */
+  kind: 'team' | 'feature';
   /** Live SUM(story_points) of children generated from allocated Features. */
   rollup: number;
   /** Committed demand — SUM(allocation.value). */
   estimated: number;
   /** Manually entered capacity, or null when the planner has not entered one. */
   capacity: number | null;
+  /** Which tier produced the Feature's estimate. Only read for `kind: 'feature'`. */
+  tier?: EstimateTier;
   /**
    * Advisory ceiling as a percentage of capacity, below 100. Rally's guidance is to
    * leave roughly 20% for unplanned work, so a team at 95% warrants a warning even
@@ -161,15 +184,23 @@ export interface CapacityWarningInput {
   targetLoadPct?: number | null;
 }
 
-/**
- * Evaluate the warning rules for one row.
- *
- * A Feature row carries no capacity of its own, so passing `capacity: null` yields
- * only the `rollup_exceeds_estimated` rule — exactly what the spec requires for
- * Feature rows, without a separate code path.
- */
+/** Evaluate the warning rules for one row. */
 export function computeCapacityWarnings(input: CapacityWarningInput): CapacityWarning[] {
   const warnings: CapacityWarning[] = [];
+
+  // Rally's "Feature Missing Estimate Error": no tier produced a number, so this Feature
+  // cannot be planned against a capacity at all. Reported ahead of the comparison rules
+  // because it is the CAUSE — a zero estimate is why the rollup exceeds it.
+  if (input.kind === 'feature' && input.tier === 'none') {
+    warnings.push('feature_missing_estimate');
+  }
+
+  // Rally: missing team capacity is itself an error, and every capacity comparison below
+  // is unevaluable until it is entered. Reported instead of them, not alongside — a row
+  // that silently skipped its checks reads as "all clear", which is the opposite of true.
+  if (input.kind === 'team' && (input.capacity === null || input.capacity <= 0)) {
+    warnings.push('team_missing_capacity');
+  }
 
   // Children have outgrown the commitment: the plan under-committed for this work.
   if (input.rollup > input.estimated) warnings.push('rollup_exceeds_estimated');

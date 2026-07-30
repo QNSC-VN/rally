@@ -20,8 +20,13 @@ const CapacityMetricsSchema = z.object({
   rollup: z.number(),
   estimated: z.number(),
   capacity: z.number().nullable(),
+  // Ordered CAUSE-FIRST, and the client renders them in the order it receives: a missing
+  // estimate or a missing capacity is why the comparison rules fired, so leading with the
+  // consequence would send a planner to fix the wrong thing.
   warnings: z.array(
     z.enum([
+      'feature_missing_estimate',
+      'team_missing_capacity',
       'rollup_exceeds_estimated',
       'rollup_exceeds_capacity',
       'estimated_exceeds_capacity',

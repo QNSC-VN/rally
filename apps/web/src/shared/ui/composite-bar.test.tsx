@@ -58,10 +58,28 @@ describe('CompositeBar', () => {
         rollup={20}
         estimated={1}
         capacity={10}
-        warnings={['rollup_exceeds_capacity']}
+        warningLabels={['Child work already exceeds the capacity']}
       />,
     )
     expect(loud.container.querySelector('svg')).not.toBeNull()
+  })
+
+  it('makes the glyph say WHY, to a mouse and to a screen reader', () => {
+    // The glyph used to carry no title and no accessible name, so the planner could see
+    // that something was wrong and had no way to find out what.
+    const { getByRole } = render(
+      <CompositeBar
+        complete={0}
+        rollup={20}
+        estimated={0}
+        capacity={10}
+        warningLabels={['No capacity entered', 'Child work already exceeds the capacity']}
+      />,
+    )
+    const glyph = getByRole('img', { name: /No capacity entered/ })
+    // Every rule that fired is listed, not just the first.
+    expect(glyph.getAttribute('title')).toContain('Child work already exceeds the capacity')
+    expect(glyph.getAttribute('aria-label')).toContain('Child work already exceeds the capacity')
   })
 
   it('draws the target marker only with a real capacity and a sub-100 target', () => {

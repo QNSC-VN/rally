@@ -11,6 +11,7 @@ import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { CompositeBar } from '@/shared/ui/composite-bar'
 import { IconButton } from '@/shared/ui/icon-button'
 import { notify } from '@/shared/lib/toast'
+import { useCapacityWarningText } from '@/features/capacity-planning/warning-labels'
 import { type TeamColKey } from '../model/columns'
 
 /**
@@ -46,6 +47,7 @@ export function CapacityTeamRow({
   gutter: ReactNode
 }) {
   const { t } = useTranslation('capacity')
+  const warningText = useCapacityWarningText()
   const setCapacity = useSetCapacity()
   const removeTeam = useRemoveCapacityTeam()
 
@@ -99,7 +101,7 @@ export function CapacityTeamRow({
           estimated={team.metrics.estimated}
           capacity={team.metrics.capacity}
           targetLoadPct={targetLoadPct}
-          warnings={team.metrics.warnings}
+          warningLabels={warningText(team.metrics.warnings)}
           title={t('row.barTooltip', {
             complete: team.metrics.complete,
             rollup: team.metrics.rollup,

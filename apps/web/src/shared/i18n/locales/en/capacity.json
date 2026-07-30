@@ -84,5 +84,27 @@
     "submit": "Allocate",
     "allocated": "Allocation added",
     "failed": "Failed to allocate"
+  },
+  "warnings": {
+    "feature_missing_estimate": "This Feature has no estimate — no allocation, refined forecast or preliminary size to plan against",
+    "team_missing_capacity": "No capacity entered for this team, so its capacity checks cannot run",
+    "rollup_exceeds_estimated": "Child work has outgrown what was committed for this row",
+    "rollup_exceeds_capacity": "Child work already exceeds the capacity",
+    "estimated_exceeds_capacity": "Committed demand exceeds the capacity",
+    "load_above_target": "Committed demand is above the target load, leaving no room for unplanned work"
+  },
+  "breakdown": {
+    "action": "Breakdown",
+    "title": "Capacity breakdown",
+    "subtitle": "Complete, Rollup and Estimated against each team’s capacity, in {{unit}}.",
+    "team": "Team",
+    "complete": "Complete",
+    "rollup": "Rollup",
+    "estimated": "Estimated",
+    "capacity": "Capacity",
+    "remaining": "Remaining",
+    "total": "Total",
+    "unallocated": "Unallocated demand",
+    "noTeams": "Add a team to see a breakdown."
   }
 }
