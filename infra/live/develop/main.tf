@@ -99,6 +99,15 @@ module "stack" {
   // second reason rather than assuming it.
   monitor_target_health = false
 
+  // Nightly, not weekly like production. Develop wakes on every merge to main, so a
+  // weekly stop would leave it running most of the week; 21:00 local puts it down after
+  // the working day and the next deploy brings it back.
+  //
+  // There is no matching START schedule on purpose. The deploy pipeline is the wake
+  // signal, so develop is up exactly on the days it is being changed. Adding a morning
+  // start would pay for the days nobody touches it — which is most of them.
+  rds_stop_schedule = "cron(0 21 * * ? *)"
+
   // Both halves of rally/develop/r2-public-* are populated, so the public-bucket
   // credential can be injected. This is a FIX, not hardening: the primary token
   // (`rally-develop-r2-app`) is scoped to `rally-develop-attachments` alone, so while
@@ -148,17 +157,40 @@ module "stack" {
   }
 
   // Fargate Spot: ~70% cheaper, and an interruption in develop is harmless.
+  // ── IDLE BY DEFAULT, WOKEN BY DEPLOYS ───────────────────────────────────────
+  // `min_count = 0` on both services. Develop is exercised by CI deploys and the odd
+  // manual check, not by users — its ALB sees a handful of requests a day — so paying
+  // for two tasks around the clock buys nothing.
+  //
+  // Waking needs no new machinery and no schedule: qnsc-ci's deploy reusable already
+  // restores services scaled to 0 and calls `ensure_rds` to start a stopped instance,
+  // and `_shared` already grants the develop deploy role `rds:StartDBInstance`. Every
+  // merge to main therefore brings develop up on its own. `rds_stop_schedule` below
+  // puts it back down nightly.
+  //
+  // The floor is the part that matters. `desired_count` is under `ignore_changes`, so
+  // hand-scaling is non-drifting, but Application Auto Scaling restores a service to
+  // `min_count` within minutes — a scale-to-zero against a floor of 1 undoes itself.
+  //
+  // NOT done with scheduled autoscaling actions, deliberately:
+  // `aws_appautoscaling_target` has no `ignore_changes` on min/max, so a scheduled
+  // action mutating them would drift, and any infra-apply running at night would
+  // silently wake develop. That is the same silent-reset shape as the
+  // `task_definition` and `desired_count` cases documented in CLAUDE.md.
   api = {
     cpu       = 512
     memory    = 1024
     max_count = 3
+    min_count = 0
     use_spot  = true
   }
 
+  // Idled with the api — see the note above.
   worker = {
     cpu       = 256
     memory    = 512
     max_count = 2
+    min_count = 0
     use_spot  = true
   }
 
