@@ -10,6 +10,7 @@ const publicPem = publicKey.export({ type: 'spki', format: 'pem' }).toString();
 function env(overrides: Record<string, string> = {}) {
   return {
     DATABASE_URL: 'postgres://u:p@localhost:5432/rally',
+    REDIS_URL: 'redis://localhost:6379',
     JWT_PRIVATE_KEY: privatePem,
     CSRF_SECRET: 'x'.repeat(32),
     COOKIE_SECRET: 'y'.repeat(32),
@@ -90,5 +91,35 @@ describe('EnvSchema — JWT key pair', () => {
   it('still rejects a JWT_PRIVATE_KEY that is not PEM at all', () => {
     const result = EnvSchema.safeParse(env({ JWT_PRIVATE_KEY: 'not-a-key' }));
     expect(result.success).toBe(false);
+  });
+});
+
+describe('EnvSchema — REDIS_URL', () => {
+  // It used to default to redis://localhost:6379. That is harmless locally and
+  // dangerous everywhere else: a deployed task missing the injection connected to
+  // nothing on its own loopback instead of failing to boot. Sessions live only in
+  // Valkey, and the token denylist and rate limiter both FAIL OPEN when it is
+  // unreachable — so the service answered healthz with 200 while revoked tokens kept
+  // working and rate limiting was off.
+  it('is required, with no localhost fallback', () => {
+    const withoutRedis = env();
+    delete (withoutRedis as Record<string, unknown>).REDIS_URL;
+    const result = EnvSchema.safeParse(withoutRedis);
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(JSON.stringify(result.error.issues)).toContain('REDIS_URL');
+  });
+
+  it('rejects a value that is not a URL', () => {
+    expect(EnvSchema.safeParse(env({ REDIS_URL: 'not-a-url' })).success).toBe(false);
+    expect(EnvSchema.safeParse(env({ REDIS_URL: '' })).success).toBe(false);
+  });
+
+  it('accepts both the deployed and local schemes', () => {
+    // Deployed nodes enable transit encryption, so the scheme is always rediss://.
+    expect(
+      EnvSchema.safeParse(env({ REDIS_URL: 'rediss://master.x.cache.amazonaws.com:6379' })).success,
+    ).toBe(true);
+    expect(EnvSchema.safeParse(env({ REDIS_URL: 'redis://localhost:6379' })).success).toBe(true);
   });
 });
