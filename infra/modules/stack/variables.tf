@@ -391,3 +391,25 @@ variable "db_role_passwords_set" {
     error_message = "db_least_privilege requires db_role_passwords_set = true first: the roles need a password before api/worker can authenticate as them. Populate the secrets, set db_role_passwords_set, apply, run the cutover task, then set db_least_privilege."
   }
 }
+
+variable "rds_stop_schedule" {
+  type        = string
+  default     = null
+  description = <<-EOT
+    Cron/rate expression for an EventBridge Scheduler that STOPS this environment's RDS
+    instance. Null (the default) creates no schedule, no role and no policy.
+
+    Required for any environment that is deliberately idle, because AWS FORCE-STARTS a
+    stopped RDS instance after seven days. Without a recurring re-stop the instance
+    quietly comes back and the saving disappears with nothing reporting it.
+
+    Expression is evaluated in Asia/Ho_Chi_Minh. Example, every Sunday 01:00 local —
+    comfortably inside the 7-day window:
+
+        cron(0 1 ? * SUN *)
+
+    Stopping an already-stopped instance fails with InvalidDBInstanceState, which is the
+    DESIRED state rather than an error, so the target is configured with no retries and
+    no dead-letter queue.
+  EOT
+}

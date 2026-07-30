@@ -110,6 +110,15 @@ module "stack" {
   // only alarm that catches an outage producing no load to move CPU, latency or 5xx.
   monitor_target_health = false
 
+  // Weekly re-stop, because AWS force-starts a stopped instance after 7 days. Sunday
+  // 01:00 local sits well inside that window, so the instance is never up for more than
+  // a few hours of a week it is not being used.
+  //
+  // REMOVE THIS AT GO-LIVE, in the same change that restores min_count and
+  // monitor_target_health. A schedule that stops production every Sunday is precisely
+  // the kind of leftover that becomes an outage nobody can explain.
+  rds_stop_schedule = "cron(0 1 ? * SUN *)"
+
   // Both halves of rally/production/r2-public-* are populated, so the public-bucket
   // credential can be injected. Same fix as develop: `rally-production-r2-app` is scoped
   // to `rally-prod-attachments` alone, so public-asset writes had no grant. Production
@@ -198,9 +207,9 @@ module "stack" {
   // file. Nothing else about the environment changed — same task definitions, same
   // secrets, same database, same cache.
   //
-  // RDS is stopped separately, because instance run-state is not a Terraform concept.
-  // AWS force-starts a stopped instance after 7 days, so it needs a recurring re-stop
-  // rather than a one-off.
+  // RDS run-state is not a Terraform concept, so the instance is stopped out of band —
+  // but AWS FORCE-STARTS a stopped instance after 7 days, so `rds_stop_schedule` below
+  // re-stops it weekly. Without that the saving silently evaporates.
   api = {
     cpu               = 1024
     memory            = 2048
