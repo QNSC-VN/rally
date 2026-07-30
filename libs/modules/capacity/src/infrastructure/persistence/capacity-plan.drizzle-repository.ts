@@ -329,6 +329,94 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
     return { rollup: Number(row?.rollup ?? 0), complete: Number(row?.complete ?? 0) };
   }
 
+  // ── Publish ───────────────────────────────────────────────────────────────
+
+  /**
+   * The release's own window, for the span check publishing depends on.
+   *
+   * `capacity_plans.release_id` carries no foreign key (see the schema comment), so this
+   * reads by id + workspace rather than joining.
+   */
+  async releaseWindow(
+    releaseId: string,
+    workspaceId: string,
+  ): Promise<{ startDate: string | null; endDate: string | null } | null> {
+    const rows = await this.db
+      .select({ startDate: releases.startDate, endDate: releases.releaseDate })
+      .from(releases)
+      .where(and(eq(releases.id, releaseId), eq(releases.workspaceId, workspaceId)))
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
+  /**
+   * Write the plan's window — and optionally its release — onto one Feature.
+   *
+   * `releaseId` is `undefined` when the plan's window spans releases: Rally updates the
+   * Release field "only when the start and end dates do not span releases", while the
+   * planned dates are written either way. Passing `undefined` leaves the column alone,
+   * which is different from `null` (clear it) and is why this is not a spread.
+   */
+  async applyPlanToFeature(
+    portfolioItemId: string,
+    workspaceId: string,
+    fields: {
+      plannedStartDate: string | null;
+      plannedEndDate: string | null;
+      releaseId?: string;
+    },
+    executor?: DbExecutor,
+  ): Promise<void> {
+    const exec = executor ?? this.db;
+    const set: Record<string, unknown> = {
+      plannedStartDate: fields.plannedStartDate,
+      plannedEndDate: fields.plannedEndDate,
+      updatedAt: new Date(),
+    };
+    if (fields.releaseId !== undefined) set.releaseId = fields.releaseId;
+
+    await exec
+      .update(portfolioItems)
+      .set(set)
+      .where(
+        and(
+          eq(portfolioItems.id, portfolioItemId),
+          eq(portfolioItems.workspaceId, workspaceId),
+          isNull(portfolioItems.archivedAt),
+        ),
+      );
+  }
+
+  /**
+   * Flip a plan between draft and published.
+   *
+   * `publishedAt`/`publishedBy` are STAMPED on publish and deliberately left in place on
+   * revert: they record that a publish happened, which is what lets a re-publish of an
+   * emptied plan be allowed (Rally blocks only a plan that has never been published, holds
+   * no items and has no projects).
+   */
+  async setStatus(
+    id: string,
+    workspaceId: string,
+    status: 'draft' | 'published',
+    publishedBy: string | null,
+    executor?: DbExecutor,
+  ): Promise<CapacityPlan> {
+    const exec = executor ?? this.db;
+    const set: Record<string, unknown> = { status, updatedAt: new Date() };
+    if (status === 'published') {
+      set.publishedAt = new Date();
+      set.publishedBy = publishedBy;
+    }
+
+    const rows = await exec
+      .update(capacityPlans)
+      .set(set)
+      .where(and(eq(capacityPlans.id, id), eq(capacityPlans.workspaceId, workspaceId)))
+      .returning();
+    return this.mapPlan(rows[0]);
+  }
+
   /**
    * A team's delivery history: accepted totals per FINISHED iteration.
    *

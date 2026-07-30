@@ -125,3 +125,16 @@ export const ForecastCapacitySchema = z.object({
     .default('typical'),
 });
 export class ForecastCapacityDto extends createZodDto(ForecastCapacitySchema) {}
+
+/**
+ * Publish a plan.
+ *
+ * `updateFields: false` is Rally's "Publish Without Updating Fields" — publish for visibility
+ * while leaving every Feature's Release and planned dates untouched. Defaults to TRUE because
+ * that is Rally's primary button and the point of publishing a plan; opting out is the
+ * deliberate act, so it is the one that has to be stated.
+ */
+export const PublishPlanSchema = z.object({
+  updateFields: z.boolean().default(true),
+});
+export class PublishPlanDto extends createZodDto(PublishPlanSchema) {}

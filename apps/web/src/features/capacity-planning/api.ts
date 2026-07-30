@@ -23,6 +23,9 @@ export type CapacityPlanUnit = CapacityPlan['unit']
 export type CapacityPlanStatus = CapacityPlan['status']
 
 export type CapacityForecast = components['schemas']['CapacityForecastResponseDto']
+export type PublishResult = components['schemas']['PublishResultResponseDto']
+export type PublishSkip = PublishResult['skipped'][number]
+export type RevertResult = components['schemas']['RevertResultResponseDto']
 export type CapacityForecastComplexity =
   paths['/v1/capacity-plans/{id}/teams/{teamId}/forecast']['post']['requestBody']['content']['application/json']['complexity']
 
@@ -177,6 +180,48 @@ export function useForecastCapacity() {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as CapacityForecast
     },
+  })
+}
+
+/**
+ * Publish a plan, with or without writing its window onto the Features.
+ *
+ * `invalidates: ['capacity']` AND `['portfolio']`: publishing writes Feature Release and
+ * planned dates, so the Portfolio grid and any open Feature detail are now stale too. Missing
+ * the second tag would leave a Feature showing no Release while the plan says it has one — the
+ * exact class of bug the central invalidation map exists to prevent.
+ */
+export function usePublishPlan() {
+  return useMutation({
+    mutationFn: async ({ id, updateFields }: { id: string; updateFields: boolean }) => {
+      const { data, error, response } = await apiClient.POST('/v1/capacity-plans/{id}/publish', {
+        params: { path: { id } },
+        body: { updateFields },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as PublishResult
+    },
+    meta: { invalidates: ['capacity', 'portfolio'] },
+  })
+}
+
+/**
+ * Revert to draft.
+ *
+ * Also invalidates `portfolio` even though reverting writes NO Feature fields — because the
+ * plan's own status changed and the Features keep whatever the publish wrote, so both surfaces
+ * need to be re-read for what they now say rather than what they said.
+ */
+export function useRevertPlan() {
+  return useMutation({
+    mutationFn: async ({ id }: { id: string }) => {
+      const { data, error, response } = await apiClient.POST('/v1/capacity-plans/{id}/revert', {
+        params: { path: { id } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as RevertResult
+    },
+    meta: { invalidates: ['capacity', 'portfolio'] },
   })
 }
 

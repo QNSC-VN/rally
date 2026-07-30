@@ -23,6 +23,7 @@ import {
   CapacityPlanListQueryDto,
   CreateCapacityPlanDto,
   ForecastCapacityDto,
+  PublishPlanDto,
   SetCapacityDto,
   UpdateAllocationDto,
   UpdateCapacityPlanDto,
@@ -30,6 +31,8 @@ import {
 import {
   CapacityForecastResponseDto,
   CapacityPlanResponseDto,
+  PublishResultResponseDto,
+  RevertResultResponseDto,
 } from './dto/capacity-plan-response.dto';
 
 /**
@@ -181,6 +184,39 @@ export class CapacityPlansController {
   ): Promise<CapacityPlanResponseDto> {
     await this.service.addTeam(user, id, body.teamId);
     return toDto(await this.service.getPlanDetail(user, id));
+  }
+
+  @Post(':id/publish')
+  /**
+   * `capacity:publish`, separate from `capacity:manage` on purpose: this writes back to
+   * Feature rows outside the plan, which is a different blast radius from editing a draft.
+   */
+  @RequirePermission('capacity:publish', { resource: 'capacity_plan', from: 'param', field: 'id' })
+  @ApiOperation({ summary: 'Publish a plan, optionally writing its window onto the Features' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: PublishResultResponseDto })
+  @ApiCommonErrors(400, 401, 403, 404, 422)
+  async publishPlan(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: PublishPlanDto,
+  ): Promise<PublishResultResponseDto> {
+    const result = await this.service.publishPlan(user, id, { updateFields: body.updateFields });
+    return { ...result, plan: toDto(result.plan) };
+  }
+
+  @Post(':id/revert')
+  @RequirePermission('capacity:publish', { resource: 'capacity_plan', from: 'param', field: 'id' })
+  @ApiOperation({ summary: 'Revert a published plan to draft — fields already written STAY' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: RevertResultResponseDto })
+  @ApiCommonErrors(401, 403, 404, 422)
+  async revertPlan(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<RevertResultResponseDto> {
+    const result = await this.service.revertPlan(user, id);
+    return { ...result, plan: toDto(result.plan) };
   }
 
   @Post(':id/teams/:teamId/forecast')
