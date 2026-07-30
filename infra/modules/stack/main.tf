@@ -1080,9 +1080,9 @@ check "db_pool_fits_instance_class" {
 #
 # EventBridge Scheduler's universal target calls the RDS API directly: no Lambda to
 # own, patch or pay for.
-resource "aws_iam_role" "rds_stopper" {
-  count = var.rds_stop_schedule == null ? 0 : 1
-  name  = "${local.name}-rds-stopper"
+resource "aws_iam_role" "idler" {
+  count = var.idle_schedule == null ? 0 : 1
+  name  = "${local.name}-idler"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -1099,30 +1099,46 @@ resource "aws_iam_role" "rds_stopper" {
   tags = local.tags
 }
 
-resource "aws_iam_role_policy" "rds_stopper" {
-  count = var.rds_stop_schedule == null ? 0 : 1
-  name  = "stop-db-instance"
-  role  = aws_iam_role.rds_stopper[0].id
+resource "aws_iam_role_policy" "idler" {
+  count = var.idle_schedule == null ? 0 : 1
+  name  = "idle-environment"
+  role  = aws_iam_role.idler[0].id
 
   # Stop only. Not Start, and not Reboot: the schedule's whole job is to remove
   # capacity, and a role that can also start an instance turns a scheduling mistake
   # into a cost increase. Waking is the deploy pipeline's job and has its own grant.
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = "rds:StopDBInstance"
-      Resource = module.rds.instance_arn
-    }]
+    Statement = [
+      {
+        Sid      = "StopDatabase"
+        Effect   = "Allow"
+        Action   = "rds:StopDBInstance"
+        Resource = module.rds.instance_arn
+      },
+      {
+        # Scaling to zero as well as stopping the database, because stopping only the
+        # database leaves Fargate tasks running against an instance they cannot reach:
+        # still billed, unable to serve, and noisy. `healthz` answers 200 regardless, so
+        # the ALB keeps them registered and nothing reports the state.
+        Sid    = "ScaleServicesToZero"
+        Effect = "Allow"
+        Action = "ecs:UpdateService"
+        Resource = [
+          module.api.service_arn,
+          module.worker.service_arn,
+        ]
+      },
+    ]
   })
 }
 
 resource "aws_scheduler_schedule" "rds_stop" {
-  count       = var.rds_stop_schedule == null ? 0 : 1
+  count       = var.idle_schedule == null ? 0 : 1
   name        = "${local.name}-rds-stop"
-  description = "Stops ${module.rds.identifier}; see var.rds_stop_schedule for why this exists"
+  description = "Stops ${module.rds.identifier}; see var.idle_schedule for why this exists"
 
-  schedule_expression          = var.rds_stop_schedule
+  schedule_expression          = var.idle_schedule
   schedule_expression_timezone = "Asia/Ho_Chi_Minh"
 
   # OFF, not a window: this is not load-sensitive work, and an exact time makes the
@@ -1133,7 +1149,7 @@ resource "aws_scheduler_schedule" "rds_stop" {
 
   target {
     arn      = "arn:aws:scheduler:::aws-sdk:rds:stopDBInstance"
-    role_arn = aws_iam_role.rds_stopper[0].arn
+    role_arn = aws_iam_role.idler[0].arn
     input    = jsonencode({ DbInstanceIdentifier = module.rds.identifier })
 
     # No retries and no dead-letter queue ON PURPOSE. The common outcome is
@@ -1168,5 +1184,50 @@ check "idled_environment_runs_no_tasks" {
       "Without a cache, tasks do not fail — REDIS_URL falls back to localhost and the",
       "token denylist and rate limiter fail open. Set the floors to 0, or re-enable the cache.",
     ])
+  }
+}
+
+# Scale the services to zero on the same cadence as the database stop.
+#
+# `desired_count` is under `ignore_changes` in the ecs-service module, so setting it
+# out of band is the sanctioned, non-drifting mechanism — which is why this uses
+# ecs:UpdateService rather than an autoscaling scheduled action. A scheduled action
+# would mutate the scalable target's min/max, and `aws_appautoscaling_target` has no
+# `ignore_changes` on those, so every plan would show drift and any apply during the
+# idle window would silently wake the environment.
+#
+# The floor being 0 (see api.min_count) is what makes this hold: with a floor of 1,
+# Application Auto Scaling restores the service within minutes.
+resource "aws_scheduler_schedule" "ecs_scale_down" {
+  for_each = var.idle_schedule == null ? {} : {
+    api    = module.api.service_name
+    worker = module.worker.service_name
+  }
+
+  name        = "${local.name}-${each.key}-scale-down"
+  description = "Scales ${each.value} to zero; see var.idle_schedule"
+
+  schedule_expression          = var.idle_schedule
+  schedule_expression_timezone = "Asia/Ho_Chi_Minh"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  target {
+    arn      = "arn:aws:scheduler:::aws-sdk:ecs:updateService"
+    role_arn = aws_iam_role.idler[0].arn
+    input = jsonencode({
+      Cluster      = module.ecs_cluster.cluster_name
+      Service      = each.value
+      DesiredCount = 0
+    })
+
+    # Idempotent — scaling an already-zero service to zero succeeds — so unlike the RDS
+    # stop this one has no expected-failure case. Retries stay off for consistency; a
+    # missed run is corrected by the next tick.
+    retry_policy {
+      maximum_retry_attempts = 0
+    }
   }
 }
