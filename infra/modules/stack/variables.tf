@@ -92,6 +92,12 @@ variable "cache" {
     both environments; a single cache.t4g.micro is about $12/month.
   EOT
   type = object({
+    # Create the cache node at all. False is for an environment that is deliberately
+    # idle: ElastiCache cannot be stopped, only deleted, so a node is the one component
+    # of an idled environment that keeps billing. Requires min_count = 0 on both
+    # services — the `check` block in main.tf enforces that, because a task without a
+    # reachable cache does NOT fail loudly (see the note on local.redis_url).
+    enabled   = optional(bool, true)
     mode      = optional(string, "node")
     node_type = optional(string, "cache.t4g.micro")
   })
