@@ -35,10 +35,18 @@ export function CreatePortfolioItemModal({
   projectId,
   type,
   onClose,
+  onCreated,
 }: {
   projectId: string
   type: PortfolioItemType
   onClose: () => void
+  /**
+   * The id of the item just created, for the caller to reveal in its grid.
+   *
+   * Needed because a new item is ranked LAST: on a populated list it lands on a page the user
+   * is not looking at, so a plain Create looked like it had done nothing.
+   */
+  onCreated?: (id: string) => void
 }) {
   const { t } = useTranslation('portfolio')
   const navigate = useNavigate()
@@ -75,6 +83,7 @@ export function CreatePortfolioItemModal({
       })
       notify.success(t('create.created', { name: name.trim() }))
       onClose()
+      if (result?.id) onCreated?.(result.id)
       if (goToDetails && result?.id) {
         void navigate({ to: '/portfolio/$itemId', params: { itemId: result.id } })
       }
