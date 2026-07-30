@@ -27,7 +27,7 @@ permissions:
 
 jobs:
   plan:
-    uses: QNSC-VN/qnsc-ci/.github/workflows/infra-plan.yml@v1.6.4
+    uses: QNSC-VN/qnsc-ci/.github/workflows/infra-plan.yml@v1.6.5
     with:
       product: rally
       # Mirror the apply-time NON-secret TF_VARs so plan ≈ apply. Without

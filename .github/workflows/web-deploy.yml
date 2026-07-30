@@ -182,7 +182,7 @@ jobs:
 
   deploy:
     needs: [wait-for-infra, wait-for-ci]
-    uses: QNSC-VN/qnsc-ci/.github/workflows/web-deploy.yml@v1.6.4
+    uses: QNSC-VN/qnsc-ci/.github/workflows/web-deploy.yml@v1.6.5
     with:
       product: rally
       # Monorepo: run wrangler from the web package dir so it discovers the
