@@ -31,42 +31,6 @@ const HOP_BY_HOP_HEADERS: ReadonlySet<string> = new Set([
 const BODILESS_METHODS: ReadonlySet<string> = new Set(['GET', 'HEAD'])
 
 /**
- * Paths whose request body is read to completion at the edge before the origin
- * request starts, instead of being streamed through.
- *
- * Measured, not assumed. `TargetResponseTime` on `POST /v1/scm/webhook/github` is
- * trimodal in production — 243 requests under 50ms, 83 at 0.25-0.5s, and a tail to
- * 27.7s — while the handler runs in 3-10ms throughout. Per-request attribution
- * (`albWaitMs` / `bodyWaitMs` in the API's access log) showed
- * `target_processing_time ~= bodyWaitMs + duration` on every sample, so the wait is
- * REQUEST-BODY RECEIPT: the origin is handed headers and then waits on a body that is
- * still crossing the network.
- *
- * Buffering here collapses that. Synthetic probes whose body Cloudflare happened to
- * hold complete before forwarding recorded 0.004-0.037s on the same route and payload
- * size, against 0.25-27.7s for GitHub's streamed deliveries.
- *
- * Deliberately a narrow allowlist, not a global switch: blanket buffering would pull
- * the SPA's 10 MB multipart uploads into edge memory and add latency to them, to fix
- * a problem only small JSON webhooks have. Response streaming is untouched either way
- * — `buildClientResponse` still passes `upstream.body` straight through, so SSE keeps
- * working.
- */
-const BUFFERED_REQUEST_PATH_PREFIXES: readonly string[] = ['/v1/scm/webhook/']
-
-/**
- * Whether this request's body should be buffered at the edge before forwarding.
- *
- * Matched on the path only. A query string cannot opt a route in or out, and matching
- * the full URL would let `?x=/v1/scm/webhook/` change proxy behaviour.
- */
-export function requiresBufferedBody(requestUrl: string, method: string): boolean {
-  if (BODILESS_METHODS.has(method.toUpperCase())) return false
-  const { pathname } = new URL(requestUrl)
-  return BUFFERED_REQUEST_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix))
-}
-
-/**
  * Client-supplied forwarding/trust headers that must be stripped before we set
  * our own from the trusted Cloudflare edge. Forwarding an inbound value would
  * let a caller spoof their apparent IP for the API's rate-limit/audit/geo logic.
@@ -92,16 +56,7 @@ export function buildUpstreamUrl(requestUrl: string, apiOrigin: string): string 
  * so the API's cookie logic (which reads `x-forwarded-proto` and the client IP)
  * behaves as if the request arrived directly.
  */
-export function buildProxyRequest(
-  request: Request,
-  apiOrigin: string,
-  /**
-   * Already-read body, for the paths in `BUFFERED_REQUEST_PATH_PREFIXES`. Passed in
-   * rather than read here so this function stays synchronous and unit-testable, and so
-   * the single `await` lives at the one call site that owns the decision.
-   */
-  bufferedBody?: ArrayBuffer,
-): Request {
+export function buildProxyRequest(request: Request, apiOrigin: string): Request {
   const url = buildUpstreamUrl(request.url, apiOrigin)
   const headers = new Headers(request.headers)
   for (const header of HOP_BY_HOP_HEADERS) headers.delete(header)
@@ -124,12 +79,7 @@ export function buildProxyRequest(
     headers,
     redirect: 'manual',
   }
-  if (bufferedBody !== undefined) {
-    // No `duplex` here on purpose: the body is a complete ArrayBuffer, so there is
-    // nothing half-duplex about it, and the origin receives a request with a known
-    // Content-Length that is fully available the moment it is sent.
-    init.body = bufferedBody
-  } else if (!BODILESS_METHODS.has(request.method.toUpperCase())) {
+  if (!BODILESS_METHODS.has(request.method.toUpperCase())) {
     init.body = request.body
     init.duplex = 'half' // required when streaming a body (undici/Workers)
   }
@@ -188,14 +138,6 @@ export async function proxyToApi(
   if (!apiOrigin) {
     return new Response('Proxy misconfigured: API_ORIGIN is not set', { status: 500 })
   }
-  // Read the body to completion first on the buffered paths. This is the whole point
-  // of the buffering: the origin request must not begin until the body is in hand, or
-  // the origin sits waiting on the network with the request already open — which is
-  // exactly the latency this removes.
-  const bufferedBody = requiresBufferedBody(request.url, request.method)
-    ? await request.arrayBuffer()
-    : undefined
-
-  const upstream = await fetchImpl(buildProxyRequest(request, apiOrigin, bufferedBody))
+  const upstream = await fetchImpl(buildProxyRequest(request, apiOrigin))
   return buildClientResponse(upstream)
 }

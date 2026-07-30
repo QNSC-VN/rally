@@ -25,7 +25,8 @@
  *
  * Resolution is deliberately uneven: the trace id carries only whole seconds, so
  * `albWaitMs` is +/-1s and useless for sub-second work. It exists to characterise
- * multi-second stalls, where a 1s error does not change the conclusion.
+ * multi-second stalls, where a 1s error does not change the conclusion — which is why
+ * it is not reported at all below `ALB_WAIT_REPORTING_FLOOR_MS`. See `albWaitMs()`.
  */
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 
@@ -65,6 +66,39 @@ export function arrivalAtMs(req: FastifyRequest): number | undefined {
  * The caller then omits the field, which is honest; a fabricated 0 would read as
  * "no delay" and quietly poison exactly the number this is for.
  */
+/**
+ * Floor below which the ALB-to-app gap is not reported.
+ *
+ * The trace id carries whole seconds, so the decoded receive time is truncated by up
+ * to 1000ms and the computed gap inherits all of it. Measured on real traffic the
+ * field sat at a median of ~500ms — exactly the mean of a uniform truncation error,
+ * and precisely what a request with NO delay looks like.
+ *
+ * That is worse than not reporting it. The module docstring explains the caveat, but a
+ * log line does not carry its module's docstring, and `albWaitMs=636` reads as
+ * two-thirds of a second of proxy delay to anyone scanning output during an incident.
+ * The whole point of this instrumentation was to stop latency being misattributed, so
+ * a field that invites misattribution is self-defeating.
+ *
+ * 1000ms because that is the quantisation width: above it, the value cannot be an
+ * artefact of truncation alone and means something real happened.
+ */
+export const ALB_WAIT_REPORTING_FLOOR_MS = 1000;
+
+/**
+ * The ALB-to-app gap, reported only when it is large enough to be a signal rather
+ * than the trace id's rounding error. Undefined means "nothing worth saying" — either
+ * a timestamp was missing, or the gap is inside the noise floor.
+ */
+export function albWaitMs(
+  arrivalAt: number | undefined,
+  albReceivedAt: number | undefined,
+): number | undefined {
+  if (arrivalAt === undefined || albReceivedAt === undefined) return undefined;
+  const gap = arrivalAt - albReceivedAt;
+  return gap >= ALB_WAIT_REPORTING_FLOOR_MS ? gap : undefined;
+}
+
 export function albReceivedAtMs(traceId: string | undefined): number | undefined {
   if (!traceId) return undefined;
   const match = /Root=1-([0-9a-f]{8})-[0-9a-f]{24}/i.exec(traceId);
