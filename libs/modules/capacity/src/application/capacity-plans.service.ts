@@ -294,14 +294,17 @@ export class CapacityPlansService {
           complete: row.complete,
           rollup: row.rollup,
           estimated: Number(row.value),
-          // A Feature row has no capacity of its own. `computeCapacityWarnings` yields only
-          // the rollup-vs-estimated rule for a null capacity, which is exactly what the
-          // spec asks for on these rows — no separate code path needed.
+          // A Feature row has no capacity of its own — the ceiling belongs to the team.
           capacity: null,
           warnings: computeCapacityWarnings({
+            kind: 'feature',
             rollup: row.rollup,
             estimated: Number(row.value),
             capacity: null,
+            // Carries Rally's "Feature Missing Estimate Error": tier `none` means no
+            // allocation, no refined forecast and no preliminary mapping, so there is
+            // nothing to plan this Feature against.
+            tier: resolved.tier,
           }),
         },
       };
@@ -322,6 +325,7 @@ export class CapacityPlansService {
             estimated,
             capacity,
             warnings: computeCapacityWarnings({
+              kind: 'team',
               rollup,
               estimated,
               capacity,

@@ -1,15 +1,16 @@
 /**
- * One capacity plan: its fields, its teams, and each team's manually entered capacity.
+ * One capacity plan: its fields, its teams with their capacity, and the Features allocated
+ * to each of them.
  *
- * Allocations — the demand side, and therefore the Complete / Rollup / Estimated columns
- * and the composite capacity bar — arrive in the next slice. This page deliberately shows
- * only what exists: showing those columns now would render zeros and imply the numbers
- * were measured rather than absent.
+ * `Breakdown` sits OUTSIDE the `canManage` toolbar on purpose. It reads numbers and changes
+ * nothing, so a published plan — read-only until reverted — must still offer it; gating it
+ * behind manage rights would hide the plan's totals from exactly the audience a published
+ * plan exists for.
  */
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from '@tanstack/react-router'
-import { Plus, Users } from 'lucide-react'
+import { BarChart3, Plus, Users } from 'lucide-react'
 
 import { Button } from '@/shared/ui/button'
 import { EmptyState } from '@/shared/ui/empty-state'
@@ -30,6 +31,7 @@ import { CAPACITY_TEAM_COLUMNS, type TeamColKey } from './model/columns'
 import { CapacityTeamRow } from './ui/capacity-team-row'
 import { AllocationRow } from './ui/allocation-row'
 import { AllocateFeatureModal } from './ui/allocate-feature-modal'
+import { CapacityBreakdownOverlay } from './ui/capacity-breakdown-overlay'
 
 export function CapacityPlanDetailPage() {
   const { t } = useTranslation('capacity')
@@ -38,6 +40,7 @@ export function CapacityPlanDetailPage() {
   const [tab, setTab] = useState('teams')
   const [addingTeamId, setAddingTeamId] = useState('')
   const [showAllocate, setShowAllocate] = useState(false)
+  const [showBreakdown, setShowBreakdown] = useState(false)
 
   const { data: plan, isLoading } = useCapacityPlan(planId)
   const { can } = useProjectPermissions(plan?.projectId)
@@ -124,25 +127,35 @@ export function CapacityPlanDetailPage() {
         <DetailTwoPane
           main={
             <div className="flex min-h-0 flex-1 flex-col">
-              {canManage && (
-                <div className="flex items-center gap-2 border-b border-border-inner px-4 py-2">
-                  <div className="w-64">
-                    <SearchableSelect
-                      variant="field"
-                      value={addingTeamId}
-                      ariaLabel={t('detail.addTeamLabel')}
-                      options={available.map((team) => ({ value: team.id, label: team.name }))}
-                      onChange={(v) => setAddingTeamId(v ?? '')}
-                    />
-                  </div>
-                  <Button size="sm" onClick={add} disabled={!addingTeamId || addTeam.isPending}>
-                    <Plus size={13} /> {t('detail.addTeam')}
-                  </Button>
-                  <Button size="sm" variant="secondary" onClick={() => setShowAllocate(true)}>
-                    <Plus size={13} /> {t('allocate.action')}
-                  </Button>
-                </div>
-              )}
+              <div className="flex items-center gap-2 border-b border-border-inner px-4 py-2">
+                {canManage && (
+                  <>
+                    <div className="w-64">
+                      <SearchableSelect
+                        variant="field"
+                        value={addingTeamId}
+                        ariaLabel={t('detail.addTeamLabel')}
+                        options={available.map((team) => ({ value: team.id, label: team.name }))}
+                        onChange={(v) => setAddingTeamId(v ?? '')}
+                      />
+                    </div>
+                    <Button size="sm" onClick={add} disabled={!addingTeamId || addTeam.isPending}>
+                      <Plus size={13} /> {t('detail.addTeam')}
+                    </Button>
+                    <Button size="sm" variant="secondary" onClick={() => setShowAllocate(true)}>
+                      <Plus size={13} /> {t('allocate.action')}
+                    </Button>
+                  </>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="ml-auto"
+                  onClick={() => setShowBreakdown(true)}
+                >
+                  <BarChart3 size={13} /> {t('breakdown.action')}
+                </Button>
+              </div>
 
               <DataTableFrame
                 header={table.headerProps}
@@ -245,6 +258,13 @@ export function CapacityPlanDetailPage() {
       </DetailLayout>
 
       {showAllocate && <AllocateFeatureModal plan={plan} onClose={() => setShowAllocate(false)} />}
+      {showBreakdown && (
+        <CapacityBreakdownOverlay
+          plan={plan}
+          unitLabel={unitLabel}
+          onClose={() => setShowBreakdown(false)}
+        />
+      )}
     </>
   )
 }

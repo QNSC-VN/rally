@@ -18,8 +18,15 @@ export interface CompositeBarProps {
   capacity: number | null
   /** Advisory ceiling as a percentage of capacity; draws the target marker. */
   targetLoadPct?: number | null
-  /** Non-empty when any advisory rule fired; drives the warning glyph + tooltip. */
-  warnings?: readonly string[]
+  /**
+   * Already-translated warning sentences, in the order they should be read.
+   *
+   * Sentences rather than codes because `shared/ui` must not reach into a feature's copy;
+   * the caller resolves them with `useCapacityWarningText`. Non-empty draws the glyph, and
+   * the glyph carries them as its accessible name — an icon whose meaning is unavailable to
+   * a screen reader is not a warning, it is decoration.
+   */
+  warningLabels?: readonly string[]
   /** Tooltip text, usually the four numbers spelled out. */
   title?: string
 }
@@ -44,7 +51,7 @@ export function CompositeBar({
   estimated,
   capacity,
   targetLoadPct,
-  warnings = [],
+  warningLabels = [],
   title,
 }: CompositeBarProps) {
   const hasCapacity = capacity !== null && capacity > 0
@@ -86,8 +93,19 @@ export function CompositeBar({
         )}
       </div>
 
-      {warnings.length > 0 && (
-        <AlertTriangle size={12} className="shrink-0" style={{ color: BRAND.warning }} />
+      {warningLabels.length > 0 && (
+        // One glyph however many rules fired, listing them all: a row of triangles says
+        // nothing extra, and the reason belongs in the text either way.
+        // The text rides a wrapping span, not the SVG: `title` is an HTML attribute and
+        // React's SVG typings do not accept it, so putting it on the icon would not compile.
+        <span
+          role="img"
+          aria-label={warningLabels.join('. ')}
+          title={warningLabels.join('\n')}
+          className="flex shrink-0 items-center"
+        >
+          <AlertTriangle size={12} style={{ color: BRAND.warning }} />
+        </span>
       )}
     </div>
   )

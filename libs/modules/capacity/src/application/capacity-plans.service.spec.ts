@@ -12,6 +12,7 @@ import {
   type ICapacityPlanRepository,
 } from '../domain/ports/capacity-plan.repository';
 import type { CapacityPlan, CapacityPlanView } from '../domain/capacity-plan.types';
+import type { CapacityAllocationRow } from '../domain/capacity-allocation.types';
 
 const WORKSPACE = 'ws-1';
 const actor = { sub: 'user-1', workspaceId: WORKSPACE } as JwtPayload;
@@ -48,6 +49,7 @@ describe('CapacityPlansService', () => {
   let repo: Mocked<ICapacityPlanRepository>;
   let access: Mocked<AccessService>;
   let portfolio: Mocked<PortfolioItemsService>;
+  let maps: Mocked<PreliminaryEstimateMapService>;
   /** Rows the stubbed Drizzle returns — drives the release/team existence checks. */
   let lookupRows: unknown[];
 
@@ -117,6 +119,7 @@ describe('CapacityPlansService', () => {
     repo = module.get(CAPACITY_PLAN_REPOSITORY);
     access = module.get(AccessService);
     portfolio = module.get(PortfolioItemsService);
+    maps = module.get(PreliminaryEstimateMapService);
   });
 
   describe('createPlan', () => {
@@ -284,6 +287,97 @@ describe('CapacityPlansService', () => {
     it('scopes the list to the requested project', async () => {
       await service.listPlans(actor, 'proj-a');
       expect(repo.listByProject).toHaveBeenCalledWith('proj-a', WORKSPACE);
+    });
+
+    describe("getPlanDetail — the row kind decides which of Rally's rules can fire", () => {
+      /** One allocated Feature, with the tier inputs the caller controls. */
+      const allocationRow = (over: Partial<CapacityAllocationRow> = {}): CapacityAllocationRow => ({
+        id: 'alloc-1',
+        planId: 'plan-1',
+        portfolioItemId: 'fe-1',
+        teamId: 'team-1',
+        value: '30',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        itemKey: 'FE-1',
+        name: 'A feature',
+        refined: null,
+        preliminarySize: 'm',
+        totalAllocated: 30,
+        rollup: 0,
+        complete: 0,
+        ...over,
+      });
+
+      it("flags a team with no capacity entered — Rally's missing-capacity error", async () => {
+        repo.findViewById.mockResolvedValue(
+          view({
+            teams: [
+              {
+                id: 'pt-1',
+                planId: 'plan-1',
+                teamId: 'team-1',
+                capacity: null,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                teamName: 'Alpha',
+              },
+            ],
+          }),
+        );
+
+        const detail = await service.getPlanDetail(actor, 'plan-1');
+        expect(detail.teams[0].metrics.warnings).toContain('team_missing_capacity');
+      });
+
+      it('flags a Feature whose estimate came from no tier at all', async () => {
+        // Every tier empty: no allocation, no refined forecast, and a preliminary size the
+        // workspace maps to zero. `resolveEstimate` reports `none`, so Rally's Missing
+        // Estimate Error applies — and the SERVICE is what supplies that tier, because the
+        // repository cannot see the workspace estimate map.
+        maps.forWorkspace.mockResolvedValue({
+          ...DEFAULT_PRELIMINARY_ESTIMATE_MAP,
+          m: { points: 0, count: 0 },
+        });
+        repo.listAllocations.mockResolvedValue([
+          allocationRow({ value: '0', totalAllocated: 0, refined: null }),
+        ]);
+
+        const detail = await service.getPlanDetail(actor, 'plan-1');
+        expect(detail.allocations[0].tier).toBe('none');
+        expect(detail.allocations[0].metrics.warnings).toContain('feature_missing_estimate');
+      });
+
+      it('does not flag a Feature that has a preliminary mapping to fall back on', async () => {
+        repo.listAllocations.mockResolvedValue([allocationRow()]);
+        const detail = await service.getPlanDetail(actor, 'plan-1');
+        expect(detail.allocations[0].metrics.warnings).not.toContain('feature_missing_estimate');
+      });
+
+      it('never crosses the two rules between row kinds', async () => {
+        // A Feature row also has a null capacity, so before `kind` was explicit the two
+        // cases were indistinguishable from the input alone.
+        repo.listAllocations.mockResolvedValue([allocationRow()]);
+        repo.findViewById.mockResolvedValue(
+          view({
+            teams: [
+              {
+                id: 'pt-1',
+                planId: 'plan-1',
+                teamId: 'team-1',
+                capacity: null,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                teamName: 'Alpha',
+              },
+            ],
+          }),
+        );
+
+        const detail = await service.getPlanDetail(actor, 'plan-1');
+        expect(detail.allocations[0].metrics.warnings).not.toContain('team_missing_capacity');
+        expect(detail.teams[0].metrics.warnings).not.toContain('feature_missing_estimate');
+      });
     });
   });
 

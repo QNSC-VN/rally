@@ -12,6 +12,7 @@ import { CompositeBar } from '@/shared/ui/composite-bar'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { IconButton } from '@/shared/ui/icon-button'
 import { notify } from '@/shared/lib/toast'
+import { useCapacityWarningText } from '@/features/capacity-planning/warning-labels'
 import { type TeamColKey } from '../model/columns'
 import { EstimateTierBadge } from './estimate-tier-badge'
 
@@ -19,9 +20,9 @@ import { EstimateTierBadge } from './estimate-tier-badge'
  * One allocated Feature, indented under its team (or under the Unallocated bucket).
  *
  * The Estimated cell edits in place. A Feature row has NO capacity of its own, so its bar
- * scales against its own largest value and only the rollup-vs-estimated warning can fire —
- * `computeCapacityWarnings` returns exactly that for a null capacity, which is why there is
- * no separate code path for these rows.
+ * scales against its own largest value and only the two Feature rules can fire: Rally's
+ * missing-estimate error and rollup-exceeds-estimated. `computeCapacityWarnings` returns
+ * exactly those for `kind: 'feature'`, so there is no separate code path here.
  */
 export function AllocationRow({
   planId,
@@ -39,6 +40,7 @@ export function AllocationRow({
   onOpenFeature: (portfolioItemId: string) => void
 }) {
   const { t } = useTranslation('capacity')
+  const warningText = useCapacityWarningText()
   const update = useUpdateAllocation()
   const remove = useRemoveAllocation()
   const { metrics } = allocation
@@ -83,7 +85,7 @@ export function AllocationRow({
           rollup={metrics.rollup}
           estimated={metrics.estimated}
           capacity={metrics.capacity}
-          warnings={metrics.warnings}
+          warningLabels={warningText(metrics.warnings)}
           title={t('row.barTooltip', {
             complete: metrics.complete,
             rollup: metrics.rollup,
