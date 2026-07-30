@@ -114,8 +114,8 @@ describe('buildClientResponse', () => {
   // CONTRACT (two cookies in, two out, values intact) and would catch cookies being
   // dropped, but it does NOT distinguish the per-cookie loop from a naive
   // `new Headers(upstream.headers)` — undici preserves the set-cookie list through the
-  // constructor, so that swap keeps this suite green. See the note on
-  // buildClientResponse; verifying it needs the Workers runtime, not vitest.
+  // constructor, so that swap keeps this assertion green. The stub-based test further
+  // down is the one that actually kills that mutation.
   it('preserves multiple Set-Cookie headers individually', () => {
     const upstream = new Response(null, { status: 204 })
     upstream.headers.append('set-cookie', '__Host-rally_session=abc; Path=/; Secure')
@@ -132,6 +132,49 @@ describe('buildClientResponse', () => {
   // every cookie: 200 from the API, 200 from the proxy, and no session cookie at the
   // browser — a successful login that presents as an immediate silent logout. Cookies
   // must survive even when the capability does not.
+  // The mutation guard, and the reason it cannot use a real Response.
+  //
+  // Every assertion above passes against a naive `new Headers(upstream.headers)`,
+  // because undici carries the set-cookie list through the constructor — so under
+  // vitest the defence and its absence are indistinguishable on a real Response. That
+  // was a spec claiming a defence it never tested: the swap this file warns about
+  // survived the whole suite.
+  //
+  // A Headers-LIKE stub closes it. It exposes only what the implementation is allowed
+  // to rely on — `forEach`, and `getSetCookie` absent, as the Workers runtime
+  // historically presented — and is not something `new Headers()` can consume, so the
+  // naive version fails here instead of passing quietly. Verified in both directions:
+  // green on the per-cookie loop, red on the constructor swap.
+  it('rebuilds every Set-Cookie individually, not via the Headers constructor', () => {
+    const entries: Array<[string, string]> = [
+      ['content-type', 'application/json'],
+      ['set-cookie', '__Host-rally_session=abc; Path=/; Secure'],
+      ['set-cookie', '__Host-bff_state=; Path=/; Max-Age=0'],
+    ]
+    const headersLike = {
+      forEach(cb: (value: string, key: string) => void) {
+        for (const [key, value] of entries) cb(value, key)
+      },
+      // Deliberately absent, not undefined-by-accident: this is the capability gap.
+      getSetCookie: undefined,
+    }
+    const upstream = {
+      body: null,
+      status: 204,
+      statusText: 'No Content',
+      headers: headersLike,
+    } as unknown as Response
+
+    const result = buildClientResponse(upstream)
+
+    const cookies = result.headers.getSetCookie?.() ?? []
+    expect(cookies).toHaveLength(2)
+    expect(cookies).toContain('__Host-rally_session=abc; Path=/; Secure')
+    expect(cookies).toContain('__Host-bff_state=; Path=/; Max-Age=0')
+    // Non-cookie headers must still make it across.
+    expect(result.headers.get('content-type')).toBe('application/json')
+  })
+
   it('still forwards Set-Cookie when the runtime has no getSetCookie', () => {
     const upstream = new Response(null, {
       status: 204,
