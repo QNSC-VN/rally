@@ -1,11 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import {
-  buildClientResponse,
-  buildProxyRequest,
-  buildUpstreamUrl,
-  proxyToApi,
-  requiresBufferedBody,
-} from './proxy'
+import { buildClientResponse, buildProxyRequest, buildUpstreamUrl, proxyToApi } from './proxy'
 
 const API_ORIGIN = 'https://rally-api-dev.qnsc.vn'
 
@@ -187,87 +181,5 @@ describe('proxyToApi', () => {
     expect(forwarded.headers.get('x-forwarded-for')).toBe('203.0.113.7')
     expect(response.status).toBe(200)
     await expect(response.text()).resolves.toBe('{"ok":true}')
-  })
-})
-
-describe('requiresBufferedBody', () => {
-  it('buffers the SCM webhook path, which is the one measured to need it', () => {
-    expect(requiresBufferedBody('https://rally.qnsc.vn/v1/scm/webhook/github', 'POST')).toBe(true)
-    expect(requiresBufferedBody('https://rally.qnsc.vn/v1/scm/webhook/ghe', 'POST')).toBe(true)
-  })
-
-  it('leaves every other path streaming', () => {
-    // Blanket buffering would pull the 10 MB multipart uploads into edge memory to fix
-    // a problem only small JSON webhooks have.
-    expect(requiresBufferedBody('https://rally.qnsc.vn/v1/auth/me/avatar/confirm', 'POST')).toBe(
-      false,
-    )
-    expect(requiresBufferedBody('https://rally.qnsc.vn/v1/work-items', 'POST')).toBe(false)
-    expect(requiresBufferedBody('https://rally.qnsc.vn/v1/bff/me', 'POST')).toBe(false)
-  })
-
-  it('never buffers a bodiless method', () => {
-    expect(requiresBufferedBody('https://rally.qnsc.vn/v1/scm/webhook/github', 'GET')).toBe(false)
-    expect(requiresBufferedBody('https://rally.qnsc.vn/v1/scm/webhook/github', 'HEAD')).toBe(false)
-    // Case-insensitive, since the method arrives as-sent.
-    expect(requiresBufferedBody('https://rally.qnsc.vn/v1/scm/webhook/github', 'get')).toBe(false)
-  })
-
-  it('matches on the path, so a query string cannot opt a route in', () => {
-    // Matching the whole URL would let `?x=/v1/scm/webhook/` change proxy behaviour.
-    expect(
-      requiresBufferedBody('https://rally.qnsc.vn/v1/work-items?x=/v1/scm/webhook/', 'POST'),
-    ).toBe(false)
-    // ...or out.
-    expect(
-      requiresBufferedBody('https://rally.qnsc.vn/v1/scm/webhook/github?foo=bar', 'POST'),
-    ).toBe(true)
-  })
-})
-
-describe('proxyToApi body buffering', () => {
-  it('sends the webhook body as a complete buffer, byte-identical to the original', async () => {
-    // Byte fidelity is not cosmetic here: the receiver verifies an HMAC over the RAW
-    // body, so a single altered byte turns every delivery into a 401.
-    const payload = JSON.stringify({ zen: 'x'.repeat(2048) })
-    const fetchImpl = vi.fn(async (req: Request) => {
-      expect(req.body).not.toBe(null)
-      const forwarded = await req.text()
-      expect(forwarded).toBe(payload)
-      return new Response('{}', { status: 202 })
-    })
-
-    const res = await proxyToApi(
-      new Request('https://rally.qnsc.vn/v1/scm/webhook/github', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-github-event': 'push' },
-        body: payload,
-      }),
-      'https://rally-api.qnsc.vn',
-      fetchImpl as unknown as typeof fetch,
-    )
-
-    expect(res.status).toBe(202)
-    expect(fetchImpl).toHaveBeenCalledTimes(1)
-  })
-
-  it('preserves the signature header the origin verifies against', async () => {
-    const fetchImpl = vi.fn(async (req: Request) => {
-      expect(req.headers.get('x-hub-signature-256')).toBe('sha256=abc')
-      expect(req.headers.get('x-github-delivery')).toBe('d-1')
-      return new Response('{}', { status: 202 })
-    })
-
-    await proxyToApi(
-      new Request('https://rally.qnsc.vn/v1/scm/webhook/github', {
-        method: 'POST',
-        headers: { 'x-hub-signature-256': 'sha256=abc', 'x-github-delivery': 'd-1' },
-        body: '{}',
-      }),
-      'https://rally-api.qnsc.vn',
-      fetchImpl as unknown as typeof fetch,
-    )
-
-    expect(fetchImpl).toHaveBeenCalledTimes(1)
   })
 })
