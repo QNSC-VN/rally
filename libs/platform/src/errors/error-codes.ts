@@ -100,6 +100,19 @@ export const ErrorCodes = {
   /** Drop neighbours arrived out of order — a stale client view of the rank order. */
   PORTFOLIO_ITEM_RANK_CONFLICT: 'PORTFOLIO_ITEM_RANK_CONFLICT',
 
+  // Capacity planning (P5.2 — one plan per project+release)
+  CAPACITY_PLAN_NOT_FOUND: 'CAPACITY_PLAN_NOT_FOUND',
+  /** `uq_capacity_plan_project_release` — a release already has a plan. */
+  CAPACITY_PLAN_EXISTS: 'CAPACITY_PLAN_EXISTS',
+  /** The release named does not belong to the project named. */
+  CAPACITY_PLAN_RELEASE_MISMATCH: 'CAPACITY_PLAN_RELEASE_MISMATCH',
+  /** A published plan is read-only until it is reverted to draft. */
+  CAPACITY_PLAN_NOT_DRAFT: 'CAPACITY_PLAN_NOT_DRAFT',
+  CAPACITY_TEAM_NOT_FOUND: 'CAPACITY_TEAM_NOT_FOUND',
+  CAPACITY_TEAM_ALREADY_ADDED: 'CAPACITY_TEAM_ALREADY_ADDED',
+  /** Removing the team would orphan the demand still allocated to it. */
+  CAPACITY_TEAM_HAS_ALLOCATIONS: 'CAPACITY_TEAM_HAS_ALLOCATIONS',
+
   // Workflow
   WORKFLOW_STATUS_NOT_FOUND: 'WORKFLOW_STATUS_NOT_FOUND',
   WORKFLOW_TRANSITION_NOT_ALLOWED: 'WORKFLOW_TRANSITION_NOT_ALLOWED',

@@ -1,0 +1,61 @@
+{
+  "title": "Capacity Planning",
+  "selectProject": "Select a project to view its capacity plans.",
+  "loadError": "Failed to load capacity plans.",
+  "empty": "No capacity plans yet.",
+  "emptySearch": "No plans match your search.",
+  "searchPlaceholder": "Search plans…",
+  "units": {
+    "points": "points",
+    "count": "items"
+  },
+  "statuses": {
+    "draft": "Draft",
+    "published": "Published"
+  },
+  "metrics": {
+    "total": "Plans",
+    "drafts": "Draft",
+    "published": "Published"
+  },
+  "create": {
+    "title": "New Capacity Plan",
+    "nameLabel": "Name",
+    "nameRequired": "Name is required",
+    "releaseLabel": "Release",
+    "releaseRequired": "Release is required",
+    "noReleasesLeft": "Every release in this project already has a plan.",
+    "unitLabel": "Unit",
+    "unitFixedHint": "The unit cannot be changed after the plan is created — every number on the plan uses it.",
+    "createButton": "Create",
+    "created": "\"{{name}}\" created",
+    "createFailed": "Failed to create the capacity plan"
+  },
+  "detail": {
+    "notFound": "Capacity plan not found.",
+    "tabs": {
+      "teams": "Teams"
+    },
+    "addTeam": "Add Team",
+    "addTeamLabel": "Team to add",
+    "noTeams": "No teams on this plan yet. Add one to start entering capacity.",
+    "fields": {
+      "project": "Project",
+      "release": "Release",
+      "unit": "Unit",
+      "targetLoad": "Target Load",
+      "totalCapacity": "Total Capacity",
+      "plannedStartDate": "Planned Start Date",
+      "plannedEndDate": "Planned End Date"
+    }
+  },
+  "row": {
+    "notEntered": "Not entered",
+    "capacityLabel": "Capacity for {{team}}",
+    "capacityUpdated": "Capacity updated",
+    "capacityInvalid": "Capacity must be a number of zero or more",
+    "removeTeam": "Remove {{team}} from this plan",
+    "teamAdded": "Team added",
+    "teamRemoved": "Team removed"
+  }
+}

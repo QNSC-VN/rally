@@ -13,6 +13,7 @@ import iterations from './locales/en/iterations.json'
 import iterationStatus from './locales/en/iteration-status.json'
 import quality from './locales/en/quality.json'
 import portfolio from './locales/en/portfolio.json'
+import capacity from './locales/en/capacity.json'
 import reports from './locales/en/reports.json'
 import milestones from './locales/en/milestones.json'
 import settings from './locales/en/settings.json'
@@ -39,6 +40,7 @@ i18n.use(initReactI18next).init({
       'iteration-status': iterationStatus,
       quality,
       portfolio,
+      capacity,
       reports,
       milestones,
       settings,

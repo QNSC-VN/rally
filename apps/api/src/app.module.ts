@@ -20,6 +20,7 @@ import { ReportingModule } from '@modules/reporting';
 import { TeamStatusModule } from '@modules/team-status';
 import { MilestonesModule } from '@modules/milestones';
 import { PortfolioModule } from '@modules/portfolio';
+import { CapacityModule } from '@modules/capacity';
 import { QualityModule } from '@modules/quality';
 import { ScmModule } from '@modules/scm';
 import { GlobalExceptionFilter, REQUEST_CONTEXT } from '@qnsc-vn/platform-http';
@@ -63,6 +64,7 @@ import { AsyncLocalStorageMiddleware } from '@platform/context/als.middleware';
     TeamStatusModule,
     MilestonesModule,
     PortfolioModule,
+    CapacityModule,
     QualityModule,
     ScmModule,
   ],

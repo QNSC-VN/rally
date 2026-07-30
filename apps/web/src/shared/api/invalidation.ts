@@ -57,6 +57,16 @@ const WORK_ITEM_DASHBOARD_ROOTS: readonly QueryKey[] = [
   ['home'],
 ]
 
+/**
+ * Capacity planning read-models.
+ *
+ * Its own group because a capacity plan is downstream of SEVERAL entities: it renders a
+ * Release name and a Team name per row, and from the allocation slice onwards its
+ * Complete/Rollup numbers derive from portfolio items and their child work items. So a
+ * release, team or portfolio write must refresh capacity too.
+ */
+const CAPACITY_ROOTS: readonly QueryKey[] = [['capacity-plans'], ['capacity-plan']]
+
 /** Full work-item fan-out = derived views + dashboards + relation graph. */
 const WORK_ITEM_ALL: readonly QueryKey[] = [
   ...WORK_ITEM_VIEW_ROOTS,
@@ -124,6 +134,7 @@ export type EntityTag =
   | 'team'
   | 'quality'
   | 'portfolio'
+  | 'capacity'
   | 'workspace'
   | 'access'
   | 'notification'
@@ -133,12 +144,13 @@ export type EntityTag =
 export const INVALIDATION_MAP: Record<EntityTag, QueryKey[]> = {
   'work-item': dedup(WORK_ITEM_ALL),
   iteration: dedup([...ITERATION_ROOTS, ...WORK_ITEM_ALL]),
-  release: dedup([...RELEASE_ROOTS, ...WORK_ITEM_ALL]),
+  release: dedup([...RELEASE_ROOTS, ...WORK_ITEM_ALL, ...CAPACITY_ROOTS]),
   milestone: dedup([...MILESTONE_ROOTS, ...WORK_ITEM_ALL]),
   project: dedup([...PROJECT_ROOTS, ...WORK_ITEM_DASHBOARD_ROOTS]),
-  team: dedup([...TEAM_ROOTS, ...WORK_ITEM_DASHBOARD_ROOTS]),
+  team: dedup([...TEAM_ROOTS, ...WORK_ITEM_DASHBOARD_ROOTS, ...CAPACITY_ROOTS]),
   quality: dedup([['quality'], ...WORK_ITEM_DASHBOARD_ROOTS]),
-  portfolio: [['portfolio']],
+  portfolio: dedup([['portfolio'], ...CAPACITY_ROOTS]),
+  capacity: dedup(CAPACITY_ROOTS),
   workspace: dedup(WORKSPACE_ROOTS),
   access: dedup([...ACCESS_ROOTS, ['workspace-members-profile']]),
   notification: [['notifications']],
