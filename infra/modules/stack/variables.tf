@@ -92,6 +92,12 @@ variable "cache" {
     both environments; a single cache.t4g.micro is about $12/month.
   EOT
   type = object({
+    # Create the cache node at all. False is for an environment that is deliberately
+    # idle: ElastiCache cannot be stopped, only deleted, so a node is the one component
+    # of an idled environment that keeps billing. Requires min_count = 0 on both
+    # services — the `check` block in main.tf enforces that, because a task without a
+    # reachable cache does NOT fail loudly (see the note on local.redis_url).
+    enabled   = optional(bool, true)
     mode      = optional(string, "node")
     node_type = optional(string, "cache.t4g.micro")
   })
@@ -392,12 +398,17 @@ variable "db_role_passwords_set" {
   }
 }
 
-variable "rds_stop_schedule" {
+variable "idle_schedule" {
   type        = string
   default     = null
   description = <<-EOT
-    Cron/rate expression for an EventBridge Scheduler that STOPS this environment's RDS
-    instance. Null (the default) creates no schedule, no role and no policy.
+    Cron/rate expression for an EventBridge Scheduler that IDLES this environment:
+    stops the RDS instance AND scales both services to zero. Null (the default) creates
+    no schedules, no role and no policy.
+
+    Both halves matter. Stopping only the database leaves Fargate tasks running against
+    an instance they cannot reach — still billed, unable to serve, and invisible,
+    because `healthz` answers 200 regardless so the ALB keeps them registered.
 
     Required for any environment that is deliberately idle, because AWS FORCE-STARTS a
     stopped RDS instance after seven days. Without a recurring re-stop the instance

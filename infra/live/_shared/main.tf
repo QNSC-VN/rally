@@ -160,7 +160,7 @@ resource "aws_iam_role_policy" "deploy_rds_dev_guard" {
 # ── RDS wake guard — PRODUCTION deploy role ──────────────────────────────────
 # This grant was deliberately ABSENT until production was idled, and the reason it is
 # here now is a posture change rather than a loosening: production's instance is
-# STOPPED on purpose until go-live (see `min_count = 0` and `rds_stop_schedule` in
+# STOPPED on purpose until go-live (see `min_count = 0` and `idle_schedule` in
 # ../prod/main.tf), so waking it is a normal step of deploying rather than an
 # exception to be denied.
 #

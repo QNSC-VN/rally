@@ -117,7 +117,24 @@ module "stack" {
   // REMOVE THIS AT GO-LIVE, in the same change that restores min_count and
   // monitor_target_health. A schedule that stops production every Sunday is precisely
   // the kind of leftover that becomes an outage nobody can explain.
-  rds_stop_schedule = "cron(0 1 ? * SUN *)"
+  // No cache node while idled. ElastiCache has no stopped state — only delete — so the
+  // node is the one part of an idled environment that keeps billing (~$10/mo).
+  //
+  // Safe ONLY because both service floors are 0 above, and the `check` block in the
+  // stack module enforces that pairing: a task that cannot reach its cache does not
+  // fail, it falls back to localhost and runs with the token denylist and rate limiter
+  // failed open. So "no cache" and "no tasks" have to move together, and Terraform now
+  // refuses any plan where they do not.
+  //
+  // RE-ENABLE AT GO-LIVE in the same change that restores the floors. Recreating the
+  // node takes ~10 minutes and issues a NEW endpoint, which is fine here only because
+  // production has no sessions to lose. Mind the id-namespace collision documented in
+  // CLAUDE.md if the replacement reuses this name while the old one is still deleting.
+  cache = {
+    enabled = false
+  }
+
+  idle_schedule = "cron(0 1 ? * SUN *)"
 
   // Both halves of rally/production/r2-public-* are populated, so the public-bucket
   // credential can be injected. Same fix as develop: `rally-production-r2-app` is scoped
@@ -208,7 +225,7 @@ module "stack" {
   // secrets, same database, same cache.
   //
   // RDS run-state is not a Terraform concept, so the instance is stopped out of band —
-  // but AWS FORCE-STARTS a stopped instance after 7 days, so `rds_stop_schedule` below
+  // but AWS FORCE-STARTS a stopped instance after 7 days, so `idle_schedule` below
   // re-stops it weekly. Without that the saving silently evaporates.
   api = {
     cpu               = 1024

@@ -106,7 +106,7 @@ module "stack" {
   // There is no matching START schedule on purpose. The deploy pipeline is the wake
   // signal, so develop is up exactly on the days it is being changed. Adding a morning
   // start would pay for the days nobody touches it — which is most of them.
-  rds_stop_schedule = "cron(0 21 * * ? *)"
+  idle_schedule = "cron(0 21 * * ? *)"
 
   // Both halves of rally/develop/r2-public-* are populated, so the public-bucket
   // credential can be injected. This is a FIX, not hardening: the primary token
@@ -165,7 +165,7 @@ module "stack" {
   // Waking needs no new machinery and no schedule: qnsc-ci's deploy reusable already
   // restores services scaled to 0 and calls `ensure_rds` to start a stopped instance,
   // and `_shared` already grants the develop deploy role `rds:StartDBInstance`. Every
-  // merge to main therefore brings develop up on its own. `rds_stop_schedule` below
+  // merge to main therefore brings develop up on its own. `idle_schedule` below
   // puts it back down nightly.
   //
   // The floor is the part that matters. `desired_count` is under `ignore_changes`, so

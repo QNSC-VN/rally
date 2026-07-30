@@ -25,7 +25,19 @@ locals {
 
   # `rediss://`, never `redis://`: the cache module enables transit encryption
   # unconditionally, so a plaintext scheme would simply fail to connect.
-  redis_url = "rediss://${module.cache.endpoint}:${module.cache.port}"
+  # When the cache is disabled (an idled environment) this is a deliberately
+  # UNRESOLVABLE address rather than an empty string or an omitted variable.
+  #
+  # `env.schema.ts` declares `REDIS_URL: z.string().default('redis://localhost:6379')`,
+  # so omitting it makes a deployed task fall back to LOCALHOST — and the token denylist
+  # and rate limiter both FAIL OPEN when Valkey is unreachable. A task booted without a
+  # cache would therefore run with two security controls degraded instead of failing.
+  # An empty string is no better: it is a valid string, so the schema accepts it.
+  #
+  # `.invalid` is reserved by RFC 2606 and can never resolve, so the failure is a loud
+  # DNS error naming the cause. The real guard is still the `check` block at the bottom
+  # of this file: with the cache off, no task may run at all.
+  redis_url = var.cache.enabled ? "rediss://${module.cache[0].endpoint}:${module.cache[0].port}" : "rediss://cache-disabled.invalid:6379"
 
   # Computed, not read from `module.api.log_group_name`, to break a dependency
   # cycle: the agent needs a log group, the api needs the agent's container
@@ -224,6 +236,7 @@ module "rds" {
 # ioredis turns TLS on from that scheme alone (verified: `rediss://` yields
 # `options.tls === true`), so no client-side configuration is needed.
 module "cache" {
+  count  = var.cache.enabled ? 1 : 0
   source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/cache?ref=cache-v1.0.0"
 
   name              = "${local.name}-cache"
@@ -1067,9 +1080,9 @@ check "db_pool_fits_instance_class" {
 #
 # EventBridge Scheduler's universal target calls the RDS API directly: no Lambda to
 # own, patch or pay for.
-resource "aws_iam_role" "rds_stopper" {
-  count = var.rds_stop_schedule == null ? 0 : 1
-  name  = "${local.name}-rds-stopper"
+resource "aws_iam_role" "idler" {
+  count = var.idle_schedule == null ? 0 : 1
+  name  = "${local.name}-idler"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -1086,30 +1099,46 @@ resource "aws_iam_role" "rds_stopper" {
   tags = local.tags
 }
 
-resource "aws_iam_role_policy" "rds_stopper" {
-  count = var.rds_stop_schedule == null ? 0 : 1
-  name  = "stop-db-instance"
-  role  = aws_iam_role.rds_stopper[0].id
+resource "aws_iam_role_policy" "idler" {
+  count = var.idle_schedule == null ? 0 : 1
+  name  = "idle-environment"
+  role  = aws_iam_role.idler[0].id
 
   # Stop only. Not Start, and not Reboot: the schedule's whole job is to remove
   # capacity, and a role that can also start an instance turns a scheduling mistake
   # into a cost increase. Waking is the deploy pipeline's job and has its own grant.
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = "rds:StopDBInstance"
-      Resource = module.rds.instance_arn
-    }]
+    Statement = [
+      {
+        Sid      = "StopDatabase"
+        Effect   = "Allow"
+        Action   = "rds:StopDBInstance"
+        Resource = module.rds.instance_arn
+      },
+      {
+        # Scaling to zero as well as stopping the database, because stopping only the
+        # database leaves Fargate tasks running against an instance they cannot reach:
+        # still billed, unable to serve, and noisy. `healthz` answers 200 regardless, so
+        # the ALB keeps them registered and nothing reports the state.
+        Sid    = "ScaleServicesToZero"
+        Effect = "Allow"
+        Action = "ecs:UpdateService"
+        Resource = [
+          module.api.service_arn,
+          module.worker.service_arn,
+        ]
+      },
+    ]
   })
 }
 
 resource "aws_scheduler_schedule" "rds_stop" {
-  count       = var.rds_stop_schedule == null ? 0 : 1
+  count       = var.idle_schedule == null ? 0 : 1
   name        = "${local.name}-rds-stop"
-  description = "Stops ${module.rds.identifier}; see var.rds_stop_schedule for why this exists"
+  description = "Stops ${module.rds.identifier}; see var.idle_schedule for why this exists"
 
-  schedule_expression          = var.rds_stop_schedule
+  schedule_expression          = var.idle_schedule
   schedule_expression_timezone = "Asia/Ho_Chi_Minh"
 
   # OFF, not a window: this is not load-sensitive work, and an exact time makes the
@@ -1120,7 +1149,7 @@ resource "aws_scheduler_schedule" "rds_stop" {
 
   target {
     arn      = "arn:aws:scheduler:::aws-sdk:rds:stopDBInstance"
-    role_arn = aws_iam_role.rds_stopper[0].arn
+    role_arn = aws_iam_role.idler[0].arn
     input    = jsonencode({ DbInstanceIdentifier = module.rds.identifier })
 
     # No retries and no dead-letter queue ON PURPOSE. The common outcome is
@@ -1128,6 +1157,75 @@ resource "aws_scheduler_schedule" "rds_stop" {
     # desired state, not an error. Retrying it would generate noise for a success, and
     # a DLQ would collect messages nobody should act on. A genuine permissions failure
     # still surfaces in CloudTrail and in the schedule's own metrics.
+    retry_policy {
+      maximum_retry_attempts = 0
+    }
+  }
+}
+
+# ── Guard: an environment without a cache must run no tasks ───────────────────
+# `cache.enabled = false` deletes the node, and ElastiCache has no stopped state, so
+# this is the only way to stop an idled environment paying for one. But a task that
+# cannot reach its cache does NOT fail loudly: `env.schema.ts` defaults REDIS_URL to
+# localhost, and both the token denylist and the rate limiter FAIL OPEN when Valkey is
+# unreachable. So the dangerous state is not "no cache" — it is "no cache, tasks
+# running", which degrades two security controls silently.
+#
+# Asserting it here makes that combination impossible to reach through Terraform: the
+# plan fails instead of producing an environment that looks healthy. Waking an idled
+# environment is therefore one coherent change — cache back on, floors back to 1 —
+# rather than two that can be applied in the wrong order.
+check "idled_environment_runs_no_tasks" {
+  assert {
+    condition = var.cache.enabled || (var.api.min_count == 0 && var.worker.min_count == 0)
+    error_message = join(" ", [
+      "cache.enabled = false requires min_count = 0 on BOTH services (api is",
+      "${var.api.min_count}, worker is ${var.worker.min_count}).",
+      "Without a cache, tasks do not fail — REDIS_URL falls back to localhost and the",
+      "token denylist and rate limiter fail open. Set the floors to 0, or re-enable the cache.",
+    ])
+  }
+}
+
+# Scale the services to zero on the same cadence as the database stop.
+#
+# `desired_count` is under `ignore_changes` in the ecs-service module, so setting it
+# out of band is the sanctioned, non-drifting mechanism — which is why this uses
+# ecs:UpdateService rather than an autoscaling scheduled action. A scheduled action
+# would mutate the scalable target's min/max, and `aws_appautoscaling_target` has no
+# `ignore_changes` on those, so every plan would show drift and any apply during the
+# idle window would silently wake the environment.
+#
+# The floor being 0 (see api.min_count) is what makes this hold: with a floor of 1,
+# Application Auto Scaling restores the service within minutes.
+resource "aws_scheduler_schedule" "ecs_scale_down" {
+  for_each = var.idle_schedule == null ? {} : {
+    api    = module.api.service_name
+    worker = module.worker.service_name
+  }
+
+  name        = "${local.name}-${each.key}-scale-down"
+  description = "Scales ${each.value} to zero; see var.idle_schedule"
+
+  schedule_expression          = var.idle_schedule
+  schedule_expression_timezone = "Asia/Ho_Chi_Minh"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  target {
+    arn      = "arn:aws:scheduler:::aws-sdk:ecs:updateService"
+    role_arn = aws_iam_role.idler[0].arn
+    input = jsonencode({
+      Cluster      = module.ecs_cluster.cluster_name
+      Service      = each.value
+      DesiredCount = 0
+    })
+
+    # Idempotent — scaling an already-zero service to zero succeeds — so unlike the RDS
+    # stop this one has no expected-failure case. Retries stay off for consistency; a
+    # missed run is corrected by the next tick.
     retry_policy {
       maximum_retry_attempts = 0
     }
