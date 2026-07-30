@@ -13,6 +13,7 @@ import {
   PortfolioItemsService,
   PreliminaryEstimateMapService,
   computeCapacityWarnings,
+  computeCutlineIndex,
   defaultAllocationEstimate,
   resolveEstimate,
 } from '@modules/portfolio';
@@ -47,6 +48,13 @@ import type {
 /** A plan team with the four numbers and the advisory warnings derived from them. */
 export interface CapacityPlanTeamWithMetrics extends CapacityPlanTeamView {
   metrics: CapacityMetrics;
+  /**
+   * Index of the last of this team's Features (in rank order) that fits inside its capacity.
+   *
+   * `-1` when the very first one already exceeds it — a real answer, not an error — and `null`
+   * when no capacity has been entered, because there is then no line to draw.
+   */
+  cutlineIndex: number | null;
 }
 
 /**
@@ -544,8 +552,29 @@ export class CapacityPlansService {
           .filter((a) => a.teamId === team.teamId)
           .reduce((sum, a) => sum + Number(a.value), 0);
         const capacity = team.capacity === null ? null : Number(team.capacity);
+
+        /**
+         * Rally's cutline, per team.
+         *
+         * Walks this team's Features in RANK order accumulating their resolved estimate, and
+         * returns the index of the last one that still fits inside the team's capacity.
+         *
+         * Per TEAM rather than per plan, because the team's capacity is the number that
+         * actually constrains its work: a Feature above a plan-wide line could still belong to
+         * a team with no room left, which is the opposite of what the line is for.
+         *
+         * Computed here, not in the client: the rule is domain logic with its own tests
+         * (`computeCutlineIndex`), and a second implementation in the SPA would be a second
+         * definition of what fits.
+         */
+        const cutlineIndex = computeCutlineIndex(
+          allocations.filter((a) => a.teamId === team.teamId).map((a) => Number(a.value)),
+          capacity,
+        );
+
         return {
           ...team,
+          cutlineIndex,
           metrics: {
             complete,
             rollup,

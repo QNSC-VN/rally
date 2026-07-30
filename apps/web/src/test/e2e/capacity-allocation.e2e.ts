@@ -21,6 +21,10 @@ test.describe('Capacity allocation', () => {
     await popover.getByRole('button', { name: label }).first().click()
   }
 
+  /** The seeded team's row. `.first()` avoids the column header, which shares `.group`. */
+  const teamRow = (page: import('@playwright/test').Page) =>
+    page.locator('div.group').filter({ hasText: 'Team Alpha' }).first()
+
   async function openPlan(page: import('@playwright/test').Page) {
     await loginAndSelectProject(page)
     await page.goto('/capacity-planning', { waitUntil: 'domcontentloaded' })
@@ -68,6 +72,64 @@ test.describe('Capacity allocation', () => {
       .first()
       .click()
     await expect(page.getByText('Guest checkout flow')).toHaveCount(0)
+  })
+
+  test('draws the cutline where the team runs out of capacity', async ({ page }) => {
+    // Rally's line: Features in rank order, above it fits, below it does not. Needs a real
+    // capacity AND two Features that straddle it, so this builds both and puts the seeded plan
+    // back the way it found it.
+    await openPlan(page)
+
+    // A capacity small enough that the second Feature cannot fit.
+    const capacityCell = teamRow(page)
+      .getByText(/Not entered|\d/)
+      .first()
+    await capacityCell.click()
+    const editor = page.getByRole('textbox', { name: /^Capacity for / })
+    await editor.fill('5')
+    await editor.press('Enter')
+    await expect(teamRow(page)).toContainText('5')
+
+    for (const feature of [/FE-1/, /FE-2/]) {
+      await page.getByRole('button', { name: 'Allocate', exact: true }).first().click()
+      const dialog = page.getByRole('dialog', { name: 'Allocate a Feature' })
+      await dialog.getByLabel('Feature').click()
+      await pickOption(page, feature)
+      await dialog.getByLabel('Team').click()
+      await pickOption(page, /Team Alpha/)
+      // 4 points each: the first fits inside 5, the second cannot.
+      await dialog.getByLabel('Estimate').fill('4')
+      await dialog.getByRole('button', { name: 'Allocate', exact: true }).click()
+      await expect(dialog).toBeHidden()
+    }
+
+    // The line exists, is named, and sits between the two rows.
+    const cutline = page.getByRole('separator', { name: /Capacity cutline/i })
+    await expect(cutline).toBeVisible()
+    // Exactly one Feature is marked as not fitting — the second.
+    await expect(page.locator('[data-below-cutline="true"]')).toHaveCount(1)
+
+    // Survives a reload: the index came from the API, not from local state.
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await expect(page.getByRole('separator', { name: /Capacity cutline/i })).toBeVisible()
+
+    // ── Restore the seeded state ─────────────────────────────────────────────
+    for (const key of ['FE-1', 'FE-2']) {
+      await page
+        .getByRole('button', { name: new RegExp(`Remove the allocation for ${key}`) })
+        .first()
+        .click()
+    }
+    const reset = await (async () => {
+      await teamRow(page)
+        .getByText(/Not entered|\d/)
+        .first()
+        .click()
+      return page.getByRole('textbox', { name: /^Capacity for / })
+    })()
+    await reset.fill('')
+    await reset.press('Enter')
+    await expect(teamRow(page)).toContainText('Not entered')
   })
 
   test('publishes the plan, reports what it wrote, then reverts without undoing it', async ({

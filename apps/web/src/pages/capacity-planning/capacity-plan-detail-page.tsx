@@ -34,6 +34,7 @@ import { CAPACITY_TEAM_COLUMNS, type TeamColKey } from './model/columns'
 import { CapacityTeamRow } from './ui/capacity-team-row'
 import { AllocationRow } from './ui/allocation-row'
 import { AllocateFeatureModal } from './ui/allocate-feature-modal'
+import { CutlineDivider } from '@/shared/ui/cutline-divider'
 import { CapacityBreakdownOverlay } from './ui/capacity-breakdown-overlay'
 import { CapacityForecastModal } from './ui/capacity-forecast-modal'
 import { PublishPlanModal } from './ui/publish-plan-modal'
@@ -224,17 +225,27 @@ export function CapacityPlanDetailPage() {
                       onForecast={() => setForecastTeamId(team.teamId)}
                     />
                     {/* Allocated Features sit under their team, which is how Rally groups a
-                      shared Feature: one row per team, not one row per Feature. */}
-                    {allocationsByTeam.get(team.teamId)?.map((allocation) => (
-                      <AllocationRow
-                        key={allocation.id}
-                        planId={plan.id}
-                        allocation={allocation}
-                        unitLabel={unitLabel}
-                        canManage={canManage}
-                        colStyleFor={colStyleFor}
-                        onOpenFeature={openFeature}
-                      />
+                      shared Feature: one row per team, not one row per Feature.
+                      They arrive in RANK order, which is what makes the cutline meaningful. */}
+                    {allocationsByTeam.get(team.teamId)?.map((allocation, index) => (
+                      <div key={allocation.id}>
+                        {/* Above the FIRST row when index is -1: nothing this team holds fits.
+                            `null` (no capacity entered) draws no line at all — there is no
+                            number to divide against, and a line at the top would claim there
+                            is. */}
+                        {team.cutlineIndex !== null && team.cutlineIndex + 1 === index && (
+                          <CutlineDivider label={t('cutline.label')} />
+                        )}
+                        <AllocationRow
+                          planId={plan.id}
+                          allocation={allocation}
+                          unitLabel={unitLabel}
+                          canManage={canManage}
+                          colStyleFor={colStyleFor}
+                          onOpenFeature={openFeature}
+                          belowCutline={team.cutlineIndex !== null && index > team.cutlineIndex}
+                        />
+                      </div>
                     ))}
                   </div>
                 ))}

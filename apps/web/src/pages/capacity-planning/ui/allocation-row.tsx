@@ -12,6 +12,7 @@ import { CompositeBar } from '@/shared/ui/composite-bar'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { IconButton } from '@/shared/ui/icon-button'
 import { notify } from '@/shared/lib/toast'
+import { cn } from '@/shared/lib/utils'
 import { useCapacityWarningText } from '@/features/capacity-planning/warning-labels'
 import { type TeamColKey } from '../model/columns'
 import { EstimateTierBadge } from './estimate-tier-badge'
@@ -31,6 +32,7 @@ export function AllocationRow({
   canManage,
   colStyleFor,
   onOpenFeature,
+  belowCutline = false,
 }: {
   planId: string
   allocation: CapacityAllocation
@@ -38,6 +40,13 @@ export function AllocationRow({
   canManage: boolean
   colStyleFor: (key: TeamColKey, base?: CSSProperties) => CSSProperties
   onOpenFeature: (portfolioItemId: string) => void
+  /**
+   * This Feature sits below its team's cutline — it does not fit the capacity.
+   *
+   * Dimmed rather than hidden or struck through: it is still a real commitment a planner may
+   * edit, and Rally's line informs rather than gates.
+   */
+  belowCutline?: boolean
 }) {
   const { t } = useTranslation('capacity')
   const warningText = useCapacityWarningText()
@@ -62,7 +71,14 @@ export function AllocationRow({
   }
 
   return (
-    <div className="group flex min-h-[34px] items-center border-b border-border-inner bg-surface-subtle/40 px-3 text-ui-md transition-colors hover:bg-primary-lighter">
+    <div
+      className={cn(
+        'group flex min-h-[34px] items-center border-b border-border-inner bg-surface-subtle/40 px-3 text-ui-md transition-colors hover:bg-primary-lighter',
+        // Dimmed, not disabled: the row is still editable, and the line is advisory.
+        belowCutline && 'opacity-60',
+      )}
+      data-below-cutline={belowCutline || undefined}
+    >
       {/* Indented to read as a child of the team row above it. */}
       <div
         style={colStyleFor('team', { flexShrink: 0 })}

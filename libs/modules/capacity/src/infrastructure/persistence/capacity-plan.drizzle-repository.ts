@@ -210,11 +210,15 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
       .from(capacityPlanAllocations)
       .innerJoin(portfolioItems, eq(portfolioItems.id, capacityPlanAllocations.portfolioItemId))
       .where(eq(capacityPlanAllocations.planId, plan.id))
-      // Unallocated last, then by Feature key, with `id` as the unique tiebreaker the
+      // Unallocated last, then by the Feature's own RANK — not its key.
+      //
+      // Rank order is what makes the cutline meaningful: it is a running total down the
+      // priority order, so in any other order the accumulation answers nothing. Key order was
+      // effectively creation order, which is arbitrary. `id` is the unique tiebreaker the
       // ordering ratchet requires.
       .orderBy(
         asc(sql`${capacityPlanAllocations.teamId} is null`),
-        asc(portfolioItems.itemKey),
+        asc(portfolioItems.rank),
         asc(capacityPlanAllocations.id),
       );
 
