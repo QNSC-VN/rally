@@ -8,6 +8,7 @@ import {
   releases,
   milestones,
   portfolioItems,
+  capacityPlans,
 } from '../../../../../db/schema/work';
 
 /**
@@ -16,7 +17,8 @@ import {
  * request body/query). Tasks are nested under work-items (`/:id/tasks`), so a
  * task endpoint resolves via its parent's `work_item` id — no `task` kind needed.
  */
-export type ScopedResource = 'work_item' | 'iteration' | 'release' | 'milestone' | 'portfolio_item';
+export type ScopedResource =
+  'work_item' | 'iteration' | 'release' | 'milestone' | 'portfolio_item' | 'capacity_plan';
 
 const TABLES = {
   work_item: workItems,
@@ -25,6 +27,7 @@ const TABLES = {
   milestone: milestones,
   // Epic and Feature share one table, so one kind covers both.
   portfolio_item: portfolioItems,
+  capacity_plan: capacityPlans,
 } as const;
 
 const NOT_FOUND: Record<ScopedResource, [ErrorCode, string]> = {
@@ -33,6 +36,7 @@ const NOT_FOUND: Record<ScopedResource, [ErrorCode, string]> = {
   release: ['RELEASE_NOT_FOUND', 'Release not found'],
   milestone: ['MILESTONE_NOT_FOUND', 'Milestone not found'],
   portfolio_item: ['PORTFOLIO_ITEM_NOT_FOUND', 'Portfolio item not found'],
+  capacity_plan: ['CAPACITY_PLAN_NOT_FOUND', 'Capacity plan not found'],
 };
 
 /**

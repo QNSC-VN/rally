@@ -248,34 +248,24 @@ describe('portfolio write paths (e2e)', () => {
 
   describe('archive', () => {
     it('hides an archived item from the default list and restores it', async () => {
+      // Narrowed by a unique name rather than scanning the whole list: `ALL` caps at 200
+      // rows and this suite adds features on every run, so a whole-list assertion silently
+      // stops covering the row under test once the table grows past one page.
+      const name = `To archive ${uniqueKey()}`;
       const created = await portfolio.createItem(admin, {
         projectId: projectAId,
         type: 'feature',
-        name: 'To archive',
+        name,
       });
+      const listed = (includeArchived?: boolean) =>
+        portfolio.listItems(admin, { type: 'feature', search: name, includeArchived }, ALL);
 
       await portfolio.setArchived(admin, created.id, true);
-      const active = await portfolio.listItems(
-        admin,
-        { type: 'feature' },
-        { limit: 200, cursor: null },
-      );
-      expect(active.data.map((i) => i.id)).not.toContain(created.id);
-
-      const withArchived = await portfolio.listItems(
-        admin,
-        { type: 'feature', includeArchived: true },
-        { limit: 200, cursor: null },
-      );
-      expect(withArchived.data.map((i) => i.id)).toContain(created.id);
+      expect((await listed()).data.map((i) => i.id)).not.toContain(created.id);
+      expect((await listed(true)).data.map((i) => i.id)).toContain(created.id);
 
       await portfolio.setArchived(admin, created.id, false);
-      const restored = await portfolio.listItems(
-        admin,
-        { type: 'feature' },
-        { limit: 200, cursor: null },
-      );
-      expect(restored.data.map((i) => i.id)).toContain(created.id);
+      expect((await listed()).data.map((i) => i.id)).toContain(created.id);
     });
 
     it('is a SOFT delete — the row survives with archived_at set', async () => {
@@ -393,22 +383,33 @@ describe('portfolio write paths (e2e)', () => {
 
   describe('rank', () => {
     /** Three Features in a fresh Epic-free order, returned lowest rank first. */
+    /**
+     * Three Features sharing one unique TAG, so the list can be narrowed to exactly them.
+     *
+     * Never assert over the whole list here: `ALL` caps at 200 rows and this suite creates
+     * features on every run, so on a long-lived database the rows under test fall off the
+     * end. CI's fresh database hides that, which is precisely why it is worth avoiding.
+     */
     async function threeFeatures() {
+      const tag = uniqueKey();
       const made = [];
-      for (const n of ['Rank A', 'Rank B', 'Rank C']) {
+      for (const n of ['A', 'B', 'C']) {
         made.push(
           await portfolio.createItem(admin, {
             projectId: projectAId,
             type: 'feature',
-            name: `${n} ${uniqueKey()}`,
+            name: `Rank ${n} ${tag}`,
           }),
         );
       }
-      return made;
+      return { made, tag };
     }
 
     it('moves an item between two neighbours and the list order follows', async () => {
-      const [a, b, c] = await threeFeatures();
+      const {
+        made: [a, b, c],
+        tag,
+      } = await threeFeatures();
       // Created in order, so ranks ascend a < b < c.
       expect(a.rank < b.rank && b.rank < c.rank).toBe(true);
 
@@ -418,13 +419,15 @@ describe('portfolio write paths (e2e)', () => {
       expect(moved.rank < b.rank).toBe(true);
 
       // And the LIST reflects it — the ordering is what the user actually sees.
-      const page = await portfolio.listItems(admin, { type: 'feature' }, ALL);
-      const order = page.data.filter((i) => [a.id, b.id, c.id].includes(i.id)).map((i) => i.id);
+      const page = await portfolio.listItems(admin, { type: 'feature', search: tag }, ALL);
+      const order = page.data.map((i) => i.id);
       expect(order).toEqual([a.id, c.id, b.id]);
     });
 
     it('moves an item to the very top when there is no upper neighbour', async () => {
-      const [a, , c] = await threeFeatures();
+      const {
+        made: [a, , c],
+      } = await threeFeatures();
       const moved = await portfolio.rankItem(admin, c.id, { beforeId: null, afterId: a.id });
       expect(moved.rank < a.rank).toBe(true);
     });
@@ -432,7 +435,10 @@ describe('portfolio write paths (e2e)', () => {
     it('never writes an EQUAL rank, so the next drag still works', async () => {
       // Equal neighbours are what make `between()` throw. Moving repeatedly into the same
       // gap is the sequence most likely to exhaust precision and collide.
-      const [a, b, c] = await threeFeatures();
+      const {
+        made: [a, b, c],
+        tag,
+      } = await threeFeatures();
       let last = c;
       for (let i = 0; i < 6; i++) {
         last = await portfolio.rankItem(admin, last.id, { beforeId: a.id, afterId: b.id });
@@ -442,14 +448,16 @@ describe('portfolio write paths (e2e)', () => {
       // Scoped to the three rows this test owns. A scope-wide check would police rows
       // other suites left behind — this database still holds fixtures inserted with a
       // hardcoded rank before that spec was corrected.
-      const rows = await portfolio.listItems(admin, { type: 'feature' }, ALL);
-      const mine = rows.data.filter((r) => [a.id, b.id, last.id].includes(r.id));
-      const ranks = mine.map((r) => r.rank);
+      const rows = await portfolio.listItems(admin, { type: 'feature', search: tag }, ALL);
+      const ranks = rows.data.map((r) => r.rank);
+      expect(ranks).toHaveLength(3);
       expect(new Set(ranks).size).toBe(ranks.length);
     });
 
     it('refuses an Epic as a Feature neighbour', async () => {
-      const [a] = await threeFeatures();
+      const {
+        made: [a],
+      } = await threeFeatures();
       const epic = await portfolio.createItem(admin, {
         projectId: projectAId,
         type: 'epic',
@@ -464,7 +472,9 @@ describe('portfolio write paths (e2e)', () => {
       // The Portfolio list is cross-project and flat per type, so a Feature in project B
       // is a legitimate neighbour for one in project A. This is the deliberate difference
       // from work items, which rank within (project, parent).
-      const [a, b] = await threeFeatures();
+      const {
+        made: [a, b],
+      } = await threeFeatures();
       const inB = await portfolio.createItem(admin, {
         projectId: projectBId,
         type: 'feature',
@@ -476,7 +486,9 @@ describe('portfolio write paths (e2e)', () => {
     });
 
     it('refuses a caller without permission on the item', async () => {
-      const [a, b, c] = await threeFeatures();
+      const {
+        made: [a, b, c],
+      } = await threeFeatures();
       const stranger = makeActor(randomUUID(), []);
       await expect(
         portfolio.rankItem(stranger, c.id, { beforeId: a.id, afterId: b.id }),

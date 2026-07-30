@@ -56,6 +56,8 @@
       "@modules/team-status/*": ["./libs/modules/team-status/src/*"],
       "@modules/milestones": ["./libs/modules/milestones/src/index"],
       "@modules/milestones/*": ["./libs/modules/milestones/src/*"],
+      "@modules/capacity": ["./libs/modules/capacity/src/index"],
+      "@modules/capacity/*": ["./libs/modules/capacity/src/*"],
       "@modules/portfolio": ["./libs/modules/portfolio/src/index"],
       "@modules/portfolio/*": ["./libs/modules/portfolio/src/*"],
       "@modules/quality": ["./libs/modules/quality/src/index"],

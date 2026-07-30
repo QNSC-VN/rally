@@ -251,6 +251,26 @@ const portfolioDetailRoute = createRoute({
   ),
 })
 
+const capacityPlansRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: '/capacity-planning',
+  staticData: { breadcrumb: 'Capacity Planning' },
+  component: lazyPage(
+    () => import('@/pages/capacity-planning/capacity-plans-page'),
+    'CapacityPlansPage',
+  ),
+})
+
+const capacityPlanDetailRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: '/capacity-planning/$planId',
+  staticData: { breadcrumb: 'Capacity Plan' },
+  component: lazyPage(
+    () => import('@/pages/capacity-planning/capacity-plan-detail-page'),
+    'CapacityPlanDetailPage',
+  ),
+})
+
 const reportsRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/reports',
@@ -291,6 +311,8 @@ const routeTree = rootRoute.addChildren([
     reportsRoute,
     portfolioRoute,
     portfolioDetailRoute,
+    capacityPlansRoute,
+    capacityPlanDetailRoute,
     workItemDetailRoute,
     notFoundRoute,
   ]),

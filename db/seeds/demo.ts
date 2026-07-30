@@ -55,6 +55,8 @@ import {
   timeLogs,
   workItemWatchers,
   portfolioItems,
+  capacityPlans,
+  capacityPlanTeams,
 } from '../schema/work';
 import { userRoleAssignments } from '../schema/access';
 import { seedSystemRolesInto } from './reference';
@@ -78,6 +80,7 @@ import {
   NXP_EPIC_1_ID,
   NXP_FEATURE_1_ID,
   NXP_FEATURE_2_ID,
+  NXP_CAPACITY_PLAN_ID,
   SEED_PROJECTS,
 } from './constants';
 
@@ -443,6 +446,27 @@ async function seedFlow() {
     .update(workItems)
     .set({ featureId: NXP_FEATURE_1_ID })
     .where(inArray(workItems.id, [NXP_STORY_1_ID, NXP_DEFECT_1_ID]));
+
+  // Capacity plan fixture (P5.2): one draft plan on the seeded release, with Team Alpha
+  // added and capacity deliberately left NULL so the "not entered" state — distinct from a
+  // capacity of zero — has a case to render.
+  await db
+    .insert(capacityPlans)
+    .values({
+      id: NXP_CAPACITY_PLAN_ID,
+      workspaceId: WORKSPACE_ID,
+      projectId: nxpId,
+      releaseId: NXP_RELEASE_1_ID,
+      name: 'NX Platform v2 capacity',
+      unit: 'points' as const,
+      targetLoadPct: 80,
+    })
+    .onConflictDoNothing();
+
+  await db
+    .insert(capacityPlanTeams)
+    .values({ planId: NXP_CAPACITY_PLAN_ID, teamId: TEAM_ALPHA_ID })
+    .onConflictDoNothing();
 
   // Assign the Story to the milestone (Iteration Status "Milestones" column).
   await db

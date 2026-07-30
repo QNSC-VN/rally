@@ -2174,6 +2174,77 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v1/capacity-plans': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List a project's capacity plans */
+    get: operations['CapacityPlansController_listPlans']
+    put?: never
+    /** Create a capacity plan for a release */
+    post: operations['CapacityPlansController_createPlan']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/capacity-plans/{id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Get a plan with its teams and totals */
+    get: operations['CapacityPlansController_getPlan']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    /** Update a draft plan */
+    patch: operations['CapacityPlansController_updatePlan']
+    trace?: never
+  }
+  '/v1/capacity-plans/{id}/teams': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Add a team to a plan */
+    post: operations['CapacityPlansController_addTeam']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/capacity-plans/{id}/teams/{teamId}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    /** Remove a team from a plan */
+    delete: operations['CapacityPlansController_removeTeam']
+    options?: never
+    head?: never
+    /** Set or clear a team's capacity */
+    patch: operations['CapacityPlansController_setTeamCapacity']
+    trace?: never
+  }
   '/v1/quality/defects': {
     parameters: {
       query?: never
@@ -3759,6 +3830,72 @@ export interface components {
     RankPortfolioItemDto: {
       beforeId?: string | null
       afterId?: string | null
+    }
+    CapacityPlanResponseDto: {
+      /** Format: uuid */
+      id: string
+      /** Format: uuid */
+      workspaceId: string
+      /** Format: uuid */
+      projectId: string
+      projectName: string | null
+      /** Format: uuid */
+      releaseId: string
+      releaseName: string | null
+      name: string
+      /** @enum {string} */
+      status: 'draft' | 'published'
+      /**
+       * @description Fixed at creation — every number on the plan uses it
+       * @enum {string}
+       */
+      unit: 'points' | 'count'
+      /** @description YYYY-MM-DD */
+      plannedStartDate: string | null
+      /** @description YYYY-MM-DD */
+      plannedEndDate: string | null
+      /** @description Advisory load ceiling, 1–99 */
+      targetLoadPct: number
+      publishedAt: string | null
+      publishedBy: string | null
+      /** Format: date-time */
+      createdAt: string
+      /** Format: date-time */
+      updatedAt: string
+      teams: {
+        /** Format: uuid */
+        id: string
+        /** Format: uuid */
+        teamId: string
+        teamName: string | null
+        capacity: number | null
+      }[]
+      totalCapacity: number | null
+    }
+    CreateCapacityPlanDto: {
+      /** Format: uuid */
+      projectId: string
+      /** Format: uuid */
+      releaseId: string
+      name: string
+      /** @enum {string} */
+      unit: 'points' | 'count'
+      plannedStartDate?: string | null
+      plannedEndDate?: string | null
+      targetLoadPct?: number
+    }
+    UpdateCapacityPlanDto: {
+      name?: string
+      plannedStartDate?: string | null
+      plannedEndDate?: string | null
+      targetLoadPct?: number
+    }
+    AddCapacityTeamDto: {
+      /** Format: uuid */
+      teamId: string
+    }
+    SetCapacityDto: {
+      capacity: number | null
     }
     ScmConnectionResponseDto: {
       /** Format: uuid */
@@ -11462,6 +11599,386 @@ export interface operations {
       }
       /** @description Not Found */
       404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  CapacityPlansController_listPlans: {
+    parameters: {
+      query: {
+        projectId: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['CapacityPlanResponseDto'][]
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  CapacityPlansController_createPlan: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateCapacityPlanDto']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['CapacityPlanResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Conflict — duplicate record or state conflict */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  CapacityPlansController_getPlan: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['CapacityPlanResponseDto']
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  CapacityPlansController_updatePlan: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateCapacityPlanDto']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['CapacityPlanResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  CapacityPlansController_addTeam: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['AddCapacityTeamDto']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['CapacityPlanResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Conflict — duplicate record or state conflict */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  CapacityPlansController_removeTeam: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+        teamId: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['CapacityPlanResponseDto']
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  CapacityPlansController_setTeamCapacity: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+        teamId: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SetCapacityDto']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['CapacityPlanResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
         headers: {
           [name: string]: unknown
         }

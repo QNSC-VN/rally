@@ -11,6 +11,7 @@ export const STORAGE_KEYS = {
   QUALITY_COLUMNS: 'rally-quality-columns',
   MILESTONES_COLUMNS: 'rally-milestones-columns',
   PORTFOLIO_COLUMNS: 'rally-portfolio-columns',
+  CAPACITY_PLAN_COLUMNS: 'rally-capacity-plan-columns',
   // v2: End Date column added — bump invalidates stale saved layouts so the new
   // column lands in its declared position (after Start Date) instead of drifting.
   PROJECTS_COLUMNS: 'rally-projects-columns-v2',

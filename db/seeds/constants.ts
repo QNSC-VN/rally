@@ -66,6 +66,12 @@ export const NXP_EPIC_1_ID = '00000000-0000-7000-8000-0000000000c0';
 export const NXP_FEATURE_1_ID = '00000000-0000-7000-8000-0000000000c1';
 export const NXP_FEATURE_2_ID = '00000000-0000-7000-8000-0000000000c2';
 
+// Capacity plan fixture (P5.2): one plan on the seeded release with Team Alpha added and
+// capacity left NULL. Seeded because a release may hold only ONE plan
+// (`uq_capacity_plan_project_release`), so a browser test that created its own would
+// consume the project's only unplanned release and fail on the next run.
+export const NXP_CAPACITY_PLAN_ID = '00000000-0000-7000-8000-0000000000d0';
+
 // ── Seed data constants ───────────────────────────────────────────────────────
 // Format: { id, key, name, description }
 // All are owned by ADMIN_USER_ID and belong to the default workspace.

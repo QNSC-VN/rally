@@ -112,15 +112,27 @@ const NAV_ITEMS: NavItem[] = [
     label: 'Portfolio',
     featureFlag: 'feature.portfolio',
     permission: 'project:view',
-    // SoT §4: Portfolio is a dropdown whose only Phase 0–4 child is the
-    // Release Planning placeholder (real Release management stays under
-    // Plan > Timeboxes > Releases; Release Planning is a Phase-5 surface).
+    // SoT §4: Portfolio is a dropdown. Through Phase 4 its only child was a
+    // "Release Planning" placeholder pointing at /portfolio; Phase 5 fills both
+    // surfaces in, so the placeholder becomes two real entries. Real Release
+    // MANAGEMENT still lives under Plan > Timeboxes > Releases — this dropdown is
+    // portfolio items and capacity.
+    //
+    // Rally names the capacity screen "Release Planning"; we label it "Capacity
+    // Planning" so the nav matches the page title and the spec's own wording, and
+    // record the synonym here rather than having two names for one screen.
     children: [
       {
         path: '/portfolio',
-        label: 'Release Planning',
+        label: 'Portfolio',
         featureFlag: 'feature.portfolio',
-        permission: 'project:view',
+        permission: 'portfolio:view',
+      },
+      {
+        path: '/capacity-planning',
+        label: 'Capacity Planning',
+        featureFlag: 'feature.portfolio',
+        permission: 'capacity:view',
       },
     ],
   },

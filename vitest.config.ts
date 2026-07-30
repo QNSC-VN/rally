@@ -71,6 +71,7 @@ export default defineConfig({
         'libs/shared-kernel/src/health.ts',
         'libs/modules/portfolio/src/domain/portfolio-rollup.ts',
         'libs/modules/portfolio/src/application/portfolio-items.service.ts',
+        'libs/modules/capacity/src/application/capacity-plans.service.ts',
         'libs/modules/access/src/application/access.service.ts',
         'libs/modules/access/src/interface/http/policy.guard.ts',
         'libs/modules/activity/src/application/activity-logger.service.ts',
