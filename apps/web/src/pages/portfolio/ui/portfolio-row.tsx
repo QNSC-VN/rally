@@ -35,11 +35,14 @@ export function PortfolioRow({
   item,
   canEdit,
   canRank,
+  revealed = false,
   colStyleFor,
   gutterProps,
   onOpen,
 }: {
   item: PortfolioItem
+  /** Highlighted because the user was just sent here — see the scaffold's `revealRowId`. */
+  revealed?: boolean
   canEdit: boolean
   /** Drag-to-rank enabled: requires edit rights AND natural rank order. */
   canRank: boolean
@@ -75,10 +78,14 @@ export function PortfolioRow({
     <div
       ref={setNodeRef}
       className="group flex min-h-[34px] items-center border-b border-border-inner px-3 text-ui-md transition-colors hover:bg-primary-lighter"
+      // Named so a test can find the row the user was just sent to, and so a screen reader is
+      // not told about a purely visual hint.
+      data-revealed={revealed || undefined}
       style={{
         transform: CSS.Transform.toString(transform),
         transition,
-        backgroundColor: isDragging ? BRAND.primaryLighter : undefined,
+        // The highlight loses to a drag: while dragging, THAT is what the row is doing.
+        backgroundColor: isDragging ? BRAND.primaryLighter : revealed ? BRAND.accentBg : undefined,
         opacity: isDragging ? 0.6 : 1,
         // Lift the dragged row above its neighbours so it is not clipped mid-drag.
         zIndex: isDragging ? 1 : undefined,

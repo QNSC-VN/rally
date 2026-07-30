@@ -56,6 +56,14 @@ export function PortfolioPage() {
   const [stateFilter, setStateFilter] = useState<string>('all')
   const [search, setSearch] = useState('')
   const [showCreate, setShowCreate] = useState(false)
+  /**
+   * The item to bring into view — set after a create.
+   *
+   * Never cleared here: the scaffold decides when the highlight stops applying (the user pages
+   * away), and keeping the id means the row is still found if the list refetches a moment
+   * later — which it usually does, right after the create.
+   */
+  const [revealId, setRevealId] = useState<string | null>(null)
   const [confirmArchive, setConfirmArchive] = useState(false)
 
   // Creating targets ONE project, so it uses the currently-selected project the way every
@@ -270,10 +278,12 @@ export function PortfolioPage() {
             />
           ) : undefined
         }
-        renderRow={(item, { gutterProps }) => (
+        revealRowId={revealId}
+        renderRow={(item, { gutterProps, revealed }) => (
           <PortfolioRow
             key={item.id}
             item={item}
+            revealed={revealed}
             canEdit={rowPerms.can(item.projectId, 'portfolio:edit')}
             canRank={sortField === null && rowPerms.can(item.projectId, 'portfolio:edit')}
             colStyleFor={colStyleFor}
@@ -288,6 +298,7 @@ export function PortfolioPage() {
           projectId={createProjectId}
           type={type}
           onClose={() => setShowCreate(false)}
+          onCreated={setRevealId}
         />
       )}
     </>

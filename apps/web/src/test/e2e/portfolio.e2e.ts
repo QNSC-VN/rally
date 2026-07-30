@@ -96,15 +96,21 @@ test.describe('Portfolio', () => {
     await dialog.getByRole('button', { name: 'Create', exact: true }).click()
     await expect(dialog).toBeHidden()
 
-    // `exact: true` on every row assertion: the toast reads `"<name>" created`, which
-    // contains the name, so a substring match would pass on the toast alone.
-    // Find it by SEARCH rather than expecting it on screen. New items append to the END
-    // of rank order and the grid pages at 25, so on a populated workspace a fresh row is
-    // genuinely off-page. Asserting `getByText(unique)` here would also pass for the
-    // wrong reason — the success toast repeats the name.
+    // The new row is ON SCREEN without searching for it. A new item is ranked LAST and the
+    // grid pages at 25, so this used to require a search to find at all — the scaffold now
+    // jumps to the page holding it and flashes it (`revealRowId`).
+    //
+    // Scoped to the ROW rather than the page: `exact: true` is not enough on its own here,
+    // because the success toast also reads `"<name>" created`.
+    const revealed = page.locator('[data-revealed="true"]')
+    await expect(revealed).toContainText(unique)
+
+    // It is a real grid row, not just a highlight: the same row is reachable as a sortable row
+    // on the page the user was sent to.
     const search = page.getByRole('searchbox', { name: /Search portfolio/i })
-    await search.fill(unique)
-    await expect(page.getByText(unique, { exact: true })).toBeVisible()
+    await expect(
+      page.locator('[aria-roledescription="sortable"]').filter({ hasText: unique }),
+    ).toBeVisible()
 
     // ── Inline rename ───────────────────────────────────────────────────────
     // The Name cell is the inline editor; the ID cell is the click-to-open link.

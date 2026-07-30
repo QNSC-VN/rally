@@ -116,10 +116,31 @@ export interface ListPageScaffoldProps<Row extends { id: string }, K extends str
         stopPropagation: true
         checkbox?: { checked: boolean; onChange: () => void; ariaLabel: string }
       }
+      /**
+       * This row is the one `revealRowId` named.
+       *
+       * Optional to honour: a row that ignores it still gets the page jump, which is the part
+       * that decides whether the row is on screen at all.
+       */
+      revealed: boolean
     },
   ) => ReactNode
   /** Initial rows-per-page (default 25). */
   initialPageSize?: number
+  /**
+   * Bring a row into view — pass the id of a row the user just created or acted on.
+   *
+   * Lives here rather than in a page because it is a consequence of the scaffold's OWN
+   * client-side pagination: a new row appended in rank order lands on the last page, so on a
+   * populated list "Create" appeared to do nothing at all. Every paginated list has that
+   * problem, so it is fixed once.
+   *
+   * Jumps to the page holding the row and marks it. The mark lasts until the user pages away
+   * or a different row is revealed — deliberately not a timed flash, which would vanish while
+   * they were still reading. The row opts in by reading `ctx.revealed`; rows that ignore it
+   * still get the page jump, which is the part that decides whether it is on screen at all.
+   */
+  revealRowId?: string | null
   /**
    * dnd-kit wiring from `useRowRerank()` — pass to enable drag-to-rank.
    *
@@ -159,12 +180,30 @@ export function ListPageScaffold<Row extends { id: string }, K extends string>({
   renderRow,
   dnd,
   initialPageSize = 25,
+  revealRowId,
 }: ListPageScaffoldProps<Row, K>) {
   // ── Client-side pagination ──────────────────────────────────────────────────
   const [pageSize, setPageSize] = useState(initialPageSize)
   const [currentPage, setCurrentPage] = useState(1)
   const pageCount = Math.max(1, Math.ceil(items.length / pageSize))
-  const page = Math.min(currentPage, pageCount)
+
+  // ── Reveal a row (e.g. one just created) ────────────────────────────────────
+  // DERIVED, not stored. Setting the page from an effect would mean `setState` during an
+  // effect — cascading renders, and the lint rule that forbids it is right: the page the user
+  // should be looking at is a function of the reveal, not an event that happened to it.
+  //
+  // `dismissedReveal` is what lets the user page away again afterwards: once they touch the
+  // pager, the override stops applying to that id.
+  const [dismissedReveal, setDismissedReveal] = useState<string | null>(null)
+  const revealIndex =
+    revealRowId && revealRowId !== dismissedReveal
+      ? items.findIndex((row) => row.id === revealRowId)
+      : -1
+  // A row that does not exist YET (the list is still refetching) leaves this at -1 and simply
+  // has no effect — and starts working the moment it arrives, with no extra wiring.
+  const revealPage = revealIndex >= 0 ? Math.floor(revealIndex / pageSize) + 1 : null
+
+  const page = revealPage ?? Math.min(currentPage, pageCount)
   const paged = useMemo(
     () => items.slice((page - 1) * pageSize, page * pageSize),
     [items, page, pageSize],
@@ -242,6 +281,7 @@ export function ListPageScaffold<Row extends { id: string }, K extends string>({
               setPageSize={(n) => {
                 setPageSize(n)
                 setCurrentPage(1)
+                setDismissedReveal(revealRowId ?? null)
               }}
               currentPage={page}
               rangeStart={(page - 1) * pageSize + 1}
@@ -250,8 +290,15 @@ export function ListPageScaffold<Row extends { id: string }, K extends string>({
               pageCount={pageCount}
               hasPrevPage={page > 1}
               hasNextPage={page < pageCount}
-              onPrevPage={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              onNextPage={() => setCurrentPage((p) => Math.min(pageCount, p + 1))}
+              // Paging by hand releases the reveal override — from here the user is driving.
+              onPrevPage={() => {
+                setCurrentPage(Math.max(1, page - 1))
+                setDismissedReveal(revealRowId ?? null)
+              }}
+              onNextPage={() => {
+                setCurrentPage(Math.min(pageCount, page + 1))
+                setDismissedReveal(revealRowId ?? null)
+              }}
             />
           ) : undefined
         }
@@ -267,6 +314,7 @@ export function ListPageScaffold<Row extends { id: string }, K extends string>({
               : undefined
             return renderRow(row, {
               selected: selectable && selection.isSelected(row.id),
+              revealed: revealIndex >= 0 && row.id === revealRowId,
               // `dragDisabled` here because this node has no sortable state — a
               // draggable row builds its own gutter from `gutterProps` instead.
               gutter: checkbox ? (
