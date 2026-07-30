@@ -61,26 +61,41 @@ describe('computeHealth', () => {
     });
   });
 
-  describe('complete outranks the schedule', () => {
-    it('is complete when all work is accepted, even while late on pace', () => {
+  /**
+   * Rally's BLUE needs BOTH conditions: "current date is after the Planned End Date and
+   * the artifacts in the portfolio item are 100% done" (Broadcom TechDocs, "Using the
+   * Portfolio Items Page"). Finishing early therefore does NOT turn an item blue.
+   */
+  describe('complete is Rally blue — 100% done AND past the planned end', () => {
+    it('is complete once the planned end has passed and all work is accepted', () => {
       const r = computeHealth(base({ accepted: 100, today: dayN(200) }));
       expect(r.state).toBe('complete');
       expect(r.percentDone).toBe(1);
     });
 
-    it('is complete when accepted exceeds total', () => {
+    it('stays ON TRACK when finished EARLY, because the end date has not passed', () => {
+      // Ahead of schedule is still green in Rally; blue is reserved for "done and the
+      // window has closed". Reporting complete here would be friendlier but wrong.
+      const r = computeHealth(base({ accepted: 100, today: dayN(50) }));
+      expect(r.state).toBe('on_track');
+      expect(r.percentDone).toBe(1);
+    });
+
+    it('clamps an over-total rollup to 100% rather than reporting 130%', () => {
       // Defensive: a rollup can momentarily exceed its own denominator mid-write.
-      // Clamped rather than reported as 130%.
-      const r = computeHealth(base({ accepted: 130 }));
+      const r = computeHealth(base({ accepted: 130, today: dayN(200) }));
       expect(r.state).toBe('complete');
       expect(r.percentDone).toBe(1);
     });
 
-    it('is complete without any planned dates', () => {
-      // Finished is finished — checked before the date guard on purpose.
+    it('is INDETERMINATE when finished but there are no planned dates', () => {
+      // Rally's blue is defined against the Planned End Date, so without one there is
+      // nothing to compare against — it warns about the missing dates instead.
       const r = computeHealth(base({ accepted: 100, start: null, end: null }));
-      expect(r.state).toBe('complete');
-      expect(r.indeterminate).toBeNull();
+      expect(r.state).toBe('not_started');
+      expect(r.indeterminate).toBe('no_dates');
+      // The percentage is still reported — only the VERDICT is unavailable.
+      expect(r.percentDone).toBe(1);
     });
   });
 

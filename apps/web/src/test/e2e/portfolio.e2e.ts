@@ -134,6 +134,56 @@ test.describe('Portfolio', () => {
     await expect(page.getByText(renamed, { exact: true })).toHaveCount(0)
   })
 
+  test('the Percent Done bars carry Rally status colour and explain a missing verdict', async ({
+    page,
+  }) => {
+    // Rally: "Both of the Percent Done fields are colored based on the status of the work
+    // needed to complete the portfolio item" (TechDocs, "Using the Portfolio Items Page").
+    //
+    // Asserts the WIRING, not a particular colour. The verdict depends on the shared
+    // seeded Story/Defect, whose schedule state other specs in this suite mutate, so
+    // pinning "red" would fail depending on run order. The thresholds themselves are
+    // covered in `health.spec.ts` (24 cases) and `percent-done-bar.test.tsx`.
+    await login(page)
+    await page.goto('/portfolio', { waitUntil: 'domcontentloaded' })
+    await expect(page.getByText('FE-1', { exact: true })).toBeVisible()
+
+    // Narrowed by SEARCH rather than scanning the grid: the list pages at 25 and a
+    // populated workspace has hundreds of Features, so FE-2 is genuinely off page one.
+    const search = page.getByRole('searchbox', { name: /Search portfolio/i })
+
+    // FE-1 is seeded WITH a planned window, so it gets a real verdict: the tooltip
+    // carries the numbers and a status sentence, and specifically NOT the missing-dates
+    // note. That is what proves the dates reached `computeHealth`.
+    await search.fill('Guest checkout flow')
+    const fe1 = page.locator('[aria-roledescription="sortable"]').filter({ hasText: 'FE-1' })
+    const fe1Tip = await fe1.locator('[title*="Accepted points"]').first().getAttribute('title')
+    expect(fe1Tip).toContain('Status:')
+    expect(fe1Tip).toContain('Accepted points:')
+    expect(fe1Tip).not.toContain('dates are missing')
+
+    // FE-2 is childless, so there is no denominator and no verdict. `computeHealth`
+    // reports `no_work` ahead of `no_dates` — a zero total is checked first, since
+    // dividing by it would invent a health problem — so the note names the missing
+    // ESTIMATES even though FE-2 also has no dates.
+    //
+    // This is also the empty-bar path: there is no fill to hover, so the placeholder dash
+    // carries the tooltip. Before this slice it carried nothing and the row read as a
+    // rendering bug.
+    await search.fill('Saved payment methods')
+    const fe2 = page.locator('[aria-roledescription="sortable"]').filter({ hasText: 'FE-2' })
+    const fe2Tip = await fe2.locator('[title*="Accepted points"]').first().getAttribute('title')
+    expect(fe2Tip).toContain('no estimated work is linked yet')
+
+    await search.fill('')
+
+    // The detail page reads the same field, so the two surfaces cannot disagree.
+    await page.getByText('FE-1', { exact: true }).click()
+    await expect(page).toHaveURL(/\/portfolio\/[0-9a-f-]{36}/)
+    const detailTip = await page.locator('[title*="Accepted points"]').first().getAttribute('title')
+    expect(detailTip).toBe(fe1Tip)
+  })
+
   test('drag reorders rows, and the grip disappears under a column sort', async ({ page }) => {
     await login(page)
     await page.goto('/portfolio', { waitUntil: 'domcontentloaded' })

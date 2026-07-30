@@ -51,6 +51,19 @@ const RollupSchema = z.object({
   completedCount: z.number(),
 });
 
+/**
+ * Rally's portfolio-item status colour, computed against the planned window.
+ *
+ * `indeterminate` says WHY no verdict was possible, which Rally surfaces as a
+ * "missing estimates or dates" hover note rather than a misleading green.
+ */
+const HealthSchema = z.object({
+  state: z.enum(['complete', 'on_track', 'at_risk', 'late', 'not_started']),
+  percentDone: z.number().nullable(),
+  percentElapsed: z.number().nullable(),
+  indeterminate: z.enum(['no_dates', 'no_work']).nullable(),
+});
+
 const PortfolioItemSchema = z.object({
   id: z.string().uuid(),
   workspaceId: z.string().uuid(),
@@ -85,6 +98,7 @@ const PortfolioItemSchema = z.object({
   childFeatureCount: z.number().describe('Active child Features. Epic only; 0 for a Feature.'),
   rollup: RollupSchema,
   progress: ProgressSchema,
+  health: HealthSchema,
 });
 export class PortfolioItemResponseDto extends createZodDto(PortfolioItemSchema) {}
 

@@ -254,6 +254,113 @@ describe('PortfolioItemsService', () => {
     });
   });
 
+  /**
+   * Rally's status colour for a portfolio item: "Both of the Percent Done fields are
+   * colored based on the status of the work needed to complete the portfolio item"
+   * (Broadcom TechDocs, "Using the Portfolio Items Page").
+   *
+   * The arithmetic itself belongs to `computeHealth` and is pinned by
+   * `libs/shared-kernel/src/health.spec.ts`. What these tests pin is the WIRING — that
+   * the service feeds it the ACCEPTED rollup and the PLANNED dates, since feeding it the
+   * completed rollup would silently colour un-signed-off work as delivered.
+   */
+  describe('health', () => {
+    /** `today` is real, so fixtures are expressed as offsets from now. */
+    const dayOffset = (days: number): string => {
+      const d = new Date();
+      d.setUTCDate(d.getUTCDate() + days);
+      return d.toISOString().slice(0, 10);
+    };
+
+    async function healthOf(over: Parameters<typeof view>[0]) {
+      repo.listByFilter.mockResolvedValue(emptyPage([view(over)]));
+      const page = await service.listItems(actor, { type: 'feature' }, { limit: 50, cursor: null });
+      return page.data[0].health;
+    }
+
+    it('has no verdict without planned dates, and says WHY', async () => {
+      // The default fixture has neither date. Green here would assert an on-time
+      // schedule that nobody has entered.
+      const health = await healthOf({});
+      expect(health.state).toBe('not_started');
+      expect(health.indeterminate).toBe('no_dates');
+    });
+
+    it('is on track when acceptance keeps pace with the planned window', async () => {
+      // Half the window gone, half the points accepted.
+      const health = await healthOf({
+        plannedStartDate: dayOffset(-50),
+        plannedEndDate: dayOffset(50),
+        rollup: { ...view().rollup, acceptedPoints: 20, rollupPoints: 40 },
+      });
+      expect(health.state).toBe('on_track');
+      expect(health.percentDone).toBe(0.5);
+    });
+
+    it('is LATE when acceptance falls far behind the required rate', async () => {
+      // 90% of the window gone, 10% accepted — more than 40% behind.
+      const health = await healthOf({
+        plannedStartDate: dayOffset(-90),
+        plannedEndDate: dayOffset(10),
+        rollup: { ...view().rollup, acceptedPoints: 4, rollupPoints: 40 },
+      });
+      expect(health.state).toBe('late');
+    });
+
+    it('measures ACCEPTED work, not completed work', async () => {
+      // The D1 distinction. Everything is finished but nothing is signed off, so the
+      // item is behind — reading `completedPoints` here would report it as done.
+      const health = await healthOf({
+        plannedStartDate: dayOffset(-90),
+        plannedEndDate: dayOffset(10),
+        rollup: {
+          ...view().rollup,
+          acceptedPoints: 0,
+          completedPoints: 40,
+          rollupPoints: 40,
+        },
+      });
+      expect(health.state).toBe('late');
+      expect(health.percentDone).toBe(0);
+    });
+
+    it('is COMPLETE only once the planned end has passed as well', async () => {
+      const base = { rollup: { ...view().rollup, acceptedPoints: 40, rollupPoints: 40 } };
+
+      // Rally's blue: "the current date is after the Planned End Date AND the artifacts
+      // are 100% done".
+      expect(
+        (
+          await healthOf({
+            ...base,
+            plannedStartDate: dayOffset(-90),
+            plannedEndDate: dayOffset(-10),
+          })
+        ).state,
+      ).toBe('complete');
+
+      // Finished EARLY is still green — ahead of a schedule that has not ended.
+      expect(
+        (
+          await healthOf({
+            ...base,
+            plannedStartDate: dayOffset(-50),
+            plannedEndDate: dayOffset(50),
+          })
+        ).state,
+      ).toBe('on_track');
+    });
+
+    it('is exposed on the single-item read too, so the detail page agrees with the grid', async () => {
+      repo.findViewById.mockResolvedValue(
+        view({ plannedStartDate: dayOffset(-50), plannedEndDate: dayOffset(50) }),
+      );
+      const item = await service.getItem(actor, 'pi-1');
+      expect(item.health.state).toBeDefined();
+      expect(item.health.indeterminate).toBeNull();
+    });
+  });
+
   describe('single-item reads', () => {
     it('throws NotFound for an unknown id', async () => {
       repo.findViewById.mockResolvedValue(null);

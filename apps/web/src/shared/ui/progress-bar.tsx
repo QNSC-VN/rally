@@ -12,6 +12,17 @@ interface ProgressBarProps {
   title?: string
   /** Hide the trailing "NN%" text when the caller shows the numbers elsewhere. */
   showLabel?: boolean
+  /**
+   * Overrides the fill colour, for surfaces where the bar's meaning is a STATUS
+   * rather than a plain ratio.
+   *
+   * Rally's Portfolio Items page works this way: "Both of the Percent Done fields
+   * are colored based on the status of the work needed to complete the portfolio
+   * item" — green/yellow/red against the planned end date, blue once done. That
+   * verdict cannot be derived from the ratio alone (it needs the dates), so the
+   * caller resolves it and passes the colour in.
+   */
+  tone?: string
 }
 
 /**
@@ -34,16 +45,27 @@ export function ProgressBar({
   placeholder = '—',
   title,
   showLabel = true,
+  tone,
 }: ProgressBarProps) {
   if (ratio === null || !Number.isFinite(ratio)) {
-    return <span className="text-ui-xs text-foreground-subtle">{placeholder}</span>
+    // The tooltip rides the placeholder too. It is the ONLY explanation available on an
+    // unmeasurable bar — a bare dash with no hover text reads as a rendering bug, and on
+    // the portfolio grid the caller's tooltip is exactly the "no dates / nothing
+    // estimated" note that says why there is no verdict.
+    return (
+      <span className="text-ui-xs text-foreground-subtle" title={title}>
+        {placeholder}
+      </span>
+    )
   }
 
   const pct = Math.round(ratio * 100)
   const fill = Math.max(0, Math.min(100, pct))
   // Over-delivery is not "success" — it means the estimate was wrong, so it gets
-  // its own colour rather than reusing the complete/green one.
-  const color = pct > 100 ? BRAND.warning : pct >= 100 ? BRAND.success : BRAND.primary
+  // its own colour rather than reusing the complete/green one. A caller-supplied
+  // `tone` wins outright: a status colour already accounts for progress, so
+  // blending the two would show green-for-complete on an item Rally calls late.
+  const color = tone ?? (pct > 100 ? BRAND.warning : pct >= 100 ? BRAND.success : BRAND.primary)
 
   return (
     <div className="flex w-full items-center gap-1.5" title={title}>

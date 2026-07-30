@@ -17,6 +17,7 @@ import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { OwnerCell } from '@/shared/ui/owner-cell'
 import { ProgressBar } from '@/shared/ui/progress-bar'
+import { PercentDoneBar } from '@/features/portfolio/ui/percent-done-bar'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { DetailField, DetailLayout, DetailSectionHeading, DetailTwoPane } from '@/shared/ui/detail'
@@ -70,21 +71,19 @@ export function PortfolioDetailPage() {
             <div className="flex flex-col gap-4 p-4">
               <DetailSectionHeading>{t('detail.progress.heading')}</DetailSectionHeading>
               <DetailField label={t('detail.progress.percentDonePoints')}>
-                <ProgressBar
-                  ratio={progress.percentDoneByPlanEstimate}
-                  title={t('row.pointsTooltip', {
-                    accepted: rollup.acceptedPoints,
-                    total: rollup.rollupPoints,
-                  })}
+                <PercentDoneBar
+                  metric="points"
+                  health={item.health}
+                  progress={progress}
+                  rollup={rollup}
                 />
               </DetailField>
               <DetailField label={t('detail.progress.percentDoneCount')}>
-                <ProgressBar
-                  ratio={progress.percentDoneByCount}
-                  title={t('row.countTooltip', {
-                    accepted: rollup.acceptedCount,
-                    total: rollup.rollupCount,
-                  })}
+                <PercentDoneBar
+                  metric="count"
+                  health={item.health}
+                  progress={progress}
+                  rollup={rollup}
                 />
               </DetailField>
               <DetailField label={t('detail.progress.estimatedPoints')}>

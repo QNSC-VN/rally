@@ -14,6 +14,15 @@ describe('ProgressBar', () => {
     expect(fillWidth(container)).toBe('25%')
   })
 
+  it('keeps the tooltip on the placeholder, the only explanation an empty bar has', () => {
+    // A dash with no hover text looks broken. On the portfolio grid this tooltip is what
+    // names the missing data — the reason there is no percentage to draw.
+    const { container } = render(<ProgressBar ratio={null} title="No estimated work linked" />)
+    expect(container.querySelector('[title]')?.getAttribute('title')).toBe(
+      'No estimated work linked',
+    )
+  })
+
   it('shows the placeholder for a null ratio rather than 0%', () => {
     // A Feature with no estimate has no denominator. Rendering "0%" would claim no
     // progress, which is a different statement from "not measurable".
@@ -45,5 +54,14 @@ describe('ProgressBar', () => {
   it('can hide the label when the caller shows the numbers itself', () => {
     render(<ProgressBar ratio={0.5} showLabel={false} />)
     expect(screen.queryByText('50%')).toBeNull()
+  })
+
+  it('lets a caller-supplied tone win over the ratio-derived colour', () => {
+    // Rally colours Percent Done by SCHEDULE status, which the ratio cannot express: an
+    // item at 100% is blue only once its planned end has passed. So a tone must override
+    // the built-in "100% is green" rule rather than blending with it.
+    const { container } = render(<ProgressBar ratio={1} tone="var(--destructive)" />)
+    const fill = container.querySelector<HTMLElement>('[style*="width"]')
+    expect(fill?.style.backgroundColor).toBe('var(--destructive)')
   })
 })

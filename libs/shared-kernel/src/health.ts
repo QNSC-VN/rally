@@ -100,17 +100,26 @@ export function computeHealth(input: HealthInput): HealthResult {
     return { state: 'not_started', percentDone, percentElapsed: null, indeterminate: 'no_work' };
   }
 
-  // Complete outranks every date consideration: finished early, on time or late, it
-  // is still finished. Checked before the date guard so a dateless-but-done item
-  // reads as complete rather than indeterminate.
-  if (percentDone !== null && percentDone >= 1) {
-    return { state: 'complete', percentDone, percentElapsed: null, indeterminate: null };
-  }
+  const isDone = percentDone !== null && percentDone >= 1;
 
   // No window means no required rate. Rally shows these as gray and warns about the
-  // missing dates rather than assuming a schedule.
+  // missing dates rather than assuming a schedule — including when the work is finished,
+  // because Rally's blue is defined in terms of the Planned End Date.
   if (start === null || end === null) {
     return { state: 'not_started', percentDone, percentElapsed: null, indeterminate: 'no_dates' };
+  }
+
+  /**
+   * Complete = Rally's BLUE, which requires BOTH conditions:
+   * "current date is after the Planned End Date and the artifacts in the portfolio item
+   * are 100% done" (Broadcom TechDocs, "Using the Portfolio Items Page").
+   *
+   * So finishing EARLY does not turn the item blue — it stays green (on track, indeed
+   * ahead) until the planned end passes. This function previously reported `complete` on
+   * 100% alone, which read more intuitively but disagreed with Rally; parity won.
+   */
+  if (isDone && daysBetween(end, today) > 0) {
+    return { state: 'complete', percentDone, percentElapsed: 1, indeterminate: null };
   }
 
   const windowDays = daysBetween(start, end);

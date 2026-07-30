@@ -422,6 +422,13 @@ async function seedFlow() {
         state: 'developing' as const,
         preliminaryEstimate: 'm' as const,
         ownerId: ADMIN_USER_ID,
+        // Mirrors the linked release's window (RE-1: 2026-07-01 → 07-31). Without a
+        // planned window `computeHealth` has no required acceptance rate, so both
+        // Percent Done bars render grey and the whole green/yellow/red/blue scheme is
+        // invisible in the demo. FE-2 deliberately keeps NO dates, so the "no verdict,
+        // and here is why" rendering has a case too.
+        plannedStartDate: '2026-07-01',
+        plannedEndDate: '2026-07-31',
         rank: getDeterministicRank('FE-1'),
       },
       {

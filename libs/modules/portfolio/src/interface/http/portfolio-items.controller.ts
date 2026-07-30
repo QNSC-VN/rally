@@ -55,6 +55,7 @@ function toDto(i: PortfolioItemWithProgress): PortfolioItemResponseDto {
     childFeatureCount: i.childFeatureCount,
     rollup: i.rollup,
     progress: i.progress,
+    health: i.health,
   };
 }
 

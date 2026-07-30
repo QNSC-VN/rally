@@ -70,10 +70,13 @@ test.describe('Backlog relation display', () => {
     // Back to Backlog — the row must show the Accepted iteration's NAME, not "—".
     await page.goto('/backlog')
     await settle(page)
-    await page
-      .getByPlaceholder('Search…')
-      .fill(title)
-      .catch(() => {})
+    // By ROLE, and NOT swallowing a failure. This previously filled
+    // `getByPlaceholder('Search…')` — no such placeholder exists, the box is
+    // `searchbox "Search backlog"` — inside a `.catch(() => {})`, so the search silently
+    // never happened. Harmless on a fresh seed and fatal on a used database: every past
+    // run of this spec leaves an `E2E Backlog Item` behind, the grid pages at 25, and the
+    // row under test ends up off-page while the assertion blames the Iteration column.
+    await page.getByRole('searchbox', { name: /Search backlog/i }).fill(title)
     await settle(page, 600)
 
     const row = page.locator('div.group.flex').filter({ hasText: title })
@@ -84,6 +87,10 @@ test.describe('Backlog relation display', () => {
     // optimistic cache from the create above.
     await page.reload({ waitUntil: 'domcontentloaded' })
     await settle(page)
+    // A reload clears the search box with it, so the filter has to be re-applied — for the
+    // same off-page reason as above.
+    await page.getByRole('searchbox', { name: /Search backlog/i }).fill(title)
+    await settle(page, 600)
     const rowAfterReload = page.locator('div.group.flex').filter({ hasText: title })
     await expect(rowAfterReload).toContainText(iterationName)
   })
