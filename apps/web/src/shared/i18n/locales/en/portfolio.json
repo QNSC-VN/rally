@@ -40,10 +40,26 @@
     "xl": "XL"
   },
   "row": {
-    "pointsTooltip": "{{accepted}} / {{total}} points accepted",
-    "countTooltip": "{{accepted}} / {{total}} items accepted",
     "nameUpdated": "Name updated",
     "stateUpdated": "State updated"
+  },
+  "health": {
+    "state": {
+      "complete": "Complete — finished, past the planned end date",
+      "on_track": "On track for the planned end date",
+      "at_risk": "At risk — acceptance is more than 20% behind the required rate",
+      "late": "Late — acceptance is more than 40% behind the required rate",
+      "not_started": "Not started"
+    },
+    "indeterminate": {
+      "no_dates": "No status — planned start and end dates are missing",
+      "no_work": "No status — no estimated work is linked yet"
+    },
+    "callout": {
+      "status": "Status: {{status}}",
+      "points": "Accepted points: {{accepted}} of {{total}}",
+      "items": "Accepted items: {{accepted}} of {{total}}"
+    }
   },
   "detail": {
     "tabs": {

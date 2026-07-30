@@ -3787,6 +3787,13 @@ export interface components {
         /** @description Accepted count / refined-or-preliminary count forecast. May exceed 1. */
         estimatedProgressByCount: number | null
       }
+      health: {
+        /** @enum {string} */
+        state: 'complete' | 'on_track' | 'at_risk' | 'late' | 'not_started'
+        percentDone: number | null
+        percentElapsed: number | null
+        indeterminate: ('no_dates' | 'no_work') | null
+      }
     }
     PortfolioChildResponseDto: {
       /** Format: uuid */

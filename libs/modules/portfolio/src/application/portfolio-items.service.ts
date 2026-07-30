@@ -8,6 +8,7 @@ import {
   between,
 } from '@platform';
 import { AccessService } from '@modules/access';
+import { PORTFOLIO_HEALTH_THRESHOLDS, computeHealth, type HealthResult } from '@shared-kernel';
 import type { CursorPayload, JwtPayload, PagedResult } from '@platform';
 import { releases, teams } from '../../../../../db/schema/work';
 import { InjectDrizzle } from '@platform';
@@ -34,9 +35,20 @@ import type { PortfolioItemType } from '../../../../../db/schema/enums';
 /** `EP-` / `FE-` — the display-key prefix per portfolio type. */
 const KEY_PREFIX: Record<PortfolioItemType, string> = { epic: 'EP', feature: 'FE' };
 
-/** A portfolio item with its four computed progress indicators. */
+/** A portfolio item with its four computed progress indicators and its health verdict. */
 export interface PortfolioItemWithProgress extends PortfolioItemView {
   progress: PortfolioProgress;
+  /**
+   * Rally's green/yellow/red/blue status for a portfolio item, computed against the
+   * planned window (Broadcom TechDocs, "Using the Portfolio Items Page"): at risk when the
+   * acceptance rate is >20% below the rate needed to finish by the Planned End Date, late
+   * at >40%, blue once the end date has passed AND everything is done.
+   *
+   * Deliberately NOT applied to Releases/Iterations/Milestones: Rally documents this scheme
+   * for portfolio items only, and shows a percent-complete state bar on those surfaces
+   * instead — which this app already renders.
+   */
+  health: HealthResult;
 }
 
 /**
@@ -112,9 +124,12 @@ export class PortfolioItemsService {
       args,
     );
     const map = await this.estimateMap(actor.workspaceId);
+    // One clock for the whole page: two rows with identical dates and identical rollups
+    // must never disagree because the loop crossed midnight between them.
+    const today = new Date();
 
     return {
-      data: page.data.map((item) => this.withProgress(item, map)),
+      data: page.data.map((item) => this.withProgress(item, map, today)),
       pageInfo: page.pageInfo,
     };
   }
@@ -149,7 +164,8 @@ export class PortfolioItemsService {
     }
     const map = await this.estimateMap(actor.workspaceId);
     const children = await this.repo.listChildFeatures(id, actor.workspaceId);
-    return children.map((c) => this.withProgress(c, map));
+    const today = new Date();
+    return children.map((c) => this.withProgress(c, map, today));
   }
 
   // ── Writes ─────────────────────────────────────────────────────────────────
@@ -459,10 +475,26 @@ export class PortfolioItemsService {
   private withProgress(
     item: PortfolioItemView,
     map: PreliminaryEstimateMap,
+    /**
+     * Injected so the verdict is deterministic per request rather than shifting between
+     * rows of the same page, and so tests can pin a date instead of mocking the clock.
+     */
+    today: Date = new Date(),
   ): PortfolioItemWithProgress {
     const size = map[item.preliminaryEstimate] ?? { points: 0, count: 0 };
     return {
       ...item,
+      // Health measures ACCEPTED work against the planned window, so it uses the accepted
+      // rollup — not the completed one. That is the same D1 distinction the two Percent
+      // Done indicators rest on: signed-off, not merely finished.
+      health: computeHealth({
+        accepted: item.rollup.acceptedPoints,
+        total: item.rollup.rollupPoints,
+        start: item.plannedStartDate === null ? null : new Date(item.plannedStartDate),
+        end: item.plannedEndDate === null ? null : new Date(item.plannedEndDate),
+        today,
+        thresholds: PORTFOLIO_HEALTH_THRESHOLDS,
+      }),
       progress: computePortfolioProgress(item.rollup, {
         refinedPoints: item.refinedEstimate === null ? null : Number(item.refinedEstimate),
         refinedCount: item.refinedItemCountEstimate,

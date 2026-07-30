@@ -10,7 +10,7 @@ import {
 } from '@/features/portfolio/api'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { OwnerCell } from '@/shared/ui/owner-cell'
-import { ProgressBar } from '@/shared/ui/progress-bar'
+import { PercentDoneBar } from '@/features/portfolio/ui/percent-done-bar'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { RowGutter } from '@/shared/ui/row-gutter'
 import { BRAND } from '@/shared/config/brand'
@@ -147,26 +147,15 @@ export function PortfolioRow({
         </span>
       </div>
 
-      {/* Percent Done by Plan Estimate — accepted points over rolled-up points. */}
+      {/* Percent Done by Plan Estimate — accepted points over rolled-up points.
+          Coloured by the item's Rally status, not by the ratio: see PercentDoneBar. */}
       <div style={colStyleFor('percentDonePoints', { flexShrink: 0 })} className="min-w-0 px-2">
-        <ProgressBar
-          ratio={progress.percentDoneByPlanEstimate}
-          title={t('row.pointsTooltip', {
-            accepted: rollup.acceptedPoints,
-            total: rollup.rollupPoints,
-          })}
-        />
+        <PercentDoneBar metric="points" health={item.health} progress={progress} rollup={rollup} />
       </div>
 
       {/* Percent Done by Count — accepted children over total children. */}
       <div style={colStyleFor('percentDoneCount', { flexShrink: 0 })} className="min-w-0 px-2">
-        <ProgressBar
-          ratio={progress.percentDoneByCount}
-          title={t('row.countTooltip', {
-            accepted: rollup.acceptedCount,
-            total: rollup.rollupCount,
-          })}
-        />
+        <PercentDoneBar metric="count" health={item.health} progress={progress} rollup={rollup} />
       </div>
 
       {/* The estimate the progress columns divide by: refined if set, else the
