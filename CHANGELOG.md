@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.5.2](https://github.com/QNSC-VN/rally/compare/v0.5.1...v0.5.2) (2026-07-30)
+
+
+### ✨ Features
+
+* **capacity:** allocate Features to teams, with Rally's rollup rules ([#270](https://github.com/QNSC-VN/rally/issues/270)) ([b67f159](https://github.com/QNSC-VN/rally/commit/b67f159b9123bfb1994cbfd839d1d4dfdc434683))
+* **capacity:** Calculate Capacity Forecast, Monte Carlo over accepted history ([#276](https://github.com/QNSC-VN/rally/issues/276)) ([4873d0d](https://github.com/QNSC-VN/rally/commit/4873d0d9afff37ee2c5abda78fa0a1b83cede7b0))
+* **capacity:** capacity plans with team membership and manual capacity ([#269](https://github.com/QNSC-VN/rally/issues/269)) ([cd03ea0](https://github.com/QNSC-VN/rally/commit/cd03ea0f7bba9cea6180b083651ad149c6990f4f))
+* **capacity:** explain the warnings, and add Rally's Breakdown ([#274](https://github.com/QNSC-VN/rally/issues/274)) ([d2b5774](https://github.com/QNSC-VN/rally/commit/d2b577474a933436f5e29a1afb1d276aeae87a74))
+* **portfolio:** colour Percent Done by Rally status ([#273](https://github.com/QNSC-VN/rally/issues/273)) ([78cb2ac](https://github.com/QNSC-VN/rally/commit/78cb2acb3daddbfa2ae214531617f5790f033d71))
+* **portfolio:** drag to reorder Epics and Features ([#265](https://github.com/QNSC-VN/rally/issues/265)) ([85dfe19](https://github.com/QNSC-VN/rally/commit/85dfe19caef90fbcab1a0faaf22fa91dc6528236))
+
+
+### 🐛 Bug Fixes
+
+* **infra:** idling must scale the services down, not just stop the database ([#279](https://github.com/QNSC-VN/rally/issues/279)) ([3658e8b](https://github.com/QNSC-VN/rally/commit/3658e8b97054dd3e8ab3aab987f5eeb783dbba5e))
+* **work-items:** drop the dead hours columns from work_items ([#271](https://github.com/QNSC-VN/rally/issues/271)) ([75b68e1](https://github.com/QNSC-VN/rally/commit/75b68e1e9d0489df3655ab7f779d72a4048091f1))
+
+
+### ⚡ Performance
+
+* **web:** buffer the SCM webhook body at the edge before forwarding ([#267](https://github.com/QNSC-VN/rally/issues/267)) ([8ce0048](https://github.com/QNSC-VN/rally/commit/8ce004826d40ab3da77d589dac79b54cee9733e1))
+
 ## [0.5.1](https://github.com/QNSC-VN/rally/compare/v0.5.0...v0.5.1) (2026-07-29)
 
 
