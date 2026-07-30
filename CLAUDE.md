@@ -51,6 +51,15 @@ pnpm --filter rally-web dev                      # SPA (proxies /v1 → API)
 - **The frontend has ratchets too** (`apps/web/src/test/fe-consistency.ratchet.test.ts`):
   raw `<button>`, inline styles, hardcoded copy, file length, and CSRF headers on
   raw `fetch` writes. They may only decrease.
+- **The SPA's API client is generated AND committed.** `apps/web/src/shared/api/generated/api.ts`
+  comes from `/api/docs-json`, so any DTO change needs
+  `pnpm --filter rally-web codegen` against a running local API, then a commit. The
+  `OpenAPI contract` job regenerates from the spec it captured and diffs
+  (`codegen:check`), so drift fails CI instead of failing at runtime.
+- **`tsc -b` can pass on STALE build info.** Two things hid behind that in one session: an
+  error code missing from the `ErrorCode` union, and a client that had never seen a new
+  route (which surfaces only as `Cannot POST /v1/...` in the browser). When a change spans
+  packages, verify with `tsc -b --force`.
 
 ## Observability
 

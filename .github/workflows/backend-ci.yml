@@ -464,6 +464,19 @@ jobs:
           ENTRA_CLIENT_SECRET: ci-test-secret
           ENTRA_REDIRECT_URI: http://localhost:3000/v1/bff/callback
 
+      # The SPA's API client is generated from this very spec and COMMITTED, so it can
+      # silently fall behind a DTO change — and nothing else notices. `tsc` does not: on an
+      # incremental build it can pass against stale build info, and a route the client has
+      # never heard of only fails at runtime as `Cannot POST /v1/...`. Regenerating here and
+      # diffing is the cheapest possible proof that the two agree.
+      #
+      # Runs against the spec file just captured, not a live server, so it is deterministic.
+      # Fix a failure with `pnpm --filter rally-web codegen` against a local API, then commit.
+      - name: Generated web client matches the spec
+        run: pnpm --filter rally-web codegen:check
+        env:
+          OPENAPI_SPEC: ${{ github.workspace }}/openapi.json
+
       - name: Upload OpenAPI spec artifact
         uses: QNSC-VN/qnsc-ci/actions/publish-openapi-spec@v1.6.4
         with:
