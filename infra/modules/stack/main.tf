@@ -25,7 +25,19 @@ locals {
 
   # `rediss://`, never `redis://`: the cache module enables transit encryption
   # unconditionally, so a plaintext scheme would simply fail to connect.
-  redis_url = "rediss://${module.cache.endpoint}:${module.cache.port}"
+  # When the cache is disabled (an idled environment) this is a deliberately
+  # UNRESOLVABLE address rather than an empty string or an omitted variable.
+  #
+  # `env.schema.ts` declares `REDIS_URL: z.string().default('redis://localhost:6379')`,
+  # so omitting it makes a deployed task fall back to LOCALHOST — and the token denylist
+  # and rate limiter both FAIL OPEN when Valkey is unreachable. A task booted without a
+  # cache would therefore run with two security controls degraded instead of failing.
+  # An empty string is no better: it is a valid string, so the schema accepts it.
+  #
+  # `.invalid` is reserved by RFC 2606 and can never resolve, so the failure is a loud
+  # DNS error naming the cause. The real guard is still the `check` block at the bottom
+  # of this file: with the cache off, no task may run at all.
+  redis_url = var.cache.enabled ? "rediss://${module.cache[0].endpoint}:${module.cache[0].port}" : "rediss://cache-disabled.invalid:6379"
 
   # Computed, not read from `module.api.log_group_name`, to break a dependency
   # cycle: the agent needs a log group, the api needs the agent's container
@@ -224,6 +236,7 @@ module "rds" {
 # ioredis turns TLS on from that scheme alone (verified: `rediss://` yields
 # `options.tls === true`), so no client-side configuration is needed.
 module "cache" {
+  count  = var.cache.enabled ? 1 : 0
   source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/cache?ref=cache-v1.0.0"
 
   name              = "${local.name}-cache"
@@ -1131,5 +1144,29 @@ resource "aws_scheduler_schedule" "rds_stop" {
     retry_policy {
       maximum_retry_attempts = 0
     }
+  }
+}
+
+# ── Guard: an environment without a cache must run no tasks ───────────────────
+# `cache.enabled = false` deletes the node, and ElastiCache has no stopped state, so
+# this is the only way to stop an idled environment paying for one. But a task that
+# cannot reach its cache does NOT fail loudly: `env.schema.ts` defaults REDIS_URL to
+# localhost, and both the token denylist and the rate limiter FAIL OPEN when Valkey is
+# unreachable. So the dangerous state is not "no cache" — it is "no cache, tasks
+# running", which degrades two security controls silently.
+#
+# Asserting it here makes that combination impossible to reach through Terraform: the
+# plan fails instead of producing an environment that looks healthy. Waking an idled
+# environment is therefore one coherent change — cache back on, floors back to 1 —
+# rather than two that can be applied in the wrong order.
+check "idled_environment_runs_no_tasks" {
+  assert {
+    condition = var.cache.enabled || (var.api.min_count == 0 && var.worker.min_count == 0)
+    error_message = join(" ", [
+      "cache.enabled = false requires min_count = 0 on BOTH services (api is",
+      "${var.api.min_count}, worker is ${var.worker.min_count}).",
+      "Without a cache, tasks do not fail — REDIS_URL falls back to localhost and the",
+      "token denylist and rate limiter fail open. Set the floors to 0, or re-enable the cache.",
+    ])
   }
 }
