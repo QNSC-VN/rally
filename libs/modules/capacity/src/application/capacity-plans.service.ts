@@ -17,6 +17,13 @@ import {
 } from '@modules/portfolio';
 import { releases, teams } from '../../../../../db/schema/work';
 import {
+  FORECAST_HISTORY_DAYS,
+  forecastCapacity,
+  forecastSeed,
+  type ForecastComplexity,
+  type ForecastResult,
+} from '../domain/capacity-forecast';
+import {
   CAPACITY_PLAN_REPOSITORY,
   type ICapacityPlanRepository,
 } from '../domain/ports/capacity-plan.repository';
@@ -155,6 +162,59 @@ export class CapacityPlansService {
 
     await this.repo.setTeamCapacity(id, teamId, capacity);
     return this.getPlan(actor, id);
+  }
+
+  /**
+   * Rally's Calculate Capacity Forecast, for ONE team.
+   *
+   * Rally's tool "produces estimates for a single team and does not respect the Parent/Child
+   * hierarchy", so this is scoped per team rather than proposing capacities for a whole plan
+   * at once — a departure from the API sketch in the Phase 5 spec, which had one plan-wide
+   * `POST /:id/forecast`. Per team is both what Rally does and what the planner needs: the
+   * availability and complexity inputs describe one team's next window, not every team's.
+   *
+   * READ-ONLY. It computes a number and returns it; the planner still commits it through the
+   * existing `PATCH /:id/teams/:teamId` (which is what `capacity:manage` guards). That split
+   * is deliberate — being shown a forecast is not the same act as adopting it, and a forecast
+   * that wrote itself into the plan would overwrite a considered figure with an automated
+   * one.
+   *
+   * The window comes from the PLAN's planned dates, not from a request parameter: the
+   * forecast has to answer "can this team deliver the work in THIS plan", and letting the
+   * client pass its own window would let two callers get different answers for one plan.
+   */
+  async forecastTeamCapacity(
+    actor: JwtPayload,
+    id: string,
+    teamId: string,
+    options: {
+      availabilityPct: number;
+      complexity: ForecastComplexity;
+    },
+  ): Promise<ForecastResult> {
+    const plan = await this.getPlan(actor, id);
+    // `capacity:view`, not `manage`: this reads history and writes nothing, and a stakeholder
+    // who can see a plan can ask what it is worth. The write stays gated separately.
+    await this.access.assertProjectPermission(actor, plan.projectId, 'capacity:view');
+    await this.requirePlanTeam(id, teamId);
+
+    const samples = await this.repo.teamVelocitySamples(
+      plan.projectId,
+      teamId,
+      actor.workspaceId,
+      FORECAST_HISTORY_DAYS,
+    );
+
+    return forecastCapacity({
+      samples,
+      unit: plan.unit,
+      windowDays: windowDays(plan.plannedStartDate, plan.plannedEndDate),
+      availabilityPct: options.availabilityPct,
+      complexity: options.complexity,
+      // Derived from the ids, so the same team on the same plan sees the same number on
+      // every replica and after every deploy.
+      seed: forecastSeed(id, teamId),
+    });
   }
 
   async removeTeam(actor: JwtPayload, id: string, teamId: string): Promise<CapacityPlanView> {
@@ -468,4 +528,20 @@ export class CapacityPlansService {
       throw new NotFoundException('CAPACITY_TEAM_NOT_FOUND', 'Team not found');
     }
   }
+}
+
+/**
+ * Length of a plan's window in whole days, both endpoints counted, or 0 when either date is
+ * missing.
+ *
+ * Zero is what makes `forecastCapacity` report `no_window` instead of forecasting into a
+ * window nobody defined — a plan with no dates is a real state, and inventing 90 days would
+ * put a confident number on the screen for a question nobody asked.
+ */
+function windowDays(start: string | null, end: string | null): number {
+  if (start === null || end === null) return 0;
+  const from = Date.parse(`${start}T00:00:00Z`);
+  const to = Date.parse(`${end}T00:00:00Z`);
+  if (Number.isNaN(from) || Number.isNaN(to)) return 0;
+  return Math.max(0, Math.round((to - from) / 86_400_000) + 1);
 }

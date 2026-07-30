@@ -1,4 +1,5 @@
 import type { DbExecutor } from '@platform';
+import type { VelocitySample } from '../capacity-forecast';
 import type { CapacityAllocation, CapacityAllocationRow } from '../capacity-allocation.types';
 import type {
   CapacityPlan,
@@ -114,4 +115,18 @@ export interface ICapacityPlanRepository {
    * the rule cannot be forgotten once they do.
    */
   countTeamAllocations(planId: string, teamId: string): Promise<number>;
+
+  /**
+   * Accepted totals per FINISHED iteration for one team — the sample set the capacity
+   * forecast draws from.
+   *
+   * Attributed by the story's own team rather than the iteration's, and measured over
+   * ACCEPTED states, not completed ones. See the implementation for why both matter.
+   */
+  teamVelocitySamples(
+    projectId: string,
+    teamId: string,
+    workspaceId: string,
+    historyDays: number,
+  ): Promise<VelocitySample[]>;
 }
