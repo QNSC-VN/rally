@@ -1,5 +1,7 @@
-import { type CSSProperties, type ReactNode } from 'react'
+import { type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
 import {
   useUpdatePortfolioItem,
@@ -10,6 +12,8 @@ import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { OwnerCell } from '@/shared/ui/owner-cell'
 import { ProgressBar } from '@/shared/ui/progress-bar'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
+import { RowGutter } from '@/shared/ui/row-gutter'
+import { BRAND } from '@/shared/config/brand'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { notify } from '@/shared/lib/toast'
 import { type ColKey } from '../model/columns'
@@ -23,25 +27,42 @@ import { PORTFOLIO_STATES } from '../model/portfolio-states'
  * cross-project, so the answer differs between rows and a page-level flag would either
  * hide actions the user has elsewhere or offer ones they do not.
  *
- * Rank (drag to reorder) is deliberately absent — it lands with its own slice.
+ * The row owns its dnd-kit wiring (`useSortable`) and therefore renders its OWN
+ * `RowGutter` from the scaffold's `gutterProps` — only the row holds the activator ref
+ * and drag listeners, so the scaffold's ready-made `gutter` node cannot carry them.
  */
 export function PortfolioRow({
   item,
   canEdit,
+  canRank,
   colStyleFor,
-  gutter,
+  gutterProps,
   onOpen,
 }: {
   item: PortfolioItem
   canEdit: boolean
+  /** Drag-to-rank enabled: requires edit rights AND natural rank order. */
+  canRank: boolean
   colStyleFor: (key: ColKey, base?: CSSProperties) => CSSProperties
-  /** Selection gutter node supplied by the list scaffold. */
-  gutter: ReactNode
+  /** Gutter configuration from the list scaffold; the row renders the gutter itself. */
+  gutterProps: {
+    stopPropagation: true
+    checkbox?: { checked: boolean; onChange: () => void; ariaLabel: string }
+  }
   onOpen: (id: string) => void
 }) {
   const { t } = useTranslation('portfolio')
   const { progress, rollup } = item
   const update = useUpdatePortfolioItem()
+  const {
+    setNodeRef,
+    setActivatorNodeRef,
+    listeners,
+    attributes,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: item.id })
 
   function save(patch: Parameters<typeof update.mutate>[0]['patch'], success: string) {
     update.mutate(
@@ -51,8 +72,26 @@ export function PortfolioRow({
   }
 
   return (
-    <div className="group flex min-h-[34px] items-center border-b border-border-inner px-3 text-ui-md transition-colors hover:bg-primary-lighter">
-      {gutter}
+    <div
+      ref={setNodeRef}
+      className="group flex min-h-[34px] items-center border-b border-border-inner px-3 text-ui-md transition-colors hover:bg-primary-lighter"
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        backgroundColor: isDragging ? BRAND.primaryLighter : undefined,
+        opacity: isDragging ? 0.6 : 1,
+        // Lift the dragged row above its neighbours so it is not clipped mid-drag.
+        zIndex: isDragging ? 1 : undefined,
+        position: isDragging ? 'relative' : undefined,
+      }}
+      {...attributes}
+    >
+      <RowGutter
+        ref={setActivatorNodeRef}
+        dragListeners={listeners}
+        dragDisabled={!canRank}
+        {...gutterProps}
+      />
 
       {/* ID — the same TypeBadge + key cell as US/DE/RE, now carrying EP-/FE- */}
       <div style={colStyleFor('id', { flexShrink: 0 })} className="flex items-center px-2">

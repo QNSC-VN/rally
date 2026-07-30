@@ -26,8 +26,10 @@
  * selection over the *visible page*. The page receives per-row selection wiring
  * via `renderRow`'s `gutter` node and the whole `RowSelection` via `bulkActions`.
  */
-import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { useMemo, useState, type ComponentProps, type CSSProperties, type ReactNode } from 'react'
 
+import { DndContext } from '@dnd-kit/core'
+import { SortableContext } from '@dnd-kit/sortable'
 import { BulkActionBar } from '@/shared/ui/bulk-action-bar'
 import { type DataTableFrameHeader, DataTableFrame } from '@/shared/ui/table/data-table-frame'
 import { PageToolbar, type PageToolbarSearch } from '@/shared/ui/page-toolbar'
@@ -97,9 +99,39 @@ export interface ListPageScaffoldProps<Row extends { id: string }, K extends str
    * grip + selection checkbox) to place at the start of the row so every grid's
    * columns stay aligned under the shared header.
    */
-  renderRow: (row: Row, ctx: { gutter: ReactNode; selected: boolean }) => ReactNode
+  renderRow: (
+    row: Row,
+    ctx: {
+      gutter: ReactNode
+      selected: boolean
+      /**
+       * The gutter's configuration, for rows that must render the gutter THEMSELVES.
+       *
+       * A draggable row owns dnd-kit's `useSortable`, so only the row can supply
+       * `ref={setActivatorNodeRef}` and `dragListeners={listeners}` to `RowGutter` — the
+       * scaffold has no access to that state. Such rows ignore `gutter` and build their
+       * own from these props; every other page keeps using `gutter` unchanged.
+       */
+      gutterProps: {
+        stopPropagation: true
+        checkbox?: { checked: boolean; onChange: () => void; ariaLabel: string }
+      }
+    },
+  ) => ReactNode
   /** Initial rows-per-page (default 25). */
   initialPageSize?: number
+  /**
+   * dnd-kit wiring from `useRowRerank()` — pass to enable drag-to-rank.
+   *
+   * Mirrors `SelectableTable`'s `dnd` prop so the two table shells behave identically.
+   * The page is responsible for disabling reorder while a column sort is active: rank
+   * only means anything in natural rank order, and dragging inside a Name-sorted view
+   * would compute neighbours from an order the ranks do not share.
+   */
+  dnd?: {
+    dndContextProps: Omit<ComponentProps<typeof DndContext>, 'children'>
+    sortableContextProps: Omit<ComponentProps<typeof SortableContext>, 'children'>
+  }
 }
 
 export function ListPageScaffold<Row extends { id: string }, K extends string>({
@@ -125,6 +157,7 @@ export function ListPageScaffold<Row extends { id: string }, K extends string>({
   empty,
   skeleton,
   renderRow,
+  dnd,
   initialPageSize = 25,
 }: ListPageScaffoldProps<Row, K>) {
   // ── Client-side pagination ──────────────────────────────────────────────────
@@ -152,6 +185,16 @@ export function ListPageScaffold<Row extends { id: string }, K extends string>({
   ) : undefined
 
   const hasRows = !loading && !error && items.length > 0
+
+  /** Wraps the body in dnd-kit context only when the page asked for reordering. */
+  const wrapDnd = (body: ReactNode): ReactNode =>
+    dnd ? (
+      <DndContext {...dnd.dndContextProps}>
+        <SortableContext {...dnd.sortableContextProps}>{body}</SortableContext>
+      </DndContext>
+    ) : (
+      body
+    )
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-background">
@@ -213,20 +256,24 @@ export function ListPageScaffold<Row extends { id: string }, K extends string>({
           ) : undefined
         }
       >
-        {paged.map((row) =>
-          renderRow(row, {
-            selected: selectable && selection.isSelected(row.id),
-            gutter: selectable ? (
-              <RowGutter
-                dragDisabled
-                stopPropagation
-                checkbox={{
+        {wrapDnd(
+          paged.map((row) => {
+            const checkbox = selectable
+              ? {
                   checked: selection.isSelected(row.id),
                   onChange: () => selection.toggle(row.id),
                   ariaLabel: 'Select row',
-                }}
-              />
-            ) : null,
+                }
+              : undefined
+            return renderRow(row, {
+              selected: selectable && selection.isSelected(row.id),
+              // `dragDisabled` here because this node has no sortable state — a
+              // draggable row builds its own gutter from `gutterProps` instead.
+              gutter: checkbox ? (
+                <RowGutter dragDisabled stopPropagation checkbox={checkbox} />
+              ) : null,
+              gutterProps: { stopPropagation: true, checkbox },
+            })
           }),
         )}
       </DataTableFrame>

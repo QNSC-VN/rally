@@ -13,6 +13,7 @@ import {
   CreatePortfolioItemDto,
   PortfolioChildrenQueryDto,
   PortfolioListQueryDto,
+  RankPortfolioItemDto,
   UpdatePortfolioItemDto,
 } from './dto/portfolio-item-request.dto';
 import {
@@ -192,6 +193,22 @@ export class PortfolioItemsController {
     @Body() body: UpdatePortfolioItemDto,
   ): Promise<PortfolioItemResponseDto> {
     return toDto(await this.service.updateItem(user, id, toWriteInput(body)));
+  }
+
+  @Patch(':id/rank')
+  // Reordering IS an edit, so it takes `portfolio:edit` rather than a separate code —
+  // there is no meaningful authority to reorder without being able to change the item.
+  @RequirePermission('portfolio:edit', { resource: 'portfolio_item', from: 'param', field: 'id' })
+  @ApiOperation({ summary: 'Move an Epic or Feature between two neighbours' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: PortfolioItemResponseDto })
+  @ApiCommonErrors(400, 401, 403, 404, 422)
+  async rankItem(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: RankPortfolioItemDto,
+  ): Promise<PortfolioItemResponseDto> {
+    return toDto(await this.service.rankItem(user, id, body));
   }
 
   @Post(':id/archive')

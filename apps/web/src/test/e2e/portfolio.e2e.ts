@@ -133,4 +133,44 @@ test.describe('Portfolio', () => {
     // Archived items drop out of the default list — a soft delete, not a hard one.
     await expect(page.getByText(renamed, { exact: true })).toHaveCount(0)
   })
+
+  test('drag reorders rows, and the grip disappears under a column sort', async ({ page }) => {
+    await login(page)
+    await page.goto('/portfolio', { waitUntil: 'domcontentloaded' })
+    await expect(page.getByText('FE-1', { exact: true })).toBeVisible()
+
+    // Whatever the first two rows are — no assumption about which Features happen to
+    // sort first, so this holds on a fresh CI seed and a populated dev database alike.
+    // Rows carry dnd-kit's `aria-roledescription="sortable"`. `div.group` would also
+    // match the column-header cells, which share that class.
+    const rows = page.locator('[aria-roledescription="sortable"]')
+    const nameOf = async (i: number) => (await rows.nth(i).innerText()).trim()
+    const before = [await nameOf(0), await nameOf(1)]
+
+    const grips = page.getByLabel('Drag to reorder')
+    await expect(grips.first()).toBeVisible()
+
+    // Real pointer drag: dnd-kit's PointerSensor has a 4px activation distance, so the
+    // move has to be stepped rather than a single jump.
+    const from = await grips.nth(1).boundingBox()
+    const to = await grips.nth(0).boundingBox()
+    if (!from || !to) throw new Error('drag handles not measurable')
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2 - 8, { steps: 12 })
+    await page.mouse.up()
+
+    // The second row is now first. Asserted after a RELOAD so this proves the new rank
+    // was persisted, not just optimistically reordered in local state.
+    await expect(rows.first()).toContainText(before[1].split('\n')[0])
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await expect(page.getByText('FE-1', { exact: true })).toBeVisible()
+    expect(await nameOf(0)).toBe(before[1])
+
+    // Sorting by a column removes the grip entirely: rank only means anything in natural
+    // rank order, so a drag under a Name sort would derive a rank from neighbours whose
+    // order has nothing to do with rank.
+    await page.getByLabel('Name column', { exact: true }).click()
+    await expect(page.getByLabel('Drag to reorder')).toHaveCount(0)
+  })
 })

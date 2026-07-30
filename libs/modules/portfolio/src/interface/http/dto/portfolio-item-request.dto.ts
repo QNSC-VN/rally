@@ -113,3 +113,18 @@ export const UpdatePortfolioItemSchema = z
   // nothing, which reads as a successful save in the UI.
   .refine((v) => Object.keys(v).length > 0, { message: 'At least one field is required' });
 export class UpdatePortfolioItemDto extends createZodDto(UpdatePortfolioItemSchema) {}
+
+/**
+ * Move an item between two neighbours.
+ *
+ * Both are optional because either can be a list edge, but the service rejects a body
+ * with NEITHER: "between nothing and nothing" has no meaning in a rank order, and
+ * `between(null, null)` would silently return a mid-range rank unrelated to the list.
+ */
+export const RankPortfolioItemSchema = z.object({
+  /** The item immediately ABOVE the drop position (lower rank). Null at the top. */
+  beforeId: z.string().uuid().nullable().optional(),
+  /** The item immediately BELOW the drop position (higher rank). Null at the bottom. */
+  afterId: z.string().uuid().nullable().optional(),
+});
+export class RankPortfolioItemDto extends createZodDto(RankPortfolioItemSchema) {}

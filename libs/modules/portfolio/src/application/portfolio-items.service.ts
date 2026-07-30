@@ -260,6 +260,88 @@ export class PortfolioItemsService {
     return this.getItem(actor, id);
   }
 
+  /**
+   * Move one item between two neighbours by deriving a LexoRank strictly between their
+   * ranks — a single-row UPDATE, never a renumbering pass.
+   *
+   * `beforeId`/`afterId` are the rows immediately ABOVE and BELOW the drop position in
+   * ascending rank order; either is null at a list edge. Both null would mean "between
+   * nothing and nothing", which `between()` answers with a mid-range rank that has no
+   * relation to the list — so the caller must name at least one neighbour.
+   *
+   * Every neighbour must share this item's RANK SCOPE, which for portfolio items is
+   * (workspace, type) rather than (project, parent): the list is cross-project and flat
+   * per type. Accepting an Epic as a Feature's neighbour would interleave two independent
+   * orderings and make the next drag throw.
+   *
+   * Deliberately does NOT take the advisory lock that `createItem` uses. This is a
+   * read-modify-write too, but the value written is derived from two SPECIFIC neighbours
+   * the client already sees, not from a shared MAX — so two concurrent drags can only
+   * collide by targeting the identical gap, and the loser lands on an equal rank rather
+   * than corrupting the scope. `between()` rejects the stale-neighbour case below, which
+   * is the failure that actually matters.
+   */
+  async rankItem(
+    actor: JwtPayload,
+    id: string,
+    opts: { beforeId?: string | null; afterId?: string | null },
+  ): Promise<PortfolioItemWithProgress> {
+    const item = await this.requireItem(actor, id);
+    await this.access.assertProjectPermission(actor, item.projectId, 'portfolio:edit');
+
+    if (!opts.beforeId && !opts.afterId) {
+      throw new PreconditionFailedException(
+        'PORTFOLIO_ITEM_RANK_CONFLICT',
+        'A move needs at least one neighbour',
+      );
+    }
+
+    const neighbourIds = [opts.beforeId, opts.afterId].filter(
+      (n): n is string => typeof n === 'string',
+    );
+    if (neighbourIds.includes(id)) {
+      throw new PreconditionFailedException(
+        'PORTFOLIO_ITEM_RANK_CONFLICT',
+        'An item cannot be its own neighbour',
+      );
+    }
+
+    const neighbours = await this.repo.findByIds(neighbourIds, actor.workspaceId);
+    const byId = new Map(neighbours.map((n) => [n.id, n]));
+
+    const rankOf = (nid: string | null | undefined): string | null => {
+      if (!nid) return null;
+      const n = byId.get(nid);
+      // Same type = same rank scope. A missing row is the same class of problem as a
+      // wrong-scope one: the client is working from an order that no longer exists.
+      if (!n || n.type !== item.type) {
+        throw new PreconditionFailedException(
+          'PORTFOLIO_ITEM_RANK_CONFLICT',
+          'Neighbour is not in the same portfolio order; refresh and retry',
+        );
+      }
+      return n.rank;
+    };
+
+    const lowRank = rankOf(opts.beforeId);
+    const highRank = rankOf(opts.afterId);
+
+    let rank: string;
+    try {
+      rank = between(lowRank, highRank);
+    } catch {
+      // Neighbours out of order — the client's view is stale. Refuse rather than write a
+      // rank that would sort the row somewhere neither neighbour implies.
+      throw new PreconditionFailedException(
+        'PORTFOLIO_ITEM_RANK_CONFLICT',
+        'Portfolio order changed; refresh and retry',
+      );
+    }
+
+    await this.repo.update(id, { rank }, actor.workspaceId);
+    return this.getItem(actor, id);
+  }
+
   private async requireItem(actor: JwtPayload, id: string): Promise<PortfolioItem> {
     const item = await this.repo.findById(id, actor.workspaceId);
     if (!item) {
