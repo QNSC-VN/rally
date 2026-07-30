@@ -123,6 +123,34 @@ export interface ICapacityPlanRepository {
    * Attributed by the story's own team rather than the iteration's, and measured over
    * ACCEPTED states, not completed ones. See the implementation for why both matter.
    */
+  /** The release's own window (`start_date` / `release_date`), for the span check. */
+  releaseWindow(
+    releaseId: string,
+    workspaceId: string,
+  ): Promise<{ startDate: string | null; endDate: string | null } | null>;
+
+  /**
+   * Write the plan's window — and optionally its release — onto one Feature.
+   *
+   * `releaseId` omitted leaves the column ALONE, which is Rally's behaviour when the plan's
+   * window spans releases: the dates are still written, only the Release field is skipped.
+   */
+  applyPlanToFeature(
+    portfolioItemId: string,
+    workspaceId: string,
+    fields: { plannedStartDate: string | null; plannedEndDate: string | null; releaseId?: string },
+    executor?: DbExecutor,
+  ): Promise<void>;
+
+  /** Flip a plan between draft and published, stamping `published_at`/`published_by`. */
+  setStatus(
+    id: string,
+    workspaceId: string,
+    status: 'draft' | 'published',
+    publishedBy: string | null,
+    executor?: DbExecutor,
+  ): Promise<CapacityPlan>;
+
   teamVelocitySamples(
     projectId: string,
     teamId: string,

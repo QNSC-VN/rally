@@ -70,6 +70,76 @@ test.describe('Capacity allocation', () => {
     await expect(page.getByText('Guest checkout flow')).toHaveCount(0)
   })
 
+  test('publishes the plan, reports what it wrote, then reverts without undoing it', async ({
+    page,
+  }) => {
+    // The riskiest action in Phase 5 driven end to end, on the SEEDED plan. Cleans up after
+    // itself in both directions — the allocation is removed and the plan is returned to draft —
+    // because a release holds only one plan, so a test that created its own would consume the
+    // project's only unplanned release.
+    await openPlan(page)
+
+    // Allocate FE-1 to Team Alpha so there is something to publish.
+    await page.getByRole('button', { name: 'Allocate', exact: true }).first().click()
+    const allocate = page.getByRole('dialog', { name: 'Allocate a Feature' })
+    await allocate.getByLabel('Feature').click()
+    await pickOption(page, /FE-1/)
+    await allocate.getByLabel('Team').click()
+    await pickOption(page, /Team Alpha/)
+    await allocate.getByRole('button', { name: 'Allocate', exact: true }).click()
+    await expect(allocate).toBeHidden()
+
+    // ── Publish ──────────────────────────────────────────────────────────────
+    await page.getByRole('button', { name: 'Publish', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: /Publish this plan/i })
+    // The three things a planner has to know BEFORE the write: what lands, when the Release
+    // lands, and that reverting will not undo it.
+    await expect(dialog.getByText(/planned start and end dates/)).toBeVisible()
+    await expect(dialog.getByText(/does NOT undo these field values/)).toBeVisible()
+    // Rally's second option is offered alongside, not hidden behind a checkbox.
+    await expect(
+      dialog.getByRole('button', { name: 'Publish without updating fields' }),
+    ).toBeVisible()
+
+    await dialog.getByRole('button', { name: 'Publish and update fields' }).click()
+    await expect(dialog).toBeHidden()
+
+    // Published plans are read-only, so the editing affordances go away.
+    await expect(page.getByRole('button', { name: 'Allocate', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Revert to draft' })).toBeVisible()
+
+    // ── The Feature really took the plan's window ────────────────────────────
+    // Read from the Portfolio detail rather than the plan, which is the whole point: the
+    // publish wrote to a row on another page. The seeded plan mirrors its release's window.
+    await page.goto('/portfolio', { waitUntil: 'domcontentloaded' })
+    await page.getByRole('searchbox', { name: /Search portfolio/i }).fill('Guest checkout flow')
+    await page.getByText('FE-1', { exact: true }).click()
+    await expect(page).toHaveURL(/\/portfolio\/[0-9a-f-]{36}/)
+    await expect(page.getByText('2026-07-01')).toBeVisible()
+    await expect(page.getByText('v2.0 — NX Platform Upgrade')).toBeVisible()
+
+    // ── Revert, which does NOT roll the fields back ──────────────────────────
+    await page.goBack()
+    await page.goto('/capacity-planning', { waitUntil: 'domcontentloaded' })
+    await page.getByText('NX Platform v2 capacity').click()
+    await page.getByRole('button', { name: 'Revert to draft' }).click()
+    const confirm = page.getByRole('dialog')
+    await expect(confirm.getByText(/are NOT undone/)).toBeVisible()
+    await confirm.getByRole('button', { name: 'Revert to draft' }).click()
+
+    // Editable again.
+    await expect(page.getByRole('button', { name: 'Publish', exact: true })).toBeVisible()
+
+    // Clean up: remove the allocation, restoring the seeded state. The Feature KEEPS the
+    // release and dates the publish wrote, which is Rally's behaviour and is what the backend
+    // e2e asserts against real SQL.
+    await page
+      .getByRole('button', { name: /Remove the allocation for FE-1/ })
+      .first()
+      .click()
+    await expect(page.getByText('Guest checkout flow')).toHaveCount(0)
+  })
+
   test('parks demand in the Unallocated bucket when no team is chosen', async ({ page }) => {
     await openPlan(page)
 

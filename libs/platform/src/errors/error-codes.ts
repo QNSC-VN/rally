@@ -108,6 +108,15 @@ export const ErrorCodes = {
   CAPACITY_PLAN_RELEASE_MISMATCH: 'CAPACITY_PLAN_RELEASE_MISMATCH',
   /** A published plan is read-only until it is reverted to draft. */
   CAPACITY_PLAN_NOT_DRAFT: 'CAPACITY_PLAN_NOT_DRAFT',
+  /** Reverting something that is already a draft. */
+  CAPACITY_PLAN_NOT_PUBLISHED: 'CAPACITY_PLAN_NOT_PUBLISHED',
+  /**
+   * Nothing to publish: no teams, no allocations, and never published before.
+   *
+   * All three conditions, per Rally — a plan that HAS been published may be re-published even
+   * once emptied, which is how a planner undoes an over-eager clear-out.
+   */
+  CAPACITY_PLAN_EMPTY: 'CAPACITY_PLAN_EMPTY',
   CAPACITY_TEAM_NOT_FOUND: 'CAPACITY_TEAM_NOT_FOUND',
   CAPACITY_TEAM_ALREADY_ADDED: 'CAPACITY_TEAM_ALREADY_ADDED',
   /** Removing the team would orphan the demand still allocated to it. */

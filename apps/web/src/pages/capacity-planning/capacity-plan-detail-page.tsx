@@ -10,7 +10,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from '@tanstack/react-router'
-import { BarChart3, Plus, Users } from 'lucide-react'
+import { BarChart3, Plus, Send, Undo2, Users } from 'lucide-react'
 
 import { Button } from '@/shared/ui/button'
 import { EmptyState } from '@/shared/ui/empty-state'
@@ -19,12 +19,15 @@ import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { DataTableFrame } from '@/shared/ui/table/data-table-frame'
 import { useDataTable } from '@/shared/ui/table'
 import { DetailField, DetailLayout, DetailTwoPane } from '@/shared/ui/detail'
+import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { notify } from '@/shared/lib/toast'
 import { useProjectPermissions } from '@/features/access/api'
 import { useProjectTeams } from '@/features/teams/api'
 import {
   useAddCapacityTeam,
   useCapacityPlan,
+  usePublishPlan,
+  useRevertPlan,
   type CapacityPlanTeam,
 } from '@/features/capacity-planning/api'
 import { CAPACITY_TEAM_COLUMNS, type TeamColKey } from './model/columns'
@@ -33,6 +36,7 @@ import { AllocationRow } from './ui/allocation-row'
 import { AllocateFeatureModal } from './ui/allocate-feature-modal'
 import { CapacityBreakdownOverlay } from './ui/capacity-breakdown-overlay'
 import { CapacityForecastModal } from './ui/capacity-forecast-modal'
+import { PublishPlanModal } from './ui/publish-plan-modal'
 
 export function CapacityPlanDetailPage() {
   const { t } = useTranslation('capacity')
@@ -45,6 +49,8 @@ export function CapacityPlanDetailPage() {
   // The team whose forecast is open, by plan-team id. One modal for every row rather than a
   // modal per row: only one can be open, and mounting N dialogs to show one is waste.
   const [forecastTeamId, setForecastTeamId] = useState<string | null>(null)
+  const [showPublish, setShowPublish] = useState(false)
+  const [confirmRevert, setConfirmRevert] = useState(false)
 
   const { data: plan, isLoading } = useCapacityPlan(planId)
   const { can } = useProjectPermissions(plan?.projectId)
@@ -58,6 +64,13 @@ export function CapacityPlanDetailPage() {
   // still be added by a caller that knows its id.)
   const { data: teams = [] } = useProjectTeams(plan?.projectId)
   const addTeam = useAddCapacityTeam()
+  const revert = useRevertPlan()
+  // Only for the pending flag on the toolbar button; the modal owns the publish call itself.
+  const publish = usePublishPlan()
+  // Publishing writes back to Feature rows, so it takes its OWN permission rather than
+  // riding `capacity:manage` — a planner who may edit a draft is not automatically someone
+  // who may stamp a release onto other people's Features.
+  const canPublish = can('capacity:publish')
 
   const table = useDataTable<CapacityPlanTeam, unknown, TeamColKey>(CAPACITY_TEAM_COLUMNS, {
     storageKey: 'rally-capacity-team-columns',
@@ -162,6 +175,28 @@ export function CapacityPlanDetailPage() {
                 >
                   <BarChart3 size={13} /> {t('breakdown.action')}
                 </Button>
+                {/* One button, whichever direction the plan can move in. A draft can be
+                    published; a published plan can only be reverted, which is also the only
+                    way back to editing it. */}
+                {canPublish &&
+                  (plan.status === 'draft' ? (
+                    <Button
+                      size="sm"
+                      onClick={() => setShowPublish(true)}
+                      disabled={publish.isPending}
+                    >
+                      <Send size={13} /> {t('publish.action')}
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => setConfirmRevert(true)}
+                      disabled={revert.isPending}
+                    >
+                      <Undo2 size={13} /> {t('publish.revert.action')}
+                    </Button>
+                  ))}
               </div>
 
               <DataTableFrame
@@ -275,6 +310,27 @@ export function CapacityPlanDetailPage() {
           onClose={() => setForecastTeamId(null)}
         />
       )}
+      {showPublish && <PublishPlanModal plan={plan} onClose={() => setShowPublish(false)} />}
+      <ConfirmDialog
+        open={confirmRevert}
+        title={t('publish.revert.title')}
+        message={t('publish.revert.message')}
+        confirmLabel={t('publish.revert.confirm')}
+        pending={revert.isPending}
+        onCancel={() => setConfirmRevert(false)}
+        onConfirm={() => {
+          revert.mutate(
+            { id: plan.id },
+            {
+              // The toast repeats that the Feature fields were left alone — the dialog says it
+              // too, but this is the moment a planner might expect an undo to have happened.
+              onSuccess: () => notify.success(t('publish.revert.done')),
+              onError: (err) => notify.error(err.message),
+            },
+          )
+          setConfirmRevert(false)
+        }}
+      />
       {showBreakdown && (
         <CapacityBreakdownOverlay
           plan={plan}

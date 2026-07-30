@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mocked } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
-import { DRIZZLE, NotFoundException } from '@platform';
+import { DRIZZLE, NotFoundException, UnitOfWork } from '@platform';
 import type { JwtPayload } from '@platform';
 import { AccessService } from '@modules/access';
 import { PortfolioItemsService, PreliminaryEstimateMapService } from '@modules/portfolio';
@@ -15,6 +15,8 @@ import type { CapacityPlan, CapacityPlanView } from '../domain/capacity-plan.typ
 import type { CapacityAllocationRow } from '../domain/capacity-allocation.types';
 
 const WORKSPACE = 'ws-1';
+/** The stand-in transaction handle every write inside one publish must share. */
+const TX = { tx: true };
 const actor = { sub: 'user-1', workspaceId: WORKSPACE } as JwtPayload;
 
 const plan = (over: Partial<CapacityPlan> = {}): CapacityPlan => ({
@@ -81,7 +83,19 @@ describe('CapacityPlansService', () => {
             totalAllocatedFor: vi.fn().mockResolvedValue(0),
             teamMetrics: vi.fn().mockResolvedValue({ complete: 0, rollup: 0 }),
             teamVelocitySamples: vi.fn().mockResolvedValue([]),
+            releaseWindow: vi.fn().mockResolvedValue({
+              startDate: '2026-07-01',
+              endDate: '2026-07-31',
+            }),
+            applyPlanToFeature: vi.fn(),
+            setStatus: vi.fn().mockResolvedValue(plan({ status: 'published' })),
           },
+        },
+        {
+          // Real `UnitOfWork` would need a real pool; the publish tests assert that the field
+          // writes and the status flip share ONE executor, which this hands them.
+          provide: UnitOfWork,
+          useValue: { run: vi.fn(async (work: (tx: unknown) => Promise<unknown>) => work(TX)) },
         },
         {
           provide: AccessService,
@@ -379,6 +393,195 @@ describe('CapacityPlansService', () => {
         expect(detail.allocations[0].metrics.warnings).not.toContain('team_missing_capacity');
         expect(detail.teams[0].metrics.warnings).not.toContain('feature_missing_estimate');
       });
+    });
+  });
+
+  describe('publishPlan', () => {
+    const allocation = (over: Partial<CapacityAllocationRow> = {}): CapacityAllocationRow => ({
+      id: 'alloc-1',
+      planId: 'plan-1',
+      portfolioItemId: 'fe-1',
+      teamId: 'team-1',
+      value: '30',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      itemKey: 'FE-1',
+      name: 'A feature',
+      refined: null,
+      preliminarySize: 'm',
+      totalAllocated: 30,
+      rollup: 0,
+      complete: 0,
+      ...over,
+    });
+
+    /** A plan whose window sits INSIDE the release's — the case that writes the Release. */
+    const insideRelease = { plannedStartDate: '2026-07-05', plannedEndDate: '2026-07-20' };
+
+    beforeEach(() => {
+      repo.listAllocations.mockResolvedValue([allocation()]);
+      repo.findById.mockResolvedValue(plan(insideRelease));
+      repo.findViewById.mockResolvedValue(view(insideRelease));
+    });
+
+    it('writes the window AND the release when the plan fits inside its release', async () => {
+      const result = await service.publishPlan(actor, 'plan-1', { updateFields: true });
+
+      expect(repo.applyPlanToFeature).toHaveBeenCalledWith(
+        'fe-1',
+        WORKSPACE,
+        {
+          plannedStartDate: '2026-07-05',
+          plannedEndDate: '2026-07-20',
+          releaseId: 'rel-1',
+        },
+        expect.anything(),
+      );
+      expect(result.featuresUpdated).toBe(1);
+      expect(result.skipped).toEqual([]);
+    });
+
+    it('writes the DATES ONLY when the window spans outside the release, and says why', async () => {
+      // Rally: "The Release field is only updated when the start and end dates do not span
+      // releases." The dates are still written — this corrects the Phase 5 spec, which
+      // required equality and skipped the whole write.
+      repo.findById.mockResolvedValue(
+        plan({ plannedStartDate: '2026-06-01', plannedEndDate: '2026-08-31' }),
+      );
+      repo.findViewById.mockResolvedValue(
+        view({ plannedStartDate: '2026-06-01', plannedEndDate: '2026-08-31' }),
+      );
+
+      const result = await service.publishPlan(actor, 'plan-1', { updateFields: true });
+
+      expect(repo.applyPlanToFeature).toHaveBeenCalledWith(
+        'fe-1',
+        WORKSPACE,
+        { plannedStartDate: '2026-06-01', plannedEndDate: '2026-08-31' },
+        expect.anything(),
+      );
+      // No `releaseId` key at all — `undefined` would be a different instruction.
+      expect(
+        'releaseId' in (repo.applyPlanToFeature.mock.calls[0][2] as Record<string, unknown>),
+      ).toBe(false);
+      expect(result.featuresUpdated).toBe(1);
+      expect(result.skipped).toEqual([
+        { portfolioItemId: 'fe-1', itemKey: 'FE-1', reason: 'release_span_mismatch' },
+      ]);
+    });
+
+    it('cannot answer the span question without dates, so it skips the Release', async () => {
+      // An unanswerable check must not authorise the write.
+      repo.releaseWindow.mockResolvedValue({ startDate: null, endDate: null });
+      const result = await service.publishPlan(actor, 'plan-1', { updateFields: true });
+      expect(result.skipped[0].reason).toBe('release_span_mismatch');
+    });
+
+    it('skips an UNALLOCATED row entirely rather than giving it a schedule', async () => {
+      // No team means no plan for that Feature to inherit; writing the window would assert a
+      // schedule nobody agreed to.
+      repo.listAllocations.mockResolvedValue([allocation({ teamId: null })]);
+
+      const result = await service.publishPlan(actor, 'plan-1', { updateFields: true });
+
+      expect(repo.applyPlanToFeature).not.toHaveBeenCalled();
+      expect(result.featuresUpdated).toBe(0);
+      expect(result.skipped).toEqual([
+        { portfolioItemId: 'fe-1', itemKey: 'FE-1', reason: 'unallocated' },
+      ]);
+    });
+
+    it("publishes WITHOUT touching a single field when asked — Rally's second button", async () => {
+      const result = await service.publishPlan(actor, 'plan-1', { updateFields: false });
+
+      expect(repo.applyPlanToFeature).not.toHaveBeenCalled();
+      expect(repo.setStatus).toHaveBeenCalledWith('plan-1', WORKSPACE, 'published', 'user-1');
+      expect(result.fieldsUpdated).toBe(false);
+      expect(result.featuresUpdated).toBe(0);
+    });
+
+    it('needs capacity:publish, not capacity:manage', async () => {
+      // Writing back to Feature rows outside the plan is a different blast radius from
+      // editing a draft.
+      await service.publishPlan(actor, 'plan-1', { updateFields: true });
+      expect(access.assertProjectPermission).toHaveBeenCalledWith(
+        actor,
+        'proj-a',
+        'capacity:publish',
+      );
+    });
+
+    it('refuses a plan that has never been published and holds nothing', async () => {
+      // Rally blocks only when ALL THREE hold: never published, no items, no projects.
+      repo.listAllocations.mockResolvedValue([]);
+      repo.findViewById.mockResolvedValue(view({ ...insideRelease, teams: [] }));
+
+      await expect(
+        service.publishPlan(actor, 'plan-1', { updateFields: true }),
+      ).rejects.toMatchObject({ code: 'CAPACITY_PLAN_EMPTY' });
+    });
+
+    it('allows re-publishing an emptied plan that HAS been published before', async () => {
+      // How a planner undoes an over-eager clear-out.
+      repo.listAllocations.mockResolvedValue([]);
+      repo.findById.mockResolvedValue(plan({ ...insideRelease, publishedAt: new Date() }));
+      repo.findViewById.mockResolvedValue(
+        view({ ...insideRelease, publishedAt: new Date(), teams: [] }),
+      );
+
+      await expect(
+        service.publishPlan(actor, 'plan-1', { updateFields: true }),
+      ).resolves.toMatchObject({ featuresUpdated: 0 });
+    });
+
+    it('refuses to publish an already-published plan', async () => {
+      repo.findById.mockResolvedValue(plan({ status: 'published' }));
+      await expect(
+        service.publishPlan(actor, 'plan-1', { updateFields: true }),
+      ).rejects.toMatchObject({ code: 'CAPACITY_PLAN_NOT_DRAFT' });
+    });
+
+    it('flips the status inside the SAME transaction as the field writes', async () => {
+      // A partial publish must not leave Features carrying a plan that is still a draft.
+      await service.publishPlan(actor, 'plan-1', { updateFields: true });
+      const statusTx = repo.setStatus.mock.calls[0][4];
+      const featureTx = repo.applyPlanToFeature.mock.calls[0][3];
+      expect(statusTx).toBeDefined();
+      expect(statusTx).toBe(featureTx);
+    });
+  });
+
+  describe('revertPlan', () => {
+    beforeEach(() => {
+      repo.findById.mockResolvedValue(plan({ status: 'published' }));
+      repo.findViewById.mockResolvedValue(view({ status: 'published' }));
+      repo.setStatus.mockResolvedValue(plan({ status: 'draft' }));
+    });
+
+    it('returns to draft and does NOT roll back what publishing wrote', async () => {
+      // Rally: "No changes are made to the field values in the portfolio items." Stated in the
+      // response rather than left to be discovered, because "revert" reads like an undo.
+      const result = await service.revertPlan(actor, 'plan-1');
+
+      expect(repo.setStatus).toHaveBeenCalledWith('plan-1', WORKSPACE, 'draft', null);
+      expect(repo.applyPlanToFeature).not.toHaveBeenCalled();
+      expect(result.fieldsRolledBack).toBe(false);
+    });
+
+    it('refuses a plan that is already a draft', async () => {
+      repo.findById.mockResolvedValue(plan({ status: 'draft' }));
+      await expect(service.revertPlan(actor, 'plan-1')).rejects.toMatchObject({
+        code: 'CAPACITY_PLAN_NOT_PUBLISHED',
+      });
+    });
+
+    it('needs capacity:publish — reverting re-opens a plan others can see', async () => {
+      await service.revertPlan(actor, 'plan-1');
+      expect(access.assertProjectPermission).toHaveBeenCalledWith(
+        actor,
+        'proj-a',
+        'capacity:publish',
+      );
     });
   });
 

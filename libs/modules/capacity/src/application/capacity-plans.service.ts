@@ -5,6 +5,7 @@ import {
   InjectDrizzle,
   NotFoundException,
   PreconditionFailedException,
+  UnitOfWork,
 } from '@platform';
 import type { DrizzleDB, JwtPayload } from '@platform';
 import { AccessService } from '@modules/access';
@@ -61,11 +62,44 @@ export interface CapacityPlanDetail extends Omit<CapacityPlanView, 'teams'> {
   unallocated: number;
 }
 
+/** Why a Feature did not take the full publish. Reported, never thrown. */
+export interface PublishSkip {
+  portfolioItemId: string;
+  itemKey: string;
+  /**
+   * `unallocated` — the allocation names no team, so there is no plan to inherit.
+   * `release_span_mismatch` — the plan's window reaches outside its release, so Rally writes
+   * the dates but not the Release field.
+   */
+  reason: 'unallocated' | 'release_span_mismatch';
+}
+
+export interface PublishResult {
+  plan: CapacityPlanDetail;
+  /** False for Rally's "Publish Without Updating Fields". */
+  fieldsUpdated: boolean;
+  featuresUpdated: number;
+  skipped: PublishSkip[];
+}
+
+export interface RevertResult {
+  plan: CapacityPlanDetail;
+  /**
+   * Always false, and returned rather than implied: Rally makes "no changes to the field
+   * values in the portfolio items" on revert, so the Release and dates a publish wrote stay
+   * put. "Revert" reads like an undo; this says plainly that it is not one.
+   */
+  fieldsRolledBack: false;
+}
+
 @Injectable()
 export class CapacityPlansService {
   constructor(
     @Inject(CAPACITY_PLAN_REPOSITORY) private readonly repo: ICapacityPlanRepository,
     @InjectDrizzle() private readonly db: DrizzleDB,
+    // Publishing writes N Features and flips the plan's status; one transaction is what stops
+    // a partial publish leaving Features carrying a plan that is still a draft.
+    private readonly uow: UnitOfWork,
     private readonly access: AccessService,
     private readonly estimateMaps: PreliminaryEstimateMapService,
     private readonly portfolioItems: PortfolioItemsService,
@@ -162,6 +196,139 @@ export class CapacityPlansService {
 
     await this.repo.setTeamCapacity(id, teamId, capacity);
     return this.getPlan(actor, id);
+  }
+
+  // ── Publish ───────────────────────────────────────────────────────────────
+
+  /**
+   * Publish a plan: make it visible to everyone, and write the plan back onto its Features.
+   *
+   * Rally: publishing "updates the Release, Planned Start Date, and Planned End Date for all
+   * assigned and allocated portfolio items", and a planner may instead choose "Publish
+   * Without Updating Fields" to publish while leaving those fields alone. Both are here as
+   * `updateFields`.
+   *
+   * THE RISKY WRITE of Phase 5, and the reasons it is shaped this way:
+   *
+   *   • Only ASSIGNED allocations are written. An allocation parked in the Unallocated bucket
+   *     names no team, so there is no plan for that Feature to inherit — writing the plan's
+   *     window onto it would assert a schedule nobody agreed.
+   *   • The Release field follows Rally's span rule: "The Release field is only updated when
+   *     the start and end dates do not span releases." So a plan whose window falls inside
+   *     its release writes `release_id`; one that reaches beyond it writes the DATES ONLY and
+   *     reports why. That corrects the Phase 5 spec, which required the plan window to EQUAL
+   *     the release window and skipped the whole write otherwise — stricter than Rally on the
+   *     condition, and wrong about the consequence.
+   *   • Everything runs in ONE transaction with the status flip, so a partial publish cannot
+   *     leave some Features carrying a plan that is still a draft.
+   *   • Skips are REPORTED, never thrown. A planner needs to know which Features did not take
+   *     the release and why; an exception would roll back a publish that is otherwise correct.
+   */
+  async publishPlan(
+    actor: JwtPayload,
+    id: string,
+    options: { updateFields: boolean },
+  ): Promise<PublishResult> {
+    const plan = await this.requireDraft(actor, id);
+    await this.access.assertProjectPermission(actor, plan.projectId, 'capacity:publish');
+
+    const rows = await this.repo.listAllocations(plan);
+    const teams = await this.repo.findViewById(id, actor.workspaceId);
+
+    // Rally blocks a publish only when ALL THREE hold: never published, no items, no
+    // projects. A plan that has been published before may be re-published even when empty —
+    // that is how a planner undoes an over-eager clear-out.
+    const neverPublished = plan.publishedAt === null;
+    if (neverPublished && rows.length === 0 && (teams?.teams.length ?? 0) === 0) {
+      throw new PreconditionFailedException(
+        'CAPACITY_PLAN_EMPTY',
+        'Add a team and allocate at least one Feature before publishing',
+      );
+    }
+
+    const skipped: PublishSkip[] = [];
+    let featuresUpdated = 0;
+
+    if (options.updateFields) {
+      // Read once, outside the loop: every Feature takes the same release decision.
+      const releaseWindow = await this.repo.releaseWindow(plan.releaseId, actor.workspaceId);
+      const spansReleases = !windowFitsInside(plan, releaseWindow);
+
+      await this.uow.run(async (tx) => {
+        for (const row of rows) {
+          if (row.teamId === null) {
+            skipped.push({
+              portfolioItemId: row.portfolioItemId,
+              itemKey: row.itemKey,
+              reason: 'unallocated',
+            });
+            continue;
+          }
+
+          await this.repo.applyPlanToFeature(
+            row.portfolioItemId,
+            actor.workspaceId,
+            {
+              plannedStartDate: plan.plannedStartDate,
+              plannedEndDate: plan.plannedEndDate,
+              ...(spansReleases ? {} : { releaseId: plan.releaseId }),
+            },
+            tx,
+          );
+          featuresUpdated += 1;
+
+          if (spansReleases) {
+            // Dates written, Release deliberately not. Reported per Feature because that is
+            // the row the planner has to fix.
+            skipped.push({
+              portfolioItemId: row.portfolioItemId,
+              itemKey: row.itemKey,
+              reason: 'release_span_mismatch',
+            });
+          }
+        }
+
+        await this.repo.setStatus(id, actor.workspaceId, 'published', actor.sub, tx);
+      });
+    } else {
+      await this.repo.setStatus(id, actor.workspaceId, 'published', actor.sub);
+    }
+
+    return {
+      // The DETAIL, not the bare plan: the client re-renders the grid from this response, and
+      // a publish changes what every row may do.
+      plan: await this.getPlanDetail(actor, id),
+      fieldsUpdated: options.updateFields,
+      featuresUpdated,
+      skipped,
+    };
+  }
+
+  /**
+   * Revert to draft so the plan can be edited again.
+   *
+   * Rally: "No changes are made to the field values in the portfolio items" — the Release and
+   * planned dates a publish wrote STAY on the Features, and clearing them is manual. That is
+   * stated in the response rather than left for a planner to discover, because "revert" reads
+   * like an undo and here it is not one.
+   *
+   * `published_at` is also left in place: it records that a publish happened, which is what
+   * allows re-publishing a plan that has since been emptied.
+   */
+  async revertPlan(actor: JwtPayload, id: string): Promise<RevertResult> {
+    const plan = await this.repo.findById(id, actor.workspaceId);
+    if (!plan) throw new NotFoundException('CAPACITY_PLAN_NOT_FOUND', 'Capacity plan not found');
+    await this.access.assertProjectPermission(actor, plan.projectId, 'capacity:publish');
+
+    if (plan.status !== 'published') {
+      throw new PreconditionFailedException(
+        'CAPACITY_PLAN_NOT_PUBLISHED',
+        'This plan is already a draft',
+      );
+    }
+
+    await this.repo.setStatus(id, actor.workspaceId, 'draft', null);
+    return { plan: await this.getPlanDetail(actor, id), fieldsRolledBack: false };
   }
 
   /**
@@ -544,4 +711,25 @@ function windowDays(start: string | null, end: string | null): number {
   const to = Date.parse(`${end}T00:00:00Z`);
   if (Number.isNaN(from) || Number.isNaN(to)) return 0;
   return Math.max(0, Math.round((to - from) / 86_400_000) + 1);
+}
+
+/**
+ * Does the plan's window fall INSIDE the release's own window?
+ *
+ * Rally updates a Feature's Release field "only when the start and end dates do not span
+ * releases", so this is the release-write condition. Unknown dates on either side mean the
+ * question cannot be answered, and an unanswerable check must not authorise the write — a
+ * plan or release with no dates therefore skips the Release field and says so.
+ */
+function windowFitsInside(
+  plan: { plannedStartDate: string | null; plannedEndDate: string | null },
+  release: { startDate: string | null; endDate: string | null } | null,
+): boolean {
+  if (release === null) return false;
+  const { plannedStartDate: ps, plannedEndDate: pe } = plan;
+  const { startDate: rs, endDate: re } = release;
+  if (ps === null || pe === null || rs === null || re === null) return false;
+  // ISO `YYYY-MM-DD` compares correctly as a string, so no parsing (and no timezone) is
+  // involved.
+  return ps >= rs && pe <= re;
 }

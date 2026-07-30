@@ -2227,6 +2227,40 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v1/capacity-plans/{id}/publish': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Publish a plan, optionally writing its window onto the Features */
+    post: operations['CapacityPlansController_publishPlan']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/capacity-plans/{id}/revert': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Revert a published plan to draft — fields already written STAY */
+    post: operations['CapacityPlansController_revertPlan']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v1/capacity-plans/{id}/teams/{teamId}/forecast': {
     parameters: {
       query?: never
@@ -3996,6 +4030,200 @@ export interface components {
     AddCapacityTeamDto: {
       /** Format: uuid */
       teamId: string
+    }
+    PublishPlanDto: {
+      /** @default true */
+      updateFields: boolean
+    }
+    PublishResultResponseDto: {
+      plan: {
+        /** Format: uuid */
+        id: string
+        /** Format: uuid */
+        workspaceId: string
+        /** Format: uuid */
+        projectId: string
+        projectName: string | null
+        /** Format: uuid */
+        releaseId: string
+        releaseName: string | null
+        name: string
+        /** @enum {string} */
+        status: 'draft' | 'published'
+        /**
+         * @description Fixed at creation — every number on the plan uses it
+         * @enum {string}
+         */
+        unit: 'points' | 'count'
+        /** @description YYYY-MM-DD */
+        plannedStartDate: string | null
+        /** @description YYYY-MM-DD */
+        plannedEndDate: string | null
+        /** @description Advisory load ceiling, 1–99 */
+        targetLoadPct: number
+        publishedAt: string | null
+        publishedBy: string | null
+        /** Format: date-time */
+        createdAt: string
+        /** Format: date-time */
+        updatedAt: string
+        teams: {
+          /** Format: uuid */
+          id: string
+          /** Format: uuid */
+          teamId: string
+          teamName: string | null
+          capacity: number | null
+          metrics: {
+            complete: number
+            rollup: number
+            estimated: number
+            capacity: number | null
+            warnings: (
+              | 'feature_missing_estimate'
+              | 'team_missing_capacity'
+              | 'rollup_exceeds_estimated'
+              | 'rollup_exceeds_capacity'
+              | 'estimated_exceeds_capacity'
+              | 'load_above_target'
+            )[]
+          }
+        }[]
+        totalCapacity: number | null
+        allocations: {
+          /** Format: uuid */
+          id: string
+          /** Format: uuid */
+          portfolioItemId: string
+          itemKey: string
+          name: string
+          teamId: string | null
+          value: number
+          /**
+           * @description Which estimate tier the Feature figure came from — drives the UI badge
+           * @enum {string}
+           */
+          tier: 'allocated' | 'refined' | 'preliminary' | 'none'
+          metrics: {
+            complete: number
+            rollup: number
+            estimated: number
+            capacity: number | null
+            warnings: (
+              | 'feature_missing_estimate'
+              | 'team_missing_capacity'
+              | 'rollup_exceeds_estimated'
+              | 'rollup_exceeds_capacity'
+              | 'estimated_exceeds_capacity'
+              | 'load_above_target'
+            )[]
+          }
+        }[]
+        unallocated: number
+      }
+      /** @description False for Rally's "Publish Without Updating Fields" */
+      fieldsUpdated: boolean
+      /** @description Features whose planned dates were written */
+      featuresUpdated: number
+      skipped: {
+        /** Format: uuid */
+        portfolioItemId: string
+        itemKey: string
+        /**
+         * @description unallocated: no team, so no plan to inherit. release_span_mismatch: the plan window reaches outside its release, so Rally writes the dates but not the Release.
+         * @enum {string}
+         */
+        reason: 'unallocated' | 'release_span_mismatch'
+      }[]
+    }
+    RevertResultResponseDto: {
+      plan: {
+        /** Format: uuid */
+        id: string
+        /** Format: uuid */
+        workspaceId: string
+        /** Format: uuid */
+        projectId: string
+        projectName: string | null
+        /** Format: uuid */
+        releaseId: string
+        releaseName: string | null
+        name: string
+        /** @enum {string} */
+        status: 'draft' | 'published'
+        /**
+         * @description Fixed at creation — every number on the plan uses it
+         * @enum {string}
+         */
+        unit: 'points' | 'count'
+        /** @description YYYY-MM-DD */
+        plannedStartDate: string | null
+        /** @description YYYY-MM-DD */
+        plannedEndDate: string | null
+        /** @description Advisory load ceiling, 1–99 */
+        targetLoadPct: number
+        publishedAt: string | null
+        publishedBy: string | null
+        /** Format: date-time */
+        createdAt: string
+        /** Format: date-time */
+        updatedAt: string
+        teams: {
+          /** Format: uuid */
+          id: string
+          /** Format: uuid */
+          teamId: string
+          teamName: string | null
+          capacity: number | null
+          metrics: {
+            complete: number
+            rollup: number
+            estimated: number
+            capacity: number | null
+            warnings: (
+              | 'feature_missing_estimate'
+              | 'team_missing_capacity'
+              | 'rollup_exceeds_estimated'
+              | 'rollup_exceeds_capacity'
+              | 'estimated_exceeds_capacity'
+              | 'load_above_target'
+            )[]
+          }
+        }[]
+        totalCapacity: number | null
+        allocations: {
+          /** Format: uuid */
+          id: string
+          /** Format: uuid */
+          portfolioItemId: string
+          itemKey: string
+          name: string
+          teamId: string | null
+          value: number
+          /**
+           * @description Which estimate tier the Feature figure came from — drives the UI badge
+           * @enum {string}
+           */
+          tier: 'allocated' | 'refined' | 'preliminary' | 'none'
+          metrics: {
+            complete: number
+            rollup: number
+            estimated: number
+            capacity: number | null
+            warnings: (
+              | 'feature_missing_estimate'
+              | 'team_missing_capacity'
+              | 'rollup_exceeds_estimated'
+              | 'rollup_exceeds_capacity'
+              | 'estimated_exceeds_capacity'
+              | 'load_above_target'
+            )[]
+          }
+        }[]
+        unallocated: number
+      }
+      /** @constant */
+      fieldsRolledBack: false
     }
     ForecastCapacityDto: {
       /** @default 100 */
@@ -11999,6 +12227,115 @@ export interface operations {
       }
       /** @description Conflict — duplicate record or state conflict */
       409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  CapacityPlansController_publishPlan: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PublishPlanDto']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['PublishResultResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  CapacityPlansController_revertPlan: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['RevertResultResponseDto']
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
         headers: {
           [name: string]: unknown
         }

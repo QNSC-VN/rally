@@ -115,3 +115,42 @@ const ForecastSchema = z.object({
   insufficientData: z.enum(['no_history', 'too_little_history', 'no_window']).nullable(),
 });
 export class CapacityForecastResponseDto extends createZodDto(ForecastSchema) {}
+
+/**
+ * The result of a publish.
+ *
+ * `skipped` is the whole reason this is not just the plan: a publish that wrote 3 of 5
+ * Features succeeded, and the planner still has to know which two did not take the Release
+ * field and why. Throwing would roll back a publish that is otherwise correct.
+ */
+const PublishResultSchema = z.object({
+  plan: CapacityPlanSchema,
+  fieldsUpdated: z.boolean().describe('False for Rally\'s "Publish Without Updating Fields"'),
+  featuresUpdated: z.number().int().describe('Features whose planned dates were written'),
+  skipped: z.array(
+    z.object({
+      portfolioItemId: z.string().uuid(),
+      itemKey: z.string(),
+      reason: z
+        .enum(['unallocated', 'release_span_mismatch'])
+        .describe(
+          'unallocated: no team, so no plan to inherit. release_span_mismatch: the plan window reaches outside its release, so Rally writes the dates but not the Release.',
+        ),
+    }),
+  ),
+});
+export class PublishResultResponseDto extends createZodDto(PublishResultSchema) {}
+
+/**
+ * The result of a revert.
+ *
+ * `fieldsRolledBack` is always false and is returned ANYWAY: Rally makes "no changes to the
+ * field values in the portfolio items" when a plan reverts, so the Release and dates a publish
+ * wrote stay on the Features. "Revert" reads like an undo, and this is the field that says it
+ * is not one.
+ */
+const RevertResultSchema = z.object({
+  plan: CapacityPlanSchema,
+  fieldsRolledBack: z.literal(false),
+});
+export class RevertResultResponseDto extends createZodDto(RevertResultSchema) {}

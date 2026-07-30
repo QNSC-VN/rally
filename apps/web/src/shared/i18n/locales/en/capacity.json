@@ -138,5 +138,31 @@
     },
     "failed": "Could not calculate a forecast",
     "forTeam": "Forecast capacity for {{team}}"
+  },
+  "publish": {
+    "action": "Publish",
+    "title": "Publish this plan",
+    "explain": "Publishing makes the plan visible to everyone, not just planners.",
+    "willWrite": "Each Feature assigned to a team takes this plan’s planned start and end dates.",
+    "releaseRule": "The Release is written only when the plan’s window falls inside its release.",
+    "revertWarning": "Reverting later does NOT undo these field values — they must be cleared by hand.",
+    "confirm": "Publish and update fields",
+    "withoutFields": "Publish without updating fields",
+    "done": "Published. {{count}} Feature(s) updated.",
+    "skippedHeading": "Not fully updated:",
+    "skipReason": {
+      "unallocated": "no team assigned, so there was no plan for it to take",
+      "release_span_mismatch": "the plan’s window reaches outside its release, so the dates were written but the Release was not"
+    },
+    "acknowledge": "Done",
+    "failed": "Could not publish the plan",
+    "revert": {
+      "action": "Revert to draft",
+      "title": "Revert this plan to draft?",
+      "message": "The plan becomes editable and planner-only again. The Release and planned dates already written onto Features are NOT undone — clear those by hand if you need to.",
+      "confirm": "Revert to draft",
+      "done": "Reverted to draft. Feature fields were left as they are.",
+      "failed": "Could not revert the plan"
+    }
   }
 }
