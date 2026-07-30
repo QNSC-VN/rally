@@ -73,6 +73,21 @@ const BACKLOG_SORT_COLUMNS: Record<
   planEstimate: { column: workItems.storyPoints, value: (w) => w.storyPoints },
 };
 
+/**
+ * A `work_items` row as a `WorkItem`.
+ *
+ * `WorkItem` is a UNION shape: the same interface describes a Story/Defect (from
+ * `work_items`) and a Task (from `tasks`). Its hours fields belong to the TASK side —
+ * migration 0074 dropped them from `work_items` because a Story's Estimate/To Do/Actual are
+ * derived by summing its child tasks, which is how Iteration Status always read them.
+ *
+ * So a row from `work_items` reports null hours, and the task read paths keep selecting
+ * `tasks.estimate_hours` and friends. Centralised here so the nine call sites cannot drift.
+ */
+function toWorkItem(row: typeof workItems.$inferSelect): WorkItem {
+  return { ...row, estimateHours: null, todoHours: null, actualHours: null } as WorkItem;
+}
+
 @Injectable()
 export class WorkItemDrizzleRepository implements IWorkItemRepository {
   constructor(@InjectDrizzle() private readonly db: DrizzleDB) {}
@@ -91,7 +106,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         ),
       )
       .limit(1);
-    if (rows.length > 0) return rows[0] as WorkItem;
+    if (rows.length > 0) return toWorkItem(rows[0]);
 
     const tRows = await exec
       .select()
@@ -123,7 +138,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         ),
       )
       .limit(1);
-    if (rows.length > 0) return rows[0] as WorkItem;
+    if (rows.length > 0) return toWorkItem(rows[0]);
 
     const tRows = await this.db
       .select()
@@ -224,9 +239,9 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
             isNull(tasks.deletedAt),
           ),
         );
-      return [...(rows as WorkItem[]), ...tRows.map((r) => this.mapTaskRow(r))];
+      return [...rows.map(toWorkItem), ...tRows.map((r) => this.mapTaskRow(r))];
     }
-    return rows as WorkItem[];
+    return rows.map(toWorkItem);
   }
 
   async findIterationScope(
@@ -360,7 +375,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     // 'desc' is required, not cosmetic: keysetCondition reads cursor.d to pick gt
     // vs lt, and buildPageResult defaults it to 'asc'. Omitting it here would
     // page the wrong way against this DESC order.
-    return buildPageResult(rows as WorkItem[], limit, (w) => [w.createdAt.toISOString()], 'desc');
+    return buildPageResult(rows.map(toWorkItem), limit, (w) => [w.createdAt.toISOString()], 'desc');
   }
 
   async listBacklog(
@@ -402,7 +417,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       .where(and(...baseConditions));
 
     return buildPageResult(
-      rows as WorkItem[],
+      rows.map(toWorkItem),
       limit,
       (w) => [sort.value(w)],
       direction,
@@ -464,6 +479,8 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         ),
       )
       .orderBy(tasks.rank, tasks.createdAt, asc(tasks.id));
+    // Already the union shape WITH real hours from `tasks` — not a `work_items` row, so it
+    // must not go through `toWorkItem` (which nulls them).
     return rows as WorkItem[];
   }
 
@@ -801,9 +818,9 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         iterationId: input.iterationId,
         releaseId: input.releaseId,
         storyPoints: input.storyPoints,
-        estimateHours: input.estimateHours,
-        todoHours: input.todoHours,
-        actualHours: input.actualHours,
+        // No hours: dropped from `work_items` by migration 0074. A Story/Defect derives them
+        // from its child tasks, and a Task's own values are written to `tasks` by the task
+        // branch of `update()` / `createTask`.
         acceptanceCriteria: input.acceptanceCriteria,
         notes: input.notes,
         releaseNotes: input.releaseNotes,
@@ -820,7 +837,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         fixedInBuild: input.fixedInBuild,
       })
       .returning();
-    return rows[0] as WorkItem;
+    return toWorkItem(rows[0]);
   }
 
   async update(
@@ -890,9 +907,11 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         ...(input.iterationId !== undefined && { iterationId: input.iterationId }),
         ...(input.releaseId !== undefined && { releaseId: input.releaseId }),
         ...(input.storyPoints !== undefined && { storyPoints: input.storyPoints }),
-        ...(input.estimateHours !== undefined && { estimateHours: input.estimateHours }),
-        ...(input.todoHours !== undefined && { todoHours: input.todoHours }),
-        ...(input.actualHours !== undefined && { actualHours: input.actualHours }),
+        // Hours are NOT settable on a Story/Defect: migration 0074 dropped the columns, so
+        // spreading them here would emit `set estimate_hours = …` against a column that no
+        // longer exists. `tsc` does not catch that — Drizzle's `.set()` accepts the wider
+        // object — so it would have failed only at runtime. The TASK branch above still
+        // writes them to `tasks`, which is where a task's own hours live.
         ...(input.acceptanceCriteria !== undefined && {
           acceptanceCriteria: input.acceptanceCriteria,
         }),
@@ -924,7 +943,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       })
       .where(and(eq(workItems.id, id), eq(workItems.workspaceId, workspaceId)))
       .returning();
-    return rows[0] as WorkItem;
+    return toWorkItem(rows[0]);
   }
 
   async softDelete(id: string, workspaceId: string, executor?: DbExecutor): Promise<void> {

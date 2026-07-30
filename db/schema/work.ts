@@ -140,12 +140,11 @@ export const workItems = workSchema.table(
     // Plan Estimate. numeric(6,2) allows fractional points (e.g. 0.5) per SRS §8;
     // Drizzle returns numeric as a string to preserve precision.
     storyPoints: numeric('story_points', { precision: 6, scale: 2 }),
-    // Task time tracking (hours). To Do and Actual are manual inputs; Estimate
-    // is read-only derived in the application layer as (To Do + Actual) per
-    // SRS P1-TASK-01. Drizzle returns numeric as a string to preserve precision.
-    estimateHours: numeric('estimate_hours', { precision: 8, scale: 2 }),
-    todoHours: numeric('todo_hours', { precision: 8, scale: 2 }),
-    actualHours: numeric('actual_hours', { precision: 8, scale: 2 }),
+    // NO hours columns here. A Story/Defect's Estimate/To Do/Actual are DERIVED by
+    // summing its child `tasks` rows (migration 0074), which is where the real
+    // per-task inputs live. Iteration Status already read them that way, so storing
+    // them here as well let two surfaces disagree about the same story — and in
+    // practice every stored value was NULL.
     acceptanceCriteria: text('acceptance_criteria'),
     // Dedicated rich-text fields (sanitized server-side), distinct from comments.
     notes: text('notes'),

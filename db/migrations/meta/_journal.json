@@ -526,6 +526,13 @@
       "when": 1786000700000,
       "tag": "0073_role_statement_timeouts",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1786000701000,
+      "tag": "0074_derive_story_task_hours",
+      "breakpoints": true
     }
   ]
 }
