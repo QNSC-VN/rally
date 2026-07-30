@@ -5,7 +5,7 @@ import { tap } from 'rxjs/operators';
 import { DomainException as SharedDomainException } from '@qnsc-vn/platform-http';
 import { HttpMetrics, IGNORED_REQUEST_PATHS, normalizeRoute } from '@qnsc-vn/observability';
 import { AppConfigService } from '../config/app-config.service';
-import { albReceivedAtMs, arrivalAtMs } from './request-timing';
+import { albReceivedAtMs, albWaitMs, arrivalAtMs } from './request-timing';
 
 /** Routes whose access logs are suppressed (probes + favicon spam). */
 /**
@@ -131,11 +131,12 @@ export class HttpLoggingInterceptor implements NestInterceptor {
     // numbers were correct and the log still read as an alibi.
     //
     // `bodyWaitMs` also covers guards, which run ahead of interceptors; that is
-    // acceptable because the routes this exists to explain are @Public.
+    // acceptable because the routes this exists to explain are @Public. `albWaitMs` is
+    // omitted below its noise floor — see ALB_WAIT_REPORTING_FLOOR_MS.
     const arrival = arrivalAtMs(req);
     const traceHeader = req.headers['x-amzn-trace-id'];
     const albAt = albReceivedAtMs(Array.isArray(traceHeader) ? traceHeader[0] : traceHeader);
-    const albWaitMs = arrival !== undefined && albAt !== undefined ? arrival - albAt : undefined;
+    const albWait = albWaitMs(arrival, albAt);
     const bodyWaitMs = arrival !== undefined ? startTime - arrival : undefined;
 
     const ip =
@@ -172,7 +173,7 @@ export class HttpLoggingInterceptor implements NestInterceptor {
             url,
             statusCode,
             duration,
-            albWaitMs,
+            albWaitMs: albWait,
             bodyWaitMs,
             userId,
             ip,
@@ -213,7 +214,7 @@ export class HttpLoggingInterceptor implements NestInterceptor {
             url,
             statusCode,
             duration,
-            albWaitMs,
+            albWaitMs: albWait,
             bodyWaitMs,
             errorCode,
             userId,
