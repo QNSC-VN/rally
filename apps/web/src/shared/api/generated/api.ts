@@ -2227,6 +2227,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v1/capacity-plans/{id}/teams/{teamId}/forecast': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Forecast a team's capacity from its accepted iteration history */
+    post: operations['CapacityPlansController_forecastTeamCapacity']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v1/capacity-plans/{id}/teams/{teamId}': {
     parameters: {
       query?: never
@@ -3979,6 +3996,31 @@ export interface components {
     AddCapacityTeamDto: {
       /** Format: uuid */
       teamId: string
+    }
+    ForecastCapacityDto: {
+      /** @default 100 */
+      availabilityPct: number
+      /**
+       * @default typical
+       * @enum {string}
+       */
+      complexity:
+        'well_understood' | 'typical' | 'minor_concerns' | 'major_concerns' | 'many_unknowns'
+    }
+    CapacityForecastResponseDto: {
+      /** @description Delivered 85% of the time — the conservative commitment */
+      min: number
+      /** @description Delivered 50% of the time */
+      median: number
+      /** @description Delivered 15% of the time — optimistic, not a target */
+      max: number
+      /** @description Plan window ÷ the team's average cadence */
+      iterationsModelled: number
+      /** @description Finished iterations that fed the sampler */
+      samplesUsed: number
+      /** @description Calendar days of history behind the forecast */
+      historyDays: number
+      insufficientData: ('no_history' | 'too_little_history' | 'no_window') | null
     }
     SetCapacityDto: {
       capacity: number | null
@@ -11957,6 +11999,67 @@ export interface operations {
       }
       /** @description Conflict — duplicate record or state conflict */
       409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  CapacityPlansController_forecastTeamCapacity: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+        teamId: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ForecastCapacityDto']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['CapacityForecastResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
         headers: {
           [name: string]: unknown
         }

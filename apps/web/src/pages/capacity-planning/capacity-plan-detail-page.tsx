@@ -32,6 +32,7 @@ import { CapacityTeamRow } from './ui/capacity-team-row'
 import { AllocationRow } from './ui/allocation-row'
 import { AllocateFeatureModal } from './ui/allocate-feature-modal'
 import { CapacityBreakdownOverlay } from './ui/capacity-breakdown-overlay'
+import { CapacityForecastModal } from './ui/capacity-forecast-modal'
 
 export function CapacityPlanDetailPage() {
   const { t } = useTranslation('capacity')
@@ -41,6 +42,9 @@ export function CapacityPlanDetailPage() {
   const [addingTeamId, setAddingTeamId] = useState('')
   const [showAllocate, setShowAllocate] = useState(false)
   const [showBreakdown, setShowBreakdown] = useState(false)
+  // The team whose forecast is open, by plan-team id. One modal for every row rather than a
+  // modal per row: only one can be open, and mounting N dialogs to show one is waste.
+  const [forecastTeamId, setForecastTeamId] = useState<string | null>(null)
 
   const { data: plan, isLoading } = useCapacityPlan(planId)
   const { can } = useProjectPermissions(plan?.projectId)
@@ -112,6 +116,9 @@ export function CapacityPlanDetailPage() {
   if (!plan) return <EmptyState title={t('detail.notFound')} />
 
   const unitLabel = t(`units.${plan.unit}`)
+  // Resolved from the plan on every render rather than held in state, so a refetch that
+  // changes a team's capacity cannot leave the open modal showing a stale row.
+  const forecastTeam = plan.teams.find((team) => team.teamId === forecastTeamId) ?? null
 
   return (
     <>
@@ -179,6 +186,7 @@ export function CapacityPlanDetailPage() {
                       canManage={canManage}
                       colStyleFor={colStyleFor}
                       gutter={null}
+                      onForecast={() => setForecastTeamId(team.teamId)}
                     />
                     {/* Allocated Features sit under their team, which is how Rally groups a
                       shared Feature: one row per team, not one row per Feature. */}
@@ -258,6 +266,15 @@ export function CapacityPlanDetailPage() {
       </DetailLayout>
 
       {showAllocate && <AllocateFeatureModal plan={plan} onClose={() => setShowAllocate(false)} />}
+      {forecastTeam && (
+        <CapacityForecastModal
+          planId={plan.id}
+          team={forecastTeam}
+          unitLabel={unitLabel}
+          canManage={canManage}
+          onClose={() => setForecastTeamId(null)}
+        />
+      )}
       {showBreakdown && (
         <CapacityBreakdownOverlay
           plan={plan}

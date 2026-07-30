@@ -1,6 +1,6 @@
 import { type CSSProperties, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Trash2 } from 'lucide-react'
+import { Sparkles, Trash2 } from 'lucide-react'
 
 import {
   useRemoveCapacityTeam,
@@ -35,6 +35,7 @@ export function CapacityTeamRow({
   canManage,
   colStyleFor,
   gutter,
+  onForecast,
 }: {
   planId: string
   team: CapacityPlanTeam
@@ -45,6 +46,8 @@ export function CapacityTeamRow({
   canManage: boolean
   colStyleFor: (key: TeamColKey, base?: CSSProperties) => CSSProperties
   gutter: ReactNode
+  /** Opens the capacity forecast for THIS team; the page owns the modal. */
+  onForecast: () => void
 }) {
   const { t } = useTranslation('capacity')
   const warningText = useCapacityWarningText()
@@ -142,6 +145,14 @@ export function CapacityTeamRow({
         className="flex items-center justify-center px-2"
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Forecast is a READ — offered even on a published plan, where nothing may be set.
+            The modal hides its "Use" buttons in that case rather than the whole tool. */}
+        <IconButton
+          aria-label={t('forecast.forTeam', { team: team.teamName ?? '' })}
+          onClick={onForecast}
+        >
+          <Sparkles size={13} />
+        </IconButton>
         {canManage && (
           <IconButton
             aria-label={t('row.removeTeam', { team: team.teamName ?? '' })}

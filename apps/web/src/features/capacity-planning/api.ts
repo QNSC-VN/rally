@@ -22,6 +22,10 @@ export type CapacityPlanTeam = CapacityPlan['teams'][number]
 export type CapacityPlanUnit = CapacityPlan['unit']
 export type CapacityPlanStatus = CapacityPlan['status']
 
+export type CapacityForecast = components['schemas']['CapacityForecastResponseDto']
+export type CapacityForecastComplexity =
+  paths['/v1/capacity-plans/{id}/teams/{teamId}/forecast']['post']['requestBody']['content']['application/json']['complexity']
+
 export type CreateCapacityPlanBody =
   paths['/v1/capacity-plans']['post']['requestBody']['content']['application/json']
 export type UpdateCapacityPlanBody =
@@ -139,6 +143,40 @@ export function useSetCapacity() {
       return data as CapacityPlan
     },
     meta: { invalidates: ['capacity'] },
+  })
+}
+
+/**
+ * Rally's Calculate Capacity Forecast, for one team.
+ *
+ * A MUTATION hook for a read-only call, because the request carries a body (availability and
+ * complexity) and the route is a POST. Deliberately declares NO `invalidates`: it computes a
+ * number and writes nothing, so invalidating the plan would refetch the grid for no reason
+ * and discard a forecast the planner is still looking at.
+ *
+ * Committing the number is a separate act — `useSetCapacity` — which is what carries the
+ * cache invalidation and the `capacity:manage` permission.
+ */
+export function useForecastCapacity() {
+  return useMutation({
+    mutationFn: async ({
+      id,
+      teamId,
+      availabilityPct,
+      complexity,
+    }: {
+      id: string
+      teamId: string
+      availabilityPct: number
+      complexity: CapacityForecastComplexity
+    }) => {
+      const { data, error, response } = await apiClient.POST(
+        '/v1/capacity-plans/{id}/teams/{teamId}/forecast',
+        { params: { path: { id, teamId } }, body: { availabilityPct, complexity } },
+      )
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as CapacityForecast
+    },
   })
 }
 

@@ -135,6 +135,40 @@ test.describe('Capacity Planning', () => {
     await expect(teamRow(page)).toContainText('Not entered')
   })
 
+  test('Calculate Capacity Forecast reports three lines or names why it cannot', async ({
+    page,
+  }) => {
+    await openSeededPlan(page)
+
+    await teamRow(page)
+      .getByRole('button', { name: /Forecast capacity for/ })
+      .click()
+    const dialog = page.getByRole('dialog', { name: /Calculate capacity forecast/i })
+    await expect(dialog).toBeVisible()
+
+    // ── The guard runs client-side, before any request ───────────────────────
+    await dialog.getByLabel(/Team availability/).fill('0')
+    await dialog.getByRole('button', { name: 'Calculate', exact: true }).click()
+    await expect(dialog.getByRole('alert')).toBeVisible()
+
+    // ── A real calculation ───────────────────────────────────────────────────
+    // Asserted as an ALTERNATION on purpose. The seeded Story's schedule state is mutated by
+    // other specs in this suite, so whether Team Alpha has accepted history is genuinely
+    // run-order dependent — but the tool must answer either way, with numbers or with a named
+    // reason. Which branch produces which number is pinned in `capacity-forecast.spec.ts`
+    // (22 cases) and `capacity-forecast.e2e.spec.ts` (real SQL).
+    await dialog.getByLabel(/Team availability/).fill('100')
+    await dialog.getByRole('button', { name: 'Calculate', exact: true }).click()
+    await expect(
+      dialog.getByText(/Delivered 50% of the time|not finished an iteration|Less than 14 days/),
+    ).toBeVisible()
+
+    // Nothing was written: the capacity cell is still blank until a line is adopted.
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+    await expect(dialog).toBeHidden()
+    await expect(teamRow(page)).toContainText('Not entered')
+  })
+
   test('the plan list renders its columns and the seeded plan', async ({ page }) => {
     await loginAndSelectProject(page)
     await page.goto('/capacity-planning', { waitUntil: 'domcontentloaded' })

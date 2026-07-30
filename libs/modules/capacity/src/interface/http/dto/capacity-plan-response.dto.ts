@@ -93,3 +93,25 @@ export const CapacityPlanSchema = z.object({
   unallocated: z.number(),
 });
 export class CapacityPlanResponseDto extends createZodDto(CapacityPlanSchema) {}
+
+/**
+ * A capacity forecast for one team.
+ *
+ * Three numbers rather than one, because that is the answer: Rally reports the amount
+ * delivered 85% of the time (Min), 50% (Median) and 15% (Max), and a planner choosing a
+ * commitment needs the spread. A single number would hide whether the team is steady or
+ * erratic — the whole reason the forecast samples history instead of averaging it.
+ *
+ * `insufficientData` is a REPORT, not an error: a new team with no finished iterations is a
+ * normal state, and the dialog explains it rather than failing.
+ */
+const ForecastSchema = z.object({
+  min: z.number().describe('Delivered 85% of the time — the conservative commitment'),
+  median: z.number().describe('Delivered 50% of the time'),
+  max: z.number().describe('Delivered 15% of the time — optimistic, not a target'),
+  iterationsModelled: z.number().int().describe("Plan window ÷ the team's average cadence"),
+  samplesUsed: z.number().int().describe('Finished iterations that fed the sampler'),
+  historyDays: z.number().int().describe('Calendar days of history behind the forecast'),
+  insufficientData: z.enum(['no_history', 'too_little_history', 'no_window']).nullable(),
+});
+export class CapacityForecastResponseDto extends createZodDto(ForecastSchema) {}

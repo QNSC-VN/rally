@@ -73,6 +73,7 @@ export default defineConfig({
         'libs/modules/portfolio/src/application/portfolio-items.service.ts',
         'libs/modules/portfolio/src/application/preliminary-estimate-map.service.ts',
         'libs/modules/capacity/src/application/capacity-plans.service.ts',
+        'libs/modules/capacity/src/domain/capacity-forecast.ts',
         'libs/modules/access/src/application/access.service.ts',
         'libs/modules/access/src/interface/http/policy.guard.ts',
         'libs/modules/activity/src/application/activity-logger.service.ts',
