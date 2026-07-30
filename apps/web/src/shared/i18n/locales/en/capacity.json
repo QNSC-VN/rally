@@ -106,5 +106,37 @@
     "total": "Total",
     "unallocated": "Unallocated demand",
     "noTeams": "Add a team to see a breakdown."
+  },
+  "forecast": {
+    "action": "Forecast",
+    "title": "Calculate capacity forecast",
+    "subtitle": "Sampled from {{team}}’s accepted work in finished iterations.",
+    "availabilityLabel": "Team availability (%)",
+    "availabilityHint": "100% is the team as it has recently been — 200% if it doubled, 50% if it halved.",
+    "availabilityInvalid": "Enter an availability between 1 and 500%",
+    "complexityLabel": "Work complexity",
+    "complexity": {
+      "well_understood": "Well understood — easier than normal (+10%)",
+      "typical": "Understood — typical work",
+      "minor_concerns": "Somewhat new or unclear — minor concerns (−10%)",
+      "major_concerns": "Somewhat new or unclear — major concerns (−25%)",
+      "many_unknowns": "Many unknowns — major concerns (−50%)"
+    },
+    "calculate": "Calculate",
+    "lines": {
+      "min": "Delivered 85% of the time",
+      "median": "Delivered 50% of the time",
+      "max": "Delivered 15% of the time"
+    },
+    "use": "Use",
+    "basis": "From {{iterations}} finished iterations over {{days}} days, modelled as {{modelled}} iterations of this plan’s window.",
+    "historySummary": "{{iterations}} finished iterations, {{days}} days of history.",
+    "insufficient": {
+      "no_history": "This team has not finished an iteration yet, so there is nothing to sample. Enter a capacity by hand for now.",
+      "too_little_history": "Less than 14 days of history — too little to forecast from. Enter a capacity by hand, or wait for the current iteration to finish.",
+      "no_window": "This plan has no planned start and end dates, so there is no window to forecast into. Add the dates first."
+    },
+    "failed": "Could not calculate a forecast",
+    "forTeam": "Forecast capacity for {{team}}"
   }
 }

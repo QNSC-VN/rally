@@ -101,3 +101,27 @@ export const UpdateAllocationSchema = z
   })
   .refine((v) => Object.keys(v).length > 0, { message: 'At least one field is required' });
 export class UpdateAllocationDto extends createZodDto(UpdateAllocationSchema) {}
+
+/**
+ * Inputs to Rally's Calculate Capacity Forecast.
+ *
+ * Both are OPTIONAL with Rally's own defaults, so a planner can ask for a forecast without
+ * answering two questions first: 100% availability is "the team as it has recently been",
+ * and `typical` is "Understood - Typical Work", Rally's no-adjustment option.
+ *
+ * The window is NOT an input. It comes from the plan's planned dates, because the forecast
+ * answers "can this team deliver the work in THIS plan" — letting a client pass its own
+ * window would let two callers get different answers for one plan.
+ */
+export const ForecastCapacitySchema = z.object({
+  /**
+   * Percentage of the team's recent size. Rally: 100 for a stable team, 200 if it doubled,
+   * 50 if it halved. Capped at 500 — beyond that the historical samples describe a
+   * different team and the arithmetic is no longer a forecast.
+   */
+  availabilityPct: z.coerce.number().int().min(1).max(500).default(100),
+  complexity: z
+    .enum(['well_understood', 'typical', 'minor_concerns', 'major_concerns', 'many_unknowns'])
+    .default('typical'),
+});
+export class ForecastCapacityDto extends createZodDto(ForecastCapacitySchema) {}

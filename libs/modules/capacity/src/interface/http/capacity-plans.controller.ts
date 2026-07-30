@@ -22,11 +22,15 @@ import {
   AllocateDto,
   CapacityPlanListQueryDto,
   CreateCapacityPlanDto,
+  ForecastCapacityDto,
   SetCapacityDto,
   UpdateAllocationDto,
   UpdateCapacityPlanDto,
 } from './dto/capacity-plan-request.dto';
-import { CapacityPlanResponseDto } from './dto/capacity-plan-response.dto';
+import {
+  CapacityForecastResponseDto,
+  CapacityPlanResponseDto,
+} from './dto/capacity-plan-response.dto';
 
 /**
  * Numeric columns arrive as STRINGS from Drizzle (precision preservation) while the API
@@ -177,6 +181,36 @@ export class CapacityPlansController {
   ): Promise<CapacityPlanResponseDto> {
     await this.service.addTeam(user, id, body.teamId);
     return toDto(await this.service.getPlanDetail(user, id));
+  }
+
+  @Post(':id/teams/:teamId/forecast')
+  /**
+   * `capacity:view`, not `manage` — and POST despite computing nothing.
+   *
+   * The permission is a read one because this reads iteration history and writes nothing;
+   * adopting the number is a separate act through `PATCH :id/teams/:teamId`, which is what
+   * `capacity:manage` guards. Being shown a forecast is not the same as committing to it.
+   *
+   * POST because the inputs are a body: availability and complexity are a small model, not
+   * a filter, and GET with a body is not a thing. The route is idempotent regardless — the
+   * sampler is seeded from the ids, so the same request returns the same forecast.
+   */
+  @RequirePermission('capacity:view', { resource: 'capacity_plan', from: 'param', field: 'id' })
+  @ApiOperation({ summary: "Forecast a team's capacity from its accepted iteration history" })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiParam({ name: 'teamId', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: CapacityForecastResponseDto })
+  @ApiCommonErrors(400, 401, 403, 404, 422)
+  async forecastTeamCapacity(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('teamId', ParseUUIDPipe) teamId: string,
+    @Body() body: ForecastCapacityDto,
+  ): Promise<CapacityForecastResponseDto> {
+    return this.service.forecastTeamCapacity(user, id, teamId, {
+      availabilityPct: body.availabilityPct,
+      complexity: body.complexity,
+    });
   }
 
   @Patch(':id/teams/:teamId')

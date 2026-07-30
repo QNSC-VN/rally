@@ -6,6 +6,7 @@ import {
   capacityPlanAllocations,
   capacityPlanTeams,
   capacityPlans,
+  iterations,
   portfolioItems,
   projects,
   releases,
@@ -13,7 +14,11 @@ import {
   workItems,
 } from '../../../../../../db/schema/work';
 import { childWorkPredicate, metricSubqueries } from './capacity-metrics.sql';
-import { completedScheduleStatesSql } from '../../../../../../db/schema/enums';
+import {
+  acceptedScheduleStatesSql,
+  completedScheduleStatesSql,
+} from '../../../../../../db/schema/enums';
+import type { VelocitySample } from '../../domain/capacity-forecast';
 import type {
   CapacityAllocation,
   CapacityAllocationRow,
@@ -324,6 +329,77 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
     return { rollup: Number(row?.rollup ?? 0), complete: Number(row?.complete ?? 0) };
   }
 
+  /**
+   * A team's delivery history: accepted totals per FINISHED iteration.
+   *
+   * Attributed by the STORY's own `team_id`, not the iteration's. An iteration is optionally
+   * team-scoped in this schema and real Rally uses project-as-team, so an iteration row is
+   * an unreliable owner; the work item always names the team that delivered it. That also
+   * makes a shared iteration contribute correctly to each team that worked in it.
+   *
+   * ACCEPTED, not completed — the D1 distinction. Forecasting from `completed` would predict
+   * capacity from work that was never signed off, which is exactly the optimism a forecast
+   * exists to remove.
+   *
+   * Finished means `end_date < today`: state is a workflow signal a team may forget to
+   * advance, while a past end date is a fact. One row per iteration, so the caller receives
+   * the sample set the sampler needs without a second query.
+   */
+  async teamVelocitySamples(
+    projectId: string,
+    teamId: string,
+    workspaceId: string,
+    historyDays: number,
+  ): Promise<VelocitySample[]> {
+    const accepted = acceptedScheduleStatesSql();
+    const rows = await this.db
+      .select({
+        iterationId: iterations.id,
+        iterationName: iterations.name,
+        startDate: iterations.startDate,
+        endDate: iterations.endDate,
+        points: sql<string>`coalesce(sum(${workItems.storyPoints}), 0)`,
+        count: sql<string>`count(${workItems.id})`,
+      })
+      .from(iterations)
+      // INNER join: an iteration in which this team accepted nothing is not a zero-velocity
+      // sample, it is an iteration the team did not take part in. Counting it as 0 would
+      // drag every forecast down for work someone else owned.
+      .innerJoin(
+        workItems,
+        and(
+          eq(workItems.iterationId, iterations.id),
+          eq(workItems.teamId, teamId),
+          isNull(workItems.deletedAt),
+          // Parentheses belong to the caller: the helper returns a bare comma list.
+          sql`${workItems.scheduleState} in (${accepted})`,
+        ),
+      )
+      .where(
+        and(
+          eq(iterations.workspaceId, workspaceId),
+          eq(iterations.projectId, projectId),
+          isNotNull(iterations.startDate),
+          isNotNull(iterations.endDate),
+          sql`${iterations.endDate} < current_date`,
+          sql`${iterations.endDate} >= current_date - ${historyDays} * interval '1 day'`,
+        ),
+      )
+      .groupBy(iterations.id, iterations.name, iterations.startDate, iterations.endDate)
+      // Newest first, tie-broken on the unique id so the page is deterministic — the
+      // query-ordering ratchet requires that last column.
+      .orderBy(desc(iterations.endDate), asc(iterations.id));
+
+    return rows.map((row) => ({
+      iterationId: row.iterationId,
+      iterationName: row.iterationName,
+      points: Number(row.points),
+      count: Number(row.count),
+      // Inclusive of both endpoints: a Mon–Fri iteration is 5 days of delivery, not 4.
+      days: daysInclusive(row.startDate, row.endDate),
+    }));
+  }
+
   private mapAllocation(row: typeof capacityPlanAllocations.$inferSelect): CapacityAllocation {
     return {
       id: row.id,
@@ -441,4 +517,19 @@ function sumCapacity(planTeams: CapacityPlanTeamView[]): string | null {
   if (entered.length === 0) return null;
   const total = entered.reduce((sum, t) => sum + Number(t.capacity), 0);
   return total.toFixed(2);
+}
+
+/**
+ * Calendar length of a date range in whole days, both endpoints counted.
+ *
+ * `date` columns arrive as `YYYY-MM-DD` strings, so this parses rather than subtracting
+ * Dates — and being UTC-anchored means it cannot drift by one across a DST boundary the way
+ * local-time arithmetic does.
+ */
+function daysInclusive(start: string | null, end: string | null): number {
+  if (start === null || end === null) return 0;
+  const from = Date.parse(`${start}T00:00:00Z`);
+  const to = Date.parse(`${end}T00:00:00Z`);
+  if (Number.isNaN(from) || Number.isNaN(to)) return 0;
+  return Math.max(0, Math.round((to - from) / 86_400_000) + 1);
 }

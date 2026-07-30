@@ -80,6 +80,7 @@ describe('CapacityPlansService', () => {
             deleteAllocation: vi.fn(),
             totalAllocatedFor: vi.fn().mockResolvedValue(0),
             teamMetrics: vi.fn().mockResolvedValue({ complete: 0, rollup: 0 }),
+            teamVelocitySamples: vi.fn().mockResolvedValue([]),
           },
         },
         {
@@ -378,6 +379,107 @@ describe('CapacityPlansService', () => {
         expect(detail.allocations[0].metrics.warnings).not.toContain('team_missing_capacity');
         expect(detail.teams[0].metrics.warnings).not.toContain('feature_missing_estimate');
       });
+    });
+  });
+
+  describe('forecastTeamCapacity', () => {
+    /** Five two-week iterations at a steady 20 points — 70 days of history. */
+    const steady = Array.from({ length: 5 }, (_, i) => ({
+      iterationId: `it-${i}`,
+      iterationName: `Sprint ${i}`,
+      points: 20,
+      count: 4,
+      days: 14,
+    }));
+
+    beforeEach(() => {
+      repo.findTeam.mockResolvedValue({
+        id: 'pt-1',
+        planId: 'plan-1',
+        teamId: 'team-1',
+        capacity: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      repo.teamVelocitySamples.mockResolvedValue(steady);
+      // A plan with a 56-day window: four iterations of this team's cadence.
+      repo.findViewById.mockResolvedValue(
+        view({ plannedStartDate: '2026-01-01', plannedEndDate: '2026-02-25' }),
+      );
+    });
+
+    const forecast = (over: Partial<{ availabilityPct: number; complexity: 'typical' }> = {}) =>
+      service.forecastTeamCapacity(actor, 'plan-1', 'team-1', {
+        availabilityPct: 100,
+        complexity: 'typical',
+        ...over,
+      });
+
+    it('takes the window from the PLAN, not from the caller', async () => {
+      // 2026-01-01 → 02-25 inclusive is 56 days; at 14 days a cadence that is 4 iterations.
+      const result = await forecast();
+      expect(result.iterationsModelled).toBe(4);
+      expect(result.median).toBe(80);
+    });
+
+    it("asks for 52 weeks of the team's history in the plan's project", async () => {
+      await forecast();
+      expect(repo.teamVelocitySamples).toHaveBeenCalledWith('proj-a', 'team-1', WORKSPACE, 364);
+    });
+
+    it('checks capacity:view — it reads history and writes nothing', async () => {
+      // Adopting the number is a separate act through PATCH, which is what `capacity:manage`
+      // guards. Gating the calculation behind manage would hide it from a stakeholder who
+      // can already see the plan.
+      await forecast();
+      expect(access.assertProjectPermission).toHaveBeenCalledWith(actor, 'proj-a', 'capacity:view');
+    });
+
+    it('works on a PUBLISHED plan, unlike every write on this service', async () => {
+      // Deliberately does NOT go through `requireDraft`: a published plan is read-only, and
+      // asking what a team can deliver is a read.
+      repo.findViewById.mockResolvedValue(
+        view({
+          status: 'published',
+          plannedStartDate: '2026-01-01',
+          plannedEndDate: '2026-02-25',
+        }),
+      );
+      await expect(forecast()).resolves.toMatchObject({ insufficientData: null });
+    });
+
+    it('404s a team that is not on this plan', async () => {
+      repo.findTeam.mockResolvedValue(null);
+      await expect(forecast()).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('reports no window rather than inventing one when the plan has no dates', async () => {
+      // The default fixture has null dates.
+      repo.findViewById.mockResolvedValue(view());
+      const result = await forecast();
+      expect(result.insufficientData).toBe('no_window');
+      expect(result.median).toBe(0);
+    });
+
+    it('reports no history for a team that has finished nothing', async () => {
+      repo.teamVelocitySamples.mockResolvedValue([]);
+      expect((await forecast()).insufficientData).toBe('no_history');
+    });
+
+    it('is deterministic across calls, and independent per team', async () => {
+      // Seeded from (plan, team), so a planner rerunning it sees the same number while two
+      // teams still draw separately.
+      const a = await forecast();
+      const b = await forecast();
+      expect(a).toEqual(b);
+    });
+
+    it("forecasts the plan's unit, not always points", async () => {
+      repo.findViewById.mockResolvedValue(
+        view({ unit: 'count', plannedStartDate: '2026-01-01', plannedEndDate: '2026-02-25' }),
+      );
+      // 4 items per iteration, four iterations.
+      expect((await forecast()).median).toBe(16);
     });
   });
 
