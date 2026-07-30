@@ -398,12 +398,17 @@ variable "db_role_passwords_set" {
   }
 }
 
-variable "rds_stop_schedule" {
+variable "idle_schedule" {
   type        = string
   default     = null
   description = <<-EOT
-    Cron/rate expression for an EventBridge Scheduler that STOPS this environment's RDS
-    instance. Null (the default) creates no schedule, no role and no policy.
+    Cron/rate expression for an EventBridge Scheduler that IDLES this environment:
+    stops the RDS instance AND scales both services to zero. Null (the default) creates
+    no schedules, no role and no policy.
+
+    Both halves matter. Stopping only the database leaves Fargate tasks running against
+    an instance they cannot reach — still billed, unable to serve, and invisible,
+    because `healthz` answers 200 regardless so the ALB keeps them registered.
 
     Required for any environment that is deliberately idle, because AWS FORCE-STARTS a
     stopped RDS instance after seven days. Without a recurring re-stop the instance

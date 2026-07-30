@@ -134,7 +134,7 @@ module "stack" {
     enabled = false
   }
 
-  rds_stop_schedule = "cron(0 1 ? * SUN *)"
+  idle_schedule = "cron(0 1 ? * SUN *)"
 
   // Both halves of rally/production/r2-public-* are populated, so the public-bucket
   // credential can be injected. Same fix as develop: `rally-production-r2-app` is scoped
@@ -225,7 +225,7 @@ module "stack" {
   // secrets, same database, same cache.
   //
   // RDS run-state is not a Terraform concept, so the instance is stopped out of band —
-  // but AWS FORCE-STARTS a stopped instance after 7 days, so `rds_stop_schedule` below
+  // but AWS FORCE-STARTS a stopped instance after 7 days, so `idle_schedule` below
   // re-stops it weekly. Without that the saving silently evaporates.
   api = {
     cpu               = 1024
