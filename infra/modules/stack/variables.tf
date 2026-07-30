@@ -173,9 +173,17 @@ variable "api" {
     every environment's target explicit and reviewable.
   EOT
   type = object({
-    cpu               = number
-    memory            = number
-    max_count         = number
+    cpu       = number
+    memory    = number
+    max_count = number
+    # Autoscaling FLOOR. 1 by default because a service that can reach zero is a
+    # service that can be silently down; set it to 0 only to idle an environment
+    # deliberately (see the idle posture in ../../live/prod/main.tf).
+    #
+    # It has to be an input rather than a constant: the autoscaling floor is what
+    # decides whether a scale-to-zero holds, so with it hardcoded the next apply
+    # quietly restored a deliberately idled environment.
+    min_count         = optional(number, 1)
     use_spot          = optional(bool, false)
     cpu_target_pct    = optional(number, 65)
     memory_target_pct = optional(number, 75)
@@ -188,6 +196,8 @@ variable "worker" {
     cpu       = number
     memory    = number
     max_count = number
+    # See api.min_count.
+    min_count = optional(number, 1)
     use_spot  = optional(bool, false)
   })
 }

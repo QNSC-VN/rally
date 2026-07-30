@@ -433,7 +433,7 @@ module "api" {
   security_group_id = data.terraform_remote_state.runtime.outputs.sg_app_id
 
   desired_count      = 1
-  min_count          = 1
+  min_count          = var.api.min_count
   max_count          = var.api.max_count
   use_spot           = var.api.use_spot
   log_retention_days = var.log_retention_days
@@ -608,7 +608,7 @@ module "worker" {
   security_group_id = data.terraform_remote_state.runtime.outputs.sg_app_id
 
   desired_count      = 1
-  min_count          = 1
+  min_count          = var.worker.min_count
   max_count          = var.worker.max_count
   use_spot           = var.worker.use_spot
   log_retention_days = var.log_retention_days
