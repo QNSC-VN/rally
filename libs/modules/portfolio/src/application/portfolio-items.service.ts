@@ -9,16 +9,13 @@ import {
 } from '@platform';
 import { AccessService } from '@modules/access';
 import type { CursorPayload, JwtPayload, PagedResult } from '@platform';
-import { workspaceSettings } from '../../../../../db/schema/workspace';
 import { releases, teams } from '../../../../../db/schema/work';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { and, eq } from 'drizzle-orm';
-import {
-  DEFAULT_PRELIMINARY_ESTIMATE_MAP,
-  type PreliminaryEstimateMap,
-} from '../../../../../db/schema/enums';
+import type { PreliminaryEstimateMap } from '../../../../../db/schema/enums';
 import { computePortfolioProgress, type PortfolioProgress } from '../domain/portfolio-rollup';
+import { PreliminaryEstimateMapService } from './preliminary-estimate-map.service';
 import {
   PORTFOLIO_ITEM_REPOSITORY,
   type IPortfolioItemRepository,
@@ -60,6 +57,7 @@ export class PortfolioItemsService {
     @InjectDrizzle() private readonly db: DrizzleDB,
     private readonly access: AccessService,
     private readonly uow: UnitOfWork,
+    private readonly estimateMaps: PreliminaryEstimateMapService,
   ) {}
 
   async listItems(
@@ -474,23 +472,8 @@ export class PortfolioItemsService {
     };
   }
 
-  /**
-   * The workspace's size→points/count mapping.
-   *
-   * Falls back to the seeded default when the row is missing or holds `{}` — a
-   * workspace created before migration 0071, or one whose settings row was never
-   * written. Returning an empty map instead would make every Estimated Progress
-   * indicator null and look like a product bug.
-   */
-  private async estimateMap(workspaceId: string): Promise<PreliminaryEstimateMap> {
-    const rows = await this.db
-      .select({ map: workspaceSettings.preliminaryEstimateMap })
-      .from(workspaceSettings)
-      .where(and(eq(workspaceSettings.workspaceId, workspaceId)))
-      .limit(1);
-
-    const raw = rows[0]?.map as PreliminaryEstimateMap | undefined;
-    if (!raw || Object.keys(raw).length === 0) return DEFAULT_PRELIMINARY_ESTIMATE_MAP;
-    return { ...DEFAULT_PRELIMINARY_ESTIMATE_MAP, ...raw };
+  /** Delegates to the shared reader so portfolio and capacity cannot disagree on sizes. */
+  private estimateMap(workspaceId: string): Promise<PreliminaryEstimateMap> {
+    return this.estimateMaps.forWorkspace(workspaceId);
   }
 }

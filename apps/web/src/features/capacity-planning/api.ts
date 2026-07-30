@@ -155,3 +155,71 @@ export function useRemoveCapacityTeam() {
     meta: { invalidates: ['capacity'] },
   })
 }
+
+// ── Allocations ──────────────────────────────────────────────────────────────
+
+export type CapacityAllocation = CapacityPlan['allocations'][number]
+export type EstimateTier = CapacityAllocation['tier']
+export type CapacityMetrics = CapacityAllocation['metrics']
+export type CapacityWarning = CapacityMetrics['warnings'][number]
+
+export type AllocateBody =
+  paths['/v1/capacity-plans/{id}/allocations']['post']['requestBody']['content']['application/json']
+
+/**
+ * Commit demand for a Feature.
+ *
+ * Omitting `value` accepts the server's default, which is Refined → Preliminary and
+ * deliberately SKIPS the allocated tier — a blank field must not commit the sum of the
+ * allocations it is being used to create.
+ */
+export function useAllocate() {
+  return useMutation({
+    mutationFn: async ({ id, ...body }: { id: string } & AllocateBody) => {
+      const { data, error, response } = await apiClient.POST(
+        '/v1/capacity-plans/{id}/allocations',
+        { params: { path: { id } }, body },
+      )
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as CapacityPlan
+    },
+    meta: { invalidates: ['capacity'] },
+  })
+}
+
+export function useUpdateAllocation() {
+  return useMutation({
+    mutationFn: async ({
+      id,
+      allocationId,
+      ...body
+    }: {
+      id: string
+      allocationId: string
+      value?: number
+      teamId?: string | null
+    }) => {
+      const { data, error, response } = await apiClient.PATCH(
+        '/v1/capacity-plans/{id}/allocations/{allocationId}',
+        { params: { path: { id, allocationId } }, body },
+      )
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as CapacityPlan
+    },
+    meta: { invalidates: ['capacity'] },
+  })
+}
+
+export function useRemoveAllocation() {
+  return useMutation({
+    mutationFn: async ({ id, allocationId }: { id: string; allocationId: string }) => {
+      const { data, error, response } = await apiClient.DELETE(
+        '/v1/capacity-plans/{id}/allocations/{allocationId}',
+        { params: { path: { id, allocationId } } },
+      )
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as CapacityPlan
+    },
+    meta: { invalidates: ['capacity'] },
+  })
+}

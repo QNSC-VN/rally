@@ -28,6 +28,8 @@ import {
 } from '@/features/capacity-planning/api'
 import { CAPACITY_TEAM_COLUMNS, type TeamColKey } from './model/columns'
 import { CapacityTeamRow } from './ui/capacity-team-row'
+import { AllocationRow } from './ui/allocation-row'
+import { AllocateFeatureModal } from './ui/allocate-feature-modal'
 
 export function CapacityPlanDetailPage() {
   const { t } = useTranslation('capacity')
@@ -35,6 +37,7 @@ export function CapacityPlanDetailPage() {
   const { planId } = useParams({ from: '/auth/capacity-planning/$planId' })
   const [tab, setTab] = useState('teams')
   const [addingTeamId, setAddingTeamId] = useState('')
+  const [showAllocate, setShowAllocate] = useState(false)
 
   const { data: plan, isLoading } = useCapacityPlan(planId)
   const { can } = useProjectPermissions(plan?.projectId)
@@ -56,6 +59,30 @@ export function CapacityPlanDetailPage() {
   const colStyleFor = useCallback(
     (key: TeamColKey, base?: React.CSSProperties) => table.styleFor(key, base),
     [table],
+  )
+
+  /** Allocations bucketed by team, so each team's Features render beneath it. */
+  const allocationsByTeam = useMemo(() => {
+    const map = new Map<string, NonNullable<typeof plan>['allocations']>()
+    for (const a of plan?.allocations ?? []) {
+      if (a.teamId === null) continue
+      const list = map.get(a.teamId) ?? []
+      list.push(a)
+      map.set(a.teamId, list)
+    }
+    return map
+  }, [plan?.allocations])
+
+  /** Demand parked without a team. */
+  const unallocated = useMemo(
+    () => (plan?.allocations ?? []).filter((a) => a.teamId === null),
+    [plan?.allocations],
+  )
+
+  const openFeature = useCallback(
+    (portfolioItemId: string) =>
+      void navigate({ to: '/portfolio/$itemId', params: { itemId: portfolioItemId } }),
+    [navigate],
   )
 
   // Teams already on the plan cannot be added twice, so they are not offered.
@@ -84,85 +111,140 @@ export function CapacityPlanDetailPage() {
   const unitLabel = t(`units.${plan.unit}`)
 
   return (
-    <DetailLayout
-      onBack={() => void navigate({ to: '/capacity-planning' })}
-      backLabel={t('title')}
-      title={plan.name}
-      status={<span className="text-ui-sm">{t(`statuses.${plan.status}`)}</span>}
-      tabs={[{ key: 'teams', label: t('detail.tabs.teams'), count: plan.teams.length }]}
-      activeTab={tab}
-      onTabChange={setTab}
-    >
-      <DetailTwoPane
-        main={
-          <div className="flex min-h-0 flex-1 flex-col">
-            {canManage && (
-              <div className="flex items-center gap-2 border-b border-border-inner px-4 py-2">
-                <div className="w-64">
-                  <SearchableSelect
-                    variant="field"
-                    value={addingTeamId}
-                    ariaLabel={t('detail.addTeamLabel')}
-                    options={available.map((team) => ({ value: team.id, label: team.name }))}
-                    onChange={(v) => setAddingTeamId(v ?? '')}
-                  />
+    <>
+      <DetailLayout
+        onBack={() => void navigate({ to: '/capacity-planning' })}
+        backLabel={t('title')}
+        title={plan.name}
+        status={<span className="text-ui-sm">{t(`statuses.${plan.status}`)}</span>}
+        tabs={[{ key: 'teams', label: t('detail.tabs.teams'), count: plan.teams.length }]}
+        activeTab={tab}
+        onTabChange={setTab}
+      >
+        <DetailTwoPane
+          main={
+            <div className="flex min-h-0 flex-1 flex-col">
+              {canManage && (
+                <div className="flex items-center gap-2 border-b border-border-inner px-4 py-2">
+                  <div className="w-64">
+                    <SearchableSelect
+                      variant="field"
+                      value={addingTeamId}
+                      ariaLabel={t('detail.addTeamLabel')}
+                      options={available.map((team) => ({ value: team.id, label: team.name }))}
+                      onChange={(v) => setAddingTeamId(v ?? '')}
+                    />
+                  </div>
+                  <Button size="sm" onClick={add} disabled={!addingTeamId || addTeam.isPending}>
+                    <Plus size={13} /> {t('detail.addTeam')}
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => setShowAllocate(true)}>
+                    <Plus size={13} /> {t('allocate.action')}
+                  </Button>
                 </div>
-                <Button size="sm" onClick={add} disabled={!addingTeamId || addTeam.isPending}>
-                  <Plus size={13} /> {t('detail.addTeam')}
-                </Button>
-              </div>
-            )}
-
-            <DataTableFrame
-              header={table.headerProps}
-              padClassName="px-3"
-              empty={
-                plan.teams.length === 0 ? (
-                  <EmptyState
-                    icon={<Users size={28} className="text-border-strong" />}
-                    title={t('detail.noTeams')}
-                  />
-                ) : undefined
-              }
-            >
-              {plan.teams.map((team) => (
-                <CapacityTeamRow
-                  key={team.id}
-                  planId={plan.id}
-                  team={team}
-                  unitLabel={unitLabel}
-                  canManage={canManage}
-                  colStyleFor={colStyleFor}
-                  gutter={null}
-                />
-              ))}
-            </DataTableFrame>
-          </div>
-        }
-        sidebar={
-          <div className="flex flex-col gap-3">
-            <DetailField label={t('detail.fields.project')}>{plan.projectName ?? '—'}</DetailField>
-            <DetailField label={t('detail.fields.release')}>{plan.releaseName ?? '—'}</DetailField>
-            <DetailField label={t('detail.fields.unit')}>{unitLabel}</DetailField>
-            <DetailField label={t('detail.fields.targetLoad')}>{plan.targetLoadPct}%</DetailField>
-            <DetailField label={t('detail.fields.totalCapacity')}>
-              {/* Blank rather than 0 when nobody has entered a capacity: an untouched plan
-                  is not a plan with no capacity available. */}
-              {plan.totalCapacity === null ? (
-                <span className="text-foreground-subtle">{t('row.notEntered')}</span>
-              ) : (
-                `${plan.totalCapacity} ${unitLabel}`
               )}
-            </DetailField>
-            <DetailField label={t('detail.fields.plannedStartDate')}>
-              {plan.plannedStartDate ?? '—'}
-            </DetailField>
-            <DetailField label={t('detail.fields.plannedEndDate')}>
-              {plan.plannedEndDate ?? '—'}
-            </DetailField>
-          </div>
-        }
-      />
-    </DetailLayout>
+
+              <DataTableFrame
+                header={table.headerProps}
+                padClassName="px-3"
+                empty={
+                  plan.teams.length === 0 ? (
+                    <EmptyState
+                      icon={<Users size={28} className="text-border-strong" />}
+                      title={t('detail.noTeams')}
+                    />
+                  ) : undefined
+                }
+              >
+                {plan.teams.map((team) => (
+                  <div key={team.id}>
+                    <CapacityTeamRow
+                      planId={plan.id}
+                      team={team}
+                      unitLabel={unitLabel}
+                      targetLoadPct={plan.targetLoadPct}
+                      canManage={canManage}
+                      colStyleFor={colStyleFor}
+                      gutter={null}
+                    />
+                    {/* Allocated Features sit under their team, which is how Rally groups a
+                      shared Feature: one row per team, not one row per Feature. */}
+                    {allocationsByTeam.get(team.teamId)?.map((allocation) => (
+                      <AllocationRow
+                        key={allocation.id}
+                        planId={plan.id}
+                        allocation={allocation}
+                        unitLabel={unitLabel}
+                        canManage={canManage}
+                        colStyleFor={colStyleFor}
+                        onOpenFeature={openFeature}
+                      />
+                    ))}
+                  </div>
+                ))}
+
+                {/* The Unallocated bucket. Rendered only when it holds something: an empty
+                  section would imply demand is missing rather than simply absent. */}
+                {unallocated.length > 0 && (
+                  <div>
+                    <div className="flex min-h-[34px] items-center border-b border-border-inner bg-surface-hover px-3 text-ui-md font-semibold text-foreground">
+                      <span style={colStyleFor('team', { flexShrink: 0 })} className="px-2">
+                        {t('detail.unallocated')}
+                      </span>
+                      <span
+                        style={colStyleFor('capacity', { flexShrink: 0 })}
+                        className="px-2 text-right tabular-nums"
+                      >
+                        {plan.unallocated} {unitLabel}
+                      </span>
+                    </div>
+                    {unallocated.map((allocation) => (
+                      <AllocationRow
+                        key={allocation.id}
+                        planId={plan.id}
+                        allocation={allocation}
+                        unitLabel={unitLabel}
+                        canManage={canManage}
+                        colStyleFor={colStyleFor}
+                        onOpenFeature={openFeature}
+                      />
+                    ))}
+                  </div>
+                )}
+              </DataTableFrame>
+            </div>
+          }
+          sidebar={
+            <div className="flex flex-col gap-3">
+              <DetailField label={t('detail.fields.project')}>
+                {plan.projectName ?? '—'}
+              </DetailField>
+              <DetailField label={t('detail.fields.release')}>
+                {plan.releaseName ?? '—'}
+              </DetailField>
+              <DetailField label={t('detail.fields.unit')}>{unitLabel}</DetailField>
+              <DetailField label={t('detail.fields.targetLoad')}>{plan.targetLoadPct}%</DetailField>
+              <DetailField label={t('detail.fields.totalCapacity')}>
+                {/* Blank rather than 0 when nobody has entered a capacity: an untouched plan
+                  is not a plan with no capacity available. */}
+                {plan.totalCapacity === null ? (
+                  <span className="text-foreground-subtle">{t('row.notEntered')}</span>
+                ) : (
+                  `${plan.totalCapacity} ${unitLabel}`
+                )}
+              </DetailField>
+              <DetailField label={t('detail.fields.plannedStartDate')}>
+                {plan.plannedStartDate ?? '—'}
+              </DetailField>
+              <DetailField label={t('detail.fields.plannedEndDate')}>
+                {plan.plannedEndDate ?? '—'}
+              </DetailField>
+            </div>
+          }
+        />
+      </DetailLayout>
+
+      {showAllocate && <AllocateFeatureModal plan={plan} onClose={() => setShowAllocate(false)} />}
+    </>
   )
 }

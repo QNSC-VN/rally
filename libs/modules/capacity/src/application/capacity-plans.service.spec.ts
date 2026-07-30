@@ -4,6 +4,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { DRIZZLE, NotFoundException } from '@platform';
 import type { JwtPayload } from '@platform';
 import { AccessService } from '@modules/access';
+import { PortfolioItemsService, PreliminaryEstimateMapService } from '@modules/portfolio';
+import { DEFAULT_PRELIMINARY_ESTIMATE_MAP } from '@db/schema/enums';
 import { CapacityPlansService } from './capacity-plans.service';
 import {
   CAPACITY_PLAN_REPOSITORY,
@@ -45,6 +47,7 @@ describe('CapacityPlansService', () => {
   let service: CapacityPlansService;
   let repo: Mocked<ICapacityPlanRepository>;
   let access: Mocked<AccessService>;
+  let portfolio: Mocked<PortfolioItemsService>;
   /** Rows the stubbed Drizzle returns — drives the release/team existence checks. */
   let lookupRows: unknown[];
 
@@ -67,11 +70,37 @@ describe('CapacityPlansService', () => {
             setTeamCapacity: vi.fn(),
             removeTeam: vi.fn(),
             countTeamAllocations: vi.fn().mockResolvedValue(0),
+            listAllocations: vi.fn().mockResolvedValue([]),
+            findAllocation: vi.fn().mockResolvedValue(null),
+            findAllocationFor: vi.fn().mockResolvedValue(null),
+            createAllocation: vi.fn(),
+            updateAllocation: vi.fn(),
+            deleteAllocation: vi.fn(),
+            totalAllocatedFor: vi.fn().mockResolvedValue(0),
+            teamMetrics: vi.fn().mockResolvedValue({ complete: 0, rollup: 0 }),
           },
         },
         {
           provide: AccessService,
           useValue: { assertProjectPermission: vi.fn().mockResolvedValue(undefined) },
+        },
+        {
+          provide: PreliminaryEstimateMapService,
+          useValue: { forWorkspace: vi.fn().mockResolvedValue(DEFAULT_PRELIMINARY_ESTIMATE_MAP) },
+        },
+        {
+          provide: PortfolioItemsService,
+          // Allocation targets resolve through the portfolio service; default to a Feature
+          // in the plan's project so tests that are not about that check stay short.
+          useValue: {
+            getItem: vi.fn().mockResolvedValue({
+              id: 'fe-1',
+              type: 'feature',
+              projectId: 'proj-a',
+              refinedEstimate: null,
+              preliminaryEstimate: 'm',
+            }),
+          },
         },
         {
           provide: DRIZZLE,
@@ -87,6 +116,7 @@ describe('CapacityPlansService', () => {
     service = module.get(CapacityPlansService);
     repo = module.get(CAPACITY_PLAN_REPOSITORY);
     access = module.get(AccessService);
+    portfolio = module.get(PortfolioItemsService);
   });
 
   describe('createPlan', () => {
@@ -254,6 +284,218 @@ describe('CapacityPlansService', () => {
     it('scopes the list to the requested project', async () => {
       await service.listPlans(actor, 'proj-a');
       expect(repo.listByProject).toHaveBeenCalledWith('proj-a', WORKSPACE);
+    });
+  });
+
+  describe('allocate', () => {
+    beforeEach(() => {
+      repo.findTeam.mockResolvedValue({
+        id: 'pt-1',
+        planId: 'plan-1',
+        teamId: 'team-1',
+        capacity: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    });
+
+    it('creates an allocation for a Feature on a team', async () => {
+      await service.allocate(actor, 'plan-1', {
+        portfolioItemId: 'fe-1',
+        teamId: 'team-1',
+        value: 20,
+      });
+      expect(repo.createAllocation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          planId: 'plan-1',
+          portfolioItemId: 'fe-1',
+          teamId: 'team-1',
+          value: '20',
+        }),
+      );
+    });
+
+    it('parks demand in the Unallocated bucket when no team is given', async () => {
+      await service.allocate(actor, 'plan-1', { portfolioItemId: 'fe-1', value: 5 });
+      expect(repo.createAllocation).toHaveBeenCalledWith(expect.objectContaining({ teamId: null }));
+      // No membership check applies to the bucket — it has no team.
+      expect(repo.findTeam).not.toHaveBeenCalled();
+    });
+
+    it('ADDS to an existing row for the same (Feature, team) pair rather than duplicating', async () => {
+      // Rally models sharing as one row per team under a Feature. A second row for the same
+      // pair would double-count that team's demand in every total.
+      repo.findAllocationFor.mockResolvedValue({
+        id: 'al-1',
+        planId: 'plan-1',
+        portfolioItemId: 'fe-1',
+        teamId: 'team-1',
+        value: '10',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      await service.allocate(actor, 'plan-1', {
+        portfolioItemId: 'fe-1',
+        teamId: 'team-1',
+        value: 5,
+      });
+
+      expect(repo.createAllocation).not.toHaveBeenCalled();
+      expect(repo.updateAllocation).toHaveBeenCalledWith('al-1', { value: '15' });
+    });
+
+    it('refuses to allocate an EPIC', async () => {
+      // Only the lowest portfolio level attaches to the story hierarchy, so an Epic row
+      // would have a permanently zero Rollup.
+      portfolio.getItem.mockResolvedValue({
+        id: 'ep-1',
+        type: 'epic',
+        projectId: 'proj-a',
+      } as never);
+      await expect(
+        service.allocate(actor, 'plan-1', { portfolioItemId: 'ep-1', teamId: 'team-1' }),
+      ).rejects.toMatchObject({ code: 'CAPACITY_ALLOCATION_NOT_FEATURE' });
+      expect(repo.createAllocation).not.toHaveBeenCalled();
+    });
+
+    it('refuses a Feature from another project', async () => {
+      portfolio.getItem.mockResolvedValue({
+        id: 'fe-x',
+        type: 'feature',
+        projectId: 'other-project',
+      } as never);
+      await expect(
+        service.allocate(actor, 'plan-1', { portfolioItemId: 'fe-x', teamId: 'team-1' }),
+      ).rejects.toMatchObject({ code: 'CAPACITY_PLAN_RELEASE_MISMATCH' });
+    });
+
+    it('requires the team to be ON the plan', async () => {
+      repo.findTeam.mockResolvedValue(null);
+      await expect(
+        service.allocate(actor, 'plan-1', { portfolioItemId: 'fe-1', teamId: 'team-9' }),
+      ).rejects.toMatchObject({ code: 'CAPACITY_TEAM_NOT_FOUND' });
+    });
+
+    it('refuses to allocate on a PUBLISHED plan', async () => {
+      repo.findById.mockResolvedValue(plan({ status: 'published' }));
+      await expect(
+        service.allocate(actor, 'plan-1', { portfolioItemId: 'fe-1', teamId: 'team-1' }),
+      ).rejects.toMatchObject({ code: 'CAPACITY_PLAN_NOT_DRAFT' });
+    });
+  });
+
+  describe('the blank-Estimate default (anti-circularity)', () => {
+    beforeEach(() => {
+      repo.findTeam.mockResolvedValue({
+        id: 'pt-1',
+        planId: 'plan-1',
+        teamId: 'team-1',
+        capacity: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    });
+
+    it('uses the REFINED estimate when the caller omits a value', async () => {
+      portfolio.getItem.mockResolvedValue({
+        id: 'fe-1',
+        type: 'feature',
+        projectId: 'proj-a',
+        refinedEstimate: '30',
+        preliminaryEstimate: 'm',
+      } as never);
+
+      await service.allocate(actor, 'plan-1', { portfolioItemId: 'fe-1', teamId: 'team-1' });
+
+      expect(repo.createAllocation).toHaveBeenCalledWith(expect.objectContaining({ value: '30' }));
+    });
+
+    it('falls back to the PRELIMINARY mapping when there is no refined estimate', async () => {
+      portfolio.getItem.mockResolvedValue({
+        id: 'fe-1',
+        type: 'feature',
+        projectId: 'proj-a',
+        refinedEstimate: null,
+        preliminaryEstimate: 'm',
+      } as never);
+
+      await service.allocate(actor, 'plan-1', { portfolioItemId: 'fe-1', teamId: 'team-1' });
+
+      // 'm' maps to 5 points in the seeded default.
+      expect(repo.createAllocation).toHaveBeenCalledWith(expect.objectContaining({ value: '5' }));
+    });
+
+    it('NEVER folds existing allocations into the default', async () => {
+      // The subtlest rule in Phase 5: if the default consulted the allocated tier, a blank
+      // field would commit the sum of the very allocations it is being used to create.
+      repo.totalAllocatedFor.mockResolvedValue(999);
+      portfolio.getItem.mockResolvedValue({
+        id: 'fe-1',
+        type: 'feature',
+        projectId: 'proj-a',
+        refinedEstimate: null,
+        preliminaryEstimate: 'm',
+      } as never);
+
+      await service.allocate(actor, 'plan-1', { portfolioItemId: 'fe-1', teamId: 'team-1' });
+
+      // Preliminary 'm' = 5, NOT 999.
+      expect(repo.createAllocation).toHaveBeenCalledWith(expect.objectContaining({ value: '5' }));
+    });
+
+    it('honours an explicit 0 rather than substituting a default', async () => {
+      await service.allocate(actor, 'plan-1', {
+        portfolioItemId: 'fe-1',
+        teamId: 'team-1',
+        value: 0,
+      });
+      expect(repo.createAllocation).toHaveBeenCalledWith(expect.objectContaining({ value: '0' }));
+    });
+  });
+
+  describe('allocation edits', () => {
+    beforeEach(() => {
+      repo.findAllocation.mockResolvedValue({
+        id: 'al-1',
+        planId: 'plan-1',
+        portfolioItemId: 'fe-1',
+        teamId: 'team-1',
+        value: '10',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      repo.findTeam.mockResolvedValue({
+        id: 'pt-1',
+        planId: 'plan-1',
+        teamId: 'team-2',
+        capacity: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    });
+
+    it('404s an allocation that is not on this plan', async () => {
+      repo.findAllocation.mockResolvedValue(null);
+      await expect(
+        service.updateAllocation(actor, 'plan-1', 'nope', { value: 1 }),
+      ).rejects.toMatchObject({ code: 'CAPACITY_ALLOCATION_NOT_FOUND' });
+    });
+
+    it('moves demand to another team on the plan', async () => {
+      await service.updateAllocation(actor, 'plan-1', 'al-1', { teamId: 'team-2' });
+      expect(repo.updateAllocation).toHaveBeenCalledWith('al-1', { teamId: 'team-2' });
+    });
+
+    it('moves demand INTO the Unallocated bucket without a membership check', async () => {
+      await service.updateAllocation(actor, 'plan-1', 'al-1', { teamId: null });
+      expect(repo.updateAllocation).toHaveBeenCalledWith('al-1', { teamId: null });
+      expect(repo.findTeam).not.toHaveBeenCalled();
+    });
+
+    it('removes an allocation', async () => {
+      await service.removeAllocation(actor, 'plan-1', 'al-1');
+      expect(repo.deleteAllocation).toHaveBeenCalledWith('al-1');
     });
   });
 });

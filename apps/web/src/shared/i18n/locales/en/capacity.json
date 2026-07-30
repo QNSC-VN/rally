@@ -47,7 +47,8 @@
       "totalCapacity": "Total Capacity",
       "plannedStartDate": "Planned Start Date",
       "plannedEndDate": "Planned End Date"
-    }
+    },
+    "unallocated": "Unallocated"
   },
   "row": {
     "notEntered": "Not entered",
@@ -56,6 +57,32 @@
     "capacityInvalid": "Capacity must be a number of zero or more",
     "removeTeam": "Remove {{team}} from this plan",
     "teamAdded": "Team added",
-    "teamRemoved": "Team removed"
+    "teamRemoved": "Team removed",
+    "barTooltip": "{{complete}} complete / {{rollup}} rollup / {{estimated}} estimated {{unit}}",
+    "allocationLabel": "Allocation for {{feature}}",
+    "allocationUpdated": "Allocation updated",
+    "allocationRemoved": "Allocation removed",
+    "removeAllocation": "Remove the allocation for {{feature}}"
+  },
+  "tiers": {
+    "allocated": "Alloc",
+    "allocatedHint": "From committed allocations on this plan",
+    "refined": "Refined",
+    "refinedHint": "From the Feature’s refined estimate",
+    "preliminary": "Prelim",
+    "preliminaryHint": "From the preliminary T-shirt size, mapped by workspace settings"
+  },
+  "allocate": {
+    "action": "Allocate",
+    "title": "Allocate a Feature",
+    "featureLabel": "Feature",
+    "featureRequired": "Choose a Feature",
+    "teamLabel": "Team",
+    "valueLabel": "Estimate",
+    "valuePlaceholder": "Leave blank for the default",
+    "defaultHint": "Blank uses the Feature’s refined estimate, or its preliminary size — never the total already allocated.",
+    "submit": "Allocate",
+    "allocated": "Allocation added",
+    "failed": "Failed to allocate"
   }
 }

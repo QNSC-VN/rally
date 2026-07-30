@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AccessModule } from '@modules/access';
 import { ProjectsModule } from '@modules/projects';
 import { PortfolioItemsService } from './application/portfolio-items.service';
+import { PreliminaryEstimateMapService } from './application/preliminary-estimate-map.service';
 import { PortfolioItemsController } from './interface/http/portfolio-items.controller';
 import { PortfolioItemDrizzleRepository } from './infrastructure/persistence/portfolio-item.drizzle-repository';
 import { PORTFOLIO_ITEM_REPOSITORY } from './domain/ports/portfolio-item.repository';
@@ -18,8 +19,9 @@ import { PORTFOLIO_ITEM_REPOSITORY } from './domain/ports/portfolio-item.reposit
   controllers: [PortfolioItemsController],
   providers: [
     PortfolioItemsService,
+    PreliminaryEstimateMapService,
     { provide: PORTFOLIO_ITEM_REPOSITORY, useClass: PortfolioItemDrizzleRepository },
   ],
-  exports: [PortfolioItemsService],
+  exports: [PortfolioItemsService, PreliminaryEstimateMapService],
 })
 export class PortfolioModule {}

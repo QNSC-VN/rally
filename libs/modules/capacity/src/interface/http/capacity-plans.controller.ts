@@ -16,11 +16,14 @@ import { CurrentUser } from '@modules/identity';
 import { AuthPolicy, RequirePermission } from '@modules/access';
 import { CapacityPlansService } from '../../application/capacity-plans.service';
 import type { CapacityPlanView } from '../../domain/capacity-plan.types';
+import type { CapacityPlanDetail } from '../../application/capacity-plans.service';
 import {
   AddCapacityTeamDto,
+  AllocateDto,
   CapacityPlanListQueryDto,
   CreateCapacityPlanDto,
   SetCapacityDto,
+  UpdateAllocationDto,
   UpdateCapacityPlanDto,
 } from './dto/capacity-plan-request.dto';
 import { CapacityPlanResponseDto } from './dto/capacity-plan-response.dto';
@@ -31,7 +34,7 @@ import { CapacityPlanResponseDto } from './dto/capacity-plan-response.dto';
  * the portfolio controller uses. `null` is preserved as `null` throughout: a capacity
  * that has not been entered is not a capacity of zero.
  */
-function toDto(p: CapacityPlanView): CapacityPlanResponseDto {
+function toDto(p: CapacityPlanDetail): CapacityPlanResponseDto {
   return {
     id: p.id,
     workspaceId: p.workspaceId,
@@ -54,10 +57,48 @@ function toDto(p: CapacityPlanView): CapacityPlanResponseDto {
       teamId: t.teamId,
       teamName: t.teamName,
       capacity: t.capacity === null ? null : Number(t.capacity),
+      metrics: t.metrics,
     })),
     totalCapacity: p.totalCapacity === null ? null : Number(p.totalCapacity),
+    allocations: p.allocations.map((a) => ({
+      id: a.id,
+      portfolioItemId: a.portfolioItemId,
+      itemKey: a.itemKey,
+      name: a.name,
+      teamId: a.teamId,
+      // numeric arrives as a string from Drizzle; the API contract is a number.
+      value: Number(a.value),
+      tier: a.tier,
+      metrics: a.metrics,
+    })),
+    unallocated: p.unallocated,
   };
 }
+
+/**
+ * The LIST returns plans without allocations or metrics.
+ *
+ * The grid there shows name/release/unit/status/target/capacity only, and assembling
+ * per-row metrics for every plan in a project would mean one aggregate per allocation per
+ * plan for numbers nothing displays.
+ */
+function toListDto(p: CapacityPlanView): CapacityPlanResponseDto {
+  return toDto({
+    ...p,
+    teams: p.teams.map((t) => ({ ...t, metrics: EMPTY_METRICS })),
+    allocations: [],
+    unallocated: 0,
+  });
+}
+
+/** Zeroed metrics for the list projection, where no row displays them. */
+const EMPTY_METRICS = {
+  complete: 0,
+  rollup: 0,
+  estimated: 0,
+  capacity: null,
+  warnings: [] as never[],
+};
 
 @ApiTags('Capacity Planning')
 @Controller('capacity-plans')
@@ -77,7 +118,7 @@ export class CapacityPlansController {
     @Query() query: CapacityPlanListQueryDto,
   ): Promise<CapacityPlanResponseDto[]> {
     const plans = await this.service.listPlans(user, query.projectId);
-    return plans.map(toDto);
+    return plans.map(toListDto);
   }
 
   @Post()
@@ -89,7 +130,8 @@ export class CapacityPlansController {
     @CurrentUser() user: JwtPayload,
     @Body() body: CreateCapacityPlanDto,
   ): Promise<CapacityPlanResponseDto> {
-    return toDto(await this.service.createPlan(user, body));
+    const created = await this.service.createPlan(user, body);
+    return toDto(await this.service.getPlanDetail(user, created.id));
   }
 
   @Get(':id')
@@ -104,7 +146,7 @@ export class CapacityPlansController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<CapacityPlanResponseDto> {
-    return toDto(await this.service.getPlan(user, id));
+    return toDto(await this.service.getPlanDetail(user, id));
   }
 
   @Patch(':id')
@@ -118,7 +160,8 @@ export class CapacityPlansController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdateCapacityPlanDto,
   ): Promise<CapacityPlanResponseDto> {
-    return toDto(await this.service.updatePlan(user, id, body));
+    await this.service.updatePlan(user, id, body);
+    return toDto(await this.service.getPlanDetail(user, id));
   }
 
   @Post(':id/teams')
@@ -132,7 +175,8 @@ export class CapacityPlansController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: AddCapacityTeamDto,
   ): Promise<CapacityPlanResponseDto> {
-    return toDto(await this.service.addTeam(user, id, body.teamId));
+    await this.service.addTeam(user, id, body.teamId);
+    return toDto(await this.service.getPlanDetail(user, id));
   }
 
   @Patch(':id/teams/:teamId')
@@ -150,7 +194,53 @@ export class CapacityPlansController {
   ): Promise<CapacityPlanResponseDto> {
     // Number → numeric string at the boundary; `null` stays null ("not entered").
     const capacity = body.capacity === null ? null : String(body.capacity);
-    return toDto(await this.service.setTeamCapacity(user, id, teamId, capacity));
+    await this.service.setTeamCapacity(user, id, teamId, capacity);
+    return toDto(await this.service.getPlanDetail(user, id));
+  }
+
+  @Post(':id/allocations')
+  @RequirePermission('capacity:manage', { resource: 'capacity_plan', from: 'param', field: 'id' })
+  @ApiOperation({ summary: 'Allocate a Feature to a team (or to the Unallocated bucket)' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 201, type: CapacityPlanResponseDto })
+  @ApiCommonErrors(400, 401, 403, 404, 422)
+  async allocate(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: AllocateDto,
+  ): Promise<CapacityPlanResponseDto> {
+    return toDto(await this.service.allocate(user, id, body));
+  }
+
+  @Patch(':id/allocations/:allocationId')
+  @RequirePermission('capacity:manage', { resource: 'capacity_plan', from: 'param', field: 'id' })
+  @ApiOperation({ summary: 'Change an allocation value, or move it between teams' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiParam({ name: 'allocationId', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: CapacityPlanResponseDto })
+  @ApiCommonErrors(400, 401, 403, 404, 422)
+  async updateAllocation(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('allocationId', ParseUUIDPipe) allocationId: string,
+    @Body() body: UpdateAllocationDto,
+  ): Promise<CapacityPlanResponseDto> {
+    return toDto(await this.service.updateAllocation(user, id, allocationId, body));
+  }
+
+  @Delete(':id/allocations/:allocationId')
+  @RequirePermission('capacity:manage', { resource: 'capacity_plan', from: 'param', field: 'id' })
+  @ApiOperation({ summary: 'Remove an allocation' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiParam({ name: 'allocationId', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: CapacityPlanResponseDto })
+  @ApiCommonErrors(401, 403, 404)
+  async removeAllocation(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('allocationId', ParseUUIDPipe) allocationId: string,
+  ): Promise<CapacityPlanResponseDto> {
+    return toDto(await this.service.removeAllocation(user, id, allocationId));
   }
 
   @Delete(':id/teams/:teamId')
@@ -165,6 +255,7 @@ export class CapacityPlansController {
     @Param('id', ParseUUIDPipe) id: string,
     @Param('teamId', ParseUUIDPipe) teamId: string,
   ): Promise<CapacityPlanResponseDto> {
-    return toDto(await this.service.removeTeam(user, id, teamId));
+    await this.service.removeTeam(user, id, teamId);
+    return toDto(await this.service.getPlanDetail(user, id));
   }
 }
