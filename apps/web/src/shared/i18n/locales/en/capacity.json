@@ -164,5 +164,8 @@
       "done": "Reverted to draft. Feature fields were left as they are.",
       "failed": "Could not revert the plan"
     }
+  },
+  "cutline": {
+    "label": "Capacity cutline"
   }
 }

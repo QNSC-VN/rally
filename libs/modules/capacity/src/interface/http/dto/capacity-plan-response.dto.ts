@@ -59,6 +59,19 @@ const CapacityPlanTeamSchema = z.object({
    */
   capacity: z.number().nullable(),
   metrics: CapacityMetricsSchema,
+  /**
+   * Rally's cutline: the index of the last of this team's Features, IN RANK ORDER, that still
+   * fits inside its capacity.
+   *
+   * An index rather than a boolean per row, because the line sits BETWEEN two rows — and
+   * because a per-row flag would let a client draw an incoherent picture (a row marked as
+   * fitting below one marked as not).
+   */
+  cutlineIndex: z
+    .number()
+    .int()
+    .nullable()
+    .describe('-1 = the first Feature already exceeds capacity; null = no capacity entered'),
 });
 
 export const CapacityPlanSchema = z.object({

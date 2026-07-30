@@ -65,6 +65,7 @@ function toDto(p: CapacityPlanDetail): CapacityPlanResponseDto {
       teamName: t.teamName,
       capacity: t.capacity === null ? null : Number(t.capacity),
       metrics: t.metrics,
+      cutlineIndex: t.cutlineIndex,
     })),
     totalCapacity: p.totalCapacity === null ? null : Number(p.totalCapacity),
     allocations: p.allocations.map((a) => ({
@@ -92,7 +93,8 @@ function toDto(p: CapacityPlanDetail): CapacityPlanResponseDto {
 function toListDto(p: CapacityPlanView): CapacityPlanResponseDto {
   return toDto({
     ...p,
-    teams: p.teams.map((t) => ({ ...t, metrics: EMPTY_METRICS })),
+    // No allocations in the list projection, so there is nothing to draw a cutline through.
+    teams: p.teams.map((t) => ({ ...t, metrics: EMPTY_METRICS, cutlineIndex: null })),
     allocations: [],
     unallocated: 0,
   });

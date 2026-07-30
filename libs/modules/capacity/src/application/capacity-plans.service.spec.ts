@@ -396,6 +396,104 @@ describe('CapacityPlansService', () => {
     });
   });
 
+  describe("the cutline — Rally's fits/does-not-fit line, per team", () => {
+    const row = (over: Partial<CapacityAllocationRow>): CapacityAllocationRow => ({
+      id: `alloc-${over.portfolioItemId ?? 'x'}`,
+      planId: 'plan-1',
+      portfolioItemId: 'fe-1',
+      teamId: 'team-1',
+      value: '10',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      itemKey: 'FE-1',
+      name: 'A feature',
+      refined: null,
+      preliminarySize: 'm',
+      totalAllocated: 10,
+      rollup: 0,
+      complete: 0,
+      ...over,
+    });
+
+    const planTeam = (teamId: string, capacity: string | null) => ({
+      id: `pt-${teamId}`,
+      planId: 'plan-1',
+      teamId,
+      capacity,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      teamName: teamId,
+    });
+
+    it('marks the last Feature that fits, in the order the repository returned', async () => {
+      // 20 + 15 = 35 fits in 40; the third takes it to 45.
+      repo.findViewById.mockResolvedValue(view({ teams: [planTeam('team-1', '40')] }));
+      repo.listAllocations.mockResolvedValue([
+        row({ portfolioItemId: 'fe-1', value: '20' }),
+        row({ portfolioItemId: 'fe-2', value: '15' }),
+        row({ portfolioItemId: 'fe-3', value: '10' }),
+      ]);
+
+      const detail = await service.getPlanDetail(actor, 'plan-1');
+      expect(detail.teams[0].cutlineIndex).toBe(1);
+    });
+
+    it('answers -1 when the FIRST Feature already exceeds capacity', async () => {
+      // A real answer, not an error: everything this team holds is below the line.
+      repo.findViewById.mockResolvedValue(view({ teams: [planTeam('team-1', '5')] }));
+      repo.listAllocations.mockResolvedValue([row({ value: '20' })]);
+
+      expect((await service.getPlanDetail(actor, 'plan-1')).teams[0].cutlineIndex).toBe(-1);
+    });
+
+    it('draws NO line when the team has no capacity entered', async () => {
+      // Nothing to divide against. Zero would claim everything is below the line.
+      repo.findViewById.mockResolvedValue(view({ teams: [planTeam('team-1', null)] }));
+      repo.listAllocations.mockResolvedValue([row({ value: '20' })]);
+
+      expect((await service.getPlanDetail(actor, 'plan-1')).teams[0].cutlineIndex).toBeNull();
+    });
+
+    it('counts only its OWN team, so one team cannot push another below the line', async () => {
+      // The reason the line is per team: team-2's 100 points are irrelevant to team-1's 40.
+      repo.findViewById.mockResolvedValue(
+        view({ teams: [planTeam('team-1', '40'), planTeam('team-2', '10')] }),
+      );
+      repo.listAllocations.mockResolvedValue([
+        row({ portfolioItemId: 'fe-1', teamId: 'team-1', value: '30' }),
+        row({ portfolioItemId: 'fe-2', teamId: 'team-2', value: '100' }),
+      ]);
+
+      const detail = await service.getPlanDetail(actor, 'plan-1');
+      // team-1's single Feature fits its own capacity...
+      expect(detail.teams[0].cutlineIndex).toBe(0);
+      // ...while team-2's does not fit its own.
+      expect(detail.teams[1].cutlineIndex).toBe(-1);
+    });
+
+    it('ignores the Unallocated bucket entirely', async () => {
+      // An unallocated row has no team, so it belongs to no team's line.
+      repo.findViewById.mockResolvedValue(view({ teams: [planTeam('team-1', '40')] }));
+      repo.listAllocations.mockResolvedValue([
+        row({ portfolioItemId: 'fe-1', teamId: null, value: '999' }),
+        row({ portfolioItemId: 'fe-2', teamId: 'team-1', value: '10' }),
+      ]);
+
+      expect((await service.getPlanDetail(actor, 'plan-1')).teams[0].cutlineIndex).toBe(0);
+    });
+
+    it('puts every Feature above the line when the whole team fits', async () => {
+      repo.findViewById.mockResolvedValue(view({ teams: [planTeam('team-1', '100')] }));
+      repo.listAllocations.mockResolvedValue([
+        row({ portfolioItemId: 'fe-1', value: '10' }),
+        row({ portfolioItemId: 'fe-2', value: '10' }),
+      ]);
+
+      // Index of the LAST row: there is nothing below the line to draw it above.
+      expect((await service.getPlanDetail(actor, 'plan-1')).teams[0].cutlineIndex).toBe(1);
+    });
+  });
+
   describe('publishPlan', () => {
     const allocation = (over: Partial<CapacityAllocationRow> = {}): CapacityAllocationRow => ({
       id: 'alloc-1',

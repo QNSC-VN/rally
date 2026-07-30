@@ -3976,6 +3976,8 @@ export interface components {
             | 'load_above_target'
           )[]
         }
+        /** @description -1 = the first Feature already exceeds capacity; null = no capacity entered */
+        cutlineIndex: number | null
       }[]
       totalCapacity: number | null
       allocations: {
@@ -4088,6 +4090,8 @@ export interface components {
               | 'load_above_target'
             )[]
           }
+          /** @description -1 = the first Feature already exceeds capacity; null = no capacity entered */
+          cutlineIndex: number | null
         }[]
         totalCapacity: number | null
         allocations: {
@@ -4189,6 +4193,8 @@ export interface components {
               | 'load_above_target'
             )[]
           }
+          /** @description -1 = the first Feature already exceeds capacity; null = no capacity entered */
+          cutlineIndex: number | null
         }[]
         totalCapacity: number | null
         allocations: {
