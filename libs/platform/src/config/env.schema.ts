@@ -38,7 +38,26 @@ export const EnvSchema = z
     DATABASE_MIGRATION_URL: z.string().url().optional(),
 
     // Redis / Valkey
-    REDIS_URL: z.string().default('redis://localhost:6379'),
+    //
+    // REQUIRED, with no default, and that is the whole point. It used to default to
+    // `redis://localhost:6379`, which is harmless locally and dangerous everywhere
+    // else: a deployed task whose REDIS_URL injection went missing did not fail to
+    // boot — it silently connected to nothing on its own loopback.
+    //
+    // That is not a degraded cache. Sessions live ONLY in Valkey, so every browser
+    // session breaks; and the token denylist and the rate limiter both FAIL OPEN when
+    // it is unreachable, so a revoked token keeps working and rate limiting stops. The
+    // task meanwhile answers `/v1/healthz` with 200, because that probe deliberately
+    // touches no dependency, so the ALB keeps it registered and nothing reports it.
+    //
+    // `JWT_PRIVATE_KEY` has no default for the same reason: absent config should fail
+    // the deploy and roll back, not silently downgrade the service. A localhost
+    // fallback is a local-development convenience, so it belongs in `.env`, where
+    // `.env.example` already sets it — not in the schema every deployed task shares.
+    REDIS_URL: z
+      .string()
+      .url('REDIS_URL must be a URL — rediss:// against the deployed cache, redis:// locally')
+      .min(1, 'REDIS_URL is required: there is deliberately no localhost fallback'),
     REDIS_KEY_PREFIX: z.string().default('rally:'),
 
     // JWT — keys may be raw PEM or base64-encoded PEM
