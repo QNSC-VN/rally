@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.6.0](https://github.com/QNSC-VN/rally/compare/v0.5.2...v0.6.0) (2026-07-30)
+
+
+### ⚠ BREAKING CHANGES
+
+* **config:** a deployed environment that does not inject REDIS_URL now fails to boot instead of running with sessions broken and two security controls failed open. That is the intent. Any consumer relying on the localhost default must set it explicitly.
+
+### ✨ Features
+
+* **capacity:** publish a plan onto its Features, and revert without undoing it ([#280](https://github.com/QNSC-VN/rally/issues/280)) ([7f0aa59](https://github.com/QNSC-VN/rally/commit/7f0aa591d1d6aab70813a0b9ca743d34afdc419f))
+
+
+### 🐛 Bug Fixes
+
+* **config:** require REDIS_URL, with no localhost fallback ([#283](https://github.com/QNSC-VN/rally/issues/283)) ([93e96a9](https://github.com/QNSC-VN/rally/commit/93e96a9c4f331d4e65ff966bf8a828ceb99fb11b))
+* **web:** show a newly created row instead of hiding it on another page ([#284](https://github.com/QNSC-VN/rally/issues/284)) ([67a3b88](https://github.com/QNSC-VN/rally/commit/67a3b8877872a1308a9f8c4e6f624a0f8c80909b))
+
 ## [0.5.2](https://github.com/QNSC-VN/rally/compare/v0.5.1...v0.5.2) (2026-07-30)
 
 
