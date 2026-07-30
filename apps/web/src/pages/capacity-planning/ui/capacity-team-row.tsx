@@ -8,6 +8,7 @@ import {
   type CapacityPlanTeam,
 } from '@/features/capacity-planning/api'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
+import { CompositeBar } from '@/shared/ui/composite-bar'
 import { IconButton } from '@/shared/ui/icon-button'
 import { notify } from '@/shared/lib/toast'
 import { type TeamColKey } from '../model/columns'
@@ -29,6 +30,7 @@ export function CapacityTeamRow({
   planId,
   team,
   unitLabel,
+  targetLoadPct,
   canManage,
   colStyleFor,
   gutter,
@@ -37,6 +39,8 @@ export function CapacityTeamRow({
   team: CapacityPlanTeam
   /** "points" / "items" — the plan's fixed unit, shown beside the number. */
   unitLabel: string
+  /** Draws the advisory target marker on the bar. */
+  targetLoadPct: number
   canManage: boolean
   colStyleFor: (key: TeamColKey, base?: CSSProperties) => CSSProperties
   gutter: ReactNode
@@ -86,6 +90,23 @@ export function CapacityTeamRow({
         <span className="truncate text-foreground" title={team.teamName ?? undefined}>
           {team.teamName ?? '—'}
         </span>
+      </div>
+
+      <div style={colStyleFor('progress', { flexShrink: 0 })} className="min-w-0 px-2">
+        <CompositeBar
+          complete={team.metrics.complete}
+          rollup={team.metrics.rollup}
+          estimated={team.metrics.estimated}
+          capacity={team.metrics.capacity}
+          targetLoadPct={targetLoadPct}
+          warnings={team.metrics.warnings}
+          title={t('row.barTooltip', {
+            complete: team.metrics.complete,
+            rollup: team.metrics.rollup,
+            estimated: team.metrics.estimated,
+            unit: unitLabel,
+          })}
+        />
       </div>
 
       <div

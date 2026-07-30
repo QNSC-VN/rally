@@ -1,0 +1,95 @@
+import { expect, test } from '@playwright/test'
+import { loginAndSelectProject } from './helpers'
+
+/**
+ * Capacity allocation (P5.2 slice 5) — the allocate loop and the tier badge.
+ *
+ * Works on the SEEDED plan ("NX Platform v2 capacity", Team Alpha) and cleans up after
+ * itself, so it is repeatable: a release may hold only one plan, so a test that created its
+ * own would consume the project's only unplanned release.
+ *
+ * The tier badge is the piece most worth driving through a browser. The same number means
+ * different things depending on where it came from — a committed allocation, a top-down
+ * refined estimate, or a T-shirt size mapped by workspace settings — and the badge is the
+ * only thing on screen that says which.
+ */
+test.describe('Capacity allocation', () => {
+  /** Click the first option in an open `SearchableSelect` (a Radix popover of buttons). */
+  async function pickOption(page: import('@playwright/test').Page, label: string | RegExp) {
+    const popover = page.locator('[data-radix-popper-content-wrapper]')
+    await popover.waitFor()
+    await popover.getByRole('button', { name: label }).first().click()
+  }
+
+  async function openPlan(page: import('@playwright/test').Page) {
+    await loginAndSelectProject(page)
+    await page.goto('/capacity-planning', { waitUntil: 'domcontentloaded' })
+    await page.getByText('NX Platform v2 capacity').click()
+    await expect(page).toHaveURL(/\/capacity-planning\/[0-9a-f-]{36}/)
+    await expect(page.getByText('Team Alpha').first()).toBeVisible()
+  }
+
+  test('allocates a Feature to a team, shows its tier, then removes it', async ({ page }) => {
+    await openPlan(page)
+
+    // ── Allocate ────────────────────────────────────────────────────────────
+    await page.getByRole('button', { name: 'Allocate', exact: true }).first().click()
+    const dialog = page.getByRole('dialog', { name: 'Allocate a Feature' })
+    await expect(dialog).toBeVisible()
+
+    // The picker offers only Features (an Epic has no children of its own to roll up).
+    await dialog.getByLabel('Feature').click()
+    await pickOption(page, /FE-1/)
+
+    await dialog.getByLabel('Team').click()
+    await pickOption(page, /Team Alpha/)
+
+    // Leave Estimate blank to exercise the server default: Refined → Preliminary, never the
+    // total already allocated.
+    await dialog.getByRole('button', { name: 'Allocate', exact: true }).click()
+    await expect(dialog).toBeHidden()
+
+    // ── The allocated row appears under its team, with a tier badge ──────────
+    const row = page.locator('div.group').filter({ hasText: 'Guest checkout flow' }).first()
+    await expect(row).toBeVisible()
+    // FE-1 is seeded with preliminary 'm' and no refined estimate, so a blank Estimate
+    // resolves to the preliminary mapping — and once committed the tier reads ALLOC.
+    await expect(row.getByText(/Alloc|Prelim/)).toBeVisible()
+
+    // Survives a reload: the allocation was persisted, not just held in cache.
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await expect(
+      page.locator('div.group').filter({ hasText: 'Guest checkout flow' }).first(),
+    ).toBeVisible()
+
+    // ── Remove it, restoring the seeded state for the next run ───────────────
+    await page
+      .getByRole('button', { name: /Remove the allocation for FE-1/ })
+      .first()
+      .click()
+    await expect(page.getByText('Guest checkout flow')).toHaveCount(0)
+  })
+
+  test('parks demand in the Unallocated bucket when no team is chosen', async ({ page }) => {
+    await openPlan(page)
+
+    await page.getByRole('button', { name: 'Allocate', exact: true }).first().click()
+    const dialog = page.getByRole('dialog', { name: 'Allocate a Feature' })
+    await dialog.getByLabel('Feature').click()
+    await pickOption(page, /FE-2/)
+    // Team defaults to "Unallocated", so submit without choosing one.
+    await dialog.getByRole('button', { name: 'Allocate', exact: true }).click()
+    await expect(dialog).toBeHidden()
+
+    // The bucket header appears only when it holds something.
+    await expect(page.getByText('Unallocated').first()).toBeVisible()
+    await expect(page.getByText('Saved payment methods')).toBeVisible()
+
+    // Clean up.
+    await page
+      .getByRole('button', { name: /Remove the allocation for FE-2/ })
+      .first()
+      .click()
+    await expect(page.getByText('Saved payment methods')).toHaveCount(0)
+  })
+})

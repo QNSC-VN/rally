@@ -78,3 +78,26 @@ export const SetCapacitySchema = z.object({
   capacity: CAPACITY.nullable(),
 });
 export class SetCapacityDto extends createZodDto(SetCapacitySchema) {}
+
+/**
+ * Commit demand for a Feature.
+ *
+ * `teamId` null (or omitted) parks it in the Unallocated bucket. `value` omitted accepts the
+ * server default, which is Refined → Preliminary and deliberately SKIPS the allocated tier
+ * so a blank field cannot commit the sum of the allocations it is creating.
+ */
+export const AllocateSchema = z.object({
+  portfolioItemId: z.string().uuid(),
+  teamId: z.string().uuid().nullable().optional(),
+  value: CAPACITY.optional(),
+});
+export class AllocateDto extends createZodDto(AllocateSchema) {}
+
+export const UpdateAllocationSchema = z
+  .object({
+    value: CAPACITY.optional(),
+    /** Explicit null moves the row into the Unallocated bucket. */
+    teamId: z.string().uuid().nullable().optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, { message: 'At least one field is required' });
+export class UpdateAllocationDto extends createZodDto(UpdateAllocationSchema) {}

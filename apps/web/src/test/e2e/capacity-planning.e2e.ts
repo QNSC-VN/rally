@@ -54,7 +54,12 @@ test.describe('Capacity Planning', () => {
   }) => {
     await openSeededPlan(page)
 
-    // Seeded with capacity NULL, so the row reads "Not entered" rather than 0.
+    // Establish the precondition rather than trusting the seeded value: any earlier spec or
+    // manual poke that set a capacity would otherwise make this fail for the wrong reason.
+    // Clearing is itself the behaviour under test, so this costs nothing.
+    const reset = await editCapacity(page)
+    await reset.fill('')
+    await reset.press('Enter')
     await expect(teamRow(page)).toContainText('Not entered')
 
     // ── A real value ────────────────────────────────────────────────────────

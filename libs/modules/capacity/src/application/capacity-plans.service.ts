@@ -8,18 +8,51 @@ import {
 } from '@platform';
 import type { DrizzleDB, JwtPayload } from '@platform';
 import { AccessService } from '@modules/access';
+import {
+  PortfolioItemsService,
+  PreliminaryEstimateMapService,
+  computeCapacityWarnings,
+  defaultAllocationEstimate,
+  resolveEstimate,
+} from '@modules/portfolio';
 import { releases, teams } from '../../../../../db/schema/work';
 import {
   CAPACITY_PLAN_REPOSITORY,
   type ICapacityPlanRepository,
 } from '../domain/ports/capacity-plan.repository';
+import type { PreliminaryEstimateSize } from '../../../../../db/schema/enums';
+import type {
+  CapacityAllocationView,
+  CapacityMetrics,
+  CreateCapacityAllocationInput,
+  UpdateCapacityAllocationInput,
+} from '../domain/capacity-allocation.types';
 import type {
   CapacityPlan,
   CapacityPlanTeam,
+  CapacityPlanTeamView,
   CapacityPlanView,
   CreateCapacityPlanInput,
   UpdateCapacityPlanInput,
 } from '../domain/capacity-plan.types';
+
+/** A plan team with the four numbers and the advisory warnings derived from them. */
+export interface CapacityPlanTeamWithMetrics extends CapacityPlanTeamView {
+  metrics: CapacityMetrics;
+}
+
+/**
+ * Everything one plan's detail surface renders.
+ *
+ * `unallocated` is reported separately and is deliberately NOT part of any team's demand:
+ * an unallocated placeholder must not outrank a Refined or Preliminary forecast, which is
+ * the same reason `totalAllocatedFor` counts team-assigned rows only.
+ */
+export interface CapacityPlanDetail extends Omit<CapacityPlanView, 'teams'> {
+  teams: CapacityPlanTeamWithMetrics[];
+  allocations: CapacityAllocationView[];
+  unallocated: number;
+}
 
 @Injectable()
 export class CapacityPlansService {
@@ -27,6 +60,8 @@ export class CapacityPlansService {
     @Inject(CAPACITY_PLAN_REPOSITORY) private readonly repo: ICapacityPlanRepository,
     @InjectDrizzle() private readonly db: DrizzleDB,
     private readonly access: AccessService,
+    private readonly estimateMaps: PreliminaryEstimateMapService,
+    private readonly portfolioItems: PortfolioItemsService,
   ) {}
 
   /**
@@ -140,6 +175,221 @@ export class CapacityPlansService {
 
     await this.repo.removeTeam(id, teamId);
     return this.getPlan(actor, id);
+  }
+
+  // ── Allocations ───────────────────────────────────────────────────────────
+
+  /**
+   * Commit demand: this much of this Feature, to this Team (or to the Unallocated bucket).
+   *
+   * Merges into an existing row for the same (plan, Feature, team) triple rather than
+   * creating a second one. Rally models sharing as one row PER TEAM under a Feature, so two
+   * rows for the same pair would double-count that team's demand in every total.
+   */
+  async allocate(
+    actor: JwtPayload,
+    planId: string,
+    input: CreateCapacityAllocationInput,
+  ): Promise<CapacityPlanDetail> {
+    const plan = await this.requireDraft(actor, planId);
+    await this.access.assertProjectPermission(actor, plan.projectId, 'capacity:manage');
+
+    const feature = await this.requireAllocatableFeature(actor, plan, input.portfolioItemId);
+    const teamId = input.teamId ?? null;
+    if (teamId !== null) await this.requirePlanTeam(planId, teamId);
+
+    const value = await this.resolveAllocationValue(actor, feature, input.value);
+
+    const existing = await this.repo.findAllocationFor(planId, input.portfolioItemId, teamId);
+    if (existing) {
+      // Adding to what is already committed, not replacing it: the planner asked to
+      // allocate more of this Feature to this team.
+      const merged = Number(existing.value) + Number(value);
+      await this.repo.updateAllocation(existing.id, { value: String(merged) });
+    } else {
+      await this.repo.createAllocation({
+        planId,
+        portfolioItemId: input.portfolioItemId,
+        teamId,
+        value: String(value),
+      });
+    }
+
+    return this.getPlanDetail(actor, planId);
+  }
+
+  async updateAllocation(
+    actor: JwtPayload,
+    planId: string,
+    allocationId: string,
+    input: UpdateCapacityAllocationInput,
+  ): Promise<CapacityPlanDetail> {
+    const plan = await this.requireDraft(actor, planId);
+    await this.access.assertProjectPermission(actor, plan.projectId, 'capacity:manage');
+
+    const allocation = await this.repo.findAllocation(allocationId, planId);
+    if (!allocation) {
+      throw new NotFoundException('CAPACITY_ALLOCATION_NOT_FOUND', 'Allocation not found');
+    }
+    // Moving to a team requires that team to be ON the plan; moving to null parks it in the
+    // Unallocated bucket, which needs no membership.
+    if (input.teamId) await this.requirePlanTeam(planId, input.teamId);
+
+    await this.repo.updateAllocation(allocationId, {
+      ...(input.value === undefined ? {} : { value: String(input.value) }),
+      ...(input.teamId === undefined ? {} : { teamId: input.teamId }),
+    });
+    return this.getPlanDetail(actor, planId);
+  }
+
+  async removeAllocation(
+    actor: JwtPayload,
+    planId: string,
+    allocationId: string,
+  ): Promise<CapacityPlanDetail> {
+    const plan = await this.requireDraft(actor, planId);
+    await this.access.assertProjectPermission(actor, plan.projectId, 'capacity:manage');
+
+    const allocation = await this.repo.findAllocation(allocationId, planId);
+    if (!allocation) {
+      throw new NotFoundException('CAPACITY_ALLOCATION_NOT_FOUND', 'Allocation not found');
+    }
+    await this.repo.deleteAllocation(allocationId);
+    return this.getPlanDetail(actor, planId);
+  }
+
+  /**
+   * The full plan: teams with their metrics and warnings, plus every allocation.
+   *
+   * Assembled here rather than in the repository because the tier needs the workspace
+   * estimate map and the warnings are pure domain logic — the repository supplies raw
+   * numbers, this decides what they mean.
+   */
+  async getPlanDetail(actor: JwtPayload, id: string): Promise<CapacityPlanDetail> {
+    const plan = await this.getPlan(actor, id);
+    const map = await this.estimateMaps.forWorkspace(actor.workspaceId);
+    const rows = await this.repo.listAllocations(plan);
+
+    const inUnit = (size: PreliminaryEstimateSize) =>
+      plan.unit === 'points' ? map[size].points : map[size].count;
+
+    const allocations: CapacityAllocationView[] = rows.map((row) => {
+      const resolved = resolveEstimate({
+        totalAllocated: row.totalAllocated,
+        refined: row.refined,
+        preliminary: inUnit(row.preliminarySize),
+      });
+      return {
+        id: row.id,
+        planId: row.planId,
+        portfolioItemId: row.portfolioItemId,
+        teamId: row.teamId,
+        value: row.value,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        itemKey: row.itemKey,
+        name: row.name,
+        tier: resolved.tier,
+        metrics: {
+          complete: row.complete,
+          rollup: row.rollup,
+          estimated: Number(row.value),
+          // A Feature row has no capacity of its own. `computeCapacityWarnings` yields only
+          // the rollup-vs-estimated rule for a null capacity, which is exactly what the
+          // spec asks for on these rows — no separate code path needed.
+          capacity: null,
+          warnings: computeCapacityWarnings({
+            rollup: row.rollup,
+            estimated: Number(row.value),
+            capacity: null,
+          }),
+        },
+      };
+    });
+
+    const teams = await Promise.all(
+      plan.teams.map(async (team) => {
+        const { complete, rollup } = await this.repo.teamMetrics(plan, team.teamId);
+        const estimated = allocations
+          .filter((a) => a.teamId === team.teamId)
+          .reduce((sum, a) => sum + Number(a.value), 0);
+        const capacity = team.capacity === null ? null : Number(team.capacity);
+        return {
+          ...team,
+          metrics: {
+            complete,
+            rollup,
+            estimated,
+            capacity,
+            warnings: computeCapacityWarnings({
+              rollup,
+              estimated,
+              capacity,
+              targetLoadPct: plan.targetLoadPct,
+            }),
+          },
+        };
+      }),
+    );
+
+    return {
+      ...plan,
+      teams,
+      allocations,
+      /** Demand parked without a team. Excluded from Total Allocated by design. */
+      unallocated: allocations
+        .filter((a) => a.teamId === null)
+        .reduce((sum, a) => sum + Number(a.value), 0),
+    };
+  }
+
+  /**
+   * The value a blank Estimate field commits.
+   *
+   * Uses `defaultAllocationEstimate`, which DELIBERATELY skips the allocated tier — the
+   * subtlest rule in Phase 5. Folding allocations back in would mean a blank field commits
+   * the sum of the very allocations it is being used to create.
+   */
+  private async resolveAllocationValue(
+    actor: JwtPayload,
+    feature: { refinedEstimate: string | null; preliminaryEstimate: PreliminaryEstimateSize },
+    supplied: number | undefined,
+  ): Promise<number> {
+    if (supplied !== undefined) return supplied;
+    const map = await this.estimateMaps.forWorkspace(actor.workspaceId);
+    const size = map[feature.preliminaryEstimate];
+    return defaultAllocationEstimate({
+      refined: feature.refinedEstimate === null ? null : Number(feature.refinedEstimate),
+      preliminary: size.points,
+    }).value;
+  }
+
+  /**
+   * The allocation target must be a FEATURE in the plan's own project.
+   *
+   * Epics are not allocatable: only the lowest portfolio level attaches to the story
+   * hierarchy, so an Epic has no children of its own to roll up and allocating to it would
+   * produce a row whose Rollup is permanently zero.
+   */
+  private async requireAllocatableFeature(
+    actor: JwtPayload,
+    plan: CapacityPlan,
+    portfolioItemId: string,
+  ) {
+    const item = await this.portfolioItems.getItem(actor, portfolioItemId);
+    if (item.type !== 'feature') {
+      throw new PreconditionFailedException(
+        'CAPACITY_ALLOCATION_NOT_FEATURE',
+        'Only a Feature can be allocated — an Epic rolls up through its Features',
+      );
+    }
+    if (item.projectId !== plan.projectId) {
+      throw new PreconditionFailedException(
+        'CAPACITY_PLAN_RELEASE_MISMATCH',
+        'That Feature belongs to a different project',
+      );
+    }
+    return item;
   }
 
   // ── Guards ────────────────────────────────────────────────────────────────

@@ -112,6 +112,9 @@ export const ErrorCodes = {
   CAPACITY_TEAM_ALREADY_ADDED: 'CAPACITY_TEAM_ALREADY_ADDED',
   /** Removing the team would orphan the demand still allocated to it. */
   CAPACITY_TEAM_HAS_ALLOCATIONS: 'CAPACITY_TEAM_HAS_ALLOCATIONS',
+  CAPACITY_ALLOCATION_NOT_FOUND: 'CAPACITY_ALLOCATION_NOT_FOUND',
+  /** Only a Feature is allocatable — an Epic rolls up through its child Features. */
+  CAPACITY_ALLOCATION_NOT_FEATURE: 'CAPACITY_ALLOCATION_NOT_FEATURE',
 
   // Workflow
   WORKFLOW_STATUS_NOT_FOUND: 'WORKFLOW_STATUS_NOT_FOUND',

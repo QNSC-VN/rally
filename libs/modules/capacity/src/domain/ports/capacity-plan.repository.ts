@@ -1,4 +1,5 @@
 import type { DbExecutor } from '@platform';
+import type { CapacityAllocation, CapacityAllocationRow } from '../capacity-allocation.types';
 import type {
   CapacityPlan,
   CapacityPlanTeam,
@@ -60,6 +61,50 @@ export interface ICapacityPlanRepository {
   ): Promise<CapacityPlanTeam>;
 
   removeTeam(planId: string, teamId: string, executor?: DbExecutor): Promise<void>;
+
+  // ── Allocations ────────────────────────────────────────────────────────────
+
+  /**
+   * Every allocation on a plan with its per-row metrics, in ONE round trip.
+   *
+   * Returns rows rather than finished views: the tier needs the Preliminary Estimate
+   * mapped through workspace settings, which is the service's job.
+   */
+  listAllocations(plan: CapacityPlan): Promise<CapacityAllocationRow[]>;
+
+  findAllocation(id: string, planId: string): Promise<CapacityAllocation | null>;
+
+  /** An existing allocation for the same (plan, item, team) triple, for the merge check. */
+  findAllocationFor(
+    planId: string,
+    portfolioItemId: string,
+    teamId: string | null,
+  ): Promise<CapacityAllocation | null>;
+
+  createAllocation(
+    input: { planId: string; portfolioItemId: string; teamId: string | null; value: string },
+    executor?: DbExecutor,
+  ): Promise<CapacityAllocation>;
+
+  updateAllocation(
+    id: string,
+    input: { value?: string; teamId?: string | null },
+    executor?: DbExecutor,
+  ): Promise<CapacityAllocation>;
+
+  deleteAllocation(id: string, executor?: DbExecutor): Promise<void>;
+
+  /**
+   * SUM(value) for one Feature on one plan, counting ONLY rows assigned to a team.
+   *
+   * Feeds `resolveEstimate`'s allocated tier. Unallocated rows are excluded because an
+   * unallocated placeholder must not outrank a Refined or Preliminary forecast — see the
+   * `capacity_plan_allocations` comment in `db/schema/work.ts`.
+   */
+  totalAllocatedFor(planId: string, portfolioItemId: string): Promise<number>;
+
+  /** Per-team Complete/Rollup, following Rally's project+release+team child filter. */
+  teamMetrics(plan: CapacityPlan, teamId: string): Promise<{ complete: number; rollup: number }>;
 
   /**
    * Allocations currently pointing at a team on this plan.

@@ -5,6 +5,8 @@ import { DRIZZLE, NotFoundException, UnitOfWork } from '@platform';
 import type { JwtPayload } from '@platform';
 import { AccessService } from '@modules/access';
 import { PortfolioItemsService } from './portfolio-items.service';
+import { PreliminaryEstimateMapService } from './preliminary-estimate-map.service';
+import { DEFAULT_PRELIMINARY_ESTIMATE_MAP } from '../../../../../db/schema/enums';
 import {
   PORTFOLIO_ITEM_REPOSITORY,
   type IPortfolioItemRepository,
@@ -64,6 +66,7 @@ describe('PortfolioItemsService', () => {
   let service: PortfolioItemsService;
   let repo: Mocked<IPortfolioItemRepository>;
   let access: Mocked<AccessService>;
+  let maps: Mocked<PreliminaryEstimateMapService>;
   let settingsRows: Array<{ map: unknown }>;
 
   beforeEach(async () => {
@@ -99,6 +102,13 @@ describe('PortfolioItemsService', () => {
           },
         },
         {
+          provide: PreliminaryEstimateMapService,
+          // The map's own fallback behaviour is covered by
+          // `preliminary-estimate-map.service.spec.ts`; here it is a fixed input so these
+          // tests are about how the SERVICE uses it.
+          useValue: { forWorkspace: vi.fn().mockResolvedValue(DEFAULT_PRELIMINARY_ESTIMATE_MAP) },
+        },
+        {
           provide: UnitOfWork,
           // Runs the callback with a stub executor: these tests assert the SERVICE's
           // ordering and validation, and the repository is mocked, so a real transaction
@@ -120,6 +130,7 @@ describe('PortfolioItemsService', () => {
     service = module.get(PortfolioItemsService);
     repo = module.get(PORTFOLIO_ITEM_REPOSITORY);
     access = module.get(AccessService);
+    maps = module.get(PreliminaryEstimateMapService);
   });
 
   describe('listItems — the authorization filter', () => {
@@ -228,26 +239,18 @@ describe('PortfolioItemsService', () => {
       expect(p.estimatedProgressByCount).toBe(0.25); // 1 / 4
     });
 
-    it('uses a workspace-configured mapping when present', async () => {
+    it('uses whatever mapping the workspace reader returns', async () => {
       // The whole reason the map is settings-backed: an operator changing XS/S/M must
       // change what Estimated Progress means, without a deploy.
-      settingsRows = [{ map: { m: { points: 100, count: 50 } } }];
+      maps.forWorkspace.mockResolvedValue({
+        ...DEFAULT_PRELIMINARY_ESTIMATE_MAP,
+        m: { points: 100, count: 50 },
+      });
       repo.listByFilter.mockResolvedValue(emptyPage([view()]));
 
       const p = (await service.listItems(actor, { type: 'feature' }, { limit: 50, cursor: null }))
         .data[0].progress;
       expect(p.estimatedProgressByPoints).toBe(0.1); // 10 / 100
-    });
-
-    it('falls back to the seeded default when settings hold an empty object', async () => {
-      // A workspace created before migration 0071. Returning an empty map would make
-      // every Estimated Progress indicator null and read as a product bug.
-      settingsRows = [{ map: {} }];
-      repo.listByFilter.mockResolvedValue(emptyPage([view()]));
-
-      const p = (await service.listItems(actor, { type: 'feature' }, { limit: 50, cursor: null }))
-        .data[0].progress;
-      expect(p.estimatedProgressByPoints).toBe(2); // 10 / 5, the default for 'm'
     });
   });
 

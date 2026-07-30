@@ -1,15 +1,23 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, sql, type SQL } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
 import type { DbExecutor, DrizzleDB } from '@platform';
 import {
   capacityPlanAllocations,
   capacityPlanTeams,
   capacityPlans,
+  portfolioItems,
   projects,
   releases,
   teams,
+  workItems,
 } from '../../../../../../db/schema/work';
+import { childWorkPredicate, metricSubqueries } from './capacity-metrics.sql';
+import { completedScheduleStatesSql } from '../../../../../../db/schema/enums';
+import type {
+  CapacityAllocation,
+  CapacityAllocationRow,
+} from '../../domain/capacity-allocation.types';
 import type {
   CapacityPlan,
   CapacityPlanTeam,
@@ -145,6 +153,187 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
     await exec
       .delete(capacityPlanTeams)
       .where(and(eq(capacityPlanTeams.planId, planId), eq(capacityPlanTeams.teamId, teamId)));
+  }
+
+  // ── Allocations ───────────────────────────────────────────────────────────
+
+  async listAllocations(plan: CapacityPlan): Promise<CapacityAllocationRow[]> {
+    // ONE round trip. Each metric is a correlated subquery — the same shape the portfolio
+    // repository uses for its rollups — because the architecture doc is explicit that a
+    // per-row fetch here would make the page unusable.
+    //
+    // The child filter is Rally's: project AND release must match the plan, and the team
+    // narrows it when the row is assigned (Rally attributes by Project, which is its team).
+    // An Unallocated row has no team, so it counts every matching child of the Feature.
+    const childScope = sql`
+      ${workItems.projectId} = ${plan.projectId}
+      and ${workItems.releaseId} = ${plan.releaseId}
+      and ${workItems.deletedAt} is null
+      and ${workItems.featureId} = ${capacityPlanAllocations.portfolioItemId}
+      and (
+        ${capacityPlanAllocations.teamId} is null
+        or ${workItems.teamId} = ${capacityPlanAllocations.teamId}
+      )`;
+
+    const rows = await this.db
+      .select({
+        alloc: capacityPlanAllocations,
+        itemKey: portfolioItems.itemKey,
+        name: portfolioItems.name,
+        refinedEstimate: portfolioItems.refinedEstimate,
+        preliminaryEstimate: portfolioItems.preliminaryEstimate,
+        rollup: sql<string>`(
+          select coalesce(sum(${workItems.storyPoints}), 0)
+          from ${workItems} where ${childScope}
+        )`,
+        complete: sql<string>`(
+          select coalesce(sum(${workItems.storyPoints}) filter (
+            where ${workItems.scheduleState} in (${completedScheduleStatesSql()})
+          ), 0)
+          from ${workItems} where ${childScope}
+        )`,
+        // SUM over TEAM-ASSIGNED rows only: an Unallocated placeholder must not outrank a
+        // Refined or Preliminary forecast in `resolveEstimate`.
+        totalAllocated: sql<string>`(
+          select coalesce(sum(a2.value), 0)
+          from ${capacityPlanAllocations} a2
+          where a2.plan_id = ${capacityPlanAllocations.planId}
+            and a2.portfolio_item_id = ${capacityPlanAllocations.portfolioItemId}
+            and a2.team_id is not null
+        )`,
+      })
+      .from(capacityPlanAllocations)
+      .innerJoin(portfolioItems, eq(portfolioItems.id, capacityPlanAllocations.portfolioItemId))
+      .where(eq(capacityPlanAllocations.planId, plan.id))
+      // Unallocated last, then by Feature key, with `id` as the unique tiebreaker the
+      // ordering ratchet requires.
+      .orderBy(
+        asc(sql`${capacityPlanAllocations.teamId} is null`),
+        asc(portfolioItems.itemKey),
+        asc(capacityPlanAllocations.id),
+      );
+
+    return rows.map((row) => ({
+      ...this.mapAllocation(row.alloc),
+      itemKey: row.itemKey,
+      name: row.name,
+      refined: row.refinedEstimate === null ? null : Number(row.refinedEstimate),
+      preliminarySize: row.preliminaryEstimate,
+      totalAllocated: Number(row.totalAllocated),
+      rollup: Number(row.rollup),
+      complete: Number(row.complete),
+    }));
+  }
+
+  async findAllocation(id: string, planId: string): Promise<CapacityAllocation | null> {
+    const rows = await this.db
+      .select()
+      .from(capacityPlanAllocations)
+      .where(and(eq(capacityPlanAllocations.id, id), eq(capacityPlanAllocations.planId, planId)))
+      .limit(1);
+    return rows[0] ? this.mapAllocation(rows[0]) : null;
+  }
+
+  async findAllocationFor(
+    planId: string,
+    portfolioItemId: string,
+    teamId: string | null,
+  ): Promise<CapacityAllocation | null> {
+    const rows = await this.db
+      .select()
+      .from(capacityPlanAllocations)
+      .where(
+        and(
+          eq(capacityPlanAllocations.planId, planId),
+          eq(capacityPlanAllocations.portfolioItemId, portfolioItemId),
+          // `= null` never matches in SQL, so the Unallocated bucket needs IS NULL.
+          teamId === null
+            ? isNull(capacityPlanAllocations.teamId)
+            : eq(capacityPlanAllocations.teamId, teamId),
+        ),
+      )
+      .limit(1);
+    return rows[0] ? this.mapAllocation(rows[0]) : null;
+  }
+
+  async createAllocation(
+    input: { planId: string; portfolioItemId: string; teamId: string | null; value: string },
+    executor?: DbExecutor,
+  ): Promise<CapacityAllocation> {
+    const exec = executor ?? this.db;
+    const rows = await exec.insert(capacityPlanAllocations).values(input).returning();
+    return this.mapAllocation(rows[0]);
+  }
+
+  async updateAllocation(
+    id: string,
+    input: { value?: string; teamId?: string | null },
+    executor?: DbExecutor,
+  ): Promise<CapacityAllocation> {
+    const exec = executor ?? this.db;
+    const set: Record<string, unknown> = { updatedAt: new Date() };
+    if (input.value !== undefined) set.value = input.value;
+    // `undefined` leaves the team alone; `null` moves the row to the Unallocated bucket.
+    if (input.teamId !== undefined) set.teamId = input.teamId;
+
+    const rows = await exec
+      .update(capacityPlanAllocations)
+      .set(set)
+      .where(eq(capacityPlanAllocations.id, id))
+      .returning();
+    return this.mapAllocation(rows[0]);
+  }
+
+  async deleteAllocation(id: string, executor?: DbExecutor): Promise<void> {
+    const exec = executor ?? this.db;
+    await exec.delete(capacityPlanAllocations).where(eq(capacityPlanAllocations.id, id));
+  }
+
+  async totalAllocatedFor(planId: string, portfolioItemId: string): Promise<number> {
+    const rows = await this.db
+      .select({ total: sql<string>`coalesce(sum(${capacityPlanAllocations.value}), 0)` })
+      .from(capacityPlanAllocations)
+      .where(
+        and(
+          eq(capacityPlanAllocations.planId, planId),
+          eq(capacityPlanAllocations.portfolioItemId, portfolioItemId),
+          // Team-assigned rows ONLY: an unallocated placeholder must not outrank a
+          // Refined or Preliminary forecast in `resolveEstimate`.
+          isNotNull(capacityPlanAllocations.teamId),
+        ),
+      );
+    return Number(rows[0]?.total ?? 0);
+  }
+
+  async teamMetrics(
+    plan: CapacityPlan,
+    teamId: string,
+  ): Promise<{ complete: number; rollup: number }> {
+    const where = childWorkPredicate({
+      projectId: plan.projectId,
+      releaseId: plan.releaseId,
+      teamId,
+      planId: plan.id,
+    });
+    const m = metricSubqueries(where);
+    const [row] = await this.db
+      .select({ rollup: m.rollup, complete: m.complete })
+      .from(capacityPlans)
+      .where(eq(capacityPlans.id, plan.id))
+      .limit(1);
+    return { rollup: Number(row?.rollup ?? 0), complete: Number(row?.complete ?? 0) };
+  }
+
+  private mapAllocation(row: typeof capacityPlanAllocations.$inferSelect): CapacityAllocation {
+    return {
+      id: row.id,
+      planId: row.planId,
+      portfolioItemId: row.portfolioItemId,
+      teamId: row.teamId,
+      value: row.value,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
   }
 
   async countTeamAllocations(planId: string, teamId: string): Promise<number> {

@@ -26,17 +26,29 @@ export const CAPACITY_PLAN_COLUMNS: ColumnSpec<CapacityPlan, unknown, PlanColKey
   { key: 'capacity', label: 'Capacity', defaultWidth: 110, minWidth: 90, align: 'right' },
 ]
 
-export type TeamColKey = 'team' | 'capacity' | 'actions'
+export type TeamColKey = 'team' | 'progress' | 'capacity' | 'actions'
 
 /**
  * The team grid inside one plan.
  *
- * Deliberately narrow for this slice: Complete / Rollup / Estimated all derive from
- * ALLOCATIONS, which do not exist yet, so columns for them would render empty and imply
- * the numbers were zero rather than absent.
+ * ONE `progress` column carries Complete / Rollup / Estimated together via
+ * `CompositeBar`, rather than three numeric columns. Rally draws them as one bar against
+ * the capacity baseline because the comparison IS the information — three separate columns
+ * would make the reader do the subtraction that the bar shows at a glance.
+ *
+ * `capacity` doubles as the editable cell: a team row holds its entered ceiling, and an
+ * allocated Feature row beneath it holds that team's committed value.
  */
 export const CAPACITY_TEAM_COLUMNS: ColumnSpec<CapacityPlanTeam, unknown, TeamColKey>[] = [
-  { key: 'team', label: 'Team', defaultWidth: 280, minWidth: 140, locked: true, grow: true },
-  { key: 'capacity', label: 'Capacity', defaultWidth: 140, minWidth: 100, align: 'right' },
+  {
+    key: 'team',
+    label: 'Team / Feature',
+    defaultWidth: 320,
+    minWidth: 180,
+    locked: true,
+    grow: true,
+  },
+  { key: 'progress', label: 'Complete / Rollup / Estimated', defaultWidth: 220, minWidth: 140 },
+  { key: 'capacity', label: 'Capacity', defaultWidth: 130, minWidth: 100, align: 'right' },
   { key: 'actions', label: '', defaultWidth: 60, minWidth: 60, align: 'center' },
 ]

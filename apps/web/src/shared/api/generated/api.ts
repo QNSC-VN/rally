@@ -2245,6 +2245,41 @@ export interface paths {
     patch: operations['CapacityPlansController_setTeamCapacity']
     trace?: never
   }
+  '/v1/capacity-plans/{id}/allocations': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Allocate a Feature to a team (or to the Unallocated bucket) */
+    post: operations['CapacityPlansController_allocate']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/capacity-plans/{id}/allocations/{allocationId}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    /** Remove an allocation */
+    delete: operations['CapacityPlansController_removeAllocation']
+    options?: never
+    head?: never
+    /** Change an allocation value, or move it between teams */
+    patch: operations['CapacityPlansController_updateAllocation']
+    trace?: never
+  }
   '/v1/quality/defects': {
     parameters: {
       query?: never
@@ -3869,8 +3904,48 @@ export interface components {
         teamId: string
         teamName: string | null
         capacity: number | null
+        metrics: {
+          complete: number
+          rollup: number
+          estimated: number
+          capacity: number | null
+          warnings: (
+            | 'rollup_exceeds_estimated'
+            | 'rollup_exceeds_capacity'
+            | 'estimated_exceeds_capacity'
+            | 'load_above_target'
+          )[]
+        }
       }[]
       totalCapacity: number | null
+      allocations: {
+        /** Format: uuid */
+        id: string
+        /** Format: uuid */
+        portfolioItemId: string
+        itemKey: string
+        name: string
+        teamId: string | null
+        value: number
+        /**
+         * @description Which estimate tier the Feature figure came from — drives the UI badge
+         * @enum {string}
+         */
+        tier: 'allocated' | 'refined' | 'preliminary' | 'none'
+        metrics: {
+          complete: number
+          rollup: number
+          estimated: number
+          capacity: number | null
+          warnings: (
+            | 'rollup_exceeds_estimated'
+            | 'rollup_exceeds_capacity'
+            | 'estimated_exceeds_capacity'
+            | 'load_above_target'
+          )[]
+        }
+      }[]
+      unallocated: number
     }
     CreateCapacityPlanDto: {
       /** Format: uuid */
@@ -3896,6 +3971,16 @@ export interface components {
     }
     SetCapacityDto: {
       capacity: number | null
+    }
+    AllocateDto: {
+      /** Format: uuid */
+      portfolioItemId: string
+      teamId?: string | null
+      value?: number
+    }
+    UpdateAllocationDto: {
+      value?: number
+      teamId?: string | null
     }
     ScmConnectionResponseDto: {
       /** Format: uuid */
@@ -11938,6 +12023,170 @@ export interface operations {
     requestBody: {
       content: {
         'application/json': components['schemas']['SetCapacityDto']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['CapacityPlanResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  CapacityPlansController_allocate: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['AllocateDto']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['CapacityPlanResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  CapacityPlansController_removeAllocation: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+        allocationId: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['CapacityPlanResponseDto']
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  CapacityPlansController_updateAllocation: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+        allocationId: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateAllocationDto']
       }
     }
     responses: {
