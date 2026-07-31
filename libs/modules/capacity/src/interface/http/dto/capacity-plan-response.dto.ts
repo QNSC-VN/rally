@@ -42,6 +42,13 @@ const CapacityAllocationSchema = z.object({
   name: z.string(),
   /** Null = the Unallocated bucket. */
   teamId: z.string().uuid().nullable(),
+  /**
+   * This team is the Feature's PRIMARY assignment on this plan — Rally's Planned Team Assignment.
+   *
+   * At most one per Feature, and never true for an Unallocated row. The other allocations are
+   * contributors: Rally assigns the item to one team, then allocates points to the rest.
+   */
+  isPrimary: z.boolean(),
   value: z.number(),
   tier: z
     .enum(['allocated', 'refined', 'preliminary', 'none'])
@@ -77,6 +84,11 @@ const CapacityPlanItemSchema = z.object({
   complete: z.number(),
   tier: z.enum(['allocated', 'refined', 'preliminary', 'none']),
   teamIds: z.array(z.string().uuid()),
+  primaryTeamId: z
+    .string()
+    .uuid()
+    .nullable()
+    .describe("Rally's Planned Team Assignment — the team that owns this Feature in the plan"),
   unallocated: z.boolean().describe('Any allocation has no team — Rally’s unassigned warning'),
 });
 

@@ -12,7 +12,10 @@ import {
   type ICapacityPlanRepository,
 } from '../domain/ports/capacity-plan.repository';
 import type { CapacityPlan, CapacityPlanView } from '../domain/capacity-plan.types';
-import type { CapacityAllocationRow } from '../domain/capacity-allocation.types';
+import type {
+  CapacityAllocation,
+  CapacityAllocationRow,
+} from '../domain/capacity-allocation.types';
 
 const WORKSPACE = 'ws-1';
 /** The stand-in transaction handle every write inside one publish must share. */
@@ -83,6 +86,9 @@ describe('CapacityPlansService', () => {
             totalAllocatedFor: vi.fn().mockResolvedValue(0),
             teamMetrics: vi.fn().mockResolvedValue({ complete: 0, rollup: 0 }),
             teamVelocitySamples: vi.fn().mockResolvedValue([]),
+            hasPrimaryAllocation: vi.fn().mockResolvedValue(false),
+            clearPrimaryAllocations: vi.fn(),
+            oldestTeamAllocation: vi.fn().mockResolvedValue(null),
             releaseWindow: vi.fn().mockResolvedValue({
               startDate: '2026-07-01',
               endDate: '2026-07-31',
@@ -311,6 +317,7 @@ describe('CapacityPlansService', () => {
         planId: 'plan-1',
         portfolioItemId: 'fe-1',
         teamId: 'team-1',
+        isPrimary: false,
         value: '30',
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -408,6 +415,7 @@ describe('CapacityPlansService', () => {
       planId: 'plan-1',
       portfolioItemId: 'fe-1',
       teamId: 'team-1',
+      isPrimary: false,
       value: '10',
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -515,12 +523,161 @@ describe('CapacityPlansService', () => {
     });
   });
 
+  describe('primary team assignment', () => {
+    // Rally: "you can assign the portfolio item to one primary team and then allocate points or
+    // story counts to the additional teams that will contribute to the work." One team owns the
+    // Feature — that team is what the Items tab's Planned Team Assignment column shows.
+    const allocationRow = (over: Partial<CapacityAllocation> = {}): CapacityAllocation => ({
+      id: 'al-1',
+      planId: 'plan-1',
+      portfolioItemId: 'fe-1',
+      teamId: 'team-1',
+      isPrimary: false,
+      value: '10',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      ...over,
+    });
+
+    beforeEach(() => {
+      repo.findTeam.mockResolvedValue({
+        id: 'pt-1',
+        planId: 'plan-1',
+        teamId: 'team-1',
+        capacity: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      repo.findAllocationFor.mockResolvedValue(null);
+    });
+
+    it('makes the FIRST team allocation the primary', async () => {
+      repo.hasPrimaryAllocation.mockResolvedValue(false);
+
+      await service.allocate(actor, 'plan-1', {
+        portfolioItemId: 'fe-1',
+        teamId: 'team-1',
+        value: 5,
+      });
+
+      expect(repo.createAllocation).toHaveBeenCalledWith(
+        expect.objectContaining({ isPrimary: true }),
+      );
+    });
+
+    it('leaves a SECOND team as a contributor', async () => {
+      // Rally allocates to "additional teams"; only one of them owns the Feature.
+      repo.hasPrimaryAllocation.mockResolvedValue(true);
+
+      await service.allocate(actor, 'plan-1', {
+        portfolioItemId: 'fe-1',
+        teamId: 'team-1',
+        value: 5,
+      });
+
+      expect(repo.createAllocation).toHaveBeenCalledWith(
+        expect.objectContaining({ isPrimary: false }),
+      );
+    });
+
+    it('never makes an UNALLOCATED row primary', async () => {
+      // It names no team, so there is nobody to own the work — and the check constraint would
+      // reject it anyway.
+      repo.hasPrimaryAllocation.mockResolvedValue(false);
+
+      await service.allocate(actor, 'plan-1', { portfolioItemId: 'fe-1', teamId: null, value: 5 });
+
+      expect(repo.createAllocation).toHaveBeenCalledWith(
+        expect.objectContaining({ isPrimary: false }),
+      );
+      // Not even asked: an unallocated row can never be the answer.
+      expect(repo.hasPrimaryAllocation).not.toHaveBeenCalled();
+    });
+
+    it('clears the old primary and sets the new one in ONE transaction', async () => {
+      // Two statements outside a transaction would briefly leave the Feature with two owners or
+      // none — and `uq_capacity_allocation_primary` rejects the first of those outright.
+      repo.findAllocation.mockResolvedValue(allocationRow({ id: 'al-2', teamId: 'team-2' }));
+
+      await service.setPrimaryAllocation(actor, 'plan-1', 'al-2');
+
+      expect(repo.clearPrimaryAllocations).toHaveBeenCalledWith(
+        'plan-1',
+        'fe-1',
+        expect.anything(),
+      );
+      expect(repo.updateAllocation).toHaveBeenCalledWith(
+        'al-2',
+        { isPrimary: true },
+        expect.anything(),
+      );
+      const clearTx = repo.clearPrimaryAllocations.mock.calls[0][2];
+      const setTx = repo.updateAllocation.mock.calls[0][2];
+      expect(clearTx).toBe(setTx);
+    });
+
+    it('refuses to make an unallocated row the primary, rather than ignoring it', async () => {
+      // A silent no-op would leave the planner believing the assignment had moved.
+      repo.findAllocation.mockResolvedValue(allocationRow({ teamId: null }));
+
+      await expect(service.setPrimaryAllocation(actor, 'plan-1', 'al-1')).rejects.toMatchObject({
+        code: 'CAPACITY_PRIMARY_NEEDS_TEAM',
+      });
+      expect(repo.clearPrimaryAllocations).not.toHaveBeenCalled();
+    });
+
+    it('PROMOTES the next team when the primary is removed', async () => {
+      // A Feature with allocations but no primary reads as unassigned while teams are visibly
+      // working on it.
+      repo.findAllocation.mockResolvedValue(allocationRow({ isPrimary: true }));
+      repo.oldestTeamAllocation.mockResolvedValue({ id: 'al-2' });
+
+      await service.removeAllocation(actor, 'plan-1', 'al-1');
+
+      expect(repo.updateAllocation).toHaveBeenCalledWith(
+        'al-2',
+        { isPrimary: true },
+        expect.anything(),
+      );
+    });
+
+    it('promotes nobody when a CONTRIBUTOR is removed', async () => {
+      repo.findAllocation.mockResolvedValue(allocationRow({ isPrimary: false }));
+
+      await service.removeAllocation(actor, 'plan-1', 'al-1');
+
+      expect(repo.oldestTeamAllocation).not.toHaveBeenCalled();
+      expect(repo.updateAllocation).not.toHaveBeenCalled();
+    });
+
+    it('strips the flag and hands it on when the primary is parked as unallocated', async () => {
+      // The check constraint forbids a primary with no team, so this is the difference between a
+      // clear rule and a constraint violation the planner sees as a crash.
+      repo.findAllocation.mockResolvedValue(allocationRow({ isPrimary: true }));
+      repo.oldestTeamAllocation.mockResolvedValue({ id: 'al-2' });
+
+      await service.updateAllocation(actor, 'plan-1', 'al-1', { teamId: null });
+
+      expect(repo.updateAllocation).toHaveBeenCalledWith(
+        'al-1',
+        { teamId: null, isPrimary: false },
+        expect.anything(),
+      );
+      expect(repo.updateAllocation).toHaveBeenCalledWith(
+        'al-2',
+        { isPrimary: true },
+        expect.anything(),
+      );
+    });
+  });
+
   describe('publishPlan', () => {
     const allocation = (over: Partial<CapacityAllocationRow> = {}): CapacityAllocationRow => ({
       id: 'alloc-1',
       planId: 'plan-1',
       portfolioItemId: 'fe-1',
       teamId: 'team-1',
+      isPrimary: false,
       value: '30',
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -851,6 +1008,7 @@ describe('CapacityPlansService', () => {
         planId: 'plan-1',
         portfolioItemId: 'fe-1',
         teamId: 'team-1',
+        isPrimary: false,
         value: '10',
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -863,6 +1021,8 @@ describe('CapacityPlansService', () => {
       });
 
       expect(repo.createAllocation).not.toHaveBeenCalled();
+      // No tx here: merging into an existing row is a single write with no primary-assignment
+      // bookkeeping to keep atomic with it.
       expect(repo.updateAllocation).toHaveBeenCalledWith('al-1', { value: '15' });
     });
 
@@ -982,6 +1142,7 @@ describe('CapacityPlansService', () => {
         planId: 'plan-1',
         portfolioItemId: 'fe-1',
         teamId: 'team-1',
+        isPrimary: false,
         value: '10',
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -1005,18 +1166,26 @@ describe('CapacityPlansService', () => {
 
     it('moves demand to another team on the plan', async () => {
       await service.updateAllocation(actor, 'plan-1', 'al-1', { teamId: 'team-2' });
-      expect(repo.updateAllocation).toHaveBeenCalledWith('al-1', { teamId: 'team-2' });
+      expect(repo.updateAllocation).toHaveBeenCalledWith(
+        'al-1',
+        { teamId: 'team-2' },
+        expect.anything(),
+      );
     });
 
     it('moves demand INTO the Unallocated bucket without a membership check', async () => {
       await service.updateAllocation(actor, 'plan-1', 'al-1', { teamId: null });
-      expect(repo.updateAllocation).toHaveBeenCalledWith('al-1', { teamId: null });
+      expect(repo.updateAllocation).toHaveBeenCalledWith(
+        'al-1',
+        { teamId: null },
+        expect.anything(),
+      );
       expect(repo.findTeam).not.toHaveBeenCalled();
     });
 
     it('removes an allocation', async () => {
       await service.removeAllocation(actor, 'plan-1', 'al-1');
-      expect(repo.deleteAllocation).toHaveBeenCalledWith('al-1');
+      expect(repo.deleteAllocation).toHaveBeenCalledWith('al-1', expect.anything());
     });
   });
 });

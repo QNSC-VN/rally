@@ -2331,6 +2331,23 @@ export interface paths {
     patch: operations['CapacityPlansController_updateAllocation']
     trace?: never
   }
+  '/v1/capacity-plans/{id}/allocations/{allocationId}/primary': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Make this allocation's team the Feature's primary assignment */
+    post: operations['CapacityPlansController_setPrimaryAllocation']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v1/quality/defects': {
     parameters: {
       query?: never
@@ -3994,6 +4011,8 @@ export interface components {
         /** @enum {string} */
         tier: 'allocated' | 'refined' | 'preliminary' | 'none'
         teamIds: string[]
+        /** @description Rally's Planned Team Assignment — the team that owns this Feature in the plan */
+        primaryTeamId: string | null
         /** @description Any allocation has no team — Rally’s unassigned warning */
         unallocated: boolean
       }[]
@@ -4007,6 +4026,7 @@ export interface components {
         itemKey: string
         name: string
         teamId: string | null
+        isPrimary: boolean
         value: number
         /**
          * @description Which estimate tier the Feature figure came from — drives the UI badge
@@ -4127,6 +4147,8 @@ export interface components {
           /** @enum {string} */
           tier: 'allocated' | 'refined' | 'preliminary' | 'none'
           teamIds: string[]
+          /** @description Rally's Planned Team Assignment — the team that owns this Feature in the plan */
+          primaryTeamId: string | null
           /** @description Any allocation has no team — Rally’s unassigned warning */
           unallocated: boolean
         }[]
@@ -4140,6 +4162,7 @@ export interface components {
           itemKey: string
           name: string
           teamId: string | null
+          isPrimary: boolean
           value: number
           /**
            * @description Which estimate tier the Feature figure came from — drives the UI badge
@@ -4249,6 +4272,8 @@ export interface components {
           /** @enum {string} */
           tier: 'allocated' | 'refined' | 'preliminary' | 'none'
           teamIds: string[]
+          /** @description Rally's Planned Team Assignment — the team that owns this Feature in the plan */
+          primaryTeamId: string | null
           /** @description Any allocation has no team — Rally’s unassigned warning */
           unallocated: boolean
         }[]
@@ -4262,6 +4287,7 @@ export interface components {
           itemKey: string
           name: string
           teamId: string | null
+          isPrimary: boolean
           value: number
           /**
            * @description Which estimate tier the Feature figure came from — drives the UI badge
@@ -12718,6 +12744,56 @@ export interface operations {
           [name: string]: unknown
         }
         content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  CapacityPlansController_setPrimaryAllocation: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+        allocationId: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['CapacityPlanResponseDto']
+        }
       }
       /** @description Unauthorized — missing or invalid authentication */
       401: {

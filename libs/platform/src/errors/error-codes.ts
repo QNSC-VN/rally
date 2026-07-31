@@ -124,6 +124,13 @@ export const ErrorCodes = {
   CAPACITY_ALLOCATION_NOT_FOUND: 'CAPACITY_ALLOCATION_NOT_FOUND',
   /** Only a Feature is allocatable — an Epic rolls up through its child Features. */
   CAPACITY_ALLOCATION_NOT_FEATURE: 'CAPACITY_ALLOCATION_NOT_FEATURE',
+  /**
+   * An Unallocated row cannot be a Feature's primary team assignment.
+   *
+   * It names no team, so there is nobody to own the work — the same rule
+   * `ck_capacity_primary_has_team` enforces in the database.
+   */
+  CAPACITY_PRIMARY_NEEDS_TEAM: 'CAPACITY_PRIMARY_NEEDS_TEAM',
 
   // Workflow
   WORKFLOW_STATUS_NOT_FOUND: 'WORKFLOW_STATUS_NOT_FOUND',

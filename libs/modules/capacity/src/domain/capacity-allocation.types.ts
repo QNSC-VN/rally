@@ -17,6 +17,12 @@ export interface CapacityAllocation {
   planId: string;
   portfolioItemId: string;
   teamId: string | null;
+  /**
+   * This allocation's team is the Feature's PRIMARY assignment on this plan — Rally's "Planned
+   * Project Assignment". At most one per (plan, Feature), enforced by a partial unique index, and
+   * never true for an Unallocated row.
+   */
+  isPrimary: boolean;
   value: string;
   createdAt: Date;
   updatedAt: Date;

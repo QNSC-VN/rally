@@ -292,7 +292,13 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
   }
 
   async createAllocation(
-    input: { planId: string; portfolioItemId: string; teamId: string | null; value: string },
+    input: {
+      planId: string;
+      portfolioItemId: string;
+      teamId: string | null;
+      value: string;
+      isPrimary?: boolean;
+    },
     executor?: DbExecutor,
   ): Promise<CapacityAllocation> {
     const exec = executor ?? this.db;
@@ -302,7 +308,7 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
 
   async updateAllocation(
     id: string,
-    input: { value?: string; teamId?: string | null },
+    input: { value?: string; teamId?: string | null; isPrimary?: boolean },
     executor?: DbExecutor,
   ): Promise<CapacityAllocation> {
     const exec = executor ?? this.db;
@@ -310,6 +316,7 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
     if (input.value !== undefined) set.value = input.value;
     // `undefined` leaves the team alone; `null` moves the row to the Unallocated bucket.
     if (input.teamId !== undefined) set.teamId = input.teamId;
+    if (input.isPrimary !== undefined) set.isPrimary = input.isPrimary;
 
     const rows = await exec
       .update(capacityPlanAllocations)
@@ -357,6 +364,80 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
       .where(eq(capacityPlans.id, plan.id))
       .limit(1);
     return { rollup: Number(row?.rollup ?? 0), complete: Number(row?.complete ?? 0) };
+  }
+
+  // ── Primary team assignment ───────────────────────────────────────────────
+
+  /** Does this Feature already have a primary team on this plan? */
+  async hasPrimaryAllocation(planId: string, portfolioItemId: string): Promise<boolean> {
+    const rows = await this.db
+      .select({ id: capacityPlanAllocations.id })
+      .from(capacityPlanAllocations)
+      .where(
+        and(
+          eq(capacityPlanAllocations.planId, planId),
+          eq(capacityPlanAllocations.portfolioItemId, portfolioItemId),
+          eq(capacityPlanAllocations.isPrimary, true),
+        ),
+      )
+      .limit(1);
+    return rows.length > 0;
+  }
+
+  /**
+   * Clear the primary flag for one Feature on one plan.
+   *
+   * Runs before setting the new one, inside the caller's transaction:
+   * `uq_capacity_allocation_primary` rejects a second primary outright, so the order is not a
+   * style choice.
+   */
+  async clearPrimaryAllocations(
+    planId: string,
+    portfolioItemId: string,
+    executor?: DbExecutor,
+  ): Promise<void> {
+    const exec = executor ?? this.db;
+    await exec
+      .update(capacityPlanAllocations)
+      .set({ isPrimary: false, updatedAt: new Date() })
+      .where(
+        and(
+          eq(capacityPlanAllocations.planId, planId),
+          eq(capacityPlanAllocations.portfolioItemId, portfolioItemId),
+          eq(capacityPlanAllocations.isPrimary, true),
+        ),
+      );
+  }
+
+  /**
+   * The oldest TEAM-assigned allocation for a Feature — the one that inherits the assignment
+   * when the primary is removed or parked.
+   *
+   * Oldest rather than largest: the first team to receive work is the one Rally's assign-then-
+   * allocate order treats as the owner, and "biggest allocation wins" would hand ownership around
+   * on every estimate edit.
+   */
+  async oldestTeamAllocation(
+    planId: string,
+    portfolioItemId: string,
+    executor?: DbExecutor,
+  ): Promise<{ id: string } | null> {
+    const exec = executor ?? this.db;
+    const rows = await exec
+      .select({ id: capacityPlanAllocations.id })
+      .from(capacityPlanAllocations)
+      .where(
+        and(
+          eq(capacityPlanAllocations.planId, planId),
+          eq(capacityPlanAllocations.portfolioItemId, portfolioItemId),
+          isNotNull(capacityPlanAllocations.teamId),
+        ),
+      )
+      // `id` breaks ties so two rows created in the same transaction still order deterministically
+      // — the ordering ratchet requires that last column anyway.
+      .orderBy(asc(capacityPlanAllocations.createdAt), asc(capacityPlanAllocations.id))
+      .limit(1);
+    return rows[0] ?? null;
   }
 
   // ── Publish ───────────────────────────────────────────────────────────────
@@ -524,6 +605,7 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
       planId: row.planId,
       portfolioItemId: row.portfolioItemId,
       teamId: row.teamId,
+      isPrimary: row.isPrimary,
       value: row.value,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,

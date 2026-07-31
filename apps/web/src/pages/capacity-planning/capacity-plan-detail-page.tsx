@@ -123,6 +123,13 @@ export function CapacityPlanDetailPage() {
   )
 
   /** Allocations bucketed by team, so each team's Features render beneath it. */
+  // Names live on the plan's team rows; the item row carries only the id, so resolve once here
+  // rather than searching the team list per row.
+  const teamNameById = useMemo(
+    () => new Map(plan?.teams.map((team) => [team.teamId, team.teamName]) ?? []),
+    [plan?.teams],
+  )
+
   const allocationsByTeam = useMemo(() => {
     const map = new Map<string, NonNullable<typeof plan>['allocations']>()
     for (const a of plan?.allocations ?? []) {
@@ -331,6 +338,7 @@ export function CapacityPlanDetailPage() {
                         item={item}
                         position={index + 1}
                         unitLabel={unitLabel}
+                        primaryTeamName={teamNameById.get(item.primaryTeamId ?? '') ?? null}
                         belowCutline={
                           plan.itemCutlineIndex !== null && index > plan.itemCutlineIndex
                         }
@@ -384,6 +392,7 @@ export function CapacityPlanDetailPage() {
                               canManage={canManage}
                               colStyleFor={colStyleFor}
                               onOpenFeature={openFeature}
+                              teamName={team.teamName}
                             />
                           ))}
                     </div>
@@ -413,6 +422,9 @@ export function CapacityPlanDetailPage() {
                           canManage={canManage}
                           colStyleFor={colStyleFor}
                           onOpenFeature={openFeature}
+                          // No team by definition — the Unallocated bucket is Rally's unassigned
+                          // state, so there is nothing here to make primary.
+                          teamName={null}
                         />
                       ))}
                     </div>
