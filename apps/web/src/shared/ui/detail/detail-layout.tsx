@@ -38,6 +38,13 @@ interface DetailLayoutProps {
   status?: ReactNode
   /** Right-side action controls (save, delete menu…). */
   actions?: ReactNode
+  /**
+   * Entity-wide summary rendered BETWEEN the header and the tabs.
+   *
+   * For anything that describes the whole record rather than one tab — the capacity plan's metric
+   * panel, for instance. Omit and the tabs sit directly under the header.
+   */
+  summary?: ReactNode
   // ── Tabs ─────────────────────────────────────────────────────────────────
   tabs: DetailTab[]
   activeTab: string
@@ -54,6 +61,7 @@ export function DetailLayout({
   title,
   status,
   actions,
+  summary,
   tabs,
   activeTab,
   onTabChange,
@@ -61,7 +69,8 @@ export function DetailLayout({
 }: DetailLayoutProps) {
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-background">
-      {/* Header + tabs — shared dark bar */}
+      {/* The dark bar is the HEADER only. Rally keeps its tabs on the page background below it,
+          which is also what makes room for a summary row between the two. */}
       <div className="shrink-0 bg-primary-dark text-white">
         <DetailHeader
           onBack={onBack}
@@ -72,8 +81,13 @@ export function DetailLayout({
           status={status}
           actions={actions}
         />
-        <DetailTabBar tabs={tabs} activeTab={activeTab} onTabChange={onTabChange} />
       </div>
+
+      {/* Above the tabs on purpose: a summary describes the whole entity, so it must not look like
+          it belongs to whichever tab happens to be selected. Rally orders it the same way. */}
+      {summary}
+
+      <DetailTabBar tabs={tabs} activeTab={activeTab} onTabChange={onTabChange} />
 
       {children}
     </div>

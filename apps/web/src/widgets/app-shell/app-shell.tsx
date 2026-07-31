@@ -123,8 +123,10 @@ const NAV_ITEMS: NavItem[] = [
     // record the synonym here rather than having two names for one screen.
     children: [
       {
+        // "Portfolio Items", not "Portfolio": a child repeating its parent's label reads as a
+        // link back to the menu, and the page lists Epics and Features — items.
         path: '/portfolio',
-        label: 'Portfolio',
+        label: 'Portfolio Items',
         featureFlag: 'feature.portfolio',
         permission: 'portfolio:view',
       },

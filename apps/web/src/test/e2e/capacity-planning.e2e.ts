@@ -179,11 +179,17 @@ test.describe('Capacity Planning', () => {
     await loginAndSelectProject(page)
     await page.goto('/capacity-planning', { waitUntil: 'domcontentloaded' })
 
-    await expect(page.getByLabel('Release column', { exact: true })).toBeVisible()
-    await expect(page.getByLabel('Unit column', { exact: true })).toBeVisible()
+    // Rally's columns, and only those: Unit, Target Load and Capacity are plan SETTINGS, so they
+    // live on the detail page rather than telling two rows apart here.
+    for (const column of ['ID', 'Name', 'Release', 'Status', 'Last Updated', 'Teams in Plan']) {
+      await expect(page.getByLabel(`${column} column`, { exact: true })).toBeVisible()
+    }
+    for (const gone of ['Unit', 'Target Load', 'Capacity']) {
+      await expect(page.getByLabel(`${gone} column`, { exact: true })).toHaveCount(0)
+    }
     await expect(page.getByText('NX Platform v2 capacity')).toBeVisible()
-    // Unit is fixed at creation and shown per plan.
-    await expect(page.getByText('points').first()).toBeVisible()
+    // The plan's key leads the row and is the only cell that navigates.
+    await expect(page.getByRole('button', { name: /^CP-/ })).toBeVisible()
   })
 
   test('the create dialog will not offer a release that already has a plan', async ({ page }) => {

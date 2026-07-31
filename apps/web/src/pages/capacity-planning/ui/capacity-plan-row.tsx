@@ -137,26 +137,6 @@ export function CapacityPlanRow({
       >
         {plan.teams.length}
       </div>
-
-      <div style={colStyleFor('unit', { flexShrink: 0 })} className="min-w-0 px-2">
-        <span className="text-muted-foreground">{t(`units.${plan.unit}`)}</span>
-      </div>
-
-      <div
-        style={colStyleFor('targetLoad', { flexShrink: 0 })}
-        className="px-2 text-right text-muted-foreground tabular-nums"
-      >
-        {plan.targetLoadPct}%
-      </div>
-
-      <div
-        style={colStyleFor('capacity', { flexShrink: 0 })}
-        className="px-2 text-right text-muted-foreground tabular-nums"
-      >
-        {/* Blank when nobody has entered a capacity — not 0, which would read as
-            "no capacity available". */}
-        {plan.totalCapacity === null ? '—' : plan.totalCapacity}
-      </div>
     </div>
   )
 }

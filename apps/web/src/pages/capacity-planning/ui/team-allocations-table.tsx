@@ -1,4 +1,5 @@
 import { useCallback, type CSSProperties } from 'react'
+import { Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { DataTableFrame } from '@/shared/ui/table/data-table-frame'
@@ -30,6 +31,7 @@ export function TeamAllocationsTable({
   onOpenFeature,
   rankPositionOf,
   sharingOf,
+  onAddFeatures,
 }: {
   planId: string
   allocations: CapacityAllocation[]
@@ -53,6 +55,16 @@ export function TeamAllocationsTable({
    * it cannot tell whether a Feature is shared.
    */
   sharingOf: (portfolioItemId: string) => { owner: string | null; contributors: string[] }
+  /**
+   * Rally's `Add Items to Project Plan`: adds Features already assigned to THIS team.
+   *
+   * Below the list rather than above it, which is where Rally puts it and where the BA's catalog
+   * puts it too — the button belongs to the group it appends to, and a header-level control would
+   * read as belonging to the plan.
+   *
+   * Omitted for a reader who cannot manage the plan, which is also how the row hides its editors.
+   */
+  onAddFeatures?: () => void
 }) {
   const { t } = useTranslation('capacity')
   const table = useDataTable<CapacityAllocation, unknown, AllocColKey>(
@@ -91,6 +103,16 @@ export function TeamAllocationsTable({
             />
           ))}
         </DataTableFrame>
+
+        {onAddFeatures !== undefined && (
+          <button
+            type="button"
+            onClick={onAddFeatures}
+            className="flex items-center gap-1 px-2 py-1.5 text-ui-sm text-primary-light underline-offset-2 hover:underline"
+          >
+            <Plus size={12} /> {t('addFeatures.actionForTeam')}
+          </button>
+        )}
       </div>
     </div>
   )

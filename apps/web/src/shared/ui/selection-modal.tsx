@@ -29,6 +29,15 @@ interface SelectionModalProps {
   items: SelectionItem[]
   selectedIds: string[]
   onSave: (ids: string[]) => Promise<void>
+  /**
+   * Confirm-button text. Defaults to `Save`.
+   *
+   * A picker that ADDS should say so — Rally's item picker confirms with `Add to Plan`, and "Save"
+   * on a list of unticked rows reads as "save nothing".
+   */
+  confirmLabel?: string
+  /** Search placeholder. Defaults to the title, which reads oddly for a title that is a sentence. */
+  searchPlaceholder?: string
 }
 
 export function SelectionModal({
@@ -38,6 +47,8 @@ export function SelectionModal({
   items,
   selectedIds,
   onSave,
+  confirmLabel,
+  searchPlaceholder,
 }: SelectionModalProps) {
   const [search, setSearch] = useState('')
   const [local, setLocal] = useState<string[]>([])
@@ -99,8 +110,8 @@ export function SelectionModal({
         <SearchInput
           value={search}
           onChange={setSearch}
-          placeholder={`Search ${title.toLowerCase()}...`}
-          ariaLabel={`Search ${title.toLowerCase()}`}
+          placeholder={searchPlaceholder ?? `Search ${title.toLowerCase()}...`}
+          ariaLabel={searchPlaceholder ?? `Search ${title.toLowerCase()}`}
           iconSize={13}
           autoFocus
           className="w-full rounded-md py-1.5 pl-8 text-ui-md"
@@ -156,7 +167,7 @@ export function SelectionModal({
           disabled={saving}
         >
           {saving ? <Loader2 size={12} className="animate-spin" /> : null}
-          Save
+          {confirmLabel ?? 'Save'}
         </Button>
       </ModalFooter>
     </AppModal>

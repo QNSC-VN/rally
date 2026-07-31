@@ -31,7 +31,6 @@ export type CapacityPlanStatus = CapacityPlan['status']
  * error, not a silently missing filter option.
  */
 export const CAPACITY_PLAN_STATUSES: readonly CapacityPlanStatus[] = ['draft', 'published']
-export const CAPACITY_PLAN_UNITS: readonly CapacityPlanUnit[] = ['points', 'count']
 
 export type CapacityForecast = components['schemas']['CapacityForecastResponseDto']
 export type PublishResult = components['schemas']['PublishResultResponseDto']

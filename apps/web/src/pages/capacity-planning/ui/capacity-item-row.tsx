@@ -1,6 +1,6 @@
 import { type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, Trash2 } from 'lucide-react'
+import { AlertTriangle, Scale, Trash2, Undo2 } from 'lucide-react'
 
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { MetricValue } from '@/shared/ui/metric-value'
@@ -31,6 +31,8 @@ export function CapacityItemRow({
   expanded = false,
   onToggleExpanded,
   onRemove,
+  onUnassign,
+  onAllocate,
   colStyleFor,
   onOpenFeature,
 }: {
@@ -47,6 +49,10 @@ export function CapacityItemRow({
   onToggleExpanded?: () => void
   /** Removes the Feature from the plan. Omitted for a reader without `capacity:manage`. */
   onRemove?: () => void
+  /** Clears every team assignment but keeps the Feature on the plan — Rally's second removal verb. */
+  onUnassign?: () => void
+  /** Opens the Allocate dialog for THIS Feature — splitting it across teams. */
+  onAllocate?: () => void
   colStyleFor: (key: ItemColKey, base?: CSSProperties) => CSSProperties
   onOpenFeature: (portfolioItemId: string) => void
 }) {
@@ -122,8 +128,13 @@ export function CapacityItemRow({
             <span className="text-ui-sm">{t('items.notAssigned')}</span>
           </span>
         ) : item.teamIds.length > 1 ? (
-          <span className="text-foreground">
-            {t('items.teamCount', { count: item.teamIds.length })}
+          /* Rally prints a boxed COUNT here and lists the teams in the nested rows beneath. A count
+             is the only honest answer for a split Feature — no single team name is it. */
+          <span
+            className="inline-flex min-w-6 justify-center rounded-sm border border-border-strong px-1 text-ui-sm text-foreground tabular-nums"
+            title={t('items.teamCount', { count: item.teamIds.length })}
+          >
+            {item.teamIds.length}
           </span>
         ) : (
           <span className="truncate text-foreground" title={primaryTeamName ?? undefined}>
@@ -158,6 +169,26 @@ export function CapacityItemRow({
       >
         {onRemove !== undefined && (
           <ActionMenu ariaLabel={t('items.actionsLabel', { item: item.itemKey })}>
+            {/* Rally's two removal verbs, and they answer different questions. `Remove All
+                Assignments` keeps the Feature in the plan and empties its teams, which is what a
+                planner wants when a Feature is still in scope but its split was wrong. */}
+            {/* Rally's per-item `Allocate`, and the BA's Feature menu lists it too: split ONE Feature
+                across teams. Adding a Feature to the plan is a different act with its own dialog —
+                this one only distributes what is already there. */}
+            {onAllocate !== undefined && (
+              <ActionMenuItem
+                icon={<Scale size={13} />}
+                label={t('items.allocate')}
+                onClick={onAllocate}
+              />
+            )}
+            {onUnassign !== undefined && item.teamIds.length > 0 && (
+              <ActionMenuItem
+                icon={<Undo2 size={13} />}
+                label={t('items.removeAllAssignments')}
+                onClick={onUnassign}
+              />
+            )}
             <ActionMenuItem
               icon={<Trash2 size={13} />}
               label={t('items.removeFromPlan')}

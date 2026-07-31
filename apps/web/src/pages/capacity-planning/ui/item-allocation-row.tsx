@@ -1,5 +1,7 @@
 import { type CSSProperties } from 'react'
 
+import { useTranslation } from 'react-i18next'
+
 import { MetricValue } from '@/shared/ui/metric-value'
 import type { CapacityAllocation } from '@/features/capacity-planning/api'
 import type { ItemColKey } from '../model/columns'
@@ -26,6 +28,7 @@ export function ItemAllocationRow({
   teamName: string | null
   colStyleFor: (key: ItemColKey, base?: CSSProperties) => CSSProperties
 }) {
+  const { t } = useTranslation('capacity')
   const { metrics } = allocation
 
   return (
@@ -33,20 +36,23 @@ export function ItemAllocationRow({
       <div style={colStyleFor('rank', { flexShrink: 0 })} />
       <div style={colStyleFor('id', { flexShrink: 0 })} />
 
-      {/* The team is written in the NAME column, indented and marked — Rally nests these rows, and
-          an indent plus the turnstile glyph is what says "part of the row above" without a second
-          column that only child rows would ever fill. */}
+      {/* Rally labels the child row itself `↳ Allocation` and puts the TEAM in the Planned Team
+          Assignment column, under its parent's own assignment. The label says what KIND of row this
+          is; the team belongs in the column that answers "which team?" for every row on the tab. */}
       <div style={colStyleFor('name', { flexShrink: 0 })} className="min-w-0 px-2">
-        <span className="flex min-w-0 items-center gap-1.5 pl-4 text-muted-foreground">
+        <span className="flex min-w-0 items-center gap-1.5 pl-4 text-muted-foreground italic">
           <span aria-hidden>↳</span>
-          <span className="truncate" title={teamName ?? undefined}>
-            {teamName ?? '—'}
-          </span>
+          <span className="truncate">{t('items.allocationRow')}</span>
         </span>
       </div>
 
       <div style={colStyleFor('project', { flexShrink: 0 })} />
-      <div style={colStyleFor('assignment', { flexShrink: 0 })} />
+
+      <div style={colStyleFor('assignment', { flexShrink: 0 })} className="min-w-0 px-2">
+        <span className="truncate text-foreground" title={teamName ?? undefined}>
+          {teamName ?? '—'}
+        </span>
+      </div>
 
       <div style={colStyleFor('complete', { flexShrink: 0 })} className="px-2 text-right">
         <MetricValue value={metrics.complete} pct={null} />

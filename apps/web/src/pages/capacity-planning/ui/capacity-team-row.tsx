@@ -118,9 +118,11 @@ export function CapacityTeamRow({
 
       {/* The count lives here so a COLLAPSED team still says how much it carries — hiding the
           children with no trace would make an empty team and a full one look identical. */}
+      {/* `inline-flex` + `items-center`, not a text block: the badge is a pill with its own line
+          height, so inside plain text it rode ABOVE the count's baseline. */}
       <div
         style={colStyleFor('features', { flexShrink: 0 })}
-        className="px-2 text-right text-muted-foreground tabular-nums"
+        className="flex items-center justify-end gap-1 px-2 text-muted-foreground tabular-nums"
       >
         {featureCount}
         {/* The warning COUNT, as Rally shows it: on a plan with a dozen teams "⚠5" says which row

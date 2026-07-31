@@ -203,7 +203,7 @@
     "tab": "Items",
     "notAssigned": "Not assigned",
     "empty": "Allocate a Feature to see it here.",
-    "sidebarHeading": "Team capacity",
+    "sidebarHeading": "Team Capacity",
     "plusContributors": "+{{count}}",
     "featureType": "Feature",
     "teamCount": "{{count}} teams",
@@ -211,7 +211,13 @@
     "collapseTeams": "Hide the teams allocated to {{item}}",
     "actionsLabel": "Actions for {{item}}",
     "removeFromPlan": "Remove from plan",
-    "removed": "{{item}} removed from the plan"
+    "removed": "{{item}} removed from the plan",
+    "railName": "Name",
+    "railRatio": "{{unit}} / Capacity",
+    "allocationRow": "Allocation",
+    "removeAllAssignments": "Remove all assignments",
+    "assignmentsCleared": "{{item}} is unassigned but still on the plan",
+    "allocate": "Allocate to teams"
   },
   "filters": {
     "oldestRelease": "Oldest Release",
@@ -221,9 +227,7 @@
     "olderRelease": "Older release",
     "newerRelease": "Newer release",
     "byStatus": "Filter by status",
-    "byUnit": "Filter by unit",
-    "allStatuses": "All statuses",
-    "allUnits": "All units"
+    "allStatuses": "All statuses"
   },
   "delete": {
     "title": "Delete capacity plans?",
@@ -258,5 +262,13 @@
   "teams": {
     "action": "Add / Remove Teams",
     "title": "Add / Remove Teams on this plan"
+  },
+  "addFeatures": {
+    "action": "Add Features",
+    "title": "Add Features to this plan",
+    "titleForTeam": "Add Features to {{team}}",
+    "actionForTeam": "Add Features to this team",
+    "confirm": "Add to Plan",
+    "searchPlaceholder": "Search Features…"
   }
 }

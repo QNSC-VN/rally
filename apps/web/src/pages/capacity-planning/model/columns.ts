@@ -6,27 +6,22 @@ import {
   type CapacityPlanTeam,
 } from '@/features/capacity-planning/api'
 
-export type PlanColKey =
-  | 'id'
-  | 'name'
-  | 'release'
-  | 'status'
-  | 'updatedAt'
-  | 'teamCount'
-  | 'unit'
-  | 'targetLoad'
-  | 'capacity'
+export type PlanColKey = 'id' | 'name' | 'release' | 'status' | 'updatedAt' | 'teamCount'
 
 /**
- * The capacity-plans list, in Rally's own column order: ID, Name, Release, Status, Last Updated,
- * then the count of teams in the plan (Rally labels it "Projects in Plan"; we keep the team
- * vocabulary). Unit / Target Load / Capacity follow — ours, not Rally's, and hideable via Show
- * Fields like any other column.
+ * The capacity-plans list — Rally's columns, and ONLY Rally's: ID, Name, Release, Status, Last
+ * Updated, then the count of teams in the plan (Rally labels it "Projects in Plan"; we keep the team
+ * vocabulary).
  *
- * `capacity` and `teamCount` have no `sortCol`: both are derived on read from the plan's team
- * rows, so there is no column for a server sort to name. Sorting is client-side here anyway — the
- * list is bounded by a project's releases — but a `sortCol` on a derived field would still be a
- * claim the API does not honour.
+ * Unit, Target Load and Capacity are deliberately absent. They are plan SETTINGS, not a way to tell
+ * two plans apart: the unit is fixed at creation, target load is one advisory number a planner rarely
+ * changes, and a total capacity means nothing until you are inside the plan looking at which team it
+ * belongs to. All three live on the detail page, where they are actionable.
+ *
+ * `teamCount` has no `sortCol`: it is derived on read from the plan's team rows, so there is no
+ * column for a server sort to name. Sorting is client-side here anyway — the list is bounded by a
+ * project's releases — but a `sortCol` on a derived field would still claim something the API does
+ * not honour.
  */
 export const CAPACITY_PLAN_COLUMNS: ColumnSpec<CapacityPlan, unknown, PlanColKey>[] = [
   { key: 'id', label: 'ID', defaultWidth: 92, minWidth: 70, locked: true },
@@ -51,9 +46,6 @@ export const CAPACITY_PLAN_COLUMNS: ColumnSpec<CapacityPlan, unknown, PlanColKey
     sortCol: 'updatedAt',
   },
   { key: 'teamCount', label: 'Teams in Plan', defaultWidth: 110, minWidth: 90, align: 'right' },
-  { key: 'unit', label: 'Unit', defaultWidth: 80, minWidth: 70 },
-  { key: 'targetLoad', label: 'Target Load', defaultWidth: 100, minWidth: 90, align: 'right' },
-  { key: 'capacity', label: 'Capacity', defaultWidth: 100, minWidth: 90, align: 'right' },
 ]
 
 export type TeamColKey =
@@ -160,14 +152,16 @@ export type ItemColKey =
  * "against this team's ceiling", and the same shape here would imply a ceiling that does not exist.
  */
 export const CAPACITY_ITEM_COLUMNS: ColumnSpec<CapacityPlanItem, unknown, ItemColKey>[] = [
-  { key: 'rank', label: 'Rank', defaultWidth: 64, minWidth: 56, align: 'right' },
-  { key: 'id', label: 'ID', defaultWidth: 100, minWidth: 90, locked: true },
-  { key: 'name', label: 'Name', defaultWidth: 260, minWidth: 160, locked: true, grow: true },
-  { key: 'project', label: 'Project', defaultWidth: 150, minWidth: 100 },
-  { key: 'assignment', label: 'Planned Team Assignment', defaultWidth: 180, minWidth: 140 },
-  { key: 'complete', label: 'Complete', defaultWidth: 96, minWidth: 80, align: 'right' },
-  { key: 'rollup', label: 'Rollup', defaultWidth: 90, minWidth: 76, align: 'right' },
-  { key: 'estimated', label: 'Estimated', defaultWidth: 110, minWidth: 90, align: 'right' },
+  { key: 'rank', label: 'Rank', defaultWidth: 58, minWidth: 52, align: 'right' },
+  { key: 'id', label: 'ID', defaultWidth: 92, minWidth: 84, locked: true },
+  // Sized for the ~1010px this tab has once the Team Capacity rail takes its 256: `grow` spends
+  // surplus but never claws width back, so defaults that overflow simply hide the last column.
+  { key: 'name', label: 'Name', defaultWidth: 200, minWidth: 140, locked: true, grow: true },
+  { key: 'project', label: 'Project', defaultWidth: 120, minWidth: 90 },
+  { key: 'assignment', label: 'Planned Team Assignment', defaultWidth: 160, minWidth: 130 },
+  { key: 'complete', label: 'Complete', defaultWidth: 88, minWidth: 74, align: 'right' },
+  { key: 'rollup', label: 'Rollup', defaultWidth: 82, minWidth: 70, align: 'right' },
+  { key: 'estimated', label: 'Estimated', defaultWidth: 96, minWidth: 84, align: 'right' },
   // Rally's per-item menu lives here — "Remove Only" takes a Feature off the plan. This is the ONLY
   // place a Feature leaves a plan: the team sub-table has no trash, because removing a Feature is a
   // decision about the plan, not about one team's slice of it.
