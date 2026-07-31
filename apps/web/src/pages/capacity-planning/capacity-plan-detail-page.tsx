@@ -481,6 +481,24 @@ export function CapacityPlanDetailPage() {
             </ActionMenu>
           ) : undefined
         }
+        /* Rally's summary ROW, above the tabs: what the plan is planning on the left, how it
+           measures up on the right. The measurements are a bordered panel rather than KPI cards,
+           because the four figures are one reading of the plan and each needs the swatch of the
+           bar segment it names. */
+        summary={
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border-inner px-4 py-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-ui-xs text-muted-foreground">{t('summary.itemType')}</span>
+              {/* A plan of Features and a plan of Epics look identical otherwise. Ours only plans
+                  Features today, so this states a fact rather than offering a choice. */}
+              <span className="rounded-full border border-border-subtle bg-surface-subtle px-2 py-px text-ui-xs font-semibold text-foreground">
+                {t('items.featureType')}
+              </span>
+              <PlanAssignmentCounts plan={plan} />
+            </div>
+            <PlanSummaryMetrics plan={plan} unitLabel={unitLabel} />
+          </div>
+        }
         activeTab={tab}
         onTabChange={setTab}
       >
@@ -491,23 +509,6 @@ export function CapacityPlanDetailPage() {
             grid itself (per-team capacity, which the panel was repeating). */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-card">
           <div className="flex min-h-0 flex-1 flex-col">
-            {/* Rally's summary ROW: what the plan is planning on the left, how it measures up on
-                the right. The measurements are a bordered panel rather than KPI cards, because the
-                four figures are one reading of the plan and each needs the swatch of the bar
-                segment it names. */}
-            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border-inner px-4 py-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-ui-xs text-muted-foreground">{t('summary.itemType')}</span>
-                {/* A plan of Features and a plan of Epics look identical otherwise. Ours only plans
-                    Features today, so this states a fact rather than offering a choice. */}
-                <span className="rounded-full border border-border-subtle bg-surface-subtle px-2 py-px text-ui-xs font-semibold text-foreground">
-                  {t('items.featureType')}
-                </span>
-                <PlanAssignmentCounts plan={plan} />
-              </div>
-              <PlanSummaryMetrics plan={plan} unitLabel={unitLabel} />
-            </div>
-
             {/* No toolbar row: Rally's plan page has none. Every verb is in the header's `⋮`
                 Actions menu, and the grid starts directly under the summary. */}
             {tab === 'items' ? (
