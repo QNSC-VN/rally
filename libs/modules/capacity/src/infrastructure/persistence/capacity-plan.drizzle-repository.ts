@@ -197,6 +197,29 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
           ), 0)
           from ${workItems} where ${childScope}
         )`,
+        rank: portfolioItems.rank,
+        // The Feature's OWN totals, across every team — the same child filter WITHOUT the team
+        // narrowing. Rally's Items tab reports a Feature's rollup once, not once per team, and
+        // summing the per-team numbers would miss children whose team is not on the plan (or is
+        // not set at all) while double-counting nothing back.
+        itemRollup: sql<string>`(
+          select coalesce(sum(${workItems.storyPoints}), 0)
+          from ${workItems}
+          where ${workItems.projectId} = ${plan.projectId}
+            and ${workItems.releaseId} = ${plan.releaseId}
+            and ${workItems.deletedAt} is null
+            and ${workItems.featureId} = ${capacityPlanAllocations.portfolioItemId}
+        )`,
+        itemComplete: sql<string>`(
+          select coalesce(sum(${workItems.storyPoints}) filter (
+            where ${workItems.scheduleState} in (${completedScheduleStatesSql()})
+          ), 0)
+          from ${workItems}
+          where ${workItems.projectId} = ${plan.projectId}
+            and ${workItems.releaseId} = ${plan.releaseId}
+            and ${workItems.deletedAt} is null
+            and ${workItems.featureId} = ${capacityPlanAllocations.portfolioItemId}
+        )`,
         // SUM over TEAM-ASSIGNED rows only: an Unallocated placeholder must not outrank a
         // Refined or Preliminary forecast in `resolveEstimate`.
         totalAllocated: sql<string>`(
@@ -229,6 +252,9 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
       refined: row.refinedEstimate === null ? null : Number(row.refinedEstimate),
       preliminarySize: row.preliminaryEstimate,
       totalAllocated: Number(row.totalAllocated),
+      rank: row.rank,
+      itemRollup: Number(row.itemRollup),
+      itemComplete: Number(row.itemComplete),
       rollup: Number(row.rollup),
       complete: Number(row.complete),
     }));

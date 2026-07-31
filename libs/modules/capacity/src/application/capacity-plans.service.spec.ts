@@ -321,6 +321,9 @@ describe('CapacityPlansService', () => {
         totalAllocated: 30,
         rollup: 0,
         complete: 0,
+        rank: 'm',
+        itemRollup: 0,
+        itemComplete: 0,
         ...over,
       });
 
@@ -396,9 +399,12 @@ describe('CapacityPlansService', () => {
     });
   });
 
-  describe("the cutline — Rally's fits/does-not-fit line, per team", () => {
+  describe("the cutline — Rally's plan-wide fits/does-not-fit line", () => {
+    // Rally: "Items above the cutline fit within the defined plan capacity." PLAN capacity, on
+    // the item list, in rank order. An earlier version drew it per TEAM, which answered a
+    // different question (what one team drops) than Rally's line does (what this plan drops).
     const row = (over: Partial<CapacityAllocationRow>): CapacityAllocationRow => ({
-      id: `alloc-${over.portfolioItemId ?? 'x'}`,
+      id: `alloc-${over.portfolioItemId ?? 'x'}-${over.teamId ?? 'none'}`,
       planId: 'plan-1',
       portfolioItemId: 'fe-1',
       teamId: 'team-1',
@@ -412,6 +418,9 @@ describe('CapacityPlansService', () => {
       totalAllocated: 10,
       rollup: 0,
       complete: 0,
+      rank: 'm',
+      itemRollup: 0,
+      itemComplete: 0,
       ...over,
     });
 
@@ -425,72 +434,84 @@ describe('CapacityPlansService', () => {
       teamName: teamId,
     });
 
-    it('marks the last Feature that fits, in the order the repository returned', async () => {
-      // 20 + 15 = 35 fits in 40; the third takes it to 45.
-      repo.findViewById.mockResolvedValue(view({ teams: [planTeam('team-1', '40')] }));
-      repo.listAllocations.mockResolvedValue([
-        row({ portfolioItemId: 'fe-1', value: '20' }),
-        row({ portfolioItemId: 'fe-2', value: '15' }),
-        row({ portfolioItemId: 'fe-3', value: '10' }),
-      ]);
-
-      const detail = await service.getPlanDetail(actor, 'plan-1');
-      expect(detail.teams[0].cutlineIndex).toBe(1);
-    });
-
-    it('answers -1 when the FIRST Feature already exceeds capacity', async () => {
-      // A real answer, not an error: everything this team holds is below the line.
-      repo.findViewById.mockResolvedValue(view({ teams: [planTeam('team-1', '5')] }));
-      repo.listAllocations.mockResolvedValue([row({ value: '20' })]);
-
-      expect((await service.getPlanDetail(actor, 'plan-1')).teams[0].cutlineIndex).toBe(-1);
-    });
-
-    it('draws NO line when the team has no capacity entered', async () => {
-      // Nothing to divide against. Zero would claim everything is below the line.
-      repo.findViewById.mockResolvedValue(view({ teams: [planTeam('team-1', null)] }));
-      repo.listAllocations.mockResolvedValue([row({ value: '20' })]);
-
-      expect((await service.getPlanDetail(actor, 'plan-1')).teams[0].cutlineIndex).toBeNull();
-    });
-
-    it('counts only its OWN team, so one team cannot push another below the line', async () => {
-      // The reason the line is per team: team-2's 100 points are irrelevant to team-1's 40.
+    it('accumulates ITEMS in rank order against the TOTAL capacity', async () => {
+      // 20 + 15 = 35 fits in 40 (10 + 30); the third takes it to 45.
       repo.findViewById.mockResolvedValue(
-        view({ teams: [planTeam('team-1', '40'), planTeam('team-2', '10')] }),
+        view({ teams: [planTeam('team-1', '10'), planTeam('team-2', '30')] }),
       );
       repo.listAllocations.mockResolvedValue([
-        row({ portfolioItemId: 'fe-1', teamId: 'team-1', value: '30' }),
-        row({ portfolioItemId: 'fe-2', teamId: 'team-2', value: '100' }),
+        row({ portfolioItemId: 'fe-1', value: '20', rank: 'a' }),
+        row({ portfolioItemId: 'fe-2', value: '15', rank: 'b' }),
+        row({ portfolioItemId: 'fe-3', value: '10', rank: 'c' }),
       ]);
 
       const detail = await service.getPlanDetail(actor, 'plan-1');
-      // team-1's single Feature fits its own capacity...
-      expect(detail.teams[0].cutlineIndex).toBe(0);
-      // ...while team-2's does not fit its own.
-      expect(detail.teams[1].cutlineIndex).toBe(-1);
+      expect(detail.items.map((i) => i.itemKey)).toEqual(['FE-1', 'FE-1', 'FE-1']);
+      expect(detail.itemCutlineIndex).toBe(1);
     });
 
-    it('ignores the Unallocated bucket entirely', async () => {
-      // An unallocated row has no team, so it belongs to no team's line.
-      repo.findViewById.mockResolvedValue(view({ teams: [planTeam('team-1', '40')] }));
+    it('counts a shared Feature ONCE, summing its allocations', async () => {
+      // Rally lists the item once and nests the allocations; the line must accumulate the
+      // Feature's total, not each allocation separately.
+      repo.findViewById.mockResolvedValue(view({ teams: [planTeam('team-1', '25')] }));
       repo.listAllocations.mockResolvedValue([
-        row({ portfolioItemId: 'fe-1', teamId: null, value: '999' }),
-        row({ portfolioItemId: 'fe-2', teamId: 'team-1', value: '10' }),
+        row({ portfolioItemId: 'fe-1', teamId: 'team-1', value: '10', rank: 'a' }),
+        row({ portfolioItemId: 'fe-1', teamId: 'team-2', value: '10', rank: 'a' }),
+        row({ portfolioItemId: 'fe-2', teamId: 'team-1', value: '10', rank: 'b' }),
       ]);
 
-      expect((await service.getPlanDetail(actor, 'plan-1')).teams[0].cutlineIndex).toBe(0);
+      const detail = await service.getPlanDetail(actor, 'plan-1');
+      expect(detail.items).toHaveLength(2);
+      // 20 committed for the shared Feature, then 10 more takes it past 25.
+      expect(detail.items[0].estimated).toBe(20);
+      expect(detail.items[0].teamIds).toEqual(['team-1', 'team-2']);
+      expect(detail.itemCutlineIndex).toBe(0);
     });
 
-    it('puts every Feature above the line when the whole team fits', async () => {
+    it('orders items strictly by RANK, even though unallocated rows come back last', async () => {
       repo.findViewById.mockResolvedValue(view({ teams: [planTeam('team-1', '100')] }));
       repo.listAllocations.mockResolvedValue([
-        row({ portfolioItemId: 'fe-1', value: '10' }),
-        row({ portfolioItemId: 'fe-2', value: '10' }),
+        row({ portfolioItemId: 'fe-2', teamId: 'team-1', value: '5', rank: 'b' }),
+        row({ portfolioItemId: 'fe-1', teamId: null, value: '5', rank: 'a' }),
       ]);
 
-      // Index of the LAST row: there is nothing below the line to draw it above.
-      expect((await service.getPlanDetail(actor, 'plan-1')).teams[0].cutlineIndex).toBe(1);
+      const detail = await service.getPlanDetail(actor, 'plan-1');
+      expect(detail.items.map((i) => i.rank)).toEqual(['a', 'b']);
+      expect(detail.items[0].unallocated).toBe(true);
+    });
+
+    it('answers -1 when the FIRST item already exceeds the plan', async () => {
+      repo.findViewById.mockResolvedValue(view({ teams: [planTeam('team-1', '5')] }));
+      repo.listAllocations.mockResolvedValue([row({ value: '20' })]);
+      expect((await service.getPlanDetail(actor, 'plan-1')).itemCutlineIndex).toBe(-1);
+    });
+
+    it('draws NO line when no team has entered a capacity', async () => {
+      // Nothing to divide against. A line at the top would claim nothing fits, when the truth
+      // is that nobody has said.
+      repo.findViewById.mockResolvedValue(view({ teams: [planTeam('team-1', null)] }));
+      repo.listAllocations.mockResolvedValue([row({ value: '20' })]);
+      expect((await service.getPlanDetail(actor, 'plan-1')).itemCutlineIndex).toBeNull();
+    });
+
+    it('takes the ALLOCATED tier when any allocation carries one', async () => {
+      repo.findViewById.mockResolvedValue(view({ teams: [planTeam('team-1', '100')] }));
+      repo.listAllocations.mockResolvedValue([
+        row({ portfolioItemId: 'fe-1', teamId: null, value: '0', totalAllocated: 0, rank: 'a' }),
+        row({ portfolioItemId: 'fe-1', teamId: 'team-1', value: '10', rank: 'a' }),
+      ]);
+      expect((await service.getPlanDetail(actor, 'plan-1')).items[0].tier).toBe('allocated');
+    });
+
+    it("reports the Feature's OWN rollup, not the per-team slice", async () => {
+      // `itemRollup` comes from the same child filter WITHOUT the team narrowing: summing the
+      // per-team numbers would miss children whose team is not on the plan.
+      repo.findViewById.mockResolvedValue(view({ teams: [planTeam('team-1', '100')] }));
+      repo.listAllocations.mockResolvedValue([
+        row({ rollup: 3, itemRollup: 12, complete: 1, itemComplete: 4 }),
+      ]);
+      const item = (await service.getPlanDetail(actor, 'plan-1')).items[0];
+      expect(item).toMatchObject({ rollup: 12, complete: 4 });
     });
   });
 
@@ -510,6 +531,9 @@ describe('CapacityPlansService', () => {
       totalAllocated: 30,
       rollup: 0,
       complete: 0,
+      rank: 'm',
+      itemRollup: 0,
+      itemComplete: 0,
       ...over,
     });
 

@@ -1,5 +1,9 @@
 import { type ColumnSpec } from '@/shared/ui/table'
-import { type CapacityPlan, type CapacityPlanTeam } from '@/features/capacity-planning/api'
+import {
+  type CapacityPlan,
+  type CapacityPlanItem,
+  type CapacityPlanTeam,
+} from '@/features/capacity-planning/api'
 
 export type PlanColKey = 'name' | 'release' | 'unit' | 'status' | 'targetLoad' | 'capacity'
 
@@ -26,7 +30,7 @@ export const CAPACITY_PLAN_COLUMNS: ColumnSpec<CapacityPlan, unknown, PlanColKey
   { key: 'capacity', label: 'Capacity', defaultWidth: 110, minWidth: 90, align: 'right' },
 ]
 
-export type TeamColKey = 'team' | 'progress' | 'capacity' | 'actions'
+export type TeamColKey = 'team' | 'features' | 'progress' | 'capacity' | 'actions'
 
 /**
  * The team grid inside one plan.
@@ -48,7 +52,31 @@ export const CAPACITY_TEAM_COLUMNS: ColumnSpec<CapacityPlanTeam, unknown, TeamCo
     locked: true,
     grow: true,
   },
+  // Its own column, with a header, rather than a bare digit beside the team name: a loose
+  // number there reads as "1 what?" — and Rally gives the count a column too.
+  { key: 'features', label: 'Features', defaultWidth: 90, minWidth: 70, align: 'right' },
   { key: 'progress', label: 'Complete / Rollup / Estimated', defaultWidth: 220, minWidth: 140 },
   { key: 'capacity', label: 'Capacity', defaultWidth: 130, minWidth: 100, align: 'right' },
   { key: 'actions', label: '', defaultWidth: 60, minWidth: 60, align: 'center' },
+]
+
+export type ItemColKey = 'rank' | 'id' | 'name' | 'assignment' | 'progress' | 'estimated'
+
+/**
+ * Rally's Items tab: one row per Feature, ranked.
+ *
+ * `rank` leads because the cutline only means anything in rank order — Rally shows the line
+ * only when items are sorted by rank ascending, so the column that establishes that order is
+ * the first thing the reader sees.
+ *
+ * `assignment` is Rally's "Planned Project Assignment": the team(s) this Feature is planned
+ * against inside this plan, which is not the same as the Feature's own team.
+ */
+export const CAPACITY_ITEM_COLUMNS: ColumnSpec<CapacityPlanItem, unknown, ItemColKey>[] = [
+  { key: 'rank', label: 'Rank', defaultWidth: 70, minWidth: 60, align: 'right' },
+  { key: 'id', label: 'ID', defaultWidth: 110, minWidth: 90, locked: true },
+  { key: 'name', label: 'Name', defaultWidth: 300, minWidth: 160, locked: true, grow: true },
+  { key: 'assignment', label: 'Planned Team Assignment', defaultWidth: 200, minWidth: 140 },
+  { key: 'progress', label: 'Complete / Rollup / Estimated', defaultWidth: 220, minWidth: 140 },
+  { key: 'estimated', label: 'Estimated', defaultWidth: 130, minWidth: 100, align: 'right' },
 ]
