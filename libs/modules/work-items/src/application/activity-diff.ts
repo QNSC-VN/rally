@@ -37,10 +37,26 @@ const TASK_ACTIONS: Record<string, string> = {
 // Order preserved from the original diff. flowState is a work-item-only dimension
 // (a task has a single state, already logged via scheduleState).
 const ITEM_FIELDS = [
-  'title', 'description', 'notes', 'releaseNotes', 'acceptanceCriteria',
-  'isBlocked', 'blockedReason', 'teamId', 'iterationId', 'releaseId', 'statusId',
-  'scheduleState', 'flowState', 'priority', 'assigneeId', 'storyPoints',
-  'estimateHours', 'todoHours', 'actualHours',
+  'title',
+  'description',
+  'notes',
+  'releaseNotes',
+  'acceptanceCriteria',
+  'isBlocked',
+  'blockedReason',
+  'teamId',
+  'iterationId',
+  'releaseId',
+  'featureId',
+  'statusId',
+  'scheduleState',
+  'flowState',
+  'priority',
+  'assigneeId',
+  'storyPoints',
+  'estimateHours',
+  'todoHours',
+  'actualHours',
 ];
 const TASK_FIELDS = ITEM_FIELDS.filter((f) => f !== 'flowState');
 

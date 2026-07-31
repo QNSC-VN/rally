@@ -671,6 +671,10 @@ export class WorkItemsService {
     // (assignee/reporter/dev-owner) and a defect's foundInRelease are validated
     // here too — only the ones actually changing, so unchanged members aren't
     // re-queried.
+    if (input.featureId) {
+      await this.assertFeatureLinkable(actor.workspaceId, item.type, input.featureId);
+    }
+
     const effectiveTeamId = input.teamId !== undefined ? input.teamId : item.teamId;
     const changedMemberIds: Array<string | null | undefined> = [];
     if (input.assigneeId && input.assigneeId !== item.assigneeId) {
@@ -1413,6 +1417,51 @@ export class WorkItemsService {
   }
 
   /** A release is assignable when it exists in the same workspace and project. */
+  /**
+   * A Story/Defect may link to exactly one active FEATURE.
+   *
+   * Three refusals, each for a different reason:
+   *   • a TASK carries no portfolio link — its Work Product does, and letting a Task hold one
+   *     would double-count it in every rollup that walks `feature_id`;
+   *   • an EPIC is not a link target. Rally attaches the story hierarchy to the LOWEST portfolio
+   *     level only, and our rollup counts an Epic's children through its Features — a story
+   *     pointed straight at an Epic would be counted by the Epic and by nothing else;
+   *   • an ARCHIVED Feature is hidden from every portfolio surface, so work linked to it would
+   *     roll up into a row nobody can see.
+   *
+   * The Feature does NOT have to be in the same project. Rally lets a team project's Story roll up
+   * to a portfolio project's Feature, and `rollupSubqueries` matches on `feature_id` alone; the
+   * project+release filter is Rally's CAPACITY rule, not its portfolio rule.
+   */
+  private async assertFeatureLinkable(
+    workspaceId: string,
+    itemType: WorkItemType,
+    featureId: string,
+  ): Promise<void> {
+    if (itemType === 'task') {
+      throw new PreconditionFailedException(
+        'WORK_ITEM_FEATURE_LINK_NOT_ALLOWED',
+        'A task inherits its Feature from its work product',
+      );
+    }
+    const target = await this.workItemRepo.findPortfolioItemLinkTarget(featureId, workspaceId);
+    if (!target) {
+      throw new NotFoundException('PORTFOLIO_ITEM_NOT_FOUND', 'Portfolio item not found');
+    }
+    if (target.type !== 'feature') {
+      throw new PreconditionFailedException(
+        'WORK_ITEM_FEATURE_LINK_NOT_FEATURE',
+        'Work items link to a Feature; an Epic rolls up through its Features',
+      );
+    }
+    if (target.archived) {
+      throw new PreconditionFailedException(
+        'WORK_ITEM_FEATURE_LINK_ARCHIVED',
+        'That Feature is archived',
+      );
+    }
+  }
+
   private async assertReleaseAssignable(
     workspaceId: string,
     projectId: string,

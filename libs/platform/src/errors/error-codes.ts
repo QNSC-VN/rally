@@ -132,6 +132,13 @@ export const ErrorCodes = {
    */
   CAPACITY_PRIMARY_NEEDS_TEAM: 'CAPACITY_PRIMARY_NEEDS_TEAM',
 
+  /** A task inherits its Feature from its work product. */
+  WORK_ITEM_FEATURE_LINK_NOT_ALLOWED: 'WORK_ITEM_FEATURE_LINK_NOT_ALLOWED',
+  /** Rally attaches the story hierarchy to the LOWEST portfolio level — a Feature, not an Epic. */
+  WORK_ITEM_FEATURE_LINK_NOT_FEATURE: 'WORK_ITEM_FEATURE_LINK_NOT_FEATURE',
+  /** An archived Feature is invisible on every portfolio surface, so nothing may roll into it. */
+  WORK_ITEM_FEATURE_LINK_ARCHIVED: 'WORK_ITEM_FEATURE_LINK_ARCHIVED',
+
   // Workflow
   WORKFLOW_STATUS_NOT_FOUND: 'WORKFLOW_STATUS_NOT_FOUND',
   WORKFLOW_TRANSITION_NOT_ALLOWED: 'WORKFLOW_TRANSITION_NOT_ALLOWED',

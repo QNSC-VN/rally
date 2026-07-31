@@ -26,6 +26,17 @@ export interface IWorkItemRepository {
   /** Project/team scope of an iteration (any workspace guard is applied by caller). */
   findIterationScope(iterationId: string, workspaceId: string): Promise<IterationScope | null>;
   /** Project id owning a release, or null if not found for this workspace. */
+  /**
+   * A portfolio item's type + archived state, for validating a Story's Feature link.
+   *
+   * Not scoped by project on purpose: Rally lets a Story roll up to a Feature in another project,
+   * and the portfolio rollup matches on `feature_id` alone.
+   */
+  findPortfolioItemLinkTarget(
+    portfolioItemId: string,
+    workspaceId: string,
+  ): Promise<{ type: string; archived: boolean } | null>;
+
   findReleaseProject(releaseId: string, workspaceId: string): Promise<string | null>;
   /** Bulk-assign iteration (null unassigns) to the given ids. All-or-nothing via caller UoW. */
   assignIteration(

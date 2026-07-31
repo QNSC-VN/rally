@@ -3,6 +3,7 @@ import { and, eq, isNull, or, ilike, inArray, sql, asc, desc, type AnyColumn } f
 import { InjectDrizzle, buildPageResult, keysetCondition } from '@platform';
 import type { DrizzleDB, DbExecutor, CursorPayload, PagedResult } from '@platform';
 import {
+  portfolioItems,
   workItems,
   workItemLabels,
   labels,
@@ -162,6 +163,8 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       projectId: t.projectId,
       itemKey: t.itemKey,
       type: 'task',
+      // A Task has no portfolio link of its own: its Work Product carries it.
+      featureId: null,
       title: t.title,
       description: t.description,
       statusId: '',
@@ -263,6 +266,28 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       .where(and(eq(releases.id, releaseId), eq(releases.workspaceId, workspaceId)))
       .limit(1);
     return rows[0]?.projectId ?? null;
+  }
+
+  /**
+   * A portfolio item's type and archived state, for validating a Story's Feature link.
+   *
+   * Deliberately NOT the project: Rally lets a Story in a team project roll up to a Feature in a
+   * portfolio project, and the portfolio rollup matches on `feature_id` alone. Requiring the same
+   * project here would forbid links the rollup would happily count.
+   */
+  async findPortfolioItemLinkTarget(
+    portfolioItemId: string,
+    workspaceId: string,
+  ): Promise<{ type: string; archived: boolean } | null> {
+    const rows = await this.db
+      .select({ type: portfolioItems.type, archivedAt: portfolioItems.archivedAt })
+      .from(portfolioItems)
+      .where(
+        and(eq(portfolioItems.id, portfolioItemId), eq(portfolioItems.workspaceId, workspaceId)),
+      )
+      .limit(1);
+    const row = rows[0];
+    return row ? { type: row.type, archived: row.archivedAt !== null } : null;
   }
 
   async assignIteration(
@@ -746,6 +771,8 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         projectId: t.projectId,
         itemKey: t.itemKey,
         type: 'task',
+        // A Task has no portfolio link of its own: its Work Product carries it.
+        featureId: null,
         title: t.title,
         description: t.description,
         statusId: '',
@@ -919,6 +946,8 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         ...(input.releaseNotes !== undefined && { releaseNotes: input.releaseNotes }),
         ...(input.isBlocked !== undefined && { isBlocked: input.isBlocked }),
         ...(input.blockedReason !== undefined && { blockedReason: input.blockedReason }),
+        // `undefined` leaves the link alone; `null` unlinks the Story from its Feature.
+        ...(input.featureId !== undefined && { featureId: input.featureId }),
         ...(input.rank !== undefined && { rank: input.rank }),
         ...(input.customFields !== undefined && { customFields: input.customFields }),
         ...(input.updatedBy !== undefined && { updatedBy: input.updatedBy }),

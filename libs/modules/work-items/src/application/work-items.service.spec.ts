@@ -36,6 +36,7 @@ const mockWorkItem = (o: Partial<WorkItem> = {}): WorkItem => ({
   teamId: null,
   iterationId: null,
   releaseId: null,
+  featureId: null,
   storyPoints: null,
   estimateHours: null,
   todoHours: null,
@@ -99,6 +100,7 @@ const makeWorkItemRepo = () => ({
   findByIds: vi.fn().mockResolvedValue([]),
   findIterationScope: vi.fn().mockResolvedValue(null),
   findReleaseProject: vi.fn().mockResolvedValue(null),
+  findPortfolioItemLinkTarget: vi.fn().mockResolvedValue({ type: 'feature', archived: false }),
   assignIteration: vi.fn().mockResolvedValue(undefined),
   assignRelease: vi.fn().mockResolvedValue(undefined),
   listByProject: vi.fn(),
@@ -608,6 +610,86 @@ describe('WorkItemsService', () => {
 
       const result = await service.updateWorkItem(mockActor, 'wi-1', { title: 'Updated' });
       expect(result.title).toBe('Updated');
+    });
+
+    describe('linking a Story to a Feature', () => {
+      // `feature_id` is what every portfolio rollup and capacity metric aggregates by, and until
+      // now only the demo seed could set it — the field was readable and writable nowhere.
+      beforeEach(() => {
+        workItemRepo.findById.mockResolvedValue(mockWorkItem());
+        workItemRepo.update.mockResolvedValue(mockWorkItem({ featureId: 'fe-1' }));
+        workItemRepo.findPortfolioItemLinkTarget.mockResolvedValue({
+          type: 'feature',
+          archived: false,
+        });
+      });
+
+      it('links a Story to an active Feature', async () => {
+        const result = await service.updateWorkItem(mockActor, 'wi-1', { featureId: 'fe-1' });
+        expect(result.featureId).toBe('fe-1');
+        expect(workItemRepo.update).toHaveBeenCalledWith(
+          'wi-1',
+          expect.objectContaining({ featureId: 'fe-1' }),
+          expect.anything(),
+          expect.anything(),
+        );
+      });
+
+      it('unlinks on null WITHOUT looking anything up', async () => {
+        // There is nothing to validate about the absence of a link.
+        await service.updateWorkItem(mockActor, 'wi-1', { featureId: null });
+        expect(workItemRepo.findPortfolioItemLinkTarget).not.toHaveBeenCalled();
+      });
+
+      it('refuses an EPIC', async () => {
+        // Rally attaches the story hierarchy to the LOWEST portfolio level. Our rollup counts an
+        // Epic's children through its Features, so a story pointed straight at an Epic would be
+        // counted by the Epic and by nothing else.
+        workItemRepo.findPortfolioItemLinkTarget.mockResolvedValue({
+          type: 'epic',
+          archived: false,
+        });
+        await expect(
+          service.updateWorkItem(mockActor, 'wi-1', { featureId: 'ep-1' }),
+        ).rejects.toMatchObject({ code: 'WORK_ITEM_FEATURE_LINK_NOT_FEATURE' });
+      });
+
+      it('refuses an ARCHIVED Feature', async () => {
+        // Archived Features are hidden from every portfolio surface, so work linked to one would
+        // roll up into a row nobody can see.
+        workItemRepo.findPortfolioItemLinkTarget.mockResolvedValue({
+          type: 'feature',
+          archived: true,
+        });
+        await expect(
+          service.updateWorkItem(mockActor, 'wi-1', { featureId: 'fe-1' }),
+        ).rejects.toMatchObject({ code: 'WORK_ITEM_FEATURE_LINK_ARCHIVED' });
+      });
+
+      it('refuses a TASK, which inherits the link from its work product', async () => {
+        workItemRepo.findById.mockResolvedValue(mockWorkItem({ type: 'task' }));
+        await expect(
+          service.updateWorkItem(mockActor, 'wi-1', { featureId: 'fe-1' }),
+        ).rejects.toMatchObject({ code: 'WORK_ITEM_FEATURE_LINK_NOT_ALLOWED' });
+        // Refused before the lookup: the item type alone decides it.
+        expect(workItemRepo.findPortfolioItemLinkTarget).not.toHaveBeenCalled();
+      });
+
+      it('404s a Feature that does not exist', async () => {
+        workItemRepo.findPortfolioItemLinkTarget.mockResolvedValue(null);
+        await expect(
+          service.updateWorkItem(mockActor, 'wi-1', { featureId: 'nope' }),
+        ).rejects.toMatchObject({ code: 'PORTFOLIO_ITEM_NOT_FOUND' });
+      });
+
+      it('does NOT require the Feature to be in the same project', async () => {
+        // Rally lets a team project's Story roll up to a portfolio project's Feature, and the
+        // portfolio rollup matches on `feature_id` alone — the project+release filter is Rally's
+        // CAPACITY rule, not its portfolio rule.
+        await expect(
+          service.updateWorkItem(mockActor, 'wi-1', { featureId: 'fe-elsewhere' }),
+        ).resolves.toBeDefined();
+      });
     });
 
     describe('unblocking clears the Blocked Reason', () => {

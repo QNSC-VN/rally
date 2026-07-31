@@ -191,23 +191,50 @@ test.describe('Portfolio', () => {
   })
 
   test('drag reorders rows, and the grip disappears under a column sort', async ({ page }) => {
+    /**
+     * Creates its OWN pair and narrows to them by search.
+     *
+     * The previous version dragged whichever two rows happened to sort first in a cross-project
+     * grid of hundreds, then compared whole-row innerText after a reload. Both halves were
+     * fragile: another spec inserting a row shifted the positions, and the row text contains
+     * rollup numbers that move whenever any linked Story changes — so the assertion failed while
+     * the drag had worked. It failed more often on baseline than on a branch, which is the
+     * signature of shared state rather than a bug.
+     *
+     * Searching does NOT disable the grip (only a column SORT does, which the last assertion
+     * covers), and a rank derived between two filtered neighbours still flips their relative
+     * order — which is the whole claim.
+     */
+    const tag = `DRAG-${Date.now()}`
     await login(page)
     await page.goto('/portfolio', { waitUntil: 'domcontentloaded' })
-    await expect(page.getByText('FE-1', { exact: true })).toBeVisible()
 
-    // Whatever the first two rows are — no assumption about which Features happen to
-    // sort first, so this holds on a fresh CI seed and a populated dev database alike.
-    // Rows carry dnd-kit's `aria-roledescription="sortable"`. `div.group` would also
-    // match the column-header cells, which share that class.
+    for (const suffix of ['A', 'B']) {
+      await page.getByRole('button', { name: /Add New/i }).click()
+      const dialog = page.getByRole('dialog', { name: 'New Feature' })
+      await dialog.getByRole('textbox', { name: 'Name' }).fill(`${tag} ${suffix}`)
+      await dialog.getByRole('button', { name: 'Create', exact: true }).click()
+      await expect(dialog).toBeHidden()
+    }
+
+    const search = page.getByRole('searchbox', { name: /Search portfolio/i })
+    await search.fill(tag)
+
     const rows = page.locator('[aria-roledescription="sortable"]')
-    const nameOf = async (i: number) => (await rows.nth(i).innerText()).trim()
-    const before = [await nameOf(0), await nameOf(1)]
+    await expect(rows).toHaveCount(2)
+    /** The ID cell only — row text also carries rollup numbers that move on their own. */
+    const keyOf = async (i: number) => {
+      const text = (await rows.nth(i).innerText()).trim()
+      return text.split('\n')[0]
+    }
+    const before = [await keyOf(0), await keyOf(1)]
+    expect(before[0]).not.toBe(before[1])
 
     const grips = page.getByLabel('Drag to reorder')
     await expect(grips.first()).toBeVisible()
 
-    // Real pointer drag: dnd-kit's PointerSensor has a 4px activation distance, so the
-    // move has to be stepped rather than a single jump.
+    // Real pointer drag: dnd-kit's PointerSensor has a 4px activation distance, so the move has
+    // to be stepped rather than a single jump.
     const from = await grips.nth(1).boundingBox()
     const to = await grips.nth(0).boundingBox()
     if (!from || !to) throw new Error('drag handles not measurable')
@@ -216,17 +243,36 @@ test.describe('Portfolio', () => {
     await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2 - 8, { steps: 12 })
     await page.mouse.up()
 
-    // The second row is now first. Asserted after a RELOAD so this proves the new rank
-    // was persisted, not just optimistically reordered in local state.
-    await expect(rows.first()).toContainText(before[1].split('\n')[0])
-    await page.reload({ waitUntil: 'domcontentloaded' })
-    await expect(page.getByText('FE-1', { exact: true })).toBeVisible()
-    expect(await nameOf(0)).toBe(before[1])
+    await expect(async () => expect(await keyOf(0)).toBe(before[1])).toPass({ timeout: 5000 })
 
-    // Sorting by a column removes the grip entirely: rank only means anything in natural
-    // rank order, so a drag under a Name sort would derive a rank from neighbours whose
-    // order has nothing to do with rank.
+    // Asserted again after a RELOAD, so this proves the new rank was PERSISTED rather than
+    // reordered in local state only.
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await search.fill(tag)
+    await expect(rows).toHaveCount(2)
+    expect(await keyOf(0)).toBe(before[1])
+
+    // Sorting by a column removes the grip entirely: rank only means anything in natural rank
+    // order, so a drag under a Name sort would derive a rank from neighbours whose order has
+    // nothing to do with rank.
     await page.getByLabel('Name column', { exact: true }).click()
     await expect(page.getByLabel('Drag to reorder')).toHaveCount(0)
+
+    // Clean up both fixtures in ONE bulk action so the grid does not grow a pair per run.
+    // Restore natural rank order first — the checkbox column is unaffected, but leaving a sort on
+    // would hide the grip assertions above from the next reader.
+    await page.getByLabel('Name column', { exact: true }).click()
+    await search.fill(tag)
+    await expect(rows).toHaveCount(2)
+
+    for (const index of [0, 1]) {
+      await rows.nth(index).getByRole('checkbox').check()
+    }
+    await page.getByRole('button', { name: 'Archive', exact: true }).first().click()
+    await page.getByRole('dialog').getByRole('button', { name: 'Archive', exact: true }).click()
+
+    // Counted as ROWS, not as text: the success toast repeats the name, so a text count would
+    // wait for a toast to fade rather than for the archive to land.
+    await expect(rows).toHaveCount(0)
   })
 })

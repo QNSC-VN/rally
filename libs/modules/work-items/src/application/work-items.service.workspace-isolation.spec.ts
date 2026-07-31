@@ -46,6 +46,7 @@ const mockWorkItem = (o: Partial<WorkItem> = {}): WorkItem => ({
   teamId: null,
   iterationId: null,
   releaseId: null,
+  featureId: null,
   storyPoints: null,
   estimateHours: null,
   todoHours: null,
