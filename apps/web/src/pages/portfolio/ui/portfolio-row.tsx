@@ -9,44 +9,45 @@ import {
   type PortfolioItemState,
 } from '@/features/portfolio/api'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
-import { WorkItemRefCell } from '@/entities/work-item/ui/work-item-ref-cell'
-import { PortfolioItemType } from '@/entities/work-item/model/types'
 import { OwnerSelectCell, type OwnerSelectMember } from '@/shared/ui/owner-cell'
-import { TeamCell } from '@/shared/ui/team-cell'
 import { PercentDoneBar } from '@/features/portfolio/ui/percent-done-bar'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { RowGutter } from '@/shared/ui/row-gutter'
 import { RowExpandToggle } from '@/shared/ui/row-expand-toggle'
 import { BRAND } from '@/shared/config/brand'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
-import { notify } from '@/shared/lib/toast'
+import { useFieldCommit } from '@/shared/lib/hooks/use-field-commit'
 import { type ColKey } from '../model/columns'
 import { PORTFOLIO_STATES } from '../model/portfolio-states'
 import { hasChildren } from '../model/children'
 import { PortfolioChildRows } from './portfolio-child-rows'
-import { ReleaseCell } from './release-cell'
-
-/** Shared em-dash for a related entity this row does not have (Epic-only rows, no Release). */
-function EmptyCell() {
-  return <span className="text-ui-xs text-foreground-disabled">—</span>
-}
+import { ProjectSelectCell, ReleaseSelectCell, TeamSelectCell } from './attribute-cells'
+import { type PortfolioCellOptions, type ProjectOption } from '../model/cell-options'
 
 /**
  * One Portfolio grid row.
  *
- * Name, State and Owner edit in place; the remaining related-entity columns are
- * display-only here and edited on the detail page. `canEdit` is decided per ROW rather
- * than per page: this list is cross-project, so the answer differs between rows and a
- * page-level flag would either hide actions the user has elsewhere or offer ones they
- * do not.
+ * EVERY writable field edits in place, each through the shared cell for its attribute
+ * type: Name, State, Epic, Release, Team, Owner, Preliminary Estimate and Refined
+ * Estimate. `canEdit` is decided per ROW rather than per page: this list is
+ * cross-project, so the answer differs between rows and a page-level flag would either
+ * hide actions the user has elsewhere or offer ones they do not.
+ *
+ * What is NOT editable, and why — both are constraints, not omissions:
+ *   • **Project** — `PATCH /v1/portfolio-items/{id}` carries no `projectId`, and moving
+ *     an item would also have to clear its Epic, Release and Team, which all belong to
+ *     the old project. That is an operation, not a field edit; no endpoint offers it.
+ *   • **Percent Done ×2** — derived server-side from child rollups. There is nothing to
+ *     write; you change them by accepting child work.
+ *
+ * Epic, Release and Team read as empty on an Epic ROW and offer no picker: all three are
+ * Feature-only by CHECK constraint, so a write there is one the database refuses.
  *
  * Every attribute column renders through the SHARED cell for its attribute type rather
- * than a local `<span>` — `WorkItemRefCell` for the parent Epic (same component the
- * Backlog/Iteration Status Feature column uses), the Backlog's `SearchableSelect` cell
- * for the Release, `TeamCell` for the team chip, `OwnerSelectCell` for the person. A span
- * per column is how a grid drifts: the glyph, the truncation, the disabled-dash colour
- * and the link affordance all have to match the other 8 grids, and only the shared
- * component guarantees that.
+ * than a local `<span>` — the Backlog's `SearchableSelect` cell for the Release, the
+ * square chip for the Team, `OwnerSelectCell` for the person. A span per column is how a grid drifts: the glyph,
+ * the truncation, the disabled-dash colour and the link affordance all have to match the
+ * other 8 grids, and only the shared component guarantees that.
  *
  * The row owns its dnd-kit wiring (`useSortable`) and therefore renders its OWN
  * `RowGutter` from the scaffold's `gutterProps` — only the row holds the activator ref
@@ -58,6 +59,9 @@ export function PortfolioRow({
   canRank,
   members,
   canEditProject,
+  options,
+  optionsFor,
+  projects,
   revealed = false,
   colStyleFor,
   gutterProps,
@@ -75,6 +79,12 @@ export function PortfolioRow({
    * this cross-project grid, so the children need the lookup rather than the answer.
    */
   canEditProject: (projectId: string) => boolean
+  /** Epic/Release/Team options for THIS row's project. */
+  options: PortfolioCellOptions
+  /** Move destinations — workspace-wide, since a move targets a DIFFERENT project. */
+  projects: ProjectOption[]
+  /** The same lookup by project, for the disclosed child rows. */
+  optionsFor: (projectId: string) => PortfolioCellOptions
   /** Drag-to-rank enabled: requires edit rights AND natural rank order. */
   canRank: boolean
   colStyleFor: (key: ColKey, base?: CSSProperties) => CSSProperties
@@ -107,11 +117,11 @@ export function PortfolioRow({
     isDragging,
   } = useSortable({ id: item.id })
 
+  // Shared commit helper: fire the mutation with the standard success/error toasts.
+  const { save: commit } = useFieldCommit(update)
+
   function save(patch: Parameters<typeof update.mutate>[0]['patch'], success: string) {
-    update.mutate(
-      { id: item.id, patch },
-      { onSuccess: () => notify.success(success), onError: (err) => notify.error(err.message) },
-    )
+    commit({ id: item.id, patch }, success)
   }
 
   return (
@@ -206,33 +216,21 @@ export function PortfolioRow({
           />
         </div>
 
-        {/* Epic — the SAME work-item reference cell the Backlog/Iteration Status Feature
-          column uses, so an EP-/FE- reference looks identical wherever it appears: type
-          glyph, key, truncation, click-opens-the-target. Always empty for an Epic row. */}
-        <div
-          style={colStyleFor('parent', { flexShrink: 0 })}
-          className="flex min-w-0 items-center overflow-hidden px-2"
-        >
-          {item.parentId && item.parentKey ? (
-            <WorkItemRefCell
-              type={PortfolioItemType.Epic}
-              itemKey={item.parentKey}
-              onOpen={() => onOpen(item.parentId!)}
-            />
-          ) : (
-            <EmptyCell />
-          )}
-        </div>
-
-        {/* Release — the Backlog's release cell (glyph + name), see ReleaseCell. */}
+        {/* Release — the Backlog's release cell (glyph + `RE-1: name`). */}
         <div
           style={colStyleFor('release', { flexShrink: 0 })}
           className="flex min-w-0 items-center overflow-hidden px-0"
+          onClick={(e) => e.stopPropagation()}
         >
-          <ReleaseCell
+          <ReleaseSelectCell
             releaseId={item.releaseId}
             releaseName={item.releaseName}
+            releases={options.releases}
+            canEdit={canEdit && item.type !== 'epic'}
             ariaLabel={t('detail.fields.release')}
+            onChange={(v) => {
+              if (v !== item.releaseId) save({ releaseId: v }, t('row.releaseUpdated'))
+            }}
           />
         </div>
 
@@ -252,26 +250,40 @@ export function PortfolioRow({
           <PercentDoneBar metric="count" health={item.health} progress={progress} rollup={rollup} />
         </div>
 
-        {/* The estimate the progress columns divide by: refined if set, else the
-          workspace mapping of the preliminary T-shirt size. */}
+        {/* Project — a MOVE, not a field edit: the server resets Team and drops a Release
+          or Epic belonging to the old project. SRS §3.1 requires it editable. */}
         <div
-          style={colStyleFor('estimate', { flexShrink: 0 })}
-          className="min-w-0 px-2 text-right text-muted-foreground"
+          style={colStyleFor('project', { flexShrink: 0 })}
+          className="flex min-w-0 items-center overflow-hidden px-0"
+          onClick={(e) => e.stopPropagation()}
         >
-          {item.refinedEstimate ??
-            t(`sizes.${item.preliminaryEstimate}`, {
-              defaultValue: item.preliminaryEstimate,
-            })}
+          <ProjectSelectCell
+            projectId={item.projectId}
+            projectName={item.projectName}
+            projects={projects}
+            canEdit={canEdit}
+            ariaLabel={t('detail.fields.project')}
+            onChange={(v) => save({ projectId: v }, t('row.projectMoved'))}
+          />
         </div>
 
-        <div style={colStyleFor('project', { flexShrink: 0 })} className="min-w-0 px-2">
-          <span className="truncate text-muted-foreground">{item.projectName ?? '—'}</span>
-        </div>
-
-        {/* Team — square key-chip + name (circle = person, square = team). The DTO carries
-          no team KEY, so the chip falls back to the name's initials. */}
-        <div style={colStyleFor('team', { flexShrink: 0 })} className="min-w-0 px-2">
-          <TeamCell name={item.teamName} />
+        {/* Team — square key-chip + name (circle = person, square = team). Picker over the
+          teams LINKED to this project: an unlinked team is not a legal assignment. */}
+        <div
+          style={colStyleFor('team', { flexShrink: 0 })}
+          className="flex min-w-0 items-center overflow-hidden px-0"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <TeamSelectCell
+            teamId={item.teamId}
+            teamName={item.teamName}
+            teams={options.teams}
+            canEdit={canEdit && item.type !== 'epic'}
+            ariaLabel={t('detail.fields.team')}
+            onChange={(v) => {
+              if (v !== item.teamId) save({ teamId: v }, t('row.teamUpdated'))
+            }}
+          />
         </div>
 
         {/* Owner — the shared person cell: searchable member picker when the caller may
@@ -304,6 +316,8 @@ export function PortfolioRow({
           colStyleFor={colStyleFor}
           members={members}
           canEditProject={canEditProject}
+          optionsFor={optionsFor}
+          projects={projects}
         />
       )}
     </>

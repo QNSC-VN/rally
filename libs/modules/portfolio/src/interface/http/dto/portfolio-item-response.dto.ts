@@ -75,8 +75,12 @@ const PortfolioItemSchema = z.object({
   description: z.string().nullable(),
   state: z.enum(STATES),
   preliminaryEstimate: z.enum(SIZES),
-  refinedEstimate: z.number().nullable().describe('Top-down points forecast'),
-  refinedItemCountEstimate: z.number().nullable().describe('Top-down child-count forecast'),
+  refinedEstimate: z
+    .number()
+    .describe('Top-down points forecast. 0 means not forecast — see migration 0077.'),
+  refinedItemCountEstimate: z
+    .number()
+    .describe('Top-down child-count forecast. 0 means not forecast.'),
   parentId: z.string().uuid().nullable().describe('Feature → Epic. Always null for an Epic.'),
   parentKey: z.string().nullable(),
   teamId: z.string().uuid().nullable().describe('Feature only'),

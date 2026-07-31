@@ -10,7 +10,7 @@ import {
 import { AccessService } from '@modules/access';
 import { PORTFOLIO_HEALTH_THRESHOLDS, computeHealth, type HealthResult } from '@shared-kernel';
 import type { CursorPayload, JwtPayload, PagedResult } from '@platform';
-import { releases, teams } from '../../../../../db/schema/work';
+import { projectTeams, releases, teams } from '../../../../../db/schema/work';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { and, eq } from 'drizzle-orm';
@@ -235,13 +235,99 @@ export class PortfolioItemsService {
   ): Promise<PortfolioItemWithProgress> {
     const existing = await this.requireItem(actor, id);
     await this.access.assertProjectPermission(actor, existing.projectId, 'portfolio:edit');
+
+    // A project move is authorised in BOTH directions: taking work out of a project and
+    // putting work into one are each an edit of that project's portfolio, and a Project
+    // Admin may manage only their own (SRS §3.2). Checking only the source would let
+    // someone push items into a project they cannot otherwise touch.
+    const patch = { ...input };
+    if (patch.projectId !== undefined && patch.projectId !== existing.projectId) {
+      await this.access.assertProjectPermission(actor, patch.projectId, 'portfolio:edit');
+      await this.applyProjectMove(actor.workspaceId, existing, patch);
+    }
+
     // Validated against the EXISTING type: `type` is immutable, so an Epic can never
     // acquire a parent/team/release by editing.
-    this.assertShape(existing.type, input);
-    await this.assertReferences(actor.workspaceId, existing.projectId, input, id);
+    this.assertShape(existing.type, patch);
+    // References are checked against the DESTINATION project — that is the scope the row
+    // will live in once this write lands.
+    await this.assertReferences(
+      actor.workspaceId,
+      patch.projectId ?? existing.projectId,
+      patch,
+      id,
+    );
 
-    await this.repo.update(id, input, actor.workspaceId);
+    await this.repo.update(id, patch, actor.workspaceId);
     return this.getItem(actor, id);
+  }
+
+  /**
+   * Reconcile the references a project move invalidates, mutating `patch` in place.
+   *
+   * `project_id` is the scope for three other columns, none of which carries a foreign
+   * key, so moving the row without touching them would leave links pointing into the OLD
+   * project — a Release column showing another project's release, a Team that is not
+   * linked to the new project. `PHASE5_DEV_HANDOFF.md` is explicit: "Changing Project must
+   * clear an invalid cross-Project Epic/Feature relationship rather than preserve bad
+   * data", and cross-project Epic/Feature/Release assignment is rejected outright.
+   *
+   * The rules come from SRS §3.1 and the Feature Detail spec:
+   *   • **Team** — reset to a team linked to the NEW project, or cleared when it has
+   *     none. Not merely cleared: the spec says a Feature's Project change "resets Team to
+   *     a valid Team in the new Project".
+   *   • **Release** — cleared unless the caller supplied one, because releases are
+   *     per-project (`uq_releases_key` is on project).
+   *   • **Parent Epic** — cleared when the Epic lives in a different project. Note this is
+   *     narrower than it looks: Rally allows a parent and child to sit in different
+   *     projects, but THIS product rejects cross-project Epic/Feature links, so the link
+   *     cannot survive the move.
+   *
+   * An explicit value in the same request always wins — a caller moving a Feature and
+   * naming its new Team in one PATCH gets the Team they asked for, and `assertReferences`
+   * then proves it belongs to the destination.
+   *
+   * Deliberately does NOT touch child Features when an Epic moves: "Epic remains
+   * Project-level and changing its Project does not move child Features" (SRS §3.1).
+   */
+  private async applyProjectMove(
+    workspaceId: string,
+    existing: PortfolioItem,
+    patch: UpdatePortfolioItemInput,
+  ): Promise<void> {
+    const destination = patch.projectId as string;
+
+    if (patch.teamId === undefined && existing.teamId !== null) {
+      const [firstTeam] = await this.db
+        .select({ id: teams.id })
+        .from(teams)
+        .innerJoin(projectTeams, eq(projectTeams.teamId, teams.id))
+        .where(
+          and(
+            eq(teams.workspaceId, workspaceId),
+            eq(projectTeams.projectId, destination),
+            // Both the TEAM and its LINK must be live: an unlinked team is not a legal
+            // assignment in the destination even if the team itself is active.
+            eq(projectTeams.status, 'active'),
+            eq(teams.status, 'active'),
+          ),
+        )
+        // `id` breaks the tie: two teams may share a name, and without it "the new
+        // project's first Team" would come back in physical-tuple order — a different
+        // answer after the next UPDATE. Pinned by `query-ordering.ratchet.spec.ts`.
+        .orderBy(teams.name, teams.id)
+        .limit(1);
+      patch.teamId = firstTeam?.id ?? null;
+    }
+
+    if (patch.releaseId === undefined && existing.releaseId !== null) {
+      patch.releaseId = null;
+    }
+
+    if (patch.parentId === undefined && existing.parentId !== null) {
+      const [parent] = await this.repo.findByIds([existing.parentId], workspaceId);
+      if (!parent || parent.projectId !== destination) patch.parentId = null;
+    }
   }
 
   /**
@@ -496,7 +582,7 @@ export class PortfolioItemsService {
         thresholds: PORTFOLIO_HEALTH_THRESHOLDS,
       }),
       progress: computePortfolioProgress(item.rollup, {
-        refinedPoints: item.refinedEstimate === null ? null : Number(item.refinedEstimate),
+        refinedPoints: Number(item.refinedEstimate),
         refinedCount: item.refinedItemCountEstimate,
         preliminaryPoints: size.points,
         preliminaryCount: size.count,

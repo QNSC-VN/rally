@@ -73,8 +73,8 @@ export function computePortfolioProgress(
   // Denominator is the top-down FORECAST, so this indicator answers a different
   // question: how much of what we predicted has landed. Falls back to the Preliminary
   // Estimate mapping when no refined forecast was supplied.
-  const pointsTarget = forecast.refinedPoints ?? forecast.preliminaryPoints;
-  const countTarget = forecast.refinedCount ?? forecast.preliminaryCount;
+  const pointsTarget = forecastTarget(forecast.refinedPoints, forecast.preliminaryPoints);
+  const countTarget = forecastTarget(forecast.refinedCount, forecast.preliminaryCount);
 
   return {
     percentDoneByPlanEstimate,
@@ -248,6 +248,28 @@ export function computeCutlineIndex(
     lastFitting = i;
   }
   return lastFitting;
+}
+
+/**
+ * Pick the forecast denominator: the refined number when it is a real forecast, else the
+ * Preliminary Estimate mapping.
+ *
+ * `refined > 0`, NOT `refined !== null`. The BA spec states the tier rule that way in
+ * three places — "Refined Estimate = Feature.refinedEstimate | refinedWorkItemCountEstimate
+ * -> if > 0" (Capacity Planning SRS §, mirrored in `PHASE5_DEV_HANDOFF` and the UI catalog)
+ * — and the mockup renders a 0 as an em-dash, so a stored 0 is not a forecast in this
+ * model. `ck_portfolio_refined_positive` enforces the same thing at the database.
+ *
+ * This used to be `??`, which treats 0 as a real forecast and would have divided by it.
+ * That disagreed with `resolveEstimate` in this same file, where 0 falls through to the
+ * preliminary tier — one stored 0 would have meant "blank progress meter" to the Portfolio
+ * page and "use the T-shirt size" to Capacity Planning. Unreachable while the CHECK holds,
+ * which is exactly why it was worth fixing: the constraint should be a second line of
+ * defence, not the only thing keeping the two halves of the domain agreeing. A 0 arriving
+ * from an import, a seed, or direct SQL now behaves consistently.
+ */
+function forecastTarget(refined: number | null, preliminary: number): number {
+  return refined !== null && refined > 0 ? refined : preliminary;
 }
 
 /** `a / b` as a 0–1 fraction, or null when the denominator is not positive. */

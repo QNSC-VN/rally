@@ -49,13 +49,14 @@ import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { OwnerCell, OwnerSelectCell, type OwnerSelectMember } from '@/shared/ui/owner-cell'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { TeamCell } from '@/shared/ui/team-cell'
+import { ProjectSelectCell, ReleaseSelectCell, TeamSelectCell } from './attribute-cells'
+import { type PortfolioCellOptions, type ProjectOption } from '../model/cell-options'
 import { RowGutter } from '@/shared/ui/row-gutter'
 import { Spinner } from '@/shared/ui/spinner'
 import { NESTED_ROW_INDENT } from '@/shared/config/layout'
-import { notify } from '@/shared/lib/toast'
+import { useFieldCommit } from '@/shared/lib/hooks/use-field-commit'
 import { type ColKey } from '../model/columns'
 import { PORTFOLIO_STATES } from '../model/portfolio-states'
-import { ReleaseCell } from './release-cell'
 
 type ColStyleFor = (key: ColKey, base?: CSSProperties) => CSSProperties
 
@@ -90,22 +91,27 @@ function ChildFeatureRow({
   colStyleFor,
   members,
   canEdit,
+  options,
+  projects,
   onOpen,
 }: {
   feature: PortfolioItem
   colStyleFor: ColStyleFor
   members: OwnerSelectMember[]
   canEdit: boolean
+  /** Release/Team options for THIS child's project, which may differ from its Epic's. */
+  options: PortfolioCellOptions
+  /** Move destinations, workspace-wide. */
+  projects: ProjectOption[]
   onOpen: (id: string) => void
 }) {
   const { t } = useTranslation('portfolio')
   const update = useUpdatePortfolioItem()
 
+  const { save: commit } = useFieldCommit(update)
+
   function save(patch: Parameters<typeof update.mutate>[0]['patch'], success: string) {
-    update.mutate(
-      { id: feature.id, patch },
-      { onSuccess: () => notify.success(success), onError: (err) => notify.error(err.message) },
-    )
+    commit({ id: feature.id, patch }, success)
   }
 
   return (
@@ -151,17 +157,20 @@ function ChildFeatureRow({
         />
       </div>
 
-      {/* Parent is the Epic this row is nested under — repeating it per child is noise. */}
-      <div className="px-2" style={colStyleFor('parent')} />
-
       <div
         className="flex min-w-0 items-center overflow-hidden px-0"
         style={colStyleFor('release')}
+        onClick={(e) => e.stopPropagation()}
       >
-        <ReleaseCell
+        <ReleaseSelectCell
           releaseId={feature.releaseId}
           releaseName={feature.releaseName}
+          releases={options.releases}
+          canEdit={canEdit}
           ariaLabel={t('detail.fields.release')}
+          onChange={(v) => {
+            if (v !== feature.releaseId) save({ releaseId: v }, t('row.releaseUpdated'))
+          }}
         />
       </div>
 
@@ -183,15 +192,35 @@ function ChildFeatureRow({
         />
       </div>
 
-      <div className="min-w-0 px-2 text-right" style={colStyleFor('estimate')}>
-        {feature.refinedEstimate ??
-          t(`sizes.${feature.preliminaryEstimate}`, { defaultValue: feature.preliminaryEstimate })}
+      <div
+        className="flex min-w-0 items-center overflow-hidden px-0"
+        style={colStyleFor('project')}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <ProjectSelectCell
+          projectId={feature.projectId}
+          projectName={feature.projectName}
+          projects={projects}
+          canEdit={canEdit}
+          ariaLabel={t('detail.fields.project')}
+          onChange={(v) => save({ projectId: v }, t('row.projectMoved'))}
+        />
       </div>
-      <div className="min-w-0 truncate px-2" style={colStyleFor('project')}>
-        {feature.projectName ?? '—'}
-      </div>
-      <div className="min-w-0 px-2" style={colStyleFor('team')}>
-        <TeamCell name={feature.teamName} />
+      <div
+        className="flex min-w-0 items-center overflow-hidden px-0"
+        style={colStyleFor('team')}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <TeamSelectCell
+          teamId={feature.teamId}
+          teamName={feature.teamName}
+          teams={options.teams}
+          canEdit={canEdit}
+          ariaLabel={t('detail.fields.team')}
+          onChange={(v) => {
+            if (v !== feature.teamId) save({ teamId: v }, t('row.teamUpdated'))
+          }}
+        />
       </div>
 
       <div
@@ -244,21 +273,22 @@ function ChildWorkItemRow({
       <div className="min-w-0 truncate px-2" style={colStyleFor('state')}>
         {SCHEDULE_STATE_LABEL[child.scheduleState as ScheduleState] ?? child.scheduleState}
       </div>
-      <div className="px-2" style={colStyleFor('parent')} />
       <div
         className="flex min-w-0 items-center overflow-hidden px-0"
         style={colStyleFor('release')}
       >
-        <ReleaseCell releaseName={child.releaseName} ariaLabel={t('detail.fields.release')} />
+        <ReleaseSelectCell
+          releaseName={child.releaseName}
+          releases={[]}
+          canEdit={false}
+          ariaLabel={t('detail.fields.release')}
+          onChange={() => undefined}
+        />
       </div>
       {/* Percent Done is a portfolio rollup — a single Story has none, so these stay
           empty rather than showing a 0% bar that would read as "no progress". */}
       <div className="px-2" style={colStyleFor('percentDonePoints')} />
       <div className="px-2" style={colStyleFor('percentDoneCount')} />
-      {/* The Estimate column holds the Story's own plan estimate in points. */}
-      <div className="min-w-0 px-2 text-right" style={colStyleFor('estimate')}>
-        {child.storyPoints ?? '—'}
-      </div>
       <div className="min-w-0 truncate px-2" style={colStyleFor('project')}>
         {child.projectName ?? '—'}
       </div>
@@ -277,6 +307,8 @@ export function PortfolioChildRows({
   colStyleFor,
   members,
   canEditProject,
+  optionsFor,
+  projects,
 }: {
   item: PortfolioItem
   /** The parent grid's resolved per-column style, so child cells track column layout. */
@@ -289,6 +321,10 @@ export function PortfolioChildRows({
    * cross-project grid.
    */
   canEditProject: (projectId: string) => boolean
+  /** Release/Team options by project, resolved per child for the same reason. */
+  optionsFor: (projectId: string) => PortfolioCellOptions
+  /** Move destinations, workspace-wide. */
+  projects: ProjectOption[]
 }) {
   const { t } = useTranslation('portfolio')
   const navigate = useNavigate()
@@ -312,6 +348,8 @@ export function PortfolioChildRows({
           colStyleFor={colStyleFor}
           members={members}
           canEdit={canEditProject(f.projectId)}
+          options={optionsFor(f.projectId)}
+          projects={projects}
           onOpen={openPortfolioItem}
         />
       ))

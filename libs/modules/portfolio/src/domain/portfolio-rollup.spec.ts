@@ -89,6 +89,23 @@ describe('computePortfolioProgress', () => {
       expect(p.estimatedProgressByPoints).toBe(0.25); // 5/20 refined
       expect(p.estimatedProgressByCount).toBe(1); // 3/3 preliminary
     });
+
+    it('treats a refined 0 as NOT a forecast and falls back to Preliminary', () => {
+      // The tier rule is `refined > 0`, not `refined !== null` — stated that way in the
+      // Capacity Planning SRS, the dev handoff and the UI catalog, and the mockup renders
+      // a 0 as an em-dash. `ck_portfolio_refined_positive` stops a 0 being stored at all,
+      // so this is unreachable through the API; it is pinned because `resolveEstimate` in
+      // this same file already used `> 0`, and the two must not drift if a 0 ever arrives
+      // from an import or direct SQL.
+      const p = computePortfolioProgress(
+        rollup({ acceptedPoints: 2, acceptedCount: 3 }),
+        forecast({ refinedPoints: 0, refinedCount: 0 }),
+      );
+      // Preliminary is 5 points / 3 items. A `??` fallback would have divided by 0 here
+      // and blanked both meters.
+      expect(p.estimatedProgressByPoints).toBe(0.4); // 2/5 preliminary
+      expect(p.estimatedProgressByCount).toBe(1); // 3/3 preliminary
+    });
   });
 
   describe('null is not zero', () => {

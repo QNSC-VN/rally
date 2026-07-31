@@ -131,11 +131,15 @@ export function PortfolioDetailPage() {
               <DetailField label={t('detail.fields.preliminaryEstimate')}>
                 {t(`sizes.${item.preliminaryEstimate}`, { defaultValue: item.preliminaryEstimate })}
               </DetailField>
+              {/* 0, not an em-dash, when there is no forecast: the field is NOT NULL
+                  DEFAULT 0 (migration 0077), matching how real Rally shows it. 0 still
+                  means "not forecast" to the tier chain, so the Estimated Progress bars
+                  fall back to the Preliminary Estimate mapping exactly as before. */}
               <DetailField label={t('detail.fields.refinedEstimate')}>
-                {item.refinedEstimate ?? '—'}
+                {item.refinedEstimate}
               </DetailField>
               <DetailField label={t('detail.fields.refinedItemCountEstimate')}>
-                {item.refinedItemCountEstimate ?? '—'}
+                {item.refinedItemCountEstimate}
               </DetailField>
               <DetailField label={t('detail.fields.plannedStartDate')}>
                 {item.plannedStartDate ?? '—'}

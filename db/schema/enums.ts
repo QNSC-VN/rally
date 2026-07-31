@@ -422,7 +422,23 @@ export type PreliminaryEstimateMap = Record<PreliminaryEstimateSize, Preliminary
  * change is honoured. Do not import this constant to compute an estimate.
  */
 export const DEFAULT_PRELIMINARY_ESTIMATE_MAP: PreliminaryEstimateMap = {
+  /**
+   * The unsized state, and the one entry with NO Rally counterpart.
+   *
+   * Rally's Preliminary Estimate has no "None" option and no zero-valued size — each size
+   * must carry a name and a whole-number value, and Rally expresses "not sized" by leaving
+   * the FIELD unset. Our column is a NOT NULL enum, so the absent state has to be a member,
+   * and it maps to 0.
+   *
+   * That 0 is safe precisely because 0 is not a forecast anywhere in the domain: it falls
+   * through the tier chain to nothing (`forecastTarget` / `resolveEstimate` both require
+   * `> 0`), so an unsized item shows a BLANK Estimated Progress meter rather than 0%. It is
+   * also why this is the only 0 in the table — a real size with value 0 would be silently
+   * ignored.
+   */
   no_entry: { points: 0, count: 0 },
+  // XS=1 / S=3 / M=5 / L=8 / XL=13 matches Rally's documented defaults exactly
+  // (Broadcom KB 94797, "How Plan Progression Capacity is calculated").
   xs: { points: 1, count: 1 },
   s: { points: 3, count: 2 },
   m: { points: 5, count: 3 },

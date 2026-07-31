@@ -322,8 +322,10 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
         description: input.description ?? null,
         ...(input.state ? { state: input.state } : {}),
         ...(input.preliminaryEstimate ? { preliminaryEstimate: input.preliminaryEstimate } : {}),
-        refinedEstimate: input.refinedEstimate ?? null,
-        refinedItemCountEstimate: input.refinedItemCountEstimate ?? null,
+        // NOT NULL DEFAULT 0 (0077): 0 is the "not forecast" value, so an omitted
+        // forecast is stored as 0 rather than null.
+        refinedEstimate: input.refinedEstimate ?? '0',
+        refinedItemCountEstimate: input.refinedItemCountEstimate ?? 0,
         parentId: input.parentId ?? null,
         teamId: input.teamId ?? null,
         releaseId: input.releaseId ?? null,
@@ -356,6 +358,9 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
 
     assign('name');
     assign('description');
+    // A project MOVE. Listed here because this `assign` list is explicit: a field absent
+    // from it is silently dropped, so the PATCH would 200 with nothing changed.
+    assign('projectId');
     assign('state');
     assign('preliminaryEstimate');
     assign('refinedEstimate');

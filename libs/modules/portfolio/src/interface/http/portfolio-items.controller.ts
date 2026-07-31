@@ -35,7 +35,7 @@ function toDto(i: PortfolioItemWithProgress): PortfolioItemResponseDto {
     preliminaryEstimate: i.preliminaryEstimate,
     // numeric arrives as a string from Drizzle (precision preservation); the API
     // contract is a number, so the conversion belongs here at the boundary.
-    refinedEstimate: i.refinedEstimate === null ? null : Number(i.refinedEstimate),
+    refinedEstimate: Number(i.refinedEstimate),
     refinedItemCountEstimate: i.refinedItemCountEstimate,
     parentId: i.parentId,
     parentKey: i.parentKey,
@@ -65,17 +65,17 @@ function toDto(i: PortfolioItemWithProgress): PortfolioItemResponseDto {
  * `refined_estimate` is a Postgres `numeric`, which Drizzle reads and writes as a STRING
  * to preserve precision, while the API contract is a number. `toDto` converts one way, so
  * this converts the other — both at the boundary, so no other layer sees the mismatch.
- * Preserved exactly: `undefined` stays "not supplied", `null` stays "clear it".
+ *
+ * Only `undefined` is special now: it stays "not supplied". There is no null to carry,
+ * because 0 is the "not forecast" value (migration 0077) and the column is NOT NULL.
  */
-function toWriteInput<T extends { refinedEstimate?: number | null }>(
+function toWriteInput<T extends { refinedEstimate?: number }>(
   body: T,
-): Omit<T, 'refinedEstimate'> & { refinedEstimate?: string | null } {
+): Omit<T, 'refinedEstimate'> & { refinedEstimate?: string } {
   const { refinedEstimate, ...rest } = body;
   return {
     ...rest,
-    ...(refinedEstimate === undefined
-      ? {}
-      : { refinedEstimate: refinedEstimate === null ? null : String(refinedEstimate) }),
+    ...(refinedEstimate === undefined ? {} : { refinedEstimate: String(refinedEstimate) }),
   };
 }
 
