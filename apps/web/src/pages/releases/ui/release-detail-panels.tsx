@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { BRAND } from '@/shared/config/brand'
 import { Spinner } from '@/shared/ui/spinner'
 import { type Release } from '@/features/releases/api'
+import { formatWholePercent } from '@/shared/lib/utils'
 
 type Rollup = NonNullable<Release['taskRollup']>
 type BurndownPoint = {
@@ -25,14 +26,21 @@ export function TaskRollupPanel({ rollup }: { rollup: Rollup }) {
       <div className="space-y-1">
         <div className="flex justify-between text-ui-sm font-semibold text-foreground">
           <span>{t('detailPage.rollup.completion')}</span>
-          <span>{rollup.progressPercent}%</span>
+          <span>{formatWholePercent(rollup.progressPercent)}</span>
         </div>
         <div className="h-2 w-full overflow-hidden rounded-full bg-avatar">
           <div
             className="h-full rounded-full transition-all"
             style={{
-              width: `${rollup.progressPercent}%`,
-              backgroundColor: rollup.progressPercent === 100 ? BRAND.success : BRAND.primaryLight,
+              width: `${rollup.progressPercent ?? 0}%`,
+              // Grey when not computable — an unestimated release must not read as a
+              // release that has made no progress.
+              backgroundColor:
+                rollup.progressPercent === null
+                  ? BRAND.borderSubtle
+                  : rollup.progressPercent === 100
+                    ? BRAND.success
+                    : BRAND.primaryLight,
             }}
           />
         </div>

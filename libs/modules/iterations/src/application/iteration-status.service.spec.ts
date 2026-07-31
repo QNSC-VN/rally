@@ -99,7 +99,7 @@ describe('IterationStatusService', () => {
         defectCount: 2,
         taskCount: 5,
         activeTaskCount: 3,
-      })
+      });
       iterationsService.getIteration.mockResolvedValue(mockIteration({ plannedVelocity: 40 }));
 
       const res = await service.getStatus(actor, 'it-1', {}, pageArgs);
@@ -119,11 +119,15 @@ describe('IterationStatusService', () => {
       expect(res.metrics.plannedVelocityPercent).toBe(0);
     });
 
-    it('treats null planned velocity as 0', async () => {
+    it('reports NO velocity target as null, not 0', async () => {
+      // Previously `?? 0`, which made "no target set" indistinguishable from "target of
+      // zero" and rendered as "PLANNED VELOCITY / 0% / 16 of 0 Points". Attainment against
+      // a target that does not exist is unanswerable, not 0%. A REAL target of 0 still
+      // yields 0% — see the divide-by-zero case above, which SRS §8 requires.
       iterationsService.getIteration.mockResolvedValue(mockIteration({ plannedVelocity: null }));
       const res = await service.getStatus(actor, 'it-1', {}, pageArgs);
-      expect(res.metrics.plannedVelocity).toBe(0);
-      expect(res.metrics.plannedVelocityPercent).toBe(0);
+      expect(res.metrics.plannedVelocity).toBeNull();
+      expect(res.metrics.plannedVelocityPercent).toBeNull();
     });
 
     it('computes days left relative to today (future end)', async () => {

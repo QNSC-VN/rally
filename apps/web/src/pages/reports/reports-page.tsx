@@ -39,7 +39,7 @@ import { useReleases } from '@/features/releases/api'
 import { useSprintBurndown, useProjectVelocity } from '@/features/reporting/api'
 import { useDefects } from '@/features/quality/api'
 import { useNotifications } from '@/features/notifications/api'
-import { relativeTime } from '@/shared/lib/utils'
+import { formatWholePercent, relativeTime } from '@/shared/lib/utils'
 import { MetricCard } from '@/shared/ui/metric-card'
 import { Button } from '@/shared/ui/button'
 import { Avatar } from '@/shared/ui/avatar'
@@ -138,11 +138,18 @@ export function ReportsPage() {
   //    plan (matched by sprint id). Also feeds Planned vs Completed. ──────────
   const velocityData = useMemo(() => {
     const iterById = new Map(iterations.map((it) => [it.id, it]))
-    return (velocity?.sprints ?? []).map((s) => ({
-      sprint: s.sprintName ?? '—',
-      accepted: s.completedPoints ?? 0,
-      planned: (s.sprintId && iterById.get(s.sprintId)?.plannedVelocity) || 0,
-    }))
+    return (velocity?.sprints ?? []).map((s) => {
+      const planned = s.sprintId ? iterById.get(s.sprintId)?.plannedVelocity : null
+      return {
+        sprint: s.sprintName ?? '—',
+        accepted: s.completedPoints ?? 0,
+        // `undefined`, NOT 0, when the iteration set no velocity target: recharts omits
+        // the bar entirely for an undefined value, whereas a 0 draws a zero-height bar
+        // next to a real Completed bar and reads as infinite overdelivery. The previous
+        // `|| 0` also swallowed a genuine target of 0.
+        planned: planned ?? undefined,
+      }
+    })
   }, [velocity, iterations])
 
   // ── Status distribution across the selected iteration ─────────────────────
@@ -568,9 +575,19 @@ export function ReportsPage() {
                 <p className="text-ui-sm text-foreground-subtle">{t('empty.releases')}</p>
               ) : (
                 releases.slice(0, 4).map((r) => {
-                  const pct = r.taskRollup?.progressPercent ?? 0
+                  // `progressPercent` is nullable: null means "not computable" (nothing
+                  // linked, or nothing estimated and not all done). It used to be coerced
+                  // with `?? 0`, and because the LIST endpoint never returned `taskRollup`
+                  // at all, every release rendered as an amber 0% — finished ones included.
+                  const pct = r.taskRollup?.progressPercent ?? null
                   const barColor =
-                    pct >= 100 ? BRAND.success : pct > 50 ? BRAND.primaryLight : BRAND.warning
+                    pct === null
+                      ? BRAND.borderSubtle
+                      : pct >= 100
+                        ? BRAND.success
+                        : pct > 50
+                          ? BRAND.primaryLight
+                          : BRAND.warning
                   return (
                     <div key={r.id}>
                       <div className="mb-1 flex items-center justify-between">
@@ -578,13 +595,13 @@ export function ReportsPage() {
                           {r.name}
                         </span>
                         <span className="text-ui-xs font-semibold text-muted-foreground tabular-nums">
-                          {pct}%
+                          {formatWholePercent(pct)}
                         </span>
                       </div>
                       <div className="h-1.5 overflow-hidden rounded-full bg-border-subtle">
                         <div
                           className="h-full rounded-full"
-                          style={{ width: `${pct}%`, backgroundColor: barColor }}
+                          style={{ width: `${pct ?? 0}%`, backgroundColor: barColor }}
                         />
                       </div>
                     </div>

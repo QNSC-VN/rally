@@ -471,14 +471,22 @@ function CapacityStrip({
 }) {
   const { t } = useTranslation('iterations')
   const committed = metrics?.totalPlanEstimate ?? 0
-  const capacity = metrics?.plannedVelocity ?? 0
-  const capacityPct = capacity > 0 ? Math.round((committed / capacity) * 100) : 0
+  // Nullable: "no velocity target" must not render as "Planned Velocity: 0 pts".
+  const capacity = metrics?.plannedVelocity ?? null
+  const capacityPct =
+    capacity !== null && capacity > 0 ? Math.round((committed / capacity) * 100) : 0
   const tiles: Array<{ label: string; value: string; caption?: string }> = [
-    { label: t('capacity.plannedVelocity'), value: t('capacity.pts', { value: capacity }) },
+    {
+      label: t('capacity.plannedVelocity'),
+      value: capacity === null ? '—' : t('capacity.pts', { value: capacity }),
+    },
     {
       label: t('capacity.committed'),
       value: t('capacity.pts', { value: committed }),
-      caption: capacity > 0 ? t('capacity.ofCapacity', { pct: capacityPct }) : undefined,
+      caption:
+        capacity !== null && capacity > 0
+          ? t('capacity.ofCapacity', { pct: capacityPct })
+          : undefined,
     },
     {
       label: t('capacity.accepted'),

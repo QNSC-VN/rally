@@ -136,3 +136,76 @@ export function formatDateTime(iso: string | null | undefined, fallback = '—')
     timeZone,
   })
 }
+
+// ── Numbers ─────────────────────────────────────────────────────────────────
+//
+// The numeric counterpart to `formatDate` above, and it exists for the same reason:
+// before this, ~40 grid columns each decided independently what a missing number looks
+// like. The audit that prompted it counted `?? 0` on display values 71 times across 16
+// files against `?? '—'` 66 times across 32 — the same value rendering as `0` on one
+// screen and `—` on another.
+//
+// The default is an EM-DASH, matching the shared table cell (`renderTypedCell`'s
+// `type: 'number'` branch) and `formatDate`. Pass `fallback: '0'` only where a zero is
+// genuinely the truth rather than a stand-in for "unknown" — the distinction the schema
+// keeps deliberately ("Null = capacity not yet entered, which is different from zero
+// capacity"). Coercing an unknown to 0 is how a grid ends up stating a confident 0%.
+
+/** Class contract for a numeric cell. Pair with `formatNumber` so digits align. */
+export const NUMERIC_CELL_CLASS = 'text-right font-mono tabular-nums'
+
+/**
+ * Render a number for display, or `fallback` when there is nothing to show.
+ *
+ * Treats non-finite values as missing too: `NaN` and `Infinity` both come out of
+ * ordinary arithmetic on absent inputs, and printing either is worse than printing
+ * nothing.
+ */
+export function formatNumber(
+  value: number | string | null | undefined,
+  {
+    fallback = '—',
+    maximumFractionDigits = 2,
+  }: { fallback?: string; maximumFractionDigits?: number } = {},
+): string {
+  if (value === null || value === undefined || value === '') return fallback
+  const n = typeof value === 'string' ? Number(value) : value
+  if (!Number.isFinite(n)) return fallback
+  return n.toLocaleString(getFormatPrefs().locale, { maximumFractionDigits })
+}
+
+/**
+ * Story points and hours. Same as {@link formatNumber} but never shows a trailing
+ * `.00`, because `numeric(6,2)` columns arrive as `"5.00"` and "5 pts" is what a
+ * planner wrote.
+ */
+export function formatPoints(value: number | string | null | undefined, fallback = '—'): string {
+  return formatNumber(value, { fallback, maximumFractionDigits: 2 })
+}
+
+/**
+ * A 0–1 ratio as a whole percent.
+ *
+ * `null` means "not computable" — no denominator, nothing estimated — and must NOT
+ * become 0%: "none of the work is done" and "we cannot tell" look identical as 0% and
+ * are completely different facts. Every ratio producer in this app already returns null
+ * for a non-positive denominator; this keeps that honesty at the last step.
+ */
+export function formatPercent(ratio: number | null | undefined, fallback = '—'): string {
+  if (ratio === null || ratio === undefined || !Number.isFinite(ratio)) return fallback
+  return `${Math.round(ratio * 100)}%`
+}
+
+/**
+ * A value ALREADY expressed in whole percent (0–100), as most of this app's API fields
+ * are — `progressPercent`, `plannedVelocityPercent`, `acceptedPercent`.
+ *
+ * Separate from {@link formatPercent} rather than a flag, because the two input scales are
+ * impossible to tell apart at a call site: `1` is a complete ratio and also one percent.
+ * Passing a whole percent to the ratio version renders `10000%`, which is exactly the bug
+ * this pair exists to prevent.
+ */
+export function formatWholePercent(percent: number | null | undefined, fallback = '—'): string {
+  if (percent === null || percent === undefined || !Number.isFinite(percent)) return fallback
+  return `${Math.round(percent)}%`
+}

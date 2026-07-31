@@ -333,9 +333,13 @@ export function IterationStatusPage() {
 
   // ── Metrics ────────────────────────────────────────────────────────────
   const metrics = status?.metrics
-  const velocityPct = metrics?.plannedVelocityPercent ?? 0
+  // NULL means "no velocity target set", which is not the same as 0% attainment — the
+  // service stopped flattening it, so this must not flatten it back.
+  const velocityPct = metrics?.plannedVelocityPercent ?? null
   const acceptedPct = metrics?.acceptedPercent ?? 0
-  const daysLeft = metrics?.daysLeft ?? 0
+  // Kept nullable: an iteration with NO end date has no days-left, and `?? 0` fed the
+  // elapsed-bar arithmetic below where it reads as "the whole iteration has elapsed".
+  const daysLeft = metrics?.daysLeft ?? null
   const tDays = computeTotalDays(selected)
   // An iteration is finished once it's been accepted or explicitly completed —
   // regardless of the raw end-date arithmetic (which reads 0/negative when past
@@ -344,7 +348,7 @@ export function IterationStatusPage() {
   // Elapsed / total, capped at 100%; a finished iteration always shows full.
   const iterationProgressPct = iterationDone
     ? 100
-    : tDays > 0
+    : tDays > 0 && daysLeft !== null
       ? Math.min(((tDays - Math.max(daysLeft, 0)) / tDays) * 100, 100)
       : 0
   // Single source of truth for the "Iteration End" widget value/label/colour so

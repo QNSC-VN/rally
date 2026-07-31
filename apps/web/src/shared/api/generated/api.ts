@@ -3436,9 +3436,9 @@ export interface components {
         plannedVelocity: number | null
       }
       metrics: {
-        plannedVelocityPercent: number
+        plannedVelocityPercent: number | null
         acceptedPoints: number
-        plannedVelocity: number
+        plannedVelocity: number | null
         acceptedPercent: number
         totalPlanEstimate: number
         daysLeft: number | null
@@ -3535,7 +3535,7 @@ export interface components {
         totalPoints: number
         completedPoints: number
         toDoPoints: number
-        progressPercent: number
+        progressPercent: number | null
       }
     }
     CreateReleaseDto: {
@@ -3696,7 +3696,7 @@ export interface components {
         completedItems: number
         totalPoints: number
         completedPoints: number
-        progressPercent: number
+        progressPercent: number | null
       }
       /** Format: date-time */
       createdAt: string
@@ -3748,7 +3748,7 @@ export interface components {
         completedItems: number
         totalPoints: number
         completedPoints: number
-        progressPercent: number
+        progressPercent: number | null
       }
       /** Format: date-time */
       createdAt: string

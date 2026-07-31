@@ -34,8 +34,18 @@ import { OwnerSelectCell } from '@/shared/ui/owner-cell'
 import { RowGutter } from '@/shared/ui/row-gutter'
 import { MilestoneSelectCell, DefectStatusPill, TasksProgress } from './status-cells'
 import { useWorkItemFieldCommit } from '../model/use-work-item-field-commit'
+import { NUMERIC_CELL_CLASS } from '@/shared/lib/utils'
 
 // Single mono stack for numeric cells (digit alignment).
+/**
+ * Retained for `<input>` elements ONLY.
+ *
+ * Every numeric CELL now uses the shared `NUMERIC_CELL_CLASS` (`text-right font-mono
+ * tabular-nums`) instead of a hand-rolled font stack, so this grid finally matches the
+ * shared table cell. An inline-edit input is a separate element that does not inherit the
+ * cell's class, and `inputStyle` takes a style object rather than a className, so the
+ * literal stack is still needed there.
+ */
 const MONO_FONT = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
 
 // ── Status row ──────────────────────────────────────────────────────────────
@@ -384,11 +394,8 @@ export function StatusRow({
             fullCell
             onCommit={commitEstimate}
             displayValue={item.planEstimate ?? '—'}
-            className="text-muted-foreground"
-            style={{
-              fontFamily: MONO_FONT,
-              fontSize: 12,
-            }}
+            className={`text-muted-foreground ${NUMERIC_CELL_CLASS}`}
+            style={{ fontSize: 12 }}
             inputClassName="border border-primary"
             inputStyle={{
               width: '100%',
@@ -404,13 +411,8 @@ export function StatusRow({
 
         {/* Task Estimate (Rollup - readonly) */}
         <div
-          style={{
-            ...colStyles.taskEstimate,
-            textAlign: 'right',
-            fontFamily: MONO_FONT,
-            fontSize: 12,
-          }}
-          className="px-2 text-right text-muted-foreground"
+          style={{ ...colStyles.taskEstimate, fontSize: 12 }}
+          className={`px-2 text-muted-foreground ${NUMERIC_CELL_CLASS}`}
         >
           {item.taskEstimate ?? '—'}
         </div>
@@ -423,11 +425,8 @@ export function StatusRow({
             fullCell
             onCommit={commitTodo}
             displayValue={item.toDo ?? '—'}
-            className="text-muted-foreground"
-            style={{
-              fontFamily: MONO_FONT,
-              fontSize: 12,
-            }}
+            className={`text-muted-foreground ${NUMERIC_CELL_CLASS}`}
+            style={{ fontSize: 12 }}
             inputClassName="border border-primary"
             inputStyle={{
               width: '100%',
@@ -449,8 +448,8 @@ export function StatusRow({
         {/* Actual — read-only roll-up of child task actual hours (parity with
             Task Est / To Do). Edited per-task on the expanded task rows. */}
         <div
-          style={{ ...colStyles.actual, textAlign: 'right', fontFamily: MONO_FONT, fontSize: 12 }}
-          className="px-2 text-right text-muted-foreground"
+          style={{ ...colStyles.actual, fontSize: 12 }}
+          className={`px-2 text-muted-foreground ${NUMERIC_CELL_CLASS}`}
         >
           {item.actual ?? '—'}
         </div>
@@ -705,7 +704,8 @@ function ChildTaskRow({
           fullCell
           onCommit={commitTaskEstimate}
           displayValue={task.estimateHours ?? '—'}
-          style={{ fontFamily: MONO_FONT, fontSize: 11 }}
+          className={NUMERIC_CELL_CLASS}
+          style={{ fontSize: 11 }}
           inputClassName="border border-primary"
           inputStyle={{
             width: '100%',
@@ -725,7 +725,8 @@ function ChildTaskRow({
           fullCell
           onCommit={commitTaskTodo}
           displayValue={task.todoHours ?? '—'}
-          style={{ fontFamily: MONO_FONT, fontSize: 11 }}
+          className={NUMERIC_CELL_CLASS}
+          style={{ fontSize: 11 }}
           inputClassName="border border-primary"
           inputStyle={{
             width: '100%',
@@ -746,7 +747,8 @@ function ChildTaskRow({
           fullCell
           onCommit={commitTaskActual}
           displayValue={task.actualHours ?? '—'}
-          style={{ fontFamily: MONO_FONT, fontSize: 11 }}
+          className={NUMERIC_CELL_CLASS}
+          style={{ fontSize: 11 }}
           inputClassName="border border-primary"
           inputStyle={{
             width: '100%',

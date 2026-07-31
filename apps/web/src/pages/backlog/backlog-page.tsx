@@ -916,7 +916,10 @@ function BacklogRow({
             if (next !== (item.storyPoints ?? null)) patch({ storyPoints: next })
           }}
           displayValue={item.storyPoints ?? '—'}
-          className="block text-center font-mono text-muted-foreground"
+          // `tabular-nums` so digits keep a constant width down the column. Alignment stays
+          // CENTERED here deliberately — that is this grid's existing layout, and the shared
+          // contract's right-alignment is not worth a visible shift on an unrelated page.
+          className="block text-center font-mono text-muted-foreground tabular-nums"
           style={{ fontSize: 12 }}
           inputClassName="w-full rounded border border-primary bg-transparent px-0.5 text-center font-mono text-ui-xs text-foreground focus:outline-none"
         />

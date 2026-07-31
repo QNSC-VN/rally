@@ -34,9 +34,13 @@ export interface PortfolioRollupInput {
 
 /** Optional top-down forecasts stored on the item, plus the workspace fallback. */
 export interface PortfolioForecastInput {
-  /** `refined_estimate`, or null when not forecast. */
+  /**
+   * `refined_estimate`. Since 0077 the column is NOT NULL DEFAULT 0, so a real row carries
+   * 0 rather than null when nothing was forecast; nullable is kept only for callers that
+   * assemble this input from a partial read-model.
+   */
   refinedPoints: number | null;
-  /** `refined_item_count_estimate`, or null when not forecast. */
+  /** `refined_item_count_estimate`. Same 0-means-not-forecast rule. */
   refinedCount: number | null;
   /** Points the item's Preliminary Estimate size maps to, from workspace settings. */
   preliminaryPoints: number;
@@ -254,19 +258,19 @@ export function computeCutlineIndex(
  * Pick the forecast denominator: the refined number when it is a real forecast, else the
  * Preliminary Estimate mapping.
  *
- * `refined > 0`, NOT `refined !== null`. The BA spec states the tier rule that way in
- * three places — "Refined Estimate = Feature.refinedEstimate | refinedWorkItemCountEstimate
- * -> if > 0" (Capacity Planning SRS §, mirrored in `PHASE5_DEV_HANDOFF` and the UI catalog)
- * — and the mockup renders a 0 as an em-dash, so a stored 0 is not a forecast in this
- * model. `ck_portfolio_refined_positive` enforces the same thing at the database.
+ * `refined > 0`, NOT `!== null`. The BA spec states the tier that way in three places —
+ * "Refined Estimate = Feature.refinedEstimate | refinedWorkItemCountEstimate -> if > 0"
+ * (Capacity Planning SRS, echoed in `PHASE5_DEV_HANDOFF` and the UI catalog) — and the
+ * mockup renders a stored 0 as an em-dash. Since migration 0077 the column is NOT NULL
+ * DEFAULT 0, so 0 IS the "not forecast" value and this comparison is what makes it fall
+ * through to the preliminary tier.
  *
- * This used to be `??`, which treats 0 as a real forecast and would have divided by it.
- * That disagreed with `resolveEstimate` in this same file, where 0 falls through to the
- * preliminary tier — one stored 0 would have meant "blank progress meter" to the Portfolio
- * page and "use the T-shirt size" to Capacity Planning. Unreachable while the CHECK holds,
- * which is exactly why it was worth fixing: the constraint should be a second line of
- * defence, not the only thing keeping the two halves of the domain agreeing. A 0 arriving
- * from an import, a seed, or direct SQL now behaves consistently.
+ * The null branch is kept because the parameter is still typed nullable for callers that
+ * build this input themselves (the capacity plan read-model can carry an absent feature).
+ * It used to be `??`, which treated 0 as a real forecast and would have divided by it —
+ * disagreeing with `resolveEstimate` above, where 0 falls through. One stored 0 would have
+ * meant "blank progress meter" to the Portfolio page and "use the T-shirt size" to Capacity
+ * Planning. Both now agree.
  */
 function forecastTarget(refined: number | null, preliminary: number): number {
   return refined !== null && refined > 0 ? refined : preliminary;
