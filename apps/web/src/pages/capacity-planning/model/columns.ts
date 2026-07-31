@@ -38,7 +38,9 @@ export const CAPACITY_PLAN_COLUMNS: ColumnSpec<CapacityPlan, unknown, PlanColKey
     grow: true,
     sortCol: 'name',
   },
-  { key: 'release', label: 'Release', defaultWidth: 180, minWidth: 100 },
+  // Wide enough for `RE-<n>: Name` plus the glyph — the shared release cell shows the key too,
+  // and at 180px the name truncated on the seeded data alone.
+  { key: 'release', label: 'Release', defaultWidth: 230, minWidth: 120 },
   { key: 'status', label: 'Status', defaultWidth: 110, minWidth: 80, sortCol: 'status' },
   {
     key: 'updatedAt',
