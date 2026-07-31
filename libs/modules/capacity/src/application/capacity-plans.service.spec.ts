@@ -223,10 +223,19 @@ describe('CapacityPlansService', () => {
       expect(repo.delete).toHaveBeenCalledWith('plan-1', WORKSPACE);
     });
 
-    it('refuses a PUBLISHED plan — revert undoes the writes, delete would abandon them', async () => {
+    it('deletes a PUBLISHED plan too — Rally allows it, unlike every other write here', async () => {
+      // "you can delete an existing plan, even if the plan is published". The Release and dates the
+      // plan stamped onto Features are those Features' data now; deleting drops the explanation,
+      // not the values, and revert is what undoes them.
       repo.findById.mockResolvedValue(plan({ status: 'published', publishedAt: new Date() }));
-      await expect(service.deletePlan(actor, 'plan-1')).rejects.toMatchObject({
-        code: 'CAPACITY_PLAN_NOT_DRAFT',
+      await service.deletePlan(actor, 'plan-1');
+      expect(repo.delete).toHaveBeenCalledWith('plan-1', WORKSPACE);
+    });
+
+    it('404s on an unknown id instead of a silent no-op', async () => {
+      repo.findById.mockResolvedValue(null);
+      await expect(service.deletePlan(actor, 'nope')).rejects.toMatchObject({
+        code: 'CAPACITY_PLAN_NOT_FOUND',
       });
       expect(repo.delete).not.toHaveBeenCalled();
     });

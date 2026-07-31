@@ -181,18 +181,17 @@ export function CapacityPlansPage() {
     activeFilterCount > 0 || oldestReleaseId !== '' || newestReleaseId !== '' || search !== ''
 
   /**
-   * Only DRAFTS are deleted. The server refuses a published plan (its writes have to be reverted
-   * first), so the ones that cannot go are skipped here with a message rather than each producing
-   * its own failed request.
+   * Deletes every selected plan, PUBLISHED ones included — Rally allows that, and so does the API.
+   *
+   * A published plan's Release and planned dates already belong to its Features; deleting the plan
+   * drops the explanation, not those values, and revert is what takes them back. The confirmation
+   * says so when the selection contains one, which is why the count is computed here.
    */
   async function handleBulkDelete(selection: RowSelection) {
     const chosen = plans.filter((p) => selection.selectedIds.has(p.id))
-    const drafts = chosen.filter((p) => p.status === 'draft')
-    const published = chosen.length - drafts.length
     try {
-      await Promise.all(drafts.map((p) => deletePlan.mutateAsync(p.id)))
-      if (drafts.length > 0) notify.success(t('delete.bulkDone', { count: drafts.length }))
-      if (published > 0) notify.error(t('delete.publishedSkipped', { count: published }))
+      await Promise.all(chosen.map((p) => deletePlan.mutateAsync(p.id)))
+      notify.success(t('delete.bulkDone', { count: chosen.length }))
       selection.clear()
     } catch (err) {
       notify.error(err instanceof Error ? err.message : t('delete.failed'))
@@ -200,6 +199,10 @@ export function CapacityPlansPage() {
       setConfirmBulkDelete(false)
     }
   }
+
+  /** How many of the selected plans are published — decides which confirmation text is shown. */
+  const selectedPublishedCount = (ids: ReadonlySet<string>) =>
+    plans.filter((p) => ids.has(p.id) && p.status === 'published').length
 
   if (!projectId) {
     return (
@@ -330,7 +333,14 @@ export function CapacityPlansPage() {
                   <ConfirmDialog
                     open={confirmBulkDelete}
                     title={t('delete.title')}
-                    message={t('delete.bulkMessage', { count: selection.count })}
+                    message={
+                      selectedPublishedCount(selection.selectedIds) > 0
+                        ? t('delete.bulkPublishedMessage', {
+                            count: selection.count,
+                            published: selectedPublishedCount(selection.selectedIds),
+                          })
+                        : t('delete.bulkMessage', { count: selection.count })
+                    }
                     confirmLabel={t('delete.confirm')}
                     destructive
                     pending={deletePlan.isPending}

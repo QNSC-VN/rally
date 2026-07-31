@@ -49,7 +49,8 @@
       "plannedStartDate": "Planned Start Date",
       "plannedEndDate": "Planned End Date"
     },
-    "unallocated": "Unallocated"
+    "unallocated": "Unallocated",
+    "actionsLabel": "Plan actions"
   },
   "row": {
     "notEntered": "Not entered",
@@ -210,8 +211,13 @@
     "bulkMessage": "Delete {{count}} selected plan(s)? Teams and allocations on them go too.",
     "confirm": "Delete",
     "bulkDone": "Deleted {{count}} plan(s)",
-    "publishedSkipped": "Skipped {{count}} published plan(s) — revert a plan before deleting it",
-    "failed": "Could not delete the plan"
+    "failed": "Could not delete the plan",
+    "planAction": "Delete Plan",
+    "planTitle": "Delete this capacity plan?",
+    "planMessage": "The plan, its teams and every allocation on it are removed. This cannot be undone.",
+    "publishedWarning": "This plan is PUBLISHED. Deleting it removes the plan, its teams and every allocation, but the Release and planned dates it wrote onto its Features stay on those Features — revert the plan first if you want those undone.",
+    "planDone": "Capacity plan deleted",
+    "bulkPublishedMessage": "Delete {{count}} selected plan(s)? {{published}} of them is published — deleting removes the plan, its teams and every allocation, but the Release and planned dates it wrote onto its Features stay on those Features."
   },
   "totalPlans": "Total Plans: {{count}}",
   "fields": {
@@ -219,5 +225,15 @@
     "name": "Name",
     "release": "Release"
   },
-  "renameFailed": "Could not rename the plan"
+  "renameFailed": "Could not rename the plan",
+  "edit": {
+    "title": "Edit Plan Details",
+    "nameLabel": "Name",
+    "nameRequired": "Enter a name",
+    "targetLoadRange": "Target load must be a whole number between 1 and 99",
+    "unitFixedHint": "Unit and release are fixed: every number on the plan is expressed in the unit and scoped to the release.",
+    "saveButton": "Save",
+    "saved": "Plan updated",
+    "failed": "Could not update the plan"
+  }
 }

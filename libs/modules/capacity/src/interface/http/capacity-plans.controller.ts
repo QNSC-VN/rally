@@ -196,7 +196,7 @@ export class CapacityPlansController {
   @Delete(':id')
   @HttpCode(204)
   @RequirePermission('capacity:manage', { resource: 'capacity_plan', from: 'param', field: 'id' })
-  @ApiOperation({ summary: 'Delete a draft plan' })
+  @ApiOperation({ summary: 'Delete a plan (published plans included)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 204, description: 'Deleted' })
   @ApiCommonErrors(401, 403, 404, 422)

@@ -458,7 +458,7 @@ describe('capacity plans (e2e)', () => {
       expect(second.releaseId).toBe(releaseId);
     });
 
-    it('refuses to delete a PUBLISHED plan', async () => {
+    it('deletes a PUBLISHED plan — Rally allows it', async () => {
       const p = await capacity.createPlan(admin, {
         projectId: projectAId,
         releaseId: await newRelease(projectAId),
@@ -469,11 +469,10 @@ describe('capacity plans (e2e)', () => {
       await capacity.addTeam(admin, p.id, teamId);
       await capacity.publishPlan(admin, p.id, { updateFields: false });
 
-      await expect(capacity.deletePlan(admin, p.id)).rejects.toMatchObject({
-        code: 'CAPACITY_PLAN_NOT_DRAFT',
-      });
+      await capacity.deletePlan(admin, p.id);
+
       expect(await db.select().from(capacityPlans).where(eq(capacityPlans.id, p.id))).toHaveLength(
-        1,
+        0,
       );
     });
   });

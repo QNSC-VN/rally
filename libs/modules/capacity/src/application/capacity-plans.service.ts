@@ -209,14 +209,23 @@ export class CapacityPlansService {
   }
 
   /**
-   * Hard delete, and only for a DRAFT.
+   * Hard delete — a PUBLISHED plan too, which is the one write on this service that a published
+   * state does not block.
    *
-   * A published plan has already written Release and planned dates onto Features; deleting it
-   * would leave those values behind with nothing explaining them. Revert first — that is the
-   * documented way back, and it undoes the writes.
+   * Rally is explicit: "you can delete an existing plan, even if the plan is published". It is the
+   * same reasoning Rally gives for unpublish not clearing field values — the plan is the planning
+   * artefact, and the Release and planned dates it wrote onto Features are now those Features'
+   * own data. Deleting the plan abandons the explanation, not the values, and a planner who wants
+   * them undone reverts first (which is what revert is for).
+   *
+   * So this deliberately does NOT call `requireDraft`. It only checks the row exists in the
+   * caller's workspace, which `findById` + the workspace-scoped delete both do.
    */
   async deletePlan(actor: JwtPayload, id: string): Promise<void> {
-    const plan = await this.requireDraft(actor, id);
+    const plan = await this.repo.findById(id, actor.workspaceId);
+    if (!plan) {
+      throw new NotFoundException('CAPACITY_PLAN_NOT_FOUND', 'Capacity plan not found');
+    }
     await this.access.assertProjectPermission(actor, plan.projectId, 'capacity:manage');
     await this.repo.delete(id, actor.workspaceId);
   }

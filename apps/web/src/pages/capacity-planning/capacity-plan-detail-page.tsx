@@ -10,7 +10,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from '@tanstack/react-router'
-import { Plus, Send, Undo2, Users } from 'lucide-react'
+import { Pencil, Plus, Send, Trash2, Undo2, Users } from 'lucide-react'
 
 import { Button } from '@/shared/ui/button'
 import { EmptyState } from '@/shared/ui/empty-state'
@@ -27,6 +27,7 @@ import { useProjectTeams } from '@/features/teams/api'
 import {
   useAddCapacityTeam,
   useCapacityPlan,
+  useDeleteCapacityPlan,
   usePublishPlan,
   useRevertPlan,
   type CapacityPlanItem,
@@ -51,11 +52,13 @@ import { CapacityTeamRow } from './ui/capacity-team-row'
 import { TeamAllocationsTable } from './ui/team-allocations-table'
 import { AllocateFeatureModal } from './ui/allocate-feature-modal'
 import { StatusBadge } from '@/shared/ui/status-badge'
+import { ActionMenu, ActionMenuItem } from '@/shared/ui/action-menu'
 import { CompositeBar } from '@/shared/ui/composite-bar'
 import { planTotals } from '@/features/capacity-planning/plan-totals'
 import { CapacityBreakdownOverlay } from './ui/capacity-breakdown-overlay'
 import { CapacityForecastModal } from './ui/capacity-forecast-modal'
 import { PublishPlanModal } from './ui/publish-plan-modal'
+import { EditCapacityPlanModal } from './ui/edit-capacity-plan-modal'
 
 export function CapacityPlanDetailPage() {
   const { t } = useTranslation('capacity')
@@ -65,6 +68,8 @@ export function CapacityPlanDetailPage() {
   const [addingTeamId, setAddingTeamId] = useState('')
   const [showAllocate, setShowAllocate] = useState(false)
   const [showBreakdown, setShowBreakdown] = useState(false)
+  const [showEdit, setShowEdit] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   // The team whose forecast is open, by plan-team id. One modal for every row rather than a
   // modal per row: only one can be open, and mounting N dialogs to show one is waste.
   const [forecastTeamId, setForecastTeamId] = useState<string | null>(null)
@@ -120,6 +125,7 @@ export function CapacityPlanDetailPage() {
   const revert = useRevertPlan()
   // Only for the pending flag on the toolbar button; the modal owns the publish call itself.
   const publish = usePublishPlan()
+  const deletePlan = useDeleteCapacityPlan()
   // Publishing writes back to Feature rows, so it takes its OWN permission rather than
   // riding `capacity:manage` — a planner who may edit a draft is not automatically someone
   // who may stamp a release onto other people's Features.
@@ -208,6 +214,19 @@ export function CapacityPlanDetailPage() {
     const onPlan = new Set((plan?.teams ?? []).map((pt) => pt.teamId))
     return teams.filter((team) => !onPlan.has(team.id))
   }, [teams, plan?.teams])
+
+  async function removePlan() {
+    try {
+      await deletePlan.mutateAsync(planId)
+      notify.success(t('delete.planDone'))
+      // Back to the list: the page we are on no longer describes anything.
+      void navigate({ to: '/capacity-planning' })
+    } catch (err) {
+      notify.error(err instanceof Error ? err.message : t('delete.failed'))
+    } finally {
+      setConfirmDelete(false)
+    }
+  }
 
   function add() {
     if (!addingTeamId) return
@@ -299,6 +318,31 @@ export function CapacityPlanDetailPage() {
           // surface its cutline belongs on.
           { key: 'items', label: t('detail.tabs.items') },
         ]}
+        // Rally's Actions menu: the plan's rarer verbs, away from Publish. Delete is here rather
+        // than as a toolbar button precisely because it is destructive and Publish is not.
+        actions={
+          canPublish || can('capacity:manage') ? (
+            <ActionMenu ariaLabel={t('detail.actionsLabel')} onDark>
+              {/* Drafts only — the API refuses an edit to a published plan, so offering it would
+                  collect changes the server will reject. */}
+              {plan.status === 'draft' && can('capacity:manage') && (
+                <ActionMenuItem
+                  icon={<Pencil size={13} />}
+                  label={t('edit.title')}
+                  onClick={() => setShowEdit(true)}
+                />
+              )}
+              {can('capacity:manage') && (
+                <ActionMenuItem
+                  icon={<Trash2 size={13} />}
+                  label={t('delete.planAction')}
+                  destructive
+                  onClick={() => setConfirmDelete(true)}
+                />
+              )}
+            </ActionMenu>
+          ) : undefined
+        }
         activeTab={tab}
         onTabChange={setTab}
       >
@@ -505,6 +549,24 @@ export function CapacityPlanDetailPage() {
           </div>
         </div>
       </DetailLayout>
+
+      {showEdit && <EditCapacityPlanModal plan={plan} onClose={() => setShowEdit(false)} />}
+
+      {/* Deleting a PUBLISHED plan is allowed — Rally allows it too — so the message says what
+          survives: the Release and dates the plan stamped onto its Features are those Features'
+          data now, and only a revert takes them back. */}
+      <ConfirmDialog
+        open={confirmDelete}
+        title={t('delete.planTitle')}
+        message={
+          plan.status === 'published' ? t('delete.publishedWarning') : t('delete.planMessage')
+        }
+        confirmLabel={t('delete.confirm')}
+        destructive
+        pending={deletePlan.isPending}
+        onConfirm={() => void removePlan()}
+        onCancel={() => setConfirmDelete(false)}
+      />
 
       {showAllocate && <AllocateFeatureModal plan={plan} onClose={() => setShowAllocate(false)} />}
       {forecastTeam && (
