@@ -2203,7 +2203,7 @@ export interface paths {
     get: operations['CapacityPlansController_getPlan']
     put?: never
     post?: never
-    /** Delete a draft plan */
+    /** Delete a plan (published plans included) */
     delete: operations['CapacityPlansController_deletePlan']
     options?: never
     head?: never
@@ -4039,12 +4039,41 @@ export interface components {
         name: string
         teamId: string | null
         isPrimary: boolean
-        value: number
+        /** @description Explicitly allocated points, or null when the team was assigned without a slice */
+        value: number | null
         /**
          * @description Which estimate tier the Feature figure came from — drives the UI badge
          * @enum {string}
          */
         tier: 'allocated' | 'refined' | 'preliminary' | 'none'
+        /** @description The Feature's LexoRank — the nested table shows the plan's Rank too */
+        rank: string
+        /**
+         * @description The Feature's own workflow state
+         * @enum {string}
+         */
+        state:
+          | 'no_entry'
+          | 'intake'
+          | 'idea_prioritization'
+          | 'problem_discovery'
+          | 'solution_discovery'
+          | 'feature_prioritization'
+          | 'developing'
+          | 'accepted'
+          | 'measuring'
+          | 'done'
+          | 'cancelled'
+        /** Format: uuid */
+        projectId: string
+        /** @description The Feature's own project — Rally prints `← from <project>` when it is not the plan's */
+        projectName: string | null
+        /** @description All three candidates behind Estimated, for Rally's Estimate tooltip */
+        estimateBreakdown: {
+          allocated: number | null
+          refined: number | null
+          preliminary: number | null
+        }
         metrics: {
           complete: number
           rollup: number
@@ -4183,12 +4212,41 @@ export interface components {
           name: string
           teamId: string | null
           isPrimary: boolean
-          value: number
+          /** @description Explicitly allocated points, or null when the team was assigned without a slice */
+          value: number | null
           /**
            * @description Which estimate tier the Feature figure came from — drives the UI badge
            * @enum {string}
            */
           tier: 'allocated' | 'refined' | 'preliminary' | 'none'
+          /** @description The Feature's LexoRank — the nested table shows the plan's Rank too */
+          rank: string
+          /**
+           * @description The Feature's own workflow state
+           * @enum {string}
+           */
+          state:
+            | 'no_entry'
+            | 'intake'
+            | 'idea_prioritization'
+            | 'problem_discovery'
+            | 'solution_discovery'
+            | 'feature_prioritization'
+            | 'developing'
+            | 'accepted'
+            | 'measuring'
+            | 'done'
+            | 'cancelled'
+          /** Format: uuid */
+          projectId: string
+          /** @description The Feature's own project — Rally prints `← from <project>` when it is not the plan's */
+          projectName: string | null
+          /** @description All three candidates behind Estimated, for Rally's Estimate tooltip */
+          estimateBreakdown: {
+            allocated: number | null
+            refined: number | null
+            preliminary: number | null
+          }
           metrics: {
             complete: number
             rollup: number
@@ -4316,12 +4374,41 @@ export interface components {
           name: string
           teamId: string | null
           isPrimary: boolean
-          value: number
+          /** @description Explicitly allocated points, or null when the team was assigned without a slice */
+          value: number | null
           /**
            * @description Which estimate tier the Feature figure came from — drives the UI badge
            * @enum {string}
            */
           tier: 'allocated' | 'refined' | 'preliminary' | 'none'
+          /** @description The Feature's LexoRank — the nested table shows the plan's Rank too */
+          rank: string
+          /**
+           * @description The Feature's own workflow state
+           * @enum {string}
+           */
+          state:
+            | 'no_entry'
+            | 'intake'
+            | 'idea_prioritization'
+            | 'problem_discovery'
+            | 'solution_discovery'
+            | 'feature_prioritization'
+            | 'developing'
+            | 'accepted'
+            | 'measuring'
+            | 'done'
+            | 'cancelled'
+          /** Format: uuid */
+          projectId: string
+          /** @description The Feature's own project — Rally prints `← from <project>` when it is not the plan's */
+          projectName: string | null
+          /** @description All three candidates behind Estimated, for Rally's Estimate tooltip */
+          estimateBreakdown: {
+            allocated: number | null
+            refined: number | null
+            preliminary: number | null
+          }
           metrics: {
             complete: number
             rollup: number
@@ -4377,7 +4464,7 @@ export interface components {
       value?: number
     }
     UpdateAllocationDto: {
-      value?: number
+      value?: number | null
       teamId?: string | null
     }
     ScmConnectionResponseDto: {

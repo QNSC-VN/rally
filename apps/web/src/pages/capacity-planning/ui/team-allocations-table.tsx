@@ -29,6 +29,8 @@ export function TeamAllocationsTable({
   unitLabel,
   canManage,
   onOpenFeature,
+  rankPositionOf,
+  planProjectId,
 }: {
   planId: string
   allocations: CapacityAllocation[]
@@ -37,6 +39,16 @@ export function TeamAllocationsTable({
   unitLabel: string
   canManage: boolean
   onOpenFeature: (portfolioItemId: string) => void
+  /**
+   * The Feature's 1-based position in the PLAN's rank order.
+   *
+   * Resolved by the page from the plan's item list rather than counted inside this table: a team's
+   * rows are a subset of the plan, so counting locally would number them 1..n and claim a priority
+   * order this team does not own.
+   */
+  rankPositionOf: (portfolioItemId: string) => number | null
+  /** The plan's project — a Feature from another one is marked `← from` in the Allocation column. */
+  planProjectId: string
 }) {
   const { t } = useTranslation('capacity')
   const table = useDataTable<CapacityAllocation, unknown, AllocColKey>(
@@ -70,6 +82,8 @@ export function TeamAllocationsTable({
               colStyleFor={colStyleFor}
               onOpenFeature={onOpenFeature}
               teamName={teamName}
+              rankPosition={rankPositionOf(allocation.portfolioItemId)}
+              planProjectId={planProjectId}
             />
           ))}
         </DataTableFrame>

@@ -92,9 +92,15 @@ function toDto(p: CapacityPlanDetail): CapacityPlanResponseDto {
       name: a.name,
       teamId: a.teamId,
       isPrimary: a.isPrimary,
-      // numeric arrives as a string from Drizzle; the API contract is a number.
-      value: Number(a.value),
+      // numeric arrives as a string from Drizzle; the API contract is a number. Null stays null —
+      // it is the difference between "allocated nothing" and "not allocated".
+      value: a.value === null ? null : Number(a.value),
       tier: a.tier,
+      rank: a.rank,
+      state: a.state,
+      projectId: a.projectId,
+      projectName: a.projectName,
+      estimateBreakdown: a.estimateBreakdown,
       metrics: a.metrics,
     })),
     unallocated: p.unallocated,

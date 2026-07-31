@@ -15,7 +15,6 @@ import { Pencil, Plus, Send, Trash2, Undo2, Users } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { SkeletonList } from '@/shared/ui/skeleton'
-import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { DataTableFrame } from '@/shared/ui/table/data-table-frame'
 import { useDataTable } from '@/shared/ui/table'
 import { useTableSort } from '@/shared/lib/hooks/use-table-sort'
@@ -26,6 +25,8 @@ import { useProjectPermissions } from '@/features/access/api'
 import { useProjectTeams } from '@/features/teams/api'
 import {
   useAddCapacityTeam,
+  useRemoveAllocation,
+  useRemoveCapacityTeam,
   useCapacityPlan,
   useDeleteCapacityPlan,
   usePublishPlan,
@@ -53,6 +54,7 @@ import { TeamAllocationsTable } from './ui/team-allocations-table'
 import { AllocateFeatureModal } from './ui/allocate-feature-modal'
 import { StatusBadge } from '@/shared/ui/status-badge'
 import { ActionMenu, ActionMenuItem } from '@/shared/ui/action-menu'
+import { SelectionModal } from '@/shared/ui/selection-modal'
 import { CompositeBar } from '@/shared/ui/composite-bar'
 import { planTotals } from '@/features/capacity-planning/plan-totals'
 import { CapacityBreakdownOverlay } from './ui/capacity-breakdown-overlay'
@@ -65,10 +67,10 @@ export function CapacityPlanDetailPage() {
   const navigate = useNavigate()
   const { planId } = useParams({ from: '/auth/capacity-planning/$planId' })
   const [tab, setTab] = useState('teams')
-  const [addingTeamId, setAddingTeamId] = useState('')
   const [showAllocate, setShowAllocate] = useState(false)
   const [showBreakdown, setShowBreakdown] = useState(false)
   const [showEdit, setShowEdit] = useState(false)
+  const [showTeams, setShowTeams] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   // The team whose forecast is open, by plan-team id. One modal for every row rather than a
   // modal per row: only one can be open, and mounting N dialogs to show one is waste.
@@ -122,6 +124,8 @@ export function CapacityPlanDetailPage() {
   // still be added by a caller that knows its id.)
   const { data: teams = [] } = useProjectTeams(plan?.projectId)
   const addTeam = useAddCapacityTeam()
+  const removeTeam = useRemoveCapacityTeam()
+  const removeAllocation = useRemoveAllocation()
   const revert = useRevertPlan()
   // Only for the pending flag on the toolbar button; the modal owns the publish call itself.
   const publish = usePublishPlan()
@@ -167,6 +171,20 @@ export function CapacityPlanDetailPage() {
     [plan?.teams],
   )
 
+  /**
+   * A Feature's 1-based position in the plan's rank order, for the sub-table's `Rank` column.
+   *
+   * Built from `plan.items`, which the API already returns in rank order — the same numbering the
+   * Features tab shows, so one Feature cannot be #3 on one tab and #1 on another.
+   */
+  const rankPositionOf = useCallback(
+    (portfolioItemId: string) => {
+      const index = (plan?.items ?? []).findIndex((i) => i.portfolioItemId === portfolioItemId)
+      return index === -1 ? null : index + 1
+    },
+    [plan?.items],
+  )
+
   /** The same allocations bucketed by FEATURE, for the Features tab's nested rows. */
   const allocationsByItem = useMemo(() => {
     const map = new Map<string, NonNullable<typeof plan>['allocations']>()
@@ -209,12 +227,6 @@ export function CapacityPlanDetailPage() {
     [navigate],
   )
 
-  // Teams already on the plan cannot be added twice, so they are not offered.
-  const available = useMemo(() => {
-    const onPlan = new Set((plan?.teams ?? []).map((pt) => pt.teamId))
-    return teams.filter((team) => !onPlan.has(team.id))
-  }, [teams, plan?.teams])
-
   async function removePlan() {
     try {
       await deletePlan.mutateAsync(planId)
@@ -228,18 +240,41 @@ export function CapacityPlanDetailPage() {
     }
   }
 
-  function add() {
-    if (!addingTeamId) return
-    addTeam.mutate(
-      { id: planId, teamId: addingTeamId },
-      {
-        onSuccess: () => {
-          notify.success(t('row.teamAdded'))
-          setAddingTeamId('')
-        },
-        onError: (err) => notify.error(err.message),
-      },
-    )
+  /**
+   * Rally's `Remove Only`: takes a Feature off the plan.
+   *
+   * Deletes every allocation of it, across teams and the Unallocated bucket — the Feature is on the
+   * plan because those rows exist, so removing it means removing them. The Feature itself is
+   * untouched; this is a planning decision, not a portfolio one.
+   */
+  async function removeFeature(item: { portfolioItemId: string; itemKey: string }) {
+    const rows = (plan?.allocations ?? []).filter((a) => a.portfolioItemId === item.portfolioItemId)
+    try {
+      for (const row of rows) {
+        await removeAllocation.mutateAsync({ id: planId, allocationId: row.id })
+      }
+      notify.success(t('items.removed', { item: item.itemKey }))
+    } catch (err) {
+      notify.error(err instanceof Error ? err.message : t('row.allocationRemoveFailed'))
+    }
+  }
+
+  /**
+   * Applies the dialog's selection as a DIFF against the plan's current teams.
+   *
+   * Removals first: a plan cannot hold a team twice, and doing them in one pass keeps the
+   * intermediate states out of the cache. A team that still carries allocations makes the API
+   * refuse — its demand is work a planner entered — and that error propagates to the modal.
+   */
+  async function saveTeams(ids: string[]) {
+    const onPlan = new Set((plan?.teams ?? []).map((pt) => pt.teamId))
+    const next = new Set(ids)
+    for (const teamId of [...onPlan].filter((id) => !next.has(id))) {
+      await removeTeam.mutateAsync({ id: planId, teamId })
+    }
+    for (const teamId of ids.filter((id) => !onPlan.has(id))) {
+      await addTeam.mutateAsync({ id: planId, teamId })
+    }
   }
 
   if (isLoading) return <SkeletonList rows={6} />
@@ -377,17 +412,12 @@ export function CapacityPlanDetailPage() {
             <div className="flex items-center gap-2 border-b border-border-inner px-4 py-2">
               {canManage && (
                 <>
-                  <div className="w-64">
-                    <SearchableSelect
-                      variant="field"
-                      value={addingTeamId}
-                      ariaLabel={t('detail.addTeamLabel')}
-                      options={available.map((team) => ({ value: team.id, label: team.name }))}
-                      onChange={(v) => setAddingTeamId(v ?? '')}
-                    />
-                  </div>
-                  <Button size="sm" onClick={add} disabled={!addingTeamId || addTeam.isPending}>
-                    <Plus size={13} /> {t('detail.addTeam')}
+                  {/* Rally's `Add / Remove Project(s) to Plan`: one checkbox list where checked means
+                      "on the plan". It replaces a picker that could only add PLUS a trash can on
+                      every team row — Rally has neither, and having both made adding and removing
+                      the same thing look like two unrelated features. */}
+                  <Button size="sm" onClick={() => setShowTeams(true)}>
+                    <Users size={13} /> {t('teams.action')}
                   </Button>
                   <Button size="sm" variant="secondary" onClick={() => setShowAllocate(true)}>
                     <Plus size={13} /> {t('allocate.action')}
@@ -451,6 +481,7 @@ export function CapacityPlanDetailPage() {
                       belowCutline={plan.itemCutlineIndex !== null && index > plan.itemCutlineIndex}
                       expanded={expandedItems.has(item.portfolioItemId)}
                       onToggleExpanded={() => toggleItem(item.portfolioItemId)}
+                      onRemove={canManage ? () => void removeFeature(item) : undefined}
                       colStyleFor={itemColStyleFor}
                       onOpenFeature={openFeature}
                     />
@@ -511,6 +542,8 @@ export function CapacityPlanDetailPage() {
                         unitLabel={unitLabel}
                         canManage={canManage}
                         onOpenFeature={openFeature}
+                        rankPositionOf={rankPositionOf}
+                        planProjectId={plan.projectId}
                       />
                     )}
                   </div>
@@ -541,6 +574,8 @@ export function CapacityPlanDetailPage() {
                       unitLabel={unitLabel}
                       canManage={canManage}
                       onOpenFeature={openFeature}
+                      rankPositionOf={rankPositionOf}
+                      planProjectId={plan.projectId}
                     />
                   </div>
                 )}
@@ -551,6 +586,19 @@ export function CapacityPlanDetailPage() {
       </DetailLayout>
 
       {showEdit && <EditCapacityPlanModal plan={plan} onClose={() => setShowEdit(false)} />}
+
+      {/* Reuses the shared `SelectionModal` — the same searchable checkbox list milestones use for
+          their projects/teams/releases, so Rally's dialog costs no new component. Saving diffs the
+          selection against the plan; the API refuses to drop a team that still carries demand, and
+          that message is what the modal reports. */}
+      <SelectionModal
+        open={showTeams}
+        onClose={() => setShowTeams(false)}
+        title={t('teams.title')}
+        items={teams.map((team) => ({ id: team.id, name: team.name }))}
+        selectedIds={plan.teams.map((pt) => pt.teamId)}
+        onSave={saveTeams}
+      />
 
       {/* Deleting a PUBLISHED plan is allowed — Rally allows it too — so the message says what
           survives: the Release and dates the plan stamped onto its Features are those Features'

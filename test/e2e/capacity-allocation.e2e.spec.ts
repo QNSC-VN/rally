@@ -258,15 +258,58 @@ describe('capacity allocation (e2e)', () => {
 
     expect(row?.teamId).toBeNull();
     expect(detail.unallocated).toBeGreaterThanOrEqual(12);
-    // An unallocated placeholder must NOT outrank a Refined/Preliminary forecast, so the
-    // tier falls through to preliminary rather than reporting 'allocated'.
-    expect(row?.tier).not.toBe('allocated');
-    // ...and it contributes nothing to any team's Estimated.
+    // The row was given an EXPLICIT 12, so its own tier is `allocated` — the tier describes what
+    // this row is charged, and 12 is a number a planner typed. What must not happen is that number
+    // leaking sideways: a row with NO explicit value falls back to the Feature's own estimate and
+    // never to the sum of what other rows were allocated (covered by the unit specs).
+    expect(row?.tier).toBe('allocated');
+    // The bucket contributes nothing to any team's Estimated.
     const teamA = detail.teams.find((t) => t.teamId === teamAId);
-    const allocatedToA = detail.allocations
+    const chargedToA = detail.allocations
       .filter((a) => a.teamId === teamAId)
-      .reduce((sum, a) => sum + Number(a.value), 0);
-    expect(teamA?.metrics.estimated).toBe(allocatedToA);
+      .reduce((sum, a) => sum + a.metrics.estimated, 0);
+    expect(teamA?.metrics.estimated).toBe(chargedToA);
+  });
+
+  it('ASSIGNS without allocating: a null value charges the Feature estimate to the team', async () => {
+    // Rally's primary assignment. The allocation row stores no number and the plan charges the
+    // Feature's own estimate there, which is why Rally's `Allocation` column is blank on those
+    // rows. Only real SQL shows the column actually holding NULL rather than a defaulted copy.
+    // Preliminary 'm' explicitly: the shared fixture leaves the estimate empty, which resolves to
+    // tier `none` and 0 — a legitimate state, but not the one this rule is about.
+    const feature = await portfolio.createItem(admin, {
+      projectId,
+      type: 'feature',
+      name: `Assigned ${uniqueKey()}`,
+      preliminaryEstimate: 'm',
+    });
+    const featureId = feature.id;
+    await capacity.allocate(admin, planId, { portfolioItemId: featureId, teamId: teamAId });
+
+    const detail = await capacity.getPlanDetail(admin, planId);
+    const row = detail.allocations.find((a) => a.portfolioItemId === featureId);
+
+    expect(row?.value).toBeNull();
+    // `newFeature` uses preliminary 'm', which the seeded map puts at 5 points.
+    expect(row?.metrics.estimated).toBe(5);
+    expect(row?.tier).toBe('preliminary');
+
+    // Slicing it explicitly overrides the fallback…
+    await capacity.updateAllocation(admin, planId, row!.id, { value: 13 });
+    const sliced = (await capacity.getPlanDetail(admin, planId)).allocations.find(
+      (a) => a.portfolioItemId === featureId,
+    );
+    expect(sliced?.value).toBe('13.00');
+    expect(sliced?.metrics.estimated).toBe(13);
+    expect(sliced?.tier).toBe('allocated');
+
+    // …and clearing it returns the row to the Feature's estimate rather than to zero.
+    await capacity.updateAllocation(admin, planId, row!.id, { value: null });
+    const cleared = (await capacity.getPlanDetail(admin, planId)).allocations.find(
+      (a) => a.portfolioItemId === featureId,
+    );
+    expect(cleared?.value).toBeNull();
+    expect(cleared?.metrics.estimated).toBe(5);
   });
 
   it('warns when a team’s committed demand passes its target load, then its capacity', async () => {

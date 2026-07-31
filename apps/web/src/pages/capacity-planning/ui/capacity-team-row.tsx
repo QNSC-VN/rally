@@ -1,12 +1,8 @@
 import { type CSSProperties, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Sparkles, Trash2 } from 'lucide-react'
+import { Sparkles } from 'lucide-react'
 
-import {
-  useRemoveCapacityTeam,
-  useSetCapacity,
-  type CapacityPlanTeam,
-} from '@/features/capacity-planning/api'
+import { useSetCapacity, type CapacityPlanTeam } from '@/features/capacity-planning/api'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { RowExpandToggle } from '@/shared/ui/row-expand-toggle'
 import { MetricValue } from '@/shared/ui/metric-value'
@@ -75,7 +71,6 @@ export function CapacityTeamRow({
       ? null
       : Math.round((value / team.metrics.capacity) * 100)
   const setCapacity = useSetCapacity()
-  const removeTeam = useRemoveCapacityTeam()
 
   function commitCapacity(raw: string) {
     const trimmed = raw.trim()
@@ -93,18 +88,6 @@ export function CapacityTeamRow({
       { id: planId, teamId: team.teamId, capacity: next },
       {
         onSuccess: () => notify.success(t('row.capacityUpdated')),
-        onError: (err) => notify.error(err.message),
-      },
-    )
-  }
-
-  function remove() {
-    removeTeam.mutate(
-      { id: planId, teamId: team.teamId },
-      {
-        onSuccess: () => notify.success(t('row.teamRemoved')),
-        // Surfaces the API's refusal when the team still holds allocations, rather than
-        // silently doing nothing.
         onError: (err) => notify.error(err.message),
       },
     )
@@ -219,15 +202,10 @@ export function CapacityTeamRow({
         >
           <Sparkles size={13} />
         </IconButton>
-        {canManage && (
-          <IconButton
-            aria-label={t('row.removeTeam', { team: team.teamName ?? '' })}
-            onClick={remove}
-            disabled={removeTeam.isPending}
-          >
-            <Trash2 size={13} />
-          </IconButton>
-        )}
+        {/* No delete here: Rally changes a plan's teams through `Add / Remove Project(s) to Plan`,
+            the checkbox dialog on the toolbar. A per-row trash can also invited removing a team
+            whose demand has to be moved first, which the API refuses — the dialog says so before
+            the click instead of after it. */}
       </div>
     </div>
   )

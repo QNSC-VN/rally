@@ -1,0 +1,17 @@
+-- An allocation's value becomes OPTIONAL, which is how Rally models assignment vs allocation.
+--
+-- Rally assigns a portfolio item to ONE primary project and only then "allocates points to the
+-- additional teams". The primary assignment carries no allocated number of its own — the item's own
+-- estimate (Refined, else Preliminary) is what the plan charges to that team, which is why Rally's
+-- `Allocation` column is blank on a singly-assigned item and filled only where a planner typed a
+-- slice.
+--
+-- We stored a value on every row, defaulting it from the same Refined → Preliminary rule at CREATE
+-- time. That produced the right total but lost the distinction: a defaulted 8 and a deliberate 8
+-- were indistinguishable, so the column could never render blank, and a later change to the
+-- Feature's estimate no longer moved the plan.
+--
+-- NULL now means "not explicitly allocated — charge this Feature's estimate here", resolved on
+-- read. `ck_capacity_non_negative` still applies to the values that are present (a CHECK passes on
+-- NULL), so nothing loosens.
+ALTER TABLE "work"."capacity_plan_allocations" ALTER COLUMN "value" DROP NOT NULL;
