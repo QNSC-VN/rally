@@ -65,6 +65,11 @@ export interface CapacityAllocationRow extends CapacityAllocation {
   totalAllocated: number;
   rollup: number;
   complete: number;
+  /** The Feature's LexoRank — the order Rally's cutline accumulates down. */
+  rank: string;
+  /** The Feature's own rollup/complete across every team, for the item-level row. */
+  itemRollup: number;
+  itemComplete: number;
 }
 
 /** An allocated Feature as it appears under a team (or in the Unallocated bucket). */

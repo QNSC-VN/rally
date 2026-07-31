@@ -103,15 +103,21 @@ test.describe('Capacity allocation', () => {
       await expect(dialog).toBeHidden()
     }
 
-    // The line exists, is named, and sits between the two rows.
-    const cutline = page.getByRole('separator', { name: /Capacity cutline/i })
-    await expect(cutline).toBeVisible()
+    // The cutline lives on the ITEMS tab, against the PLAN's total capacity — Rally draws it
+    // there and nowhere else. The Teams tab must not show one.
+    await expect(page.getByRole('separator', { name: /Capacity cutline/i })).toHaveCount(0)
+
+    await page.getByRole('tab', { name: /Items/ }).click()
+    await expect(page.getByRole('separator', { name: /Capacity cutline/i })).toBeVisible()
     // Exactly one Feature is marked as not fitting — the second.
     await expect(page.locator('[data-below-cutline="true"]')).toHaveCount(1)
 
     // Survives a reload: the index came from the API, not from local state.
     await page.reload({ waitUntil: 'domcontentloaded' })
+    await page.getByRole('tab', { name: /Items/ }).click()
     await expect(page.getByRole('separator', { name: /Capacity cutline/i })).toBeVisible()
+    // Back to Teams, where the allocations are removed.
+    await page.getByRole('tab', { name: /Teams/ }).click()
 
     // ── Restore the seeded state ─────────────────────────────────────────────
     for (const key of ['FE-1', 'FE-2']) {

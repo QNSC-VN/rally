@@ -34,7 +34,8 @@
   "detail": {
     "notFound": "Capacity plan not found.",
     "tabs": {
-      "teams": "Teams"
+      "teams": "Teams",
+      "items": "Items"
     },
     "addTeam": "Add Team",
     "addTeamLabel": "Team to add",
@@ -171,5 +172,13 @@
   "summary": {
     "assigned": "Assigned",
     "unassigned": "Unassigned"
+  },
+  "items": {
+    "tab": "Items",
+    "notAssigned": "Not assigned",
+    "oneTeam": "1 team",
+    "teamCount": "{{count}} teams",
+    "empty": "Allocate a Feature to see it here.",
+    "sidebarHeading": "Team capacity"
   }
 }

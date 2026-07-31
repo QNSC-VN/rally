@@ -59,13 +59,25 @@ function toDto(p: CapacityPlanDetail): CapacityPlanResponseDto {
     publishedBy: p.publishedBy,
     createdAt: p.createdAt.toISOString(),
     updatedAt: p.updatedAt.toISOString(),
+    items: p.items.map((item) => ({
+      portfolioItemId: item.portfolioItemId,
+      itemKey: item.itemKey,
+      name: item.name,
+      rank: item.rank,
+      estimated: item.estimated,
+      rollup: item.rollup,
+      complete: item.complete,
+      tier: item.tier,
+      teamIds: item.teamIds,
+      unallocated: item.unallocated,
+    })),
+    itemCutlineIndex: p.itemCutlineIndex,
     teams: p.teams.map((t) => ({
       id: t.id,
       teamId: t.teamId,
       teamName: t.teamName,
       capacity: t.capacity === null ? null : Number(t.capacity),
       metrics: t.metrics,
-      cutlineIndex: t.cutlineIndex,
     })),
     totalCapacity: p.totalCapacity === null ? null : Number(p.totalCapacity),
     allocations: p.allocations.map((a) => ({
@@ -93,8 +105,10 @@ function toDto(p: CapacityPlanDetail): CapacityPlanResponseDto {
 function toListDto(p: CapacityPlanView): CapacityPlanResponseDto {
   return toDto({
     ...p,
-    // No allocations in the list projection, so there is nothing to draw a cutline through.
-    teams: p.teams.map((t) => ({ ...t, metrics: EMPTY_METRICS, cutlineIndex: null })),
+    teams: p.teams.map((t) => ({ ...t, metrics: EMPTY_METRICS })),
+    // The list projection carries no allocations, so there are no items and no cutline.
+    items: [],
+    itemCutlineIndex: null,
     allocations: [],
     unallocated: 0,
   });
