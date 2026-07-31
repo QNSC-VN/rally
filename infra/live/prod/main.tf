@@ -218,21 +218,36 @@ module "stack" {
   // restores the service to `min_count` within minutes, so a scale-to-zero against a
   // floor of 1 silently undoes itself.
   //
-  // TO RESTORE AT GO-LIVE: set both min_count back to 1, set monitor_target_health back
-  // to true above, and deploy. The deploy pipeline sets desired_count, and qnsc-ci's
-  // `ensure_rds` starts the stopped instance, so no manual step is needed beyond this
-  // file. Nothing else about the environment changed — same task definitions, same
-  // secrets, same database, same cache.
+  // AUTOSCALING IS THEREFORE OFF TOO, not just floored at zero. A floor of 0 with target
+  // tracking still armed is the worse of the two failures: this module's only policies
+  // are CPU and memory target tracking, and a service at zero tasks publishes NEITHER
+  // metric — so scaling in to zero is one-way. A tag deploy would bring production up,
+  // target tracking would see an idle service, scale it to zero within ~15 minutes, and
+  // nothing would bring it back until the next tag. A `validation` block on the `api` and
+  // `worker` variables in the stack module now refuses that combination outright.
+  //
+  // TO RESTORE AT GO-LIVE: set both min_count back to 1, set both enable_autoscaling back
+  // to true, set monitor_target_health back to true above, and deploy. That validation
+  // enforces the min_count/enable_autoscaling half of the pairing, so a partial restore
+  // errors out rather than producing a production that scales itself down. The deploy
+  // pipeline sets desired_count, and qnsc-ci's `ensure_rds` starts the stopped instance,
+  // so no manual step is needed beyond this file. Nothing else about the environment
+  // changed — same task definitions, same secrets, same database, same cache.
   //
   // RDS run-state is not a Terraform concept, so the instance is stopped out of band —
   // but AWS FORCE-STARTS a stopped instance after 7 days, so `idle_schedule` below
   // re-stops it weekly. Without that the saving silently evaporates.
   api = {
-    cpu               = 1024
-    memory            = 2048
-    max_count         = 10
-    min_count         = 0
-    use_spot          = false
+    cpu       = 1024
+    memory    = 2048
+    max_count = 10
+    min_count = 0
+    // Restore to true at go-live together with min_count — see the note above.
+    enable_autoscaling = false
+    use_spot           = false
+    // Inert while enable_autoscaling is false, kept because go-live wants these targets
+    // and not the module defaults (65/75). Tighter than develop: production absorbs a
+    // spike by adding tasks earlier.
     cpu_target_pct    = 60
     memory_target_pct = 70
   }
@@ -252,11 +267,12 @@ module "stack" {
   // Saves ~$15.60/mo at this sizing once production runs continuously ($22.49 on-demand
   // versus $6.90 on Spot).
   worker = {
-    cpu       = 512
-    memory    = 1024
-    max_count = 6
-    min_count = 0
-    use_spot  = true
+    cpu                = 512
+    memory             = 1024
+    max_count          = 6
+    min_count          = 0
+    enable_autoscaling = false
+    use_spot           = true
   }
 
   // Telemetry stays DORMANT until otlp_endpoint is set: no sidecar, OTEL_ENABLED

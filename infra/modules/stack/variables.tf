@@ -204,10 +204,33 @@ variable "api" {
     # derives `environment_idle` below, so both stay meaningful — do not delete them.
     enable_autoscaling = optional(bool, true)
 
-    use_spot          = optional(bool, false)
+    use_spot = optional(bool, false)
+
+    # Inert while enable_autoscaling is false. Kept set anyway in prod, so go-live
+    # restores production's chosen targets rather than the module defaults.
     cpu_target_pct    = optional(number, 65)
     memory_target_pct = optional(number, 75)
   })
+
+  # Autoscaling ON with a floor of 0 is a ONE-WAY trip to zero tasks.
+  #
+  # This module's only policies are CPU and memory target tracking, and a service running
+  # no tasks publishes NEITHER metric — so target tracking can scale in to zero and can
+  # never scale back out of it. The combination reads as "autoscale between 0 and N" and
+  # behaves as "come up on deploy, scale to zero ~15 minutes later, stay there until the
+  # next deploy": capacity that vanishes underneath whoever is using the environment, and
+  # no alarm fires because zero tasks is also what the deliberate idle posture looks like.
+  #
+  # It is exactly the shape a PARTIAL go-live restore produces — turn `enable_autoscaling`
+  # back on, forget `min_count`, and production quietly undeploys itself a quarter of an
+  # hour after every release. Validating it here fails the plan instead.
+  #
+  # An environment that genuinely wants a floor of 0 drives its count externally: a deploy
+  # raises it, `idle_schedule` lowers it. That is develop, and it must keep autoscaling off.
+  validation {
+    condition     = !var.api.enable_autoscaling || var.api.min_count >= 1
+    error_message = "api.enable_autoscaling = true requires min_count >= 1 (got ${var.api.min_count}). Target tracking scales on CPU and memory, which a service at zero tasks does not publish, so scaling in to zero is one-way. Raise the floor, or set enable_autoscaling = false and let the deploy and idle_schedule own the count."
+  }
 }
 
 variable "worker" {
@@ -221,6 +244,12 @@ variable "worker" {
     enable_autoscaling = optional(bool, true)
     use_spot           = optional(bool, false)
   })
+
+  # See the same validation on `api` for why this pair is enforced.
+  validation {
+    condition     = !var.worker.enable_autoscaling || var.worker.min_count >= 1
+    error_message = "worker.enable_autoscaling = true requires min_count >= 1 (got ${var.worker.min_count}). Target tracking scales on CPU and memory, which a service at zero tasks does not publish, so scaling in to zero is one-way. Raise the floor, or set enable_autoscaling = false and let the deploy and idle_schedule own the count."
+  }
 }
 
 variable "observability" {
