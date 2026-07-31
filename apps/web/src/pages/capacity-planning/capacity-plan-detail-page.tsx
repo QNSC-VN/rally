@@ -18,6 +18,7 @@ import { SkeletonList } from '@/shared/ui/skeleton'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { DataTableFrame } from '@/shared/ui/table/data-table-frame'
 import { useDataTable } from '@/shared/ui/table'
+import { useTableSort } from '@/shared/lib/hooks/use-table-sort'
 import { DetailField, DetailLayout, DetailTwoPane } from '@/shared/ui/detail'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { notify } from '@/shared/lib/toast'
@@ -31,7 +32,11 @@ import {
   type CapacityPlanItem,
   type CapacityPlanTeam,
 } from '@/features/capacity-planning/api'
-import { planTotals, pctOfCapacity } from '@/features/capacity-planning/plan-totals'
+import { CAPACITY_STATUS_STYLE } from '@/features/capacity-planning/status-colors'
+import {
+  sortCapacityTeams,
+  type CapacityTeamSortField,
+} from '@/features/capacity-planning/sort-teams'
 import { useCapacityWarningText } from '@/features/capacity-planning/warning-labels'
 import { CutlineDivider } from '@/shared/ui/cutline-divider'
 import {
@@ -41,12 +46,13 @@ import {
   type TeamColKey,
 } from './model/columns'
 import { CapacityItemRow } from './ui/capacity-item-row'
+import { PlanSummaryMetrics } from './ui/plan-summary-metrics'
 import { CapacityTeamRow } from './ui/capacity-team-row'
 import { AllocationRow } from './ui/allocation-row'
 import { AllocateFeatureModal } from './ui/allocate-feature-modal'
 import { BRAND } from '@/shared/config/brand'
-import { MetricCard } from '@/shared/ui/metric-card'
 import { MetricStrip } from '@/shared/ui/metric-strip'
+import { StatusBadge } from '@/shared/ui/status-badge'
 import { CapacityBreakdownOverlay } from './ui/capacity-breakdown-overlay'
 import { CapacityForecastModal } from './ui/capacity-forecast-modal'
 import { PublishPlanModal } from './ui/publish-plan-modal'
@@ -104,9 +110,19 @@ export function CapacityPlanDetailPage() {
   // who may stamp a release onto other people's Features.
   const canPublish = can('capacity:publish')
 
+  // Client-side: the plan endpoint returns every team in one payload, so there is no page to
+  // re-fetch and no server sort to ask for. Same `useTableSort` toggle semantics as every other
+  // grid in the app, so clicking a header behaves identically here.
+  const { sortField, sortDir, toggle } = useTableSort<CapacityTeamSortField>()
+
   const table = useDataTable<CapacityPlanTeam, unknown, TeamColKey>(CAPACITY_TEAM_COLUMNS, {
     storageKey: 'rally-capacity-team-columns',
     leadingWidth: 36,
+    sort: {
+      col: sortField ?? '',
+      dir: sortDir ?? 'asc',
+      onSort: (c) => toggle(c as CapacityTeamSortField),
+    },
   })
   const colStyleFor = useCallback(
     (key: TeamColKey, base?: React.CSSProperties) => table.styleFor(key, base),
@@ -140,6 +156,14 @@ export function CapacityPlanDetailPage() {
     }
     return map
   }, [plan?.allocations])
+
+  const sortedTeams = useMemo(
+    () =>
+      sortCapacityTeams(plan?.teams ?? [], sortField, sortDir, (teamId) =>
+        (plan?.allocations ?? []).reduce((n, a) => (a.teamId === teamId ? n + 1 : n), 0),
+      ),
+    [plan?.teams, plan?.allocations, sortField, sortDir],
+  )
 
   /** Demand parked without a team. */
   const unallocated = useMemo(
@@ -180,12 +204,6 @@ export function CapacityPlanDetailPage() {
   // Resolved from the plan on every render rather than held in state, so a refetch that
   // changes a team's capacity cannot leave the open modal showing a stale row.
   const forecastTeam = plan.teams.find((team) => team.teamId === forecastTeamId) ?? null
-  const totals = planTotals(plan)
-  /** "12 points · 40%" — the percentage is omitted when no capacity gives it a base. */
-  const captionFor = (value: number) => {
-    const pct = pctOfCapacity(value, totals.capacity)
-    return pct === null ? unitLabel : `${unitLabel} · ${pct}%`
-  }
 
   return (
     <>
@@ -193,7 +211,27 @@ export function CapacityPlanDetailPage() {
         onBack={() => void navigate({ to: '/capacity-planning' })}
         backLabel={t('title')}
         title={plan.name}
-        status={<span className="text-ui-sm">{t(`statuses.${plan.status}`)}</span>}
+        status={
+          <div className="flex items-center gap-2">
+            {/* Same `StatusBadge` + feature-owned colour map as releases, iterations, milestones
+                and projects — a capacity plan's state should not be the one status in the app
+                rendered as bare text. */}
+            <StatusBadge style={CAPACITY_STATUS_STYLE[plan.status]} />
+            {/* Light-on-dark, NOT the page's muted greys: this bar is `bg-primary-dark`, where
+                `text-muted-foreground` on a subtle border is very nearly invisible. Same
+                `bg-white/10` + `text-white` treatment the bar's own controls use. */}
+            {plan.releaseName !== null && (
+              <span className="rounded-sm bg-white/10 px-1.5 py-px text-ui-xs text-white">
+                {plan.releaseName}
+              </span>
+            )}
+            {/* Rally states the plan's portfolio-item type in the header: a plan of Features and a
+                plan of Epics look identical otherwise. Ours only plans Features today. */}
+            <span className="text-ui-xs text-white/70">
+              {t('summary.itemType')}: {t('items.featureType')}
+            </span>
+          </div>
+        }
         tabs={[
           { key: 'teams', label: t('detail.tabs.teams'), count: plan.teams.length },
           // Rally's Items tab: the same plan seen by Feature rather than by team, and the only
@@ -206,58 +244,12 @@ export function CapacityPlanDetailPage() {
         <DetailTwoPane
           main={
             <div className="flex min-h-0 flex-1 flex-col">
-              {/* Rally's plan summary: the four Breakdown numbers as a header strip, plus the
-                  assigned/unassigned split it shows beside them. Same `MetricStrip` chrome as
-                  every other read-model summary in the app, and the same `planTotals` the
-                  Breakdown overlay reads — the header cannot disagree with the table. */}
+              {/* Rally's compact summary line, not a row of KPI cards: each metric carries the
+                  SWATCH of the bar segment it names, so the header explains the bars beneath it.
+                  Kept inside `MetricStrip` so the chrome (height, divider, padding) is the same
+                  strip every other read-model summary in the app uses. */}
               <MetricStrip>
-                <MetricCard
-                  label={t('breakdown.complete')}
-                  value={totals.complete}
-                  caption={captionFor(totals.complete)}
-                  minWidth={110}
-                />
-                <MetricCard
-                  label={t('breakdown.rollup')}
-                  value={totals.rollup}
-                  caption={captionFor(totals.rollup)}
-                  minWidth={110}
-                />
-                <MetricCard
-                  label={t('breakdown.estimated')}
-                  value={totals.estimated}
-                  caption={captionFor(totals.estimated)}
-                  minWidth={110}
-                />
-                <MetricCard
-                  label={t('breakdown.capacity')}
-                  value={
-                    totals.capacity === null ? (
-                      <span className="text-ui-sm font-normal text-foreground-subtle">
-                        {t('row.notEntered')}
-                      </span>
-                    ) : (
-                      totals.capacity
-                    )
-                  }
-                  // No unit caption when there is no number: "Not entered points" reads as a
-                  // quantity of nothing rather than an unanswered question.
-                  caption={totals.capacity === null ? undefined : unitLabel}
-                  minWidth={130}
-                />
-                <MetricCard
-                  label={t('summary.assigned')}
-                  value={totals.assignedItems}
-                  minWidth={90}
-                />
-                <MetricCard
-                  label={t('summary.unassigned')}
-                  value={totals.unassignedItems}
-                  // Rally shows the unassigned count in YELLOW when there is one: it is the
-                  // number that means work in this plan has nowhere to go.
-                  valueColor={totals.unassignedItems > 0 ? BRAND.warning : undefined}
-                  minWidth={100}
-                />
+                <PlanSummaryMetrics plan={plan} unitLabel={unitLabel} />
               </MetricStrip>
 
               <div className="flex items-center gap-2 border-b border-border-inner px-4 py-2">
@@ -361,7 +353,7 @@ export function CapacityPlanDetailPage() {
                     ) : undefined
                   }
                 >
-                  {plan.teams.map((team) => (
+                  {sortedTeams.map((team) => (
                     <div key={team.id}>
                       <CapacityTeamRow
                         planId={plan.id}
@@ -444,7 +436,7 @@ export function CapacityPlanDetailPage() {
                   <span className="text-ui-xs font-semibold text-foreground-subtle uppercase">
                     {t('items.sidebarHeading')}
                   </span>
-                  {plan.teams.map((team) => {
+                  {sortedTeams.map((team) => {
                     const labels = warningText(team.metrics.warnings)
                     return (
                       <div

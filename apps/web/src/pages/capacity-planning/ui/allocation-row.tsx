@@ -11,6 +11,7 @@ import {
 import { BRAND } from '@/shared/config/brand'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { CompositeBar } from '@/shared/ui/composite-bar'
+import { MetricValue } from '@/shared/ui/metric-value'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { IconButton } from '@/shared/ui/icon-button'
 import { notify } from '@/shared/lib/toast'
@@ -123,6 +124,10 @@ export function AllocationRow({
         )
       )}
 
+      {/* Empty: the Features count is a TEAM figure. Rendering nothing keeps the columns aligned
+          without repeating a number that means something else one row up. */}
+      <div style={colStyleFor('features', { flexShrink: 0 })} />
+
       <div style={colStyleFor('progress', { flexShrink: 0 })} className="min-w-0 px-2">
         <CompositeBar
           complete={metrics.complete}
@@ -137,6 +142,19 @@ export function AllocationRow({
             unit: unitLabel,
           })}
         />
+      </div>
+
+      {/* A Feature row fills the same three numeric columns as its team, so the values line up
+          under one set of headers. Percentages are absent by definition: a Feature has no capacity
+          of its own to be a share OF — the ceiling belongs to the team above it. */}
+      <div style={colStyleFor('complete', { flexShrink: 0 })} className="px-2 text-right">
+        <MetricValue value={metrics.complete} pct={null} />
+      </div>
+      <div style={colStyleFor('rollup', { flexShrink: 0 })} className="px-2 text-right">
+        <MetricValue value={metrics.rollup} pct={null} />
+      </div>
+      <div style={colStyleFor('estimated', { flexShrink: 0 })} className="px-2 text-right">
+        <MetricValue value={metrics.estimated} pct={null} />
       </div>
 
       <div

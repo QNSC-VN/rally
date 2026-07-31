@@ -133,14 +133,14 @@ test.describe('Capacity allocation', () => {
     // there and nowhere else. The Teams tab must not show one.
     await expect(page.getByRole('separator', { name: /Capacity cutline/i })).toHaveCount(0)
 
-    await page.getByRole('tab', { name: /Items/ }).click()
+    await page.getByRole('tab', { name: /Features/ }).click()
     await expect(page.getByRole('separator', { name: /Capacity cutline/i })).toBeVisible()
     // Exactly one Feature is marked as not fitting — the second.
     await expect(page.locator('[data-below-cutline="true"]')).toHaveCount(1)
 
     // Survives a reload: the index came from the API, not from local state.
     await page.reload({ waitUntil: 'domcontentloaded' })
-    await page.getByRole('tab', { name: /Items/ }).click()
+    await page.getByRole('tab', { name: /Features/ }).click()
     await expect(page.getByRole('separator', { name: /Capacity cutline/i })).toBeVisible()
     // Back to Teams, where the allocations are removed.
     await page.getByRole('tab', { name: /Teams/ }).click()

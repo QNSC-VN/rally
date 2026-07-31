@@ -30,7 +30,8 @@ export const CAPACITY_PLAN_COLUMNS: ColumnSpec<CapacityPlan, unknown, PlanColKey
   { key: 'capacity', label: 'Capacity', defaultWidth: 110, minWidth: 90, align: 'right' },
 ]
 
-export type TeamColKey = 'team' | 'features' | 'progress' | 'capacity' | 'actions'
+export type TeamColKey =
+  'team' | 'features' | 'progress' | 'complete' | 'rollup' | 'estimated' | 'capacity' | 'actions'
 
 /**
  * The team grid inside one plan.
@@ -47,17 +48,56 @@ export const CAPACITY_TEAM_COLUMNS: ColumnSpec<CapacityPlanTeam, unknown, TeamCo
   {
     key: 'team',
     label: 'Team / Feature',
-    defaultWidth: 320,
-    minWidth: 180,
+    defaultWidth: 240,
+    minWidth: 160,
     locked: true,
     grow: true,
   },
   // Its own column, with a header, rather than a bare digit beside the team name: a loose
   // number there reads as "1 what?" — and Rally gives the count a column too.
-  { key: 'features', label: 'Features', defaultWidth: 90, minWidth: 70, align: 'right' },
-  { key: 'progress', label: 'Complete / Rollup / Estimated', defaultWidth: 220, minWidth: 140 },
-  { key: 'capacity', label: 'Capacity', defaultWidth: 130, minWidth: 100, align: 'right' },
-  { key: 'actions', label: '', defaultWidth: 60, minWidth: 60, align: 'center' },
+  { key: 'features', label: 'Features', defaultWidth: 84, minWidth: 70, align: 'right' },
+  // The bar is UNLABELLED and sits beside the numbers, not instead of them. Rally shows both: the
+  // bar answers "is this team over?" at a glance, the numbers answer "by how much" — and an
+  // earlier version of this grid collapsed all three values into the bar, so the numbers could
+  // only be read by hovering.
+  { key: 'progress', label: '', defaultWidth: 170, minWidth: 120 },
+  // Four NARROW numeric columns, not four comfortable ones. Eight columns plus the open Details
+  // panel is ~980px of usable width; at the 110px each of these first had, Capacity — the baseline
+  // every other number is a percentage of — fell off the right edge entirely. Each holds
+  // `value + small %`, so ~84px is enough for the four digits Rally shows.
+  {
+    key: 'complete',
+    label: 'Complete',
+    defaultWidth: 88,
+    minWidth: 74,
+    align: 'right',
+    sortCol: 'complete',
+  },
+  {
+    key: 'rollup',
+    label: 'Rollup',
+    defaultWidth: 84,
+    minWidth: 70,
+    align: 'right',
+    sortCol: 'rollup',
+  },
+  {
+    key: 'estimated',
+    label: 'Estimated',
+    defaultWidth: 88,
+    minWidth: 74,
+    align: 'right',
+    sortCol: 'estimated',
+  },
+  {
+    key: 'capacity',
+    label: 'Capacity',
+    defaultWidth: 100,
+    minWidth: 84,
+    align: 'right',
+    sortCol: 'capacity',
+  },
+  { key: 'actions', label: '', defaultWidth: 48, minWidth: 48, align: 'center' },
 ]
 
 export type ItemColKey = 'rank' | 'id' | 'name' | 'assignment' | 'progress' | 'estimated'
@@ -74,9 +114,12 @@ export type ItemColKey = 'rank' | 'id' | 'name' | 'assignment' | 'progress' | 'e
  */
 export const CAPACITY_ITEM_COLUMNS: ColumnSpec<CapacityPlanItem, unknown, ItemColKey>[] = [
   { key: 'rank', label: 'Rank', defaultWidth: 70, minWidth: 60, align: 'right' },
-  { key: 'id', label: 'ID', defaultWidth: 110, minWidth: 90, locked: true },
-  { key: 'name', label: 'Name', defaultWidth: 300, minWidth: 160, locked: true, grow: true },
-  { key: 'assignment', label: 'Planned Team Assignment', defaultWidth: 200, minWidth: 140 },
-  { key: 'progress', label: 'Complete / Rollup / Estimated', defaultWidth: 220, minWidth: 140 },
-  { key: 'estimated', label: 'Estimated', defaultWidth: 130, minWidth: 100, align: 'right' },
+  { key: 'id', label: 'ID', defaultWidth: 100, minWidth: 90, locked: true },
+  // Widths sized so the LAST column still lands inside the ~980px the main pane has with Details
+  // open — `grow` only spends surplus width, it does not claw any back, so defaults that overflow
+  // simply push the right-hand columns out of sight.
+  { key: 'name', label: 'Name', defaultWidth: 220, minWidth: 160, locked: true, grow: true },
+  { key: 'assignment', label: 'Planned Team Assignment', defaultWidth: 170, minWidth: 140 },
+  { key: 'progress', label: 'Complete / Rollup / Estimated', defaultWidth: 180, minWidth: 140 },
+  { key: 'estimated', label: 'Estimated', defaultWidth: 100, minWidth: 90, align: 'right' },
 ]
