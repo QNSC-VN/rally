@@ -137,7 +137,18 @@ module "secrets" {
   # Terraform creates these EMPTY; values are pasted in out of band and never enter
   # state. The deploy preflight in qnsc-ci refuses to deploy while any injected secret
   # is still an empty container.
-  secret_names = {
+  # Merged rather than a flat map so `observability-token` can be omitted entirely while
+  # the OTel path is dormant. A secret that is deliberately never populated AND never
+  # injected is a resource with no purpose — it still bills $0.40/mo per environment, and
+  # more to the point it shows up in every audit of "which secrets are unpopulated?" as a
+  # permanent false positive, which is how a real unpopulated secret gets overlooked.
+  secret_names = merge(var.observability.otlp_endpoint == "" ? {} : {
+    # The COMPLETE Authorization header the collector sidecar sends upstream, e.g.
+    # `Basic base64(instanceID:token)` — not the bare token. Assembling it in Terraform
+    # would put the instance id in state and the credential in the collector's plaintext
+    # config.
+    "observability-token" = "Authorization header for the OTLP backend (e.g. 'Basic <base64>')"
+    }, {
     # There is deliberately NO jwt-public here. `env.schema.ts` derives the public key
     # from this one, because an ES256 public key is a pure function of its private half and
     # rally publishes no JWKS. Storing both allowed the one failure a key pair cannot
@@ -188,7 +199,7 @@ module "secrets" {
     # `Basic base64(instanceID:token)` — not the bare token. Assembling it in Terraform
     # would put the instance id in state and the credential in the collector's plaintext
     # config. Empty keeps the whole OTel path dormant.
-    "observability-token" = "Authorization header for the OTLP backend (e.g. 'Basic <base64>')"
+
     # Passwords for the least-privilege database roles created by migration 0068
     # (rally_app / rally_worker). Empty containers only: the value is set by hand
     # at the same moment the role is granted LOGIN, so the password exists in
@@ -202,7 +213,7 @@ module "secrets" {
     # docs/runbooks/db-role-least-privilege.md.
     "db-app-password"    = "Password for the rally_app Postgres role (api) — set with the LOGIN grant"
     "db-worker-password" = "Password for the rally_worker Postgres role (worker) — set with the LOGIN grant"
-  }
+  })
 
   tags = local.tags
 }
@@ -262,10 +273,12 @@ module "cache" {
 module "otel_agent_api" {
   source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/observability-agent?ref=observability-agent-v1.0.0"
 
-  product          = var.product
-  env              = var.env
-  otlp_endpoint    = var.observability.otlp_endpoint
-  token_secret_arn = module.secrets.secret_arns["observability-token"]
+  product       = var.product
+  env           = var.env
+  otlp_endpoint = var.observability.otlp_endpoint
+  # try(): the secret is not created while the OTel path is dormant, and this module is a
+  # no-op in that state anyway — so an absent ARN is the correct input, not an error.
+  token_secret_arn = try(module.secrets.secret_arns["observability-token"], "")
   log_group        = local.api_log_group
   region           = var.region
 
@@ -277,10 +290,12 @@ module "otel_agent_api" {
 module "otel_agent_worker" {
   source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/observability-agent?ref=observability-agent-v1.0.0"
 
-  product          = var.product
-  env              = var.env
-  otlp_endpoint    = var.observability.otlp_endpoint
-  token_secret_arn = module.secrets.secret_arns["observability-token"]
+  product       = var.product
+  env           = var.env
+  otlp_endpoint = var.observability.otlp_endpoint
+  # try(): the secret is not created while the OTel path is dormant, and this module is a
+  # no-op in that state anyway — so an absent ARN is the correct input, not an error.
+  token_secret_arn = try(module.secrets.secret_arns["observability-token"], "")
   log_group        = local.worker_log_group
   region           = var.region
 
