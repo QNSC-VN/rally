@@ -59,19 +59,25 @@ const CapacityPlanTeamSchema = z.object({
    */
   capacity: z.number().nullable(),
   metrics: CapacityMetricsSchema,
-  /**
-   * Rally's cutline: the index of the last of this team's Features, IN RANK ORDER, that still
-   * fits inside its capacity.
-   *
-   * An index rather than a boolean per row, because the line sits BETWEEN two rows — and
-   * because a per-row flag would let a client draw an incoherent picture (a row marked as
-   * fitting below one marked as not).
-   */
-  cutlineIndex: z
-    .number()
-    .int()
-    .nullable()
-    .describe('-1 = the first Feature already exceeds capacity; null = no capacity entered'),
+});
+
+/**
+ * One Feature on the plan — Rally's Items tab row.
+ *
+ * A Feature shared between teams appears ONCE here with its allocations summed, and is listed
+ * per team in `allocations`. Rally's Items tab does the same: one row, nested allocation rows.
+ */
+const CapacityPlanItemSchema = z.object({
+  portfolioItemId: z.string().uuid(),
+  itemKey: z.string(),
+  name: z.string(),
+  rank: z.string().describe('LexoRank — the order the cutline accumulates down'),
+  estimated: z.number().describe('Committed demand summed over this Feature’s allocations'),
+  rollup: z.number().describe('The Feature’s OWN rollup, across every team'),
+  complete: z.number(),
+  tier: z.enum(['allocated', 'refined', 'preliminary', 'none']),
+  teamIds: z.array(z.string().uuid()),
+  unallocated: z.boolean().describe('Any allocation has no team — Rally’s unassigned warning'),
 });
 
 export const CapacityPlanSchema = z.object({
@@ -96,6 +102,20 @@ export const CapacityPlanSchema = z.object({
   teams: z.array(CapacityPlanTeamSchema),
   /** Sum of the capacities ENTERED so far; null when none has been. */
   totalCapacity: z.number().nullable(),
+  items: z.array(CapacityPlanItemSchema).describe('One row per Feature, in RANK order'),
+  /**
+   * Rally's cutline: the index of the last ITEM that fits inside the plan's total capacity.
+   *
+   * Plan-wide and on the item list, which is where Rally draws it — "Items above the cutline fit
+   * within the defined plan capacity". An index rather than a per-row boolean, because the line
+   * sits BETWEEN two rows and a per-row flag would let a client render a "fits" row below a
+   * "does not fit" one.
+   */
+  itemCutlineIndex: z
+    .number()
+    .int()
+    .nullable()
+    .describe('-1 = the first item already exceeds capacity; null = no capacity entered'),
   allocations: z.array(CapacityAllocationSchema),
   /**
    * Demand parked without a team.

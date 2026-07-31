@@ -19,6 +19,7 @@ import type { components, paths } from '@/shared/api/generated/api'
 
 export type CapacityPlan = components['schemas']['CapacityPlanResponseDto']
 export type CapacityPlanTeam = CapacityPlan['teams'][number]
+export type CapacityPlanItem = CapacityPlan['items'][number]
 export type CapacityPlanUnit = CapacityPlan['unit']
 export type CapacityPlanStatus = CapacityPlan['status']
 

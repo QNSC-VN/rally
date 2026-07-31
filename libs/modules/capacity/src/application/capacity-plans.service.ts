@@ -14,6 +14,7 @@ import {
   PreliminaryEstimateMapService,
   computeCapacityWarnings,
   computeCutlineIndex,
+  type EstimateTier,
   defaultAllocationEstimate,
   resolveEstimate,
 } from '@modules/portfolio';
@@ -48,13 +49,6 @@ import type {
 /** A plan team with the four numbers and the advisory warnings derived from them. */
 export interface CapacityPlanTeamWithMetrics extends CapacityPlanTeamView {
   metrics: CapacityMetrics;
-  /**
-   * Index of the last of this team's Features (in rank order) that fits inside its capacity.
-   *
-   * `-1` when the very first one already exceeds it — a real answer, not an error — and `null`
-   * when no capacity has been entered, because there is then no line to draw.
-   */
-  cutlineIndex: number | null;
 }
 
 /**
@@ -64,8 +58,33 @@ export interface CapacityPlanTeamWithMetrics extends CapacityPlanTeamView {
  * an unallocated placeholder must not outrank a Refined or Preliminary forecast, which is
  * the same reason `totalAllocatedFor` counts team-assigned rows only.
  */
+/** One Feature on the plan, aggregated over its allocations — Rally's Items tab row. */
+export interface CapacityPlanItem {
+  portfolioItemId: string;
+  itemKey: string;
+  name: string;
+  rank: string;
+  /** Committed demand summed over this Feature's allocations. */
+  estimated: number;
+  rollup: number;
+  complete: number;
+  tier: EstimateTier;
+  /** Teams this Feature is allocated to; empty when it sits only in the Unallocated bucket. */
+  teamIds: string[];
+  /** True when any of its allocations has no team — Rally's unassigned warning. */
+  unallocated: boolean;
+}
+
 export interface CapacityPlanDetail extends Omit<CapacityPlanView, 'teams'> {
   teams: CapacityPlanTeamWithMetrics[];
+  items: CapacityPlanItem[];
+  /**
+   * Index of the last ITEM (in rank order) that fits inside the plan's total capacity.
+   *
+   * `-1` when the first item already exceeds it; `null` when no team has entered a capacity, so
+   * there is nothing to draw a line against.
+   */
+  itemCutlineIndex: number | null;
   allocations: CapacityAllocationView[];
   unallocated: number;
 }
@@ -553,28 +572,8 @@ export class CapacityPlansService {
           .reduce((sum, a) => sum + Number(a.value), 0);
         const capacity = team.capacity === null ? null : Number(team.capacity);
 
-        /**
-         * Rally's cutline, per team.
-         *
-         * Walks this team's Features in RANK order accumulating their resolved estimate, and
-         * returns the index of the last one that still fits inside the team's capacity.
-         *
-         * Per TEAM rather than per plan, because the team's capacity is the number that
-         * actually constrains its work: a Feature above a plan-wide line could still belong to
-         * a team with no room left, which is the opposite of what the line is for.
-         *
-         * Computed here, not in the client: the rule is domain logic with its own tests
-         * (`computeCutlineIndex`), and a second implementation in the SPA would be a second
-         * definition of what fits.
-         */
-        const cutlineIndex = computeCutlineIndex(
-          allocations.filter((a) => a.teamId === team.teamId).map((a) => Number(a.value)),
-          capacity,
-        );
-
         return {
           ...team,
-          cutlineIndex,
           metrics: {
             complete,
             rollup,
@@ -592,9 +591,68 @@ export class CapacityPlansService {
       }),
     );
 
+    /**
+     * Rally's Items tab: ONE row per Feature, in rank order, with its own totals.
+     *
+     * Distinct by Feature because a Feature shared between two teams is one item with two
+     * allocations — Rally lists it once and nests the allocations underneath.
+     */
+    // Built from the REPOSITORY rows, not the client view: `rank` and the Feature's own totals
+    // are inputs to this aggregation, not fields any client needs on an allocation. `rows` and
+    // `allocations` are 1:1 in order, so the tier already resolved above is reused by index
+    // rather than resolved a second time.
+    const items: CapacityPlanItem[] = [];
+    const seen = new Map<string, number>();
+    for (const [index, row] of rows.entries()) {
+      const at = seen.get(row.portfolioItemId);
+      if (at === undefined) {
+        seen.set(row.portfolioItemId, items.length);
+        items.push({
+          portfolioItemId: row.portfolioItemId,
+          itemKey: row.itemKey,
+          name: row.name,
+          rank: row.rank,
+          // Sums the COMMITTED demand across this Feature's allocations. Rally's Estimated
+          // becomes the allocated total once any allocation exists, which is the same rule
+          // `resolveEstimate` applies per row.
+          estimated: Number(row.value),
+          rollup: row.itemRollup,
+          complete: row.itemComplete,
+          tier: allocations[index].tier,
+          teamIds: row.teamId === null ? [] : [row.teamId],
+          unallocated: row.teamId === null,
+        });
+      } else {
+        const item = items[at];
+        item.estimated += Number(row.value);
+        if (row.teamId === null) item.unallocated = true;
+        else item.teamIds.push(row.teamId);
+        // A Feature with several allocations takes the strongest tier it has: an entered
+        // allocation outranks a forecast, and that is what the row's number now is.
+        if (allocations[index].tier === 'allocated') item.tier = 'allocated';
+      }
+    }
+    // Ordered by the repository's rank ordering, EXCEPT that it puts unallocated rows last.
+    // The cutline accumulates strictly down rank, so this restores it.
+    items.sort((a, b) => (a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0));
+
+    /**
+     * Rally's cutline: "Items above the cutline fit within the defined plan capacity."
+     *
+     * PLAN-wide, on the item list, in rank order — the shape Rally documents. An earlier
+     * version drew it per team on the team grid; that answered a different question (what one
+     * team drops) than the one Rally's line answers (what this PLAN drops).
+     */
+    const itemCutlineIndex = computeCutlineIndex(
+      items.map((item) => item.estimated),
+      totalEnteredCapacity(teams),
+    );
+
     return {
       ...plan,
       teams,
+      items,
+      itemCutlineIndex,
       allocations,
       /** Demand parked without a team. Excluded from Total Allocated by design. */
       unallocated: allocations
@@ -761,4 +819,20 @@ function windowFitsInside(
   // ISO `YYYY-MM-DD` compares correctly as a string, so no parsing (and no timezone) is
   // involved.
   return ps >= rs && pe <= re;
+}
+
+/**
+ * Sum of the capacities teams have actually ENTERED, or null while none has.
+ *
+ * Null keeps `computeCutlineIndex` from drawing a line: with no stated ceiling there is nothing
+ * for the running total to exceed, and a line at the top would claim nothing fits.
+ */
+function totalEnteredCapacity(teams: CapacityPlanTeamWithMetrics[]): number | null {
+  let total: number | null = null;
+  for (const team of teams) {
+    const capacity = team.metrics.capacity;
+    if (capacity === null) continue;
+    total = (total ?? 0) + capacity;
+  }
+  return total;
 }

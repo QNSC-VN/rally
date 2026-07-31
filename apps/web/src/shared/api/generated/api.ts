@@ -3976,10 +3976,29 @@ export interface components {
             | 'load_above_target'
           )[]
         }
-        /** @description -1 = the first Feature already exceeds capacity; null = no capacity entered */
-        cutlineIndex: number | null
       }[]
       totalCapacity: number | null
+      /** @description One row per Feature, in RANK order */
+      items: {
+        /** Format: uuid */
+        portfolioItemId: string
+        itemKey: string
+        name: string
+        /** @description LexoRank — the order the cutline accumulates down */
+        rank: string
+        /** @description Committed demand summed over this Feature’s allocations */
+        estimated: number
+        /** @description The Feature’s OWN rollup, across every team */
+        rollup: number
+        complete: number
+        /** @enum {string} */
+        tier: 'allocated' | 'refined' | 'preliminary' | 'none'
+        teamIds: string[]
+        /** @description Any allocation has no team — Rally’s unassigned warning */
+        unallocated: boolean
+      }[]
+      /** @description -1 = the first item already exceeds capacity; null = no capacity entered */
+      itemCutlineIndex: number | null
       allocations: {
         /** Format: uuid */
         id: string
@@ -4090,10 +4109,29 @@ export interface components {
               | 'load_above_target'
             )[]
           }
-          /** @description -1 = the first Feature already exceeds capacity; null = no capacity entered */
-          cutlineIndex: number | null
         }[]
         totalCapacity: number | null
+        /** @description One row per Feature, in RANK order */
+        items: {
+          /** Format: uuid */
+          portfolioItemId: string
+          itemKey: string
+          name: string
+          /** @description LexoRank — the order the cutline accumulates down */
+          rank: string
+          /** @description Committed demand summed over this Feature’s allocations */
+          estimated: number
+          /** @description The Feature’s OWN rollup, across every team */
+          rollup: number
+          complete: number
+          /** @enum {string} */
+          tier: 'allocated' | 'refined' | 'preliminary' | 'none'
+          teamIds: string[]
+          /** @description Any allocation has no team — Rally’s unassigned warning */
+          unallocated: boolean
+        }[]
+        /** @description -1 = the first item already exceeds capacity; null = no capacity entered */
+        itemCutlineIndex: number | null
         allocations: {
           /** Format: uuid */
           id: string
@@ -4193,10 +4231,29 @@ export interface components {
               | 'load_above_target'
             )[]
           }
-          /** @description -1 = the first Feature already exceeds capacity; null = no capacity entered */
-          cutlineIndex: number | null
         }[]
         totalCapacity: number | null
+        /** @description One row per Feature, in RANK order */
+        items: {
+          /** Format: uuid */
+          portfolioItemId: string
+          itemKey: string
+          name: string
+          /** @description LexoRank — the order the cutline accumulates down */
+          rank: string
+          /** @description Committed demand summed over this Feature’s allocations */
+          estimated: number
+          /** @description The Feature’s OWN rollup, across every team */
+          rollup: number
+          complete: number
+          /** @enum {string} */
+          tier: 'allocated' | 'refined' | 'preliminary' | 'none'
+          teamIds: string[]
+          /** @description Any allocation has no team — Rally’s unassigned warning */
+          unallocated: boolean
+        }[]
+        /** @description -1 = the first item already exceeds capacity; null = no capacity entered */
+        itemCutlineIndex: number | null
         allocations: {
           /** Format: uuid */
           id: string
