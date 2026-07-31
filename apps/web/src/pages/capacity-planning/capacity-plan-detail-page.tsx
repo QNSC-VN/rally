@@ -387,22 +387,10 @@ export function CapacityPlanDetailPage() {
                 `text-muted-foreground` on a subtle border is very nearly invisible. Same
                 `bg-white/10` + `text-white` treatment the bar's own controls use. */}
             {plan.releaseName !== null && (
-              <span className="rounded-sm bg-white/10 px-1.5 py-px text-ui-xs text-white">
+              <span className="rounded-full bg-white/10 px-2 py-px text-ui-xs text-white">
                 {plan.releaseName}
               </span>
             )}
-            {/* The plan's window and its advisory ceiling. These used to live in a right-hand
-                fields panel; this page has none (Rally's has none either, and the team grid needs
-                the full width), so the facts that are not derivable from the grid ride the header
-                instead of disappearing. */}
-            {(plan.plannedStartDate !== null || plan.plannedEndDate !== null) && (
-              <span className="rounded-sm bg-white/10 px-1.5 py-px text-ui-xs whitespace-nowrap text-white">
-                {plan.plannedStartDate ?? '—'} → {plan.plannedEndDate ?? '—'}
-              </span>
-            )}
-            <span className="text-ui-xs whitespace-nowrap text-white/70">
-              {t('detail.fields.targetLoad')} {plan.targetLoadPct}%
-            </span>
             {/* The PLAN's own bar, in the header — Rally's position for it. The same `CompositeBar`
                 every team row draws, so the whole plan can be read as over or under before any row
                 is scanned, and the header bar cannot layer or colour differently from the rows it
@@ -512,7 +500,7 @@ export function CapacityPlanDetailPage() {
                 <span className="text-ui-xs text-muted-foreground">{t('summary.itemType')}</span>
                 {/* A plan of Features and a plan of Epics look identical otherwise. Ours only plans
                     Features today, so this states a fact rather than offering a choice. */}
-                <span className="rounded-sm border border-border-subtle bg-surface-subtle px-1.5 py-px text-ui-xs font-semibold text-foreground">
+                <span className="rounded-full border border-border-subtle bg-surface-subtle px-2 py-px text-ui-xs font-semibold text-foreground">
                   {t('items.featureType')}
                 </span>
                 <PlanAssignmentCounts plan={plan} />
