@@ -4,6 +4,7 @@ import { useNavigate } from '@tanstack/react-router'
 
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
+import { SearchableSelect, type SelectOption } from '@/shared/ui/searchable-select'
 import { notify } from '@/shared/lib/toast'
 import { StatusBadge } from '@/shared/ui/status-badge'
 import { formatDateTime } from '@/shared/lib/utils'
@@ -26,12 +27,20 @@ import type { PlanColKey } from '../model/columns'
 export function CapacityPlanRow({
   plan,
   canManage,
+  releaseOptions,
   colStyleFor,
   gutter,
 }: {
   plan: CapacityPlan
   /** `capacity:manage` — gates the inline rename. */
   canManage: boolean
+  /**
+   * The project's releases as `SearchableSelect` options, built ONCE by the page.
+   *
+   * Passed in rather than derived per row: the list is the same for every row, and mapping it
+   * inside the row would rebuild it once per plan on every render.
+   */
+  releaseOptions: SelectOption[]
   colStyleFor: (key: PlanColKey, base?: React.CSSProperties) => React.CSSProperties
   /** Selection gutter node supplied by the list scaffold. */
   gutter: ReactNode
@@ -89,8 +98,24 @@ export function CapacityPlanRow({
         />
       </div>
 
-      <div style={colStyleFor('release', { flexShrink: 0 })} className="min-w-0 px-2">
-        <span className="truncate text-muted-foreground">{plan.releaseName ?? '—'}</span>
+      {/* Release — the same `SearchableSelect` cell the Backlog's Release column uses, so a release
+          reads identically wherever it appears: the `RE-<n>: Name` label and the release glyph,
+          not a bare string.
+          Always `readOnly`: a plan is one per (project, release) and `updatePlan` deliberately
+          cannot change `releaseId` — every number on the plan is scoped to that release, so
+          re-pointing it would silently reinterpret the demand instead of moving it. */}
+      <div
+        style={colStyleFor('release', { flexShrink: 0 })}
+        className="flex min-w-0 items-center overflow-hidden px-0"
+      >
+        <SearchableSelect
+          readOnly
+          value={plan.releaseId}
+          ariaLabel={t('fields.release')}
+          placeholder="—"
+          options={releaseOptions}
+          onChange={() => {}}
+        />
       </div>
 
       <div style={colStyleFor('status', { flexShrink: 0 })} className="min-w-0 px-2">

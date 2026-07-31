@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.6.1](https://github.com/QNSC-VN/rally/compare/v0.6.0...v0.6.1) (2026-07-31)
+
+
+### ✨ Features
+
+* **capacity:** add Rally's Items tab, and move the cutline onto it ([#291](https://github.com/QNSC-VN/rally/issues/291)) ([20f59ad](https://github.com/QNSC-VN/rally/commit/20f59ad685c00cb3ef5132f2fff4ffdc77af1bb0))
+* **capacity:** disclose a team's Features, as Rally does ([#292](https://github.com/QNSC-VN/rally/issues/292)) ([3d69b22](https://github.com/QNSC-VN/rally/commit/3d69b2238b6416e19c492c042105a24c772a9cf4))
+* **capacity:** draw Rally's cutline, per team ([#285](https://github.com/QNSC-VN/rally/issues/285)) ([b288912](https://github.com/QNSC-VN/rally/commit/b2889126272b34fccc23892db7c10cabf129c48c))
+* **capacity:** lay the plan list out as Rally does ([#298](https://github.com/QNSC-VN/rally/issues/298)) ([e15d350](https://github.com/QNSC-VN/rally/commit/e15d350b6db38adba511d6b1da963bdbc0d2bc08))
+* **capacity:** lay the Teams tab out as Rally does ([#297](https://github.com/QNSC-VN/rally/issues/297)) ([3f527ac](https://github.com/QNSC-VN/rally/commit/3f527acbcc087866df0541be7d129cf41d0f1716))
+* **capacity:** record Rally's primary team assignment ([#294](https://github.com/QNSC-VN/rally/issues/294)) ([eceafba](https://github.com/QNSC-VN/rally/commit/eceafbafd9e8b9a377f31600ccf314cfe85cf89e))
+* **capacity:** show Rally's plan summary strip on the plan detail ([#289](https://github.com/QNSC-VN/rally/issues/289)) ([ab369d6](https://github.com/QNSC-VN/rally/commit/ab369d6707b07f291172e77592f403f1de91e5eb))
+* **work-items:** let a Story be linked to a Feature, and fix the drag flake ([#296](https://github.com/QNSC-VN/rally/issues/296)) ([dd1bdcf](https://github.com/QNSC-VN/rally/commit/dd1bdcfc4119cb59475120d40a4b2913b5a588cd))
+
+
+### 🐛 Bug Fixes
+
+* **infra:** stop the idled environments paging about being idle ([#288](https://github.com/QNSC-VN/rally/issues/288)) ([d0082a5](https://github.com/QNSC-VN/rally/commit/d0082a568251d5510381674b47ca58f51ba2976f))
+* **work-items:** clear the Blocked Reason when an item is unblocked ([#287](https://github.com/QNSC-VN/rally/issues/287)) ([888c325](https://github.com/QNSC-VN/rally/commit/888c325e880815bfd53c40b180d81b5be7cd655c))
+
+
+### ⚡ Performance
+
+* **infra:** run the production worker on Fargate Spot ([#293](https://github.com/QNSC-VN/rally/issues/293)) ([6419130](https://github.com/QNSC-VN/rally/commit/6419130747d10347b75b0a3f69c5335b95bf53f2))
+
+
+### ♻️ Refactors
+
+* **capacity:** render Release with the Backlog's release cell ([#299](https://github.com/QNSC-VN/rally/issues/299)) ([19f0840](https://github.com/QNSC-VN/rally/commit/19f0840e1bddca42cbd0cf875292360626a57524))
+
 ## [0.6.0](https://github.com/QNSC-VN/rally/compare/v0.5.2...v0.6.0) (2026-07-30)
 
 

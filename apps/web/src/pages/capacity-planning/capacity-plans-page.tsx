@@ -22,6 +22,7 @@ import { ListPageScaffold } from '@/shared/ui/list-page/list-page-scaffold'
 import { ListPageHeader } from '@/shared/ui/list-page/list-page-header'
 import { InlineSelect } from '@/shared/ui/native-select'
 import { TimeboxPicker } from '@/shared/ui/timebox-picker'
+import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { useDataTable } from '@/shared/ui/table'
 import { useTableSort } from '@/shared/lib/hooks/use-table-sort'
 import { type RowSelection } from '@/shared/lib/hooks/use-row-selection'
@@ -108,6 +109,21 @@ export function CapacityPlansPage() {
       })),
     ],
     [releasesOldestFirst, t],
+  )
+
+  /**
+   * The release cell's options — the same `RE-<n>: Name` + glyph shape the Backlog's Release
+   * column offers, built once here rather than per row.
+   */
+  const releaseCellOptions = useMemo(
+    () =>
+      releasesOldestFirst.map((r) => ({
+        value: r.id,
+        label: r.releaseKey ? `${r.releaseKey}: ${r.name}` : r.name,
+        searchText: `${r.releaseKey ?? ''} ${r.name}`,
+        icon: <TypeBadge type="release" size={16} />,
+      })),
+    [releasesOldestFirst],
   )
 
   const releaseRank = useMemo(
@@ -357,6 +373,7 @@ export function CapacityPlansPage() {
             key={plan.id}
             plan={plan}
             canManage={canManage}
+            releaseOptions={releaseCellOptions}
             colStyleFor={colStyleFor}
             gutter={gutter}
           />
