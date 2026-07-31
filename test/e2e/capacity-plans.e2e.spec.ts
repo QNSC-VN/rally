@@ -382,4 +382,99 @@ describe('capacity plans (e2e)', () => {
       expect(updated.plannedEndDate).toBeNull();
     });
   });
+  describe('plan key + delete — real index, real cascade', () => {
+    it('mints CP-<n> per PROJECT, so two projects both start at CP-1', async () => {
+      // `uq_capacity_plans_key` is on (project_id, plan_key): a per-project counter is the
+      // point, and a workspace-wide one would make the numbers jump for no visible reason.
+      const inA = await capacity.createPlan(admin, {
+        projectId: projectAId,
+        releaseId: await newRelease(projectAId),
+        name: `Key A ${uniqueKey()}`,
+        unit: 'points',
+      });
+      const inB = await capacity.createPlan(admin, {
+        projectId: projectBId,
+        releaseId: await newRelease(projectBId),
+        name: `Key B ${uniqueKey()}`,
+        unit: 'points',
+      });
+
+      expect(inA.planKey).toMatch(/^CP-\d+$/);
+      expect(inB.planKey).toMatch(/^CP-\d+$/);
+
+      // The NEXT plan in project A takes the number after A's, not after B's.
+      const secondA = await capacity.createPlan(admin, {
+        projectId: projectAId,
+        releaseId: await newRelease(projectAId),
+        name: `Key A2 ${uniqueKey()}`,
+        unit: 'points',
+      });
+      const n = (key: string | null) => Number(key?.split('-')[1]);
+      expect(n(secondA.planKey)).toBe(n(inA.planKey) + 1);
+    });
+
+    it('deletes a draft and CASCADES its teams', async () => {
+      const p = await capacity.createPlan(admin, {
+        projectId: projectAId,
+        releaseId: await newRelease(projectAId),
+        name: `Doomed ${uniqueKey()}`,
+        unit: 'points',
+      });
+      await capacity.addTeam(admin, p.id, teamId);
+      expect(
+        await db.select().from(capacityPlanTeams).where(eq(capacityPlanTeams.planId, p.id)),
+      ).toHaveLength(1);
+
+      await capacity.deletePlan(admin, p.id);
+
+      expect(await db.select().from(capacityPlans).where(eq(capacityPlans.id, p.id))).toHaveLength(
+        0,
+      );
+      // `fk_capacity_plan_teams_plan ... ON DELETE CASCADE` — the service issues ONE statement,
+      // so an orphaned team row here would mean the constraint, not the code, is wrong.
+      expect(
+        await db.select().from(capacityPlanTeams).where(eq(capacityPlanTeams.planId, p.id)),
+      ).toHaveLength(0);
+    });
+
+    it('frees the release, so a NEW plan can take it', async () => {
+      // `uq_capacity_plan_project_release` blocks a second plan per release; deleting the first
+      // has to actually release that slot or a mistaken plan would block the release forever.
+      const releaseId = await newRelease(projectAId);
+      const first = await capacity.createPlan(admin, {
+        projectId: projectAId,
+        releaseId,
+        name: `First ${uniqueKey()}`,
+        unit: 'points',
+      });
+      await capacity.deletePlan(admin, first.id);
+
+      const second = await capacity.createPlan(admin, {
+        projectId: projectAId,
+        releaseId,
+        name: `Second ${uniqueKey()}`,
+        unit: 'points',
+      });
+      expect(second.releaseId).toBe(releaseId);
+    });
+
+    it('refuses to delete a PUBLISHED plan', async () => {
+      const p = await capacity.createPlan(admin, {
+        projectId: projectAId,
+        releaseId: await newRelease(projectAId),
+        name: `Published ${uniqueKey()}`,
+        unit: 'points',
+      });
+      // Publish refuses an EMPTY plan, so give it the team that makes it publishable.
+      await capacity.addTeam(admin, p.id, teamId);
+      await capacity.publishPlan(admin, p.id, { updateFields: false });
+
+      await expect(capacity.deletePlan(admin, p.id)).rejects.toMatchObject({
+        code: 'CAPACITY_PLAN_NOT_DRAFT',
+      });
+      expect(await db.select().from(capacityPlans).where(eq(capacityPlans.id, p.id))).toHaveLength(
+        1,
+      );
+    });
+  });
 });

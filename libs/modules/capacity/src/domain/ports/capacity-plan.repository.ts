@@ -38,7 +38,19 @@ export interface ICapacityPlanRepository {
     workspaceId: string,
   ): Promise<CapacityPlan | null>;
 
+  /**
+   * MAX(numeric suffix of `plan_key`) + 1 for a project.
+   *
+   * Not `count(*) + 1`: a deleted plan would make the count under-report and reissue a key a
+   * surviving row still holds. Not atomic under concurrent creates either, which is why the
+   * service retries once on the unique violation.
+   */
+  nextKeyNumber(projectId: string, workspaceId: string): Promise<number>;
+
   create(input: CreateCapacityPlanInput, executor?: DbExecutor): Promise<CapacityPlan>;
+
+  /** Hard delete. Teams and allocations go with it via `ON DELETE CASCADE`. */
+  delete(id: string, workspaceId: string, executor?: DbExecutor): Promise<void>;
 
   update(
     id: string,

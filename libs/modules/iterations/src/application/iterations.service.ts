@@ -1,7 +1,12 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
 import { and, eq, isNull, inArray, sql } from 'drizzle-orm';
-import { NotFoundException, PreconditionFailedException, InjectDrizzle } from '@platform';
+import {
+  NotFoundException,
+  PreconditionFailedException,
+  InjectDrizzle,
+  isDuplicateKeyError,
+} from '@platform';
 import type { JwtPayload, CursorPayload, PagedResult, DrizzleDB } from '@platform';
 import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
@@ -21,22 +26,6 @@ import type {
   IterationFilters,
   UpdateIterationInput,
 } from '../domain/iteration.types';
-
-/** Walk an error's `.cause` chain looking for a PG unique-violation (code 23505). */
-function isDuplicateKeyError(err: unknown): boolean {
-  let current: unknown = err;
-  while (true) {
-    if (current && typeof current === 'object' && 'code' in current) {
-      const c = (current as Record<string, unknown>).code;
-      if (c === '23505') return true;
-    }
-    if (current && typeof current === 'object' && 'cause' in current) {
-      current = current.cause;
-    } else {
-      return false;
-    }
-  }
-}
 
 @Injectable()
 export class IterationsService {

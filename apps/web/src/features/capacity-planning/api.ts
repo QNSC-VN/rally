@@ -23,6 +23,16 @@ export type CapacityPlanItem = CapacityPlan['items'][number]
 export type CapacityPlanUnit = CapacityPlan['unit']
 export type CapacityPlanStatus = CapacityPlan['status']
 
+/**
+ * Every value of each enum, for filter dropdowns.
+ *
+ * Written out rather than derived: the generated client gives a union TYPE, which has no runtime
+ * members. Typed as the union so adding a status to the API and forgetting it here is a compile
+ * error, not a silently missing filter option.
+ */
+export const CAPACITY_PLAN_STATUSES: readonly CapacityPlanStatus[] = ['draft', 'published']
+export const CAPACITY_PLAN_UNITS: readonly CapacityPlanUnit[] = ['points', 'count']
+
 export type CapacityForecast = components['schemas']['CapacityForecastResponseDto']
 export type PublishResult = components['schemas']['PublishResultResponseDto']
 export type PublishSkip = PublishResult['skipped'][number]
@@ -88,6 +98,25 @@ export function useCreateCapacityPlan() {
       const { data, error, response } = await apiClient.POST('/v1/capacity-plans', { body })
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as CapacityPlan
+    },
+    meta: { invalidates: ['capacity'] },
+  })
+}
+
+/**
+ * Deletes a DRAFT plan — what the list's bulk-delete drives.
+ *
+ * Only drafts: a published plan has already stamped Release and planned dates onto Features, so
+ * the server refuses it and asks for a revert first. The list disables the action rather than
+ * letting the request fail per row.
+ */
+export function useDeleteCapacityPlan() {
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error, response } = await apiClient.DELETE('/v1/capacity-plans/{id}', {
+        params: { path: { id } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
     },
     meta: { invalidates: ['capacity'] },
   })

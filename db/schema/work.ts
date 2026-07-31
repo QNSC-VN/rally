@@ -426,6 +426,9 @@ export const capacityPlans = workSchema.table(
     workspaceId: uuid('workspace_id').notNull(),
     projectId: uuid('project_id').notNull(),
     releaseId: uuid('release_id').notNull(),
+    // `CP-<n>`, minted per project like `iterations.iteration_key`. Nullable because rows
+    // created before 0076 are backfilled rather than rewritten by the app.
+    planKey: varchar('plan_key', { length: 30 }),
     name: varchar('name', { length: 255 }).notNull(),
     status: capacityPlanStatusEnum('status').notNull().default('draft'),
     // Chosen at creation, FIXED afterwards. Every number on the plan is in this
@@ -450,6 +453,7 @@ export const capacityPlans = workSchema.table(
     workspaceIdx: index('ix_capacity_plans_workspace').on(t.workspaceId),
     projectIdx: index('ix_capacity_plans_project').on(t.projectId),
     uniquePlanIdx: uniqueIndex('uq_capacity_plan_project_release').on(t.projectId, t.releaseId),
+    keyIdx: uniqueIndex('uq_capacity_plans_key').on(t.projectId, t.planKey),
   }),
 );
 

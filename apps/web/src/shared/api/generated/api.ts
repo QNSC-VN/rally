@@ -2203,7 +2203,8 @@ export interface paths {
     get: operations['CapacityPlansController_getPlan']
     put?: never
     post?: never
-    delete?: never
+    /** Delete a draft plan */
+    delete: operations['CapacityPlansController_deletePlan']
     options?: never
     head?: never
     /** Update a draft plan */
@@ -3955,6 +3956,8 @@ export interface components {
       /** Format: uuid */
       releaseId: string
       releaseName: string | null
+      /** @description CP-<n>, per project — the list’s ID column */
+      planKey: string | null
       name: string
       /** @enum {string} */
       status: 'draft' | 'published'
@@ -4006,6 +4009,12 @@ export interface components {
         name: string
         /** @description LexoRank — the order the cutline accumulates down */
         rank: string
+        /**
+         * Format: uuid
+         * @description The Feature's OWN project — Rally's Project column
+         */
+        projectId: string
+        projectName: string | null
         /** @description Committed demand summed over this Feature’s allocations */
         estimated: number
         /** @description The Feature’s OWN rollup, across every team */
@@ -4091,6 +4100,8 @@ export interface components {
         /** Format: uuid */
         releaseId: string
         releaseName: string | null
+        /** @description CP-<n>, per project — the list’s ID column */
+        planKey: string | null
         name: string
         /** @enum {string} */
         status: 'draft' | 'published'
@@ -4142,6 +4153,12 @@ export interface components {
           name: string
           /** @description LexoRank — the order the cutline accumulates down */
           rank: string
+          /**
+           * Format: uuid
+           * @description The Feature's OWN project — Rally's Project column
+           */
+          projectId: string
+          projectName: string | null
           /** @description Committed demand summed over this Feature’s allocations */
           estimated: number
           /** @description The Feature’s OWN rollup, across every team */
@@ -4216,6 +4233,8 @@ export interface components {
         /** Format: uuid */
         releaseId: string
         releaseName: string | null
+        /** @description CP-<n>, per project — the list’s ID column */
+        planKey: string | null
         name: string
         /** @enum {string} */
         status: 'draft' | 'published'
@@ -4267,6 +4286,12 @@ export interface components {
           name: string
           /** @description LexoRank — the order the cutline accumulates down */
           rank: string
+          /**
+           * Format: uuid
+           * @description The Feature's OWN project — Rally's Project column
+           */
+          projectId: string
+          projectName: string | null
           /** @description Committed demand summed over this Feature’s allocations */
           estimated: number
           /** @description The Feature’s OWN rollup, across every team */
@@ -12199,6 +12224,54 @@ export interface operations {
       }
       /** @description Not Found */
       404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  CapacityPlansController_deletePlan: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Deleted */
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
         headers: {
           [name: string]: unknown
         }
