@@ -152,14 +152,16 @@ export type ItemColKey =
  * "against this team's ceiling", and the same shape here would imply a ceiling that does not exist.
  */
 export const CAPACITY_ITEM_COLUMNS: ColumnSpec<CapacityPlanItem, unknown, ItemColKey>[] = [
-  { key: 'rank', label: 'Rank', defaultWidth: 64, minWidth: 56, align: 'right' },
-  { key: 'id', label: 'ID', defaultWidth: 100, minWidth: 90, locked: true },
-  { key: 'name', label: 'Name', defaultWidth: 260, minWidth: 160, locked: true, grow: true },
-  { key: 'project', label: 'Project', defaultWidth: 150, minWidth: 100 },
-  { key: 'assignment', label: 'Planned Team Assignment', defaultWidth: 180, minWidth: 140 },
-  { key: 'complete', label: 'Complete', defaultWidth: 96, minWidth: 80, align: 'right' },
-  { key: 'rollup', label: 'Rollup', defaultWidth: 90, minWidth: 76, align: 'right' },
-  { key: 'estimated', label: 'Estimated', defaultWidth: 110, minWidth: 90, align: 'right' },
+  { key: 'rank', label: 'Rank', defaultWidth: 58, minWidth: 52, align: 'right' },
+  { key: 'id', label: 'ID', defaultWidth: 92, minWidth: 84, locked: true },
+  // Sized for the ~1010px this tab has once the Team Capacity rail takes its 256: `grow` spends
+  // surplus but never claws width back, so defaults that overflow simply hide the last column.
+  { key: 'name', label: 'Name', defaultWidth: 200, minWidth: 140, locked: true, grow: true },
+  { key: 'project', label: 'Project', defaultWidth: 120, minWidth: 90 },
+  { key: 'assignment', label: 'Planned Team Assignment', defaultWidth: 160, minWidth: 130 },
+  { key: 'complete', label: 'Complete', defaultWidth: 88, minWidth: 74, align: 'right' },
+  { key: 'rollup', label: 'Rollup', defaultWidth: 82, minWidth: 70, align: 'right' },
+  { key: 'estimated', label: 'Estimated', defaultWidth: 96, minWidth: 84, align: 'right' },
   // Rally's per-item menu lives here — "Remove Only" takes a Feature off the plan. This is the ONLY
   // place a Feature leaves a plan: the team sub-table has no trash, because removing a Feature is a
   // decision about the plan, not about one team's slice of it.

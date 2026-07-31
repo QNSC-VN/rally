@@ -36,6 +36,11 @@ test.describe('Capacity allocation', () => {
     const collapse = page.getByRole('button', {
       name: new RegExp(`Collapse the Features allocated to ${team}`),
     })
+    // The Teams tab first: allocating happens on the Features tab now (Rally's own placement), so a
+    // test that just allocated is standing on the other tab when it comes to read the result.
+    const teamsTab = page.getByRole('tab', { name: /Teams/ })
+    if ((await teamsTab.getAttribute('aria-selected')) !== 'true') await teamsTab.click()
+
     if (await collapse.count()) return // already open
 
     const expand = page.getByRole('button', {
@@ -49,14 +54,14 @@ test.describe('Capacity allocation', () => {
   }
 
   /**
-   * Opens the plan's `⋮` Actions menu and picks an item.
+   * Opens the Allocate dialog from where Rally's plan keeps it: the Features tab's own action row.
    *
-   * Rally's plan page has no toolbar: every verb — Allocate, Add / Remove Teams, Publish, Revert,
-   * Edit, Delete — is behind this menu, so every spec reaches them the same way.
+   * Not the header menu — that holds only Edit Plan Details and Delete Plan, the things you do to a
+   * plan once. `expandTeam` switches back when a test needs the team view again.
    */
-  async function planAction(page: import('@playwright/test').Page, label: string | RegExp) {
-    await page.getByRole('button', { name: 'Plan actions' }).click()
-    await page.getByRole('button', { name: label }).click()
+  async function allocateFeature(page: import('@playwright/test').Page) {
+    await page.getByRole('tab', { name: /Features/ }).click()
+    await page.getByRole('button', { name: /^Allocate a Feature$/ }).click()
   }
 
   /**
@@ -89,7 +94,7 @@ test.describe('Capacity allocation', () => {
     await openPlan(page)
 
     // ── Allocate ────────────────────────────────────────────────────────────
-    await planAction(page, /^Allocate a Feature$/)
+    await allocateFeature(page)
     const dialog = page.getByRole('dialog', { name: 'Allocate a Feature' })
     await expect(dialog).toBeVisible()
 
@@ -144,7 +149,7 @@ test.describe('Capacity allocation', () => {
     await expect(teamRow(page)).toContainText('5')
 
     for (const feature of [/FE-1/, /FE-2/]) {
-      await planAction(page, /^Allocate a Feature$/)
+      await allocateFeature(page)
       const dialog = page.getByRole('dialog', { name: 'Allocate a Feature' })
       await dialog.getByLabel('Feature').click()
       await pickOption(page, feature)
@@ -156,8 +161,10 @@ test.describe('Capacity allocation', () => {
       await expect(dialog).toBeHidden()
     }
 
-    // The cutline lives on the ITEMS tab, against the PLAN's total capacity — Rally draws it
-    // there and nowhere else. The Teams tab must not show one.
+    // The cutline lives on the FEATURES tab, against the PLAN's total capacity — Rally draws it
+    // there and nowhere else. The Teams tab must not show one. (Allocating happens on the Features
+    // tab now, so this has to walk back to Teams before asserting the absence.)
+    await page.getByRole('tab', { name: /Teams/ }).click()
     await expect(page.getByRole('separator', { name: /Capacity cutline/i })).toHaveCount(0)
 
     await page.getByRole('tab', { name: /Features/ }).click()
@@ -199,7 +206,7 @@ test.describe('Capacity allocation', () => {
     await openPlan(page)
 
     // Allocate FE-1 to Team Alpha so there is something to publish.
-    await planAction(page, /^Allocate a Feature$/)
+    await allocateFeature(page)
     const allocate = page.getByRole('dialog', { name: 'Allocate a Feature' })
     await allocate.getByLabel('Feature').click()
     await pickOption(page, /FE-1/)
@@ -209,7 +216,7 @@ test.describe('Capacity allocation', () => {
     await expect(allocate).toBeHidden()
 
     // ── Publish ──────────────────────────────────────────────────────────────
-    await planAction(page, /^Publish$/)
+    await page.getByRole('button', { name: /^Publish$/ }).click()
     const dialog = page.getByRole('dialog', { name: /Publish this plan/i })
     // The three things a planner has to know BEFORE the write: what lands, when the Release
     // lands, and that reverting will not undo it.
@@ -224,14 +231,12 @@ test.describe('Capacity allocation', () => {
     await expect(dialog).toBeHidden()
 
     // Published plans are read-only, so the editing affordances go away.
-    // A published plan offers no Allocate: the menu drops it rather than failing the request.
-    await page.getByRole('button', { name: 'Plan actions' }).click()
+    // A published plan offers no Allocate: the action row drops it rather than failing the request.
+    await page.getByRole('tab', { name: /Features/ }).click()
     await expect(page.getByRole('button', { name: /^Allocate a Feature$/ })).toHaveCount(0)
-    await page.keyboard.press('Escape')
-    // …and offers Revert instead, in the same menu.
-    await page.getByRole('button', { name: 'Plan actions' }).click()
+    await page.getByRole('tab', { name: /Teams/ }).click()
+    // …and offers Revert instead, in the same place Publish was.
     await expect(page.getByRole('button', { name: 'Revert to draft' })).toBeVisible()
-    await page.keyboard.press('Escape')
 
     // ── The Feature really took the plan's window ────────────────────────────
     // Read from the Portfolio detail rather than the plan, which is the whole point: the
@@ -249,7 +254,7 @@ test.describe('Capacity allocation', () => {
     // The ID cell is the link: the row does not navigate and the NAME cell edits in place,
     // which is how Rally and every other grid here behave.
     await page.getByRole('button', { name: /^CP-/ }).first().click()
-    await planAction(page, /^Revert to draft$/)
+    await page.getByRole('button', { name: /^Revert to draft$/ }).click()
     const confirm = page.getByRole('dialog')
     await expect(confirm.getByText(/are NOT undone/)).toBeVisible()
     await confirm.getByRole('button', { name: 'Revert to draft' }).click()
@@ -270,13 +275,17 @@ test.describe('Capacity allocation', () => {
   test('parks demand in the Unallocated bucket when no team is chosen', async ({ page }) => {
     await openPlan(page)
 
-    await planAction(page, /^Allocate a Feature$/)
+    await allocateFeature(page)
     const dialog = page.getByRole('dialog', { name: 'Allocate a Feature' })
     await dialog.getByLabel('Feature').click()
     await pickOption(page, /FE-2/)
     // Team defaults to "Unallocated", so submit without choosing one.
     await dialog.getByRole('button', { name: 'Allocate', exact: true }).click()
     await expect(dialog).toBeHidden()
+
+    // The bucket lives on the TEAMS tab (it is a group of teams' work with no team), and allocating
+    // left us on the Features tab.
+    await page.getByRole('tab', { name: /Teams/ }).click()
 
     // The bucket header appears only when it holds something. Unallocated rows are NOT behind a
     // team's disclosure — they have no team to sit under.

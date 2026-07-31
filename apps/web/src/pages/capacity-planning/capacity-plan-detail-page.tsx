@@ -18,6 +18,7 @@ import { DataTableFrame } from '@/shared/ui/table/data-table-frame'
 import { useDataTable } from '@/shared/ui/table'
 import { useTableSort } from '@/shared/lib/hooks/use-table-sort'
 import { DetailLayout } from '@/shared/ui/detail'
+import { Button } from '@/shared/ui/button'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { notify } from '@/shared/lib/toast'
 import { useProjectPermissions } from '@/features/access/api'
@@ -51,6 +52,7 @@ import { ItemAllocationRow } from './ui/item-allocation-row'
 import { PlanAssignmentCounts, PlanSummaryMetrics } from './ui/plan-summary-metrics'
 import { CapacityTeamRow } from './ui/capacity-team-row'
 import { TeamAllocationsTable } from './ui/team-allocations-table'
+import { TeamCapacityRail } from './ui/team-capacity-rail'
 import { AllocateFeatureModal } from './ui/allocate-feature-modal'
 import { StatusBadge } from '@/shared/ui/status-badge'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
@@ -424,52 +426,22 @@ export function CapacityPlanDetailPage() {
           // surface its cutline belongs on.
           { key: 'items', label: t('detail.tabs.items') },
         ]}
-        // Rally's Actions menu: the plan's rarer verbs, away from Publish. Delete is here rather
-        // than as a toolbar button precisely because it is destructive and Publish is not.
+        /* Rally's Actions menu holds exactly two of ours: Edit Plan Details and Delete Plan. The
+           verbs that change what the plan CONTAINS — Add / Remove Teams, Add Feature — and Publish
+           itself are page actions, because Rally puts them there and a planner reaches for them
+           repeatedly while building a plan. A menu is for what you do to a plan once. */
         actions={
           canPublish || can('capacity:manage') ? (
             <ActionMenu ariaLabel={t('detail.actionsLabel')} onDark>
               {/* Drafts only — the API refuses an edit to a published plan, so offering it would
                   collect changes the server will reject. */}
               {plan.status === 'draft' && can('capacity:manage') && (
-                <>
-                  <ActionMenuItem
-                    icon={<Pencil size={13} />}
-                    label={t('edit.title')}
-                    onClick={() => setShowEdit(true)}
-                  />
-                  {/* Rally keeps these here too: its plan page has NO toolbar row, and every verb
-                      that changes a plan's shape sits behind the same `⋮` as Edit and Delete. */}
-                  <ActionMenuItem
-                    icon={<Users size={13} />}
-                    label={t('teams.action')}
-                    onClick={() => setShowTeams(true)}
-                  />
-                  <ActionMenuItem
-                    icon={<Plus size={13} />}
-                    label={t('allocate.action')}
-                    onClick={() => setShowAllocate(true)}
-                  />
-                </>
+                <ActionMenuItem
+                  icon={<Pencil size={13} />}
+                  label={t('edit.title')}
+                  onClick={() => setShowEdit(true)}
+                />
               )}
-              {/* One direction at a time: a draft publishes, a published plan can only revert —
-                  which is also the only way back to editing it. */}
-              {canPublish &&
-                (plan.status === 'draft' ? (
-                  <ActionMenuItem
-                    icon={<Send size={13} />}
-                    label={t('publish.action')}
-                    onClick={() => setShowPublish(true)}
-                    disabled={publish.isPending}
-                  />
-                ) : (
-                  <ActionMenuItem
-                    icon={<Undo2 size={13} />}
-                    label={t('publish.revert.action')}
-                    onClick={() => setConfirmRevert(true)}
-                    disabled={revert.isPending}
-                  />
-                ))}
               {can('capacity:manage') && (
                 <ActionMenuItem
                   icon={<Trash2 size={13} />}
@@ -509,58 +481,107 @@ export function CapacityPlanDetailPage() {
             grid itself (per-team capacity, which the panel was repeating). */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-card">
           <div className="flex min-h-0 flex-1 flex-col">
-            {/* No toolbar row: Rally's plan page has none. Every verb is in the header's `⋮`
-                Actions menu, and the grid starts directly under the summary. */}
+            {/* Rally's page actions, per tab: `Add / Remove Project(s) to Plan` belongs to the team
+                view, `Add Feature` to the Feature view, and Publish/Revert is plan-level so it sits
+                on both. */}
+            <div className="flex items-center gap-2 border-b border-border-inner px-4 py-2">
+              {canManage &&
+                (tab === 'teams' ? (
+                  <Button size="sm" onClick={() => setShowTeams(true)}>
+                    <Users size={13} /> {t('teams.action')}
+                  </Button>
+                ) : (
+                  <Button size="sm" onClick={() => setShowAllocate(true)}>
+                    <Plus size={13} /> {t('allocate.action')}
+                  </Button>
+                ))}
+              {/* One direction at a time: a draft publishes, a published plan can only revert —
+                  which is also the only way back to editing it. The two publish choices (with and
+                  without writing Feature fields) live inside the modal, as Rally's do. */}
+              {canPublish &&
+                (plan.status === 'draft' ? (
+                  <Button
+                    size="sm"
+                    className="ml-auto"
+                    onClick={() => setShowPublish(true)}
+                    disabled={publish.isPending}
+                  >
+                    <Send size={13} /> {t('publish.action')}
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="ml-auto"
+                    onClick={() => setConfirmRevert(true)}
+                    disabled={revert.isPending}
+                  >
+                    <Undo2 size={13} /> {t('publish.revert.action')}
+                  </Button>
+                ))}
+            </div>
             {tab === 'items' ? (
-              <DataTableFrame
-                header={itemTable.headerProps}
-                padClassName="px-3"
-                empty={
-                  plan.items.length === 0 ? (
-                    <EmptyState
-                      icon={<Users size={28} className="text-border-strong" />}
-                      title={t('items.empty')}
-                    />
-                  ) : undefined
-                }
-              >
-                {plan.items.map((item, index) => (
-                  <div key={item.portfolioItemId}>
-                    {/* The line sits ABOVE the first item that does not fit. `-1` means even
+              /* Rally's `Project Capacity` rail sits beside the Feature list — and only there. The
+                 cutline this tab draws is plan-wide, so the next question is which team has no room
+                 left; the team grid answers that per row already. */
+              <div className="flex min-h-0 flex-1 overflow-hidden">
+                {/* `min-w-0` so the grid may shrink under the rail: without it a flex child refuses
+                    to go below its content width and pushes the rail off the viewport. */}
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+                  <DataTableFrame
+                    header={itemTable.headerProps}
+                    padClassName="px-3"
+                    empty={
+                      plan.items.length === 0 ? (
+                        <EmptyState
+                          icon={<Users size={28} className="text-border-strong" />}
+                          title={t('items.empty')}
+                        />
+                      ) : undefined
+                    }
+                  >
+                    {plan.items.map((item, index) => (
+                      <div key={item.portfolioItemId}>
+                        {/* The line sits ABOVE the first item that does not fit. `-1` means even
                           the first one exceeds the plan, so it lands at the very top; `null`
                           (no capacity entered anywhere) draws nothing, because there is no
                           number for the running total to exceed. */}
-                    {plan.itemCutlineIndex !== null && plan.itemCutlineIndex + 1 === index && (
-                      <CutlineDivider label={t('cutline.label')} />
-                    )}
-                    <CapacityItemRow
-                      item={item}
-                      position={index + 1}
-                      primaryTeamName={teamNameById.get(item.primaryTeamId ?? '') ?? null}
-                      belowCutline={plan.itemCutlineIndex !== null && index > plan.itemCutlineIndex}
-                      expanded={expandedItems.has(item.portfolioItemId)}
-                      onToggleExpanded={() => toggleItem(item.portfolioItemId)}
-                      onRemove={canManage ? () => void removeFeature(item) : undefined}
-                      colStyleFor={itemColStyleFor}
-                      onOpenFeature={openFeature}
-                    />
-                    {/* Rally: "each allocated project is listed as a row underneath the portfolio
+                        {plan.itemCutlineIndex !== null && plan.itemCutlineIndex + 1 === index && (
+                          <CutlineDivider label={t('cutline.label')} />
+                        )}
+                        <CapacityItemRow
+                          item={item}
+                          position={index + 1}
+                          primaryTeamName={teamNameById.get(item.primaryTeamId ?? '') ?? null}
+                          belowCutline={
+                            plan.itemCutlineIndex !== null && index > plan.itemCutlineIndex
+                          }
+                          expanded={expandedItems.has(item.portfolioItemId)}
+                          onToggleExpanded={() => toggleItem(item.portfolioItemId)}
+                          onRemove={canManage ? () => void removeFeature(item) : undefined}
+                          colStyleFor={itemColStyleFor}
+                          onOpenFeature={openFeature}
+                        />
+                        {/* Rally: "each allocated project is listed as a row underneath the portfolio
                         item". PLAIN nested rows here, not a sub-table: unlike the team grid, these
                         children fill the SAME columns as their parent (one team's slice of
                         Complete / Rollup / Estimated), so a second header would repeat the one
                         above it. */}
-                    {expandedItems.has(item.portfolioItemId) &&
-                      (allocationsByItem.get(item.portfolioItemId) ?? []).map((allocation) => (
-                        <ItemAllocationRow
-                          key={allocation.id}
-                          allocation={allocation}
-                          teamName={teamNameById.get(allocation.teamId ?? '') ?? null}
-                          colStyleFor={itemColStyleFor}
-                        />
-                      ))}
-                  </div>
-                ))}
-              </DataTableFrame>
+                        {expandedItems.has(item.portfolioItemId) &&
+                          (allocationsByItem.get(item.portfolioItemId) ?? []).map((allocation) => (
+                            <ItemAllocationRow
+                              key={allocation.id}
+                              allocation={allocation}
+                              teamName={teamNameById.get(allocation.teamId ?? '') ?? null}
+                              colStyleFor={itemColStyleFor}
+                            />
+                          ))}
+                      </div>
+                    ))}
+                  </DataTableFrame>
+                </div>
+                <TeamCapacityRail teams={sortedTeams} unitLabel={unitLabel} />
+              </div>
             ) : (
               <DataTableFrame
                 header={table.headerProps}

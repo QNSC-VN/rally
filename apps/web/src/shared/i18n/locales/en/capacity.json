@@ -203,7 +203,7 @@
     "tab": "Items",
     "notAssigned": "Not assigned",
     "empty": "Allocate a Feature to see it here.",
-    "sidebarHeading": "Team capacity",
+    "sidebarHeading": "Team Capacity",
     "plusContributors": "+{{count}}",
     "featureType": "Feature",
     "teamCount": "{{count}} teams",
@@ -211,7 +211,10 @@
     "collapseTeams": "Hide the teams allocated to {{item}}",
     "actionsLabel": "Actions for {{item}}",
     "removeFromPlan": "Remove from plan",
-    "removed": "{{item}} removed from the plan"
+    "removed": "{{item}} removed from the plan",
+    "railName": "Name",
+    "railRatio": "{{unit}} / Capacity",
+    "allocationRow": "Allocation"
   },
   "filters": {
     "oldestRelease": "Oldest Release",

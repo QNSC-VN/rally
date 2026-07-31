@@ -122,8 +122,13 @@ export function CapacityItemRow({
             <span className="text-ui-sm">{t('items.notAssigned')}</span>
           </span>
         ) : item.teamIds.length > 1 ? (
-          <span className="text-foreground">
-            {t('items.teamCount', { count: item.teamIds.length })}
+          /* Rally prints a boxed COUNT here and lists the teams in the nested rows beneath. A count
+             is the only honest answer for a split Feature — no single team name is it. */
+          <span
+            className="inline-flex min-w-6 justify-center rounded-sm border border-border-strong px-1 text-ui-sm text-foreground tabular-nums"
+            title={t('items.teamCount', { count: item.teamIds.length })}
+          >
+            {item.teamIds.length}
           </span>
         ) : (
           <span className="truncate text-foreground" title={primaryTeamName ?? undefined}>
