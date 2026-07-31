@@ -68,7 +68,8 @@
     "collapseFeatures": "Collapse the Features allocated to {{team}}",
     "makePrimary": "Make {{team}} the primary team for {{item}}",
     "primaryBadge": "Primary",
-    "primaryUpdated": "Primary team updated"
+    "primaryUpdated": "Primary team updated",
+    "noAllocations": "No Features allocated yet"
   },
   "tiers": {
     "allocated": "Alloc",
@@ -187,7 +188,10 @@
     "empty": "Allocate a Feature to see it here.",
     "sidebarHeading": "Team capacity",
     "plusContributors": "+{{count}}",
-    "featureType": "Feature"
+    "featureType": "Feature",
+    "teamCount": "{{count}} teams",
+    "expandTeams": "Show the teams allocated to {{item}}",
+    "collapseTeams": "Hide the teams allocated to {{item}}"
   },
   "filters": {
     "oldestRelease": "Oldest Release",

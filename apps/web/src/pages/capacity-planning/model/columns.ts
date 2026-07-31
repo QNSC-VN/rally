@@ -1,5 +1,6 @@
 import { type ColumnSpec } from '@/shared/ui/table'
 import {
+  type CapacityAllocation,
   type CapacityPlan,
   type CapacityPlanItem,
   type CapacityPlanTeam,
@@ -78,7 +79,14 @@ export const CAPACITY_TEAM_COLUMNS: ColumnSpec<CapacityPlanTeam, unknown, TeamCo
   },
   // Its own column, with a header, rather than a bare digit beside the team name: a loose
   // number there reads as "1 what?" — and Rally gives the count a column too.
-  { key: 'features', label: 'Features', defaultWidth: 84, minWidth: 70, align: 'right' },
+  {
+    key: 'features',
+    label: 'Features',
+    defaultWidth: 84,
+    minWidth: 70,
+    align: 'right',
+    sortCol: 'features',
+  },
   // The bar is UNLABELLED and sits beside the numbers, not instead of them. Rally shows both: the
   // bar answers "is this team over?" at a glance, the numbers answer "by how much" — and an
   // earlier version of this grid collapsed all three values into the bar, so the numbers could
@@ -123,26 +131,58 @@ export const CAPACITY_TEAM_COLUMNS: ColumnSpec<CapacityPlanTeam, unknown, TeamCo
   { key: 'actions', label: '', defaultWidth: 48, minWidth: 48, align: 'center' },
 ]
 
-export type ItemColKey = 'rank' | 'id' | 'name' | 'assignment' | 'progress' | 'estimated'
+export type ItemColKey =
+  'rank' | 'id' | 'name' | 'project' | 'assignment' | 'complete' | 'rollup' | 'estimated'
 
 /**
- * Rally's Items tab: one row per Feature, ranked.
+ * Rally's Features tab: one row per Feature, ranked, with its allocations nested underneath.
  *
- * `rank` leads because the cutline only means anything in rank order — Rally shows the line
- * only when items are sorted by rank ascending, so the column that establishes that order is
- * the first thing the reader sees.
+ * `rank` leads because the cutline only means anything in rank order — Rally draws the line only
+ * when items are sorted by rank ascending, so the column that establishes that order comes first.
  *
- * `assignment` is Rally's "Planned Project Assignment": the team(s) this Feature is planned
- * against inside this plan, which is not the same as the Feature's own team.
+ * `project` is the Feature's OWN project ("current assignment outside the plan" in Rally's words),
+ * which is not the same as `assignment` — Rally's "Planned Project Assignment", the team this
+ * Feature is planned against INSIDE this plan. A Story-to-Feature link may cross projects, so the
+ * two genuinely differ and Rally shows both.
+ *
+ * Three numeric columns rather than one bar: Rally puts no bar on this tab. A Feature has no
+ * capacity of its own, so there is no baseline to draw against — the bar on the team grid means
+ * "against this team's ceiling", and the same shape here would imply a ceiling that does not exist.
  */
 export const CAPACITY_ITEM_COLUMNS: ColumnSpec<CapacityPlanItem, unknown, ItemColKey>[] = [
-  { key: 'rank', label: 'Rank', defaultWidth: 70, minWidth: 60, align: 'right' },
+  { key: 'rank', label: 'Rank', defaultWidth: 64, minWidth: 56, align: 'right' },
   { key: 'id', label: 'ID', defaultWidth: 100, minWidth: 90, locked: true },
-  // Widths sized so the LAST column still lands inside the ~980px the main pane has with Details
-  // open — `grow` only spends surplus width, it does not claw any back, so defaults that overflow
-  // simply push the right-hand columns out of sight.
-  { key: 'name', label: 'Name', defaultWidth: 220, minWidth: 160, locked: true, grow: true },
-  { key: 'assignment', label: 'Planned Team Assignment', defaultWidth: 170, minWidth: 140 },
-  { key: 'progress', label: 'Complete / Rollup / Estimated', defaultWidth: 180, minWidth: 140 },
-  { key: 'estimated', label: 'Estimated', defaultWidth: 100, minWidth: 90, align: 'right' },
+  { key: 'name', label: 'Name', defaultWidth: 260, minWidth: 160, locked: true, grow: true },
+  { key: 'project', label: 'Project', defaultWidth: 150, minWidth: 100 },
+  { key: 'assignment', label: 'Planned Team Assignment', defaultWidth: 180, minWidth: 140 },
+  { key: 'complete', label: 'Complete', defaultWidth: 96, minWidth: 80, align: 'right' },
+  { key: 'rollup', label: 'Rollup', defaultWidth: 90, minWidth: 76, align: 'right' },
+  { key: 'estimated', label: 'Estimated', defaultWidth: 110, minWidth: 90, align: 'right' },
+]
+
+export type AllocColKey =
+  'id' | 'name' | 'allocation' | 'progress' | 'complete' | 'rollup' | 'estimated' | 'actions'
+
+/**
+ * The SUB-TABLE under an expanded team: the Features allocated to it, with its own header row.
+ *
+ * Rally nests a real table here rather than continuing the parent's columns, and the reason is that
+ * the two grids report different things. The parent's `Features` column is a count, its `Capacity`
+ * is a ceiling a planner typed; a child row has no count and no ceiling — it has an `Allocation`,
+ * the slice of that ceiling this Feature was promised. Reusing the parent's headers made a child's
+ * allocation sit under a header that said "Capacity", which is a different number.
+ *
+ * Same `useDataTable` + `DataTableFrame` as every other grid, so the nested table resizes, reorders
+ * and scrolls exactly like the one above it.
+ */
+export const CAPACITY_ALLOCATION_COLUMNS: ColumnSpec<CapacityAllocation, unknown, AllocColKey>[] = [
+  { key: 'id', label: 'ID', defaultWidth: 96, minWidth: 80, locked: true },
+  { key: 'name', label: 'Name', defaultWidth: 240, minWidth: 140, locked: true, grow: true },
+  // Rally's own column name for a team's promised slice of a Feature. Editable in place.
+  { key: 'allocation', label: 'Allocation', defaultWidth: 100, minWidth: 84, align: 'right' },
+  { key: 'progress', label: '', defaultWidth: 150, minWidth: 110 },
+  { key: 'complete', label: 'Complete', defaultWidth: 88, minWidth: 74, align: 'right' },
+  { key: 'rollup', label: 'Rollup', defaultWidth: 84, minWidth: 70, align: 'right' },
+  { key: 'estimated', label: 'Estimated', defaultWidth: 88, minWidth: 74, align: 'right' },
+  { key: 'actions', label: '', defaultWidth: 64, minWidth: 64, align: 'center' },
 ]

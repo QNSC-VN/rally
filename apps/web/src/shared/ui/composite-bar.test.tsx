@@ -112,4 +112,60 @@ describe('CompositeBar', () => {
     )
     expect(noCapacity.container.querySelector('[style*="left: 80%"]')).toBeNull()
   })
+
+  it('fills the HEADROOM with the capacity hatch, starting where the commitment ends', () => {
+    // Rally's green tail. It begins at `estimated`, not at `rollup`: the commitment is what has
+    // claimed the space, even where no child work exists yet.
+    const { container } = render(
+      <CompositeBar complete={10} rollup={20} estimated={40} capacity={100} />,
+    )
+    const headroom = container.querySelector<HTMLElement>('[data-segment="capacity"]')
+    expect(headroom).not.toBeNull()
+    expect(headroom?.style.left).toBe('40%')
+  })
+
+  it('draws NO headroom when the commitment fills the ceiling', () => {
+    const { container } = render(
+      <CompositeBar complete={0} rollup={0} estimated={100} capacity={100} />,
+    )
+    expect(container.querySelector('[data-segment="capacity"]')).toBeNull()
+  })
+
+  it('draws no headroom for a row with no ceiling of its own', () => {
+    // A Feature has no capacity, so there is no room to be left over.
+    const { container } = render(
+      <CompositeBar complete={1} rollup={2} estimated={3} capacity={null} />,
+    )
+    expect(container.querySelector('[data-segment="capacity"]')).toBeNull()
+  })
+
+  it('pins the warning to the LEFT edge when the row is over its ceiling', () => {
+    // Over capacity the bar is already full, so position cannot encode the amount — Rally puts the
+    // glyph at the start, where the overflow began.
+    const { container } = render(
+      <CompositeBar
+        complete={0}
+        rollup={150}
+        estimated={150}
+        capacity={100}
+        warningLabels={['Child work already exceeds the capacity']}
+      />,
+    )
+    const glyph = container.querySelector<HTMLElement>('[data-segment="warning"]')
+    expect(glyph?.style.left).toBe('0px')
+  })
+
+  it('puts the warning at the END of the longest band when the row still fits', () => {
+    const { container } = render(
+      <CompositeBar
+        complete={0}
+        rollup={0}
+        estimated={0}
+        capacity={100}
+        warningLabels={['This Feature has no estimate']}
+      />,
+    )
+    // Nothing drawn yet, so the boundary is the start of the track.
+    expect(container.querySelector('[data-segment="warning"]')).not.toBeNull()
+  })
 })
