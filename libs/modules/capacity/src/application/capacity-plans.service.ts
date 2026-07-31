@@ -6,6 +6,7 @@ import {
   NotFoundException,
   PreconditionFailedException,
   UnitOfWork,
+  isDuplicateKeyError,
 } from '@platform';
 import type { DrizzleDB, JwtPayload } from '@platform';
 import { AccessService } from '@modules/access';
@@ -64,6 +65,9 @@ export interface CapacityPlanItem {
   itemKey: string;
   name: string;
   rank: string;
+  /** The Feature's OWN project — Rally's "Project" column, distinct from the plan's project. */
+  projectId: string;
+  projectName: string | null;
   /** Committed demand summed over this Feature's allocations. */
   estimated: number;
   rollup: number;
@@ -157,7 +161,9 @@ export class CapacityPlansService {
 
   async createPlan(
     actor: JwtPayload,
-    input: Omit<CreateCapacityPlanInput, 'workspaceId'>,
+    // `planKey` is minted here, not accepted: a client-chosen key would collide with the
+    // per-project counter and there is nothing a caller could sensibly pass.
+    input: Omit<CreateCapacityPlanInput, 'workspaceId' | 'planKey'>,
   ): Promise<CapacityPlanView> {
     await this.access.assertProjectPermission(actor, input.projectId, 'capacity:manage');
     await this.assertReleaseInProject(actor.workspaceId, input.projectId, input.releaseId);
@@ -176,8 +182,43 @@ export class CapacityPlansService {
       );
     }
 
-    const created = await this.repo.create({ ...input, workspaceId: actor.workspaceId });
+    // `CP-<n>` from MAX+1, exactly as iterations mint `IT-<n>`: not atomic under concurrent
+    // creates (two requests can read the same MAX before either commits), so retry once on the
+    // unique violation `uq_capacity_plans_key` raises. One retry is enough — the second read
+    // sees the first winner's committed row.
+    const MAX_KEY_RETRIES = 2;
+    let created: CapacityPlan | undefined;
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < MAX_KEY_RETRIES; attempt++) {
+      const keyNumber = await this.repo.nextKeyNumber(input.projectId, actor.workspaceId);
+      try {
+        created = await this.repo.create({
+          ...input,
+          workspaceId: actor.workspaceId,
+          planKey: `CP-${keyNumber}`,
+        });
+        break;
+      } catch (err: unknown) {
+        lastErr = err;
+        if (!isDuplicateKeyError(err) || attempt === MAX_KEY_RETRIES - 1) throw err;
+      }
+    }
+    if (created === undefined) throw lastErr;
+
     return this.getPlan(actor, created.id);
+  }
+
+  /**
+   * Hard delete, and only for a DRAFT.
+   *
+   * A published plan has already written Release and planned dates onto Features; deleting it
+   * would leave those values behind with nothing explaining them. Revert first — that is the
+   * documented way back, and it undoes the writes.
+   */
+  async deletePlan(actor: JwtPayload, id: string): Promise<void> {
+    const plan = await this.requireDraft(actor, id);
+    await this.access.assertProjectPermission(actor, plan.projectId, 'capacity:manage');
+    await this.repo.delete(id, actor.workspaceId);
   }
 
   async updatePlan(
@@ -701,6 +742,8 @@ export class CapacityPlansService {
           itemKey: row.itemKey,
           name: row.name,
           rank: row.rank,
+          projectId: row.itemProjectId,
+          projectName: row.itemProjectName,
           // Sums the COMMITTED demand across this Feature's allocations. Rally's Estimated
           // becomes the allocated total once any allocation exists, which is the same rule
           // `resolveEstimate` applies per row.

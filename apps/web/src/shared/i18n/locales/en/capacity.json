@@ -188,5 +188,31 @@
     "sidebarHeading": "Team capacity",
     "plusContributors": "+{{count}}",
     "featureType": "Feature"
-  }
+  },
+  "filters": {
+    "oldestRelease": "Oldest Release",
+    "newestRelease": "Newest Release",
+    "noneRelease": "None",
+    "noReleases": "No releases",
+    "olderRelease": "Older release",
+    "newerRelease": "Newer release",
+    "byStatus": "Filter by status",
+    "byUnit": "Filter by unit",
+    "allStatuses": "All statuses",
+    "allUnits": "All units"
+  },
+  "delete": {
+    "title": "Delete capacity plans?",
+    "bulkMessage": "Delete {{count}} selected plan(s)? Teams and allocations on them go too.",
+    "confirm": "Delete",
+    "bulkDone": "Deleted {{count}} plan(s)",
+    "publishedSkipped": "Skipped {{count}} published plan(s) — revert a plan before deleting it",
+    "failed": "Could not delete the plan"
+  },
+  "totalPlans": "Total Plans: {{count}}",
+  "fields": {
+    "unit": "Unit",
+    "name": "Name"
+  },
+  "renameFailed": "Could not rename the plan"
 }

@@ -57,6 +57,13 @@ export interface ListPageScaffoldProps<Row extends { id: string }, K extends str
   actions?: ReactNode
   /** Filter controls revealed under the "Show Filters" toggle. */
   filters?: ReactNode
+  /**
+   * Controls pushed to the FAR RIGHT of the toolbar — a row count, an export, a legend.
+   *
+   * Forwarded to `PageToolbar`, which already had the slot; the scaffold simply never passed it
+   * through, so every page that wanted one had to drop the scaffold entirely.
+   */
+  trailing?: ReactNode
   /** Active filter count (badge on the toggle; also auto-opens the panel). */
   activeFilterCount?: number
   /** "Show Fields" column menu. */
@@ -161,6 +168,7 @@ export function ListPageScaffold<Row extends { id: string }, K extends string>({
   search,
   actions,
   filters,
+  trailing,
   activeFilterCount = 0,
   fields,
   selectable = true,
@@ -247,6 +255,7 @@ export function ListPageScaffold<Row extends { id: string }, K extends string>({
         activeFilterCount={activeFilterCount}
         defaultFiltersOpen={activeFilterCount > 0}
         fields={fields}
+        trailing={trailing}
       />
 
       {selectable && selection.count > 0 && (

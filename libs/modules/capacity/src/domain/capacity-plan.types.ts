@@ -17,6 +17,14 @@ export interface CapacityPlan {
   workspaceId: string;
   projectId: string;
   releaseId: string;
+  /**
+   * `CP-<n>`, minted per project — the key the list's ID column shows and links from.
+   *
+   * Nullable because rows created before the column existed are backfilled by migration
+   * rather than by the app, and because minting is MAX+1 with a retry rather than a
+   * generated column.
+   */
+  planKey: string | null;
   name: string;
   status: CapacityPlanStatus;
   /**
@@ -77,6 +85,8 @@ export interface CreateCapacityPlanInput {
   workspaceId: string;
   projectId: string;
   releaseId: string;
+  /** Minted by the service (`CP-<n>`); the repository only writes what it is handed. */
+  planKey: string;
   name: string;
   unit: CapacityPlanUnit;
   plannedStartDate?: string | null;

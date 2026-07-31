@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -49,6 +50,7 @@ function toDto(p: CapacityPlanDetail): CapacityPlanResponseDto {
     projectName: p.projectName,
     releaseId: p.releaseId,
     releaseName: p.releaseName,
+    planKey: p.planKey,
     name: p.name,
     status: p.status,
     unit: p.unit,
@@ -64,6 +66,8 @@ function toDto(p: CapacityPlanDetail): CapacityPlanResponseDto {
       itemKey: item.itemKey,
       name: item.name,
       rank: item.rank,
+      projectId: item.projectId,
+      projectName: item.projectName,
       estimated: item.estimated,
       rollup: item.rollup,
       complete: item.complete,
@@ -187,6 +191,20 @@ export class CapacityPlansController {
   ): Promise<CapacityPlanResponseDto> {
     await this.service.updatePlan(user, id, body);
     return toDto(await this.service.getPlanDetail(user, id));
+  }
+
+  @Delete(':id')
+  @HttpCode(204)
+  @RequirePermission('capacity:manage', { resource: 'capacity_plan', from: 'param', field: 'id' })
+  @ApiOperation({ summary: 'Delete a draft plan' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 204, description: 'Deleted' })
+  @ApiCommonErrors(401, 403, 404, 422)
+  async deletePlan(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<void> {
+    await this.service.deletePlan(user, id);
   }
 
   @Post(':id/teams')

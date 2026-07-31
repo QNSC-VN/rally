@@ -78,6 +78,30 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
     );
   }
 
+  async nextKeyNumber(projectId: string, workspaceId: string): Promise<number> {
+    // MAX(existing suffix) + 1, mirroring `iterations.nextKeyNumber` — including its
+    // `substring(... from '[0-9]+$')`: Drizzle's sql template drops a bare backslash before it
+    // reaches Postgres, so a `\d`-based pattern silently matches nothing and always yields 0.
+    const rows = await this.db
+      .select({
+        n: sql<number>`COALESCE(MAX(substring(${capacityPlans.planKey} from '[0-9]+$')::int), 0)::int`,
+      })
+      .from(capacityPlans)
+      .where(
+        and(eq(capacityPlans.projectId, projectId), eq(capacityPlans.workspaceId, workspaceId)),
+      );
+    return Number(rows[0]?.n ?? 0) + 1;
+  }
+
+  async delete(id: string, workspaceId: string, executor?: DbExecutor): Promise<void> {
+    const exec = executor ?? this.db;
+    // Teams and allocations cascade (`fk_capacity_plan_teams_plan`,
+    // `fk_capacity_plan_allocations_plan`), so this is one statement, not three.
+    await exec
+      .delete(capacityPlans)
+      .where(and(eq(capacityPlans.id, id), eq(capacityPlans.workspaceId, workspaceId)));
+  }
+
   async create(input: CreateCapacityPlanInput, executor?: DbExecutor): Promise<CapacityPlan> {
     const exec = executor ?? this.db;
     const rows = await exec
@@ -86,6 +110,7 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
         workspaceId: input.workspaceId,
         projectId: input.projectId,
         releaseId: input.releaseId,
+        planKey: input.planKey,
         name: input.name,
         unit: input.unit,
         plannedStartDate: input.plannedStartDate ?? null,
@@ -185,6 +210,11 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
         alloc: capacityPlanAllocations,
         itemKey: portfolioItems.itemKey,
         name: portfolioItems.name,
+        // Rally's "Project" column: where the Feature lives OUTSIDE the plan. Not the same as the
+        // plan's project — a Story-to-Feature link may cross projects, so a plan can carry a
+        // Feature owned elsewhere, and the planner needs to see that before allocating to it.
+        itemProjectId: portfolioItems.projectId,
+        itemProjectName: projects.name,
         refinedEstimate: portfolioItems.refinedEstimate,
         preliminaryEstimate: portfolioItems.preliminaryEstimate,
         rollup: sql<string>`(
@@ -232,6 +262,9 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
       })
       .from(capacityPlanAllocations)
       .innerJoin(portfolioItems, eq(portfolioItems.id, capacityPlanAllocations.portfolioItemId))
+      // LEFT, not INNER: the name is decoration on a row that must render regardless. An inner
+      // join here would make a Feature disappear from the plan if its project row were missing.
+      .leftJoin(projects, eq(projects.id, portfolioItems.projectId))
       .where(eq(capacityPlanAllocations.planId, plan.id))
       // Unallocated last, then by the Feature's own RANK — not its key.
       //
@@ -249,6 +282,8 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
       ...this.mapAllocation(row.alloc),
       itemKey: row.itemKey,
       name: row.name,
+      itemProjectId: row.itemProjectId,
+      itemProjectName: row.itemProjectName,
       refined: row.refinedEstimate === null ? null : Number(row.refinedEstimate),
       preliminarySize: row.preliminaryEstimate,
       totalAllocated: Number(row.totalAllocated),
@@ -679,6 +714,7 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
       workspaceId: row.workspaceId,
       projectId: row.projectId,
       releaseId: row.releaseId,
+      planKey: row.planKey,
       name: row.name,
       status: row.status,
       unit: row.unit,
