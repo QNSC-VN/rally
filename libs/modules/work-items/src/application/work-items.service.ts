@@ -780,7 +780,7 @@ export class WorkItemsService {
 
       const updatedInTx = await this.workItemRepo.update(
         id,
-        { ...input, ...rerank, updatedBy: actor.sub },
+        { ...input, ...rerank, ...clearReasonOnUnblock(input), updatedBy: actor.sub },
         actor.workspaceId,
         tx,
       );
@@ -1840,4 +1840,24 @@ export class WorkItemsService {
     });
     this.logger.log({ workItemId, attachmentId, filename: link.filename }, 'Attachment deleted');
   }
+}
+
+/**
+ * Unblocking an item clears its Blocked Reason.
+ *
+ * Rally: "When a blocked status is removed, the Blocked Reason field is cleared"
+ * (Broadcom TechDocs, Task Board app). A reason that outlives its block is not history — it
+ * is a claim that the item is blocked for that reason, sitting next to a flag that says it is
+ * not. The UI made this visible: the reason cell is only editable WHILE blocked, so a stale
+ * reason could be read but never removed.
+ *
+ * Applied in the SERVICE rather than the DTO or the client, so every caller gets it — the
+ * inline cell, the detail pane, and any future bulk path — and applied even when the same
+ * patch also sends a reason: `isBlocked: false` wins, because the two cannot both be true.
+ *
+ * The old reason is not lost. `activity-diff.ts` tracks `isBlocked` and `blockedReason`, so
+ * the transition and the text it replaced are both in the activity log.
+ */
+function clearReasonOnUnblock(input: UpdateWorkItemInput): { blockedReason?: null } {
+  return input.isBlocked === false ? { blockedReason: null } : {};
 }

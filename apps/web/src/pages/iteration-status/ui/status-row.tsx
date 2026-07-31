@@ -356,7 +356,11 @@ export function StatusRow({
         {/* Blocked Reason — inline-editable only while the item is blocked
             (an unblocked item has no reason to capture). */}
         <div style={colStyles.blockedReason} className="flex items-center px-0">
-          {canEdit && item.isBlocked ? (
+          {/* Editable whenever there is something to edit — blocked, or carrying a reason from
+              before unblocking cleared them. The second case is now only reachable for rows
+              written before that rule existed, and leaving it read-only was the bug: the value
+              could be read and never removed. */}
+          {canEdit && (item.isBlocked || item.blockedReason) ? (
             <InlineEditableCell
               value={item.blockedReason ?? ''}
               canEdit={canEdit}
