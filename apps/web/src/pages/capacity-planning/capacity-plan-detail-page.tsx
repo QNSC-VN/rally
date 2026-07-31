@@ -24,6 +24,7 @@ import { useProjectPermissions } from '@/features/access/api'
 import { useProjectTeams } from '@/features/teams/api'
 import {
   useAddCapacityTeam,
+  useUpdateCapacityPlan,
   useRemoveAllocation,
   useRemoveCapacityTeam,
   useCapacityPlan,
@@ -52,6 +53,7 @@ import { CapacityTeamRow } from './ui/capacity-team-row'
 import { TeamAllocationsTable } from './ui/team-allocations-table'
 import { AllocateFeatureModal } from './ui/allocate-feature-modal'
 import { StatusBadge } from '@/shared/ui/status-badge'
+import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { ActionMenu, ActionMenuItem } from '@/shared/ui/action-menu'
 import { SelectionModal } from '@/shared/ui/selection-modal'
 import { CompositeBar } from '@/shared/ui/composite-bar'
@@ -111,6 +113,22 @@ export function CapacityPlanDetailPage() {
   )
 
   const { data: plan, isLoading } = useCapacityPlan(planId)
+
+  /**
+   * The header's name field, seeded from the plan and re-seeded whenever the plan's own name
+   * changes — so a refetch or another user's rename lands here instead of being overwritten by a
+   * stale draft.
+   */
+  const planName = plan?.name ?? ''
+  const [draftName, setDraftName] = useState(planName)
+  const [seededName, setSeededName] = useState(planName)
+  // Adjusted during RENDER, not in an effect — the pattern `SelectionModal` uses: a setState inside
+  // an effect costs an extra commit and a cascading render, and this only has to notice that the
+  // plan's own name changed (a refetch, or someone else's rename).
+  if (planName !== seededName) {
+    setSeededName(planName)
+    setDraftName(planName)
+  }
   const { can } = useProjectPermissions(plan?.projectId)
   // A published plan is read-only until reverted, so the whole surface follows the API's
   // own rule rather than offering edits the server will refuse.
@@ -128,6 +146,7 @@ export function CapacityPlanDetailPage() {
   // Only for the pending flag on the toolbar button; the modal owns the publish call itself.
   const publish = usePublishPlan()
   const deletePlan = useDeleteCapacityPlan()
+  const updatePlan = useUpdateCapacityPlan()
   // Publishing writes back to Feature rows, so it takes its OWN permission rather than
   // riding `capacity:manage` — a planner who may edit a draft is not automatically someone
   // who may stamp a release onto other people's Features.
@@ -247,6 +266,26 @@ export function CapacityPlanDetailPage() {
     [navigate],
   )
 
+  /**
+   * Commits the header's inline rename.
+   *
+   * Held as a draft rather than written per keystroke: a PATCH per character would race the
+   * refetch and make the field fight the cursor. Blank or unchanged reverts to the plan's name.
+   */
+  async function commitName() {
+    const name = draftName.trim()
+    if (name === '' || name === plan?.name) {
+      setDraftName(plan?.name ?? '')
+      return
+    }
+    try {
+      await updatePlan.mutateAsync({ id: planId, patch: { name } })
+    } catch (err) {
+      notify.error(err instanceof Error ? err.message : t('renameFailed'))
+      setDraftName(plan?.name ?? '')
+    }
+  }
+
   async function removePlan() {
     try {
       await deletePlan.mutateAsync(planId)
@@ -313,10 +352,31 @@ export function CapacityPlanDetailPage() {
       <DetailLayout
         onBack={() => void navigate({ to: '/capacity-planning' })}
         backLabel={t('title')}
-        // Rally leads its header with the plan's key (`PN697`); ours is `CP-<n>`. The shared header
-        // already has the slot every work-item detail uses for it.
+        // The same three-part lead every detail surface in the app uses: glyph, key, title. The
+        // glyph was missing here, so this was the one detail header whose key arrived unannounced.
+        badge={<TypeBadge type="capacityPlan" />}
         itemKey={plan.planKey ?? undefined}
-        title={plan.name}
+        title={
+          // Editable in place, like a work item's title — a plan's name is the field most often
+          // wrong at creation, and the alternative was opening Edit Plan Details for one word.
+          // Read-only once published, which is the API's rule for every field on the plan.
+          canManage ? (
+            <input
+              value={draftName}
+              onChange={(e) => setDraftName(e.target.value)}
+              onBlur={() => void commitName()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void commitName()
+                // Escape abandons the edit rather than committing it, matching every inline cell.
+                if (e.key === 'Escape') setDraftName(plan.name)
+              }}
+              className="w-full rounded border-0 bg-transparent px-1 py-0.5 text-base font-semibold text-white placeholder-white/60 focus:bg-white/10 focus:outline-none"
+              aria-label={t('fields.name')}
+            />
+          ) : (
+            plan.name
+          )
+        }
         status={
           <div className="flex items-center gap-2">
             {/* Same `StatusBadge` + feature-owned colour map as releases, iterations, milestones

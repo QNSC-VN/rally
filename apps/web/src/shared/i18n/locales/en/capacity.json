@@ -221,9 +221,7 @@
     "olderRelease": "Older release",
     "newerRelease": "Newer release",
     "byStatus": "Filter by status",
-    "byUnit": "Filter by unit",
-    "allStatuses": "All statuses",
-    "allUnits": "All units"
+    "allStatuses": "All statuses"
   },
   "delete": {
     "title": "Delete capacity plans?",

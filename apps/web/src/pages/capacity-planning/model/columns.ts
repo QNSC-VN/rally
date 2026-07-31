@@ -6,27 +6,22 @@ import {
   type CapacityPlanTeam,
 } from '@/features/capacity-planning/api'
 
-export type PlanColKey =
-  | 'id'
-  | 'name'
-  | 'release'
-  | 'status'
-  | 'updatedAt'
-  | 'teamCount'
-  | 'unit'
-  | 'targetLoad'
-  | 'capacity'
+export type PlanColKey = 'id' | 'name' | 'release' | 'status' | 'updatedAt' | 'teamCount'
 
 /**
- * The capacity-plans list, in Rally's own column order: ID, Name, Release, Status, Last Updated,
- * then the count of teams in the plan (Rally labels it "Projects in Plan"; we keep the team
- * vocabulary). Unit / Target Load / Capacity follow — ours, not Rally's, and hideable via Show
- * Fields like any other column.
+ * The capacity-plans list — Rally's columns, and ONLY Rally's: ID, Name, Release, Status, Last
+ * Updated, then the count of teams in the plan (Rally labels it "Projects in Plan"; we keep the team
+ * vocabulary).
  *
- * `capacity` and `teamCount` have no `sortCol`: both are derived on read from the plan's team
- * rows, so there is no column for a server sort to name. Sorting is client-side here anyway — the
- * list is bounded by a project's releases — but a `sortCol` on a derived field would still be a
- * claim the API does not honour.
+ * Unit, Target Load and Capacity are deliberately absent. They are plan SETTINGS, not a way to tell
+ * two plans apart: the unit is fixed at creation, target load is one advisory number a planner rarely
+ * changes, and a total capacity means nothing until you are inside the plan looking at which team it
+ * belongs to. All three live on the detail page, where they are actionable.
+ *
+ * `teamCount` has no `sortCol`: it is derived on read from the plan's team rows, so there is no
+ * column for a server sort to name. Sorting is client-side here anyway — the list is bounded by a
+ * project's releases — but a `sortCol` on a derived field would still claim something the API does
+ * not honour.
  */
 export const CAPACITY_PLAN_COLUMNS: ColumnSpec<CapacityPlan, unknown, PlanColKey>[] = [
   { key: 'id', label: 'ID', defaultWidth: 92, minWidth: 70, locked: true },
@@ -51,9 +46,6 @@ export const CAPACITY_PLAN_COLUMNS: ColumnSpec<CapacityPlan, unknown, PlanColKey
     sortCol: 'updatedAt',
   },
   { key: 'teamCount', label: 'Teams in Plan', defaultWidth: 110, minWidth: 90, align: 'right' },
-  { key: 'unit', label: 'Unit', defaultWidth: 80, minWidth: 70 },
-  { key: 'targetLoad', label: 'Target Load', defaultWidth: 100, minWidth: 90, align: 'right' },
-  { key: 'capacity', label: 'Capacity', defaultWidth: 100, minWidth: 90, align: 'right' },
 ]
 
 export type TeamColKey =
