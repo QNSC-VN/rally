@@ -18,6 +18,7 @@ import {
   jsonb,
   index,
   uniqueIndex,
+  check,
   primaryKey,
   customType,
 } from 'drizzle-orm/pg-core';
@@ -499,6 +500,19 @@ export const capacityPlanAllocations = workSchema.table(
     planId: uuid('plan_id').notNull(),
     portfolioItemId: uuid('portfolio_item_id').notNull(),
     teamId: uuid('team_id'),
+    /**
+     * Rally's PRIMARY team assignment for this Feature in this plan.
+     *
+     * Rally: "you can assign the portfolio item to one primary team and then allocate points or
+     * story counts to the additional teams that will contribute to the work." One team owns the
+     * Feature; the rest are contributors. The Items tab's "Planned Project Assignment" shows
+     * this team, which is why it cannot just be inferred from the allocation list.
+     *
+     * A flag on the allocation rather than a column on a plan-item table, because the primary is
+     * BY DEFINITION one of the teams that has an allocation — and "in the plan with no team at
+     * all" is already expressed by `team_id IS NULL`, Rally's unassigned state.
+     */
+    isPrimary: boolean('is_primary').notNull().default(false),
     value: numeric('value', { precision: 10, scale: 2 }).notNull().default('0'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -508,6 +522,16 @@ export const capacityPlanAllocations = workSchema.table(
     itemIdx: index('ix_capacity_allocations_item').on(t.portfolioItemId),
     // Team grid: rows for one team within one plan.
     planTeamIdx: index('ix_capacity_allocations_plan_team').on(t.planId, t.teamId),
+    // ONE primary per Feature per plan, enforced by the database rather than by the service:
+    // a race between two "make this the primary" calls would otherwise leave two.
+    onePrimaryPerItem: uniqueIndex('uq_capacity_allocation_primary')
+      .on(t.planId, t.portfolioItemId)
+      .where(sql`${t.isPrimary}`),
+    // An unallocated placeholder has no team, so it can never be the team that owns the work.
+    primaryNeedsTeam: check(
+      'ck_capacity_primary_has_team',
+      sql`not ${t.isPrimary} or ${t.teamId} is not null`,
+    ),
   }),
 );
 

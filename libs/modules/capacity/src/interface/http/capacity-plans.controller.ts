@@ -69,6 +69,7 @@ function toDto(p: CapacityPlanDetail): CapacityPlanResponseDto {
       complete: item.complete,
       tier: item.tier,
       teamIds: item.teamIds,
+      primaryTeamId: item.primaryTeamId,
       unallocated: item.unallocated,
     })),
     itemCutlineIndex: p.itemCutlineIndex,
@@ -86,6 +87,7 @@ function toDto(p: CapacityPlanDetail): CapacityPlanResponseDto {
       itemKey: a.itemKey,
       name: a.name,
       teamId: a.teamId,
+      isPrimary: a.isPrimary,
       // numeric arrives as a string from Drizzle; the API contract is a number.
       value: Number(a.value),
       tier: a.tier,
@@ -312,6 +314,21 @@ export class CapacityPlansController {
     @Body() body: UpdateAllocationDto,
   ): Promise<CapacityPlanResponseDto> {
     return toDto(await this.service.updateAllocation(user, id, allocationId, body));
+  }
+
+  @Post(':id/allocations/:allocationId/primary')
+  @RequirePermission('capacity:manage', { resource: 'capacity_plan', from: 'param', field: 'id' })
+  @ApiOperation({ summary: "Make this allocation's team the Feature's primary assignment" })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiParam({ name: 'allocationId', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: CapacityPlanResponseDto })
+  @ApiCommonErrors(401, 403, 404, 422)
+  async setPrimaryAllocation(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('allocationId', ParseUUIDPipe) allocationId: string,
+  ): Promise<CapacityPlanResponseDto> {
+    return toDto(await this.service.setPrimaryAllocation(user, id, allocationId));
   }
 
   @Delete(':id/allocations/:allocationId')

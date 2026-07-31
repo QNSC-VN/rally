@@ -533,6 +533,13 @@
       "when": 1786000701000,
       "tag": "0074_derive_story_task_hours",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1786000702000,
+      "tag": "0075_capacity_primary_team",
+      "breakpoints": true
     }
   ]
 }

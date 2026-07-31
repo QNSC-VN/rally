@@ -294,6 +294,26 @@ export function useUpdateAllocation() {
   })
 }
 
+/**
+ * Make an allocation's team the Feature's primary assignment — Rally's Planned Team Assignment.
+ *
+ * Invalidates `capacity` only: this moves ownership INSIDE the plan and writes nothing to the
+ * Feature itself, so the Portfolio surfaces have not changed. (Publish is what reaches outside.)
+ */
+export function useSetPrimaryAllocation() {
+  return useMutation({
+    mutationFn: async ({ id, allocationId }: { id: string; allocationId: string }) => {
+      const { data, error, response } = await apiClient.POST(
+        '/v1/capacity-plans/{id}/allocations/{allocationId}/primary',
+        { params: { path: { id, allocationId } } },
+      )
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as CapacityPlan
+    },
+    meta: { invalidates: ['capacity'] },
+  })
+}
+
 export function useRemoveAllocation() {
   return useMutation({
     mutationFn: async ({ id, allocationId }: { id: string; allocationId: string }) => {

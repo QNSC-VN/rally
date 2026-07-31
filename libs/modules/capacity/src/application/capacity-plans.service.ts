@@ -71,6 +71,12 @@ export interface CapacityPlanItem {
   tier: EstimateTier;
   /** Teams this Feature is allocated to; empty when it sits only in the Unallocated bucket. */
   teamIds: string[];
+  /**
+   * The team that OWNS this Feature in the plan — Rally's Planned Team Assignment.
+   *
+   * Null when only unallocated rows exist, which is Rally's unassigned state.
+   */
+  primaryTeamId: string | null;
   /** True when any of its allocations has no team — Rally's unassigned warning. */
   unallocated: boolean;
 }
@@ -461,11 +467,27 @@ export class CapacityPlansService {
       const merged = Number(existing.value) + Number(value);
       await this.repo.updateAllocation(existing.id, { value: String(merged) });
     } else {
+      /**
+       * The FIRST team to receive work on a Feature becomes its primary.
+       *
+       * Rally's order of operations is assign-then-allocate: "assign the portfolio item to one
+       * primary team and then allocate points... to the additional teams". Inferring it from the
+       * first allocation matches that without making the planner answer a second question, and
+       * leaves the choice changeable afterwards.
+       *
+       * An Unallocated row is never primary — it names no team to own the work, which is also
+       * what `ck_capacity_primary_has_team` enforces.
+       */
+      const alreadyHasPrimary =
+        teamId === null
+          ? true
+          : await this.repo.hasPrimaryAllocation(planId, input.portfolioItemId);
       await this.repo.createAllocation({
         planId,
         portfolioItemId: input.portfolioItemId,
         teamId,
         value: String(value),
+        isPrimary: teamId !== null && !alreadyHasPrimary,
       });
     }
 
@@ -489,9 +511,62 @@ export class CapacityPlansService {
     // Unallocated bucket, which needs no membership.
     if (input.teamId) await this.requirePlanTeam(planId, input.teamId);
 
-    await this.repo.updateAllocation(allocationId, {
-      ...(input.value === undefined ? {} : { value: String(input.value) }),
-      ...(input.teamId === undefined ? {} : { teamId: input.teamId }),
+    await this.uow.run(async (tx) => {
+      // Parking a row in the Unallocated bucket strips its primary flag: the check constraint
+      // forbids a primary with no team, so this is the difference between a clear rule and a
+      // constraint violation the planner would see as a crash.
+      const losesTeam = input.teamId === null && allocation.isPrimary;
+      await this.repo.updateAllocation(
+        allocationId,
+        {
+          ...(input.value === undefined ? {} : { value: String(input.value) }),
+          ...(input.teamId === undefined ? {} : { teamId: input.teamId }),
+          ...(losesTeam ? { isPrimary: false } : {}),
+        },
+        tx,
+      );
+      // ...and hands the assignment to whoever is left, so the Feature does not silently become
+      // unassigned while teams still hold work on it.
+      if (losesTeam) {
+        const next = await this.repo.oldestTeamAllocation(planId, allocation.portfolioItemId, tx);
+        if (next) await this.repo.updateAllocation(next.id, { isPrimary: true }, tx);
+      }
+    });
+    return this.getPlanDetail(actor, planId);
+  }
+
+  /**
+   * Make one allocation the Feature's primary team assignment.
+   *
+   * Rally's Items tab shows exactly one team per Feature in "Planned Project Assignment", so
+   * this clears the previous primary in the SAME transaction. Two statements outside one would
+   * briefly leave the Feature with two owners or none, and `uq_capacity_allocation_primary`
+   * would reject the first ordering outright.
+   */
+  async setPrimaryAllocation(
+    actor: JwtPayload,
+    planId: string,
+    allocationId: string,
+  ): Promise<CapacityPlanDetail> {
+    const plan = await this.requireDraft(actor, planId);
+    await this.access.assertProjectPermission(actor, plan.projectId, 'capacity:manage');
+
+    const allocation = await this.repo.findAllocation(allocationId, planId);
+    if (!allocation) {
+      throw new NotFoundException('CAPACITY_ALLOCATION_NOT_FOUND', 'Allocation not found');
+    }
+    // An Unallocated row has no team to be the owner, so this is a refusal rather than a no-op:
+    // silently ignoring it would leave the planner thinking the assignment had moved.
+    if (allocation.teamId === null) {
+      throw new PreconditionFailedException(
+        'CAPACITY_PRIMARY_NEEDS_TEAM',
+        'Assign this Feature to a team before making it the primary assignment',
+      );
+    }
+
+    await this.uow.run(async (tx) => {
+      await this.repo.clearPrimaryAllocations(planId, allocation.portfolioItemId, tx);
+      await this.repo.updateAllocation(allocationId, { isPrimary: true }, tx);
     });
     return this.getPlanDetail(actor, planId);
   }
@@ -508,7 +583,20 @@ export class CapacityPlansService {
     if (!allocation) {
       throw new NotFoundException('CAPACITY_ALLOCATION_NOT_FOUND', 'Allocation not found');
     }
-    await this.repo.deleteAllocation(allocationId);
+    await this.uow.run(async (tx) => {
+      await this.repo.deleteAllocation(allocationId, tx);
+      /**
+       * Removing the primary PROMOTES the next remaining team allocation.
+       *
+       * A Feature with allocations but no primary would read as unassigned on the Items tab —
+       * Rally shows a warning icon for that — while teams are demonstrably working on it. The
+       * oldest remaining allocation inherits, for the same reason the first one was chosen.
+       */
+      if (allocation.isPrimary) {
+        const next = await this.repo.oldestTeamAllocation(planId, allocation.portfolioItemId, tx);
+        if (next) await this.repo.updateAllocation(next.id, { isPrimary: true }, tx);
+      }
+    });
     return this.getPlanDetail(actor, planId);
   }
 
@@ -538,6 +626,7 @@ export class CapacityPlansService {
         planId: row.planId,
         portfolioItemId: row.portfolioItemId,
         teamId: row.teamId,
+        isPrimary: row.isPrimary,
         value: row.value,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
@@ -620,6 +709,8 @@ export class CapacityPlansService {
           complete: row.itemComplete,
           tier: allocations[index].tier,
           teamIds: row.teamId === null ? [] : [row.teamId],
+          // Rally's Planned Team Assignment shows the team that OWNS the Feature, not a count.
+          primaryTeamId: row.isPrimary ? row.teamId : null,
           unallocated: row.teamId === null,
         });
       } else {
@@ -627,6 +718,7 @@ export class CapacityPlansService {
         item.estimated += Number(row.value);
         if (row.teamId === null) item.unallocated = true;
         else item.teamIds.push(row.teamId);
+        if (row.isPrimary) item.primaryTeamId = row.teamId;
         // A Feature with several allocations takes the strongest tier it has: an entered
         // allocation outranks a forecast, and that is what the row's number now is.
         if (allocations[index].tier === 'allocated') item.tier = 'allocated';

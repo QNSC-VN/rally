@@ -1,12 +1,14 @@
 import { type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Trash2 } from 'lucide-react'
+import { Star, Trash2 } from 'lucide-react'
 
 import {
   useRemoveAllocation,
+  useSetPrimaryAllocation,
   useUpdateAllocation,
   type CapacityAllocation,
 } from '@/features/capacity-planning/api'
+import { BRAND } from '@/shared/config/brand'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { CompositeBar } from '@/shared/ui/composite-bar'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
@@ -31,6 +33,7 @@ export function AllocationRow({
   canManage,
   colStyleFor,
   onOpenFeature,
+  teamName,
 }: {
   planId: string
   allocation: CapacityAllocation
@@ -38,10 +41,13 @@ export function AllocationRow({
   canManage: boolean
   colStyleFor: (key: TeamColKey, base?: CSSProperties) => CSSProperties
   onOpenFeature: (portfolioItemId: string) => void
+  /** This row's team name, for the "make primary" label — ids make a useless accessible name. */
+  teamName: string | null
 }) {
   const { t } = useTranslation('capacity')
   const warningText = useCapacityWarningText()
   const update = useUpdateAllocation()
+  const setPrimary = useSetPrimaryAllocation()
   const remove = useRemoveAllocation()
   const { metrics } = allocation
 
@@ -78,6 +84,44 @@ export function AllocationRow({
         </span>
         <EstimateTierBadge tier={allocation.tier} />
       </div>
+
+      {/* Rally assigns a Feature to ONE team and allocates to the rest. The badge says which row
+          owns it; the button on a contributor moves that ownership without a dialog, because it is
+          a single-field change the planner can see the result of immediately. */}
+      {allocation.isPrimary ? (
+        <span
+          className="mr-1 shrink-0 rounded-sm px-1 py-px text-ui-xs font-medium"
+          style={{
+            backgroundColor: BRAND.accentBg,
+            color: BRAND.primaryLight,
+            border: `1px solid ${BRAND.accentBorder}`,
+          }}
+        >
+          {t('row.primaryBadge')}
+        </span>
+      ) : (
+        canManage &&
+        allocation.teamId !== null && (
+          <IconButton
+            aria-label={t('row.makePrimary', {
+              team: teamName ?? '',
+              item: allocation.itemKey,
+            })}
+            onClick={() =>
+              setPrimary.mutate(
+                { id: planId, allocationId: allocation.id },
+                {
+                  onSuccess: () => notify.success(t('row.primaryUpdated')),
+                  onError: (err) => notify.error(err.message),
+                },
+              )
+            }
+            disabled={setPrimary.isPending}
+          >
+            <Star size={12} />
+          </IconButton>
+        )
+      )}
 
       <div style={colStyleFor('progress', { flexShrink: 0 })} className="min-w-0 px-2">
         <CompositeBar

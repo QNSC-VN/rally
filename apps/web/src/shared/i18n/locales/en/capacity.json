@@ -65,7 +65,10 @@
     "allocationRemoved": "Allocation removed",
     "removeAllocation": "Remove the allocation for {{feature}}",
     "expandFeatures": "Expand the Features allocated to {{team}}",
-    "collapseFeatures": "Collapse the Features allocated to {{team}}"
+    "collapseFeatures": "Collapse the Features allocated to {{team}}",
+    "makePrimary": "Make {{team}} the primary team for {{item}}",
+    "primaryBadge": "Primary",
+    "primaryUpdated": "Primary team updated"
   },
   "tiers": {
     "allocated": "Alloc",
@@ -178,9 +181,8 @@
   "items": {
     "tab": "Items",
     "notAssigned": "Not assigned",
-    "oneTeam": "1 team",
-    "teamCount": "{{count}} teams",
     "empty": "Allocate a Feature to see it here.",
-    "sidebarHeading": "Team capacity"
+    "sidebarHeading": "Team capacity",
+    "plusContributors": "+{{count}}"
   }
 }

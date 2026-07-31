@@ -25,6 +25,7 @@ export function CapacityItemRow({
   item,
   position,
   unitLabel,
+  primaryTeamName,
   belowCutline,
   colStyleFor,
   onOpenFeature,
@@ -33,6 +34,8 @@ export function CapacityItemRow({
   /** 1-based rank position within this plan — the order the cutline accumulates down. */
   position: number
   unitLabel: string
+  /** Name of the team that owns this Feature, resolved by the page from the plan's teams. */
+  primaryTeamName: string | null
   /** Below the plan's cutline: this Feature does not fit the plan's total capacity. */
   belowCutline: boolean
   colStyleFor: (key: ItemColKey, base?: CSSProperties) => CSSProperties
@@ -75,16 +78,24 @@ export function CapacityItemRow({
         {/* Rally's Planned Project Assignment: the team(s) this Feature is planned against in
             THIS plan. An unassigned item carries a warning, because it is demand with nowhere
             to go — and Rally flags it the same way. */}
-        {item.teamIds.length === 0 ? (
+        {item.primaryTeamId === null ? (
           <span className="flex items-center gap-1" style={{ color: BRAND.warning }}>
             <AlertTriangle size={12} />
             <span className="text-ui-sm">{t('items.notAssigned')}</span>
           </span>
-        ) : item.teamIds.length === 1 ? (
-          <span className="truncate text-muted-foreground">{t('items.oneTeam')}</span>
         ) : (
-          <span className="truncate text-muted-foreground">
-            {t('items.teamCount', { count: item.teamIds.length })}
+          <span className="flex min-w-0 items-center gap-1.5">
+            {/* The team that OWNS the Feature, named — Rally shows the assignment, not a count. */}
+            <span className="truncate text-foreground" title={primaryTeamName ?? undefined}>
+              {primaryTeamName ?? '—'}
+            </span>
+            {/* Contributors are counted beside it: "+1" says other teams hold work without
+                pretending they own it. */}
+            {item.teamIds.length > 1 && (
+              <span className="shrink-0 text-ui-xs text-foreground-subtle">
+                {t('items.plusContributors', { count: item.teamIds.length - 1 })}
+              </span>
+            )}
           </span>
         )}
       </div>

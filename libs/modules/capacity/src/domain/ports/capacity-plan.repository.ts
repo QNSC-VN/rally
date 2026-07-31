@@ -83,17 +83,40 @@ export interface ICapacityPlanRepository {
   ): Promise<CapacityAllocation | null>;
 
   createAllocation(
-    input: { planId: string; portfolioItemId: string; teamId: string | null; value: string },
+    input: {
+      planId: string;
+      portfolioItemId: string;
+      teamId: string | null;
+      value: string;
+      isPrimary?: boolean;
+    },
     executor?: DbExecutor,
   ): Promise<CapacityAllocation>;
 
   updateAllocation(
     id: string,
-    input: { value?: string; teamId?: string | null },
+    input: { value?: string; teamId?: string | null; isPrimary?: boolean },
     executor?: DbExecutor,
   ): Promise<CapacityAllocation>;
 
   deleteAllocation(id: string, executor?: DbExecutor): Promise<void>;
+
+  /** Does this Feature already have a primary team on this plan? */
+  hasPrimaryAllocation(planId: string, portfolioItemId: string): Promise<boolean>;
+
+  /** Clear the primary flag for one Feature — run before setting the new one, in one tx. */
+  clearPrimaryAllocations(
+    planId: string,
+    portfolioItemId: string,
+    executor?: DbExecutor,
+  ): Promise<void>;
+
+  /** The oldest team-assigned allocation, which inherits when the primary goes. */
+  oldestTeamAllocation(
+    planId: string,
+    portfolioItemId: string,
+    executor?: DbExecutor,
+  ): Promise<{ id: string } | null>;
 
   /**
    * SUM(value) for one Feature on one plan, counting ONLY rows assigned to a team.
