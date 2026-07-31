@@ -28,15 +28,21 @@ import { useAllocate, type CapacityPlan } from '@/features/capacity-planning/api
  */
 export function AllocateFeatureModal({
   plan,
+  portfolioItemId: fixedItemId,
   onClose,
 }: {
   plan: CapacityPlan
+  /**
+   * The Feature being split. Opened from that Feature's own menu, so the picker is gone and the
+   * dialog answers one question: which teams, and how much each.
+   */
+  portfolioItemId: string
   onClose: () => void
 }) {
   const { t } = useTranslation('capacity')
   const allocate = useAllocate()
 
-  const [portfolioItemId, setPortfolioItemId] = useState('')
+  const portfolioItemId = fixedItemId
   const [teamId, setTeamId] = useState<string>('')
   const [value, setValue] = useState('')
   const [errors, setErrors] = useState<{ feature?: string; form?: string }>({})
@@ -46,6 +52,11 @@ export function AllocateFeatureModal({
     type: PortfolioItemType.Feature,
     projectId: plan.projectId,
   })
+
+  const featureLabel = useMemo(() => {
+    const found = features.find((f) => f.id === fixedItemId)
+    return found === undefined ? fixedItemId : `${found.itemKey} — ${found.name}`
+  }, [features, fixedItemId])
 
   const teamOptions = useMemo(
     () => [
@@ -93,14 +104,10 @@ export function AllocateFeatureModal({
           </p>
         )}
 
-        <FormField label={t('allocate.featureLabel')} required error={errors.feature}>
-          <SearchableSelect
-            variant="field"
-            value={portfolioItemId}
-            ariaLabel={t('allocate.featureLabel')}
-            options={features.map((f) => ({ value: f.id, label: `${f.itemKey} — ${f.name}` }))}
-            onChange={(v) => setPortfolioItemId(v ?? '')}
-          />
+        {/* The Feature is stated, not chosen: this dialog opens from that Feature's own menu, so a
+            picker here would let a planner allocate to something other than the row they clicked. */}
+        <FormField label={t('allocate.featureLabel')}>
+          <p className="text-ui-md text-foreground">{featureLabel}</p>
         </FormField>
 
         <FormField label={t('allocate.teamLabel')}>

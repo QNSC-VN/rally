@@ -1067,19 +1067,60 @@ describe('CapacityPlansService', () => {
       expect(repo.findTeam).not.toHaveBeenCalled();
     });
 
+    it('MOVES the unallocated row onto the team instead of adding beside it', async () => {
+      // Rally: "choosing a Team assigns the existing unallocated row to that Team". Keeping both
+      // would count the Feature twice — parked demand AND a team commitment — which is what
+      // happened once adding and allocating became two steps.
+      repo.findAllocationFor.mockImplementation(async (_plan, _item, teamId) =>
+        teamId === null
+          ? {
+              id: 'parked-1',
+              planId: 'plan-1',
+              portfolioItemId: 'fe-1',
+              teamId: null,
+              isPrimary: false,
+              value: null,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            }
+          : null,
+      );
+      repo.hasPrimaryAllocation.mockResolvedValue(false);
+
+      await service.allocate(actor, 'plan-1', {
+        portfolioItemId: 'fe-1',
+        teamId: 'team-1',
+        value: 7,
+      });
+
+      expect(repo.createAllocation).not.toHaveBeenCalled();
+      expect(repo.updateAllocation).toHaveBeenCalledWith('parked-1', {
+        teamId: 'team-1',
+        value: '7',
+        // The first team to receive the work owns it, exactly as a fresh allocation would.
+        isPrimary: true,
+      });
+    });
+
     it('ADDS to an existing row for the same (Feature, team) pair rather than duplicating', async () => {
       // Rally models sharing as one row per team under a Feature. A second row for the same
       // pair would double-count that team's demand in every total.
-      repo.findAllocationFor.mockResolvedValue({
-        id: 'al-1',
-        planId: 'plan-1',
-        portfolioItemId: 'fe-1',
-        teamId: 'team-1',
-        isPrimary: false,
-        value: '10',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
+      // Per-argument, because `allocate` asks twice: first whether the Feature has an UNALLOCATED
+      // row to move onto the team, then whether the team already holds one to add to.
+      repo.findAllocationFor.mockImplementation(async (_plan, _item, teamId) =>
+        teamId === null
+          ? null
+          : {
+              id: 'al-1',
+              planId: 'plan-1',
+              portfolioItemId: 'fe-1',
+              teamId: 'team-1',
+              isPrimary: false,
+              value: '10',
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            },
+      );
 
       await service.allocate(actor, 'plan-1', {
         portfolioItemId: 'fe-1',

@@ -214,7 +214,10 @@
     "removed": "{{item}} removed from the plan",
     "railName": "Name",
     "railRatio": "{{unit}} / Capacity",
-    "allocationRow": "Allocation"
+    "allocationRow": "Allocation",
+    "removeAllAssignments": "Remove all assignments",
+    "assignmentsCleared": "{{item}} is unassigned but still on the plan",
+    "allocate": "Allocate to teams"
   },
   "filters": {
     "oldestRelease": "Oldest Release",
@@ -259,5 +262,13 @@
   "teams": {
     "action": "Add / Remove Teams",
     "title": "Add / Remove Teams on this plan"
+  },
+  "addFeatures": {
+    "action": "Add Features",
+    "title": "Add Features to this plan",
+    "titleForTeam": "Add Features to {{team}}",
+    "actionForTeam": "Add Features to this team",
+    "confirm": "Add to Plan",
+    "searchPlaceholder": "Search Features…"
   }
 }

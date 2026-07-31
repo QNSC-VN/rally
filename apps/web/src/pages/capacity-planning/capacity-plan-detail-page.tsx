@@ -27,6 +27,7 @@ import {
   useAddCapacityTeam,
   useUpdateCapacityPlan,
   useRemoveAllocation,
+  useUpdateAllocation,
   useRemoveCapacityTeam,
   useCapacityPlan,
   useDeleteCapacityPlan,
@@ -53,6 +54,7 @@ import { PlanAssignmentCounts, PlanSummaryMetrics } from './ui/plan-summary-metr
 import { CapacityTeamRow } from './ui/capacity-team-row'
 import { TeamAllocationsTable } from './ui/team-allocations-table'
 import { TeamCapacityRail } from './ui/team-capacity-rail'
+import { AddFeaturesModal } from './ui/add-features-modal'
 import { AllocateFeatureModal } from './ui/allocate-feature-modal'
 import { StatusBadge } from '@/shared/ui/status-badge'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
@@ -70,9 +72,21 @@ export function CapacityPlanDetailPage() {
   const navigate = useNavigate()
   const { planId } = useParams({ from: '/auth/capacity-planning/$planId' })
   const [tab, setTab] = useState('teams')
-  const [showAllocate, setShowAllocate] = useState(false)
+  /** Which Feature the Allocate dialog is splitting, or null when it is closed. */
+  const [allocateFor, setAllocateFor] = useState<string | null>(null)
   const [showEdit, setShowEdit] = useState(false)
   const [showTeams, setShowTeams] = useState(false)
+  /**
+   * Which `Add Features` dialog is open, and for whom.
+   *
+   * `{ teamId: null }` is Rally's plan-level `Add Items`; a team id is its `Add Items to Project
+   * Plan`, which lands the rows already assigned. One piece of state because the dialog is one
+   * component — two booleans would allow both open at once.
+   */
+  const [addFeaturesFor, setAddFeaturesFor] = useState<{
+    teamId: string | null
+    teamName?: string | null
+  } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   // The team whose forecast is open, by plan-team id. One modal for every row rather than a
   // modal per row: only one can be open, and mounting N dialogs to show one is waste.
@@ -144,6 +158,7 @@ export function CapacityPlanDetailPage() {
   const addTeam = useAddCapacityTeam()
   const removeTeam = useRemoveCapacityTeam()
   const removeAllocation = useRemoveAllocation()
+  const updateAllocation = useUpdateAllocation()
   const revert = useRevertPlan()
   // Only for the pending flag on the toolbar button; the modal owns the publish call itself.
   const publish = usePublishPlan()
@@ -321,6 +336,31 @@ export function CapacityPlanDetailPage() {
   }
 
   /**
+   * Rally's `Remove All Assignments`: the Feature stays on the plan, its teams do not.
+   *
+   * One row survives, moved to the Unallocated bucket, and the rest are deleted — the plan holds a
+   * Feature THROUGH its allocation rows, so removing every row would remove the Feature too, which
+   * is the other verb. Keeping the first and clearing its team is the shortest path to "still
+   * planned, not yet assigned".
+   */
+  async function unassignFeature(item: { portfolioItemId: string; itemKey: string }) {
+    const rows = (plan?.allocations ?? []).filter(
+      (a) => a.portfolioItemId === item.portfolioItemId && a.teamId !== null,
+    )
+    if (rows.length === 0) return
+    const [keep, ...drop] = rows
+    try {
+      await updateAllocation.mutateAsync({ id: planId, allocationId: keep.id, teamId: null })
+      for (const row of drop) {
+        await removeAllocation.mutateAsync({ id: planId, allocationId: row.id })
+      }
+      notify.success(t('items.assignmentsCleared', { item: item.itemKey }))
+    } catch (err) {
+      notify.error(err instanceof Error ? err.message : t('row.allocationRemoveFailed'))
+    }
+  }
+
+  /**
    * Applies the dialog's selection as a DIFF against the plan's current teams.
    *
    * Removals first: a plan cannot hold a team twice, and doing them in one pass keeps the
@@ -491,8 +531,10 @@ export function CapacityPlanDetailPage() {
                     <Users size={13} /> {t('teams.action')}
                   </Button>
                 ) : (
-                  <Button size="sm" onClick={() => setShowAllocate(true)}>
-                    <Plus size={13} /> {t('allocate.action')}
+                  /* Rally's `Add Items`, named for what this plan holds. It only puts Features ON
+                     the plan; allocating them to teams is the grid's job afterwards. */
+                  <Button size="sm" onClick={() => setAddFeaturesFor({ teamId: null })}>
+                    <Plus size={13} /> {t('addFeatures.action')}
                   </Button>
                 ))}
               {/* One direction at a time: a draft publishes, a published plan can only revert —
@@ -559,6 +601,10 @@ export function CapacityPlanDetailPage() {
                           expanded={expandedItems.has(item.portfolioItemId)}
                           onToggleExpanded={() => toggleItem(item.portfolioItemId)}
                           onRemove={canManage ? () => void removeFeature(item) : undefined}
+                          onUnassign={canManage ? () => void unassignFeature(item) : undefined}
+                          onAllocate={
+                            canManage ? () => setAllocateFor(item.portfolioItemId) : undefined
+                          }
                           colStyleFor={itemColStyleFor}
                           onOpenFeature={openFeature}
                         />
@@ -623,6 +669,15 @@ export function CapacityPlanDetailPage() {
                         onOpenFeature={openFeature}
                         rankPositionOf={rankPositionOf}
                         sharingOf={sharingOf}
+                        onAddFeatures={
+                          canManage
+                            ? () =>
+                                setAddFeaturesFor({
+                                  teamId: team.teamId,
+                                  teamName: team.teamName,
+                                })
+                            : undefined
+                        }
                       />
                     )}
                   </div>
@@ -694,7 +749,24 @@ export function CapacityPlanDetailPage() {
         onCancel={() => setConfirmDelete(false)}
       />
 
-      {showAllocate && <AllocateFeatureModal plan={plan} onClose={() => setShowAllocate(false)} />}
+      {addFeaturesFor !== null && (
+        <AddFeaturesModal
+          plan={plan}
+          teamId={addFeaturesFor.teamId}
+          teamName={addFeaturesFor.teamName}
+          onClose={() => setAddFeaturesFor(null)}
+        />
+      )}
+
+      {/* Rally's per-item `Allocate`: split ONE Feature across teams. Opened from that Feature's own
+          menu, never as the way to put it on the plan — that is `Add Features`. */}
+      {allocateFor !== null && (
+        <AllocateFeatureModal
+          plan={plan}
+          portfolioItemId={allocateFor}
+          onClose={() => setAllocateFor(null)}
+        />
+      )}
       {forecastTeam && (
         <CapacityForecastModal
           planId={plan.id}

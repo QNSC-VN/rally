@@ -520,6 +520,30 @@ export class CapacityPlansService {
      */
     const value = input.value === undefined ? null : input.value;
 
+    /**
+     * Assigning a team CONSUMES the Feature's unallocated placeholder rather than adding beside it.
+     *
+     * Rally and the BA both describe it as a move: "choosing a Team assigns the existing unallocated
+     * row to that Team". Keeping both would count the Feature twice — once as parked demand and once
+     * as the team's commitment — which is exactly what happened when adding and allocating became
+     * two steps: `Add Features` leaves an unassigned row, and the first allocation then doubled it.
+     */
+    if (teamId !== null) {
+      const parked = await this.repo.findAllocationFor(planId, input.portfolioItemId, null);
+      if (parked) {
+        const alreadyHasPrimary = await this.repo.hasPrimaryAllocation(
+          planId,
+          input.portfolioItemId,
+        );
+        await this.repo.updateAllocation(parked.id, {
+          teamId,
+          value: value === null ? null : String(value),
+          isPrimary: !alreadyHasPrimary,
+        });
+        return this.getPlanDetail(actor, planId);
+      }
+    }
+
     const existing = await this.repo.findAllocationFor(planId, input.portfolioItemId, teamId);
     if (existing) {
       // Adding to what is already committed, not replacing it: the planner asked to allocate more
