@@ -15,7 +15,10 @@ import { Pencil, Plus, Send, Trash2, Undo2, Users } from 'lucide-react'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { DataTableFrame } from '@/shared/ui/table/data-table-frame'
-import { useDataTable } from '@/shared/ui/table'
+import { DndContext } from '@dnd-kit/core'
+import { SortableContext } from '@dnd-kit/sortable'
+
+import { useDataTable, useRowRerank } from '@/shared/ui/table'
 import { useTableSort } from '@/shared/lib/hooks/use-table-sort'
 import { DetailLayout } from '@/shared/ui/detail'
 import { Button } from '@/shared/ui/button'
@@ -26,6 +29,7 @@ import { useProjectTeams } from '@/features/teams/api'
 import {
   useAddCapacityTeam,
   useUpdateCapacityPlan,
+  useAllocate,
   useRemoveAllocation,
   useUpdateAllocation,
   useRemoveCapacityTeam,
@@ -50,6 +54,7 @@ import {
 } from './model/columns'
 import { CapacityItemRow } from './ui/capacity-item-row'
 import { ItemAllocationRow } from './ui/item-allocation-row'
+import { SortableItemRow } from './ui/sortable-item-row'
 import { PlanAssignmentCounts, PlanSummaryMetrics } from './ui/plan-summary-metrics'
 import { CapacityTeamRow } from './ui/capacity-team-row'
 import { TeamAllocationsTable } from './ui/team-allocations-table'
@@ -63,6 +68,7 @@ import { SelectionModal } from '@/shared/ui/selection-modal'
 import { CompositeBar } from '@/shared/ui/composite-bar'
 import { CapacityBarTooltip } from './ui/capacity-bar-tooltip'
 import { planTotals } from '@/features/capacity-planning/plan-totals'
+import { useRankPortfolioItem } from '@/features/portfolio/api'
 import { CapacityForecastModal } from './ui/capacity-forecast-modal'
 import { PublishPlanModal } from './ui/publish-plan-modal'
 import { EditCapacityPlanModal } from './ui/edit-capacity-plan-modal'
@@ -159,6 +165,43 @@ export function CapacityPlanDetailPage() {
   const removeTeam = useRemoveCapacityTeam()
   const removeAllocation = useRemoveAllocation()
   const updateAllocation = useUpdateAllocation()
+  const allocate = useAllocate()
+  const rankItem = useRankPortfolioItem()
+
+  /**
+   * Rank drag on the Features tab — the same `useRowRerank` the Backlog and Portfolio grids use.
+   *
+   * Rally ranks by dragging a row "when the grid is set to the default sort order", and changing a
+   * rank on one page changes it everywhere: a plan's Feature order IS the portfolio rank, so this
+   * persists through the portfolio endpoint rather than a plan-local order.
+   */
+  /**
+   * Plan items shaped for the shared rerank hook, which keys on `id`.
+   *
+   * A plan item is identified by `portfolioItemId` — it has no id of its own, because the plan holds
+   * it through allocation rows. Mapping here keeps that difference out of the shared hook, and the
+   * spread preserves every field the row still needs to render.
+   */
+  const rankableItems = useMemo(
+    () => (plan?.items ?? []).map((i) => ({ ...i, id: i.portfolioItemId })),
+    [plan?.items],
+  )
+
+  const rerank = useRowRerank({
+    items: rankableItems,
+    disabled: !canManage,
+    onReorder: ({ id, beforeId, afterId }) =>
+      rankItem.mutate({ id, beforeId, afterId }, { onError: (err) => notify.error(err.message) }),
+  })
+
+  /** The plan's teams as picker options, with Rally's/BA's `Unassign` first. */
+  const assignOptions = useMemo(
+    () => [
+      { value: '', label: t('items.unassign') },
+      ...(plan?.teams ?? []).map((pt) => ({ value: pt.teamId, label: pt.teamName ?? '—' })),
+    ],
+    [plan?.teams, t],
+  )
   const revert = useRevertPlan()
   // Only for the pending flag on the toolbar button; the modal owns the publish call itself.
   const publish = usePublishPlan()
@@ -332,6 +375,27 @@ export function CapacityPlanDetailPage() {
       notify.success(t('items.removed', { item: item.itemKey }))
     } catch (err) {
       notify.error(err instanceof Error ? err.message : t('row.allocationRemoveFailed'))
+    }
+  }
+
+  /**
+   * Rally's inline assignment: one team, or none.
+   *
+   * `null` unassigns — Rally has no wording for it but the BA's `Unassign` is the only way back to
+   * the yellow unassigned state, so the picker offers it first. A Feature with an existing team row
+   * MOVES it (the API's `teamId` patch); one with none gets a fresh allocation, which the service
+   * then consumes from the parked row.
+   */
+  async function assignFeature(item: CapacityPlanItem, teamId: string | null) {
+    const rows = (plan?.allocations ?? []).filter((a) => a.portfolioItemId === item.portfolioItemId)
+    try {
+      if (rows.length === 0) {
+        await allocate.mutateAsync({ id: planId, portfolioItemId: item.portfolioItemId, teamId })
+      } else {
+        await updateAllocation.mutateAsync({ id: planId, allocationId: rows[0].id, teamId })
+      }
+    } catch (err) {
+      notify.error(err instanceof Error ? err.message : t('items.assignFailed'))
     }
   }
 
@@ -582,48 +646,81 @@ export function CapacityPlanDetailPage() {
                       ) : undefined
                     }
                   >
-                    {plan.items.map((item, index) => (
-                      <div key={item.portfolioItemId}>
-                        {/* The line sits ABOVE the first item that does not fit. `-1` means even
+                    {/* Rally ranks by dragging the row, and only in the plan's own rank order —
+                        which is the only order this grid offers, so the grip is always live for a
+                        planner. Persisted through the PORTFOLIO rank: "when you change the rank of
+                        an item in one page, you are changing the rank across all pages". */}
+                    <DndContext {...rerank.dndContextProps}>
+                      <SortableContext {...rerank.sortableContextProps}>
+                        {rerank.items.map((item, index) => (
+                          <SortableItemRow
+                            key={item.portfolioItemId}
+                            id={item.portfolioItemId}
+                            disabled={!canManage}
+                            label={t('items.dragLabel', { item: item.itemKey })}
+                          >
+                            {(dragHandle) => (
+                              <div>
+                                {/* The line sits ABOVE the first item that does not fit. `-1` means even
                           the first one exceeds the plan, so it lands at the very top; `null`
                           (no capacity entered anywhere) draws nothing, because there is no
                           number for the running total to exceed. */}
-                        {plan.itemCutlineIndex !== null && plan.itemCutlineIndex + 1 === index && (
-                          <CutlineDivider label={t('cutline.label')} />
-                        )}
-                        <CapacityItemRow
-                          item={item}
-                          position={index + 1}
-                          primaryTeamName={teamNameById.get(item.primaryTeamId ?? '') ?? null}
-                          belowCutline={
-                            plan.itemCutlineIndex !== null && index > plan.itemCutlineIndex
-                          }
-                          expanded={expandedItems.has(item.portfolioItemId)}
-                          onToggleExpanded={() => toggleItem(item.portfolioItemId)}
-                          onRemove={canManage ? () => void removeFeature(item) : undefined}
-                          onUnassign={canManage ? () => void unassignFeature(item) : undefined}
-                          onAllocate={
-                            canManage ? () => setAllocateFor(item.portfolioItemId) : undefined
-                          }
-                          colStyleFor={itemColStyleFor}
-                          onOpenFeature={openFeature}
-                        />
-                        {/* Rally: "each allocated project is listed as a row underneath the portfolio
+                                {plan.itemCutlineIndex !== null &&
+                                  plan.itemCutlineIndex + 1 === index && (
+                                    <CutlineDivider label={t('cutline.label')} />
+                                  )}
+                                <CapacityItemRow
+                                  item={item}
+                                  position={index + 1}
+                                  primaryTeamName={
+                                    teamNameById.get(item.primaryTeamId ?? '') ?? null
+                                  }
+                                  belowCutline={
+                                    plan.itemCutlineIndex !== null && index > plan.itemCutlineIndex
+                                  }
+                                  expanded={expandedItems.has(item.portfolioItemId)}
+                                  onToggleExpanded={() => toggleItem(item.portfolioItemId)}
+                                  onRemove={canManage ? () => void removeFeature(item) : undefined}
+                                  onUnassign={
+                                    canManage ? () => void unassignFeature(item) : undefined
+                                  }
+                                  onAllocate={
+                                    canManage
+                                      ? () => setAllocateFor(item.portfolioItemId)
+                                      : undefined
+                                  }
+                                  onAssign={
+                                    canManage
+                                      ? (teamId) => void assignFeature(item, teamId)
+                                      : undefined
+                                  }
+                                  assignOptions={assignOptions}
+                                  dragHandle={dragHandle}
+                                  colStyleFor={itemColStyleFor}
+                                  onOpenFeature={openFeature}
+                                />
+                                {/* Rally: "each allocated project is listed as a row underneath the portfolio
                         item". PLAIN nested rows here, not a sub-table: unlike the team grid, these
                         children fill the SAME columns as their parent (one team's slice of
                         Complete / Rollup / Estimated), so a second header would repeat the one
                         above it. */}
-                        {expandedItems.has(item.portfolioItemId) &&
-                          (allocationsByItem.get(item.portfolioItemId) ?? []).map((allocation) => (
-                            <ItemAllocationRow
-                              key={allocation.id}
-                              allocation={allocation}
-                              teamName={teamNameById.get(allocation.teamId ?? '') ?? null}
-                              colStyleFor={itemColStyleFor}
-                            />
-                          ))}
-                      </div>
-                    ))}
+                                {expandedItems.has(item.portfolioItemId) &&
+                                  (allocationsByItem.get(item.portfolioItemId) ?? []).map(
+                                    (allocation) => (
+                                      <ItemAllocationRow
+                                        key={allocation.id}
+                                        allocation={allocation}
+                                        teamName={teamNameById.get(allocation.teamId ?? '') ?? null}
+                                        colStyleFor={itemColStyleFor}
+                                      />
+                                    ),
+                                  )}
+                              </div>
+                            )}
+                          </SortableItemRow>
+                        ))}
+                      </SortableContext>
+                    </DndContext>
                   </DataTableFrame>
                 </div>
                 <TeamCapacityRail teams={sortedTeams} unitLabel={unitLabel} />

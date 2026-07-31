@@ -202,7 +202,7 @@
   "items": {
     "tab": "Items",
     "notAssigned": "Not assigned",
-    "empty": "Allocate a Feature to see it here.",
+    "empty": "Add a Feature to see it here.",
     "sidebarHeading": "Team Capacity",
     "plusContributors": "+{{count}}",
     "featureType": "Feature",
@@ -217,7 +217,11 @@
     "allocationRow": "Allocation",
     "removeAllAssignments": "Remove all assignments",
     "assignmentsCleared": "{{item}} is unassigned but still on the plan",
-    "allocate": "Allocate to teams"
+    "allocate": "Allocate to teams",
+    "assignmentLabel": "Planned team for {{item}}",
+    "unassign": "Unassign",
+    "assignFailed": "Could not change the planned team",
+    "dragLabel": "Drag to rank {{item}}"
   },
   "filters": {
     "oldestRelease": "Oldest Release",
