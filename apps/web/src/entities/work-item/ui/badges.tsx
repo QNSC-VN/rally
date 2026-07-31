@@ -78,7 +78,7 @@ interface SeverityBadgeProps {
 /** Read-only defect severity pill (SRS labels + colour). Renders `—` for none. */
 export function SeverityBadge({ severity }: SeverityBadgeProps) {
   if (!severity || severity === 'none') {
-    return <span className="text-ui-xs text-foreground-faint">—</span>
+    return <span className="text-ui-xs text-foreground-faint">--</span>
   }
   const cfg = DEFECT_SEVERITY_CONFIG[severity as DefectSeverity] ?? DEFECT_SEVERITY_CONFIG.none
   return (

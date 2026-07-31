@@ -368,7 +368,7 @@ export function IterationDetail({
               sidebar={
                 <div className="space-y-4">
                   <DetailField label={t('detail.projectLabel')}>
-                    <DetailReadonlyValue>{project?.projectName ?? '—'}</DetailReadonlyValue>
+                    <DetailReadonlyValue>{project?.projectName ?? '--'}</DetailReadonlyValue>
                   </DetailField>
 
                   <TeamSelectField
@@ -431,7 +431,7 @@ export function IterationDetail({
                         placeholder="0"
                       />
                     ) : (
-                      <DetailReadonlyValue mono>{vit.plannedVelocity ?? '—'}</DetailReadonlyValue>
+                      <DetailReadonlyValue mono>{vit.plannedVelocity ?? '--'}</DetailReadonlyValue>
                     )}
                   </DetailField>
                 </div>
@@ -478,7 +478,7 @@ function CapacityStrip({
   const tiles: Array<{ label: string; value: string; caption?: string }> = [
     {
       label: t('capacity.plannedVelocity'),
-      value: capacity === null ? '—' : t('capacity.pts', { value: capacity }),
+      value: capacity === null ? '--' : t('capacity.pts', { value: capacity }),
     },
     {
       label: t('capacity.committed'),
@@ -495,7 +495,7 @@ function CapacityStrip({
     },
     {
       label: t('capacity.daysLeft'),
-      value: metrics?.daysLeft != null ? String(metrics.daysLeft) : '—',
+      value: metrics?.daysLeft != null ? String(metrics.daysLeft) : '--',
     },
     { label: t('capacity.scopeItems'), value: String(scopeCount) },
     { label: t('capacity.defects'), value: String(metrics?.defectCount ?? 0) },
@@ -571,10 +571,10 @@ function IterationScope({
                     />
                   </td>
                   <td className="px-3 py-2 text-right font-mono text-muted-foreground">
-                    {i.planEstimate ?? '—'}
+                    {i.planEstimate ?? '--'}
                   </td>
                   <td className="px-3 py-2 text-muted-foreground">
-                    {i.assigneeId ? (memberName.get(i.assigneeId) ?? '—') : '—'}
+                    {i.assigneeId ? (memberName.get(i.assigneeId) ?? '--') : '--'}
                   </td>
                 </tr>
               ))}

@@ -116,7 +116,7 @@ describe('PercentDoneBar', () => {
       percentDoneByPlanEstimate: null,
     })
     expect(fill(container)).toBeNull()
-    expect(container.textContent).toContain('—')
+    expect(container.textContent).toContain('--')
     // The explanation survives the empty state — it is the only thing on the bar.
     expect(container.querySelector('[title]')?.getAttribute('title')).toContain('no estimated work')
   })

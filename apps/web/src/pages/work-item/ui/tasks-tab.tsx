@@ -77,7 +77,7 @@ export function TasksTab({
   const { data: teams = [] } = useProjectTeams(projectId)
   const { data: members = [] } = useProjectMembers(projectId)
   const { project } = useAppContext()
-  const projectLabel = project?.projectKey ?? project?.projectName ?? '—'
+  const projectLabel = project?.projectKey ?? project?.projectName ?? '--'
   const [showAdd, setShowAdd] = useState(false)
   const navigate = useNavigate()
 
@@ -103,7 +103,7 @@ export function TasksTab({
   )
 
   const teamName = (id?: string | null) =>
-    id ? (teams.find((team) => team.id === id)?.name ?? '—') : '—'
+    id ? (teams.find((team) => team.id === id)?.name ?? '--') : '--'
 
   // Client-side column sort — mirrors the shared header UX used by every other
   // grid (Backlog / Team Status / Projects). `null` = the default rank order.
@@ -452,7 +452,7 @@ function TaskRow({
           value={task.todoHours != null ? String(task.todoHours) : ''}
           canEdit={canEdit}
           onCommit={(v) => commitHours('todoHours', v)}
-          displayValue={task.todoHours ?? '—'}
+          displayValue={task.todoHours ?? '--'}
           className="font-mono text-muted-foreground tabular-nums hover:underline"
           inputClassName={numInput}
           ariaLabel={`Task ${task.itemKey} to do hours`}
@@ -464,7 +464,7 @@ function TaskRow({
           value={task.actualHours != null ? String(task.actualHours) : ''}
           canEdit={canEdit}
           onCommit={(v) => commitHours('actualHours', v)}
-          displayValue={task.actualHours ?? '—'}
+          displayValue={task.actualHours ?? '--'}
           className="font-mono text-muted-foreground tabular-nums hover:underline"
           inputClassName={numInput}
           ariaLabel={`Task ${task.itemKey} actual hours`}
@@ -476,7 +476,7 @@ function TaskRow({
           value={task.estimateHours != null ? String(task.estimateHours) : ''}
           canEdit={canEdit}
           onCommit={(v) => commitHours('estimateHours', v)}
-          displayValue={task.estimateHours ?? '—'}
+          displayValue={task.estimateHours ?? '--'}
           className="font-mono text-muted-foreground tabular-nums hover:underline"
           inputClassName={numInput}
           ariaLabel={`Task ${task.itemKey} estimate hours`}

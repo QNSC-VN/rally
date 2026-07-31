@@ -40,7 +40,7 @@ export function ItemAllocationRow({
         <span className="flex min-w-0 items-center gap-1.5 pl-4 text-muted-foreground">
           <span aria-hidden>↳</span>
           <span className="truncate" title={teamName ?? undefined}>
-            {teamName ?? '—'}
+            {teamName ?? '--'}
           </span>
         </span>
       </div>

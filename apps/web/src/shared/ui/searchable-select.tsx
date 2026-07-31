@@ -119,7 +119,7 @@ export function SearchableSelect(props: SearchableSelectProps) {
     options,
     readOnly = false,
     ariaLabel = 'Select',
-    placeholder = '—',
+    placeholder = '--',
     searchPlaceholder = 'Search',
     variant = 'cell',
     triggerContent,

@@ -41,7 +41,7 @@ function renderTypedCell<Row, Ctx, K extends string>(
       )
     case 'text':
     default:
-      return <span className="truncate text-ui-sm text-foreground">{raw ?? '—'}</span>
+      return <span className="truncate text-ui-sm text-foreground">{raw ?? '--'}</span>
   }
 }
 

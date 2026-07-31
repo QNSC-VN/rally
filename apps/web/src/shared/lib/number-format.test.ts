@@ -10,8 +10,8 @@ vi.mock('./format-prefs', () => ({ getFormatPrefs: () => ({ locale: 'en-US' }) }
  */
 describe('formatNumber', () => {
   it('renders an em-dash for null and undefined, not 0', () => {
-    expect(formatNumber(null)).toBe('—')
-    expect(formatNumber(undefined)).toBe('—')
+    expect(formatNumber(null)).toBe('--')
+    expect(formatNumber(undefined)).toBe('--')
   })
 
   it('renders a real 0 as 0 — a zero is not a missing value', () => {
@@ -24,13 +24,13 @@ describe('formatNumber', () => {
   })
 
   it('treats an empty string as missing, since form inputs produce it', () => {
-    expect(formatNumber('')).toBe('—')
+    expect(formatNumber('')).toBe('--')
   })
 
   it('refuses NaN and Infinity, which fall out of arithmetic on absent inputs', () => {
-    expect(formatNumber(Number.NaN)).toBe('—')
-    expect(formatNumber(Number.POSITIVE_INFINITY)).toBe('—')
-    expect(formatNumber(1 / 0)).toBe('—')
+    expect(formatNumber(Number.NaN)).toBe('--')
+    expect(formatNumber(Number.POSITIVE_INFINITY)).toBe('--')
+    expect(formatNumber(1 / 0)).toBe('--')
   })
 
   it('groups thousands so long numbers stay readable', () => {
@@ -52,15 +52,15 @@ describe('formatPoints', () => {
   })
 
   it('em-dashes a missing estimate', () => {
-    expect(formatPoints(null)).toBe('—')
+    expect(formatPoints(null)).toBe('--')
   })
 })
 
 describe('formatPercent', () => {
   it('renders null as an em-dash, NOT 0% — the bug class this audit found', () => {
     // "none of the work is done" and "we cannot tell" must not look identical.
-    expect(formatPercent(null)).toBe('—')
-    expect(formatPercent(undefined)).toBe('—')
+    expect(formatPercent(null)).toBe('--')
+    expect(formatPercent(undefined)).toBe('--')
   })
 
   it('renders a real 0 ratio as 0%', () => {
@@ -77,7 +77,7 @@ describe('formatPercent', () => {
   })
 
   it('refuses a non-finite ratio from a zero denominator', () => {
-    expect(formatPercent(0 / 0)).toBe('—')
+    expect(formatPercent(0 / 0)).toBe('--')
   })
 })
 
@@ -93,8 +93,8 @@ describe('formatWholePercent', () => {
   })
 
   it('renders null as an em-dash, not 0%', () => {
-    expect(formatWholePercent(null)).toBe('—')
-    expect(formatWholePercent(undefined)).toBe('—')
+    expect(formatWholePercent(null)).toBe('--')
+    expect(formatWholePercent(undefined)).toBe('--')
   })
 
   it('renders a real 0 as 0%', () => {

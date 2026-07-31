@@ -85,7 +85,7 @@ export function CapacityBreakdownOverlay({
                   <tr key={team.id} className="border-b border-border-inner">
                     <th scope="row" className="py-1 pr-2 text-left font-normal text-foreground">
                       <span className="flex items-center gap-1">
-                        <span className="truncate">{team.teamName ?? '—'}</span>
+                        <span className="truncate">{team.teamName ?? '--'}</span>
                         {labels.length > 0 && (
                           <span
                             role="img"
@@ -110,7 +110,7 @@ export function CapacityBreakdownOverlay({
                     </td>
                     <td className="py-1 pl-2 text-right">
                       {capacity === null ? (
-                        <span className="text-foreground-subtle">—</span>
+                        <span className="text-foreground-subtle">--</span>
                       ) : (
                         capacity - team.metrics.estimated
                       )}
@@ -138,7 +138,7 @@ export function CapacityBreakdownOverlay({
                 </td>
                 <td className="py-1 pl-2 text-right">
                   {totals.capacity === null ? (
-                    <span className="font-normal text-foreground-subtle">—</span>
+                    <span className="font-normal text-foreground-subtle">--</span>
                   ) : (
                     totals.capacity - totals.estimated
                   )}

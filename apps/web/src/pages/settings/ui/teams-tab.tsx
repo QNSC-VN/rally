@@ -213,7 +213,7 @@ function TeamMembersCell({ team, options }: { team: Team; options: SelectOption[
         value={current}
         options={options}
         ariaLabel={t('teams.editMembers')}
-        placeholder="—"
+        placeholder="--"
         searchPlaceholder={t('teams.searchMembers')}
         onChange={(ids) => {
           const next = ids as string[]
@@ -239,7 +239,7 @@ function TeamProjectsCell({ team, options }: { team: Team; options: SelectOption
         value={current}
         options={options}
         ariaLabel={t('teams.editProjects')}
-        placeholder="—"
+        placeholder="--"
         searchPlaceholder={t('teams.searchProjects')}
         onChange={(ids) => {
           const next = ids as string[]

@@ -48,7 +48,7 @@ export function AllocateFeatureModal({
   const teamOptions = useMemo(
     () => [
       { value: '', label: t('detail.unallocated') },
-      ...plan.teams.map((team) => ({ value: team.teamId, label: team.teamName ?? '—' })),
+      ...plan.teams.map((team) => ({ value: team.teamId, label: team.teamName ?? '--' })),
     ],
     [plan.teams, t],
   )

@@ -42,7 +42,7 @@ interface ProgressBarProps {
  */
 export function ProgressBar({
   ratio,
-  placeholder = '—',
+  placeholder = '--',
   title,
   showLabel = true,
   tone,

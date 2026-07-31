@@ -161,7 +161,7 @@ function FixedInBuildCell({
         canEdit={canEdit}
         onCommit={handleCommit}
         fullCell
-        displayValue={defect.fixedInBuild ?? '—'}
+        displayValue={defect.fixedInBuild ?? '--'}
         className="block w-full truncate text-ui-xs text-muted-foreground"
         inputClassName="text-foreground"
         inputStyle={{
@@ -195,7 +195,7 @@ function IterationInlineCell({
   if (!canEdit) {
     return (
       <span className="block truncate text-muted-foreground" title={defect.iterationName ?? ''}>
-        {defect.iterationName ?? '—'}
+        {defect.iterationName ?? '--'}
       </span>
     )
   }
@@ -218,10 +218,10 @@ function IterationInlineCell({
       <SearchableSelect
         value={defect.iterationId ?? ''}
         ariaLabel="Iteration"
-        placeholder="—"
+        placeholder="--"
         searchPlaceholder="Search"
         options={[
-          { value: '', label: '—' },
+          { value: '', label: '--' },
           ...iterations.map((it) => ({
             value: it.id,
             label: it.iterationKey ? `${it.iterationKey}: ${it.name}` : it.name,
@@ -345,7 +345,7 @@ export const QUALITY_COLUMNS: ColumnSpec<DefectRow, QualityCtx, QualityColKey>[]
           onOpen={() => ctx.openItem(d.parentKey!)}
         />
       ) : (
-        <span className="text-ui-sm text-foreground-faint">—</span>
+        <span className="text-ui-sm text-foreground-faint">--</span>
       ),
   },
   {
@@ -369,7 +369,7 @@ export const QUALITY_COLUMNS: ColumnSpec<DefectRow, QualityCtx, QualityColKey>[]
         />
       ) : (
         <div onClick={(e) => e.stopPropagation()}>
-          <span className="text-ui-xs text-foreground-faint">—</span>
+          <span className="text-ui-xs text-foreground-faint">--</span>
         </div>
       )
     },
@@ -388,7 +388,7 @@ export const QUALITY_COLUMNS: ColumnSpec<DefectRow, QualityCtx, QualityColKey>[]
         options={PRIORITY_OPTIONS}
         currentValue={d.priority}
         displayValue={
-          d.priority === 'none' ? '—' : d.priority.charAt(0).toUpperCase() + d.priority.slice(1)
+          d.priority === 'none' ? '--' : d.priority.charAt(0).toUpperCase() + d.priority.slice(1)
         }
         canEdit={ctx.canManage}
         projectId={ctx.projectId}
@@ -625,7 +625,7 @@ export function LogDefectModal({ projectId, onClose }: { projectId: string; onCl
                 variant="field"
                 value={severity}
                 ariaLabel={t('create.severityLabel')}
-                options={[{ value: '', label: '—' }, ...SEVERITY_OPTIONS]}
+                options={[{ value: '', label: '--' }, ...SEVERITY_OPTIONS]}
                 onChange={setSeverity}
               />
             </FormField>
@@ -646,7 +646,7 @@ export function LogDefectModal({ projectId, onClose }: { projectId: string; onCl
                 value={environment}
                 ariaLabel={t('create.foundInLabel')}
                 options={[
-                  { value: '', label: '—' },
+                  { value: '', label: '--' },
                   ...(['development', 'staging', 'production', 'testing'] as const).map((e) => ({
                     value: e,
                     label: e.charAt(0).toUpperCase() + e.slice(1),
@@ -661,7 +661,7 @@ export function LogDefectModal({ projectId, onClose }: { projectId: string; onCl
                 value={rootCause}
                 ariaLabel={t('create.rootCauseLabel')}
                 options={[
-                  { value: '', label: '—' },
+                  { value: '', label: '--' },
                   ...(
                     ['requirements', 'design', 'code', 'test', 'integration', 'other'] as const
                   ).map((r) => ({ value: r, label: r.charAt(0).toUpperCase() + r.slice(1) })),
@@ -687,7 +687,7 @@ export function LogDefectModal({ projectId, onClose }: { projectId: string; onCl
                 value={releaseId}
                 ariaLabel={t('create.releaseLabel')}
                 options={[
-                  { value: '', label: '—' },
+                  { value: '', label: '--' },
                   ...(releases ?? []).map((r) => ({ value: r.id, label: r.name })),
                 ]}
                 onChange={setReleaseId}

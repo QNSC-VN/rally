@@ -76,7 +76,7 @@
     "noMilestones": "No milestones in this project",
     "editMilestones": "Edit milestones",
     "searchMilestones": "Search milestones",
-    "milestoneNone": "—",
+    "milestoneNone": "--",
     "defectNone": "None",
     "defectClosed": "Closed",
     "defectOpen": "{{value}} Open"

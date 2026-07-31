@@ -3,6 +3,20 @@ import { extendTailwindMerge } from 'tailwind-merge'
 import { getFormatPrefs } from './format-prefs'
 
 /**
+ * What an empty cell shows, app-wide.
+ *
+ * `--`, not an em-dash, because that is what real Rally renders for an unset value — its
+ * Iteration Status and Portfolio Items grids both use it (its Timeboxes grid leaves the
+ * cell blank instead, so Rally is not self-consistent; `--` is the majority and the only
+ * one that is visible as a deliberate "nothing here").
+ *
+ * Named rather than inlined so the next person who wants to change it edits one line. The
+ * ~146 literal call sites swept alongside this were already literals; they are left as
+ * literals rather than importing this constant into 52 files for a two-character glyph.
+ */
+export const EMPTY_VALUE = '--'
+
+/**
  * Date-only strings (`YYYY-MM-DD`, e.g. a project start/end date) carry NO time
  * or zone — they must render as that exact calendar day for everyone. Applying a
  * timezone would shift them (a negative-offset zone shows the day before), so
@@ -72,7 +86,7 @@ export function stripHtml(html: string | null | undefined): string {
 /** Format an ISO date string as a short calendar date, e.g. "Jul 31, 2026", in
  *  the resolved locale. Timestamps use the resolved timezone; date-only values
  *  render as their literal calendar day (never zone-shifted). */
-export function formatDate(iso: string | null | undefined, fallback = '—'): string {
+export function formatDate(iso: string | null | undefined, fallback = EMPTY_VALUE): string {
   if (!iso) return fallback
   const dateOnly = isDateOnly(iso)
   const d = new Date(dateOnly ? `${iso}T00:00:00Z` : iso)
@@ -90,7 +104,7 @@ export function formatDate(iso: string | null | undefined, fallback = '—'): st
  *  (matches the DateField cell + every other grid's date column). Date-only
  *  strings pass through unchanged; timestamps resolve to their calendar day in
  *  the active timezone (en-CA gives the yyyy-MM-dd shape independent of locale). */
-export function formatDateIso(iso: string | null | undefined, fallback = '—'): string {
+export function formatDateIso(iso: string | null | undefined, fallback = EMPTY_VALUE): string {
   if (!iso) return fallback
   if (isDateOnly(iso)) return iso
   const d = new Date(iso)
@@ -111,7 +125,7 @@ export function formatDateIso(iso: string | null | undefined, fallback = '—'):
 export function formatWith(
   iso: string | null | undefined,
   options: Intl.DateTimeFormatOptions,
-  fallback = '—',
+  fallback = EMPTY_VALUE,
 ): string {
   if (!iso) return fallback
   const d = new Date(iso)
@@ -122,7 +136,7 @@ export function formatWith(
 
 /** Format an ISO timestamp as a short date + time, e.g. "Jul 31, 2026, 2:30 PM",
  *  in the resolved locale + timezone. */
-export function formatDateTime(iso: string | null | undefined, fallback = '—'): string {
+export function formatDateTime(iso: string | null | undefined, fallback = EMPTY_VALUE): string {
   if (!iso) return fallback
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return fallback
@@ -164,7 +178,7 @@ export const NUMERIC_CELL_CLASS = 'text-right font-mono tabular-nums'
 export function formatNumber(
   value: number | string | null | undefined,
   {
-    fallback = '—',
+    fallback = EMPTY_VALUE,
     maximumFractionDigits = 2,
   }: { fallback?: string; maximumFractionDigits?: number } = {},
 ): string {
@@ -179,7 +193,10 @@ export function formatNumber(
  * `.00`, because `numeric(6,2)` columns arrive as `"5.00"` and "5 pts" is what a
  * planner wrote.
  */
-export function formatPoints(value: number | string | null | undefined, fallback = '—'): string {
+export function formatPoints(
+  value: number | string | null | undefined,
+  fallback = EMPTY_VALUE,
+): string {
   return formatNumber(value, { fallback, maximumFractionDigits: 2 })
 }
 
@@ -191,7 +208,7 @@ export function formatPoints(value: number | string | null | undefined, fallback
  * are completely different facts. Every ratio producer in this app already returns null
  * for a non-positive denominator; this keeps that honesty at the last step.
  */
-export function formatPercent(ratio: number | null | undefined, fallback = '—'): string {
+export function formatPercent(ratio: number | null | undefined, fallback = EMPTY_VALUE): string {
   if (ratio === null || ratio === undefined || !Number.isFinite(ratio)) return fallback
   return `${Math.round(ratio * 100)}%`
 }
@@ -205,7 +222,10 @@ export function formatPercent(ratio: number | null | undefined, fallback = '—'
  * Passing a whole percent to the ratio version renders `10000%`, which is exactly the bug
  * this pair exists to prevent.
  */
-export function formatWholePercent(percent: number | null | undefined, fallback = '—'): string {
+export function formatWholePercent(
+  percent: number | null | undefined,
+  fallback = EMPTY_VALUE,
+): string {
   if (percent === null || percent === undefined || !Number.isFinite(percent)) return fallback
   return `${Math.round(percent)}%`
 }

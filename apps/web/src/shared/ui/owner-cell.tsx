@@ -68,7 +68,7 @@ export function OwnerAvatar({
 
 export function OwnerCell({ name, className }: OwnerCellProps) {
   if (!name) {
-    return <span className="text-ui-xs text-foreground-disabled">—</span>
+    return <span className="text-ui-xs text-foreground-disabled">--</span>
   }
 
   return (

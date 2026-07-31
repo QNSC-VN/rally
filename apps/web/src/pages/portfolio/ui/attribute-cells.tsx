@@ -27,7 +27,7 @@ import { type PortfolioCellOptions, type ProjectOption } from '../model/cell-opt
 
 /** The em-dash every one of these cells shows when the value is unset. */
 function EmptyCell() {
-  return <span className="px-2 text-ui-xs text-foreground-disabled">—</span>
+  return <span className="px-2 text-ui-xs text-foreground-disabled">--</span>
 }
 
 /** `— No Entry —` first, matching the owner picker's Quick Picks vocabulary. */
@@ -96,7 +96,7 @@ export function ReleaseSelectCell({
       value={releaseId ?? ''}
       readOnly={!canEdit}
       ariaLabel={ariaLabel}
-      placeholder="—"
+      placeholder="--"
       searchPlaceholder="Search"
       options={options}
       onChange={(v) => onChange(v || null)}
@@ -133,7 +133,7 @@ export function ProjectSelectCell({
   onChange: (projectId: string) => void
 }) {
   if (!canEdit) {
-    return <span className="truncate px-2 text-muted-foreground">{projectName ?? '—'}</span>
+    return <span className="truncate px-2 text-muted-foreground">{projectName ?? '--'}</span>
   }
 
   // No clear option: an item ALWAYS belongs to a project, unlike every other reference
@@ -221,7 +221,7 @@ export function TeamSelectCell({
       value={teamId ?? ''}
       readOnly={!canEdit}
       ariaLabel={ariaLabel}
-      placeholder="—"
+      placeholder="--"
       searchPlaceholder="Search"
       options={options}
       onChange={(v) => onChange(v || null)}

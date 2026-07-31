@@ -137,7 +137,7 @@ function OwnerSelect({
       value={value}
       readOnly={isLoading || members.length === 0}
       ariaLabel={t('form.owner')}
-      placeholder={isLoading ? t('form.loading') : '—'}
+      placeholder={isLoading ? t('form.loading') : '--'}
       options={options}
       onChange={onChange}
     />
@@ -429,7 +429,7 @@ function ProjectTeamsCell({
       readOnly={!canEdit}
       value={teams.map((t) => t.id)}
       ariaLabel="Teams"
-      placeholder="—"
+      placeholder="--"
       searchPlaceholder="Search"
       options={allTeams.map((t) => ({
         value: t.id,
@@ -451,7 +451,7 @@ function ProjectTeamsCell({
  *  linked teams, edited via Teams, not here). Same capped chip look as Teams. */
 function ProjectMembersCell({ projectId }: { projectId: string }) {
   const { data: members = [] } = useProjectMembers(projectId)
-  if (members.length === 0) return <span className="text-foreground-subtle">—</span>
+  if (members.length === 0) return <span className="text-foreground-subtle">--</span>
   return (
     <SearchableSelect
       multiple
@@ -459,7 +459,7 @@ function ProjectMembersCell({ projectId }: { projectId: string }) {
       variant="cell"
       value={members.map((m) => m.userId)}
       ariaLabel="Members"
-      placeholder="—"
+      placeholder="--"
       options={members.map((m) => {
         const name = m.displayName || m.email || m.userId
         return {

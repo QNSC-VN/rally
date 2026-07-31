@@ -714,7 +714,7 @@ function TaskRow({
             onOpen={() => onOpenItem(task.workProduct.key)}
           />
         ) : (
-          <span className="text-ui-xs text-foreground-faint">—</span>
+          <span className="text-ui-xs text-foreground-faint">--</span>
         )}
       </div>
       {/* Release (P3-TS-FR-025) — clickable reference to the release detail,
@@ -740,7 +740,7 @@ function TaskRow({
             <span className="truncate text-ui-sm text-primary-light">{task.release.name}</span>
           </button>
         ) : (
-          <span className="text-ui-xs text-foreground-faint">—</span>
+          <span className="text-ui-xs text-foreground-faint">--</span>
         )}
       </div>
       {/* State (P3-TS-FR-021 — inline editable) */}
@@ -766,7 +766,7 @@ function TaskRow({
           value={String(task.estimateHours ?? '')}
           canEdit={canEdit}
           onCommit={commitEstimate}
-          displayValue={task.estimateHours ?? '—'}
+          displayValue={task.estimateHours ?? '--'}
           className="font-mono text-muted-foreground tabular-nums"
           inputClassName="text-right font-mono text-ui-sm text-foreground"
           ariaLabel="Estimate hours"
@@ -782,7 +782,7 @@ function TaskRow({
           value={String(task.todoHours ?? '')}
           canEdit={canEdit}
           onCommit={commitTodo}
-          displayValue={task.todoHours ?? '—'}
+          displayValue={task.todoHours ?? '--'}
           className="font-mono text-muted-foreground tabular-nums"
           inputClassName="text-right font-mono text-ui-sm text-foreground"
           ariaLabel="To Do hours"
@@ -798,7 +798,7 @@ function TaskRow({
           value={String(task.actualHours ?? '')}
           canEdit={canEdit}
           onCommit={commitActual}
-          displayValue={task.actualHours ?? '—'}
+          displayValue={task.actualHours ?? '--'}
           className="font-mono text-muted-foreground tabular-nums"
           inputClassName="text-right font-mono text-ui-sm text-foreground"
           ariaLabel="Actual hours"

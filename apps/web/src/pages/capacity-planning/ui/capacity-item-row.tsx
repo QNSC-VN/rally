@@ -102,7 +102,7 @@ export function CapacityItemRow({
           Feature owned elsewhere, and a planner needs to see that before allocating to it. */}
       <div style={colStyleFor('project', { flexShrink: 0 })} className="min-w-0 px-2">
         <span className="truncate text-muted-foreground" title={item.projectName ?? undefined}>
-          {item.projectName ?? '—'}
+          {item.projectName ?? '--'}
         </span>
       </div>
 
@@ -123,7 +123,7 @@ export function CapacityItemRow({
           </span>
         ) : (
           <span className="truncate text-foreground" title={primaryTeamName ?? undefined}>
-            {primaryTeamName ?? '—'}
+            {primaryTeamName ?? '--'}
           </span>
         )}
       </div>

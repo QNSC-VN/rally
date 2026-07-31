@@ -263,7 +263,7 @@ export function CapacityPlanDetailPage() {
                 instead of disappearing. */}
             {(plan.plannedStartDate !== null || plan.plannedEndDate !== null) && (
               <span className="rounded-sm bg-white/10 px-1.5 py-px text-ui-xs whitespace-nowrap text-white">
-                {plan.plannedStartDate ?? '—'} → {plan.plannedEndDate ?? '—'}
+                {plan.plannedStartDate ?? '--'} → {plan.plannedEndDate ?? '--'}
               </span>
             )}
             <span className="text-ui-xs whitespace-nowrap text-white/70">

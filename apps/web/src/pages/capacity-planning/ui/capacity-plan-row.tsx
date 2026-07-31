@@ -73,7 +73,7 @@ export function CapacityPlanRow({
       <div style={colStyleFor('id', { flexShrink: 0 })} className="flex items-center px-2">
         {/* `CP-<n>`, minted per project. `—` when a pre-0076 row somehow escaped the backfill:
             the row still has to render, and a blank cell would look like a layout bug. */}
-        <IdCell type="capacityPlan" itemKey={plan.planKey ?? '—'} onOpen={open} />
+        <IdCell type="capacityPlan" itemKey={plan.planKey ?? '--'} onOpen={open} />
       </div>
 
       {/* Name — inline-editable, exactly as the Timeboxes, Releases and Iteration Status grids
@@ -112,7 +112,7 @@ export function CapacityPlanRow({
           readOnly
           value={plan.releaseId}
           ariaLabel={t('fields.release')}
-          placeholder="—"
+          placeholder="--"
           options={releaseOptions}
           onChange={() => {}}
         />
@@ -155,7 +155,7 @@ export function CapacityPlanRow({
       >
         {/* Blank when nobody has entered a capacity — not 0, which would read as
             "no capacity available". */}
-        {plan.totalCapacity === null ? '—' : plan.totalCapacity}
+        {plan.totalCapacity === null ? '--' : plan.totalCapacity}
       </div>
     </div>
   )

@@ -139,7 +139,7 @@ const CHANGESET_COLUMNS: ColumnSpec<ScmChangeset, ScmCtx, ChangeColKey>[] = [
     cellClassName: 'flex min-w-0 items-center px-2',
     cell: (c) => (
       <span className="block truncate" title={c.message ?? ''}>
-        {c.message ?? '—'}
+        {c.message ?? '--'}
       </span>
     ),
   },
@@ -152,7 +152,7 @@ const CHANGESET_COLUMNS: ColumnSpec<ScmChangeset, ScmCtx, ChangeColKey>[] = [
     cellClassName: 'flex min-w-0 flex-col justify-center gap-0.5 px-2 py-1',
     cell: (c) =>
       c.changes.length === 0 ? (
-        <span className="text-muted-foreground">—</span>
+        <span className="text-muted-foreground">--</span>
       ) : (
         <>
           {c.changes.map((x) => (
@@ -175,7 +175,7 @@ const CHANGESET_COLUMNS: ColumnSpec<ScmChangeset, ScmCtx, ChangeColKey>[] = [
     defaultWidth: 160,
     minWidth: 100,
     cellClassName: 'flex items-center px-2',
-    accessor: (c) => c.authorName ?? '—',
+    accessor: (c) => c.authorName ?? '--',
     type: 'text',
   },
   {
@@ -193,7 +193,7 @@ const CHANGESET_COLUMNS: ColumnSpec<ScmChangeset, ScmCtx, ChangeColKey>[] = [
     defaultWidth: 280,
     minWidth: 140,
     cellClassName: 'flex min-w-0 items-center px-2',
-    cell: (c) => (c.uri ? <ExtLink href={c.uri}>{c.uri}</ExtLink> : <span>—</span>),
+    cell: (c) => (c.uri ? <ExtLink href={c.uri}>{c.uri}</ExtLink> : <span>--</span>),
   },
 ]
 

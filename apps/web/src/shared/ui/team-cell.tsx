@@ -64,7 +64,7 @@ export function TeamCell({
   className?: string
 }) {
   if (!name && !teamKey) {
-    return <span className="text-ui-xs text-foreground-disabled">—</span>
+    return <span className="text-ui-xs text-foreground-disabled">--</span>
   }
 
   return (

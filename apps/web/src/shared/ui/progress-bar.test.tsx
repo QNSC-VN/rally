@@ -27,7 +27,7 @@ describe('ProgressBar', () => {
     // A Feature with no estimate has no denominator. Rendering "0%" would claim no
     // progress, which is a different statement from "not measurable".
     render(<ProgressBar ratio={null} />)
-    expect(screen.getByText('—')).toBeTruthy()
+    expect(screen.getByText('--')).toBeTruthy()
     expect(screen.queryByText('0%')).toBeNull()
   })
 
@@ -48,7 +48,7 @@ describe('ProgressBar', () => {
   it('treats a non-finite ratio as unmeasurable', () => {
     // Guards a 0/0 division upstream reaching the UI as NaN%.
     render(<ProgressBar ratio={Number.NaN} />)
-    expect(screen.getByText('—')).toBeTruthy()
+    expect(screen.getByText('--')).toBeTruthy()
   })
 
   it('can hide the label when the caller shows the numbers itself', () => {

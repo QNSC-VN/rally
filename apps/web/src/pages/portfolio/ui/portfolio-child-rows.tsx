@@ -290,7 +290,7 @@ function ChildWorkItemRow({
       <div className="px-2" style={colStyleFor('percentDonePoints')} />
       <div className="px-2" style={colStyleFor('percentDoneCount')} />
       <div className="min-w-0 truncate px-2" style={colStyleFor('project')}>
-        {child.projectName ?? '—'}
+        {child.projectName ?? '--'}
       </div>
       <div className="min-w-0 px-2" style={colStyleFor('team')}>
         <TeamCell name={child.teamName} />

@@ -76,7 +76,7 @@ describe('CapacityBreakdownOverlay', () => {
       }),
     )
     const cells = rowFor('Alpha').querySelectorAll('td')
-    expect(cells[cells.length - 1].textContent).toBe('—')
+    expect(cells[cells.length - 1].textContent).toBe('--')
   })
 
   it('totals capacity over teams that HAVE one, and stays blank while none does', () => {

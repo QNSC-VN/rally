@@ -2,8 +2,8 @@ type DateRange = { startDate?: string | null; endDate?: string | null }
 
 /** `start - end` label for an iteration, with em-dash fallbacks for missing bounds. */
 export function fmtRange(it: DateRange): string {
-  const s = it.startDate ?? '—'
-  const e = it.endDate ?? '—'
+  const s = it.startDate ?? '--'
+  const e = it.endDate ?? '--'
   return `${s} - ${e}`
 }
 

@@ -38,7 +38,7 @@ export function DefectsTab({ workItemId, projectId }: { workItemId: string; proj
   const navigate = useNavigate()
 
   const ownerName = (id?: string | null) =>
-    id ? (members.find((m) => m.userId === id)?.displayName ?? '—') : '—'
+    id ? (members.find((m) => m.userId === id)?.displayName ?? '--') : '--'
 
   function openDefect(d: WorkItem) {
     void navigate({ to: '/item/$itemKey', params: { itemKey: d.itemKey } })

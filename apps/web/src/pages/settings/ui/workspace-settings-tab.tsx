@@ -157,7 +157,7 @@ export function WorkspaceSettingsTab() {
                   </p>
                 </div>
                 <span className="shrink-0 rounded-md border border-input bg-surface-subtle px-2 py-0.5 font-mono text-ui-sm text-foreground">
-                  {current?.slug ?? workspace?.workspaceSlug ?? '—'}
+                  {current?.slug ?? workspace?.workspaceSlug ?? '--'}
                 </span>
               </div>
               {/* Admins — avatar chips. */}
@@ -167,7 +167,7 @@ export function WorkspaceSettingsTab() {
                 </p>
                 <div className="flex min-w-0 flex-wrap justify-end gap-1.5">
                   {admins.length === 0 ? (
-                    <span className="text-ui-md text-foreground-subtle">—</span>
+                    <span className="text-ui-md text-foreground-subtle">--</span>
                   ) : (
                     admins.map((a) => (
                       <span

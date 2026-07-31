@@ -112,7 +112,7 @@ export function PortfolioDetailPage() {
                 <OwnerCell name={item.ownerName} />
               </DetailField>
               <DetailField label={t('detail.fields.project')}>
-                {item.projectName ?? '—'}
+                {item.projectName ?? '--'}
               </DetailField>
               {/* Team, Release and the parent Epic are Feature-only — an Epic has
                   them all null by CHECK constraint, so showing empty rows would
@@ -120,11 +120,11 @@ export function PortfolioDetailPage() {
               {!isEpic && (
                 <>
                   <DetailField label={t('detail.fields.parent')}>
-                    {item.parentKey ?? '—'}
+                    {item.parentKey ?? '--'}
                   </DetailField>
-                  <DetailField label={t('detail.fields.team')}>{item.teamName ?? '—'}</DetailField>
+                  <DetailField label={t('detail.fields.team')}>{item.teamName ?? '--'}</DetailField>
                   <DetailField label={t('detail.fields.release')}>
-                    {item.releaseName ?? '—'}
+                    {item.releaseName ?? '--'}
                   </DetailField>
                 </>
               )}
@@ -142,13 +142,13 @@ export function PortfolioDetailPage() {
                 {item.refinedItemCountEstimate}
               </DetailField>
               <DetailField label={t('detail.fields.plannedStartDate')}>
-                {item.plannedStartDate ?? '—'}
+                {item.plannedStartDate ?? '--'}
               </DetailField>
               <DetailField label={t('detail.fields.plannedEndDate')}>
-                {item.plannedEndDate ?? '—'}
+                {item.plannedEndDate ?? '--'}
               </DetailField>
               <DetailField label={t('detail.fields.marketReleaseDate')}>
-                {item.marketReleaseDate ?? '—'}
+                {item.marketReleaseDate ?? '--'}
               </DetailField>
             </div>
           }

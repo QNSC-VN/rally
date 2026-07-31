@@ -84,7 +84,7 @@ export function IterationRow({
 
       {/* ID — type glyph + per-project key (IT-<n>) */}
       <div style={colStyleFor('id', { flexShrink: 0 })} className="flex items-center px-2" onClick={stop}>
-        <IdCell type="iteration" itemKey={it.iterationKey ?? '—'} onOpen={onOpen} />
+        <IdCell type="iteration" itemKey={it.iterationKey ?? '--'} onOpen={onOpen} />
       </div>
 
       {/* Name — inline-editable */}
@@ -112,7 +112,7 @@ export function IterationRow({
           onCommit={saveTheme}
           ariaLabel="Theme"
           displayValue={
-            <span className="block truncate text-muted-foreground">{stripHtml(it.theme) || '—'}</span>
+            <span className="block truncate text-muted-foreground">{stripHtml(it.theme) || '--'}</span>
           }
           inputClassName="w-full rounded border-0 bg-transparent px-0.5 text-ui-sm text-foreground focus:outline-none"
         />
@@ -148,7 +148,7 @@ export function IterationRow({
           ariaLabel="Planned velocity"
           displayValue={
             <span className="block text-right font-mono tabular-nums text-muted-foreground">
-              {it.plannedVelocity ?? '—'}
+              {it.plannedVelocity ?? '--'}
             </span>
           }
           inputClassName="w-full rounded border-0 bg-transparent px-0.5 text-right font-mono text-ui-sm text-foreground focus:outline-none"

@@ -141,7 +141,7 @@ export function ReportsPage() {
     return (velocity?.sprints ?? []).map((s) => {
       const planned = s.sprintId ? iterById.get(s.sprintId)?.plannedVelocity : null
       return {
-        sprint: s.sprintName ?? '—',
+        sprint: s.sprintName ?? '--',
         accepted: s.completedPoints ?? 0,
         // `undefined`, NOT 0, when the iteration set no velocity target: recharts omits
         // the bar entirely for an undefined value, whereas a 0 draws a zero-height bar
@@ -291,7 +291,7 @@ export function ReportsPage() {
                 label={t('metrics.daysLeft')}
                 // Overdue iterations show the magnitude + "days overdue" (matching
                 // Iteration Status) instead of a raw negative number.
-                value={metrics?.daysLeft == null ? '—' : String(Math.abs(metrics.daysLeft))}
+                value={metrics?.daysLeft == null ? '--' : String(Math.abs(metrics.daysLeft))}
                 caption={
                   metrics?.daysLeft != null && metrics.daysLeft < 0
                     ? metrics.daysLeft === -1

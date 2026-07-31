@@ -356,7 +356,7 @@ export function IterationStatusPage() {
   const iterationEnd: { value: string; label: string; color: string } = iterationDone
     ? { value: 'Done', label: 'Completed', color: BRAND.success }
     : metrics?.daysLeft == null
-      ? { value: '—', label: 'no end date', color: BRAND.warning }
+      ? { value: '--', label: 'no end date', color: BRAND.warning }
       : metrics.daysLeft < 0
         ? {
             value: String(Math.abs(metrics.daysLeft)),

@@ -234,7 +234,7 @@ export function StatusRow({
             />
           ) : (
             <span className="text-foreground-subtle" style={{ fontSize: 12 }}>
-              &mdash;
+              --
             </span>
           )}
         </div>
@@ -381,7 +381,7 @@ export function StatusRow({
             </span>
           ) : (
             <span className="px-2 text-foreground-subtle" style={{ fontSize: 12 }}>
-              &mdash;
+              --
             </span>
           )}
         </div>
@@ -393,7 +393,7 @@ export function StatusRow({
             canEdit={canEdit}
             fullCell
             onCommit={commitEstimate}
-            displayValue={item.planEstimate ?? '—'}
+            displayValue={item.planEstimate ?? '--'}
             className={`text-muted-foreground ${NUMERIC_CELL_CLASS}`}
             style={{ fontSize: 12 }}
             inputClassName="border border-primary"
@@ -414,7 +414,7 @@ export function StatusRow({
           style={{ ...colStyles.taskEstimate, fontSize: 12 }}
           className={`px-2 text-muted-foreground ${NUMERIC_CELL_CLASS}`}
         >
-          {item.taskEstimate ?? '—'}
+          {item.taskEstimate ?? '--'}
         </div>
 
         {/* To Do */}
@@ -424,7 +424,7 @@ export function StatusRow({
             canEdit={canEdit}
             fullCell
             onCommit={commitTodo}
-            displayValue={item.toDo ?? '—'}
+            displayValue={item.toDo ?? '--'}
             className={`text-muted-foreground ${NUMERIC_CELL_CLASS}`}
             style={{ fontSize: 12 }}
             inputClassName="border border-primary"
@@ -451,7 +451,7 @@ export function StatusRow({
           style={{ ...colStyles.actual, fontSize: 12 }}
           className={`px-2 text-muted-foreground ${NUMERIC_CELL_CLASS}`}
         >
-          {item.actual ?? '—'}
+          {item.actual ?? '--'}
         </div>
 
         {/* Owner */}
@@ -479,7 +479,7 @@ export function StatusRow({
               {item.defectCount}
             </span>
           ) : (
-            <span className="text-foreground-subtle">&mdash;</span>
+            <span className="text-foreground-subtle">--</span>
           )}
         </div>
 
@@ -703,7 +703,7 @@ function ChildTaskRow({
           canEdit={canEdit}
           fullCell
           onCommit={commitTaskEstimate}
-          displayValue={task.estimateHours ?? '—'}
+          displayValue={task.estimateHours ?? '--'}
           className={NUMERIC_CELL_CLASS}
           style={{ fontSize: 11 }}
           inputClassName="border border-primary"
@@ -724,7 +724,7 @@ function ChildTaskRow({
           canEdit={canEdit}
           fullCell
           onCommit={commitTaskTodo}
-          displayValue={task.todoHours ?? '—'}
+          displayValue={task.todoHours ?? '--'}
           className={NUMERIC_CELL_CLASS}
           style={{ fontSize: 11 }}
           inputClassName="border border-primary"
@@ -746,7 +746,7 @@ function ChildTaskRow({
           canEdit={canEdit}
           fullCell
           onCommit={commitTaskActual}
-          displayValue={task.actualHours ?? '—'}
+          displayValue={task.actualHours ?? '--'}
           className={NUMERIC_CELL_CLASS}
           style={{ fontSize: 11 }}
           inputClassName="border border-primary"
