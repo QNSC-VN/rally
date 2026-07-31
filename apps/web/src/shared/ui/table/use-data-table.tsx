@@ -41,7 +41,15 @@ function renderTypedCell<Row, Ctx, K extends string>(
       )
     case 'text':
     default:
-      return <span className="truncate text-ui-sm text-foreground">{raw ?? '--'}</span>
+      // Free text WRAPS rather than truncating: this is the generic `type: 'text'`
+      // renderer, so its value is a user-typed sentence of unbounded length, and rows
+      // use `min-h-*` and can grow. Truncating hid the end of every long value behind
+      // a tooltip nobody opens.
+      return (
+        <span className="text-ui-sm break-words whitespace-normal text-foreground">
+          {raw ?? '--'}
+        </span>
+      )
   }
 }
 

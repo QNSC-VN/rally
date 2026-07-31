@@ -172,7 +172,7 @@ export function ReleaseRow({
           onCommit={saveTheme}
           ariaLabel="Theme"
           displayValue={
-            <span className="block truncate text-muted-foreground">
+            <span className="block break-words whitespace-normal text-muted-foreground">
               {stripHtml(release.theme) || '--'}
             </span>
           }

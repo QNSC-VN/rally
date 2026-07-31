@@ -363,9 +363,13 @@ export function StatusRow({
               style={{ fontSize: 12 }}
               displayValue={
                 item.blockedReason ? (
-                  <span className="block truncate text-muted-foreground">{item.blockedReason}</span>
+                  <span className="block break-words whitespace-normal text-muted-foreground">
+                    {item.blockedReason}
+                  </span>
                 ) : (
-                  <span className="block truncate text-foreground-subtle italic">Add reason…</span>
+                  <span className="block break-words whitespace-normal text-foreground-subtle italic">
+                    Add reason…
+                  </span>
                 )
               }
               inputClassName="border border-primary"

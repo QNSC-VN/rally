@@ -85,7 +85,7 @@ export function AllocationRow({
         style={colStyleFor('name', { flexShrink: 0 })}
         className="flex min-w-0 items-center gap-2 px-2"
       >
-        <span className="truncate text-foreground" title={allocation.name}>
+        <span className="break-words whitespace-normal text-foreground" title={allocation.name}>
           {allocation.name}
         </span>
         <EstimateTierBadge tier={allocation.tier} />

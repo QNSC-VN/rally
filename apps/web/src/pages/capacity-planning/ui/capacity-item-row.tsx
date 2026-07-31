@@ -92,7 +92,7 @@ export function CapacityItemRow({
         ) : (
           <span className="w-4 shrink-0" />
         )}
-        <span className="truncate text-foreground" title={item.name}>
+        <span className="break-words whitespace-normal text-foreground" title={item.name}>
           {item.name}
         </span>
       </div>

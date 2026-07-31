@@ -78,7 +78,13 @@ type ColStyleFor = (key: ColKey, base?: CSSProperties) => CSSProperties
  */
 function ChildRow({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-[30px] items-center border-b border-dashed border-border-subtle px-3 text-ui-xs text-muted-foreground hover:bg-primary-lighter">
+    // Height and type scale MATCH the parent row (`min-h-[34px]`, `text-ui-md`), not a
+    // smaller variant. They diverged before, which made every editable control on a child
+    // row visibly smaller than the identical control one row above — the inline-edit box
+    // most obviously. Subordination is carried by the indent, the dashed divider and the
+    // tinted rail; shrinking the controls as well just made them look like a different
+    // component.
+    <div className="flex min-h-[34px] items-center border-b border-dashed border-border-subtle px-3 text-ui-md text-muted-foreground hover:bg-primary-lighter">
       {/* Mirrors the parent's gutter through the shared component (inert here — a child
           is not selectable and not rankable) so column 1 starts at the same x. */}
       <RowGutter dragDisabled />
@@ -143,7 +149,7 @@ function ChildFeatureRow({
           }}
           ariaLabel={t('columns.name')}
           title={feature.name}
-          className="block w-full truncate text-foreground"
+          className="block w-full break-words whitespace-normal text-foreground"
         />
       </div>
 
@@ -295,7 +301,7 @@ function ChildWorkItemRow({
           }}
           ariaLabel={t('columns.name')}
           title={child.title}
-          className="block w-full truncate text-foreground"
+          className="block w-full break-words whitespace-normal text-foreground"
         />
       </div>
 

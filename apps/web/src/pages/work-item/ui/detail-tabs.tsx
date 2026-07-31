@@ -90,7 +90,9 @@ export function DefectsTab({ workItemId, projectId }: { workItemId: string; proj
                 <span className="flex items-center overflow-hidden">
                   <IdCell type={d.type} itemKey={d.itemKey} onOpen={() => openDefect(d)} />
                 </span>
-                <span className="truncate font-medium text-foreground">{d.title}</span>
+                <span className="font-medium break-words whitespace-normal text-foreground">
+                  {d.title}
+                </span>
                 <StateStepper
                   steps={SCHEDULE_STATE_STEPS}
                   value={d.scheduleState as ScheduleState}

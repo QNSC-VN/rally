@@ -83,7 +83,11 @@ export function IterationRow({
       {gutter}
 
       {/* ID — type glyph + per-project key (IT-<n>) */}
-      <div style={colStyleFor('id', { flexShrink: 0 })} className="flex items-center px-2" onClick={stop}>
+      <div
+        style={colStyleFor('id', { flexShrink: 0 })}
+        className="flex items-center px-2"
+        onClick={stop}
+      >
         <IdCell type="iteration" itemKey={it.iterationKey ?? '--'} onOpen={onOpen} />
       </div>
 
@@ -112,7 +116,9 @@ export function IterationRow({
           onCommit={saveTheme}
           ariaLabel="Theme"
           displayValue={
-            <span className="block truncate text-muted-foreground">{stripHtml(it.theme) || '--'}</span>
+            <span className="block break-words whitespace-normal text-muted-foreground">
+              {stripHtml(it.theme) || '--'}
+            </span>
           }
           inputClassName="w-full rounded border-0 bg-transparent px-0.5 text-ui-sm text-foreground focus:outline-none"
         />
@@ -139,7 +145,11 @@ export function IterationRow({
       </div>
 
       {/* Planned Velocity — inline-editable */}
-      <div style={colStyleFor('plannedVelocity', { flexShrink: 0 })} className="px-0" onClick={stop}>
+      <div
+        style={colStyleFor('plannedVelocity', { flexShrink: 0 })}
+        className="px-0"
+        onClick={stop}
+      >
         <InlineEditableCell
           fullCell
           value={it.plannedVelocity != null ? String(it.plannedVelocity) : ''}
@@ -147,7 +157,7 @@ export function IterationRow({
           onCommit={saveVelocity}
           ariaLabel="Planned velocity"
           displayValue={
-            <span className="block text-right font-mono tabular-nums text-muted-foreground">
+            <span className="block text-right font-mono text-muted-foreground tabular-nums">
               {it.plannedVelocity ?? '--'}
             </span>
           }
@@ -163,7 +173,10 @@ export function IterationRow({
           value={it.state}
           readOnly={!canManage}
           ariaLabel="Iteration state"
-          options={ITERATION_STATES.map((s) => ({ value: s, label: ITERATION_STATE_STYLE[s].label }))}
+          options={ITERATION_STATES.map((s) => ({
+            value: s,
+            label: ITERATION_STATE_STYLE[s].label,
+          }))}
           onChange={saveState}
         />
       </div>

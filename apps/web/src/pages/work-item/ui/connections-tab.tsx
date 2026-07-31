@@ -77,7 +77,7 @@ const CONNECTION_COLUMNS: ColumnSpec<ScmConnection, ScmCtx, ConnColKey>[] = [
     // Name is plain text; the Url column carries the link (matches Rally).
     cell: (c) => (
       <span className="flex min-w-0 items-center gap-1.5">
-        <span className="truncate text-foreground" title={c.name}>
+        <span className="break-words whitespace-normal text-foreground" title={c.name}>
           {c.name}
         </span>
         {c.state ? <span className="text-ui-xs text-foreground-subtle">({c.state})</span> : null}
@@ -138,7 +138,7 @@ const CHANGESET_COLUMNS: ColumnSpec<ScmChangeset, ScmCtx, ChangeColKey>[] = [
     grow: true,
     cellClassName: 'flex min-w-0 items-center px-2',
     cell: (c) => (
-      <span className="block truncate" title={c.message ?? ''}>
+      <span className="block break-words whitespace-normal" title={c.message ?? ''}>
         {c.message ?? '--'}
       </span>
     ),

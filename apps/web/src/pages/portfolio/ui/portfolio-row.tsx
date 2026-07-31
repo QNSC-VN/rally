@@ -194,7 +194,7 @@ export function PortfolioRow({
             }}
             ariaLabel={t('columns.name')}
             title={item.name}
-            className="block w-full truncate text-foreground"
+            className="block w-full break-words whitespace-normal text-foreground"
           />
         </div>
 

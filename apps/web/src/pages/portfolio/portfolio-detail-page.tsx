@@ -175,7 +175,7 @@ export function PortfolioDetailPage() {
                       void navigate({ to: '/portfolio/$itemId', params: { itemId: f.id } })
                     }
                   />
-                  <span className="min-w-0 flex-1 truncate text-ui-sm text-foreground">
+                  <span className="min-w-0 flex-1 text-ui-sm break-words whitespace-normal text-foreground">
                     {f.name}
                   </span>
                   <span className="text-ui-xs text-muted-foreground">
@@ -195,7 +195,7 @@ export function PortfolioDetailPage() {
                       void navigate({ to: '/item/$itemKey', params: { itemKey: c.itemKey } })
                     }
                   />
-                  <span className="min-w-0 flex-1 truncate text-ui-sm text-foreground">
+                  <span className="min-w-0 flex-1 text-ui-sm break-words whitespace-normal text-foreground">
                     {c.title}
                   </span>
                   <span className="text-ui-xs text-muted-foreground">{c.scheduleState}</span>
