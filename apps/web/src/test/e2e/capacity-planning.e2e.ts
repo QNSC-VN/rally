@@ -30,7 +30,9 @@ test.describe('Capacity Planning', () => {
   async function openSeededPlan(page: import('@playwright/test').Page) {
     await loginAndSelectProject(page)
     await page.goto('/capacity-planning', { waitUntil: 'domcontentloaded' })
-    await page.getByText('NX Platform v2 capacity').click()
+    // The ID cell is the link: the row does not navigate and the NAME cell edits in place,
+    // which is how Rally and every other grid here behave.
+    await page.getByRole('button', { name: /^CP-/ }).first().click()
     await expect(page).toHaveURL(/\/capacity-planning\/[0-9a-f-]{36}/)
     await expect(page.getByText('Team Alpha').first()).toBeVisible()
   }

@@ -62,6 +62,18 @@
   --success: #1e6930;
   --success-bg: #eaf5ed;
   --success-border: #c7e4ce;
+
+  /* Capacity-bar bands, taken from Rally's own plan grid so a bar reads the same in
+     both products: a mid BLUE for delivered work, a pale blue for live child work, a
+     grey hatch for a commitment and a green hatch for untouched headroom. Deliberately
+     NOT the app's navy `--primary`: navy-on-navy made the Complete band vanish inside
+     the dark plan header, and it read as "brand chrome" rather than as data. */
+  --capacity-complete: #3079c8;
+  --capacity-complete-border: #2361a6;
+  --capacity-rollup: #dbeafe;
+  --capacity-rollup-border: #7cb0e8;
+  --capacity-estimated: #b9c2cf;
+  --capacity-estimated-border: #96a3b5;
   --warning: #d97706;
   --warning-bg: #fef5e4;
   --warning-border: #f0d9a5;
@@ -159,6 +171,15 @@
   --success: #3fb950;
   --success-bg: #12261a;
   --success-border: #2a4a32;
+
+  /* Same bands, lifted for a dark surface: the hues stay recognisable, the values
+     invert so the hatch reads against a dark card instead of disappearing into it. */
+  --capacity-complete: #4c93e0;
+  --capacity-complete-border: #7cb4ea;
+  --capacity-rollup: #1e3a5f;
+  --capacity-rollup-border: #3f6d9e;
+  --capacity-estimated: #3a4552;
+  --capacity-estimated-border: #55657a;
   --warning: #e3a008;
   --warning-bg: #2a2110;
   --warning-border: #4a3a14;

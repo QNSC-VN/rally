@@ -74,7 +74,9 @@
     "allocationCleared": "Allocation cleared — this team now carries the Feature estimate",
     "allocationRemoveFailed": "Could not remove the Feature from the plan",
     "from": "from",
-    "allocatedFrom": "Allocated from {{project}}"
+    "allocatedFrom": "Owned by {{team}}, allocated to this team",
+    "to": "to",
+    "allocatedTo": "Owned here, also allocated to {{team}}"
   },
   "tiers": {
     "allocated": "Alloc",
@@ -89,7 +91,7 @@
     "preliminaryFull": "Preliminary"
   },
   "allocate": {
-    "action": "Allocate",
+    "action": "Allocate a Feature",
     "title": "Allocate a Feature",
     "featureLabel": "Feature",
     "featureRequired": "Choose a Feature",
@@ -108,7 +110,9 @@
     "rollup_exceeds_estimated": "Child work has outgrown what was committed for this row",
     "rollup_exceeds_capacity": "Child work already exceeds the capacity",
     "estimated_exceeds_capacity": "Committed demand exceeds the capacity",
-    "load_above_target": "Committed demand is above the target load, leaving no room for unplanned work"
+    "load_above_target": "Committed demand is above the target load, leaving no room for unplanned work",
+    "requiresAttention": "{{count}} issue requires attention",
+    "requiresAttention_plural": "{{count}} issues require attention"
   },
   "breakdown": {
     "action": "Breakdown",

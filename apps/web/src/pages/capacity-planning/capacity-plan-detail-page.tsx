@@ -12,7 +12,6 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { Pencil, Plus, Send, Trash2, Undo2, Users } from 'lucide-react'
 
-import { Button } from '@/shared/ui/button'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { DataTableFrame } from '@/shared/ui/table/data-table-frame'
@@ -56,6 +55,7 @@ import { StatusBadge } from '@/shared/ui/status-badge'
 import { ActionMenu, ActionMenuItem } from '@/shared/ui/action-menu'
 import { SelectionModal } from '@/shared/ui/selection-modal'
 import { CompositeBar } from '@/shared/ui/composite-bar'
+import { CapacityBarTooltip } from './ui/capacity-bar-tooltip'
 import { planTotals } from '@/features/capacity-planning/plan-totals'
 import { CapacityBreakdownOverlay } from './ui/capacity-breakdown-overlay'
 import { CapacityForecastModal } from './ui/capacity-forecast-modal'
@@ -183,6 +183,28 @@ export function CapacityPlanDetailPage() {
       return index === -1 ? null : index + 1
     },
     [plan?.items],
+  )
+
+  /**
+   * Who else holds a Feature — the input to Rally's `Allocation` cell.
+   *
+   * `owner` is the team whose allocation is primary; `contributors` are the rest. Both are NAMES,
+   * resolved here because only the page has the plan's team list.
+   */
+  const sharingOf = useCallback(
+    (portfolioItemId: string) => {
+      const rows = (plan?.allocations ?? []).filter(
+        (a) => a.portfolioItemId === portfolioItemId && a.teamId !== null,
+      )
+      const owner = rows.find((a) => a.isPrimary)?.teamId ?? null
+      return {
+        owner: owner === null ? null : (teamNameById.get(owner) ?? null),
+        contributors: rows
+          .filter((a) => !a.isPrimary && a.teamId !== null)
+          .map((a) => teamNameById.get(a.teamId as string) ?? '—'),
+      }
+    },
+    [plan?.allocations, teamNameById],
   )
 
   /** The same allocations bucketed by FEATURE, for the Features tab's nested rows. */
@@ -329,17 +351,20 @@ export function CapacityPlanDetailPage() {
                 summarises. */}
             <div className="w-56 shrink-0">
               <CompositeBar
+                onDark
                 complete={planWide.complete}
                 rollup={planWide.rollup}
                 estimated={planWide.estimated}
                 capacity={planWide.capacity}
                 targetLoadPct={plan.targetLoadPct}
-                title={t('row.barTooltip', {
-                  complete: planWide.complete,
-                  rollup: planWide.rollup,
-                  estimated: planWide.estimated,
-                  unit: unitLabel,
-                })}
+                tooltip={
+                  <CapacityBarTooltip
+                    complete={planWide.complete}
+                    rollup={planWide.rollup}
+                    estimated={planWide.estimated}
+                    capacity={planWide.capacity}
+                  />
+                }
               />
             </div>
           </div>
@@ -361,12 +386,44 @@ export function CapacityPlanDetailPage() {
               {/* Drafts only — the API refuses an edit to a published plan, so offering it would
                   collect changes the server will reject. */}
               {plan.status === 'draft' && can('capacity:manage') && (
-                <ActionMenuItem
-                  icon={<Pencil size={13} />}
-                  label={t('edit.title')}
-                  onClick={() => setShowEdit(true)}
-                />
+                <>
+                  <ActionMenuItem
+                    icon={<Pencil size={13} />}
+                    label={t('edit.title')}
+                    onClick={() => setShowEdit(true)}
+                  />
+                  {/* Rally keeps these here too: its plan page has NO toolbar row, and every verb
+                      that changes a plan's shape sits behind the same `⋮` as Edit and Delete. */}
+                  <ActionMenuItem
+                    icon={<Users size={13} />}
+                    label={t('teams.action')}
+                    onClick={() => setShowTeams(true)}
+                  />
+                  <ActionMenuItem
+                    icon={<Plus size={13} />}
+                    label={t('allocate.action')}
+                    onClick={() => setShowAllocate(true)}
+                  />
+                </>
               )}
+              {/* One direction at a time: a draft publishes, a published plan can only revert —
+                  which is also the only way back to editing it. */}
+              {canPublish &&
+                (plan.status === 'draft' ? (
+                  <ActionMenuItem
+                    icon={<Send size={13} />}
+                    label={t('publish.action')}
+                    onClick={() => setShowPublish(true)}
+                    disabled={publish.isPending}
+                  />
+                ) : (
+                  <ActionMenuItem
+                    icon={<Undo2 size={13} />}
+                    label={t('publish.revert.action')}
+                    onClick={() => setConfirmRevert(true)}
+                    disabled={revert.isPending}
+                  />
+                ))}
               {can('capacity:manage') && (
                 <ActionMenuItem
                   icon={<Trash2 size={13} />}
@@ -409,49 +466,8 @@ export function CapacityPlanDetailPage() {
               />
             </div>
 
-            <div className="flex items-center gap-2 border-b border-border-inner px-4 py-2">
-              {canManage && (
-                <>
-                  {/* Rally's `Add / Remove Project(s) to Plan`: one checkbox list where checked means
-                      "on the plan". It replaces a picker that could only add PLUS a trash can on
-                      every team row — Rally has neither, and having both made adding and removing
-                      the same thing look like two unrelated features. */}
-                  <Button size="sm" onClick={() => setShowTeams(true)}>
-                    <Users size={13} /> {t('teams.action')}
-                  </Button>
-                  <Button size="sm" variant="secondary" onClick={() => setShowAllocate(true)}>
-                    <Plus size={13} /> {t('allocate.action')}
-                  </Button>
-                </>
-              )}
-              {/* Breakdown is not here: it is the link in the summary panel above, where Rally
-                    puts it and where the numbers it explains already are. */}
-              {/* One button, whichever direction the plan can move in. A draft can be
-                    published; a published plan can only be reverted, which is also the only
-                    way back to editing it. */}
-              {canPublish &&
-                (plan.status === 'draft' ? (
-                  <Button
-                    size="sm"
-                    className="ml-auto"
-                    onClick={() => setShowPublish(true)}
-                    disabled={publish.isPending}
-                  >
-                    <Send size={13} /> {t('publish.action')}
-                  </Button>
-                ) : (
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    className="ml-auto"
-                    onClick={() => setConfirmRevert(true)}
-                    disabled={revert.isPending}
-                  >
-                    <Undo2 size={13} /> {t('publish.revert.action')}
-                  </Button>
-                ))}
-            </div>
-
+            {/* No toolbar row: Rally's plan page has none. Every verb is in the header's `⋮`
+                Actions menu, and the grid starts directly under the summary. */}
             {tab === 'items' ? (
               <DataTableFrame
                 header={itemTable.headerProps}
@@ -539,11 +555,10 @@ export function CapacityPlanDetailPage() {
                         planId={plan.id}
                         allocations={allocationsByTeam.get(team.teamId) ?? []}
                         teamName={team.teamName}
-                        unitLabel={unitLabel}
                         canManage={canManage}
                         onOpenFeature={openFeature}
                         rankPositionOf={rankPositionOf}
-                        planProjectId={plan.projectId}
+                        sharingOf={sharingOf}
                       />
                     )}
                   </div>
@@ -571,11 +586,10 @@ export function CapacityPlanDetailPage() {
                       planId={plan.id}
                       allocations={unallocated}
                       teamName={null}
-                      unitLabel={unitLabel}
                       canManage={canManage}
                       onOpenFeature={openFeature}
                       rankPositionOf={rankPositionOf}
-                      planProjectId={plan.projectId}
+                      sharingOf={sharingOf}
                     />
                   </div>
                 )}

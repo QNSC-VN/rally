@@ -8,6 +8,7 @@ import { RowExpandToggle } from '@/shared/ui/row-expand-toggle'
 import { MetricValue } from '@/shared/ui/metric-value'
 import { WarningCountBadge } from '@/shared/ui/warning-count-badge'
 import { CompositeBar } from '@/shared/ui/composite-bar'
+import { CapacityBarTooltip } from './capacity-bar-tooltip'
 import { IconButton } from '@/shared/ui/icon-button'
 import { notify } from '@/shared/lib/toast'
 import { useCapacityWarningText } from '@/features/capacity-planning/warning-labels'
@@ -124,7 +125,11 @@ export function CapacityTeamRow({
         {featureCount}
         {/* The warning COUNT, as Rally shows it: on a plan with a dozen teams "⚠5" says which row
             to read first, where a bare triangle only says "something". */}
-        <WarningCountBadge count={warnings.length} label={warnings.join('. ')} />
+        <WarningCountBadge
+          count={warnings.length}
+          heading={t('warnings.requiresAttention', { count: warnings.length })}
+          label={warnings.join('. ')}
+        />
       </div>
 
       {/* The bar draws the warning glyph but does NOT name it: the `WarningCountBadge` above
@@ -140,12 +145,14 @@ export function CapacityTeamRow({
           targetLoadPct={targetLoadPct}
           warningLabels={warnings}
           warningLabelled={false}
-          title={t('row.barTooltip', {
-            complete: team.metrics.complete,
-            rollup: team.metrics.rollup,
-            estimated: team.metrics.estimated,
-            unit: unitLabel,
-          })}
+          tooltip={
+            <CapacityBarTooltip
+              complete={team.metrics.complete}
+              rollup={team.metrics.rollup}
+              estimated={team.metrics.estimated}
+              capacity={team.metrics.capacity}
+            />
+          }
         />
       </div>
 

@@ -1,4 +1,4 @@
-import { type CSSProperties } from 'react'
+import { useMemo, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Star } from 'lucide-react'
 
@@ -10,6 +10,7 @@ import {
 import { BRAND } from '@/shared/config/brand'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { CompositeBar } from '@/shared/ui/composite-bar'
+import { CapacityBarTooltip } from './capacity-bar-tooltip'
 import { MetricValue } from '@/shared/ui/metric-value'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { IconButton } from '@/shared/ui/icon-button'
@@ -32,17 +33,16 @@ import { EstimateTierIcon } from './estimate-tier-badge'
 export function AllocationRow({
   planId,
   allocation,
-  unitLabel,
   canManage,
   colStyleFor,
   onOpenFeature,
   teamName,
   rankPosition,
-  planProjectId,
+  ownerTeamName,
+  contributorTeamNames,
 }: {
   planId: string
   allocation: CapacityAllocation
-  unitLabel: string
   canManage: boolean
   colStyleFor: (key: AllocColKey, base?: CSSProperties) => CSSProperties
   onOpenFeature: (portfolioItemId: string) => void
@@ -50,19 +50,48 @@ export function AllocationRow({
   teamName: string | null
   /** The Feature's 1-based position in the plan's rank order, resolved by the table. */
   rankPosition: number | null
-  /** The PLAN's project, so a Feature from elsewhere can be marked as such. */
-  planProjectId: string
+  /**
+   * The team that OWNS this Feature on the plan (its primary assignment), when that is not this
+   * row's team. Drives `← from`.
+   */
+  ownerTeamName: string | null
+  /**
+   * The OTHER teams this Feature is allocated to, when this row IS the owner. Drives `→ to`.
+   *
+   * Names rather than ids, resolved by the page: this cell prints them, and ids would make it reach
+   * back into the plan to translate.
+   */
+  contributorTeamNames: string[]
 }) {
   const { t } = useTranslation('capacity')
   /**
-   * The Feature's project when it is NOT the plan's — Rally's `← from` provenance.
+   * Rally's `Allocation` cell: how this Feature is SHARED, not a number.
    *
-   * Null for a native Feature, which is why the column is empty on most rows: a plan mostly holds
-   * its own project's Features, and printing "from <this project>" on every one of them would be
-   * noise.
+   * `← from <team>` when another team owns it and the work was allocated into this one; `→ to <team>`
+   * when this team owns it and part of the work went elsewhere. Null when the Feature lives entirely
+   * inside this team — most rows — because "from this team" on every row is noise.
    */
-  const foreignProjectName =
-    allocation.projectId === planProjectId ? null : (allocation.projectName ?? null)
+  const sharing = useMemo(() => {
+    if (!allocation.isPrimary && ownerTeamName !== null) {
+      return {
+        arrow: '←',
+        preposition: t('row.from'),
+        teamNames: ownerTeamName,
+        title: t('row.allocatedFrom', { team: ownerTeamName }),
+      }
+    }
+    if (allocation.isPrimary && contributorTeamNames.length > 0) {
+      const names = contributorTeamNames.join(', ')
+      return {
+        arrow: '→',
+        preposition: t('row.to'),
+        teamNames: names,
+        title: t('row.allocatedTo', { team: names }),
+      }
+    }
+    return null
+  }, [allocation.isPrimary, ownerTeamName, contributorTeamNames, t])
+
   // The Feature state vocabulary lives in the portfolio namespace — the same labels the Portfolio
   // page shows, so a state cannot read one way there and another way inside a plan.
   const { t: tPortfolio } = useTranslation('portfolio')
@@ -167,17 +196,14 @@ export function AllocationRow({
         )}
       </div>
 
-      {/* Rally's `Allocation`: where this Feature came FROM, printed as `← from <project>` when the
-          Feature belongs to a project other than the plan's, and blank when it is native.
-          NOT a number — the allocated points live in the trailing `Estimate` tooltip, which is where
-          Rally puts them, and are edited in the `Estimated` cell. */}
+      {/* Rally's `Allocation`: the Feature's SHARING, not a number — `← from <team>` when another
+          team owns it, `→ to <team>` when this team owns it and part of the work went elsewhere. The
+          allocated points live in the trailing `Estimate` tooltip and are edited in `Estimated`. */}
       <div style={colStyleFor('allocation', { flexShrink: 0 })} className="min-w-0 px-2">
-        {foreignProjectName !== null && (
-          <span
-            className="truncate text-ui-sm text-muted-foreground italic"
-            title={t('row.allocatedFrom', { project: foreignProjectName })}
-          >
-            ← {t('row.from')} <span className="font-medium">{foreignProjectName}</span>
+        {sharing !== null && (
+          <span className="truncate text-ui-sm text-muted-foreground italic" title={sharing.title}>
+            {sharing.arrow} {sharing.preposition}{' '}
+            <span className="font-medium">{sharing.teamNames}</span>
           </span>
         )}
       </div>
@@ -197,12 +223,14 @@ export function AllocationRow({
           estimated={metrics.estimated}
           capacity={metrics.capacity}
           warningLabels={warningText(metrics.warnings)}
-          title={t('row.barTooltip', {
-            complete: metrics.complete,
-            rollup: metrics.rollup,
-            estimated: metrics.estimated,
-            unit: unitLabel,
-          })}
+          tooltip={
+            <CapacityBarTooltip
+              complete={metrics.complete}
+              rollup={metrics.rollup}
+              estimated={metrics.estimated}
+              capacity={metrics.capacity}
+            />
+          }
         />
       </div>
 
