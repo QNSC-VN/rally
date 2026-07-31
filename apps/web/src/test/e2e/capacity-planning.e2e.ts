@@ -42,9 +42,11 @@ test.describe('Capacity Planning', () => {
    * a plain span — so the cell is reached by its visible text and the input by its name.
    */
   async function editCapacity(page: import('@playwright/test').Page) {
+    // Scoped to the LAST numeric cell, not the first: the row now carries a Features count as
+    // well, and `.first()` matched that instead of the capacity cell.
     await teamRow(page)
-      .getByText(/Not entered|\d/)
-      .first()
+      .getByText(/Not entered|^\d+ points$|^\d+$/)
+      .last()
       .click()
     return page.getByRole('textbox', { name: /^Capacity for / })
   }

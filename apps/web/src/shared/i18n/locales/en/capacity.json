@@ -63,7 +63,9 @@
     "allocationLabel": "Allocation for {{feature}}",
     "allocationUpdated": "Allocation updated",
     "allocationRemoved": "Allocation removed",
-    "removeAllocation": "Remove the allocation for {{feature}}"
+    "removeAllocation": "Remove the allocation for {{feature}}",
+    "expandFeatures": "Expand the Features allocated to {{team}}",
+    "collapseFeatures": "Collapse the Features allocated to {{team}}"
   },
   "tiers": {
     "allocated": "Alloc",

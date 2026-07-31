@@ -30,7 +30,7 @@ export const CAPACITY_PLAN_COLUMNS: ColumnSpec<CapacityPlan, unknown, PlanColKey
   { key: 'capacity', label: 'Capacity', defaultWidth: 110, minWidth: 90, align: 'right' },
 ]
 
-export type TeamColKey = 'team' | 'progress' | 'capacity' | 'actions'
+export type TeamColKey = 'team' | 'features' | 'progress' | 'capacity' | 'actions'
 
 /**
  * The team grid inside one plan.
@@ -52,6 +52,9 @@ export const CAPACITY_TEAM_COLUMNS: ColumnSpec<CapacityPlanTeam, unknown, TeamCo
     locked: true,
     grow: true,
   },
+  // Its own column, with a header, rather than a bare digit beside the team name: a loose
+  // number there reads as "1 what?" — and Rally gives the count a column too.
+  { key: 'features', label: 'Features', defaultWidth: 90, minWidth: 70, align: 'right' },
   { key: 'progress', label: 'Complete / Rollup / Estimated', defaultWidth: 220, minWidth: 140 },
   { key: 'capacity', label: 'Capacity', defaultWidth: 130, minWidth: 100, align: 'right' },
   { key: 'actions', label: '', defaultWidth: 60, minWidth: 60, align: 'center' },

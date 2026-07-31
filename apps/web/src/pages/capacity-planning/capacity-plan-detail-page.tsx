@@ -64,6 +64,24 @@ export function CapacityPlanDetailPage() {
   const [forecastTeamId, setForecastTeamId] = useState<string | null>(null)
   const [showPublish, setShowPublish] = useState(false)
   const [confirmRevert, setConfirmRevert] = useState(false)
+  /**
+   * Teams whose allocated Features are shown.
+   *
+   * Collapsed by default, as Rally is: a plan with a dozen teams is a list of TEAMS, and
+   * expanding every one by default buries the capacity comparison the tab exists for. The row
+   * keeps a Feature count so a collapsed team still says how much it carries.
+   */
+  const [expandedTeams, setExpandedTeams] = useState<Set<string>>(new Set())
+  const toggleTeam = useCallback(
+    (teamId: string) =>
+      setExpandedTeams((prev) => {
+        const next = new Set(prev)
+        if (next.has(teamId)) next.delete(teamId)
+        else next.add(teamId)
+        return next
+      }),
+    [],
+  )
 
   const { data: plan, isLoading } = useCapacityPlan(planId)
   const { can } = useProjectPermissions(plan?.projectId)
@@ -346,24 +364,28 @@ export function CapacityPlanDetailPage() {
                         colStyleFor={colStyleFor}
                         gutter={null}
                         onForecast={() => setForecastTeamId(team.teamId)}
+                        expanded={expandedTeams.has(team.teamId)}
+                        onToggleExpanded={() => toggleTeam(team.teamId)}
+                        featureCount={allocationsByTeam.get(team.teamId)?.length ?? 0}
                       />
-                      {/* Allocated Features sit under their team, which is how Rally groups a
-                      shared Feature: one row per team, not one row per Feature.
-                      They arrive in RANK order, which is what makes the cutline meaningful. */}
-                      {/* No cutline here: Rally draws it on the ITEMS tab against the plan's
-                        total capacity, not per team. A per-team line answered a different
-                        question — what one team drops, rather than what this plan drops. */}
-                      {allocationsByTeam.get(team.teamId)?.map((allocation) => (
-                        <AllocationRow
-                          key={allocation.id}
-                          planId={plan.id}
-                          allocation={allocation}
-                          unitLabel={unitLabel}
-                          canManage={canManage}
-                          colStyleFor={colStyleFor}
-                          onOpenFeature={openFeature}
-                        />
-                      ))}
+                      {/* Allocated Features sit under their team — one row per team, which is
+                          how Rally groups a shared Feature — and DISCLOSED rather than always
+                          on, because Rally collapses them until asked. No cutline here either:
+                          Rally draws it on the Items tab against the plan's total capacity. */}
+                      {expandedTeams.has(team.teamId) &&
+                        allocationsByTeam
+                          .get(team.teamId)
+                          ?.map((allocation) => (
+                            <AllocationRow
+                              key={allocation.id}
+                              planId={plan.id}
+                              allocation={allocation}
+                              unitLabel={unitLabel}
+                              canManage={canManage}
+                              colStyleFor={colStyleFor}
+                              onOpenFeature={openFeature}
+                            />
+                          ))}
                     </div>
                   ))}
 

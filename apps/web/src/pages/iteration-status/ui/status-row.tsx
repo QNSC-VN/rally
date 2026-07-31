@@ -1,11 +1,12 @@
 import { useMemo, useState, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
-import { ChevronDown, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 
 import { BRAND } from '@/shared/config/brand'
+import { RowExpandToggle } from '@/shared/ui/row-expand-toggle'
 import { NESTED_ROW_INDENT } from '@/shared/config/layout'
 import { notify } from '@/shared/lib/toast'
 import {
@@ -179,31 +180,11 @@ export function StatusRow({
         {/* ID — expand/collapse toggle lives here (Rally parity), to the left of
             the item type icon + key. */}
         <div style={colStyles.id} className="flex items-center gap-1.5 px-2">
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              setTasksExpanded(!tasksExpanded)
-            }}
-            aria-label={tasksExpanded ? 'Collapse tasks' : 'Expand tasks'}
-            className="text-muted-foreground"
-            style={{
-              background: 'none',
-              border: 'none',
-              padding: 0,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              flexShrink: 0,
-            }}
-          >
-            <ChevronDown
-              size={12}
-              style={{
-                transform: tasksExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
-                transition: 'transform 0.15s ease',
-              }}
-            />
-          </button>
+          <RowExpandToggle
+            expanded={tasksExpanded}
+            onToggle={() => setTasksExpanded(!tasksExpanded)}
+            label={tasksExpanded ? 'Collapse tasks' : 'Expand tasks'}
+          />
           <IdCell type={item.type} itemKey={item.itemKey} onOpen={onOpen} />
         </div>
 
