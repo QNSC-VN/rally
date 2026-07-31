@@ -212,7 +212,8 @@
   "totalPlans": "Total Plans: {{count}}",
   "fields": {
     "unit": "Unit",
-    "name": "Name"
+    "name": "Name",
+    "release": "Release"
   },
   "renameFailed": "Could not rename the plan"
 }
