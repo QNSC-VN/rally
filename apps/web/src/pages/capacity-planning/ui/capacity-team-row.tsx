@@ -8,6 +8,7 @@ import {
   type CapacityPlanTeam,
 } from '@/features/capacity-planning/api'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
+import { RowExpandToggle } from '@/shared/ui/row-expand-toggle'
 import { CompositeBar } from '@/shared/ui/composite-bar'
 import { IconButton } from '@/shared/ui/icon-button'
 import { notify } from '@/shared/lib/toast'
@@ -36,6 +37,9 @@ export function CapacityTeamRow({
   colStyleFor,
   gutter,
   onForecast,
+  expanded,
+  onToggleExpanded,
+  featureCount,
 }: {
   planId: string
   team: CapacityPlanTeam
@@ -48,6 +52,17 @@ export function CapacityTeamRow({
   gutter: ReactNode
   /** Opens the capacity forecast for THIS team; the page owns the modal. */
   onForecast: () => void
+  /** Whether this team's allocated Features are shown — Rally collapses them by default. */
+  expanded: boolean
+  onToggleExpanded: () => void
+  /**
+   * How many Features are allocated to this team.
+   *
+   * Shown on the row itself so a COLLAPSED team still says how much it carries. Hiding the
+   * children without leaving a count behind would make an empty team and a full one look
+   * identical.
+   */
+  featureCount: number
 }) {
   const { t } = useTranslation('capacity')
   const warningText = useCapacityWarningText()
@@ -91,10 +106,31 @@ export function CapacityTeamRow({
     <div className="group flex min-h-[34px] items-center border-b border-border-inner px-3 text-ui-md transition-colors hover:bg-primary-lighter">
       {gutter}
 
-      <div style={colStyleFor('team', { flexShrink: 0 })} className="min-w-0 px-2">
+      <div
+        style={colStyleFor('team', { flexShrink: 0 })}
+        className="flex min-w-0 items-center gap-1.5 px-2"
+      >
+        <RowExpandToggle
+          expanded={expanded}
+          onToggle={onToggleExpanded}
+          label={
+            expanded
+              ? t('row.collapseFeatures', { team: team.teamName ?? '' })
+              : t('row.expandFeatures', { team: team.teamName ?? '' })
+          }
+        />
         <span className="truncate text-foreground" title={team.teamName ?? undefined}>
           {team.teamName ?? '—'}
         </span>
+      </div>
+
+      {/* The count lives here so a COLLAPSED team still says how much it carries — hiding the
+          children with no trace would make an empty team and a full one look identical. */}
+      <div
+        style={colStyleFor('features', { flexShrink: 0 })}
+        className="px-2 text-right text-muted-foreground tabular-nums"
+      >
+        {featureCount}
       </div>
 
       <div style={colStyleFor('progress', { flexShrink: 0 })} className="min-w-0 px-2">
