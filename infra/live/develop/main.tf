@@ -168,30 +168,55 @@ module "stack" {
   // merge to main therefore brings develop up on its own. `idle_schedule` below
   // puts it back down nightly.
   //
-  // The floor is the part that matters. `desired_count` is under `ignore_changes`, so
-  // hand-scaling is non-drifting, but Application Auto Scaling restores a service to
-  // `min_count` within minutes — a scale-to-zero against a floor of 1 undoes itself.
+  // AUTOSCALING IS OFF HERE, and that is the load-bearing part.
   //
-  // NOT done with scheduled autoscaling actions, deliberately:
+  // Deploys and `idle_schedule` between them own the desired count, so the floor has to
+  // be 0 — with a floor of 1 Application Auto Scaling restores the service within minutes
+  // and the 21:00 scale-to-zero undoes itself.
+  //
+  // But a scalable target with a floor of 0 cannot act at all, in either direction. Target
+  // tracking scales proportionally, so from one task at ~1% CPU it computes
+  // ceil(1 x 1/65) = 1 and never reaches zero; and once the schedule has taken the service
+  // to zero there is no CPU or memory metric left for it to scale out from. Measured here,
+  // not assumed: develop ran for hours at 0.07-1.0% average CPU against a floor of 0, and
+  // Application Auto Scaling logged ZERO scaling activities across its six-week retention.
+  //
+  // So autoscaling was never fighting the schedule — it was inert, while billing four
+  // CloudWatch alarms per service. `enable_autoscaling = false` says that out loud and
+  // leaves exactly one writer: `desired_count` is under `ignore_changes` in the
+  // ecs-service module, the deploy sets it to 1, the nightly schedule sets it to 0.
+  //
+  // Losing it costs develop nothing regardless: no users to absorb a spike for, and
+  // `max_count` was never approached. Production restores it at go-live along with a floor
+  // of 1 — see ../prod/main.tf, and the validation that ties those two together.
+  //
+  // NOT done with scheduled autoscaling ACTIONS, which is the other obvious shape:
   // `aws_appautoscaling_target` has no `ignore_changes` on min/max, so a scheduled
   // action mutating them would drift, and any infra-apply running at night would
-  // silently wake develop. That is the same silent-reset shape as the
-  // `task_definition` and `desired_count` cases documented in CLAUDE.md.
+  // silently wake develop. Same silent-reset shape as the `task_definition` and
+  // `desired_count` cases documented in CLAUDE.md.
+  //
+  // `min_count`/`max_count` stay set: they no longer drive scaling, but `max_count`
+  // sizes the DB connection pool and `min_count = 0` on both services is what marks
+  // this environment idle (suppressing the load alarms) and what the cacheless-tasks
+  // check reads.
   api = {
-    cpu       = 512
-    memory    = 1024
-    max_count = 3
-    min_count = 0
-    use_spot  = true
+    cpu                = 512
+    memory             = 1024
+    max_count          = 3
+    min_count          = 0
+    enable_autoscaling = false
+    use_spot           = true
   }
 
   // Idled with the api — see the note above.
   worker = {
-    cpu       = 256
-    memory    = 512
-    max_count = 2
-    min_count = 0
-    use_spot  = true
+    cpu                = 256
+    memory             = 512
+    max_count          = 2
+    min_count          = 0
+    enable_autoscaling = false
+    use_spot           = true
   }
 
   // Telemetry stays DORMANT until otlp_endpoint is set: no sidecar, OTEL_ENABLED

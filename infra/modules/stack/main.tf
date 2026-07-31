@@ -445,7 +445,7 @@ locals {
 
 # ── ECS Service — API ─────────────────────────────────────────────────────────
 module "api" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v2.0.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v2.1.0"
 
   service_name = "api"
   cluster_name = module.ecs_cluster.cluster_name
@@ -461,6 +461,7 @@ module "api" {
   security_group_id = data.terraform_remote_state.runtime.outputs.sg_app_id
 
   desired_count      = 1
+  enable_autoscaling = var.api.enable_autoscaling
   min_count          = var.api.min_count
   max_count          = var.api.max_count
   use_spot           = var.api.use_spot
@@ -620,7 +621,7 @@ module "api" {
 
 # ── ECS Service — Worker ──────────────────────────────────────────────────────
 module "worker" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v2.0.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v2.1.0"
 
   service_name = "worker"
   cluster_name = module.ecs_cluster.cluster_name
@@ -636,6 +637,7 @@ module "worker" {
   security_group_id = data.terraform_remote_state.runtime.outputs.sg_app_id
 
   desired_count      = 1
+  enable_autoscaling = var.worker.enable_autoscaling
   min_count          = var.worker.min_count
   max_count          = var.worker.max_count
   use_spot           = var.worker.use_spot
