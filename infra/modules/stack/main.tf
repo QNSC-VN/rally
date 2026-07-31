@@ -884,7 +884,7 @@ module "dns_api" {
 # gone — two topics per environment meant two subscriptions to confirm and two
 # places to look. The fail-open alarm below publishes to this module's topic.
 module "observability" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/observability?ref=observability-v4.0.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/observability?ref=observability-v4.1.0"
 
   create_dashboard = var.create_dashboard
 
@@ -916,8 +916,24 @@ module "observability" {
   # opt-out; the latency alarm evaluates nothing in a period with no traffic.
   target_group_arns     = { api = module.api.target_group_arn }
   monitor_target_health = var.monitor_target_health
-  alarm_emails          = var.alarm_emails
-  tags                  = local.tags
+
+  // Suppresses the alarms whose premise is "this environment is serving traffic":
+  // ECS CPU and memory, ALB 5xx, unhealthy hosts.
+  //
+  // Idling both environments turned their own alarms into a pager. With no registered
+  // targets every request becomes a 503, so HTTPCode_ELB_5XX_Count cleared its
+  // threshold from a single browser tab reconnecting to /v1/notifications/stream —
+  // 139 requests in a day, against a threshold of 20 per five minutes. And a service
+  // scaled to zero makes its CPU metric disappear rather than read zero, so the CPU
+  // alarm walked OK -> INSUFFICIENT_DATA -> OK on every wake and mailed an OK notice
+  // named "<service>-cpu-high" each time.
+  //
+  // Derived from the idle posture rather than being its own switch: an environment
+  // whose services have a floor of 0 is exactly one that cannot support a load alarm.
+  // Tying them together means restoring capacity re-arms the alarms in the same change.
+  environment_idle = var.api.min_count == 0 && var.worker.min_count == 0
+  alarm_emails     = var.alarm_emails
+  tags             = local.tags
 }
 
 # ── Alerting: security controls that failed OPEN ──────────────────────────────
