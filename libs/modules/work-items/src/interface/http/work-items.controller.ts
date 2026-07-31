@@ -96,6 +96,7 @@ function toWorkItemDto(w: WorkItem): WorkItemResponseDto {
     acceptanceCriteria: w.acceptanceCriteria,
     notes: w.notes,
     releaseNotes: w.releaseNotes,
+    featureId: w.featureId,
     isBlocked: w.isBlocked,
     blockedReason: w.blockedReason,
     rank: w.rank,

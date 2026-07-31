@@ -19,6 +19,11 @@ export const WorkItemResponseSchema = z.object({
   teamId: z.string().uuid().nullable(),
   iterationId: z.string().uuid().nullable(),
   releaseId: z.string().uuid().nullable(),
+  featureId: z
+    .string()
+    .uuid()
+    .nullable()
+    .describe('The Feature this item rolls up to. Always null for a task.'),
   storyPoints: z.number().nullable(),
   estimateHours: z.number().nullable(),
   todoHours: z.number().nullable(),

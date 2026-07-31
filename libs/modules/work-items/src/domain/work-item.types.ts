@@ -31,6 +31,16 @@ export interface WorkItem {
   teamId: string | null;
   iterationId: string | null;
   releaseId: string | null;
+  /**
+   * The Feature this Story/Defect rolls up to — Rally's portfolio link.
+   *
+   * Every portfolio rollup and capacity metric aggregates by this column, and until now nothing
+   * but the demo seed could set it: the field was readable through the Iteration Status read model
+   * and writable nowhere, so real rollups were only ever demonstrable on seeded data.
+   *
+   * Always null for a Task: a Task belongs to its Work Product, which carries the link.
+   */
+  featureId: string | null;
   // Drizzle returns numeric columns as strings to preserve precision.
   storyPoints: string | null;
   estimateHours: string | null;
@@ -151,6 +161,8 @@ export interface UpdateWorkItemInput {
   teamId?: string | null;
   iterationId?: string | null;
   releaseId?: string | null;
+  /** Link (or `null` to unlink) this Story/Defect to a Feature. */
+  featureId?: string | null;
   storyPoints?: string | null;
   estimateHours?: string | null;
   todoHours?: string | null;

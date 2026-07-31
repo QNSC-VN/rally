@@ -132,7 +132,8 @@
     "reasonNotProvided": "Reason not provided.",
     "tags": "Tags",
     "creationDate": "Creation Date",
-    "readOnlyNotice": "You have read-only access to this item."
+    "readOnlyNotice": "You have read-only access to this item.",
+    "noFeature": "No Feature"
   },
   "connections": {
     "search": "Search connections…",

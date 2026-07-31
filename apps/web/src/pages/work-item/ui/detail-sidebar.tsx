@@ -15,6 +15,8 @@ import {
 } from '@/features/work-items/api'
 import { useProjectTeams, useProjectMembers } from '@/features/teams/api'
 import { useReleases } from '@/features/releases/api'
+import { usePortfolioItems } from '@/features/portfolio/api'
+import { PortfolioItemType } from '@/entities/work-item/model/types'
 import { useMilestones } from '@/features/milestones/api'
 import { useIterationOptions } from '@/features/iterations/api'
 import { useSaveState } from '@/shared/lib/hooks/use-save-state'
@@ -138,6 +140,8 @@ export function DetailSidebar({
   const { data: teams = [] } = useProjectTeams(item.projectId)
   const { data: members = [] } = useProjectMembers(item.projectId)
   const { data: releases = [] } = useReleases(item.projectId)
+  // Cross-project on purpose (see the Feature field below): no projectId filter.
+  const { items: features } = usePortfolioItems({ type: PortfolioItemType.Feature })
   const { data: iterations = [] } = useIterationOptions(item.projectId, item.teamId)
   const { data: parentItem } = useWorkItem(item.parentId ?? undefined)
   const { data: taskTotals } = useTaskTotals(item.type !== 'task' ? item.id : undefined)
@@ -469,6 +473,30 @@ export function DetailSidebar({
                   })),
                 ]}
                 onChange={(v) => onUpdate({ releaseId: v || null })}
+              />
+            </FormField>
+            {/* Feature — the portfolio link every rollup aggregates by.
+                Only active FEATURES are offered: Rally attaches the story hierarchy to the lowest
+                portfolio level, and an Epic counts this work through its Features. Cross-project
+                Features are deliberately included — Rally lets a team project's Story roll up to a
+                portfolio project's Feature, and the portfolio rollup matches on the link alone. */}
+            <FormField label={t('sidebar.feature')}>
+              <SearchableSelect
+                variant="field"
+                value={item.featureId ?? ''}
+                readOnly={disabled}
+                ariaLabel={t('sidebar.feature')}
+                placeholder={t('sidebar.noFeature')}
+                options={[
+                  { value: '', label: t('sidebar.noFeature') },
+                  ...features.map((f) => ({
+                    value: f.id,
+                    label: `${f.itemKey}: ${f.name}`,
+                    searchText: `${f.itemKey} ${f.name}`,
+                    icon: <TypeBadge type="feature" size={16} />,
+                  })),
+                ]}
+                onChange={(v) => onUpdate({ featureId: v || null })}
               />
             </FormField>
             {/* Milestones — many-to-many, persisted independently of Release

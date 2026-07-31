@@ -134,6 +134,13 @@ export const UpdateWorkItemSchema = z.object({
   teamId: z.string().uuid().nullable().optional(),
   iterationId: z.string().uuid().nullable().optional(),
   releaseId: z.string().uuid().nullable().optional(),
+  /**
+   * Link this Story/Defect to a Feature, or `null` to unlink it.
+   *
+   * Every portfolio rollup and capacity metric aggregates by this field. It must name an active
+   * FEATURE — not an Epic, which rolls up through its Features — and a Task cannot carry one.
+   */
+  featureId: z.string().uuid().nullable().optional(),
   storyPoints: pointsNullable,
   estimateHours: hoursNullable,
   todoHours: hoursNullable,
