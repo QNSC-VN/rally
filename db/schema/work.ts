@@ -517,7 +517,10 @@ export const capacityPlanAllocations = workSchema.table(
      * all" is already expressed by `team_id IS NULL`, Rally's unassigned state.
      */
     isPrimary: boolean('is_primary').notNull().default(false),
-    value: numeric('value', { precision: 10, scale: 2 }).notNull().default('0'),
+    // NULLABLE, and the default is gone with the NOT NULL: null means "not explicitly
+    // allocated", which the read path resolves to the Feature's own estimate (Refined →
+    // Preliminary). Rally's `Allocation` column is blank on exactly those rows.
+    value: numeric('value', { precision: 10, scale: 2 }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

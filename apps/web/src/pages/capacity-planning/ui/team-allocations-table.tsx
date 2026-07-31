@@ -26,17 +26,33 @@ export function TeamAllocationsTable({
   planId,
   allocations,
   teamName,
-  unitLabel,
   canManage,
   onOpenFeature,
+  rankPositionOf,
+  sharingOf,
 }: {
   planId: string
   allocations: CapacityAllocation[]
   /** Owning team, or null for the Unallocated bucket. Used for the make-primary label. */
   teamName: string | null
-  unitLabel: string
   canManage: boolean
   onOpenFeature: (portfolioItemId: string) => void
+  /**
+   * The Feature's 1-based position in the PLAN's rank order.
+   *
+   * Resolved by the page from the plan's item list rather than counted inside this table: a team's
+   * rows are a subset of the plan, so counting locally would number them 1..n and claim a priority
+   * order this team does not own.
+   */
+  rankPositionOf: (portfolioItemId: string) => number | null
+  /**
+   * Who else holds this Feature: its owning team when that is not this table's, and the other teams
+   * it was allocated to when this table's team owns it.
+   *
+   * Resolved by the page from the plan's allocation list — a nested table only sees its own rows, so
+   * it cannot tell whether a Feature is shared.
+   */
+  sharingOf: (portfolioItemId: string) => { owner: string | null; contributors: string[] }
 }) {
   const { t } = useTranslation('capacity')
   const table = useDataTable<CapacityAllocation, unknown, AllocColKey>(
@@ -65,11 +81,13 @@ export function TeamAllocationsTable({
               key={allocation.id}
               planId={planId}
               allocation={allocation}
-              unitLabel={unitLabel}
               canManage={canManage}
               colStyleFor={colStyleFor}
               onOpenFeature={onOpenFeature}
               teamName={teamName}
+              rankPosition={rankPositionOf(allocation.portfolioItemId)}
+              ownerTeamName={sharingOf(allocation.portfolioItemId).owner}
+              contributorTeamNames={sharingOf(allocation.portfolioItemId).contributors}
             />
           ))}
         </DataTableFrame>

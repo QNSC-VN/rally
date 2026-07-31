@@ -16,7 +16,6 @@ import {
   computeCapacityWarnings,
   computeCutlineIndex,
   type EstimateTier,
-  defaultAllocationEstimate,
   resolveEstimate,
 } from '@modules/portfolio';
 import { releases, teams } from '../../../../../db/schema/work';
@@ -209,14 +208,23 @@ export class CapacityPlansService {
   }
 
   /**
-   * Hard delete, and only for a DRAFT.
+   * Hard delete — a PUBLISHED plan too, which is the one write on this service that a published
+   * state does not block.
    *
-   * A published plan has already written Release and planned dates onto Features; deleting it
-   * would leave those values behind with nothing explaining them. Revert first — that is the
-   * documented way back, and it undoes the writes.
+   * Rally is explicit: "you can delete an existing plan, even if the plan is published". It is the
+   * same reasoning Rally gives for unpublish not clearing field values — the plan is the planning
+   * artefact, and the Release and planned dates it wrote onto Features are now those Features'
+   * own data. Deleting the plan abandons the explanation, not the values, and a planner who wants
+   * them undone reverts first (which is what revert is for).
+   *
+   * So this deliberately does NOT call `requireDraft`. It only checks the row exists in the
+   * caller's workspace, which `findById` + the workspace-scoped delete both do.
    */
   async deletePlan(actor: JwtPayload, id: string): Promise<void> {
-    const plan = await this.requireDraft(actor, id);
+    const plan = await this.repo.findById(id, actor.workspaceId);
+    if (!plan) {
+      throw new NotFoundException('CAPACITY_PLAN_NOT_FOUND', 'Capacity plan not found');
+    }
     await this.access.assertProjectPermission(actor, plan.projectId, 'capacity:manage');
     await this.repo.delete(id, actor.workspaceId);
   }
@@ -495,18 +503,31 @@ export class CapacityPlansService {
     const plan = await this.requireDraft(actor, planId);
     await this.access.assertProjectPermission(actor, plan.projectId, 'capacity:manage');
 
-    const feature = await this.requireAllocatableFeature(actor, plan, input.portfolioItemId);
+    // Called for the CHECK, not for a value: the target must be a Feature in the plan's project and
+    // not archived. Its estimate is no longer copied into the row — a null allocation resolves that
+    // on read instead — so nothing here needs the returned item.
+    await this.requireAllocatableFeature(actor, plan, input.portfolioItemId);
     const teamId = input.teamId ?? null;
     if (teamId !== null) await this.requirePlanTeam(planId, teamId);
 
-    const value = await this.resolveAllocationValue(actor, feature, input.value);
+    /**
+     * A blank Estimate stores NULL, it no longer defaults a number into the row.
+     *
+     * That is Rally's assignment: the Feature is planned against this team and the plan charges the
+     * Feature's own estimate there. Writing the estimate INTO the row instead — which is what this
+     * used to do — froze a copy of it, so a later change to the Feature stopped moving the plan and
+     * the `Allocation` column could never be blank the way Rally's is.
+     */
+    const value = input.value === undefined ? null : input.value;
 
     const existing = await this.repo.findAllocationFor(planId, input.portfolioItemId, teamId);
     if (existing) {
-      // Adding to what is already committed, not replacing it: the planner asked to
-      // allocate more of this Feature to this team.
-      const merged = Number(existing.value) + Number(value);
-      await this.repo.updateAllocation(existing.id, { value: String(merged) });
+      // Adding to what is already committed, not replacing it: the planner asked to allocate more
+      // of this Feature to this team. A merge into a row that had no explicit value starts from the
+      // supplied number alone — there was no committed slice to add to, only a fallback.
+      const merged =
+        value === null ? existing.value : String(Number(existing.value ?? 0) + Number(value));
+      await this.repo.updateAllocation(existing.id, { value: merged });
     } else {
       /**
        * The FIRST team to receive work on a Feature becomes its primary.
@@ -527,7 +548,7 @@ export class CapacityPlansService {
         planId,
         portfolioItemId: input.portfolioItemId,
         teamId,
-        value: String(value),
+        value: value === null ? null : String(value),
         isPrimary: teamId !== null && !alreadyHasPrimary,
       });
     }
@@ -560,7 +581,10 @@ export class CapacityPlansService {
       await this.repo.updateAllocation(
         allocationId,
         {
-          ...(input.value === undefined ? {} : { value: String(input.value) }),
+          // `null` clears the explicit allocation; `undefined` leaves it untouched.
+          ...(input.value === undefined
+            ? {}
+            : { value: input.value === null ? null : String(input.value) }),
           ...(input.teamId === undefined ? {} : { teamId: input.teamId }),
           ...(losesTeam ? { isPrimary: false } : {}),
         },
@@ -657,8 +681,21 @@ export class CapacityPlansService {
       plan.unit === 'points' ? map[size].points : map[size].count;
 
     const allocations: CapacityAllocationView[] = rows.map((row) => {
+      /**
+       * What this team is charged for this Feature.
+       *
+       * An EXPLICIT value wins and reads as the `allocated` tier. A null value means the planner
+       * assigned the Feature here without allocating a slice — Rally's primary assignment — so the
+       * charge falls back to the Feature's own estimate, Refined then Preliminary, and the tier
+       * says which. That fallback is per ROW rather than shared, matching Rally's documented
+       * behaviour that allocating 40 to each of two teams totals 80: nothing is split.
+       *
+       * `row.totalAllocated` (the SUM over this Feature's team rows) is deliberately NOT the input
+       * for a null row — folding it in would charge one team with what the others were allocated.
+       */
+      const explicit = row.value === null ? null : Number(row.value);
       const resolved = resolveEstimate({
-        totalAllocated: row.totalAllocated,
+        totalAllocated: explicit ?? 0,
         refined: row.refined,
         preliminary: inUnit(row.preliminarySize),
       });
@@ -674,16 +711,27 @@ export class CapacityPlansService {
         itemKey: row.itemKey,
         name: row.name,
         tier: resolved.tier,
+        rank: row.rank,
+        state: row.state,
+        projectId: row.itemProjectId,
+        projectName: row.itemProjectName,
+        estimateBreakdown: {
+          allocated: explicit,
+          refined: row.refined,
+          // 0 means the workspace maps this size to nothing, which reads as "no estimate" rather
+          // than as a real zero — the tooltip shows a dash for it.
+          preliminary: inUnit(row.preliminarySize) || null,
+        },
         metrics: {
           complete: row.complete,
           rollup: row.rollup,
-          estimated: Number(row.value),
+          estimated: resolved.value,
           // A Feature row has no capacity of its own — the ceiling belongs to the team.
           capacity: null,
           warnings: computeCapacityWarnings({
             kind: 'feature',
             rollup: row.rollup,
-            estimated: Number(row.value),
+            estimated: resolved.value,
             capacity: null,
             // Carries Rally's "Feature Missing Estimate Error": tier `none` means no
             // allocation, no refined forecast and no preliminary mapping, so there is
@@ -697,9 +745,11 @@ export class CapacityPlansService {
     const teams = await Promise.all(
       plan.teams.map(async (team) => {
         const { complete, rollup } = await this.repo.teamMetrics(plan, team.teamId);
+        // Sums the RESOLVED charge, not the raw column: a row with no explicit allocation still
+        // costs this team the Feature's estimate, which is the whole point of Rally's assignment.
         const estimated = allocations
           .filter((a) => a.teamId === team.teamId)
-          .reduce((sum, a) => sum + Number(a.value), 0);
+          .reduce((sum, a) => sum + a.metrics.estimated, 0);
         const capacity = team.capacity === null ? null : Number(team.capacity);
 
         return {
@@ -744,10 +794,11 @@ export class CapacityPlansService {
           rank: row.rank,
           projectId: row.itemProjectId,
           projectName: row.itemProjectName,
-          // Sums the COMMITTED demand across this Feature's allocations. Rally's Estimated
-          // becomes the allocated total once any allocation exists, which is the same rule
-          // `resolveEstimate` applies per row.
-          estimated: Number(row.value),
+          // Sums the RESOLVED charge across this Feature's team rows — an explicit allocation
+          // where there is one, the Feature's own estimate where the team was merely assigned.
+          // Same figure the sub-table shows per row, so the item total is the sum of what the
+          // reader can see.
+          estimated: allocations[index].metrics.estimated,
           rollup: row.itemRollup,
           complete: row.itemComplete,
           tier: allocations[index].tier,
@@ -758,7 +809,7 @@ export class CapacityPlansService {
         });
       } else {
         const item = items[at];
-        item.estimated += Number(row.value);
+        item.estimated += allocations[index].metrics.estimated;
         if (row.teamId === null) item.unallocated = true;
         else item.teamIds.push(row.teamId);
         if (row.isPrimary) item.primaryTeamId = row.teamId;
@@ -792,29 +843,8 @@ export class CapacityPlansService {
       /** Demand parked without a team. Excluded from Total Allocated by design. */
       unallocated: allocations
         .filter((a) => a.teamId === null)
-        .reduce((sum, a) => sum + Number(a.value), 0),
+        .reduce((sum, a) => sum + a.metrics.estimated, 0),
     };
-  }
-
-  /**
-   * The value a blank Estimate field commits.
-   *
-   * Uses `defaultAllocationEstimate`, which DELIBERATELY skips the allocated tier — the
-   * subtlest rule in Phase 5. Folding allocations back in would mean a blank field commits
-   * the sum of the very allocations it is being used to create.
-   */
-  private async resolveAllocationValue(
-    actor: JwtPayload,
-    feature: { refinedEstimate: string | null; preliminaryEstimate: PreliminaryEstimateSize },
-    supplied: number | undefined,
-  ): Promise<number> {
-    if (supplied !== undefined) return supplied;
-    const map = await this.estimateMaps.forWorkspace(actor.workspaceId);
-    const size = map[feature.preliminaryEstimate];
-    return defaultAllocationEstimate({
-      refined: feature.refinedEstimate === null ? null : Number(feature.refinedEstimate),
-      preliminary: size.points,
-    }).value;
   }
 
   /**

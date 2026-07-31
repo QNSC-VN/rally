@@ -309,7 +309,8 @@ export function useUpdateAllocation() {
     }: {
       id: string
       allocationId: string
-      value?: number
+      /** `null` clears the explicit allocation, so the row charges the Feature's estimate again. */
+      value?: number | null
       teamId?: string | null
     }) => {
       const { data, error, response } = await apiClient.PATCH(

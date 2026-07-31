@@ -1,9 +1,8 @@
-import { type CSSProperties } from 'react'
+import { useMemo, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Star, Trash2 } from 'lucide-react'
+import { Star } from 'lucide-react'
 
 import {
-  useRemoveAllocation,
   useSetPrimaryAllocation,
   useUpdateAllocation,
   type CapacityAllocation,
@@ -11,13 +10,14 @@ import {
 import { BRAND } from '@/shared/config/brand'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { CompositeBar } from '@/shared/ui/composite-bar'
+import { CapacityBarTooltip } from './capacity-bar-tooltip'
 import { MetricValue } from '@/shared/ui/metric-value'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { IconButton } from '@/shared/ui/icon-button'
 import { notify } from '@/shared/lib/toast'
 import { useCapacityWarningText } from '@/features/capacity-planning/warning-labels'
 import { type AllocColKey } from '../model/columns'
-import { EstimateTierBadge } from './estimate-tier-badge'
+import { EstimateTierIcon } from './estimate-tier-badge'
 
 /**
  * One allocated Feature inside its team's sub-table (or the Unallocated bucket's).
@@ -33,30 +33,89 @@ import { EstimateTierBadge } from './estimate-tier-badge'
 export function AllocationRow({
   planId,
   allocation,
-  unitLabel,
   canManage,
   colStyleFor,
   onOpenFeature,
   teamName,
+  rankPosition,
+  ownerTeamName,
+  contributorTeamNames,
 }: {
   planId: string
   allocation: CapacityAllocation
-  unitLabel: string
   canManage: boolean
   colStyleFor: (key: AllocColKey, base?: CSSProperties) => CSSProperties
   onOpenFeature: (portfolioItemId: string) => void
   /** This row's team name, for the "make primary" label — ids make a useless accessible name. */
   teamName: string | null
+  /** The Feature's 1-based position in the plan's rank order, resolved by the table. */
+  rankPosition: number | null
+  /**
+   * The team that OWNS this Feature on the plan (its primary assignment), when that is not this
+   * row's team. Drives `← from`.
+   */
+  ownerTeamName: string | null
+  /**
+   * The OTHER teams this Feature is allocated to, when this row IS the owner. Drives `→ to`.
+   *
+   * Names rather than ids, resolved by the page: this cell prints them, and ids would make it reach
+   * back into the plan to translate.
+   */
+  contributorTeamNames: string[]
 }) {
   const { t } = useTranslation('capacity')
+  /**
+   * Rally's `Allocation` cell: how this Feature is SHARED, not a number.
+   *
+   * `← from <team>` when another team owns it and the work was allocated into this one; `→ to <team>`
+   * when this team owns it and part of the work went elsewhere. Null when the Feature lives entirely
+   * inside this team — most rows — because "from this team" on every row is noise.
+   */
+  const sharing = useMemo(() => {
+    if (!allocation.isPrimary && ownerTeamName !== null) {
+      return {
+        arrow: '←',
+        preposition: t('row.from'),
+        teamNames: ownerTeamName,
+        title: t('row.allocatedFrom', { team: ownerTeamName }),
+      }
+    }
+    if (allocation.isPrimary && contributorTeamNames.length > 0) {
+      const names = contributorTeamNames.join(', ')
+      return {
+        arrow: '→',
+        preposition: t('row.to'),
+        teamNames: names,
+        title: t('row.allocatedTo', { team: names }),
+      }
+    }
+    return null
+  }, [allocation.isPrimary, ownerTeamName, contributorTeamNames, t])
+
+  // The Feature state vocabulary lives in the portfolio namespace — the same labels the Portfolio
+  // page shows, so a state cannot read one way there and another way inside a plan.
+  const { t: tPortfolio } = useTranslation('portfolio')
   const warningText = useCapacityWarningText()
   const update = useUpdateAllocation()
   const setPrimary = useSetPrimaryAllocation()
-  const remove = useRemoveAllocation()
   const { metrics } = allocation
 
   function commit(raw: string) {
-    const next = Number(raw.trim())
+    const trimmed = raw.trim()
+    // Emptying the cell CLEARS the explicit allocation (sends null) rather than committing 0: this
+    // team is still planned to work on the Feature, it just has no slice of its own again.
+    if (trimmed === '') {
+      if (allocation.value === null) return
+      update.mutate(
+        { id: planId, allocationId: allocation.id, value: null },
+        {
+          onSuccess: () => notify.success(t('row.allocationCleared')),
+          onError: (err) => notify.error(err.message),
+        },
+      )
+      return
+    }
+    const next = Number(trimmed)
     if (!Number.isFinite(next) || next < 0) {
       notify.error(t('row.capacityInvalid'))
       return
@@ -73,6 +132,15 @@ export function AllocationRow({
 
   return (
     <div className="group flex min-h-[30px] items-center border-b border-border-inner px-2 text-ui-md transition-colors hover:bg-primary-lighter">
+      {/* The FEATURE's plan-wide rank, not a position in this team's list: a planner reading one
+          team still wants to know where each Feature sits in the plan's priority order. */}
+      <div
+        style={colStyleFor('rank', { flexShrink: 0 })}
+        className="px-2 text-right text-muted-foreground tabular-nums"
+      >
+        {rankPosition ?? '—'}
+      </div>
+
       <div style={colStyleFor('id', { flexShrink: 0 })} className="min-w-0 px-2">
         <IdCell
           type="feature"
@@ -88,10 +156,10 @@ export function AllocationRow({
         <span className="truncate text-foreground" title={allocation.name}>
           {allocation.name}
         </span>
-        <EstimateTierBadge tier={allocation.tier} />
-        {/* Rally assigns a Feature to ONE team and allocates to the rest. The badge says which row
-            owns it; the button on a contributor moves that ownership without a dialog, because it
-            is a single-field change whose result is visible immediately. */}
+        {/* Rally marks the primary assignment on the Features tab's `Planned Team Assignment`
+            field, not in this table — but that field is not editable here yet, so the badge and
+            the promote action stay in this cell as the only surface for them. The TIER moved out
+            to its own trailing column, where Rally keeps it. */}
         {allocation.isPrimary ? (
           <span
             className="shrink-0 rounded-sm px-1 py-px text-ui-xs font-medium"
@@ -128,23 +196,24 @@ export function AllocationRow({
         )}
       </div>
 
-      {/* Rally's `Allocation`: this team's promised slice, edited in place. Under the parent's
-          headers this number sat below one reading "Capacity", which is the team's ceiling — a
-          different figure entirely. */}
-      <div
-        style={colStyleFor('allocation', { flexShrink: 0 })}
-        className="min-w-0 px-0"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <InlineEditableCell
-          fullCell
-          value={String(allocation.value)}
-          canEdit={canManage}
-          onCommit={commit}
-          ariaLabel={t('row.allocationLabel', { feature: allocation.itemKey })}
-          className="block w-full text-right"
-          inputClassName="w-full rounded border border-primary bg-transparent px-1 py-0.5 text-right text-ui-sm text-foreground focus:outline-none"
-        />
+      {/* Rally's `Allocation`: the Feature's SHARING, not a number — `← from <team>` when another
+          team owns it, `→ to <team>` when this team owns it and part of the work went elsewhere. The
+          allocated points live in the trailing `Estimate` tooltip and are edited in `Estimated`. */}
+      <div style={colStyleFor('allocation', { flexShrink: 0 })} className="min-w-0 px-2">
+        {sharing !== null && (
+          <span className="truncate text-ui-sm text-muted-foreground italic" title={sharing.title}>
+            {sharing.arrow} {sharing.preposition}{' '}
+            <span className="font-medium">{sharing.teamNames}</span>
+          </span>
+        )}
+      </div>
+
+      {/* The FEATURE's own state — Rally's `State` column on this table. Read-only here: the state
+          belongs to the Feature and is edited on the Portfolio page, not inside a plan. */}
+      <div style={colStyleFor('state', { flexShrink: 0 })} className="min-w-0 px-2">
+        <span className="truncate text-muted-foreground">
+          {tPortfolio(`states.${allocation.state}`)}
+        </span>
       </div>
 
       <div style={colStyleFor('progress', { flexShrink: 0 })} className="min-w-0 px-2">
@@ -154,12 +223,14 @@ export function AllocationRow({
           estimated={metrics.estimated}
           capacity={metrics.capacity}
           warningLabels={warningText(metrics.warnings)}
-          title={t('row.barTooltip', {
-            complete: metrics.complete,
-            rollup: metrics.rollup,
-            estimated: metrics.estimated,
-            unit: unitLabel,
-          })}
+          tooltip={
+            <CapacityBarTooltip
+              complete={metrics.complete}
+              rollup={metrics.rollup}
+              estimated={metrics.estimated}
+              capacity={metrics.capacity}
+            />
+          }
         />
       </div>
 
@@ -171,32 +242,37 @@ export function AllocationRow({
       <div style={colStyleFor('rollup', { flexShrink: 0 })} className="px-2 text-right">
         <MetricValue value={metrics.rollup} pct={null} />
       </div>
-      <div style={colStyleFor('estimated', { flexShrink: 0 })} className="px-2 text-right">
-        <MetricValue value={metrics.estimated} pct={null} />
-      </div>
-
+      {/* `Estimated` is the row's charge AND its editor: typing here allocates an explicit slice to
+          this team, clearing it hands the row back to the Feature's own estimate. Rally edits the
+          allocation through its assignment dialog; we put it on the number it changes, which is the
+          same cell a reader is already looking at. */}
       <div
-        style={colStyleFor('actions', { flexShrink: 0 })}
-        className="flex items-center justify-center px-2"
+        style={colStyleFor('estimated', { flexShrink: 0 })}
+        className="min-w-0 px-0"
         onClick={(e) => e.stopPropagation()}
       >
-        {canManage && (
-          <IconButton
-            aria-label={t('row.removeAllocation', { feature: allocation.itemKey })}
-            onClick={() =>
-              remove.mutate(
-                { id: planId, allocationId: allocation.id },
-                {
-                  onSuccess: () => notify.success(t('row.allocationRemoved')),
-                  onError: (err) => notify.error(err.message),
-                },
-              )
-            }
-            disabled={remove.isPending}
-          >
-            <Trash2 size={13} />
-          </IconButton>
-        )}
+        <InlineEditableCell
+          fullCell
+          value={allocation.value === null ? '' : String(allocation.value)}
+          canEdit={canManage}
+          onCommit={commit}
+          ariaLabel={t('row.allocationLabel', { feature: allocation.itemKey })}
+          displayValue={
+            <span className="block w-full text-right">
+              <MetricValue value={metrics.estimated} pct={null} />
+            </span>
+          }
+          className="block w-full text-right"
+          inputClassName="w-full rounded border border-primary bg-transparent px-1 py-0.5 text-right text-ui-sm text-foreground focus:outline-none"
+        />
+      </div>
+
+      {/* Rally's trailing `Estimate` glyph: which tier this row's Estimated came from. */}
+      <div
+        style={colStyleFor('tier', { flexShrink: 0 })}
+        className="flex items-center justify-center px-1"
+      >
+        <EstimateTierIcon tier={allocation.tier} breakdown={allocation.estimateBreakdown} />
       </div>
     </div>
   )

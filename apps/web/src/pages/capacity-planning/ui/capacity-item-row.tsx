@@ -1,6 +1,6 @@
 import { type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, Trash2 } from 'lucide-react'
 
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { MetricValue } from '@/shared/ui/metric-value'
@@ -8,7 +8,8 @@ import { RowExpandToggle } from '@/shared/ui/row-expand-toggle'
 import { BRAND } from '@/shared/config/brand'
 import { cn } from '@/shared/lib/utils'
 import type { CapacityPlanItem } from '@/features/capacity-planning/api'
-import { EstimateTierBadge } from './estimate-tier-badge'
+import { EstimateTierIcon } from './estimate-tier-badge'
+import { ActionMenu, ActionMenuItem } from '@/shared/ui/action-menu'
 import { type ItemColKey } from '../model/columns'
 
 /**
@@ -29,6 +30,7 @@ export function CapacityItemRow({
   belowCutline,
   expanded = false,
   onToggleExpanded,
+  onRemove,
   colStyleFor,
   onOpenFeature,
 }: {
@@ -43,6 +45,8 @@ export function CapacityItemRow({
   expanded?: boolean
   /** Omitted where nothing can be nested — the toggle then renders as a spacer. */
   onToggleExpanded?: () => void
+  /** Removes the Feature from the plan. Omitted for a reader without `capacity:manage`. */
+  onRemove?: () => void
   colStyleFor: (key: ItemColKey, base?: CSSProperties) => CSSProperties
   onOpenFeature: (portfolioItemId: string) => void
 }) {
@@ -140,8 +144,28 @@ export function CapacityItemRow({
         style={colStyleFor('estimated', { flexShrink: 0 })}
         className="flex items-center justify-end gap-1.5 px-2"
       >
-        <EstimateTierBadge tier={item.tier} />
+        <EstimateTierIcon tier={item.tier} />
         <span className="tabular-nums">{item.estimated}</span>
+      </div>
+
+      {/* Rally's per-item menu: `Remove Only` takes the Feature off the plan, dropping every team's
+          allocation of it. The only removal surface for a Feature — a trash can in a team's
+          sub-table would remove it from that team while leaving it on the plan, which is a
+          different decision and one Rally makes through the assignment field instead. */}
+      <div
+        style={colStyleFor('actions', { flexShrink: 0 })}
+        className="flex items-center justify-center px-1"
+      >
+        {onRemove !== undefined && (
+          <ActionMenu ariaLabel={t('items.actionsLabel', { item: item.itemKey })}>
+            <ActionMenuItem
+              icon={<Trash2 size={13} />}
+              label={t('items.removeFromPlan')}
+              destructive
+              onClick={onRemove}
+            />
+          </ActionMenu>
+        )}
       </div>
     </div>
   )

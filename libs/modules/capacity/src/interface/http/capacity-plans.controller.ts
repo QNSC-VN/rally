@@ -92,9 +92,15 @@ function toDto(p: CapacityPlanDetail): CapacityPlanResponseDto {
       name: a.name,
       teamId: a.teamId,
       isPrimary: a.isPrimary,
-      // numeric arrives as a string from Drizzle; the API contract is a number.
-      value: Number(a.value),
+      // numeric arrives as a string from Drizzle; the API contract is a number. Null stays null —
+      // it is the difference between "allocated nothing" and "not allocated".
+      value: a.value === null ? null : Number(a.value),
       tier: a.tier,
+      rank: a.rank,
+      state: a.state,
+      projectId: a.projectId,
+      projectName: a.projectName,
+      estimateBreakdown: a.estimateBreakdown,
       metrics: a.metrics,
     })),
     unallocated: p.unallocated,
@@ -196,7 +202,7 @@ export class CapacityPlansController {
   @Delete(':id')
   @HttpCode(204)
   @RequirePermission('capacity:manage', { resource: 'capacity_plan', from: 'param', field: 'id' })
-  @ApiOperation({ summary: 'Delete a draft plan' })
+  @ApiOperation({ summary: 'Delete a plan (published plans included)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 204, description: 'Deleted' })
   @ApiCommonErrors(401, 403, 404, 422)

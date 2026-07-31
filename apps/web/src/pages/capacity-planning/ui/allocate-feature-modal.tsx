@@ -18,7 +18,9 @@ import { useAllocate, type CapacityPlan } from '@/features/capacity-planning/api
  * Only FEATURES are offered — an Epic has no children of its own to roll up, so allocating
  * to one would produce a row whose Rollup is permanently zero. The API refuses it too.
  *
- * Leaving Estimate blank accepts the server's default: Refined → Preliminary, deliberately
+ * Leaving Estimate blank ASSIGNS without allocating — Rally's primary assignment. The row stores
+ * null and the plan charges this Feature's own estimate (Refined → Preliminary) to the team, which
+ * is also why Rally's `Allocation` column is blank on those rows. Previously
  * SKIPPING the allocated tier. That is the anti-circularity rule — if the default folded in
  * existing allocations, a blank field would commit the sum of the very allocations it is
  * being used to create. The hint under the field says so, because a silent default that

@@ -134,7 +134,15 @@ export const CAPACITY_TEAM_COLUMNS: ColumnSpec<CapacityPlanTeam, unknown, TeamCo
 ]
 
 export type ItemColKey =
-  'rank' | 'id' | 'name' | 'project' | 'assignment' | 'complete' | 'rollup' | 'estimated'
+  | 'rank'
+  | 'id'
+  | 'name'
+  | 'project'
+  | 'assignment'
+  | 'complete'
+  | 'rollup'
+  | 'estimated'
+  | 'actions'
 
 /**
  * Rally's Features tab: one row per Feature, ranked, with its allocations nested underneath.
@@ -160,31 +168,58 @@ export const CAPACITY_ITEM_COLUMNS: ColumnSpec<CapacityPlanItem, unknown, ItemCo
   { key: 'complete', label: 'Complete', defaultWidth: 96, minWidth: 80, align: 'right' },
   { key: 'rollup', label: 'Rollup', defaultWidth: 90, minWidth: 76, align: 'right' },
   { key: 'estimated', label: 'Estimated', defaultWidth: 110, minWidth: 90, align: 'right' },
+  // Rally's per-item menu lives here — "Remove Only" takes a Feature off the plan. This is the ONLY
+  // place a Feature leaves a plan: the team sub-table has no trash, because removing a Feature is a
+  // decision about the plan, not about one team's slice of it.
+  { key: 'actions', label: '', defaultWidth: 44, minWidth: 44, align: 'center' },
 ]
 
 export type AllocColKey =
-  'id' | 'name' | 'allocation' | 'progress' | 'complete' | 'rollup' | 'estimated' | 'actions'
+  | 'rank'
+  | 'id'
+  | 'name'
+  | 'allocation'
+  | 'state'
+  | 'progress'
+  | 'complete'
+  | 'rollup'
+  | 'estimated'
+  | 'tier'
 
 /**
  * The SUB-TABLE under an expanded team: the Features allocated to it, with its own header row.
  *
  * Rally nests a real table here rather than continuing the parent's columns, and the reason is that
  * the two grids report different things. The parent's `Features` column is a count, its `Capacity`
- * is a ceiling a planner typed; a child row has no count and no ceiling — it has an `Allocation`,
- * the slice of that ceiling this Feature was promised. Reusing the parent's headers made a child's
- * allocation sit under a header that said "Capacity", which is a different number.
+ * is a ceiling a planner typed; a child row has neither — it has an `Allocation`, the slice of that
+ * ceiling this Feature was promised. Reusing the parent's headers made a child's allocation sit
+ * under a header that said "Capacity", which is a different number.
+ *
+ * Column set follows Rally's own, left to right: `Rank`, `ID`, `Name`, `Allocation`, `State`, the
+ * bar, `Complete`, `Rollup`, `Estimated`, then the primary-assignment star. `Rank` and `State`
+ * belong to the FEATURE, not to the allocation — a planner reading one team's list still wants the
+ * plan-wide priority and where the Feature has got to.
+ *
+ * Widths sum to ~1030px so the nested table fits inside the indented container without its own
+ * horizontal scrollbar: a scrollbar inside a scrollable page reads as a broken layout, and the
+ * columns here are all short values.
  *
  * Same `useDataTable` + `DataTableFrame` as every other grid, so the nested table resizes, reorders
  * and scrolls exactly like the one above it.
  */
 export const CAPACITY_ALLOCATION_COLUMNS: ColumnSpec<CapacityAllocation, unknown, AllocColKey>[] = [
-  { key: 'id', label: 'ID', defaultWidth: 96, minWidth: 80, locked: true },
-  { key: 'name', label: 'Name', defaultWidth: 240, minWidth: 140, locked: true, grow: true },
+  { key: 'rank', label: 'Rank', defaultWidth: 60, minWidth: 52, align: 'right' },
+  { key: 'id', label: 'ID', defaultWidth: 92, minWidth: 80, locked: true },
+  { key: 'name', label: 'Name', defaultWidth: 220, minWidth: 130, locked: true, grow: true },
   // Rally's own column name for a team's promised slice of a Feature. Editable in place.
-  { key: 'allocation', label: 'Allocation', defaultWidth: 100, minWidth: 84, align: 'right' },
-  { key: 'progress', label: '', defaultWidth: 150, minWidth: 110 },
-  { key: 'complete', label: 'Complete', defaultWidth: 88, minWidth: 74, align: 'right' },
-  { key: 'rollup', label: 'Rollup', defaultWidth: 84, minWidth: 70, align: 'right' },
-  { key: 'estimated', label: 'Estimated', defaultWidth: 88, minWidth: 74, align: 'right' },
-  { key: 'actions', label: '', defaultWidth: 64, minWidth: 64, align: 'center' },
+  { key: 'allocation', label: 'Allocation', defaultWidth: 92, minWidth: 80, align: 'right' },
+  { key: 'state', label: 'State', defaultWidth: 130, minWidth: 90 },
+  { key: 'progress', label: '', defaultWidth: 130, minWidth: 100 },
+  { key: 'complete', label: 'Complete', defaultWidth: 86, minWidth: 72, align: 'right' },
+  { key: 'rollup', label: 'Rollup', defaultWidth: 80, minWidth: 68, align: 'right' },
+  { key: 'estimated', label: 'Estimated', defaultWidth: 86, minWidth: 72, align: 'right' },
+  // Rally ends the row with the ESTIMATE glyph — which tier the Estimated figure came from. There
+  // is no delete here: Rally removes a Feature from a plan through the item's own menu on the
+  // Features tab ("Remove Only"), not with a trash can inside a team's list.
+  { key: 'tier', label: '', defaultWidth: 40, minWidth: 40, align: 'center' },
 ]

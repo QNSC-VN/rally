@@ -99,7 +99,8 @@ export interface ICapacityPlanRepository {
       planId: string;
       portfolioItemId: string;
       teamId: string | null;
-      value: string;
+      /** `null` = assigned without an explicit allocation. */
+      value: string | null;
       isPrimary?: boolean;
     },
     executor?: DbExecutor,
@@ -107,7 +108,7 @@ export interface ICapacityPlanRepository {
 
   updateAllocation(
     id: string,
-    input: { value?: string; teamId?: string | null; isPrimary?: boolean },
+    input: { value?: string | null; teamId?: string | null; isPrimary?: boolean },
     executor?: DbExecutor,
   ): Promise<CapacityAllocation>;
 

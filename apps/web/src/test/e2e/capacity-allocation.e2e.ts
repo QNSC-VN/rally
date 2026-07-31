@@ -48,10 +48,39 @@ test.describe('Capacity allocation', () => {
     await expect(collapse).toBeVisible()
   }
 
+  /**
+   * Opens the plan's `⋮` Actions menu and picks an item.
+   *
+   * Rally's plan page has no toolbar: every verb — Allocate, Add / Remove Teams, Publish, Revert,
+   * Edit, Delete — is behind this menu, so every spec reaches them the same way.
+   */
+  async function planAction(page: import('@playwright/test').Page, label: string | RegExp) {
+    await page.getByRole('button', { name: 'Plan actions' }).click()
+    await page.getByRole('button', { name: label }).click()
+  }
+
+  /**
+   * Removes a Feature from the plan the way Rally does: the per-item menu on the Features tab.
+   *
+   * There is no per-row trash in a team's sub-table — that would remove the Feature from one team
+   * while leaving it on the plan, which is a different decision.
+   */
+  async function removeFeature(page: import('@playwright/test').Page, key: string) {
+    await page.getByRole('tab', { name: /Features/ }).click()
+    await page
+      .getByRole('button', { name: new RegExp(`Actions for ${key}`) })
+      .first()
+      .click()
+    await page.getByRole('button', { name: 'Remove from plan' }).click()
+    await page.getByRole('tab', { name: /Teams/ }).click()
+  }
+
   async function openPlan(page: import('@playwright/test').Page) {
     await loginAndSelectProject(page)
     await page.goto('/capacity-planning', { waitUntil: 'domcontentloaded' })
-    await page.getByText('NX Platform v2 capacity').click()
+    // The ID cell is the link: the row does not navigate and the NAME cell edits in place,
+    // which is how Rally and every other grid here behave.
+    await page.getByRole('button', { name: /^CP-/ }).first().click()
     await expect(page).toHaveURL(/\/capacity-planning\/[0-9a-f-]{36}/)
     await expect(page.getByText('Team Alpha').first()).toBeVisible()
   }
@@ -60,7 +89,7 @@ test.describe('Capacity allocation', () => {
     await openPlan(page)
 
     // ── Allocate ────────────────────────────────────────────────────────────
-    await page.getByRole('button', { name: 'Allocate', exact: true }).first().click()
+    await planAction(page, /^Allocate a Feature$/)
     const dialog = page.getByRole('dialog', { name: 'Allocate a Feature' })
     await expect(dialog).toBeVisible()
 
@@ -80,9 +109,10 @@ test.describe('Capacity allocation', () => {
     await expandTeam(page)
     const row = page.locator('div.group').filter({ hasText: 'Guest checkout flow' }).first()
     await expect(row).toBeVisible()
-    // FE-1 is seeded with preliminary 'm' and no refined estimate, so a blank Estimate
-    // resolves to the preliminary mapping — and once committed the tier reads ALLOC.
-    await expect(row.getByText(/Alloc|Prelim/)).toBeVisible()
+    // The tier is Rally's trailing glyph, and its accessible name lists all three candidates with
+    // the one in force ticked — the text badge it replaced sat beside the name and read as part of
+    // the title.
+    await expect(row.getByRole('img', { name: /Estimate: Allocated/ })).toBeVisible()
 
     // Survives a reload: the allocation was persisted, not just held in cache. Expansion is
     // local state, so the reload collapses the team again — reopen it.
@@ -93,10 +123,7 @@ test.describe('Capacity allocation', () => {
     ).toBeVisible()
 
     // ── Remove it, restoring the seeded state for the next run ───────────────
-    await page
-      .getByRole('button', { name: /Remove the allocation for FE-1/ })
-      .first()
-      .click()
+    await removeFeature(page, 'FE-1')
     await expect(page.getByText('Guest checkout flow')).toHaveCount(0)
   })
 
@@ -117,7 +144,7 @@ test.describe('Capacity allocation', () => {
     await expect(teamRow(page)).toContainText('5')
 
     for (const feature of [/FE-1/, /FE-2/]) {
-      await page.getByRole('button', { name: 'Allocate', exact: true }).first().click()
+      await planAction(page, /^Allocate a Feature$/)
       const dialog = page.getByRole('dialog', { name: 'Allocate a Feature' })
       await dialog.getByLabel('Feature').click()
       await pickOption(page, feature)
@@ -148,10 +175,7 @@ test.describe('Capacity allocation', () => {
     // ── Restore the seeded state ─────────────────────────────────────────────
     await expandTeam(page)
     for (const key of ['FE-1', 'FE-2']) {
-      await page
-        .getByRole('button', { name: new RegExp(`Remove the allocation for ${key}`) })
-        .first()
-        .click()
+      await removeFeature(page, key)
     }
     const reset = await (async () => {
       await teamRow(page)
@@ -175,7 +199,7 @@ test.describe('Capacity allocation', () => {
     await openPlan(page)
 
     // Allocate FE-1 to Team Alpha so there is something to publish.
-    await page.getByRole('button', { name: 'Allocate', exact: true }).first().click()
+    await planAction(page, /^Allocate a Feature$/)
     const allocate = page.getByRole('dialog', { name: 'Allocate a Feature' })
     await allocate.getByLabel('Feature').click()
     await pickOption(page, /FE-1/)
@@ -185,7 +209,7 @@ test.describe('Capacity allocation', () => {
     await expect(allocate).toBeHidden()
 
     // ── Publish ──────────────────────────────────────────────────────────────
-    await page.getByRole('button', { name: 'Publish', exact: true }).click()
+    await planAction(page, /^Publish$/)
     const dialog = page.getByRole('dialog', { name: /Publish this plan/i })
     // The three things a planner has to know BEFORE the write: what lands, when the Release
     // lands, and that reverting will not undo it.
@@ -200,8 +224,14 @@ test.describe('Capacity allocation', () => {
     await expect(dialog).toBeHidden()
 
     // Published plans are read-only, so the editing affordances go away.
-    await expect(page.getByRole('button', { name: 'Allocate', exact: true })).toHaveCount(0)
+    // A published plan offers no Allocate: the menu drops it rather than failing the request.
+    await page.getByRole('button', { name: 'Plan actions' }).click()
+    await expect(page.getByRole('button', { name: /^Allocate a Feature$/ })).toHaveCount(0)
+    await page.keyboard.press('Escape')
+    // …and offers Revert instead, in the same menu.
+    await page.getByRole('button', { name: 'Plan actions' }).click()
     await expect(page.getByRole('button', { name: 'Revert to draft' })).toBeVisible()
+    await page.keyboard.press('Escape')
 
     // ── The Feature really took the plan's window ────────────────────────────
     // Read from the Portfolio detail rather than the plan, which is the whole point: the
@@ -216,30 +246,31 @@ test.describe('Capacity allocation', () => {
     // ── Revert, which does NOT roll the fields back ──────────────────────────
     await page.goBack()
     await page.goto('/capacity-planning', { waitUntil: 'domcontentloaded' })
-    await page.getByText('NX Platform v2 capacity').click()
-    await page.getByRole('button', { name: 'Revert to draft' }).click()
+    // The ID cell is the link: the row does not navigate and the NAME cell edits in place,
+    // which is how Rally and every other grid here behave.
+    await page.getByRole('button', { name: /^CP-/ }).first().click()
+    await planAction(page, /^Revert to draft$/)
     const confirm = page.getByRole('dialog')
     await expect(confirm.getByText(/are NOT undone/)).toBeVisible()
     await confirm.getByRole('button', { name: 'Revert to draft' }).click()
 
     // Editable again.
-    await expect(page.getByRole('button', { name: 'Publish', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Plan actions' }).click()
+    await expect(page.getByRole('button', { name: /^Publish$/ })).toBeVisible()
+    await page.keyboard.press('Escape')
 
     // Clean up: remove the allocation, restoring the seeded state. The Feature KEEPS the
     // release and dates the publish wrote, which is Rally's behaviour and is what the backend
     // e2e asserts against real SQL.
     await expandTeam(page)
-    await page
-      .getByRole('button', { name: /Remove the allocation for FE-1/ })
-      .first()
-      .click()
+    await removeFeature(page, 'FE-1')
     await expect(page.getByText('Guest checkout flow')).toHaveCount(0)
   })
 
   test('parks demand in the Unallocated bucket when no team is chosen', async ({ page }) => {
     await openPlan(page)
 
-    await page.getByRole('button', { name: 'Allocate', exact: true }).first().click()
+    await planAction(page, /^Allocate a Feature$/)
     const dialog = page.getByRole('dialog', { name: 'Allocate a Feature' })
     await dialog.getByLabel('Feature').click()
     await pickOption(page, /FE-2/)
@@ -253,10 +284,7 @@ test.describe('Capacity allocation', () => {
     await expect(page.getByText('Saved payment methods')).toBeVisible()
 
     // Clean up.
-    await page
-      .getByRole('button', { name: /Remove the allocation for FE-2/ })
-      .first()
-      .click()
+    await removeFeature(page, 'FE-2')
     await expect(page.getByText('Saved payment methods')).toHaveCount(0)
   })
 })

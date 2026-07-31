@@ -11,13 +11,29 @@ import { BRAND } from '@/shared/config/brand'
  *
  * Renders nothing at zero rather than a grey `0` — an absent warning is not a warning of zero.
  */
-export function WarningCountBadge({ count, label }: { count: number; label: string }) {
+export function WarningCountBadge({
+  count,
+  label,
+  heading,
+}: {
+  count: number
+  label: string
+  /**
+   * A one-line summary shown ABOVE the rules — Rally's "1 Feature requires attention".
+   *
+   * The count answers "how bad?" before the reader has parsed a single rule, which is what a hover
+   * over a red pill is asking. The rules follow it; both are in the accessible name, because a
+   * hover-only explanation does not exist for a screen reader.
+   */
+  heading?: string
+}) {
   if (count <= 0) return null
+  const full = heading === undefined ? label : `${heading}. ${label}`
   return (
     <span
       role="img"
-      aria-label={label}
-      title={label}
+      aria-label={full}
+      title={full}
       className="inline-flex shrink-0 items-center gap-0.5 rounded-full px-1.5 py-px text-ui-xs font-semibold"
       style={{ backgroundColor: BRAND.danger, color: BRAND.primaryForeground }}
     >

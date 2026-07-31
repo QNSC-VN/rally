@@ -56,6 +56,7 @@ import {
   workItemWatchers,
   portfolioItems,
   capacityPlans,
+  capacityPlanAllocations,
   capacityPlanTeams,
 } from '../schema/work';
 import { userRoleAssignments } from '../schema/access';
@@ -464,6 +465,10 @@ async function seedFlow() {
       workspaceId: WORKSPACE_ID,
       projectId: nxpId,
       releaseId: NXP_RELEASE_1_ID,
+      // The per-project key the list's ID column links from. Set explicitly because migration 0076
+      // backfills EXISTING rows: on a fresh database it runs before this seed, so a plan inserted
+      // without a key keeps none, the ID cell renders `—`, and nothing on the list is clickable.
+      planKey: 'CP-1',
       name: 'NX Platform v2 capacity',
       unit: 'points' as const,
       targetLoadPct: 80,
@@ -478,6 +483,38 @@ async function seedFlow() {
   await db
     .insert(capacityPlanTeams)
     .values({ planId: NXP_CAPACITY_PLAN_ID, teamId: TEAM_ALPHA_ID })
+    .onConflictDoNothing();
+
+  // Two allocated Features, so the plan renders as a PLAN rather than an empty grid: the team row
+  // gets a bar, the nested sub-table has rows, and the Features tab has something to rank. FE-1 is
+  // the primary assignment (Rally allows exactly one per Feature) and FE-2 is left non-primary so
+  // the "make primary" action has a subject.
+  //
+  // Capacity stays NULL above on purpose — "not entered" is a distinct state from a capacity of
+  // zero, and this is the only fixture that renders it. Entering a number in the UI is what turns
+  // the headroom hatch and the over-capacity warning on.
+  await db
+    .insert(capacityPlanAllocations)
+    .values([
+      {
+        planId: NXP_CAPACITY_PLAN_ID,
+        portfolioItemId: NXP_FEATURE_1_ID,
+        teamId: TEAM_ALPHA_ID,
+        isPrimary: true,
+        // NULL: assigned to the team without an explicit slice, which is Rally's primary
+        // assignment. The plan charges this Feature's own estimate here, and the `Allocation`
+        // column renders blank — the state that had no fixture before allocations became optional.
+        value: null,
+      },
+      {
+        planId: NXP_CAPACITY_PLAN_ID,
+        portfolioItemId: NXP_FEATURE_2_ID,
+        teamId: TEAM_ALPHA_ID,
+        isPrimary: true,
+        // An EXPLICIT slice, so the two states sit side by side in one plan.
+        value: '5',
+      },
+    ])
     .onConflictDoNothing();
 
   // Assign the Story to the milestone (Iteration Status "Milestones" column).
