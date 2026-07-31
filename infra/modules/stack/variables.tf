@@ -189,7 +189,21 @@ variable "api" {
     # It has to be an input rather than a constant: the autoscaling floor is what
     # decides whether a scale-to-zero holds, so with it hardcoded the next apply
     # quietly restored a deliberately idled environment.
-    min_count         = optional(number, 1)
+    min_count = optional(number, 1)
+
+    # Create the scalable target and the CPU/memory target-tracking policies at all.
+    #
+    # False for an environment whose desired count is driven EXTERNALLY — a deploy that
+    # restores it plus `idle_schedule` that puts it back down. Autoscaling and a schedule
+    # cannot share ownership of the count: with a floor of 1 the scheduled scale-to-zero
+    # is restored within minutes, and with a floor of 0 target tracking scales the service
+    # to zero mid-session and nothing brings it back until the next deploy.
+    #
+    # `min_count`, `max_count` and the target percentages are then inert AS SCALING
+    # INPUTS, but `max_count` still sizes the connection pool and `min_count` still
+    # derives `environment_idle` below, so both stay meaningful — do not delete them.
+    enable_autoscaling = optional(bool, true)
+
     use_spot          = optional(bool, false)
     cpu_target_pct    = optional(number, 65)
     memory_target_pct = optional(number, 75)
@@ -202,9 +216,10 @@ variable "worker" {
     cpu       = number
     memory    = number
     max_count = number
-    # See api.min_count.
-    min_count = optional(number, 1)
-    use_spot  = optional(bool, false)
+    # See api.min_count and api.enable_autoscaling.
+    min_count          = optional(number, 1)
+    enable_autoscaling = optional(bool, true)
+    use_spot           = optional(bool, false)
   })
 }
 
