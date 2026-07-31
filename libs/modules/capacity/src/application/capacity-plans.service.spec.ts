@@ -27,6 +27,7 @@ const plan = (over: Partial<CapacityPlan> = {}): CapacityPlan => ({
   workspaceId: WORKSPACE,
   projectId: 'proj-a',
   releaseId: 'rel-1',
+  planKey: 'CP-1',
   name: 'Q3 plan',
   status: 'draft',
   unit: 'points',
@@ -70,7 +71,9 @@ describe('CapacityPlansService', () => {
             findViewById: vi.fn().mockResolvedValue(view()),
             listByProject: vi.fn().mockResolvedValue([]),
             findByProjectRelease: vi.fn().mockResolvedValue(null),
+            nextKeyNumber: vi.fn().mockResolvedValue(3),
             create: vi.fn().mockResolvedValue(plan()),
+            delete: vi.fn(),
             update: vi.fn().mockResolvedValue(plan()),
             findTeam: vi.fn().mockResolvedValue(null),
             addTeam: vi.fn(),
@@ -180,6 +183,52 @@ describe('CapacityPlansService', () => {
     it('stamps the caller workspace rather than trusting the body', async () => {
       await service.createPlan(actor, input);
       expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: WORKSPACE }));
+    });
+
+    it('mints CP-<n> from the per-project counter', async () => {
+      // The key the list's ID column shows. Minted here, never accepted from the caller.
+      await service.createPlan(actor, input);
+      expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ planKey: 'CP-3' }));
+    });
+
+    it('RETRIES once with a fresh key on a unique violation', async () => {
+      // MAX+1 is not atomic: two concurrent creates can read the same number, and the loser
+      // gets 23505 from `uq_capacity_plans_key`. Rereading the counter is the fix.
+      const duplicate = Object.assign(new Error('Failed query'), { code: '23505' });
+      repo.create.mockRejectedValueOnce(duplicate).mockResolvedValueOnce(plan());
+      repo.nextKeyNumber.mockResolvedValueOnce(3).mockResolvedValueOnce(4);
+
+      await service.createPlan(actor, input);
+
+      expect(repo.create).toHaveBeenNthCalledWith(1, expect.objectContaining({ planKey: 'CP-3' }));
+      expect(repo.create).toHaveBeenNthCalledWith(2, expect.objectContaining({ planKey: 'CP-4' }));
+    });
+
+    it('does NOT retry an error that is not a duplicate key', async () => {
+      // Retrying a constraint failure that a new key cannot fix would just double the damage.
+      repo.create.mockRejectedValue(new Error('connection reset'));
+      await expect(service.createPlan(actor, input)).rejects.toThrow('connection reset');
+      expect(repo.create).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('deletePlan', () => {
+    it('deletes a draft after checking the permission', async () => {
+      await service.deletePlan(actor, 'plan-1');
+      expect(access.assertProjectPermission).toHaveBeenCalledWith(
+        actor,
+        'proj-a',
+        'capacity:manage',
+      );
+      expect(repo.delete).toHaveBeenCalledWith('plan-1', WORKSPACE);
+    });
+
+    it('refuses a PUBLISHED plan — revert undoes the writes, delete would abandon them', async () => {
+      repo.findById.mockResolvedValue(plan({ status: 'published', publishedAt: new Date() }));
+      await expect(service.deletePlan(actor, 'plan-1')).rejects.toMatchObject({
+        code: 'CAPACITY_PLAN_NOT_DRAFT',
+      });
+      expect(repo.delete).not.toHaveBeenCalled();
     });
   });
 
@@ -331,6 +380,8 @@ describe('CapacityPlansService', () => {
         rank: 'm',
         itemRollup: 0,
         itemComplete: 0,
+        itemProjectId: 'proj-a',
+        itemProjectName: 'Project A',
         ...over,
       });
 
@@ -429,6 +480,8 @@ describe('CapacityPlansService', () => {
       rank: 'm',
       itemRollup: 0,
       itemComplete: 0,
+      itemProjectId: 'proj-a',
+      itemProjectName: 'Project A',
       ...over,
     });
 
@@ -691,6 +744,8 @@ describe('CapacityPlansService', () => {
       rank: 'm',
       itemRollup: 0,
       itemComplete: 0,
+      itemProjectId: 'proj-a',
+      itemProjectName: 'Project A',
       ...over,
     });
 

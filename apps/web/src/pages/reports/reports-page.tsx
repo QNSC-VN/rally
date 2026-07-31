@@ -43,7 +43,7 @@ import { relativeTime } from '@/shared/lib/utils'
 import { MetricCard } from '@/shared/ui/metric-card'
 import { Button } from '@/shared/ui/button'
 import { Avatar } from '@/shared/ui/avatar'
-import { IterationPicker } from '@/shared/ui/iteration-picker'
+import { IterationPicker } from '@/shared/ui/timebox-picker'
 import { PageHeader } from '@/shared/ui/page-header'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import {

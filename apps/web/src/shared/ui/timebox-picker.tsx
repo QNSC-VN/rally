@@ -1,36 +1,64 @@
 /**
- * IterationPicker — the compact prev / dropdown / next iteration selector used
- * by the tracking surfaces (Team Board, Reports). Single source of truth so the
- * control can't drift between pages.
+ * TimeboxPicker — the compact prev / dropdown / next timebox selector used by the tracking
+ * surfaces (Team Board, Reports) and by the Capacity Planning list's release range. Single source
+ * of truth so the control can't drift between pages.
  *
- * Selection persistence (last-viewed per project) is owned by the caller via
- * `selectedId` / `onSelect`; this component is purely presentational.
+ * Named for the timebox it selects rather than for iterations: a release is the same shape (a name
+ * plus a date range) and Capacity Planning needs the same box. `IterationPicker` is kept as a thin
+ * alias so the tracking pages keep reading in their own vocabulary.
+ *
+ * Selection persistence (last-viewed per project) is owned by the caller via `selectedId` /
+ * `onSelect`; this component is purely presentational.
  */
 import { useState } from 'react'
 import { ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react'
 
 import { useClickOutside } from '@/shared/lib/hooks/use-click-outside'
 
-export interface PickerIteration {
+export interface PickerTimebox {
   id: string
   name: string
   startDate: string | null
   endDate: string | null
 }
 
-function fmtRange(it: Pick<PickerIteration, 'startDate' | 'endDate'>) {
+/** @deprecated Use {@link PickerTimebox} — kept so existing iteration call sites still read well. */
+export type PickerIteration = PickerTimebox
+
+/**
+ * `null` when the timebox has NO dates at all — the caller then renders no range.
+ *
+ * A dateless row (the `None` option, or a release nobody has scheduled) used to print `— - —`,
+ * which reads as two missing values rather than as "there is no range here".
+ */
+function fmtRange(it: Pick<PickerTimebox, 'startDate' | 'endDate'>): string | null {
+  if (it.startDate === null && it.endDate === null) return null
   return `${it.startDate ?? '—'} - ${it.endDate ?? '—'}`
 }
 
-export function IterationPicker({
-  iterations,
+export function TimeboxPicker({
+  items,
   selectedId,
   onSelect,
+  emptyLabel = 'No iteration',
+  noneLabel = 'No iterations',
+  prevLabel = 'Previous iteration',
+  nextLabel = 'Next iteration',
+  minWidth = 280,
 }: {
-  iterations: PickerIteration[]
+  items: PickerTimebox[]
   selectedId: string | null
   onSelect: (id: string) => void
+  /** Shown on the button when nothing is selected. */
+  emptyLabel?: string
+  /** Shown inside the menu when there is nothing to choose. */
+  noneLabel?: string
+  prevLabel?: string
+  nextLabel?: string
+  /** The button's minimum width — a release range needs less room than an iteration. */
+  minWidth?: number
 }) {
+  const iterations = items
   const [open, setOpen] = useState(false)
   const pickerRef = useClickOutside<HTMLDivElement>(open, () => setOpen(false))
   const selectedIndex = iterations.findIndex((i) => i.id === selectedId)
@@ -51,7 +79,7 @@ export function IterationPicker({
         disabled={selectedIndex <= 0}
         onClick={() => move(-1)}
         className="flex h-full items-center border-r border-border-strong px-1.5 text-muted-foreground disabled:opacity-40"
-        aria-label="Previous iteration"
+        aria-label={prevLabel}
       >
         <ChevronLeft size={14} />
       </button>
@@ -60,12 +88,12 @@ export function IterationPicker({
           type="button"
           onClick={() => setOpen((o) => !o)}
           className="flex h-full items-center gap-2.5 px-2.5 text-left text-foreground"
-          style={{ minWidth: 280 }}
+          style={{ minWidth }}
         >
           <span className="text-ui-md font-semibold whitespace-nowrap">
-            {selected?.name ?? 'No iteration'}
+            {selected?.name ?? emptyLabel}
           </span>
-          {selected && (
+          {selected && fmtRange(selected) !== null && (
             <span className="text-ui-sm whitespace-nowrap text-muted-foreground">
               {fmtRange(selected)}
             </span>
@@ -88,7 +116,7 @@ export function IterationPicker({
               }}
             >
               {iterations.length === 0 && (
-                <div className="px-3 py-2 text-ui-sm text-foreground-subtle">No iterations</div>
+                <div className="px-3 py-2 text-ui-sm text-foreground-subtle">{noneLabel}</div>
               )}
               {iterations.map((it) => (
                 <button
@@ -101,7 +129,9 @@ export function IterationPicker({
                   className={`flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left hover:bg-background ${it.id === selectedId ? 'bg-primary-lighter' : ''}`}
                 >
                   <span className="text-ui-md font-medium text-foreground">{it.name}</span>
-                  <span className="text-ui-sm text-foreground-subtle">{fmtRange(it)}</span>
+                  {fmtRange(it) !== null && (
+                    <span className="text-ui-sm text-foreground-subtle">{fmtRange(it)}</span>
+                  )}
                 </button>
               ))}
             </div>
@@ -113,10 +143,28 @@ export function IterationPicker({
         disabled={selectedIndex < 0 || selectedIndex >= iterations.length - 1}
         onClick={() => move(1)}
         className="flex h-full items-center border-l border-border-strong px-1.5 text-muted-foreground disabled:opacity-40"
-        aria-label="Next iteration"
+        aria-label={nextLabel}
       >
         <ChevronRight size={14} />
       </button>
     </div>
   )
+}
+
+/**
+ * The tracking surfaces' name for the same control.
+ *
+ * An alias rather than a copy: Team Board and Reports select an iteration and read better saying
+ * so, but there is exactly one implementation to change.
+ */
+export function IterationPicker({
+  iterations,
+  selectedId,
+  onSelect,
+}: {
+  iterations: PickerTimebox[]
+  selectedId: string | null
+  onSelect: (id: string) => void
+}) {
+  return <TimeboxPicker items={iterations} selectedId={selectedId} onSelect={onSelect} />
 }

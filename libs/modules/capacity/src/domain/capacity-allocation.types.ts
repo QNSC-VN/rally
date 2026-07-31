@@ -76,6 +76,9 @@ export interface CapacityAllocationRow extends CapacityAllocation {
   /** The Feature's own rollup/complete across every team, for the item-level row. */
   itemRollup: number;
   itemComplete: number;
+  /** The project the Feature itself belongs to — Rally's "Project" column. */
+  itemProjectId: string;
+  itemProjectName: string | null;
 }
 
 /** An allocated Feature as it appears under a team (or in the Unallocated bucket). */

@@ -10,6 +10,7 @@ import {
   Flag,
   Repeat,
   FolderKanban,
+  Gauge,
 } from 'lucide-react'
 
 // ── Const objects (replaces enums for erasableSyntaxOnly compat) ─────────────
@@ -140,6 +141,9 @@ export const TIMEBOX_TYPE_CONFIG: Record<string, BadgeStyle> = {
   // Project mark — reused by the Projects list ID/Key column via TypeBadge/IdCell
   // so its glyph matches the work-item/timebox ID columns.
   project: { label: 'PR', color: '#5b6b8c', bg: '#eef1f6', icon: FolderKanban },
+  // Capacity plan mark — the Capacity Planning list's ID column (CP-<n>) reads like every other
+  // ID column in the app through TypeBadge/IdCell.
+  capacityPlan: { label: 'CP', color: '#0369a1', bg: '#eaf4fb', icon: Gauge },
 }
 
 export const SCHEDULE_STATE_LABEL: Record<ScheduleState, string> = {
