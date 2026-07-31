@@ -610,6 +610,76 @@ describe('WorkItemsService', () => {
       expect(result.title).toBe('Updated');
     });
 
+    describe('unblocking clears the Blocked Reason', () => {
+      // Rally: "When a blocked status is removed, the Blocked Reason field is cleared."
+      // A reason that outlives its block claims the item is blocked for that reason, right
+      // next to a flag saying it is not — and the inline cell is only editable WHILE blocked,
+      // so the stale text could be read and never removed.
+      const blocked = () =>
+        mockWorkItem({ isBlocked: true, blockedReason: 'Waiting on the vendor' });
+
+      it('clears it when isBlocked goes false', async () => {
+        workItemRepo.findById.mockResolvedValue(blocked());
+        workItemRepo.update.mockResolvedValue(mockWorkItem({ isBlocked: false }));
+
+        await service.updateWorkItem(mockActor, 'wi-1', { isBlocked: false });
+
+        expect(workItemRepo.update).toHaveBeenCalledWith(
+          'wi-1',
+          expect.objectContaining({ isBlocked: false, blockedReason: null }),
+          expect.anything(),
+          expect.anything(),
+        );
+      });
+
+      it('clears it even when the SAME patch sends a reason', async () => {
+        // The two cannot both be true, so `isBlocked: false` wins rather than the write order
+        // deciding it.
+        workItemRepo.findById.mockResolvedValue(blocked());
+        workItemRepo.update.mockResolvedValue(mockWorkItem({ isBlocked: false }));
+
+        await service.updateWorkItem(mockActor, 'wi-1', {
+          isBlocked: false,
+          blockedReason: 'Still stuck',
+        });
+
+        expect(workItemRepo.update).toHaveBeenCalledWith(
+          'wi-1',
+          expect.objectContaining({ blockedReason: null }),
+          expect.anything(),
+          expect.anything(),
+        );
+      });
+
+      it('leaves the reason alone when BLOCKING', async () => {
+        workItemRepo.findById.mockResolvedValue(mockWorkItem());
+        workItemRepo.update.mockResolvedValue(mockWorkItem({ isBlocked: true }));
+
+        await service.updateWorkItem(mockActor, 'wi-1', {
+          isBlocked: true,
+          blockedReason: 'Waiting on the vendor',
+        });
+
+        expect(workItemRepo.update).toHaveBeenCalledWith(
+          'wi-1',
+          expect.objectContaining({ blockedReason: 'Waiting on the vendor' }),
+          expect.anything(),
+          expect.anything(),
+        );
+      });
+
+      it('does not touch the reason on an unrelated edit', async () => {
+        // A title change on a blocked item must not unblock anything by side effect.
+        workItemRepo.findById.mockResolvedValue(blocked());
+        workItemRepo.update.mockResolvedValue(blocked());
+
+        await service.updateWorkItem(mockActor, 'wi-1', { title: 'Renamed' });
+
+        const patch = workItemRepo.update.mock.calls[0][1] as Record<string, unknown>;
+        expect('blockedReason' in patch).toBe(false);
+      });
+    });
+
     it('validates transition when statusId changes', async () => {
       workItemRepo.findById.mockResolvedValue(mockWorkItem({ statusId: 'status-todo' }));
       workItemRepo.update.mockResolvedValue(mockWorkItem({ statusId: 'status-done' }));
