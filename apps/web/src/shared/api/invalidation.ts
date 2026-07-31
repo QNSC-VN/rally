@@ -67,10 +67,18 @@ const WORK_ITEM_DASHBOARD_ROOTS: readonly QueryKey[] = [
  */
 const CAPACITY_ROOTS: readonly QueryKey[] = [['capacity-plans'], ['capacity-plan']]
 
-/** Full work-item fan-out = derived views + dashboards + relation graph. */
+/**
+ * Full work-item fan-out = derived views + dashboards + relation graph + CAPACITY.
+ *
+ * Capacity belongs here because a plan's Complete/Rollup numbers are sums over child work items:
+ * accepting a Story, re-pointing it, or linking it to a Feature all change what a capacity plan
+ * reports. The group's own comment already said a portfolio write must refresh capacity — a WORK
+ * ITEM write does too, and that was missing until the Story→Feature link made it visible.
+ */
 const WORK_ITEM_ALL: readonly QueryKey[] = [
   ...WORK_ITEM_VIEW_ROOTS,
   ...WORK_ITEM_DASHBOARD_ROOTS,
+  ...CAPACITY_ROOTS,
   ['work-item-relations'],
 ]
 

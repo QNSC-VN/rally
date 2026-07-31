@@ -23,7 +23,7 @@ import { ReleasesService } from '@modules/releases';
 import { WorkItemsService } from '@modules/work-items';
 import { DRIZZLE } from '@platform';
 import type { DrizzleDB } from '@platform';
-import { teams, workItems as workItemsTable, workflowStatuses } from '@db/schema/work';
+import { teams, workflowStatuses } from '@db/schema/work';
 
 import { WORKSPACE_ID, adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
 
@@ -157,14 +157,13 @@ describe('capacity items + cutline (e2e)', () => {
         statusId,
         storyPoints: points,
       });
-      await workItems.updateWorkItem(admin, story.id, { releaseId, teamId: team });
-      // `feature_id` is set directly, as the demo seed does: no service or HTTP path links a
-      // Story to a Feature today. Worth noting — every portfolio rollup and capacity metric
-      // aggregates by this column, and nothing but a seed can populate it.
-      await db
-        .update(workItemsTable)
-        .set({ featureId: feature })
-        .where(eq(workItemsTable.id, story.id));
+      // `featureId` goes through the service now — it used to need a direct UPDATE because no
+      // API could set it.
+      await workItems.updateWorkItem(admin, story.id, {
+        releaseId,
+        teamId: team,
+        featureId: feature,
+      });
     }
 
     const detail = await capacity.getPlanDetail(admin, planId);

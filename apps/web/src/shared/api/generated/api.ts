@@ -3043,6 +3043,8 @@ export interface components {
       teamId: string | null
       iterationId: string | null
       releaseId: string | null
+      /** @description The Feature this item rolls up to. Always null for a task. */
+      featureId: string | null
       storyPoints: number | null
       estimateHours: number | null
       todoHours: number | null
@@ -3170,6 +3172,7 @@ export interface components {
       teamId?: string | null
       iterationId?: string | null
       releaseId?: string | null
+      featureId?: string | null
       storyPoints?: number | null
       estimateHours?: number | null
       todoHours?: number | null
