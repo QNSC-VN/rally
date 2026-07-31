@@ -170,22 +170,25 @@ module "stack" {
   //
   // AUTOSCALING IS OFF HERE, and that is the load-bearing part.
   //
-  // Deploys and `idle_schedule` between them own the desired count, and autoscaling
-  // cannot share that ownership — either floor is wrong:
+  // Deploys and `idle_schedule` between them own the desired count, so the floor has to
+  // be 0 — with a floor of 1 Application Auto Scaling restores the service within minutes
+  // and the 21:00 scale-to-zero undoes itself.
   //
-  //   min_count = 1  Application Auto Scaling restores the service within minutes, so
-  //                  the 21:00 scale-to-zero undoes itself and develop bills all night.
-  //   min_count = 0  target tracking sees an idle service and scales it to zero
-  //                  MID-SESSION. Nothing brings it back until the next merge, so
-  //                  develop disappears underneath whoever was testing it.
+  // But a scalable target with a floor of 0 cannot act at all, in either direction. Target
+  // tracking scales proportionally, so from one task at ~1% CPU it computes
+  // ceil(1 x 1/65) = 1 and never reaches zero; and once the schedule has taken the service
+  // to zero there is no CPU or memory metric left for it to scale out from. Measured here,
+  // not assumed: develop ran for hours at 0.07-1.0% average CPU against a floor of 0, and
+  // Application Auto Scaling logged ZERO scaling activities across its six-week retention.
   //
-  // With `enable_autoscaling = false` there is exactly one writer: `desired_count` is
-  // under `ignore_changes` in the ecs-service module, the deploy sets it to 1, the
-  // nightly schedule sets it to 0, and no plan reports drift. It also drops the two
-  // CloudWatch alarms Application Auto Scaling creates per policy (four per service).
+  // So autoscaling was never fighting the schedule — it was inert, while billing four
+  // CloudWatch alarms per service. `enable_autoscaling = false` says that out loud and
+  // leaves exactly one writer: `desired_count` is under `ignore_changes` in the
+  // ecs-service module, the deploy sets it to 1, the nightly schedule sets it to 0.
   //
-  // Losing autoscaling costs develop nothing: it has no users to absorb a spike for, and
-  // `max_count` was never reached. Production keeps it — see ../prod/main.tf.
+  // Losing it costs develop nothing regardless: no users to absorb a spike for, and
+  // `max_count` was never approached. Production restores it at go-live along with a floor
+  // of 1 — see ../prod/main.tf, and the validation that ties those two together.
   //
   // NOT done with scheduled autoscaling ACTIONS, which is the other obvious shape:
   // `aws_appautoscaling_target` has no `ignore_changes` on min/max, so a scheduled

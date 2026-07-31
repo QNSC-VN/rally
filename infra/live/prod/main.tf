@@ -218,18 +218,24 @@ module "stack" {
   // restores the service to `min_count` within minutes, so a scale-to-zero against a
   // floor of 1 silently undoes itself.
   //
-  // AUTOSCALING IS THEREFORE OFF TOO, not just floored at zero. A floor of 0 with target
-  // tracking still armed is the worse of the two failures: this module's only policies
-  // are CPU and memory target tracking, and a service at zero tasks publishes NEITHER
-  // metric — so scaling in to zero is one-way. A tag deploy would bring production up,
-  // target tracking would see an idle service, scale it to zero within ~15 minutes, and
-  // nothing would bring it back until the next tag. A `validation` block on the `api` and
-  // `worker` variables in the stack module now refuses that combination outright.
+  // AUTOSCALING IS THEREFORE OFF TOO, not just floored at zero — because with a floor of
+  // 0 the scalable target cannot do anything. Target tracking scales proportionally, so it
+  // never computes zero from a running task, and a service at zero tasks publishes no CPU
+  // or memory metric for it to scale out from. Measured on this account: production sat at
+  // 0/0 tasks for days with a registered target, and develop ran at 0.07-1.0% average CPU
+  // against a floor of 0 — Application Auto Scaling logged ZERO scaling activities for
+  // either, across its full six-week retention.
+  //
+  // So this is not a bug being fixed; it is a config that claimed to scale and could not.
+  // Removing it drops four CloudWatch alarms per service (16 across both environments,
+  // ~$1.60/mo) and stops the plan describing capacity behaviour that does not exist.
   //
   // TO RESTORE AT GO-LIVE: set both min_count back to 1, set both enable_autoscaling back
-  // to true, set monitor_target_health back to true above, and deploy. That validation
-  // enforces the min_count/enable_autoscaling half of the pairing, so a partial restore
-  // errors out rather than producing a production that scales itself down. The deploy
+  // to true, set monitor_target_health back to true above, and deploy. A `validation` block
+  // on the stack module's `api` and `worker` variables enforces that min_count/
+  // enable_autoscaling pairing, because the combination it forbids — autoscaling on with a
+  // floor of 0 — is a LIVE environment that cannot self-heal: nothing publishes a metric at
+  // zero tasks, so whatever scaled it down is permanent. The deploy
   // pipeline sets desired_count, and qnsc-ci's `ensure_rds` starts the stopped instance,
   // so no manual step is needed beyond this file. Nothing else about the environment
   // changed — same task definitions, same secrets, same database, same cache.
