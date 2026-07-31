@@ -101,6 +101,18 @@ export function PortfolioPage() {
   // the single-project hook.
   const projectIds = useMemo(() => items.map((i) => i.projectId), [items])
   const rowPerms = useProjectPermissionsFor(projectIds)
+  /**
+   * Edit rights by project, for the rows a disclosure reveals.
+   *
+   * A child Feature may live in a project that has no top-level row on this page, so its
+   * id was never in `projectIds` and no per-project lookup was fetched for it. `can` then
+   * falls back to the workspace baseline, which is safe because the model is purely
+   * additive — and the API is the real gate either way.
+   */
+  const canEditProject = useCallback(
+    (projectId: string) => rowPerms.can(projectId, 'portfolio:edit'),
+    [rowPerms],
+  )
 
   const openDetail = useCallback(
     (id: string) => void navigate({ to: '/portfolio/$itemId', params: { itemId: id } }),
@@ -296,6 +308,7 @@ export function PortfolioPage() {
             canEdit={rowPerms.can(item.projectId, 'portfolio:edit')}
             canRank={sortField === null && rowPerms.can(item.projectId, 'portfolio:edit')}
             members={members}
+            canEditProject={canEditProject}
             colStyleFor={colStyleFor}
             gutterProps={gutterProps}
             onOpen={openDetail}

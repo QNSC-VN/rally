@@ -57,6 +57,7 @@ export function PortfolioRow({
   canEdit,
   canRank,
   members,
+  canEditProject,
   revealed = false,
   colStyleFor,
   gutterProps,
@@ -68,6 +69,12 @@ export function PortfolioRow({
   canEdit: boolean
   /** Workspace roster for the Owner picker; fetched once by the page, not per row. */
   members: OwnerSelectMember[]
+  /**
+   * Edit rights for an arbitrary project, for the DISCLOSED child rows. `canEdit` above
+   * answers only for this row's own project; a child Feature may sit in another one on
+   * this cross-project grid, so the children need the lookup rather than the answer.
+   */
+  canEditProject: (projectId: string) => boolean
   /** Drag-to-rank enabled: requires edit rights AND natural rank order. */
   canRank: boolean
   colStyleFor: (key: ColKey, base?: CSSProperties) => CSSProperties
@@ -291,7 +298,14 @@ export function PortfolioRow({
       {/* Children — an Epic discloses its Features, a Feature its Stories/Defects. A
           SIBLING of the row, not a descendant: the row is the dnd-kit sortable node, so
           nesting the children inside it would drag them with the parent. */}
-      {expanded && <PortfolioChildRows item={item} colStyleFor={colStyleFor} />}
+      {expanded && (
+        <PortfolioChildRows
+          item={item}
+          colStyleFor={colStyleFor}
+          members={members}
+          canEditProject={canEditProject}
+        />
+      )}
     </>
   )
 }

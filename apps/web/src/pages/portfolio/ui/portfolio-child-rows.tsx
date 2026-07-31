@@ -1,8 +1,8 @@
 /**
  * The child rows revealed under an expanded Portfolio row.
  *
- * Two levels, one component, because the disclosure is the SAME affordance in both
- * cases and only the child shape differs (Rally's Portfolio Item tree):
+ * Two levels, because the disclosure is the SAME affordance in both cases and only the
+ * child shape differs (Rally's Portfolio Item tree):
  *   • an Epic discloses its child **Features**   → `usePortfolioChildFeatures`
  *   • a Feature discloses its linked **Stories / Defects** → `usePortfolioChildren`
  *
@@ -16,6 +16,19 @@
  * Mounted only while expanded, which is also what gates the fetch: both hooks are
  * `enabled` on a defined id, so an unmounted child list never queries. No page-level
  * expanded-id registry is needed.
+ *
+ * ── Why only ONE of the two levels edits inline ──────────────────────────────
+ * A child **Feature** row is a full `PortfolioItemResponseDto`, identical to a top-level
+ * row, so it edits through the same `useUpdatePortfolioItem` and the same shared cells —
+ * matching Iteration Status, whose child Tasks are real work items and edit in place.
+ *
+ * A child **Story / Defect** row is `PortfolioChildResponseDto`, a DISPLAY PROJECTION:
+ * it carries `ownerName` / `teamName` / `releaseName` and no corresponding ids, and
+ * `scheduleState` as a bare string. A picker needs an id to bind its value to, so there
+ * is nothing to bind — and a Story's fields belong to the work-items API, not the
+ * portfolio one. Making that level editable needs the endpoint to return ids (or the row
+ * to load the work item itself); it is not a stylistic choice. Open the Story via its ID
+ * link to edit it meanwhile.
  */
 import { useTranslation } from 'react-i18next'
 import { type CSSProperties } from 'react'
@@ -24,17 +37,24 @@ import { useNavigate } from '@tanstack/react-router'
 import {
   usePortfolioChildFeatures,
   usePortfolioChildren,
+  useUpdatePortfolioItem,
+  type PortfolioChild,
   type PortfolioItem,
+  type PortfolioItemState,
 } from '@/features/portfolio/api'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { ScheduleState, SCHEDULE_STATE_LABEL } from '@/entities/work-item/model/types'
 import { PercentDoneBar } from '@/features/portfolio/ui/percent-done-bar'
-import { OwnerCell } from '@/shared/ui/owner-cell'
+import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
+import { OwnerCell, OwnerSelectCell, type OwnerSelectMember } from '@/shared/ui/owner-cell'
+import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { TeamCell } from '@/shared/ui/team-cell'
 import { RowGutter } from '@/shared/ui/row-gutter'
 import { Spinner } from '@/shared/ui/spinner'
 import { NESTED_ROW_INDENT } from '@/shared/config/layout'
+import { notify } from '@/shared/lib/toast'
 import { type ColKey } from '../model/columns'
+import { PORTFOLIO_STATES } from '../model/portfolio-states'
 import { ReleaseCell } from './release-cell'
 
 type ColStyleFor = (key: ColKey, base?: CSSProperties) => CSSProperties
@@ -58,13 +78,217 @@ function ChildRow({ children }: { children: React.ReactNode }) {
   )
 }
 
+/**
+ * A disclosed child Feature — the same row as a top-level Feature, one level in.
+ *
+ * Its own component (not a `.map()` body) because it owns a mutation hook: one
+ * `useUpdatePortfolioItem` per row is what lets each row report its own success and
+ * error, exactly as `PortfolioRow` and Iteration Status' `ChildTaskRow` do.
+ */
+function ChildFeatureRow({
+  feature,
+  colStyleFor,
+  members,
+  canEdit,
+  onOpen,
+}: {
+  feature: PortfolioItem
+  colStyleFor: ColStyleFor
+  members: OwnerSelectMember[]
+  canEdit: boolean
+  onOpen: (id: string) => void
+}) {
+  const { t } = useTranslation('portfolio')
+  const update = useUpdatePortfolioItem()
+
+  function save(patch: Parameters<typeof update.mutate>[0]['patch'], success: string) {
+    update.mutate(
+      { id: feature.id, patch },
+      { onSuccess: () => notify.success(success), onError: (err) => notify.error(err.message) },
+    )
+  }
+
+  return (
+    <ChildRow>
+      <div className={`flex items-center pr-2 ${NESTED_ROW_INDENT}`} style={colStyleFor('id')}>
+        <IdCell type={feature.type} itemKey={feature.itemKey} onOpen={() => onOpen(feature.id)} />
+      </div>
+
+      <div
+        className="min-w-0 px-0"
+        style={colStyleFor('name')}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <InlineEditableCell
+          fullCell
+          value={feature.name}
+          canEdit={canEdit}
+          onCommit={(v) => {
+            const next = v.trim()
+            if (next && next !== feature.name) save({ name: next }, t('row.nameUpdated'))
+          }}
+          ariaLabel={t('columns.name')}
+          title={feature.name}
+          className="block w-full truncate text-foreground"
+        />
+      </div>
+
+      <div
+        className="min-w-0 px-0"
+        style={colStyleFor('state')}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <SearchableSelect
+          variant="cell"
+          value={feature.state}
+          readOnly={!canEdit}
+          ariaLabel={t('filters.state')}
+          options={PORTFOLIO_STATES.map((s) => ({ value: s, label: t(`states.${s}`) }))}
+          onChange={(v) => {
+            if (v && v !== feature.state)
+              save({ state: v as PortfolioItemState }, t('row.stateUpdated'))
+          }}
+        />
+      </div>
+
+      {/* Parent is the Epic this row is nested under — repeating it per child is noise. */}
+      <div className="px-2" style={colStyleFor('parent')} />
+
+      <div
+        className="flex min-w-0 items-center overflow-hidden px-0"
+        style={colStyleFor('release')}
+      >
+        <ReleaseCell
+          releaseId={feature.releaseId}
+          releaseName={feature.releaseName}
+          ariaLabel={t('detail.fields.release')}
+        />
+      </div>
+
+      {/* A child Feature carries its OWN rollup, so both progress bars are real here. */}
+      <div className="min-w-0 px-2" style={colStyleFor('percentDonePoints')}>
+        <PercentDoneBar
+          metric="points"
+          health={feature.health}
+          progress={feature.progress}
+          rollup={feature.rollup}
+        />
+      </div>
+      <div className="min-w-0 px-2" style={colStyleFor('percentDoneCount')}>
+        <PercentDoneBar
+          metric="count"
+          health={feature.health}
+          progress={feature.progress}
+          rollup={feature.rollup}
+        />
+      </div>
+
+      <div className="min-w-0 px-2 text-right" style={colStyleFor('estimate')}>
+        {feature.refinedEstimate ??
+          t(`sizes.${feature.preliminaryEstimate}`, { defaultValue: feature.preliminaryEstimate })}
+      </div>
+      <div className="min-w-0 truncate px-2" style={colStyleFor('project')}>
+        {feature.projectName ?? '—'}
+      </div>
+      <div className="min-w-0 px-2" style={colStyleFor('team')}>
+        <TeamCell name={feature.teamName} />
+      </div>
+
+      <div
+        className="min-w-0 overflow-hidden px-0"
+        style={colStyleFor('owner')}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <OwnerSelectCell
+          ownerName={feature.ownerName}
+          assigneeId={feature.ownerId}
+          members={members}
+          canEdit={canEdit}
+          ariaLabel={t('detail.fields.owner')}
+          onChange={(v) => {
+            if (v !== feature.ownerId) save({ ownerId: v }, t('row.ownerUpdated'))
+          }}
+        />
+      </div>
+    </ChildRow>
+  )
+}
+
+/**
+ * A disclosed Story / Defect — read-only, and see this module's header for why: the
+ * endpoint returns display names without the ids a picker would bind to.
+ */
+function ChildWorkItemRow({
+  child,
+  colStyleFor,
+  onOpen,
+}: {
+  child: PortfolioChild
+  colStyleFor: ColStyleFor
+  onOpen: (itemKey: string) => void
+}) {
+  const { t } = useTranslation('portfolio')
+
+  return (
+    <ChildRow>
+      <div className={`flex items-center pr-2 ${NESTED_ROW_INDENT}`} style={colStyleFor('id')}>
+        <IdCell type={child.type} itemKey={child.itemKey} onOpen={() => onOpen(child.itemKey)} />
+      </div>
+      <div className="min-w-0 px-2" style={colStyleFor('name')}>
+        <span className="block truncate text-foreground" title={child.title}>
+          {child.title}
+        </span>
+      </div>
+      {/* Schedule state, not portfolio state — a Story lives on the work-item lifecycle,
+          so it reads from the shared SCHEDULE_STATE_LABEL map. */}
+      <div className="min-w-0 truncate px-2" style={colStyleFor('state')}>
+        {SCHEDULE_STATE_LABEL[child.scheduleState as ScheduleState] ?? child.scheduleState}
+      </div>
+      <div className="px-2" style={colStyleFor('parent')} />
+      <div
+        className="flex min-w-0 items-center overflow-hidden px-0"
+        style={colStyleFor('release')}
+      >
+        <ReleaseCell releaseName={child.releaseName} ariaLabel={t('detail.fields.release')} />
+      </div>
+      {/* Percent Done is a portfolio rollup — a single Story has none, so these stay
+          empty rather than showing a 0% bar that would read as "no progress". */}
+      <div className="px-2" style={colStyleFor('percentDonePoints')} />
+      <div className="px-2" style={colStyleFor('percentDoneCount')} />
+      {/* The Estimate column holds the Story's own plan estimate in points. */}
+      <div className="min-w-0 px-2 text-right" style={colStyleFor('estimate')}>
+        {child.storyPoints ?? '—'}
+      </div>
+      <div className="min-w-0 truncate px-2" style={colStyleFor('project')}>
+        {child.projectName ?? '—'}
+      </div>
+      <div className="min-w-0 px-2" style={colStyleFor('team')}>
+        <TeamCell name={child.teamName} />
+      </div>
+      <div className="min-w-0 px-2" style={colStyleFor('owner')}>
+        <OwnerCell name={child.ownerName} />
+      </div>
+    </ChildRow>
+  )
+}
+
 export function PortfolioChildRows({
   item,
   colStyleFor,
+  members,
+  canEditProject,
 }: {
   item: PortfolioItem
   /** The parent grid's resolved per-column style, so child cells track column layout. */
   colStyleFor: ColStyleFor
+  /** Workspace roster for the Owner picker, fetched once by the page. */
+  members: OwnerSelectMember[]
+  /**
+   * Edit rights for a given project — resolved per CHILD, not inherited from the parent
+   * row: a child Feature may sit in a different project than the Epic above it on this
+   * cross-project grid.
+   */
+  canEditProject: (projectId: string) => boolean
 }) {
   const { t } = useTranslation('portfolio')
   const navigate = useNavigate()
@@ -82,104 +306,17 @@ export function PortfolioChildRows({
 
   const rows = isEpic
     ? (features.data ?? []).map((f) => (
-        <ChildRow key={f.id}>
-          <div className={`flex items-center pr-2 ${NESTED_ROW_INDENT}`} style={colStyleFor('id')}>
-            <IdCell type={f.type} itemKey={f.itemKey} onOpen={() => openPortfolioItem(f.id)} />
-          </div>
-          <div className="min-w-0 px-2" style={colStyleFor('name')}>
-            <span className="block truncate text-foreground" title={f.name}>
-              {f.name}
-            </span>
-          </div>
-          <div className="min-w-0 truncate px-2" style={colStyleFor('state')}>
-            {t(`states.${f.state}`, { defaultValue: f.state })}
-          </div>
-          {/* Parent is the Epic this row is nested under — repeating it per child is noise. */}
-          <div className="px-2" style={colStyleFor('parent')} />
-          <div
-            className="flex min-w-0 items-center overflow-hidden px-0"
-            style={colStyleFor('release')}
-          >
-            <ReleaseCell
-              releaseId={f.releaseId}
-              releaseName={f.releaseName}
-              ariaLabel={t('detail.fields.release')}
-            />
-          </div>
-          {/* A child Feature carries its OWN rollup, so both progress bars are real here. */}
-          <div className="min-w-0 px-2" style={colStyleFor('percentDonePoints')}>
-            <PercentDoneBar
-              metric="points"
-              health={f.health}
-              progress={f.progress}
-              rollup={f.rollup}
-            />
-          </div>
-          <div className="min-w-0 px-2" style={colStyleFor('percentDoneCount')}>
-            <PercentDoneBar
-              metric="count"
-              health={f.health}
-              progress={f.progress}
-              rollup={f.rollup}
-            />
-          </div>
-          <div className="min-w-0 px-2 text-right" style={colStyleFor('estimate')}>
-            {f.refinedEstimate ??
-              t(`sizes.${f.preliminaryEstimate}`, { defaultValue: f.preliminaryEstimate })}
-          </div>
-          <div className="min-w-0 truncate px-2" style={colStyleFor('project')}>
-            {f.projectName ?? '—'}
-          </div>
-          <div className="min-w-0 px-2" style={colStyleFor('team')}>
-            <TeamCell name={f.teamName} />
-          </div>
-          <div className="min-w-0 px-2" style={colStyleFor('owner')}>
-            <OwnerCell name={f.ownerName} />
-          </div>
-        </ChildRow>
+        <ChildFeatureRow
+          key={f.id}
+          feature={f}
+          colStyleFor={colStyleFor}
+          members={members}
+          canEdit={canEditProject(f.projectId)}
+          onOpen={openPortfolioItem}
+        />
       ))
     : (children.data ?? []).map((c) => (
-        <ChildRow key={c.id}>
-          <div className={`flex items-center pr-2 ${NESTED_ROW_INDENT}`} style={colStyleFor('id')}>
-            <IdCell type={c.type} itemKey={c.itemKey} onOpen={() => openWorkItem(c.itemKey)} />
-          </div>
-          <div className="min-w-0 px-2" style={colStyleFor('name')}>
-            <span className="block truncate text-foreground" title={c.title}>
-              {c.title}
-            </span>
-          </div>
-          {/* Schedule state, not portfolio state — a Story lives on the work-item
-              lifecycle, so it reads from the shared SCHEDULE_STATE_LABEL map. */}
-          <div className="min-w-0 truncate px-2" style={colStyleFor('state')}>
-            {SCHEDULE_STATE_LABEL[c.scheduleState as ScheduleState] ?? c.scheduleState}
-          </div>
-          <div className="px-2" style={colStyleFor('parent')} />
-          {/* No `releaseId` on the child DTO — see ReleaseCell for why that changes the
-              render path but not the appearance. */}
-          <div
-            className="flex min-w-0 items-center overflow-hidden px-0"
-            style={colStyleFor('release')}
-          >
-            <ReleaseCell releaseName={c.releaseName} ariaLabel={t('detail.fields.release')} />
-          </div>
-          {/* Percent Done is a portfolio rollup — a single Story has none, so these stay
-              empty rather than showing a 0% bar that would read as "no progress". */}
-          <div className="px-2" style={colStyleFor('percentDonePoints')} />
-          <div className="px-2" style={colStyleFor('percentDoneCount')} />
-          {/* The Estimate column holds the Story's own plan estimate in points. */}
-          <div className="min-w-0 px-2 text-right" style={colStyleFor('estimate')}>
-            {c.storyPoints ?? '—'}
-          </div>
-          <div className="min-w-0 truncate px-2" style={colStyleFor('project')}>
-            {c.projectName ?? '—'}
-          </div>
-          <div className="min-w-0 px-2" style={colStyleFor('team')}>
-            <TeamCell name={c.teamName} />
-          </div>
-          <div className="min-w-0 px-2" style={colStyleFor('owner')}>
-            <OwnerCell name={c.ownerName} />
-          </div>
-        </ChildRow>
+        <ChildWorkItemRow key={c.id} child={c} colStyleFor={colStyleFor} onOpen={openWorkItem} />
       ))
 
   return (
