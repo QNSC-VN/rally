@@ -27,7 +27,9 @@ export type ColKey =
  * rather than a constant.
  */
 export const PORTFOLIO_COLUMNS: ColumnSpec<PortfolioItem, unknown, ColKey>[] = [
-  { key: 'id', label: 'ID', defaultWidth: 96, minWidth: 72, locked: true, sortCol: 'itemKey' },
+  // 96 → 112: the disclosure chevron + its gap sit inside this cell, ahead of the type
+  // glyph, and at 96 the key itself was the thing that truncated.
+  { key: 'id', label: 'ID', defaultWidth: 112, minWidth: 88, locked: true, sortCol: 'itemKey' },
   {
     key: 'name',
     label: 'Name',

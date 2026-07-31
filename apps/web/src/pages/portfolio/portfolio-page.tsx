@@ -24,6 +24,7 @@ import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { notify } from '@/shared/lib/toast'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions, useProjectPermissionsFor } from '@/features/access/api'
+import { useWorkspaceMembers } from '@/features/workspaces/api'
 import { type RowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { MetricCard } from '@/shared/ui/metric-card'
 import { MetricStrip } from '@/shared/ui/metric-strip'
@@ -69,11 +70,19 @@ export function PortfolioPage() {
   // Creating targets ONE project, so it uses the currently-selected project the way every
   // other list page does. Editing is per-row (see `rowPerms`) because the grid is
   // cross-project and each row may sit in a different one.
-  const { project } = useAppContext()
+  const { project, workspace } = useAppContext()
   const createProjectId = project?.projectId
   const { can: canInProject } = useProjectPermissions(createProjectId)
   const canCreate = !!createProjectId && canInProject('portfolio:create')
   const setArchived = useSetPortfolioItemArchived()
+
+  /**
+   * Roster for the inline Owner picker. Fetched ONCE here and handed to every row —
+   * per-row would be one request per visible row for a list that is already cached
+   * workspace-wide (`workspace-members-profile`). Workspace-scoped, not project-scoped:
+   * this grid is cross-project, so a single roster covers every row.
+   */
+  const { data: members = [] } = useWorkspaceMembers(workspace?.workspaceId)
 
   const table = useDataTable<PortfolioItem, unknown, ColKey>(PORTFOLIO_COLUMNS, {
     storageKey: STORAGE_KEYS.PORTFOLIO_COLUMNS,
@@ -286,6 +295,7 @@ export function PortfolioPage() {
             revealed={revealed}
             canEdit={rowPerms.can(item.projectId, 'portfolio:edit')}
             canRank={sortField === null && rowPerms.can(item.projectId, 'portfolio:edit')}
+            members={members}
             colStyleFor={colStyleFor}
             gutterProps={gutterProps}
             onOpen={openDetail}

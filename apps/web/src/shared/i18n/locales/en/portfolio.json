@@ -41,7 +41,15 @@
   },
   "row": {
     "nameUpdated": "Name updated",
-    "stateUpdated": "State updated"
+    "stateUpdated": "State updated",
+    "ownerUpdated": "Owner updated",
+    "expandFeatures": "Expand child Features",
+    "collapseFeatures": "Collapse child Features",
+    "expandItems": "Expand linked Stories and Defects",
+    "collapseItems": "Collapse linked Stories and Defects",
+    "loadingChildren": "Loading…",
+    "noChildFeatures": "No child Features.",
+    "noChildItems": "No linked Stories or Defects."
   },
   "health": {
     "state": {
