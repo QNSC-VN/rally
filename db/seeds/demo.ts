@@ -465,6 +465,10 @@ async function seedFlow() {
       workspaceId: WORKSPACE_ID,
       projectId: nxpId,
       releaseId: NXP_RELEASE_1_ID,
+      // The per-project key the list's ID column links from. Set explicitly because migration 0076
+      // backfills EXISTING rows: on a fresh database it runs before this seed, so a plan inserted
+      // without a key keeps none, the ID cell renders `—`, and nothing on the list is clickable.
+      planKey: 'CP-1',
       name: 'NX Platform v2 capacity',
       unit: 'points' as const,
       targetLoadPct: 80,
