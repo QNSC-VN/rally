@@ -57,7 +57,6 @@ import { SelectionModal } from '@/shared/ui/selection-modal'
 import { CompositeBar } from '@/shared/ui/composite-bar'
 import { CapacityBarTooltip } from './ui/capacity-bar-tooltip'
 import { planTotals } from '@/features/capacity-planning/plan-totals'
-import { CapacityBreakdownOverlay } from './ui/capacity-breakdown-overlay'
 import { CapacityForecastModal } from './ui/capacity-forecast-modal'
 import { PublishPlanModal } from './ui/publish-plan-modal'
 import { EditCapacityPlanModal } from './ui/edit-capacity-plan-modal'
@@ -68,7 +67,6 @@ export function CapacityPlanDetailPage() {
   const { planId } = useParams({ from: '/auth/capacity-planning/$planId' })
   const [tab, setTab] = useState('teams')
   const [showAllocate, setShowAllocate] = useState(false)
-  const [showBreakdown, setShowBreakdown] = useState(false)
   const [showEdit, setShowEdit] = useState(false)
   const [showTeams, setShowTeams] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -459,11 +457,7 @@ export function CapacityPlanDetailPage() {
                 </span>
                 <PlanAssignmentCounts plan={plan} />
               </div>
-              <PlanSummaryMetrics
-                plan={plan}
-                unitLabel={unitLabel}
-                onOpenBreakdown={() => setShowBreakdown(true)}
-              />
+              <PlanSummaryMetrics plan={plan} unitLabel={unitLabel} />
             </div>
 
             {/* No toolbar row: Rally's plan page has none. Every verb is in the header's `⋮`
@@ -661,13 +655,6 @@ export function CapacityPlanDetailPage() {
           setConfirmRevert(false)
         }}
       />
-      {showBreakdown && (
-        <CapacityBreakdownOverlay
-          plan={plan}
-          unitLabel={unitLabel}
-          onClose={() => setShowBreakdown(false)}
-        />
-      )}
     </>
   )
 }

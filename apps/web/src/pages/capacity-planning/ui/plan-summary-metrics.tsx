@@ -1,4 +1,8 @@
 import { useTranslation } from 'react-i18next'
+import { Popover as PopoverPrimitive } from 'radix-ui'
+
+import { AppPopoverContent } from '@/shared/ui/app-popover'
+import { CapacityBreakdownPanel } from './capacity-breakdown-panel'
 
 import { BRAND } from '@/shared/config/brand'
 import { CAPACITY_SEGMENTS } from '@/shared/ui/composite-bar'
@@ -59,16 +63,7 @@ function SummaryMetric({
  * Capacity is marked `base`, not `100%`: it is the denominator the other three are percentages OF,
  * and printing 100% invites reading it as "capacity is full".
  */
-export function PlanSummaryMetrics({
-  plan,
-  unitLabel,
-  onOpenBreakdown,
-}: {
-  plan: CapacityPlan
-  unitLabel: string
-  /** Opens the Breakdown overlay. Rally's link lives in this panel, not in the toolbar. */
-  onOpenBreakdown: () => void
-}) {
+export function PlanSummaryMetrics({ plan, unitLabel }: { plan: CapacityPlan; unitLabel: string }) {
   const { t } = useTranslation('capacity')
   const totals = planTotals(plan)
 
@@ -108,13 +103,25 @@ export function PlanSummaryMetrics({
         />
       </div>
 
-      <button
-        type="button"
-        onClick={onOpenBreakdown}
-        className="shrink-0 self-start px-3 py-1.5 text-ui-sm text-primary-light underline-offset-2 hover:underline"
-      >
-        {t('breakdown.action')}
-      </button>
+      {/* Rally's Breakdown hangs off this line as a POPOVER, not a modal: it annotates the four
+          numbers beside it, and a dialog would cover the grid those numbers describe. */}
+      <PopoverPrimitive.Root>
+        <PopoverPrimitive.Trigger asChild>
+          <button
+            type="button"
+            className="shrink-0 self-start px-3 py-1.5 text-ui-sm text-primary-light underline-offset-2 hover:underline"
+          >
+            {t('breakdown.action')}
+          </button>
+        </PopoverPrimitive.Trigger>
+        <AppPopoverContent
+          align="end"
+          sideOffset={6}
+          className="z-50 rounded-sm border border-border-strong bg-card shadow-xl"
+        >
+          <CapacityBreakdownPanel plan={plan} />
+        </AppPopoverContent>
+      </PopoverPrimitive.Root>
     </div>
   )
 }

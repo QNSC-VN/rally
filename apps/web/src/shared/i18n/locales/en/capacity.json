@@ -126,7 +126,10 @@
     "remaining": "Remaining",
     "total": "Total",
     "unallocated": "Unallocated demand",
-    "noTeams": "Add a team to see a breakdown."
+    "noTeams": "Add a team to see a breakdown.",
+    "byPoints": "By Story Points",
+    "byCount": "By Count",
+    "unfinished": "Unfinished"
   },
   "forecast": {
     "action": "Forecast",
