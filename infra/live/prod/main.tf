@@ -238,12 +238,25 @@ module "stack" {
   }
 
   // Idled with the api — see the note above.
+  //
+  // SPOT, unlike the api. The worker is a relay: AbstractOutboxRelay claims rows with
+  // FOR UPDATE SKIP LOCKED, retries with exponential backoff, and every write is an
+  // idempotent upsert — so a task disappearing mid-batch loses no work, it just leaves
+  // the rows claimed-then-released for the next tick. Spot's two-minute interruption
+  // notice is longer than a 5-second relay cycle needs.
+  //
+  // That is not true of the api, which is why it stays on-demand: an interruption there
+  // is a request nobody retries and an SSE stream that drops. Interruptions are real, not
+  // hypothetical — `SpotInterruption` already appears in develop's stopped-task reasons.
+  //
+  // Saves ~$15.60/mo at this sizing once production runs continuously ($22.49 on-demand
+  // versus $6.90 on Spot).
   worker = {
     cpu       = 512
     memory    = 1024
     max_count = 6
     min_count = 0
-    use_spot  = false
+    use_spot  = true
   }
 
   // Telemetry stays DORMANT until otlp_endpoint is set: no sidecar, OTEL_ENABLED
