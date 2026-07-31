@@ -167,5 +167,9 @@
   },
   "cutline": {
     "label": "Capacity cutline"
+  },
+  "summary": {
+    "assigned": "Assigned",
+    "unassigned": "Unassigned"
   }
 }

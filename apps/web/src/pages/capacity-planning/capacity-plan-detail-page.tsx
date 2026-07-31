@@ -30,10 +30,14 @@ import {
   useRevertPlan,
   type CapacityPlanTeam,
 } from '@/features/capacity-planning/api'
+import { planTotals, pctOfCapacity } from '@/features/capacity-planning/plan-totals'
 import { CAPACITY_TEAM_COLUMNS, type TeamColKey } from './model/columns'
 import { CapacityTeamRow } from './ui/capacity-team-row'
 import { AllocationRow } from './ui/allocation-row'
 import { AllocateFeatureModal } from './ui/allocate-feature-modal'
+import { BRAND } from '@/shared/config/brand'
+import { MetricCard } from '@/shared/ui/metric-card'
+import { MetricStrip } from '@/shared/ui/metric-strip'
 import { CutlineDivider } from '@/shared/ui/cutline-divider'
 import { CapacityBreakdownOverlay } from './ui/capacity-breakdown-overlay'
 import { CapacityForecastModal } from './ui/capacity-forecast-modal'
@@ -133,6 +137,12 @@ export function CapacityPlanDetailPage() {
   // Resolved from the plan on every render rather than held in state, so a refetch that
   // changes a team's capacity cannot leave the open modal showing a stale row.
   const forecastTeam = plan.teams.find((team) => team.teamId === forecastTeamId) ?? null
+  const totals = planTotals(plan)
+  /** "12 points · 40%" — the percentage is omitted when no capacity gives it a base. */
+  const captionFor = (value: number) => {
+    const pct = pctOfCapacity(value, totals.capacity)
+    return pct === null ? unitLabel : `${unitLabel} · ${pct}%`
+  }
 
   return (
     <>
@@ -148,6 +158,60 @@ export function CapacityPlanDetailPage() {
         <DetailTwoPane
           main={
             <div className="flex min-h-0 flex-1 flex-col">
+              {/* Rally's plan summary: the four Breakdown numbers as a header strip, plus the
+                  assigned/unassigned split it shows beside them. Same `MetricStrip` chrome as
+                  every other read-model summary in the app, and the same `planTotals` the
+                  Breakdown overlay reads — the header cannot disagree with the table. */}
+              <MetricStrip>
+                <MetricCard
+                  label={t('breakdown.complete')}
+                  value={totals.complete}
+                  caption={captionFor(totals.complete)}
+                  minWidth={110}
+                />
+                <MetricCard
+                  label={t('breakdown.rollup')}
+                  value={totals.rollup}
+                  caption={captionFor(totals.rollup)}
+                  minWidth={110}
+                />
+                <MetricCard
+                  label={t('breakdown.estimated')}
+                  value={totals.estimated}
+                  caption={captionFor(totals.estimated)}
+                  minWidth={110}
+                />
+                <MetricCard
+                  label={t('breakdown.capacity')}
+                  value={
+                    totals.capacity === null ? (
+                      <span className="text-ui-sm font-normal text-foreground-subtle">
+                        {t('row.notEntered')}
+                      </span>
+                    ) : (
+                      totals.capacity
+                    )
+                  }
+                  // No unit caption when there is no number: "Not entered points" reads as a
+                  // quantity of nothing rather than an unanswered question.
+                  caption={totals.capacity === null ? undefined : unitLabel}
+                  minWidth={130}
+                />
+                <MetricCard
+                  label={t('summary.assigned')}
+                  value={totals.assignedItems}
+                  minWidth={90}
+                />
+                <MetricCard
+                  label={t('summary.unassigned')}
+                  value={totals.unassignedItems}
+                  // Rally shows the unassigned count in YELLOW when there is one: it is the
+                  // number that means work in this plan has nowhere to go.
+                  valueColor={totals.unassignedItems > 0 ? BRAND.warning : undefined}
+                  minWidth={100}
+                />
+              </MetricStrip>
+
               <div className="flex items-center gap-2 border-b border-border-inner px-4 py-2">
                 {canManage && (
                   <>

@@ -4,6 +4,7 @@ import { AlertTriangle } from 'lucide-react'
 import { AppModal, ModalBody } from '@/shared/ui/app-modal'
 import { BRAND } from '@/shared/config/brand'
 import { useCapacityWarningText } from '@/features/capacity-planning/warning-labels'
+import { planTotals } from '@/features/capacity-planning/plan-totals'
 import type { CapacityPlan } from '@/features/capacity-planning/api'
 
 /**
@@ -37,19 +38,9 @@ export function CapacityBreakdownOverlay({
   const { t } = useTranslation('capacity')
   const warningText = useCapacityWarningText()
 
-  const totals = plan.teams.reduce(
-    (acc, team) => ({
-      complete: acc.complete + team.metrics.complete,
-      rollup: acc.rollup + team.metrics.rollup,
-      estimated: acc.estimated + team.metrics.estimated,
-      // Capacity totals only over teams that HAVE one, and stays null while none does —
-      // summing nulls as zero would report a plan with no capacity as a plan with none
-      // available, which reads as a full plan rather than an unstarted one.
-      capacity:
-        team.metrics.capacity === null ? acc.capacity : (acc.capacity ?? 0) + team.metrics.capacity,
-    }),
-    { complete: 0, rollup: 0, estimated: 0, capacity: null as number | null },
-  )
+  // Shared with the plan summary strip, so the totals in the header and the totals in this
+  // table are the same numbers by construction rather than by two matching reduces.
+  const totals = planTotals(plan)
 
   return (
     <AppModal
