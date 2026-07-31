@@ -18,11 +18,25 @@ export const CAPACITY_SEGMENTS = {
   rollup: { fill: BRAND.primaryLighter, border: BRAND.primaryLight, label: 'rollup' },
   /** Diagonal hatch — a commitment is not delivered work, so it must not read as a solid fill. */
   estimated: {
-    fill: `repeating-linear-gradient(-45deg, ${BRAND.borderSubtle} 0, ${BRAND.borderSubtle} 3px, transparent 3px, transparent 6px)`,
+    // The gaps are the SURFACE colour, not transparent: this band is drawn over the green headroom
+    // backdrop, and transparent gaps let the green show through, so a committed stretch and a free
+    // stretch read as the same green hatch.
+    fill: `repeating-linear-gradient(-45deg, ${BRAND.borderSubtle} 0, ${BRAND.borderSubtle} 3px, ${BRAND.surface} 3px, ${BRAND.surface} 6px)`,
     border: BRAND.border,
     label: 'estimated',
   },
-  capacity: { fill: 'transparent', border: BRAND.success, label: 'capacity' },
+  /**
+   * Remaining capacity — a GREEN hatch, not empty space.
+   *
+   * Rally fills the headroom rather than leaving it blank: on a grid of twenty teams, an empty
+   * tail and a bar that simply ends look identical, and the whole question the reader is asking
+   * is "how much room is left". Hatched, not solid, because headroom is not work.
+   */
+  capacity: {
+    fill: `repeating-linear-gradient(-45deg, ${BRAND.successBorder} 0, ${BRAND.successBorder} 3px, ${BRAND.successBg} 3px, ${BRAND.successBg} 6px)`,
+    border: BRAND.success,
+    label: 'capacity',
+  },
 } as const
 
 export interface CompositeBarProps {
@@ -51,6 +65,15 @@ export interface CompositeBarProps {
    * a screen reader is not a warning, it is decoration.
    */
   warningLabels?: readonly string[]
+  /**
+   * Whether the glyph carries `warningLabels` as its ACCESSIBLE NAME (default) or is decoration.
+   *
+   * `false` where the row already names the same warnings elsewhere — the team grid puts a
+   * `WarningCountBadge` in its Features cell, and two nodes with the same accessible name make a
+   * screen reader read the reason twice. The glyph still draws, because its POSITION is the
+   * information Rally encodes: it marks where the bar failed.
+   */
+  warningLabelled?: boolean
   /** Tooltip text, usually the four numbers spelled out. */
   title?: string
 }
@@ -76,6 +99,7 @@ export function CompositeBar({
   capacity,
   targetLoadPct,
   warningLabels = [],
+  warningLabelled = true,
   title,
 }: CompositeBarProps) {
   const hasCapacity = capacity !== null && capacity > 0
@@ -85,6 +109,8 @@ export function CompositeBar({
   const hasAnything = scale > 0
 
   const pct = (v: number) => (hasAnything ? Math.max(0, Math.min(100, (v / scale) * 100)) : 0)
+  /** Over the ceiling — the bar is pinned at 100% and cannot show it by length alone. */
+  const overflows = hasCapacity && Math.max(rollup, estimated, complete) > capacity
 
   return (
     <div className="flex w-full items-center gap-1.5" title={title}>
@@ -97,7 +123,22 @@ export function CompositeBar({
           border: `1px solid ${hasCapacity ? CAPACITY_SEGMENTS.capacity.border : BRAND.borderSubtle}`,
         }}
       >
-        {/* Estimated first, so the bands in front read as subsets of the commitment. */}
+        {/* Headroom first, as the backdrop: everything else is drawn ON TOP of it, so the green
+            only shows where nothing has claimed the space. `estimated` is the claim that consumes
+            it — Rally's tail starts where the commitment ends, not where live work does. */}
+        {hasCapacity && estimated < capacity && (
+          <div
+            className="absolute inset-y-0"
+            data-segment="capacity"
+            style={{
+              left: `${pct(estimated)}%`,
+              right: 0,
+              background: CAPACITY_SEGMENTS.capacity.fill,
+            }}
+          />
+        )}
+
+        {/* Estimated next, so the bands in front read as subsets of the commitment. */}
         {hasAnything && estimated > 0 && (
           <div
             className="absolute inset-y-0 left-0"
@@ -133,23 +174,32 @@ export function CompositeBar({
           />
         )}
 
-        {/* Rally puts the warning INSIDE the bar, pinned to the end it overflowed. Outside it read
-            as a note about the row; inside it reads as a note about the overflow. */}
+        {/* The warning sits INSIDE the track, at the point the bar failed.
+            Rally places it that way and the position carries meaning: at the LEFT edge when the
+            row overflows its ceiling (the bar is already full, so the trouble is where it began),
+            at the boundary of the longest band otherwise. Outside the track it read as a note
+            about the row; inside it reads as a note about the bar.
+            One glyph however many rules fired — a row of triangles says nothing extra, and the
+            reasons ride the accessible name either way. The name is on a wrapping span, not the
+            SVG: `title` is an HTML attribute React's SVG typings reject. */}
+        {warningLabels.length > 0 && (
+          <span
+            {...(warningLabelled
+              ? { role: 'img', 'aria-label': warningLabels.join('. ') }
+              : { 'aria-hidden': true })}
+            title={warningLabels.join('\n')}
+            data-segment="warning"
+            className="absolute inset-y-0 z-10 flex items-center"
+            style={
+              overflows
+                ? { left: 0 }
+                : { left: `min(${pct(Math.max(rollup, estimated, complete))}%, calc(100% - 14px))` }
+            }
+          >
+            <AlertTriangle size={12} style={{ color: BRAND.danger }} />
+          </span>
+        )}
       </div>
-      {warningLabels.length > 0 && (
-        // One glyph however many rules fired, listing them all: a row of triangles says
-        // nothing extra, and the reason belongs in the text either way.
-        // The text rides a wrapping span, not the SVG: `title` is an HTML attribute and
-        // React's SVG typings do not accept it, so putting it on the icon would not compile.
-        <span
-          role="img"
-          aria-label={warningLabels.join('. ')}
-          title={warningLabels.join('\n')}
-          className="flex shrink-0 items-center"
-        >
-          <AlertTriangle size={12} style={{ color: BRAND.warning }} />
-        </span>
-      )}
     </div>
   )
 }

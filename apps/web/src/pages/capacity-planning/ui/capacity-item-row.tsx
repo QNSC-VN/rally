@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { AlertTriangle } from 'lucide-react'
 
 import { IdCell } from '@/entities/work-item/ui/id-cell'
-import { CompositeBar } from '@/shared/ui/composite-bar'
+import { MetricValue } from '@/shared/ui/metric-value'
+import { RowExpandToggle } from '@/shared/ui/row-expand-toggle'
 import { BRAND } from '@/shared/config/brand'
 import { cn } from '@/shared/lib/utils'
 import type { CapacityPlanItem } from '@/features/capacity-planning/api'
@@ -24,20 +25,24 @@ import { type ItemColKey } from '../model/columns'
 export function CapacityItemRow({
   item,
   position,
-  unitLabel,
   primaryTeamName,
   belowCutline,
+  expanded = false,
+  onToggleExpanded,
   colStyleFor,
   onOpenFeature,
 }: {
   item: CapacityPlanItem
   /** 1-based rank position within this plan — the order the cutline accumulates down. */
   position: number
-  unitLabel: string
   /** Name of the team that owns this Feature, resolved by the page from the plan's teams. */
   primaryTeamName: string | null
   /** Below the plan's cutline: this Feature does not fit the plan's total capacity. */
   belowCutline: boolean
+  /** Whether this Feature's per-team rows are showing. */
+  expanded?: boolean
+  /** Omitted where nothing can be nested — the toggle then renders as a spacer. */
+  onToggleExpanded?: () => void
   colStyleFor: (key: ItemColKey, base?: CSSProperties) => CSSProperties
   onOpenFeature: (portfolioItemId: string) => void
 }) {
@@ -68,55 +73,69 @@ export function CapacityItemRow({
         />
       </div>
 
-      <div style={colStyleFor('name', { flexShrink: 0 })} className="min-w-0 px-2">
+      <div
+        style={colStyleFor('name', { flexShrink: 0 })}
+        className="flex min-w-0 items-center gap-1 px-2"
+      >
+        {/* Disclosed only when there IS something nested: a Feature on one team has no breakdown to
+            show, and an inert toggle on every row teaches the reader to ignore all of them. */}
+        {onToggleExpanded !== undefined && item.teamIds.length > 1 ? (
+          <RowExpandToggle
+            expanded={expanded}
+            onToggle={onToggleExpanded}
+            label={
+              expanded
+                ? t('items.collapseTeams', { item: item.itemKey })
+                : t('items.expandTeams', { item: item.itemKey })
+            }
+          />
+        ) : (
+          <span className="w-4 shrink-0" />
+        )}
         <span className="truncate text-foreground" title={item.name}>
           {item.name}
         </span>
       </div>
 
+      {/* Rally's `Project`: where this Feature lives OUTSIDE the plan. Distinct from the planned
+          assignment beside it — a Story-to-Feature link may cross projects, so a plan can carry a
+          Feature owned elsewhere, and a planner needs to see that before allocating to it. */}
+      <div style={colStyleFor('project', { flexShrink: 0 })} className="min-w-0 px-2">
+        <span className="truncate text-muted-foreground" title={item.projectName ?? undefined}>
+          {item.projectName ?? '—'}
+        </span>
+      </div>
+
       <div style={colStyleFor('assignment', { flexShrink: 0 })} className="min-w-0 px-2">
-        {/* Rally's Planned Project Assignment: the team(s) this Feature is planned against in
-            THIS plan. An unassigned item carries a warning, because it is demand with nowhere
-            to go — and Rally flags it the same way. */}
-        {item.primaryTeamId === null ? (
+        {/* Rally's Planned Team Assignment: the team(s) this Feature is planned against in THIS
+            plan. Unassigned carries a warning — it is demand with nowhere to go, and Rally flags
+            it the same way. Allocated to SEVERAL teams, Rally shows the COUNT rather than one
+            team's name, because no single name would be the answer; the nested rows below say
+            which teams they are. */}
+        {item.primaryTeamId === null && item.teamIds.length === 0 ? (
           <span className="flex items-center gap-1" style={{ color: BRAND.warning }}>
             <AlertTriangle size={12} />
             <span className="text-ui-sm">{t('items.notAssigned')}</span>
           </span>
+        ) : item.teamIds.length > 1 ? (
+          <span className="text-foreground">
+            {t('items.teamCount', { count: item.teamIds.length })}
+          </span>
         ) : (
-          <span className="flex min-w-0 items-center gap-1.5">
-            {/* The team that OWNS the Feature, named — Rally shows the assignment, not a count. */}
-            <span className="truncate text-foreground" title={primaryTeamName ?? undefined}>
-              {primaryTeamName ?? '—'}
-            </span>
-            {/* Contributors are counted beside it: "+1" says other teams hold work without
-                pretending they own it. */}
-            {item.teamIds.length > 1 && (
-              <span className="shrink-0 text-ui-xs text-foreground-subtle">
-                {t('items.plusContributors', { count: item.teamIds.length - 1 })}
-              </span>
-            )}
+          <span className="truncate text-foreground" title={primaryTeamName ?? undefined}>
+            {primaryTeamName ?? '—'}
           </span>
         )}
       </div>
 
-      <div style={colStyleFor('progress', { flexShrink: 0 })} className="min-w-0 px-2">
-        {/* No capacity on an item row: a Feature has no ceiling of its own, so the bar scales
-            against its own largest value — the same rule the team grid's Feature rows use. */}
-        <CompositeBar
-          complete={item.complete}
-          rollup={item.rollup}
-          estimated={item.estimated}
-          capacity={null}
-          title={t('row.barTooltip', {
-            complete: item.complete,
-            rollup: item.rollup,
-            estimated: item.estimated,
-            unit: unitLabel,
-          })}
-        />
+      {/* Three numeric columns, no bar: Rally draws none on this tab, and it is right not to —
+          a Feature has no capacity, so a bar here would imply a ceiling that does not exist. */}
+      <div style={colStyleFor('complete', { flexShrink: 0 })} className="px-2 text-right">
+        <MetricValue value={item.complete} pct={null} />
       </div>
-
+      <div style={colStyleFor('rollup', { flexShrink: 0 })} className="px-2 text-right">
+        <MetricValue value={item.rollup} pct={null} />
+      </div>
       <div
         style={colStyleFor('estimated', { flexShrink: 0 })}
         className="flex items-center justify-end gap-1.5 px-2"

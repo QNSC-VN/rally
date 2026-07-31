@@ -144,10 +144,10 @@ export function CapacityTeamRow({
         <WarningCountBadge count={warnings.length} label={warnings.join('. ')} />
       </div>
 
-      {/* The bar gets NO `warningLabels`: the `WarningCountBadge` above already names every rule
-          that fired, and two elements carrying the same accessible name make a screen reader read
-          the reason twice (and resolved a strict-mode locator to two nodes). The bar keeps its
-          over-capacity block, which is a shape rather than a label. */}
+      {/* The bar draws the warning glyph but does NOT name it: the `WarningCountBadge` above
+          already lists every rule that fired, and two nodes with the same accessible name make a
+          screen reader read the reason twice. Rally shows the glyph inside the bar because its
+          POSITION says where the bar failed, which the badge cannot express. */}
       <div style={colStyleFor('progress', { flexShrink: 0 })} className="min-w-0 px-2">
         <CompositeBar
           complete={team.metrics.complete}
@@ -155,6 +155,8 @@ export function CapacityTeamRow({
           estimated={team.metrics.estimated}
           capacity={team.metrics.capacity}
           targetLoadPct={targetLoadPct}
+          warningLabels={warnings}
+          warningLabelled={false}
           title={t('row.barTooltip', {
             complete: team.metrics.complete,
             rollup: team.metrics.rollup,

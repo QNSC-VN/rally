@@ -10,7 +10,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from '@tanstack/react-router'
-import { AlertTriangle, BarChart3, Plus, Send, Undo2, Users } from 'lucide-react'
+import { Plus, Send, Undo2, Users } from 'lucide-react'
 
 import { Button } from '@/shared/ui/button'
 import { EmptyState } from '@/shared/ui/empty-state'
@@ -19,7 +19,7 @@ import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { DataTableFrame } from '@/shared/ui/table/data-table-frame'
 import { useDataTable } from '@/shared/ui/table'
 import { useTableSort } from '@/shared/lib/hooks/use-table-sort'
-import { DetailField, DetailLayout, DetailTwoPane } from '@/shared/ui/detail'
+import { DetailLayout } from '@/shared/ui/detail'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { notify } from '@/shared/lib/toast'
 import { useProjectPermissions } from '@/features/access/api'
@@ -37,7 +37,6 @@ import {
   sortCapacityTeams,
   type CapacityTeamSortField,
 } from '@/features/capacity-planning/sort-teams'
-import { useCapacityWarningText } from '@/features/capacity-planning/warning-labels'
 import { CutlineDivider } from '@/shared/ui/cutline-divider'
 import {
   CAPACITY_ITEM_COLUMNS,
@@ -46,13 +45,14 @@ import {
   type TeamColKey,
 } from './model/columns'
 import { CapacityItemRow } from './ui/capacity-item-row'
-import { PlanSummaryMetrics } from './ui/plan-summary-metrics'
+import { ItemAllocationRow } from './ui/item-allocation-row'
+import { PlanAssignmentCounts, PlanSummaryMetrics } from './ui/plan-summary-metrics'
 import { CapacityTeamRow } from './ui/capacity-team-row'
-import { AllocationRow } from './ui/allocation-row'
+import { TeamAllocationsTable } from './ui/team-allocations-table'
 import { AllocateFeatureModal } from './ui/allocate-feature-modal'
-import { BRAND } from '@/shared/config/brand'
-import { MetricStrip } from '@/shared/ui/metric-strip'
 import { StatusBadge } from '@/shared/ui/status-badge'
+import { CompositeBar } from '@/shared/ui/composite-bar'
+import { planTotals } from '@/features/capacity-planning/plan-totals'
 import { CapacityBreakdownOverlay } from './ui/capacity-breakdown-overlay'
 import { CapacityForecastModal } from './ui/capacity-forecast-modal'
 import { PublishPlanModal } from './ui/publish-plan-modal'
@@ -89,6 +89,22 @@ export function CapacityPlanDetailPage() {
     [],
   )
 
+  /**
+   * Which Features show their per-team breakdown. Same collapsed-by-default rule as the team grid:
+   * the tab exists to rank Features against the cutline, and every row expanded buries that.
+   */
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set())
+  const toggleItem = useCallback(
+    (itemId: string) =>
+      setExpandedItems((prev) => {
+        const next = new Set(prev)
+        if (next.has(itemId)) next.delete(itemId)
+        else next.add(itemId)
+        return next
+      }),
+    [],
+  )
+
   const { data: plan, isLoading } = useCapacityPlan(planId)
   const { can } = useProjectPermissions(plan?.projectId)
   // A published plan is read-only until reverted, so the whole surface follows the API's
@@ -102,7 +118,6 @@ export function CapacityPlanDetailPage() {
   const { data: teams = [] } = useProjectTeams(plan?.projectId)
   const addTeam = useAddCapacityTeam()
   const revert = useRevertPlan()
-  const warningText = useCapacityWarningText()
   // Only for the pending flag on the toolbar button; the modal owns the publish call itself.
   const publish = usePublishPlan()
   // Publishing writes back to Feature rows, so it takes its OWN permission rather than
@@ -145,6 +160,17 @@ export function CapacityPlanDetailPage() {
     () => new Map(plan?.teams.map((team) => [team.teamId, team.teamName]) ?? []),
     [plan?.teams],
   )
+
+  /** The same allocations bucketed by FEATURE, for the Features tab's nested rows. */
+  const allocationsByItem = useMemo(() => {
+    const map = new Map<string, NonNullable<typeof plan>['allocations']>()
+    for (const a of plan?.allocations ?? []) {
+      const list = map.get(a.portfolioItemId) ?? []
+      list.push(a)
+      map.set(a.portfolioItemId, list)
+    }
+    return map
+  }, [plan?.allocations])
 
   const allocationsByTeam = useMemo(() => {
     const map = new Map<string, NonNullable<typeof plan>['allocations']>()
@@ -201,6 +227,9 @@ export function CapacityPlanDetailPage() {
   if (!plan) return <EmptyState title={t('detail.notFound')} />
 
   const unitLabel = t(`units.${plan.unit}`)
+  // The same totals the summary panel and the Breakdown overlay read, so the header bar cannot
+  // disagree with the numbers printed beside it.
+  const planWide = planTotals(plan)
   // Resolved from the plan on every render rather than held in state, so a refetch that
   // changes a team's capacity cannot leave the open modal showing a stale row.
   const forecastTeam = plan.teams.find((team) => team.teamId === forecastTeamId) ?? null
@@ -210,6 +239,9 @@ export function CapacityPlanDetailPage() {
       <DetailLayout
         onBack={() => void navigate({ to: '/capacity-planning' })}
         backLabel={t('title')}
+        // Rally leads its header with the plan's key (`PN697`); ours is `CP-<n>`. The shared header
+        // already has the slot every work-item detail uses for it.
+        itemKey={plan.planKey ?? undefined}
         title={plan.name}
         status={
           <div className="flex items-center gap-2">
@@ -225,274 +257,253 @@ export function CapacityPlanDetailPage() {
                 {plan.releaseName}
               </span>
             )}
-            {/* Rally states the plan's portfolio-item type in the header: a plan of Features and a
-                plan of Epics look identical otherwise. Ours only plans Features today. */}
-            <span className="text-ui-xs text-white/70">
-              {t('summary.itemType')}: {t('items.featureType')}
+            {/* The plan's window and its advisory ceiling. These used to live in a right-hand
+                fields panel; this page has none (Rally's has none either, and the team grid needs
+                the full width), so the facts that are not derivable from the grid ride the header
+                instead of disappearing. */}
+            {(plan.plannedStartDate !== null || plan.plannedEndDate !== null) && (
+              <span className="rounded-sm bg-white/10 px-1.5 py-px text-ui-xs whitespace-nowrap text-white">
+                {plan.plannedStartDate ?? '—'} → {plan.plannedEndDate ?? '—'}
+              </span>
+            )}
+            <span className="text-ui-xs whitespace-nowrap text-white/70">
+              {t('detail.fields.targetLoad')} {plan.targetLoadPct}%
             </span>
+            {/* The PLAN's own bar, in the header — Rally's position for it. The same `CompositeBar`
+                every team row draws, so the whole plan can be read as over or under before any row
+                is scanned, and the header bar cannot layer or colour differently from the rows it
+                summarises. */}
+            <div className="w-56 shrink-0">
+              <CompositeBar
+                complete={planWide.complete}
+                rollup={planWide.rollup}
+                estimated={planWide.estimated}
+                capacity={planWide.capacity}
+                targetLoadPct={plan.targetLoadPct}
+                title={t('row.barTooltip', {
+                  complete: planWide.complete,
+                  rollup: planWide.rollup,
+                  estimated: planWide.estimated,
+                  unit: unitLabel,
+                })}
+              />
+            </div>
           </div>
         }
+        // No counts on the tabs: Rally does not badge them here, and the numbers are already on
+        // the page — the team grid's row count and the summary panel's assigned/unassigned split
+        // say the same thing without competing with the tab labels.
         tabs={[
-          { key: 'teams', label: t('detail.tabs.teams'), count: plan.teams.length },
-          // Rally's Items tab: the same plan seen by Feature rather than by team, and the only
+          { key: 'teams', label: t('detail.tabs.teams') },
+          // Rally's Features tab: the same plan seen by Feature rather than by team, and the only
           // surface its cutline belongs on.
-          { key: 'items', label: t('detail.tabs.items'), count: plan.items.length },
+          { key: 'items', label: t('detail.tabs.items') },
         ]}
         activeTab={tab}
         onTabChange={setTab}
       >
-        <DetailTwoPane
-          main={
-            <div className="flex min-h-0 flex-1 flex-col">
-              {/* Rally's compact summary line, not a row of KPI cards: each metric carries the
-                  SWATCH of the bar segment it names, so the header explains the bars beneath it.
-                  Kept inside `MetricStrip` so the chrome (height, divider, padding) is the same
-                  strip every other read-model summary in the app uses. */}
-              <MetricStrip>
-                <PlanSummaryMetrics plan={plan} unitLabel={unitLabel} />
-              </MetricStrip>
+        {/* FULL WIDTH — no fields panel. Rally's capacity plan has none, and with one the eight
+            team columns did not fit: the grid gained a horizontal scrollbar and Capacity, the base
+            every percentage is taken from, fell off the right edge. Everything the panel held now
+            lives in the header (window, target load), in the summary panel (unit, totals) or in the
+            grid itself (per-team capacity, which the panel was repeating). */}
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-card">
+          <div className="flex min-h-0 flex-1 flex-col">
+            {/* Rally's summary ROW: what the plan is planning on the left, how it measures up on
+                the right. The measurements are a bordered panel rather than KPI cards, because the
+                four figures are one reading of the plan and each needs the swatch of the bar
+                segment it names. */}
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border-inner px-4 py-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-ui-xs text-muted-foreground">{t('summary.itemType')}</span>
+                {/* A plan of Features and a plan of Epics look identical otherwise. Ours only plans
+                    Features today, so this states a fact rather than offering a choice. */}
+                <span className="rounded-sm border border-border-subtle bg-surface-subtle px-1.5 py-px text-ui-xs font-semibold text-foreground">
+                  {t('items.featureType')}
+                </span>
+                <PlanAssignmentCounts plan={plan} />
+              </div>
+              <PlanSummaryMetrics
+                plan={plan}
+                unitLabel={unitLabel}
+                onOpenBreakdown={() => setShowBreakdown(true)}
+              />
+            </div>
 
-              <div className="flex items-center gap-2 border-b border-border-inner px-4 py-2">
-                {canManage && (
-                  <>
-                    <div className="w-64">
-                      <SearchableSelect
-                        variant="field"
-                        value={addingTeamId}
-                        ariaLabel={t('detail.addTeamLabel')}
-                        options={available.map((team) => ({ value: team.id, label: team.name }))}
-                        onChange={(v) => setAddingTeamId(v ?? '')}
-                      />
-                    </div>
-                    <Button size="sm" onClick={add} disabled={!addingTeamId || addTeam.isPending}>
-                      <Plus size={13} /> {t('detail.addTeam')}
-                    </Button>
-                    <Button size="sm" variant="secondary" onClick={() => setShowAllocate(true)}>
-                      <Plus size={13} /> {t('allocate.action')}
-                    </Button>
-                  </>
-                )}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="ml-auto"
-                  onClick={() => setShowBreakdown(true)}
-                >
-                  <BarChart3 size={13} /> {t('breakdown.action')}
-                </Button>
-                {/* One button, whichever direction the plan can move in. A draft can be
+            <div className="flex items-center gap-2 border-b border-border-inner px-4 py-2">
+              {canManage && (
+                <>
+                  <div className="w-64">
+                    <SearchableSelect
+                      variant="field"
+                      value={addingTeamId}
+                      ariaLabel={t('detail.addTeamLabel')}
+                      options={available.map((team) => ({ value: team.id, label: team.name }))}
+                      onChange={(v) => setAddingTeamId(v ?? '')}
+                    />
+                  </div>
+                  <Button size="sm" onClick={add} disabled={!addingTeamId || addTeam.isPending}>
+                    <Plus size={13} /> {t('detail.addTeam')}
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => setShowAllocate(true)}>
+                    <Plus size={13} /> {t('allocate.action')}
+                  </Button>
+                </>
+              )}
+              {/* Breakdown is not here: it is the link in the summary panel above, where Rally
+                    puts it and where the numbers it explains already are. */}
+              {/* One button, whichever direction the plan can move in. A draft can be
                     published; a published plan can only be reverted, which is also the only
                     way back to editing it. */}
-                {canPublish &&
-                  (plan.status === 'draft' ? (
-                    <Button
-                      size="sm"
-                      onClick={() => setShowPublish(true)}
-                      disabled={publish.isPending}
-                    >
-                      <Send size={13} /> {t('publish.action')}
-                    </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => setConfirmRevert(true)}
-                      disabled={revert.isPending}
-                    >
-                      <Undo2 size={13} /> {t('publish.revert.action')}
-                    </Button>
-                  ))}
-              </div>
+              {canPublish &&
+                (plan.status === 'draft' ? (
+                  <Button
+                    size="sm"
+                    className="ml-auto"
+                    onClick={() => setShowPublish(true)}
+                    disabled={publish.isPending}
+                  >
+                    <Send size={13} /> {t('publish.action')}
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="ml-auto"
+                    onClick={() => setConfirmRevert(true)}
+                    disabled={revert.isPending}
+                  >
+                    <Undo2 size={13} /> {t('publish.revert.action')}
+                  </Button>
+                ))}
+            </div>
 
-              {tab === 'items' ? (
-                <DataTableFrame
-                  header={itemTable.headerProps}
-                  padClassName="px-3"
-                  empty={
-                    plan.items.length === 0 ? (
-                      <EmptyState
-                        icon={<Users size={28} className="text-border-strong" />}
-                        title={t('items.empty')}
-                      />
-                    ) : undefined
-                  }
-                >
-                  {plan.items.map((item, index) => (
-                    <div key={item.portfolioItemId}>
-                      {/* The line sits ABOVE the first item that does not fit. `-1` means even
+            {tab === 'items' ? (
+              <DataTableFrame
+                header={itemTable.headerProps}
+                padClassName="px-3"
+                empty={
+                  plan.items.length === 0 ? (
+                    <EmptyState
+                      icon={<Users size={28} className="text-border-strong" />}
+                      title={t('items.empty')}
+                    />
+                  ) : undefined
+                }
+              >
+                {plan.items.map((item, index) => (
+                  <div key={item.portfolioItemId}>
+                    {/* The line sits ABOVE the first item that does not fit. `-1` means even
                           the first one exceeds the plan, so it lands at the very top; `null`
                           (no capacity entered anywhere) draws nothing, because there is no
                           number for the running total to exceed. */}
-                      {plan.itemCutlineIndex !== null && plan.itemCutlineIndex + 1 === index && (
-                        <CutlineDivider label={t('cutline.label')} />
-                      )}
-                      <CapacityItemRow
-                        item={item}
-                        position={index + 1}
-                        unitLabel={unitLabel}
-                        primaryTeamName={teamNameById.get(item.primaryTeamId ?? '') ?? null}
-                        belowCutline={
-                          plan.itemCutlineIndex !== null && index > plan.itemCutlineIndex
-                        }
-                        colStyleFor={itemColStyleFor}
-                        onOpenFeature={openFeature}
-                      />
-                    </div>
-                  ))}
-                </DataTableFrame>
-              ) : (
-                <DataTableFrame
-                  header={table.headerProps}
-                  padClassName="px-3"
-                  empty={
-                    plan.teams.length === 0 ? (
-                      <EmptyState
-                        icon={<Users size={28} className="text-border-strong" />}
-                        title={t('detail.noTeams')}
-                      />
-                    ) : undefined
-                  }
-                >
-                  {sortedTeams.map((team) => (
-                    <div key={team.id}>
-                      <CapacityTeamRow
-                        planId={plan.id}
-                        team={team}
-                        unitLabel={unitLabel}
-                        targetLoadPct={plan.targetLoadPct}
-                        canManage={canManage}
-                        colStyleFor={colStyleFor}
-                        gutter={null}
-                        onForecast={() => setForecastTeamId(team.teamId)}
-                        expanded={expandedTeams.has(team.teamId)}
-                        onToggleExpanded={() => toggleTeam(team.teamId)}
-                        featureCount={allocationsByTeam.get(team.teamId)?.length ?? 0}
-                      />
-                      {/* Allocated Features sit under their team — one row per team, which is
+                    {plan.itemCutlineIndex !== null && plan.itemCutlineIndex + 1 === index && (
+                      <CutlineDivider label={t('cutline.label')} />
+                    )}
+                    <CapacityItemRow
+                      item={item}
+                      position={index + 1}
+                      primaryTeamName={teamNameById.get(item.primaryTeamId ?? '') ?? null}
+                      belowCutline={plan.itemCutlineIndex !== null && index > plan.itemCutlineIndex}
+                      expanded={expandedItems.has(item.portfolioItemId)}
+                      onToggleExpanded={() => toggleItem(item.portfolioItemId)}
+                      colStyleFor={itemColStyleFor}
+                      onOpenFeature={openFeature}
+                    />
+                    {/* Rally: "each allocated project is listed as a row underneath the portfolio
+                        item". PLAIN nested rows here, not a sub-table: unlike the team grid, these
+                        children fill the SAME columns as their parent (one team's slice of
+                        Complete / Rollup / Estimated), so a second header would repeat the one
+                        above it. */}
+                    {expandedItems.has(item.portfolioItemId) &&
+                      (allocationsByItem.get(item.portfolioItemId) ?? []).map((allocation) => (
+                        <ItemAllocationRow
+                          key={allocation.id}
+                          allocation={allocation}
+                          teamName={teamNameById.get(allocation.teamId ?? '') ?? null}
+                          colStyleFor={itemColStyleFor}
+                        />
+                      ))}
+                  </div>
+                ))}
+              </DataTableFrame>
+            ) : (
+              <DataTableFrame
+                header={table.headerProps}
+                padClassName="px-3"
+                empty={
+                  plan.teams.length === 0 ? (
+                    <EmptyState
+                      icon={<Users size={28} className="text-border-strong" />}
+                      title={t('detail.noTeams')}
+                    />
+                  ) : undefined
+                }
+              >
+                {sortedTeams.map((team) => (
+                  <div key={team.id}>
+                    <CapacityTeamRow
+                      planId={plan.id}
+                      team={team}
+                      unitLabel={unitLabel}
+                      targetLoadPct={plan.targetLoadPct}
+                      canManage={canManage}
+                      colStyleFor={colStyleFor}
+                      gutter={null}
+                      onForecast={() => setForecastTeamId(team.teamId)}
+                      expanded={expandedTeams.has(team.teamId)}
+                      onToggleExpanded={() => toggleTeam(team.teamId)}
+                      featureCount={allocationsByTeam.get(team.teamId)?.length ?? 0}
+                    />
+                    {/* Allocated Features sit under their team — one row per team, which is
                           how Rally groups a shared Feature — and DISCLOSED rather than always
                           on, because Rally collapses them until asked. No cutline here either:
                           Rally draws it on the Items tab against the plan's total capacity. */}
-                      {expandedTeams.has(team.teamId) &&
-                        allocationsByTeam
-                          .get(team.teamId)
-                          ?.map((allocation) => (
-                            <AllocationRow
-                              key={allocation.id}
-                              planId={plan.id}
-                              allocation={allocation}
-                              unitLabel={unitLabel}
-                              canManage={canManage}
-                              colStyleFor={colStyleFor}
-                              onOpenFeature={openFeature}
-                              teamName={team.teamName}
-                            />
-                          ))}
-                    </div>
-                  ))}
+                    {expandedTeams.has(team.teamId) && (
+                      <TeamAllocationsTable
+                        planId={plan.id}
+                        allocations={allocationsByTeam.get(team.teamId) ?? []}
+                        teamName={team.teamName}
+                        unitLabel={unitLabel}
+                        canManage={canManage}
+                        onOpenFeature={openFeature}
+                      />
+                    )}
+                  </div>
+                ))}
 
-                  {/* The Unallocated bucket. Rendered only when it holds something: an empty
+                {/* The Unallocated bucket. Rendered only when it holds something: an empty
                   section would imply demand is missing rather than simply absent. */}
-                  {unallocated.length > 0 && (
-                    <div>
-                      <div className="flex min-h-[34px] items-center border-b border-border-inner bg-surface-hover px-3 text-ui-md font-semibold text-foreground">
-                        <span style={colStyleFor('team', { flexShrink: 0 })} className="px-2">
-                          {t('detail.unallocated')}
-                        </span>
-                        <span
-                          style={colStyleFor('capacity', { flexShrink: 0 })}
-                          className="px-2 text-right tabular-nums"
-                        >
-                          {plan.unallocated} {unitLabel}
-                        </span>
-                      </div>
-                      {unallocated.map((allocation) => (
-                        <AllocationRow
-                          key={allocation.id}
-                          planId={plan.id}
-                          allocation={allocation}
-                          unitLabel={unitLabel}
-                          canManage={canManage}
-                          colStyleFor={colStyleFor}
-                          onOpenFeature={openFeature}
-                          // No team by definition — the Unallocated bucket is Rally's unassigned
-                          // state, so there is nothing here to make primary.
-                          teamName={null}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </DataTableFrame>
-              )}
-            </div>
-          }
-          sidebar={
-            <div className="flex flex-col gap-3">
-              {/* Rally puts a per-team capacity summary beside its Items tab, because the line
-                  the tab draws is plan-wide: once you know the plan is over, the next question
-                  is WHICH team has no room. Only on this tab — the team grid already shows the
-                  same numbers per row, and repeating them there would be noise. */}
-              {tab === 'items' && plan.teams.length > 0 && (
-                <div className="flex flex-col gap-1 border-b border-border-inner pb-3">
-                  <span className="text-ui-xs font-semibold text-foreground-subtle uppercase">
-                    {t('items.sidebarHeading')}
-                  </span>
-                  {sortedTeams.map((team) => {
-                    const labels = warningText(team.metrics.warnings)
-                    return (
-                      <div
-                        key={team.id}
-                        className="flex items-center justify-between gap-2 text-ui-sm"
+                {unallocated.length > 0 && (
+                  <div>
+                    <div className="flex min-h-[34px] items-center border-b border-border-inner bg-surface-hover px-3 text-ui-md font-semibold text-foreground">
+                      <span style={colStyleFor('team', { flexShrink: 0 })} className="px-2">
+                        {t('detail.unallocated')}
+                      </span>
+                      <span
+                        style={colStyleFor('capacity', { flexShrink: 0 })}
+                        className="px-2 text-right tabular-nums"
                       >
-                        <span className="truncate text-foreground">{team.teamName ?? '—'}</span>
-                        <span className="flex shrink-0 items-center gap-1 text-muted-foreground tabular-nums">
-                          {team.metrics.estimated} /{' '}
-                          {team.metrics.capacity === null ? (
-                            <span className="text-foreground-subtle">{t('row.notEntered')}</span>
-                          ) : (
-                            team.metrics.capacity
-                          )}
-                          {labels.length > 0 && (
-                            <span
-                              role="img"
-                              aria-label={labels.join('. ')}
-                              title={labels.join('\n')}
-                              className="flex items-center"
-                            >
-                              <AlertTriangle size={11} style={{ color: BRAND.warning }} />
-                            </span>
-                          )}
-                        </span>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-              <DetailField label={t('detail.fields.project')}>
-                {plan.projectName ?? '—'}
-              </DetailField>
-              <DetailField label={t('detail.fields.release')}>
-                {plan.releaseName ?? '—'}
-              </DetailField>
-              <DetailField label={t('detail.fields.unit')}>{unitLabel}</DetailField>
-              <DetailField label={t('detail.fields.targetLoad')}>{plan.targetLoadPct}%</DetailField>
-              <DetailField label={t('detail.fields.totalCapacity')}>
-                {/* Blank rather than 0 when nobody has entered a capacity: an untouched plan
-                  is not a plan with no capacity available. */}
-                {plan.totalCapacity === null ? (
-                  <span className="text-foreground-subtle">{t('row.notEntered')}</span>
-                ) : (
-                  `${plan.totalCapacity} ${unitLabel}`
+                        {plan.unallocated} {unitLabel}
+                      </span>
+                    </div>
+                    {/* Same nested table as a team's, so the bucket reads as one more group rather
+                        than a different kind of list. No team by definition — the Unallocated
+                        bucket is Rally's unassigned state, so there is nothing to make primary. */}
+                    <TeamAllocationsTable
+                      planId={plan.id}
+                      allocations={unallocated}
+                      teamName={null}
+                      unitLabel={unitLabel}
+                      canManage={canManage}
+                      onOpenFeature={openFeature}
+                    />
+                  </div>
                 )}
-              </DetailField>
-              <DetailField label={t('detail.fields.plannedStartDate')}>
-                {plan.plannedStartDate ?? '—'}
-              </DetailField>
-              <DetailField label={t('detail.fields.plannedEndDate')}>
-                {plan.plannedEndDate ?? '—'}
-              </DetailField>
-            </div>
-          }
-        />
+              </DataTableFrame>
+            )}
+          </div>
+        </div>
       </DetailLayout>
 
       {showAllocate && <AllocateFeatureModal plan={plan} onClose={() => setShowAllocate(false)} />}

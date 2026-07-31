@@ -16,11 +16,14 @@ import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { IconButton } from '@/shared/ui/icon-button'
 import { notify } from '@/shared/lib/toast'
 import { useCapacityWarningText } from '@/features/capacity-planning/warning-labels'
-import { type TeamColKey } from '../model/columns'
+import { type AllocColKey } from '../model/columns'
 import { EstimateTierBadge } from './estimate-tier-badge'
 
 /**
- * One allocated Feature, indented under its team (or under the Unallocated bucket).
+ * One allocated Feature inside its team's sub-table (or the Unallocated bucket's).
+ *
+ * Laid out against `AllocColKey`, the nested table's own columns — see
+ * `TeamAllocationsTable` for why the child grid does not reuse the parent's headers.
  *
  * The Estimated cell edits in place. A Feature row has NO capacity of its own, so its bar
  * scales against its own largest value and only the two Feature rules can fire: Rally's
@@ -40,7 +43,7 @@ export function AllocationRow({
   allocation: CapacityAllocation
   unitLabel: string
   canManage: boolean
-  colStyleFor: (key: TeamColKey, base?: CSSProperties) => CSSProperties
+  colStyleFor: (key: AllocColKey, base?: CSSProperties) => CSSProperties
   onOpenFeature: (portfolioItemId: string) => void
   /** This row's team name, for the "make primary" label — ids make a useless accessible name. */
   teamName: string | null
@@ -69,64 +72,80 @@ export function AllocationRow({
   }
 
   return (
-    <div className="group flex min-h-[34px] items-center border-b border-border-inner bg-surface-subtle/40 px-3 text-ui-md transition-colors hover:bg-primary-lighter">
-      {/* Indented to read as a child of the team row above it. */}
-      <div
-        style={colStyleFor('team', { flexShrink: 0 })}
-        className="flex min-w-0 items-center gap-2 pl-8"
-      >
+    <div className="group flex min-h-[30px] items-center border-b border-border-inner px-2 text-ui-md transition-colors hover:bg-primary-lighter">
+      <div style={colStyleFor('id', { flexShrink: 0 })} className="min-w-0 px-2">
         <IdCell
           type="feature"
           itemKey={allocation.itemKey}
           onOpen={() => onOpenFeature(allocation.portfolioItemId)}
         />
-        <span className="truncate text-muted-foreground" title={allocation.name}>
+      </div>
+
+      <div
+        style={colStyleFor('name', { flexShrink: 0 })}
+        className="flex min-w-0 items-center gap-2 px-2"
+      >
+        <span className="truncate text-foreground" title={allocation.name}>
           {allocation.name}
         </span>
         <EstimateTierBadge tier={allocation.tier} />
+        {/* Rally assigns a Feature to ONE team and allocates to the rest. The badge says which row
+            owns it; the button on a contributor moves that ownership without a dialog, because it
+            is a single-field change whose result is visible immediately. */}
+        {allocation.isPrimary ? (
+          <span
+            className="shrink-0 rounded-sm px-1 py-px text-ui-xs font-medium"
+            style={{
+              backgroundColor: BRAND.accentBg,
+              color: BRAND.primaryLight,
+              border: `1px solid ${BRAND.accentBorder}`,
+            }}
+          >
+            {t('row.primaryBadge')}
+          </span>
+        ) : (
+          canManage &&
+          allocation.teamId !== null && (
+            <IconButton
+              aria-label={t('row.makePrimary', {
+                team: teamName ?? '',
+                item: allocation.itemKey,
+              })}
+              onClick={() =>
+                setPrimary.mutate(
+                  { id: planId, allocationId: allocation.id },
+                  {
+                    onSuccess: () => notify.success(t('row.primaryUpdated')),
+                    onError: (err) => notify.error(err.message),
+                  },
+                )
+              }
+              disabled={setPrimary.isPending}
+            >
+              <Star size={12} />
+            </IconButton>
+          )
+        )}
       </div>
 
-      {/* Rally assigns a Feature to ONE team and allocates to the rest. The badge says which row
-          owns it; the button on a contributor moves that ownership without a dialog, because it is
-          a single-field change the planner can see the result of immediately. */}
-      {allocation.isPrimary ? (
-        <span
-          className="mr-1 shrink-0 rounded-sm px-1 py-px text-ui-xs font-medium"
-          style={{
-            backgroundColor: BRAND.accentBg,
-            color: BRAND.primaryLight,
-            border: `1px solid ${BRAND.accentBorder}`,
-          }}
-        >
-          {t('row.primaryBadge')}
-        </span>
-      ) : (
-        canManage &&
-        allocation.teamId !== null && (
-          <IconButton
-            aria-label={t('row.makePrimary', {
-              team: teamName ?? '',
-              item: allocation.itemKey,
-            })}
-            onClick={() =>
-              setPrimary.mutate(
-                { id: planId, allocationId: allocation.id },
-                {
-                  onSuccess: () => notify.success(t('row.primaryUpdated')),
-                  onError: (err) => notify.error(err.message),
-                },
-              )
-            }
-            disabled={setPrimary.isPending}
-          >
-            <Star size={12} />
-          </IconButton>
-        )
-      )}
-
-      {/* Empty: the Features count is a TEAM figure. Rendering nothing keeps the columns aligned
-          without repeating a number that means something else one row up. */}
-      <div style={colStyleFor('features', { flexShrink: 0 })} />
+      {/* Rally's `Allocation`: this team's promised slice, edited in place. Under the parent's
+          headers this number sat below one reading "Capacity", which is the team's ceiling — a
+          different figure entirely. */}
+      <div
+        style={colStyleFor('allocation', { flexShrink: 0 })}
+        className="min-w-0 px-0"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <InlineEditableCell
+          fullCell
+          value={String(allocation.value)}
+          canEdit={canManage}
+          onCommit={commit}
+          ariaLabel={t('row.allocationLabel', { feature: allocation.itemKey })}
+          className="block w-full text-right"
+          inputClassName="w-full rounded border border-primary bg-transparent px-1 py-0.5 text-right text-ui-sm text-foreground focus:outline-none"
+        />
+      </div>
 
       <div style={colStyleFor('progress', { flexShrink: 0 })} className="min-w-0 px-2">
         <CompositeBar
@@ -144,9 +163,8 @@ export function AllocationRow({
         />
       </div>
 
-      {/* A Feature row fills the same three numeric columns as its team, so the values line up
-          under one set of headers. Percentages are absent by definition: a Feature has no capacity
-          of its own to be a share OF — the ceiling belongs to the team above it. */}
+      {/* No percentages: a Feature has no capacity of its own to be a share OF — the ceiling
+          belongs to the team whose sub-table this is. */}
       <div style={colStyleFor('complete', { flexShrink: 0 })} className="px-2 text-right">
         <MetricValue value={metrics.complete} pct={null} />
       </div>
@@ -155,22 +173,6 @@ export function AllocationRow({
       </div>
       <div style={colStyleFor('estimated', { flexShrink: 0 })} className="px-2 text-right">
         <MetricValue value={metrics.estimated} pct={null} />
-      </div>
-
-      <div
-        style={colStyleFor('capacity', { flexShrink: 0 })}
-        className="min-w-0 px-0"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <InlineEditableCell
-          fullCell
-          value={String(allocation.value)}
-          canEdit={canManage}
-          onCommit={commit}
-          ariaLabel={t('row.allocationLabel', { feature: allocation.itemKey })}
-          className="block w-full text-right"
-          inputClassName="w-full rounded border border-primary bg-transparent px-1 py-0.5 text-right text-ui-sm text-foreground focus:outline-none"
-        />
       </div>
 
       <div
