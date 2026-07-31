@@ -2,11 +2,15 @@ import { describe, expect, it } from 'vitest'
 import { render } from '@testing-library/react'
 import { CompositeBar } from './composite-bar'
 
-/** Widths of the filled segments, in DOM order: rollup band, then complete band. */
-function fills(container: HTMLElement): string[] {
-  return [...container.querySelectorAll<HTMLElement>('[style*="width"]')].map(
-    (el) => el.style.width,
-  )
+/**
+ * A named segment's width.
+ *
+ * By NAME, not by DOM order: Rally layers estimated → rollup → complete, and an earlier version
+ * of this test asserted positions, so re-layering the bar broke assertions that were still true.
+ */
+function width(container: HTMLElement, segment: 'complete' | 'rollup' | 'estimated'): string {
+  const el = container.querySelector<HTMLElement>(`[data-segment="${segment}"]`)
+  return el?.style.width ?? 'absent'
 }
 
 describe('CompositeBar', () => {
@@ -14,7 +18,8 @@ describe('CompositeBar', () => {
     const { container } = render(
       <CompositeBar complete={25} rollup={50} estimated={0} capacity={100} />,
     )
-    expect(fills(container).slice(0, 2)).toEqual(['50%', '25%'])
+    expect(width(container, 'rollup')).toBe('50%')
+    expect(width(container, 'complete')).toBe('25%')
   })
 
   it('scales against the LARGEST value when there is no capacity', () => {
@@ -23,14 +28,20 @@ describe('CompositeBar', () => {
     const { container } = render(
       <CompositeBar complete={5} rollup={20} estimated={10} capacity={null} />,
     )
-    expect(fills(container).slice(0, 2)).toEqual(['100%', '25%'])
+    // Scale is the largest value (rollup 20), so rollup fills the track and complete is a quarter.
+    expect(width(container, 'rollup')).toBe('100%')
+    expect(width(container, 'complete')).toBe('25%')
+    expect(width(container, 'estimated')).toBe('50%')
   })
 
   it('renders nothing filled when every value is zero', () => {
     const { container } = render(
       <CompositeBar complete={0} rollup={0} estimated={0} capacity={null} />,
     )
-    expect(fills(container).slice(0, 2)).toEqual(['0%', '0%'])
+    expect(width(container, 'rollup')).toBe('0%')
+    expect(width(container, 'complete')).toBe('0%')
+    // Nothing committed either, so the hatch is not drawn at all.
+    expect(width(container, 'estimated')).toBe('absent')
   })
 
   it('treats a capacity of zero as no ceiling rather than dividing by it', () => {
@@ -38,14 +49,14 @@ describe('CompositeBar', () => {
     const { container } = render(
       <CompositeBar complete={0} rollup={10} estimated={0} capacity={0} />,
     )
-    expect(fills(container)[0]).toBe('100%')
+    expect(width(container, 'rollup')).toBe('100%')
   })
 
   it('clamps an over-capacity bar to the track instead of overflowing it', () => {
     const { container } = render(
       <CompositeBar complete={0} rollup={150} estimated={0} capacity={100} />,
     )
-    expect(fills(container)[0]).toBe('100%')
+    expect(width(container, 'rollup')).toBe('100%')
   })
 
   it('shows the warning glyph only when a rule fired', () => {

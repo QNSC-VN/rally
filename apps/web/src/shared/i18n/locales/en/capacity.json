@@ -35,7 +35,7 @@
     "notFound": "Capacity plan not found.",
     "tabs": {
       "teams": "Teams",
-      "items": "Items"
+      "items": "Features"
     },
     "addTeam": "Add Team",
     "addTeamLabel": "Team to add",
@@ -176,13 +176,17 @@
   },
   "summary": {
     "assigned": "Assigned",
-    "unassigned": "Unassigned"
+    "unassigned": "Unassigned",
+    "base": "base",
+    "assignedSplit": "{{assigned}} Assigned · {{unassigned}} Unassigned",
+    "itemType": "Portfolio Item Type"
   },
   "items": {
     "tab": "Items",
     "notAssigned": "Not assigned",
     "empty": "Allocate a Feature to see it here.",
     "sidebarHeading": "Team capacity",
-    "plusContributors": "+{{count}}"
+    "plusContributors": "+{{count}}",
+    "featureType": "Feature"
   }
 }

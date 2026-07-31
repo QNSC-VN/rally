@@ -9,6 +9,8 @@ import {
 } from '@/features/capacity-planning/api'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { RowExpandToggle } from '@/shared/ui/row-expand-toggle'
+import { MetricValue } from '@/shared/ui/metric-value'
+import { WarningCountBadge } from '@/shared/ui/warning-count-badge'
 import { CompositeBar } from '@/shared/ui/composite-bar'
 import { IconButton } from '@/shared/ui/icon-button'
 import { notify } from '@/shared/lib/toast'
@@ -66,6 +68,12 @@ export function CapacityTeamRow({
 }) {
   const { t } = useTranslation('capacity')
   const warningText = useCapacityWarningText()
+  const warnings = warningText(team.metrics.warnings)
+  /** Share of THIS team's capacity, or null when it has entered none. */
+  const pctOf = (value: number) =>
+    team.metrics.capacity === null || team.metrics.capacity <= 0
+      ? null
+      : Math.round((value / team.metrics.capacity) * 100)
   const setCapacity = useSetCapacity()
   const removeTeam = useRemoveCapacityTeam()
 
@@ -131,8 +139,15 @@ export function CapacityTeamRow({
         className="px-2 text-right text-muted-foreground tabular-nums"
       >
         {featureCount}
+        {/* The warning COUNT, as Rally shows it: on a plan with a dozen teams "⚠5" says which row
+            to read first, where a bare triangle only says "something". */}
+        <WarningCountBadge count={warnings.length} label={warnings.join('. ')} />
       </div>
 
+      {/* The bar gets NO `warningLabels`: the `WarningCountBadge` above already names every rule
+          that fired, and two elements carrying the same accessible name make a screen reader read
+          the reason twice (and resolved a strict-mode locator to two nodes). The bar keeps its
+          over-capacity block, which is a shape rather than a label. */}
       <div style={colStyleFor('progress', { flexShrink: 0 })} className="min-w-0 px-2">
         <CompositeBar
           complete={team.metrics.complete}
@@ -140,7 +155,6 @@ export function CapacityTeamRow({
           estimated={team.metrics.estimated}
           capacity={team.metrics.capacity}
           targetLoadPct={targetLoadPct}
-          warningLabels={warningText(team.metrics.warnings)}
           title={t('row.barTooltip', {
             complete: team.metrics.complete,
             rollup: team.metrics.rollup,
@@ -148,6 +162,20 @@ export function CapacityTeamRow({
             unit: unitLabel,
           })}
         />
+      </div>
+
+      {/* The three numbers Rally prints BESIDE the bar. An earlier version of this grid collapsed
+          them into the bar, so they could only be read by hovering — the bar answers "is this team
+          over?", the numbers answer "by how much". No percentage without an entered capacity: there
+          is no base, and 100% would claim the team exactly fills a ceiling nobody set. */}
+      <div style={colStyleFor('complete', { flexShrink: 0 })} className="px-2 text-right">
+        <MetricValue value={team.metrics.complete} pct={pctOf(team.metrics.complete)} />
+      </div>
+      <div style={colStyleFor('rollup', { flexShrink: 0 })} className="px-2 text-right">
+        <MetricValue value={team.metrics.rollup} pct={pctOf(team.metrics.rollup)} />
+      </div>
+      <div style={colStyleFor('estimated', { flexShrink: 0 })} className="px-2 text-right">
+        <MetricValue value={team.metrics.estimated} pct={pctOf(team.metrics.estimated)} />
       </div>
 
       <div
