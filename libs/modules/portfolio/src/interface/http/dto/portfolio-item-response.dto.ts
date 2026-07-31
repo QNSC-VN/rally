@@ -114,6 +114,11 @@ const PortfolioChildSchema = z.object({
   title: z.string(),
   scheduleState: z.string(),
   storyPoints: z.number().nullable(),
+  /** IDs alongside the names, so the disclosed child rows can edit in place. */
+  projectId: z.string().uuid(),
+  releaseId: z.string().uuid().nullable(),
+  teamId: z.string().uuid().nullable(),
+  assigneeId: z.string().uuid().nullable(),
   releaseName: z.string().nullable(),
   projectName: z.string().nullable(),
   teamName: z.string().nullable(),

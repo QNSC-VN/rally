@@ -213,6 +213,13 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
         scheduleState: workItems.scheduleState,
         storyPoints: workItems.storyPoints,
         rank: workItems.rank,
+        // The IDs, not just the display names. Every one of these joins was already here;
+        // only the names were selected, which left the grid unable to bind a picker to
+        // anything and forced the disclosed Story/Defect rows to be read-only.
+        projectId: workItems.projectId,
+        releaseId: workItems.releaseId,
+        teamId: workItems.teamId,
+        assigneeId: workItems.assigneeId,
         releaseName: releases.name,
         projectName: projects.name,
         teamName: teams.name,
@@ -235,6 +242,10 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
       title: r.title,
       scheduleState: r.scheduleState,
       storyPoints: r.storyPoints,
+      projectId: r.projectId,
+      releaseId: r.releaseId,
+      teamId: r.teamId,
+      assigneeId: r.assigneeId,
       releaseName: r.releaseName,
       projectName: r.projectName,
       teamName: r.teamName,

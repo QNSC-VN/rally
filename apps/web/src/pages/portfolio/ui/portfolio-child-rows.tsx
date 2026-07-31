@@ -17,18 +17,22 @@
  * `enabled` on a defined id, so an unmounted child list never queries. No page-level
  * expanded-id registry is needed.
  *
- * ── Why only ONE of the two levels edits inline ──────────────────────────────
- * A child **Feature** row is a full `PortfolioItemResponseDto`, identical to a top-level
- * row, so it edits through the same `useUpdatePortfolioItem` and the same shared cells —
- * matching Iteration Status, whose child Tasks are real work items and edit in place.
+ * ── Both levels edit inline, through DIFFERENT APIs ──────────────────────────
+ * Matching Iteration Status, where a disclosed child Task edits in place just like its
+ * parent Story.
  *
- * A child **Story / Defect** row is `PortfolioChildResponseDto`, a DISPLAY PROJECTION:
- * it carries `ownerName` / `teamName` / `releaseName` and no corresponding ids, and
- * `scheduleState` as a bare string. A picker needs an id to bind its value to, so there
- * is nothing to bind — and a Story's fields belong to the work-items API, not the
- * portfolio one. Making that level editable needs the endpoint to return ids (or the row
- * to load the work item itself); it is not a stylistic choice. Open the Story via its ID
- * link to edit it meanwhile.
+ * A child **Feature** is a full `PortfolioItemResponseDto`, so it writes through
+ * `useUpdatePortfolioItem` — the same hook and cells as a top-level row.
+ *
+ * A child **Story / Defect** is a work item, so it writes through `useUpdateWorkItem`.
+ * That level used to be read-only because `PortfolioChildResponseDto` returned display
+ * NAMES with no corresponding ids, leaving a picker nothing to bind its value to. The
+ * joins were already in the query; only the names were selected. Surfacing
+ * `projectId` / `releaseId` / `teamId` / `assigneeId` was the whole fix.
+ *
+ * Consequence worth knowing: the State column carries two vocabularies by depth —
+ * portfolio state on a Feature, SCHEDULE state on a Story — and Percent Done stays empty
+ * on a Story, because a single work item has no rollup of its own.
  */
 import { useTranslation } from 'react-i18next'
 import { type CSSProperties } from 'react'
@@ -43,18 +47,22 @@ import {
   type PortfolioItemState,
 } from '@/features/portfolio/api'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
-import { ScheduleState, SCHEDULE_STATE_LABEL } from '@/entities/work-item/model/types'
+import {
+  ScheduleState,
+  SCHEDULE_STATE_LABEL,
+  SCHEDULE_STATE_VALUES,
+} from '@/entities/work-item/model/types'
 import { PercentDoneBar } from '@/features/portfolio/ui/percent-done-bar'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
-import { OwnerCell, OwnerSelectCell, type OwnerSelectMember } from '@/shared/ui/owner-cell'
+import { OwnerSelectCell, type OwnerSelectMember } from '@/shared/ui/owner-cell'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
-import { TeamCell } from '@/shared/ui/team-cell'
 import { ProjectSelectCell, ReleaseSelectCell, TeamSelectCell } from './attribute-cells'
 import { type PortfolioCellOptions, type ProjectOption } from '../model/cell-options'
 import { RowGutter } from '@/shared/ui/row-gutter'
 import { Spinner } from '@/shared/ui/spinner'
 import { NESTED_ROW_INDENT } from '@/shared/config/layout'
 import { useFieldCommit } from '@/shared/lib/hooks/use-field-commit'
+import { useUpdateWorkItem } from '@/features/work-items/api'
 import { type ColKey } from '../model/columns'
 import { PORTFOLIO_STATES } from '../model/portfolio-states'
 
@@ -250,53 +258,125 @@ function ChildFeatureRow({
 function ChildWorkItemRow({
   child,
   colStyleFor,
+  members,
+  canEdit,
+  options,
   onOpen,
 }: {
   child: PortfolioChild
   colStyleFor: ColStyleFor
+  members: OwnerSelectMember[]
+  canEdit: boolean
+  options: PortfolioCellOptions
   onOpen: (itemKey: string) => void
 }) {
   const { t } = useTranslation('portfolio')
+  const update = useUpdateWorkItem(child.id)
+  const { save: commit } = useFieldCommit(update)
 
   return (
     <ChildRow>
       <div className={`flex items-center pr-2 ${NESTED_ROW_INDENT}`} style={colStyleFor('id')}>
         <IdCell type={child.type} itemKey={child.itemKey} onOpen={() => onOpen(child.itemKey)} />
       </div>
-      <div className="min-w-0 px-2" style={colStyleFor('name')}>
-        <span className="block truncate text-foreground" title={child.title}>
-          {child.title}
-        </span>
+
+      <div
+        className="min-w-0 px-0"
+        style={colStyleFor('name')}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <InlineEditableCell
+          fullCell
+          value={child.title}
+          canEdit={canEdit}
+          onCommit={(v) => {
+            const next = v.trim()
+            if (next && next !== child.title) commit({ title: next }, t('row.nameUpdated'))
+          }}
+          ariaLabel={t('columns.name')}
+          title={child.title}
+          className="block w-full truncate text-foreground"
+        />
       </div>
-      {/* Schedule state, not portfolio state — a Story lives on the work-item lifecycle,
-          so it reads from the shared SCHEDULE_STATE_LABEL map. */}
-      <div className="min-w-0 truncate px-2" style={colStyleFor('state')}>
-        {SCHEDULE_STATE_LABEL[child.scheduleState as ScheduleState] ?? child.scheduleState}
+
+      {/* SCHEDULE state, not portfolio state — a Story lives on the work-item lifecycle.
+          The column therefore carries two different vocabularies depending on the row's
+          depth, which is why it is a picker on both: a stepper for the children (as
+          Iteration Status uses) beside a select for the parents would read as two
+          unrelated controls stacked in one column. */}
+      <div
+        className="min-w-0 px-0"
+        style={colStyleFor('state')}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <SearchableSelect
+          variant="cell"
+          value={child.scheduleState}
+          readOnly={!canEdit}
+          ariaLabel={t('detail.fields.state')}
+          options={SCHEDULE_STATE_VALUES.map((sc) => ({
+            value: sc,
+            label: SCHEDULE_STATE_LABEL[sc],
+          }))}
+          onChange={(v) => {
+            if (v && v !== child.scheduleState)
+              commit({ scheduleState: v as ScheduleState }, t('row.stateUpdated'))
+          }}
+        />
       </div>
+
       <div
         className="flex min-w-0 items-center overflow-hidden px-0"
         style={colStyleFor('release')}
+        onClick={(e) => e.stopPropagation()}
       >
         <ReleaseSelectCell
+          releaseId={child.releaseId}
           releaseName={child.releaseName}
-          releases={[]}
-          canEdit={false}
+          releases={options.releases}
+          canEdit={canEdit}
           ariaLabel={t('detail.fields.release')}
-          onChange={() => undefined}
+          onChange={(v) => commit({ releaseId: v }, t('row.releaseUpdated'))}
         />
       </div>
+
       {/* Percent Done is a portfolio rollup — a single Story has none, so these stay
           empty rather than showing a 0% bar that would read as "no progress". */}
       <div className="px-2" style={colStyleFor('percentDonePoints')} />
       <div className="px-2" style={colStyleFor('percentDoneCount')} />
+
       <div className="min-w-0 truncate px-2" style={colStyleFor('project')}>
         {child.projectName ?? '--'}
       </div>
-      <div className="min-w-0 px-2" style={colStyleFor('team')}>
-        <TeamCell name={child.teamName} />
+
+      <div
+        className="flex min-w-0 items-center overflow-hidden px-0"
+        style={colStyleFor('team')}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <TeamSelectCell
+          teamId={child.teamId}
+          teamName={child.teamName}
+          teams={options.teams}
+          canEdit={canEdit}
+          ariaLabel={t('detail.fields.team')}
+          onChange={(v) => commit({ teamId: v }, t('row.teamUpdated'))}
+        />
       </div>
-      <div className="min-w-0 px-2" style={colStyleFor('owner')}>
-        <OwnerCell name={child.ownerName} />
+
+      <div
+        className="min-w-0 overflow-hidden px-0"
+        style={colStyleFor('owner')}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <OwnerSelectCell
+          ownerName={child.ownerName}
+          assigneeId={child.assigneeId}
+          members={members}
+          canEdit={canEdit}
+          ariaLabel={t('detail.fields.owner')}
+          onChange={(v) => commit({ assigneeId: v }, t('row.ownerUpdated'))}
+        />
       </div>
     </ChildRow>
   )
@@ -354,7 +434,15 @@ export function PortfolioChildRows({
         />
       ))
     : (children.data ?? []).map((c) => (
-        <ChildWorkItemRow key={c.id} child={c} colStyleFor={colStyleFor} onOpen={openWorkItem} />
+        <ChildWorkItemRow
+          key={c.id}
+          child={c}
+          colStyleFor={colStyleFor}
+          members={members}
+          canEdit={canEditProject(c.projectId)}
+          options={optionsFor(c.projectId)}
+          onOpen={openWorkItem}
+        />
       ))
 
   return (

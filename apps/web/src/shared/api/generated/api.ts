@@ -3876,6 +3876,11 @@ export interface components {
       title: string
       scheduleState: string
       storyPoints: number | null
+      /** Format: uuid */
+      projectId: string
+      releaseId: string | null
+      teamId: string | null
+      assigneeId: string | null
       releaseName: string | null
       projectName: string | null
       teamName: string | null

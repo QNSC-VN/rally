@@ -56,13 +56,19 @@ export function ReleaseSelectCell({
   ariaLabel: string
   onChange: (releaseId: string | null) => void
 }) {
-  if (!releaseId && !releaseName) return <EmptyCell />
+  // Unset AND not assignable: nothing to show and nothing to pick. Note the order —
+  // an unset release must still offer the picker when the caller may edit and the
+  // project HAS releases, or a row could never be given its first release. That was
+  // the bug: the empty case returned before the editable case was considered.
+  if (!releaseId && !releaseName && (!canEdit || releases.length === 0)) {
+    return <EmptyCell />
+  }
 
-  // No id to bind a select's value to — a Story/Defect child. Render the same glyph +
-  // name so the column still reads identically, without inventing an id.
-  if (!releaseId) {
+  // A name but no id — a child whose payload carries only the display name. Render the
+  // same glyph + name rather than inventing an id for the select to bind to.
+  if (!releaseId && releaseName) {
     return (
-      <span className="flex min-w-0 items-center gap-1.5 px-2" title={releaseName ?? undefined}>
+      <span className="flex min-w-0 items-center gap-1.5 px-2" title={releaseName}>
         <TypeBadge type="release" size={16} />
         <span className="truncate">{releaseName}</span>
       </span>
@@ -82,7 +88,7 @@ export function ReleaseSelectCell({
   // The current release may be missing from the options (archived, or a project whose
   // releases were never loaded). Splice it in so the cell shows its own value rather
   // than falling back to the placeholder.
-  if (!releases.some((r) => r.id === releaseId)) {
+  if (releaseId && !releases.some((r) => r.id === releaseId)) {
     options.splice(1, 0, {
       value: releaseId,
       label: releaseName ?? releaseId,

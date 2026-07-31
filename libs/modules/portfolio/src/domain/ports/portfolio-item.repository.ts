@@ -109,6 +109,11 @@ export interface PortfolioChildItem {
   title: string;
   scheduleState: string;
   storyPoints: string | null;
+  /** IDs as well as names, so a grid can bind an editable picker to the child. */
+  projectId: string;
+  releaseId: string | null;
+  teamId: string | null;
+  assigneeId: string | null;
   releaseName: string | null;
   projectName: string | null;
   teamName: string | null;
