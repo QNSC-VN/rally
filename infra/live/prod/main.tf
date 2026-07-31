@@ -218,21 +218,42 @@ module "stack" {
   // restores the service to `min_count` within minutes, so a scale-to-zero against a
   // floor of 1 silently undoes itself.
   //
-  // TO RESTORE AT GO-LIVE: set both min_count back to 1, set monitor_target_health back
-  // to true above, and deploy. The deploy pipeline sets desired_count, and qnsc-ci's
-  // `ensure_rds` starts the stopped instance, so no manual step is needed beyond this
-  // file. Nothing else about the environment changed — same task definitions, same
-  // secrets, same database, same cache.
+  // AUTOSCALING IS THEREFORE OFF TOO, not just floored at zero — because with a floor of
+  // 0 the scalable target cannot do anything. Target tracking scales proportionally, so it
+  // never computes zero from a running task, and a service at zero tasks publishes no CPU
+  // or memory metric for it to scale out from. Measured on this account: production sat at
+  // 0/0 tasks for days with a registered target, and develop ran at 0.07-1.0% average CPU
+  // against a floor of 0 — Application Auto Scaling logged ZERO scaling activities for
+  // either, across its full six-week retention.
+  //
+  // So this is not a bug being fixed; it is a config that claimed to scale and could not.
+  // Removing it drops four CloudWatch alarms per service (16 across both environments,
+  // ~$1.60/mo) and stops the plan describing capacity behaviour that does not exist.
+  //
+  // TO RESTORE AT GO-LIVE: set both min_count back to 1, set both enable_autoscaling back
+  // to true, set monitor_target_health back to true above, and deploy. A `validation` block
+  // on the stack module's `api` and `worker` variables enforces that min_count/
+  // enable_autoscaling pairing, because the combination it forbids — autoscaling on with a
+  // floor of 0 — is a LIVE environment that cannot self-heal: nothing publishes a metric at
+  // zero tasks, so whatever scaled it down is permanent. The deploy
+  // pipeline sets desired_count, and qnsc-ci's `ensure_rds` starts the stopped instance,
+  // so no manual step is needed beyond this file. Nothing else about the environment
+  // changed — same task definitions, same secrets, same database, same cache.
   //
   // RDS run-state is not a Terraform concept, so the instance is stopped out of band —
   // but AWS FORCE-STARTS a stopped instance after 7 days, so `idle_schedule` below
   // re-stops it weekly. Without that the saving silently evaporates.
   api = {
-    cpu               = 1024
-    memory            = 2048
-    max_count         = 10
-    min_count         = 0
-    use_spot          = false
+    cpu       = 1024
+    memory    = 2048
+    max_count = 10
+    min_count = 0
+    // Restore to true at go-live together with min_count — see the note above.
+    enable_autoscaling = false
+    use_spot           = false
+    // Inert while enable_autoscaling is false, kept because go-live wants these targets
+    // and not the module defaults (65/75). Tighter than develop: production absorbs a
+    // spike by adding tasks earlier.
     cpu_target_pct    = 60
     memory_target_pct = 70
   }
@@ -252,11 +273,12 @@ module "stack" {
   // Saves ~$15.60/mo at this sizing once production runs continuously ($22.49 on-demand
   // versus $6.90 on Spot).
   worker = {
-    cpu       = 512
-    memory    = 1024
-    max_count = 6
-    min_count = 0
-    use_spot  = true
+    cpu                = 512
+    memory             = 1024
+    max_count          = 6
+    min_count          = 0
+    enable_autoscaling = false
+    use_spot           = true
   }
 
   // Telemetry stays DORMANT until otlp_endpoint is set: no sidecar, OTEL_ENABLED

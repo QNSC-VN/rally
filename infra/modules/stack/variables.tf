@@ -189,11 +189,64 @@ variable "api" {
     # It has to be an input rather than a constant: the autoscaling floor is what
     # decides whether a scale-to-zero holds, so with it hardcoded the next apply
     # quietly restored a deliberately idled environment.
-    min_count         = optional(number, 1)
-    use_spot          = optional(bool, false)
+    min_count = optional(number, 1)
+
+    # Create the scalable target and the CPU/memory target-tracking policies at all.
+    #
+    # False for an environment whose desired count is driven EXTERNALLY — a deploy that
+    # restores it plus `idle_schedule` that puts it back down.
+    #
+    # Such an environment needs a floor of 0, or the scheduled scale-to-zero is restored
+    # within minutes and the environment never sleeps. But a scalable target with a floor
+    # of 0 is INERT: target tracking scales proportionally and so cannot compute zero from
+    # a running task, and a service at zero tasks publishes no CPU or memory metric for it
+    # to scale out from. It therefore neither fights the schedule nor protects anything,
+    # while billing four CloudWatch alarms per service. Turning it off is the honest
+    # description of what is already happening — see the validation below for the measured
+    # evidence, and for why a LIVE environment must not be left in this state.
+    #
+    # `min_count`, `max_count` and the target percentages are then inert AS SCALING
+    # INPUTS, but `max_count` still sizes the connection pool and `min_count` still
+    # derives `environment_idle` below, so both stay meaningful — do not delete them.
+    enable_autoscaling = optional(bool, true)
+
+    use_spot = optional(bool, false)
+
+    # Inert while enable_autoscaling is false. Kept set anyway in prod, so go-live
+    # restores production's chosen targets rather than the module defaults.
     cpu_target_pct    = optional(number, 65)
     memory_target_pct = optional(number, 75)
   })
+
+  # A LIVE environment must not combine autoscaling with a floor of 0, because that
+  # combination cannot recover from reaching zero.
+  #
+  # This module's only policies are CPU and memory target tracking, and a service running
+  # no tasks publishes NEITHER metric. There is therefore nothing for a scale-out to
+  # evaluate: whatever takes the service to zero — the idle schedule, a failed deploy, a
+  # mistaken `update-service` — is permanent as far as Application Auto Scaling is
+  # concerned. A floor of at least 1 is the only thing that makes it restore capacity.
+  #
+  # So the floor is not a formality; with autoscaling on it is the entire self-healing
+  # mechanism. Validating the pair here means a go-live that turns `enable_autoscaling`
+  # back on and forgets `min_count` fails the plan, instead of producing a production that
+  # looks scaled and silently stays down the first time anything scales it to zero.
+  #
+  # Measured, so the reasoning is not inverted: this is NOT a claim that target tracking
+  # drives a service to zero on its own — it cannot. Scaling is proportional
+  # (ceil(tasks x metric / target)), so from 1 task at ~1% CPU it computes ceil(0.015) = 1.
+  # Develop ran for hours at 0.07-1.0% average CPU against a floor of 0 and Application
+  # Auto Scaling logged ZERO scaling activities across its six-week retention. With a floor
+  # of 0 the scalable target is simply inert in both directions, which is the other half of
+  # why an idle environment should not carry one: it protects nothing while billing four
+  # CloudWatch alarms per service.
+  #
+  # An environment that deliberately wants a floor of 0 drives its count externally — a
+  # deploy raises it, `idle_schedule` lowers it — and must keep autoscaling off.
+  validation {
+    condition     = !var.api.enable_autoscaling || var.api.min_count >= 1
+    error_message = "api.enable_autoscaling = true requires min_count >= 1 (got ${var.api.min_count}). Target tracking scales on CPU and memory, which a service at zero tasks does not publish, so nothing can scale it back out — a floor of at least 1 is what restores capacity. Raise the floor, or set enable_autoscaling = false and let the deploy and idle_schedule own the count."
+  }
 }
 
 variable "worker" {
@@ -202,10 +255,17 @@ variable "worker" {
     cpu       = number
     memory    = number
     max_count = number
-    # See api.min_count.
-    min_count = optional(number, 1)
-    use_spot  = optional(bool, false)
+    # See api.min_count and api.enable_autoscaling.
+    min_count          = optional(number, 1)
+    enable_autoscaling = optional(bool, true)
+    use_spot           = optional(bool, false)
   })
+
+  # See the same validation on `api` for why this pair is enforced.
+  validation {
+    condition     = !var.worker.enable_autoscaling || var.worker.min_count >= 1
+    error_message = "worker.enable_autoscaling = true requires min_count >= 1 (got ${var.worker.min_count}). Target tracking scales on CPU and memory, which a service at zero tasks does not publish, so scaling in to zero is one-way. Raise the floor, or set enable_autoscaling = false and let the deploy and idle_schedule own the count."
+  }
 }
 
 variable "observability" {
