@@ -64,6 +64,9 @@ import { AllocateFeatureModal } from './ui/allocate-feature-modal'
 import { StatusBadge } from '@/shared/ui/status-badge'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { ActionMenu, ActionMenuItem } from '@/shared/ui/action-menu'
+import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
+import { InlineSelect } from '@/shared/ui/native-select'
+import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { SelectionModal } from '@/shared/ui/selection-modal'
 import { CompositeBar } from '@/shared/ui/composite-bar'
 import { CapacityBarTooltip } from './ui/capacity-bar-tooltip'
@@ -182,9 +185,40 @@ export function CapacityPlanDetailPage() {
    * it through allocation rows. Mapping here keeps that difference out of the shared hook, and the
    * spread preserves every field the row still needs to render.
    */
+  /**
+   * The Features tab's own filters — Rally's `Show Filters` on this tab.
+   *
+   * Client-side, like every other narrowing on this page: the plan arrives whole, so there is no
+   * page to re-fetch and no server filter to ask for.
+   */
+  const [itemTeamFilter, setItemTeamFilter] = useState('all')
+  const [itemProjectFilter, setItemProjectFilter] = useState('all')
+  const itemFilterCount = (itemTeamFilter === 'all' ? 0 : 1) + (itemProjectFilter === 'all' ? 0 : 1)
+
+  /** The projects the plan's Features actually come from — the only values worth offering. */
+  const itemProjects = useMemo(() => {
+    const names = new Map<string, string>()
+    for (const item of plan?.items ?? []) {
+      names.set(item.projectId, item.projectName ?? '—')
+    }
+    return [...names].map(([id, name]) => ({ id, name }))
+  }, [plan?.items])
+
+  const visibleItems = useMemo(
+    () =>
+      (plan?.items ?? []).filter((item) => {
+        if (itemProjectFilter !== 'all' && item.projectId !== itemProjectFilter) return false
+        if (itemTeamFilter === 'all') return true
+        // "Unassigned" means no team holds it — the state this tab warns about.
+        if (itemTeamFilter === 'unassigned') return item.teamIds.length === 0
+        return item.teamIds.includes(itemTeamFilter)
+      }),
+    [plan?.items, itemTeamFilter, itemProjectFilter],
+  )
+
   const rankableItems = useMemo(
-    () => (plan?.items ?? []).map((i) => ({ ...i, id: i.portfolioItemId })),
-    [plan?.items],
+    () => visibleItems.map((i) => ({ ...i, id: i.portfolioItemId })),
+    [visibleItems],
   )
 
   const rerank = useRowRerank({
@@ -446,6 +480,25 @@ export function CapacityPlanDetailPage() {
   if (!plan) return <EmptyState title={t('detail.notFound')} />
 
   const unitLabel = t(`units.${plan.unit}`)
+
+  /**
+   * Publish, or Revert once published — one control, rendered by whichever toolbar the active tab
+   * uses. Plan-level, so it belongs on both; defined once so the two tabs cannot drift.
+   */
+  const publishControl = !canPublish ? null : plan.status === 'draft' ? (
+    <Button size="sm" onClick={() => setShowPublish(true)} disabled={publish.isPending}>
+      <Send size={13} /> {t('publish.action')}
+    </Button>
+  ) : (
+    <Button
+      size="sm"
+      variant="secondary"
+      onClick={() => setConfirmRevert(true)}
+      disabled={revert.isPending}
+    >
+      <Undo2 size={13} /> {t('publish.revert.action')}
+    </Button>
+  )
   // The same totals the summary panel and the Breakdown overlay read, so the header bar cannot
   // disagree with the numbers printed beside it.
   const planWide = planTotals(plan)
@@ -585,47 +638,76 @@ export function CapacityPlanDetailPage() {
             grid itself (per-team capacity, which the panel was repeating). */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-card">
           <div className="flex min-h-0 flex-1 flex-col">
-            {/* Rally's page actions, per tab: `Add / Remove Project(s) to Plan` belongs to the team
-                view, `Add Feature` to the Feature view, and Publish/Revert is plan-level so it sits
-                on both. */}
-            <div className="flex items-center gap-2 border-b border-border-inner px-4 py-2">
-              {canManage &&
-                (tab === 'teams' ? (
+            {/* Rally's page actions, per tab. The FEATURES tab carries `Show Filters` and
+                `Show Fields` beside its add button — Rally puts both there ("Select Show Filters to
+                filter the list of portfolio items that display on this tab", "Select Show Fields to
+                add or remove columns from this list") — so it uses the shared `PageToolbar` that
+                already owns that pair. The team view has neither in Rally, so it stays a plain row. */}
+            {tab === 'items' ? (
+              <PageToolbar
+                actions={
+                  canManage ? (
+                    <Button size="sm" onClick={() => setAddFeaturesFor({ teamId: null })}>
+                      <Plus size={13} /> {t('addFeatures.action')}
+                    </Button>
+                  ) : undefined
+                }
+                activeFilterCount={itemFilterCount}
+                filters={
+                  <div className="flex flex-wrap items-center gap-4">
+                    {/* Both facets are COLUMNS on this tab. Filtering by anything the reader cannot
+                        see would narrow the list for reasons the grid does not explain. */}
+                    <label className="flex items-center gap-1.5 text-ui-sm font-semibold text-muted-foreground">
+                      {t('items.projectColumn')}
+                      <InlineSelect
+                        value={itemProjectFilter}
+                        aria-label={t('items.projectColumn')}
+                        onChange={(e) => setItemProjectFilter(e.target.value)}
+                        className="w-auto"
+                      >
+                        <option value="all">{t('filters.allProjects')}</option>
+                        {itemProjects.map((project) => (
+                          <option key={project.id} value={project.id}>
+                            {project.name}
+                          </option>
+                        ))}
+                      </InlineSelect>
+                    </label>
+                    <label className="flex items-center gap-1.5 text-ui-sm font-semibold text-muted-foreground">
+                      {t('items.assignmentColumn')}
+                      <InlineSelect
+                        value={itemTeamFilter}
+                        aria-label={t('items.assignmentColumn')}
+                        onChange={(e) => setItemTeamFilter(e.target.value)}
+                        className="w-auto"
+                      >
+                        <option value="all">{t('filters.allTeams')}</option>
+                        {/* Rally flags unassigned demand on this tab, so filtering TO it is the
+                            natural next step — it is the subset a planner has to act on. */}
+                        <option value="unassigned">{t('items.notAssigned')}</option>
+                        {plan.teams.map((pt) => (
+                          <option key={pt.teamId} value={pt.teamId}>
+                            {pt.teamName ?? '—'}
+                          </option>
+                        ))}
+                      </InlineSelect>
+                    </label>
+                  </div>
+                }
+                fields={<ColumnFieldsMenu {...itemTable.fieldsMenuProps} />}
+                trailing={publishControl}
+              />
+            ) : (
+              <div className="flex items-center gap-2 border-b border-border-inner px-4 py-2">
+                {canManage && (
                   <Button size="sm" onClick={() => setShowTeams(true)}>
                     <Users size={13} /> {t('teams.action')}
                   </Button>
-                ) : (
-                  /* Rally's `Add Items`, named for what this plan holds. It only puts Features ON
-                     the plan; allocating them to teams is the grid's job afterwards. */
-                  <Button size="sm" onClick={() => setAddFeaturesFor({ teamId: null })}>
-                    <Plus size={13} /> {t('addFeatures.action')}
-                  </Button>
-                ))}
-              {/* One direction at a time: a draft publishes, a published plan can only revert —
-                  which is also the only way back to editing it. The two publish choices (with and
-                  without writing Feature fields) live inside the modal, as Rally's do. */}
-              {canPublish &&
-                (plan.status === 'draft' ? (
-                  <Button
-                    size="sm"
-                    className="ml-auto"
-                    onClick={() => setShowPublish(true)}
-                    disabled={publish.isPending}
-                  >
-                    <Send size={13} /> {t('publish.action')}
-                  </Button>
-                ) : (
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    className="ml-auto"
-                    onClick={() => setConfirmRevert(true)}
-                    disabled={revert.isPending}
-                  >
-                    <Undo2 size={13} /> {t('publish.revert.action')}
-                  </Button>
-                ))}
-            </div>
+                )}
+                <span className="ml-auto">{publishControl}</span>
+              </div>
+            )}
+
             {tab === 'items' ? (
               /* Rally's `Project Capacity` rail sits beside the Feature list — and only there. The
                  cutline this tab draws is plan-wide, so the next question is which team has no room

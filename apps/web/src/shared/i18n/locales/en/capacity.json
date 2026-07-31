@@ -221,7 +221,9 @@
     "assignmentLabel": "Planned team for {{item}}",
     "unassign": "Unassign",
     "assignFailed": "Could not change the planned team",
-    "dragLabel": "Drag to rank {{item}}"
+    "dragLabel": "Drag to rank {{item}}",
+    "assignmentColumn": "Planned Team Assignment",
+    "projectColumn": "Project"
   },
   "filters": {
     "oldestRelease": "Oldest Release",
@@ -231,7 +233,9 @@
     "olderRelease": "Older release",
     "newerRelease": "Newer release",
     "byStatus": "Filter by status",
-    "allStatuses": "All statuses"
+    "allStatuses": "All statuses",
+    "allTeams": "All teams",
+    "allProjects": "All projects"
   },
   "delete": {
     "title": "Delete capacity plans?",
