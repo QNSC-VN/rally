@@ -148,8 +148,15 @@ describe('CapacityPlansService', () => {
           useValue: {
             // `innerJoin` is part of the chain because the team guard now joins `project_teams`: a
             // plan's team must be linked to the plan's PROJECT, not merely present in the workspace.
+            // `where()` is BOTH awaitable and `.limit()`-able: the existence guards end in `.limit(1)`,
+            // while the team-membership read awaits the where directly. A stub that supported only one
+            // shape made the other look like a service bug.
             select: () => {
-              const tail = { where: () => ({ limit: () => Promise.resolve(lookupRows) }) };
+              const terminal = {
+                limit: () => Promise.resolve(lookupRows),
+                then: (resolve: (v: unknown) => void) => resolve(lookupRows),
+              };
+              const tail = { where: () => terminal };
               return { from: () => ({ ...tail, innerJoin: () => tail }) };
             },
           },
@@ -1796,6 +1803,86 @@ describe('CapacityPlansService', () => {
       repo.findViewById.mockResolvedValue(view({ status: 'published' }));
       asReader();
       await expect(service.getPlan(actor, 'plan-1')).resolves.toMatchObject({ id: 'plan-1' });
+    });
+
+    it("narrows a reader's TEAM rows to the teams they belong to (AC-010)", async () => {
+      // The stubbed Drizzle resolves `select().from().where()` to `lookupRows`, which is what the
+      // membership query reads — so one team is "mine" and the other is not.
+      lookupRows = [{ teamId: 'team-1' }];
+      repo.findViewById.mockResolvedValue(
+        view({
+          status: 'published',
+          teams: [
+            { id: 'pt-1', teamId: 'team-1', teamName: 'Mine', capacity: null },
+            { id: 'pt-2', teamId: 'team-2', teamName: 'Theirs', capacity: null },
+          ] as never,
+        }),
+      );
+      asReader();
+
+      const detail = await service.getPlanDetail(actor, 'plan-1');
+      expect(detail.teams.map((t) => t.teamId)).toEqual(['team-1']);
+    });
+
+    it("does NOT hide the plan's own totals, items or cutline from a reader", async () => {
+      // Their team's numbers would be unreadable without them — "18 of what?" — and the header, bar and
+      // cutline describe a whole a plan member is entitled to understand. The BA's rule is about whose
+      // ROWS a reader may open.
+      lookupRows = [{ teamId: 'team-1' }];
+      repo.findViewById.mockResolvedValue(view({ status: 'published' }));
+      const slice = (id: string, teamId: string, value: string, isPrimary: boolean) =>
+        ({
+          id,
+          planId: 'plan-1',
+          portfolioItemId: 'fe-1',
+          teamId,
+          isPrimary,
+          value,
+          itemKey: 'FE-1',
+          name: 'Guest checkout',
+          refined: null,
+          preliminarySize: 'no_entry',
+          totalAllocated: 12,
+          rollup: 0,
+          complete: 0,
+          rank: 'a',
+          state: 'developing',
+          itemRollup: 0,
+          itemComplete: 0,
+          itemProjectId: 'proj-a',
+          itemProjectName: 'Project A',
+          itemArchivedAt: null,
+          itemReleaseId: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }) as never;
+      repo.listAllocations.mockResolvedValue([
+        slice('mine', 'team-1', '5', true),
+        slice('theirs', 'team-2', '7', false),
+      ]);
+      asReader();
+
+      const detail = await service.getPlanDetail(actor, 'plan-1');
+      // One Feature, both teams' slices summed: the item is a plan-level fact.
+      expect(detail.items).toHaveLength(1);
+      expect(detail.items[0].estimated).toBe(12);
+      // …but only their own allocation row came back.
+      expect(detail.allocations.map((a) => a.teamId)).toEqual(['team-1']);
+    });
+
+    it('shows a planner every team', async () => {
+      lookupRows = [];
+      repo.findViewById.mockResolvedValue(
+        view({
+          status: 'published',
+          teams: [
+            { id: 'pt-1', teamId: 'team-1', teamName: 'A', capacity: null },
+            { id: 'pt-2', teamId: 'team-2', teamName: 'B', capacity: null },
+          ] as never,
+        }),
+      );
+      const detail = await service.getPlanDetail(actor, 'plan-1');
+      expect(detail.teams).toHaveLength(2);
     });
 
     it('counts `capacity:publish` alone as a planner', async () => {
