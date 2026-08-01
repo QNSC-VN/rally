@@ -139,6 +139,9 @@ const AcceptedChildrenSchema = z.object({
 /** The detail response: the grid row plus the accepted-children breakdown. */
 const PortfolioItemDetailSchema = PortfolioItemSchema.extend({
   acceptedChildren: AcceptedChildrenSchema,
+  milestones: z
+    .array(z.object({ id: z.string().uuid(), name: z.string() }))
+    .describe('Assigned Milestones, name-ordered. Detail only — the grid does not show them.'),
 });
 export class PortfolioItemDetailResponseDto extends createZodDto(PortfolioItemDetailSchema) {}
 

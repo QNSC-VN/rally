@@ -193,6 +193,13 @@ export interface UpdatePortfolioItemInput {
   teamId?: string | null;
   releaseId?: string | null;
   ownerId?: string | null;
+  /**
+   * The item's Milestones, as a COMPLETE set — omit to leave them alone, send `[]` to clear.
+   *
+   * Not a column: these live in `milestone_artifacts`, so the service strips this out of the
+   * patch before the repository writes columns, and calls `setMilestones` separately.
+   */
+  milestoneIds?: string[];
   plannedStartDate?: string | null;
   plannedEndDate?: string | null;
   marketReleaseDate?: string | null;

@@ -63,7 +63,10 @@ export function AcceptedChildrenBlock({ data }: { data: AcceptedChildren }) {
       ? { accepted: g.acceptedPoints, total: g.points }
       : { accepted: g.acceptedCount, total: g.count }
 
-  const ratio = (accepted: number, all: number) => (all > 0 ? accepted / all : null)
+  // 0, never null: Rally's own panel reads `Defects: 0% 0/0` for a type with no children, so a
+  // zero denominator is 0% here too. The `accepted/total` text carries the "nothing linked"
+  // signal, which is exactly where Rally leaves it.
+  const ratio = (accepted: number, all: number) => (all > 0 ? accepted / all : 0)
   const total = pick(data.total)
 
   const groups = TYPE_ORDER.map((type) => data.byType.find((g) => g.type === type)).filter(
@@ -169,7 +172,7 @@ export function AcceptedChildrenBlock({ data }: { data: AcceptedChildren }) {
                       {t(`detail.acceptedChildren.types.${g.type}`)}:
                     </span>
                     <span className="font-semibold text-warning tabular-nums">
-                      {r === null ? '0%' : `${Math.round(r * 100)}%`}
+                      {`${Math.round(r * 100)}%`}
                     </span>
                     <span className="font-mono text-foreground-subtle tabular-nums">
                       {accepted}/{all}

@@ -1043,18 +1043,37 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       .select({ id: milestones.id, name: milestones.name })
       .from(milestoneArtifacts)
       .innerJoin(milestones, eq(milestoneArtifacts.milestoneId, milestones.id))
-      .where(eq(milestoneArtifacts.workItemId, workItemId))
+      .where(
+        and(
+          eq(milestoneArtifacts.entityType, 'work_item'),
+          eq(milestoneArtifacts.entityId, workItemId),
+        ),
+      )
       .orderBy(milestones.name, asc(milestones.id));
     return rows;
   }
 
   async setMilestones(workItemId: string, milestoneIds: string[]): Promise<void> {
     await this.db.transaction(async (tx) => {
-      await tx.delete(milestoneArtifacts).where(eq(milestoneArtifacts.workItemId, workItemId));
+      // Both columns, always: since 0084 an id alone no longer identifies a subject, and a
+      // delete that omitted `entity_type` would clear a portfolio item's assignments too if
+      // the two id spaces ever collided.
+      await tx
+        .delete(milestoneArtifacts)
+        .where(
+          and(
+            eq(milestoneArtifacts.entityType, 'work_item'),
+            eq(milestoneArtifacts.entityId, workItemId),
+          ),
+        );
       if (milestoneIds.length > 0) {
-        await tx
-          .insert(milestoneArtifacts)
-          .values(milestoneIds.map((milestoneId) => ({ milestoneId, workItemId })));
+        await tx.insert(milestoneArtifacts).values(
+          milestoneIds.map((milestoneId) => ({
+            milestoneId,
+            entityType: 'work_item' as const,
+            entityId: workItemId,
+          })),
+        );
       }
     });
   }

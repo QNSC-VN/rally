@@ -20,6 +20,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { workspaceStatusEnum, workspaceMemberStatusEnum, invitationStatusEnum } from './enums';
+import type { PreliminaryEstimateMap } from './enums';
 
 export const workspaceSchema = pgSchema('workspace');
 
@@ -122,7 +123,12 @@ export const workspaceSettings = workspaceSchema.table(
     //
     // Shape: `PreliminaryEstimateMap` in db/schema/enums.ts. Seeded from
     // DEFAULT_PRELIMINARY_ESTIMATE_MAP; the Settings UI arrives later and edits this.
-    preliminaryEstimateMap: jsonb('preliminary_estimate_map').notNull().default({}),
+    // `$type` so every reader gets the shape rather than `unknown`. `{}` is the default and
+    // means "fall back to the seeded map" — see `PreliminaryEstimateMapService`.
+    preliminaryEstimateMap: jsonb('preliminary_estimate_map')
+      .$type<Partial<PreliminaryEstimateMap>>()
+      .notNull()
+      .default({}),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

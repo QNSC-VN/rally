@@ -85,7 +85,7 @@ function toDto(i: PortfolioItemWithProgress): PortfolioItemResponseDto {
 
 /** The detail response — `toDto` plus the accepted-children breakdown. */
 function toDetailDto(i: PortfolioItemDetail): PortfolioItemDetailResponseDto {
-  return { ...toDto(i), acceptedChildren: i.acceptedChildren };
+  return { ...toDto(i), acceptedChildren: i.acceptedChildren, milestones: i.milestones };
 }
 
 /**

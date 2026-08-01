@@ -9,6 +9,8 @@ import {
   releases,
   teams,
   projects,
+  milestones,
+  milestoneArtifacts,
 } from '../../../../../../db/schema/work';
 import { users } from '../../../../../../db/schema/identity';
 import {
@@ -149,6 +151,92 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
         acceptedPoints: Number(r.acceptedPoints ?? 0),
         acceptedCount: Number(r.acceptedCount ?? 0),
       }));
+  }
+
+  /**
+   * The Milestones assigned to this item, for the detail rail's multi-select (SRS §5.1, §11.4).
+   *
+   * `milestone_artifacts` became polymorphic in 0084, so both columns are matched — an id alone
+   * no longer identifies a subject.
+   */
+  async listMilestones(id: string, workspaceId: string): Promise<{ id: string; name: string }[]> {
+    return (
+      this.db
+        .select({ id: milestones.id, name: milestones.name })
+        .from(milestoneArtifacts)
+        .innerJoin(milestones, eq(milestones.id, milestoneArtifacts.milestoneId))
+        .where(
+          and(
+            eq(milestoneArtifacts.entityType, 'portfolio_item'),
+            eq(milestoneArtifacts.entityId, id),
+            // `milestone_artifacts` carries no workspace_id, so the tenant predicate has to
+            // ride on the joined `milestones` row — otherwise a leaked link id would resolve
+            // a name from another workspace.
+            eq(milestones.workspaceId, workspaceId),
+          ),
+        )
+        // Name is not unique, so id is the tiebreaker that makes the order total.
+        .orderBy(asc(milestones.name), asc(milestones.id))
+    );
+  }
+
+  /**
+   * Replaces this item's Milestone assignments wholesale.
+   *
+   * Delete-then-insert in ONE transaction rather than diffing: the multi-select sends the whole
+   * set, and a partial failure that left the row half-assigned would be worse than either
+   * outcome. The `entity_type` predicate keeps a work item's assignments to the same milestones
+   * untouched.
+   */
+  async setMilestones(id: string, milestoneIds: string[]): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      await tx
+        .delete(milestoneArtifacts)
+        .where(
+          and(
+            eq(milestoneArtifacts.entityType, 'portfolio_item'),
+            eq(milestoneArtifacts.entityId, id),
+          ),
+        );
+      if (milestoneIds.length > 0) {
+        await tx.insert(milestoneArtifacts).values(
+          milestoneIds.map((milestoneId) => ({
+            milestoneId,
+            entityType: 'portfolio_item' as const,
+            entityId: id,
+          })),
+        );
+      }
+    });
+  }
+
+  /**
+   * The SUBSET of `milestoneIds` that belongs to `projectId` — one query serving two callers.
+   *
+   * The write path compares lengths to reject an out-of-project id; the project-move path keeps
+   * what survives and drops the rest. A count could only answer the first question, and adding
+   * a second near-identical query would let the two definitions of "in project" drift.
+   *
+   * Workspace-scoped as well as project-scoped: project ids are not guessable, but matching on
+   * project alone would be one leaked id away from attaching another tenant's milestone.
+   */
+  async filterMilestonesInProject(
+    milestoneIds: string[],
+    projectId: string,
+    workspaceId: string,
+  ): Promise<string[]> {
+    if (milestoneIds.length === 0) return [];
+    const rows = await this.db
+      .select({ id: milestones.id })
+      .from(milestones)
+      .where(
+        and(
+          inArray(milestones.id, milestoneIds),
+          eq(milestones.projectId, projectId),
+          eq(milestones.workspaceId, workspaceId),
+        ),
+      );
+    return rows.map((r) => r.id);
   }
 
   /** Active child Features of an Epic. 0 for a Feature — the hierarchy is two levels. */

@@ -3020,6 +3020,12 @@ export interface components {
       timezone: string | null
       defaultLocale: string | null
       dateFormat: string | null
+      preliminaryEstimateMap: {
+        [key: string]: {
+          points: number
+          count: number
+        }
+      }
       /** Format: date-time */
       updatedAt: string
     }
@@ -3027,6 +3033,12 @@ export interface components {
       timezone?: string
       defaultLocale?: string
       dateFormat?: string
+      preliminaryEstimateMap?: {
+        [key: string]: {
+          points: number
+          count: number
+        }
+      }
     }
     AcceptInvitationDto: {
       token: string
@@ -3979,6 +3991,12 @@ export interface components {
           acceptedCount: number
         }[]
       }
+      /** @description Assigned Milestones, name-ordered. Detail only — the grid does not show them. */
+      milestones: {
+        /** Format: uuid */
+        id: string
+        name: string
+      }[]
     }
     PortfolioChildResponseDto: {
       /** Format: uuid */
@@ -4061,6 +4079,7 @@ export interface components {
       teamId?: string | null
       releaseId?: string | null
       ownerId?: string | null
+      milestoneIds?: string[]
       plannedStartDate?: string | null
       plannedEndDate?: string | null
       marketReleaseDate?: string | null

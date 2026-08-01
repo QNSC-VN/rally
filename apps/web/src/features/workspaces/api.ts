@@ -109,11 +109,27 @@ export function useUpdateWorkspace(id: string | undefined) {
 
 // ── Workspace formatting settings (timezone / locale / date format) ──────────
 
-export interface WorkspaceSettings {
-  timezone: string | null
-  defaultLocale: string | null
-  dateFormat: string | null
-}
+/**
+ * DERIVED from the generated schema, not hand-written.
+ *
+ * The map is a zod record, so OpenAPI describes it as an object with an index signature rather
+ * than six named keys — a hand-written `Record<PreliminaryEstimateSize, …>` looks tighter but
+ * does not OVERLAP with what the client actually returns, which is a compile error at the cast
+ * rather than a safety win.
+ */
+export type WorkspaceSettings = components['schemas']['WorkspaceSettingsResponseDto']
+
+/**
+ * T-shirt size → points / item count.
+ *
+ * The GET returns it COMPLETE (stored overrides merged over the seeded default), so the client
+ * edits what the estimates are actually computed with. The PATCH takes a partial — send only
+ * the sizes that changed.
+ */
+export type PreliminaryEstimateMap = WorkspaceSettings['preliminaryEstimateMap']
+
+/** The sizes the API enumerates. Kept explicit so the settings table can order them XS…XL. */
+export type PreliminaryEstimateSize = 'no_entry' | 'xs' | 's' | 'm' | 'l' | 'xl'
 
 export function useWorkspaceSettings(id: string | undefined) {
   return useQuery({
@@ -123,7 +139,7 @@ export function useWorkspaceSettings(id: string | undefined) {
         params: { path: { id: id! } },
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
-      return data as WorkspaceSettings
+      return data
     },
     enabled: !!id,
     staleTime: 30_000,
@@ -132,13 +148,18 @@ export function useWorkspaceSettings(id: string | undefined) {
 
 export function useUpdateWorkspaceSettings(id: string | undefined) {
   return useMutation({
-    mutationFn: async (body: Partial<WorkspaceSettings>) => {
+    mutationFn: async (
+      body: Partial<Omit<WorkspaceSettings, 'preliminaryEstimateMap'>> & {
+        /** Partial by design — only the sizes being changed. The server merges. */
+        preliminaryEstimateMap?: Partial<PreliminaryEstimateMap>
+      },
+    ) => {
       const { data, error, response } = await apiClient.PATCH('/v1/workspaces/{id}/settings', {
         params: { path: { id: id! } },
         body: body as never,
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
-      return data as WorkspaceSettings
+      return data
     },
     meta: { invalidates: ['workspace'] },
   })

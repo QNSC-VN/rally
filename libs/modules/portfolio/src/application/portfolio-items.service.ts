@@ -79,9 +79,11 @@ export interface AcceptedChildrenRollup {
   byType: AcceptedChildrenGroup[];
 }
 
-/** The detail surface: everything the grid has, plus the accepted-children breakdown. */
+/** The detail surface: the grid row plus the accepted-children breakdown and Milestones. */
 export interface PortfolioItemDetail extends PortfolioItemWithProgress {
   acceptedChildren: AcceptedChildrenRollup;
+  /** Assigned Milestones, name-ordered. The rail renders these as a multi-select. */
+  milestones: { id: string; name: string }[];
 }
 
 /**
@@ -200,9 +202,13 @@ export class PortfolioItemsService {
       throw new NotFoundException('PORTFOLIO_ITEM_NOT_FOUND', 'Portfolio item not found');
     }
     const map = await this.estimateMap(actor.workspaceId);
-    const groups = await this.repo.childRollupByType(id, actor.workspaceId);
+    const [groups, milestones] = await Promise.all([
+      this.repo.childRollupByType(id, actor.workspaceId),
+      this.repo.listMilestones(id, actor.workspaceId),
+    ]);
     return {
       ...this.withProgress(item, map),
+      milestones,
       acceptedChildren: {
         total: {
           points: item.rollup.rollupPoints,
@@ -344,7 +350,30 @@ export class PortfolioItemsService {
       id,
     );
 
-    await this.repo.update(id, patch, actor.workspaceId);
+    // Milestones live in their own link table, so they are NOT a column patch — pull them
+    // out before `repo.update` sees them, and write them separately.
+    //
+    // Scoped to the DESTINATION project, like every other reference on this write: SRS §5.1
+    // limits the selector to "the Feature's Project plus any already-selected Milestones", so
+    // a milestone from another project must be refused rather than silently dropped.
+    const { milestoneIds, ...columns } = patch;
+    if (milestoneIds !== undefined) {
+      const projectId = patch.projectId ?? existing.projectId;
+      const inProject = await this.repo.filterMilestonesInProject(
+        milestoneIds,
+        projectId,
+        actor.workspaceId,
+      );
+      if (inProject.length !== milestoneIds.length) {
+        throw new PreconditionFailedException(
+          'MILESTONE_PROJECT_MISMATCH',
+          'Every Milestone must belong to this item\u2019s Project',
+        );
+      }
+    }
+
+    await this.repo.update(id, columns, actor.workspaceId);
+    if (milestoneIds !== undefined) await this.repo.setMilestones(id, milestoneIds);
     await this.activity.logSafe(
       this.activity.buildDiff(
         this.subject(existing),
@@ -423,6 +452,26 @@ export class PortfolioItemsService {
     if (patch.parentId === undefined && existing.parentId !== null) {
       const [parent] = await this.repo.findByIds([existing.parentId], workspaceId);
       if (!parent || parent.projectId !== destination) patch.parentId = null;
+    }
+
+    // Milestones follow REAL RALLY's rule, which is a conditional keep rather than a clear:
+    // "If you move a work item to a new project after associating it with a milestone, the work
+    // item will keep existing milestone(s) only if they exist in the new project."
+    // (TechDocs, Managing Milestones.) So survivors stay assigned and the rest are dropped.
+    //
+    // Without this the row lands in a state its OWN write path would reject — the assignment
+    // would still point at the source project's milestone, and the next save of any field would
+    // fail `MILESTONE_PROJECT_MISMATCH`. The BA docs are silent here; Rally is not.
+    if (patch.milestoneIds === undefined) {
+      const current = await this.repo.listMilestones(existing.id, workspaceId);
+      if (current.length > 0) {
+        const surviving = await this.repo.filterMilestonesInProject(
+          current.map((m) => m.id),
+          destination,
+          workspaceId,
+        );
+        if (surviving.length !== current.length) patch.milestoneIds = surviving;
+      }
     }
   }
 

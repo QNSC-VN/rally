@@ -39,6 +39,7 @@ import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
 import { useWorkspaceMembers } from '@/features/workspaces/api'
 import { useReleases } from '@/features/releases/api'
+import { useMilestones } from '@/features/milestones/api'
 import { PortfolioItemType } from '@/entities/work-item/model/types'
 import { DetailLayout, DetailSectionHeading, DetailTwoPane } from '@/shared/ui/detail'
 import {
@@ -47,10 +48,14 @@ import {
   usePortfolioItem,
   usePortfolioItemActivityLog,
   usePortfolioItems,
+  useSetPortfolioItemArchived,
   useUpdatePortfolioItem,
   type PortfolioItemDetail,
   type UpdatePortfolioItemBody,
 } from '@/features/portfolio/api'
+import { ActionMenu, ActionMenuItem } from '@/shared/ui/action-menu'
+import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
+import { notify, errorMessage } from '@/shared/lib/toast'
 import { AttachmentBlock } from '@/features/collaboration/ui/attachment-block'
 import { useUploadPastedImages } from '@/features/collaboration/use-upload-pasted-images'
 import { CommentThread } from '@/features/collaboration/ui/comment-thread'
@@ -61,6 +66,7 @@ export function PortfolioDetailPage() {
   const navigate = useNavigate()
   const { itemId } = useParams({ from: '/auth/portfolio/$itemId' })
   const [tab, setTab] = useState('details')
+  const [confirmArchive, setConfirmArchive] = useState(false)
 
   const { data: server, isLoading } = usePortfolioItem(itemId)
   const isEpic = server?.type === 'epic'
@@ -79,6 +85,9 @@ export function PortfolioDetailPage() {
   const { workspace } = useAppContext()
   const { data: members = [] } = useWorkspaceMembers(workspace?.workspaceId)
   const { data: projectReleases = [] } = useReleases(server?.projectId)
+  // Milestone options are Project-scoped (SRS §5.1); the sidebar unions in any already-assigned
+  // milestone that falls outside them so a save cannot silently drop it.
+  const { data: projectMilestones = [] } = useMilestones(server?.projectId)
   // Candidate parents: this project's Epics. Skipped entirely for an Epic, which has none.
   const epicList = usePortfolioItems({
     type: PortfolioItemType.Epic,
@@ -133,6 +142,12 @@ export function PortfolioDetailPage() {
     },
   )
 
+  const setArchived = useSetPortfolioItemArchived()
+  // SRS.md:471 — Archive is DISABLED while an Epic still has active child Features, rather
+  // than failing on submit. The service enforces the same rule, so this only saves the user a
+  // round trip; it is not the guard.
+  const blockedByChildren = isEpic && childFeatures.length > 0
+
   const back = () => void navigate({ to: '/portfolio' })
 
   if (isLoading) return <SkeletonList rows={6} />
@@ -167,6 +182,25 @@ export function PortfolioDetailPage() {
       ]}
       activeTab={tab}
       onTabChange={setTab}
+      actions={
+        canEdit ? (
+          <ActionMenu ariaLabel={t('detail.actions.menu')} onDark>
+            <ActionMenuItem
+              label={item.archivedAt ? t('detail.actions.restore') : t('archive.action')}
+              destructive={!item.archivedAt}
+              disabled={!item.archivedAt && blockedByChildren}
+              onClick={() =>
+                item.archivedAt
+                  ? void setArchived
+                      .mutateAsync({ id: itemId, archived: false })
+                      .then(() => notify.success(t('detail.actions.restored')))
+                      .catch((err: unknown) => notify.error(errorMessage(err)))
+                  : setConfirmArchive(true)
+              }
+            />
+          </ActionMenu>
+        ) : undefined
+      }
     >
       {tab === 'details' ? (
         <DetailTwoPane
@@ -237,6 +271,7 @@ export function PortfolioDetailPage() {
               members={members}
               releases={releases}
               epics={epics}
+              milestones={projectMilestones}
               onUpdate={setField}
             />
           }
@@ -309,6 +344,26 @@ export function PortfolioDetailPage() {
 
       {/* Same commit control as Work Item detail: it appears only when there is something
           to commit, so a read-only visit never shows it. */}
+      {/* Archiving is reversible (it sets `archived_at`, never a DELETE) but it removes the
+          item from every default list, so it still confirms. */}
+      <ConfirmDialog
+        open={confirmArchive}
+        title={t('archive.title')}
+        message={t('detail.actions.archiveOne', { name: item.name })}
+        confirmLabel={t('archive.confirm')}
+        destructive
+        onCancel={() => setConfirmArchive(false)}
+        onConfirm={() => {
+          setConfirmArchive(false)
+          void setArchived
+            .mutateAsync({ id: itemId, archived: true })
+            .then(() => notify.success(t('archive.archived', { count: 1 })))
+            // The service re-checks the child-Feature guard, so a race that slipped past the
+            // disabled menu item still surfaces as a message rather than a silent no-op.
+            .catch((err: unknown) => notify.error(errorMessage(err)))
+        }}
+      />
+
       <SaveCancelBar
         visible={isDirty}
         saving={saving}

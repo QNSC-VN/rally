@@ -1009,19 +1009,32 @@ export const milestoneTeams = workSchema.table(
 );
 
 // ── milestone_artifacts (P3.3 — US/DE assigned to milestone) ──────────
+/**
+ * What a milestone tracks (migration 0084).
+ *
+ * Polymorphic on `(entity_type, entity_id)` like `comments`, `attachments` and
+ * `activity_logs`, sharing the same `entity_ref_type` enum: a milestone can be assigned to a
+ * work item OR to a portfolio item (SRS §5.1 and §11.4 both require the selector).
+ *
+ * The table name did NOT change when the column did — "artifact" is already the
+ * entity-agnostic word, and Rally itself calls the things a milestone tracks its artifacts.
+ *
+ * No FK on `entity_id`: it cannot point at two tables, which is the standing cost of this
+ * shape here and in `activity_logs`. The owning service handles cleanup.
+ */
 export const milestoneArtifacts = workSchema.table(
   'milestone_artifacts',
   {
     milestoneId: uuid('milestone_id').notNull(),
-    workItemId: uuid('work_item_id')
-      .notNull()
-      .references(() => workItems.id, { onDelete: 'cascade' }),
+    entityType: entityRefTypeEnum('entity_type').notNull(),
+    entityId: uuid('entity_id').notNull(),
     assignedAt: timestamp('assigned_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    pk: primaryKey({ columns: [t.milestoneId, t.workItemId] }),
+    // Natural key: assigning one milestone to one item twice is still one assignment.
+    pk: primaryKey({ columns: [t.milestoneId, t.entityType, t.entityId] }),
     milestoneIdx: index('ix_ma_milestone').on(t.milestoneId),
-    workItemIdx: index('ix_ma_work_item').on(t.workItemId),
+    entityIdx: index('ix_ma_entity').on(t.entityType, t.entityId),
   }),
 );
 

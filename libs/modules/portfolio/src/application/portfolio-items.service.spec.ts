@@ -100,6 +100,9 @@ describe('PortfolioItemsService', () => {
             listChildren: vi.fn().mockResolvedValue(emptyPage([])),
             listChildFeatures: vi.fn().mockResolvedValue([]),
             childRollupByType: vi.fn().mockResolvedValue([]),
+            listMilestones: vi.fn().mockResolvedValue([]),
+            setMilestones: vi.fn().mockResolvedValue(undefined),
+            filterMilestonesInProject: vi.fn().mockResolvedValue([]),
             findByIds: vi.fn().mockResolvedValue([]),
             nextKeyNumber: vi.fn().mockResolvedValue(1),
             lockRankScope: vi.fn().mockResolvedValue(undefined),
@@ -546,6 +549,40 @@ describe('PortfolioItemsService', () => {
       repo.update.mockResolvedValue(view());
     });
 
+    // SRS §5.1 scopes the Milestone selector to the item's own Project. These two pin that
+    // the scope check runs BEFORE the write, so a cross-project id cannot land and then be
+    // "cleaned up" later.
+    it('refuses a Milestone that does not belong to the item\u2019s project', async () => {
+      repo.findById.mockResolvedValue({
+        id: 'pi-1',
+        type: 'feature',
+        projectId: 'proj-a',
+      } as never);
+      repo.filterMilestonesInProject.mockResolvedValue(['ms-1']); // only one of the two is in-project
+      await expect(
+        service.updateItem(actor, 'pi-1', { milestoneIds: ['ms-1', 'ms-2'] }),
+      ).rejects.toMatchObject({ code: 'MILESTONE_PROJECT_MISMATCH' });
+      expect(repo.setMilestones).not.toHaveBeenCalled();
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it('writes Milestones through setMilestones, not as a column patch', async () => {
+      repo.findById.mockResolvedValue({
+        id: 'pi-1',
+        type: 'feature',
+        projectId: 'proj-a',
+      } as never);
+      repo.filterMilestonesInProject.mockResolvedValue(['ms-1', 'ms-2']);
+      await service.updateItem(actor, 'pi-1', { milestoneIds: ['ms-1', 'ms-2'], name: 'Renamed' });
+      expect(repo.setMilestones).toHaveBeenCalledWith('pi-1', ['ms-1', 'ms-2']);
+      // The link ids must NOT reach the column update — there is no such column.
+      expect(repo.update).toHaveBeenCalledWith(
+        'pi-1',
+        expect.not.objectContaining({ milestoneIds: expect.anything() }),
+        WORKSPACE,
+      );
+    });
+
     it('validates the shape against the STORED type, so an Epic cannot gain a Team', async () => {
       // `type` is not updatable, so the only way an Epic could acquire Feature fields is
       // if the check used the request body's type instead of the row's.
@@ -658,6 +695,29 @@ describe('PortfolioItemsService', () => {
         projectTeamRows = [];
         await service.updateItem(actor, 'pi-1', { projectId: 'proj-b' });
         expect(repo.update.mock.calls[0][1]).toHaveProperty('teamId', null);
+      });
+
+      // Real Rally: "the work item will keep existing milestone(s) only if they exist in the
+      // new project" (TechDocs, Managing Milestones). A conditional keep, not a clear — and the
+      // BA docs are silent, so these two tests are the only statement of the rule we have.
+      it('keeps only the Milestones that exist in the destination project', async () => {
+        repo.findById.mockResolvedValue(feature as never);
+        repo.listMilestones.mockResolvedValue([
+          { id: 'ms-a', name: 'Source only' },
+          { id: 'ms-shared', name: 'In both' },
+        ]);
+        repo.filterMilestonesInProject.mockResolvedValue(['ms-shared']);
+        await service.updateItem(actor, 'pi-1', { projectId: 'proj-b' });
+        expect(repo.setMilestones).toHaveBeenCalledWith('pi-1', ['ms-shared']);
+      });
+
+      it('leaves Milestones untouched when every one survives the move', async () => {
+        repo.findById.mockResolvedValue(feature as never);
+        repo.listMilestones.mockResolvedValue([{ id: 'ms-shared', name: 'In both' }]);
+        repo.filterMilestonesInProject.mockResolvedValue(['ms-shared']);
+        await service.updateItem(actor, 'pi-1', { projectId: 'proj-b' });
+        // No rewrite at all — an unchanged set must not churn the link rows or the audit trail.
+        expect(repo.setMilestones).not.toHaveBeenCalled();
       });
 
       it('clears the Release, because releases are per-project', async () => {

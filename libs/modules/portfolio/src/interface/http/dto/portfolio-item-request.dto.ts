@@ -133,6 +133,15 @@ export const UpdatePortfolioItemSchema = z
     teamId: portfolioWritableFields.teamId.optional(),
     releaseId: portfolioWritableFields.releaseId.optional(),
     ownerId: portfolioWritableFields.ownerId.optional(),
+    /**
+     * The COMPLETE Milestone set. Omit to leave assignments alone; `[]` clears them.
+     *
+     * A whole-set replace rather than add/remove verbs, because the rail's multi-select
+     * always knows the full selection — two verbs would let the client and the row drift
+     * apart when a checkbox click is lost. The service refuses any Milestone outside the
+     * item's Project (`MILESTONE_PROJECT_MISMATCH`), per SRS §5.1.
+     */
+    milestoneIds: z.array(z.string().uuid()).optional(),
     plannedStartDate: portfolioWritableFields.plannedStartDate.optional(),
     plannedEndDate: portfolioWritableFields.plannedEndDate.optional(),
     marketReleaseDate: portfolioWritableFields.marketReleaseDate.optional(),
