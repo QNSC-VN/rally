@@ -6,9 +6,30 @@ import { CurrentUser } from '@modules/identity';
 import { AuthPolicy, RequirePermission } from '@modules/access';
 import {
   PortfolioItemsService,
+  type PortfolioItemDetail,
   type PortfolioItemWithProgress,
 } from '../../application/portfolio-items.service';
 import type { PortfolioChildItem } from '../../domain/ports/portfolio-item.repository';
+import {
+  ActivityQueryDto,
+  ActivityResponseDto,
+  ActivityPageDto,
+  type ActivityLog,
+} from '@modules/activity';
+
+function toActivityDto(a: ActivityLog): ActivityResponseDto {
+  return {
+    id: a.id,
+    createdAt: a.createdAt,
+    actorId: a.actorId,
+    actorName: a.actorName,
+    action: a.action,
+    entityType: a.entityType,
+    entityId: a.entityId,
+    changes: a.changes,
+    metadata: a.metadata ?? {},
+  };
+}
 import {
   CreatePortfolioItemDto,
   PortfolioChildrenQueryDto,
@@ -18,6 +39,7 @@ import {
 } from './dto/portfolio-item-request.dto';
 import {
   PortfolioChildResponseDto,
+  PortfolioItemDetailResponseDto,
   PortfolioItemResponseDto,
 } from './dto/portfolio-item-response.dto';
 
@@ -31,6 +53,8 @@ function toDto(i: PortfolioItemWithProgress): PortfolioItemResponseDto {
     type: i.type,
     name: i.name,
     description: i.description,
+    notes: i.notes,
+    releaseNotes: i.releaseNotes,
     state: i.state,
     preliminaryEstimate: i.preliminaryEstimate,
     // numeric arrives as a string from Drizzle (precision preservation); the API
@@ -59,6 +83,11 @@ function toDto(i: PortfolioItemWithProgress): PortfolioItemResponseDto {
   };
 }
 
+/** The detail response — `toDto` plus the accepted-children breakdown. */
+function toDetailDto(i: PortfolioItemDetail): PortfolioItemDetailResponseDto {
+  return { ...toDto(i), acceptedChildren: i.acceptedChildren };
+}
+
 /**
  * The inbound mirror of `toDto`'s numeric handling.
  *
@@ -67,7 +96,7 @@ function toDto(i: PortfolioItemWithProgress): PortfolioItemResponseDto {
  * this converts the other — both at the boundary, so no other layer sees the mismatch.
  *
  * Only `undefined` is special now: it stays "not supplied". There is no null to carry,
- * because 0 is the "not forecast" value (migration 0079) and the column is NOT NULL.
+ * because 0 is the "not forecast" value (migration 0081) and the column is NOT NULL.
  */
 function toWriteInput<T extends { refinedEstimate?: number }>(
   body: T,
@@ -145,13 +174,32 @@ export class PortfolioItemsController {
   @RequirePermission('portfolio:view', { resource: 'portfolio_item', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Get an Epic or Feature with its rollups' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
-  @ApiResponse({ status: 200, type: PortfolioItemResponseDto })
+  @ApiResponse({ status: 200, type: PortfolioItemDetailResponseDto })
   @ApiCommonErrors(401, 404)
   async getItem(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<PortfolioItemResponseDto> {
-    return toDto(await this.service.getItem(user, id));
+  ): Promise<PortfolioItemDetailResponseDto> {
+    return toDetailDto(await this.service.getItem(user, id));
+  }
+
+  @Get(':id/activity')
+  @RequirePermission('portfolio:view', { resource: 'portfolio_item', from: 'param', field: 'id' })
+  @ApiOperation({ summary: 'List the revision history of an Epic or Feature' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: ActivityPageDto })
+  @ApiCommonErrors(401, 404)
+  async getActivity(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: ActivityQueryDto,
+  ): Promise<ActivityPageDto> {
+    const { page, pageSize } = query;
+    const result = await this.service.getActivity(user, id, {
+      limit: pageSize,
+      offset: (page - 1) * pageSize,
+    });
+    return { data: result.items.map(toActivityDto), total: result.total, page, pageSize };
   }
 
   @Get(':id/children')

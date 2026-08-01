@@ -36,6 +36,8 @@ export interface PortfolioItem {
   type: PortfolioItemType;
   name: string;
   description: string | null;
+  notes: string | null;
+  releaseNotes: string | null;
   state: PortfolioItemState;
   preliminaryEstimate: PreliminaryEstimateSize;
   /** Top-down points forecast. Feeds Estimated Progress only, never Percent Done. */
@@ -145,6 +147,8 @@ export interface CreatePortfolioItemInput {
   type: PortfolioItemType;
   name: string;
   description?: string | null;
+  notes?: string | null;
+  releaseNotes?: string | null;
   state?: PortfolioItemState;
   preliminaryEstimate?: PreliminaryEstimateSize;
   refinedEstimate?: string;
@@ -171,6 +175,8 @@ export interface CreatePortfolioItemInput {
 export interface UpdatePortfolioItemInput {
   name?: string;
   description?: string | null;
+  notes?: string | null;
+  releaseNotes?: string | null;
   /**
    * Move the item to another project. Not nullable — an item always has one.
    *

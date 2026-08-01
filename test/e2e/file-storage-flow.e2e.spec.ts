@@ -10,7 +10,7 @@
  * spec in this directory touched a file, an attachment, an avatar or a workspace
  * logo. So when `db_least_privilege` moved api/worker off the owning role, two
  * surviving `tenant_isolation` RLS policies started denying every insert into
- * `storage.files` and `work.work_item_attachments`, and CI was green throughout.
+ * `storage.files` and `work.attachments`, and CI was green throughout.
  * Develop returned 500 on `POST /v1/auth/me/avatar/presign`:
  *
  *   new row violates row-level security policy for table "files"

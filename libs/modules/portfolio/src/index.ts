@@ -6,3 +6,4 @@ export * from './application/portfolio-items.service';
 export * from './application/preliminary-estimate-map.service';
 export * from './interface/http/dto/portfolio-item-request.dto';
 export * from './interface/http/dto/portfolio-item-response.dto';
+export * from './interface/http/portfolio-attachments.controller';

@@ -1,16 +1,17 @@
+import { activityEntityTypeEnum } from '../../../../../db/schema/enums';
 /**
  * Shared activity-log (Revision History) domain types — one definition for every
  * entity (work item, task, attachment, iteration, project, milestone, release).
  */
 
-export type ActivityEntityType =
-  | 'work_item'
-  | 'task'
-  | 'attachment'
-  | 'iteration'
-  | 'project'
-  | 'milestone'
-  | 'release';
+/**
+ * DERIVED from the database enum rather than re-listed, so the two cannot drift.
+ *
+ * They had drifted the moment `portfolio_item` was added by 0081: the column accepted the
+ * value while this union did not, which the repository surfaced as a type error on its own
+ * return. Deriving it means the next subject is a one-line change in one place.
+ */
+export type ActivityEntityType = (typeof activityEntityTypeEnum.enumValues)[number];
 
 /** A single field change. Rich-text fields record the field name only (old/new null). */
 export interface ActivityChange {

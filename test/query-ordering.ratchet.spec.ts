@@ -22,7 +22,7 @@ import { describe, expect, it } from 'vitest';
  *
  * The rule enforced here: the final argument of every `.orderBy(...)` is a
  * unique column — a surrogate `id`, or the columns of a composite primary key
- * for the junction tables that have no `id` (see `work_item_attachments`).
+ * for the junction tables that have no `id` (see `work.attachments`).
  * Redundant on a sort that is already unique, and free: Postgres never compares
  * the tiebreaker unless every preceding key is equal.
  *

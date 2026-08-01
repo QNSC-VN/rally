@@ -85,6 +85,72 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
     };
   }
 
+  /**
+   * The accepted-children rollup SPLIT BY child type, for the detail page's
+   * "Total Accepted Children" panel.
+   *
+   * A separate query rather than eight more columns on `rollupSubqueries()`. Those are
+   * correlated scalar subqueries evaluated per returned row, and the grid returns up to 200
+   * — the panel exists only on the detail page, so the list path must not pay for it. This
+   * is ONE grouped pass over the same linked-leaf predicate.
+   *
+   * The predicate is deliberately identical to `rollupSubqueries()`, including how an Epic
+   * reaches through its child Features to the leaf Stories and Defects. That is what makes
+   * the panel's total agree with Percent Done on the same page; a second definition of
+   * "this item's children" would put two different numbers next to each other.
+   */
+  async childRollupByType(
+    id: string,
+    workspaceId: string,
+  ): Promise<
+    {
+      type: 'story' | 'defect';
+      points: number;
+      count: number;
+      acceptedPoints: number;
+      acceptedCount: number;
+    }[]
+  > {
+    const rows = await this.db
+      .select({
+        type: workItems.type,
+        points: sql<number>`coalesce(sum(${workItems.storyPoints}), 0)`,
+        count: sql<number>`count(*)`,
+        acceptedPoints: sql<number>`coalesce(sum(${workItems.storyPoints}) filter (where ${workItems.scheduleState} in (${acceptedScheduleStatesSql()})), 0)`,
+        acceptedCount: sql<number>`count(*) filter (where ${workItems.scheduleState} in (${acceptedScheduleStatesSql()}))`,
+      })
+      .from(workItems)
+      .where(
+        and(
+          eq(workItems.workspaceId, workspaceId),
+          isNull(workItems.deletedAt),
+          or(
+            eq(workItems.featureId, id),
+            sql`${workItems.featureId} in (
+              select c.id from ${portfolioItems} c
+              where c.parent_id = ${id} and c.archived_at is null
+            )`,
+          ),
+        ),
+      )
+      // No ORDER BY: the caller indexes these by `type` into a fixed
+      // ['story', 'defect'] sequence, so row order here carries no meaning. Sorting by the
+      // grouping key would also read as a partial ordering to the query-ordering ratchet,
+      // which is right to be suspicious — a bare `ORDER BY type` on a NON-grouped query
+      // would be exactly the unstable-pagination bug it exists to catch.
+      .groupBy(workItems.type);
+
+    return rows
+      .filter((r): r is typeof r & { type: 'story' | 'defect' } => r.type !== 'task')
+      .map((r) => ({
+        type: r.type,
+        points: Number(r.points ?? 0),
+        count: Number(r.count ?? 0),
+        acceptedPoints: Number(r.acceptedPoints ?? 0),
+        acceptedCount: Number(r.acceptedCount ?? 0),
+      }));
+  }
+
   /** Active child Features of an Epic. 0 for a Feature — the hierarchy is two levels. */
   private childFeatureCountSql() {
     return sql<number>`(
@@ -333,7 +399,7 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
         description: input.description ?? null,
         ...(input.state ? { state: input.state } : {}),
         ...(input.preliminaryEstimate ? { preliminaryEstimate: input.preliminaryEstimate } : {}),
-        // NOT NULL DEFAULT 0 (0079): 0 is the "not forecast" value, so an omitted
+        // NOT NULL DEFAULT 0 (0081): 0 is the "not forecast" value, so an omitted
         // forecast is stored as 0 rather than null.
         refinedEstimate: input.refinedEstimate ?? '0',
         refinedItemCountEstimate: input.refinedItemCountEstimate ?? 0,
@@ -369,6 +435,8 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
 
     assign('name');
     assign('description');
+    assign('notes');
+    assign('releaseNotes');
     // A project MOVE. Listed here because this `assign` list is explicit: a field absent
     // from it is silently dropped, so the PATCH would 200 with nothing changed.
     assign('projectId');
@@ -473,6 +541,8 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
       type: row.type,
       name: row.name,
       description: row.description,
+      notes: row.notes,
+      releaseNotes: row.releaseNotes,
       state: row.state,
       preliminaryEstimate: row.preliminaryEstimate,
       refinedEstimate: row.refinedEstimate,

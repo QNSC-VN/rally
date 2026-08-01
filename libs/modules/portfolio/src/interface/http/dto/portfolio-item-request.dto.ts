@@ -51,13 +51,16 @@ export const PORTFOLIO_ENUMS = {
 const portfolioWritableFields = {
   name: z.string().min(1).max(255).trim(),
   description: z.string().max(20000).nullable(),
+  /** Rich text, same limit and nullability as a work item's (0080). */
+  notes: z.string().max(20000).nullable(),
+  releaseNotes: z.string().max(20000).nullable(),
   state: z.enum(PORTFOLIO_ITEM_STATES),
   preliminaryEstimate: z.enum(PRELIMINARY_SIZES),
   /**
    * Top-down forecasts. NON-NEGATIVE and never null — 0 IS the "not forecast" value.
    *
    * Real Rally shows these as 0 rather than blank and accepts a typed 0; Broadcom
-   * documents no rule either way. So 0 is the absent state (migration 0079) and the tier
+   * documents no rule either way. So 0 is the absent state (migration 0081) and the tier
    * chain already reads it that way: "Refined Estimate = Feature.refinedEstimate |
    * refinedWorkItemCountEstimate -> if > 0" (Capacity Planning SRS), so 0 falls through to
    * the Preliminary Estimate mapping exactly as a blank used to.
@@ -82,6 +85,8 @@ export const CreatePortfolioItemSchema = z.object({
   type: z.enum(PORTFOLIO_ITEM_TYPES),
   name: portfolioWritableFields.name,
   description: portfolioWritableFields.description.optional(),
+  notes: portfolioWritableFields.notes.optional(),
+  releaseNotes: portfolioWritableFields.releaseNotes.optional(),
   state: portfolioWritableFields.state.optional(),
   preliminaryEstimate: portfolioWritableFields.preliminaryEstimate.optional(),
   refinedEstimate: portfolioWritableFields.refinedEstimate.optional(),
@@ -116,6 +121,8 @@ export const UpdatePortfolioItemSchema = z
   .object({
     name: portfolioWritableFields.name.optional(),
     description: portfolioWritableFields.description.optional(),
+    notes: portfolioWritableFields.notes.optional(),
+    releaseNotes: portfolioWritableFields.releaseNotes.optional(),
     /** Move the item to another project. Never nullable — an item always has a project. */
     projectId: z.string().uuid().optional(),
     state: portfolioWritableFields.state.optional(),

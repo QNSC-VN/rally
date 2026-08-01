@@ -8,6 +8,8 @@ import {
   between,
 } from '@platform';
 import { AccessService } from '@modules/access';
+import { ActivityLogger, type ActivityLog } from '@modules/activity';
+import { PORTFOLIO_ACTIVITY_CONFIG } from './portfolio-activity-diff';
 import { PORTFOLIO_HEALTH_THRESHOLDS, computeHealth, type HealthResult } from '@shared-kernel';
 import type { CursorPayload, JwtPayload, PagedResult } from '@platform';
 import { projectTeams, releases, teams } from '../../../../../db/schema/work';
@@ -51,6 +53,37 @@ export interface PortfolioItemWithProgress extends PortfolioItemView {
   health: HealthResult;
 }
 
+/** One child type's share of the accepted-children rollup. */
+export interface AcceptedChildrenGroup {
+  type: 'story' | 'defect';
+  points: number;
+  count: number;
+  acceptedPoints: number;
+  acceptedCount: number;
+}
+
+/**
+ * The "Total Accepted Children" panel on the detail page: accepted vs linked, in points or
+ * item count, with a row per child type.
+ *
+ * `total` comes from the item's own rollup rather than from summing `byType`, so the panel
+ * and the Percent Done indicators on the same page can never disagree — they are then
+ * literally the same numbers. `byType` only splits that total up.
+ *
+ * A type with no children is still returned with zeroes: Rally shows "Defects: 0% 0/0"
+ * rather than hiding the row, and a missing row would read as "this Feature cannot have
+ * defects" instead of "it has none".
+ */
+export interface AcceptedChildrenRollup {
+  total: { points: number; count: number; acceptedPoints: number; acceptedCount: number };
+  byType: AcceptedChildrenGroup[];
+}
+
+/** The detail surface: everything the grid has, plus the accepted-children breakdown. */
+export interface PortfolioItemDetail extends PortfolioItemWithProgress {
+  acceptedChildren: AcceptedChildrenRollup;
+}
+
 /**
  * An empty page for the cases this service refuses to send to SQL.
  *
@@ -70,7 +103,34 @@ export class PortfolioItemsService {
     private readonly access: AccessService,
     private readonly uow: UnitOfWork,
     private readonly estimateMaps: PreliminaryEstimateMapService,
+    private readonly activity: ActivityLogger,
   ) {}
+
+  /**
+   * The activity subject for one item. `entity_type: 'portfolio_item'` was added to the
+   * shared enum by 0081; `activity_logs` needed nothing else, being polymorphic already.
+   */
+  private subject(item: Pick<PortfolioItem, 'id' | 'workspaceId' | 'projectId'>) {
+    return {
+      workspaceId: item.workspaceId,
+      projectId: item.projectId,
+      entityType: 'portfolio_item' as const,
+      entityId: item.id,
+    };
+  }
+
+  /** Revision History for one item, paged. Mirrors the milestone/release endpoints. */
+  async getActivity(
+    actor: JwtPayload,
+    id: string,
+    args: { limit: number; offset: number },
+  ): Promise<{ items: ActivityLog[]; total: number }> {
+    // Existence + permission first, so a bad id is a 404 rather than an empty feed.
+    await this.requireItem(actor, id);
+    const page = Math.floor(args.offset / args.limit) + 1;
+    const res = await this.activity.listFor(id, actor.workspaceId, page, args.limit);
+    return { items: res.data, total: res.total };
+  }
 
   async listItems(
     actor: JwtPayload,
@@ -134,13 +194,35 @@ export class PortfolioItemsService {
     };
   }
 
-  async getItem(actor: JwtPayload, id: string): Promise<PortfolioItemWithProgress> {
+  async getItem(actor: JwtPayload, id: string): Promise<PortfolioItemDetail> {
     const item = await this.repo.findViewById(id, actor.workspaceId);
     if (!item) {
       throw new NotFoundException('PORTFOLIO_ITEM_NOT_FOUND', 'Portfolio item not found');
     }
     const map = await this.estimateMap(actor.workspaceId);
-    return this.withProgress(item, map);
+    const groups = await this.repo.childRollupByType(id, actor.workspaceId);
+    return {
+      ...this.withProgress(item, map),
+      acceptedChildren: {
+        total: {
+          points: item.rollup.rollupPoints,
+          count: item.rollup.rollupCount,
+          acceptedPoints: item.rollup.acceptedPoints,
+          acceptedCount: item.rollup.acceptedCount,
+        },
+        // Both types always present, zero-filled — see AcceptedChildrenRollup.
+        byType: (['story', 'defect'] as const).map(
+          (type) =>
+            groups.find((g) => g.type === type) ?? {
+              type,
+              points: 0,
+              count: 0,
+              acceptedPoints: 0,
+              acceptedCount: 0,
+            },
+        ),
+      },
+    };
   }
 
   async listChildren(
@@ -225,6 +307,10 @@ export class PortfolioItemsService {
     }
 
     if (!created) throw lastErr;
+    // `logSafe`: a history entry must never fail the write that produced it.
+    await this.activity.logSafe([
+      this.activity.build(this.subject(created), actor.sub, 'portfolio_item.created', null),
+    ]);
     return this.getItem(actor, created.id);
   }
 
@@ -259,6 +345,16 @@ export class PortfolioItemsService {
     );
 
     await this.repo.update(id, patch, actor.workspaceId);
+    await this.activity.logSafe(
+      this.activity.buildDiff(
+        this.subject(existing),
+        actor.sub,
+        existing as unknown as Record<string, unknown>,
+        patch,
+        PORTFOLIO_ACTIVITY_CONFIG,
+        'portfolio_item.updated',
+      ),
+    );
     return this.getItem(actor, id);
   }
 

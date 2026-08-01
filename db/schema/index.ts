@@ -18,7 +18,7 @@ export * from './identity';
 // ── access schema ──────────────────────────────────────────────────────────
 export * from './access';
 
-// ── storage schema (must precede work — work.work_item_attachments FKs it) ──
+// ── storage schema (must precede work — work.attachments FKs it) ──
 export * from './storage';
 
 // ── work schema ────────────────────────────────────────────────────────────

@@ -134,7 +134,20 @@ export const activityEntityTypeEnum = pgEnum('activity_entity_type', [
   'project',
   'milestone',
   'release',
+  // Epics and Features. Added by 0079 — `activity_logs` was already polymorphic, so a new
+  // Revision History subject costs one enum member and nothing else.
+  'portfolio_item',
 ]);
+
+/**
+ * What a child record hangs off — comments today, attachments / labels / watchers as they
+ * follow (0082).
+ *
+ * Deliberately NOT `activityEntityTypeEnum`, which answers a different question: activity
+ * is logged against tasks and attachments too, and neither of those can own a comment.
+ * This enum lists exactly the things that CAN own child records.
+ */
+export const entityRefTypeEnum = pgEnum('entity_ref_type', ['work_item', 'portfolio_item']);
 
 // ── messaging ──────────────────────────────────────────────────────────────
 
