@@ -32,7 +32,10 @@ test.describe('Capacity Planning', () => {
     await page.goto('/capacity-planning', { waitUntil: 'domcontentloaded' })
     // The ID cell is the link: the row does not navigate and the NAME cell edits in place,
     // which is how Rally and every other grid here behave.
-    await page.getByRole('button', { name: /^CP-/ }).first().click()
+    // CP-1 by name, not `.first()`: the seed now also carries CP-2, a PUBLISHED plan, and the list
+    // is newest-first — so `.first()` opened the read-only one and every draft-only control was
+    // missing.
+    await page.getByRole('button', { name: /^CP-1$/ }).click()
     await expect(page).toHaveURL(/\/capacity-planning\/[0-9a-f-]{36}/)
     await expect(page.getByText('Team Alpha').first()).toBeVisible()
   }
@@ -189,7 +192,7 @@ test.describe('Capacity Planning', () => {
     }
     await expect(page.getByText('NX Platform v2 capacity')).toBeVisible()
     // The plan's key leads the row and is the only cell that navigates.
-    await expect(page.getByRole('button', { name: /^CP-/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: /^CP-1$/ })).toBeVisible()
   })
 
   test('the create dialog will not offer a release that already has a plan', async ({ page }) => {

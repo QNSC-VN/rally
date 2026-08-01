@@ -55,13 +55,23 @@ export function AddFeaturesModal({
   const items = useMemo(
     () =>
       features
+        /**
+         * The BA flow's eligibility rules (§4.4), mirrored here so the list only offers what the API
+         * will accept: same project (the query already scopes that), not archived, not cancelled,
+         * and either unscheduled or already in this plan's release.
+         *
+         * The API enforces all of them too — a picker is a courtesy, not a rule — but offering a
+         * Feature that will be refused turns a planner's click into an error toast.
+         */
+        .filter((f) => f.archivedAt === null && f.state !== 'cancelled')
+        .filter((f) => f.releaseId === null || f.releaseId === plan.releaseId)
         .filter((f) => !onPlan.has(f.id))
         .map((f) => ({
           id: f.id,
           name: `${f.itemKey} — ${f.name}`,
           icon: <TypeBadge type="feature" size={16} />,
         })),
-    [features, onPlan],
+    [features, onPlan, plan.releaseId],
   )
 
   /**

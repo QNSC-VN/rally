@@ -119,12 +119,17 @@ describe('CapacityPlansService', () => {
           // Allocation targets resolve through the portfolio service; default to a Feature
           // in the plan's project so tests that are not about that check stay short.
           useValue: {
+            // Every field the eligibility rules read, stated: a fixture that omits them makes those
+            // rules pass by accident, which is how three of them went unenforced.
             getItem: vi.fn().mockResolvedValue({
               id: 'fe-1',
               type: 'feature',
               projectId: 'proj-a',
               refinedEstimate: null,
               preliminaryEstimate: 'm',
+              archivedAt: null,
+              state: 'developing',
+              releaseId: null,
             }),
           },
         },
@@ -1156,7 +1161,7 @@ describe('CapacityPlansService', () => {
       } as never);
       await expect(
         service.allocate(actor, 'plan-1', { portfolioItemId: 'fe-x', teamId: 'team-1' }),
-      ).rejects.toMatchObject({ code: 'CAPACITY_PLAN_RELEASE_MISMATCH' });
+      ).rejects.toMatchObject({ code: 'CAPACITY_ALLOCATION_WRONG_PROJECT' });
     });
 
     it('requires the team to be ON the plan', async () => {
@@ -1238,6 +1243,9 @@ describe('CapacityPlansService', () => {
         projectId: 'proj-a',
         refinedEstimate: '30',
         preliminaryEstimate: 'm',
+        archivedAt: null,
+        state: 'developing',
+        releaseId: null,
       } as never);
 
       await service.allocate(actor, 'plan-1', { portfolioItemId: 'fe-1', teamId: 'team-1' });
@@ -1306,6 +1314,31 @@ describe('CapacityPlansService', () => {
 
       expect(detail.teams[0].metrics.estimated).toBe(42);
       expect(detail.items.map((i) => i.estimated)).toEqual([30, 12]);
+    });
+
+    it.each([
+      ['ARCHIVED', { archivedAt: new Date() }, 'CAPACITY_ALLOCATION_ARCHIVED'],
+      ['CANCELLED', { state: 'cancelled' }, 'CAPACITY_ALLOCATION_CANCELLED'],
+      ['in another RELEASE', { releaseId: 'rel-other' }, 'CAPACITY_ALLOCATION_OTHER_RELEASE'],
+    ])('refuses a Feature that is %s', async (_label, over, code) => {
+      // The BA flow's eligibility rules (§4.4). The picker hides all three, but a picker is not a
+      // rule — a stale tab or a scripted client reaches the API directly.
+      portfolio.getItem.mockResolvedValue({
+        id: 'fe-1',
+        type: 'feature',
+        projectId: 'proj-a',
+        refinedEstimate: null,
+        preliminaryEstimate: 'm',
+        archivedAt: null,
+        state: 'developing',
+        releaseId: null,
+        ...over,
+      } as never);
+
+      await expect(
+        service.allocate(actor, 'plan-1', { portfolioItemId: 'fe-1', teamId: 'team-1' }),
+      ).rejects.toMatchObject({ code });
+      expect(repo.createAllocation).not.toHaveBeenCalled();
     });
 
     it('honours an explicit 0 rather than substituting a default', async () => {

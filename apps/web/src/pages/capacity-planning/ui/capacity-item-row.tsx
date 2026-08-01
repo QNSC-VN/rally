@@ -147,9 +147,20 @@ export function CapacityItemRow({
           <SearchableSelect
             value={item.primaryTeamId ?? ''}
             ariaLabel={t('items.assignmentLabel', { item: item.itemKey })}
-            placeholder={t('items.notAssigned')}
             options={assignOptions}
             onChange={(v) => onAssign(v === '' || v === null ? null : v)}
+            /* The trigger says `Not assigned`, in the BA's yellow, while the MENU offers `Unassign`.
+               They are the same row of the list but not the same sentence: one is a state the plan is
+               in, the other an action you can take — and without this the cell rendered the option's
+               own label, so an unassigned Feature read as the verb "Unassign". */
+            triggerContent={
+              item.primaryTeamId === null ? (
+                <span className="flex items-center gap-1" style={{ color: BRAND.warning }}>
+                  <AlertTriangle size={12} />
+                  <span className="text-ui-sm">{t('items.notAssigned')}</span>
+                </span>
+              ) : undefined
+            }
           />
         ) : item.primaryTeamId === null && item.teamIds.length === 0 ? (
           <span className="flex items-center gap-1" style={{ color: BRAND.warning }}>

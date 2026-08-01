@@ -554,6 +554,13 @@
       "when": 1786173502000,
       "tag": "0077_capacity_allocation_optional_value",
       "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1786259902000,
+      "tag": "0078_capacity_allocation_uniqueness",
+      "breakpoints": true
     }
   ]
 }

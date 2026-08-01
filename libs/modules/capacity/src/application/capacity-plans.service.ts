@@ -891,9 +891,41 @@ export class CapacityPlansService {
       );
     }
     if (item.projectId !== plan.projectId) {
+      // Its OWN code: this was reusing the release-mismatch code, so a project error read as a
+      // date problem in the log and in whatever the client branched on.
       throw new PreconditionFailedException(
-        'CAPACITY_PLAN_RELEASE_MISMATCH',
+        'CAPACITY_ALLOCATION_WRONG_PROJECT',
         'That Feature belongs to a different project',
+      );
+    }
+    /**
+     * The three eligibility rules the BA flow states and this guard did not enforce (§4.4).
+     *
+     * The picker hides all three, but a picker is not a rule: the API is what stops a stale tab, a
+     * scripted client or a retried request from planning work that cannot be planned.
+     */
+    if (item.archivedAt) {
+      throw new PreconditionFailedException(
+        'CAPACITY_ALLOCATION_ARCHIVED',
+        'That Feature is archived',
+      );
+    }
+    if (item.state === 'cancelled') {
+      throw new PreconditionFailedException(
+        'CAPACITY_ALLOCATION_CANCELLED',
+        'A cancelled Feature is not planning demand',
+      );
+    }
+    /**
+     * "Release is Unscheduled or equals the Plan Release."
+     *
+     * A Feature already committed to ANOTHER release would take this plan's window on publish,
+     * silently moving work between releases — which is the one thing publish is careful not to do.
+     */
+    if (item.releaseId !== null && item.releaseId !== plan.releaseId) {
+      throw new PreconditionFailedException(
+        'CAPACITY_ALLOCATION_OTHER_RELEASE',
+        'That Feature belongs to another release; clear its Release or plan it there',
       );
     }
     return item;
