@@ -96,7 +96,7 @@ function toDetailDto(i: PortfolioItemDetail): PortfolioItemDetailResponseDto {
  * this converts the other — both at the boundary, so no other layer sees the mismatch.
  *
  * Only `undefined` is special now: it stays "not supplied". There is no null to carry,
- * because 0 is the "not forecast" value (migration 0079) and the column is NOT NULL.
+ * because 0 is the "not forecast" value (migration 0081) and the column is NOT NULL.
  */
 function toWriteInput<T extends { refinedEstimate?: number }>(
   body: T,

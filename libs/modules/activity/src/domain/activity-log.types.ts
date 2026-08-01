@@ -7,7 +7,7 @@ import { activityEntityTypeEnum } from '../../../../../db/schema/enums';
 /**
  * DERIVED from the database enum rather than re-listed, so the two cannot drift.
  *
- * They had drifted the moment `portfolio_item` was added by 0079: the column accepted the
+ * They had drifted the moment `portfolio_item` was added by 0081: the column accepted the
  * value while this union did not, which the repository surfaced as a type error on its own
  * return. Deriving it means the next subject is a one-line change in one place.
  */

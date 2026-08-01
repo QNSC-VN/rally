@@ -26,7 +26,7 @@ export function hasPendingImages(html: string | null | undefined): boolean {
 
 /**
  * `subject` is the entity the pasted images will hang off — a work item or a portfolio item.
- * Both detail pages paste into the same `RichTextEditor`, and since migration 0081 both can
+ * Both detail pages paste into the same `RichTextEditor`, and since migration 0083 both can
  * own the resulting files, so this takes the pair rather than a work-item id.
  */
 export function useUploadPastedImages(subject: EntitySubject | undefined) {

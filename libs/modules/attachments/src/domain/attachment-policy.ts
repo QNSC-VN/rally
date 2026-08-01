@@ -79,7 +79,7 @@ const MB = 1024 * 1024;
 /**
  * Files attached to a work item OR a portfolio item — one policy, because the two carry the
  * same limits and the same MIME allow-list. Renamed from `WORK_ITEM_ATTACHMENT_POLICY` when
- * migration 0081 made the link table polymorphic.
+ * migration 0083 made the link table polymorphic.
  *
  * `surface` deliberately keeps the old `work-item-attachment` value: it is the S3 KEY PREFIX
  * every already-uploaded object lives under, so changing it would strand them — the reaper

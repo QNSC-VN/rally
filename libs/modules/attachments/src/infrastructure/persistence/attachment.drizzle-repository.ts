@@ -12,7 +12,7 @@ import type { IAttachmentRepository } from '../../domain/ports/attachment.reposi
  * `status = 'completed'` + `deleted_at IS NULL`, so a presigned-but-unconfirmed
  * or soft-deleted file can never appear in a listing or count against quota.
  *
- * Keyed by `(entity_type, entity_id)` since migration 0081, so the same link table serves a
+ * Keyed by `(entity_type, entity_id)` since migration 0083, so the same link table serves a
  * work item and a portfolio item. Every method takes the pair rather than a bare id: an id
  * alone is ambiguous now, and a default of "work_item" would silently mis-scope any caller
  * that forgot to say.

@@ -399,7 +399,7 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
         description: input.description ?? null,
         ...(input.state ? { state: input.state } : {}),
         ...(input.preliminaryEstimate ? { preliminaryEstimate: input.preliminaryEstimate } : {}),
-        // NOT NULL DEFAULT 0 (0079): 0 is the "not forecast" value, so an omitted
+        // NOT NULL DEFAULT 0 (0081): 0 is the "not forecast" value, so an omitted
         // forecast is stored as 0 rather than null.
         refinedEstimate: input.refinedEstimate ?? '0',
         refinedItemCountEstimate: input.refinedItemCountEstimate ?? 0,

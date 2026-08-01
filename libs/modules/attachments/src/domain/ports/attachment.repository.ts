@@ -7,7 +7,7 @@ export const ATTACHMENT_REPOSITORY = Symbol('ATTACHMENT_REPOSITORY');
  * storage.files and is reached through AttachmentsService — this repository
  * never writes it.
  *
- * Keyed by `(entity_type, entity_id)` since migration 0081, so one link table serves work
+ * Keyed by `(entity_type, entity_id)` since migration 0083, so one link table serves work
  * items and portfolio items. Every method takes the `AttachmentRef` pair rather than a bare
  * id, because an id alone no longer identifies a subject.
  *

@@ -371,7 +371,7 @@ export const portfolioItems = workSchema.table(
     name: varchar('name', { length: 255 }).notNull(),
     description: text('description'),
     // The same pair `work_items` carries, so the Detail page can offer the identical
-    // Notes / Release Notes editors (0078). Nullable: an empty rich-text field is absent.
+    // Notes / Release Notes editors (0080). Nullable: an empty rich-text field is absent.
     notes: text('notes'),
     releaseNotes: text('release_notes'),
     state: portfolioItemStateEnum('state').notNull().default('no_entry'),
@@ -384,7 +384,7 @@ export const portfolioItems = workSchema.table(
     //
     // NOT NULL DEFAULT 0, unlike every other typed estimate in this schema, and unlike
     // what the general rule below would suggest. Real Rally shows these as 0 rather than
-    // blank and lets a planner type 0, so 0 — not NULL — is the absent state here (0079).
+    // blank and lets a planner type 0, so 0 — not NULL — is the absent state here (0081).
     // Nothing downstream needed changing: the tier chain already selects the refined
     // forecast only `if > 0`, so 0 falls through to the Preliminary Estimate mapping,
     // which is the same fallback NULL used to trigger. One representation of "no
@@ -575,7 +575,7 @@ export const comments = workSchema.table(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     workspaceId: uuid('workspace_id').notNull(),
-    // Polymorphic subject (0080), the same shape `activity_logs` uses. Replaced a plain
+    // Polymorphic subject (0082), the same shape `activity_logs` uses. Replaced a plain
     // `work_item_id`, which was the only reason a portfolio item could not be discussed.
     entityType: entityRefTypeEnum('entity_type').notNull(),
     entityId: uuid('entity_id').notNull(),
@@ -609,7 +609,7 @@ export const comments = workSchema.table(
 // reaper (which is also what deletes the underlying objects).
 
 /**
- * File attachments on any entity that can own them (migration 0081).
+ * File attachments on any entity that can own them (migration 0083).
  *
  * Polymorphic on `(entity_type, entity_id)` like `comments` and `activity_logs`, and sharing
  * `comments`' `entity_ref_type` enum — that enum is the list of things that own child

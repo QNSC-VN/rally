@@ -224,7 +224,7 @@ const makeWatcherRepo = () => ({
 });
 
 // Link table only — blob metadata now lives in storage.files behind AttachmentsService.
-// Keyed by the entity pair since 0081.
+// Keyed by the entity pair since 0083.
 const makeAttachmentRepo = () => ({
   listByEntity: vi.fn().mockResolvedValue([]),
   countByEntity: vi.fn().mockResolvedValue(0),

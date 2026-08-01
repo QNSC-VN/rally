@@ -1,7 +1,7 @@
 -- Attachments become polymorphic, so a portfolio item can carry files.
 --
 -- Second table to follow the `(entity_type, entity_id)` shape that `activity_logs` set and
--- `comments` took in 0080, and it reuses the SAME `entity_ref_type` enum 0080 created —
+-- `comments` took in 0082, and it reuses the SAME `entity_ref_type` enum 0080 created —
 -- that enum exists to list the things that can own child records, and this is exactly such
 -- a record. A second enum here would be two vocabularies for one idea.
 --
@@ -11,7 +11,7 @@
 -- deciding whether a blob is still referenced — the one place a misleading name is most
 -- expensive. `storage.files` needed no change: 0053 already made it owner-agnostic.
 --
--- Statement order IS the safety argument, as in 0080: the backfill runs while
+-- Statement order IS the safety argument, as in 0082: the backfill runs while
 -- `work_item_id` still exists, and the column is dropped only afterwards, so every existing
 -- attachment keeps its subject.
 --

@@ -141,7 +141,7 @@ export const activityEntityTypeEnum = pgEnum('activity_entity_type', [
 
 /**
  * What a child record hangs off — comments today, attachments / labels / watchers as they
- * follow (0080).
+ * follow (0082).
  *
  * Deliberately NOT `activityEntityTypeEnum`, which answers a different question: activity
  * is logged against tasks and attachments too, and neither of those can own a comment.

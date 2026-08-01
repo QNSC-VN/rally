@@ -12,7 +12,7 @@ import { ATTACHMENT_REPOSITORY } from './domain/ports/attachment.repository';
  * Shared upload mechanics. Owning modules (work-items, portfolio, collaboration, identity)
  * import this module, authorize the actor against their own entity, then delegate.
  *
- * `EntityAttachmentsService` and the link-table repository moved here in 0081, when
+ * `EntityAttachmentsService` and the link-table repository moved here in 0083, when
  * `work_item_attachments` became the polymorphic `work.attachments`: the link table serves
  * more than one entity now, so it no longer belongs to work-items. What did NOT move is
  * authorization — see that service's doc comment.

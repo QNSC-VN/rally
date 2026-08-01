@@ -192,7 +192,7 @@ export function PortfolioDetailPage() {
               />
 
               {/* Notes and Release Notes, the same editors in the same order as Work Item
-                  detail. `work_items` already carried this exact pair, so migration 0078
+                  detail. `work_items` already carried this exact pair, so migration 0080
                   added the same two columns here rather than inventing a concept. */}
               <RichTextEditor
                 title={t('detail.fields.notes')}
@@ -214,7 +214,7 @@ export function PortfolioDetailPage() {
               <AcceptedChildrenBlock data={item.acceptedChildren} />
 
               {/* Attachments — the same table Work Item detail renders (Name / Description /
-                  When / Size), from the same component. Migration 0081 made the link table
+                  When / Size), from the same component. Migration 0083 made the link table
                   polymorphic, so this is one route tree per entity over one code path, not a
                   second uploader. */}
               <AttachmentBlock
@@ -224,7 +224,7 @@ export function PortfolioDetailPage() {
 
               {/* Comments — the SAME component Work Item detail renders, in the same place
                   (last in the main pane). It takes an entity pair rather than a work-item
-                  id because migration 0080 made `comments` polymorphic; the thread itself,
+                  id because migration 0082 made `comments` polymorphic; the thread itself,
                   including @mentions and own-comment editing, is not duplicated. */}
               <CommentThread
                 subject={{ entityType: 'portfolio_item', entityId: item.id }}

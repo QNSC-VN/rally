@@ -1,5 +1,5 @@
 /**
- * What an attachment hangs off (migration 0081). The same `entity_ref_type` vocabulary
+ * What an attachment hangs off (migration 0083). The same `entity_ref_type` vocabulary
  * `comments` uses — one list of things that can own child records, not one per table.
  */
 export type AttachmentEntityType = 'work_item' | 'portfolio_item';

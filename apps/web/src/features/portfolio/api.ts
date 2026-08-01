@@ -149,7 +149,7 @@ export function usePortfolioItems(filter: PortfolioListFilter) {
  *
  * Same shape as `useReleaseActivityLog` / the milestone and project equivalents, because
  * `activity_logs` is one shared polymorphic store: adding `portfolio_item` to its entity
- * enum (migration 0079) was the entire backend change, so the client side is the same
+ * enum (migration 0081) was the entire backend change, so the client side is the same
  * three lines every other subject uses.
  */
 export function usePortfolioItemActivityLog(id: string | undefined) {

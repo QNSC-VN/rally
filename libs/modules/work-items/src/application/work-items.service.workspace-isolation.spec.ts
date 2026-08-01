@@ -292,7 +292,7 @@ describe('WorkItemsService — workspace isolation', () => {
         { provide: TIME_LOG_REPOSITORY, useValue: tlRepo },
         { provide: WATCHER_REPOSITORY, useValue: watcherRepo },
         // The real service over the scoped link-repo mock: WorkItemsService delegates its
-        // attachment methods now (0081), so mocking the delegate would stop these tests
+        // attachment methods now (0083), so mocking the delegate would stop these tests
         // exercising the workspace/entity predicate they exist to pin.
         EntityAttachmentsService,
         { provide: ATTACHMENT_REPOSITORY, useValue: atRepo },

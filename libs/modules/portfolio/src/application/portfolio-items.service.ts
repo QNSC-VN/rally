@@ -108,7 +108,7 @@ export class PortfolioItemsService {
 
   /**
    * The activity subject for one item. `entity_type: 'portfolio_item'` was added to the
-   * shared enum by 0079; `activity_logs` needed nothing else, being polymorphic already.
+   * shared enum by 0081; `activity_logs` needed nothing else, being polymorphic already.
    */
   private subject(item: Pick<PortfolioItem, 'id' | 'workspaceId' | 'projectId'>) {
     return {

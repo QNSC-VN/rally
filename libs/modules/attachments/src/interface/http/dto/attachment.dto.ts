@@ -4,7 +4,7 @@ import { createZodDto } from 'nestjs-zod';
 /**
  * Attachment request/response contracts, shared by every surface that owns files.
  *
- * These lived in `@modules/work-items` while work items were the only owner. Migration 0081
+ * These lived in `@modules/work-items` while work items were the only owner. Migration 0083
  * made the link table polymorphic, so a portfolio item uses the identical shapes — leaving
  * them in work-items would have made `PortfolioModule` import that module for a contract that
  * has nothing to do with work items.
@@ -50,7 +50,7 @@ export class PresignAttachmentResponseDto extends createZodDto(PresignAttachment
 // by a route, so it carried no information and invited clients to branch on it.
 export const AttachmentResponseSchema = z.object({
   id: z.string().uuid(),
-  /** The subject this file hangs off (0081). Replaced `workItemId`. */
+  /** The subject this file hangs off (0083). Replaced `workItemId`. */
   entityType: z.enum(['work_item', 'portfolio_item']),
   entityId: z.string().uuid(),
   uploadedBy: z.string().uuid(),

@@ -3800,7 +3800,7 @@ export interface components {
         | 'cancelled'
       /** @enum {string} */
       preliminaryEstimate: 'no_entry' | 'xs' | 's' | 'm' | 'l' | 'xl'
-      /** @description Top-down points forecast. 0 means not forecast — see migration 0079. */
+      /** @description Top-down points forecast. 0 means not forecast — see migration 0081. */
       refinedEstimate: number
       /** @description Top-down child-count forecast. 0 means not forecast. */
       refinedItemCountEstimate: number
@@ -3889,7 +3889,7 @@ export interface components {
         | 'cancelled'
       /** @enum {string} */
       preliminaryEstimate: 'no_entry' | 'xs' | 's' | 'm' | 'l' | 'xl'
-      /** @description Top-down points forecast. 0 means not forecast — see migration 0077. */
+      /** @description Top-down points forecast. 0 means not forecast — see migration 0081. */
       refinedEstimate: number
       /** @description Top-down child-count forecast. 0 means not forecast. */
       refinedItemCountEstimate: number

@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 export const CommentResponseSchema = z.object({
   id: z.string().uuid(),
-  /** The subject this comment hangs off (0080). Replaced `workItemId`. */
+  /** The subject this comment hangs off (0082). Replaced `workItemId`. */
   entityType: z.enum(['work_item', 'portfolio_item']),
   entityId: z.string().uuid(),
   authorId: z.string().uuid(),

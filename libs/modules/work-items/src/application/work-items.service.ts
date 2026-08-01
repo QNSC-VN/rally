@@ -1720,7 +1720,7 @@ export class WorkItemsService {
   //
   // Thin delegations to `EntityAttachmentsService`. The mechanics — quota, presign,
   // confirm, the reaper contract, the delete-owner rule — are identical for every entity
-  // that can own files and moved to `@modules/attachments` with migration 0081. What stays
+  // that can own files and moved to `@modules/attachments` with migration 0083. What stays
   // here is what is genuinely work-item-specific: proving the item exists, which also
   // resolves the `projectId` the activity log needs.
   //
