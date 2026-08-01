@@ -43,9 +43,14 @@ export type ColKey =
  * information rather than a constant.
  */
 export const PORTFOLIO_COLUMNS: ColumnSpec<PortfolioItem, unknown, ColKey>[] = [
-  // 96 → 112: the disclosure chevron + its gap sit inside this cell, ahead of the type
-  // glyph, and at 96 the key itself was the thing that truncated.
-  { key: 'id', label: 'ID', defaultWidth: 112, minWidth: 88, locked: true, sortCol: 'itemKey' },
+  /**
+   * 132/120 — the SAME as Iteration Status' ID column, deliberately.
+   *
+   * That grid has the identical structure in this cell (disclosure chevron, then the type
+   * glyph, then the key), so matching it is a reason rather than a guess. Was 96, which
+   * truncated the key itself; then 112, which still wrapped a long key onto three lines.
+   */
+  { key: 'id', label: 'ID', defaultWidth: 132, minWidth: 120, locked: true, sortCol: 'itemKey' },
   {
     key: 'name',
     label: 'Name',

@@ -194,7 +194,10 @@ function IterationInlineCell({
 
   if (!canEdit) {
     return (
-      <span className="block truncate text-muted-foreground" title={defect.iterationName ?? ''}>
+      <span
+        className="block break-words whitespace-normal text-muted-foreground"
+        title={defect.iterationName ?? ''}
+      >
         {defect.iterationName ?? '--'}
       </span>
     )

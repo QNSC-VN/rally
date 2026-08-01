@@ -737,7 +737,9 @@ function TaskRow({
             }}
           >
             <TypeBadge type="release" size={16} />
-            <span className="truncate text-ui-sm text-primary-light">{task.release.name}</span>
+            <span className="text-ui-sm break-words whitespace-normal text-primary-light">
+              {task.release.name}
+            </span>
           </button>
         ) : (
           <span className="text-ui-xs text-foreground-faint">--</span>

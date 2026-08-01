@@ -120,7 +120,10 @@ const MEMBER_COLUMNS: ColumnSpec<WorkspaceMember, MemberCtx, MemberColKey>[] = [
     minWidth: 140,
     cellClassName: 'flex min-w-0 items-center',
     cell: (m) => (
-      <span className="truncate text-ui-md text-muted-foreground" title={m.email ?? ''}>
+      <span
+        className="text-ui-md break-words whitespace-normal text-muted-foreground"
+        title={m.email ?? ''}
+      >
         {m.email ?? '--'}
       </span>
     ),

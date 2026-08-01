@@ -100,6 +100,8 @@ export function ReleaseSelectCell({
     <SearchableSelect
       variant="cell"
       value={releaseId ?? ''}
+      // `RE-1: v2.0 — NX Platform Upgrade` is a name, not a code — same case as Project.
+      wrapLabel
       readOnly={!canEdit}
       ariaLabel={ariaLabel}
       placeholder="--"
