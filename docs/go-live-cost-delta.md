@@ -205,11 +205,39 @@ If the number still has to come down, the honest options are architectural rathe
 configurational — collapse dev into an ephemeral environment, or delay restoring the
 api floor until there is real traffic. Neither is a settings change.
 
-Because Multi-AZ is off, **the recovery path is now load-bearing** and should be
-rehearsed rather than assumed. A snapshot restore has never been performed on this
-account. Run the drill against develop before launch: restore its latest automated
-snapshot into a temporary instance, confirm it boots and the data is intact, delete it.
-Costs a few dollars and turns "hours of downtime, recoverable" into a measured fact.
+Because Multi-AZ is off, **the recovery path is load-bearing** — so it was rehearsed
+rather than assumed.
+
+**Drill run 2026-08-02 against develop.** Restored the latest automated snapshot
+(`rds:rally-develop-2026-08-01-03-13`) into a NEW availability zone — source in
+`ap-southeast-1b`, restore into `1c`, which is the AZ-failure scenario:
+
+| | result |
+|---|---|
+| time to `available` | **5 min 4 s** |
+| engine / storage / IOPS / DBName / master user | identical to source |
+| encryption + KMS CMK | preserved, same key |
+| instance class, single-AZ | identical |
+
+The drill instance was deleted immediately after.
+
+**So the "hours" figure above is conservative for the restore itself** — the RDS
+operation is minutes. The hours come from what surrounds it: noticing the outage,
+deciding to restore, repointing the application at a new endpoint (a restore issues a
+NEW hostname, so this is a Terraform change plus a deploy, not a DNS flip), and
+verifying data before reopening. Budget for the human path, not the AWS one.
+
+**Two limits of this drill, stated so nobody over-reads it:**
+
+- **Data integrity was not verified.** Both RDS instances sit in private data subnets
+  and ECS exec is disabled on develop, so no query could be run against the restored
+  database from outside the VPC. What was verified is that AWS reports the instance as
+  `available` with matching configuration — not that table contents are correct. A full
+  drill needs a one-off ECS task in the VPC running `SELECT count(*)` against a few
+  tables and comparing to source.
+- **It was develop, not production.** Same engine and class, but 20 GB rather than 30 GB
+  and 3-day rather than 30-day retention. Restore time scales with volume size, so
+  production will be somewhat slower.
 
 **5. Revisit Fargate Spot for the api only if the budget forces it.** It saves ~$29/mo
 and costs dropped requests and broken SSE streams on interruption. The worker is already
