@@ -407,6 +407,7 @@ describe('CapacityPlansService', () => {
         itemComplete: 0,
         itemProjectId: 'proj-a',
         itemProjectName: 'Project A',
+        itemArchivedAt: null,
         itemReleaseId: null,
         state: 'developing',
         ...over,
@@ -509,6 +510,7 @@ describe('CapacityPlansService', () => {
       itemComplete: 0,
       itemProjectId: 'proj-a',
       itemProjectName: 'Project A',
+      itemArchivedAt: null,
       itemReleaseId: null,
       state: 'developing',
       ...over,
@@ -775,6 +777,7 @@ describe('CapacityPlansService', () => {
       itemComplete: 0,
       itemProjectId: 'proj-a',
       itemProjectName: 'Project A',
+      itemArchivedAt: null,
       itemReleaseId: null,
       state: 'developing',
       ...over,
@@ -1121,9 +1124,11 @@ describe('CapacityPlansService', () => {
       });
     });
 
-    it('ADDS to an existing row for the same (Feature, team) pair rather than duplicating', async () => {
-      // Rally models sharing as one row per team under a Feature. A second row for the same
-      // pair would double-count that team's demand in every total.
+    it('SETS an existing row for the same (Feature, team) pair rather than adding to it', async () => {
+      // The BA: "Re-applying allocation replaces the Feature's Team allocation rows." Adding meant
+      // applying the same dialog twice doubled committed demand, and a slice could never be corrected
+      // downwards through this path. Rally asks for "the number to allocate for this team", not a
+      // delta. Still one row per (Feature, team): a second would double-count in every total.
       // Per-argument, because `allocate` asks twice: first whether the Feature has an UNALLOCATED
       // row to move onto the team, then whether the team already holds one to add to.
       repo.findAllocationFor.mockImplementation(async (_plan, _item, teamId) =>
@@ -1148,9 +1153,54 @@ describe('CapacityPlansService', () => {
       });
 
       expect(repo.createAllocation).not.toHaveBeenCalled();
-      // No tx here: merging into an existing row is a single write with no primary-assignment
-      // bookkeeping to keep atomic with it.
-      expect(repo.updateAllocation).toHaveBeenCalledWith('al-1', { value: '15' });
+      // No tx here: setting an existing row is a single write with no primary-assignment bookkeeping
+      // to keep atomic with it. `5`, not `15` — the number asked for, not the number plus what was
+      // already there.
+      expect(repo.updateAllocation).toHaveBeenCalledWith('al-1', { value: '5' });
+    });
+
+    it('leaves an existing slice ALONE when no value is supplied', async () => {
+      // Clearing a slice is `updateAllocation` with an explicit null — a different request. A blank
+      // here means "assign, do not re-state the number", so the committed slice survives.
+      repo.findAllocationFor.mockImplementation(async (_plan, _item, teamId) =>
+        teamId === null
+          ? null
+          : ({
+              id: 'al-1',
+              planId: 'plan-1',
+              portfolioItemId: 'fe-1',
+              teamId: 'team-1',
+              isPrimary: false,
+              value: '10',
+            } as never),
+      );
+
+      await service.allocate(actor, 'plan-1', { portfolioItemId: 'fe-1', teamId: 'team-1' });
+      expect(repo.updateAllocation).not.toHaveBeenCalled();
+    });
+
+    it("KEEPS the parked row's value when a team is chosen without one", async () => {
+      // The BA: "If an existing Unassigned allocation already has a value, keep that value." This used
+      // to write null over it, so choosing a team from the assignment cell silently discarded a number
+      // the planner had entered while the Feature was parked.
+      repo.findAllocationFor.mockImplementation(async (_plan, _item, teamId) =>
+        teamId === null
+          ? ({
+              id: 'parked-1',
+              planId: 'plan-1',
+              portfolioItemId: 'fe-1',
+              teamId: null,
+              isPrimary: false,
+              value: '8',
+            } as never)
+          : null,
+      );
+
+      await service.allocate(actor, 'plan-1', { portfolioItemId: 'fe-1', teamId: 'team-1' });
+      expect(repo.updateAllocation).toHaveBeenCalledWith('parked-1', {
+        teamId: 'team-1',
+        isPrimary: true,
+      });
     });
 
     it('refuses to allocate an EPIC', async () => {
@@ -1216,6 +1266,7 @@ describe('CapacityPlansService', () => {
       itemComplete: 0,
       itemProjectId: 'proj-a',
       itemProjectName: 'Project A',
+      itemArchivedAt: null,
       itemReleaseId: null,
       state: 'developing',
       ...over,
@@ -1670,6 +1721,7 @@ describe('CapacityPlansService', () => {
       itemComplete: 0,
       itemProjectId: 'proj-a',
       itemProjectName: 'Project A',
+      itemArchivedAt: null,
       itemReleaseId: null,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -1734,6 +1786,21 @@ describe('CapacityPlansService', () => {
       await expect(
         service.updateAllocation(actor, 'plan-1', 'alloc-1', { teamId: null }),
       ).rejects.toMatchObject({ code: 'CAPACITY_ALLOCATION_ALREADY_UNASSIGNED' });
+    });
+
+    it('charges an ARCHIVED Feature nothing, while still returning its row', async () => {
+      // The BA: an archived item "is not actionable planning demand". Its children were still feeding
+      // the team's Rollup and Complete, so a team's load, its warnings and the cutline all moved on
+      // work nobody plans to do. The row stays visible — it is the only way to see and remove the
+      // stale commitment.
+      repo.listAllocations.mockResolvedValue([
+        row({ teamId: 'team-1', value: '5', rollup: 21, complete: 8, itemArchivedAt: new Date() }),
+      ]);
+      const detail = await service.getPlanDetail(actor, 'plan-1');
+      expect(detail.allocations).toHaveLength(1);
+      expect(detail.allocations[0].archived).toBe(true);
+      expect(detail.allocations[0].metrics).toMatchObject({ estimated: 0, rollup: 0, complete: 0 });
+      expect(detail.items[0]?.estimated).toBe(0);
     });
 
     it('reports an archived Feature as SKIPPED on publish rather than counting it', async () => {

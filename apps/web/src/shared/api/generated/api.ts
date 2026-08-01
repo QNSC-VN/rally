@@ -4384,6 +4384,8 @@ export interface components {
         projectId: string
         /** @description The Feature's own project — Rally prints `← from <project>` when it is not the plan's */
         projectName: string | null
+        /** @description The Feature is archived: this row contributes nothing to any total, and is returned only so a planner can see the stale commitment and remove it */
+        archived: boolean
         /** @description All three candidates behind Estimated, for Rally's Estimate tooltip */
         estimateBreakdown: {
           allocated: number | null
@@ -4559,6 +4561,8 @@ export interface components {
           projectId: string
           /** @description The Feature's own project — Rally prints `← from <project>` when it is not the plan's */
           projectName: string | null
+          /** @description The Feature is archived: this row contributes nothing to any total, and is returned only so a planner can see the stale commitment and remove it */
+          archived: boolean
           /** @description All three candidates behind Estimated, for Rally's Estimate tooltip */
           estimateBreakdown: {
             allocated: number | null
@@ -4723,6 +4727,8 @@ export interface components {
           projectId: string
           /** @description The Feature's own project — Rally prints `← from <project>` when it is not the plan's */
           projectName: string | null
+          /** @description The Feature is archived: this row contributes nothing to any total, and is returned only so a planner can see the stale commitment and remove it */
+          archived: boolean
           /** @description All three candidates behind Estimated, for Rally's Estimate tooltip */
           estimateBreakdown: {
             allocated: number | null
@@ -4919,6 +4925,8 @@ export interface components {
           projectId: string
           /** @description The Feature's own project — Rally prints `← from <project>` when it is not the plan's */
           projectName: string | null
+          /** @description The Feature is archived: this row contributes nothing to any total, and is returned only so a planner can see the stale commitment and remove it */
+          archived: boolean
           /** @description All three candidates behind Estimated, for Rally's Estimate tooltip */
           estimateBreakdown: {
             allocated: number | null

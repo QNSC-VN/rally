@@ -217,6 +217,7 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
         // Feature owned elsewhere, and the planner needs to see that before allocating to it.
         itemProjectId: portfolioItems.projectId,
         itemProjectName: projects.name,
+        itemArchivedAt: portfolioItems.archivedAt,
         itemReleaseId: portfolioItems.releaseId,
         itemState: portfolioItems.state,
         refinedEstimate: portfolioItems.refinedEstimate,
@@ -286,6 +287,7 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
       name: row.name,
       itemProjectId: row.itemProjectId,
       itemProjectName: row.itemProjectName,
+      itemArchivedAt: row.itemArchivedAt,
       itemReleaseId: row.itemReleaseId,
       state: row.itemState,
       refined: row.refinedEstimate === null ? null : Number(row.refinedEstimate),

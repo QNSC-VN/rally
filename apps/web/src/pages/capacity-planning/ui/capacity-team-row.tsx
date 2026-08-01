@@ -212,14 +212,18 @@ export function CapacityTeamRow({
         className="flex items-center justify-center px-2"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Forecast is a READ — offered even on a published plan, where nothing may be set.
-            The modal hides its "Use" buttons in that case rather than the whole tool. */}
-        <IconButton
-          aria-label={t('forecast.forTeam', { team: team.teamName ?? '' })}
-          onClick={onForecast}
-        >
-          <Sparkles size={13} />
-        </IconButton>
+        {/* DRAFT ONLY. The forecast proposes a Capacity, and the BA is explicit that "Capacity stays
+            disabled after Publish" — offering the tool on a published plan put the one remaining
+            mutation aid on a surface where every other control is correctly read-only. It reads as an
+            invitation the plan cannot accept. `canManage` is already false once published. */}
+        {canManage && (
+          <IconButton
+            aria-label={t('forecast.forTeam', { team: team.teamName ?? '' })}
+            onClick={onForecast}
+          >
+            <Sparkles size={13} />
+          </IconButton>
+        )}
         {/* No delete here: Rally changes a plan's teams through `Add / Remove Project(s) to Plan`,
             the checkbox dialog on the toolbar. A per-row trash can also invited removing a team
             whose demand has to be moved first, which the API refuses — the dialog says so before
