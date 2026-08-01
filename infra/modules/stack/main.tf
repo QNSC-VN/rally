@@ -181,6 +181,13 @@ locals {
     # Terraform: grant LOGIN and set the value FIRST, flip the flag second, or the
     # task boots and dies on 28P01. Full sequence in
     # docs/runbooks/db-role-least-privilege.md.
+    # Cloudflare Tunnel connector token, consumed by the cloudflared sidecar as
+    # TUNNEL_TOKEN. Created out of band with the tunnel itself (a tunnel and its token
+    # are one object in Cloudflare — Terraform does not mint this), then pasted into the
+    # bundle. Present in `secret_names` so `secret_arns["tunnel-token"]` resolves and so
+    # the key shows up in the bundle's generated description; the IAM grant is the whole
+    # bundle either way.
+    "tunnel-token"       = "Cloudflare Tunnel connector token (cloudflared TUNNEL_TOKEN)"
     "db-app-password"    = "Password for the rally_app Postgres role (api) — set with the LOGIN grant"
     "db-worker-password" = "Password for the rally_worker Postgres role (worker) — set with the LOGIN grant"
   })
@@ -283,6 +290,25 @@ module "cache" {
 # `OTEL_ENABLED` below is gated on the same flag, so the app is never told to
 # export into a void. That is what makes turning telemetry on a one-line change
 # per environment rather than a migration.
+# ── Cloudflare Tunnel sidecar (api only) ──────────────────────────────────────
+# Ingress WITHOUT an ALB: cloudflared dials out to Cloudflare, so the task needs no
+# inbound listener and no public IPv4. Gated on `tunnel_token_secret_arn` — empty
+# means no sidecar, so this is inert until a tunnel exists for the environment.
+#
+# The worker gets none: it is a relay with no HTTP surface and `attach_alb = false`
+# already.
+#
+# SSE was the compatibility question and it is answered: NotificationSseController
+# writes a `: heartbeat` every 25s, inside Cloudflare's ~100s idle timeout.
+module "tunnel_api" {
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/tunnel-agent?ref=tunnel-agent-v1.0.0"
+
+  tunnel_token_secret_arn = var.tunnel_enabled ? module.secrets.secret_arns["tunnel-token"] : ""
+  app_port                = 3000
+  log_group               = local.api_log_group
+  region                  = var.region
+}
+
 module "otel_agent_api" {
   source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/observability-agent?ref=observability-agent-v1.0.0"
 
@@ -512,7 +538,7 @@ module "api" {
   cpu_target_pct    = var.api.cpu_target_pct
   memory_target_pct = var.api.memory_target_pct
 
-  attach_alb        = true
+  attach_alb        = !var.tunnel_enabled
   alb_listener_arn  = data.terraform_remote_state.runtime.outputs.https_listener_arn
   alb_priority      = 100
   alb_path_patterns = ["/*"]
@@ -642,7 +668,12 @@ module "api" {
 
   # Merged into the task definition; reachable from the app at 127.0.0.1 via the
   # shared task network namespace. Empty list until a backend is configured.
-  additional_containers = module.otel_agent_api.container_definitions
+  # Both sidecars. concat, not replace — the otel agent and the tunnel connector are
+  # independent and either may be a no-op depending on its own gate.
+  additional_containers = concat(
+    module.otel_agent_api.container_definitions,
+    module.tunnel_api.container_definitions,
+  )
 
   sqs_queue_arns = values(module.messaging.queue_arns)
   sns_topic_arns = values(module.messaging.topic_arns)
@@ -947,9 +978,16 @@ module "dns_api" {
   zone_id = local.cloudflare_zone_id
   name    = var.api_record
   type    = "CNAME"
-  content = data.terraform_remote_state.runtime.outputs.alb_dns_name
-  proxied = true # orange cloud: shield the ALB, edge WAF/DDoS at Cloudflare
-  comment = "${local.name} API → ALB via Cloudflare proxy (managed by ${var.product}-infra ${var.env})"
+
+  # Tunnel or ALB, and the CNAME target is the whole difference:
+  #   tunnel — <tunnel-id>.cfargotunnel.com, a Cloudflare-internal name that only
+  #            resolves through the edge. It CANNOT be unproxied: an orange-cloud
+  #            record is the only way traffic reaches a connector.
+  #   ALB    — the load balancer's public DNS name.
+  content = var.tunnel_enabled ? "${var.tunnel_id}.cfargotunnel.com" : data.terraform_remote_state.runtime.outputs.alb_dns_name
+
+  proxied = true # orange cloud: required for a tunnel, and shields the ALB otherwise
+  comment = var.tunnel_enabled ? "${local.name} API → Cloudflare Tunnel (managed by ${var.product}-infra ${var.env})" : "${local.name} API → ALB via Cloudflare proxy (managed by ${var.product}-infra ${var.env})"
 }
 
 # ── Observability: golden-signal alarms + dashboard ───────────────────────────
@@ -991,7 +1029,18 @@ module "observability" {
   # meant develop — where the cost-saver makes zero tasks a normal state — gave up
   # LATENCY monitoring to silence the health alarm. Only the health alarm needs that
   # opt-out; the latency alarm evaluates nothing in a period with no traffic.
-  target_group_arns     = { api = module.api.target_group_arn }
+  # EMPTY when the api is served by a tunnel: there is no ALB target group, so the
+  # two target-group alarms (response latency, UnHealthyHostCount) have nothing to
+  # read and the module would fail on a null ARN.
+  #
+  # This is a REAL LOSS OF COVERAGE, not just plumbing. ../../live/prod/main.tf calls
+  # monitor_target_health "the only alarm that catches an outage producing no load to
+  # move CPU, latency or 5xx" — and with no ALB nothing on the AWS side observes
+  # ingress at all. Replace it OUTSIDE AWS before relying on a tunnel in production: a
+  # Cloudflare health check or a synthetic probe against the public hostname. The
+  # cloudflared sidecar cannot self-report either, because its image is distroless and
+  # carries no shell for an ECS healthCheck (see the tunnel-agent module).
+  target_group_arns     = var.tunnel_enabled ? {} : { api = module.api.target_group_arn }
   monitor_target_health = var.monitor_target_health
 
   // Suppresses the alarms whose premise is "this environment is serving traffic":

@@ -100,6 +100,22 @@ module "stack" {
   secrets_bundle_name = "app"
   secrets_use_bundle  = true
 
+  // ── Ingress via Cloudflare Tunnel, not the shared ALB ───────────────────────
+  // cloudflared runs as a sidecar in the api task and dials OUT to Cloudflare, so
+  // this environment needs no ALB listener rule, no target group and no public IPv4.
+  // Setting this also sets `attach_alb = false` on the api service — a tunnel-served
+  // task must not simultaneously be an ALB target.
+  //
+  // Requires `tunnel-token` in rally/develop/app, which holds the connector token for
+  // the `rally-develop` tunnel (created out of band 2026-08-02; a tunnel and its token
+  // are one Cloudflare object, so Terraform does not mint it).
+  //
+  // DEVELOP FIRST, deliberately: this is the environment where the tunnel path gets
+  // proven — SSE held open past the heartbeat interval, Entra SSO end to end, and an
+  // R2 upload — before production's hostname is cut over.
+  tunnel_enabled = true
+  tunnel_id      = "7134b087-ee8f-4768-907a-845fa8eaa692" // rally-develop
+
   // OFF here and in production alike — see ../prod/main.tf for the audit. Per-task
   // metrics are billed as custom CloudWatch metrics at $0.07 each and no alarm,
   // dashboard or autoscaling target in this stack reads that namespace.

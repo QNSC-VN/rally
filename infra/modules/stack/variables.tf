@@ -116,6 +116,26 @@ variable "seed_on_deploy" {
   default     = false
 }
 
+variable "tunnel_id" {
+  description = <<-EOT
+    Cloudflare Tunnel UUID, used to build the CNAME target
+    `<id>.cfargotunnel.com`. Required when `tunnel_enabled` is true.
+
+    Not discoverable from the connector token — a tunnel and its token are separate
+    reads on the Cloudflare API — so it is passed in rather than derived. The tunnel
+    itself is created out of band, because Terraform cannot mint a token without also
+    owning the tunnel's lifecycle, and destroying a tunnel to recreate it invalidates
+    every deployed connector.
+  EOT
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = !var.tunnel_enabled || var.tunnel_id != ""
+    error_message = "tunnel_enabled = true requires tunnel_id — the CNAME has no target without it."
+  }
+}
+
 variable "entra_tenant_id" {
   type = string
 }
@@ -538,4 +558,36 @@ variable "idle_schedule" {
     DESIRED state rather than an error, so the target is configured with no retries and
     no dead-letter queue.
   EOT
+}
+
+# ── Ingress (cost) ────────────────────────────────────────────────────────────
+variable "tunnel_enabled" {
+  description = <<-EOT
+    Serve this environment's api through a Cloudflare Tunnel sidecar instead of the
+    shared ALB.
+
+    An ALB costs $18.40/mo plus $3.65 per enabled AZ, and every request already
+    arrives through Cloudflare — the SPA is a Pages project whose Function proxies
+    /v1/* to API_ORIGIN, and the ALB security group admits only Cloudflare edge
+    ranges. The load balancer is a second TLS termination inside an already-proxied
+    path.
+
+    Turning this ON also turns OFF the ALB target-group attachment (`attach_alb`),
+    because a task served by a tunnel must not simultaneously be an ALB target: the
+    target group would health-check a port the tunnel already owns, and traffic could
+    arrive by two paths with different TLS termination.
+
+    REQUIRES `tunnel-token` in the environment's secret bundle — the connector token
+    from `cloudflared`. Absent, the sidecar is not produced and the api would have NO
+    ingress at all, so this variable and that secret must move together.
+
+    WHAT IS GIVEN UP: ALB access logs, the option of an origin-side AWS WAF, and the
+    per-target-group CloudWatch alarms. `monitor_target_health` in particular has no
+    equivalent — production/main.tf calls it "the only alarm that catches an outage
+    producing no load to move CPU, latency or 5xx" — so external monitoring (a
+    Cloudflare health check or synthetic probe) has to replace it before this is
+    relied on in production.
+  EOT
+  type        = bool
+  default     = false
 }
