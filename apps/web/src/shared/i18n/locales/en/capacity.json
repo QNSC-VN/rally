@@ -282,5 +282,20 @@
     "actionForTeam": "Add Features to this team",
     "confirm": "Add to Plan",
     "searchPlaceholder": "Search Features…"
+  },
+  "move": {
+    "action": "Move to another plan",
+    "title": "Move To Another Plan",
+    "itemLabel": "Feature",
+    "searchPlans": "Search plans",
+    "noPlans": "No other plan in this project",
+    "updateRelease": "Update the Release to match the selected plan",
+    "releaseRequired": "Required: this Feature belongs to another release, so the move needs it.",
+    "pickPlan": "Choose the plan to move it to",
+    "confirm": "Move",
+    "moveAndRepublish": "Move and republish the plan",
+    "moved": "{{item}} moved to {{plan}}",
+    "movedParked": "{{item}} moved to {{plan}}, unassigned — its teams are not on that plan",
+    "failed": "Could not move the Feature"
   }
 }

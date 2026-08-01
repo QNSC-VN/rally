@@ -389,4 +389,82 @@ test.describe('Capacity allocation', () => {
     await removeFeature(page, 'FE-2')
     await expect(page.getByText('Saved payment methods')).toHaveCount(0)
   })
+
+  test('moves a Feature to another plan, and republishes that plan', async ({ page }) => {
+    /**
+     * Rally's `Move To Another Plan`, driven end to end between the two SEEDED plans: CP-1 (draft,
+     * v2.0) and CP-2 (published, v2.1).
+     *
+     * Cleans up after itself by moving the Feature back, because the two plans are shared with every
+     * other test in this file — a Feature left on CP-2 makes a re-run hit
+     * `CAPACITY_MOVE_ALREADY_ON_TARGET` and the suite fails on its second pass, not its first.
+     */
+    await openPlan(page)
+    await resetPlan(page)
+    await allocateFeature(page, /FE-1/, /Team Alpha/, '5')
+
+    await page.getByRole('tab', { name: /Features/ }).click()
+    await page
+      .getByRole('button', { name: /Actions for FE-1/ })
+      .first()
+      .click()
+    await page.getByRole('button', { name: 'Move to another plan' }).click()
+
+    const dialog = page.getByRole('dialog', { name: 'Move To Another Plan' })
+    // The eligible list is this project's OTHER plans: CP-1 is absent because it is this one.
+    await expect(dialog.getByRole('checkbox', { name: /^CP-1$/ })).toHaveCount(0)
+    await dialog.getByRole('checkbox', { name: /^CP-2$/ }).click()
+
+    // CP-2 belongs to another release, so the checkbox is not optional — the dialog says so BEFORE
+    // the click, and the API refuses the move without it.
+    await expect(dialog.getByText(/belongs to another release/)).toBeVisible()
+    await dialog.getByRole('button', { name: 'Move', exact: true }).click()
+    await expect(page.getByText(/another release/)).toBeVisible()
+
+    await dialog
+      .getByRole('checkbox', { name: 'Update the Release to match the selected plan' })
+      .click()
+    // Rally's second button, offered because the target is PUBLISHED: the move unpublishes it, and
+    // this publishes it again.
+    await dialog.getByRole('button', { name: 'Move and republish the plan' }).click()
+    await expect(dialog).toBeHidden()
+
+    // Gone from CP-1 — the move relocated the rows rather than copying them.
+    await expect(page.getByRole('button', { name: /Actions for FE-1/ })).toHaveCount(0)
+
+    // ── On CP-2: the Feature arrived, and the plan is published again ────────
+    await page.goto('/capacity-planning', { waitUntil: 'domcontentloaded' })
+    await page.getByRole('button', { name: /^CP-2$/ }).click()
+    await page.getByRole('tab', { name: /Features/ }).click()
+    await expect(page.getByRole('button', { name: 'FE-1' }).first()).toBeVisible()
+    await expect(page.getByText('Published')).toBeVisible()
+
+    // ── Cleanup: unpublish, move it back to CP-1, republish ─────────────────
+    await planAction(page, /^Unpublish$/)
+    await page.getByRole('dialog').getByRole('button', { name: 'Unpublish' }).click()
+    await page.getByRole('tab', { name: /Features/ }).click()
+    await page
+      .getByRole('button', { name: /Actions for FE-1/ })
+      .first()
+      .click()
+    await page.getByRole('button', { name: 'Move to another plan' }).click()
+    const back = page.getByRole('dialog', { name: 'Move To Another Plan' })
+    await back.getByRole('checkbox', { name: /^CP-1$/ }).click()
+    await back
+      .getByRole('checkbox', { name: 'Update the Release to match the selected plan' })
+      .click()
+    await back.getByRole('button', { name: 'Move', exact: true }).click()
+    await expect(back).toBeHidden()
+    await planAction(page, /^Publish$/)
+    const publish = page.getByRole('dialog', { name: /Publish this plan/i })
+    await publish.getByRole('button', { name: 'Publish without updating fields' }).click()
+    await expect(publish).toBeHidden()
+
+    // And CP-1 has it back, parked: its team is not on CP-2, so the return trip cannot restore one.
+    await page.goto('/capacity-planning', { waitUntil: 'domcontentloaded' })
+    await page.getByRole('button', { name: /^CP-1$/ }).click()
+    await page.getByRole('tab', { name: /Features/ }).click()
+    await expect(page.getByRole('button', { name: 'FE-1' }).first()).toBeVisible()
+    await removeFeature(page, 'FE-1')
+  })
 })

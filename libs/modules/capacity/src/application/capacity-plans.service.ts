@@ -67,6 +67,13 @@ export interface CapacityPlanItem {
   /** The Feature's OWN project — Rally's "Project" column, distinct from the plan's project. */
   projectId: string;
   projectName: string | null;
+  /**
+   * The Feature's OWN release, which the plan's release need not match.
+   *
+   * On the wire because `Move To Another Plan` decides from it whether the move also has to write
+   * the Feature's Release — the rule the allocation guard enforces, stated where the UI can read it.
+   */
+  releaseId: string | null;
   /** Committed demand summed over this Feature's allocations. */
   estimated: number;
   rollup: number;
@@ -116,6 +123,36 @@ export interface PublishResult {
   fieldsUpdated: boolean;
   featuresUpdated: number;
   skipped: PublishSkip[];
+}
+
+/**
+ * What Rally's `Move To Another Plan` did.
+ *
+ * More than the source plan, because a move is not one write: rows can land on the target's teams,
+ * rows whose team is not on the target have to be parked, the Feature's Release may have moved, and
+ * a published target is unpublished by the move itself. A planner reading a single refreshed grid
+ * would see none of that — the target is a different page.
+ */
+export interface MoveItemResult {
+  /** The SOURCE plan, refreshed: the planner is still looking at it. */
+  plan: CapacityPlanDetail;
+  targetPlanId: string;
+  targetPlanKey: string | null;
+  /** Allocations recreated on the target against the same team. */
+  carried: number;
+  /**
+   * Allocations whose team is not on the target plan, collapsed into ONE unassigned row there.
+   *
+   * The demand is kept rather than dropped: the Feature is still planned for that release, it just
+   * has no team on this plan yet. Silently deleting it would make a move look like a removal.
+   */
+  parked: number;
+  /** Rally's `Update the Release to match the selected plan` actually wrote the Feature's Release. */
+  releaseUpdated: boolean;
+  /** The target was published and the move reverted it to draft, as Rally does. */
+  targetUnpublished: boolean;
+  /** `Move and Republish the Plan` published it again afterwards. */
+  targetRepublished: boolean;
 }
 
 export interface RevertResult {
@@ -696,6 +733,180 @@ export class CapacityPlansService {
    * estimate map and the warnings are pure domain logic — the repository supplies raw
    * numbers, this decides what they mean.
    */
+  /**
+   * Rally's `Move To Another Plan`: relocate one Feature's planning from this plan to another.
+   *
+   * Rally reaches it from the item's gear "in Projects By Total, Projects By Release, or Items tabs",
+   * offers a searchable list of eligible plans, an `Update the Release to match the selected plan`
+   * checkbox, and two buttons — `Move` and `Move and Republish the Plan`. All of that is honoured
+   * here, including the rule that decides the second button exists at all: "if the new plan is in a
+   * Published state, moving this item unpublishes the plan".
+   *
+   * ELIGIBLE means same project and not this plan. A plan is per (project, release), and an
+   * allocation is only valid when the Feature belongs to the plan's project — moving across projects
+   * would create a row `requireAllocatableFeature` refuses on the next write.
+   *
+   * The Feature's own Release is the reason the checkbox exists. A Feature committed to release A
+   * cannot be planned in a plan for release B (`CAPACITY_ALLOCATION_OTHER_RELEASE`), so a move
+   * between releases either updates the Feature or must be refused — this returns
+   * `CAPACITY_MOVE_RELEASE_MISMATCH` rather than moving work between releases by implication.
+   */
+  async moveItemToPlan(
+    actor: JwtPayload,
+    planId: string,
+    input: {
+      portfolioItemId: string;
+      targetPlanId: string;
+      updateRelease: boolean;
+      republish: boolean;
+    },
+  ): Promise<MoveItemResult> {
+    const source = await this.requireDraft(actor, planId);
+    await this.access.assertProjectPermission(actor, source.projectId, 'capacity:manage');
+
+    if (input.targetPlanId === planId) {
+      throw new PreconditionFailedException(
+        'CAPACITY_MOVE_SAME_PLAN',
+        'That Feature is already on this plan',
+      );
+    }
+
+    const target = await this.repo.findById(input.targetPlanId, actor.workspaceId);
+    if (!target) {
+      throw new NotFoundException('CAPACITY_PLAN_NOT_FOUND', 'Capacity plan not found');
+    }
+    if (target.projectId !== source.projectId) {
+      throw new PreconditionFailedException(
+        'CAPACITY_MOVE_OTHER_PROJECT',
+        'A plan can only take Features from its own project',
+      );
+    }
+    // Republishing is a `capacity:publish` act even though the move is not, so it is asserted before
+    // anything is written rather than failing halfway with the rows already relocated.
+    if (input.republish) {
+      await this.access.assertProjectPermission(actor, target.projectId, 'capacity:publish');
+    }
+
+    const rows = await this.repo.listAllocationsForItem(planId, input.portfolioItemId);
+    if (rows.length === 0) {
+      throw new NotFoundException(
+        'CAPACITY_ALLOCATION_NOT_FOUND',
+        'That Feature is not on this plan',
+      );
+    }
+
+    /**
+     * Rally shows a message and offers `Remove Only` when the target already holds the item.
+     *
+     * Refused rather than merged: the target's rows carry their own allocated values, and folding
+     * this plan's numbers into them would change a commitment the planner never looked at.
+     */
+    const onTarget = await this.repo.listAllocationsForItem(
+      input.targetPlanId,
+      input.portfolioItemId,
+    );
+    if (onTarget.length > 0) {
+      throw new PreconditionFailedException(
+        'CAPACITY_MOVE_ALREADY_ON_TARGET',
+        'That Feature is already on the selected plan — remove it from this one instead',
+      );
+    }
+
+    const item = await this.portfolioItems.getItem(actor, input.portfolioItemId);
+    const releaseMoves = item.releaseId !== null && item.releaseId !== target.releaseId;
+    if (releaseMoves && !input.updateRelease) {
+      throw new PreconditionFailedException(
+        'CAPACITY_MOVE_RELEASE_MISMATCH',
+        "That Feature belongs to another release — choose to update its Release to match the plan's",
+      );
+    }
+
+    /**
+     * Which rows can keep their team: the target plan has to hold that team already.
+     *
+     * Resolved BEFORE the transaction so a target missing every team is known up front, and so the
+     * membership reads are not interleaved with the writes that depend on them.
+     */
+    const teamIds = [...new Set(rows.map((row) => row.teamId).filter((id) => id !== null))];
+    const teamsOnTarget = new Set<string>();
+    for (const teamId of teamIds) {
+      if (await this.repo.findTeam(input.targetPlanId, teamId)) teamsOnTarget.add(teamId);
+    }
+
+    const carriable = rows.filter((row) => row.teamId !== null && teamsOnTarget.has(row.teamId));
+    const parkable = rows.length - carriable.length;
+    const targetUnpublished = target.status === 'published';
+
+    await this.uow.run(async (tx) => {
+      for (const row of carriable) {
+        await this.repo.createAllocation(
+          {
+            planId: input.targetPlanId,
+            portfolioItemId: input.portfolioItemId,
+            teamId: row.teamId,
+            value: row.value,
+            isPrimary: row.isPrimary,
+          },
+          tx,
+        );
+      }
+      // Everything that could not keep its team becomes ONE unassigned row, not one per lost team:
+      // the target has no way to tell those rows apart, so N of them would read as N commitments.
+      if (parkable > 0) {
+        await this.repo.createAllocation(
+          {
+            planId: input.targetPlanId,
+            portfolioItemId: input.portfolioItemId,
+            teamId: null,
+            value: null,
+          },
+          tx,
+        );
+      }
+
+      for (const row of rows) await this.repo.deleteAllocation(row.id, tx);
+
+      if (releaseMoves) {
+        await this.repo.setFeatureRelease(
+          input.portfolioItemId,
+          actor.workspaceId,
+          target.releaseId,
+          tx,
+        );
+      }
+
+      // Rally: the move itself unpublishes the target. Its published numbers described a plan that
+      // did not carry this Feature, so leaving it published would publish a claim nobody made.
+      if (targetUnpublished) {
+        await this.repo.setStatus(input.targetPlanId, actor.workspaceId, 'draft', null, tx);
+      }
+    });
+
+    /**
+     * `Move and Republish the Plan`, after the move commits.
+     *
+     * Outside the transaction on purpose: publishing writes Release and planned dates onto every
+     * Feature on the target and reports what it skipped, and rolling THAT back because of a later
+     * failure would leave the plan and the Features it already touched disagreeing.
+     */
+    let targetRepublished = false;
+    if (input.republish) {
+      await this.publishPlan(actor, input.targetPlanId, { updateFields: true });
+      targetRepublished = true;
+    }
+
+    return {
+      plan: await this.getPlanDetail(actor, planId),
+      targetPlanId: target.id,
+      targetPlanKey: target.planKey,
+      carried: carriable.length,
+      parked: parkable > 0 ? 1 : 0,
+      releaseUpdated: releaseMoves,
+      targetUnpublished,
+      targetRepublished,
+    };
+  }
+
   async getPlanDetail(actor: JwtPayload, id: string): Promise<CapacityPlanDetail> {
     const plan = await this.getPlan(actor, id);
     const map = await this.estimateMaps.forWorkspace(actor.workspaceId);
@@ -818,6 +1029,7 @@ export class CapacityPlansService {
           rank: row.rank,
           projectId: row.itemProjectId,
           projectName: row.itemProjectName,
+          releaseId: row.itemReleaseId,
           // Sums the RESOLVED charge across this Feature's team rows — an explicit allocation
           // where there is one, the Feature's own estimate where the team was merely assigned.
           // Same figure the sub-table shows per row, so the item total is the sum of what the

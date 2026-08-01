@@ -29,19 +29,16 @@ import { useProjectTeams } from '@/features/teams/api'
 import {
   useAddCapacityTeam,
   useUpdateCapacityPlan,
-  useAllocate,
-  useRemoveAllocation,
-  useUpdateAllocation,
   useRemoveCapacityTeam,
   useCapacityPlan,
   useDeleteCapacityPlan,
   usePublishPlan,
   useRevertPlan,
-  type CapacityAllocation,
   type CapacityPlanItem,
   type CapacityPlanTeam,
 } from '@/features/capacity-planning/api'
 import { CAPACITY_STATUS_STYLE } from '@/features/capacity-planning/status-colors'
+import { usePlanItemActions } from '@/features/capacity-planning/use-plan-item-actions'
 import {
   sortCapacityTeams,
   type CapacityTeamSortField,
@@ -62,6 +59,7 @@ import { TeamAllocationsTable } from './ui/team-allocations-table'
 import { TeamCapacityRail } from './ui/team-capacity-rail'
 import { AddFeaturesModal } from './ui/add-features-modal'
 import { AllocateFeatureModal } from './ui/allocate-feature-modal'
+import { MoveToPlanModal } from './ui/move-to-plan-modal'
 import { StatusBadge } from '@/shared/ui/status-badge'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { ActionMenu, ActionMenuItem } from '@/shared/ui/action-menu'
@@ -84,6 +82,8 @@ export function CapacityPlanDetailPage() {
   const [tab, setTab] = useState('teams')
   /** Which Feature the Allocate dialog is splitting, or null when it is closed. */
   const [allocateFor, setAllocateFor] = useState<string | null>(null)
+  /** Rally's `Move To Another Plan`, for one Feature. */
+  const [moveFor, setMoveFor] = useState<string | null>(null)
   const [showEdit, setShowEdit] = useState(false)
   const [showTeams, setShowTeams] = useState(false)
   /**
@@ -167,9 +167,6 @@ export function CapacityPlanDetailPage() {
   const { data: teams = [] } = useProjectTeams(plan?.projectId)
   const addTeam = useAddCapacityTeam()
   const removeTeam = useRemoveCapacityTeam()
-  const removeAllocation = useRemoveAllocation()
-  const updateAllocation = useUpdateAllocation()
-  const allocate = useAllocate()
   const rankItem = useRankPortfolioItem()
 
   /**
@@ -395,90 +392,19 @@ export function CapacityPlanDetailPage() {
   }
 
   /**
-   * Rally's `Remove Only`: takes a Feature off the plan.
+   * Rally's Feature-level verbs, shared by both grids.
    *
-   * Deletes every allocation of it, across teams and the Unallocated bucket — the Feature is on the
-   * plan because those rows exist, so removing it means removing them. The Feature itself is
-   * untouched; this is a planning decision, not a portfolio one.
+   * In a hook because the Features tab and a team's sub-table perform the SAME writes — the page was
+   * the only thing holding them together, and one definition is what stops `Remove From Plan`
+   * meaning different things on the two tabs.
    */
-  async function removeFeature(item: { portfolioItemId: string; itemKey: string }) {
-    const rows = (plan?.allocations ?? []).filter((a) => a.portfolioItemId === item.portfolioItemId)
-    try {
-      for (const row of rows) {
-        await removeAllocation.mutateAsync({ id: planId, allocationId: row.id })
-      }
-      notify.success(t('items.removed', { item: item.itemKey }))
-    } catch (err) {
-      notify.error(err instanceof Error ? err.message : t('row.allocationRemoveFailed'))
-    }
-  }
-
-  /**
-   * Rally's inline assignment: one team, or none.
-   *
-   * `null` unassigns — Rally has no wording for it but the BA's `Unassign` is the only way back to
-   * the yellow unassigned state, so the picker offers it first. A Feature with an existing team row
-   * MOVES it (the API's `teamId` patch); one with none gets a fresh allocation, which the service
-   * then consumes from the parked row.
-   */
-  async function assignFeature(item: CapacityPlanItem, teamId: string | null) {
-    const rows = (plan?.allocations ?? []).filter((a) => a.portfolioItemId === item.portfolioItemId)
-    try {
-      if (rows.length === 0) {
-        await allocate.mutateAsync({ id: planId, portfolioItemId: item.portfolioItemId, teamId })
-      } else {
-        await updateAllocation.mutateAsync({ id: planId, allocationId: rows[0].id, teamId })
-      }
-    } catch (err) {
-      notify.error(err instanceof Error ? err.message : t('items.assignFailed'))
-    }
-  }
-
-  /**
-   * Rally's `Remove All Assignments`: the Feature stays on the plan, its teams do not.
-   *
-   * One row survives, moved to the Unallocated bucket, and the rest are deleted — the plan holds a
-   * Feature THROUGH its allocation rows, so removing every row would remove the Feature too, which
-   * is the other verb. Keeping the first and clearing its team is the shortest path to "still
-   * planned, not yet assigned".
-   */
-  async function unassignFeature(item: { portfolioItemId: string; itemKey: string }) {
-    const rows = (plan?.allocations ?? []).filter(
-      (a) => a.portfolioItemId === item.portfolioItemId && a.teamId !== null,
-    )
-    if (rows.length === 0) return
-    const [keep, ...drop] = rows
-    try {
-      await updateAllocation.mutateAsync({ id: planId, allocationId: keep.id, teamId: null })
-      for (const row of drop) {
-        await removeAllocation.mutateAsync({ id: planId, allocationId: row.id })
-      }
-      notify.success(t('items.assignmentsCleared', { item: item.itemKey }))
-    } catch (err) {
-      notify.error(err instanceof Error ? err.message : t('row.allocationRemoveFailed'))
-    }
-  }
-
-  /**
-   * Rally's per-item gear for a nested row, built from the SAME handlers the Features tab uses.
-   *
-   * Defined once here rather than per sub-table so `Remove From Plan` cannot come to mean one thing
-   * under a team and another on the Features tab. `undefined` on a published plan, which is what
-   * hides the gear rather than letting it offer verbs the API refuses.
-   */
-  const itemActionsFor = canManage
-    ? (allocation: CapacityAllocation) => {
-        const item = { portfolioItemId: allocation.portfolioItemId, itemKey: allocation.itemKey }
-        return {
-          hasTeams: (plan?.allocations ?? []).some(
-            (a) => a.portfolioItemId === allocation.portfolioItemId && a.teamId !== null,
-          ),
-          onAllocate: () => setAllocateFor(allocation.portfolioItemId),
-          onUnassign: () => void unassignFeature(item),
-          onRemove: () => void removeFeature(item),
-        }
-      }
-    : undefined
+  const { removeFeature, assignFeature, unassignFeature, itemActionsFor } = usePlanItemActions({
+    plan,
+    planId,
+    canManage,
+    onAllocate: setAllocateFor,
+    onMove: setMoveFor,
+  })
 
   /**
    * Applies the dialog's selection as a DIFF against the plan's current teams.
@@ -794,6 +720,9 @@ export function CapacityPlanDetailPage() {
                                       ? () => setAllocateFor(item.portfolioItemId)
                                       : undefined
                                   }
+                                  onMove={
+                                    canManage ? () => setMoveFor(item.portfolioItemId) : undefined
+                                  }
                                   onAssign={
                                     canManage
                                       ? (teamId) => void assignFeature(item, teamId)
@@ -969,6 +898,17 @@ export function CapacityPlanDetailPage() {
           plan={plan}
           portfolioItemId={allocateFor}
           onClose={() => setAllocateFor(null)}
+        />
+      )}
+      {/* Rally's `Move To Another Plan`. The Feature's OWN release goes in, because that is what
+          decides whether the dialog's release checkbox has any work to do. */}
+      {moveFor !== null && (
+        <MoveToPlanModal
+          plan={plan}
+          portfolioItemId={moveFor}
+          itemKey={plan.items.find((i) => i.portfolioItemId === moveFor)?.itemKey ?? ''}
+          itemReleaseId={plan.items.find((i) => i.portfolioItemId === moveFor)?.releaseId ?? null}
+          onClose={() => setMoveFor(null)}
         />
       )}
       {forecastTeam && (

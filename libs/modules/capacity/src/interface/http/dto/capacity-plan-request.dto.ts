@@ -104,6 +104,24 @@ export const UpdateAllocationSchema = z
 export class UpdateAllocationDto extends createZodDto(UpdateAllocationSchema) {}
 
 /**
+ * Rally's `Move To Another Plan`.
+ *
+ * `updateRelease` is Rally's `Update the Release to match the selected plan` checkbox, and it
+ * defaults to FALSE: it writes a field on the Feature itself, outside the plan, so it has to be
+ * asked for. Without it a move between releases is refused rather than performed silently.
+ *
+ * `republish` is the second button, `Move and Republish the Plan`. It only means anything when the
+ * target is published — the move unpublishes it, and this publishes it again.
+ */
+export const MoveItemToPlanSchema = z.object({
+  portfolioItemId: z.string().uuid(),
+  targetPlanId: z.string().uuid(),
+  updateRelease: z.boolean().default(false),
+  republish: z.boolean().default(false),
+});
+export class MoveItemToPlanDto extends createZodDto(MoveItemToPlanSchema) {}
+
+/**
  * Inputs to Rally's Calculate Capacity Forecast.
  *
  * Both are OPTIONAL with Rally's own defaults, so a planner can ask for a forecast without

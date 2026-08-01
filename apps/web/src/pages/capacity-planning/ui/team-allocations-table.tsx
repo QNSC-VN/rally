@@ -77,6 +77,7 @@ export function TeamAllocationsTable({
   itemActions?: (allocation: CapacityAllocation) => {
     hasTeams: boolean
     onAllocate?: () => void
+    onMove?: () => void
     onUnassign?: () => void
     onRemove?: () => void
   }

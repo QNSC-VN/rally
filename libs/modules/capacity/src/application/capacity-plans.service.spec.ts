@@ -97,6 +97,8 @@ describe('CapacityPlansService', () => {
               endDate: '2026-07-31',
             }),
             applyPlanToFeature: vi.fn(),
+            listAllocationsForItem: vi.fn().mockResolvedValue([]),
+            setFeatureRelease: vi.fn(),
             setStatus: vi.fn().mockResolvedValue(plan({ status: 'published' })),
           },
         },
@@ -396,6 +398,7 @@ describe('CapacityPlansService', () => {
         itemComplete: 0,
         itemProjectId: 'proj-a',
         itemProjectName: 'Project A',
+        itemReleaseId: null,
         state: 'developing',
         ...over,
       });
@@ -497,6 +500,7 @@ describe('CapacityPlansService', () => {
       itemComplete: 0,
       itemProjectId: 'proj-a',
       itemProjectName: 'Project A',
+      itemReleaseId: null,
       state: 'developing',
       ...over,
     });
@@ -762,6 +766,7 @@ describe('CapacityPlansService', () => {
       itemComplete: 0,
       itemProjectId: 'proj-a',
       itemProjectName: 'Project A',
+      itemReleaseId: null,
       state: 'developing',
       ...over,
     });
@@ -1202,6 +1207,7 @@ describe('CapacityPlansService', () => {
       itemComplete: 0,
       itemProjectId: 'proj-a',
       itemProjectName: 'Project A',
+      itemReleaseId: null,
       state: 'developing',
       ...over,
     });
@@ -1402,6 +1408,235 @@ describe('CapacityPlansService', () => {
     it('removes an allocation', async () => {
       await service.removeAllocation(actor, 'plan-1', 'al-1');
       expect(repo.deleteAllocation).toHaveBeenCalledWith('al-1', expect.anything());
+    });
+  });
+
+  describe('moveItemToPlan', () => {
+    const alloc = (over: Partial<CapacityAllocation> = {}): CapacityAllocation => ({
+      id: 'alloc-1',
+      planId: 'plan-1',
+      portfolioItemId: 'fe-1',
+      teamId: 'team-a',
+      value: '8',
+      isPrimary: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      ...over,
+    });
+
+    /** Source is plan-1 (draft); target is plan-2, same project, same release unless overridden. */
+    function arrange(opts: {
+      rows?: CapacityAllocation[];
+      onTarget?: CapacityAllocation[];
+      target?: Partial<CapacityPlan>;
+      teamOnTarget?: boolean;
+    }) {
+      const target = plan({ id: 'plan-2', planKey: 'CP-2', ...opts.target });
+      repo.findById.mockImplementation((id: string) =>
+        Promise.resolve(id === 'plan-2' ? target : plan()),
+      );
+      repo.listAllocationsForItem.mockImplementation((planId: string) =>
+        Promise.resolve(planId === 'plan-2' ? (opts.onTarget ?? []) : (opts.rows ?? [alloc()])),
+      );
+      repo.findTeam.mockResolvedValue(
+        (opts.teamOnTarget ?? true) ? ({ planId: 'plan-2', teamId: 'team-a' } as never) : null,
+      );
+      return target;
+    }
+
+    it('recreates the row on the target against the SAME team, then deletes the source row', async () => {
+      // A move is not a re-plan: the team, its allocated value and the primary flag are what the
+      // planner already decided, so they travel with the Feature.
+      arrange({});
+      const result = await service.moveItemToPlan(actor, 'plan-1', {
+        portfolioItemId: 'fe-1',
+        targetPlanId: 'plan-2',
+        updateRelease: false,
+        republish: false,
+      });
+
+      expect(repo.createAllocation).toHaveBeenCalledWith(
+        {
+          planId: 'plan-2',
+          portfolioItemId: 'fe-1',
+          teamId: 'team-a',
+          value: '8',
+          isPrimary: true,
+        },
+        TX,
+      );
+      expect(repo.deleteAllocation).toHaveBeenCalledWith('alloc-1', TX);
+      expect(result.carried).toBe(1);
+      expect(result.parked).toBe(0);
+      expect(result.targetPlanKey).toBe('CP-2');
+    });
+
+    it('parks demand whose team is not on the target, in ONE unassigned row', async () => {
+      // The Feature is still planned for that release — it just has no team on this plan yet.
+      // Deleting the rows would make a move look like a removal, and one row per lost team would
+      // read as several commitments the target cannot tell apart.
+      arrange({
+        rows: [alloc(), alloc({ id: 'alloc-2', teamId: 'team-b', value: '5', isPrimary: false })],
+        teamOnTarget: false,
+      });
+      const result = await service.moveItemToPlan(actor, 'plan-1', {
+        portfolioItemId: 'fe-1',
+        targetPlanId: 'plan-2',
+        updateRelease: false,
+        republish: false,
+      });
+
+      expect(result.carried).toBe(0);
+      expect(result.parked).toBe(1);
+      expect(repo.createAllocation).toHaveBeenCalledTimes(1);
+      expect(repo.createAllocation).toHaveBeenCalledWith(
+        { planId: 'plan-2', portfolioItemId: 'fe-1', teamId: null, value: null },
+        TX,
+      );
+      expect(repo.deleteAllocation).toHaveBeenCalledTimes(2);
+    });
+
+    it('refuses a move between releases unless the Release is updated with it', async () => {
+      // Rally's checkbox exists for exactly this: a Feature committed to another release cannot be
+      // planned here (`CAPACITY_ALLOCATION_OTHER_RELEASE`), so the move either says so or moves the
+      // Feature's Release deliberately.
+      arrange({ target: { releaseId: 'rel-2' } });
+      portfolio.getItem.mockResolvedValue({
+        id: 'fe-1',
+        type: 'feature',
+        projectId: 'proj-a',
+        archivedAt: null,
+        state: 'developing',
+        releaseId: 'rel-1',
+      } as never);
+
+      await expect(
+        service.moveItemToPlan(actor, 'plan-1', {
+          portfolioItemId: 'fe-1',
+          targetPlanId: 'plan-2',
+          updateRelease: false,
+          republish: false,
+        }),
+      ).rejects.toMatchObject({ code: 'CAPACITY_MOVE_RELEASE_MISMATCH' });
+      expect(repo.createAllocation).not.toHaveBeenCalled();
+    });
+
+    it("writes the Feature's Release when asked, in the move's own transaction", async () => {
+      arrange({ target: { releaseId: 'rel-2' } });
+      portfolio.getItem.mockResolvedValue({
+        id: 'fe-1',
+        type: 'feature',
+        projectId: 'proj-a',
+        archivedAt: null,
+        state: 'developing',
+        releaseId: 'rel-1',
+      } as never);
+
+      const result = await service.moveItemToPlan(actor, 'plan-1', {
+        portfolioItemId: 'fe-1',
+        targetPlanId: 'plan-2',
+        updateRelease: true,
+        republish: false,
+      });
+
+      expect(repo.setFeatureRelease).toHaveBeenCalledWith('fe-1', WORKSPACE, 'rel-2', TX);
+      expect(result.releaseUpdated).toBe(true);
+    });
+
+    it('unpublishes a published target, because the move changes what it published', async () => {
+      arrange({ target: { status: 'published', publishedAt: new Date() } });
+      const result = await service.moveItemToPlan(actor, 'plan-1', {
+        portfolioItemId: 'fe-1',
+        targetPlanId: 'plan-2',
+        updateRelease: false,
+        republish: false,
+      });
+
+      expect(repo.setStatus).toHaveBeenCalledWith('plan-2', WORKSPACE, 'draft', null, TX);
+      expect(result.targetUnpublished).toBe(true);
+      expect(result.targetRepublished).toBe(false);
+    });
+
+    it('refuses a target that already holds the Feature — Rally offers Remove Only instead', async () => {
+      arrange({ onTarget: [alloc({ id: 'alloc-x', planId: 'plan-2' })] });
+      await expect(
+        service.moveItemToPlan(actor, 'plan-1', {
+          portfolioItemId: 'fe-1',
+          targetPlanId: 'plan-2',
+          updateRelease: false,
+          republish: false,
+        }),
+      ).rejects.toMatchObject({ code: 'CAPACITY_MOVE_ALREADY_ON_TARGET' });
+    });
+
+    it('refuses a target in another project, and the plan it cannot find', async () => {
+      // Cross-project would create a row the next write refuses: an allocation is only valid when
+      // the Feature belongs to the plan's project.
+      arrange({ target: { projectId: 'proj-b' } });
+      await expect(
+        service.moveItemToPlan(actor, 'plan-1', {
+          portfolioItemId: 'fe-1',
+          targetPlanId: 'plan-2',
+          updateRelease: false,
+          republish: false,
+        }),
+      ).rejects.toMatchObject({ code: 'CAPACITY_MOVE_OTHER_PROJECT' });
+
+      repo.findById.mockImplementation((id: string) =>
+        Promise.resolve(id === 'plan-2' ? null : plan()),
+      );
+      await expect(
+        service.moveItemToPlan(actor, 'plan-1', {
+          portfolioItemId: 'fe-1',
+          targetPlanId: 'plan-2',
+          updateRelease: false,
+          republish: false,
+        }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('refuses moving a Feature onto the plan it is already on', async () => {
+      arrange({});
+      await expect(
+        service.moveItemToPlan(actor, 'plan-1', {
+          portfolioItemId: 'fe-1',
+          targetPlanId: 'plan-1',
+          updateRelease: false,
+          republish: false,
+        }),
+      ).rejects.toMatchObject({ code: 'CAPACITY_MOVE_SAME_PLAN' });
+    });
+
+    it('refuses a Feature that is not on this plan at all', async () => {
+      arrange({ rows: [] });
+      await expect(
+        service.moveItemToPlan(actor, 'plan-1', {
+          portfolioItemId: 'fe-1',
+          targetPlanId: 'plan-2',
+          updateRelease: false,
+          republish: false,
+        }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('asks for capacity:publish BEFORE moving anything when republishing', async () => {
+      // Otherwise a reader without publish rights relocates the rows and then fails, leaving the
+      // move done and the target a draft they did not intend.
+      arrange({ target: { status: 'published', publishedAt: new Date() } });
+      access.assertProjectPermission.mockImplementation((_a, _p, code: string) =>
+        code === 'capacity:publish' ? Promise.reject(new Error('denied')) : Promise.resolve(),
+      );
+
+      await expect(
+        service.moveItemToPlan(actor, 'plan-1', {
+          portfolioItemId: 'fe-1',
+          targetPlanId: 'plan-2',
+          updateRelease: false,
+          republish: true,
+        }),
+      ).rejects.toThrow('denied');
+      expect(repo.createAllocation).not.toHaveBeenCalled();
+      expect(repo.deleteAllocation).not.toHaveBeenCalled();
     });
   });
 });
