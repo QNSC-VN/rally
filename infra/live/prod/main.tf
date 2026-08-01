@@ -136,6 +136,28 @@ module "stack" {
   secrets_bundle_name = "app"
   secrets_use_bundle  = true
 
+  // ── Ingress via Cloudflare Tunnel, not the shared ALB ───────────────────────
+  // cloudflared runs as a sidecar in the api task and dials OUT to Cloudflare, so
+  // production needs no ALB listener rule, no target group and no public IPv4. Every
+  // request already arrived through Cloudflare — the SPA proxies /v1/* to API_ORIGIN
+  // and the ALB security group admitted only Cloudflare edge ranges — so the load
+  // balancer was a second TLS termination inside an already-proxied path.
+  //
+  // Setting this also sets `attach_alb = false`: a tunnel-served task must not
+  // simultaneously be an ALB target.
+  //
+  // MONITORING MOVED, it did not disappear. `monitor_target_health` cannot exist
+  // without a target group, so the Route 53 health check created by this module
+  // (aws_route53_health_check.api_ingress) is what now catches an outage producing no
+  // load. It probes rally-api.qnsc.vn/v1/healthz from outside AWS, so it exercises the
+  // whole user path rather than any one component's opinion of itself.
+  //
+  // ROLLBACK is not instant: set tunnel_enabled = false, apply, redeploy. That
+  // recreates the ALB attachment, but the runtime layer's ALB must exist first
+  // (enable_alb there) and it comes back with a NEW DNS name.
+  tunnel_enabled = true
+  tunnel_id      = "27d68d57-6acf-4516-98e1-dab55ea0512e" // rally-production
+
   // OFF, including in production. Audited every consumer: all 7 alarms and all 6
   // dashboard widgets read AWS/ECS, AWS/ApplicationELB and AWS/RDS — native namespaces
   // that are free and published whether Container Insights is on or off. Nothing reads
