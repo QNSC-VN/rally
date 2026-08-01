@@ -4594,7 +4594,7 @@ export interface components {
          * @description unallocated: no team, so no plan to inherit. release_span_mismatch: the plan window reaches outside its release, so Rally writes the dates but not the Release.
          * @enum {string}
          */
-        reason: 'unallocated' | 'release_span_mismatch'
+        reason: 'unallocated' | 'release_span_mismatch' | 'archived'
       }[]
     }
     RevertResultResponseDto: {

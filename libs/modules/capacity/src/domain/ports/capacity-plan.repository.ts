@@ -180,12 +180,13 @@ export interface ICapacityPlanRepository {
    * `releaseId` omitted leaves the column ALONE, which is Rally's behaviour when the plan's
    * window spans releases: the dates are still written, only the Release field is skipped.
    */
+  /** Resolves TRUE when a row was written; false means the Feature is archived and matched nothing. */
   applyPlanToFeature(
     portfolioItemId: string,
     workspaceId: string,
     fields: { plannedStartDate: string | null; plannedEndDate: string | null; releaseId?: string },
     executor?: DbExecutor,
-  ): Promise<void>;
+  ): Promise<boolean>;
 
   /**
    * Point one Feature at a release, touching NOTHING else.

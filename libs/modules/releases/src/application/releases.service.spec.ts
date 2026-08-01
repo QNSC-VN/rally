@@ -86,6 +86,8 @@ const makeAccess = () => ({
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe('ReleasesService', () => {
+  /** Rows the stubbed capacity-plan lookup returns — see the delete guard. */
+  let capacityPlanRows: { planKey: string; name: string }[];
   let service: ReleasesService;
   let repo: ReturnType<typeof makeRepo>;
   let projects: ReturnType<typeof makeProjects>;
@@ -107,6 +109,9 @@ describe('ReleasesService', () => {
       releaseId: null,
       estimate: '0',
     };
+    // Capacity plans built on the release under test. Empty by default: most specs are not about the
+    // delete guard, and a release with no plan is the ordinary case.
+    capacityPlanRows = [];
     // Root is deliberately NOT thenable (Nest DI awaits thenable useValue
     // providers). Only the chain returned by select() is awaitable, and it
     // supports both the stats query (.where terminal) and the estimate roll-up
@@ -116,6 +121,12 @@ describe('ReleasesService', () => {
       for (const key of ['from', 'innerJoin', 'where', 'groupBy']) {
         chain[key] = vi.fn().mockReturnValue(chain);
       }
+      // `.limit()` is its OWN terminal, resolving to `capacityPlanRows`: the delete path asks whether a
+      // capacity plan is built on the release, and that question needs a different answer from the
+      // stats queries above — which is why it cannot share the generic `[statRow]` result.
+      chain.limit = vi.fn(() => ({
+        then: (resolve: (v: unknown) => void) => resolve(capacityPlanRows),
+      }));
       (chain as { then: unknown }).then = (resolve: (v: unknown) => void) => resolve([statRow]);
       return chain;
     };
@@ -248,6 +259,19 @@ describe('ReleasesService', () => {
   // ── deleteRelease ────────────────────────────────────────────────────────
 
   describe('deleteRelease', () => {
+    it('refuses to delete a release that a capacity plan is built on, and NAMES the plan', async () => {
+      // Migration 0085 makes this a foreign key; the check is what turns the constraint into an
+      // answer. Before either existed the delete succeeded and left the plan pointing at a missing
+      // row — Release badge blank, and publish permanently unable to write the Release field because
+      // the plan's release is immutable by design.
+      repo.findById.mockResolvedValue(mockRelease({ status: 'planning' }));
+      capacityPlanRows = [{ planKey: 'CP-3', name: 'Q3 capacity' }];
+      await expect(service.deleteRelease(actor, 'rel-1')).rejects.toMatchObject({
+        code: 'RELEASE_HAS_CAPACITY_PLAN',
+      });
+      expect(repo.delete).not.toHaveBeenCalled();
+    });
+
     it('deletes a planning release', async () => {
       repo.findById.mockResolvedValue(mockRelease({ status: 'planning' }));
       await service.deleteRelease(actor, 'rel-1');

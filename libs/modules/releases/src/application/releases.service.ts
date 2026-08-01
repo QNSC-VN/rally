@@ -12,7 +12,12 @@ import type { JwtPayload, CursorPayload, PagedResult, DrizzleDB } from '@platfor
 import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
 import { PERMISSION } from '@shared-kernel';
-import { releaseDailySnapshots, workItems, tasks } from '../../../../../db/schema/work';
+import {
+  capacityPlans,
+  releaseDailySnapshots,
+  workItems,
+  tasks,
+} from '../../../../../db/schema/work';
 import {
   completedScheduleStatesSql,
   acceptedScheduleStatesSql,
@@ -365,6 +370,31 @@ export class ReleasesService {
         'Accepted releases cannot be deleted',
       );
     }
+
+    /**
+     * A release that a capacity plan is built on cannot be deleted.
+     *
+     * Migration 0085 adds the foreign key that makes this true at the database level; this check is
+     * what turns it into an answer a planner can act on. Deleting one used to succeed and leave the
+     * plan pointing at a missing row: its Release badge went blank, and because the plan's release is
+     * deliberately immutable while `releaseWindow` resolved to null, publish could never write the
+     * Release field again and nothing could repair it.
+     *
+     * The plan is named in the message: "delete the plan first" is only actionable if you know which.
+     */
+    const plans = await this.db
+      .select({ planKey: capacityPlans.planKey, name: capacityPlans.name })
+      .from(capacityPlans)
+      .where(eq(capacityPlans.releaseId, id))
+      .limit(3);
+    if (plans.length > 0) {
+      const named = plans.map((p) => `${p.planKey} (${p.name})`).join(', ');
+      throw new PreconditionFailedException(
+        'RELEASE_HAS_CAPACITY_PLAN',
+        `This release is planned by ${named} — delete the plan first`,
+      );
+    }
+
     await this.releaseRepo.delete(id);
     this.logger.log({ releaseId: id }, 'Release deleted');
   }

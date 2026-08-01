@@ -23,7 +23,7 @@ import { ProjectsService } from '@modules/projects';
 import { ReleasesService } from '@modules/releases';
 import { DRIZZLE } from '@platform';
 import type { DrizzleDB } from '@platform';
-import { capacityPlanTeams, capacityPlans, teams } from '@db/schema/work';
+import { capacityPlanTeams, capacityPlans, projectTeams, teams } from '@db/schema/work';
 
 import {
   WORKSPACE_ID,
@@ -63,6 +63,18 @@ describe('capacity plans (e2e)', () => {
     projectAId = a.id;
     projectBId = b.id;
 
+    teamId = await newTeamInProject(projectAId);
+  });
+
+  /**
+   * A team LINKED to a project, which is what `addTeam` now requires.
+   *
+   * A plan's team has to be one of the project's own — the BA's "Project Breakdown" — and the guard
+   * checks `project_teams`, not merely the workspace. A fixture that skipped the link was creating the
+   * very state an audit found 11 of in the live database: a team contributing demand to a plan while
+   * being absent from the project's team picker, so it could not be removed through the UI at all.
+   */
+  async function newTeamInProject(projectId: string): Promise<string> {
     const [team] = await db
       .insert(teams)
       .values({
@@ -72,8 +84,9 @@ describe('capacity plans (e2e)', () => {
         status: 'active',
       })
       .returning({ id: teams.id });
-    teamId = team.id;
-  });
+    await db.insert(projectTeams).values({ workspaceId: WORKSPACE_ID, projectId, teamId: team.id });
+    return team.id;
+  }
 
   afterAll(async () => {
     await app?.close();
@@ -126,6 +139,10 @@ describe('capacity plans (e2e)', () => {
         projectId: projectAId,
         releaseId,
         name: 'Direct duplicate',
+        // `plan_key` is NOT NULL since 0085 — the service mints `CP-<n>`, and a direct insert that
+        // bypasses it has to say one. Uniqueness is (project_id, plan_key), so a distinct key here
+        // proves the (project, release) index is what rejects the row.
+        planKey: 'CP-DUP',
         unit: 'points',
       });
       await expect(direct).rejects.toThrow();
@@ -154,6 +171,7 @@ describe('capacity plans (e2e)', () => {
         projectId: projectAId,
         releaseId,
         name: 'Bad target',
+        planKey: 'CP-BAD',
         unit: 'points',
         targetLoadPct: 0,
       });
@@ -271,17 +289,9 @@ describe('capacity plans (e2e)', () => {
       // Two teams, one with a capacity and one without: the total is the entered one, not
       // a sum that silently treats the blank as zero.
       const p = await planWithTeam();
-      const [second] = await db
-        .insert(teams)
-        .values({
-          workspaceId: WORKSPACE_ID,
-          name: `Cap Team ${uniqueKey()}`,
-          key: uniqueKey('T'),
-          status: 'active',
-        })
-        .returning({ id: teams.id });
+      const secondId = await newTeamInProject(projectAId);
 
-      await capacity.addTeam(admin, p.id, second.id);
+      await capacity.addTeam(admin, p.id, secondId);
       const set = await capacity.setTeamCapacity(admin, p.id, teamId, '30');
 
       expect(set.teams).toHaveLength(2);
@@ -304,6 +314,7 @@ describe('capacity plans (e2e)', () => {
           projectId: projectAId,
           releaseId,
           name: 'Already published',
+          planKey: `CP-PUB-${randomUUID().slice(0, 8)}`,
           unit: 'points',
           status: 'published',
           publishedAt: new Date(),
