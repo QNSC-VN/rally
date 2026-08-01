@@ -374,6 +374,27 @@ export function useSetPrimaryAllocation() {
   })
 }
 
+/**
+ * Rally's `Remove From Plan`: one call that takes a Feature off the plan entirely.
+ *
+ * Replaces a loop of per-allocation DELETEs. A split Feature meant one request per team, and a failure
+ * midway left it half-removed — still on the plan, still counted, minus the teams the earlier calls had
+ * already dropped. The server now does all of it in one transaction.
+ */
+export function useRemoveItemFromPlan() {
+  return useMutation({
+    mutationFn: async ({ id, portfolioItemId }: { id: string; portfolioItemId: string }) => {
+      const { data, error, response } = await apiClient.DELETE(
+        '/v1/capacity-plans/{id}/items/{portfolioItemId}',
+        { params: { path: { id, portfolioItemId } } },
+      )
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as CapacityPlan
+    },
+    meta: { invalidates: ['capacity'] },
+  })
+}
+
 export function useRemoveAllocation() {
   return useMutation({
     mutationFn: async ({ id, allocationId }: { id: string; allocationId: string }) => {

@@ -4,6 +4,7 @@ import { notify } from '@/shared/lib/toast'
 import {
   useAllocate,
   useRemoveAllocation,
+  useRemoveItemFromPlan,
   useUpdateAllocation,
   type CapacityAllocation,
   type CapacityPlan,
@@ -64,6 +65,7 @@ export function usePlanItemActions({
   const allocate = useAllocate()
   const updateAllocation = useUpdateAllocation()
   const removeAllocation = useRemoveAllocation()
+  const removeItem = useRemoveItemFromPlan()
 
   const rowsFor = (portfolioItemId: string) =>
     (plan?.allocations ?? []).filter((a) => a.portfolioItemId === portfolioItemId)
@@ -71,14 +73,14 @@ export function usePlanItemActions({
   /**
    * Rally's `Remove From Plan`: takes a Feature off the plan.
    *
-   * Deletes every allocation of it, across teams and the Unallocated bucket. The Feature itself is
-   * untouched — this is a planning decision, not a portfolio one.
+   * ONE request. This looped a DELETE per allocation, so a Feature split across three teams was three
+   * requests and a failure on the second left it half-removed — on the plan, still counted, minus the
+   * team the first call had already dropped. The server deletes every row in one transaction now, and
+   * the Feature itself is untouched either way: this is a planning decision, not a portfolio one.
    */
   async function removeFeature(item: { portfolioItemId: string; itemKey: string }) {
     try {
-      for (const row of rowsFor(item.portfolioItemId)) {
-        await removeAllocation.mutateAsync({ id: planId, allocationId: row.id })
-      }
+      await removeItem.mutateAsync({ id: planId, portfolioItemId: item.portfolioItemId })
       notify.success(t('items.removed', { item: item.itemKey }))
     } catch (err) {
       notify.error(err instanceof Error ? err.message : t('row.allocationRemoveFailed'))

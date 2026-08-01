@@ -1752,6 +1752,44 @@ describe('CapacityPlansService', () => {
     });
   });
 
+  describe('removeItemFromPlan', () => {
+    it('removes EVERY row for a Feature in ONE transaction', async () => {
+      // The client used to loop a DELETE per allocation, so a split Feature meant one request per team
+      // and a failure midway left it half-removed: still on the plan, still counted, minus the teams
+      // the earlier calls had already dropped. There was no request that said "remove this Feature".
+      repo.listAllocationsForItem.mockResolvedValue([
+        { id: 'al-1', planId: 'plan-1', portfolioItemId: 'fe-1', teamId: 'team-1' },
+        { id: 'al-2', planId: 'plan-1', portfolioItemId: 'fe-1', teamId: 'team-2' },
+        { id: 'al-3', planId: 'plan-1', portfolioItemId: 'fe-1', teamId: null },
+      ] as never);
+
+      await service.removeItemFromPlan(actor, 'plan-1', 'fe-1');
+
+      expect(repo.deleteAllocation).toHaveBeenCalledTimes(3);
+      for (const id of ['al-1', 'al-2', 'al-3']) {
+        expect(repo.deleteAllocation).toHaveBeenCalledWith(id, TX);
+      }
+      // No primary promotion: every row is going, so nothing is left to own the Feature.
+      expect(repo.updateAllocation).not.toHaveBeenCalled();
+    });
+
+    it('reports a Feature that is not on the plan rather than succeeding silently', async () => {
+      repo.listAllocationsForItem.mockResolvedValue([]);
+      await expect(service.removeItemFromPlan(actor, 'plan-1', 'fe-9')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(repo.deleteAllocation).not.toHaveBeenCalled();
+    });
+
+    it('refuses on a PUBLISHED plan, like every other write', async () => {
+      repo.findById.mockResolvedValue(plan({ status: 'published' }));
+      await expect(service.removeItemFromPlan(actor, 'plan-1', 'fe-1')).rejects.toMatchObject({
+        code: 'CAPACITY_PLAN_NOT_DRAFT',
+      });
+      expect(repo.deleteAllocation).not.toHaveBeenCalled();
+    });
+  });
+
   describe('data-integrity rules', () => {
     const row = (over: Partial<CapacityAllocationRow> = {}): CapacityAllocationRow => ({
       id: 'alloc-1',
