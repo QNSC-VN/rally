@@ -38,6 +38,20 @@ provider "cloudflare" {
   api_token = var.cloudflare_api_token != "" ? var.cloudflare_api_token : null
 }
 
+// Route 53 publishes health-check metrics ONLY to us-east-1, so the ingress alarm in
+// module.stack has to be created there. Everything else stays in ap-southeast-1.
+provider "aws" {
+  alias  = "us_east_1"
+  region = "us-east-1"
+  default_tags {
+    tags = {
+      Project     = "rally"
+      Environment = "develop"
+      ManagedBy   = "opentofu"
+    }
+  }
+}
+
 locals {
   region = "ap-southeast-1"
 }
@@ -45,6 +59,11 @@ locals {
 // ── The stack ─────────────────────────────────────────────────────────────────
 module "stack" {
   source = "../../modules/stack"
+
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
 
   product  = "rally"
   env      = "develop"
@@ -99,6 +118,22 @@ module "stack" {
   // docs/runbooks/secrets-bundle-migration.md.
   secrets_bundle_name = "app"
   secrets_use_bundle  = true
+
+  // ── Ingress via Cloudflare Tunnel, not the shared ALB ───────────────────────
+  // cloudflared runs as a sidecar in the api task and dials OUT to Cloudflare, so
+  // this environment needs no ALB listener rule, no target group and no public IPv4.
+  // Setting this also sets `attach_alb = false` on the api service — a tunnel-served
+  // task must not simultaneously be an ALB target.
+  //
+  // Requires `tunnel-token` in rally/develop/app, which holds the connector token for
+  // the `rally-develop` tunnel (created out of band 2026-08-02; a tunnel and its token
+  // are one Cloudflare object, so Terraform does not mint it).
+  //
+  // DEVELOP FIRST, deliberately: this is the environment where the tunnel path gets
+  // proven — SSE held open past the heartbeat interval, Entra SSO end to end, and an
+  // R2 upload — before production's hostname is cut over.
+  tunnel_enabled = true
+  tunnel_id      = "7134b087-ee8f-4768-907a-845fa8eaa692" // rally-develop
 
   // OFF here and in production alike — see ../prod/main.tf for the audit. Per-task
   // metrics are billed as custom CloudWatch metrics at $0.07 each and no alarm,

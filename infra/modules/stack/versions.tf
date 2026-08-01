@@ -4,7 +4,10 @@
 terraform {
   required_version = ">= 1.9"
   required_providers {
-    aws        = { source = "hashicorp/aws", version = "~> 5.0" }
+    # `us_east_1` is REQUIRED, not optional: Route 53 publishes health-check metrics
+    # only to us-east-1, so the ingress alarm has to be created there even though every
+    # other resource in this stack is in ap-southeast-1. Callers pass it explicitly.
+    aws        = { source = "hashicorp/aws", version = "~> 5.0", configuration_aliases = [aws.us_east_1] }
     cloudflare = { source = "cloudflare/cloudflare", version = "~> 4.0" }
   }
 }
