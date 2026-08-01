@@ -8,7 +8,8 @@ import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { RowExpandToggle } from '@/shared/ui/row-expand-toggle'
 import { BRAND } from '@/shared/config/brand'
 import { cn } from '@/shared/lib/utils'
-import type { CapacityPlanItem } from '@/features/capacity-planning/api'
+import type { CapacityPlanItem, CapacityWarning } from '@/features/capacity-planning/api'
+import { useCapacityWarningText } from '@/features/capacity-planning/warning-labels'
 import { EstimateTierIcon } from './estimate-tier-badge'
 import { CapacityItemActions } from './capacity-item-actions'
 import { type ItemColKey } from '../model/columns'
@@ -78,6 +79,18 @@ export function CapacityItemRow({
   onOpenFeature: (portfolioItemId: string) => void
 }) {
   const { t } = useTranslation('capacity')
+  /**
+   * The BA's two rules, resolved to the text it specifies and split by the column each belongs to.
+   *
+   * Read from the API's `warnings` rather than recomputed here: the same rule function decides them
+   * for the team grid and every allocation row, and a second implementation in the client would be
+   * free to disagree with the number beside it.
+   */
+  const warningText = useCapacityWarningText()
+  const labelFor = (code: CapacityWarning) =>
+    item.warnings.includes(code) ? warningText([code])[0] : null
+  const rollupWarning = labelFor('rollup_exceeds_estimated')
+  const estimateWarning = labelFor('feature_missing_estimate')
 
   return (
     <div
@@ -217,14 +230,33 @@ export function CapacityItemRow({
           a Feature has no capacity, so a bar here would imply a ceiling that does not exist.
           Rollup → Estimated → Complete, which is Rally's order: the total, then what is planned
           against it, then what is done. */}
-      <div style={colStyleFor('rollup', { flexShrink: 0 })} className="px-2 text-right">
+      {/* The BA's two Feature-level warnings, each ON the column it is about: `Rollup exceeds
+          Estimated` beside Rollup, `Point Estimated missing` beside Estimated. Rendering both in one
+          place would leave a planner guessing which number to fix. They were absent entirely until
+          the API started returning item-level warnings — there was nothing here to reason from. */}
+      <div
+        style={colStyleFor('rollup', { flexShrink: 0 })}
+        className="flex items-center justify-end gap-1 px-2"
+      >
+        {rollupWarning !== null && (
+          <span role="img" aria-label={rollupWarning} title={rollupWarning} className="flex">
+            <AlertTriangle size={12} style={{ color: BRAND.danger }} />
+          </span>
+        )}
         <MetricValue value={item.rollup} pct={null} />
       </div>
       <div
         style={colStyleFor('estimated', { flexShrink: 0 })}
         className="flex items-center justify-end gap-1.5 px-2"
       >
-        <EstimateTierIcon tier={item.tier} />
+        {estimateWarning !== null && (
+          <span role="img" aria-label={estimateWarning} title={estimateWarning} className="flex">
+            <AlertTriangle size={12} style={{ color: BRAND.danger }} />
+          </span>
+        )}
+        {/* The breakdown makes this the SAME three-row tooltip a team's sub-table shows, rather than a
+            bare glyph: the tab can now say which tier produced the number and what the others were. */}
+        <EstimateTierIcon tier={item.tier} breakdown={item.estimateBreakdown} />
         <span className="tabular-nums">{item.estimated}</span>
       </div>
       <div style={colStyleFor('complete', { flexShrink: 0 })} className="px-2 text-right">
