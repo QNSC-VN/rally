@@ -162,7 +162,8 @@ function FixedInBuildCell({
         onCommit={handleCommit}
         fullCell
         displayValue={defect.fixedInBuild ?? '--'}
-        className="block w-full truncate text-ui-xs text-muted-foreground"
+        // `break-all`: a build identifier is user-typed and space-free.
+        className="block w-full text-ui-xs break-all text-muted-foreground"
         inputClassName="text-foreground"
         inputStyle={{
           width: '100%',

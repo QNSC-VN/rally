@@ -45,7 +45,7 @@ export function WebhookSetup() {
                   <span className="w-14 shrink-0 text-ui-xs text-foreground-subtle uppercase">
                     {p}
                   </span>
-                  <code className="flex-1 truncate rounded bg-surface-subtle px-2 py-1 font-mono text-ui-xs text-foreground">
+                  <code className="flex-1 rounded bg-surface-subtle px-2 py-1 font-mono text-ui-xs break-all text-foreground">
                     {url}
                   </code>
                   <CopyButton value={url} label={t('integrations.webhook.copy')} />

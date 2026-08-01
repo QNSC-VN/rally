@@ -193,7 +193,7 @@ export function ReleaseRow({
           onCommit={saveVersion}
           ariaLabel="Version"
           displayValue={
-            <span className="block truncate text-muted-foreground">{release.version || '--'}</span>
+            <span className="block break-all text-muted-foreground">{release.version || '--'}</span>
           }
           inputClassName="w-full rounded border-0 bg-transparent px-0.5 text-ui-sm text-foreground focus:outline-none"
         />
