@@ -148,6 +148,61 @@ variable "secrets_recovery_window_days" {
   default     = 30
 }
 
+# ── Secret bundling (cost) ────────────────────────────────────────────────────
+# Secrets Manager bills $0.40 per SECRET per month regardless of size. This stack
+# creates 13 per environment, so 26 containers hold ~2.4 KB for ~$10.40/mo against a
+# 64 KB per-secret limit. Bundling collapses each environment's set into ONE JSON
+# object read per key by ECS, for $0.80 total.
+#
+# STAGED IN FOUR APPLIES, per the secrets module's `use_bundle` docs. The dangerous
+# ordering is cutting the references over and destroying the old secrets together: if
+# the bundle is wrong the values it replaced are already gone, and develop sets
+# recovery_window_days = 0, so gone means gone.
+#
+#   1. bundle_name = "app"                          create the empty bundle
+#   2.                                              populate it OUT OF BAND from the
+#                                                   standalone values (not Terraform —
+#                                                   values never enter state)
+#   3. use_bundle = true, create_standalone = true  references cut over, old secrets
+#                                                   RETAINED; revert to roll back
+#   4. drop create_standalone                       old secrets destroyed, saving lands
+#
+# Step 3 is the only one that can fail, and it fails safely: a missing or misspelled
+# key means the task cannot boot, the rollout never reaches steady state, and the
+# previous task definition still points at secrets that still exist.
+variable "secrets_bundle_name" {
+  description = <<-EOT
+    Name of the bundled secret, created as "<product>/<env>/<name>". Empty (default)
+    keeps one Secrets Manager secret per entry. Setting this creates the bundle but
+    does NOT switch anything onto it — see `secrets_use_bundle`.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "secrets_use_bundle" {
+  description = <<-EOT
+    Read secrets from the bundle instead of the standalone containers. Requires
+    `secrets_bundle_name`, and requires the bundle to already hold every key — a
+    reference to an absent key fails the task at boot.
+  EOT
+  type        = bool
+  default     = false
+}
+
+variable "secrets_create_standalone" {
+  description = <<-EOT
+    Whether the per-entry standalone secrets still exist. Defaults to
+    `!secrets_use_bundle`, which is correct outside a migration.
+
+    Set TRUE alongside `secrets_use_bundle` for the retained-rollback step: both exist,
+    references point at the bundle, and reverting one line rolls back without needing
+    the destroyed values. Drop it once the bundle is proven to realise the saving.
+  EOT
+  type        = bool
+  default     = null
+}
+
 variable "dlq_max_receive_count" {
   description = "Deliveries before a message moves to the DLQ."
   type        = number
