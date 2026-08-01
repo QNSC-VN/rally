@@ -76,24 +76,29 @@ module "stack" {
   log_retention_days           = 7
   secrets_recovery_window_days = 0
 
-  // ── Secret bundling · STEP 3 of 4 ───────────────────────────────────────────
-  // References now resolve to rally/develop/app; the 12 standalone secrets are RETAINED.
-  // Both sets exist, so this environment temporarily bills 13 containers rather than 12
-  // — the saving lands at step 4, when `secrets_create_standalone` is dropped.
+  // ── Secret bundling · COMPLETE ──────────────────────────────────────────────
+  // Every app secret lives in ONE container, rally/develop/app, read per key by ECS via
+  // the `<arn>:<key>::` form of valueFrom. Secrets Manager bills per SECRET regardless of
+  // size, so this is 12 containers' worth of material for one container's fee.
   //
-  // The bundle was populated out of band and verified key-by-key against the standalone
-  // values (sha256 per key, all 12 identical) before this flag was set. Do not set it on
-  // an unverified bundle: the deploy preflight only proves the CONTAINER is non-empty,
+  // `secrets_create_standalone` is now unset (defaults to !use_bundle = false), which
+  // DESTROYS the 12 standalone secrets and is what realises the saving. Safe to do here
+  // only because all three consumers were proven against the bundle first — api, worker
+  // and migrator each rolled onto it via the normal deploy pipeline (#313) and reached
+  // steady state, with /v1/readyz reporting postgres and valkey up.
+  //
+  // NO LONGER A ONE-LINE ROLLBACK. recovery_window_days = 0 in this environment, so the
+  // standalone secrets are gone for good once this applies. Reverting means recreating
+  // them AND re-pasting all 12 values by hand. The bundle itself is the backup — do not
+  // delete it casually.
+  //
+  // Repeating this in production: populate and verify the bundle key-by-key BEFORE
+  // setting use_bundle. The qnsc-ci deploy preflight proves the container is non-empty,
   // not that every key is present, so a bundle missing one key passes CI and fails at
-  // task boot.
-  //
-  // ROLLBACK is this one line. Revert to `false`, apply, redeploy — the standalone
-  // secrets still hold their values and the previous task definition still points at
-  // them. That is the whole reason step 4 is separate; dev sets
-  // recovery_window_days = 0, so a destroyed secret here is unrecoverable.
-  secrets_bundle_name       = "app"
-  secrets_use_bundle        = true
-  secrets_create_standalone = true
+  // task boot. Full sequence and the verify script:
+  // docs/runbooks/secrets-bundle-migration.md.
+  secrets_bundle_name = "app"
+  secrets_use_bundle  = true
 
   // OFF here and in production alike — see ../prod/main.tf for the audit. Per-task
   // metrics are billed as custom CloudWatch metrics at $0.07 each and no alarm,
