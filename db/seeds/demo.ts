@@ -256,19 +256,34 @@ async function seedFlow() {
     ])
     .onConflictDoNothing();
 
-  // Link the team to NXP (project_teams) — creating a work item into an
+  // Link BOTH teams to NXP (project_teams) — creating a work item into an
   // iteration validates the team is linked to the project (assertTeamLinked);
   // without this link, "Add Item" fails with "Team is not linked to this
   // project".
+  //
+  // Beta was missing its link, and that mattered beyond seeding: a plan's team must belong to the
+  // plan's project (the BA's "Project Breakdown"), the Add/Remove Teams picker lists exactly those
+  // links, and Beta therefore rendered NO row while still carrying demand on two seeded plans — so it
+  // could not be removed through the UI at all. An audit found 11 such rows in the dev database; this
+  // seed was manufacturing two of them on every run.
   await db
     .insert(projectTeams)
-    .values({
-      id: '00000000-0000-7000-8000-000000000090',
-      workspaceId: WORKSPACE_ID,
-      projectId: nxpId,
-      teamId: TEAM_ALPHA_ID,
-      status: 'active',
-    })
+    .values([
+      {
+        id: '00000000-0000-7000-8000-000000000090',
+        workspaceId: WORKSPACE_ID,
+        projectId: nxpId,
+        teamId: TEAM_ALPHA_ID,
+        status: 'active',
+      },
+      {
+        id: '00000000-0000-7000-8000-000000000091',
+        workspaceId: WORKSPACE_ID,
+        projectId: nxpId,
+        teamId: TEAM_BETA_ID,
+        status: 'active',
+      },
+    ])
     .onConflictDoNothing();
 
   // ── 2. Release (real startDate + releaseDate — the milestone's derived ──

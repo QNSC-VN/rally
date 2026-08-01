@@ -229,48 +229,15 @@ export function CapacityPlanDetailPage() {
   const {
     teamNameById,
     rankPositionOf,
+    planRankOf,
+    cutlineBeforeId,
+    belowCutlineIds,
     sharingOf,
     demandOf,
     allocationsByItem,
     allocationsByTeam,
     unallocated,
   } = usePlanLookups(plan)
-
-  /**
-   * The plan's own rank position per Feature, and the Feature the cutline belongs above.
-   *
-   * Both are read from `plan.items` — the API's rank order — rather than from the rendered list. The
-   * rendered list is filtered and sortable, so an INDEX into it means something different: with a
-   * Project or Assignment filter active, `itemCutlineIndex + 1 === index` matched a different Feature
-   * entirely, and `index + 1` renumbered Rank 1..N as though the hidden rows did not exist.
-   */
-  const planRankOf = useMemo(() => {
-    const positions = new Map<string, number>()
-    ;(plan?.items ?? []).forEach((item, at) => positions.set(item.portfolioItemId, at + 1))
-    return positions
-  }, [plan?.items])
-
-  /**
-   * The Feature the cutline is drawn ABOVE, by id.
-   *
-   * `itemCutlineIndex` is the last item that FITS, so the line belongs above the next one. `-1` means
-   * even the first exceeds the plan, so it lands above the first; `null` (no capacity entered) draws
-   * nothing, because there is no number for a running total to exceed.
-   */
-  const cutlineBeforeId = useMemo(() => {
-    const items = plan?.items ?? []
-    const at = plan?.itemCutlineIndex
-    if (at === null || at === undefined || items.length === 0) return null
-    return items[at + 1]?.portfolioItemId ?? null
-  }, [plan?.items, plan?.itemCutlineIndex])
-
-  /** Features past the cutline in the PLAN's order — the ones that do not fit. */
-  const belowCutlineIds = useMemo(() => {
-    const items = plan?.items ?? []
-    const at = plan?.itemCutlineIndex
-    if (at === null || at === undefined) return new Set<string>()
-    return new Set(items.slice(at + 1).map((item) => item.portfolioItemId))
-  }, [plan?.items, plan?.itemCutlineIndex])
 
   /**
    * The Features tab's own sort, independent of the Teams tab's.
@@ -480,8 +447,11 @@ export function CapacityPlanDetailPage() {
    * Applies the dialog's selection as a DIFF against the plan's current teams.
    *
    * Removals first: a plan cannot hold a team twice, and doing them in one pass keeps the
-   * intermediate states out of the cache. A team that still carries allocations makes the API
-   * refuse — its demand is work a planner entered — and that error propagates to the modal.
+   * intermediate states out of the cache.
+   *
+   * Dropping a team no longer fails when it carries demand — the API re-parks its rows as unassigned,
+   * which is the BA's rule and the only outcome that leaves the demand reassignable. Those rows then
+   * surface in the plan's Unallocated bucket, so nothing a planner committed disappears from view.
    */
   async function saveTeams(ids: string[]) {
     const onPlan = new Set((plan?.teams ?? []).map((pt) => pt.teamId))
@@ -930,8 +900,8 @@ export function CapacityPlanDetailPage() {
 
       {/* Reuses the shared `SelectionModal` — the same searchable checkbox list milestones use for
           their projects/teams/releases, so Rally's dialog costs no new component. Saving diffs the
-          selection against the plan; the API refuses to drop a team that still carries demand, and
-          that message is what the modal reports. */}
+          selection against the plan; unchecking a team that carries demand re-parks its rows rather
+          than failing, so the demand lands in the Unallocated bucket to be reassigned. */}
       <SelectionModal
         open={showTeams}
         onClose={() => setShowTeams(false)}

@@ -537,18 +537,58 @@ export class CapacityPlansService {
     await this.access.assertProjectPermission(actor, plan.projectId, 'capacity:manage');
     await this.requirePlanTeam(id, teamId);
 
-    // Refuse rather than cascade: the allocations are committed demand a planner entered,
-    // and silently deleting them would lose work with no undo. Allocations land in the
-    // next slice; the guard exists now so it cannot be forgotten then.
-    const allocated = await this.repo.countTeamAllocations(id, teamId);
-    if (allocated > 0) {
-      throw new PreconditionFailedException(
-        'CAPACITY_TEAM_HAS_ALLOCATIONS',
-        `Move or remove the ${allocated} allocation(s) for this team first`,
-      );
-    }
+    /**
+     * The team's rows go back to UNALLOCATED — they are not deleted, and the removal is not refused.
+     *
+     * The BA states it twice: "removed Teams move their allocation rows back to Unallocated" (AC-005)
+     * and "its allocation rows become unassigned so the demand can be reassigned". This used to throw
+     * `CAPACITY_TEAM_HAS_ALLOCATIONS`, which left a planner with no way forward at all: the demand
+     * could only be moved by hand, row by row, and a team whose project link was missing had no row in
+     * the picker to move anything from.
+     *
+     * The demand SURVIVES because that is the point — a plan that forgets what it was committed to
+     * when a team leaves is worse than one that refuses to let the team leave.
+     */
+    const rows = await this.repo.listAllocationsForTeam(id, teamId);
 
-    await this.repo.removeTeam(id, teamId);
+    await this.uow.run(async (tx) => {
+      for (const row of rows) {
+        /**
+         * At most ONE unassigned row may exist per (plan, Feature) — `uq_capacity_allocation_unassigned`
+         * — so a Feature that is ALREADY parked cannot simply take a second one. Its demand is merged
+         * into the row that is there and this one is deleted.
+         */
+        const parked = await this.repo.findAllocationFor(id, row.portfolioItemId, null);
+        if (parked) {
+          const merged = mergeParkedValue(parked.value, row.value);
+          if (merged !== parked.value) {
+            await this.repo.updateAllocation(parked.id, { value: merged }, tx);
+          }
+          await this.repo.deleteAllocation(row.id, tx);
+          continue;
+        }
+        /**
+         * Otherwise the row itself becomes the parked one. `isPrimary` is cleared because
+         * `ck_capacity_primary_has_team` forbids a primary with no team — and because an unassigned
+         * row names nobody to own the work.
+         */
+        await this.repo.updateAllocation(row.id, { teamId: null, isPrimary: false }, tx);
+      }
+
+      /**
+       * A Feature that LOST its owner but still has other teams gets one back.
+       *
+       * Same rule `removeAllocation` applies: team rows with no primary read "as unassigned while
+       * teams are demonstrably working on it", and a unique index cannot catch an absence.
+       */
+      for (const row of rows.filter((r) => r.isPrimary)) {
+        const next = await this.repo.oldestTeamAllocation(id, row.portfolioItemId, tx);
+        if (next) await this.repo.updateAllocation(next.id, { isPrimary: true }, tx);
+      }
+
+      await this.repo.removeTeam(id, teamId, tx);
+    });
+
     return this.getPlan(actor, id);
   }
 
@@ -1393,6 +1433,21 @@ export class CapacityPlansService {
       );
     }
   }
+}
+
+/**
+ * The value a merged unassigned row should carry when a removed team's row folds into it.
+ *
+ * `null` means "charge the Feature's own estimate", so it is not zero and cannot be added to:
+ *
+ *  - both null  → still null: nothing was ever stated, and the Feature's estimate still answers.
+ *  - one stated → that number, because a figure a planner typed must not be discarded by a removal.
+ *  - both stated → their sum, which is the demand the two rows represented together.
+ */
+export function mergeParkedValue(parked: string | null, removed: string | null): string | null {
+  if (parked === null) return removed;
+  if (removed === null) return parked;
+  return String(Number(parked) + Number(removed));
 }
 
 /**

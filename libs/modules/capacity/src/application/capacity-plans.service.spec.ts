@@ -80,6 +80,7 @@ describe('CapacityPlansService', () => {
             setTeamCapacity: vi.fn(),
             removeTeam: vi.fn(),
             countTeamAllocations: vi.fn().mockResolvedValue(0),
+            listAllocationsForTeam: vi.fn().mockResolvedValue([]),
             listAllocations: vi.fn().mockResolvedValue([]),
             findAllocation: vi.fn().mockResolvedValue(null),
             findAllocationFor: vi.fn().mockResolvedValue(null),
@@ -340,22 +341,71 @@ describe('CapacityPlansService', () => {
       expect(repo.setTeamCapacity).toHaveBeenCalledWith('plan-1', 'team-1', null);
     });
 
-    it('refuses to remove a team that still holds allocations', async () => {
-      // Cascading would silently delete demand a planner committed, with no undo.
-      repo.findTeam.mockResolvedValue({
-        id: 'pt-1',
+    /** A plan_team row for `team-1`, which `requirePlanTeam` needs before any removal. */
+    const onPlan = {
+      id: 'pt-1',
+      planId: 'plan-1',
+      teamId: 'team-1',
+      capacity: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const alloc = (over: Record<string, unknown> = {}) =>
+      ({
+        id: 'al-1',
         planId: 'plan-1',
+        portfolioItemId: 'fe-1',
         teamId: 'team-1',
-        capacity: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-      repo.countTeamAllocations.mockResolvedValue(3);
+        isPrimary: false,
+        value: '5',
+        ...over,
+      }) as never;
 
-      await expect(service.removeTeam(actor, 'plan-1', 'team-1')).rejects.toMatchObject({
-        code: 'CAPACITY_TEAM_HAS_ALLOCATIONS',
-      });
-      expect(repo.removeTeam).not.toHaveBeenCalled();
+    it('RE-PARKS a removed team’s rows as unassigned instead of refusing', async () => {
+      // AC-005: "removed Teams move their allocation rows back to Unallocated", and the flow catalog
+      // adds "so the demand can be reassigned". This used to throw `CAPACITY_TEAM_HAS_ALLOCATIONS`,
+      // which left a planner with no way forward — the demand could only be moved row by row, and a
+      // team missing its project link had no row in the picker to move anything from.
+      repo.findTeam.mockResolvedValue(onPlan);
+      repo.listAllocationsForTeam.mockResolvedValue([alloc()]);
+      repo.findAllocationFor.mockResolvedValue(null);
+
+      await service.removeTeam(actor, 'plan-1', 'team-1');
+
+      expect(repo.updateAllocation).toHaveBeenCalledWith(
+        'al-1',
+        { teamId: null, isPrimary: false },
+        TX,
+      );
+      expect(repo.deleteAllocation).not.toHaveBeenCalled();
+      // Same transaction as the re-parking: a plan that dropped the team but kept team-owned rows
+      // would violate its own model.
+      expect(repo.removeTeam).toHaveBeenCalledWith('plan-1', 'team-1', TX);
+    });
+
+    it('MERGES into a Feature that is already parked, because only one parked row may exist', async () => {
+      // `uq_capacity_allocation_unassigned` allows one unassigned row per (plan, Feature), so a second
+      // cannot simply be created. The values are summed: both were real demand.
+      repo.findTeam.mockResolvedValue(onPlan);
+      repo.listAllocationsForTeam.mockResolvedValue([alloc({ value: '5' })]);
+      repo.findAllocationFor.mockResolvedValue(alloc({ id: 'parked-1', teamId: null, value: '3' }));
+
+      await service.removeTeam(actor, 'plan-1', 'team-1');
+
+      expect(repo.updateAllocation).toHaveBeenCalledWith('parked-1', { value: '8' }, TX);
+      expect(repo.deleteAllocation).toHaveBeenCalledWith('al-1', TX);
+    });
+
+    it('hands the assignment to a surviving team when the OWNER is removed', async () => {
+      // Otherwise the Feature keeps team rows with no primary — the state `removeAllocation` guards
+      // against, reading "as unassigned while teams are demonstrably working on it".
+      repo.findTeam.mockResolvedValue(onPlan);
+      repo.listAllocationsForTeam.mockResolvedValue([alloc({ isPrimary: true })]);
+      repo.findAllocationFor.mockResolvedValue(null);
+      repo.oldestTeamAllocation.mockResolvedValue(alloc({ id: 'other-1', teamId: 'team-2' }));
+
+      await service.removeTeam(actor, 'plan-1', 'team-1');
+      expect(repo.updateAllocation).toHaveBeenCalledWith('other-1', { isPrimary: true }, TX);
     });
 
     it('removes a team once nothing is allocated to it', async () => {
@@ -369,7 +419,9 @@ describe('CapacityPlansService', () => {
       });
       repo.countTeamAllocations.mockResolvedValue(0);
       await service.removeTeam(actor, 'plan-1', 'team-1');
-      expect(repo.removeTeam).toHaveBeenCalledWith('plan-1', 'team-1');
+      // Inside the re-parking transaction now, even with nothing to re-park: the team's removal and
+      // whatever its rows became have to commit together.
+      expect(repo.removeTeam).toHaveBeenCalledWith('plan-1', 'team-1', TX);
     });
   });
 
