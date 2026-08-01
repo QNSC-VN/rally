@@ -76,6 +76,25 @@ module "stack" {
   log_retention_days           = 7
   secrets_recovery_window_days = 0
 
+  // ── Secret bundling · STEP 3 of 4 ───────────────────────────────────────────
+  // References now resolve to rally/develop/app; the 12 standalone secrets are RETAINED.
+  // Both sets exist, so this environment temporarily bills 13 containers rather than 12
+  // — the saving lands at step 4, when `secrets_create_standalone` is dropped.
+  //
+  // The bundle was populated out of band and verified key-by-key against the standalone
+  // values (sha256 per key, all 12 identical) before this flag was set. Do not set it on
+  // an unverified bundle: the deploy preflight only proves the CONTAINER is non-empty,
+  // not that every key is present, so a bundle missing one key passes CI and fails at
+  // task boot.
+  //
+  // ROLLBACK is this one line. Revert to `false`, apply, redeploy — the standalone
+  // secrets still hold their values and the previous task definition still points at
+  // them. That is the whole reason step 4 is separate; dev sets
+  // recovery_window_days = 0, so a destroyed secret here is unrecoverable.
+  secrets_bundle_name       = "app"
+  secrets_use_bundle        = true
+  secrets_create_standalone = true
+
   // OFF here and in production alike — see ../prod/main.tf for the audit. Per-task
   // metrics are billed as custom CloudWatch metrics at $0.07 each and no alarm,
   // dashboard or autoscaling target in this stack reads that namespace.
