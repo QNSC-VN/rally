@@ -1803,6 +1803,51 @@ describe('CapacityPlansService', () => {
       expect(detail.items[0]?.estimated).toBe(0);
     });
 
+    it('reports the BA’s two Feature-level warnings on the item row', async () => {
+      // The Features tab could not show these at all before: `plan.items[]` carried no warnings, no
+      // metrics and no breakdown, so the triangles the BA specifies had nothing to render from. The
+      // rules come from the SAME function the team grid uses — a second implementation in the client
+      // would be free to disagree with the number printed beside it.
+      repo.listAllocations.mockResolvedValue([
+        row({ teamId: 'team-1', value: '2', rollup: 11, itemRollup: 11 }),
+      ]);
+      const detail = await service.getPlanDetail(actor, 'plan-1');
+      expect(detail.items[0]?.warnings).toContain('rollup_exceeds_estimated');
+    });
+
+    it('warns that a Feature has NO estimate at all, and says so ahead of the comparison', async () => {
+      // `tier: 'none'` is the CAUSE — a zero estimate is why the rollup exceeds it — so the rule
+      // function reports it first and the row can point the planner at the right column.
+      repo.listAllocations.mockResolvedValue([
+        // `no_entry` is the unsized state and maps to 0, which falls through the tier chain to nothing
+        // — the only 0 in the map, and the reason an unsized Feature reads as "no estimate" not "zero".
+        row({ teamId: 'team-1', value: null, refined: null, preliminarySize: 'no_entry', rollup: 4 }),
+      ]);
+      const detail = await service.getPlanDetail(actor, 'plan-1');
+      expect(detail.items[0]?.warnings[0]).toBe('feature_missing_estimate');
+    });
+
+    it('sums the ALLOCATED breakdown across a split Feature, ignoring a parked row', async () => {
+      // The breakdown drives the estimate-source tooltip. `allocated` is the item-level equivalent of
+      // one row's explicit value, so it sums the team rows — and a placeholder contributes nothing
+      // here for the same reason it contributes nothing to Estimated (AC-014).
+      repo.listAllocations.mockResolvedValue([
+        row({ id: 'a', teamId: 'team-1', value: '3' }),
+        row({ id: 'b', teamId: 'team-2', value: '5', isPrimary: false }),
+        row({ id: 'c', teamId: null, value: '9', isPrimary: false }),
+      ]);
+      const detail = await service.getPlanDetail(actor, 'plan-1');
+      expect(detail.items[0]?.estimateBreakdown).toMatchObject({ allocated: 8, refined: 13 });
+    });
+
+    it('leaves an archived Feature with no warnings, because it is not demand', async () => {
+      repo.listAllocations.mockResolvedValue([
+        row({ teamId: 'team-1', value: '2', rollup: 11, itemArchivedAt: new Date() }),
+      ]);
+      const detail = await service.getPlanDetail(actor, 'plan-1');
+      expect(detail.items[0]?.warnings).toEqual([]);
+    });
+
     it('reports an archived Feature as SKIPPED on publish rather than counting it', async () => {
       // The write filters `archivedAt`, so it matches nothing; publish used to increment anyway and a
       // planner reading "2 Features updated" had no way to find the one that was not.

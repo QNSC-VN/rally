@@ -114,11 +114,11 @@
     "totalAllocated": "Total allocated"
   },
   "warnings": {
-    "feature_missing_estimate": "This Feature has no estimate — no allocation, refined forecast or preliminary size to plan against",
+    "feature_missing_estimate": "Point Estimated missing",
     "team_missing_capacity": "No capacity entered for this team, so its capacity checks cannot run",
-    "rollup_exceeds_estimated": "Child work has outgrown what was committed for this row",
-    "rollup_exceeds_capacity": "Child work already exceeds the capacity",
-    "estimated_exceeds_capacity": "Committed demand exceeds the capacity",
+    "rollup_exceeds_estimated": "Rollup exceeds Estimated",
+    "rollup_exceeds_capacity": "Rollup exceeds Capacity",
+    "estimated_exceeds_capacity": "Estimated exceeds Capacity",
     "load_above_target": "Committed demand is above the target load, leaving no room for unplanned work",
     "requiresAttention": "{{count}} issue requires attention",
     "requiresAttention_plural": "{{count}} issues require attention"

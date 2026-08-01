@@ -75,6 +75,8 @@ function toDto(p: CapacityPlanDetail): CapacityPlanResponseDto {
       rollup: item.rollup,
       complete: item.complete,
       tier: item.tier,
+      warnings: item.warnings,
+      estimateBreakdown: item.estimateBreakdown,
       teamIds: item.teamIds,
       primaryTeamId: item.primaryTeamId,
       unallocated: item.unallocated,
