@@ -310,6 +310,21 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
     return rows[0] ? this.mapAllocation(rows[0]) : null;
   }
 
+  async listAllocationsForTeam(planId: string, teamId: string): Promise<CapacityAllocation[]> {
+    const rows = await this.db
+      .select()
+      .from(capacityPlanAllocations)
+      .where(
+        and(
+          eq(capacityPlanAllocations.planId, planId),
+          eq(capacityPlanAllocations.teamId, teamId),
+        ),
+      )
+      // `id` last so the order is total: two rows written in one statement share a `created_at`.
+      .orderBy(capacityPlanAllocations.createdAt, capacityPlanAllocations.id);
+    return rows.map((row) => this.mapAllocation(row));
+  }
+
   async listAllocationsForItem(
     planId: string,
     portfolioItemId: string,
