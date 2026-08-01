@@ -379,6 +379,33 @@ describe('capacity allocation (e2e)', () => {
     expect(Number(rows[0].value)).toBe(4);
   });
 
+  it('removes a SPLIT Feature from the plan in one call, leaving no row behind', async () => {
+    // Against the real database because the point is atomicity: the client used to loop a DELETE per
+    // allocation, so a three-way split was three requests and a failure on the second left the Feature
+    // on the plan minus the team the first had already dropped.
+    const featureId = await newFeature(`Remove split ${uniqueKey()}`);
+    await capacity.allocate(admin, planId, { portfolioItemId: featureId, teamId: teamAId, value: 4 });
+    await capacity.allocate(admin, planId, { portfolioItemId: featureId, teamId: teamBId, value: 6 });
+    await capacity.allocate(admin, planId, { portfolioItemId: featureId, teamId: null, value: 2 });
+
+    const before = (await capacity.getPlanDetail(admin, planId)).allocations.filter(
+      (a) => a.portfolioItemId === featureId,
+    );
+    expect(before).toHaveLength(3);
+
+    const after = await capacity.removeItemFromPlan(admin, planId, featureId);
+    expect(after.allocations.filter((a) => a.portfolioItemId === featureId)).toHaveLength(0);
+    // The Feature itself survives: removal is a planning decision, not a portfolio one.
+    expect(await portfolio.getItem(admin, featureId)).toMatchObject({ id: featureId });
+  });
+
+  it('reports a Feature that is not on the plan instead of succeeding silently', async () => {
+    const featureId = await newFeature(`Never added ${uniqueKey()}`);
+    await expect(capacity.removeItemFromPlan(admin, planId, featureId)).rejects.toMatchObject({
+      code: 'CAPACITY_ALLOCATION_NOT_FOUND',
+    });
+  });
+
   it("RE-PARKS a removed team's demand as unassigned, against the real unique index", async () => {
     // AC-005: "removed Teams move their allocation rows back to Unallocated." Against the real
     // database because the rule is bounded by a constraint — `uq_capacity_allocation_unassigned`

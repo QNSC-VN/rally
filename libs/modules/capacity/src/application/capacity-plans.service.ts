@@ -808,6 +808,43 @@ export class CapacityPlansService {
     return this.getPlanDetail(actor, planId);
   }
 
+  /**
+   * Rally's `Remove From Plan`: take a Feature off the plan entirely.
+   *
+   * ONE call, ONE transaction. The client used to do this by looping a DELETE per allocation — a split
+   * Feature meant one request per team — so a failure midway left the Feature half-removed: still on
+   * the plan, still counted, but missing the teams the earlier calls had already dropped. There was no
+   * request that expressed "remove this Feature", which is the decision a planner actually makes.
+   *
+   * The BA says the same thing: "removes every allocation row for that Feature across all Teams in the
+   * Plan". The Feature itself is untouched — this is a planning decision, not a portfolio one.
+   *
+   * No primary promotion here, unlike `removeAllocation`: every row for this Feature is going, so there
+   * is nothing left to own it.
+   */
+  async removeItemFromPlan(
+    actor: JwtPayload,
+    planId: string,
+    portfolioItemId: string,
+  ): Promise<CapacityPlanDetail> {
+    const plan = await this.requireDraft(actor, planId);
+    await this.access.assertProjectPermission(actor, plan.projectId, 'capacity:manage');
+
+    const rows = await this.repo.listAllocationsForItem(planId, portfolioItemId);
+    if (rows.length === 0) {
+      throw new NotFoundException(
+        'CAPACITY_ALLOCATION_NOT_FOUND',
+        'That Feature is not on this plan',
+      );
+    }
+
+    await this.uow.run(async (tx) => {
+      for (const row of rows) await this.repo.deleteAllocation(row.id, tx);
+    });
+
+    return this.getPlanDetail(actor, planId);
+  }
+
   async removeAllocation(
     actor: JwtPayload,
     planId: string,
