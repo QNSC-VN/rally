@@ -419,7 +419,9 @@ test.describe('Capacity allocation', () => {
     // the click, and the API refuses the move without it.
     await expect(dialog.getByText(/belongs to another release/)).toBeVisible()
     await dialog.getByRole('button', { name: 'Move', exact: true }).click()
-    await expect(page.getByText(/another release/)).toBeVisible()
+    // The dialog's own ALERT, not a text match: the checkbox hint and the toast both say "another
+    // release" too, so a bare `getByText` matched three nodes and failed strict mode.
+    await expect(dialog.getByRole('alert')).toContainText(/another release/)
 
     await dialog
       .getByRole('checkbox', { name: 'Update the Release to match the selected plan' })
