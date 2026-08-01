@@ -85,6 +85,7 @@ export default defineConfig({
         'libs/platform/src/config/env.schema.ts',
         'libs/modules/iterations/src/application/iteration-status.service.ts',
         'libs/modules/iterations/src/application/iterations.service.ts',
+        'libs/modules/iterations/src/domain/timebox-group.ts',
         'libs/modules/milestones/src/application/milestones.service.ts',
         'libs/modules/notifications/src/interface/http/notification-preferences.controller.ts',
         'libs/modules/projects/src/application/projects.service.ts',

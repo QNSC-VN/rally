@@ -534,52 +534,17 @@ export class ReleasesService {
     }));
   }
 
-  // ── Snapshot upsert (called by cron) ─────────────────────────────────────
-
-  async upsertReleaseSnapshot(releaseId: string): Promise<void> {
-    const today = new Date().toISOString().split('T')[0];
-
-    const stats = await this.db
-      .select({
-        totalPoints: sql<number>`COALESCE(SUM(CASE WHEN story_points IS NOT NULL THEN story_points ELSE 0 END), 0)`,
-        completedPoints: sql<number>`COALESCE(SUM(CASE WHEN schedule_state IN (${completedScheduleStatesSql()}) THEN story_points ELSE 0 END), 0)`,
-        totalItems: sql<number>`COUNT(*)`,
-        completedItems: sql<number>`COUNT(*) FILTER (WHERE schedule_state IN (${completedScheduleStatesSql()}))`,
-      })
-      .from(workItems)
-      .where(
-        and(
-          eq(workItems.releaseId, releaseId),
-          isNull(workItems.deletedAt),
-          sql`type IN ('story', 'defect')`,
-        ),
-      );
-
-    const s = stats[0];
-    const total = String(s.totalPoints);
-    const completed = String(s.completedPoints);
-    const remaining = String(Number(s.totalPoints) - Number(s.completedPoints));
-
-    await this.db
-      .insert(releaseDailySnapshots)
-      .values({
-        releaseId,
-        snapshotDate: today,
-        totalPoints: total,
-        completedPoints: completed,
-        remainingPoints: remaining,
-        totalItems: s.totalItems,
-        completedItems: s.completedItems,
-      })
-      .onConflictDoUpdate({
-        target: [releaseDailySnapshots.releaseId, releaseDailySnapshots.snapshotDate],
-        set: {
-          totalPoints: total,
-          completedPoints: completed,
-          remainingPoints: remaining,
-          totalItems: s.totalItems,
-          completedItems: s.completedItems,
-        },
-      });
-  }
+  // The snapshot WRITER deliberately does not live here.
+  //
+  // `upsertReleaseSnapshot` used to sit at this spot and had no caller anywhere — the
+  // daily cron only ever snapshotted iterations — so `release_daily_snapshots` was
+  // empty in every environment and this read has always returned `[]`. It also counted
+  // `Completed` as done (COMPLETED_SCHEDULE_STATES), which is the wrong population for
+  // Release Tracking: RT-AC-08 admits {Accepted, Release} only.
+  //
+  // Phase 6 makes the burnup a per-(release, team scope, day) series that also carries
+  // the top-down Preliminary Feature estimate, so writing it needs the portfolio
+  // classification and the workspace's preliminary-estimate map. That belongs to the
+  // reporting module, which owns those rules; a second writer here would be the drift
+  // the single-source-of-truth convention exists to prevent.
 }

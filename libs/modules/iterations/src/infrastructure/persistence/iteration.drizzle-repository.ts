@@ -11,6 +11,7 @@ import type {
   IterationFilters,
 } from '../../domain/iteration.types';
 import { IIterationRepository } from '../../domain/ports/iteration.repository';
+import { timeboxGroupIdFor } from '../../domain/timebox-group';
 
 @Injectable()
 export class IterationDrizzleRepository implements IIterationRepository {
@@ -92,6 +93,7 @@ export class IterationDrizzleRepository implements IIterationRepository {
         plannedVelocity: input.plannedVelocity ?? null,
         startDate: input.startDate,
         endDate: input.endDate,
+        timeboxGroupId: timeboxGroupIdFor(input.projectId, input.startDate, input.endDate),
       })
       .returning();
     return rows[0];

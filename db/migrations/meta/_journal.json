@@ -617,6 +617,34 @@
       "when": 1786864703000,
       "tag": "0086_portfolio_what_success_looks_like",
       "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1786864703001,
+      "tag": "0087_phase6_accepted_date",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1786864703002,
+      "tag": "0088_phase6_iteration_reporting",
+      "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1786864703003,
+      "tag": "0089_phase6_release_burnup",
+      "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1786864703004,
+      "tag": "0090_phase6_working_days",
+      "breakpoints": true
     }
   ]
 }

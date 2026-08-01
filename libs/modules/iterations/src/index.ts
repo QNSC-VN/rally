@@ -1,5 +1,6 @@
 export * from './iterations.module';
 export * from './domain/iteration.types';
+export * from './domain/timebox-group';
 export * from './domain/iteration-status.types';
 export * from './domain/ports/iteration.repository';
 export * from './domain/ports/iteration-status.repository';
