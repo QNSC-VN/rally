@@ -26,12 +26,15 @@ import type { DrizzleDB } from '@platform';
 import { capacityPlanTeams, capacityPlans, projectTeams, teams } from '@db/schema/work';
 
 import {
+  VIEWER_ID,
   WORKSPACE_ID,
   adminActor,
   bootRallyApp,
   makeActor,
   uniqueKey,
+  viewerActor,
 } from './support/flow-harness';
+import { AccessService } from '@modules/access';
 
 describe('capacity plans (e2e)', () => {
   let app: NestFastifyApplication;
@@ -65,6 +68,28 @@ describe('capacity plans (e2e)', () => {
 
     teamId = await newTeamInProject(projectAId);
   });
+
+  /**
+   * A real grant for a capacity READER: `capacity:view` and neither write code.
+   *
+   * The harness's `ensureViewerGrant` holds `project:view` + `work_item:view`, so that actor cannot
+   * reach the capacity routes at all — it would prove a guard, not the visibility rule. This is the
+   * state AC-013 is actually about: someone who may look at plans but not plan.
+   *
+   * Idempotent, because e2e rows are never cleaned up and every run shares the seeded workspace.
+   */
+  async function ensureCapacityReader(): Promise<void> {
+    const access = app.get(AccessService);
+    const name = 'E2E Capacity Reader';
+    const roles = await access.listRoles(WORKSPACE_ID);
+    const role =
+      roles.find((r) => r.name === name) ??
+      (await access.createRole(admin, { name, permissions: ['project:view', 'capacity:view'] }));
+
+    const assignments = await access.getUserAssignments(WORKSPACE_ID, VIEWER_ID);
+    if (assignments.some((a) => a.roleId === role.id && a.scopeType === 'workspace')) return;
+    await access.assignRole(admin, VIEWER_ID, role.id, 'workspace');
+  }
 
   /**
    * A team LINKED to a project, which is what `addTeam` now requires.
@@ -393,6 +418,53 @@ describe('capacity plans (e2e)', () => {
       expect(updated.plannedEndDate).toBeNull();
     });
   });
+  describe('draft visibility (AC-013) — a real reader grant', () => {
+    it('hides a DRAFT from a reader and shows it to a planner', async () => {
+      await ensureCapacityReader();
+      const reader = viewerActor();
+      const releaseId = await newRelease();
+      const draft = await capacity.createPlan(admin, {
+        projectId: projectAId,
+        releaseId,
+        name: `Hidden ${uniqueKey()}`,
+        unit: 'points',
+      });
+
+      // The planner sees it…
+      const asPlanner = await capacity.listPlans(admin, projectAId);
+      expect(asPlanner.map((p) => p.id)).toContain(draft.id);
+
+      // …the reader does not, in the list or by id. NOT FOUND rather than 403: a 403 would confirm the
+      // plan exists, which is what hiding it is meant to avoid.
+      const asReader = await capacity.listPlans(reader, projectAId);
+      expect(asReader.map((p) => p.id)).not.toContain(draft.id);
+      await expect(capacity.getPlan(reader, draft.id)).rejects.toMatchObject({
+        code: 'CAPACITY_PLAN_NOT_FOUND',
+      });
+    });
+
+    it('shows a PUBLISHED plan to the same reader', async () => {
+      // The same actor, the same project — only the plan's status differs, which is the whole rule.
+      await ensureCapacityReader();
+      const reader = viewerActor();
+      const releaseId = await newRelease();
+      const plan = await capacity.createPlan(admin, {
+        projectId: projectAId,
+        releaseId,
+        name: `Visible ${uniqueKey()}`,
+        unit: 'points',
+      });
+      // A never-published plan with no teams and no items cannot publish (`CAPACITY_PLAN_EMPTY`), so
+      // give it a team — the minimum that makes publishing a real act rather than a no-op.
+      await capacity.addTeam(admin, plan.id, teamId);
+      await capacity.publishPlan(admin, plan.id, { updateFields: false });
+
+      const asReader = await capacity.listPlans(reader, projectAId);
+      expect(asReader.map((p) => p.id)).toContain(plan.id);
+      await expect(capacity.getPlan(reader, plan.id)).resolves.toMatchObject({ id: plan.id });
+    });
+  });
+
   describe('plan key + delete — real index, real cascade', () => {
     it('mints CP-<n> per PROJECT, so two projects both start at CP-1', async () => {
       // `uq_capacity_plans_key` is on (project_id, plan_key): a per-project counter is the

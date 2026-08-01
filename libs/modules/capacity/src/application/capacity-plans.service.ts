@@ -207,13 +207,42 @@ export class CapacityPlansService {
    * the caller against it and there is no cross-project filtering to do.
    */
   async listPlans(actor: JwtPayload, projectId: string): Promise<CapacityPlanView[]> {
-    return this.repo.listByProject(projectId, actor.workspaceId);
+    const plans = await this.repo.listByProject(projectId, actor.workspaceId);
+    if (await this.isPlanner(actor, projectId)) return plans;
+    // AC-013: "Draft plans do not appear in the Capacity Plan list" for a reader who cannot plan.
+    return plans.filter((plan) => plan.status === 'published');
   }
 
   async getPlan(actor: JwtPayload, id: string): Promise<CapacityPlanView> {
     const plan = await this.repo.findViewById(id, actor.workspaceId);
     if (!plan) throw new NotFoundException('CAPACITY_PLAN_NOT_FOUND', 'Capacity plan not found');
+    /**
+     * A DRAFT is invisible to a non-planner, and `not found` is the honest answer.
+     *
+     * AC-013: a draft "does not appear in the list and cannot be opened". 403 would be the wrong
+     * shape — it confirms the plan exists and even leaks its id as meaningful, which is exactly what
+     * hiding it is meant to avoid. The BA's wording is about visibility, not about a refused action.
+     *
+     * Read paths only. Every write already calls `requireDraft`, which loads the plan itself and is
+     * gated on `capacity:manage` — so a non-planner cannot reach one by writing either.
+     */
+    if (plan.status !== 'published' && !(await this.isPlanner(actor, plan.projectId))) {
+      throw new NotFoundException('CAPACITY_PLAN_NOT_FOUND', 'Capacity plan not found');
+    }
     return plan;
+  }
+
+  /**
+   * Whether this caller is a PLANNER on the project — the role the BA gates draft visibility on.
+   *
+   * The BA has one permission (`capacity_planning:manage`) where we have three, so either of the two
+   * write grants marks a planner: `capacity:publish` without `capacity:manage` is a state our split
+   * allows and the BA's model cannot express, and someone trusted to publish a plan is certainly meant
+   * to see it beforehand. `capacity:view` alone is a reader, and readers see published plans only.
+   */
+  private async isPlanner(actor: JwtPayload, projectId: string): Promise<boolean> {
+    if (await this.access.hasProjectPermission(actor, projectId, 'capacity:manage')) return true;
+    return this.access.hasProjectPermission(actor, projectId, 'capacity:publish');
   }
 
   async createPlan(
