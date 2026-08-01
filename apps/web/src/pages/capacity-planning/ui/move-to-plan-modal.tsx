@@ -70,6 +70,13 @@ export function MoveToPlanModal({
     const needle = search.trim().toLowerCase()
     return plans
       .filter((candidate) => candidate.id !== plan.id)
+      /**
+       * DRAFTS only. Moving into a published plan unpublishes it — Rally says so, and our API does it —
+       * but the BA's Invariant 8 is that "Published Plans are read-only until Revert to Draft". Offering
+       * one as a destination invited a planner to unpublish a plan as a side effect of moving a Feature,
+       * which is not a decision this dialog is for. Revert the target first, then move.
+       */
+      .filter((candidate) => candidate.status === 'draft')
       .filter(
         (candidate) =>
           needle === '' ||
@@ -191,18 +198,9 @@ export function MoveToPlanModal({
         <Button variant="outline" type="button" onClick={onClose}>
           {t('common:cancel')}
         </Button>
-        {/* Rally's second button, and only when it means something: the move unpublishes a published
-            target, so republishing is offered exactly there. */}
-        {target?.status === 'published' && (
-          <Button
-            variant="secondary"
-            type="button"
-            disabled={move.isPending}
-            onClick={() => void run(true)}
-          >
-            {t('move.moveAndRepublish')}
-          </Button>
-        )}
+        {/* No `Move and republish the plan` button: a published plan can no longer be a destination, so
+            there is nothing to republish. The API still accepts `republish` — it is how a caller that
+            legitimately targets a published plan puts it back — and the flag is simply never set here. */}
         <Button type="button" disabled={move.isPending} onClick={() => void run(false)}>
           {move.isPending && <Loader2 size={11} className="animate-spin" />}
           {t('move.confirm')}

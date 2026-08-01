@@ -197,14 +197,21 @@ export function CapacityPlanDetailPage() {
    * page to re-fetch and no server filter to ask for.
    */
   const [itemTeamFilter, setItemTeamFilter] = useState('all')
-  const [itemProjectFilter, setItemProjectFilter] = useState('all')
-  const itemFilterCount = (itemTeamFilter === 'all' ? 0 : 1) + (itemProjectFilter === 'all' ? 0 : 1)
+  /** The OWNING team facet — the `Team` column, not the plan assignment beside it. */
+  const [itemOwnerFilter, setItemOwnerFilter] = useState('all')
+  const itemFilterCount = (itemTeamFilter === 'all' ? 0 : 1) + (itemOwnerFilter === 'all' ? 0 : 1)
 
-  /** The projects the plan's Features actually come from — the only values worth offering. */
-  const itemProjects = useMemo(() => {
+  /**
+   * The owning teams the plan's Features actually come from — the only values worth offering.
+   *
+   * This facet used to be `Project`, which stopped being a column when the BA's `Team` replaced it.
+   * A filter over a column the grid no longer shows narrows the list for reasons nothing on screen
+   * explains, so it moved with the column rather than outliving it.
+   */
+  const itemOwners = useMemo(() => {
     const names = new Map<string, string>()
     for (const item of plan?.items ?? []) {
-      names.set(item.projectId, item.projectName ?? '--')
+      if (item.teamId !== null) names.set(item.teamId, item.teamName ?? '--')
     }
     return [...names].map(([id, name]) => ({ id, name }))
   }, [plan?.items])
@@ -212,13 +219,13 @@ export function CapacityPlanDetailPage() {
   const visibleItems = useMemo(
     () =>
       (plan?.items ?? []).filter((item) => {
-        if (itemProjectFilter !== 'all' && item.projectId !== itemProjectFilter) return false
+        if (itemOwnerFilter !== 'all' && item.teamId !== itemOwnerFilter) return false
         if (itemTeamFilter === 'all') return true
         // "Unassigned" means no team holds it — the state this tab warns about.
         if (itemTeamFilter === 'unassigned') return item.teamIds.length === 0
         return item.teamIds.includes(itemTeamFilter)
       }),
-    [plan?.items, itemTeamFilter, itemProjectFilter],
+    [plan?.items, itemTeamFilter, itemOwnerFilter],
   )
 
   /**
@@ -236,7 +243,6 @@ export function CapacityPlanDetailPage() {
     demandOf,
     allocationsByItem,
     allocationsByTeam,
-    unallocated,
   } = usePlanLookups(plan)
 
   /**
@@ -430,17 +436,25 @@ export function CapacityPlanDetailPage() {
    * nested move swaps "inside the same Team only", so each table has to pass its own row order.
    */
   const subTableActions = useCallback(
-    (rows: readonly { portfolioItemId: string }[]) =>
+    () =>
       itemActionsFor === undefined
         ? undefined
         : (allocation: CapacityAllocation) => ({
             ...itemActionsFor(allocation),
+            /**
+             * PLAN-WIDE, not within the team whose rows these are.
+             *
+             * The BA scoped a nested move to "the adjacent row inside the same Team only", but rank is
+             * GLOBAL — Rally: "changing rank in one page changes it across all pages" — so a move that
+             * looked team-local still moved the Feature past whatever sat beside it in the plan. The
+             * honest affordance is the one that says what it does: one order, moved by one place.
+             */
             ...moveHandlers(
               allocation.portfolioItemId,
-              rows.map((r) => r.portfolioItemId),
+              (plan?.items ?? []).map((i) => i.portfolioItemId),
             ),
           }),
-    [itemActionsFor, moveHandlers],
+    [itemActionsFor, moveHandlers, plan?.items],
   )
 
   /**
@@ -649,17 +663,17 @@ export function CapacityPlanDetailPage() {
                     {/* Both facets are COLUMNS on this tab. Filtering by anything the reader cannot
                         see would narrow the list for reasons the grid does not explain. */}
                     <label className="flex items-center gap-1.5 text-ui-sm font-semibold text-muted-foreground">
-                      {t('items.projectColumn')}
+                      {t('items.teamColumn')}
                       <InlineSelect
-                        value={itemProjectFilter}
-                        aria-label={t('items.projectColumn')}
-                        onChange={(e) => setItemProjectFilter(e.target.value)}
+                        value={itemOwnerFilter}
+                        aria-label={t('items.teamColumn')}
+                        onChange={(e) => setItemOwnerFilter(e.target.value)}
                         className="w-auto"
                       >
-                        <option value="all">{t('filters.allProjects')}</option>
-                        {itemProjects.map((project) => (
-                          <option key={project.id} value={project.id}>
-                            {project.name}
+                        <option value="all">{t('filters.allOwnerTeams')}</option>
+                        {itemOwners.map((team) => (
+                          <option key={team.id} value={team.id}>
+                            {team.name}
                           </option>
                         ))}
                       </InlineSelect>
@@ -854,42 +868,18 @@ export function CapacityPlanDetailPage() {
                             : undefined
                         }
                         sharingOf={sharingOf}
-                        itemActions={subTableActions(allocationsByTeam.get(team.teamId) ?? [])}
+                        itemActions={subTableActions()}
                       />
                     )}
                   </div>
                 ))}
 
-                {/* The Unallocated bucket. Rendered only when it holds something: an empty
-                  section would imply demand is missing rather than simply absent. */}
-                {unallocated.length > 0 && (
-                  <div>
-                    <div className="flex min-h-[34px] items-center border-b border-border-inner bg-surface-hover px-3 text-ui-md font-semibold text-foreground">
-                      <span style={colStyleFor('team', { flexShrink: 0 })} className="px-2">
-                        {t('detail.unallocated')}
-                      </span>
-                      <span
-                        style={colStyleFor('capacity', { flexShrink: 0 })}
-                        className="px-2 text-right tabular-nums"
-                      >
-                        {plan.unallocated} {unitLabel}
-                      </span>
-                    </div>
-                    {/* Same nested table as a team's, so the bucket reads as one more group rather
-                        than a different kind of list. No team by definition — the Unallocated
-                        bucket is Rally's unassigned state, so there is nothing to make primary. */}
-                    <TeamAllocationsTable
-                      planId={plan.id}
-                      allocations={unallocated}
-                      teamName={null}
-                      canManage={canManage}
-                      onOpenFeature={openFeature}
-                      rankPositionOf={rankPositionOf}
-                      sharingOf={sharingOf}
-                      itemActions={subTableActions(unallocated)}
-                    />
-                  </div>
-                )}
+                {/* NO `Unallocated` block here. The BA removed it from Teams by Total on 2026-07-28: a
+                    Feature with no team "has no dedicated Unallocated Features block on Teams by
+                    Total — the plan header still counts it under Unassigned, and it appears in the
+                    Features tab carrying a `Not assigned` badge". Both of those are true, so this
+                    section was a third place saying the same thing, and the only one that implied the
+                    parked demand belonged to some team. */}
               </DataTableFrame>
             )}
           </div>

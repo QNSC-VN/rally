@@ -143,7 +143,7 @@
   "forecast": {
     "action": "Forecast",
     "title": "Calculate capacity forecast",
-    "subtitle": "Sampled from {{team}}’s accepted work in finished iterations.",
+    "subtitle": "Proposes a capacity for {{team}} — sampled from its accepted work in finished iterations, or from a velocity you supply.",
     "availabilityLabel": "Team availability (%)",
     "availabilityHint": "100% is the team as it has recently been — 200% if it doubled, 50% if it halved.",
     "availabilityInvalid": "Enter an availability between 1 and 500%",
@@ -167,10 +167,15 @@
     "insufficient": {
       "no_history": "This team has not finished an iteration yet, so there is nothing to sample. Enter a capacity by hand for now.",
       "too_little_history": "Less than 14 days of history — too little to forecast from. Enter a capacity by hand, or wait for the current iteration to finish.",
-      "no_window": "This plan has no planned start and end dates, so there is no window to forecast into. Add the dates first."
+      "no_window": "This plan has no planned start and end dates, so there is no window to forecast into. Add the dates first.",
+      "no_cadence": "This project runs no iterations with dates, so a velocity per iteration cannot be spread over the plan’s window. Add iteration dates, or enter a capacity by hand."
     },
     "failed": "Could not calculate a forecast",
-    "forTeam": "Forecast capacity for {{team}}"
+    "forTeam": "Forecast capacity for {{team}}",
+    "velocityLabel": "Historic velocity per iteration (optional)",
+    "velocityHint": "Leave empty to sample this team’s own finished iterations. Enter a number to propose capacity from a velocity you supply.",
+    "velocityInvalid": "Enter a velocity above 0, or leave it empty",
+    "suppliedBasis": "From the velocity you supplied, modelled as {{modelled}} iterations of this plan’s window. All three lines match because one number carries no spread."
   },
   "publish": {
     "action": "Publish",
@@ -237,7 +242,8 @@
     "moveDown": "Move down",
     "railAssigned": "Assigned",
     "railAllocated": "Alloc.",
-    "railCapacity": "Capacity"
+    "railCapacity": "Capacity",
+    "teamColumn": "Team"
   },
   "filters": {
     "oldestRelease": "Oldest Release",
@@ -249,7 +255,8 @@
     "byStatus": "Filter by status",
     "allStatuses": "All statuses",
     "allTeams": "All teams",
-    "allProjects": "All projects"
+    "allProjects": "All projects",
+    "allOwnerTeams": "All owning teams"
   },
   "delete": {
     "title": "Delete capacity plans?",

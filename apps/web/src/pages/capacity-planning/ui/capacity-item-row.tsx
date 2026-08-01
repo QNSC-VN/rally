@@ -204,15 +204,15 @@ export function CapacityItemRow({
         )}
       </div>
 
-      {/* Rally's `Project`: where this Feature lives OUTSIDE the plan. Distinct from the planned
-          assignment beside it — a Story-to-Feature link may cross projects, so a plan can carry a
-          Feature owned elsewhere, and a planner needs to see that before allocating to it. */}
-      <div style={colStyleFor('project', { flexShrink: 0 })} className="min-w-0 px-2">
+      {/* The BA's `Team`: who OWNS this Feature outside the plan. Distinct from the planned assignment
+          beside it, and the pair is the point — a Feature owned by one team and planned against another
+          is exactly the case a planner needs to see. */}
+      <div style={colStyleFor('team', { flexShrink: 0 })} className="min-w-0 px-2">
         <span
           className="break-words whitespace-normal text-muted-foreground"
-          title={item.projectName ?? undefined}
+          title={item.teamName ?? undefined}
         >
-          {item.projectName ?? '--'}
+          {item.teamName ?? '--'}
         </span>
       </div>
 

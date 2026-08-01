@@ -225,4 +225,15 @@ export interface ICapacityPlanRepository {
     workspaceId: string,
     historyDays: number,
   ): Promise<VelocitySample[]>;
+
+  /**
+   * Mean length of the project's dated iterations, in days, or null when it runs none.
+   *
+   * Only the supplied-velocity forecast needs this, and only when the team has no accepted
+   * history to average: "so many points per iteration" cannot be spread over a window until
+   * something says how long an iteration is. Every iteration counts here, not just finished
+   * ones — the question is the project's CADENCE, which the current and planned iterations
+   * describe as well as the past ones.
+   */
+  projectIterationCadenceDays(projectId: string, workspaceId: string): Promise<number | null>;
 }

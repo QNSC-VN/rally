@@ -65,9 +65,21 @@ export interface CapacityPlanItem {
   itemKey: string;
   name: string;
   rank: string;
-  /** The Feature's OWN project — Rally's "Project" column, distinct from the plan's project. */
+  /**
+   * The Feature's OWN project. Kept on the wire though no column shows it: the eligibility rules are
+   * expressed in it, and `Move To Another Plan` needs it to explain why a target is or is not offered.
+   */
   projectId: string;
   projectName: string | null;
+  /**
+   * The team that OWNS the Feature — the BA's `Team` column, which replaced Rally's `Project`.
+   *
+   * NOT `primaryTeamId`: that is who owns the Feature inside THIS plan. This is its ownership outside
+   * the plan, and the two diverge the moment a planner assigns the work elsewhere — which is exactly
+   * what the column is for. The BA: "the Feature's original/current Team, not the Plan assignment."
+   */
+  teamId: string | null;
+  teamName: string | null;
   /**
    * The Feature's OWN release, which the plan's release need not match.
    *
@@ -104,7 +116,11 @@ export interface CapacityPlanItem {
    * `allocated` is the SUM over this Feature's team rows — the item-level equivalent of a single
    * allocation's explicit value — and null when no team carries an explicit slice.
    */
-  estimateBreakdown: { allocated: number | null; refined: number | null; preliminary: number | null };
+  estimateBreakdown: {
+    allocated: number | null;
+    refined: number | null;
+    preliminary: number | null;
+  };
   /** True when any of its allocations has no team — Rally's unassigned warning. */
   unallocated: boolean;
 }
@@ -534,6 +550,12 @@ export class CapacityPlansService {
     options: {
       availabilityPct: number;
       complexity: ForecastComplexity;
+      /**
+       * The BA's supplied velocity, per iteration, in the plan's unit — "proposes capacities
+       * from a supplied historic velocity" (`02_Capacity_Planning/SRS.md:142`). Optional: with
+       * nothing supplied this is Rally's forecast, sampled from the team's own history.
+       */
+      velocityPerIteration?: number | null;
     },
   ): Promise<ForecastResult> {
     const plan = await this.getPlan(actor, id);
@@ -549,12 +571,22 @@ export class CapacityPlansService {
       FORECAST_HISTORY_DAYS,
     );
 
+    const supplied = (options.velocityPerIteration ?? 0) > 0;
+    // Only asked for when it can matter: a supplied velocity with no history to average is the
+    // one case that needs the project's cadence, and this is a second query.
+    const fallbackIterationDays =
+      supplied && samples.length === 0
+        ? await this.repo.projectIterationCadenceDays(plan.projectId, actor.workspaceId)
+        : null;
+
     return forecastCapacity({
       samples,
       unit: plan.unit,
       windowDays: windowDays(plan.plannedStartDate, plan.plannedEndDate),
       availabilityPct: options.availabilityPct,
       complexity: options.complexity,
+      velocityPerIteration: options.velocityPerIteration ?? null,
+      fallbackIterationDays,
       // Derived from the ids, so the same team on the same plan sees the same number on
       // every replica and after every deploy.
       seed: forecastSeed(id, teamId),
@@ -1230,6 +1262,8 @@ export class CapacityPlansService {
           rank: row.rank,
           projectId: row.itemProjectId,
           projectName: row.itemProjectName,
+          teamId: row.itemTeamId,
+          teamName: row.itemTeamName,
           releaseId: row.itemReleaseId,
           /**
            * A TEAM row's charge counts; an unallocated placeholder's does not.

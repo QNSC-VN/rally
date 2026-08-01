@@ -65,6 +65,27 @@ export const FORECAST_MIN_HISTORY_DAYS = 14;
 export interface ForecastInput {
   /** Finished iterations, newest or oldest first — order does not matter to sampling. */
   samples: readonly VelocitySample[];
+  /**
+   * A velocity the PLANNER supplied, per iteration, in the plan's unit — the BA's reading of
+   * this feature: "It is a planner aid that proposes capacities from a supplied historic
+   * velocity" (`02_Capacity_Planning/SRS.md:142`), with "velocity-driven AUTOMATIC capacity"
+   * explicitly out of scope (SRS:418).
+   *
+   * When set it REPLACES the sampled history rather than adjusting it, so the number is the
+   * planner's own and the minimum-history rule does not apply — a brand-new team with no
+   * accepted iterations is exactly the case a supplied velocity exists for. Availability and
+   * complexity still scale it, because those are statements about the window being planned
+   * and not about where the velocity came from.
+   */
+  velocityPerIteration?: number | null;
+  /**
+   * How long one iteration runs, in days, when there is no history to average.
+   *
+   * Only consulted alongside a supplied velocity. Callers pass the project's real iteration
+   * cadence; a guessed sprint length would turn "so many points per iteration" into a
+   * different number of iterations than the team actually runs.
+   */
+  fallbackIterationDays?: number | null;
   /** Which number the plan is measured in. */
   unit: 'points' | 'count';
   /** Length of the window being planned, in days. */
@@ -99,10 +120,18 @@ export interface ForecastResult {
   /** Total calendar days of history behind the forecast. */
   historyDays: number;
   /**
+   * Where the velocity came from. A planner reading three identical lines needs to know it is
+   * because THEY supplied one number, not because the sampler collapsed.
+   */
+  basis: 'history' | 'supplied';
+  /**
    * Why no forecast was produced, or null. Reported rather than thrown: "not enough
    * history" is a normal state for a new team and the dialog explains it, it does not fail.
+   *
+   * `no_cadence` belongs to the supplied-velocity path alone: a velocity per iteration cannot
+   * be extended over a window until something says how long an iteration is.
    */
-  insufficientData: 'no_history' | 'too_little_history' | 'no_window' | null;
+  insufficientData: 'no_history' | 'too_little_history' | 'no_window' | 'no_cadence' | null;
 }
 
 /**
@@ -141,6 +170,11 @@ function round1(n: number): number {
 
 export function forecastCapacity(input: ForecastInput): ForecastResult {
   const historyDays = input.samples.reduce((sum, s) => sum + Math.max(0, s.days), 0);
+  const supplied =
+    input.velocityPerIteration !== null &&
+    input.velocityPerIteration !== undefined &&
+    input.velocityPerIteration > 0;
+  const basis: ForecastResult['basis'] = supplied ? 'supplied' : 'history';
   const empty = (
     reason: NonNullable<ForecastResult['insufficientData']>,
     iterationsModelled = 0,
@@ -151,22 +185,45 @@ export function forecastCapacity(input: ForecastInput): ForecastResult {
     iterationsModelled,
     samplesUsed: input.samples.length,
     historyDays,
+    basis,
     insufficientData: reason,
   });
 
-  if (input.samples.length === 0) return empty('no_history');
-  if (historyDays < FORECAST_MIN_HISTORY_DAYS) return empty('too_little_history');
+  // The history gates apply to the SAMPLED path only. A supplied velocity is the planner's
+  // own number, so "the team has not delivered enough yet" is not a reason to withhold it —
+  // that is the situation it exists for.
+  if (!supplied) {
+    if (input.samples.length === 0) return empty('no_history');
+    if (historyDays < FORECAST_MIN_HISTORY_DAYS) return empty('too_little_history');
+  }
   // A plan with no dates has no window to forecast INTO. Guessing one would put a number
   // on the screen that answers a question nobody asked.
   if (!(input.windowDays > 0)) return empty('no_window');
 
-  // How many iterations the window is worth, from the team's own average cadence rather
-  // than an assumed sprint length — a team on three-week iterations must not be modelled
-  // as though it ran two-week ones.
-  const avgIterationDays = historyDays / input.samples.length;
-  const iterationsModelled = Math.max(1, Math.round(input.windowDays / avgIterationDays));
+  /**
+   * How many iterations the window is worth, from the team's own average cadence rather
+   * than an assumed sprint length — a team on three-week iterations must not be modelled
+   * as though it ran two-week ones.
+   *
+   * With a supplied velocity and no history at all, the caller's cadence stands in; with no
+   * cadence either, the window cannot be expressed in iterations and there is nothing to
+   * multiply, which is `no_cadence` rather than a fabricated two-week sprint.
+   */
+  const cadenceDays =
+    input.samples.length > 0
+      ? historyDays / input.samples.length
+      : (input.fallbackIterationDays ?? 0) > 0
+        ? (input.fallbackIterationDays as number)
+        : 0;
+  if (!(cadenceDays > 0)) return empty('no_cadence');
+  const iterationsModelled = Math.max(1, Math.round(input.windowDays / cadenceDays));
 
-  const values = input.samples.map((s) => (input.unit === 'points' ? s.points : s.count));
+  // A supplied velocity is ONE value, so every trial draws the same number and the three
+  // lines agree. That is honest: the planner gave a point estimate, not a distribution, and
+  // `basis: 'supplied'` is what tells the reader why there is no spread.
+  const values = supplied
+    ? [input.velocityPerIteration as number]
+    : input.samples.map((s) => (input.unit === 'points' ? s.points : s.count));
   const rand = mulberry32(input.seed);
   const trials = input.trials ?? FORECAST_TRIALS;
 
@@ -196,6 +253,7 @@ export function forecastCapacity(input: ForecastInput): ForecastResult {
     iterationsModelled,
     samplesUsed: input.samples.length,
     historyDays,
+    basis,
     insufficientData: null,
   };
 }

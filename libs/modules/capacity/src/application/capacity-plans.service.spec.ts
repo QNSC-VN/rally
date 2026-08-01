@@ -90,6 +90,7 @@ describe('CapacityPlansService', () => {
             totalAllocatedFor: vi.fn().mockResolvedValue(0),
             teamMetrics: vi.fn().mockResolvedValue({ complete: 0, rollup: 0 }),
             teamVelocitySamples: vi.fn().mockResolvedValue([]),
+            projectIterationCadenceDays: vi.fn().mockResolvedValue(null),
             hasPrimaryAllocation: vi.fn().mockResolvedValue(false),
             clearPrimaryAllocations: vi.fn(),
             oldestTeamAllocation: vi.fn().mockResolvedValue(null),
@@ -472,6 +473,8 @@ describe('CapacityPlansService', () => {
         itemProjectId: 'proj-a',
         itemProjectName: 'Project A',
         itemArchivedAt: null,
+        itemTeamId: null,
+        itemTeamName: null,
         itemReleaseId: null,
         state: 'developing',
         ...over,
@@ -575,6 +578,8 @@ describe('CapacityPlansService', () => {
       itemProjectId: 'proj-a',
       itemProjectName: 'Project A',
       itemArchivedAt: null,
+      itemTeamId: null,
+      itemTeamName: null,
       itemReleaseId: null,
       state: 'developing',
       ...over,
@@ -842,6 +847,8 @@ describe('CapacityPlansService', () => {
       itemProjectId: 'proj-a',
       itemProjectName: 'Project A',
       itemArchivedAt: null,
+      itemTeamId: null,
+      itemTeamName: null,
       itemReleaseId: null,
       state: 'developing',
       ...over,
@@ -1043,7 +1050,13 @@ describe('CapacityPlansService', () => {
       );
     });
 
-    const forecast = (over: Partial<{ availabilityPct: number; complexity: 'typical' }> = {}) =>
+    const forecast = (
+      over: Partial<{
+        availabilityPct: number;
+        complexity: 'typical';
+        velocityPerIteration: number | null;
+      }> = {},
+    ) =>
       service.forecastTeamCapacity(actor, 'plan-1', 'team-1', {
         availabilityPct: 100,
         complexity: 'typical',
@@ -1099,6 +1112,39 @@ describe('CapacityPlansService', () => {
     it('reports no history for a team that has finished nothing', async () => {
       repo.teamVelocitySamples.mockResolvedValue([]);
       expect((await forecast()).insufficientData).toBe('no_history');
+    });
+
+    it("uses a SUPPLIED velocity in place of the team's history", async () => {
+      // The BA's version of this dialog (SRS:142). 30 per iteration over the plan's four
+      // modelled iterations, and no spread, because one number carries none.
+      const result = await forecast({ velocityPerIteration: 30 });
+      expect(result.basis).toBe('supplied');
+      expect([result.min, result.median, result.max]).toEqual([120, 120, 120]);
+    });
+
+    it("falls back to the PROJECT's cadence when a supplied velocity has no history to average", async () => {
+      // The case the override exists for: a new team. The cadence is real project data, not an
+      // assumed sprint length — 56-day window ÷ 7 = 8 iterations of 10.
+      repo.teamVelocitySamples.mockResolvedValue([]);
+      repo.projectIterationCadenceDays.mockResolvedValue(7);
+      const result = await forecast({ velocityPerIteration: 10 });
+      expect(repo.projectIterationCadenceDays).toHaveBeenCalledWith('proj-a', WORKSPACE);
+      expect(result.insufficientData).toBeNull();
+      expect(result.median).toBe(80);
+    });
+
+    it('does NOT query the cadence when it cannot matter', async () => {
+      // History to average, or no supplied velocity at all: either way that is a second query
+      // for a number nothing will read.
+      await forecast({ velocityPerIteration: 30 });
+      await forecast();
+      expect(repo.projectIterationCadenceDays).not.toHaveBeenCalled();
+    });
+
+    it('reports no cadence when a new team is on a project that runs no dated iterations', async () => {
+      repo.teamVelocitySamples.mockResolvedValue([]);
+      repo.projectIterationCadenceDays.mockResolvedValue(null);
+      expect((await forecast({ velocityPerIteration: 10 })).insufficientData).toBe('no_cadence');
     });
 
     it('is deterministic across calls, and independent per team', async () => {
@@ -1331,6 +1377,8 @@ describe('CapacityPlansService', () => {
       itemProjectId: 'proj-a',
       itemProjectName: 'Project A',
       itemArchivedAt: null,
+      itemTeamId: null,
+      itemTeamName: null,
       itemReleaseId: null,
       state: 'developing',
       ...over,
@@ -1852,6 +1900,8 @@ describe('CapacityPlansService', () => {
           itemProjectId: 'proj-a',
           itemProjectName: 'Project A',
           itemArchivedAt: null,
+          itemTeamId: null,
+          itemTeamName: null,
           itemReleaseId: null,
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -1956,6 +2006,8 @@ describe('CapacityPlansService', () => {
       itemProjectId: 'proj-a',
       itemProjectName: 'Project A',
       itemArchivedAt: null,
+      itemTeamId: null,
+      itemTeamName: null,
       itemReleaseId: null,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -2055,7 +2107,13 @@ describe('CapacityPlansService', () => {
       repo.listAllocations.mockResolvedValue([
         // `no_entry` is the unsized state and maps to 0, which falls through the tier chain to nothing
         // — the only 0 in the map, and the reason an unsized Feature reads as "no estimate" not "zero".
-        row({ teamId: 'team-1', value: null, refined: null, preliminarySize: 'no_entry', rollup: 4 }),
+        row({
+          teamId: 'team-1',
+          value: null,
+          refined: null,
+          preliminarySize: 'no_entry',
+          rollup: 4,
+        }),
       ]);
       const detail = await service.getPlanDetail(actor, 'plan-1');
       expect(detail.items[0]?.warnings[0]).toBe('feature_missing_estimate');

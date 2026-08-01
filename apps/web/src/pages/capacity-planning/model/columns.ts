@@ -131,7 +131,7 @@ export type ItemColKey =
   | 'id'
   | 'name'
   | 'assignment'
-  | 'project'
+  | 'team'
   | 'dependencies'
   | 'rollup'
   | 'estimated'
@@ -144,10 +144,10 @@ export type ItemColKey =
  * `rank` leads because the cutline only means anything in rank order — Rally draws the line only
  * when items are sorted by rank ascending, so the column that establishes that order comes first.
  *
- * `project` is the Feature's OWN project ("current assignment outside the plan" in Rally's words),
- * which is not the same as `assignment` — Rally's "Planned Project Assignment", the team this
- * Feature is planned against INSIDE this plan. A Story-to-Feature link may cross projects, so the
- * two genuinely differ and Rally shows both.
+ * `team` is the Feature's OWN team ownership, which is not the same as `assignment` — the team this
+ * Feature is planned against INSIDE this plan. The two diverge as soon as a planner assigns the work
+ * elsewhere, and that divergence is what the column exists to show. Rally shows `Project` in this
+ * slot; the BA asked for Team, and Team is the more useful of the two beside a team assignment.
  *
  * Three numeric columns rather than one bar: Rally puts no bar on this tab. A Feature has no
  * capacity of its own, so there is no baseline to draw against — the bar on the team grid means
@@ -194,7 +194,10 @@ export const CAPACITY_ITEM_COLUMNS: ColumnSpec<CapacityPlanItem, unknown, ItemCo
     minWidth: 130,
     sortCol: 'assignment',
   },
-  { key: 'project', label: 'Project', defaultWidth: 96, minWidth: 84, sortCol: 'project' },
+  // The BA's `Team`, which replaced Rally's `Project` here: "the Feature's original/current Team, not
+  // the Plan assignment". The Plan assignment is the column to its left, so showing Project as well
+  // put three near-identical values in a row and answered the reader's question with the wrong one.
+  { key: 'team', label: 'Team', defaultWidth: 130, minWidth: 100, sortCol: 'team' },
   // Placeholder, per the BA: "It shows `0` until dependency modelling is added."
   {
     key: 'dependencies',

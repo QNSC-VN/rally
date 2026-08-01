@@ -59,7 +59,7 @@ export function ItemAllocationRow({
         </span>
       </div>
 
-      <div style={colStyleFor('project', { flexShrink: 0 })} />
+      <div style={colStyleFor('team', { flexShrink: 0 })} />
       <div style={colStyleFor('dependencies', { flexShrink: 0 })} />
 
       <div style={colStyleFor('rollup', { flexShrink: 0 })} className="px-2 text-right">

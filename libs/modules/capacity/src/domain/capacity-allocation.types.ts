@@ -87,9 +87,19 @@ export interface CapacityAllocationRow extends CapacityAllocation {
   /** The Feature's own rollup/complete across every team, for the item-level row. */
   itemRollup: number;
   itemComplete: number;
-  /** The project the Feature itself belongs to — Rally's "Project" column. */
+  /** The project the Feature itself belongs to. */
   itemProjectId: string;
   itemProjectName: string | null;
+  /**
+   * The team that OWNS the Feature outside the plan — the BA's `Team` column.
+   *
+   * "The Feature's current Portfolio Item Team ownership… this column is the Feature's original/current
+   * Team, not the Plan assignment." Distinct from `primaryTeamId`, which is who owns it INSIDE this
+   * plan: the two diverge as soon as a planner assigns the work elsewhere, and that divergence is the
+   * thing the column exists to show.
+   */
+  itemTeamId: string | null;
+  itemTeamName: string | null;
   /** Set when the Feature has been archived — an archived item is not planning demand. */
   itemArchivedAt: Date | null;
   /**
