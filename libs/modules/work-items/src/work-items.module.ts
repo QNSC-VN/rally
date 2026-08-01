@@ -8,13 +8,11 @@ import { WorkItemsController } from './interface/http/work-items.controller';
 import { WorkItemDrizzleRepository } from './infrastructure/persistence/work-item.drizzle-repository';
 import { TimeLogDrizzleRepository } from './infrastructure/persistence/time-log.drizzle-repository';
 import { WatcherDrizzleRepository } from './infrastructure/persistence/watcher.drizzle-repository';
-import { AttachmentDrizzleRepository } from './infrastructure/persistence/attachment.drizzle-repository';
 import { WorkItemRelationDrizzleRepository } from './infrastructure/persistence/work-item-relation.drizzle-repository';
 import { WORK_ITEM_REPOSITORY } from './domain/ports/work-item.repository';
 import { WORK_ITEM_RELATION_REPOSITORY } from './domain/ports/work-item-relation.repository';
 import { TIME_LOG_REPOSITORY } from './domain/ports/time-log.repository';
 import { WATCHER_REPOSITORY } from './domain/ports/watcher.repository';
-import { ATTACHMENT_REPOSITORY } from './domain/ports/attachment.repository';
 
 @Module({
   imports: [ProjectsModule, AccessModule, AttachmentsModule, ActivityModule],
@@ -25,7 +23,6 @@ import { ATTACHMENT_REPOSITORY } from './domain/ports/attachment.repository';
     { provide: WORK_ITEM_REPOSITORY, useClass: WorkItemDrizzleRepository },
     { provide: TIME_LOG_REPOSITORY, useClass: TimeLogDrizzleRepository },
     { provide: WATCHER_REPOSITORY, useClass: WatcherDrizzleRepository },
-    { provide: ATTACHMENT_REPOSITORY, useClass: AttachmentDrizzleRepository },
     { provide: WORK_ITEM_RELATION_REPOSITORY, useClass: WorkItemRelationDrizzleRepository },
   ],
   exports: [WorkItemsService],

@@ -42,7 +42,6 @@ import {
   CreateTimeLogDto,
   UpdateTimeLogDto,
   TimeLogQueryDto,
-  PresignAttachmentDto,
   CreateRelationDto,
 } from './dto/work-item-request.dto';
 import {
@@ -53,16 +52,19 @@ import {
   ActivityResponseDto,
   TimeLogResponseDto,
   WatcherResponseDto,
-  AttachmentResponseDto,
-  PresignAttachmentResponseDto,
-  DownloadUrlResponseDto,
 } from './dto/work-item-response.dto';
 import type { WorkItem } from '../../domain/work-item.types';
 import { BACKLOG_SORT_FIELDS } from '../../domain/work-item.types';
 import type { ActivityLog } from '@modules/activity';
 import type { TimeLog } from '../../domain/time-log.types';
 import type { Watcher } from '../../domain/watcher.types';
-import type { WorkItemAttachment } from '../../domain/attachment.types';
+import {
+  AttachmentResponseDto,
+  DownloadUrlResponseDto,
+  PresignAttachmentDto,
+  PresignAttachmentResponseDto,
+  type EntityAttachment,
+} from '@modules/attachments';
 
 // ── Mappers ─────────────────────────────────────────────────────────────────
 
@@ -153,10 +155,11 @@ function toWatcherDto(w: Watcher): WatcherResponseDto {
 
 // ── Controller ────────────────────────────────────────────────────────────────
 
-function toAttachmentDto(a: WorkItemAttachment): AttachmentResponseDto {
+function toAttachmentDto(a: EntityAttachment): AttachmentResponseDto {
   return {
     id: a.id,
-    workItemId: a.workItemId,
+    entityType: a.entityType,
+    entityId: a.entityId,
     uploadedBy: a.uploadedBy,
     filename: a.filename,
     mimeType: a.mimeType,

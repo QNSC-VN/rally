@@ -39,9 +39,12 @@ import { CommentResponseDto, toCommentDto } from './dto/collaboration-response.d
  * their subject from the loaded comment and would function for either entity type. The
  * alternative was for the client to edit a portfolio comment through
  * `/v1/work-items/<portfolio-item-id>/comments/:commentId` — a path segment that names one
- * table and carries an id from another. Both handlers ignore `:id` for the same reason the
- * work-item ones ignore `:workItemId`; authorization comes from the comment's own subject,
- * via `assertCanCollaborate`, so it is correct for both.
+ * table and carries an id from another.
+ *
+ * Unlike the work-item twins, these two DO carry `@RequirePermission` on the path item. Two
+ * checks then run — the guard on `:id`, and `assertCanCollaborate` on the loaded comment's own
+ * subject — which is strictly stronger than either alone and keeps the unpoliced-route ratchet
+ * from rising for routes that were never meant to be open.
  */
 @ApiTags('collaboration')
 @Controller('portfolio-items/:id')
@@ -88,6 +91,11 @@ export class PortfolioCollaborationController {
   }
 
   @Patch('comments/:commentId')
+  // Gated on the PATH item even though the service re-resolves the subject from the loaded
+  // comment. Both checks run, so this is strictly stronger than the work-item twins (which
+  // carry no decorator): the caller must be able to edit the item in the URL, AND the
+  // comment must actually hang off something they may edit.
+  @RequirePermission('portfolio:edit', { resource: 'portfolio_item', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Update a comment on an Epic or Feature' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiParam({ name: 'commentId', type: 'string', format: 'uuid' })
@@ -104,6 +112,7 @@ export class PortfolioCollaborationController {
 
   @Delete('comments/:commentId')
   @HttpCode(204)
+  @RequirePermission('portfolio:edit', { resource: 'portfolio_item', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Delete a comment on an Epic or Feature (soft delete)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiParam({ name: 'commentId', type: 'string', format: 'uuid' })

@@ -141,7 +141,10 @@ export class CleanupCronService {
             -- race an in-flight upload.
             AND f.confirmed_at < NOW() - INTERVAL '1 hour'
             AND NOT EXISTS (
-              SELECT 1 FROM work.work_item_attachments l WHERE l.file_id = f.id
+              -- work.attachments (renamed from work_item_attachments in 0081) is the ONLY
+              -- link table pointing at storage.files. If a second one is ever added, it
+              -- must be OR-ed in here or this sweep will delete live blobs.
+              SELECT 1 FROM work.attachments l WHERE l.file_id = f.id
             )
           )
         LIMIT 1000

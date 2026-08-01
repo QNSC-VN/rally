@@ -1850,6 +1850,108 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v1/portfolio-items/{id}/attachments/presign': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Get a presigned S3 PUT URL to attach a file to an Epic or Feature */
+    post: operations['PortfolioAttachmentsController_presign']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/portfolio-items/{id}/attachments/{aid}/confirm': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Confirm the upload completed — activates the attachment */
+    post: operations['PortfolioAttachmentsController_confirm']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/portfolio-items/{id}/attachments': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List completed attachments on an Epic or Feature */
+    get: operations['PortfolioAttachmentsController_list']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/portfolio-items/{id}/attachments/{aid}/download': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Get a presigned S3 GET URL for an attachment */
+    get: operations['PortfolioAttachmentsController_downloadUrl']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/portfolio-items/{id}/attachments/{aid}/content': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Redirect to the attachment bytes (stable, authenticated URL) */
+    get: operations['PortfolioAttachmentsController_content']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/portfolio-items/{id}/attachments/{aid}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    /** Delete an attachment (uploader or admin only) */
+    delete: operations['PortfolioAttachmentsController_remove']
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v1/notifications/unread-count': {
     parameters: {
       query?: never
@@ -3375,8 +3477,10 @@ export interface components {
     AttachmentResponseDto: {
       /** Format: uuid */
       id: string
+      /** @enum {string} */
+      entityType: 'work_item' | 'portfolio_item'
       /** Format: uuid */
-      workItemId: string
+      entityId: string
       /** Format: uuid */
       uploadedBy: string
       filename: string
@@ -3751,6 +3855,112 @@ export interface components {
         percentDone: number | null
         percentElapsed: number | null
         indeterminate: ('no_dates' | 'no_work') | null
+      }
+    }
+    PortfolioItemDetailResponseDto: {
+      /** Format: uuid */
+      id: string
+      /** Format: uuid */
+      workspaceId: string
+      /** Format: uuid */
+      projectId: string
+      /** @description Resolved server-side — this list is cross-project */
+      projectName: string | null
+      /** @description EP-101 or FE-318 */
+      itemKey: string
+      /** @enum {string} */
+      type: 'epic' | 'feature'
+      name: string
+      description: string | null
+      notes: string | null
+      releaseNotes: string | null
+      /** @enum {string} */
+      state:
+        | 'no_entry'
+        | 'intake'
+        | 'idea_prioritization'
+        | 'problem_discovery'
+        | 'solution_discovery'
+        | 'feature_prioritization'
+        | 'developing'
+        | 'accepted'
+        | 'measuring'
+        | 'done'
+        | 'cancelled'
+      /** @enum {string} */
+      preliminaryEstimate: 'no_entry' | 'xs' | 's' | 'm' | 'l' | 'xl'
+      /** @description Top-down points forecast. 0 means not forecast — see migration 0077. */
+      refinedEstimate: number
+      /** @description Top-down child-count forecast. 0 means not forecast. */
+      refinedItemCountEstimate: number
+      /** @description Feature → Epic. Always null for an Epic. */
+      parentId: string | null
+      parentKey: string | null
+      /** @description Feature only */
+      teamId: string | null
+      teamName: string | null
+      /** @description Feature only */
+      releaseId: string | null
+      releaseName: string | null
+      ownerId: string | null
+      ownerName: string | null
+      /** @description YYYY-MM-DD */
+      plannedStartDate: string | null
+      /** @description YYYY-MM-DD */
+      plannedEndDate: string | null
+      /** @description YYYY-MM-DD */
+      marketReleaseDate: string | null
+      rank: string
+      archivedAt: string | null
+      /** Format: date-time */
+      createdAt: string
+      /** Format: date-time */
+      updatedAt: string
+      /** @description Active child Features. Epic only; 0 for a Feature. */
+      childFeatureCount: number
+      rollup: {
+        rollupPoints: number
+        rollupCount: number
+        /** @description ACCEPTED_SCHEDULE_STATES: accepted, release */
+        acceptedPoints: number
+        acceptedCount: number
+        /** @description COMPLETED_SCHEDULE_STATES: completed, accepted, release — capacity, not Percent Done */
+        completedPoints: number
+        completedCount: number
+      }
+      progress: {
+        /** @description Accepted points / all linked points. Null when nothing is linked. */
+        percentDoneByPlanEstimate: number | null
+        /** @description Accepted item count / all linked count. Null when nothing is linked. */
+        percentDoneByCount: number | null
+        /** @description Accepted points / refined-or-preliminary points forecast. May exceed 1. */
+        estimatedProgressByPoints: number | null
+        /** @description Accepted count / refined-or-preliminary count forecast. May exceed 1. */
+        estimatedProgressByCount: number | null
+      }
+      health: {
+        /** @enum {string} */
+        state: 'complete' | 'on_track' | 'at_risk' | 'late' | 'not_started'
+        percentDone: number | null
+        percentElapsed: number | null
+        indeterminate: ('no_dates' | 'no_work') | null
+      }
+      acceptedChildren: {
+        total: {
+          points: number
+          count: number
+          acceptedPoints: number
+          acceptedCount: number
+        }
+        /** @description Always one entry per child type, zero-filled when there are none. */
+        byType: {
+          /** @enum {string} */
+          type: 'story' | 'defect'
+          points: number
+          count: number
+          acceptedPoints: number
+          acceptedCount: number
+        }[]
       }
     }
     PortfolioChildResponseDto: {
@@ -10872,7 +11082,7 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': components['schemas']['PortfolioItemResponseDto']
+          'application/json': components['schemas']['PortfolioItemDetailResponseDto']
         }
       }
       /** @description Unauthorized — missing or invalid authentication */
@@ -11220,6 +11430,264 @@ export interface operations {
       }
       /** @description Unauthorized — missing or invalid authentication */
       401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  PortfolioAttachmentsController_presign: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PresignAttachmentDto']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['PresignAttachmentResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Too Many Requests — rate limit exceeded. Check Retry-After header. */
+      429: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  PortfolioAttachmentsController_confirm: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+        aid: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['AttachmentResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  PortfolioAttachmentsController_list: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['AttachmentResponseDto'][]
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  PortfolioAttachmentsController_downloadUrl: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+        aid: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['DownloadUrlResponseDto']
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  PortfolioAttachmentsController_content: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+        aid: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Redirect to a short-lived presigned URL */
+      302: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  PortfolioAttachmentsController_remove: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+        aid: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Attachment deleted */
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
         headers: {
           [name: string]: unknown
         }

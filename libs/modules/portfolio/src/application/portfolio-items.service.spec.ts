@@ -99,6 +99,7 @@ describe('PortfolioItemsService', () => {
             rollupsFor: vi.fn().mockResolvedValue([]),
             listChildren: vi.fn().mockResolvedValue(emptyPage([])),
             listChildFeatures: vi.fn().mockResolvedValue([]),
+            childRollupByType: vi.fn().mockResolvedValue([]),
             findByIds: vi.fn().mockResolvedValue([]),
             nextKeyNumber: vi.fn().mockResolvedValue(1),
             lockRankScope: vi.fn().mockResolvedValue(undefined),

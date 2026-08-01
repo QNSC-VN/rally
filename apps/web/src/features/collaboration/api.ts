@@ -2,33 +2,55 @@
  * Collaboration feature — attachment and comment API hooks.
  */
 import { useQuery, useMutation } from '@tanstack/react-query'
-import { apiClient } from '@/shared/api/http-client'
-import { apiErrorMessage } from '@/shared/api/api-error'
 import type { components } from '@/shared/api/generated/api'
 import { withCsrfHeader } from '@/shared/api/csrf'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 export type Attachment = components['schemas']['AttachmentResponseDto']
 
+/**
+ * What a comment or an attachment hangs off. Mirrors the `entity_ref_type` enum (migrations
+ * 0080 and 0081) — both child records live on a work item or on a portfolio item, and the API
+ * has one route tree per entity so the permission check can differ (`work_item:edit` vs
+ * `portfolio:edit`).
+ */
+export type EntityRefType = 'work_item' | 'portfolio_item'
+
+export interface EntitySubject {
+  entityType: EntityRefType
+  entityId: string
+}
+
+const SUBJECT_PATH: Record<EntityRefType, string> = {
+  work_item: 'work-items',
+  portfolio_item: 'portfolio-items',
+}
+
+/** `/v1/work-items/:id` or `/v1/portfolio-items/:id` — every child-record call hangs off this. */
+function subjectBase(subject: EntitySubject): string {
+  return `/v1/${SUBJECT_PATH[subject.entityType]}/${subject.entityId}`
+}
+
 // ── Query keys ────────────────────────────────────────────────────────────────
+// The entity type is part of every key: two entity types share an id space only by accident,
+// but a cache collision there would show one item's files or thread on another.
 const attachmentKeys = {
-  list: (workItemId: string) => ['attachments', workItemId] as const,
+  list: (subject: EntitySubject | undefined) =>
+    ['attachments', subject?.entityType ?? '', subject?.entityId ?? ''] as const,
 }
 
 // ── Hooks ─────────────────────────────────────────────────────────────────────
 
-export function useAttachments(workItemId: string | undefined) {
+export function useAttachments(subject: EntitySubject | undefined) {
   return useQuery({
-    queryKey: attachmentKeys.list(workItemId ?? ''),
-    queryFn: async () => {
-      if (!workItemId) return []
-      const { data, error, response } = await apiClient.GET('/v1/work-items/{id}/attachments', {
-        params: { path: { id: workItemId } },
-      })
-      if (error) throw new Error(apiErrorMessage(error, response.status))
-      return (data as unknown as Attachment[]) ?? []
+    queryKey: attachmentKeys.list(subject),
+    queryFn: async (): Promise<Attachment[]> => {
+      if (!subject) return []
+      const res = await fetch(`${subjectBase(subject)}/attachments`, { credentials: 'include' })
+      if (!res.ok) throw new Error(`Failed to load attachments (${res.status})`)
+      return (await res.json()) as Attachment[]
     },
-    enabled: !!workItemId,
+    enabled: !!subject,
     staleTime: 15_000,
   })
 }
@@ -58,15 +80,15 @@ async function sha256Base64(file: File): Promise<string> {
  * multipart to `/attachments/upload`, a route that has never existed on the
  * backend, so uploading always 404'd.
  */
-export function useUploadAttachment(workItemId: string | undefined) {
+export function useUploadAttachment(subject: EntitySubject | undefined) {
   return useMutation({
     mutationFn: async (file: File): Promise<Attachment> => {
-      if (!workItemId) throw new Error('workItemId required')
+      if (!subject) throw new Error('attachment subject required')
 
       const checksumSha256 = await sha256Base64(file)
 
       // 1. Reserve the file row and get a signed URL.
-      const presignRes = await fetch(`/v1/work-items/${workItemId}/attachments/presign`, {
+      const presignRes = await fetch(`${subjectBase(subject)}/attachments/presign`, {
         method: 'POST',
         headers: withCsrfHeader('POST', { 'Content-Type': 'application/json' }),
         credentials: 'include',
@@ -103,7 +125,7 @@ export function useUploadAttachment(workItemId: string | undefined) {
       // 3. Confirm — the API verifies size + checksum against the bucket and
       //    only then links the file to the work item and makes it visible.
       const confirmRes = await fetch(
-        `/v1/work-items/${workItemId}/attachments/${attachmentId}/confirm`,
+        `${subjectBase(subject)}/attachments/${attachmentId}/confirm`,
         { method: 'POST', credentials: 'include', headers: withCsrfHeader('POST') },
       )
       if (!confirmRes.ok) {
@@ -111,20 +133,22 @@ export function useUploadAttachment(workItemId: string | undefined) {
       }
       return (await confirmRes.json()) as Attachment
     },
-    meta: workItemId ? { invalidateKeys: [attachmentKeys.list(workItemId)] } : undefined,
+    meta: subject ? { invalidateKeys: [attachmentKeys.list(subject)] } : undefined,
   })
 }
 
-export function useDeleteAttachment(workItemId: string | undefined) {
+export function useDeleteAttachment(subject: EntitySubject | undefined) {
   return useMutation({
     mutationFn: async (attachmentId: string) => {
-      if (!workItemId) throw new Error('workItemId required')
-      const { error, response } = await apiClient.DELETE('/v1/work-items/{id}/attachments/{aid}', {
-        params: { path: { id: workItemId, aid: attachmentId } },
+      if (!subject) throw new Error('attachment subject required')
+      const res = await fetch(`${subjectBase(subject)}/attachments/${attachmentId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: withCsrfHeader('DELETE'),
       })
-      if (error) throw new Error(apiErrorMessage(error, response.status))
+      if (!res.ok) throw new Error(`Failed to delete attachment (${res.status})`)
     },
-    meta: workItemId ? { invalidateKeys: [attachmentKeys.list(workItemId)] } : undefined,
+    meta: subject ? { invalidateKeys: [attachmentKeys.list(subject)] } : undefined,
   })
 }
 
@@ -134,7 +158,7 @@ export function useDeleteAttachment(workItemId: string | undefined) {
 
 export interface Comment {
   id: string
-  entityType: CommentEntityType
+  entityType: EntityRefType
   entityId: string
   authorId: string
   body: string
@@ -145,36 +169,16 @@ export interface Comment {
   updatedAt: string
 }
 
-/**
- * What a comment hangs off. Mirrors the `entity_ref_type` enum (migration 0080) — a
- * comment lives on a work item or on a portfolio item, and the API has one route tree per
- * entity so the permission check can differ (`work_item:edit` vs `portfolio:edit`).
- */
-export type CommentEntityType = 'work_item' | 'portfolio_item'
-
-export interface CommentSubject {
-  entityType: CommentEntityType
-  entityId: string
-}
-
-const SUBJECT_PATH: Record<CommentEntityType, string> = {
-  work_item: 'work-items',
-  portfolio_item: 'portfolio-items',
-}
-
-/** `/v1/work-items/:id` or `/v1/portfolio-items/:id` — every comment call hangs off this. */
-function subjectBase(subject: CommentSubject): string {
-  return `/v1/${SUBJECT_PATH[subject.entityType]}/${subject.entityId}`
-}
+/** Kept as a name for what a comment thread hangs off; the shape is the shared subject. */
+export type CommentEntityType = EntityRefType
+export type CommentSubject = EntitySubject
 
 const commentKeys = {
-  // The entity type is part of the key: two entity types share an id space only by
-  // accident, but a cache collision there would show one item's thread on another.
-  list: (subject: CommentSubject | undefined) =>
+  list: (subject: EntitySubject | undefined) =>
     ['comments', subject?.entityType ?? '', subject?.entityId ?? ''] as const,
 }
 
-export function useComments(subject: CommentSubject | undefined) {
+export function useComments(subject: EntitySubject | undefined) {
   return useQuery({
     queryKey: commentKeys.list(subject),
     queryFn: async (): Promise<Comment[]> => {
@@ -188,7 +192,7 @@ export function useComments(subject: CommentSubject | undefined) {
   })
 }
 
-export function useCreateComment(subject: CommentSubject | undefined) {
+export function useCreateComment(subject: EntitySubject | undefined) {
   return useMutation({
     mutationFn: async (input: {
       body: string
@@ -209,7 +213,7 @@ export function useCreateComment(subject: CommentSubject | undefined) {
   })
 }
 
-export function useUpdateComment(subject: CommentSubject | undefined) {
+export function useUpdateComment(subject: EntitySubject | undefined) {
   return useMutation({
     mutationFn: async (input: { commentId: string; body: string }): Promise<Comment> => {
       if (!subject) throw new Error('comment subject required')
@@ -226,7 +230,7 @@ export function useUpdateComment(subject: CommentSubject | undefined) {
   })
 }
 
-export function useDeleteComment(subject: CommentSubject | undefined) {
+export function useDeleteComment(subject: EntitySubject | undefined) {
   return useMutation({
     mutationFn: async (commentId: string): Promise<void> => {
       if (!subject) throw new Error('comment subject required')

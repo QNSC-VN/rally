@@ -26,8 +26,7 @@ import { FileText, History, ListTree } from 'lucide-react'
 
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
-import { ProgressBar } from '@/shared/ui/progress-bar'
-import { PercentDoneBar } from '@/features/portfolio/ui/percent-done-bar'
+import { AcceptedChildrenBlock } from '@/features/portfolio/ui/accepted-children-block'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { ActivityHistoryTab } from '@/entities/activity/ui/activity-history-tab'
@@ -42,7 +41,7 @@ import { useWorkspaceMembers } from '@/features/workspaces/api'
 import { useProjectTeams } from '@/features/teams/api'
 import { useReleases } from '@/features/releases/api'
 import { PortfolioItemType } from '@/entities/work-item/model/types'
-import { DetailField, DetailLayout, DetailSectionHeading, DetailTwoPane } from '@/shared/ui/detail'
+import { DetailLayout, DetailSectionHeading, DetailTwoPane } from '@/shared/ui/detail'
 import {
   usePortfolioChildFeatures,
   usePortfolioChildren,
@@ -50,9 +49,11 @@ import {
   usePortfolioItemActivityLog,
   usePortfolioItems,
   useUpdatePortfolioItem,
-  type PortfolioItem,
+  type PortfolioItemDetail,
   type UpdatePortfolioItemBody,
 } from '@/features/portfolio/api'
+import { AttachmentBlock } from '@/features/collaboration/ui/attachment-block'
+import { useUploadPastedImages } from '@/features/collaboration/use-upload-pasted-images'
 import { CommentThread } from '@/features/collaboration/ui/comment-thread'
 import { PortfolioDetailSidebar } from './ui/detail-sidebar'
 
@@ -100,6 +101,11 @@ export function PortfolioDetailPage() {
   // item merged with the pending edits, so the form always renders what the user typed.
   const update = useUpdatePortfolioItem()
   const { status: saveStatus, errorMsg, wrap: wrapSave } = useSaveState()
+  // Pasting an image into any of the three editors below inserts a local blob: preview; the
+  // real upload happens on Save, through the same pipeline Work Item detail uses.
+  const { uploadAndRewrite } = useUploadPastedImages(
+    server?.id ? { entityType: 'portfolio_item', entityId: server.id } : undefined,
+  )
   const {
     value: item,
     isDirty,
@@ -107,21 +113,32 @@ export function PortfolioDetailPage() {
     setField,
     save,
     cancel,
-  } = usePendingPatch<PortfolioItem, UpdatePortfolioItemBody>(
-    server ?? ({} as PortfolioItem),
+  } = usePendingPatch<PortfolioItemDetail, UpdatePortfolioItemBody>(
+    server ?? ({} as PortfolioItemDetail),
     server?.id,
     async (patch) => {
+      // Upload any pasted-image previews still sitting as blob: URLs before persisting —
+      // the same "upload happens on Save" step as Work Item detail, field for field.
+      const resolved = { ...patch }
+      if (typeof resolved.description === 'string') {
+        resolved.description = await uploadAndRewrite(resolved.description)
+      }
+      if (typeof resolved.notes === 'string') {
+        resolved.notes = await uploadAndRewrite(resolved.notes)
+      }
+      if (typeof resolved.releaseNotes === 'string') {
+        resolved.releaseNotes = await uploadAndRewrite(resolved.releaseNotes)
+      }
       await wrapSave(async () => {
-        await update.mutateAsync({ id: itemId, patch })
+        await update.mutateAsync({ id: itemId, patch: resolved })
       })
     },
   )
 
   const back = () => void navigate({ to: '/portfolio' })
+
   if (isLoading) return <SkeletonList rows={6} />
   if (!server) return <EmptyState title={t('detail.notFound')} />
-
-  const { progress, rollup } = item
 
   return (
     <DetailLayout
@@ -190,31 +207,20 @@ export function PortfolioDetailPage() {
                 onChange={(html) => setField({ releaseNotes: html })}
               />
 
-              {/* Progress is the portfolio-specific block, standing where Work Item puts
-                  its Task Roll-up: four read-only indicators derived server-side. */}
-              <DetailSectionHeading>{t('detail.progress.heading')}</DetailSectionHeading>
-              <DetailField label={t('detail.progress.percentDonePoints')}>
-                <PercentDoneBar
-                  metric="points"
-                  health={item.health}
-                  progress={progress}
-                  rollup={rollup}
-                />
-              </DetailField>
-              <DetailField label={t('detail.progress.percentDoneCount')}>
-                <PercentDoneBar
-                  metric="count"
-                  health={item.health}
-                  progress={progress}
-                  rollup={rollup}
-                />
-              </DetailField>
-              <DetailField label={t('detail.progress.estimatedPoints')}>
-                <ProgressBar ratio={progress.estimatedProgressByPoints} />
-              </DetailField>
-              <DetailField label={t('detail.progress.estimatedCount')}>
-                <ProgressBar ratio={progress.estimatedProgressByCount} />
-              </DetailField>
+              {/* Total Accepted Children — what real Rally shows here, standing where Work
+                  Item detail puts its Task Roll-up. It replaced four separate progress
+                  meters: same arithmetic, but framed as the one question a reader of this
+                  page is asking, with the unit toggle Rally gives it. */}
+              <AcceptedChildrenBlock data={item.acceptedChildren} />
+
+              {/* Attachments — the same table Work Item detail renders (Name / Description /
+                  When / Size), from the same component. Migration 0081 made the link table
+                  polymorphic, so this is one route tree per entity over one code path, not a
+                  second uploader. */}
+              <AttachmentBlock
+                subject={{ entityType: 'portfolio_item', entityId: item.id }}
+                readOnly={!canEdit}
+              />
 
               {/* Comments — the SAME component Work Item detail renders, in the same place
                   (last in the main pane). It takes an entity pair rather than a work-item

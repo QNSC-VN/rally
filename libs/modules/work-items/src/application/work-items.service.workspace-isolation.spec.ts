@@ -5,12 +5,16 @@ import { WORK_ITEM_REPOSITORY } from '../domain/ports/work-item.repository';
 import { ActivityLogger } from '@modules/activity';
 import { TIME_LOG_REPOSITORY } from '../domain/ports/time-log.repository';
 import { WATCHER_REPOSITORY } from '../domain/ports/watcher.repository';
-import { ATTACHMENT_REPOSITORY } from '../domain/ports/attachment.repository';
+import {
+  ATTACHMENT_REPOSITORY,
+  EntityAttachmentsService,
+  type AttachmentRef,
+} from '@modules/attachments';
 import { WORK_ITEM_RELATION_REPOSITORY } from '../domain/ports/work-item-relation.repository';
 import { NotificationSchedulerService } from '@platform/notifications/notification-scheduler.service';
 import type { WorkItem } from '../domain/work-item.types';
 import type { TimeLog } from '../domain/time-log.types';
-import type { WorkItemAttachment } from '../domain/attachment.types';
+import type { EntityAttachment } from '@modules/attachments';
 import { AttachmentsService } from '@modules/attachments';
 import { NotFoundException, PreconditionFailedException, UnitOfWork } from '@platform';
 import { ProjectsService } from '@modules/projects';
@@ -89,10 +93,11 @@ const mockTimeLog = (o: Partial<TimeLog> = {}): TimeLog => ({
   ...o,
 });
 
-const mockAttachment = (o: Partial<WorkItemAttachment> = {}): WorkItemAttachment => ({
+const mockAttachment = (o: Partial<EntityAttachment> = {}): EntityAttachment => ({
   id: 'att-a',
   workspaceId: WORKSPACE_A,
-  workItemId: 'wi-a',
+  entityType: 'work_item',
+  entityId: 'wi-a',
   uploadedBy: 'user-1',
   filename: 'file.txt',
   mimeType: 'text/plain',
@@ -165,18 +170,22 @@ const makeScopedTimeLogRepo = (logs: TimeLog[]) => ({
 /** Valid base64 SHA-256 shape — the DTO/service reject anything else. */
 const CHECKSUM = 'A'.repeat(43) + '=';
 
-const makeScopedAttachmentRepo = (attachments: WorkItemAttachment[]) => ({
-  // Scoped by BOTH work item and workspace — a viewer of one work item must not
+const makeScopedAttachmentRepo = (attachments: EntityAttachment[]) => ({
+  // Scoped by BOTH the owning entity and the workspace — a viewer of one item must not
   // be able to reach an attachment hanging off another.
-  findByWorkItemAndFile: vi.fn((workItemId: string, fileId: string, workspaceId: string) =>
+  findByEntityAndFile: vi.fn((ref: AttachmentRef, fileId: string, workspaceId: string) =>
     Promise.resolve(
       attachments.find(
-        (a) => a.id === fileId && a.workItemId === workItemId && a.workspaceId === workspaceId,
+        (a) =>
+          a.id === fileId &&
+          a.entityType === ref.entityType &&
+          a.entityId === ref.entityId &&
+          a.workspaceId === workspaceId,
       ) ?? null,
     ),
   ),
-  listByWorkItem: vi.fn().mockResolvedValue([]),
-  countByWorkItem: vi.fn().mockResolvedValue(0),
+  listByEntity: vi.fn().mockResolvedValue([]),
+  countByEntity: vi.fn().mockResolvedValue(0),
   link: vi.fn().mockResolvedValue(undefined),
   unlink: vi.fn().mockResolvedValue(undefined),
 });
@@ -260,7 +269,12 @@ describe('WorkItemsService — workspace isolation', () => {
 
   const itemA = mockWorkItem({ id: 'wi-a', workspaceId: WORKSPACE_A });
   const logA = mockTimeLog({ id: 'log-a', workspaceId: WORKSPACE_A, workItemId: 'wi-a' });
-  const attachmentA = mockAttachment({ id: 'att-a', workspaceId: WORKSPACE_A, workItemId: 'wi-a' });
+  const attachmentA = mockAttachment({
+    id: 'att-a',
+    workspaceId: WORKSPACE_A,
+    entityType: 'work_item',
+    entityId: 'wi-a',
+  });
 
   const build = async (
     wiRepo: ReturnType<typeof makeScopedWorkItemRepo>,
@@ -277,6 +291,10 @@ describe('WorkItemsService — workspace isolation', () => {
         { provide: ActivityLogger, useValue: activityRepo },
         { provide: TIME_LOG_REPOSITORY, useValue: tlRepo },
         { provide: WATCHER_REPOSITORY, useValue: watcherRepo },
+        // The real service over the scoped link-repo mock: WorkItemsService delegates its
+        // attachment methods now (0081), so mocking the delegate would stop these tests
+        // exercising the workspace/entity predicate they exist to pin.
+        EntityAttachmentsService,
         { provide: ATTACHMENT_REPOSITORY, useValue: atRepo },
         {
           provide: WORK_ITEM_RELATION_REPOSITORY,
@@ -628,7 +646,7 @@ describe('WorkItemsService — workspace isolation', () => {
       await expect(service.listAttachments(actorForWorkspace(WORKSPACE_B), 'wi-a')).rejects.toThrow(
         NotFoundException,
       );
-      expect(attachmentRepo.listByWorkItem).not.toHaveBeenCalled();
+      expect(attachmentRepo.listByEntity).not.toHaveBeenCalled();
     });
 
     it('cannot get a download url via a foreign workspace work item scope', async () => {

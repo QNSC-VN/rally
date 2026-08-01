@@ -22,6 +22,13 @@ import type { PortfolioItemType } from '@/entities/work-item/model/types'
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export type PortfolioItem = components['schemas']['PortfolioItemResponseDto']
+/**
+ * The detail response. A superset of the grid row: `GET /portfolio-items/:id` also returns
+ * the accepted-children breakdown, which is one extra grouped query and so is deliberately
+ * absent from the list.
+ */
+export type PortfolioItemDetail = components['schemas']['PortfolioItemDetailResponseDto']
+export type AcceptedChildren = PortfolioItemDetail['acceptedChildren']
 export type PortfolioChild = components['schemas']['PortfolioChildResponseDto']
 export type PortfolioItemState = PortfolioItem['state']
 export type PreliminaryEstimateSize = PortfolioItem['preliminaryEstimate']
@@ -174,7 +181,7 @@ export function usePortfolioItem(id: string | undefined) {
         params: { path: { id: id as string } },
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
-      return data as PortfolioItem
+      return data as PortfolioItemDetail
     },
     enabled: !!id,
     staleTime: 30_000,

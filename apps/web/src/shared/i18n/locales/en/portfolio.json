@@ -3,7 +3,7 @@
   "loadError": "Failed to load portfolio items.",
   "empty": "No portfolio items yet.",
   "emptySearch": "No portfolio items match your search.",
-  "searchPlaceholder": "Search portfolio…",
+  "searchPlaceholder": "Search portfolio\u2026",
   "types": {
     "epic": "Epic",
     "feature": "Feature"
@@ -52,22 +52,22 @@
     "collapseFeatures": "Collapse child Features",
     "expandItems": "Expand linked Stories and Defects",
     "collapseItems": "Collapse linked Stories and Defects",
-    "loadingChildren": "Loading…",
+    "loadingChildren": "Loading\u2026",
     "noChildFeatures": "No child Features.",
     "noChildItems": "No linked Stories or Defects.",
-    "projectMoved": "Moved to another project — Team and Release were reset"
+    "projectMoved": "Moved to another project \u2014 Team and Release were reset"
   },
   "health": {
     "state": {
-      "complete": "Complete — finished, past the planned end date",
+      "complete": "Complete \u2014 finished, past the planned end date",
       "on_track": "On track for the planned end date",
-      "at_risk": "At risk — acceptance is more than 20% behind the required rate",
-      "late": "Late — acceptance is more than 40% behind the required rate",
+      "at_risk": "At risk \u2014 acceptance is more than 20% behind the required rate",
+      "late": "Late \u2014 acceptance is more than 40% behind the required rate",
       "not_started": "Not started"
     },
     "indeterminate": {
-      "no_dates": "No status — planned start and end dates are missing",
-      "no_work": "No status — no estimated work is linked yet"
+      "no_dates": "No status \u2014 planned start and end dates are missing",
+      "no_work": "No status \u2014 no estimated work is linked yet"
     },
     "callout": {
       "status": "Status: {{status}}",
@@ -99,12 +99,19 @@
       "notes": "Notes",
       "releaseNotes": "Release Notes"
     },
-    "progress": {
-      "heading": "Progress",
-      "percentDonePoints": "% Done by Plan Estimate",
-      "percentDoneCount": "% Done by Count",
-      "estimatedPoints": "Estimated Progress (points)",
-      "estimatedCount": "Estimated Progress (count)"
+    "acceptedChildren": {
+      "heading": "Total Accepted Children",
+      "unit": "Unit",
+      "points": "Points",
+      "count": "Count",
+      "tooltip": "{{accepted}} of {{total}} accepted",
+      "types": {
+        "story": "Stories",
+        "defect": "Defects"
+      },
+      "help": "Accepted child work against everything linked to this item, in points or item count.",
+      "collapse": "Hide the breakdown by child type",
+      "expand": "Show the breakdown by child type"
     },
     "children": {
       "featuresHeading": "Child Features",

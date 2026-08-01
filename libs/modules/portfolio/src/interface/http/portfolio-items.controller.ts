@@ -6,6 +6,7 @@ import { CurrentUser } from '@modules/identity';
 import { AuthPolicy, RequirePermission } from '@modules/access';
 import {
   PortfolioItemsService,
+  type PortfolioItemDetail,
   type PortfolioItemWithProgress,
 } from '../../application/portfolio-items.service';
 import type { PortfolioChildItem } from '../../domain/ports/portfolio-item.repository';
@@ -38,6 +39,7 @@ import {
 } from './dto/portfolio-item-request.dto';
 import {
   PortfolioChildResponseDto,
+  PortfolioItemDetailResponseDto,
   PortfolioItemResponseDto,
 } from './dto/portfolio-item-response.dto';
 
@@ -79,6 +81,11 @@ function toDto(i: PortfolioItemWithProgress): PortfolioItemResponseDto {
     progress: i.progress,
     health: i.health,
   };
+}
+
+/** The detail response — `toDto` plus the accepted-children breakdown. */
+function toDetailDto(i: PortfolioItemDetail): PortfolioItemDetailResponseDto {
+  return { ...toDto(i), acceptedChildren: i.acceptedChildren };
 }
 
 /**
@@ -167,13 +174,13 @@ export class PortfolioItemsController {
   @RequirePermission('portfolio:view', { resource: 'portfolio_item', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Get an Epic or Feature with its rollups' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
-  @ApiResponse({ status: 200, type: PortfolioItemResponseDto })
+  @ApiResponse({ status: 200, type: PortfolioItemDetailResponseDto })
   @ApiCommonErrors(401, 404)
   async getItem(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<PortfolioItemResponseDto> {
-    return toDto(await this.service.getItem(user, id));
+  ): Promise<PortfolioItemDetailResponseDto> {
+    return toDetailDto(await this.service.getItem(user, id));
   }
 
   @Get(':id/activity')

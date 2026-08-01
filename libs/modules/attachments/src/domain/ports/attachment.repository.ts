@@ -1,11 +1,15 @@
-import type { WorkItemAttachment } from '../attachment.types';
+import type { AttachmentRef, EntityAttachment } from '../attachment.types';
 
 export const ATTACHMENT_REPOSITORY = Symbol('ATTACHMENT_REPOSITORY');
 
 /**
- * Owns the work_items ←→ storage.files LINK table only. Blob metadata lives in
+ * Owns the entity ←→ storage.files LINK table only. Blob metadata lives in
  * storage.files and is reached through AttachmentsService — this repository
  * never writes it.
+ *
+ * Keyed by `(entity_type, entity_id)` since migration 0081, so one link table serves work
+ * items and portfolio items. Every method takes the `AttachmentRef` pair rather than a bare
+ * id, because an id alone no longer identifies a subject.
  *
  * Every method is workspace-scoped, and these predicates are the only isolation
  * that executes — by design. Rally is single-tenant, so DB-level isolation is an
@@ -16,24 +20,25 @@ export const ATTACHMENT_REPOSITORY = Symbol('ATTACHMENT_REPOSITORY');
  */
 export interface IAttachmentRepository {
   /** Joined view of the link + its file, for list/detail responses. */
-  listByWorkItem(workItemId: string, workspaceId: string): Promise<WorkItemAttachment[]>;
+  listByEntity(ref: AttachmentRef, workspaceId: string): Promise<EntityAttachment[]>;
 
   /** Completed attachments only — pending presigns must not consume quota. */
-  countByWorkItem(workItemId: string, workspaceId: string): Promise<number>;
+  countByEntity(ref: AttachmentRef, workspaceId: string): Promise<number>;
 
-  /** Single attachment, scoped to both the work item and the workspace. */
-  findByWorkItemAndFile(
-    workItemId: string,
+  /** Single attachment, scoped to both the owning entity and the workspace. */
+  findByEntityAndFile(
+    ref: AttachmentRef,
     fileId: string,
     workspaceId: string,
-  ): Promise<WorkItemAttachment | null>;
+  ): Promise<EntityAttachment | null>;
 
   link(input: {
-    workItemId: string;
+    entityType: AttachmentRef['entityType'];
+    entityId: string;
     fileId: string;
     workspaceId: string;
     attachedBy: string;
   }): Promise<void>;
 
-  unlink(workItemId: string, fileId: string, workspaceId: string): Promise<void>;
+  unlink(ref: AttachmentRef, fileId: string, workspaceId: string): Promise<void>;
 }
