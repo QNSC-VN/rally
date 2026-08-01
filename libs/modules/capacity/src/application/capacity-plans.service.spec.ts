@@ -113,7 +113,12 @@ describe('CapacityPlansService', () => {
         },
         {
           provide: AccessService,
-          useValue: { assertProjectPermission: vi.fn().mockResolvedValue(undefined) },
+          useValue: {
+            assertProjectPermission: vi.fn().mockResolvedValue(undefined),
+            // TRUE by default: `actor` is an admin here, and draft visibility keys off being a
+            // PLANNER. The specs that are about a reader flip this deliberately.
+            hasProjectPermission: vi.fn().mockResolvedValue(true),
+          },
         },
         {
           provide: PreliminaryEstimateMapService,
@@ -1749,6 +1754,58 @@ describe('CapacityPlansService', () => {
       ).rejects.toThrow('denied');
       expect(repo.createAllocation).not.toHaveBeenCalled();
       expect(repo.deleteAllocation).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('draft visibility (AC-013)', () => {
+    /** A reader: `capacity:view` only, so neither write grant marks them a planner. */
+    const asReader = () => access.hasProjectPermission.mockResolvedValue(false);
+
+    it('hides DRAFT plans from the list for a reader', async () => {
+      repo.listByProject.mockResolvedValue([
+        view({ id: 'p-draft', status: 'draft' }),
+        view({ id: 'p-pub', status: 'published' }),
+      ]);
+      asReader();
+
+      const plans = await service.listPlans(actor, 'proj-a');
+      expect(plans.map((p) => p.id)).toEqual(['p-pub']);
+    });
+
+    it('shows a planner everything, drafts included', async () => {
+      repo.listByProject.mockResolvedValue([
+        view({ id: 'p-draft', status: 'draft' }),
+        view({ id: 'p-pub', status: 'published' }),
+      ]);
+      const plans = await service.listPlans(actor, 'proj-a');
+      expect(plans).toHaveLength(2);
+    });
+
+    it('answers NOT FOUND — not 403 — when a reader opens a draft', async () => {
+      // 403 would confirm the plan exists, which is what hiding it is meant to avoid. The BA's wording
+      // is about visibility ("cannot be opened"), not about a refused action.
+      repo.findViewById.mockResolvedValue(view({ status: 'draft' }));
+      asReader();
+
+      await expect(service.getPlan(actor, 'plan-1')).rejects.toMatchObject({
+        code: 'CAPACITY_PLAN_NOT_FOUND',
+      });
+    });
+
+    it('lets a reader open a PUBLISHED plan', async () => {
+      repo.findViewById.mockResolvedValue(view({ status: 'published' }));
+      asReader();
+      await expect(service.getPlan(actor, 'plan-1')).resolves.toMatchObject({ id: 'plan-1' });
+    });
+
+    it('counts `capacity:publish` alone as a planner', async () => {
+      // Our three codes where the BA has one: publish-without-manage is a state its model cannot
+      // express, and someone trusted to publish a plan is certainly meant to see it first.
+      repo.findViewById.mockResolvedValue(view({ status: 'draft' }));
+      access.hasProjectPermission.mockImplementation((_a, _p, code: string) =>
+        Promise.resolve(code === 'capacity:publish'),
+      );
+      await expect(service.getPlan(actor, 'plan-1')).resolves.toMatchObject({ id: 'plan-1' });
     });
   });
 
