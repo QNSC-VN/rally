@@ -116,11 +116,16 @@ module "stack" {
   // — in an environment nobody is paged for. Interruptions are not hypothetical here;
   // `SpotInterruption` shows up in this service's stopped-task reasons.
   //
-  // NOT justified by an off-hours cost-saver. An earlier version of this comment said
-  // so, and no such scheduler exists: qnsc-ci's deploy reusable can wake a stopped RDS
-  // and restore services scaled to 0, and _shared grants rds:StartDBInstance, but
-  // nothing schedules any of it. If that scheduler is ever built, add it here as a
-  // second reason rather than assuming it.
+  // ALSO justified by the idle schedule now, which is a REVERSAL of what this comment
+  // used to say. It claimed no off-hours scheduler existed. One does: `idle_schedule`
+  // below creates three EventBridge schedules (rds-stop, api-scale-down,
+  // worker-scale-down) that take this environment to zero tasks nightly, verified
+  // firing in CloudTrail. Zero tasks means zero registered targets, which this alarm
+  // treats as breaching — so leaving it on would page nobody-in-particular every night
+  // by design.
+  //
+  // The Spot reason above still stands independently, and is the reason this was
+  // originally false.
   monitor_target_health = false
 
   // Nightly, not weekly like production. Develop wakes on every merge to main, so a
