@@ -266,6 +266,8 @@ export function useRankPortfolioItem() {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as PortfolioItem
     },
-    meta: { invalidates: ['portfolio'] },
+    // `capacity` too: a plan's Feature order IS the portfolio rank, so dragging a row on the plan
+    // must refetch the plan, not only the portfolio list it came from.
+    meta: { invalidates: ['portfolio', 'capacity'] },
   })
 }

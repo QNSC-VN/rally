@@ -124,6 +124,11 @@ export const ErrorCodes = {
   CAPACITY_ALLOCATION_NOT_FOUND: 'CAPACITY_ALLOCATION_NOT_FOUND',
   /** Only a Feature is allocatable — an Epic rolls up through its child Features. */
   CAPACITY_ALLOCATION_NOT_FEATURE: 'CAPACITY_ALLOCATION_NOT_FEATURE',
+  // The BA flow's eligibility rules for adding a Feature to a plan (§4.4).
+  CAPACITY_ALLOCATION_WRONG_PROJECT: 'CAPACITY_ALLOCATION_WRONG_PROJECT',
+  CAPACITY_ALLOCATION_ARCHIVED: 'CAPACITY_ALLOCATION_ARCHIVED',
+  CAPACITY_ALLOCATION_CANCELLED: 'CAPACITY_ALLOCATION_CANCELLED',
+  CAPACITY_ALLOCATION_OTHER_RELEASE: 'CAPACITY_ALLOCATION_OTHER_RELEASE',
   /**
    * An Unallocated row cannot be a Feature's primary team assignment.
    *

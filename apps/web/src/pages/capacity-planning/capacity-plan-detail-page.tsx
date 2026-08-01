@@ -15,7 +15,10 @@ import { Pencil, Plus, Send, Trash2, Undo2, Users } from 'lucide-react'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { DataTableFrame } from '@/shared/ui/table/data-table-frame'
-import { useDataTable } from '@/shared/ui/table'
+import { DndContext } from '@dnd-kit/core'
+import { SortableContext } from '@dnd-kit/sortable'
+
+import { useDataTable, useRowRerank } from '@/shared/ui/table'
 import { useTableSort } from '@/shared/lib/hooks/use-table-sort'
 import { DetailLayout } from '@/shared/ui/detail'
 import { Button } from '@/shared/ui/button'
@@ -26,6 +29,7 @@ import { useProjectTeams } from '@/features/teams/api'
 import {
   useAddCapacityTeam,
   useUpdateCapacityPlan,
+  useAllocate,
   useRemoveAllocation,
   useUpdateAllocation,
   useRemoveCapacityTeam,
@@ -50,6 +54,7 @@ import {
 } from './model/columns'
 import { CapacityItemRow } from './ui/capacity-item-row'
 import { ItemAllocationRow } from './ui/item-allocation-row'
+import { SortableItemRow } from './ui/sortable-item-row'
 import { PlanAssignmentCounts, PlanSummaryMetrics } from './ui/plan-summary-metrics'
 import { CapacityTeamRow } from './ui/capacity-team-row'
 import { TeamAllocationsTable } from './ui/team-allocations-table'
@@ -59,10 +64,14 @@ import { AllocateFeatureModal } from './ui/allocate-feature-modal'
 import { StatusBadge } from '@/shared/ui/status-badge'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { ActionMenu, ActionMenuItem } from '@/shared/ui/action-menu'
+import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
+import { InlineSelect } from '@/shared/ui/native-select'
+import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { SelectionModal } from '@/shared/ui/selection-modal'
 import { CompositeBar } from '@/shared/ui/composite-bar'
 import { CapacityBarTooltip } from './ui/capacity-bar-tooltip'
 import { planTotals } from '@/features/capacity-planning/plan-totals'
+import { useRankPortfolioItem } from '@/features/portfolio/api'
 import { CapacityForecastModal } from './ui/capacity-forecast-modal'
 import { PublishPlanModal } from './ui/publish-plan-modal'
 import { EditCapacityPlanModal } from './ui/edit-capacity-plan-modal'
@@ -159,6 +168,74 @@ export function CapacityPlanDetailPage() {
   const removeTeam = useRemoveCapacityTeam()
   const removeAllocation = useRemoveAllocation()
   const updateAllocation = useUpdateAllocation()
+  const allocate = useAllocate()
+  const rankItem = useRankPortfolioItem()
+
+  /**
+   * Rank drag on the Features tab — the same `useRowRerank` the Backlog and Portfolio grids use.
+   *
+   * Rally ranks by dragging a row "when the grid is set to the default sort order", and changing a
+   * rank on one page changes it everywhere: a plan's Feature order IS the portfolio rank, so this
+   * persists through the portfolio endpoint rather than a plan-local order.
+   */
+  /**
+   * Plan items shaped for the shared rerank hook, which keys on `id`.
+   *
+   * A plan item is identified by `portfolioItemId` — it has no id of its own, because the plan holds
+   * it through allocation rows. Mapping here keeps that difference out of the shared hook, and the
+   * spread preserves every field the row still needs to render.
+   */
+  /**
+   * The Features tab's own filters — Rally's `Show Filters` on this tab.
+   *
+   * Client-side, like every other narrowing on this page: the plan arrives whole, so there is no
+   * page to re-fetch and no server filter to ask for.
+   */
+  const [itemTeamFilter, setItemTeamFilter] = useState('all')
+  const [itemProjectFilter, setItemProjectFilter] = useState('all')
+  const itemFilterCount = (itemTeamFilter === 'all' ? 0 : 1) + (itemProjectFilter === 'all' ? 0 : 1)
+
+  /** The projects the plan's Features actually come from — the only values worth offering. */
+  const itemProjects = useMemo(() => {
+    const names = new Map<string, string>()
+    for (const item of plan?.items ?? []) {
+      names.set(item.projectId, item.projectName ?? '—')
+    }
+    return [...names].map(([id, name]) => ({ id, name }))
+  }, [plan?.items])
+
+  const visibleItems = useMemo(
+    () =>
+      (plan?.items ?? []).filter((item) => {
+        if (itemProjectFilter !== 'all' && item.projectId !== itemProjectFilter) return false
+        if (itemTeamFilter === 'all') return true
+        // "Unassigned" means no team holds it — the state this tab warns about.
+        if (itemTeamFilter === 'unassigned') return item.teamIds.length === 0
+        return item.teamIds.includes(itemTeamFilter)
+      }),
+    [plan?.items, itemTeamFilter, itemProjectFilter],
+  )
+
+  const rankableItems = useMemo(
+    () => visibleItems.map((i) => ({ ...i, id: i.portfolioItemId })),
+    [visibleItems],
+  )
+
+  const rerank = useRowRerank({
+    items: rankableItems,
+    disabled: !canManage,
+    onReorder: ({ id, beforeId, afterId }) =>
+      rankItem.mutate({ id, beforeId, afterId }, { onError: (err) => notify.error(err.message) }),
+  })
+
+  /** The plan's teams as picker options, with Rally's/BA's `Unassign` first. */
+  const assignOptions = useMemo(
+    () => [
+      { value: '', label: t('items.unassign') },
+      ...(plan?.teams ?? []).map((pt) => ({ value: pt.teamId, label: pt.teamName ?? '—' })),
+    ],
+    [plan?.teams, t],
+  )
   const revert = useRevertPlan()
   // Only for the pending flag on the toolbar button; the modal owns the publish call itself.
   const publish = usePublishPlan()
@@ -336,6 +413,27 @@ export function CapacityPlanDetailPage() {
   }
 
   /**
+   * Rally's inline assignment: one team, or none.
+   *
+   * `null` unassigns — Rally has no wording for it but the BA's `Unassign` is the only way back to
+   * the yellow unassigned state, so the picker offers it first. A Feature with an existing team row
+   * MOVES it (the API's `teamId` patch); one with none gets a fresh allocation, which the service
+   * then consumes from the parked row.
+   */
+  async function assignFeature(item: CapacityPlanItem, teamId: string | null) {
+    const rows = (plan?.allocations ?? []).filter((a) => a.portfolioItemId === item.portfolioItemId)
+    try {
+      if (rows.length === 0) {
+        await allocate.mutateAsync({ id: planId, portfolioItemId: item.portfolioItemId, teamId })
+      } else {
+        await updateAllocation.mutateAsync({ id: planId, allocationId: rows[0].id, teamId })
+      }
+    } catch (err) {
+      notify.error(err instanceof Error ? err.message : t('items.assignFailed'))
+    }
+  }
+
+  /**
    * Rally's `Remove All Assignments`: the Feature stays on the plan, its teams do not.
    *
    * One row survives, moved to the Unallocated bucket, and the rest are deleted — the plan holds a
@@ -382,6 +480,25 @@ export function CapacityPlanDetailPage() {
   if (!plan) return <EmptyState title={t('detail.notFound')} />
 
   const unitLabel = t(`units.${plan.unit}`)
+
+  /**
+   * Publish, or Revert once published — one control, rendered by whichever toolbar the active tab
+   * uses. Plan-level, so it belongs on both; defined once so the two tabs cannot drift.
+   */
+  const publishControl = !canPublish ? null : plan.status === 'draft' ? (
+    <Button size="sm" onClick={() => setShowPublish(true)} disabled={publish.isPending}>
+      <Send size={13} /> {t('publish.action')}
+    </Button>
+  ) : (
+    <Button
+      size="sm"
+      variant="secondary"
+      onClick={() => setConfirmRevert(true)}
+      disabled={revert.isPending}
+    >
+      <Undo2 size={13} /> {t('publish.revert.action')}
+    </Button>
+  )
   // The same totals the summary panel and the Breakdown overlay read, so the header bar cannot
   // disagree with the numbers printed beside it.
   const planWide = planTotals(plan)
@@ -521,47 +638,76 @@ export function CapacityPlanDetailPage() {
             grid itself (per-team capacity, which the panel was repeating). */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-card">
           <div className="flex min-h-0 flex-1 flex-col">
-            {/* Rally's page actions, per tab: `Add / Remove Project(s) to Plan` belongs to the team
-                view, `Add Feature` to the Feature view, and Publish/Revert is plan-level so it sits
-                on both. */}
-            <div className="flex items-center gap-2 border-b border-border-inner px-4 py-2">
-              {canManage &&
-                (tab === 'teams' ? (
+            {/* Rally's page actions, per tab. The FEATURES tab carries `Show Filters` and
+                `Show Fields` beside its add button — Rally puts both there ("Select Show Filters to
+                filter the list of portfolio items that display on this tab", "Select Show Fields to
+                add or remove columns from this list") — so it uses the shared `PageToolbar` that
+                already owns that pair. The team view has neither in Rally, so it stays a plain row. */}
+            {tab === 'items' ? (
+              <PageToolbar
+                actions={
+                  canManage ? (
+                    <Button size="sm" onClick={() => setAddFeaturesFor({ teamId: null })}>
+                      <Plus size={13} /> {t('addFeatures.action')}
+                    </Button>
+                  ) : undefined
+                }
+                activeFilterCount={itemFilterCount}
+                filters={
+                  <div className="flex flex-wrap items-center gap-4">
+                    {/* Both facets are COLUMNS on this tab. Filtering by anything the reader cannot
+                        see would narrow the list for reasons the grid does not explain. */}
+                    <label className="flex items-center gap-1.5 text-ui-sm font-semibold text-muted-foreground">
+                      {t('items.projectColumn')}
+                      <InlineSelect
+                        value={itemProjectFilter}
+                        aria-label={t('items.projectColumn')}
+                        onChange={(e) => setItemProjectFilter(e.target.value)}
+                        className="w-auto"
+                      >
+                        <option value="all">{t('filters.allProjects')}</option>
+                        {itemProjects.map((project) => (
+                          <option key={project.id} value={project.id}>
+                            {project.name}
+                          </option>
+                        ))}
+                      </InlineSelect>
+                    </label>
+                    <label className="flex items-center gap-1.5 text-ui-sm font-semibold text-muted-foreground">
+                      {t('items.assignmentColumn')}
+                      <InlineSelect
+                        value={itemTeamFilter}
+                        aria-label={t('items.assignmentColumn')}
+                        onChange={(e) => setItemTeamFilter(e.target.value)}
+                        className="w-auto"
+                      >
+                        <option value="all">{t('filters.allTeams')}</option>
+                        {/* Rally flags unassigned demand on this tab, so filtering TO it is the
+                            natural next step — it is the subset a planner has to act on. */}
+                        <option value="unassigned">{t('items.notAssigned')}</option>
+                        {plan.teams.map((pt) => (
+                          <option key={pt.teamId} value={pt.teamId}>
+                            {pt.teamName ?? '—'}
+                          </option>
+                        ))}
+                      </InlineSelect>
+                    </label>
+                  </div>
+                }
+                fields={<ColumnFieldsMenu {...itemTable.fieldsMenuProps} />}
+                trailing={publishControl}
+              />
+            ) : (
+              <div className="flex items-center gap-2 border-b border-border-inner px-4 py-2">
+                {canManage && (
                   <Button size="sm" onClick={() => setShowTeams(true)}>
                     <Users size={13} /> {t('teams.action')}
                   </Button>
-                ) : (
-                  /* Rally's `Add Items`, named for what this plan holds. It only puts Features ON
-                     the plan; allocating them to teams is the grid's job afterwards. */
-                  <Button size="sm" onClick={() => setAddFeaturesFor({ teamId: null })}>
-                    <Plus size={13} /> {t('addFeatures.action')}
-                  </Button>
-                ))}
-              {/* One direction at a time: a draft publishes, a published plan can only revert —
-                  which is also the only way back to editing it. The two publish choices (with and
-                  without writing Feature fields) live inside the modal, as Rally's do. */}
-              {canPublish &&
-                (plan.status === 'draft' ? (
-                  <Button
-                    size="sm"
-                    className="ml-auto"
-                    onClick={() => setShowPublish(true)}
-                    disabled={publish.isPending}
-                  >
-                    <Send size={13} /> {t('publish.action')}
-                  </Button>
-                ) : (
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    className="ml-auto"
-                    onClick={() => setConfirmRevert(true)}
-                    disabled={revert.isPending}
-                  >
-                    <Undo2 size={13} /> {t('publish.revert.action')}
-                  </Button>
-                ))}
-            </div>
+                )}
+                <span className="ml-auto">{publishControl}</span>
+              </div>
+            )}
+
             {tab === 'items' ? (
               /* Rally's `Project Capacity` rail sits beside the Feature list — and only there. The
                  cutline this tab draws is plan-wide, so the next question is which team has no room
@@ -582,48 +728,81 @@ export function CapacityPlanDetailPage() {
                       ) : undefined
                     }
                   >
-                    {plan.items.map((item, index) => (
-                      <div key={item.portfolioItemId}>
-                        {/* The line sits ABOVE the first item that does not fit. `-1` means even
+                    {/* Rally ranks by dragging the row, and only in the plan's own rank order —
+                        which is the only order this grid offers, so the grip is always live for a
+                        planner. Persisted through the PORTFOLIO rank: "when you change the rank of
+                        an item in one page, you are changing the rank across all pages". */}
+                    <DndContext {...rerank.dndContextProps}>
+                      <SortableContext {...rerank.sortableContextProps}>
+                        {rerank.items.map((item, index) => (
+                          <SortableItemRow
+                            key={item.portfolioItemId}
+                            id={item.portfolioItemId}
+                            disabled={!canManage}
+                            label={t('items.dragLabel', { item: item.itemKey })}
+                          >
+                            {(dragHandle) => (
+                              <div>
+                                {/* The line sits ABOVE the first item that does not fit. `-1` means even
                           the first one exceeds the plan, so it lands at the very top; `null`
                           (no capacity entered anywhere) draws nothing, because there is no
                           number for the running total to exceed. */}
-                        {plan.itemCutlineIndex !== null && plan.itemCutlineIndex + 1 === index && (
-                          <CutlineDivider label={t('cutline.label')} />
-                        )}
-                        <CapacityItemRow
-                          item={item}
-                          position={index + 1}
-                          primaryTeamName={teamNameById.get(item.primaryTeamId ?? '') ?? null}
-                          belowCutline={
-                            plan.itemCutlineIndex !== null && index > plan.itemCutlineIndex
-                          }
-                          expanded={expandedItems.has(item.portfolioItemId)}
-                          onToggleExpanded={() => toggleItem(item.portfolioItemId)}
-                          onRemove={canManage ? () => void removeFeature(item) : undefined}
-                          onUnassign={canManage ? () => void unassignFeature(item) : undefined}
-                          onAllocate={
-                            canManage ? () => setAllocateFor(item.portfolioItemId) : undefined
-                          }
-                          colStyleFor={itemColStyleFor}
-                          onOpenFeature={openFeature}
-                        />
-                        {/* Rally: "each allocated project is listed as a row underneath the portfolio
+                                {plan.itemCutlineIndex !== null &&
+                                  plan.itemCutlineIndex + 1 === index && (
+                                    <CutlineDivider label={t('cutline.label')} />
+                                  )}
+                                <CapacityItemRow
+                                  item={item}
+                                  position={index + 1}
+                                  primaryTeamName={
+                                    teamNameById.get(item.primaryTeamId ?? '') ?? null
+                                  }
+                                  belowCutline={
+                                    plan.itemCutlineIndex !== null && index > plan.itemCutlineIndex
+                                  }
+                                  expanded={expandedItems.has(item.portfolioItemId)}
+                                  onToggleExpanded={() => toggleItem(item.portfolioItemId)}
+                                  onRemove={canManage ? () => void removeFeature(item) : undefined}
+                                  onUnassign={
+                                    canManage ? () => void unassignFeature(item) : undefined
+                                  }
+                                  onAllocate={
+                                    canManage
+                                      ? () => setAllocateFor(item.portfolioItemId)
+                                      : undefined
+                                  }
+                                  onAssign={
+                                    canManage
+                                      ? (teamId) => void assignFeature(item, teamId)
+                                      : undefined
+                                  }
+                                  assignOptions={assignOptions}
+                                  dragHandle={dragHandle}
+                                  colStyleFor={itemColStyleFor}
+                                  onOpenFeature={openFeature}
+                                />
+                                {/* Rally: "each allocated project is listed as a row underneath the portfolio
                         item". PLAIN nested rows here, not a sub-table: unlike the team grid, these
                         children fill the SAME columns as their parent (one team's slice of
                         Complete / Rollup / Estimated), so a second header would repeat the one
                         above it. */}
-                        {expandedItems.has(item.portfolioItemId) &&
-                          (allocationsByItem.get(item.portfolioItemId) ?? []).map((allocation) => (
-                            <ItemAllocationRow
-                              key={allocation.id}
-                              allocation={allocation}
-                              teamName={teamNameById.get(allocation.teamId ?? '') ?? null}
-                              colStyleFor={itemColStyleFor}
-                            />
-                          ))}
-                      </div>
-                    ))}
+                                {expandedItems.has(item.portfolioItemId) &&
+                                  (allocationsByItem.get(item.portfolioItemId) ?? []).map(
+                                    (allocation) => (
+                                      <ItemAllocationRow
+                                        key={allocation.id}
+                                        allocation={allocation}
+                                        teamName={teamNameById.get(allocation.teamId ?? '') ?? null}
+                                        colStyleFor={itemColStyleFor}
+                                      />
+                                    ),
+                                  )}
+                              </div>
+                            )}
+                          </SortableItemRow>
+                        ))}
+                      </SortableContext>
+                    </DndContext>
                   </DataTableFrame>
                 </div>
                 <TeamCapacityRail teams={sortedTeams} unitLabel={unitLabel} />

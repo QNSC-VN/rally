@@ -26,6 +26,28 @@ test.describe('Capacity allocation', () => {
     page.locator('div.group').filter({ hasText: 'Team Alpha' }).first()
 
   /**
+   * Types a capacity for ONE team, addressed by name.
+   *
+   * The editor is a single shared textbox, so clicking a cell in one row and then filling "the"
+   * textbox is only unambiguous while one row is open — a loop over rows kept writing to the wrong
+   * team. The cell's accessible name carries the team, which makes each write addressable.
+   */
+  async function setCapacity(page: import('@playwright/test').Page, team: string, value: string) {
+    // Through the team's ROW, by TEXT: the capacity cell's resting state is text, not a button —
+    // `InlineEditableCell` only renders the input (and its accessible name) once clicked. The row
+    // scopes the click; the editor that opens is the grid's single shared textbox.
+    const row = page.locator('div.group').filter({ hasText: team }).first()
+    await row
+      .getByText(/Not entered|^\d+ points$|^\d+$/)
+      .last()
+      .click()
+    const box = page.getByRole('textbox', { name: /^Capacity for / })
+    await box.fill(value)
+    await box.press('Enter')
+    await expect(box).toHaveCount(0)
+  }
+
+  /**
    * Disclose a team's allocated Features.
    *
    * Rally collapses them by default, so every assertion about an allocation row has to open its
@@ -119,7 +141,10 @@ test.describe('Capacity allocation', () => {
     await page.goto('/capacity-planning', { waitUntil: 'domcontentloaded' })
     // The ID cell is the link: the row does not navigate and the NAME cell edits in place,
     // which is how Rally and every other grid here behave.
-    await page.getByRole('button', { name: /^CP-/ }).first().click()
+    // CP-1 by name, not `.first()`: the seed now also carries CP-2, a PUBLISHED plan, and the list
+    // is newest-first — so `.first()` opened the read-only one and every draft-only control was
+    // missing.
+    await page.getByRole('button', { name: /^CP-1$/ }).click()
     await expect(page).toHaveURL(/\/capacity-planning\/[0-9a-f-]{36}/)
     await expect(page.getByText('Team Alpha').first()).toBeVisible()
     await resetPlan(page)
@@ -153,13 +178,13 @@ test.describe('Capacity allocation', () => {
     }
 
     await page.getByRole('tab', { name: /Teams/ }).click()
-    const capacity = page.getByRole('button', { name: /^Capacity for / })
-    if (await capacity.count()) {
-      await capacity.first().click()
-      const box = page.getByRole('textbox', { name: /^Capacity for / })
-      await box.fill('')
-      await box.press('Enter')
-      await expect(teamRow(page)).toContainText('Not entered')
+    // Both seeded teams, by name: the seed gives Team Beta a real ceiling, so a plan total that
+    // still counts it makes the cutline test's "runs out of capacity" premise false.
+    for (const team of ['Team Alpha', 'Team Beta']) {
+      const row = page.locator('div.group').filter({ hasText: team }).first()
+      if ((await row.count()) > 0 && !/Not entered/.test((await row.textContent()) ?? '')) {
+        await setCapacity(page, team, '')
+      }
     }
   }
 
@@ -199,14 +224,11 @@ test.describe('Capacity allocation', () => {
     // back the way it found it.
     await openPlan(page)
 
-    // A capacity small enough that the second Feature cannot fit.
-    const capacityCell = teamRow(page)
-      .getByText(/Not entered|^\d+ points$|^\d+$/)
-      .last()
-    await capacityCell.click()
-    const editor = page.getByRole('textbox', { name: /^Capacity for / })
-    await editor.fill('5')
-    await editor.press('Enter')
+    // A plan capacity small enough that the second Feature cannot fit. The cutline measures the
+    // PLAN's total, so Beta's ceiling has to be part of the arrangement rather than left to whatever
+    // the seed chose — 0 is a real state ("this team takes no committed demand"), not a blank.
+    await setCapacity(page, 'Team Alpha', '5')
+    await setCapacity(page, 'Team Beta', '0')
     await expect(teamRow(page)).toContainText('5')
 
     // `openPlan` reset the board, so these are the only two Features on the plan: 4 points each,
@@ -300,7 +322,10 @@ test.describe('Capacity allocation', () => {
     await page.goto('/capacity-planning', { waitUntil: 'domcontentloaded' })
     // The ID cell is the link: the row does not navigate and the NAME cell edits in place,
     // which is how Rally and every other grid here behave.
-    await page.getByRole('button', { name: /^CP-/ }).first().click()
+    // CP-1 by name, not `.first()`: the seed now also carries CP-2, a PUBLISHED plan, and the list
+    // is newest-first — so `.first()` opened the read-only one and every draft-only control was
+    // missing.
+    await page.getByRole('button', { name: /^CP-1$/ }).click()
     await page.getByRole('button', { name: /^Revert to draft$/ }).click()
     const confirm = page.getByRole('dialog')
     await expect(confirm.getByText(/are NOT undone/)).toBeVisible()

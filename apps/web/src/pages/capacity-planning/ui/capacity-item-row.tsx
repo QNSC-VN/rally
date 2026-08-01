@@ -1,9 +1,10 @@
-import { type CSSProperties } from 'react'
+import { type CSSProperties, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, Scale, Trash2, Undo2 } from 'lucide-react'
 
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { MetricValue } from '@/shared/ui/metric-value'
+import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { RowExpandToggle } from '@/shared/ui/row-expand-toggle'
 import { BRAND } from '@/shared/config/brand'
 import { cn } from '@/shared/lib/utils'
@@ -33,6 +34,9 @@ export function CapacityItemRow({
   onRemove,
   onUnassign,
   onAllocate,
+  onAssign,
+  assignOptions = [],
+  dragHandle,
   colStyleFor,
   onOpenFeature,
 }: {
@@ -53,6 +57,15 @@ export function CapacityItemRow({
   onUnassign?: () => void
   /** Opens the Allocate dialog for THIS Feature — splitting it across teams. */
   onAllocate?: () => void
+  /**
+   * Assigns the Feature to one team, or to none. Omitted where the reader cannot manage the plan,
+   * which turns the cell back into text.
+   */
+  onAssign?: (teamId: string | null) => void
+  /** Teams on the plan, plus `Unassign` — built once by the page. */
+  assignOptions?: { value: string; label: string }[]
+  /** The rank grip, rendered by the page so the row need not know about dnd-kit. */
+  dragHandle?: ReactNode
   colStyleFor: (key: ItemColKey, base?: CSSProperties) => CSSProperties
   onOpenFeature: (portfolioItemId: string) => void
 }) {
@@ -68,10 +81,14 @@ export function CapacityItemRow({
       )}
       data-below-cutline={belowCutline || undefined}
     >
+      {/* Rank + grip. Rally ranks by dragging the row and only "when the grid is set to the default
+          sort order", which is the plan's own rank order — the same rule `useRowRerank` enforces on
+          the Backlog, so the grip simply disappears under any other sort. */}
       <div
         style={colStyleFor('rank', { flexShrink: 0 })}
-        className="px-2 text-right text-muted-foreground tabular-nums"
+        className="flex items-center justify-end gap-1 px-2 text-muted-foreground tabular-nums"
       >
+        {dragHandle}
         {position}
       </div>
 
@@ -122,7 +139,30 @@ export function CapacityItemRow({
             it the same way. Allocated to SEVERAL teams, Rally shows the COUNT rather than one
             team's name, because no single name would be the answer; the nested rows below say
             which teams they are. */}
-        {item.primaryTeamId === null && item.teamIds.length === 0 ? (
+        {item.teamIds.length <= 1 && onAssign !== undefined ? (
+          /* Rally: "You can select the project from this field to assign a portfolio item to a
+             single project." A SPLIT Feature is read-only here — no single team is the answer, and
+             Rally sends those edits through the Allocate dialog. The BA adds `Unassign` as the
+             first option, which is the only way back to the yellow unassigned state. */
+          <SearchableSelect
+            value={item.primaryTeamId ?? ''}
+            ariaLabel={t('items.assignmentLabel', { item: item.itemKey })}
+            options={assignOptions}
+            onChange={(v) => onAssign(v === '' || v === null ? null : v)}
+            /* The trigger says `Not assigned`, in the BA's yellow, while the MENU offers `Unassign`.
+               They are the same row of the list but not the same sentence: one is a state the plan is
+               in, the other an action you can take — and without this the cell rendered the option's
+               own label, so an unassigned Feature read as the verb "Unassign". */
+            triggerContent={
+              item.primaryTeamId === null ? (
+                <span className="flex items-center gap-1" style={{ color: BRAND.warning }}>
+                  <AlertTriangle size={12} />
+                  <span className="text-ui-sm">{t('items.notAssigned')}</span>
+                </span>
+              ) : undefined
+            }
+          />
+        ) : item.primaryTeamId === null && item.teamIds.length === 0 ? (
           <span className="flex items-center gap-1" style={{ color: BRAND.warning }}>
             <AlertTriangle size={12} />
             <span className="text-ui-sm">{t('items.notAssigned')}</span>
