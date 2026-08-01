@@ -1,3 +1,4 @@
+import type { PreliminaryEstimateMap } from '../../../../../db/schema/enums';
 import type {
   WorkspaceStatus,
   WorkspaceMemberStatus,
@@ -87,6 +88,22 @@ export interface WorkspaceSettings {
   timezone: string | null;
   defaultLocale: string | null;
   dateFormat: string | null;
+  /**
+   * T-shirt size → points/count, the denominator behind both Estimated Progress meters and
+   * the Preliminary tier of a capacity plan.
+   *
+   * A SETTING, never a constant. The BA spec calls the seeded values "temporary mockup data"
+   * and defers the real scale to Settings; Rally makes the equivalent mapping a
+   * workspace-admin field ("add, modify, or delete preliminary estimate sizes and their
+   * associated numeric values"). The column existed and was read from day one, but nothing
+   * could write it — so it was configurable in the schema and hard-coded in practice.
+   *
+   * PARTIAL on purpose: the row stores only the sizes an operator has overridden, and
+   * `PreliminaryEstimateMapService` merges them over the seeded default. Storing a complete
+   * map would freeze a copy of today's defaults into every workspace, so a later change to
+   * the seed would silently not apply to anyone.
+   */
+  preliminaryEstimateMap: Partial<PreliminaryEstimateMap>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -134,6 +151,13 @@ export interface UpdateWorkspaceSettingsInput {
   timezone?: string;
   defaultLocale?: string;
   dateFormat?: string;
+  /**
+   * A PARTIAL map — only the sizes the caller sent are changed.
+   *
+   * Merged rather than replaced, so an operator retuning `M` cannot blank `XS` by omitting it.
+   * The reader already merges over the seeded default for the same reason.
+   */
+  preliminaryEstimateMap?: Partial<PreliminaryEstimateMap>;
 }
 
 /**

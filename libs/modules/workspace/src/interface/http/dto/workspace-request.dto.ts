@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import { preliminaryEstimateSizeEnum } from '../../../../../../../db/schema/enums';
+
+const SETTINGS_SIZES = preliminaryEstimateSizeEnum.enumValues;
 import { createZodDto } from 'nestjs-zod';
 import { workspaceMemberStatusEnum } from '../../../../../../../db/schema/enums';
 
@@ -71,6 +74,23 @@ export const UpdateWorkspaceSettingsSchema = z.object({
   timezone: z.string().min(1).max(100).optional(),
   defaultLocale: z.string().min(2).max(10).optional(),
   dateFormat: z.string().min(1).max(50).optional(),
+  /**
+   * T-shirt size → points/count. PARTIAL: send only the sizes being changed, and the server
+   * merges them over what is stored.
+   *
+   * Whole numbers only, matching Rally ("Values must be whole numbers"), and non-negative
+   * because these are denominators. The size KEYS are fixed by the `preliminary_estimate_size`
+   * enum — Rally lets an admin add and delete sizes too, which our column cannot express, so
+   * that part is deliberately out of scope rather than half-built.
+   */
+  // `partialRecord`, NOT `record`: with an enum key zod 4's `record` is EXHAUSTIVE and would
+  // demand all six sizes on every request, which defeats the point of a partial patch.
+  preliminaryEstimateMap: z
+    .partialRecord(
+      z.enum(SETTINGS_SIZES),
+      z.object({ points: z.number().int().min(0), count: z.number().int().min(0) }),
+    )
+    .optional(),
 });
 
 export class UpdateWorkspaceSettingsDto extends createZodDto(UpdateWorkspaceSettingsSchema) {}
